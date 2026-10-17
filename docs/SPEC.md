@@ -281,8 +281,8 @@ z najnowszego roku z pełnym pokryciem i dodaj do projektu Raba”. Asystent
 odczytuje zaznaczenie, sprawdza dostępność (tylko odczyt), wybiera rok
 i przedstawia propozycję: dwa polecenia Kartografa, 24 arkusze, 9 już
 lokalnie, ok. 1,2 GB, dwa nowe zadania projektu; arkusze propozycji są
-podświetlone na mapie. Dopiero „Wykonaj” uruchamia zadania w tle; po ich
-zakończeniu asystent podsumowuje wynik (sekcja 7).
+podświetlone na mapie. Dopiero „Zatwierdź i uruchom” uruchamia zadania
+w tle; po ich zakończeniu asystent podsumowuje wynik (sekcja 7).
 
 ### UC-13. Kondycja magazynu
 
@@ -334,8 +334,8 @@ sidecary nieczytelne i sidecary sprzed ADR-031 (polskie klucze: brak klucza
 
 **Archiwista nie zapisuje niczego w magazynie.** W katalogu projektu
 zapisuje wyłącznie katalog zestawu (sekcja 8.4) i plik geometrii obszaru
-narysowanego dla nowego zadania projektu (`obszary/`, 10.1); manifest
-zmienia tylko API Kartografa (A-ADR-003).
+(narysowanego albo wczytanego z pliku) dla nowego zadania projektu
+(`obszary/`, 10.1); manifest zmienia tylko API Kartografa (A-ADR-003).
 
 ### 4.2 Odczyt przez API Kartografa
 
@@ -757,7 +757,8 @@ i mockupu.
 1. **Obszar.** Narzędzia: prostokąt, wielokąt, „Widok mapy”, godło (wpisane
    albo kliknięte w siatce godeł), kod jednostki (TERYT, KU; wyszukiwanie po
    nazwie po KB-7), plik geometrii (GPKG, SHP, GeoJSON — kopiowany do
-   lokalnego katalogu roboczego Archiwisty; Kartograf dostaje ścieżkę),
+   lokalnego katalogu roboczego Archiwisty, a dla zadania projektu do
+   `obszary/` projektu, 10.1; Kartograf dostaje ścieżkę kopii),
    kraj. Nad mapą stoi plakietka „Obszar: Kraków · 120 km² · PL” z „Zmień”
    i „Wyczyść”. Kraj (PL, CZ, oba) wynika z obszaru
    (`countries_for_bbox`); obszar przecinający granicę daje wyniki PL i CZ
@@ -808,7 +809,7 @@ jak liczy Kartograf (ADR-041 R8).
 |---|---|---|
 | „pełne” | `complete = true` i jedna kampania tego roku sama pokrywa ląd obszaru pełnymi arkuszami (`TAK`) | `complete`; podział arkuszy na kampanie — KD-1 |
 | „pełne · 2 kampanie” (N kampanie/kampanii) | `complete = true`, ale żadna kampania sama; pełne arkusze N kampanii tego roku razem pokrywają ląd. N = liczba różnych kampanii wśród arkuszy, które pobierze Kartograf (najnowszy rekord arkusza, ADR-028) | `complete`, KD-1 (`campaigns` liczy także rekordy niepełne, więc samo `len(campaigns)` nie wystarcza) |
-| „częściowe · 58%” | `complete = false`; 58% = ląd w ramkach pełnych arkuszy / `land_m2` (dolna granica tego, co na pewno ma dane). Dopisek „· N ark. niepełnych”, gdy `sheets_partial` niepuste | `full_m2` — KD-2 (nowe pole); `land_m2`, `sheets_partial` |
+| „częściowe · 58%” | `complete = false`; 58% = ląd w ramkach pełnych arkuszy / `land_m2` (dolna granica tego, co na pewno ma dane), zaokrąglone w dół — niepełna kombinacja nigdy nie pokazuje 100%, a udział niezerowy poniżej 1% to „<1%”. Dopisek „· N ark. niepełnych”, gdy `sheets_partial` niepuste | `full_m2` — KD-2 (nowe pole); `land_m2`, `sheets_partial` |
 | „brak danych” | rok bez żadnej kombinacji w aktywnym wariancie | brak kombinacji |
 
 W szczegółach wiersza dochodzi górna granica: ląd w ramkach dowolnych
@@ -1017,7 +1018,7 @@ promptu):
 
 - **Nic nie pobiera, nie przepina i nie zapisuje bez potwierdzenia.**
   Asystent może tylko czytać i przygotować propozycję; wykonanie wymaga
-  kliknięcia „Wykonaj” przez człowieka.
+  kliknięcia „Zatwierdź i uruchom” przez człowieka.
 - **Nic nie usuwa** — takiego narzędzia nie ma (Archiwista niczego nie
   usuwa).
 - **Nie zmienia ustawień, magazynów ani manifestów wprost**, nie czyta
@@ -1045,7 +1046,7 @@ sequenceDiagram
   end
   AS->>API: propose_actions
   API-->>UI: karta propozycji + podświetlenie jednostek na mapie
-  U->>UI: „Wykonaj” (albo zmiana / odrzucenie)
+  U->>UI: „Zatwierdź i uruchom” (albo zmiana / odrzucenie)
   UI->>API: wykonanie propozycji (token CSRF użytkownika)
   API->>J: zadania w tle
   J-->>UI: postęp na mapie i w „Zadaniach”
@@ -1119,7 +1120,8 @@ Asystent: Rok 2025 jest „pełne” (12 arkuszy, PL-1992, EVRF2007);
   |     --bbox ... --resolution 1m --vertical-crs EVRF2007        |
   |     --year 2025 --sheet-system 1992                           |
   | [x] Dodaj zadanie projektu Raba: „teren-2025”                 |
-  | Razem: 12 plików, ok. 455 MB       [Zmień] [Odrzuć] [Wykonaj] |
+  | Razem: 12 plików, ok. 455 MB                                  |
+  |                       [Zmień] [Odrzuć] [Zatwierdź i uruchom]  |
   +---------------------------------------------------------------+
 [Kontekst: Kraków · NMT x]  Napisz polecenie...                 [Wyślij]
 Zużycie w tym miesiącu: 41 tys. tokenów (ok. 0,30 USD z 20 USD)
@@ -1772,9 +1774,10 @@ Decyzja: A-ADR-012.
   wychodzące poza korzeń są odrzucane.
 - **Zapis:** Archiwista nie ma kodu zapisującego w magazynie; zapisuje
   tylko indeks, pamięć podglądów i dzienniki (lokalnie), katalog zestawu
-  i — przy dodawaniu zadania projektu z narysowanym obszarem — plik
-  geometrii w `<katalog projektu>/obszary/` (zalecenie specu manifestu:
-  geometria w katalogu projektu przenosi się razem z nim).
+  i — przy dodawaniu zadania projektu z obszarem narysowanym albo
+  wczytanym z pliku — plik geometrii w `<katalog projektu>/obszary/`
+  (zalecenie specu manifestu: geometria w katalogu projektu przenosi się
+  razem z nim).
 - **Pliki geometrii od użytkownika:** limit rozmiaru (50 MB), odczyt
   w procesie roboczym (GDAL na niezaufanym wejściu nie kładzie serwera),
   kopia w lokalnym katalogu roboczym.
@@ -1955,7 +1958,7 @@ się da, i dokłada tryby zależne od Kartografa, gdy ten je wyda.
 |---|---|---|
 | v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru | KA-1..KA-6 |
 | v0.2 „Podglądy” | podglądy, Stos i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna | — |
-| v0.3 „Działania” | dostępność u źródła z etykietami, Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KB-1..KB-5, KB-7, KC-1..KC-3, KD-1, KD-2, KH-1 |
+| v0.3 „Działania” | dostępność u źródła z etykietami, Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1, KD-2, KH-1 |
 | v0.4 „Zestaw” | zestaw do QGIS, PL + CZ bez scalania, dostępność obrazów i wydań, polecenie z karty pliku | KB-6, KD-3, KD-4 |
 | v0.5 „Asystent” | czat z narzędziami, propozycje i potwierdzenie | — |
 | v0.6 „Mozaika i porównanie” | mozaika VRT/GeoTIFF, model różnic, zestaw z kopią danych | KE, KG |
@@ -2140,15 +2143,16 @@ Decyzje, które mockup ma pomóc podjąć:
 | M6 | „Asystent”: panel boczny czy dolny; wygląd karty propozycji i podświetlenia na mapie |
 | M7 | Postęp zadań: na mapie (jednostki zmieniają kolor) i w pasku „Zadania” |
 | M8 | „Karta pliku”: oś wersji, przypięcia, kolejność i nazwy akcji |
-| M9 | Słownictwo: nazwy widoków, etykiet i akcji |
+| M9 | Słownictwo: nazwy widoków, etykiet i akcji; format dat w interfejsie (6.1: `RRRR-MM-DD`, mockup: `21.06.2024`, zakres lotu `21.06–30.07.2024`) |
 | M10 | Motyw jasny i ciemny, typografia, gęstość informacji |
 
 Słownictwo uzgodnione z autorem mockupu (2026-10-17): widoki „Mapa”,
 „Stos”, „Katalog”, panel „Zestawienie” z zakładkami „Tabela” i „Oś czasu”,
 „Karta pliku”, „Zadania”, „Asystent”; w nawigacji „Projekty”, „Łączenie”,
 „Magazyn”, „Ustawienia” (w mockupie nieaktywne); etykiety pokrycia
-i plakietki z 6.4 (z odmianą „2-4 kampanie”, „5+ kampanii”) oraz chip „+N
-warianty”.
+i plakietki z 6.4 (z odmianą „2-4 kampanie”, „5+ kampanii”), chip „+N
+warianty” oraz przyciski karty propozycji asystenta „Zatwierdź i uruchom”,
+„Zmień”, „Odrzuć” („Anuluj” zostaje dla zadań w tle).
 
 Po przeglądzie mockupu decyzje użytkownika trafią do `docs/DECISIONS.md`
 (nowy ADR „Wzorce interfejsu po mockupie”) i do sekcji 6 tego specu.

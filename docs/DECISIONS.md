@@ -124,6 +124,12 @@ ma (SPEC 15, P4).
 **Konsekwencje:** v0.1 jest sprawdzana na magazynie zamontowanym tylko do odczytu. Każda
 nowa operacja tworząca dane wymaga funkcji Kartografa (ADR-009).
 
+**Errata 1 (2026-10-17, przegląd specu):** „plik geometrii narysowanego obszaru”
+obejmuje też obszar wczytany z pliku (GPKG, SHP, GeoJSON): przy zadaniu
+projektu jego kopia trafia do `obszary/` projektu, a nie do lokalnego katalogu
+roboczego, żeby manifest nie wskazywał ścieżki spoza katalogu projektu
+(SPEC 4.1, 6.3, 10.1).
+
 ---
 
 ## ADR-004: Serwer w Pythonie z FastAPI
