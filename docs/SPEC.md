@@ -1840,3 +1840,83 @@ data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
 - **Dowód działania przy każdej wersji:** uruchomienie aplikacji
   (`archiwista serve`), przejście kryteriów akceptacji wersji (sekcja 13)
   w przeglądarce i zrzuty ekranu w raporcie wydania.
+
+## 12. Wymagania wobec Kartografa
+
+Luki w publicznym API Kartografa 0.8.0, które Archiwista potrzebuje
+wypełnić w Kartografie (zasada nakładek SCOPE 3.3; A-ADR-014). Nazwy są
+propozycjami — ostateczne ustalą ADR Kartografa. Wszystkie nowe funkcje
+przestrzegają reguł Kartografa: argumenty tylko nazwane (ADR-044 errata 1),
+bliźniak `check_*` dla operacji zapisujących (ADR-037 Z2), `on_notice`,
+komunikaty po polsku w ASCII (Z5), wyjątki z hierarchii `KartografError`,
+eksport w `kartograf.__all__`, opis w ARCH i USAGE, testy zgodności CLI
+i API.
+
+Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
+(sekcja 13).
+
+### 12.1 KA — odczyt magazynu
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KA-1 | `iter_store(output_dir, *, segment=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem | indeks bez własnej kopii reguł `data/` (4.2) | v0.1 |
+| KA-2 | `read_sidecar(path) -> Sidecar` — typowany, tolerancyjny odczyt `kartograf-meta/1` (także sprzed ADR-031 i klucze deweloperskie 0.8.0-dev): pola z ARCH 3.2, surowy `dataset` i rozpoznany klucz deskryptora, znormalizowane: rok i data danych, kampania, numer zgłoszenia, wydanie, pełny arkusz, pokrycie, jednostka | filtry, karta pliku, rok danych ≠ data pobrania (4.3) | v0.1 |
+| KA-3 | `describe_segment(segment) -> SegmentInfo` — odwrotność `resolve_subdir`/`content_segment`: produkt, kraj, klucz deskryptora, nazwa dla ludzi (nazwa deskryptora + wariant: rozdzielczość, układ wysokości, format, rocznik, poziom), `known` | ludzkie nazwy („NMT 1 m · PL-1992 · EVRF2007”) | v0.1 |
+| KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — zasięg w WGS84 i natywny z układem i źródłem (`request`, `sheet`, `header`, `unit`); offline dla godeł PL i TM33, bboxów zadań i nagłówków; z siecią i cache dla TERYT (PRG), KU (RUIAN), SM5 (indeks CUZK); przyjmuje także pozycję planu (`PlanItem`) | mapa, filtr obszaru, podświetlanie planowanych jednostek (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |
+| KA-5 | `link_target(path) -> Path \| None` — cel ścieżki standardowej albo `full_sheet/` z `extra.link_target`, z potwierdzeniem treścią na udziałach bez stabilnych i-węzłów | „bieżąca wersja” bez logiki i-węzłów (4.6) | v0.1 |
+| KA-6 | `pinned_transform(src_crs, dst_crs) -> PinnedTransform` — publiczny dostęp do `transform/crs.py` (`transform(xs, ys)`, `description`, `accuracy_m`) | obrysy i wektory na mapie bez operacji przybliżonych (S-JTSK: ok. 100 m) | v0.1 |
+| KA-7 | (opcjonalnie, po pomiarach z v0.1) dziennik zmian magazynu: osobny plik na proces piszący (bez wspólnego pliku i blokad), z listą nowych wersji i przestawionych dowiązań | tańsze odświeżanie indeksu na SMB (4.4) | — |
+
+### 12.2 KB — katalog komend i wywołanie ogólne
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KB-1 | `data_commands() -> tuple[CommandInfo, ...]` — komendy danych (jak `kartograf/project/commands.py::COMMANDS`) z produktami z rejestru i opcjami: nazwa, rodzaj (`str`, `int`, `flag`, `bbox`, `path`, `per_country`, `str_list`), dozwolone wartości z rejestru i wariantów, wymagalność i zależności (np. `cutout` wymaga `horizontal_crs`), flaga CLI, opis po polsku z `--help` | formularze pobierania bez kopii reguł Kartografa; lista produktów; narzędzia asystenta; ta sama potrzeba we wtyczce QGIS | v0.3 |
+| KB-2 | `parse_command(argv) -> CommandCall` (`command`, `options`) — ten sam parser co `kartograf project add` | wklejone polecenie (UC-15) | v0.3 |
+| KB-3 | `validate_command(command, options) -> None` — walidacja bez sieci (ta sama co `add_project_task`); `ValidationError` z nazwą opcji, której dotyczy | błędy przy właściwym polu formularza | v0.3 |
+| KB-4 | `format_command(command, options) -> str` — tekst `kartograf …` | „Polecenie Kartografa”, `polecenia.sh`, propozycje asystenta | v0.3 |
+| KB-5 | `run_command(command, options, *, output_dir, update=None, plan=None, cache, workers=None, on_progress=None, on_notice=None, cancel=None)` i `check_command(...) -> UpdatePlan` — wywołanie po nazwie komendy z raportem jej rodziny | proces roboczy bez przełącznika po funkcjach Kartografa | v0.3 |
+| KB-6 | `command_for_file(sidecar) -> CommandCall` — polecenie, które wybiera ten plik (z `request`, `dataset`, wariantu i roku) | „Polecenie Kartografa” i „Dodaj do projektu” z karty pliku | v0.4 |
+| KB-7 | `find_admin_units(query, *, country, level) -> list[AdminUnit]` (kod, nazwa, poziom, obwiednia) — PRG i RUIAN, po nazwie albo kodzie | wybór obszaru po nazwie gminy lub powiatu; narzędzie asystenta | v0.3 (bez KB-7: tylko kody) |
+
+### 12.3 KC — długie operacje
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KC-1 | parametr `cancel: Callable[[], bool] \| None` we wszystkich funkcjach pobrania, sprawdzenia, HSG, łączenia i projektu oraz w `check_availability` — sprawdzany między jednostkami i kawałkami transferu; wynik: częściowy raport (`failed` z `kind="cancelled"`) bez częściowych wersji | anulowanie z interfejsu bez zabijania procesu (5.6) | v0.3 |
+| KC-2 | jednolity `on_progress` we wszystkich powyższych (w 0.8.0 nie mają go m.in. `download_soil`, `calculate_hsg`, `check_*`, `verify_project`, `check_availability`); `DownloadProgress` z fazą (`index`, `download`, `write`, `verify`, `compose`) oraz `bytes_done`/`bytes_total` | pasek postępu, także dla plików krajowych 0,3-25 GB | v0.3 |
+| KC-3 | `PlanItem.size_bytes` — rozmiar pozycji planu, gdy znany tanio (rekord indeksu, `HEAD`, feed ATOM) | „ok. 265 MB” w „Oknie planu” i propozycjach | v0.3 |
+
+### 12.4 KD — dostępność rozszerzona
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KD-1 | w `AvailabilityCombination` szczegóły arkuszy: arkusz → rekord, który pobierze Kartograf (kampania, data lotu, pełny) oraz kompletność każdej kampanii z osobna | etykiety „pełne” i „pełne · N kampanie” (6.4) | v0.3 |
+| KD-2 | `AvailabilityCombination.full_m2` — ląd obszaru w ramkach pełnych arkuszy (z tej samej siatki 1 m co `complete`) | „częściowe · 58%” (6.4) | v0.3 |
+| KD-3 | raport dostępności dla obrazów PL (ortofotomapa, true orto, intensywność): lata i pełność arkuszy ze skorowidza WMS | zestawienie lat dla obrazów | v0.4 |
+| KD-4 | dostępność wydań produktów jednostkowych (BDOT10k i jego archiwum, BDOO, modele 3D, CORINE): które jednostki obszaru mają paczkę w danym wydaniu | wiersze wydań z etykietą pokrycia (6.4) | v0.4 |
+
+### 12.5 KE, KF, KG — łączenie (sekcja 8)
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KE | `build_mosaic` / `check_mosaic` (+ `kartograf elevation mosaic`, `kartograf imagery mosaic`; pozycje projektu): wejście jako wybór danych albo lista wersji; VRT albo GeoTIFF na wspólnej siatce; reprojekcja przypięta; produkt pochodny z `extra.derived` i `extra.source_files` | tryb 1 (8.2) | v0.6 |
+| KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 z backlogu: wspólna siatka, EVRF2007 po obu stronach, reguła styku, raport styku | tryb 2, scalona powierzchnia (8.3) | v0.7 |
+| KG | `compare_versions` / `check_compare` (+ `kartograf elevation compare`): model różnic ze statystyką i progiem istotności; później `compare_vector_versions` | tryb 4, poziom 3 (8.5) | v0.6 |
+
+### 12.6 KH — projekty
+
+| ID | API (propozycja) | Po co | Wersja |
+|---|---|---|---|
+| KH-1 | `set_project_output_dir(project_dir, *, output_dir)` — zmiana magazynu projektu z walidacją (zapis atomowy pod blokadą jak inne zmiany manifestu) | przeniesienie magazynu albo inna ścieżka udziału bez ręcznej edycji JSON (4.6) | v0.3 |
+| KH-2 | (opcjonalnie) `download_project(..., offline=True)` — przypięcie wyłącznie lokalnych wersji, bez zapytań; jednostka wymagająca sieci = błąd zadania | „Dodaj do projektu” bez sieci (UC-02) | — |
+
+### 12.7 Czego nie wymagamy
+
+- Żadnych pól Archiwisty w sidecarach ani w manifeście; żadnego pliku
+  Archiwisty w magazynie (identyfikator magazynu, indeks, blokady).
+- Żadnej logiki interfejsu w Kartografie: etykiety pokrycia, style podglądów
+  i projekt QGIS należą do Archiwisty.
+- Żadnych zmian formatów `kartograf-meta/1`, `kartograf-project/1`
+  i `kartograf-plan/1` poza wymienionymi rozszerzeniami (nowe pola są
+  addytywne; produkty pochodne używają kształtu HSG).
