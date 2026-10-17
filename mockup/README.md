@@ -44,8 +44,10 @@ Etykiety pokrycia: „pełne”, „pełne · N kampanie”, „częściowe · X
 „brak danych”; osobna plakietka magazynu: „pobrane”, „pobrane 5/12”,
 „niepobrane”. Daty w interfejsie: RRRR.MM.DD. Podkład: szary (OpenFreeMap
 „positron” w odcieniach szarości). Układ: desktop 1440–1920 px (panel
-wyboru można zwinąć), poniżej 1280 px „Zestawienie” wysuwa się z prawej,
-na telefonie panele i czat są szufladami od dołu.
+wyboru można zwinąć; Asystent to przypięty panel boczny między mapą
+a „Zestawieniem”, mapa się zwęża), poniżej 1280 px — a do 1599 px przy
+otwartym Asystencie — „Zestawienie” wysuwa się z prawej, na telefonie
+panele i czat są szufladami od dołu.
 
 ## Co jest prawdziwe, a co symulowane
 

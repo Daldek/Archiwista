@@ -28,6 +28,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Phone layout (bottom sheets, bottom navigation) below this width; see styles.css. */
 const NARROW = "(max-width: 860px)";
+/** "Zestawienie" as a slide-over: medium screens, and below this width also while the chat panel is pinned. */
+const MEDIUM = "(max-width: 1279px)";
+const CHAT_TIGHT = "(max-width: 1599px)";
 
 function useMedia(query) {
   const [hit, setHit] = useState(() => window.matchMedia(query).matches);
@@ -68,6 +71,8 @@ function App({ fx }) {
   // desktop: the selection panel can be folded to give the map / stack more room
   const [leftOpen, setLeftOpen] = useState(true);
   const narrow = useMedia(NARROW);
+  const medium = useMedia(MEDIUM);
+  const chatTight = useMedia(CHAT_TIGHT);
   const state = useRef({});
   state.current = { area, product, checked, extra, narrow };
 
@@ -271,17 +276,17 @@ function App({ fx }) {
       startTask(msg.plan);
       return;
     }
-    // views behind the chat window: fold the chat so the result is visible
+    // phones: views lie behind the chat drawer, fold it so the result is visible
     if (id === "show-map") {
       setResult((r) => (r ? { ...r, visible: true } : r));
       selectYear(a.year, "map");
-      setChatOpen(false);
+      if (narrow) setChatOpen(false);
       setPanel(null);
       return;
     }
     if (id === "stack") {
       setView("stack");
-      setChatOpen(false);
+      if (narrow) setChatOpen(false);
       setPanel(null);
       return;
     }
@@ -418,7 +423,9 @@ function App({ fx }) {
     <span class=${`src-tag ${p.origin === "report" ? "report" : ""}`} title=${p.origin === "report" ? "Raport dostępności Kartografa" : "Zestawienie skryptem mockupu"}>${p.origin === "report" ? "raport" : p.origin === "index" ? "skorowidz" : "pakiety"}</span>
   </button>`;
 
-  return html`<div class=${`app ${panel ? `panel-${panel}` : ""} ${chatOpen ? "chat-open" : ""} ${leftOpen ? "" : "left-closed"}`}>
+  // desktop: the chat is a pinned side panel (the map narrows); phones: a drawer
+  const summaryOver = !narrow && (medium || (chatOpen && chatTight));
+  return html`<div class=${`app ${panel ? `panel-${panel}` : ""} ${chatOpen ? "chat-open" : ""} ${summaryOver ? "summary-over" : ""} ${leftOpen ? "" : "left-closed"}`}>
     <header class="topbar">
       <div class="brand"><${Logo} /><span class="brand-name">Archiwista</span><span class="env-tag">mockup</span></div>
       <div class="crumbs">
@@ -629,11 +636,13 @@ function App({ fx }) {
           ? html`<div class="toast float-card"><${Icon} name="info" /><span>${toast.text}</span>
               ${toast.action === "demo" ? html`<button class="btn sm primary" onClick=${() => { useDemo(); setToast(null); }}>Użyj obszaru demo</button>` : null}</div>`
           : null}
-        ${chatOpen
-          ? html`<${ChatWindow} messages=${messages} tasks=${tasks} onSend=${onSend} onAction=${onAction} onClose=${() => setChatOpen(false)} typing=${typing} />`
-          : html`<button class="chat-fab" onClick=${toggleChat}><${Icon} name="spark" size=${18} />Asystent${ring}</button>`}
+        ${chatOpen ? null : html`<button class="chat-fab" onClick=${toggleChat}><${Icon} name="spark" size=${18} />Asystent${ring}</button>`}
       </div>
     </main>
+
+    ${chatOpen
+      ? html`<${ChatWindow} messages=${messages} tasks=${tasks} onSend=${onSend} onAction=${onAction} onClose=${() => setChatOpen(false)} typing=${typing} />`
+      : null}
 
     <aside class="right sheet">
       <div class="sheet-head"><span class="grip"></span><b>Zestawienie</b>
