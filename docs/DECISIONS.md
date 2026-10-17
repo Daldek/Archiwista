@@ -24,7 +24,7 @@ Kartografa).
 |---|---|---|---|
 | [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta |
 | [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta |
-| [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta |
+| [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta — częściowo zastąpiona przez ADR-019 |
 | [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta |
 | [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Przyjęta (odwracalna do v0.1) |
 | [ADR-006](#adr-006-mapa-w-maplibre-gl-js) | Mapa w MapLibre GL JS | 2026-10-17 | Przyjęta |
@@ -35,11 +35,14 @@ Kartografa).
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
 | [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta |
 | [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Proponowana (SPEC 15: P1) |
-| [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta |
+| [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
 | [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (czat, podglądy); Proponowana (wariant Stosu: mockup M4) |
+| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014) |
+| [ADR-020](#adr-020-format-danych-imgw-własny-sidecar-parquet-geojson) | Format danych IMGW: własny sidecar, Parquet, GeoJSON | 2026-10-17 | Proponowana (ADR IMGWTools; SPEC 12.8) |
+| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Proponowana (SPEC 15: P14–P16; mockup: M11) |
 
 ---
 
@@ -107,7 +110,7 @@ migracji. Cele wydajności: SPEC 4.5.
 ## ADR-003: Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta — częściowo zastąpiona przez ADR-019 (pisarze magazynu: Kartograf i IMGWTools)
 
 **Kontekst:** Zasada nakładek (SCOPE 3.3): nakładki wołają wyłącznie publiczne API
 biblioteki i nie mają własnej logiki pobierania ani obróbki. Magazyn
@@ -132,6 +135,14 @@ obejmuje też obszar wczytany z pliku (GPKG, SHP, GeoJSON): przy zadaniu
 projektu jego kopia trafia do `obszary/` projektu, a nie do lokalnego katalogu
 roboczego, żeby manifest nie wskazywał ścieżki spoza katalogu projektu
 (SPEC 4.1, 6.3, 10.1).
+
+**Errata 2 (2026-10-17, ADR-019):** magazyn ma dwóch producentów — Kartografa (katalog
+`--output` z układem `data/`) i IMGWTools (osobny katalog IMGW, `imgw-store/1`).
+„Zapisy wyłącznie przez Kartografa” dotyczy katalogu Kartografa; katalog IMGW
+zmienia wyłącznie API IMGWTools. Część „magazyn tylko do odczytu” obowiązuje bez
+zmian dla obu katalogów, podobnie dozwolone zapisy Archiwisty (pliki lokalne,
+katalog zestawu, `obszary/`); zestaw może zawierać szeregi IMGW w CSV wyeksportowane
+funkcją IMGWTools (SPEC 8.4).
 
 ---
 
@@ -340,6 +351,11 @@ grupowanego bez formatu plików: formaty tego samego zestawu (np. `ASC`
 i `ASCII-NMT`) dzielą jedną etykietę pokrycia; plakietka magazynu liczy
 jednostki w wybranym formacie.
 
+**Errata 2 (2026-10-17, A-ADR-021):** etykiety tej decyzji opisują pokrycie obszaru;
+pokrycie w czasie dla szeregów stacji IMGW („ciągły”, „luki N%”, „częściowy”,
+„brak danych”, „nieznane”) definiuje ADR-021 (SPEC 4.8.4) według tych samych zasad:
+liczy serwer, zaokrąglenie ostrożne, nigdy sam kolor.
+
 ---
 
 ## ADR-011: Asystent po stronie serwera z potwierdzeniem człowieka
@@ -420,7 +436,7 @@ aliasy ścieżek. Tryb zespołu wymaga TLS, ról i dziennika działań (SPEC 10.
 ## ADR-014: Wiedza o formacie magazynu tylko w Kartografie
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta — uzupełniona przez ADR-019 (drugi producent: IMGWTools)
 
 **Kontekst:** Układ `data/` (reguły 1-10, `versions/`, `full_sheet/`, `bbox/`, sidecary
 dowiązań, stare sidecary, klucze z wersji deweloperskich) jest opisany
@@ -440,6 +456,13 @@ układu; opcja B to obejście, które trzeba później usuwać.
 **Konsekwencje:** v0.1 czeka na wydanie Kartografa z KA; KA jest mały i może być pierwszy
 w roadmapie Kartografa. Test kontraktu: `iter_store` na magazynie testowym
 Archiwisty.
+
+**Errata 1 (2026-10-17, ADR-019):** zasada brzmi teraz: wiedza o formacie każdego
+producenta tylko u tego producenta. Układ `data/` i `kartograf-meta/1` zna Kartograf
+(pakiet KA, bez zmian); katalog IMGW (`imgw-store/1`, `imgw-meta/1`,
+`imgw-series/1`), kody braków i kodowania archiwów IMGW zna wyłącznie IMGWTools,
+a adapter IMGW czyta przez jego API odczytu (SPEC 12.7, IMGW-10). Test kontraktu:
+`iter_store` IMGWTools na katalogu testowym zbudowanym przez IMGWTools.
 
 ---
 
@@ -560,6 +583,161 @@ zrzutów i podglądów.
 **Konsekwencje:** Rozstrzyga M6 (położenie) i zawęża M4/P12 do wyboru wariantu
 układu; układ „Stosu” z szablonu pochylonych płyt może się zmienić. Podglądy
 służą rozpoznaniu, nie analizie; pełne dane otwiera się w QGIS.
+
+---
+
+## ADR-019: Dwóch producentów magazynu: Kartograf i IMGWTools
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014
+
+**Kontekst:** Użytkownik chce w Archiwiście v1.0 danych pomiarowych IMGW-PIB: hydro
+dobowych (H, Q, T), charakterystyk miesięcznych i półrocznych oraz meteo (opad,
+temperatura), bez danych bieżących. ADR-003 („zapisy wyłącznie przez Kartografa”)
+i ADR-014 („wiedza o formacie tylko w Kartografie”) zakładały jednego producenta
+magazynu. IMGWTools 2.1.1 (Beta) zna format IMGW (URL-e, parsery, listy stacji), ale
+nie ma magazynu: zapisuje płasko i nieatomowo, bez sidecarów, sum i wersji, a nazwy
+dobowych i terminowych archiwów meteo się zderzają. Analiza z 2026-10-17
+rekomendowała IMGW jako źródło Kartografa; użytkownik wybrał adapter IMGW
+w Archiwiście — Kartograf zostaje przy danych przestrzennych.
+
+**Opcje:**
+- A) Archiwista czyta płaski katalog `imgw fetch` albo cache SQLite IMGWTools własnym czytnikiem.
+- B) IMGW jako źródło Kartografa: Kartograf jedynym pisarzem, IMGWTools jego opcjonalną zależnością.
+- C) IMGWTools zapisuje w drzewie i formacie Kartografa (`data/`, `kartograf-meta/1`).
+- D) Dwóch producentów, każdy we własnym katalogu i z własnym, udokumentowanym
+  kontraktem formatu; Archiwista czyta każdego przez osobny adapter za wspólnym
+  interfejsem źródła.
+- E) Wspólna biblioteka kontraktu magazynu dla obu producentów.
+
+**Decyzja:** D (decyzja użytkownika 2026-10-17):
+1. Magazyn w Archiwiście to nazwany zestaw katalogów producentów: katalog Kartografa
+   (`output_dir`, układ `data/`) i katalog IMGW (IMGWTools, `imgw-store/1`); żaden nie
+   leży wewnątrz drugiego. Każdy producent pisze tylko swój katalog i jest jedynym
+   właścicielem jego formatu.
+2. Archiwista nadal nigdy nie pisze do magazynu; indeks jest lokalny i odbudowywalny,
+   bez SQLite na udziale (ADR-002 i część „tylko odczyt” ADR-003 bez zmian).
+3. Osobny adapter na producenta (`archiwista/adapter/kartograf/`,
+   `archiwista/adapter/imgw/`) jest jedynym miejscem importu jego biblioteki (test
+   importów jak w ADR-004); adaptery implementują wspólny interfejs źródła
+   (SPEC 5.3), a reszta Archiwisty zna tylko ten interfejs.
+4. Adapter IMGW nie parsuje plików: czyta przez publiczne API odczytu IMGWTools
+   (IMGW-10), tak jak adapter Kartografa przez KA.
+5. Działania na danych IMGW (synchronizacja archiwów, szeregi, eksport) wykonuje
+   IMGWTools w procesach roboczych; Archiwista pokazuje plan i polecenie `imgw …`.
+6. IMGWTools zapisuje surowe archiwa IMGW 1:1 jako niezmienne wersje z sidecarem,
+   `sha256`, `ETag` i `Last-Modified` oraz szeregi stacji jako produkt pochodny;
+   kontrakt to wymagania IMGW-1..IMGW-13 (SPEC 12.7) i format z ADR-020.
+7. Dane IMGW nie są zadaniami projektu Kartografa (manifest przyjmuje tylko jego
+   komendy); odtwarzalność dają niezmienne wersje i zestaw (SPEC 4.7, 8.4; P18).
+
+A daje brak wersji i odtwarzalności, połowiczne pliki i SQLite (WAL) wykluczony na
+udziale, a wiedzę o formacie IMGW przenosi do Archiwisty (łamie ADR-014). B rozszerza
+zakres Kartografa poza dane przestrzenne, czego użytkownik nie chce. C to dwie
+implementacje jednego formatu w jednym drzewie: `iter_store` Kartografa widziałby
+obce segmenty, `kartograf_version` i pola przestrzenne nic by nie znaczyły, a pierwsza
+rozbieżność łamie gwarancje Kartografa. E wymaga refaktoru świeżo wydanego magazynu
+Kartografa i trzech repozytoriów w kroku; przy dwóch producentach to przedwczesne
+(zostaje drogą, gdy dojdzie trzeci).
+
+**Konsekwencje:** Errata ADR-003 (pisarze: Kartograf albo IMGWTools, każdy we
+własnym katalogu) i ADR-014 (wiedza o formacie u każdego producenta). Wymagania
+IMGW-1..IMGW-13 wobec IMGWTools; dane IMGW wchodzą w v0.9 (SPEC 13) i zależą od
+wydania IMGWTools z kontraktem. Semantykę wersji implementują dwa repozytoria
+(ADR-036 Kartografa i katalog IMGW) — ograniczeniem jest prostszy kontrakt IMGW
+(tylko przyrost, bez dowiązań i plików zmiennych) i testy kontraktu po obu stronach
+(SPEC 11, 14). Interfejs źródła powstaje w v0.1 z jednym adapterem, a test z atrapą
+drugiego pilnuje, że warstwy wyżej nie zależą od Kartografa. Konfiguracja magazynu
+wskazuje katalogi producentów; zadania w tle i propozycje asystenta niosą polecenia
+obu producentów (`producer`, SPEC 9.1).
+
+---
+
+## ADR-020: Format danych IMGW: własny sidecar, Parquet, GeoJSON
+
+**Data:** 2026-10-17
+**Status:** Proponowana — wymaganie wobec IMGWTools; ostateczny kształt ustali ADR IMGWTools (SPEC 12.7–12.8)
+
+**Kontekst:** ADR-019 oddaje zapis danych IMGW IMGWTools z własnym kontraktem
+formatu. Trzeba wybrać schemat sidecara (własny czy zgodny z `kartograf-meta/1`),
+format szeregów stacji i format katalogu stacji. Szereg dobowy stacji 1951–2025 to
+ok. 27 tys. dni z kilkoma zmiennymi i flagami; stacji jest ok. 1 300 hydro i ok.
+2 150 meteo. Katalog może leżeć na SMB bez blokad zakresów bajtów, a rdzeń IMGWTools
+jest lekki (`httpx`, `pydantic`).
+
+**Opcje:**
+- Sidecar: A) zgodność z `kartograf-meta/1`; B) własny `imgw-meta/1` ze wspólną kopertą pól.
+- Szeregi: C) GeoPackage (punkty, obserwacje i pokrycie w jednym pliku na obszar albo
+  kraj); D) Parquet — plik na stację w niezmiennej wersji szeregów zbioru, ze spisem
+  `series.json`; E) CSV.
+- Katalog stacji: F) GeoPackage; G) GeoJSON (RFC 7946).
+
+**Decyzja:** B, D i G.
+- B: format zna i rozwija tylko jego producent (ADR-019), a nazwa schematu mówi, kto
+  zapisał plik — `kartograf-meta/1` od IMGWTools myliłby `read_sidecar` Kartografa,
+  wtyczkę QGIS i Hydrografa (np. polem `kartograf_version`). Pola przestrzenne
+  (`horizontal_crs`, `vertical_crs`, `resolution`, `nodata`, `transform`) nic nie
+  znaczą dla archiwów i szeregów, a potrzebne są jednostki, kody braków, okresy
+  i stacje. Wspólna koperta (te same nazwy i znaczenia `schema`, `dataset`,
+  `country`, `provider`, `request`, `license`, `downloaded_at`, `sha256`,
+  `size_bytes`, `extra.version`, `extra.http`, `extra.derived`,
+  `extra.source_files[]`) daje to, co dałaby zgodność — wspólne kolumny indeksu,
+  tę samą logikę wersji i wejść, kształt HSG — bez sprzęgania producentów.
+- D: typowane kolumny (data, wartości, flagi) z kompresją; plik niezmienny i bez
+  blokad, więc bezpieczny do czytania na SMB; czytany wprost przez pandas, polars,
+  pyarrow, DuckDB i R (Hydrolog, Retman, skrypty); plik na stację daje mały odczyt
+  do wykresu i zestawu, a spis `series.json` z listami przerw — indeks pokrycia
+  z jednego pliku. GeoPackage to SQLite: zapis na udziale wymaga budowy lokalnie
+  i kopii, plik obszaru dubluje stacje między zadaniami, a plik krajowy trzeba
+  czytać przez zapytania; CSV nie niesie typów ani metadanych — zostaje formatem
+  eksportu do zestawu (IMGW-12).
+- G: kilka tysięcy punktów; zapis bez GDAL (lekki rdzeń IMGWTools), plik czytelny
+  i porównywalny między wersjami, otwierany wprost w QGIS; brak położenia wyrażony
+  jawnie (`geometry: null`).
+
+**Konsekwencje:** Zapis i odczyt Parquet idą do dodatku IMGWTools (np.
+`imgwtools[store]` z pyarrow); rdzeń zostaje lekki. Excel nie czyta Parquet, a QGIS
+— tylko z GDAL z obsługą Arrow, więc zestaw dostaje szeregi w CSV z eksportu
+IMGWTools. Wersja szeregów zbioru to migawka wszystkich stacji (prosta tożsamość
+i lata znane z jednego spisu) za cenę pełnej kopii plików przy każdej nowej wersji
+— ograniczeniem jest `reused` przy tym samym zestawie `sha256` wejść i tej samej
+wersji schematu (wzór HSG, ADR-036 D33), co chroni też przed wersjami różnymi tylko
+bajtami zapisu biblioteki Parquet. Koperta jest kandydatem na wspólny `store-meta/1`,
+gdyby doszedł trzeci producent.
+
+---
+
+## ADR-021: Etykiety pokrycia szeregów IMGW
+
+**Data:** 2026-10-17
+**Status:** Proponowana — do potwierdzenia (SPEC 15: P14–P16; mockup: M11)
+
+**Kontekst:** Użytkownik chce etykiet pokrycia szeregów stacji w czasie, np. „ciągły
+1951–2024”, „luki 3%”, zdefiniowanych precyzyjnie. Pokrycie stacji znane jest
+dopiero z archiwów w magazynie (IMGW nie publikuje indeksu stacji); archiwa hydro
+są numerowane rokiem hydrologicznym, meteo — kalendarzowym; brak Q nie oznacza
+braku H; Hydrolog ostrzega przy szeregach krótszych niż 30 lat.
+
+**Opcje:**
+- A) Same liczby (procent dni z wartością).
+- B) „Ciągły” z tolerancją (np. do 0,1% braków).
+- C) Pięć etykiet z definicjami: „ciągły” (zero braków), „luki N%” (zaokrąglenie
+  w górę, „<1%”) z najdłuższą przerwą, „częściowy” (stacja zaczyna albo kończy
+  w trakcie zakresu), „brak danych”, „nieznane” (bez archiwów); osobno dla każdej
+  zmiennej; rodzaj lat wg zbioru z przełącznikiem.
+
+**Decyzja:** C (definicje: SPEC 4.8.4). „Ciągły” to fakt, nie ocena — tolerancja
+ukrywałaby braki, które Hydrolog i tak napotka; przydatność mówi osobno liczba lat
+pełnych i filtr „≥ 30 lat pełnych”. Zaokrąglenie braków w górę jest ostrożne jak
+„nigdy 100%” w ADR-010. Lata nieznane (archiwa niepobrane, szeregi nieprzygotowane)
+nie są lukami i dostają dopisek „· nieznane”. Etykiety liczy serwer z list przerw
+w spisie szeregów (IMGW-8), więc zmiana zakresu i rodzaju lat nie wymaga czytania
+szeregów.
+
+**Konsekwencje:** IMGWTools zapisuje w spisie szeregów pierwszą i ostatnią datę oraz
+listę przerw dla każdej zmiennej; Archiwista liczy etykiety, lata pełne i oś czasu
+(indeks `series_years`), a interfejs, API i asystent mają jedno słownictwo.
+Uzupełnia ADR-010 (etykiety obszaru) o wymiar czasu.
 
 ---
 
