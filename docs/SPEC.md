@@ -159,7 +159,8 @@ arkuszy.
 
 1. W widoku „Mapa” zaznacza obszar: rysuje prostokąt albo wielokąt, wpisuje
    godło albo TERYT, albo wczytuje `zlewnia.gpkg`.
-2. Z listy produktów wybiera „NMT” (grupa „Wysokości”).
+2. Z listy produktów wybiera „NMT” (grupa „Wysokości”) i w chipach wariantu
+   ustala „układ arkuszy: PL-1992”, bo chce plików w EPSG:2180.
 3. Archiwista od razu pokazuje stan magazynu (z indeksu, bez sieci),
    a w tle uruchamia sprawdzenie u źródła: `check_availability(product="nmt",
    country="pl", bbox=…)`.
@@ -773,9 +774,12 @@ i mockupu.
 4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z listą
    przełączników, panel „Zestawienie” (Tabela albo Oś czasu), przełącznik
    „Mapa / Stos / Katalog”. Nad tabelą stoi aktywny wariant w postaci
-   chipów („NMT · 1 m · EVRF2007 · ASC · PL-1992”) z „+2 warianty”, gdy
-   rok ma inne kombinacje. Domyślny wariant jest widoczny i zmienialny —
-   nic nie jest wybierane po cichu.
+   chipów („NMT · 1 m · EVRF2007 · ASC · układ arkuszy: dowolny”).
+   Wymiar, którego użytkownik nie ustalił (np. układ arkuszy), wybiera dla
+   każdego roku osobno ranking z 6.4, a wiersz pokazuje wybraną wartość
+   (np. „PL-2000”) i chip „+N warianty”, gdy rok ma inne kombinacje.
+   Domyślny wariant jest widoczny i zmienialny — nic nie jest wybierane
+   po cichu.
 5. **Akcje wiersza.** „Pobierz…”, „Dodaj do projektu…”, „Pokaż na mapie”,
    „Porównaj z…”, „Mozaika…”, „Polecenie Kartografa”. Każda z siecią albo
    zapisem przechodzi przez „Okno planu”.
@@ -815,9 +819,13 @@ udział obszaru w obrysach wersji z tego roku i wariantu w magazynie.
 
 **Wybór kombinacji roku:** gdy w aktywnym wariancie rok ma kilka kombinacji
 (np. PL-1992 i PL-2000), wiersz pokazuje najlepszą wg kolejności: pełna
-przed częściową → większy udział pełnych arkuszy → drobniejsza
-rozdzielczość → kolejność raportu Kartografa; pozostałe są pod chipem
-„+N warianty”.
+przed częściową → większy udział pełnych arkuszy → mniej kampanii (mniej
+szwów między lotami) → drobniejsza rozdzielczość → kolejność raportu
+Kartografa; pozostałe są pod chipem „+N warianty”. Przykład z mockupu
+(obszar „Kraków”, NMT 1 m, 2023): PL-1992 daje „pełne · 2 kampanie”,
+PL-2000 — „pełne” z jednej kampanii, więc wiersz 2023 pokazuje „pełne ·
+PL-2000”, a PL-1992 jest pod „+1 wariant”. Kto potrzebuje arkuszy
+w EPSG:2180, ustala „układ arkuszy: PL-1992” i ranking go nie zmienia.
 
 **Inne rodziny produktów:**
 
@@ -1920,3 +1928,212 @@ Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
 - Żadnych zmian formatów `kartograf-meta/1`, `kartograf-project/1`
   i `kartograf-plan/1` poza wymienionymi rozszerzeniami (nowe pola są
   addytywne; produkty pochodne używają kształtu HSG).
+
+## 13. Roadmapa (v0.1 → v1.0)
+
+Kolejność daje najpierw wartość bez nowych funkcji Kartografa tam, gdzie
+się da, i dokłada tryby zależne od Kartografa, gdy ten je wyda.
+
+| Wersja | Zakres | Wymaga od Kartografa |
+|---|---|---|
+| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru | KA-1..KA-6 |
+| v0.2 „Podglądy” | podglądy, Stos i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna | — |
+| v0.3 „Działania” | dostępność u źródła z etykietami, Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KB-1..KB-5, KB-7, KC-1..KC-3, KD-1, KD-2, KH-1 |
+| v0.4 „Zestaw” | zestaw do QGIS, PL + CZ bez scalania, dostępność obrazów i wydań, polecenie z karty pliku | KB-6, KD-3, KD-4 |
+| v0.5 „Asystent” | czat z narzędziami, propozycje i potwierdzenie | — |
+| v0.6 „Mozaika i porównanie” | mozaika VRT/GeoTIFF, model różnic, zestaw z kopią danych | KE, KG |
+| v0.7 „PL + CZ” | scalona powierzchnia przygraniczna | KF |
+| v0.8 „Zespół” | serwer w sieci lokalnej: logowanie, role, TLS, dziennik działań, wspólna kolejka | — |
+| v1.0 „Wydanie” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty | wydanie Kartografa ze wszystkimi powyższymi |
+
+### v0.1 „Przeglądarka”
+
+Zakres: `archiwista serve` z kreatorem pierwszego uruchomienia; magazyny
+i katalogi projektów; indeks (pełny, przyrostowy, odświeżanie widoku);
+„Mapa” z obrysami i zaznaczaniem obszaru (prostokąt, wielokąt, godło, plik)
+oraz stanem magazynu dla obszaru i produktu („lokalnie 83% obszaru”);
+„Katalog” z filtrami i wyszukiwaniem; „Karta pliku” (wersje, metadane,
+licencja, grupa `parent_request`, kopiowanie ścieżek); „Projekty” (manifesty,
+przypięcia, `get_project_status`, indeks użycia); „Magazyn” (zajętość,
+problemy); ochrona trybu lokalnego (10.1).
+
+Kryteria akceptacji:
+
+1. Indeks przykładowego magazynu testu na żywo wydania 0.8.0
+   (`<katalog-danych>`) zgodny z `iter_store`: te same wersje, dowiązania
+   i problemy (także segmenty i klucze z wersji deweloperskiej).
+2. Cele z 4.5 spełnione na magazynie syntetycznym 50 000 slotów.
+3. Magazyn zamontowany tylko do odczytu — wszystkie funkcje v0.1 działają.
+4. Odłączony udział: baner, indeks bez zmian; po podłączeniu odświeżenie
+   bez przebudowy.
+5. Testy bezpieczeństwa (Host, token, CSRF, ścieżki) zielone; serwer
+   odmawia startu poza `127.0.0.1` bez trybu zespołu.
+6. Każda wartość techniczna ma ludzką nazwę, a każda ludzka nazwa —
+   dostęp do wartości technicznej.
+
+### v0.2 „Podglądy”
+
+Zakres: podglądy (5.7) z pamięcią po `sha256`; „Stos” i „Oś czasu” dla
+danych lokalnych (lata i kampanie w magazynie); porównanie metadanych
+i kurtyna (8.5, poziomy 1 i 2).
+
+Kryteria: każdy typ pliku przykładowego magazynu ma podgląd albo podany
+powód braku; obrysy CZ zgodne z rzeczywistością (punkt kontrolny na styku
+PL/CZ, odchyłka ≤ 2 m); ten sam plik nie jest przeliczany drugi raz; limit
+pamięci podglądów przestrzegany; mapa z 5 000 obrysów płynna (≥ 30 klatek/s
+na komputerze odniesienia).
+
+### v0.3 „Działania”
+
+Zakres: główny przepływ z dostępnością u źródła (wysokości PL i CZ)
+i etykietami pokrycia (6.4); „Okno planu”; pobieranie z formularza
+i z wklejonego polecenia; zadania w tle z postępem i anulowaniem;
+sprawdzanie aktualności i „Pobierz nowsze”; akcje projektów (utworzenie,
+dodanie i usunięcie zadania projektu, pobranie, przepięcie, sprawdzenie,
+weryfikacja); wybór obszaru po nazwie jednostki.
+
+Kryteria:
+
+1. Parytet z CLI: pobranie przez Archiwistę i tym samym poleceniem CLI daje
+   te same wersje, `sha256` i przypięcia (sidecary przy zamrożonym zegarze).
+2. Anulowanie w trakcie: brak częściowych wersji; `kartograf project
+   verify` i skan bez błędów.
+3. Etykiety pokrycia dla obszaru „Kraków” zgodne z ręcznym wyliczeniem
+   z rekordów skorowidza.
+4. Każde działanie z siecią albo zapisem przechodzi przez „Okno planu”.
+5. Restart serwera w trakcie zadania → „przerwane”; ponowienie nie pobiera
+   ponownie gotowych jednostek.
+6. Testy na żywo UC-01 i UC-06 z raportem.
+
+### v0.4 „Zestaw”
+
+Zakres: tryb 3 (8.4), tryb 2 bez scalania (8.3), dostępność obrazów PL
+i wydań produktów jednostkowych (KD-3, KD-4), „Polecenie Kartografa”
+i „Dodaj do projektu” z karty pliku (KB-6), „Katalog” jako karty.
+
+Kryteria: `.qgz` otwiera się w QGIS 3.34 LTR i 3.40 bez pytań o układ;
+warstwy wskazują pliki wersji; sumy w `pliki.csv` równe przypięciom;
+`ATRYBUCJE.txt` wymienia każdego dostawcę zestawu; zmiana przypięć
+w manifeście oznacza zestaw jako nieaktualny; UC-09 (pogranicze) na żywo
+w wariancie bez scalania.
+
+### v0.5 „Asystent”
+
+Zakres: sekcja 7.
+
+Kryteria: zero wykonań bez potwierdzenia (także dla poleceń wrogich);
+co najmniej 80% poprawnych propozycji w zestawie ewaluacyjnym na modelu
+referencyjnym; licznik kosztów i limit miesięczny działają; `provider =
+"none"` wyłącza panel i wszystkie zapytania do dostawców; wynik modelu
+lokalnego (API zgodne z OpenAI) jest zmierzony i opublikowany w dokumentacji.
+
+### v0.6 „Mozaika i porównanie”
+
+Zakres: tryb 1 (8.2), tryb 4 poziom 3 (8.5), zestaw „z kopią danych”.
+
+Kryteria: mozaika VRT i GeoTIFF arkuszy NMT 0,5 m dla obszaru trafia do
+magazynu z sidecarem i `source_files`, a ponowne uruchomienie daje
+`reused`; różne układy wysokości kończą się błędem z podpowiedzią; model
+różnic ma statystykę i próg istotności; obie operacje działają jako zadania
+projektu z przypięciem wejść i wyniku.
+
+### v0.7 „PL + CZ”
+
+Zakres: tryb 2, scalona powierzchnia (8.3).
+
+Kryteria: powierzchnia dla obszaru przy granicy (np. Cieszyn) w EPSG:2180
+i EPSG:5514 z raportem styku; Bpv z EVRF2007 → błąd z podpowiedzią; ani
+jednego zera w miejscu `nodata`.
+
+### v0.8 „Zespół”
+
+Zakres: 10.2 i topologia z A-ADR-013 (serwer w sieci lokalnej): logowanie,
+role, TLS, dziennik działań, wspólna kolejka, limity per osoba, aliasy
+ścieżek per klient, pobieranie plików przez HTTP.
+
+Kryteria: scenariusz na żywo z trzema osobami — wspólna kolejka nie pobiera
+tej samej jednostki dwa razy; uprawnienia ról sprawdzone testami; dziennik
+działań kompletny; serwer nie startuje poza `127.0.0.1` bez logowania i TLS.
+
+### v1.0 „Wydanie”
+
+Zakres: stabilne `/api/v1`; instalacja `pipx`/`uv tool` na Linuksie
+i Windows, obraz Dockera dla serwera zespołu; dokumentacja użytkownika po
+polsku; audyt dostępności cyfrowej (WCAG 2.1 AA) i przegląd bezpieczeństwa;
+pomiar wydajności na prawdziwym udziale SMB.
+
+Kryteria: scenariusze UC-01..UC-15 przejdą na żywo i są opisane w raporcie;
+cele z 4.5 spełnione na prawdziwym udziale; brak znanych błędów
+krytycznych; CI zielone z bieżącym wydaniem Kartografa.
+
+## 14. Ryzyka
+
+| Ryzyko | Skutek | Szansa | Ograniczenie |
+|---|---|---|---|
+| Zależność od wydań Kartografa (KA-KH) | Archiwista czeka | średnia | KA jest mały i pierwszy; roadmapa zaczyna od części bez nowych funkcji; wspólny harmonogram z roadmapą Kartografa |
+| Semantyka SMB (pamięć atrybutów, i-węzły, czasy katalogów) | indeks nieaktualny | wysoka | niezmienne wersje, sidecary dowiązań jako prawda, odświeżanie widoku przed odpowiedzią, dobowy skan kontrolny, widoczny stan indeksu; KA-7 po pomiarach |
+| Duże pliki (arkusz ASC ok. 38 MB tekstu, pliki krajowe do 25 GB) | wolne podglądy, miejsce na dysku | wysoka | podglądy na żądanie, lokalne COG, limit pamięci, bez automatycznych podglądów powyżej 2 GB |
+| Przeliczenie do wyświetlania operacją przybliżoną | obrysy CZ ok. 100 m obok | średnia | KA-6, test punktu kontrolnego na styku |
+| Przerwanie zadania w chwili zapisu manifestu | blokada `.kartograf-project.lock` do ręcznego usunięcia | niska | najpierw sygnał przerwania, KC-1, rozpoznanie stanu i instrukcja w interfejsie |
+| Zmiany łamiące w Kartografie 0.x | awarie po aktualizacji | średnia | zakres wersji, testy kontraktu, CI przeciw `develop` Kartografa |
+| Asystent: błędne propozycje, koszty | złe działania, rachunki | średnia | propozycje z danych, potwierdzenie człowieka, ewaluacja, limit miesięczny, domyślnie wyłączony |
+| Rozrost zakresu w stronę programu GIS | wolniejsza praca, mniej prostoty | średnia | granice z 1.3; analizy w QGIS przez zestaw |
+| Etykiety pokrycia źle rozumiane | zły wybór roku | średnia | mockup (M2), definicje w podpowiedziach, dolna i górna granica w szczegółach |
+| Windows w zespole (ścieżki UNC, sygnały, dowiązania twarde na SMB) | różne zachowanie | średnia | aliasy ścieżek, `CTRL_BREAK_EVENT`, `archiwista doctor`, testy na Windows przed v1.0 |
+| Obciążenie publicznych usług | spowolnienia, blokady po stronie źródeł | niska | cache Kartografa, limity asystenta, 2 zadania sieciowe naraz |
+| Dwa ekosystemy (Python i Node.js) | koszt utrzymania | średnia | prosty stos (Svelte, Vite), zbudowany interfejs w pakiecie, testy Playwright |
+| Warunki licencji danych przy przekazaniu | naruszenie atrybucji | niska | atrybucje w karcie pliku, zestawie i kopii danych |
+
+## 15. Pytania otwarte (z rekomendacjami)
+
+| # | Pytanie | Rekomendacja |
+|---|---|---|
+| P1 | Zespół: instancja na osobę (każdy lokalnie, wspólny udział) czy jeden serwer w sieci lokalnej? | **Jeden serwer** od v0.8 (wspólna kolejka bez podwójnych pobrań, jedna historia, ścieżki po stronie serwera); instancje lokalne zawsze wspierane (A-ADR-013) |
+| P2 | Czy wyniki łączenia (mozaika, PL + CZ, różnice) mają być produktami pochodnymi w magazynie Kartografa (wzór HSG, nowe tokeny segmentów `mosaic`, `diff`, kraj `pl-cz`)? | **Tak** (8.6, A-ADR-009); alternatywa — osobny katalog wyników poza magazynem — traci wersjonowanie, współdzielenie i przypinanie w projektach |
+| P3 | Komendy łączenia w grupach danych (`kartograf elevation mosaic`, jak `soil hsg`) czy nowa grupa (`kartograf compose …`)? | **W grupach danych** (ADR-039: grupy wg typu danych) |
+| P4 | Usuwanie wersji z magazynu? | **Nie w v1.0:** tylko raport „kandydaci do usunięcia” (niebieżące i nieprzypięte w znanych projektach) z zajętością. Usuwanie — jeśli kiedyś — jako funkcja Kartografa z potwierdzeniem, bo Archiwista nie zna projektów spoza swojego indeksu |
+| P5 | Podgląd 3D chmur punktów LAZ? | **Po v1.0;** do rozpoznania danych wystarcza nagłówek i obraz 2D |
+| P6 | Podkłady online (OSM, WMS GUGiK i CUZK) ujawniają obszar zainteresowania zewnętrznym serwerom — dopuszczalne? | **Domyślnie włączone** z przełącznikiem „Tryb offline”; w zespole decyduje administrator |
+| P7 | Domyślny dostawca modelu asystenta? | **Brak** (asystent wyłączony) do świadomego wyboru; dla projektów poufnych model lokalny |
+| P8 | Licencja Archiwisty? | **MIT**, jak Kartograf |
+| P9 | Przypinanie w projekcie dowolnej starszej wersji wskazanej w przeglądarce? Model zadań Kartografa wybiera wersję tylko opcjami (np. `year`), a dla produktów z etykietą daty pobrania starszej wersji nie da się wskazać | **Nie w v1.0;** przypinamy przez zadania projektu (KB-6 podpowiada opcje); starsze wersje — porównanie i zestaw doraźny |
+| P10 | Platformy | **Linux i Windows** od v1.0; macOS bez gwarancji |
+| P11 | Framework interfejsu | **Svelte**; ostateczne potwierdzenie przed startem v0.1 (mockup go nie rozstrzyga) |
+| P12 | „Stos”: płyty z obrysami (MapLibre) czy z teksturami podglądów (dodatkowo deck.gl)? | **Obrysy** w v0.2; tekstury tylko, jeśli mockup pokaże wyraźną wartość (M4) |
+
+## 16. Mockup
+
+Równolegle z tym specem powstaje klikalny mockup interfejsu: katalog
+`mockup/` na gałęzi `feat/mockup` (worktree tego repozytorium). To statyczny
+prototyp na danych z prawdziwych rekordów skorowidza GUGiK dla obszaru
+„Kraków” (bbox `561000,239000,573000,249000`, EPSG:2180) — nie kod
+produkcyjny i nie wybór technologii. Pola proponowane dla Kartografa
+(KD-1: arkusz → kampania, KD-2: `full_m2`) mockup wylicza z tych samych
+rekordów i oznacza jako proponowane.
+
+Decyzje, które mockup ma pomóc podjąć:
+
+| # | Pytanie do sprawdzenia na mockupie |
+|---|---|
+| M1 | Czy start od mapy (obszar → produkt → dostępność) jest naturalny, czy lepszy byłby start od katalogu? |
+| M2 | Czy etykiety „pełne”, „pełne · 2 kampanie”, „częściowe · 58%”, „brak danych” i plakietka magazynu są zrozumiałe bez instrukcji; kolory i wzory (6.4) |
+| M3 | „Zestawienie”: domyślnie „Tabela” czy „Oś czasu”; ile informacji w wierszu |
+| M4 | „Stos”: czy widok izometryczny pomaga wybrać rok (zostaje jako tryb czy znika); płyty z obrysami czy z teksturami (P12) |
+| M5 | „Katalog”: karty czy lista; co pokazuje karta |
+| M6 | „Asystent”: panel boczny czy dolny; wygląd karty propozycji i podświetlenia na mapie |
+| M7 | Postęp zadań: na mapie (jednostki zmieniają kolor) i w pasku „Zadania” |
+| M8 | „Karta pliku”: oś wersji, przypięcia, kolejność i nazwy akcji |
+| M9 | Słownictwo: nazwy widoków, etykiet i akcji |
+| M10 | Motyw jasny i ciemny, typografia, gęstość informacji |
+
+Słownictwo uzgodnione z autorem mockupu (2026-10-17): widoki „Mapa”,
+„Stos”, „Katalog”, panel „Zestawienie” z zakładkami „Tabela” i „Oś czasu”,
+„Karta pliku”, „Zadania”, „Asystent”; w nawigacji „Projekty”, „Łączenie”,
+„Magazyn”, „Ustawienia” (w mockupie nieaktywne); etykiety pokrycia
+i plakietki z 6.4 (z odmianą „2-4 kampanie”, „5+ kampanii”) oraz chip „+N
+warianty”.
+
+Po przeglądzie mockupu decyzje użytkownika trafią do `docs/DECISIONS.md`
+(nowy ADR „Wzorce interfejsu po mockupie”) i do sekcji 6 tego specu.
+Mockup zostaje na gałęzi `feat/mockup` jako materiał porównawczy; nie jest
+scalany do `develop` jako kod aplikacji.
