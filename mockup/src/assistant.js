@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { html, Icon, Coverage, Local, Cmd } from "./ui.js";
-import { coverage, span, day, stamp, int, plural, res, km2short } from "./labels.js";
+import { coverage, span, day, stamp, int, plural, res, km2short, hintText } from "./labels.js";
 import { PRODUCTS, yearGroups } from "./data.js";
 
 const SUGGESTIONS = [
@@ -38,6 +38,20 @@ export function parseRequest(text, current) {
   };
 }
 
+/** Result of joining the downloaded pieces (SPEC 8, done by Kartograf). */
+function joinOutput(fx, pick, count, unit) {
+  const crs = pick.horizontal === "PL-2000" ? "EPSG:2178" : "EPSG:2180";
+  const tag = `${pick.product}_${pick.year}_mozaika${pick.resolution ? `_${pick.resolution}` : ""}`;
+  if (pick.product === "laz") {
+    return { step: "Scalenie chmury punktów", verb: "Scalanie chmury punktów", what: `${int(count)} ${unit} → 1 plik LAZ · ${crs} · ${pick.vcrs}`, file: `${tag}.laz`, format: "LAZ (scalona chmura)", preview: fx.area.previews.relief };
+  }
+  if (pick.product === "bdot10k") {
+    return { step: "Scalenie pakietów", verb: "Scalanie pakietów", what: `${int(count)} ${unit} → 1 GeoPackage`, file: `${tag}.gpkg`, format: "GeoPackage (scalone powiaty)", preview: null };
+  }
+  const preview = pick.product === "orto" ? fx.area.previews.orto : fx.area.previews.relief;
+  return { step: "Mozaika", verb: "Łączenie mozaiki", what: `${int(count)} ${unit} → 1 GeoTIFF · ${crs}${pick.vcrs ? ` · ${pick.vcrs}` : ""}`, file: `${tag}.tif`, format: "GeoTIFF (mozaika)", preview };
+}
+
 /** Plan of an "prepare data" request from the availability of the area. */
 export function makePlan({ fx, area, product, combos, req, project }) {
   const p = PRODUCTS.find((x) => x.id === product);
@@ -48,12 +62,13 @@ export function makePlan({ fx, area, product, combos, req, project }) {
     : groups.find((g) => g.best?.complete)?.best ?? groups[0]?.best;
   if (!pick) return null;
   const n = pick.sheetsFull.length + pick.sheetsPartial.length;
-  const unit = product === "laz" ? plural(n, "kafel", "kafle", "kafli") : product === "bdot10k" ? plural(n, "pakiet", "pakiety", "pakietów") : plural(n, "arkusz", "arkusze", "arkuszy");
+  const unit = product === "laz" ? plural(n, "kafel", "kafle", "kafli") : product === "bdot10k" ? plural(pick.units.length, "pakiet", "pakiety", "pakietów") : plural(n, "arkusz", "arkusze", "arkuszy");
   const count = product === "bdot10k" ? pick.units.length : n;
   const missing = count - pick.local.count;
   const report = fx.reports[product];
   const cov = coverage(pick);
-  const name = `${p.name} ${pick.year} · ${req.mosaic ? "mozaika" : "arkusze"}${pick.resolution ? ` ${res(pick.resolution)}` : ""}`;
+  const name = `${p.name} ${pick.year} · ${req.mosaic ? "mozaika" : product === "bdot10k" ? "pakiety" : "arkusze"}${pick.resolution ? ` ${res(pick.resolution, { cm: product === "orto" })}` : ""}`;
+  const output = joinOutput(fx, pick, count, unit);
   const steps = [
     {
       t: "Dostępność",
@@ -63,20 +78,20 @@ export function makePlan({ fx, area, product, combos, req, project }) {
     {
       t: "Pobranie przez Kartograf",
       s: `${int(missing)} z ${int(count)} ${unit} do magazynu ${fx.store.root} (w magazynie: ${pick.local.count}/${count}). Archiwista woła publiczne API Kartografa; odpowiednik CLI z podpowiedzi raportu:`,
-      cmd: `kartograf ${pick.hints[0]} --output ${fx.store.root}${pick.hints.length > 1 ? `   # +${pick.hints.length - 1} poleceń` : ""}`,
+      cmd: hintText(pick.hints, ` --output ${fx.store.root}`),
     },
   ];
   if (req.mosaic) {
     steps.push({
-      t: "Mozaika (Łączenie)",
-      s: `${int(count)} ${unit} → 1 GeoTIFF · ${pick.horizontal === "PL-2000" ? "EPSG:2178" : "EPSG:2180"}${pick.vcrs ? ` · ${pick.vcrs}` : ""} · przycięcie do obszaru ${km2short(area.areaM2)}; wykonuje Kartograf (wymaganie SPEC 12).`,
+      t: output.step,
+      s: `${output.what} · przycięcie do obszaru ${km2short(area.areaM2)}. Wykonuje Kartograf (moduł Łączenie, wymaganie SPEC 12).`,
     });
   }
   steps.push({
     t: "Wynik",
-    s: `Warstwa „${name}” na mapie i w projekcie „${project}”; Karta pliku z metadanymi i sidecarem.`,
+    s: `${req.mosaic ? `Warstwa „${name}” na mapie` : `${int(count)} ${unit} w magazynie`} i w projekcie „${project}”; Karta pliku z metadanymi i sidecarem.`,
   });
-  return { id: `plan-${Date.now()}`, title: name, product, comboId: pick.id, combo: pick, steps, mosaic: req.mosaic, total: Math.max(1, missing), count };
+  return { id: `plan-${Date.now()}`, title: name, product, comboId: pick.id, combo: pick, steps, mosaic: req.mosaic, output, area, total: Math.max(1, missing), count };
 }
 
 function PlanCard({ msg, onAction, task }) {
@@ -103,10 +118,10 @@ function PlanCard({ msg, onAction, task }) {
       ? html`<div class="plan-foot">
           <button class="btn sm primary" onClick=${() => onAction("run", msg)}><${Icon} name="check" size=${13} stroke=${2.4} />Zatwierdź i uruchom</button>
           <button class="btn sm" onClick=${() => onAction("edit", msg)}>Zmień rok</button>
-          <button class="btn sm ghost" onClick=${() => onAction("cancel", msg)}>Anuluj</button>
+          <button class="btn sm ghost" onClick=${() => onAction("reject", msg)}>Odrzuć</button>
         </div>`
       : html`<div class="plan-foot muted" style="font-size:11.5px">
-          ${status === "cancelled" ? "Anulowano." : status === "done" ? "Wykonano." : "Uruchomiono w tle — postęp w Zadaniach."}
+          ${status === "rejected" ? "Odrzucono." : status === "changed" ? "Zmieniono — wybierz rok poniżej." : status === "done" ? "Wykonano." : "Uruchomiono w tle — postęp w Zadaniach."}
         </div>`}
   </div>`;
 }
@@ -196,14 +211,18 @@ export function TasksPopover({ tasks, onClose }) {
   </div>`;
 }
 
-export function FileDrawer({ fx, item, onClose }) {
+export function FileDrawer({ fx, item, area, onClose }) {
   if (!item) return null;
   const { combo, result } = item;
   const product = PRODUCTS.find((p) => p.id === combo.product);
   const n = combo.sheetsFull.length + combo.sheetsPartial.length;
   const first = [...combo.sheetsFull, ...combo.sheetsPartial][0];
   const rec = combo.sheetRecords?.[first];
-  const preview = combo.product === "orto" ? fx.area.previews.orto : fx.area.previews.relief;
+  const bbox = result?.bbox ?? area?.bbox ?? fx.area.bbox;
+  const preview = result ? result.image ?? result.preview : combo.product === "bdot10k" ? null : combo.product === "orto" ? fx.area.previews.orto : fx.area.previews.relief;
+  const caption = result
+    ? `Podgląd wyniku — ${combo.product === "orto" ? "ortofotomapa" : "cieniowanie NMT"} (GUGiK WMS), przycięty do obszaru`
+    : "Podgląd poglądowy obszaru (GUGiK WMS) — w Archiwiście z pliku w magazynie";
   const vcrsCode = { EVRF2007: "EPSG:9651", KRON86: "EPSG:9650" }[combo.vcrs] ?? null;
   const sidecar = result
     ? {
@@ -211,11 +230,11 @@ export function FileDrawer({ fx, item, onClose }) {
         dataset: combo.source,
         country: "PL",
         product: combo.product,
-        horizontal_crs: "EPSG:2180",
+        horizontal_crs: combo.horizontal === "PL-2000" ? "EPSG:2178" : "EPSG:2180",
         vertical_crs: vcrsCode,
         resolution: combo.resolution,
-        request: { bbox: fx.area.bbox, bbox_crs: "EPSG:2180", year: combo.year },
-        extra: { mosaic_of: n, campaigns: combo.campaignsSelected },
+        request: { bbox, bbox_crs: "EPSG:2180", year: combo.year },
+        extra: { mosaic_of: result.count, campaigns: combo.campaignsSelected },
       }
     : {
         schema: "kartograf-meta/1",
@@ -228,34 +247,34 @@ export function FileDrawer({ fx, item, onClose }) {
         request: { sheet: first, year: combo.year, campaigns: "newest" },
         extra: {
           campaign: rec?.campaign ?? null,
-          parent_request: { bbox: fx.area.bbox, bbox_crs: "EPSG:2180" },
+          parent_request: { bbox, bbox_crs: "EPSG:2180" },
         },
       };
+  const pieces = combo.product === "bdot10k" ? combo.units.join(", ") : `${int(n)} (TAK/NIE ${combo.sheetsFull.length}/${combo.sheetsPartial.length})`;
   return html`<div class="drawer">
     <div class="drawer-head">
-      <div style="flex:1">
+      <div style="flex:1;min-width:0">
         <div class="faint" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Karta pliku</div>
         <div style="font-weight:700;font-size:15px;margin-top:2px">${result ? result.name : `${product.name} ${combo.year} · ${combo.variant}`}</div>
-        <div style="display:flex;gap:6px;margin-top:6px"><${Coverage} combo=${combo} /><${Local} local=${result ? { count: 1, total: 1 } : combo.local} /></div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><${Coverage} combo=${combo} /><${Local} local=${result ? { count: 1, total: 1 } : combo.local} /></div>
       </div>
-      <button class="btn ghost icon-btn" onClick=${onClose}><${Icon} name="x" /></button>
+      <button class="btn ghost icon-btn" onClick=${onClose} title="Zamknij"><${Icon} name="x" /></button>
     </div>
     <div class="drawer-body">
-      ${combo.product !== "bdot10k"
+      ${preview
         ? html`<div><img src=${preview} alt="podgląd" />
-            <div class="faint" style="font-size:11px;margin-top:4px">${result ? "Podgląd wyniku (cieniowanie NMT, GUGiK WMS)" : "Podgląd poglądowy obszaru (GUGiK WMS) — w Archiwiście z pliku w magazynie"}</div></div>`
+            <div class="faint" style="font-size:11px;margin-top:4px">${caption}</div></div>`
         : null}
       <dl class="kv" style="margin:0">
         <dt>Źródło</dt><dd><code>${combo.source}</code></dd>
         <dt>Układ</dt><dd>${combo.horizontal}${combo.vcrs ? ` · ${combo.vcrs}` : ""}</dd>
         ${combo.resolution ? html`<dt>Rozdzielczość</dt><dd>${res(combo.resolution, { cm: combo.product === "orto" })}</dd>` : null}
         ${combo.density ? html`<dt>Gęstość</dt><dd>${combo.density} pkt/m²</dd>` : null}
-        <dt>Format</dt><dd>${combo.format}${combo.color ? ` · ${combo.color}` : ""}</dd>
+        <dt>Format</dt><dd>${result ? `${result.format} z plików ${combo.format}` : combo.format}${combo.color ? ` · ${combo.color}` : ""}</dd>
         ${combo.dates ? html`<dt>Nalot</dt><dd>${span(combo.dates)}</dd>` : null}
         ${combo.published ? html`<dt>Publikacja</dt><dd>${span(combo.published)}</dd>` : null}
         ${combo.campaignsSelected.length ? html`<dt>Kampanie</dt><dd>${combo.campaignsSelected.join(", ")}</dd>` : null}
-        <dt>${combo.product === "bdot10k" ? "Powiaty" : "Arkusze"}</dt>
-        <dd>${combo.product === "bdot10k" ? combo.units.join(", ") : `${int(n)} (TAK/NIE ${combo.sheetsFull.length}/${combo.sheetsPartial.length})`}</dd>
+        <dt>${combo.product === "bdot10k" ? "Powiaty" : "Arkusze"}</dt><dd>${result ? `${result.count} → 1 plik` : pieces}</dd>
       </dl>
       <div>
         <div class="section-title" style="margin-bottom:6px">Wersje w magazynie</div>
@@ -269,9 +288,9 @@ export function FileDrawer({ fx, item, onClose }) {
       </div>
       <div>
         <div class="section-title" style="margin-bottom:6px">Sidecar kartograf-meta/1 (fragment, przykład)</div>
-        <div class="sidecar">${JSON.stringify(sidecar, null, 2)}</div>
+        <div class="sidecar">${JSON.stringify(sidecar, null, 2).replace(/\[\s+([^\]{}]*?)\s+\]/g, (m, inner) => `[${inner.replace(/\s+/g, " ")}]`)}</div>
       </div>
-      ${combo.hints.length ? html`<div><div class="section-title" style="margin-bottom:6px">Polecenie (podpowiedź raportu)</div><${Cmd} text=${`kartograf ${combo.hints[0]}`} /></div>` : null}
+      ${combo.hints.length ? html`<div><div class="section-title" style="margin-bottom:6px">Polecenie (podpowiedź raportu)</div><${Cmd} text=${hintText(combo.hints)} /></div>` : null}
     </div>
   </div>`;
 }

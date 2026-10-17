@@ -5,13 +5,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { html, Coverage, Local, Icon } from "./ui.js";
 import { bounds } from "./geo.js";
+import { coverage, localBadge, variantsMore } from "./labels.js";
 import { sheetColor, FULL_COLOR, PARTIAL_COLOR } from "./map.js";
 
 const PLATE_W = 440;
-const LABEL_W = 296;
-const LABEL_H = 42;
-const TOP = 92; // title and controls
-const BOTTOM = 18;
+const TOP = 108; // title, legend and controls
+const BOTTOM = 70; // the assistant button sits in the bottom-right corner
 
 /** Mapping of EPSG:2180 coordinates to plate pixels for the area frame. */
 function frame(area, w) {
@@ -22,24 +21,26 @@ function frame(area, w) {
   return { w, h, pt: ([x, y]) => `${fx(x).toFixed(1)},${fy(y).toFixed(1)}`, fx, fy };
 }
 
-function PlateSvg({ fx, f, area, combo, product, texture, kind, idx }) {
+function PlateSvg({ fx, f, area, combo, product, texture, kind, idx, result }) {
   const aoi = area.ring2180.map(f.pt).join(" ");
   const [dx0, dy0, dx1, dy1] = fx.area.bbox;
-  const img = (href, opacity = 1) =>
+  const img = (href, opacity = 1, extra = {}) =>
     html`<image href=${href} x=${f.fx(dx0)} y=${f.fy(dy1)} width=${f.fx(dx1) - f.fx(dx0)} height=${f.fy(dy0) - f.fy(dy1)}
-      preserveAspectRatio="none" opacity=${opacity} />`;
+      preserveAspectRatio="none" opacity=${opacity} ...${extra} />`;
   const box = `0 0 ${f.w} ${f.h}`;
   if (kind === "ground") {
+    // monochrome base like the map (user decision: grey basemap)
     return html`<svg viewBox=${box}>
-      ${img(fx.area.previews.orto, 0.95)}
-      <rect width=${f.w} height=${f.h} fill="#f8fafc" opacity="0.25" />
+      <defs><filter id="gray"><feColorMatrix type="saturate" values="0" /></filter></defs>
+      ${img(fx.area.previews.orto, 0.9, { filter: "url(#gray)" })}
+      <rect width=${f.w} height=${f.h} fill="#f8fafc" opacity="0.2" />
       <polygon points=${aoi} fill="none" stroke="#3730a3" stroke-width="2.5" />
     </svg>`;
   }
   if (kind === "result") {
     return html`<svg viewBox=${box}>
       <defs><clipPath id="clip-result"><polygon points=${aoi} /></clipPath></defs>
-      <g clip-path="url(#clip-result)">${img(fx.area.previews.relief)}</g>
+      <g clip-path="url(#clip-result)">${img(result?.preview ?? fx.area.previews.relief)}</g>
       <polygon points=${aoi} fill="none" stroke="#1d4ed8" stroke-width="3" />
     </svg>`;
   }
@@ -105,6 +106,12 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
   const plates = [{ kind: "ground", key: "ground" }, ...layers.map((g) => ({ kind: "year", g, key: String(g.year) }))];
   if (result?.visible && result.product === product) plates.push({ kind: "result", key: "result" });
   const n = plates.length;
+  // label column: two lines on wide stages, one line (year + coverage) on narrow ones
+  const tier = size.w < 560 ? "xs" : size.w < 780 ? "sm" : size.w < 1000 ? "md" : "lg";
+  const compact = tier === "xs" || tier === "sm";
+  const LW = { xs: 168, sm: 206, md: 276, lg: 312 }[tier];
+  const LH = compact ? 30 : 42;
+  const LGAP = { xs: 16, sm: 28, md: 40, lg: 44 }[tier];
 
   // parallel projection of the final (unfolded) state
   const t = (tilt * Math.PI) / 180;
@@ -123,29 +130,44 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
   const maxX = Math.max(...pts.map((p) => p[0]));
   const minY = Math.min(...pts.map((p) => p[1]));
   const maxY = Math.max(...pts.map((p) => p[1]));
-  const k = Math.max(0.3, Math.min(1.25, (size.w - 48 - LABEL_W - 40) / (maxX - minX), (size.h - TOP - BOTTOM - 10) / (maxY - minY)));
-  const ox = (size.w - (k * (maxX - minX) + 40 + LABEL_W)) / 2 - k * minX;
-  const oy = TOP + (size.h - TOP - BOTTOM - k * (maxY - minY)) / 2 - k * minY;
+  // The selected year slides out of the stack to the left (screen space) so
+  // that newer layers never cover it; the layers above it turn translucent.
+  const selIdx = plates.findIndex((p) => p.kind === "year" && p.g.year === selectedYear);
+  const covered = selIdx > 0 && selIdx < n - 1;
+  const plateW = Math.max(...corners.map((c) => proj(c[0], c[1], 0)[0])) - Math.min(...corners.map((c) => proj(c[0], c[1], 0)[0]));
+  const SLIDE = 0.62 * plateW; // screen units before scaling
+  const slideLocal = [-SLIDE * Math.cos(s), SLIDE * Math.sin(s)]; // plate-plane offset that projects to (-SLIDE, 0)
+  const bottom = tier === "xs" ? 16 : BOTTOM;
+  const spanX = maxX - minX + SLIDE; // room for the slid-out layer on the left
+  const k = Math.max(0.2, Math.min(1.25, (size.w - 40 - LW - LGAP) / spanX, (size.h - TOP - bottom - 10) / (maxY - minY)));
+  const ox = (size.w - (k * spanX + LGAP + LW)) / 2 - k * (minX - SLIDE);
+  const oy = TOP + (size.h - TOP - bottom - k * (maxY - minY)) / 2 - k * minY;
   const sceneTransform = flat
     ? `scale(${k}) rotateX(0deg) rotateZ(0deg)`
     : `scale(${k}) rotateX(${tilt}deg) rotateZ(${spin}deg)`;
   const flatY = oy + k * ((maxY + minY) / 2);
 
   // label column: anchors at the right-most plate corner, pushed apart
-  const labelX = ox + k * maxX + 40;
+  const labelX = ox + k * maxX + LGAP;
   const labels = plates.map((p, i) => {
     const [ax, ay] = proj(right[0], right[1], zOf(i));
-    return { key: p.key, ax: ox + k * ax, ay: oy + k * ay, top: oy + k * ay - LABEL_H / 2 };
+    const out = covered && i === selIdx ? SLIDE : 0;
+    return { key: p.key, ax: ox + k * (ax - out), ay: oy + k * ay, top: oy + k * ay - LH / 2 };
   });
-  for (let i = n - 2; i >= 0; i--) labels[i].top = Math.max(labels[i].top, labels[i + 1].top + LABEL_H + 4);
-  const overflow = labels[0].top + LABEL_H - (size.h - 8);
+  for (let i = n - 2; i >= 0; i--) labels[i].top = Math.max(labels[i].top, labels[i + 1].top + LH + 4);
+  const overflow = labels[0].top + LH - (size.h - bottom + 8);
   if (overflow > 0) for (const l of labels) l.top -= overflow;
   const texture = product === "orto" ? fx.area.previews.orto : fx.area.previews.relief;
 
-  return html`<div class=${`view stack-view ${visible ? "" : "hidden"}`}>
+  return html`<div class=${`view stack-view ${visible ? "" : "hidden"} ${compact ? "compact" : ""}`}>
     <div class="stack-title">
-      <h3>Stos lat · ${layers.length} ${layers.length === 1 ? "warstwa" : layers.length < 5 ? "warstwy" : "warstw"}</h3>
-      <p>Najnowszy rok na górze, podkład = obszar. Tekstura na arkuszach = podgląd z magazynu (pobrane).</p>
+      <h3>Stos lat · ${layers.length} ${layers.length === 1 ? "warstwa" : layers.length < 5 ? "warstwy" : "warstw"}<span>najnowszy rok na górze · podkład = obszar</span></h3>
+      <div class="stack-legend">
+        <span><i class="sw" style=${`background:${FULL_COLOR}`}></i>arkusz pełny</span>
+        <span><i class="sw" style="background:linear-gradient(135deg,#0d9488 50%,#0ea5e9 50%)"></i>kampanie roku</span>
+        <span><i class="sw hatch"></i>tylko rekord niepełny (NIE)</span>
+        <span><i class="sw" style=${`background:url(${texture}) center/cover;outline:2px solid #1d4ed8;outline-offset:-1px`}></i>pobrane — podgląd z magazynu</span>
+      </div>
       <div class="stack-ctrl">
         <label>Odstęp<input type="range" min="16" max="90" value=${gap} onInput=${(e) => setGap(+e.target.value)} /></label>
         <label>Obrót<input type="range" min="-75" max="0" value=${spin} onInput=${(e) => setSpin(+e.target.value)} /></label>
@@ -159,20 +181,22 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
           const year = p.g?.year;
           const sel = year !== undefined && year === selectedYear;
           const dim = hover !== null && hover !== p.key && p.kind !== "ground";
+          const above = !flat && covered && i > selIdx && hover !== p.key;
           const z = flat ? 0 : zOf(i) + (hover === p.key && p.kind !== "ground" ? 14 : 0);
+          const [sx, sy] = !flat && covered && i === selIdx ? slideLocal : [0, 0];
           return html`<div key=${p.key}
-            class=${`plate ${p.kind} ${sel ? "sel" : ""} ${dim ? "dim" : ""}`}
-            style=${`width:${f.w}px;height:${f.h}px;transform:translate3d(${-f.w / 2}px, ${-f.h / 2}px, ${z}px)`}
+            class=${`plate ${p.kind} ${sel ? "sel" : ""} ${dim ? "dim" : ""} ${above ? "above" : ""}`}
+            style=${`width:${f.w}px;height:${f.h}px;transform:translate3d(${-f.w / 2 + sx}px, ${-f.h / 2 + sy}px, ${z}px)`}
             onMouseEnter=${() => setHover(p.key)} onMouseLeave=${() => setHover(null)}
             onClick=${() => year !== undefined && onSelectYear(year)}>
             <div class="plate-face">
-              <${PlateSvg} fx=${fx} f=${f} area=${area} combo=${p.g?.best} product=${product} texture=${texture} kind=${p.kind} idx=${i} />
+              <${PlateSvg} fx=${fx} f=${f} area=${area} combo=${p.g?.best} product=${product} texture=${texture} kind=${p.kind} idx=${i} result=${result} />
             </div>
           </div>`;
         })}
       </div>
       <svg class=${`stack-leaders ${flat ? "" : "on"}`} width=${size.w} height=${size.h}>
-        ${labels.map((l) => html`<polyline points=${`${l.ax},${l.ay} ${labelX - 16},${l.top + LABEL_H / 2} ${labelX - 2},${l.top + LABEL_H / 2}`}
+        ${labels.map((l) => html`<polyline points=${`${l.ax},${l.ay} ${labelX - 14},${l.top + LH / 2} ${labelX - 2},${l.top + LH / 2}`}
           class=${hover === l.key ? "hot" : ""} />`)}
         ${labels.map((l) => html`<circle cx=${l.ax} cy=${l.ay} r="3" />`)}
       </svg>
@@ -180,34 +204,28 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
         ${plates.map((p, i) => {
           const l = labels[i];
           const sel = p.g && p.g.year === selectedYear;
-          const style = `left:${labelX}px;top:${l.top}px;width:${LABEL_W}px`;
+          const style = `left:${labelX}px;top:${l.top}px;width:${LW}px;height:${LH}px`;
           const common = { onMouseEnter: () => setHover(p.key), onMouseLeave: () => setHover(null) };
           if (p.kind === "ground") {
             return html`<div class="plate-tag" style=${style} ...${common}><${Icon} name="map" size=${15} />
-              <div><div style="font-weight:600">Obszar</div><div class="sub">ortofotomapa GUGiK (podkład)</div></div></div>`;
+              <div class="tag-lines"><div style="font-weight:600">Obszar</div>${compact ? null : html`<div class="sub">ortofotomapa GUGiK (podkład)</div>`}</div></div>`;
           }
           if (p.kind === "result") {
             return html`<div class="plate-tag result" style=${style} ...${common}><${Icon} name="file" size=${15} />
-              <div><div style="font-weight:600;color:#1d4ed8">Wynik zadania</div><div class="sub">${result.name}</div></div></div>`;
+              <div class="tag-lines"><div style="font-weight:600;color:#1d4ed8">Wynik zadania</div>${compact ? null : html`<div class="sub"><span class="ell">${result.name}</span></div>`}</div></div>`;
           }
           const c = p.g.best;
           return html`<div class=${`plate-tag ${sel ? "sel" : ""} ${hover === p.key ? "hot" : ""}`} style=${style} ...${common}
+            title=${compact ? `${p.g.year}: ${coverage(c).text} · ${c.variant} · ${c.horizontal} · ${localBadge(c.local).text}` : undefined}
             onClick=${() => onSelectYear(p.g.year)}>
             <span class="yr">${p.g.year}</span>
-            <div style="display:grid;gap:2px;min-width:0">
-              <div style="display:flex;gap:4px;align-items:center"><${Coverage} combo=${c} /></div>
-              <div class="sub"><${Local} local=${c.local} /> ${c.variant} · ${c.horizontal}${p.g.others.length ? ` · +${p.g.others.length}` : ""}</div>
+            <div class="tag-lines">
+              <div class="tag-top"><${Coverage} combo=${c} short=${compact} />${!compact && p.g.others.length ? html`<span class="more-chip">${variantsMore(p.g.others.length)}</span>` : null}</div>
+              ${compact ? null : html`<div class="sub"><${Local} local=${c.local} /><span class="ell">${c.variant} · ${c.horizontal}</span></div>`}
             </div>
           </div>`;
         })}
       </div>
-    </div>
-    <div class="stack-legend float-card">
-      <div class="legend-row"><span class="sw" style=${`background:${FULL_COLOR}`}></span>arkusz pełny
-        <span class="sw" style="background:linear-gradient(135deg,#0d9488 50%,#0ea5e9 50%);margin-left:8px"></span>kampanie roku</div>
-      <div class="legend-row"><span class="sw hatch"></span>tylko rekord niepełny (NIE)</div>
-      <div class="legend-row"><span class="sw" style=${`background:url(${texture}) center/cover;border:2px solid #1d4ed8`}></span>pobrane — podgląd z magazynu</div>
-      <div class="faint" style="font-size:11px">Lata bez danych w filtrze nie mają warstwy (są w Zestawieniu).</div>
     </div>
   </div>`;
 }

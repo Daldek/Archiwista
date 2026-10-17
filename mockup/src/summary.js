@@ -1,14 +1,15 @@
 // "Zestawienie": years as a table and as a timeline (year x variant x coverage).
 
 import { html, Coverage, Local, Icon, Seg, Cmd } from "./ui.js";
-import { coverage, span, km2, stamp, variantsMore, plural, int, mb } from "./labels.js";
+import { coverage, span, km2, stamp, variantsMore, plural, int, mb, hintText } from "./labels.js";
 import { matches, rank, ORIGINS, PRODUCTS } from "./data.js";
 
 const KIND_FILL = { full: "#22c55e", multi: "#14b8a6", partial: "#f59e0b", none: "#e4e7ec" };
 
 function YearTable({ groups, product, selectedYear, onSelectYear, filter }) {
+  const wide = groups.some((g) => typeof g.year !== "number");
   return html`<table class="ytable">
-    <colgroup><col style="width:46px" /><col /><col style="width:96px" /></colgroup>
+    <colgroup><col style=${`width:${wide ? 70 : 46}px`} /><col /><col style="width:92px" /></colgroup>
     <thead><tr><th>Rok</th><th>Pokrycie · magazyn · wariant</th><th style="text-align:right">${product === "bdot10k" ? "Rozmiar" : "Nalot"}</th></tr></thead>
     <tbody>
       ${groups.map((g) => {
@@ -53,17 +54,17 @@ function ComboDetail({ c, product, off }) {
       ${product === "bdot10k"
         ? html`powiaty: ${c.units.map((t) => `${t}${c.unitsPresent.includes(t) ? "" : " (brak)"}`).join(", ")} · ${mb(c.sizeBytes)}`
         : html`${c.horizontal} · ${int(n)} ${plural(n, "arkusz", "arkusze", "arkuszy")} TAK/NIE ${c.sheetsFull.length}/${c.sheetsPartial.length} · nalot ${span(c.dates)}<br />
-            kampanie: ${c.campaignsSelected.join(", ") || "–"}${c.campaignsAll.length > c.campaignsSelected.length ? ` (w rekordach: ${c.campaignsAll.length})` : ""}
+            kampanie: ${c.campaignsSelected.length ? c.campaignsSelected.map((x, i) => html`${i ? ", " : null}<span class="nw">${x}</span>`) : "–"}${c.campaignsAll.length > c.campaignsSelected.length ? ` (w rekordach: ${c.campaignsAll.length})` : ""}
             ${cov.kind === "partial" ? html`<br />w ramkach arkuszy: ${frames}% (górna granica) · w pełnych: ${Math.floor(cov.pct)}%` : null}
             ${c.estimated ? html`<br /><i>oszacowanie mockupu dla Twojego obszaru</i>` : null}`}
     </div>
     ${c.hints.length
-      ? html`<${Cmd} text=${`kartograf ${c.hints[0]}${c.hints.length > 1 ? `   # +${c.hints.length - 1} poleceń --sheet` : ""}`} />`
+      ? html`<${Cmd} text=${hintText(c.hints)} />`
       : html`<div class="combo-meta"><i>Kartograf nie pobiera tego wariantu (brak podpowiedzi pobrania).</i></div>`}
   </div>`;
 }
 
-function Timeline({ combos, groups, filter, selectedYear, onSelectYear, product }) {
+function Timeline({ combos, groups, filter, selectedYear, onSelectYear }) {
   const numeric = combos.filter((c) => typeof c.year === "number").map((c) => c.year);
   const y0 = Math.min(...numeric);
   const y1 = Math.max(...numeric);
@@ -76,11 +77,19 @@ function Timeline({ combos, groups, filter, selectedYear, onSelectYear, product 
     return (ca.resM ?? 1e9) - (cb.resM ?? 1e9);
   });
   const W = 372;
-  const left = 74;
-  const cw = (W - left - 4) / cols.length;
-  const top = 46;
-  const rh = 22;
-  const H = top + rows.length * rh + 58;
+  const left = 70;
+  const cw = (W - left - 2) / cols.length;
+  const bandH = 30; // "w filtrze" band: best variant of the year
+  const top = bandH + 22;
+  const rh = 27;
+  const axis = top + rows.length * rh + 6;
+  const vcrsY = axis + 20;
+  const vcrsYears = new Map();
+  for (const c of combos) {
+    if (!c.vcrs) continue;
+    vcrsYears.set(c.year, new Set([...(vcrsYears.get(c.year) ?? []), c.vcrs]));
+  }
+  const H = vcrsYears.size ? vcrsY + 26 : axis + 18;
   const byYear = new Map(groups.map((g) => [g.year, g]));
   const x = (i) => left + i * cw;
   const cell = (c, xx, yy, w, h) => {
@@ -90,7 +99,7 @@ function Timeline({ combos, groups, filter, selectedYear, onSelectYear, product 
       const ph = Math.max(2, (h * k.pct) / 100);
       return html`<g class="tl-cell" onClick=${() => onSelectYear(c.year)}>
         <title>${title}</title>
-        <rect x=${xx} y=${yy} width=${w} height=${h} rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.6" />
+        <rect x=${xx} y=${yy} width=${w} height=${h} rx="3" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.8" />
         <rect x=${xx} y=${yy + h - ph} width=${w} height=${ph} rx="2.5" fill=${KIND_FILL.partial} />
       </g>`;
     }
@@ -104,42 +113,39 @@ function Timeline({ combos, groups, filter, selectedYear, onSelectYear, product 
     return html`<rect class="tl-cell" x=${xx} y=${yy} width=${w} height=${h} rx="3" fill=${KIND_FILL[k.kind]}
       onClick=${() => onSelectYear(c.year)}><title>${title}</title></rect>`;
   };
-  const vcrsYears = new Map();
-  for (const c of combos) {
-    if (!c.vcrs) continue;
-    vcrsYears.set(c.year, new Set([...(vcrsYears.get(c.year) ?? []), c.vcrs]));
-  }
+  const everyYear = cols.length <= 12;
   return html`<svg class="timeline" viewBox=${`0 0 ${W} ${H}`}>
-    <text x="0" y="14" font-size="10.5" fill="#98a2b3" font-weight="600" letter-spacing="0.5">W FILTRZE</text>
+    ${cols.map((year, i) =>
+      year === selectedYear
+        ? html`<rect x=${x(i) - 1} y="0" width=${cw + 2} height=${axis + 14} rx="4" fill="#eef2ff" stroke="#a5b4fc" />`
+        : null,
+    )}
+    <text x="0" y=${bandH / 2 + 6} font-size="11" fill="#344054" font-weight="700">w filtrze</text>
     ${cols.map((year, i) => {
       const g = byYear.get(year);
-      const sel = year === selectedYear;
-      return html`<g>
-        ${sel ? html`<rect x=${x(i) - 1} y="2" width=${cw + 2} height=${H - 30} rx="4" fill="#eef2ff" stroke="#a5b4fc" />` : null}
-        ${g?.best
-          ? cell(g.best, x(i) + 1.5, 4, cw - 3, 24)
-          : html`<rect x=${x(i) + 1.5} y="4" width=${cw - 3} height="24" rx="3" fill="none" stroke="#e4e7ec" stroke-dasharray="2 2" />`}
-      </g>`;
+      return g?.best
+        ? cell(g.best, x(i) + 1.5, 3, cw - 3, bandH - 4)
+        : html`<rect x=${x(i) + 1.5} y="3" width=${cw - 3} height=${bandH - 4} rx="3" fill="none" stroke="#d0d5dd" stroke-dasharray="2 2" />`;
     })}
-    <line x1="0" x2=${W} y1=${top - 9} y2=${top - 9} stroke="#e4e7ec" />
+    <text x="0" y=${top - 8} font-size="9.5" fill="#98a2b3" font-weight="600" letter-spacing="0.6">WSZYSTKIE WARIANTY</text>
+    <line x1="0" x2=${W} y1=${top - 3} y2=${top - 3} stroke="#e4e7ec" />
     ${rows.map((row, r) => {
       const yy = top + r * rh;
       const inFilter = combos.some((c) => c.row === row && matches(c, filter));
-      return html`<g opacity=${inFilter ? 1 : 0.4}>
-        <text x="0" y=${yy + 14} font-size="11" fill="#475467">${row}</text>
+      return html`<g opacity=${inFilter ? 1 : 0.45}>
+        <text x="0" y=${yy + rh / 2 + 4} font-size="11.5" fill="#344054">${row}</text>
         ${cols.map((year, i) => {
           const list = combos.filter((c) => c.row === row && c.year === year && (!filter.color || filter.color === "all" || c.color === filter.color || !c.color)).sort(rank);
           return list[0]
             ? cell(list[0], x(i) + 1.5, yy + 3, cw - 3, rh - 6)
-            : html`<rect x=${x(i) + cw / 2 - 1} y=${yy + rh / 2 - 1} width="2" height="2" fill="#d0d5dd" />`;
+            : html`<circle cx=${x(i) + cw / 2} cy=${yy + rh / 2} r="1.3" fill="#d0d5dd" />`;
         })}
       </g>`;
     })}
     ${cols.map((year, i) => {
-      const show = cols.length <= 14 || i % 2 === (cols.length - 1) % 2 || year === "aktualne";
-      const yy = top + rows.length * rh + 14;
+      const show = everyYear || i % 2 === (cols.length - 1) % 2 || year === "aktualne" || year === selectedYear;
       return show
-        ? html`<text x=${x(i) + cw / 2} y=${yy} font-size="10" fill=${year === selectedYear ? "#3730a3" : "#667085"}
+        ? html`<text x=${x(i) + cw / 2} y=${axis + 8} font-size="10.5" fill=${year === selectedYear ? "#3730a3" : "#667085"}
             font-weight=${year === selectedYear ? 700 : 400} text-anchor="middle">${year === "aktualne" ? "akt." : `’${String(year).slice(2)}`}</text>`
         : null;
     })}
@@ -148,18 +154,18 @@ function Timeline({ combos, groups, filter, selectedYear, onSelectYear, product 
           ${cols.map((year, i) => {
             const set = vcrsYears.get(year);
             if (!set) return null;
-            const yy = top + rows.length * rh + 24;
             const evrf = set.has("EVRF2007");
             const kron = set.has("KRON86");
             return html`<g>
-              ${evrf ? html`<rect x=${x(i)} y=${yy} width=${cw} height=${kron ? 3 : 6} fill="#6366f1" />` : null}
-              ${kron ? html`<rect x=${x(i)} y=${evrf ? yy + 3 : yy} width=${cw} height=${evrf ? 3 : 6} fill="#94a3b8" />` : null}
+              ${evrf ? html`<rect x=${x(i) + 0.5} y=${vcrsY} width=${cw - 1} height=${kron ? 3 : 6} fill="#6366f1" />` : null}
+              ${kron ? html`<rect x=${x(i) + 0.5} y=${evrf ? vcrsY + 3 : vcrsY} width=${cw - 1} height=${evrf ? 3 : 6} fill="#94a3b8" />` : null}
             </g>`;
           })}
-          <rect x=${left} y=${top + rows.length * rh + 38} width="10" height="6" fill="#6366f1" />
-          <text x=${left + 14} y=${top + rows.length * rh + 44} font-size="10" fill="#667085">EVRF2007</text>
-          <rect x=${left + 70} y=${top + rows.length * rh + 38} width="10" height="6" fill="#94a3b8" />
-          <text x=${left + 84} y=${top + rows.length * rh + 44} font-size="10" fill="#667085">KRON86 (układ wysokości)</text>
+          <text x="0" y=${vcrsY + 6} font-size="10" fill="#667085">wysokości</text>
+          <rect x=${left} y=${vcrsY + 14} width="10" height="6" fill="#6366f1" />
+          <text x=${left + 14} y=${vcrsY + 20} font-size="10" fill="#667085">EVRF2007</text>
+          <rect x=${left + 72} y=${vcrsY + 14} width="10" height="6" fill="#94a3b8" />
+          <text x=${left + 86} y=${vcrsY + 20} font-size="10" fill="#667085">KRON86</text>
         </g>`
       : null}
   </svg>`;
@@ -193,7 +199,7 @@ export function SummaryPanel({ fx, area, product, combos, groups, filter, tab, o
         sprawdzono ${stamp(report.checked_at)} · ${groups.length} ${plural(groups.length, "rok", "lata", "lat")}:
         ${counts.full ? html` <b style="color:#166534">${counts.full} pełne</b>` : null}${counts.multi ? html`, <b style="color:#115e59">${counts.multi} z kilku kampanii</b>` : null}${counts.partial ? html`, <b style="color:#92400e">${counts.partial} częściowe</b>` : null}${counts.none ? html`, ${counts.none} bez danych w filtrze` : null}
       </div>
-      <div class="origin"><${Icon} name="info" size=${14} /><span>${ORIGINS[p.origin]}${estimated ? " Liczby dla Twojego obszaru: oszacowanie mockupu z ram arkuszy tego raportu." : ""}</span></div>
+      <div class="origin"><${Icon} name="info" size=${14} /><span>${ORIGINS[p.origin].map((s, i) => (i % 2 ? html`<code class="nw">${s}</code>` : s))}${estimated ? " Liczby dla Twojego obszaru: oszacowanie mockupu z ram arkuszy tego raportu." : ""}</span></div>
     </div>
     <div class="sum-tabs">
       <${Seg} small value=${tab} onChange=${onTab} options=${[
@@ -204,8 +210,14 @@ export function SummaryPanel({ fx, area, product, combos, groups, filter, tab, o
     <div class="sum-body">
       ${tab === "table"
         ? html`<${YearTable} groups=${groups} product=${product} selectedYear=${selectedYear} onSelectYear=${onSelectYear} filter=${filter} />`
-        : html`<${Timeline} combos=${combos} groups=${groups} filter=${filter} selectedYear=${selectedYear} onSelectYear=${onSelectYear} product=${product} />
-            <div class="tl-note">Górny pasek: najlepszy wariant roku w filtrze. Wiersze: warianty (rozdzielczość / gęstość / format); słupek bursztynowy = udział lądu w pełnych arkuszach; dwukolorowa komórka = komplet z kilku kampanii. Kliknij komórkę, aby wybrać rok.</div>`}
+        : html`<${Timeline} combos=${combos} groups=${groups} filter=${filter} selectedYear=${selectedYear} onSelectYear=${onSelectYear} />
+            <div class="tl-legend">
+              <span><i class="tl-sw full"></i>pełne</span>
+              <span><i class="tl-sw multi"></i>pełne · kilka kampanii</span>
+              <span><i class="tl-sw partial"></i>częściowe — słupek = % lądu w pełnych arkuszach</span>
+              <span><i class="tl-sw none"></i>brak w filtrze</span>
+            </div>
+            <div class="tl-note">Pasek „w filtrze”: najlepszy wariant roku w aktywnym filtrze; niżej wszystkie warianty (rozdzielczość, gęstość, format). Kliknij komórkę, aby wybrać rok.</div>`}
       ${newestFull
         ? html`<div class="callout">
             <div class="callout-title"><${Icon} name="spark" />Najnowszy pełny rok: ${newestFull.year}</div>

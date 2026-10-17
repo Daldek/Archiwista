@@ -37,12 +37,13 @@ function Thumb({ fx, area, combo, product }) {
 function meta(combo, product) {
   if (product === "bdot10k") {
     const units = combo.unitsPresent.length;
-    return `${units}/${combo.units.length} ${plural(combo.units.length, "powiat", "powiaty", "powiatów")} (${combo.units.join(", ")}) · ${mb(combo.sizeBytes)}`;
+    return html`<div>${units}/${combo.units.length} ${plural(combo.units.length, "powiat", "powiaty", "powiatów")} (${combo.units.join(", ")}) · ${mb(combo.sizeBytes)}</div>`;
   }
   const n = combo.sheetsFull.length + combo.sheetsPartial.length;
   const unit = product === "laz" ? plural(n, "kafel", "kafle", "kafli") : plural(n, "arkusz", "arkusze", "arkuszy");
-  const camp = combo.campaignsSelected.length ? combo.campaignsSelected.join(", ") : "–";
-  return `${combo.horizontal} · ${int(n)} ${unit} (TAK/NIE ${combo.sheetsFull.length}/${combo.sheetsPartial.length}) · nalot ${span(combo.dates)} · ${camp}`;
+  return html`<div>${combo.horizontal} · ${int(n)} ${unit} (TAK/NIE ${combo.sheetsFull.length}/${combo.sheetsPartial.length})</div>
+    <div>nalot <span class="nw">${span(combo.dates)}</span></div>
+    ${combo.campaignsSelected.length ? html`<div class="card-camps">${combo.campaignsSelected.map((c) => html`<code class="nw">${c}</code>`)}</div>` : null}`;
 }
 
 export function CatalogView({ fx, area, product, combos, filter, selectedYear, onSelectYear, onOpen, onAsk, visible }) {
@@ -74,7 +75,7 @@ export function CatalogView({ fx, area, product, combos, filter, selectedYear, o
           if (!list.length) return null;
           return html`<div class="cat-row">
             <div class="cat-year">
-              <span class="yr">${year}</span>
+              <span class=${`yr ${typeof year === "number" ? "" : "word"}`}>${year}</span>
               <span class="faint" style="font-size:11px">${list.length} ${plural(list.length, "wariant", "warianty", "wariantów")}</span>
             </div>
             <div class="cat-grid">
@@ -92,7 +93,7 @@ export function CatalogView({ fx, area, product, combos, filter, selectedYear, o
                       <button class="btn sm" disabled=${!c.hints.length} onClick=${() => onAsk(c)}
                         title=${c.hints.length ? "" : "Kartograf nie pobiera tego wariantu (brak podpowiedzi pobrania)"}>
                         <${Icon} name="download" size=${13} />Pobierz</button>
-                      <button class="btn sm ghost" onClick=${() => onSelectYear(c.year, "map")}><${Icon} name="map" size=${13} />Mapa</button>
+                      <button class="btn sm ghost icon-btn" onClick=${() => onSelectYear(c.year, "map")} title="Pokaż rok na mapie"><${Icon} name="map" size=${14} /></button>
                     </div>
                   </div>
                 </div>`,
@@ -101,18 +102,17 @@ export function CatalogView({ fx, area, product, combos, filter, selectedYear, o
           </div>`;
         })
       : html`<div class="cat-list"><table>
-          <thead><tr><th>Rok</th><th>Wariant</th><th>Układ</th><th>Pokrycie</th><th>Arkusze</th><th>Nalot</th><th>Magazyn</th><th></th></tr></thead>
+          <thead><tr><th>Rok</th><th>Wariant</th><th>Pokrycie</th><th>${product === "bdot10k" ? "Powiaty" : "TAK/NIE"}</th><th>${product === "bdot10k" ? "Rozmiar" : "Nalot"}</th><th>Magazyn</th><th></th></tr></thead>
           <tbody>
             ${shown.map(
-              (c) => html`<tr class=${matches(c, filter) ? "" : "off"}>
-                <td class="tabular" style="font-weight:700">${c.year}</td>
-                <td>${c.variant}</td>
-                <td class="muted">${c.horizontal}</td>
+              (c) => html`<tr class=${`${matches(c, filter) ? "" : "off"} ${c.year === selectedYear ? "sel" : ""}`} onClick=${() => onSelectYear(c.year)}>
+                <td class="tabular nw" style="font-weight:700">${c.year}</td>
+                <td><div>${c.variant}</div><div class="faint" style="font-size:11px">${product === "bdot10k" ? "pakiety powiatów" : c.horizontal}</div></td>
                 <td><${Coverage} combo=${c} /></td>
-                <td class="tabular">${product === "bdot10k" ? `${c.unitsPresent.length}/${c.units.length}` : `${c.sheetsFull.length}/${c.sheetsPartial.length}`}</td>
-                <td class="muted tabular">${product === "bdot10k" ? "–" : span(c.dates)}</td>
+                <td class="tabular nw">${product === "bdot10k" ? `${c.unitsPresent.length}/${c.units.length}` : `${c.sheetsFull.length}/${c.sheetsPartial.length}`}</td>
+                <td class="muted tabular nw">${product === "bdot10k" ? mb(c.sizeBytes) : span(c.dates)}</td>
                 <td><${Local} local=${c.local} /></td>
-                <td><button class="btn sm ghost" onClick=${() => onOpen(c)}>Karta</button></td>
+                <td class="nw" style="text-align:right"><button class="btn sm ghost" onClick=${(e) => { e.stopPropagation(); onOpen(c); }}><${Icon} name="file" size=${13} />Karta</button></td>
               </tr>`,
             )}
           </tbody>

@@ -1,15 +1,17 @@
 // Coverage vocabulary (agreed with docs/SPEC.md 6.4) and Polish formatting.
+// Dates in the interface: YYYY.MM.DD (user decision), e.g. "2023.06.04".
 
 const NUM = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 const INT = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
 const ONE = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-const STAMP = new Intl.DateTimeFormat("pl-PL", {
+const STAMP = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Warsaw",
-  day: "2-digit",
-  month: "2-digit",
   year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 
 /** Polish plural form: plural(2, "kampania", "kampanie", "kampanii"). */
@@ -24,24 +26,35 @@ export function plural(n, one, few, many) {
 export const km2 = (m2) => `${NUM.format(m2 / 1e6)} km²`;
 export const km2short = (m2) => `${ONE.format(m2 / 1e6)} km²`;
 export const int = (n) => INT.format(n);
-export const stamp = (iso) => STAMP.format(new Date(iso)).replace(",", "");
 export const mb = (bytes) => (bytes >= 1e9 ? `${ONE.format(bytes / 1e9)} GB` : `${INT.format(bytes / 1e6)} MB`);
 
-/** "2024-06-21" -> "21.06.2024". */
-export function day(iso) {
-  if (!iso) return "–";
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
+/** ISO timestamp -> "2026.10.17 13:03" (Europe/Warsaw). */
+export function stamp(iso) {
+  const p = Object.fromEntries(STAMP.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}`;
 }
 
-/** Flight date span: "28.04.2025" or "21.06–30.07.2024". */
+/** "2024-06-21" -> "2024.06.21". */
+export function day(iso) {
+  if (!iso) return "–";
+  return iso.slice(0, 10).replaceAll("-", ".");
+}
+
+/** Flight date span: "2025.04.28" or "2024.06.21–2024.07.30". */
 export function span(pair) {
   if (!pair || !pair[0]) return "–";
   const [a, b] = pair;
-  if (a === b) return day(a);
-  const [ya, ma, da] = a.split("-");
-  const [yb] = b.split("-");
-  return ya === yb ? `${da}.${ma}–${day(b)}` : `${day(a)}–${day(b)}`;
+  return !b || a === b ? day(a) : `${day(a)}–${day(b)}`;
+}
+
+/**
+ * CLI equivalent of a report's download hints: the first command and, when
+ * the report gives one command per sheet, a comment with the rest.
+ */
+export function hintText(hints, suffix = "") {
+  const more = hints.length - 1;
+  const rest = more > 0 ? `\n# + ${int(more)} ${plural(more, "polecenie", "polecenia", "poleceń")} dla kolejnych arkuszy` : "";
+  return `kartograf ${hints[0]}${suffix}${rest}`;
 }
 
 /** "0.5m" -> "0,5 m", "0.05m" -> "5 cm" (imagery), null -> "". */
@@ -62,7 +75,7 @@ export function res(label, { cm = false } = {}) {
  *   incomplete combination never reads 100%; "N ark. niepełnych" when some
  *   sheets have only records declared not full.
  */
-export function coverage(c) {
+export function coverage(c, { short = false } = {}) {
   if (!c) return { kind: "none", text: "brak danych" };
   if (c.complete) {
     const n = c.campaignsSelected.length;
@@ -73,7 +86,7 @@ export function coverage(c) {
   const pct = Math.floor(share * 100);
   let text = `częściowe · ${share > 0 && pct === 0 ? "<1" : pct}%`;
   const partial = c.sheetsPartial.length;
-  if (partial) text += ` · ${partial} ark. ${plural(partial, "niepełny", "niepełne", "niepełnych")}`;
+  if (partial && !short) text += ` · ${partial} ark. ${plural(partial, "niepełny", "niepełne", "niepełnych")}`;
   return { kind: "partial", text, pct: share * 100 };
 }
 

@@ -51,13 +51,13 @@ export const PRODUCTS = [
   },
 ];
 
+/** Where the numbers come from; odd items are commands (rendered as code). */
 export const ORIGINS = {
-  report:
-    "Prawdziwy raport Kartografa: kartograf elevation availability --json (schemat kartograf-availability/1).",
-  index:
+  report: ["Prawdziwy raport Kartografa: ", "kartograf elevation availability --json", " (schemat kartograf-availability/1)."],
+  index: [
     "Skorowidz ortofotomapy GUGiK (WMS) zestawiony skryptem mockupu na bibliotekach Kartografa — Kartograf nie ma jeszcze raportu dostępności orto (wymaganie wobec Kartografa).",
-  packages:
-    "Pakiety powiatów BDOT10k: powiaty obszaru z PRG, istnienie i rozmiar plików z HEAD (skrypt mockupu).",
+  ],
+  packages: ["Pakiety powiatów BDOT10k: powiaty obszaru z PRG, istnienie i rozmiar plików z HEAD (skrypt mockupu)."],
 };
 
 const CHECK_PHASES = {
@@ -320,18 +320,35 @@ export function yearGroups(combos, filter) {
 }
 
 /**
+ * Download hints of a combination for a user area: per-sheet commands of the
+ * sheets that intersect the area, bbox commands with the area's bbox.
+ */
+function areaHints(hints, members, bbox) {
+  const out = [];
+  for (const h of hints) {
+    const sheet = h.match(/--sheet (\S+)/)?.[1];
+    if (sheet) {
+      if (members.has(sheet)) out.push(h);
+    } else out.push(h.replace(/--bbox [\d.,]+/, `--bbox ${bbox.join(",")}`));
+  }
+  return out;
+}
+
+/**
  * Re-measure combinations for a user area inside the demo extent (coverage
  * estimate from the sheet frames); the demo area itself keeps the report.
  */
 export function forArea(fx, product, area) {
   const list = fx.combos[product];
-  if (!area || area.kind === "demo" || product === "bdot10k") return list;
+  if (!area || area.kind === "demo") return list;
+  if (product === "bdot10k") return list.map((c) => ({ ...c, hints: areaHints(c.hints, new Set(), area.bbox) }));
   const { result } = estimate(area.ring2180, list, fx.sheets);
   const out = [];
   for (const c of list) {
     const m = result.get(c.id);
     if (!m) continue;
     const next = { ...c, ...m, estimated: true, uncoveredM2: m.landM2 - m.framesM2 };
+    next.hints = areaHints(c.hints, new Set([...m.sheetsFull, ...m.sheetsPartial]), area.bbox);
     next.local = localState(next, fx.store, fx.extraStore ?? []);
     out.push(next);
   }

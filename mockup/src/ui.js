@@ -35,6 +35,7 @@ const PATHS = {
   plus: "M12 5v14M5 12h14",
   file: "M6 3h8l4 4v14H6V3Zm8 0v4h4",
   rotate: "M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4",
+  sidebar: "M4 5h16v14H4zM9 5v14",
 };
 
 export function Icon({ name, size = 16, stroke = 1.8, style }) {
@@ -52,11 +53,11 @@ export function Logo() {
   </div>`;
 }
 
-export function Coverage({ combo, label, lg }) {
-  const c = label ?? coverage(combo);
+export function Coverage({ combo, label, lg, short }) {
+  const c = label ?? coverage(combo, { short });
   const style = c.kind === "partial" ? `--pct:${Math.max(4, Math.min(96, c.pct))}%` : undefined;
   return html`<span class=${`cov ${c.kind} ${lg ? "lg" : ""}`} style=${style} title=${title(c)}>
-    <span class="glyph"></span>${c.text}
+    <span class="glyph"></span><span class="cov-t">${c.text}</span>
   </span>`;
 }
 
@@ -87,7 +88,9 @@ export function Seg({ options, value, onChange, small }) {
   </div>`;
 }
 
+/** Command block: lines break only between tokens (never inside "--option"). */
 export function Cmd({ text }) {
   const copy = () => navigator.clipboard?.writeText(text).catch(() => {});
-  return html`<div class="cmd"><code>${text}</code><button onClick=${copy} title="Kopiuj">kopiuj</button></div>`;
+  const lines = text.split("\n").map((line, i) => html`${i ? html`<br />` : null}${line.split(" ").map((tok, j) => html`${j ? " " : null}<span class="tok">${tok}</span>`)}`);
+  return html`<div class="cmd"><code>${lines}</code><button onClick=${copy} title="Kopiuj">kopiuj</button></div>`;
 }

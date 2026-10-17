@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { html, Icon, Coverage } from "./ui.js";
-import { coverage, day, plural } from "./labels.js";
+import { coverage, day, span, plural } from "./labels.js";
+import { bounds } from "./geo.js";
 
+// Basemap: OpenFreeMap "positron" turned monochrome (user decision: grey OSM
+// basemap, no API key); fallback: OSM raster tiles in greyscale.
 const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 const FALLBACK_STYLE = {
   version: 8,
@@ -16,8 +19,95 @@ const FALLBACK_STYLE = {
       attribution: "© OpenStreetMap",
     },
   },
-  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.8, "raster-opacity": 0.8 } }],
+  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -1, "raster-opacity": 0.85 } }],
 };
+
+function hslToRgb(h, s, l) {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
+/** CSS colour string (hex, rgb[a], hsl[a]) -> grey of the same luminance; null if not a colour. */
+function toGray(s) {
+  let r;
+  let g;
+  let b;
+  let a = 1;
+  let m;
+  if ((m = s.match(/^#([0-9a-f]{3,8})$/i))) {
+    let hex = m[1];
+    if (hex.length <= 4) hex = [...hex].map((c) => c + c).join("");
+    [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    if (hex.length === 8) a = parseInt(hex.slice(6, 8), 16) / 255;
+  } else if ((m = s.match(/^rgba?\(([^)]+)\)$/i))) {
+    [r, g, b, a = 1] = m[1].split(",").map((x) => parseFloat(x));
+  } else if ((m = s.match(/^hsla?\(([^)]+)\)$/i))) {
+    const [h, sat, l, alpha = 1] = m[1].split(",").map((x) => parseFloat(x));
+    [r, g, b] = hslToRgb(h, sat / 100, l / 100);
+    a = alpha;
+  } else return null;
+  const y = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  return `rgba(${y},${y},${y},${a})`;
+}
+
+function grayStyle(style) {
+  const gray = (v) => {
+    if (typeof v === "string") return toGray(v) ?? v;
+    if (Array.isArray(v)) return v.map(gray);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, gray(x)]));
+    return v;
+  };
+  for (const layer of style.layers) if (layer.paint) layer.paint = gray(layer.paint);
+  return style;
+}
+
+/** Flight span of the sheets of one campaign in a combination (selected records). */
+export function campaignSpan(combo, campaign) {
+  const dates = [...combo.sheetsFull, ...combo.sheetsPartial]
+    .map((code) => combo.sheetRecords?.[code])
+    .filter((r) => r && r.campaign === campaign && r.date)
+    .map((r) => r.date)
+    .sort();
+  return dates.length ? span([dates[0], dates[dates.length - 1]]) : "–";
+}
+
+/**
+ * Result preview clipped to a user area: PNG data URL of the area's part of
+ * the demo preview (EPSG:2180 raster of the demo bbox) masked by the area
+ * ring, and its corners in WGS84 (bilinear in the demo extent, which is
+ * accurate to well under a pixel at this size).
+ */
+export async function clippedPreview(fx, area, href) {
+  const [dx0, dy0, dx1, dy1] = fx.area.bbox;
+  const [ax0, ay0, ax1, ay1] = bounds(area.ring2180);
+  const img = new Image();
+  img.src = href;
+  await img.decode();
+  const sx = img.naturalWidth / (dx1 - dx0);
+  const sy = img.naturalHeight / (dy1 - dy0);
+  const w = Math.max(1, Math.round((ax1 - ax0) * sx));
+  const h = Math.max(1, Math.round((ay1 - ay0) * sy));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.beginPath();
+  area.ring2180.forEach(([x, y], i) => (i ? ctx.lineTo((x - ax0) * sx, (ay1 - y) * sy) : ctx.moveTo((x - ax0) * sx, (ay1 - y) * sy)));
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, (ax0 - dx0) * sx, (dy1 - ay1) * sy, w, h, 0, 0, w, h);
+  const r = fx.area.ring4326; // NW, NE, SE, SW corners of the demo bbox
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const at = (x, y) => {
+    const u = (x - dx0) / (dx1 - dx0);
+    const v = (dy1 - y) / (dy1 - dy0);
+    return lerp(lerp(r[0], r[1], u), lerp(r[3], r[2], u), v);
+  };
+  return { image: canvas.toDataURL("image/png"), coords: [at(ax0, ay1), at(ax1, ay1), at(ax1, ay0), at(ax0, ay0)] };
+}
+
 export const CAMPAIGN_COLORS = ["#0d9488", "#0ea5e9", "#8b5cf6", "#f43f5e"];
 export const FULL_COLOR = "#16a34a";
 export const PARTIAL_COLOR = "#d97706";
@@ -57,6 +147,8 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
   const [ready, setReady] = useState(false);
   const [tip, setTip] = useState(null);
   const [drawCount, setDrawCount] = useState(0);
+  const [legendOpen, setLegendOpen] = useState(() => !window.matchMedia("(max-width: 860px)").matches);
+  const drawApi = useRef(null);
   // handlers registered once on the map read the latest callbacks
   const cbs = useRef({});
   cbs.current = { onDrawn, onCancelDraw, onSheetClick, drawMode };
@@ -67,15 +159,20 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
     (async () => {
       const style = await fetch(STYLE_URL)
         .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then(grayStyle)
         .catch(() => FALLBACK_STYLE);
       if (cancelled) return;
       map = new maplibregl.Map({
         container: box.current,
         style,
         bounds: boundsOf(fx.area.ring4326),
-        fitBoundsOptions: { padding: 60 },
-        attributionControl: { compact: false, customAttribution: "Arkusze i podglądy: GUGiK · mockup Archiwisty" },
+        fitBoundsOptions: { padding: 40 },
+        attributionControl: false,
       });
+      // phones: compact attribution in the free top-left corner (bottom has the year strip)
+      const narrow = window.matchMedia("(max-width: 860px)").matches;
+      map.addControl(new maplibregl.AttributionControl({ compact: narrow, customAttribution: "Arkusze i podglądy: GUGiK · mockup Archiwisty" }), narrow ? "top-left" : "bottom-left");
+      if (narrow) map.getContainer().querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
       map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
       map.on("load", () => {
@@ -107,7 +204,7 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
           type: "fill",
           source: "sheets",
           filter: ["==", ["get", "state"], "full"],
-          paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", ["get", "dim"], 0.04, 0.26] },
+          paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", ["get", "dim"], 0.04, 0.22] },
         });
         map.addLayer({
           id: "sheets-partial",
@@ -234,8 +331,16 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
       props.opacity = 0.18;
     }
     map.getSource("aoi").setData(polygon(area.ring4326, props));
-    map.fitBounds(boundsOf(area.ring4326), { padding: { top: 70, bottom: 70, left: 60, right: 60 }, duration: 700 });
   }, [ready, area, product, combo]);
+
+  // frame the area (or the data extent when there is none)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready) return;
+    const narrow = map.getContainer().clientWidth < 600;
+    const padding = narrow ? { top: 64, bottom: 40, left: 20, right: 20 } : { top: 96, bottom: 56, left: 56, right: 56 };
+    map.fitBounds(boundsOf((area ?? fx.area).ring4326), { padding, duration: 700 });
+  }, [ready, area]);
 
   // sheets of the displayed combination
   useEffect(() => {
@@ -266,10 +371,13 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
     map.getSource("sheets").setData({ type: "FeatureCollection", features });
   }, [ready, combo, product, result]);
 
+  // result layer: the mosaic preview, clipped to the user's area when needed
   useEffect(() => {
     const map = mapRef.current;
     if (!ready) return;
-    map.setLayoutProperty("result", "visibility", result?.visible ? "visible" : "none");
+    const on = Boolean(result?.visible && result.preview);
+    if (on) map.getSource("result").updateImage({ url: result.image ?? result.preview, coordinates: result.coords ?? fx.area.ring4326 });
+    map.setLayoutProperty("result", "visibility", on ? "visible" : "none");
   }, [ready, result]);
 
   // drawing
@@ -306,7 +414,7 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
       cbs.current.onDrawn(ring, kind);
     };
     const down = (e) => {
-      if (drawMode !== "rect") return;
+      if (drawMode !== "rect" || e.originalEvent?.touches?.length > 1) return;
       e.preventDefault();
       start = e.lngLat;
     };
@@ -328,7 +436,7 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
       const p = [e.lngLat.lng, e.lngLat.lat];
       if (pts.length >= 3) {
         const first = map.project(pts[0]);
-        if (Math.hypot(first.x - e.point.x, first.y - e.point.y) < 10) return finish([...pts], "poly");
+        if (Math.hypot(first.x - e.point.x, first.y - e.point.y) < 14) return finish([...pts], "poly");
       }
       pts.push(p);
       setDrawCount(pts.length);
@@ -339,36 +447,43 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
       e.preventDefault();
       if (pts.length >= 3) finish([...pts], "poly");
     };
+    const undo = () => {
+      if (!pts.length) return;
+      pts.pop();
+      setDrawCount(pts.length);
+      show(pts, false);
+    };
+    // buttons of the drawing hint (touch screens have no Enter/Backspace)
+    drawApi.current = { finish: () => pts.length >= 3 && finish([...pts], "poly"), undo };
     const key = (e) => {
       if (e.key === "Escape") {
         source.setData(EMPTY);
         cbs.current.onCancelDraw();
       }
       if (drawMode === "poly" && e.key === "Enter" && pts.length >= 3) finish([...pts], "poly");
-      if (drawMode === "poly" && e.key === "Backspace" && pts.length) {
-        pts.pop();
-        setDrawCount(pts.length);
-        show(pts, false);
-      }
+      if (drawMode === "poly" && e.key === "Backspace") undo();
     };
     map.dragPan.disable();
     map.doubleClickZoom.disable();
     if (drawMode === "poly") map.dragPan.enable();
-    map.on("mousedown", down);
-    map.on("mousemove", move);
-    map.on("mouseup", up);
-    map.on("click", click);
-    map.on("dblclick", dbl);
+    const events = [
+      ["mousedown", down],
+      ["mousemove", move],
+      ["mouseup", up],
+      ["touchstart", down],
+      ["touchmove", move],
+      ["touchend", up],
+      ["click", click],
+      ["dblclick", dbl],
+    ];
+    for (const [name, fn] of events) map.on(name, fn);
     window.addEventListener("keydown", key);
     setDrawCount(0);
     return () => {
       canvas.style.cursor = "";
-      map.off("mousedown", down);
-      map.off("mousemove", move);
-      map.off("mouseup", up);
-      map.off("click", click);
-      map.off("dblclick", dbl);
+      for (const [name, fn] of events) map.off(name, fn);
       window.removeEventListener("keydown", key);
+      drawApi.current = null;
       map.dragPan.enable();
       map.doubleClickZoom.enable();
       source.setData(EMPTY);
@@ -380,11 +495,19 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
     <div id="map" ref=${box}></div>
     ${drawMode
       ? html`<div class="map-hint float-card">
-          <${Icon} name=${drawMode === "rect" ? "rect" : "poly"} />
-          ${drawMode === "rect"
-            ? html`Kliknij i przeciągnij, aby zaznaczyć prostokąt`
-            : html`Klikaj wierzchołki (${drawCount}); zakończ dwuklikiem, <span class="kbd">Enter</span> albo klikiem w pierwszy punkt`}
-          <span class="faint">· <span class="kbd">Esc</span> anuluje</span>
+          <span class="map-hint-text">
+            <${Icon} name=${drawMode === "rect" ? "rect" : "poly"} />
+            ${drawMode === "rect"
+              ? html`<span>Przeciągnij po mapie, aby zaznaczyć prostokąt</span>`
+              : html`<span>Stawiaj wierzchołki (${drawCount}); zakończ klikiem w pierwszy punkt, dwuklikiem albo <span class="kbd">Enter</span></span>`}
+          </span>
+          <span class="map-hint-actions">
+            ${drawMode === "poly"
+              ? html`<button class="btn sm" disabled=${!drawCount} onClick=${() => drawApi.current?.undo()}>Cofnij</button>
+                  <button class="btn sm primary" disabled=${drawCount < 3} onClick=${() => drawApi.current?.finish()}>Zakończ</button>`
+              : null}
+            <button class="btn sm ghost" onClick=${() => onCancelDraw()} title="Esc">Anuluj</button>
+          </span>
         </div>`
       : null}
     ${combo && yearLabel
@@ -392,24 +515,30 @@ export function MapView({ fx, area, drawMode, onDrawn, onCancelDraw, product, co
           <span class="yr">${combo.year}</span>
           <div>
             <${Coverage} combo=${combo} />
-            <div class="muted" style="font-size:11.5px;margin-top:3px">${combo.variant} · ${combo.horizontal}</div>
+            <div class="muted badge-sub">${combo.variant}${product === "bdot10k" ? "" : ` · ${combo.horizontal}`}</div>
+            ${combo.dates ? html`<div class="faint badge-sub">nalot ${span(combo.dates)}</div>` : null}
           </div>
         </div>`
       : null}
     ${combo && product !== "bdot10k"
-      ? html`<div class="legend float-card">
-          <div class="legend-title">Arkusze ${combo.year}</div>
-          ${multi
-            ? combo.campaignsSelected.map(
-                (c, i) => html`<div class="legend-row">
-                  <span class="sw" style=${`background:${CAMPAIGN_COLORS[i % 4]}`}></span>pełny · ${c}
-                </div>`,
-              )
-            : html`<div class="legend-row"><span class="sw" style=${`background:${FULL_COLOR}`}></span>arkusz pełny (TAK)</div>`}
-          <div class="legend-row"><span class="sw hatch"></span>tylko rekord niepełny (NIE)</div>
-          <div class="legend-row"><span class="sw" style="border:2.4px solid #1d4ed8"></span>w magazynie (pobrane)</div>
-          <div class="legend-row"><span class="sw" style="border:2px solid #3730a3"></span>obszar zapytania</div>
-          ${result?.visible ? html`<div class="legend-row"><span class="sw" style="background:linear-gradient(135deg,#888,#eee)"></span>wynik: ${result.name}</div>` : null}
+      ? html`<div class=${`legend float-card ${legendOpen ? "" : "closed"}`}>
+          <button class="legend-title" onClick=${() => setLegendOpen(!legendOpen)} title=${legendOpen ? "Zwiń legendę" : "Pokaż legendę"}>
+            <span>Arkusze ${combo.year}</span><${Icon} name=${legendOpen ? "down" : "chevron"} size=${14} />
+          </button>
+          ${legendOpen
+            ? html`${multi
+                ? combo.campaignsSelected.map(
+                    (c, i) => html`<div class="legend-row">
+                      <span class="sw" style=${`background:${CAMPAIGN_COLORS[i % 4]}`}></span>
+                      <span><span class="nw">pełny · ${c}</span><span class="legend-sub">nalot ${campaignSpan(combo, c)}</span></span>
+                    </div>`,
+                  )
+                : html`<div class="legend-row"><span class="sw" style=${`background:${FULL_COLOR}`}></span>arkusz pełny (TAK)</div>`}
+              <div class="legend-row"><span class="sw hatch"></span>tylko rekord niepełny (NIE)</div>
+              <div class="legend-row"><span class="sw" style="border:2.4px solid #1d4ed8"></span>w magazynie (pobrane)</div>
+              <div class="legend-row"><span class="sw" style="border:2px solid #3730a3"></span>obszar zapytania</div>
+              ${result?.visible ? html`<div class="legend-row"><span class="sw" style="background:linear-gradient(135deg,#888,#eee)"></span>wynik: ${result.name}</div>` : null}`
+            : null}
         </div>`
       : null}
     ${tip
