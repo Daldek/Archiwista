@@ -1542,3 +1542,182 @@ Rozważony kontrargument — tempo: Archiwista czeka na wydania Kartografa.
 Odpowiedź: kolejność roadmapy (sekcja 13) najpierw daje tryby bez nowych
 funkcji Kartografa (zestaw QGIS, zestaw PL + CZ bez scalania, porównanie
 metadanych i wizualne), a KE, KG i KF przychodzą później.
+
+## 9. API HTTP
+
+### 9.1 Zasady
+
+- Prefiks `/api/v1`, JSON w UTF-8; nazwy pól po angielsku (`snake_case`),
+  teksty dla ludzi (etykiety, komunikaty) po polsku. Schemat OpenAPI:
+  `/api/v1/openapi.json`; dokumentacja interaktywna `/api/docs` (tylko
+  w trybie lokalnym). Do v1.0 API może się zmieniać; od v1.0 `/api/v1` jest
+  stabilne.
+- **Czytelne identyfikatory:** magazyn ma krótką nazwę (`zespol`), slot
+  i wersja są adresowane ścieżką względną do magazynu
+  (`nmt/pl_1992_1m_evrf2007/…`). Serwer przyjmuje tylko ścieżki znane
+  indeksowi — nigdy dowolnej ścieżki systemu plików (10.1).
+- **Opcje poleceń Kartografa** mają tę samą postać JSON co `tasks[].options`
+  w manifeście projektu (`bbox` jako 4 liczby z `bbox_crs`, wartości per
+  kraj jako obiekt `{"pl": …, "cz": …}`, listy jako tablice).
+- **Etykiety pokrycia liczy serwer** i zwraca obok wartości
+  strukturalnych — interfejs, asystent i skrypty mają jedno słownictwo.
+- **Operacje długie:** `202 Accepted` z zasobem zadania w tle; zdarzenia
+  przez SSE (`/jobs/{id}/events`).
+- **Błędy:** RFC 9457 (`application/problem+json`) z polami `type`,
+  `title`, `status`, `detail` (po polsku), `code` (`validation_error`,
+  `not_found`, `conflict`, `store_unavailable`, `kartograf_error`,
+  `budget_exceeded`…) i — gdy błąd pochodzi z Kartografa — `kartograf`
+  (`exception`, `message` bez zmian).
+- **Stronicowanie:** `limit` (do 200) i nieprzezroczysty `cursor`.
+- **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
+  w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo
+  identyfikator obszaru.
+- **Bezpieczeństwo:** bez CORS; żądania zmieniające stan wymagają nagłówka
+  `X-Archiwista-CSRF` (10.1); w trybie zespołu — sesja zalogowanej osoby
+  i rola (10.2).
+
+### 9.2 Zasoby
+
+| Metoda i ścieżka | Co robi |
+|---|---|
+| `GET /stores` | magazyny, dostępność, statystyki |
+| `GET /stores/{store}` | stan magazynu: zajętość wg produktów, problemy, ostatni skan |
+| `POST /stores/{store}/scan` | skan (`mode`: `incremental` albo `full`, opcjonalnie `segment`) → zadanie w tle |
+| `GET /products` | produkty z opisami, krajami i licznikami w magazynach (KB-1 + indeks) |
+| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją |
+| `GET /stores/{store}/slots/{slot}` | karta pliku: wersje, bieżąca i pełna, przypięcia |
+| `GET /stores/{store}/versions/{version}` | wersja: metadane po ludzku i sidecar |
+| `GET /stores/{store}/versions/{version}/sidecar` | surowy sidecar |
+| `GET /stores/{store}/versions/{version}/file` | plik danych (strumień; potrzebny w trybie zespołu) |
+| `GET /stores/{store}/versions/{version}/preview.png` | miniatura |
+| `GET /stores/{store}/versions/{version}/tiles/{z}/{x}/{y}.png` | kafle podglądu (`style`: `hillshade`, `rgb`, `classes`…) |
+| `GET /stores/{store}/versions/{version}/features` | obiekty wektorowe w widoku (`layer`, `bbox`, `limit`) |
+| `GET /stores/{store}/versions/{version}/members` | lista członów ZIP |
+| `GET /groups/{parent_request}` | pliki jednego zadania Kartografa (także PL i CZ) |
+| `GET /compare?a=…&b=…` | porównanie metadanych dwóch wersji (8.5, poziom 1) |
+| `GET /map/footprints` | obrysy w widoku (`bbox`, `zoom`, filtry) albo agregacja |
+| `GET /map/sheets` | siatka godeł w widoku (`system`, `scale`) |
+| `POST /areas` | obszar z GeoJSON albo z pliku geometrii → `id`, powierzchnia, kraje |
+| `POST /availability` | dostępność obszaru dla produktu → zadanie w tle; wynik: stan lokalny, raport źródła, wiersze z etykietami |
+| `GET /availability` | ostatni raport dla obszaru i produktu (bez sieci) |
+| `GET /commands` | katalog komend danych Kartografa (KB-1) |
+| `POST /commands/parse` | wklejone polecenie → `command`, `options` (KB-2) |
+| `POST /commands/validate` | walidacja bez sieci (KB-3) |
+| `POST /commands/format` | opcje → tekst polecenia `kartograf …` (KB-4) |
+| `POST /jobs` | zadanie w tle: `check`, `download`, `project`, `compose`, `export`, `preview` |
+| `GET /jobs`, `GET /jobs/{id}` | lista i stan zadań |
+| `GET /jobs/{id}/events` | strumień SSE: `progress`, `notice`, `state` |
+| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | anulowanie, ponowienie |
+| `GET /jobs/{id}/log` | dziennik zadania |
+| `GET /projects`, `POST /projects` | lista; rejestracja istniejącego (`path`) albo nowy (`path`, `output_dir` → `init_project`) |
+| `GET /projects/{id}` | zadania projektu, przypięcia, stan z indeksu |
+| `GET /projects/{id}/status` | `get_project_status` (bez sieci, szybkie) |
+| `POST /projects/{id}/tasks` | `add_project_task` (walidacja bez sieci) |
+| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` (pliki zostają w magazynie) |
+| `POST /projects/{id}/sets`, `GET /projects/{id}/sets` | zestaw do QGIS (zadanie `export`), lista zestawów |
+| `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | rozmowy |
+| `POST /assistant/conversations/{id}/messages` | wiadomość → strumień SSE (tekst, wywołania narzędzi, propozycje, efekty w interfejsie) |
+| `GET /assistant/proposals/{id}` | propozycja |
+| `POST /assistant/proposals/{id}/execute`, `…/reject` | wykonanie albo odrzucenie — tylko z interfejsu, z tokenem CSRF |
+| `GET /settings`, `PUT /settings` | ustawienia (w zespole: administrator) |
+| `GET /health` | wersje Archiwisty i Kartografa, stan magazynów, indeksu i zadań |
+
+### 9.3 Przykłady
+
+**Wyszukiwanie** — `GET /api/v1/slots?q=N-34-130-D-d-2-4&versions=current&limit=1`
+
+```json
+{
+  "items": [
+    {
+      "store": "zespol",
+      "slot": "nmt/pl_1992_1m_evrf2007/N-34/130/D/d/2/4/N-34-130-D-d-2-4.asc",
+      "segment": {"path": "nmt/pl_1992_1m_evrf2007",
+                  "label": "NMT 1 m · PL-1992 · EVRF2007",
+                  "dataset": "pl.gugik.nmt_1m"},
+      "unit": {"kind": "sheet", "code": "N-34-130-D-d-2-4"},
+      "current_version": {
+        "path": "nmt/pl_1992_1m_evrf2007/versions/N-34/130/D/d/2/4/2025-04-26_82710_fdd30535/N-34-130-D-d-2-4.asc",
+        "label": "2025-04-26_82710",
+        "label_source": "campaign",
+        "data_date": "2025-04-26",
+        "full_sheet": true,
+        "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
+        "size_bytes": 37798349
+      },
+      "versions_count": 1,
+      "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
+      "pinned_by": [{"project": "raba", "task": "teren"}]
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+**Dostępność** — `POST /api/v1/availability` z `{"area_id": "krakow",
+"product": "nmt"}` daje `202` i zadanie; jego wynik (fragment):
+
+```json
+{
+  "area": {"id": "krakow", "area_km2": 120.0, "countries": ["PL"]},
+  "product": "nmt",
+  "checked_at": "2026-10-20T08:15:02Z",
+  "variant": {"resolution": "1m", "vertical_crs": "EVRF2007",
+              "format": "ASC", "sheet_system": "1992", "other_variants": 2},
+  "rows": [
+    {"year": 2023, "label": "pełne · 2 kampanie",
+     "coverage": {"complete": true, "campaigns": 2, "full_share": 1.0,
+                  "partial_sheets": 0, "sheets": 12},
+     "local": {"label": "pobrane 5/12", "units": 5, "of": 12}},
+    {"year": 2022, "label": "częściowe · 58%",
+     "coverage": {"complete": false, "campaigns": 1, "full_share": 0.58,
+                  "partial_sheets": 4, "sheets": 9},
+     "local": {"label": "niepobrane", "units": 0, "of": 9}}
+  ],
+  "source": {"schema": "kartograf-availability/1", "ok": true}
+}
+```
+
+**Pobranie** — `POST /api/v1/jobs`
+
+```json
+{
+  "kind": "download",
+  "store": "zespol",
+  "command": "elevation download",
+  "options": {"product": "nmt", "country": "pl",
+              "bbox": [561000, 239000, 573000, 249000], "bbox_crs": "EPSG:2180",
+              "sheet_system": "1992", "resolution": "1m",
+              "vertical_crs": "EVRF2007", "year": 2023},
+  "update": null,
+  "project_task": {"project": "raba", "name": "teren-2023"}
+}
+```
+
+Odpowiedź `202`: `{"id": "j-2026-10-20-0007", "state": "queued", "events":
+"/api/v1/jobs/j-2026-10-20-0007/events"}`. Strumień zdarzeń:
+
+```text
+event: progress
+data: {"current": 3, "total": 7, "unit": "N-34-…", "status": "downloaded"}
+
+event: notice
+data: {"level": "info", "code": "sheet_list", "text": "(tekst Kartografa bez zmian)"}
+
+event: state
+data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
+```
+
+**Błąd z Kartografa** — `422`, `application/problem+json`:
+
+```json
+{
+  "type": "/api/v1/problems/validation",
+  "title": "Niepoprawne opcje polecenia",
+  "status": 422,
+  "code": "validation_error",
+  "detail": "(tekst ValidationError Kartografa bez zmian)",
+  "kartograf": {"exception": "ValidationError",
+                "message": "(tekst ValidationError Kartografa bez zmian)"}
+}
+```
