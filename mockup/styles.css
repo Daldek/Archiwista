@@ -236,6 +236,13 @@ code, .mono { font-family: var(--mono); font-size: 11.5px; }
 .ring { width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(var(--local) var(--p), #dbeafe 0); flex: none; }
 
 .more-chip { font-size: 11px; color: var(--text-2); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+/* file formats of one data set (variant): badges, chosen when downloading */
+.fmts { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; }
+.fmt { font-family: var(--mono); font-size: 10.5px; font-weight: 600; line-height: 16px; color: var(--text-2); background: #fff; border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; white-space: nowrap; }
+button.fmt { cursor: pointer; }
+button.fmt:hover { border-color: var(--accent-2); color: var(--accent); }
+.fmt.on { background: var(--accent-soft); border-color: var(--accent-2); color: var(--accent); }
+.fmt-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--text-2); background: #fff; }
 
 /* ---------- left panel: flow ---------- */

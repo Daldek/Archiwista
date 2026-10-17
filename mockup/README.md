@@ -32,6 +32,14 @@ potrzebuje internetu (CDN bibliotek i fontów, podkład OpenFreeMap).
    rok” / „Odrzuć” → postęp zadania (czat i „Zadania”) → wynik na mapie,
    w stosie i w „Karcie pliku”.
 
+Wariant = produkt, rok, układ poziomy, rozdzielczość (gęstość), układ
+wysokości i zgłoszenie/kampania. Formaty plików tego samego zestawu to
+plakietki jednego wariantu (np. NMT 2019 „5 m · EVRF2007 · ASC, ASCII-NMT”);
+format wybiera się dopiero przy pobraniu (plakietki na karcie, w panelu
+roku, w Karcie pliku i w planie asystenta), domyślnie raster gotowy do
+mozaiki (ASC, TIF). Raport Kartografa zostaje per format — grupuje
+Archiwista.
+
 Etykiety pokrycia: „pełne”, „pełne · N kampanie”, „częściowe · X%”,
 „brak danych”; osobna plakietka magazynu: „pobrane”, „pobrane 5/12”,
 „niepobrane”. Daty w interfejsie: RRRR.MM.DD. Podkład: szary (OpenFreeMap

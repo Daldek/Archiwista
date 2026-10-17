@@ -2,12 +2,13 @@
 
 import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { html, Icon, Logo, Seg, Coverage, Local } from "./ui.js";
+import { html, Icon, Logo, Seg, Coverage, Local, Formats } from "./ui.js";
 import {
   PRODUCTS,
   loadFixtures,
   forArea,
-  localState,
+  withLocal,
+  inFormat,
   yearGroups,
   defaultFilter,
   filterOptions,
@@ -50,6 +51,8 @@ function App({ fx }) {
   const [filters, setFilters] = useState({});
   const [selectedYear, setSelectedYear] = useState(null);
   const [override, setOverride] = useState({});
+  // download format chosen per variant (format badges); default: the variant's first format
+  const [formatPick, setFormatPick] = useState({});
   const [tab, setTab] = useState("table");
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState(GREETING);
@@ -72,7 +75,7 @@ function App({ fx }) {
 
   const combos = useMemo(() => {
     if (!checked) return null;
-    return forArea(fx, checked.product, checked.area).map((c) => ({ ...c, local: localState(c, fx.store, extra) }));
+    return forArea(fx, checked.product, checked.area).map((c) => withLocal(c, fx.store, extra));
   }, [checked, extra]);
   const filter = checked ? filters[checked.product] ?? defaultFilter(checked.product) : null;
   const groups = useMemo(() => (combos ? yearGroups(combos, filter) : null), [combos, filter]);
@@ -194,7 +197,7 @@ function App({ fx }) {
       setTyping(true);
       await sleep(400);
     }
-    const list = forArea(fx, req.product, s.area).map((c) => ({ ...c, local: localState(c, fx.store, state.current.extra) }));
+    const list = forArea(fx, req.product, s.area).map((c) => withLocal(c, fx.store, state.current.extra));
     setTyping(false);
     if (req.prepare) {
       const plan = makePlan({ fx, area: s.area, product: req.product, combos: list, req, project: PROJECT });
@@ -255,6 +258,14 @@ function App({ fx }) {
       }
       return;
     }
+    if (id === "format") {
+      // same variant, another file format: the plan is rebuilt in place
+      const req = { ...msg.req, format: a.format };
+      const list = forArea(fx, msg.plan.product, msg.plan.area).map((c) => withLocal(c, fx.store, state.current.extra));
+      const plan = makePlan({ fx, area: msg.plan.area, product: msg.plan.product, combos: list, req, project: PROJECT, pin: msg.plan.combo.id });
+      if (plan) setMessages((all) => all.map((m) => (m === msg ? { ...m, plan, req } : m)));
+      return;
+    }
     if (id === "run") {
       setMessages((list) => list.map((m) => (m === msg ? { ...m, status: "running" } : m)));
       startTask(msg.plan);
@@ -282,7 +293,9 @@ function App({ fx }) {
     }
     if (id === "card") {
       if (narrow) setChatOpen(false);
-      setDrawer({ combo: a.combo, result: a.result && result?.file === a.result.file ? result : a.result });
+      // current store state of the downloaded format (the plan's copy predates the task)
+      const now = combos?.find((c) => c.id === a.combo.id);
+      setDrawer({ combo: now ? inFormat(now, a.combo.format) : a.combo, result: a.result && result?.file === a.result.file ? result : a.result });
     }
   }
 
@@ -373,7 +386,7 @@ function App({ fx }) {
     const text =
       mode === "mosaic"
         ? `Przygotuj ${p.name}${combo.row && combo.product !== "bdot10k" ? ` ${combo.row}` : ""} dla tego obszaru, rok ${combo.year}, jako jedna mozaika`
-        : `Pobierz ${p.name} ${combo.variant}, rok ${combo.year}`;
+        : `Pobierz ${p.name} ${[combo.base, combo.format].filter(Boolean).join(" · ")}, rok ${combo.year}`;
     onSend(text);
   }
 
@@ -484,7 +497,7 @@ function App({ fx }) {
                 )}
               </div>`
             : checked
-              ? html`<div class="muted" style="line-height:1.5">${combos.length} ${plural(combos.length, "kombinacja", "kombinacje", "kombinacji")} · ${groups.length} ${plural(groups.length, "rok", "lata", "lat")}<br />sprawdzono ${stamp(fx.reports[checked.product].checked_at)}</div>
+              ? html`<div class="muted" style="line-height:1.5">${combos.length} ${plural(combos.length, "wariant", "warianty", "wariantów")} · ${groups.length} ${plural(groups.length, "rok", "lata", "lat")}<br />sprawdzono ${stamp(fx.reports[checked.product].checked_at)}</div>
                   <button class="btn sm" style="margin-top:8px" onClick=${() => runCheck(checked.product)}><${Icon} name="rotate" size=${13} />Sprawdź ponownie</button>`
               : html`<button class="btn primary block" disabled=${!area || outside || !product} onClick=${() => runCheck(product)}>Sprawdź dostępność</button>
                   <div class="hint">Bez pobierania danych: skorowidz źródła, maska lądu i pomiar pokrycia (jak <code>kartograf elevation availability</code>).</div>`}
@@ -504,6 +517,7 @@ function App({ fx }) {
               ${groups.map((g) => {
                 const sel = g.year === selectedYear;
                 const c = sel ? displayed : g.best;
+                const pick = c ? inFormat(c, formatPick[c.id]) : null;
                 return html`<div class=${`layer ${sel ? "on" : ""}`}>
                   <div class="layer-row" onClick=${() => selectYear(g.year)}>
                     <span class="layer-year">${g.year}</span>
@@ -513,7 +527,8 @@ function App({ fx }) {
                   ${sel && c
                     ? html`<div class="layer-body">
                         <dl class="kv">
-                          <dt>Wariant</dt><dd>${c.variant}</dd>
+                          <dt>Wariant</dt><dd>${c.base}</dd>
+                          <dt>Formaty</dt><dd><${Formats} combo=${c} value=${pick.format} onPick=${(f) => setFormatPick((o) => ({ ...o, [c.id]: f }))} /></dd>
                           ${checked.product !== "bdot10k" ? html`<dt>Układ arkuszy</dt><dd>${c.horizontal}</dd><dt>Nalot</dt><dd>${span(c.dates)}</dd>` : html`<dt>Powiaty</dt><dd>${c.units.join(", ")}</dd>`}
                         </dl>
                         ${checked.product !== "bdot10k"
@@ -540,8 +555,8 @@ function App({ fx }) {
                             </div>`
                           : null}
                         <div style="display:flex;gap:6px;margin-top:9px">
-                          <button class="btn sm" onClick=${() => setDrawer({ combo: c })}><${Icon} name="file" size=${13} />Karta</button>
-                          <button class="btn sm" disabled=${!c.hints.length} onClick=${() => askFor(c, "download")}><${Icon} name="download" size=${13} />Pobierz</button>
+                          <button class="btn sm" onClick=${() => setDrawer({ combo: pick })}><${Icon} name="file" size=${13} />Karta</button>
+                          <button class="btn sm" disabled=${!pick.hints.length} onClick=${() => askFor(pick, "download")}><${Icon} name="download" size=${13} />Pobierz${c.formats.length > 1 ? ` ${pick.format}` : ""}</button>
                         </div>
                       </div>`
                     : null}
@@ -564,7 +579,7 @@ function App({ fx }) {
         ${checked && opts
           ? html`<div class="filter-bar">
               <div class="filter-group">
-                <span class="filter-label">${checked.product === "laz" ? "Gęstość" : checked.product === "bdot10k" ? "Format" : checked.product === "orto" ? "Piksel" : "Rozdzielczość"}</span>
+                <span class="filter-label">${checked.product === "laz" ? "Gęstość" : checked.product === "bdot10k" ? "Pakiet" : checked.product === "orto" ? "Piksel" : "Rozdzielczość"}</span>
                 <button class=${`chip ${!filter.rows?.length ? "on" : ""}`} onClick=${() => setFilter({ rows: [] })}>wszystkie</button>
                 ${opts.rows.map(
                   (r) => html`<button class=${`chip ${filter.rows?.includes(r) ? "on" : ""}`}
@@ -635,7 +650,7 @@ function App({ fx }) {
       <button class=${chatOpen ? "on" : ""} onClick=${toggleChat}><${Icon} name="chat" size=${19} />Asystent${running.length ? html`<span class="dot run"></span>` : null}</button>
     </nav>
 
-    <${FileDrawer} fx=${fx} item=${drawer} area=${checked?.area} onClose=${() => setDrawer(null)} />
+    <${FileDrawer} key=${drawer ? `${drawer.combo.id}:${drawer.combo.format}` : "none"} fx=${fx} item=${drawer} area=${checked?.area} onClose=${() => setDrawer(null)} />
   </div>`;
 }
 

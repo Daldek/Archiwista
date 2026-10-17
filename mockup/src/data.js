@@ -91,15 +91,16 @@ export async function loadFixtures() {
   );
   area.ring2180 = area.ring4326.map(to2180);
   const reports = { nmt, nmpt, laz, orto, bdot10k: bdot };
-  const combos = {
+  const raw = {
     nmt: elevationCombos("nmt", nmt, dNmt),
     nmpt: elevationCombos("nmpt", nmpt, dNmpt),
     laz: elevationCombos("laz", laz, dLaz),
     orto: ortoCombos(orto),
     bdot10k: bdotCombos(bdot),
   };
-  for (const list of Object.values(combos)) for (const c of list) c.local = localState(c, store);
-  return { area, sheets, store, reports, combos };
+  for (const list of Object.values(raw)) for (const c of list) c.local = localState(c, store);
+  const combos = Object.fromEntries(Object.entries(raw).map(([id, list]) => [id, variants(list)]));
+  return { area, sheets, store, reports, raw, combos };
 }
 
 function resM(label) {
@@ -137,10 +138,8 @@ function elevationCombos(product, report, derived) {
       landM2: land,
       sheetRecords: d.sheet_records,
       hints: c.download_hint,
-      row: laz ? `${density} pkt/m²` : c.resolution ? res(c.resolution) : c.format === "TIN" || c.format === "TTN" ? "TIN · TTN" : c.format,
-      variant: laz
-        ? `${density} pkt/m² · ${c.vertical_crs}`
-        : [c.resolution ? res(c.resolution) : null, c.vertical_crs, c.format].filter(Boolean).join(" · "),
+      row: laz ? `${density} pkt/m²` : c.resolution ? res(c.resolution) : null,
+      base: laz ? `${density} pkt/m² · ${c.vertical_crs}` : [c.resolution ? res(c.resolution) : null, c.vertical_crs].filter(Boolean).join(" · "),
     };
   });
 }
@@ -174,7 +173,7 @@ function ortoCombos(report) {
     hints: c.download_hint,
     sizeMb: c.index_size_mb ?? null,
     row: res(c.resolution, { cm: true }),
-    variant: `${res(c.resolution, { cm: true })} · ${c.color}`,
+    base: `${res(c.resolution, { cm: true })} · ${c.color}`,
   }));
 }
 
@@ -217,10 +216,64 @@ function bdotCombos(report) {
           ? report.download_hint.current
           : report.download_hint.release.replace("{year}", r.year).replace("{format}", r.format),
       ],
-      row: current ? "GPKG (bieżący)" : r.format,
-      variant: current ? "GPKG · bieżący pakiet" : `${r.format} · archiwum roczników`,
+      row: current ? "bieżący" : "roczniki",
+      base: current ? "bieżący pakiet" : "archiwum roczników",
     };
   });
+}
+
+/** Raster formats ready for a mosaic first: the default download format of a variant. */
+const FORMAT_ORDER = ["ASC", "TIF", "ASCII-NMT", "XYZ", "TBD", "TIN", "TTN", "LAZ", "GPKG", "GML", "SHP"];
+const formatRank = (f) => (FORMAT_ORDER.includes(f) ? FORMAT_ORDER.indexOf(f) : FORMAT_ORDER.length);
+
+/** Store state of a variant: its format with most pieces in the store (ties: the default format). */
+function bestLocal(formats) {
+  return formats.reduce((best, f) => (f.local && (!best || f.local.count > best.count) ? f.local : best), null);
+}
+
+/**
+ * Variants of a product (Archiwista's grouping; the Kartograf report stays
+ * per format): report combinations with the same year, horizontal CRS,
+ * resolution or density, vertical CRS, colour and campaigns are one data set
+ * in several file formats, e.g. NMT 2019 5 m EVRF2007 as ASC and ASCII-NMT.
+ * The variant carries the fields of its default format (`format`, the raster
+ * ready for a mosaic); `formats` lists all of them as report combinations.
+ * The format is chosen only when downloading (`inFormat`).
+ */
+export function variants(raw) {
+  const sets = new Map();
+  for (const c of raw) {
+    const key = [c.year, c.horizontal, c.resolution, c.density, c.vcrs, c.color, c.campaignsAll.join("+")].join("|");
+    if (!sets.has(key)) sets.set(key, []);
+    sets.get(key).push(c);
+  }
+  return [...sets.values()]
+    .map((list) => {
+      const formats = [...list].sort((a, b) => formatRank(a.format) - formatRank(b.format) || a.order - b.order);
+      const names = formats.map((f) => f.format).join(", ");
+      const head = formats[0];
+      return {
+        ...head,
+        order: Math.min(...formats.map((f) => f.order)),
+        formats,
+        row: head.row ?? names,
+        variant: [head.base, names].filter(Boolean).join(" · "),
+        local: bestLocal(formats) ?? head.local,
+      };
+    })
+    .sort((a, b) => a.order - b.order);
+}
+
+/** The variant to download in one of its formats (unknown format: the default one). */
+export function inFormat(v, format) {
+  const f = v.formats.find((x) => x.format === format) ?? v.formats[0];
+  return { ...f, id: v.id, order: v.order, formats: v.formats, row: v.row, base: v.base, variant: v.variant };
+}
+
+/** Store state of every format of a variant, including tasks of this session. */
+export function withLocal(v, store, extra = []) {
+  const formats = v.formats.map((f) => ({ ...f, local: localState(f, store, extra) }));
+  return { ...v, formats, local: bestLocal(formats) };
 }
 
 function sameCombo(item, c) {
@@ -335,13 +388,14 @@ function areaHints(hints, members, bbox) {
 }
 
 /**
- * Re-measure combinations for a user area inside the demo extent (coverage
- * estimate from the sheet frames); the demo area itself keeps the report.
+ * Variants for a user area inside the demo extent: the report combinations
+ * re-measured (coverage estimate from the sheet frames), then grouped; the
+ * demo area itself keeps the report.
  */
 export function forArea(fx, product, area) {
-  const list = fx.combos[product];
-  if (!area || area.kind === "demo") return list;
-  if (product === "bdot10k") return list.map((c) => ({ ...c, hints: areaHints(c.hints, new Set(), area.bbox) }));
+  const list = fx.raw[product];
+  if (!area || area.kind === "demo") return fx.combos[product];
+  if (product === "bdot10k") return variants(list.map((c) => ({ ...c, hints: areaHints(c.hints, new Set(), area.bbox) })));
   const { result } = estimate(area.ring2180, list, fx.sheets);
   const out = [];
   for (const c of list) {
@@ -352,7 +406,7 @@ export function forArea(fx, product, area) {
     next.local = localState(next, fx.store, fx.extraStore ?? []);
     out.push(next);
   }
-  return out;
+  return variants(out);
 }
 
 export function areaInfo(ring4326, kind) {

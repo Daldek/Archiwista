@@ -1,8 +1,9 @@
 // "Zestawienie": years as a table and as a timeline (year x variant x coverage).
 
-import { html, Coverage, Local, Icon, Seg, Cmd } from "./ui.js";
+import { useState } from "preact/hooks";
+import { html, Coverage, Local, Icon, Seg, Cmd, Formats } from "./ui.js";
 import { coverage, span, km2, stamp, variantsMore, plural, int, mb, hintText } from "./labels.js";
-import { matches, rank, ORIGINS, PRODUCTS } from "./data.js";
+import { matches, rank, inFormat, ORIGINS, PRODUCTS } from "./data.js";
 
 const KIND_FILL = { full: "#22c55e", multi: "#14b8a6", partial: "#f59e0b", none: "#e4e7ec" };
 
@@ -31,7 +32,7 @@ function YearTable({ groups, product, selectedYear, onSelectYear, filter }) {
           </tr>`,
           sel
             ? html`<tr class="detail"><td colspan="3">
-                ${[...g.matching, ...g.all.filter((x) => !matches(x, filter))].map((x) => html`<${ComboDetail} c=${x} product=${product} off=${!matches(x, filter)} />`)}
+                ${[...g.matching, ...g.all.filter((x) => !matches(x, filter))].map((x) => html`<${ComboDetail} key=${x.id} c=${x} product=${product} off=${!matches(x, filter)} />`)}
               </td></tr>`
             : null,
         ];
@@ -40,13 +41,16 @@ function YearTable({ groups, product, selectedYear, onSelectYear, filter }) {
   </table>`;
 }
 
+/** One variant of the selected year; its format badges switch the download command. */
 function ComboDetail({ c, product, off }) {
+  const [format, setFormat] = useState(c.format);
+  const pick = inFormat(c, format);
   const cov = coverage(c);
   const frames = c.landM2 ? Math.floor(((c.landM2 - c.uncoveredM2) / c.landM2) * 100) : 0;
   const n = c.sheetsFull.length + c.sheetsPartial.length;
   return html`<div class="combo" style=${off ? "opacity:.55" : ""}>
     <div class="combo-top">
-      <span class="combo-name">${c.variant}</span>
+      <span class="combo-name">${c.base}</span><${Formats} combo=${c} value=${pick.format} onPick=${setFormat} />
       <${Coverage} combo=${c} />
       ${off ? html`<span class="more-chip">poza filtrem</span>` : null}
     </div>
@@ -58,9 +62,9 @@ function ComboDetail({ c, product, off }) {
             ${cov.kind === "partial" ? html`<br />w ramkach arkuszy: ${frames}% (górna granica) · w pełnych: ${Math.floor(cov.pct)}%` : null}
             ${c.estimated ? html`<br /><i>oszacowanie mockupu dla Twojego obszaru</i>` : null}`}
     </div>
-    ${c.hints.length
-      ? html`<${Cmd} text=${hintText(c.hints)} />`
-      : html`<div class="combo-meta"><i>Kartograf nie pobiera tego wariantu (brak podpowiedzi pobrania).</i></div>`}
+    ${pick.hints.length
+      ? html`<${Cmd} text=${hintText(pick.hints)} />`
+      : html`<div class="combo-meta"><i>Kartograf nie pobiera tego formatu (brak podpowiedzi pobrania).</i></div>`}
   </div>`;
 }
 
@@ -217,7 +221,7 @@ export function SummaryPanel({ fx, area, product, combos, groups, filter, tab, o
               <span><i class="tl-sw partial"></i>częściowe — słupek = % lądu w pełnych arkuszach</span>
               <span><i class="tl-sw none"></i>brak w filtrze</span>
             </div>
-            <div class="tl-note">Pasek „w filtrze”: najlepszy wariant roku w aktywnym filtrze; niżej wszystkie warianty (rozdzielczość, gęstość, format). Kliknij komórkę, aby wybrać rok.</div>`}
+            <div class="tl-note">Pasek „w filtrze”: najlepszy wariant roku w aktywnym filtrze; niżej wszystkie warianty (rozdzielczość, gęstość; formaty plików jednego zestawu to jedna komórka). Kliknij komórkę, aby wybrać rok.</div>`}
       ${newestFull
         ? html`<div class="callout">
             <div class="callout-title"><${Icon} name="spark" />Najnowszy pełny rok: ${newestFull.year}</div>

@@ -1,9 +1,9 @@
 // "Asystent" (simulated agent), "Zadania" popover and "Karta pliku" drawer.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import { html, Icon, Coverage, Local, Cmd } from "./ui.js";
+import { html, Icon, Coverage, Local, Cmd, Formats } from "./ui.js";
 import { coverage, span, day, stamp, int, plural, res, km2short, hintText } from "./labels.js";
-import { PRODUCTS, yearGroups } from "./data.js";
+import { PRODUCTS, yearGroups, inFormat } from "./data.js";
 
 const SUGGESTIONS = [
   "Przygotuj NMT 1 m dla tego obszaru, najnowszy pełny rok, jako jedna mozaika",
@@ -11,7 +11,7 @@ const SUGGESTIONS = [
   "Sprawdź dostępność chmur punktów LAZ",
 ];
 
-/** Product, resolution row, year and intent read from a message. */
+/** Product, resolution row, file format, year and intent read from a message. */
 export function parseRequest(text, current) {
   const t = text.toLowerCase();
   let product = current;
@@ -27,10 +27,12 @@ export function parseRequest(text, current) {
     row = resMatch[2] === "cm" ? `${v} cm` : res(`${v}m`);
   }
   const year = t.match(/\b(19|20)\d{2}\b/)?.[0];
+  const format = t.match(/\b(ascii-nmt|asc|xyz|tbd|tin|ttn|tif|laz|gpkg|gml|shp)\b/)?.[1].toUpperCase() ?? null;
   return {
     product: product ?? "nmt",
     row,
     year: year ? +year : null,
+    format,
     mosaic: /mozaik|scal|jedn[aąe]\s*(plik|warstw|mozaik)/.test(t),
     prepare: /przygotuj|pobierz|ściągnij|sciagnij|zrób|zrob/.test(t),
     which: /któr|ktor|jakie|lata|pokryci/.test(t),
@@ -52,22 +54,29 @@ function joinOutput(fx, pick, count, unit) {
   return { step: "Mozaika", verb: "Łączenie mozaiki", what: `${int(count)} ${unit} → 1 GeoTIFF · ${crs}${pick.vcrs ? ` · ${pick.vcrs}` : ""}`, file: `${tag}.tif`, format: "GeoTIFF (mozaika)", preview };
 }
 
-/** Plan of an "prepare data" request from the availability of the area. */
-export function makePlan({ fx, area, product, combos, req, project }) {
+/**
+ * Plan of an "prepare data" request from the availability of the area: the
+ * variant (newest full year or the requested one), downloaded in the requested
+ * file format or its default one. `pin` keeps the variant (format change).
+ */
+export function makePlan({ fx, area, product, combos, req, project, pin }) {
   const p = PRODUCTS.find((x) => x.id === product);
-  const pool = combos.filter((c) => (!req.row || c.row === req.row) && (product !== "orto" || c.color === "RGB") && c.hints.length);
+  const wanted = (c) =>
+    (!req.row || c.row === req.row) && (product !== "orto" || c.color === "RGB") && (!req.format || c.formats.some((f) => f.format === req.format));
+  const pool = combos.filter((c) => (pin ? c.id === pin : wanted(c)) && c.hints.length);
   const groups = yearGroups(pool, null);
-  const pick = req.year
+  const variant = req.year
     ? groups.find((g) => g.year === req.year)?.best
     : groups.find((g) => g.best?.complete)?.best ?? groups[0]?.best;
-  if (!pick) return null;
+  if (!variant) return null;
+  const pick = inFormat(variant, req.format);
   const n = pick.sheetsFull.length + pick.sheetsPartial.length;
   const unit = product === "laz" ? plural(n, "kafel", "kafle", "kafli") : product === "bdot10k" ? plural(pick.units.length, "pakiet", "pakiety", "pakietów") : plural(n, "arkusz", "arkusze", "arkuszy");
   const count = product === "bdot10k" ? pick.units.length : n;
   const missing = count - pick.local.count;
   const report = fx.reports[product];
   const cov = coverage(pick);
-  const name = `${p.name} ${pick.year} · ${req.mosaic ? "mozaika" : product === "bdot10k" ? "pakiety" : "arkusze"}${pick.resolution ? ` ${res(pick.resolution, { cm: product === "orto" })}` : ""}`;
+  const name = `${p.name} ${pick.year} · ${req.mosaic ? "mozaika" : product === "bdot10k" ? "pakiety" : "arkusze"}${pick.resolution ? ` ${res(pick.resolution, { cm: product === "orto" })}` : ""}${!req.mosaic && pick.formats.length > 1 ? ` · ${pick.format}` : ""}`;
   const output = joinOutput(fx, pick, count, unit);
   const steps = [
     {
@@ -77,7 +86,8 @@ export function makePlan({ fx, area, product, combos, req, project }) {
     },
     {
       t: "Pobranie przez Kartograf",
-      s: `${int(missing)} z ${int(count)} ${unit} do magazynu ${fx.store.root} (w magazynie: ${pick.local.count}/${count}). Archiwista woła publiczne API Kartografa; odpowiednik CLI z podpowiedzi raportu:`,
+      s: `${int(missing)} z ${int(count)} ${unit} w formacie ${pick.format} do magazynu ${fx.store.root} (w magazynie: ${pick.local.count}/${count}). Archiwista woła publiczne API Kartografa; odpowiednik CLI z podpowiedzi raportu:`,
+      formats: pick.formats.length > 1,
       cmd: hintText(pick.hints, ` --output ${fx.store.root}`),
     },
   ];
@@ -110,6 +120,10 @@ function PlanCard({ msg, onAction, task }) {
         return html`<li class=${st}>
           <div class="t">${s.t}</div>
           <div class="s">${s.s}</div>
+          ${s.formats
+            ? html`<div class="fmt-line" style="margin-top:6px"><span class="faint" style="font-size:11px">Format pliku${status === "proposed" ? " (kliknij, aby zmienić)" : ""}:</span>
+                <${Formats} combo=${plan.combo} value=${plan.combo.format} onPick=${status === "proposed" ? (f) => onAction("format", msg, { format: f }) : undefined} /></div>`
+            : null}
           ${s.cmd ? html`<${Cmd} text=${s.cmd} />` : null}
         </li>`;
       })}
@@ -212,8 +226,11 @@ export function TasksPopover({ tasks, onClose }) {
 }
 
 export function FileDrawer({ fx, item, area, onClose }) {
+  const [format, setFormat] = useState(item?.combo.format);
   if (!item) return null;
-  const { combo, result } = item;
+  const { result } = item;
+  // the card shows one file format of the variant; its badges switch it (not for a result file)
+  const combo = inFormat(item.combo, format);
   const product = PRODUCTS.find((p) => p.id === combo.product);
   const n = combo.sheetsFull.length + combo.sheetsPartial.length;
   const first = [...combo.sheetsFull, ...combo.sheetsPartial][0];
@@ -270,7 +287,9 @@ export function FileDrawer({ fx, item, area, onClose }) {
         <dt>Układ</dt><dd>${combo.horizontal}${combo.vcrs ? ` · ${combo.vcrs}` : ""}</dd>
         ${combo.resolution ? html`<dt>Rozdzielczość</dt><dd>${res(combo.resolution, { cm: combo.product === "orto" })}</dd>` : null}
         ${combo.density ? html`<dt>Gęstość</dt><dd>${combo.density} pkt/m²</dd>` : null}
-        <dt>Format</dt><dd>${result ? `${result.format} z plików ${combo.format}` : combo.format}${combo.color ? ` · ${combo.color}` : ""}</dd>
+        <dt>Format</dt><dd>${result
+          ? `${result.format} z plików ${combo.format}`
+          : html`<${Formats} combo=${combo} value=${combo.format} onPick=${setFormat} />`}${combo.color ? ` · ${combo.color}` : ""}</dd>
         ${combo.dates ? html`<dt>Nalot</dt><dd>${span(combo.dates)}</dd>` : null}
         ${combo.published ? html`<dt>Publikacja</dt><dd>${span(combo.published)}</dd>` : null}
         ${combo.campaignsSelected.length ? html`<dt>Kampanie</dt><dd>${combo.campaignsSelected.join(", ")}</dd>` : null}

@@ -65,7 +65,7 @@ function title(c) {
   if (c.kind === "full") return "Cały ląd obszaru w pełnych arkuszach jednej kampanii";
   if (c.kind === "multi") return "Komplet dopiero po połączeniu pełnych arkuszy kilku kampanii tego roku";
   if (c.kind === "partial") return "Udział lądu w ramach PEŁNYCH arkuszy (dolna granica)";
-  return "Brak kombinacji w aktywnym filtrze";
+  return "Brak wariantu w aktywnym filtrze";
 }
 
 export function Local({ local }) {
@@ -86,6 +86,24 @@ export function Seg({ options, value, onChange, small }) {
       </button>`,
     )}
   </div>`;
+}
+
+/**
+ * File formats of a variant as badges (the first one is the default download
+ * format, the raster ready for a mosaic). `value` highlights the format to
+ * download; with `onPick` and more than one format the badges choose it.
+ */
+export function Formats({ combo, value, onPick }) {
+  const pick = onPick && combo.formats.length > 1;
+  return html`<span class="fmts">
+    ${combo.formats.map(({ format }, i) => {
+      const cls = `fmt ${combo.formats.length > 1 && format === value ? "on" : ""}`;
+      const tip = `${i ? "Ten sam zestaw w innym formacie pliku" : "Domyślny format pobrania"}${pick ? " — kliknij, aby pobrać w tym formacie" : ""}`;
+      return pick
+        ? html`<button class=${cls} title=${tip} onClick=${(e) => (e.stopPropagation(), onPick(format))}>${format}</button>`
+        : html`<span class=${cls} title=${tip}>${format}</span>`;
+    })}
+  </span>`;
 }
 
 /** Command block: lines break only between tokens (never inside "--option"). */
