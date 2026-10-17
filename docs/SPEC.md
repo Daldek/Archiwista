@@ -144,3 +144,158 @@ zachowują jego znaczenie.
 
 „Zadanie” bez dopisku nie występuje w interfejsie: zawsze „zadanie
 projektu” (Kartograf) albo „zadanie w tle” (Archiwista).
+
+## 3. Przypadki użycia
+
+Każdy przypadek: kto i w jakiej sytuacji, przebieg w interfejsie, co
+dzieje się pod spodem (wywołania Kartografa) i po czym poznać sukces.
+Przykładowy obszar „Kraków” to bbox `561000,239000,573000,249000`
+(EPSG:2180, 120 km²) — ten sam, którego używa mockup (sekcja 16).
+
+### UC-01. Obszar → produkt → dostępność → pobranie (główny przepływ)
+
+**Ola** przygotowuje NMT dla zlewni i nie wie, z którego roku jest komplet
+arkuszy.
+
+1. W widoku „Mapa” zaznacza obszar: rysuje prostokąt albo wielokąt, wpisuje
+   godło albo TERYT, albo wczytuje `zlewnia.gpkg`.
+2. Z listy produktów wybiera „NMT” (grupa „Wysokości”).
+3. Archiwista od razu pokazuje stan magazynu (z indeksu, bez sieci),
+   a w tle uruchamia sprawdzenie u źródła: `check_availability(product="nmt",
+   country="pl", bbox=…)`.
+4. Wynik pojawia się jako warstwy lat na mapie i w panelu „Zestawienie”:
+   2023 „pełne · 2 kampanie” z plakietką „pobrane 5/12”, 2022 „częściowe ·
+   58%”, a przy 2019 dopisek „1 ark. niepełny” (definicje: sekcja 6.4). Ola
+   przełącza panel na „Oś czasu”, a mapę na „Stos”, żeby zobaczyć lata
+   jednym spojrzeniem.
+5. Przy roku 2023 klika „Pobierz…”. Okno planu (`check_data(…, year=2023)`)
+   mówi: 12 arkuszy, 5 już w magazynie, 7 do pobrania, ok. 265 MB, zapis do
+   magazynu „Zespół”; pokazuje polecenie `kartograf elevation download …`
+   i opcję „Dodaj jako zadanie projektu”.
+6. Po potwierdzeniu startuje zadanie w tle (`download_data(…)`). Arkusze na
+   mapie zmieniają kolor w miarę pobierania; komunikaty Kartografa
+   pojawiają się w zadaniu.
+
+**Sukces:** plakietka roku zmienia się na „pobrane”, nowe wersje są
+w katalogu, a magazyn jest bajtowo taki sam jak po tym samym poleceniu
+z CLI.
+
+### UC-02. „Co już mam?” bez sieci
+
+**Marek** jest w terenie bez internetu. Zaznacza obszar i wybiera „Wszystkie
+produkty”. Archiwista pokazuje tylko magazyn (indeks): pliki przecinające
+obszar, pogrupowane wg produktu i roku danych, z lokalnym pokryciem
+obszaru. Sprawdzenie u źródła jest wyłączone z komunikatem „Brak sieci —
+pokazuję tylko magazyn”; jeśli wcześniej sprawdzano ten obszar, widać
+ostatni raport z datą.
+
+**Sukces:** odpowiedź w sekundę, bez jednego zapytania sieciowego.
+
+### UC-03. Wyszukiwanie po identyfikatorze
+
+Marek wkleja do pola wyszukiwania godło `N-34-130-D-d-2-4`, TERYT `1465`,
+numer zgłoszenia `GK-FOTO.6201.11.2025` albo początek sumy `fdd30535`.
+Archiwista rozpoznaje rodzaj identyfikatora i pokazuje pasujące sloty
+wszystkich produktów; filtry zawężają wynik (sekcja 6.5).
+
+### UC-04. Karta pliku i historia wersji
+
+Ola otwiera arkusz `N-34-130-D-d-2-4`. „Karta pliku” pokazuje oś wersji
+(loty 2019, 2023, 2025), która wersja jest bieżąca, która pełna
+(`full_sheet/`), które projekty przypinają którą wersję, metadane po
+ludzku („skaning laserowy, błąd średni wysokości 0,06 m, arkusz pełny”),
+licencję z przyciskiem „Kopiuj atrybucję”, podgląd oraz akcje: „Kopiuj
+ścieżkę wersji”, „Polecenie Kartografa”, „Sprawdź aktualność”, „Porównaj
+wersje”, „Dodaj do projektu”.
+
+### UC-05. Czy są nowsze dane?
+
+Marek zaznacza segment w obszarze albo cały projekt i klika „Sprawdź
+aktualność”. Zadanie w tle wywołuje `check_*` (albo `check_project`)
+i pokazuje plan po ludzku: „aktualne”, „nowsza: 2025-04-26_82710”, „nie da
+się sprawdzić bez pobrania”, „błąd sprawdzenia: …”. Przycisk „Pobierz
+nowsze” wykonuje ten sam plan (`update="upgrade"`, `plan=…`), a pozycje,
+które w międzyczasie się zmieniły, Kartograf zgłasza jako nieaktualne.
+
+### UC-06. Projekt: przypięcia, weryfikacja, aktualizacja
+
+Ola otwiera projekt „Raba”: zadania projektu z opcjami (pokazanymi jako
+polecenia Kartografa) i przypięte wersje. „Status” odpowiada natychmiast
+(`get_project_status`), „Weryfikuj” liczy sumy SHA-256 w tle
+(`verify_project`), „Sprawdź aktualizacje” porównuje przypięcia ze źródłem
+(`check_project`), „Przepnij” przechodzi na nowsze dane jednego zadania
+(`download_project(update="upgrade", tasks=["teren"])`). Z wyniku
+dostępności (UC-01) dodaje zadanie „Dodaj rok 2025 do projektu”
+(`add_project_task` z `year=2025`).
+
+### UC-07. Które projekty używają tego pliku?
+
+Kierownik zespołu przed porządkami w magazynie filtruje „Nieużywane przez
+żaden projekt” i „Niebieżące wersje”, widzi ich zajętość i listę.
+Na karcie pliku widać „Przypięta w: Raba (teren), Wisła-2026 (dem)”.
+Archiwista niczego nie usuwa; raport służy decyzji (sekcja 15, P4).
+
+### UC-08. Mozaika arkuszy
+
+Marek potrzebuje NMT 0,5 m z 2023 dla obszaru jako jednej warstwy.
+Z wiersza roku wybiera „Łączenie › Mozaika”: VRT (natychmiast, bez kopii
+danych) albo GeoTIFF na wspólnej siatce przycięty do obszaru. Plan pokazuje
+wejścia (konkretne wersje), siatkę i rozmiar wyniku. Wynik trafia do
+magazynu jako produkt pochodny z sidecarem (sekcja 8.2).
+
+### UC-09. Pogranicze PL + CZ
+
+Marek modeluje zlewnię Olzy. Obszar przecina granicę; dostępność pokazuje
+lata PL i bieżące modele CZ. Pobranie idzie jednym zadaniem Kartografa
+(`country="auto"`, `cutout=True`, wspólny `horizontal_crs`, układ wysokości
+`pl=EVRF2007,cz=EVRF2007`); pliki PL i CZ są zgrupowane po
+`extra.parent_request`. „Łączenie › PL + CZ” daje dziś zestaw bez scalania
+(obie warstwy w projekcie QGIS), a po dodaniu funkcji do Kartografa —
+jedną powierzchnię na wspólnej siatce (sekcja 8.3).
+
+### UC-10. Zestaw do QGIS
+
+Ola wybiera w projekcie „Zestaw QGIS”. W katalogu projektu powstaje
+`zestawy/<nazwa>/` z plikiem `.qgz`, listą ścieżek i atrybucjami. QGIS
+otwiera projekt bez pytań o układy, a warstwy wskazują dokładnie przypięte
+wersje (sekcja 8.4).
+
+### UC-11. Porównanie lotów
+
+Marek porównuje loty 2019 i 2025 jednego arkusza: tabela różnic metadanych,
+kurtyna na mapie, a po dodaniu funkcji do Kartografa — model różnic
+wysokości ze statystyką („średnia zmiana −0,04 m; 2,1 ha zmian > 0,5 m”)
+(sekcja 8.5).
+
+### UC-12. Asystent
+
+Ola pisze: „Przygotuj NMT 1 m i ortofotomapę dla zaznaczonego obszaru
+z najnowszego roku z pełnym pokryciem i dodaj do projektu Raba”. Asystent
+odczytuje zaznaczenie, sprawdza dostępność (tylko odczyt), wybiera rok
+i przedstawia propozycję: dwa polecenia Kartografa, 24 arkusze, 9 już
+lokalnie, ok. 1,2 GB, dwa nowe zadania projektu; arkusze propozycji są
+podświetlone na mapie. Dopiero „Wykonaj” uruchamia zadania w tle; po ich
+zakończeniu asystent podsumowuje wynik (sekcja 7).
+
+### UC-13. Kondycja magazynu
+
+Marek otwiera „Magazyn › Stan”: zajętość wg produktów (każda wersja liczona
+raz), a obok problemy z wyjaśnieniem i poleceniem naprawy: segmenty
+nierozpoznane (np. nazwy z wersji deweloperskiej 0.8.0-dev), pliki bez
+sidecara, katalogi `kampanie/` z 0.7.x, pozostałości `versions/.incoming/`
+starsze niż 24 h, sidecary dowiązań wskazujące brakującą wersję, przypięcia
+projektów bez pliku w magazynie.
+
+### UC-14. Zespół (od v0.8)
+
+Kasia loguje się do Archiwisty zespołu. Widzi historię („Marek pobrał NMT
+2025 dla Raby, wczoraj 14:02”) i wspólną kolejkę zadań, więc nie pobiera
+tego samego drugi raz. Jako „czytelnik” przegląda dane i tworzy zestawy;
+pobierać może „operator” (sekcja 10.2).
+
+### UC-15. Wklejone polecenie Kartografa
+
+Marek wkleja `kartograf elevation download --product nmt --sheet … -o
+./data`. Archiwista rozpoznaje polecenie (ten sam parser co
+`kartograf project add`), wypełnia formularz, zamienia `-o` na wybrany
+magazyn, pokazuje plan i uruchamia zadanie w tle.
