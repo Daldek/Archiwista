@@ -326,8 +326,9 @@ sidecary nieczytelne i sidecary sprzed ADR-031 (polskie klucze: brak klucza
 = brak informacji, jak w Kartografie).
 
 **Archiwista nie zapisuje niczego w magazynie.** W katalogu projektu
-zapisuje wyłącznie katalog zestawu (sekcja 8.4); manifest zmienia tylko
-API Kartografa (A-ADR-003).
+zapisuje wyłącznie katalog zestawu (sekcja 8.4) i plik geometrii obszaru
+narysowanego dla nowego zadania projektu (`obszary/`, 10.1); manifest
+zmienia tylko API Kartografa (A-ADR-003).
 
 ### 4.2 Odczyt przez API Kartografa
 
@@ -1721,3 +1722,121 @@ data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
                 "message": "(tekst ValidationError Kartografa bez zmian)"}
 }
 ```
+
+## 10. Bezpieczeństwo
+
+### 10.1 Tryb lokalny (domyślny)
+
+- **Tylko `127.0.0.1`.** Uruchomienie na innym adresie wymaga trybu
+  zespołu ze skonfigurowanym logowaniem — inaczej serwer odmawia startu.
+- **Nagłówek `Host`** tylko `127.0.0.1:<port>` albo `localhost:<port>`
+  (ochrona przed DNS rebinding).
+- **Token startowy:** losowy przy każdym uruchomieniu, w adresie otwieranym
+  przez `archiwista serve`; wymieniany na ciasteczko sesji (`HttpOnly`,
+  `SameSite=Strict`). Bez niego inny użytkownik albo proces tego samego
+  komputera dostaje `401`. Można go wyłączyć w konfiguracji (niezalecane).
+- **CSRF:** żądania zmieniające stan wymagają nagłówka `X-Archiwista-CSRF`
+  z wartością sesji; obca strona nie ustawi go bez CORS, a CORS jest
+  wyłączony; dodatkowo kontrola `Origin` i `Sec-Fetch-Site`.
+- **CSP:** `default-src 'self'`, bez skryptów inline, `connect-src 'self'`,
+  obrazy z `self` i skonfigurowanych podkładów, `frame-ancestors 'none'`.
+  Biblioteki interfejsu są w pakiecie (bez CDN — działa też bez internetu).
+- **Ścieżki:** API przyjmuje tylko ścieżki znane indeksowi; plik do
+  odczytu jest rozstrzygany (`realpath`) i musi leżeć w korzeniu
+  skonfigurowanego magazynu albo katalogu projektu; dowiązania symboliczne
+  wychodzące poza korzeń są odrzucane.
+- **Zapis:** Archiwista nie ma kodu zapisującego w magazynie; zapisuje
+  tylko indeks, pamięć podglądów i dzienniki (lokalnie), katalog zestawu
+  i — przy dodawaniu zadania projektu z narysowanym obszarem — plik
+  geometrii w `<katalog projektu>/obszary/` (zalecenie specu manifestu:
+  geometria w katalogu projektu przenosi się razem z nim).
+- **Pliki geometrii od użytkownika:** limit rozmiaru (50 MB), odczyt
+  w procesie roboczym (GDAL na niezaufanym wejściu nie kładzie serwera),
+  kopia w lokalnym katalogu roboczym.
+- **Sekrety:** klucz dostawcy modelu tylko przez nazwę zmiennej
+  środowiskowej (później: systemowy magazyn kluczy); nigdy w przeglądarce,
+  w odpowiedziach API ani w dziennikach. Dane uwierzytelniające źródeł
+  (`CLMS_CREDENTIALS`) — jak 5.6.
+- **Zależności:** wersje przypięte; audyt podatności (`pip-audit`,
+  `npm audit`) w bramce wydania.
+
+### 10.2 Tryb zespołu (v0.8)
+
+- **Logowanie:** konta lokalne serwera (hasła Argon2id w lokalnej bazie
+  serwera, sesje z wygasaniem) albo uwierzytelnianie przez odwrotne proxy
+  (nagłówek ufany wyłącznie od skonfigurowanego adresu proxy — droga do SSO
+  i Active Directory); bezpośrednie LDAP później.
+- **Role:** „czytelnik” (przegląd, podglądy, zestawy, rozmowy z asystentem
+  bez wykonywania propozycji), „operator” (zadania w tle: pobieranie,
+  łączenie, projekty, wykonanie propozycji), „administrator” (ustawienia,
+  magazyny, dostawca asystenta, konta).
+- **TLS** obowiązkowe poza `127.0.0.1` (odwrotne proxy z certyfikatem albo
+  TLS serwera); HSTS.
+- **Dziennik działań:** kto zlecił i anulował zadanie, zatwierdził
+  propozycję, zmienił ustawienia — w lokalnej bazie serwera, z eksportem.
+- **Limity per osoba:** liczba zadań w tle naraz, budżet asystenta.
+- Zapisy do wspólnego magazynu nadal wyłącznie przez Kartografa w procesach
+  roboczych serwera; równoległe użycie CLI przez członków zespołu jest
+  bezpieczne dzięki gwarancjom Kartografa (zapis wyłączny wersji, blokada
+  manifestu).
+
+### 10.3 Zagrożenia i ochrona
+
+| Zagrożenie | Skutek | Ochrona |
+|---|---|---|
+| Obca strona wysyła żądania do `127.0.0.1` (CSRF, DNS rebinding) | pobrania, odczyt danych | `Host`, token startowy, nagłówek CSRF, brak CORS, `SameSite=Strict` |
+| Inna osoba na tym samym komputerze | dostęp do interfejsu | token startowy |
+| Ścieżka spoza magazynu w żądaniu | odczyt dowolnego pliku | tylko ścieżki z indeksu, `realpath` w korzeniach |
+| Złośliwy plik geometrii | awaria albo zawieszenie biblioteki natywnej | proces roboczy, limity rozmiaru i czasu |
+| Wstrzyknięcie poleceń do asystenta | niechciane działania | brak narzędzi wykonujących, potwierdzenie człowieka (7.9) |
+| Wyciek klucza API | koszty, nadużycia | klucz tylko w środowisku serwera |
+| Masowe pobranie przez pomyłkę | gigabajty, obciążenie źródeł | „Okno planu”, progi dodatkowego potwierdzenia, limity Kartografa |
+| Przerwanie w trakcie zapisu | uszkodzony magazyn albo manifest | atomowość Kartografa; rozpoznanie pozostawionej blokady manifestu (5.6) |
+| Ujawnienie obszaru zainteresowania (podkłady, dostawca modelu) | poufność projektu | tryb offline, model lokalny, informacja przy pierwszym użyciu |
+
+## 11. Testy i weryfikacja
+
+- **Bramka (jak w Kartografie):** `pytest -m "not live"`, `ruff check .`,
+  `ruff format --check .`, `mypy archiwista/ tests/`; interfejs:
+  `svelte-check`, testy jednostkowe (Vitest), ESLint, budowa SPA. Wszystko
+  offline.
+- **Magazyn testowy:** generator (`tests/fixtures/make_store.py`) buduje
+  mały magazyn obejmujący każdą rodzinę produktów (rastry 64 × 64 px, małe
+  GeoPackage, ZIP, LAZ z kilkoma punktami), wersje i dowiązania twarde,
+  `full_sheet/`, wycinki `bbox/`, kolekcje, HSG oraz przypadki brzegowe:
+  `kampanie/`, klucze z wersji deweloperskich, segmenty nierozpoznane, pliki
+  bez sidecara, `.incoming`. Test kontraktu: `iter_store` Kartografa (KA-1)
+  na tym magazynie daje oczekiwaną listę — magazyn testowy jest zgodny
+  z formatem Kartografa, a nie z wyobrażeniem Archiwisty. Osobno duży
+  magazyn syntetyczny (50 000 slotów) do testów wydajności (`-m perf`).
+- **Testy jednostkowe i integracyjne:** indeks (skan pełny, przyrostowy,
+  zniknięcia, magazyn niedostępny, dowiązania na „udziale” bez i-węzłów);
+  etykiety pokrycia (6.4) na nagranych raportach dostępności, w tym obszar
+  „Kraków” z prawdziwych rekordów skorowidza; każdy zasób API i błędy
+  RFC 9457; zadania w tle (protokół, anulowanie sygnałem i kooperacyjne,
+  restart → „przerwane”, ponowienie); podglądy każdej rodziny i klucze
+  pamięci; zestaw (warstwy, układy i ścieżki w `.qgz`, `pliki.csv`,
+  atrybucje); asystent (narzędzia, walidacja propozycji, wykonanie tylko
+  z CSRF, polecenia wrogie na nagranych odpowiedziach modelu).
+- **Zgodność z Kartografem:** test importów (Kartograf tylko w
+  `archiwista/adapter/`); test parytetu — pobranie przez API Archiwisty
+  i tym samym poleceniem CLI na nagranych odpowiedziach źródeł daje ten sam
+  magazyn (wersje, `sha256`, sidecary przy zamrożonym zegarze) i te same
+  przypięcia w manifeście (wzór: testy zgodności Kartografa, ADR-037 Z7);
+  wspierany zakres wersji Kartografa w `pyproject.toml` i zadanie CI
+  przeciw gałęzi `develop` Kartografa (wczesne wykrycie zmian łamiących).
+- **Interfejs:** Playwright offline na magazynie testowym ze źródłami
+  z nagrań: główny przepływ (UC-01), karta pliku, zadanie z anulowaniem,
+  status i weryfikacja projektu, zestaw, asystent z nagranym modelem;
+  dostępność cyfrowa (axe) na kluczowych widokach; zrzuty kluczowych
+  ekranów do porównań.
+- **Wydajność:** cele z 4.5 na magazynie syntetycznym; pomiar na
+  prawdziwym udziale SMB jako scenariusz świadomy (`-m smb`).
+- **Testy na żywo (świadomie, `-m live`):** UC-01 (Kraków, NMT), UC-05,
+  UC-06, UC-09 (pogranicze), UC-10 (otwarcie zestawu w QGIS — ręcznie);
+  dane wyłącznie w `<katalog-danych>` poza repo i poza `/tmp`; raport
+  w `docs/research/<RRRR-MM-DD>-<temat>/raport.md` z dokładnymi poleceniami
+  i wynikami (ścieżki jako `<katalog-danych>`).
+- **Dowód działania przy każdej wersji:** uruchomienie aplikacji
+  (`archiwista serve`), przejście kryteriów akceptacji wersji (sekcja 13)
+  w przeglądarce i zrzuty ekranu w raporcie wydania.
