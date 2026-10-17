@@ -780,7 +780,7 @@ i mockupu.
    | Obrazy PL (ortofotomapa, true orto, intensywność) | dziś plan `check_data` jednostek; lata i pełność z skorowidza po KD-3 | lata (po KD-3), inaczej jednostki |
    | Produkty jednostkowe (BDOT10k, BDOO, PRG, EGiB, modele 3D…) | plan `check_*` jednostek; dostępne wydania z rejestru, istnienie paczek po KD-4 | wydania (roczniki) |
    | Wyniki obszaru (WFS, ArcGIS, OGC API: PRG obszaru, ZABAGED, RUIAN…) | plan `check_collection` | jeden wiersz „bieżące” |
-   | SoilGrids, CORINE, HSG | plan `check_*`; wydanie z sygnału `metadata` | wydania |
+   | SoilGrids, CORINE, HSG | plan `check_*`; wydanie z sygnału `metadata` (HSG: wydanie wejść) | wydania |
 
 4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z listą
    przełączników, panel „Zestawienie” (Tabela albo Oś czasu), przełącznik
@@ -1402,8 +1402,9 @@ Kartografa.
   rozdzielczości i metody jest obowiązkowy.
 - Daty pomiarów po obu stronach są różne; raport styku pokazuje skalę
   różnic.
-- CUZK wypełnia obszar za granicą zerami; Kartograf zamienia je na
-  `nodata` — scalanie musi używać `nodata`, nigdy wartości 0 (L4).
+- CUZK wypełnia obszar za granicą zerami (ADR-022), a 0 m wygląda jak
+  poziom morza — scalanie opiera się na `nodata` z sidecara i masce
+  terytorium, nigdy nie traktuje zera spoza kraju jako danych (L4).
 - Dokładność transformacji S-JTSK ok. 1 m wchodzi do sidecara wyniku.
 
 **Co Kartograf już zapewnia.** Osobne pliki per kraj z jawnymi układami
