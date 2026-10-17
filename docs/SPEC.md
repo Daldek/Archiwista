@@ -979,3 +979,200 @@ Wyszukiwanie rozpoznaje: godło PL-1992, PL-2000, TM33 i SM5; TERYT (2, 4,
 numer zgłoszenia pracy; początek sumy SHA-256 (od 8 znaków); nazwę pliku;
 nazwę projektu i zadania projektu. Dla wprawnych: prefiksy `produkt:nmt
 rok:2023 uklad:2180 projekt:raba` (każdy prefiks ma odpowiednik w filtrach).
+
+## 7. Asystent (agent czatu)
+
+### 7.1 Cel i granice
+
+Asystent pozwala zlecić przygotowanie danych zdaniem po polsku („NMT 1 m
+i ortofotomapa dla zaznaczonego obszaru z najnowszego pełnego roku, dodaj
+do projektu Raba”). Jest drugą drogą do tych samych operacji co
+interfejs: korzysta wyłącznie z API Archiwisty, a przez nie z API
+Kartografa (A-ADR-011).
+
+Granice uprawnień (twarde, wymuszane przez serwer, nie przez treść
+promptu):
+
+- **Nic nie pobiera, nie przepina i nie zapisuje bez potwierdzenia.**
+  Asystent może tylko czytać i przygotować propozycję; wykonanie wymaga
+  kliknięcia „Wykonaj” przez człowieka.
+- **Nic nie usuwa** — takiego narzędzia nie ma (Archiwista niczego nie
+  usuwa).
+- **Nie zmienia ustawień, magazynów ani manifestów wprost**, nie czyta
+  treści plików ani dowolnych ścieżek, nie uruchamia poleceń systemu.
+- **Domyślnie wyłączony:** działa dopiero po wybraniu dostawcy modelu
+  w „Ustawieniach” (7.6).
+
+### 7.2 Przebieg
+
+```mermaid
+sequenceDiagram
+  actor U as Użytkownik
+  participant UI as Interfejs (panel „Asystent”)
+  participant AS as Asystent (serwer)
+  participant M as Dostawca modelu
+  participant API as Usługi Archiwisty
+  participant J as Zadania w tle (Kartograf)
+  U->>UI: polecenie + kontekst widoku (obszar, produkt, filtry)
+  UI->>AS: wiadomość (SSE w odpowiedzi)
+  loop narzędzia tylko do odczytu
+    AS->>M: rozmowa + definicje narzędzi
+    M-->>AS: wywołanie narzędzia
+    AS->>API: np. check_availability, plan_command
+    API-->>AS: wynik (zwięzły)
+  end
+  AS->>API: propose_actions
+  API-->>UI: karta propozycji + podświetlenie jednostek na mapie
+  U->>UI: „Wykonaj” (albo zmiana / odrzucenie)
+  UI->>API: wykonanie propozycji (token CSRF użytkownika)
+  API->>J: zadania w tle
+  J-->>UI: postęp na mapie i w „Zadaniach”
+  AS->>API: get_job (po zakończeniu)
+  AS-->>UI: podsumowanie wyniku
+```
+
+Asystent działa na serwerze, nie w przeglądarce: klucze API zostają po
+stronie serwera, a narzędzia są tymi samymi operacjami warstwy usług co
+API HTTP (sekcja 9). Każda wiadomość niesie **kontekst widoku** — obszar
+(GeoJSON, powierzchnia, kraje), produkt, aktywny wariant i rok, filtry —
+widoczny jako plakietka w polu wiadomości („Kontekst: Kraków · NMT ·
+2023”), którą można odpiąć.
+
+### 7.3 Narzędzia
+
+| Narzędzie | Co robi | Rodzaj |
+|---|---|---|
+| `get_view_context` | bieżący obszar, produkt, wariant, filtry, widoczne warstwy | odczyt |
+| `list_products` | produkty, kraje, opisy i opcje (katalog komend, KB-1) | odczyt |
+| `find_units` | jednostki po nazwie albo kodzie: gmina, powiat, KU (KB-7) | odczyt |
+| `search_store` | wyszukiwanie w indeksie z filtrami (jak `GET /api/v1/slots`) | odczyt |
+| `get_slot`, `get_version` | karta pliku: wersje, metadane, przypięcia | odczyt |
+| `list_projects`, `get_project` | projekty, zadania projektów, przypięcia, stan (bez sieci) | odczyt |
+| `check_availability` | dostępność u źródła dla obszaru | odczyt z siecią (limit na turę, wyłączalny) |
+| `plan_command` | plan polecenia Kartografa (`check_command`, KB-5): jednostki, lokalne, do pobrania, rozmiar | odczyt z siecią |
+| `validate_command`, `format_command` | walidacja bez sieci i tekst polecenia (KB-3, KB-4) | odczyt |
+| `get_job`, `list_jobs` | stan i wynik zadań w tle | odczyt |
+| `show_on_map`, `open_view` | podświetlenie jednostek albo obszaru, przybliżenie, otwarcie widoku lub karty pliku | efekt w interfejsie (bez zmian danych) |
+| `propose_actions` | propozycja: lista działań (pobranie, zadanie projektu, przepięcie, łączenie, zestaw) | propozycja — wymaga potwierdzenia |
+
+Wykonanie propozycji nie jest narzędziem asystenta. Serwer przyjmuje je
+wyłącznie z interfejsu, z tokenem CSRF sesji użytkownika (sekcja 10.1);
+w trybie zespołu — z uprawnieniami osoby, która zatwierdza.
+
+### 7.4 Propozycja i potwierdzenie
+
+Propozycja to dane, nie tekst modelu: lista działań, a dla każdego
+polecenie Kartografa (`command`, `options`), magazyn, ewentualny projekt
+i nazwa zadania projektu, podsumowanie planu (`check_command`: jednostki,
+ile lokalnie, ile do pobrania, szacowany rozmiar), ostrzeżenia
+(komunikaty Kartografa) oraz suma całości. Karta propozycji w czacie
+i podświetlenie na mapie powstają z tych danych, więc to, co widzi
+człowiek, jest dokładnie tym, co się wykona.
+
+- Użytkownik może odznaczyć część działań, zmienić opcje (formularz jak
+  w „Pobierz…”) albo odrzucić propozycję.
+- Przed wykonaniem Archiwista ponownie waliduje polecenia
+  (`validate_command`) i — gdy plan jest starszy niż 15 minut — sprawdza
+  go ponownie; różnice pokazuje przed startem.
+- Duże działania (domyślnie ponad 5 GB albo ponad 500 plików) wymagają
+  dodatkowego potwierdzenia („Rozumiem: ok. 12 GB”). Limity Kartografa
+  (np. kolekcja: 100 plików i 10 GB na zadanie) obowiązują bez zmian.
+- Propozycja wygasa po 24 h; wykonana staje się zwykłymi zadaniami w tle
+  (widocznymi w „Zadaniach” i na mapie), a asystent dostaje ich wynik
+  i podsumowuje go w rozmowie.
+
+### 7.5 Szkic panelu
+
+```text
+ASYSTENT                                          [Nowa rozmowa] [x]
+Ty: NMT 1 m dla zaznaczonego obszaru z najnowszego pełnego roku,
+    dodaj do projektu Raba.
+Asystent: Rok 2025 jest „pełne” (12 arkuszy, PL-1992, EVRF2007);
+    2023 też pełne, ale z 2 kampanii. Proponuję:
+  +---------------------------------------------------------------+
+  | PROPOZYCJA (wygasa za 24 h)                                   |
+  | [x] Pobierz NMT 1 m · EVRF2007 · 2025 — 12 ark., 0 lokalnie,  |
+  |     ok. 455 MB do magazynu Zespół                             |
+  |     kartograf elevation download --product nmt --country pl   |
+  |     --bbox ... --resolution 1m --vertical-crs EVRF2007        |
+  |     --year 2025 --sheet-system 1992                           |
+  | [x] Dodaj zadanie projektu Raba: „teren-2025”                 |
+  | Razem: 12 plików, ok. 455 MB       [Zmień] [Odrzuć] [Wykonaj] |
+  +---------------------------------------------------------------+
+[Kontekst: Kraków · NMT x]  Napisz polecenie...                 [Wyślij]
+Zużycie w tym miesiącu: 41 tys. tokenów (ok. 0,30 USD z 20 USD)
+```
+
+### 7.6 Dostawca modelu
+
+Konfigurowalny w „Ustawieniach” (plik TOML); domyślnie `none` (panel
+wyłączony):
+
+```toml
+[assistant]
+provider = "none"            # none | anthropic | openai | openai_compatible
+model = ""                   # nazwa modelu dostawcy
+base_url = ""                # openai_compatible: np. http://localhost:11434/v1 (Ollama)
+api_key_env = ""             # NAZWA zmiennej środowiskowej z kluczem, nigdy sam klucz
+allow_source_checks = true   # asystent może sprawdzać dostępność u źródła
+monthly_budget = 20.0        # miesięczny limit kosztu w walucie cennika; po przekroczeniu asystent odmawia
+price_input_per_mtok = 0.0   # cennik wpisany przez użytkownika (Archiwista nie zgaduje cen)
+price_output_per_mtok = 0.0
+```
+
+Adaptery: Anthropic Messages API, OpenAI Chat Completions i każdy serwer
+zgodny z nim (Ollama, vLLM, llama.cpp — modele lokalne). Wymagania wobec
+modelu: wywoływanie narzędzi, kontekst co najmniej 32 tys. tokenów,
+dobry polski. Lista przetestowanych modeli z wynikami ewaluacji (7.10)
+jest w dokumentacji użytkownika — zestaw zmienia się szybciej niż spec.
+
+### 7.7 Prywatność
+
+- **Co trafia do dostawcy:** wiadomości użytkownika, opis narzędzi
+  i produktów, wyniki narzędzi — metadane magazynu (produkty, jednostki,
+  etykiety, daty, rozmiary), obszar (współrzędne), nazwy projektów i zadań
+  projektów, ścieżki **względne** do magazynu (`<magazyn>/nmt/…`).
+- **Co nigdy nie trafia:** treść plików danych, ścieżki bezwzględne
+  (katalogi domowe, nazwy serwerów), klucze i dane uwierzytelniające,
+  dzienniki zadań.
+- **Obszar zainteresowania bywa poufny** (np. plany klienta): pierwsze
+  uruchomienie asystenta pokazuje, co jest wysyłane i dokąd; dla projektów
+  poufnych zalecany jest model lokalny (nic nie opuszcza komputera ani
+  sieci lokalnej).
+- **Historia rozmów** leży lokalnie w indeksie (domyślnie 90 dni), z „Usuń
+  rozmowę” i „Eksportuj”; w zespole — osobno dla każdej osoby.
+- Archiwista nie wysyła żadnej telemetrii.
+
+### 7.8 Koszty
+
+- Licznik tokenów na wiadomość, rozmowę i miesiąc (z pól użycia
+  dostawcy) i koszt szacowany z cennika wpisanego przez użytkownika.
+- Miesięczny limit: po jego przekroczeniu asystent odmawia z jasnym
+  komunikatem do początku następnego miesiąca (albo zmiany limitu).
+- Oszczędność wbudowana w narzędzia: zwięzłe wyniki (podsumowania,
+  stronicowanie, najwyżej 50 wierszy), pamięć podręczna promptu u dostawców,
+  którzy ją mają, skracanie starszej części rozmowy, brak jakiejkolwiek
+  pracy asystenta w tle — działa tylko po wiadomości użytkownika.
+- Sprawdzenia u źródła nie kosztują pieniędzy, ale obciążają publiczne
+  usługi: limit na turę (7.9) i cache Kartografa.
+
+### 7.9 Bezpieczeństwo asystenta
+
+- **Wstrzyknięcie poleceń** przez dane (pola sidecarów, atrybuty, nazwy
+  projektów) nie może nic zepsuć: asystent nie ma narzędzi wykonujących,
+  a propozycję zatwierdza człowiek na podstawie danych strukturalnych.
+- **Limity na turę:** do 20 wywołań narzędzi, do 5 sprawdzeń u źródła,
+  do 2 minut; po przekroczeniu asystent kończy turę i mówi dlaczego.
+- **Dziennik:** każde wywołanie narzędzia (nazwa, skrót argumentów,
+  rozmiar wyniku, czas) jest widoczne w „Szczegółach rozmowy”.
+
+### 7.10 Jakość
+
+Zestaw ewaluacyjny: co najmniej 30 poleceń po polsku (obszar, produkt,
+rok, projekt, pogranicze, łączenie, polecenia niejednoznaczne i wrogie)
+na magazynie testowym z nagranymi odpowiedziami Kartografa; oczekiwane
+propozycje (polecenia i opcje) porównywane automatycznie. W bramce
+offline — nagrane odpowiedzi modelu (deterministycznie); na żywo — przy
+zmianie modelu albo promptu. Kryteria v0.5: co najmniej 80% poprawnych
+propozycji na modelu referencyjnym i zero wykonań bez potwierdzenia
+(także dla poleceń wrogich).
