@@ -22,9 +22,11 @@ potrzebuje internetu (CDN bibliotek i fontów, podkład OpenFreeMap).
 2. **Produkt** — NMT, NMPT, LAZ, ortofotomapa, BDOT10k.
 3. **Dostępność** — wynik w trzech widokach (przełącznik nad mapą):
    **Mapa** (arkusze wybranego roku, kolory kampanii, legenda z datami
-   nalotu), **Stos** (izometryczny stos lat; wybrany rok wysuwa się ze
-   stosu, wyższe warstwy stają się półprzezroczyste) i **Katalog** (kafle
-   albo lista całego zestawu).
+   nalotu), **Stos** z przełącznikiem **Wachlarz / Stos** (Wachlarz,
+   domyślny: warstwy lat na łuku jak stos w docku macOS — każda w całości,
+   z rokiem, pokryciem i stanem magazynu, wybrana powiększona w łuku i obok;
+   Stos: izometryczny stos lat, wybrany rok wysuwa się, wyższe warstwy są
+   półprzezroczyste) i **Katalog** (kafle albo lista całego zestawu).
 4. **Zestawienie** (panel po prawej) — **Tabela** lat i **Oś czasu**
    (lata × warianty × pokrycie).
 5. **Asystent** — np. „Przygotuj NMT 1 m dla tego obszaru, najnowszy pełny

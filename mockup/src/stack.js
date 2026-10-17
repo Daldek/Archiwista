@@ -3,9 +3,9 @@
 // column with leader lines, positioned with the same projection.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { html, Coverage, Local, Icon } from "./ui.js";
+import { html, Coverage, Local, Icon, Seg } from "./ui.js";
 import { bounds } from "./geo.js";
-import { coverage, localBadge, variantsMore } from "./labels.js";
+import { coverage, localBadge, variantsMore, span } from "./labels.js";
 import { sheetColor, FULL_COLOR, PARTIAL_COLOR } from "./map.js";
 
 const PLATE_W = 440;
@@ -75,9 +75,103 @@ function PlateSvg({ fx, f, area, combo, product, texture, kind, idx, result }) {
   </svg>`;
 }
 
+const FAN_SEL = 1.9; // enlargement of the selected layer
+const FAN_GAP = 8; // px between slots
+const FAN_ROT = 0.09; // rad, rotation of the outermost cards (about 5°)
+
+/**
+ * "Wachlarz": the year layers fanned out along an arc like a Dock stack in
+ * macOS — every layer whole (thumbnail of the area with the year, coverage
+ * and store labels), the selected one enlarged. Every card has its own
+ * vertical slot sized from the stage (rotation included), so no card or
+ * label covers another.
+ */
+function Fan({ fx, area, product, groups, selectedYear, onSelectYear, result, size, f, texture, compact, bottom, hover, setHover }) {
+  const items = groups.filter((g) => g.best).map((g) => ({ kind: "year", g, key: String(g.year) }));
+  if (result?.visible && result.product === product) items.unshift({ kind: "result", key: "result" });
+  const isSel = (it) => it.kind === "year" && it.g.year === selectedYear;
+  const aspect = f.h / f.w;
+  const H = size.h - TOP - bottom;
+  const LW = compact ? 150 : 260;
+  const R = H * 1.15; // arc radius: the middle of the fan on the left, both ends to the right
+  const bulge = R - Math.sqrt(R * R - (H / 2) ** 2);
+  const units = (items.length + (items.some(isSel) ? FAN_SEL - 1 : 0)) * (1 + Math.sin(FAN_ROT) / aspect);
+  const hFit = (H - (items.length - 1) * FAN_GAP) / units;
+  const hWide = ((size.w - 40 - bulge - 16 - LW) / FAN_SEL) * aspect;
+  const h = Math.max(20, Math.min(150, hFit, hWide));
+  const w = h / aspect;
+  const slots = items.map((it) => {
+    const s = isSel(it) ? FAN_SEL : 1;
+    return { it, sel: s > 1, w: w * s, h: h * s, slot: h * s + w * s * Math.sin(FAN_ROT) };
+  });
+  const total = slots.reduce((sum, s) => sum + s.slot, 0) + (slots.length - 1) * FAN_GAP;
+  const yc = TOP + H / 2;
+  // wide stages: the selected layer also large to the right of the labels
+  const blockW = bulge + w * FAN_SEL + 16 + LW;
+  const chosen = slots.find((s) => s.sel);
+  const pw = chosen ? Math.min(size.w - 24 - blockW - 40 - 16, (H - 34) / aspect, 620) : 0;
+  const preview = pw >= 220;
+  const x0 = preview ? 24 : Math.max(16, (size.w - blockW) / 2);
+  let y = TOP + (H - total) / 2;
+  for (const s of slots) {
+    s.cy = y + s.slot / 2;
+    y += s.slot + FAN_GAP;
+    const d = Math.max(-1, Math.min(1, (s.cy - yc) / (H / 2)));
+    s.cx = x0 + (R - Math.sqrt(R * R - (d * H / 2) ** 2)) + (w * FAN_SEL) / 2;
+    s.rot = d * FAN_ROT;
+  }
+  return html`<div class="fan">
+    ${slots.map((s, i) => {
+      const { it } = s;
+      const c = it.g?.best;
+      const hot = hover === it.key;
+      const pick = () => it.kind === "year" && onSelectYear(it.g.year);
+      const common = { onMouseEnter: () => setHover(it.key), onMouseLeave: () => setHover(null), onClick: pick };
+      const lh = Math.min(s.slot, s.sel ? 132 : 64);
+      return html`<div key=${it.key} class=${`fan-card ${it.kind} ${s.sel ? "sel" : ""} ${hot ? "hot" : ""}`} ...${common}
+          style=${`left:${s.cx - s.w / 2}px;top:${s.cy - s.h / 2}px;width:${s.w}px;height:${s.h}px;transform:rotate(${s.rot}rad)`}>
+          <${PlateSvg} fx=${fx} f=${f} area=${area} kind="ground" />
+          ${it.kind === "result"
+            ? html`<${PlateSvg} fx=${fx} f=${f} area=${area} kind="result" result=${result} />`
+            : html`<${PlateSvg} fx=${fx} f=${f} area=${area} combo=${c} product=${product} texture=${texture} kind="year" idx=${`f${i}`} />`}
+        </div>
+        <div class=${`plate-tag fan-tag ${s.sel ? "sel big" : ""} ${hot ? "hot" : ""} ${it.kind === "result" ? "result" : ""}`} ...${common}
+          style=${`left:${s.cx + s.w / 2 + 16}px;top:${s.cy - lh / 2}px;width:${LW}px;height:${lh}px`}
+          title=${c ? `${it.g.year}: ${coverage(c).text} · ${c.variant} · ${c.horizontal} · ${localBadge(c.local).text}` : undefined}>
+          ${it.kind === "result"
+            ? html`<${Icon} name="file" size=${15} /><div class="tag-lines"><div style="font-weight:600;color:#1d4ed8">Wynik zadania</div>
+                ${lh >= 40 ? html`<div class="sub"><span class="ell">${result.name}</span></div>` : null}</div>`
+            : html`<span class="yr">${it.g.year}</span>
+                <div class="tag-lines">
+                  <div class="tag-top"><${Coverage} combo=${c} short=${compact || lh < 40} />${s.sel && it.g.others.length ? html`<span class="more-chip">${variantsMore(it.g.others.length)}</span>` : null}</div>
+                  ${lh >= 40 && !compact ? html`<div class="sub"><${Local} local=${c.local} /><span class="ell">${c.variant} · ${c.horizontal}</span></div>` : null}
+                  ${s.sel && !compact && c.dates ? html`<div class="sub"><span class="ell">nalot ${span(c.dates)}${c.campaignsSelected.length ? ` · ${c.campaignsSelected.join(", ")}` : ""}</span></div>` : null}
+                </div>`}
+        </div>`;
+    })}
+    ${preview ? html`<${FanPreview} fx=${fx} area=${area} product=${product} f=${f} texture=${texture} g=${chosen.it.g}
+        left=${x0 + blockW + 40} width=${pw} top=${Math.max(TOP, Math.min(TOP + H - pw * aspect - 34, chosen.cy - (pw * aspect + 34) / 2))} />` : null}
+  </div>`;
+}
+
+/** Large view of the selected layer next to the fan (the same plate, captioned). */
+function FanPreview({ fx, area, product, f, texture, g, left, top, width }) {
+  const c = g.best;
+  const height = width * (f.h / f.w);
+  return html`<div class="fan-preview" style=${`left:${left}px;top:${top}px;width:${width}px`}>
+    <div class="fan-preview-cap"><span class="yr">${g.year}</span><${Coverage} combo=${c} /><${Local} local=${c.local} /><span class="ell muted">${c.variant} · ${c.horizontal}</span></div>
+    <div class="fan-card sel" style=${`position:relative;width:${width}px;height:${height}px`}>
+      <${PlateSvg} fx=${fx} f=${f} area=${area} kind="ground" />
+      <${PlateSvg} fx=${fx} f=${f} area=${area} combo=${c} product=${product} texture=${texture} kind="year" idx="fan-preview" />
+    </div>
+  </div>`;
+}
+
 export function StackView({ fx, area, product, groups, selectedYear, onSelectYear, result, visible }) {
   const stage = useRef(null);
   const [size, setSize] = useState({ w: 900, h: 800 });
+  // "fan": every layer whole on an arc (default); "stack": isometric stack with a slid-out year
+  const [mode, setMode] = useState("fan");
   const [gap, setGap] = useState(48);
   const [spin, setSpin] = useState(-38);
   const [tilt, setTilt] = useState(58);
@@ -161,7 +255,7 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
 
   return html`<div class=${`view stack-view ${visible ? "" : "hidden"} ${compact ? "compact" : ""}`}>
     <div class="stack-title">
-      <h3>Stos lat · ${layers.length} ${layers.length === 1 ? "warstwa" : layers.length < 5 ? "warstwy" : "warstw"}<span>najnowszy rok na górze · podkład = obszar</span></h3>
+      <h3>${mode === "fan" ? "Wachlarz lat" : "Stos lat"} · ${layers.length} ${layers.length === 1 ? "warstwa" : layers.length < 5 ? "warstwy" : "warstw"}<span>${mode === "fan" ? "najnowszy rok na górze · każda warstwa w całości, wybrana powiększona" : "najnowszy rok na górze · podkład = obszar"}</span></h3>
       <div class="stack-legend">
         <span><i class="sw" style=${`background:${FULL_COLOR}`}></i>arkusz pełny</span>
         <span><i class="sw" style="background:linear-gradient(135deg,#0d9488 50%,#0ea5e9 50%)"></i>kampanie roku</span>
@@ -169,13 +263,23 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
         <span><i class="sw" style=${`background:url(${texture}) center/cover;outline:2px solid #1d4ed8;outline-offset:-1px`}></i>pobrane — podgląd z magazynu</span>
       </div>
       <div class="stack-ctrl">
-        <label>Odstęp<input type="range" min="16" max="90" value=${gap} onInput=${(e) => setGap(+e.target.value)} /></label>
-        <label>Obrót<input type="range" min="-75" max="0" value=${spin} onInput=${(e) => setSpin(+e.target.value)} /></label>
-        <label>Pochylenie<input type="range" min="30" max="72" value=${tilt} onInput=${(e) => setTilt(+e.target.value)} /></label>
-        <button class="btn sm" onClick=${() => setFlat(!flat)}><${Icon} name=${flat ? "stack" : "map"} size=${14} />${flat ? "Rozłóż" : "Złóż do mapy"}</button>
+        <${Seg} small value=${mode} onChange=${setMode} options=${[
+          { value: "fan", label: "Wachlarz", title: "Każda warstwa w całości na łuku, wybrana powiększona" },
+          { value: "stack", label: "Stos", title: "Izometryczny stos warstw" },
+        ]} />
+        ${mode === "stack"
+          ? html`<label>Odstęp<input type="range" min="16" max="90" value=${gap} onInput=${(e) => setGap(+e.target.value)} /></label>
+              <label>Obrót<input type="range" min="-75" max="0" value=${spin} onInput=${(e) => setSpin(+e.target.value)} /></label>
+              <label>Pochylenie<input type="range" min="30" max="72" value=${tilt} onInput=${(e) => setTilt(+e.target.value)} /></label>
+              <button class="btn sm" onClick=${() => setFlat(!flat)}><${Icon} name=${flat ? "stack" : "map"} size=${14} />${flat ? "Rozłóż" : "Złóż do mapy"}</button>`
+          : null}
       </div>
     </div>
     <div class="stack-stage" ref=${stage}>
+      ${mode === "fan"
+        ? html`<${Fan} fx=${fx} area=${area} product=${product} groups=${groups} selectedYear=${selectedYear} onSelectYear=${onSelectYear}
+            result=${result} size=${size} f=${f} texture=${texture} compact=${compact} bottom=${bottom} hover=${hover} setHover=${setHover} />`
+        : html`
       <div class="stack-scene" style=${`left:${ox}px;top:${flat ? flatY : oy}px;transform:${sceneTransform}`}>
         ${plates.map((p, i) => {
           const year = p.g?.year;
@@ -225,7 +329,7 @@ export function StackView({ fx, area, product, groups, selectedYear, onSelectYea
             </div>
           </div>`;
         })}
-      </div>
+      </div>`}
     </div>
   </div>`;
 }
