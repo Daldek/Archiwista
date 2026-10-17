@@ -299,3 +299,192 @@ Marek wkleja `kartograf elevation download --product nmt --sheet … -o
 ./data`. Archiwista rozpoznaje polecenie (ten sam parser co
 `kartograf project add`), wypełnia formularz, zamienia `-o` na wybrany
 magazyn, pokazuje plan i uruchamia zadanie w tle.
+
+## 4. Model danych i indeks
+
+### 4.1 Co czytamy z dysku (źródła prawdy)
+
+Archiwista nie ma własnych danych o magazynie poza pamięcią podręczną.
+Wszystko, co pokazuje, wynika z plików Kartografa:
+
+| Plik | Gdzie | Zmienność | Jak czytamy |
+|---|---|---|---|
+| Sidecar wersji | `<segment>/versions/<hierarchia>/<etykieta>_<sha8>/<plik>.meta.json` | niezmienny (ADR-036) | raz, przy pierwszym zobaczeniu katalogu wersji |
+| Plik danych wersji | obok sidecara wersji | niezmienny | podczas indeksowania wyłącznie `stat` (rozmiar); treść tylko na żądanie (podgląd, weryfikacja) |
+| Sidecar ścieżki standardowej i `full_sheet/` | `<segment>/<hierarchia>/<plik>.meta.json`, `<segment>/full_sheet/…` | zmienny (dowiązanie przestawiane na nowszą wersję) | przy zmianie rozmiaru albo czasu modyfikacji; cel dowiązania wyłącznie z `extra.link_target` |
+| Manifest projektu | `<katalog projektu>/kartograf-project.json` | zmienny | przy zmianie czasu modyfikacji albo sumy pliku; zawsze przez `open_project` (ścisła walidacja Kartografa) |
+| Plan aktualizacji | plik `kartograf-plan/1` zapisany `--plan` | jednorazowy | na żądanie (import planu z CLI) |
+
+Pozostałości i przypadki brzegowe są pokazywane, nigdy pomijane po cichu:
+katalogi robocze `versions/.incoming/` (pomijane przy indeksowaniu;
+Kartograf sprząta je po 24 h, starsze zgłaszamy), katalogi `kampanie/`
+z 0.7.x (nieczytane przez Kartografa 0.8.0), segmenty spoza rejestru (np.
+`orto/pl_2000_oblique` z wersji deweloperskiej 0.8.0-dev — w przykładowym
+magazynie testu na żywo wydania 0.8.0 są takie katalogi i sidecary
+z dawnymi kluczami źródeł, np. `cz.cuzk.hy_net`), pliki bez sidecara,
+sidecary nieczytelne i sidecary sprzed ADR-031 (polskie klucze: brak klucza
+= brak informacji, jak w Kartografie).
+
+**Archiwista nie zapisuje niczego w magazynie.** W katalogu projektu
+zapisuje wyłącznie katalog zestawu (sekcja 8.4); manifest zmienia tylko
+API Kartografa (A-ADR-003).
+
+### 4.2 Odczyt przez API Kartografa
+
+Reguły układu `data/` (ARCH 3.3, reguły 1-10), rozpoznawanie dowiązań,
+tolerancyjne czytanie starych sidecarów i wyliczanie zasięgu pliku to
+wiedza o formacie Kartografa. Archiwista nie ma własnego czytnika tego
+formatu: korzysta z pakietu wymagań **KA** (sekcja 12: `iter_store`,
+`read_sidecar`, `describe_segment`, `file_footprint`, `link_target`,
+`pinned_transform`). Dzięki temu zmiana układu w Kartografie nie
+rozjedzie się z Archiwistą, a wtyczka QGIS i Hydrograf mogą korzystać
+z tych samych funkcji. Konsekwencja: v0.1 wymaga wydania Kartografa z KA
+(A-ADR-014).
+
+### 4.3 Indeks lokalny
+
+Indeks to plik SQLite (tryb WAL) na dysku lokalnym, w katalogu danych
+użytkownika (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
+`%LOCALAPPDATA%\Archiwista\`); obok leżą pamięć podglądów (`cache/`)
+i dzienniki zadań (`jobs/`). Konfiguracja (magazyny, katalogi projektów,
+limity, dostawca asystenta) jest w czytelnym pliku TOML w katalogu
+konfiguracji użytkownika i w widoku „Ustawienia”. Indeks można usunąć
+w każdej chwili — „Przebuduj indeks” odtworzy go z magazynów i manifestów;
+tracona jest tylko historia zadań i rozmów asystenta.
+
+Zawartość (tabele logiczne; schemat ustali plan implementacji):
+
+| Tabela | Co trzyma |
+|---|---|
+| `stores` | magazyny: identyfikator (krótka nazwa nadana przez użytkownika, np. `zespol`), ścieżka i aliasy ścieżek, dostępność, czasy i statystyki skanów |
+| `segments` | segmenty: produkt, źródło (`dataset`), ludzka nazwa (`describe_segment`), rozpoznany / nierozpoznany |
+| `slots` | sloty: segment, hierarchia, nazwa, rodzaj i kod jednostki, bieżąca wersja, wersja `full_sheet/`, liczba wersji |
+| `versions` | wersje: etykieta i jej źródło, `sha256`, rozmiar, układy, rozdzielczość, `nodata`, rok i data danych, kampania i numer zgłoszenia, wydanie, data pobrania, pełny arkusz, pokrycie (`extra.coverage`), licencja, klucz grupy `parent_request`, zasięg natywny i jego źródło, stan, pełny sidecar (JSON) |
+| `footprints` | R*Tree: zasięg wersji w WGS84 (filtr obszaru i mapa) |
+| `search` | FTS5: godła, TERYT, KU, etykiety, numery zgłoszeń, nazwy plików, ludzkie nazwy produktów, nazwy projektów i zadań projektów |
+| `projects`, `project_tasks`, `pins` | znane projekty, ich zadania i przypięcia powiązane z wersjami — indeks „które projekty używają pliku” (SCOPE 3.3) |
+| `availability` | ostatnie raporty dostępności per obszar i produkt, z datą (widoczne bez sieci) |
+| `jobs`, `job_events` | historia zadań w tle i ich zdarzenia |
+| `conversations`, `messages`, `proposals` | rozmowy z asystentem i jego propozycje |
+
+Atrybuty do filtrów są wyliczane przy indeksowaniu z sidecara przez
+`read_sidecar` (KA-2), który normalizuje pola różniące się między
+produktami: **rok danych** (kampania, data lotu LAZ, rocznik wydania) jest
+osobnym polem niż **data pobrania** i nigdy nie jest nią zastępowany;
+wersja bez roku danych ma rok pusty, a nie rok pobrania.
+
+**Zasięg (obrys) pliku** liczy `file_footprint` (KA-4) wg kolejności
+źródeł: `request.bbox` z `bbox_crs` (wycinki, wyniki obszaru kolekcji,
+SoilGrids, HSG) → godło z parsera (PL-1992, PL-2000, TM33) → nagłówek pliku
+(GeoTIFF, ASC, JPEG z JGW, GeoPackage, LAS) → jednostka (TERYT z PRG, KU
+z RUIAN, arkusz SM5 z indeksu CUZK — z siecią i pamięcią podręczną) → kraj.
+Zasięg bez źródła oznaczamy „bez obrysu” (plik jest na liście, nie ma go
+na mapie). Przeliczenie do WGS84 wyłącznie przypiętą transformacją
+Kartografa (KA-6): domyślny transformator potrafi cicho użyć operacji
+przybliżonej, a dla S-JTSK to przesunięcie rzędu 100 m (ADR-024).
+
+### 4.4 Budowa i odświeżanie
+
+- **Pełny skan** (pierwsze uruchomienie, „Przebuduj indeks”): przejście
+  drzewa `iter_store` z odczytem sidecarów w puli wątków (opóźnienia SMB,
+  nie procesor), zapis do indeksu paczkami w transakcjach; zadanie w tle
+  z postępem.
+- **Skan przyrostowy:** katalogi wersji `<etykieta>_<sha8>` są niezmienne,
+  więc znanych wersji nie czytamy ponownie — sprawdzamy tylko pojawienie
+  się nowych katalogów wersji, zniknięcie znanych i zmianę sidecarów
+  dowiązań. Czas modyfikacji katalogu jest tylko wskazówką (na udziale
+  z pamięcią atrybutów bywa opóźniony), dlatego okresowo wykonujemy pełny
+  skan kontrolny (domyślnie raz na dobę, w tle).
+- **Odświeżenie na żądanie dla widoku:** gdy użytkownik pyta o obszar
+  i produkt, Archiwista najpierw odświeża dokładnie te sloty (katalogi
+  hierarchii jednostek obszaru), a dopiero potem pokazuje stan magazynu —
+  odpowiedź na bieżące pytanie jest aktualna w sekundach także na SMB,
+  niezależnie od pełnych skanów.
+- **Po własnych zadaniach:** wynik Kartografa (`files[].file.version_path`,
+  przypięcia projektu) trafia do indeksu od razu, bez skanu.
+- **Wyzwalacze:** start aplikacji (przyrostowy, jeśli ostatni starszy niż
+  15 min), interwał (domyślnie 15 min dla udziału, 5 min dla dysku
+  lokalnego), przycisk „Odśwież” (magazyn, segment, widok), koniec zadania
+  w tle; obserwacja zmian systemu plików tylko dla dysków lokalnych
+  (opcjonalnie).
+- **Magazyn niedostępny** (brak katalogu albo pusty punkt montowania):
+  skan przerwany, indeks bez zmian, baner „Magazyn niedostępny od 14:02 —
+  pokazuję stan z indeksu”; działania zapisu wyłączone. Nigdy nie
+  oznaczamy całego magazynu jako usuniętego z powodu odłączonego udziału.
+- **Zniknięcia:** wersja, której nie ma po pełnym przejściu, dostaje stan
+  „brak pliku” (z datą); przypinające ją projekty są oznaczone. Wpis
+  znika z indeksu dopiero po kolejnym pełnym skanie.
+- **Zmiana schematu indeksu** w nowej wersji Archiwisty = przebudowa (to
+  pamięć podręczna — bez migracji).
+- Polecenia Kartografa wykonywane poza Archiwistą (CLI, Hydrograf) są
+  normalną sytuacją: indeks zobaczy je przy najbliższym odświeżeniu.
+
+### 4.5 Wydajność
+
+Magazyn odniesienia: 50 000 slotów, 80 000 wersji (ok. 260 000 plików
+z sidecarami i dowiązaniami, ok. 150 000 katalogów), 30 projektów; udział
+SMB 3 w sieci 1 Gb/s albo dysk lokalny SSD. Cele (kryteria akceptacji v0.1,
+test na magazynie syntetycznym z generatora, sekcja 11):
+
+| Operacja | Udział SMB | Dysk lokalny |
+|---|---|---|
+| pierwszy pełny skan | ≤ 10 min | ≤ 2 min |
+| skan przyrostowy bez zmian (w tle) | ≤ 3 min | ≤ 20 s |
+| odświeżenie widoku (obszar + produkt, ≤ 500 slotów) | ≤ 5 s | ≤ 1 s |
+| zapytanie listy (strona 50 wierszy), p95 | ≤ 200 ms | ≤ 200 ms |
+| obrysy w widoku mapy (≤ 5 000 obiektów; powyżej agregacja do siatki), p95 | ≤ 300 ms | ≤ 300 ms |
+| wyszukiwanie tekstowe, p95 | ≤ 200 ms | ≤ 200 ms |
+| karta pliku bez podglądu, p95 | ≤ 200 ms | ≤ 200 ms |
+
+Indeks ≤ 500 MB dla 80 000 wersji; pamięć serwera ≤ 500 MB bez podglądów.
+Interfejs nigdy nie czeka na skan: zapytania idą do indeksu, a stan
+indeksu („Indeks z 14:02, skan trwa: 63%”) jest zawsze widoczny.
+
+### 4.6 Praca na udziale SMB
+
+1. Na udziale nie ma żadnego pliku Archiwisty (SQLite, pamięć, blokady).
+   Archiwista tylko czyta; zapisy wykonuje Kartograf, który działa bez
+   blokad zakresów bajtów (wersje przez `os.link`, manifest przez blokadę
+   `mkdir` i `os.replace`).
+2. Cel dowiązania wyłącznie z sidecara dowiązania (`extra.link_target`).
+   Żadnej logiki na numerach i-węzłów ani licznikach dowiązań: na udziale
+   CIFS przykładowego magazynu ścieżka standardowa i jej wersja zwróciły
+   różne numery i-węzłów i różne liczniki dowiązań (pomiar 2026-10-17).
+   Potwierdzenie treścią na takich udziałach robi Kartograf (KA-5).
+3. Zajętość = suma rozmiarów plików w `versions/` (każda wersja raz);
+   suma po ścieżkach liczyłaby dowiązania twarde wielokrotnie.
+4. GeoPackage z magazynu otwieramy tylko do odczytu jako niezmienny
+   (`immutable=1`): wersje się nie zmieniają, a zwykłe otwarcie SQLite na
+   udziale zakłada blokady.
+5. Plik, który zniknął między listowaniem a odczytem, jest pomijany
+   i sprawdzany ponownie w następnym skanie.
+6. Nie podążamy za dowiązaniami symbolicznymi wychodzącymi poza magazyn.
+7. Ten sam udział bywa zamontowany pod różnymi ścieżkami (`Z:\kartograf`,
+   `/mnt/nas/kartograf`): magazyn w konfiguracji ma aliasy ścieżek. Manifest
+   projektu musi wskazywać magazyn poprawnie dla procesu, który pobiera
+   (Kartograf czyta `output_dir` sam) — dlatego w zespole zalecamy względne
+   `output_dir`, gdy projekty i magazyn leżą na tym samym udziale,
+   a poprawkę ścieżki robi funkcja Kartografa (KH-1), nie ręczna edycja
+   przez Archiwistę.
+8. Udział niepodłączony — jak w 4.4: baner, bez skanu i bez zadań zapisu
+   (Kartograf i tak wymaga istniejącego katalogu magazynu).
+
+### 4.7 Projekty
+
+- **Odkrywanie:** katalogi projektów z konfiguracji są przeszukiwane
+  w poszukiwaniu `kartograf-project.json` (głębokość ≤ 4, z pominięciem
+  `.git`, katalogów magazynów i katalogów ukrytych); projekt można też
+  dodać ręcznie albo utworzyć (`init_project`).
+- **Odczyt:** zawsze `open_project`. Niepoprawny manifest jest widoczny
+  z tekstem błędu Kartografa (np. „nieznany klucz 'optons'”).
+- **Powiązanie z magazynem:** `output_dir` projektu dopasowujemy do
+  skonfigurowanego magazynu po ścieżce rozstrzygniętej albo aliasie; brak
+  dopasowania — „Magazyn projektu nieznany: dodaj magazyn”.
+- **Przypięcia → wersje:** po ścieżce `version` (względnej do magazynu)
+  i `sha256`; przypięcie bez wersji w indeksie ma stan „brak pliku”.
+- **Indeks użycia** („Przypięta w: …”) to tabela przypięć; nic nie trafia
+  do sidecarów (sidecar jest niezmienny, SCOPE 3.3).
+- **Zmiany manifestu** wykrywamy po czasie modyfikacji i sumie pliku;
+  manifest zmieniony w trakcie pracy (inny proces, CLI) jest czytany
+  ponownie przed każdą akcją, a konflikt zgłasza Kartograf (blokada
+  `.kartograf-project.lock`, scalanie per zadanie).
