@@ -73,6 +73,11 @@ panele i czat są szufladami od dołu.
 
 ## Zrzuty
 
-`screenshots/` — kolejne kroki przepływu na desktopie 1920 × 1080
-(`01`–`16`), widok Stos przy 1440 px (`17`) i telefon 390 px (`18`–`19`);
+`screenshots/` — podgląd w WebP (szerokość do 1280 px, jakość 70; łącznie
+ok. 2 MB): kolejne kroki przepływu na desktopie 1920 × 1080 (`01`–`16`),
+widok Stos przy 1440 px (`17`), telefon 390 px (`18`–`19`), warianty
+z formatami jako plakietki (`20`) i Wachlarz (`21-wachlarz-*`: NMT z rokiem
+najnowszym i środkowym, ortofotomapa, z przypiętym Asystentem);
 `05a`–`05c`: Stos z wybranym rokiem najnowszym, środkowym i najstarszym.
+Zrzuty `01`–`19` pokazują stan sprzed przypiętego panelu Asystenta
+i Wachlarza.
