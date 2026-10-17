@@ -15,10 +15,16 @@ i 3.1-3.5, `docs/USAGE.md`, `docs/SCOPE.md` 3.3 (roadmapa, zasady nakładek),
 ADR-044, spec manifestu `docs/superpowers/specs/2026-10-15-manifest-projektu-design.md`
 
 Konwencje dokumentu: nazwy z Kartografa (funkcje, pola sidecara, katalogi)
-zapisuję w `kodzie`; teksty interfejsu w cudzysłowie „…”; prawdziwe
+są zapisane w `kodzie`; teksty interfejsu w cudzysłowie „…”; prawdziwe
 ścieżki danych zastępuje `<katalog-danych>`. Odwołania „ARCH”, „USAGE”,
 „SCOPE” i „ADR-0xx” bez dopisku dotyczą dokumentów Kartografa; decyzje
 Archiwisty mają postać „A-ADR-0xx” (`docs/DECISIONS.md` w tym repozytorium).
+
+**Spis treści:** 1. Cel i użytkownicy · 2. Słownik pojęć · 3. Przypadki
+użycia · 4. Model danych i indeks · 5. Architektura · 6. Interfejs ·
+7. Asystent · 8. Łączenie danych · 9. API HTTP · 10. Bezpieczeństwo ·
+11. Testy i weryfikacja · 12. Wymagania wobec Kartografa · 13. Roadmapa ·
+14. Ryzyka · 15. Pytania otwarte · 16. Mockup
 
 ---
 
@@ -345,7 +351,7 @@ z tych samych funkcji. Konsekwencja: v0.1 wymaga wydania Kartografa z KA
 
 ### 4.3 Indeks lokalny
 
-Indeks to plik SQLite (tryb WAL) na dysku lokalnym, w katalogu danych
+Indeks (A-ADR-002) to plik SQLite (tryb WAL) na dysku lokalnym, w katalogu danych
 użytkownika (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
 `%LOCALAPPDATA%\Archiwista\`); obok leżą pamięć podglądów (`cache/`)
 i dzienniki zadań (`jobs/`). Konfiguracja (magazyny, katalogi projektów,
@@ -398,10 +404,12 @@ przybliżonej, a dla S-JTSK to przesunięcie rzędu 100 m (ADR-024).
   z pamięcią atrybutów bywa opóźniony), dlatego okresowo wykonujemy pełny
   skan kontrolny (domyślnie raz na dobę, w tle).
 - **Odświeżenie na żądanie dla widoku:** gdy użytkownik pyta o obszar
-  i produkt, Archiwista najpierw odświeża dokładnie te sloty (katalogi
-  hierarchii jednostek obszaru), a dopiero potem pokazuje stan magazynu —
-  odpowiedź na bieżące pytanie jest aktualna w sekundach także na SMB,
-  niezależnie od pełnych skanów.
+  i produkt, Archiwista najpierw odświeża dokładnie sloty jednostek tego
+  obszaru (`iter_store(segment=…, units=…)`, KA-1; jednostki z raportu
+  dostępności, z siatki godeł `find_sheets_for_bbox` albo z obrysów
+  w indeksie), a dopiero potem pokazuje stan magazynu — odpowiedź na
+  bieżące pytanie jest aktualna w sekundach także na SMB, niezależnie od
+  pełnych skanów.
 - **Po własnych zadaniach:** wynik Kartografa (`files[].file.version_path`,
   przypięcia projektu) trafia do indeksu od razu, bez skanu.
 - **Wyzwalacze:** start aplikacji (przyrostowy, jeśli ostatni starszy niż
@@ -538,8 +546,10 @@ Zasady architektury:
   Adapter tłumaczy, nie decyduje: żadnych reguł danych, wyboru arkuszy,
   wersji ani transformacji.
 - **Operacje długie i zapisujące w procesach roboczych.** Serwer nie
-  wykonuje pobrań ani obliczeń w swoim procesie; awaria GDAL-a albo
-  przerwanie zadania nie kładzie interfejsu (5.6).
+  wykonuje pobrań ani ciężkich obliczeń w swoim procesie (budowa COG,
+  łączenie, sumy SHA-256 — to zadania w tle, 5.6); w serwerze zostaje tylko
+  lekkie renderowanie kafli z gotowych plików. Awaria GDAL-a albo przerwanie
+  zadania nie kładzie interfejsu.
 - **Przeglądarka nie zna systemu plików serwera.** Pliki są wskazywane
   identyfikatorami z indeksu i serwowane przez API — tak samo lokalnie
   i w trybie zespołu. Ścieżki do skopiowania (np. do QGIS) pokazujemy
@@ -653,13 +663,14 @@ dostępność magazynów, uprawnienia, dowiązania twarde na udziale, port).
 - **Anulowanie:** docelowo kooperacyjne — parametr `cancel` w funkcjach
   Kartografa (KC-1): Kartograf kończy bieżącą jednostkę i zwraca częściowy
   raport. Do czasu KC-1: sygnał przerwania (SIGINT; na Windows
-  CTRL_BREAK_EVENT do grupy procesu) — Kartograf obsługuje przerwanie jak
-  Ctrl-C w CLI (wersje powstają atomowo z `versions/.incoming/`, więc nie
-  zostaje pół wersji), po 30 s zakończenie procesu. Po anulowaniu
-  Archiwista odświeża sloty, których dotyczyło zadanie. Ryzyko: przerwanie
-  w milisekundach zapisu manifestu może zostawić blokadę
-  `.kartograf-project.lock`, którą Kartograf każe usunąć ręcznie —
-  Archiwista rozpoznaje ten stan i pokazuje instrukcję (sekcja 14).
+  CTRL_BREAK_EVENT do grupy procesu), który w procesie roboczym jest
+  `KeyboardInterrupt` — jak Ctrl-C w CLI Kartografa: wersje powstają
+  atomowo z `versions/.incoming/`, więc nie zostaje pół wersji, a bloki
+  `finally` zwalniają blokadę manifestu. Po 30 s bez zakończenia proces
+  jest kończony siłą; tylko wtedy, jeśli trafi to w milisekundy zapisu
+  manifestu, zostaje `.kartograf-project.lock`, którą Kartograf każe usunąć
+  ręcznie — Archiwista rozpoznaje ten stan i pokazuje instrukcję (sekcja
+  14). Po anulowaniu Archiwista odświeża sloty, których dotyczyło zadanie.
 - **Restart serwera:** zadania „trwa” bez żywego procesu dostają stan
   „przerwane” z przyciskiem „Ponów”; ponowienie jest bezpieczne (Kartograf
   używa gotowych wersji lokalnych).
@@ -786,7 +797,7 @@ i mockupu.
 
 ### 6.4 Etykiety pokrycia
 
-Etykieta mówi, co źródło ma dla obszaru w danym roku i wariancie;
+Etykieta (A-ADR-010) mówi, co źródło ma dla obszaru w danym roku i wariancie;
 plakietka obok mówi, co z tego jest w magazynie. Definicje opierają się
 na raporcie dostępności Kartografa (`AvailabilityCombination`: `complete`,
 `sheets_full`, `sheets_partial`, `campaigns`, `uncovered_m2`;
@@ -848,7 +859,9 @@ Odmiana: „1 kampania”, „2-4 kampanie”, „5+ kampanii” (wg reguł jęz
 
 ### 6.5 Widoki (szkice)
 
-Szkice pokazują układ i treść, nie wygląd (ten ustali mockup).
+Szkice pokazują układ i treść, nie wygląd (ten ustali mockup); lata, liczby
+i etykiety wersji są ilustracyjne. Szkic a) ma ustalony układ arkuszy
+PL-1992 (jak w UC-01).
 
 **a) „Mapa” z panelem „Zestawienie” (Tabela)**
 
@@ -1233,8 +1246,9 @@ w grupach danych, jak `soil hsg` (ADR-039: grupy wg typu danych) —
 / `check_mosaic`), `kartograf elevation cross-border`
 (`build_cross_border` / `check_cross_border`), `kartograf elevation compare`
 (`compare_versions` / `check_compare`). Wejście jako wybór danych (te same
-opcje co pobranie — Kartograf dociąga brakujące wersje jak HSG) albo jawna
-lista wersji (to, co użytkownik zaznaczył w Archiwiście).
+opcje co pobranie — Kartograf dociąga brakujące wersje jak HSG, a wybór
+rozwija się do konkretnych wersji zapisanych w `source_files`, L1) albo
+jawna lista wersji (to, co użytkownik zaznaczył w Archiwiście).
 
 ### 8.2 Tryb 1: mozaika (zestaw rastrów z wielu arkuszy)
 
@@ -1735,6 +1749,8 @@ data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
 
 ### 10.1 Tryb lokalny (domyślny)
 
+Decyzja: A-ADR-012.
+
 - **Tylko `127.0.0.1`.** Uruchomienie na innym adresie wymaga trybu
   zespołu ze skonfigurowanym logowaniem — inaczej serwer odmawia startu.
 - **Nagłówek `Host`** tylko `127.0.0.1:<port>` albo `localhost:<port>`
@@ -1867,7 +1883,7 @@ Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
 
 | ID | API (propozycja) | Po co | Wersja |
 |---|---|---|---|
-| KA-1 | `iter_store(output_dir, *, segment=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem | indeks bez własnej kopii reguł `data/` (4.2) | v0.1 |
+| KA-1 | `iter_store(output_dir, *, segment=None, units=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `units` zawęża przejście do katalogów hierarchii podanych jednostek segmentu (godła, TERYT, `<coords>`), bez listowania całego segmentu; `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem | indeks bez własnej kopii reguł `data/` (4.2), szybkie odświeżenie widoku (4.4) | v0.1 |
 | KA-2 | `read_sidecar(path) -> Sidecar` — typowany, tolerancyjny odczyt `kartograf-meta/1` (także sprzed ADR-031 i klucze deweloperskie 0.8.0-dev): pola z ARCH 3.2, surowy `dataset` i rozpoznany klucz deskryptora, znormalizowane: rok i data danych, kampania, numer zgłoszenia, wydanie, pełny arkusz, pokrycie, jednostka | filtry, karta pliku, rok danych ≠ data pobrania (4.3) | v0.1 |
 | KA-3 | `describe_segment(segment) -> SegmentInfo` — odwrotność `resolve_subdir`/`content_segment`: produkt, kraj, klucz deskryptora, nazwa dla ludzi (nazwa deskryptora + wariant: rozdzielczość, układ wysokości, format, rocznik, poziom), `known` | ludzkie nazwy („NMT 1 m · PL-1992 · EVRF2007”) | v0.1 |
 | KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — zasięg w WGS84 i natywny z układem i źródłem (`request`, `sheet`, `header`, `unit`); offline dla godeł PL i TM33, bboxów zadań i nagłówków; z siecią i cache dla TERYT (PRG), KU (RUIAN), SM5 (indeks CUZK); przyjmuje także pozycję planu (`PlanItem`) | mapa, filtr obszaru, podświetlanie planowanych jednostek (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |
