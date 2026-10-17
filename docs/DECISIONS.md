@@ -38,6 +38,7 @@ Kartografa).
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
+| [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
 
 ---
 
@@ -333,6 +334,11 @@ słownictwo (uzgodnione z mockupem).
 rekordy niepełne. Definicje dla CZ (bez lat) i produktów jednostkowych są
 osobne (SPEC 6.4).
 
+**Errata 1 (2026-10-17, A-ADR-017):** etykiety i plakietka dotyczą wariantu
+grupowanego bez formatu plików: formaty tego samego zestawu (np. `ASC`
+i `ASCII-NMT`) dzielą jedną etykietę pokrycia; plakietka magazynu liczy
+jednostki w wybranym formacie.
+
 ---
 
 ## ADR-011: Asystent po stronie serwera z potwierdzeniem człowieka
@@ -485,6 +491,41 @@ administrator (SPEC 5.4, 15: P6).
 pomocnicza); szkice ekranów w SPEC używają `RRRR.MM.DD`. Szary styl podkładu wymaga
 własnego stylu kafli lub filtra przeglądarki; w trybie offline zostaje „bez podkładu”
 albo podkład lokalny.
+
+---
+
+## ADR-017: Warianty grupowane bez formatu plików
+
+**Data:** 2026-10-17
+**Status:** Przyjęta
+
+**Kontekst:** Raport dostępności Kartografa zwraca kombinacje z formatem, więc ten
+sam zestaw arkuszy w dwóch formatach wygląda jak dwa warianty. Przykład: NMT 2019,
+5 m, EVRF2007, zgłoszenie DFT.7201.003.2019 jest dostępny jako `ASC` i `ASCII-NMT`.
+Dwie karty o tym samym roku, pokryciu i arkuszach mylą i zawyżają liczniki
+(„N wariantów”), a format nie zmienia tego, co obszar ma z danych.
+
+**Opcje:**
+- A) Wariant = kombinacja raportu 1:1 (format w kluczu), jak do tej pory.
+- B) Wariant = (produkt, rok, układ poziomy, rozdzielczość, układ wysokości,
+  zgłoszenie/kampania); formaty tego samego zestawu to plakietki jednej karty,
+  wybór formatu przy pobieraniu.
+- C) Zmiana raportu Kartografa tak, by sam grupował formaty.
+
+**Decyzja:** B (decyzja użytkownika 2026-10-17). Karta nosi plakietki, np. „5 m ·
+EVRF2007 · ASC, ASCII-NMT”. Grupowanie robi Archiwista; `check_availability`
+zostaje bez zmian (C odrzucona: raport opisuje to, co publikuje źródło).
+Liczniki, tabela, oś czasu, „Stos”, „Katalog”, karta pliku, ranking roku
+i plan asystenta liczą warianty, nie formaty (SPEC 6.3, 6.4, 7.4). Format
+wybiera się dopiero w „Pobierz…” i „Oknie planu”, domyślnie pierwszy
+rastrowy gotowy do mozaiki (ASC, GeoTIFF); gdy takiego brak, wybór jest
+jawny. Mozaika przyjmuje wersje jednego formatu rastrowego (SPEC 8.2).
+Plakietka magazynu liczy jednostki w wybranym formacie.
+
+**Konsekwencje:** Klucz grupy to krotka wyliczana z kombinacji raportu i sidecarów
+(format jest pomijany, zgłoszenie zostaje); różne zgłoszenia z tego samego roku to
+osobne warianty. Plan pobrania musi przenosić format do polecenia Kartografa.
+Rozszerza ADR-010 (etykiety dotyczą wariantu, nie formatu).
 
 ---
 

@@ -139,6 +139,7 @@ zachowują jego znaczenie.
 | **Zadanie projektu** | Wpis `tasks[]` manifestu: nazwa, komenda (np. `elevation download`) i opcje | spec manifestu 3.3 |
 | **Przypięcie** | Wpis `files[]` zadania projektu: która wersja (`version`, `sha256`) jest używana | spec manifestu 3.3 |
 | **Dostępność** | Co źródło ma dla obszaru: lata, warianty, kompletność arkuszy — raport `check_availability` (`kartograf-availability/1`) | ADR-041 |
+| **Wariant** | (Archiwista) zestaw plików produktu o wspólnym: rok, układzie poziomym, rozdzielczości, układzie wysokości i zgłoszeniu/kampanii; formaty plików (np. `ASC`, `ASCII-NMT`) są jego plakietkami, nie kluczem; jedna karta w interfejsie | sekcja 6.4, A-ADR-017 |
 | **Aktualność** | Czy lokalna albo przypięta wersja jest najnowsza u źródła — plan `check_*` (`kartograf-plan/1`; statusy `current`, `newer`, `missing`, `unverifiable`, `check_failed`) | ADR-036 |
 | **Obszar** | Zaznaczenie użytkownika: prostokąt, wielokąt, plik geometrii, godło, TERYT, KU albo kraj | — |
 | **Pokrycie roku** | (Archiwista) etykieta roku albo wydania dla obszaru: „pełne”, „pełne · 2 kampanie”, „częściowe · 58%”, „brak danych” — oraz osobna plakietka stanu magazynu: „pobrane”, „pobrane 5/12”, „niepobrane” | sekcja 6.4 |
@@ -785,13 +786,16 @@ i mockupu.
 
 4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z listą
    przełączników, panel „Zestawienie” (Tabela albo Oś czasu), przełącznik
-   „Mapa / Stos / Katalog”. Nad tabelą stoi aktywny wariant w postaci
-   chipów („NMT · 1 m · EVRF2007 · ASC · układ arkuszy: dowolny”).
-   Wymiar, którego użytkownik nie ustalił (np. układ arkuszy), wybiera dla
-   każdego roku osobno ranking z 6.4, a wiersz pokazuje wybraną wartość
-   (np. „PL-2000”) i chip „+N warianty”, gdy rok ma inne kombinacje.
-   Domyślny wariant jest widoczny i zmienialny — nic nie jest wybierane
-   po cichu.
+   „Mapa / Stos / Katalog”. Nad tabelą stoi aktywny filtr wariantu w postaci
+   chipów („NMT · 1 m · EVRF2007 · ASC · układ arkuszy: dowolny”). Wiersz
+   i karta to wariant (6.4: rok, układ poziomy, rozdzielczość, układ
+   wysokości, zgłoszenie); formaty tego samego zestawu są jego plakietkami,
+   np. „5 m · EVRF2007 · ASC, ASCII-NMT”, a wybór formatu następuje dopiero
+   przy pobieraniu. Wymiar, którego użytkownik nie ustalił (np. układ
+   arkuszy), wybiera dla każdego roku osobno ranking z 6.4, a wiersz
+   pokazuje wybraną wartość (np. „PL-2000”) i chip „+N warianty”, gdy rok
+   ma inne warianty. Domyślny wariant jest widoczny i zmienialny — nic nie
+   jest wybierane po cichu.
 5. **Akcje wiersza.** „Pobierz…”, „Dodaj do projektu…”, „Pokaż na mapie”,
    „Porównaj z…”, „Mozaika…”, „Polecenie Kartografa”. Każda z siecią albo
    zapisem przechodzi przez „Okno planu”.
@@ -838,6 +842,35 @@ Kartografa; pozostałe są pod chipem „+N warianty”. Przykład z mockupu
 PL-2000 — „pełne” z jednej kampanii, więc wiersz 2023 pokazuje „pełne ·
 PL-2000”, a PL-1992 jest pod „+1 wariant”. Kto potrzebuje arkuszy
 w EPSG:2180, ustala „układ arkuszy: PL-1992” i ranking go nie zmienia.
+
+**Wariant i formaty (A-ADR-017).** Karta w „Zestawieniu”, „Stosie”
+i „Katalogu” to **wariant**: (produkt, rok, układ poziomy, rozdzielczość,
+układ wysokości, zgłoszenie/kampania). Format plików nie należy do klucza
+wariantu: pliki tego samego zestawu w kilku formatach (np. NMT 2019,
+5 m, EVRF2007, zgłoszenie DFT.7201.003.2019: `ASC` i `ASCII-NMT`) to
+jedna karta, a formaty są jej plakietkami: „5 m · EVRF2007 · ASC,
+ASCII-NMT”. Archiwista grupuje je sam z kombinacji raportu
+`check_availability` (Kartograf zwraca kombinacje z formatem i się nie
+zmienia). Zasady:
+
+- Liczniki („N wariantów”, chip „+N warianty”), wiersze tabeli, słupki osi
+  czasu, płyty „Stosu”, karty „Katalogu”, miniatury i ranking powyżej
+  liczą warianty, nie formaty: dwa formaty jednego zestawu to jeden
+  wariant. Etykieta pokrycia i rozmiar dotyczą zestawu arkuszy, więc są
+  wspólne dla formatów; rozmiar jest podawany dla formatu domyślnego.
+- Format wybiera się dopiero w „Pobierz…” i „Oknie planu”, domyślnie
+  pierwszy rastrowy gotowy do mozaiki (ASC, GeoTIFF, w tej kolejności);
+  gdy wariant takiego nie ma (np. tylko `ASCII-NMT` albo ZIP), nic nie
+  jest wybierane po cichu: plan wymaga jawnego wyboru. Wybrany format
+  trafia do polecenia (`--format`, jeśli komenda go przyjmuje).
+- Plakietka magazynu liczy jednostki w wybranym (domyślnym) formacie;
+  jednostka mająca wersję tylko w innym formacie zestawu jest oznaczona
+  w szczegółach („w innym formacie: ASCII-NMT”) i nie wlicza się do
+  „pobrane”.
+- Różne zgłoszenia o tym samym roku, układzie, rozdzielczości
+  i układzie wysokości to osobne warianty (inna kampania, inny lot).
+- Karta pliku pokazuje format konkretnego pliku; wersje innych formatów
+  tego samego slotu są linkami „Inne formaty”.
 
 **Inne rodziny produktów:**
 
@@ -927,6 +960,7 @@ są lokalnie, inaczej schemat arkuszy)
 | 2025               | | 2023               | | 2022               |
 | [schemat arkuszy]  | | [miniatura]        | | [schemat arkuszy]  |
 | pełne              | | pełne · 2 kampanie | | częściowe · 58%    |
+| ASC                | | ASC, ASCII-NMT     | | GeoTIFF            |
 | 12 ark. · 0,46 GB  | | 12 ark. · 0,45 GB  | | 9 ark. · 4 niepełne|
 | niepobrane         | | pobrane 5/12       | | niepobrane         |
 +--------------------+ +--------------------+ +--------------------+
@@ -1097,6 +1131,10 @@ człowiek, jest dokładnie tym, co się wykona.
 - Przed wykonaniem Archiwista ponownie waliduje polecenia
   (`validate_command`) i — gdy plan jest starszy niż 15 minut — sprawdza
   go ponownie; różnice pokazuje przed startem.
+- Propozycja wskazuje format plików dla każdego pobrania wariantu
+  (`format` w opcjach polecenia); asystent proponuje domyślny format
+  rastrowy (ASC, GeoTIFF), a inny tylko na wyraźną prośbę, i pisze
+  „wariant” w znaczeniu z 6.4 (jak w „Pobierz…”).
 - Duże działania (domyślnie ponad 5 GB albo ponad 500 plików) wymagają
   dodatkowego potwierdzenia („Rozumiem: ok. 12 GB”). Limity Kartografa
   (np. kolekcja: 100 plików i 10 GB na zadanie) obowiązują bez zmian.
@@ -1260,6 +1298,12 @@ o reprojekcję także z segmentów różniących się tylko układem arkuszy
 (strefy PL-2000; CZ: arkusze SM5 w EPSG:5514 i kafle TM33 w EPSG:3045).
 Źródła wyboru: wiersz roku z „Zestawienia”, zaznaczenie na mapie
 albo w „Katalogu”, przypięcia zadania projektu.
+Wybór wariantu z „Zestawienia” lub „Katalogu” (A-ADR-017) rozwija się do
+wersji w jednym formacie: domyślnie rastrowym gotowym do mozaiki (ASC,
+GeoTIFF), a gdy wariant ma kilka takich formatów — wybranym w planie.
+Formatów nierastrowych (np. ASCII-NMT, archiwa) mozaika nie przyjmuje;
+mieszanie formatów w jednym wejściu to błąd (L2), bo jawny wybór formatu
+jest częścią planu.
 
 **Wynik.** Do wyboru:
 
