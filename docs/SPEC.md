@@ -1176,3 +1176,369 @@ offline — nagrane odpowiedzi modelu (deterministycznie); na żywo — przy
 zmianie modelu albo promptu. Kryteria v0.5: co najmniej 80% poprawnych
 propozycji na modelu referencyjnym i zero wykonań bez potwierdzenia
 (także dla poleceń wrogich).
+
+## 8. Łączenie danych
+
+Cztery tryby „przygotowania do łączenia” (decyzja użytkownika
+2026-10-17): mozaika arkuszy, zestawienie PL + CZ, zestaw do projektu
+i QGIS, porównanie wersji. Każdy opisany jest tak samo: wejście, wynik,
+gdzie zapisywany, sidecar wyniku, ograniczenia, co Kartograf już zapewnia,
+co trzeba dodać i gdzie to zaimplementować.
+
+### 8.1 Wspólne zasady
+
+- **L1. Wejście = konkretne wersje** (`versions/…` i `sha256`), nigdy
+  ścieżki standardowe: dowiązanie może przeskoczyć na nowszy lot, a wynik
+  zmieniłby wtedy treść po cichu. Wybór z interfejsu (rok z zestawienia,
+  zaznaczenie, zadanie projektu) jest rozwijany do listy wersji pokazanej
+  w planie.
+- **L2. Zero cichych zamian.** Różne układy poziome, rozdzielczości,
+  układy wysokości albo typy danych to błąd z wyjaśnieniem albo jawny wybór
+  użytkownika (układ wyniku, rozdzielczość, metoda przepróbkowania), który
+  trafia do sidecara wyniku.
+- **L3. Transformacje tylko przypięte** (ADR-022, ADR-024, ADR-027):
+  operacja z dokładnością, wymuszona na GDAL-u, opisana w `transform`
+  sidecara; brak bezpiecznej operacji = błąd przed obliczeniami.
+- **L4. `nodata` przenoszone, nigdy zero.** Piksel bez danych w źródle
+  pozostaje bez danych w wyniku.
+- **L5. Wynik danych (raster, wektor) = produkt pochodny w magazynie
+  Kartografa**: wersja z sidecarem `kartograf-meta/1`, `extra.derived`
+  (nazwa operacji) i listą wejść `extra.source_files[]` (`name`, `file` —
+  ścieżka wersji, `sha256`, `label`) — dokładnie jak HSG (ADR-036 D33).
+  Ta sama lista wejść i parametrów = ta sama wersja (`reused`), więc wynik
+  liczony raz służy całemu zespołowi.
+- **L6. Wynik opakowania** (projekt QGIS, lista ścieżek, VRT-owijki) to
+  katalog zestawu w projekcie: nie dane, bez wersji, odtwarzalny z manifestu
+  (8.4).
+- **L7. Plan przed obliczeniem:** każda operacja łączenia ma bliźniaka
+  `check_*` (ADR-037 Z2) — wejścia, siatka i układ wyniku, rozmiar,
+  ostrzeżenia — bez liczenia; Archiwista pokazuje go w „Oknie planu”.
+- **L8. Odtwarzalność w projekcie:** operacja łączenia jest komendą
+  Kartografa, więc może być zadaniem projektu (pozycja w
+  `kartograf/project/commands.py`): wejścia przypięte z rolą `input`, wynik
+  z rolą `output` — jak `soil hsg`.
+
+Propozycja nazw w Kartografie (ostateczne ustali ADR Kartografa): komendy
+w grupach danych, jak `soil hsg` (ADR-039: grupy wg typu danych) —
+`kartograf elevation mosaic` i `kartograf imagery mosaic` (`build_mosaic`
+/ `check_mosaic`), `kartograf elevation cross-border`
+(`build_cross_border` / `check_cross_border`), `kartograf elevation compare`
+(`compare_versions` / `check_compare`). Wejście jako wybór danych (te same
+opcje co pobranie — Kartograf dociąga brakujące wersje jak HSG) albo jawna
+lista wersji (to, co użytkownik zaznaczył w Archiwiście).
+
+### 8.2 Tryb 1: mozaika (zestaw rastrów z wielu arkuszy)
+
+**Wejście.** Wersje jednego produktu rastrowego (NMT, NMPT, ortofotomapa,
+true orto, intensywność, mapy TIFF) z jednego segmentu, a po rozszerzeniu
+o reprojekcję także z segmentów różniących się tylko układem arkuszy
+(strefy PL-2000; CZ: arkusze SM5 w EPSG:5514 i kafle TM33 w EPSG:3045).
+Źródła wyboru: wiersz roku z „Zestawienia”, zaznaczenie na mapie
+albo w „Katalogu”, przypięcia zadania projektu.
+
+**Wynik.** Do wyboru:
+
+- **VRT** (domyślnie dla dużych obszarów): mały plik XML odwołujący się do
+  plików wersji ścieżkami względnymi, z jawnym układem i `nodata` (ASC
+  ich nie niesie); bez kopii danych, gotowy od razu.
+- **GeoTIFF (COG) na wspólnej siatce:** jeden plik, przycięty do obszaru
+  (opcjonalnie), kompresja DEFLATE z predyktorem, typ danych wejść,
+  `nodata` jawne (NMT: −9999).
+
+Parametry jawne: układ wyniku (domyślnie układ wejść, gdy jest jeden),
+rozdzielczość (domyślnie wejść; zmiana tylko z metodą: dwuliniowa dla
+wysokości, najbliższy sąsiad dla klas i obrazów), reguła nakładania (arkusze
+jednego wyboru się nie nakładają; przy wejściach nakładających się —
+najnowsza kampania wygrywa, z listą w sidecarze, albo błąd).
+
+**Gdzie zapisywany.** W magazynie, jako produkt pochodny (L5). Propozycja
+segmentu zgodna z regułą 10 (token operacji przed układem wysokości):
+`nmt/pl_1992_0.5m_mosaic_evrf2007/bbox/561000_239000_573000_249000.tif`
+(albo `.vrt`); układ pliku z sidecara, jak w `bbox/` wycinków. Wersja:
+etykieta z wejść (rok, gdy wszystkie z jednego roku, inaczej zakres lat),
+`<sha8>` z treści. VRT w magazynie odwołuje się do wersji tego samego
+magazynu, więc przenosi się razem z nim (`rsync -aH`).
+
+**Sidecar wyniku** (przykład):
+
+```json
+{
+  "dataset": "pl.gugik.nmt_0_5m",
+  "country": "PL",
+  "product": "nmt",
+  "provider": "GUGiK",
+  "horizontal_crs": "EPSG:2180",
+  "vertical_crs": "EPSG:9651",
+  "vertical_source": "native",
+  "resolution": "0.5m",
+  "nodata": -9999.0,
+  "request": {"bbox": [561000.0, 239000.0, 573000.0, 249000.0],
+              "bbox_crs": "EPSG:2180", "year": 2023, "format": "tif"},
+  "transform": null,
+  "extra": {
+    "derived": "mosaic",
+    "source_files": [
+      {"name": "M-34-64-D-d-1-4-1",
+       "file": "nmt/pl_1992_0.5m_evrf2007/versions/M-34/64/D/d/1/4/1/2023-05-02_80011_ab12cd34/M-34-64-D-d-1-4-1.asc",
+       "sha256": "ab12cd34…", "label": "2023-05-02_80011"}
+    ],
+    "version": {"label": "2023", "label_source": "inputs"}
+  },
+  "license": {"id": "PL-PGiK-40a", "attribution": "…", "url": "https://www.geoportal.gov.pl"},
+  "sha256": "…", "size_bytes": 0, "schema": "kartograf-meta/1"
+}
+```
+
+**Ograniczenia.**
+
+- Różne układy poziome → reprojekcja przypiętą operacją (L3), wyłącznie
+  w Kartografie; bez niej — błąd z listą grup układów.
+- Różne rozdzielczości (np. 0,5 m i 1 m) → błąd, chyba że użytkownik
+  wybierze rozdzielczość i metodę.
+- **Różne układy wysokości (EVRF2007 i KRON86, Bpv i EVRF2007) → zawsze
+  błąd.** Kartograf nie przelicza wysokości przy łączeniu; podpowiedź
+  wskazuje polecenie pobrania właściwego wariantu.
+- Różne kampanie i lata są dozwolone, ale wynik je wylicza (sidecar,
+  plan), a interfejs ostrzega o możliwych szwach (różne daty lotów, różne
+  barwy ortofotomap).
+- Ortofotomapa RGB: `mosaic_and_crop` z `dtype` owija tylko rastry
+  jednopasmowe — mozaika RGB bez zmiany typu.
+- Archiwa GUGiK (TBD, TIN, XYZ, DXF…) i pliki ZIP nie są rastrami siatki —
+  poza trybem.
+- Rozmiar: szacunek przed obliczeniem (piksele × typ); powyżej 2 GB
+  ostrzeżenie i propozycja VRT.
+- Arkusz opublikowany w innym układzie niż wynika z godła (E17) — prawdą
+  jest `horizontal_crs` sidecara (Kartograf to sprawdza).
+
+**Co Kartograf już zapewnia.** `mosaic_and_crop` (publiczne, stabilne od
+0.7.1: ten sam układ i rozdzielczość, `nodata` przenoszone, jawny `dtype`,
+źródła otwierane pojedynczo — ponad 1 200 arkuszy) i `check_source_grid`
+(źródła poza siatką większości); wycinek `cutout=True` (jeden GeoTIFF
+obszaru wprost ze źródła — WCS 1 m PL, ImageServer CZ, ortofotomapa
+Standard/High) — często lepszy niż mozaika, gdy nie są potrzebne konkretne
+loty ani rozdzielczość inna niż 1 m; wewnętrznie `warp_to_grid`
+i `PinnedTransform` (ADR-027).
+
+**Co trzeba dodać (KE).** `build_mosaic` / `check_mosaic` z zapisem wersji
+i sidecara (L5), reprojekcją przypiętą i zapisem VRT; komendy CLI; pozycje
+w `kartograf/project/commands.py`.
+
+**Gdzie implementować.** Obliczenie, reprojekcja, zapis i sidecar —
+Kartograf. Wybór wejść, plan, uruchomienie w tle, podgląd wyniku —
+Archiwista.
+
+### 8.3 Tryb 2: zestawienie PL + CZ
+
+Kartograf świadomie nie scala danych z dwóch krajów (ARCH 1: osobne pliki
+i sidecary per kraj powiązane `extra.parent_request`; scalenie w jedną
+powierzchnię to zadanie bez przypisanego wydania — R6 w backlogu
+Kartografa).
+
+**Wejście.** Pliki PL i CZ tego samego rodzaju dla obszaru przygranicznego,
+zwykle z jednego zadania `country="auto"` (wspólne `parent_request`), np.
+wycinek NMT PL 1 m i wycinek DMR 5G 2 m w tym samym `horizontal_crs`;
+albo wektory: granice PRG i RUIAN, BDOT10k i ZABAGED.
+
+**Wynik.** Dwa warianty:
+
+- **„Zestaw bez scalania”** (od v0.4, bez zmian w Kartografie): pliki PL
+  i CZ razem na mapie i w katalogu (grupa `parent_request`), sprawdzenie
+  zgodności (układy, rozdzielczości, pion, daty) z podpowiedzią brakującego
+  pobrania (np. CZ w EVRF2007: `--vertical-crs pl=EVRF2007,cz=EVRF2007`)
+  i eksport do zestawu QGIS (8.4) z grupami „PL” i „CZ” oraz atrybucjami
+  obu dostawców. Wektory zawsze w tym wariancie: schematy atrybutów PRG
+  i RUIAN (BDOT10k i ZABAGED) są różne, a ich harmonizacja jest poza
+  zakresem v1.0.
+- **„Scalona powierzchnia”** (Kartograf R6 = KF): jeden raster na wspólnej
+  siatce w układzie wybranym przez użytkownika (np. EPSG:2180, 5514, 3045),
+  wspólna rozdzielczość wybrana jawnie z metodą, wysokości w EVRF2007 po
+  obu stronach, reguła styku: dane PL na terytorium PL (maska lądu PRG, jak
+  w wycinku PL), dane CZ na terytorium CZ, a w pasie styku pierwszeństwo
+  kraju terytorium; raport różnic na styku (średnia, odchylenie, długość
+  styku).
+
+**Gdzie zapisywany.** Zestaw — katalog zestawu (8.4). Scalona powierzchnia —
+magazyn, produkt pochodny; propozycja segmentu: `nmt/pl-cz_2180_1m_evrf2007/
+bbox/<coords>.tif` (kraj `pl-cz`, układ wyniku jako token jak
+`--horizontal-crs EPSG:3045 -> 3045`, reguła 10).
+
+**Sidecar wyniku.** Jak w 8.2, a dodatkowo: wejścia z obu krajów
+w `source_files`, `transform` z opisem każdej przypiętej operacji
+(S-JTSK → ETRS89: EPSG:1622/1623, nominalnie 1,0 m — ADR-024 errata 2),
+`extra.parent_request` zadania wejściowego, reguła styku i statystyka
+różnic. Wartość pola `country` dla wyniku dwukrajowego ustali ADR
+Kartografa.
+
+**Ograniczenia.**
+
+- Pion: tylko jedna rodzina układu wysokości (EVRF2007 po obu stronach;
+  realizacje PL `EPSG:9651` i CZ `EPSG:5621` — różnica realizacji opisana
+  w sidecarze); Bpv z EVRF2007 → błąd z podpowiedzią pobrania CZ
+  w EVRF2007 (przeliczenie Bpv → EVRF2007 robi Kartograf przy pobraniu).
+- Rozdzielczości PL i CZ są zwykle różne (1 m i 2 m albo 5 m) — wybór
+  rozdzielczości i metody jest obowiązkowy.
+- Daty pomiarów po obu stronach są różne; raport styku pokazuje skalę
+  różnic.
+- CUZK wypełnia obszar za granicą zerami; Kartograf zamienia je na
+  `nodata` — scalanie musi używać `nodata`, nigdy wartości 0 (L4).
+- Dokładność transformacji S-JTSK ok. 1 m wchodzi do sidecara wyniku.
+
+**Co Kartograf już zapewnia.** Osobne pliki per kraj z jawnymi układami
+obu osi, `nodata`, opisem operacji z dokładnością i wspólnym
+`parent_request` (ARCH 1: „Kartograf dostarcza wszystko, czego takie
+scalenie wymaga”); `--country auto --cutout --horizontal-crs` daje oba
+wycinki w jednym układzie; maska lądu PRG wycinka PL; pomiar styku na żywo
+(ARCH 4.6).
+
+**Co trzeba dodać (KF).** `build_cross_border` / `check_cross_border`
+(backlog R6 i `harmonize_dem`, oba już opisane w Kartografie jako
+kandydaci do API) z regułą styku, kontrolą pionu i raportem.
+
+**Gdzie implementować.** Scalanie — Kartograf. Grupowanie po
+`parent_request`, kontrola zgodności z podpowiedzią i zestaw bez scalania —
+Archiwista.
+
+### 8.4 Tryb 3: zestaw do projektu i QGIS
+
+**Wejście.** Projekt (wszystkie albo wybrane zadania projektu) z przypiętymi
+wersjami — droga główna. Także zaznaczenie w katalogu albo na mapie
+(bieżące wersje) — „zestaw doraźny”, z zachętą „Dodaj do projektu, by
+zachować wersje”.
+
+**Wynik** — katalog zestawu:
+
+| Plik | Zawartość |
+|---|---|
+| `<nazwa>.qgz` | projekt QGIS: grupa na zadanie projektu (albo produkt), warstwa na przypięty plik wskazująca plik **wersji** (niezmienne bajty), układ warstwy z sidecara (`horizontal_crs`), styl domyślny wg produktu (cieniowanie NMT, RGB ortofotomapy, paleta CORINE, klasy HSG), układ projektu = układ większości warstw, atrybucje w metadanych projektu |
+| `vrt/` | VRT-owijki dla plików bez zapisanego układu (ASC, JPEG z JGW) — z jawnym SRS z sidecara; opcjonalnie mozaiki VRT zadań (tylko odwołania) |
+| `pliki.csv` | zadanie projektu, jednostka, produkt, ścieżka wersji (względna do magazynu i bezwzględna), ścieżka standardowa, etykieta, `sha256`, rozmiar, układ poziomy i wysokości, licencja |
+| `pliki.txt` | sama lista ścieżek wersji (do skryptów, np. Hydrografa) |
+| `ATRYBUCJE.txt` | teksty atrybucji z sidecarów (`license.attribution`) bez powtórzeń — wymóg licencji GUGiK (art. 40a) i CC BY 4.0 CUZK |
+| `polecenia.sh` | polecenia Kartografa odtwarzające zadania projektu (`format_command`, KB-4) |
+| `zestaw.json` | opis zestawu (`archiwista-set/1`): projekt, suma manifestu, chwila wygenerowania, wersje Archiwisty i Kartografa, lista plików — pozwala wykryć zestaw nieaktualny |
+
+**Gdzie zapisywany.** Domyślnie `<katalog projektu>/zestawy/<nazwa>/`, nie
+w magazynie (to nie dane) i bez wersji; ponowne wygenerowanie podmienia
+katalog atomowo (nowy katalog, potem zamiana nazwy). Zmiana przypięć
+w manifeście po wygenerowaniu oznacza zestaw jako „nieaktualny —
+wygeneruj ponownie”. Ścieżki w `.qgz` i VRT są względne do pliku, gdy
+projekt i magazyn mają wspólny korzeń (np. ten sam udział), inaczej
+bezwzględne; w trybie zespołu w postaci właściwej dla klienta (aliasy
+ścieżek, 4.6).
+
+**Opcja „z kopią danych”** (od v0.6, domyślnie wyłączona): kopia
+przypiętych plików z sidecarami do `dane/<zadanie projektu>/` — paczka do
+przekazania poza zespół; plan pokazuje rozmiar przed kopiowaniem.
+
+**Sidecar.** Zestaw nie jest danymi, więc nie ma sidecara; `zestaw.json`
+opisuje go w całości, a każdy plik ma swój sidecar wersji w magazynie.
+
+**Ograniczenia.** QGIS ≥ 3.34 LTR (QGZ, VRT); GeoPackage wielowarstwowy =
+warstwa QGIS na warstwę; paczki ZIP z SHP lub GML — warstwy przez
+`/vsizip/`, gdy format rozpoznany, inaczej tylko na liście; LAZ — warstwa
+chmury punktów (QGIS przy pierwszym otwarciu buduje indeks — informacja
+w zestawie); CityGML i OBJ — tylko na liście; projekt bez przypięć
+(zadania niepobrane) — zestaw obejmuje tylko przypięte pliki i mówi o tym.
+
+**Co Kartograf już zapewnia.** Manifest z przypięciami (`open_project`),
+sidecary z układami i licencją, `verify_project` (zestaw można zweryfikować
+przed przekazaniem).
+
+**Co trzeba dodać.** Nic obowiązkowego; `format_command` (KB-4) do
+`polecenia.sh`.
+
+**Gdzie implementować.** Archiwista w całości — to opakowanie
+i prezentacja bez obróbki danych.
+
+### 8.5 Tryb 4: porównanie wersji
+
+**Wejście.** Dwie wersje tego samego slotu (loty 2019 i 2025 arkusza,
+BDOT10k powiatu z dwóch dat, SoilGrids w dwóch wydaniach), dwa sloty tego
+samego produktu i obszaru (dwa wycinki z różnych dat) albo dwa lata
+z „Zestawienia” (zbiory wersji).
+
+**Wynik** — trzy poziomy:
+
+1. **Metadane** (zawsze, natychmiast): tabela różnic sidecarów — daty
+   (lot, PZGiK, pobranie), kampania i numer zgłoszenia, źródło danych,
+   dokładności (`height_rmse_m`, `position_rmse_m`), pełny arkusz
+   i pokrycie, rozdzielczość, układy, `sha256`, rozmiar, adres źródła,
+   licencja, wersja Kartografa.
+2. **Wizualnie** (z podglądów): kurtyna i przenikanie na mapie, dwa widoki
+   obok siebie zsynchronizowane, przełączanie w „Stosie”.
+3. **Różnice obliczone** (KG): raster — model różnic `B − A` na wspólnej
+   siatce ze statystyką (średnia, odchylenie, percentyle, powierzchnia
+   zmian powyżej progu, histogram); wektor — liczby obiektów w warstwach,
+   różnice schematu, później obiekty dodane, usunięte i zmienione po stałym
+   identyfikatorze (np. `lokalnyId` BDOT10k).
+
+**Gdzie zapisywany.** Poziomy 1 i 2 niczego nie zapisują (raport można
+wyeksportować jako JSON albo CSV, np. do katalogu projektu). Poziom 3 —
+magazyn, produkt pochodny; slot musi wskazywać obie wersje (np. etykiety
+A i B w nazwie pliku), bo różne pary to różne treści, które nie mogą
+dzielić slotu (reguła 9); propozycja: `nmt/pl_1992_1m_diff_evrf2007/
+<hierarchia>/<godło>_<etykieta A>_<etykieta B>.tif`.
+
+**Sidecar wyniku.** Jak w 8.2: `extra.derived = "compare"`, dwa wpisy
+`source_files` (A i B), statystyka różnic, próg istotności, przepróbkowanie
+(jeśli było), `nodata`.
+
+**Ograniczenia.**
+
+- Ten sam układ wysokości — inaczej błąd (różnica EVRF2007 i KRON86 to nie
+  zmiana terenu).
+- Ta sama siatka albo jawne wyrównanie z metodą w sidecarze.
+- `nodata` w którejkolwiek wersji = `nodata` w wyniku; loty niepełne —
+  porównanie tylko w części wspólnej, z jej udziałem w raporcie.
+- Różne kampanie mają różne dokładności: raport podaje próg istotności
+  z błędów średnich obu lotów (√(σA² + σB²)), żeby szum nie udawał zmian.
+- Ortofotomapy: tylko poziomy 1 i 2 (różnica pikseli barw nie ma sensu
+  fizycznego).
+- Wektory bez stałego identyfikatora — tylko liczby i schemat.
+
+**Co Kartograf już zapewnia.** Obie wersje leżą w magazynie i są
+niezmienne; sidecary niosą kampanię, daty, dokładności i pokrycie
+(`extra.coverage`).
+
+**Co trzeba dodać (KG).** `compare_versions` / `check_compare` (raster),
+później `compare_vector_versions`.
+
+**Gdzie implementować.** Poziomy 1 i 2 — Archiwista (prezentacja metadanych
+i podglądów). Poziom 3 — Kartograf.
+
+### 8.6 Kartograf czy Archiwista — rekomendacja
+
+| Tryb | Część | Gdzie |
+|---|---|---|
+| Mozaika | obliczenie, reprojekcja, VRT/GeoTIFF, sidecar | **Kartograf** (KE) |
+| | wybór wejść, plan, zadanie w tle, podgląd | Archiwista |
+| PL + CZ | scalona powierzchnia | **Kartograf** (KF = R6) |
+| | grupowanie po `parent_request`, kontrola zgodności, zestaw bez scalania | Archiwista |
+| Zestaw QGIS | całość | **Archiwista** |
+| Porównanie | metadane i porównanie wizualne | **Archiwista** |
+| | model różnic, zmiany wektorów | **Kartograf** (KG) |
+
+**Rekomendacja: każda operacja, która tworzy albo zmienia dane, trafia do
+biblioteki Kartografa (CLI = API); Archiwista dostarcza wybór, plan,
+uruchomienie, podgląd i opakowanie.** Uzasadnienie:
+
+1. **Zasada nakładek** (SCOPE 3.3): nakładki wołają wyłącznie publiczne
+   API i nie mają własnej logiki pobierania ani obróbki. Mozaika,
+   reprojekcja i różnica to obróbka.
+2. **Polityka transformacji** (ADR-022, ADR-024, ADR-027): przypięte
+   operacje, korekta osi i kotwica siatki mieszkają w `transform/crs.py`
+   i `transform/raster.py`. Druga implementacja w Archiwiście to ryzyko
+   powrotu błędów klasy „135 m obok prawdy” (ADR-024).
+3. **CLI = API** (ADR-037): ta sama operacja z CLI, biblioteki
+   (Hydrograf), wtyczki QGIS i Archiwisty, z testami zgodności; R6
+   i `harmonize_dem` są już w backlogu Kartografa jako kandydaci do API.
+4. **Odtwarzalność:** tylko komenda Kartografa może być zadaniem projektu
+   z przypięciami wejść i wyniku (wzór `soil hsg`).
+5. **Wspólny magazyn:** wynik jako wersja z sidecarem jest widoczny
+   i ponownie używany przez wszystkich (L5), zamiast liczenia w każdej
+   instancji osobno.
+
+Rozważony kontrargument — tempo: Archiwista czeka na wydania Kartografa.
+Odpowiedź: kolejność roadmapy (sekcja 13) najpierw daje tryby bez nowych
+funkcji Kartografa (zestaw QGIS, zestaw PL + CZ bez scalania, porównanie
+metadanych i wizualne), a KE, KG i KF przychodzą później.
