@@ -622,7 +622,11 @@ możliwe później).
   rosnących wysokościach nad mapą, z płynnym przejściem nachylenia kamery;
   najechanie podświetla rok, kliknięcie wybiera go w panelu. Płyty
   pokazują obrysy arkuszy w kolorach pokrycia; tekstury z podglądami danych
-  — po decyzji z mockupu (sekcja 16, M4).
+  — po decyzji z mockupu (sekcja 16, M4). **Wymaganie (A-ADR-018):** wybrany
+  rok jest widoczny w całości — nie może być zasłonięty przez płyty innych
+  lat. Kierunek do sprawdzenia w mockupie: lata rozłożone wachlarzem jak stos
+  plików w docku macOS (każda warstwa widoczna, wybrana powiększona); wariant
+  do potwierdzenia po mockupie (sekcja 16, M4).
 
 ### 5.5 Konfiguracja i uruchomienie
 
@@ -705,6 +709,12 @@ po `sha256` wersji i stylu — wersje są niezmienne, więc pamięć nigdy nie
 jest nieaktualna; limit pamięci 20 GB (LRU, ustawienie); plik większy niż
 2 GB nie dostaje podglądu automatycznie — przycisk „Zbuduj podgląd”.
 
+**Podglądy są lekkie (A-ADR-018):** niskiej rozdzielczości, generowane
+z nakładek przeglądowych (piramida/overviews COG), nie z pełnych danych
+rastra; służą rozpoznaniu zawartości, nie analizie. Zrzuty ekranu i podglądy
+przechowywane w repozytorium (dokumentacja, mockup) to WebP albo JPEG
+o szerokości ok. 1280 px, nie PNG pełnej rozdzielczości.
+
 ## 6. Interfejs
 
 Wzorce interfejsu zostaną potwierdzone na mockupie przed implementacją
@@ -750,7 +760,7 @@ i mockupu.
 | „Łączenie” | kreatory: „Mozaika”, „PL + CZ”, „Zestaw QGIS”, „Porównanie” (sekcja 8) |
 | „Magazyn” | magazyny, zajętość wg produktów, stan i problemy (UC-13) |
 | „Ustawienia” | magazyny i aliasy ścieżek, katalogi projektów, podkłady i tryb offline, limity, pamięć podglądów, asystent |
-| „Asystent” | panel wysuwany dostępny z każdego widoku (sekcja 7) |
+| „Asystent” | czat dostępny z każdego widoku: na komputerze przypięty panel boczny (mapa się zwęża), na telefonie szuflada (sekcja 7.5, A-ADR-018) |
 | „Karta pliku” | otwierana nad bieżącym widokiem (z własnym adresem URL) z listy, mapy, Stosu, Katalogu i wyszukiwania |
 
 ### 6.3 Główny przepływ: obszar → produkt → dostępność
@@ -893,6 +903,10 @@ Odmiana: „1 kampania”, „2-4 kampanie”, „5+ kampanii” (wg reguł jęz
 
 ### 6.5 Widoki (szkice)
 
+Asystent (7.5) nie ma osobnego szkicu w tej sekcji: na komputerze to
+przypięty panel boczny obok mapy (mapa się zwęża), na telefonie szuflada
+(A-ADR-018).
+
 Szkice pokazują układ i treść, nie wygląd (ten ustali mockup); lata, liczby
 i etykiety wersji są ilustracyjne. Szkic a) ma ustalony układ arkuszy
 PL-1992 (jak w UC-01).
@@ -940,16 +954,21 @@ słupkiem stan magazynu)
  ## pełne arkusze  // niepełne  (=) pobrane  5/12 częściowo  ( ) niepobrane
 ```
 
-**c) „Stos”** (płyty lat nad mapą; kliknięcie wybiera rok w panelu)
+**c) „Stos”** (płyty lat rozłożone wachlarzem nad mapą jak stos plików
+w docku macOS: każda warstwa widoczna, wybrana powiększona i w całości;
+kliknięcie wybiera rok w panelu; wariant do potwierdzenia po mockupie,
+A-ADR-018, M4)
 
 ```text
-              2025  ______________________
-                   /####/####/####/####/   pełne
-              2023 ______________________
-                 /####/####/////####/      pełne · 2 kampanie   5/12
-              2022 ______________________
-               /####/////..../////       częściowe · 58%
-            ===================================  mapa (obszar)
+   WYBRANY: 2023  (powiększony, w całości)
+        +--------------------------------+
+        |####/####/####/////####/####/###|  pełne · 2 kampanie   5/12
+        |####/####/////####/####/####/###|
+        +--------------------------------+
+   2025 ____________________________        2022 ________________________
+       /####/####/####/####/  pełne        /####/////..../////  częściowe · 58%
+      (pozostałe lata: wachlarz, każdy widoczny, nic nie zasłania wybranego)
+   ===================================  mapa (obszar)
 ```
 
 **d) „Katalog”** (cały zestaw jako karty; miniatura z podglądów, gdy dane
@@ -1144,7 +1163,16 @@ człowiek, jest dokładnie tym, co się wykona.
 
 ### 7.5 Szkic panelu
 
+**Układ (A-ADR-018, decyzja użytkownika 2026-10-17):** na komputerze czat
+to **przypięty panel boczny** — mapa się zwęża, a nie jest zasłaniana;
+panel nie jest pływającym oknem ani dolną szufladą. Na telefonie czat to
+**szuflada** wysuwana na ekran. Zawartość (rozmowa, karta propozycji, pole
+polecenia) jest ta sama w obu układach.
+
 ```text
+Komputer: mapa | panel „Zestawienie” | przypięty „Asystent” (mapa węższa)
+Telefon:  mapa pełna szerokość; „Asystent” jako szuflada wysuwana od dołu
+
 ASYSTENT                                          [Nowa rozmowa] [x]
 Ty: NMT 1 m dla zaznaczonego obszaru z najnowszego pełnego roku,
     dodaj do projektu Raba.
@@ -2163,7 +2191,7 @@ krytycznych; CI zielone z bieżącym wydaniem Kartografa.
 | P9 | Przypinanie w projekcie dowolnej starszej wersji wskazanej w przeglądarce? Model zadań Kartografa wybiera wersję tylko opcjami (np. `year`), a dla produktów z etykietą daty pobrania starszej wersji nie da się wskazać | **Nie w v1.0;** przypinamy przez zadania projektu (KB-6 podpowiada opcje); starsze wersje — porównanie i zestaw doraźny |
 | P10 | Platformy | **Linux i Windows** od v1.0; macOS bez gwarancji |
 | P11 | Framework interfejsu | **Svelte**; ostateczne potwierdzenie przed startem v0.1 (mockup go nie rozstrzyga) |
-| P12 | „Stos”: płyty z obrysami (MapLibre) czy z teksturami podglądów (dodatkowo deck.gl)? | **Obrysy** w v0.2; tekstury tylko, jeśli mockup pokaże wyraźną wartość (M4) |
+| P12 | „Stos”: płyty z obrysami (MapLibre) czy z teksturami podglądów (dodatkowo deck.gl)? Wybrany rok musi być widoczny w całości; wariant układu (wachlarz jak stos w docku macOS?) do potwierdzenia po mockupie | **Obrysy** w v0.2; tekstury tylko, jeśli mockup pokaże wyraźną wartość (M4); układ wachlarzem — **otwarte** (A-ADR-018, M4) |
 
 ## 16. Mockup
 
@@ -2182,9 +2210,9 @@ Decyzje, które mockup ma pomóc podjąć:
 | M1 | Czy start od mapy (obszar → produkt → dostępność) jest naturalny, czy lepszy byłby start od katalogu? |
 | M2 | Czy etykiety „pełne”, „pełne · 2 kampanie”, „częściowe · 58%”, „brak danych” i plakietka magazynu są zrozumiałe bez instrukcji; kolory i wzory (6.4) |
 | M3 | „Zestawienie”: domyślnie „Tabela” czy „Oś czasu”; ile informacji w wierszu |
-| M4 | „Stos”: czy widok izometryczny pomaga wybrać rok (zostaje jako tryb czy znika); płyty z obrysami czy z teksturami (P12) |
+| M4 | „Stos”: czy widok izometryczny pomaga wybrać rok (zostaje jako tryb czy znika); płyty z obrysami czy z teksturami (P12). **Wymaganie 2026-10-17 (A-ADR-018):** wybrany rok widoczny w całości; **otwarte — wariant do potwierdzenia po mockupie:** wachlarz warstw jak stos plików w docku macOS (każda widoczna, wybrana powiększona) czy inny układ |
 | M5 | „Katalog”: karty czy lista; co pokazuje karta |
-| M6 | „Asystent”: panel boczny czy dolny; wygląd karty propozycji i podświetlenia na mapie |
+| M6 | „Asystent”: ~~panel boczny czy dolny~~ **rozstrzygnięte 2026-10-17 (A-ADR-018):** komputer — przypięty panel boczny (mapa się zwęża), telefon — szuflada; otwarte: wygląd karty propozycji i podświetlenia na mapie |
 | M7 | Postęp zadań: na mapie (jednostki zmieniają kolor) i w pasku „Zadania” |
 | M8 | „Karta pliku”: oś wersji, przypięcia, kolejność i nazwy akcji |
 | M9 | Słownictwo: nazwy widoków, etykiet i akcji; format dat w interfejsie. **Rozstrzygnięte 2026-10-17 (A-ADR-016):** `RRRR.MM.DD` w interfejsie (np. `2024.06.21`, zakres lotu `2024.06.21–2024.07.30`), ISO `RRRR-MM-DD` w API i plikach |

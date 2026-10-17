@@ -39,6 +39,7 @@ Kartografa).
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
+| [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (czat, podglądy); Proponowana (wariant Stosu: mockup M4) |
 
 ---
 
@@ -526,6 +527,39 @@ Plakietka magazynu liczy jednostki w wybranym formacie.
 (format jest pomijany, zgłoszenie zostaje); różne zgłoszenia z tego samego roku to
 osobne warianty. Plan pobrania musi przenosić format do polecenia Kartografa.
 Rozszerza ADR-010 (etykiety dotyczą wariantu, nie formatu).
+
+---
+
+## ADR-018: Wzorce interfejsu po mockupie: czat, Stos, podglądy
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (czat, podglądy); Proponowana (wariant układu „Stosu”, mockup M4)
+
+**Kontekst:** Po obejrzeniu mockupu użytkownik rozstrzygnął pytanie M6 (położenie
+czatu), sformułował wymaganie dla „Stosu” (M4, P12) i ustalił zasadę wagi
+zrzutów i podglądów.
+
+**Opcje:**
+- Czat: A) przypięty panel boczny na komputerze, szuflada na telefonie;
+  B) panel dolny; C) pływające okno.
+- „Stos”: A) płyty pod kątem jak dotąd; B) wachlarz warstw jak stos plików
+  w docku macOS (każdy rok widoczny, wybrany powiększony); C) zniesienie widoku.
+- Podglądy: A) pełne dane i PNG; B) niska rozdzielczość z nakładek przeglądowych,
+  zrzuty WebP/JPEG ok. 1280 px.
+
+**Decyzja:**
+1. Czat: A. Na komputerze przypięty panel boczny (mapa się zwęża), na telefonie
+   szuflada (SPEC 6.2, 7.5).
+2. „Stos”: wymaganie — wybrany rok widoczny w całości (SPEC 5.4, 6.5 c). Kierunek:
+   B (wachlarz); to, czy B jest ostatecznym wariantem, rozstrzygnie sprawdzenie
+   w mockupie (M4, P12) — decyzja otwarta.
+3. Podglądy: B. Podglądy rastrów w aplikacji są niskiej rozdzielczości, generowane
+   z nakładek przeglądowych, nie z pełnych danych (SPEC 5.7; uzupełnia ADR-008).
+   Zrzuty i podglądy w repozytorium to WebP albo JPEG, szerokość ok. 1280 px.
+
+**Konsekwencje:** Rozstrzyga M6 (położenie) i zawęża M4/P12 do wyboru wariantu
+układu; układ „Stosu” z szablonu pochylonych płyt może się zmienić. Podglądy
+służą rozpoznaniu, nie analizie; pełne dane otwiera się w QGIS.
 
 ---
 
