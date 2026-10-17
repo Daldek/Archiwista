@@ -690,3 +690,292 @@ wyświetlenia (podgląd nigdy nie jest produktem danych); pamięć podglądów
 po `sha256` wersji i stylu — wersje są niezmienne, więc pamięć nigdy nie
 jest nieaktualna; limit pamięci 20 GB (LRU, ustawienie); plik większy niż
 2 GB nie dostaje podglądu automatycznie — przycisk „Zbuduj podgląd”.
+
+## 6. Interfejs
+
+Wzorce interfejsu zostaną potwierdzone na mockupie przed implementacją
+(sekcja 16). Nazwy widoków i etykiet poniżej są wspólne dla specu
+i mockupu.
+
+### 6.1 Zasady
+
+- **Mapa w centrum, zestawienie obok.** Główny ekran to mapa z panelem
+  bocznym „Zestawienie”; ten sam wynik można oglądać jako „Mapa”, „Stos”
+  albo „Katalog” (przełącznik widoku), a w panelu jako „Tabela” albo „Oś
+  czasu”.
+- **Jedno pole wyszukiwania** (paleta poleceń, `Ctrl+K`): godło, TERYT,
+  produkt, projekt, etykieta wersji albo akcja („Sprawdź aktualność”).
+- **Stan w adresie URL:** obszar, produkt, filtry, widok i położenie mapy —
+  link otwiera ten sam widok (przyda się w zespole).
+- **Plan przed działaniem:** każde działanie z siecią albo zapisem otwiera
+  „Okno planu” (6.5 h) z liczbą plików, tym, co już jest lokalnie,
+  rozmiarem, miejscem zapisu i poleceniem Kartografa.
+- **Przejrzystość:** ludzka nazwa na wierzchu, wartość techniczna
+  (segment, klucz źródła, kod EPSG, ścieżka wersji) w „Szczegółach
+  technicznych” albo w podpowiedzi.
+- **Komunikaty Kartografa bez zmian:** `Info:` i `Warning:` jako
+  powiadomienia i lista w zadaniu, błąd walidacji przy polu formularza
+  (ten sam tekst co w CLI).
+- **Postęp na mapie:** jednostki zadania zmieniają kolor w miarę pobierania;
+  pasek zadań na dole ekranu pokazuje trwające zadania.
+- **Teksty po polsku** (z polskimi znakami; w szkicach poniżej skróty),
+  liczby `12 345`, daty `RRRR-MM-DD`, rozmiary w MB i GB, odmiana
+  liczebników („1 kampania”, „2 kampanie”, „5 kampanii”).
+- **Dostępność cyfrowa (WCAG 2.1 AA):** kontrast, obsługa klawiaturą
+  (`/` albo `Ctrl+K` wyszukiwanie, `Esc` zamyka, `?` lista skrótów), etykiety
+  ARIA; stan pokrycia nigdy wyłącznie kolorem — zawsze także tekst i wzór.
+- **Motyw jasny i ciemny.**
+
+### 6.2 Nawigacja
+
+| Pozycja | Zawartość |
+|---|---|
+| „Mapa” | główny przepływ (6.3): obszar → produkt → dostępność; tryby „Mapa”, „Stos”, „Katalog”; panel „Zestawienie” |
+| „Projekty” | lista znanych projektów, widok projektu (6.5 g) |
+| „Zadania” | kolejka i historia zadań w tle (6.5 f); licznik trwających przy nazwie |
+| „Łączenie” | kreatory: „Mozaika”, „PL + CZ”, „Zestaw QGIS”, „Porównanie” (sekcja 8) |
+| „Magazyn” | magazyny, zajętość wg produktów, stan i problemy (UC-13) |
+| „Ustawienia” | magazyny i aliasy ścieżek, katalogi projektów, podkłady i tryb offline, limity, pamięć podglądów, asystent |
+| „Asystent” | panel wysuwany dostępny z każdego widoku (sekcja 7) |
+| „Karta pliku” | otwierana nad bieżącym widokiem (z własnym adresem URL) z listy, mapy, Stosu, Katalogu i wyszukiwania |
+
+### 6.3 Główny przepływ: obszar → produkt → dostępność
+
+1. **Obszar.** Narzędzia: prostokąt, wielokąt, „Widok mapy”, godło (wpisane
+   albo kliknięte w siatce godeł), kod jednostki (TERYT, KU; wyszukiwanie po
+   nazwie po KB-7), plik geometrii (GPKG, SHP, GeoJSON — kopiowany do
+   lokalnego katalogu roboczego Archiwisty; Kartograf dostaje ścieżkę),
+   kraj. Nad mapą stoi plakietka „Obszar: Kraków · 120 km² · PL” z „Zmień”
+   i „Wyczyść”. Kraj (PL, CZ, oba) wynika z obszaru
+   (`countries_for_bbox`); obszar przecinający granicę daje wyniki PL i CZ
+   obok siebie.
+2. **Produkt.** Lista z wyszukiwaniem pogrupowana jak grupy Kartografa
+   („Wysokości”, „Obrazy”, „Pokrycie terenu”, „Gleby”, „Granice”,
+   „Ewidencja”, „Modele 3D”, „Hydrografia”, „Nazwy”, „Mapy”, „Geodezja”),
+   z krótkim opisem i krajami. Pozycja „Wszystkie produkty” pokazuje tylko
+   magazyn (UC-02).
+3. **Sprawdzenie.** Część lokalna (indeks, po odświeżeniu slotów obszaru,
+   4.4) pojawia się od razu; sprawdzenie u źródła biegnie jako zadanie
+   w tle z postępem w panelu („Sprawdzam skorowidz GUGiK: 3/7 warstw
+   rocznych”). Raport sprzed mniej niż 7 dni (TTL cache Kartografa) jest
+   pokazywany z datą; „Sprawdź ponownie” wymusza zapytanie (`force=True`).
+   Co daje źródło, zależy od rodziny produktu:
+
+   | Rodzina | Sprawdzenie u źródła | Wiersze zestawienia |
+   |---|---|---|
+   | NMT, NMPT, LAZ (PL, CZ) | `check_availability` (`kartograf-availability/1`) | lata × warianty z kompletnością arkuszy |
+   | Obrazy PL (ortofotomapa, true orto, intensywność) | dziś plan `check_data` jednostek; lata i pełność z skorowidza po KD-3 | lata (po KD-3), inaczej jednostki |
+   | Produkty jednostkowe (BDOT10k, BDOO, PRG, EGiB, modele 3D…) | plan `check_*` jednostek; dostępne wydania z rejestru, istnienie paczek po KD-4 | wydania (roczniki) |
+   | Wyniki obszaru (WFS, ArcGIS, OGC API: PRG obszaru, ZABAGED, RUIAN…) | plan `check_collection` | jeden wiersz „bieżące” |
+   | SoilGrids, CORINE, HSG | plan `check_*`; wydanie z sygnału `metadata` | wydania |
+
+4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z listą
+   przełączników, panel „Zestawienie” (Tabela albo Oś czasu), przełącznik
+   „Mapa / Stos / Katalog”. Nad tabelą stoi aktywny wariant w postaci
+   chipów („NMT · 1 m · EVRF2007 · ASC · PL-1992”) z „+2 warianty”, gdy
+   rok ma inne kombinacje. Domyślny wariant jest widoczny i zmienialny —
+   nic nie jest wybierane po cichu.
+5. **Akcje wiersza.** „Pobierz…”, „Dodaj do projektu…”, „Pokaż na mapie”,
+   „Porównaj z…”, „Mozaika…”, „Polecenie Kartografa”. Każda z siecią albo
+   zapisem przechodzi przez „Okno planu”.
+
+### 6.4 Etykiety pokrycia
+
+Etykieta mówi, co źródło ma dla obszaru w danym roku i wariancie;
+plakietka obok mówi, co z tego jest w magazynie. Definicje opierają się
+na raporcie dostępności Kartografa (`AvailabilityCombination`: `complete`,
+`sheets_full`, `sheets_partial`, `campaigns`, `uncovered_m2`;
+`AvailabilityArea.land_m2`) — „ląd” to obszar przecięty z lądem PRG, tak
+jak liczy Kartograf (ADR-041 R8).
+
+| Etykieta | Kiedy | Dane Kartografa |
+|---|---|---|
+| „pełne” | `complete = true` i jedna kampania tego roku sama pokrywa ląd obszaru pełnymi arkuszami (`TAK`) | `complete`; podział arkuszy na kampanie — KD-1 |
+| „pełne · 2 kampanie” (N kampanie/kampanii) | `complete = true`, ale żadna kampania sama; pełne arkusze N kampanii tego roku razem pokrywają ląd. N = liczba różnych kampanii wśród arkuszy, które pobierze Kartograf (najnowszy rekord arkusza, ADR-028) | `complete`, KD-1 (`campaigns` liczy także rekordy niepełne, więc samo `len(campaigns)` nie wystarcza) |
+| „częściowe · 58%” | `complete = false`; 58% = ląd w ramkach pełnych arkuszy / `land_m2` (dolna granica tego, co na pewno ma dane). Dopisek „· N ark. niepełnych”, gdy `sheets_partial` niepuste | `full_m2` — KD-2 (nowe pole); `land_m2`, `sheets_partial` |
+| „brak danych” | rok bez żadnej kombinacji w aktywnym wariancie | brak kombinacji |
+
+W szczegółach wiersza dochodzi górna granica: ląd w ramkach dowolnych
+arkuszy (`land_m2 - uncovered_m2`) / `land_m2` („w ramkach arkuszy: 92%”),
+lista arkuszy niepełnych i obszar bez arkuszy. Po pobraniu Kartograf mierzy
+rzeczywiste pokrycie lotu niepełnego (`extra.coverage` w sidecarze wersji)
+i karta pliku pokazuje je zamiast szacunku.
+
+**Plakietka magazynu:**
+
+| Plakietka | Kiedy |
+|---|---|
+| „pobrane” | każda jednostka kombinacji (arkusze pełne i niepełne) ma w magazynie wersję z tej kombinacji (kampania z tego roku, ten wariant) |
+| „pobrane 5/12” | część jednostek |
+| „niepobrane” | żadna |
+
+Bez sieci (brak raportu źródła) plakietka mówi „lokalnie 83% obszaru”:
+udział obszaru w obrysach wersji z tego roku i wariantu w magazynie.
+
+**Wybór kombinacji roku:** gdy w aktywnym wariancie rok ma kilka kombinacji
+(np. PL-1992 i PL-2000), wiersz pokazuje najlepszą wg kolejności: pełna
+przed częściową → większy udział pełnych arkuszy → drobniejsza
+rozdzielczość → kolejność raportu Kartografa; pozostałe są pod chipem
+„+N warianty”.
+
+**Inne rodziny produktów:**
+
+- **CZ** (CUZK nie publikuje lat ani flag pełności): jeden wiersz na
+  model i układ, np. „DMR 4G · S-JTSK · Bpv — pełne (publ. 2025-02)”;
+  „pełne” = każdy arkusz obszaru ma plik (`complete`), „częściowe · 2 ark.
+  bez pliku” (`sheets_missing`).
+- **Produkty jednostkowe** (BDOT10k, BDOO, PRG, modele 3D…): wiersz na
+  wydanie; „pełne” = każda jednostka obszaru ma paczkę u źródła, „częściowe
+  · 3/4 jedn.”, „brak danych”; plakietka „pobrane 3/4” (po KD-4; do tego
+  czasu tylko plakietka magazynu i plan jednostek).
+
+**Wygląd:** „pełne” — zieleń i wypełnienie pełne; „pełne · N kampanie” —
+zieleń z cienkim wzorem szwów; „częściowe” — bursztyn z kreskowaniem;
+„brak danych” — szarość z kropkami; plakietka — kółko pełne, połówka,
+puste. Kolory dobrane dla daltonistów; tekst etykiety zawsze widoczny.
+Odmiana: „1 kampania”, „2-4 kampanie”, „5+ kampanii” (wg reguł języka:
+22-24 kampanie, 25 kampanii) i „1 ark. niepełny”, „2 ark. niepełne”,
+„5 ark. niepełnych”.
+
+### 6.5 Widoki (szkice)
+
+Szkice pokazują układ i treść, nie wygląd (ten ustali mockup).
+
+**a) „Mapa” z panelem „Zestawienie” (Tabela)**
+
+```text
++-----------------------------------------------------------------------------+
+| ARCHIWISTA  Mapa  Projekty  Zadania (1)  Łączenie  Magazyn  [Ctrl+K]        |
++-----------------------------------------------------------------------------+
+| Obszar: Kraków · 120 km² · PL [Zmień]   Produkt: [NMT v]                    |
+| Widok: (Mapa) Stos Katalog                                                  |
++---------------------------------------+-------------------------------------+
+|                                       | ZESTAWIENIE      [Tabela] Oś czasu  |
+|  +----+----+----+----+                | NMT · 1 m · EVRF2007 · PL-1992      |
+|  |####|####|####|////|  #### pełny    |                       +2 warianty   |
+|  +----+----+----+----+  //// niepełny | ----------------------------------- |
+|  |####|####|####|####|  .... brak     | Rok   Pokrycie             Magazyn  |
+|  +----+----+----+----+  [=] pobrany   | 2025  pełne                ( )      |
+|  |####|####|####|####|                | 2023  pełne · 2 kampanie   5/12     |
+|  +----+----+----+----+                | 2022  częściowe · 58%      ( )      |
+|                                       | 2019  częściowe · 97%      (=)      |
+|  Lata: [x]2025 [x]2023 [ ]2022        |       · 1 ark. niepełny             |
+|        [ ]2019                        | ----------------------------------- |
+|                                       | ( ) niepobrane  (=) pobrane         |
+|                                       | [Pobierz...]  [Dodaj do projektu]   |
++---------------------------------------+-------------------------------------+
+| Trwa: Pobieranie NMT 2023 (Kraków)  4/7 ark.  [######----]  [Anuluj]        |
++-----------------------------------------------------------------------------+
+```
+
+**b) Panel „Zestawienie” — Oś czasu** (lata na osi poziomej, także te bez
+danych; słupek = udział lądu w arkuszach pełnych i niepełnych; pod
+słupkiem stan magazynu)
+
+```text
+ ZESTAWIENIE  Tabela [Oś czasu]          NMT · 1 m · EVRF2007 · PL-1992
+ 100% |  //                          ##            ##
+  75% |  ##                   //     ##            ##
+  50% |  ##                   ##     ##            ##
+  25% |  ##                   ##     ##            ##
+   0% +--+------+------+------+------+------+------+----->
+        2019   2020   2021   2022   2023   2024   2025
+        (=)                  ( )    5/12          ( )
+ ## pełne arkusze  // niepełne  (=) pobrane  5/12 częściowo  ( ) niepobrane
+```
+
+**c) „Stos”** (płyty lat nad mapą; kliknięcie wybiera rok w panelu)
+
+```text
+              2025  ______________________
+                   /####/####/####/####/   pełne
+              2023 ______________________
+                 /####/####/////####/      pełne · 2 kampanie   5/12
+              2022 ______________________
+               /####/////..../////       częściowe · 58%
+            ===================================  mapa (obszar)
+```
+
+**d) „Katalog”** (cały zestaw jako karty; miniatura z podglądów, gdy dane
+są lokalnie, inaczej schemat arkuszy)
+
+```text
++--------------------+ +--------------------+ +--------------------+
+| 2025               | | 2023               | | 2022               |
+| [schemat arkuszy]  | | [miniatura]        | | [schemat arkuszy]  |
+| pełne              | | pełne · 2 kampanie | | częściowe · 58%    |
+| 12 ark. · 0,46 GB  | | 12 ark. · 0,45 GB  | | 9 ark. · 4 niepełne|
+| niepobrane         | | pobrane 5/12       | | niepobrane         |
++--------------------+ +--------------------+ +--------------------+
+```
+
+**e) „Karta pliku”**
+
+```text
+NMT 1 m · PL-1992 · EVRF2007 > N-34-130-D-d-2-4                         [x]
+Arkusz 1:10 000 · GUGiK · PL-PGiK-40a [Kopiuj atrybucję]
+-----------------------------------------------------------------------------
+Wersje:      2019-06-11_61234     2023-05-02_80011     2025-04-26_82710
+             o--------------------o--------------------O  bieżąca, pełna
+Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
+-----------------------------------------------------------------------------
+[Podgląd] [Metadane] [Pochodzenie] [Szczegóły techniczne]
+ Kampania 82710 · lot 2025-04-26 · skaning laserowy · błąd wys. 0,06 m
+ Arkusz pełny · 37,8 MB · EPSG:2180 · EPSG:9651 · nodata -9999
+-----------------------------------------------------------------------------
+[Kopiuj ścieżkę wersji] [Polecenie Kartografa] [Sprawdź aktualność]
+[Porównaj wersje] [Dodaj do projektu]
+```
+
+**f) „Zadania”**
+
+```text
+ZADANIA W TLE                                  [Wszystkie] [Trwa] [Błędy]
+TRWA     Pobieranie: NMT 1 m 2023 (Kraków)    4/7 ark. [######----] [Anuluj]
+         Info: (tekst Kartografa bez zmian)
+GOTOWE   Sprawdzenie aktualności: projekt Raba        2 min temu
+         3 aktualne, 1 nowsza                        [Pokaż plan]
+BŁĄD     Pobieranie: BDOT10k 1261                    wczoraj 14:02
+         (tekst błędu Kartografa)                    [Ponów] [Dziennik]
+```
+
+**g) Projekt**
+
+```text
+PROJEKT Raba        katalog: ~/projekty/raba · magazyn: Zespół
+[Status] [Weryfikuj] [Sprawdź aktualizacje] [Pobierz] [Zestaw QGIS] [+ Zadanie]
+-----------------------------------------------------------------------------
+Zadanie   Polecenie                                    Pliki  Stan
+teren     elevation download --product nmt ...         12     przypięte 2026-10-20
+pokrycie  landcover download --product bdot10k ...     2      przypięte · 1 nowsza
+gleby     soil hsg --bbox ... --depth 0-5cm            4      niepobrane
+```
+
+**h) „Okno planu”**
+
+```text
+POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
+  12 arkuszy: 5 w magazynie, 7 do pobrania (ok. 265 MB)
+  Magazyn: Zespół
+  [ ] Dodaj jako zadanie projektu [Raba v]  nazwa [teren-2023]
+  Polecenie: kartograf elevation download --product nmt --country pl
+    --bbox 561000,239000,573000,249000 --sheet-system 1992 --resolution 1m
+    --vertical-crs EVRF2007 --year 2023 -o <magazyn>              [Kopiuj]
+  [Anuluj]                                          [Pobierz 7 arkuszy]
+```
+
+### 6.6 Wyszukiwanie i filtry
+
+Filtry (w panelu i w adresie URL): produkt; kraj; układ poziomy; układ
+wysokości; rozdzielczość; rok danych (zakres); kampania albo wydanie
+(etykieta); wersje: „bieżące” (domyślnie), „wszystkie”, „pełne arkusze”
+(`full_sheet/`), „przypięte w projektach”, „niebieżące i nieprzypięte”;
+obszar (z mapy); projekt („używane przez”, „nieużywane przez żaden
+projekt”); stan („w porządku”, „brak pliku”, „bez sidecara”,
+„nierozpoznane”); dostawca i licencja; data pobrania.
+
+Wyszukiwanie rozpoznaje: godło PL-1992, PL-2000, TM33 i SM5; TERYT (2, 4,
+6 i 7 cyfr); KU (6 cyfr); kod EPSG; etykietę wersji (`2025-04-26_82710`);
+numer zgłoszenia pracy; początek sumy SHA-256 (od 8 znaków); nazwę pliku;
+nazwę projektu i zadania projektu. Dla wprawnych: prefiksy `produkt:nmt
+rok:2023 uklad:2180 projekt:raba` (każdy prefiks ma odpowiednik w filtrach).
