@@ -139,7 +139,7 @@ zachowują jego znaczenie.
 | **Zestaw** | (Archiwista) wybór wersji przygotowany do użycia poza magazynem: projekt QGIS, lista ścieżek, atrybucje, VRT-owijki; generowany z projektu albo z zaznaczenia, odtwarzalny, nie jest danymi | sekcja 8.4 |
 | **Produkt pochodny** | (propozycja dla Kartografa) wynik łączenia zapisany w magazynie jako wersja z sidecarem i listą wejść (`extra.source_files[]`, wzór HSG) | sekcja 8.1 |
 | **Indeks** | (Archiwista) lokalna baza SQLite z opisem magazynów i projektów; pamięć podręczna, nie źródło prawdy | sekcja 4 |
-| **Zadanie w tle** | (Archiwista) długa operacja — skan, sprawdzenie, pobranie, łączenie, eksport — w osobnym procesie, z postępem i anulowaniem; widok „Zadania” | sekcja 5.5 |
+| **Zadanie w tle** | (Archiwista) długa operacja — skan, sprawdzenie, pobranie, łączenie, eksport — w osobnym procesie, z postępem i anulowaniem; widok „Zadania” | sekcja 5.6 |
 | **Propozycja** | (Archiwista) plan działań przygotowany przez asystenta; staje się zadaniami w tle dopiero po potwierdzeniu użytkownika | sekcja 7 |
 
 „Zadanie” bez dopisku nie występuje w interfejsie: zawsze „zadanie
@@ -488,3 +488,205 @@ indeksu („Indeks z 14:02, skan trwa: 63%”) jest zawsze widoczny.
   manifest zmieniony w trakcie pracy (inny proces, CLI) jest czytany
   ponownie przed każdą akcją, a konflikt zgłasza Kartograf (blokada
   `.kartograf-project.lock`, scalanie per zadanie).
+
+## 5. Architektura
+
+### 5.1 Przegląd
+
+```mermaid
+flowchart LR
+  UI["Przeglądarka: SPA<br/>Mapa, Stos, Katalog, Zestawienie,<br/>Karta pliku, Zadania, Asystent"]
+  subgraph S["Serwer Archiwisty (127.0.0.1)"]
+    API["API HTTP /api/v1 + SSE"]
+    SVC["Warstwa usług"]
+    IDX[("Indeks SQLite<br/>(lokalny)")]
+    PRV["Podglądy<br/>rio-tiler + pamięć"]
+    SUP["Nadzorca zadań w tle"]
+    AG["Asystent<br/>adapter dostawcy modelu"]
+  end
+  W["Procesy robocze<br/>(API Kartografa)"]
+  MAG[("Magazyn Kartografa<br/>dysk lokalny albo SMB")]
+  PRJ[("Katalogi projektów<br/>kartograf-project.json")]
+  SRC["GUGiK, CUZK, CLMS, ISRIC"]
+  LLM["Dostawca modelu<br/>albo model lokalny"]
+  UI <--> API
+  API --> SVC
+  SVC --> IDX
+  SVC --> PRV
+  SVC --> SUP
+  SVC --> AG
+  AG --> LLM
+  SUP --> W
+  W --> MAG
+  W --> PRJ
+  W --> SRC
+  SVC -. "odczyt (KA, open_project)" .-> MAG
+  SVC -.-> PRJ
+  PRV -. odczyt .-> MAG
+```
+
+Zasady architektury:
+
+- **API najpierw.** Jedno API HTTP (`/api/v1`, sekcja 9) obsługuje
+  przeglądarkę, narzędzia asystenta i skrypty użytkownika. Interfejs nie
+  ma żadnej ścieżki obok API.
+- **Kartograf w jednym miejscu.** Kod Archiwisty importuje Kartografa
+  wyłącznie w module adaptera (`archiwista/adapter/`); test pilnuje, że
+  nigdzie indziej (wzór: test importów CLI w Kartografie, ADR-037 Z1).
+  Adapter tłumaczy, nie decyduje: żadnych reguł danych, wyboru arkuszy,
+  wersji ani transformacji.
+- **Operacje długie i zapisujące w procesach roboczych.** Serwer nie
+  wykonuje pobrań ani obliczeń w swoim procesie; awaria GDAL-a albo
+  przerwanie zadania nie kładzie interfejsu (5.6).
+- **Przeglądarka nie zna systemu plików serwera.** Pliki są wskazywane
+  identyfikatorami z indeksu i serwowane przez API — tak samo lokalnie
+  i w trybie zespołu. Ścieżki do skopiowania (np. do QGIS) pokazujemy
+  w postaci właściwej dla klienta (aliasy ścieżek, 4.6).
+- **Każde działanie ma wykonawcę.** Lokalnie „lokalny użytkownik”,
+  w zespole zalogowana osoba — historia zadań i dziennik działań od v0.1
+  zapisują, kto i co zlecił.
+
+### 5.2 Wybór technologii
+
+Użytkownik zostawił wybór technologii wolny. Decyzje (szczegóły:
+A-ADR-004 do A-ADR-008, A-ADR-011, A-ADR-015):
+
+| Obszar | Wybór | Odrzucone warianty i powód |
+|---|---|---|
+| Język serwera | **Python 3.12+** | Node.js, Go, Rust: Kartograf jest biblioteką Pythona; z innego języka zostaje wołanie CLI i parsowanie tekstu — dokładnie to, co Kartograf odrzucił w ADR-037 (opcja C) |
+| Framework HTTP | **FastAPI + Uvicorn + Pydantic 2** — typowane modele = schemat OpenAPI dla interfejsu, asystenta i skryptów; ten sam wybór co Hydrograf (jego ADR-002) | Flask: bez typowanych schematów i OpenAPI bez dodatków; Django: ORM i panel administracyjny zbędne, cięższy; NiceGUI, Streamlit, Panel, Dash: interfejs związany z procesem Pythona, Streamlit przelicza skrypt przy każdej interakcji (nie nadaje się do długich zadań i wielu widoków), brak czystego API dla asystenta i zespołu |
+| Indeks | **SQLite (WAL) na dysku lokalnym + R*Tree + FTS5** — w standardowym module `sqlite3`, zero usług | PostgreSQL/PostGIS: serwer do instalacji dla jednej osoby; DuckDB z rozszerzeniem przestrzennym: rozszerzenie pobierane z sieci, jeden pisarz; SpatiaLite: dodatkowa biblioteka natywna, a obrysy prostokątne wystarczą R*Tree; indeks tylko w pamięci: pełny skan przy każdym starcie (minuty na SMB); SQLite na udziale: wykluczone (SCOPE 3.3) |
+| Zadania w tle | **Procesy robocze uruchamiane przez nadzorcę w serwerze**, kolejka w indeksie, zdarzenia w JSON Lines przez potok | wątki w procesie serwera: wątku nie da się przerwać, awaria biblioteki natywnej kładzie serwer; Celery/RQ + Redis: infrastruktura ponad potrzeby jednej osoby i małego zespołu; asyncio: Kartograf jest synchroniczny |
+| Strumień do przeglądarki | **Server-Sent Events** (postęp, komunikaty, odpowiedź asystenta) | WebSocket: dwukierunkowość zbędna, trudniejsze proxy i testy; odpytywanie: opóźnienia i ruch |
+| Interfejs | **SPA: Svelte 5 + TypeScript + Vite**, zbudowane do plików statycznych w pakiecie Pythona (użytkownik nie potrzebuje Node.js) | szablony serwerowe + htmx: dobre dla list i formularzy, ale główny ekran to aplikacja mapowa ze wspólnym stanem (obszar, warstwy lat, Stos, panel, czat, postęp), który w htmx rozpada się na fragmenty HTML i ręczny JS; React: więcej kodu i zależności dla tej skali; Vue: porównywalny — Svelte daje mniej kodu (reaktywność w kompilatorze); czysty JS jak w Hydrografie: przy tylu widokach rośnie w nieuporządkowany kod. Wybór frameworka jest odwracalny do v0.1 (mockup go nie przesądza) |
+| Mapa | **MapLibre GL JS** — WebGL (płynnie dziesiątki tysięcy obrysów), nachylenie kamery i `fill-extrusion` z wysokością bazową: widok „Stos” bez osobnego silnika 3D; źródła XYZ i WMS (GUGiK, CUZK) w EPSG:3857 | Leaflet (precedens Hydrografa, jego ADR-003): bez nachylenia i 3D, wydajność warstwy canvas; OpenLayers: dowolne układy, ale bez widoku 3D (a przeliczenie do wyświetlania i tak robi serwer); CesiumJS: ciężki silnik globu; deck.gl: możliwy dodatek później (chmury punktów, tekstury w Stosie), dziś zbędna warstwa |
+| Wykresy | **Własne komponenty SVG** (oś czasu lat i pokrycia) | biblioteki wykresów: jeden prosty wykres nie uzasadnia zależności |
+| Podglądy rastrów | **rio-tiler** (biblioteka na rasterio/GDAL, które instaluje już Kartograf): kafle XYZ na żądanie; lokalny COG dla plików bez kafelkowania; pamięć po `sha256` wersji | TiTiler jako osobna usługa: dodatkowy proces; GeoServer/MapServer: ciężkie serwery i konfiguracja warstw; `gdal2tiles` z góry: minuty i gigabajty na arkusz |
+| Podglądy wektorów | **pyogrio** (już w zależnościach Kartografa) → GeoJSON obiektów w widoku; kafle MVT później, gdy potrzebne | GeoServer, Martin, pg_tileserv: wymagają serwera albo PostGIS |
+| Chmury punktów | **laspy + lazrs**: nagłówek i obraz 2D z próbki; 3D po v1.0 | Potree: konwersja do oktdrzewa (osobne narzędzie C++); COPC: konwersja całej chmury — później |
+| Asystent | **Cienki własny adapter dostawców** (Anthropic Messages API, API zgodne z OpenAI — także modele lokalne: Ollama, vLLM, llama.cpp) z narzędziami = operacjami API Archiwisty | LangChain, LlamaIndex: duże zależności i abstrakcje ponad potrzebę; agent w przeglądarce: klucze API w przeglądarce; wyłącznie zewnętrzny agent przez MCP: wymaga osobnego klienta (MCP jako dodatkowe wejście do tych samych narzędzi — po v1.0) |
+| Pakowanie | **Pakiet Pythona `archiwista`**, komenda `archiwista`, instalacja `pipx`/`uv tool` obok Kartografa; obraz Dockera opcjonalnie dla serwera zespołu | Electron/Tauri: przeglądarka wystarcza, więcej do utrzymania; Docker jako jedyna droga: zbędny dla jednej osoby, montowanie SMB w kontenerze komplikuje instalację |
+
+### 5.3 Moduły serwera
+
+Propozycja podziału (ostateczny ustali plan implementacji):
+
+| Moduł | Odpowiedzialność |
+|---|---|
+| `archiwista/app.py` | aplikacja FastAPI, rejestracja tras, pliki statyczne interfejsu |
+| `archiwista/config.py` | konfiguracja (TOML): magazyny, aliasy ścieżek, katalogi projektów, limity, podkłady, dostawca asystenta |
+| `archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP; później uwierzytelnianie i role |
+| `archiwista/adapter/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
+| `archiwista/index/` | schemat, skaner, zapytania, obrysy, wyszukiwanie |
+| `archiwista/jobs/` | nadzorca, kolejka, proces roboczy (`python -m archiwista.jobs.worker`), protokół zdarzeń |
+| `archiwista/previews/` | kafle i podglądy rastrów, wektorów, LAZ, ZIP; pamięć podglądów |
+| `archiwista/sets/` | zestaw do projektu/QGIS (tryb 3 łączenia, sekcja 8.4) |
+| `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
+| `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
+| `archiwista/web/` | zbudowany interfejs (artefakt Vite) |
+| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, magazyny, uprawnienia, port) |
+
+Interfejs (`frontend/` w repozytorium, budowany do `archiwista/web/`): trasy
+z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link
+można wysłać koledze), komponenty widoków z sekcji 6, typy API generowane
+z OpenAPI serwera, teksty interfejsu w jednym słowniku (polski; inne języki
+możliwe później).
+
+### 5.4 Mapa, podkłady i kafle
+
+- Wyświetlanie w EPSG:3857; obrysy w WGS84 z indeksu; dane w swoich
+  układach są przeliczane wyłącznie do wyświetlania (przypięta
+  transformacja Kartografa, KA-6).
+- Podkłady: OpenStreetMap, ortofotomapa i mapa topograficzna GUGiK (WMS),
+  ortofoto CUZK (WMS), „bez podkładu”. „Tryb offline” w ustawieniach
+  wyłącza wszystkie zewnętrzne zapytania przeglądarki (sekcja 15, P6).
+- Warstwy danych: obrysy (kolor wg stanu i pokrycia), podglądy rastrów
+  (kafle `/api/v1/…/tiles/{z}/{x}/{y}.png`), obiekty wektorowe (GeoJSON).
+- Siatka godeł (PL-1992, PL-2000, TM33) jako nakładka do wyboru arkuszy:
+  serwer liczy ją dla widoku funkcjami Kartografa (`find_sheets_for_bbox`,
+  parsery).
+- „Stos”: warstwy lat albo kampanii jako płyty `fill-extrusion` na
+  rosnących wysokościach nad mapą, z płynnym przejściem nachylenia kamery;
+  najechanie podświetla rok, kliknięcie wybiera go w panelu. Płyty
+  pokazują obrysy arkuszy w kolorach pokrycia; tekstury z podglądami danych
+  — po decyzji z mockupu (sekcja 16, M4).
+
+### 5.5 Konfiguracja i uruchomienie
+
+`archiwista serve` uruchamia serwer na `127.0.0.1` (port z konfiguracji),
+otwiera przeglądarkę z jednorazowym tokenem w adresie (sekcja 10.1)
+i wypisuje adres w terminalu. Przy pierwszym uruchomieniu kreator pyta
+o magazyn (katalog `--output` Kartografa) i katalogi projektów, sprawdza
+wersję Kartografa (zakres zgodny z wymaganiami z sekcji 12) i zakłada
+indeks. `archiwista doctor` wypisuje diagnostykę po polsku (wersje,
+dostępność magazynów, uprawnienia, dowiązania twarde na udziale, port).
+
+### 5.6 Zadania w tle
+
+| Rodzaj | Co wywołuje | Sieć | Co zapisuje |
+|---|---|---|---|
+| `scan` | `iter_store` (KA-1), `open_project` | nie | indeks |
+| `availability` | `check_availability` (wysokości), dla pozostałych produktów rozszerzenia KD | tak | raport w indeksie |
+| `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → plan `kartograf-plan/1` | tak | — |
+| `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` z `update` i `plan` | tak | magazyn (przez Kartografa) |
+| `project` | `download_project`, `check_project`, `verify_project` | zależnie od trybu | magazyn, manifest (przez Kartografa) |
+| `compose` | funkcje łączenia Kartografa (KE, KF, KG) | zwykle nie | magazyn (przez Kartografa) |
+| `export` | zestaw do QGIS (Archiwista) | nie | katalog zestawu w projekcie |
+| `preview` | lokalny COG albo podgląd dużego pliku | nie | pamięć podglądów |
+
+- **Cykl życia:** „w kolejce” → „trwa” → „zakończone” / „błąd” /
+  „anulowane” / „przerwane” (serwer zatrzymany w trakcie). Propozycja
+  asystenta nie jest zadaniem, dopóki człowiek jej nie zatwierdzi.
+- **Równoległość (domyślnie):** 2 zadania sieciowe naraz, 1 zadanie na
+  projekt (blokada manifestu), zadania obliczeniowe do połowy rdzeni,
+  1 skan na magazyn. Zadania nakładające się (ten sam segment i te same
+  jednostki) są oznaczone ostrzeżeniem — Kartograf i tak zapisze wersję
+  raz (zapis wyłączny), ale druga osoba straciłaby czas.
+- **Protokół proces roboczy → nadzorca:** JSON Lines na standardowym
+  wyjściu: `progress` (z `DownloadProgress`: `current`, `total`, jednostka,
+  status, komunikat; z KC-2 także faza i bajty), `notice` (`Notice`:
+  poziom, kod, tekst), `result` (raport Kartografa w postaci JSON), `error`
+  (typ wyjątku Kartografa i tekst). Nadzorca zapisuje zdarzenia w indeksie
+  i przekazuje je przez SSE.
+- **Anulowanie:** docelowo kooperacyjne — parametr `cancel` w funkcjach
+  Kartografa (KC-1): Kartograf kończy bieżącą jednostkę i zwraca częściowy
+  raport. Do czasu KC-1: sygnał przerwania (SIGINT; na Windows
+  CTRL_BREAK_EVENT do grupy procesu) — Kartograf obsługuje przerwanie jak
+  Ctrl-C w CLI (wersje powstają atomowo z `versions/.incoming/`, więc nie
+  zostaje pół wersji), po 30 s zakończenie procesu. Po anulowaniu
+  Archiwista odświeża sloty, których dotyczyło zadanie. Ryzyko: przerwanie
+  w milisekundach zapisu manifestu może zostawić blokadę
+  `.kartograf-project.lock`, którą Kartograf każe usunąć ręcznie —
+  Archiwista rozpoznaje ten stan i pokazuje instrukcję (sekcja 14).
+- **Restart serwera:** zadania „trwa” bez żywego procesu dostają stan
+  „przerwane” z przyciskiem „Ponów”; ponowienie jest bezpieczne (Kartograf
+  używa gotowych wersji lokalnych).
+- **Dzienniki:** plik na zadanie (logger Kartografa na poziomie INFO
+  i zdarzenia), przechowywanie 90 dni albo 1 GB.
+- **Cache metadanych Kartografa:** procesy robocze dostają lokalny
+  `MetadataCache` w katalogu danych Archiwisty — nigdy `cache=True` (plik
+  w bieżącym katalogu) i nigdy na udziale (zasada M12 specu manifestu).
+- **Dane uwierzytelniające źródeł** (np. `CLMS_CREDENTIALS`) przechodzą do
+  procesów roboczych ze środowiska; Archiwista ich nie czyta, nie zapisuje
+  i nie pokazuje — widać tylko „CLMS: skonfigurowane / brak (podgląd
+  WMS)”.
+- **Polecenie Kartografa:** każde zadanie pobrania, sprawdzenia i łączenia
+  pokazuje równoważne polecenie CLI (`format_command`, KB-4).
+
+### 5.7 Podglądy
+
+| Rodzina plików | Podgląd | Uwagi |
+|---|---|---|
+| NMT, NMPT, DMR, DMP, SoilGrids | cieniowanie i hipsometria z legendą | ASC (tekst, bez kafelkowania) → lokalny COG z piramidą przy pierwszym podglądzie (zadanie `preview`); GeoTIFF kafelkowany czytany wprost |
+| Ortofotomapa, true orto, intensywność, mapy TIFF | RGB albo skala szarości z rozciągnięciem | JPEG CUZK z plikami JGW: VRT-owijka z układem z sidecara (`extra.world_files`) |
+| CORINE, HSG | paleta klas z legendą | |
+| GeoPackage (BDOT10k, PRG, EGiB, ZABAGED, RUIAN…) | warstwy, liczba obiektów, obiekty w widoku (GeoJSON, do 5 000), próbka atrybutów | otwarcie `immutable=1`; powyżej limitu „Przybliż albo otwórz w QGIS” |
+| ZIP (SHP, GML, CityGML, XLS, PDF, OBJ) | lista członów z rozmiarami i rozpoznanym formatem | podgląd SHP i GML przez `/vsizip/` później |
+| LAZ | nagłówek (zasięg, liczba punktów, klasy, gęstość) i obraz 2D z próbki | widok 3D po v1.0 (sekcja 15, P5) |
+| TXT/XYZ, PDF | metadane; PDF w przeglądarce | |
+
+Zasady: `nodata` przezroczyste; przeliczenia i przepróbkowanie tylko do
+wyświetlenia (podgląd nigdy nie jest produktem danych); pamięć podglądów
+po `sha256` wersji i stylu — wersje są niezmienne, więc pamięć nigdy nie
+jest nieaktualna; limit pamięci 20 GB (LRU, ustawienie); plik większy niż
+2 GB nie dostaje podglądu automatycznie — przycisk „Zbuduj podgląd”.
