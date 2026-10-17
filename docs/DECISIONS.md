@@ -37,6 +37,7 @@ Kartografa).
 | [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Proponowana (SPEC 15: P1) |
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta |
+| [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
 
 ---
 
@@ -455,6 +456,35 @@ zespołu.
 
 **Konsekwencje:** Node.js potrzebny tylko do rozwoju interfejsu. Docker nie jest wymagany
 dla jednej osoby (montowanie SMB w kontenerze komplikuje instalację).
+
+---
+
+## ADR-016: Format dat w interfejsie i podkład mapy
+
+**Data:** 2026-10-17
+**Status:** Przyjęta
+
+**Kontekst:** Pytania M9 (format dat w interfejsie) i P6 (podkłady online ujawniają
+obszar zainteresowania zewnętrznym serwerom) wymagały decyzji użytkownika po przeglądzie
+mockupu.
+
+**Opcje:**
+- A) Daty `RRRR.MM.DD` w interfejsie, ISO `RRRR-MM-DD` w API i plikach; podkład OSM
+  w wersji monochromatycznej, online domyślnie, z trybem offline.
+- B) Daty `DD.MM.RRRR` jak w mockupie; kolorowy OSM.
+- C) Wyłącznie podkłady lokalne (offline).
+
+**Decyzja:** A. Format `RRRR.MM.DD` daje łatwe sortowanie w tabelach i na osi czasu;
+API, manifest, sidecary i nazwy plików zostają w ISO `RRRR-MM-DD`. Etykiety wersji
+(np. `2025-04-26_82710`) to identyfikatory i nie są przeformatowywane. Podkład
+domyślny to szara wersja OSM (neutralne tło dla obrysów i etykiet pokrycia), pobierana
+online; tryb offline wyłącza zewnętrzne zapytania przeglądarki; w zespole decyduje
+administrator (SPEC 5.4, 15: P6).
+
+**Konsekwencje:** Interfejs formatuje daty z ISO na poziomie prezentacji (jedna funkcja
+pomocnicza); szkice ekranów w SPEC używają `RRRR.MM.DD`. Szary styl podkładu wymaga
+własnego stylu kafli lub filtra przeglądarki; w trybie offline zostaje „bez podkładu”
+albo podkład lokalny.
 
 ---
 

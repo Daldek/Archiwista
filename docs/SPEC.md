@@ -609,7 +609,7 @@ możliwe później).
 - Wyświetlanie w EPSG:3857; obrysy w WGS84 z indeksu; dane w swoich
   układach są przeliczane wyłącznie do wyświetlania (przypięta
   transformacja Kartografa, KA-6).
-- Podkłady: OpenStreetMap, ortofotomapa i mapa topograficzna GUGiK (WMS),
+- Podkłady: OpenStreetMap w wersji monochromatycznej (szarej) — domyślny, online, żeby dane i obrysy były czytelne na neutralnym tle (A-ADR-016), ortofotomapa i mapa topograficzna GUGiK (WMS),
   ortofoto CUZK (WMS), „bez podkładu”. „Tryb offline” w ustawieniach
   wyłącza wszystkie zewnętrzne zapytania przeglądarki (sekcja 15, P6).
 - Warstwy danych: obrysy (kolor wg stanu i pokrycia), podglądy rastrów
@@ -732,7 +732,7 @@ i mockupu.
 - **Postęp na mapie:** jednostki zadania zmieniają kolor w miarę pobierania;
   pasek zadań na dole ekranu pokazuje trwające zadania.
 - **Teksty po polsku** (z polskimi znakami; w szkicach poniżej skróty),
-  liczby `12 345`, daty `RRRR-MM-DD`, rozmiary w MB i GB, odmiana
+  liczby `12 345`, daty w interfejsie `RRRR.MM.DD` (łatwe sortowanie; w API i plikach ISO `RRRR-MM-DD`, A-ADR-016; etykiety wersji, np. `2025-04-26_82710`, to identyfikatory i zostają bez zmian), rozmiary w MB i GB, odmiana
   liczebników („1 kampania”, „2 kampanie”, „5 kampanii”).
 - **Dostępność cyfrowa (WCAG 2.1 AA):** kontrast, obsługa klawiaturą
   (`/` albo `Ctrl+K` wyszukiwanie, `Esc` zamyka, `?` lista skrótów), etykiety
@@ -943,7 +943,7 @@ Wersje:      2019-06-11_61234     2023-05-02_80011     2025-04-26_82710
 Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
 -----------------------------------------------------------------------------
 [Podgląd] [Metadane] [Pochodzenie] [Szczegóły techniczne]
- Kampania 82710 · lot 2025-04-26 · skaning laserowy · błąd wys. 0,06 m
+ Kampania 82710 · lot 2025.04.26 · skaning laserowy · błąd wys. 0,06 m
  Arkusz pełny · 37,8 MB · EPSG:2180 · EPSG:9651 · nodata -9999
 -----------------------------------------------------------------------------
 [Kopiuj ścieżkę wersji] [Polecenie Kartografa] [Sprawdź aktualność]
@@ -969,7 +969,7 @@ PROJEKT Raba        katalog: ~/projekty/raba · magazyn: Zespół
 [Status] [Weryfikuj] [Sprawdź aktualizacje] [Pobierz] [Zestaw QGIS] [+ Zadanie]
 -----------------------------------------------------------------------------
 Zadanie   Polecenie                                    Pliki  Stan
-teren     elevation download --product nmt ...         12     przypięte 2026-10-20
+teren     elevation download --product nmt ...         12     przypięte 2026.10.20
 pokrycie  landcover download --product bdot10k ...     2      przypięte · 1 nowsza
 gleby     soil hsg --bbox ... --depth 0-5cm            4      niepobrane
 ```
@@ -2113,7 +2113,7 @@ krytycznych; CI zielone z bieżącym wydaniem Kartografa.
 | P3 | Komendy łączenia w grupach danych (`kartograf elevation mosaic`, jak `soil hsg`) czy nowa grupa (`kartograf compose …`)? | **W grupach danych** (ADR-039: grupy wg typu danych) |
 | P4 | Usuwanie wersji z magazynu? | **Nie w v1.0:** tylko raport „kandydaci do usunięcia” (niebieżące i nieprzypięte w znanych projektach) z zajętością. Usuwanie — jeśli kiedyś — jako funkcja Kartografa z potwierdzeniem, bo Archiwista nie zna projektów spoza swojego indeksu |
 | P5 | Podgląd 3D chmur punktów LAZ? | **Po v1.0;** do rozpoznania danych wystarcza nagłówek i obraz 2D |
-| P6 | Podkłady online (OSM, WMS GUGiK i CUZK) ujawniają obszar zainteresowania zewnętrznym serwerom — dopuszczalne? | **Domyślnie włączone** z przełącznikiem „Tryb offline”; w zespole decyduje administrator |
+| P6 | Podkłady online (OSM, WMS GUGiK i CUZK) ujawniają obszar zainteresowania zewnętrznym serwerom — dopuszczalne? | **Rozstrzygnięte 2026-10-17 (A-ADR-016):** podkład to monochromatyczna (szara) wersja OSM, **online domyślnie**, z trybem offline (przełącznik „Tryb offline”); w zespole decyduje administrator |
 | P7 | Domyślny dostawca modelu asystenta? | **Brak** (asystent wyłączony) do świadomego wyboru; dla projektów poufnych model lokalny |
 | P8 | Licencja Archiwisty? | **MIT**, jak Kartograf |
 | P9 | Przypinanie w projekcie dowolnej starszej wersji wskazanej w przeglądarce? Model zadań Kartografa wybiera wersję tylko opcjami (np. `year`), a dla produktów z etykietą daty pobrania starszej wersji nie da się wskazać | **Nie w v1.0;** przypinamy przez zadania projektu (KB-6 podpowiada opcje); starsze wersje — porównanie i zestaw doraźny |
@@ -2143,7 +2143,7 @@ Decyzje, które mockup ma pomóc podjąć:
 | M6 | „Asystent”: panel boczny czy dolny; wygląd karty propozycji i podświetlenia na mapie |
 | M7 | Postęp zadań: na mapie (jednostki zmieniają kolor) i w pasku „Zadania” |
 | M8 | „Karta pliku”: oś wersji, przypięcia, kolejność i nazwy akcji |
-| M9 | Słownictwo: nazwy widoków, etykiet i akcji; format dat w interfejsie (6.1: `RRRR-MM-DD`, mockup: `21.06.2024`, zakres lotu `21.06–30.07.2024`) |
+| M9 | Słownictwo: nazwy widoków, etykiet i akcji; format dat w interfejsie. **Rozstrzygnięte 2026-10-17 (A-ADR-016):** `RRRR.MM.DD` w interfejsie (np. `2024.06.21`, zakres lotu `2024.06.21–2024.07.30`), ISO `RRRR-MM-DD` w API i plikach |
 | M10 | Motyw jasny i ciemny, typografia, gęstość informacji |
 
 Słownictwo uzgodnione z autorem mockupu (2026-10-17): widoki „Mapa”,
