@@ -862,10 +862,16 @@ def test_index_segment_recognised_later_reaches_its_slots(
 def test_index_projects_keep_unique_keys_and_stamps(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
-    """Projects of one name get distinct keys; stamps and removal follow paths."""
+    """Projects of one name get distinct keys; stamps and removal follow paths.
+
+    A project without a store or a status has an empty stamp: it is read
+    again on the next pass.
+    """
     # Arrange
     writer, _ = index
-    first = ProjectInfo("kartograf", ROOT, Path("/projekty/a/Raba"), "Raba")
+    first = ProjectInfo(
+        "kartograf", ROOT, Path("/projekty/a/Raba"), "Raba", status="ok"
+    )
     second = ProjectInfo("kartograf", ROOT, Path("/projekty/b/Raba"), "Raba")
     broken = ProjectInfo(
         "kartograf", "/inny", Path("/projekty/Łąka"), "Łąka", problem="invalid"
@@ -884,6 +890,8 @@ def test_index_projects_keep_unique_keys_and_stamps(
     # Assert
     assert keys == ["raba", "raba-2", "laka", "raba"]
     assert stamps["/projekty/a/Raba"] == ManifestStamp(4, 40)
+    assert stamps["/projekty/b/Raba"] == ManifestStamp(None, None)
+    assert stamps["/projekty/Łąka"] == ManifestStamp(None, None)
     assert len(stamps) == 3
     assert removed == 2
     assert list(writer.project_stamps("kartograf")) == ["/projekty/a/Raba"]

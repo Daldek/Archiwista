@@ -6,6 +6,7 @@ Neither imports a producer library.
 """
 
 from archiwista.index.coverage import PLANAR_CRS, planar_crs
+from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
 from archiwista.index.schema import (
     SCHEMA_VERSION,
@@ -42,11 +43,16 @@ from archiwista.index.types import (
     ManifestStamp,
     MapFootprint,
     MapQuery,
+    OrphanLink,
     PassSummary,
     PinRef,
     PinState,
     ProductSummary,
     ProductUsage,
+    ProjectPinRef,
+    ProjectRecord,
+    ProjectRef,
+    ProjectTaskRef,
     RowStatus,
     ScanPass,
     SegmentRef,
@@ -60,6 +66,7 @@ from archiwista.index.types import (
     StoreStatus,
     StoreUsage,
     TransformerFactory,
+    UnusedVersions,
     VersionDetail,
     VersionsMode,
     VersionState,
@@ -100,11 +107,17 @@ __all__ = [
     "ManifestStamp",
     "MapFootprint",
     "MapQuery",
+    "OrphanLink",
     "PassSummary",
     "PinRef",
     "PinState",
     "ProductSummary",
     "ProductUsage",
+    "ProjectPinRef",
+    "ProjectRecord",
+    "ProjectRef",
+    "ProjectScanSummary",
+    "ProjectTaskRef",
     "RowStatus",
     "ScanPass",
     "SchemaState",
@@ -119,6 +132,7 @@ __all__ = [
     "StoreStatus",
     "StoreUsage",
     "TransformerFactory",
+    "UnusedVersions",
     "VersionDetail",
     "VersionState",
     "VersionSummary",
@@ -126,4 +140,5 @@ __all__ = [
     "connect",
     "initialize",
     "planar_crs",
+    "scan_projects",
 ]

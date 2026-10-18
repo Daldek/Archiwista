@@ -160,6 +160,83 @@ MESSAGES = MappingProxyType(
             " w WGS84."
         ),
         "index_invalid_grid": "Siatka agregacji musi mieć od 1 do {limit} kolumn.",
+        # Store and project problems: what is wrong and how to fix it (step 7).
+        # Archiwista deletes nothing; the fix is a person's decision.
+        "problem_missing_sidecar": "Plik bez sidecara: {path}",
+        "fix_missing_sidecar": (
+            "Pobierz ten plik ponownie poleceniem {producer} — nowa wersja dostanie"
+            " sidecar; pozostałość bez sidecara usuń ręcznie po sprawdzeniu."
+        ),
+        "problem_invalid_sidecar": "Nieczytelny sidecar pliku: {path}",
+        "fix_invalid_sidecar": (
+            "Sprawdź plik .meta.json obok danych albo pobierz tę wersję ponownie"
+            " poleceniem {producer}."
+        ),
+        "problem_unknown_segment": (
+            "Katalog nierozpoznany przez wtyczkę {producer}: {path}"
+        ),
+        "fix_unknown_segment": (
+            "To zwykle dane z wersji deweloperskiej albo nowszej pakietu"
+            " {producer}: zaktualizuj pakiet albo pobierz te dane ponownie"
+            " do rozpoznanego produktu."
+        ),
+        "problem_legacy_campaigns": (
+            "Katalog kampanie/ ze starszej wersji pakietu {producer} (0.7.x),"
+            " nieczytany: {path}"
+        ),
+        "fix_legacy_campaigns": (
+            "Pobierz te dane ponownie bieżącą wersją pakietu {producer}; stary"
+            " katalog usuń ręcznie dopiero po sprawdzeniu."
+        ),
+        "problem_stale_incoming": (
+            "Pozostałość przerwanego pobierania starsza niż 24 h: {path}"
+        ),
+        "fix_stale_incoming": (
+            "Pakiet {producer} usuwa ją przy następnym pobieraniu do tego produktu;"
+            " jeśli żadne pobieranie nie trwa, możesz usunąć ten katalog ręcznie."
+        ),
+        "problem_link_mismatch": (
+            "Dowiązanie ma inną treść, niż podaje jego sidecar: {path}"
+        ),
+        "fix_link_mismatch": (
+            "Pobierz plik ponownie poleceniem {producer} z aktualizacją, aby"
+            " dowiązanie wskazywało właściwą wersję."
+        ),
+        "problem_orphan_sidecar": (
+            "Sidecar dowiązania wskazuje brakującą wersję {version}: {path}"
+        ),
+        "fix_orphan_sidecar": (
+            "Przywróć brakującą wersję z kopii albo pobierz plik ponownie"
+            " poleceniem {producer}."
+        ),
+        "problem_missing_pin": (
+            "Przypięty plik nie istnieje w magazynie: {version} (projekt"
+            " „{project}”, zadanie {task})"
+        ),
+        "fix_missing_pin": (
+            "Odtwórz przypięte pliki poleceniem „{producer} project download"
+            " {task}” w katalogu projektu „{project}”."
+        ),
+        "problem_pin_sha256_mismatch": (
+            "Przypięta wersja ma w magazynie inną treść (SHA-256): {version}"
+            " (projekt „{project}”, zadanie {task})"
+        ),
+        "fix_pin_sha256_mismatch": (
+            "Sprawdź pliki projektu poleceniem „{producer} project verify”"
+            " w katalogu projektu „{project}”."
+        ),
+        "problem_invalid_manifest": "Niepoprawny manifest projektu: {detail}",
+        "fix_invalid_manifest": (
+            "Popraw manifest w katalogu projektu {path} — komunikat pakietu"
+            " {producer} wskazuje miejsce błędu."
+        ),
+        "problem_unknown_store": "Magazyn projektu nieznany: {store_dir}",
+        "fix_unknown_store": (
+            "Dodaj magazyn w ustawieniach (katalog {store_dir}) albo popraw"
+            " ścieżkę magazynu w manifeście projektu."
+        ),
+        "problem_other": "Problem magazynu ({code}): {path}",
+        "fix_other": "Sprawdź to miejsce narzędziami pakietu {producer}.",
     }
 )
 

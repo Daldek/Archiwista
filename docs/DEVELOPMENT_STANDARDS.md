@@ -266,9 +266,11 @@ tests/
 │   ├── test_index.py        # Indeks: przebiegi zapisu, grupy, kursory, filtry
 │   ├── test_queries.py      # Indeks: wyszukiwanie, mapa, obszar, karty
 │   ├── test_coverage.py     # Pokrycie lokalne w układzie płaskim (decyzja 5)
+│   ├── test_store_summary.py  # Stan magazynu: zajętość, raport porządków, problemy
 │   ├── test_snapshots.py    # Migawki danych własnych (A-ADR-027)
 │   └── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
 ├── integration/
+│   ├── test_projects.py     # Projekty: odkrywanie, przypięcia, błędny manifest
 │   └── test_api.py          # Endpointy /api/v1
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach

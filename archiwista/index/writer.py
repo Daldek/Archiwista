@@ -838,13 +838,17 @@ class IndexWriter:
         """Return each indexed project's directory with its manifest stamp.
 
         A manifest whose size and modification time equal the stamp need
-        not be read again.
+        not be read again. A project without a configured store (an invalid
+        manifest, an unknown or removed store) or without a status gets an
+        empty stamp, so it is read again until it matches and is checked.
         """
         return {
             str(path): ManifestStamp(mtime_ns, size)
             for path, mtime_ns, size in self._connection.execute(
-                "SELECT path, manifest_mtime_ns, manifest_size FROM projects"
-                " WHERE producer = ?",
+                "SELECT path,"
+                " iif(store_id IS NULL OR status IS NULL, NULL, manifest_mtime_ns),"
+                " iif(store_id IS NULL OR status IS NULL, NULL, manifest_size)"
+                " FROM projects WHERE producer = ?",
                 (producer,),
             ).fetchall()
         }

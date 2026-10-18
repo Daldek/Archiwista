@@ -58,10 +58,15 @@ from archiwista.index.types import (
     LocationRef,
     MapFootprint,
     MapQuery,
+    OrphanLink,
     PinRef,
     PinState,
     ProductSummary,
     ProductUsage,
+    ProjectPinRef,
+    ProjectRecord,
+    ProjectRef,
+    ProjectTaskRef,
     RowStatus,
     SegmentRef,
     SegmentSummary,
@@ -73,6 +78,7 @@ from archiwista.index.types import (
     StoreIndexState,
     StoreUsage,
     TransformerFactory,
+    UnusedVersions,
     VersionDetail,
     VersionsMode,
     VersionSummary,
@@ -134,6 +140,27 @@ _MAP_SOURCE = (
     "footprints f JOIN versions v ON v.id = f.id"
     " JOIN slots s ON s.id = v.slot_id JOIN segments g ON g.id = s.segment_id"
 )
+_PIN_SOURCE = (
+    "pins p LEFT JOIN versions v ON v.store_id = p.store_id AND v.path = p.version_path"
+)
+# A pin of an unconfigured store is unknown; a version that is not present
+# is missing; other indexed content (by SHA-256) is a mismatch.
+_PIN_STATE = (
+    "CASE WHEN p.store_id IS NULL THEN 'unknown'"
+    " WHEN v.id IS NULL OR v.state <> 'present' THEN 'missing'"
+    " WHEN p.sha256 IS NOT NULL AND v.sha256 IS NOT NULL AND p.sha256 <> v.sha256"
+    " THEN 'sha256_mismatch' ELSE 'ok' END"
+)
+_PROJECT_SELECT = f"""
+SELECT pr.id, pr.key, pr.name, pr.producer, pr.path, st.key AS store,
+    pr.store_dir, pr.status, pr.problem, pr.scanned_at,
+    (SELECT count(*) FROM project_tasks t WHERE t.project_id = pr.id) AS tasks,
+    (SELECT count(*) FROM pins p WHERE p.project_id = pr.id) AS pins,
+    (SELECT count(*) FROM {_PIN_SOURCE}
+        WHERE p.project_id = pr.id AND {_PIN_STATE} IN ('missing', 'sha256_mismatch')
+    ) AS missing_pins
+FROM projects pr LEFT JOIN stores st ON st.id = pr.store_id
+"""
 _SLOT_COLUMNS = """
     s.id AS slot_id, s.store_id AS store_id, s.path AS slot_path,
     s.name AS slot_name, s.unit AS slot_unit, s.product AS slot_product,
@@ -782,6 +809,189 @@ class IndexQueries:
             stores = _stores(connection)
             return _issues(connection, "i.store_id = ?", (_store_id(stores, store),))
 
+    def unused_versions(self, store: str) -> UnusedVersions | None:
+        """Report present versions no link names and no project pins.
+
+        Products are the segments' (``None``: unrecognised segments); each
+        content counts once. ``None`` for a store that is not indexed.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            if store not in stores.values():
+                return None
+            store_id = _store_id(stores, store)
+            products = {
+                int(row[0]): row[1]
+                for row in connection.execute(
+                    "SELECT id, product FROM segments WHERE store_id = ?", (store_id,)
+                ).fetchall()
+            }
+            cursor = connection.cursor()
+            cursor.row_factory = None
+            rows = cursor.execute(
+                "SELECT v.segment_id, v.sha256, v.size_bytes,"
+                " v.id IS NOT s.current_version_id"
+                " AND v.id IS NOT s.full_sheet_version_id"
+                f" AND NOT {_PINNED}"
+                " FROM versions v JOIN slots s ON s.id = v.slot_id"
+                " WHERE v.store_id = ? AND v.state = 'present'",
+                (store_id,),
+            ).fetchall()
+        held = {digest for _, digest, _, unused in rows if not unused and digest}
+        counts: dict[str | None, int] = {}
+        loose: dict[str | None, int] = {}
+        contents: dict[str | None, dict[str, int]] = {}
+        everywhere: dict[str, int] = {}
+        for segment_id, digest, size, unused in rows:
+            if not unused:
+                continue
+            product = products.get(segment_id)
+            counts[product] = counts.get(product, 0) + 1
+            if digest is None:
+                loose[product] = loose.get(product, 0) + (size or 0)
+            else:
+                contents.setdefault(product, {})[digest] = size or 0
+                everywhere[digest] = size or 0
+        return UnusedVersions(
+            store=store,
+            products=tuple(
+                ProductUsage(
+                    product,
+                    counts[product],
+                    loose.get(product, 0) + sum(contents.get(product, {}).values()),
+                )
+                for product in sorted(
+                    counts, key=lambda item: (item is None, item or "")
+                )
+            ),
+            versions=sum(counts.values()),
+            unique_bytes=sum(loose.values()) + sum(everywhere.values()),
+            reclaimable_bytes=sum(loose.values())
+            + sum(size for digest, size in everywhere.items() if digest not in held),
+        )
+
+    def orphan_links(self, store: str) -> tuple[OrphanLink, ...]:
+        """Return links whose sidecar names a version that is not present."""
+        with self._read() as connection:
+            stores = _stores(connection)
+            store_id = _store_id(stores, store)
+            rows = connection.execute(
+                "SELECT s.path AS slot, g.segment, 'link' AS kind,"
+                " s.current_path AS version FROM slots s"
+                " JOIN segments g ON g.id = s.segment_id"
+                " LEFT JOIN versions v ON v.id = s.current_version_id"
+                " WHERE s.store_id = ? AND s.current_path IS NOT NULL"
+                " AND (v.id IS NULL OR v.state = 'missing')"
+                " UNION ALL"
+                " SELECT s.path, g.segment, 'full_sheet', s.full_sheet_path"
+                " FROM slots s JOIN segments g ON g.id = s.segment_id"
+                " LEFT JOIN versions v ON v.id = s.full_sheet_version_id"
+                " WHERE s.store_id = ? AND s.full_sheet_path IS NOT NULL"
+                " AND (v.id IS NULL OR v.state = 'missing')"
+                " ORDER BY 2, 1, 3",
+                (store_id, store_id),
+            ).fetchall()
+        return tuple(
+            OrphanLink(
+                slot=row["slot"],
+                segment=row["segment"] or None,
+                kind=row["kind"],
+                version=row["version"],
+            )
+            for row in rows
+        )
+
+    # Projects.
+
+    def projects(self, *, store: str | None = None) -> tuple[ProjectRef, ...]:
+        """Return the discovered projects ordered by name.
+
+        Parameters
+        ----------
+        store : str or None, optional
+            Only projects of this configured store.
+        """
+        condition = "1"
+        params: tuple[str, ...] = ()
+        if store is not None:
+            condition, params = "st.key = ?", (store,)
+        with self._read() as connection:
+            rows = connection.execute(
+                f"{_PROJECT_SELECT} WHERE {condition} ORDER BY pr.name, pr.key", params
+            ).fetchall()
+        return tuple(_project_ref(row) for row in rows)
+
+    def project(self, key: str) -> ProjectRecord | None:
+        """Return a project with its tasks and pins, or ``None`` if unknown."""
+        with self._read() as connection:
+            row = connection.execute(
+                f"{_PROJECT_SELECT} WHERE pr.key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                return None
+            tasks = connection.execute(
+                "SELECT task_id, command, options, status FROM project_tasks"
+                " WHERE project_id = ? ORDER BY position",
+                (row["id"],),
+            ).fetchall()
+            pins = connection.execute(
+                "SELECT p.task_id, p.version_path, p.sha256,"
+                f" {_PIN_STATE} AS state, s.path AS slot, v.label, v.size_bytes,"
+                " coalesce(v.id = s.current_version_id, 0) AS is_current"
+                f" FROM {_PIN_SOURCE} LEFT JOIN slots s ON s.id = v.slot_id"
+                " WHERE p.project_id = ? ORDER BY p.id",
+                (row["id"],),
+            ).fetchall()
+        return ProjectRecord(
+            project=_project_ref(row),
+            tasks=tuple(
+                ProjectTaskRef(
+                    task_id=task["task_id"],
+                    command=task["command"],
+                    options=json.loads(task["options"]),
+                    status=task["status"],
+                )
+                for task in tasks
+            ),
+            pins=tuple(
+                ProjectPinRef(
+                    task=pin["task_id"],
+                    version=pin["version_path"],
+                    sha256=pin["sha256"],
+                    state=pin["state"],
+                    slot=pin["slot"],
+                    label=pin["label"],
+                    size_bytes=pin["size_bytes"],
+                    is_current=bool(pin["is_current"]),
+                )
+                for pin in pins
+            ),
+        )
+
+    def pin_problems(self, store: str) -> tuple[PinRef, ...]:
+        """Return pins of a store's projects whose version is missing or other."""
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT pr.name, pr.key, p.task_id, p.version_path, p.sha256,"
+                f" {_PIN_STATE} AS state FROM {_PIN_SOURCE}"
+                " JOIN projects pr ON pr.id = p.project_id"
+                f" WHERE p.store_id = ? AND {_PIN_STATE} <> 'ok'"
+                " ORDER BY pr.key, p.task_id, p.version_path",
+                (_store_id(stores, store),),
+            ).fetchall()
+        return tuple(
+            PinRef(
+                project=row["name"],
+                project_key=row["key"],
+                task=row["task_id"],
+                version=row["version_path"],
+                sha256=row["sha256"],
+                state=row["state"],
+            )
+            for row in rows
+        )
+
     def status(self) -> IndexStatus:
         """Return the index's state and each store's index state and jobs."""
         with self._read() as connection:
@@ -1290,6 +1500,23 @@ def _slot_row(
         location=location,
         version=version,
         versions_count=int(row["versions_count"]),
+    )
+
+
+def _project_ref(row: sqlite3.Row) -> ProjectRef:
+    return ProjectRef(
+        key=row["key"],
+        name=row["name"],
+        producer=row["producer"],
+        path=row["path"],
+        store=row["store"],
+        store_dir=row["store_dir"],
+        status=row["status"],
+        problem=row["problem"],
+        scanned_at=datetime.fromisoformat(row["scanned_at"]),
+        tasks=int(row["tasks"]),
+        pins=int(row["pins"]),
+        missing_pins=int(row["missing_pins"]),
     )
 
 

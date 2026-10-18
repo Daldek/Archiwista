@@ -322,7 +322,9 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   Kartografa. Klucze publiczne: krótka nazwa magazynu i ścieżka względna
   slotu/wersji. HTTP i CLI używają jednego `IndexQueries`; drzewo magazynu
   przechodzą tylko skaner i `refresh_view`. Funkcję `scan_projects`
-  (krok 7) wywołuje zadanie `scan` (krok 6b) po przejściu magazynu.
+  (krok 7) wywołuje skaner 6a w wątku zapisu po pełnym przejściu całego
+  magazynu (zadanie `scan` kroku 6b), z `AppSettings.project_dirs`
+  i `AppSettings.stores`.
   Stan po kroku 5:
   - *Schemat* (`schema.py`): `SCHEMA_VERSION` w `PRAGMA user_version`;
     inna wersja → `initialize` przebudowuje pusty indeks w jednej
@@ -361,6 +363,43 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     Obcy kursor, limit poza 1–200, odwrócone lata, obszar spoza WGS84 →
     `IndexQueryError` (`422 validation_error`). Wyniki p95 na magazynie
     50 000 slotów: `tests/perf/test_index_perf.py` (`-m perf`).
+  Stan po kroku 7:
+  - *Projekty* (`projects.py`): `scan_projects(adapter, writer, *,
+    project_dirs, stores: Sequence[StoreConfig]) -> ProjectScanSummary`
+    (`found`, `read`, `unchanged`, `invalid`, `unknown_store`, `removed`,
+    `unreadable_dirs`). Manifest producenta z `PROJECT_MANIFESTS`
+    (`kartograf` → `kartograf-project.json`); odczyt `project_status`,
+    a gdy zawiedzie — `read_project` (status `None`); błąd obu → projekt
+    z `problem` (komunikat producenta). Magazyn dopasowany po ścieżce
+    (`normpath`, `realpath`) albo aliasie `StoreConfig.local_path`, także
+    dla ścieżki z innego systemu, którą producent rozwiązał względem
+    katalogu projektu. `project_stamps` zwraca pusty znacznik dla projektu
+    bez magazynu albo bez statusu, więc taki manifest jest czytany przy
+    każdym przejściu, aż się dopasuje (np. po dodaniu magazynu). Katalog
+    projektów, którego nie da się odczytać, zachowuje swoje projekty.
+  - *Odczyt*: `projects(*, store) -> ProjectRef` (z licznikami zadań,
+    przypięć i brakujących przypięć), `project(key) -> ProjectRecord`
+    (`tasks`: `ProjectTaskRef` z poleceniem i opcjami; `pins`:
+    `ProjectPinRef` ze stanem `ok`/`missing`/`sha256_mismatch`/`unknown`,
+    slotem, etykietą, rozmiarem i `is_current`), `unused_versions(store) ->
+    UnusedVersions` (niebieżące, poza `full_sheet/` i nieprzypięte; per
+    produkt, `unique_bytes` i `reclaimable_bytes` — treści nietrzymane
+    przez inną obecną wersję), `orphan_links(store) -> OrphanLink`
+    (sidecar dowiązania wskazujący brakującą wersję), `pin_problems(store)
+    -> PinRef` (przypięcia bez pliku albo z inną treścią).
+  - *Usługi* (`archiwista/services/`): `Problem(code, message,
+    instruction, path, segment, slot, project, task, origin,
+    first_seen_at)` i `explain(code, **wartości)` (teksty w
+    `messages.py`, `problem_<kod>`/`fix_<kod>`); `project_detail(queries,
+    key) -> ProjectDetail` (`project`, `tasks`, `pins`, `problems`:
+    `invalid_manifest`, `unknown_store`, `missing_pin`,
+    `pin_sha256_mismatch`); `project_status(queries, registry, key) ->
+    ProjectInfo` (żywy `project_status` producenta dla
+    `GET /projects/{id}/status`); `store_summary(queries, StoreConfig) ->
+    StoreSummary` (`store`, `name`, `kind`, `state` z `last_scan.actor`,
+    `usage`, `unused`, `projects`, `problems`: problemy producenta,
+    `link_mismatch`, `orphan_sidecar`, `missing_pin`,
+    `pin_sha256_mismatch`). Żadna nie usuwa ani nie zmienia projektu.
 - **Zadania w tle — `archiwista/jobs/`** (krok 6b):
   `JobSupervisor.submit(kind, *, store, params, actor) -> JobRecord`
   (`JobConflictError` z identyfikatorem trwającego zadania), `get`, `list`,
@@ -628,7 +667,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 
 ### 7. Projekty i stan magazynu
 - **Cel:** `archiwista/index/projects.py` z
-  `scan_projects(adapter, writer, *, project_dirs, store_roots) ->
+  `scan_projects(adapter, writer, *, project_dirs, stores) ->
   ProjectScanSummary`: odkrywanie `kartograf-project.json` w katalogach
   projektów do głębokości 4 z pominięciem `.git`, katalogów ukrytych
   i korzeni magazynów; `read_project`/`project_status` adaptera tylko dla

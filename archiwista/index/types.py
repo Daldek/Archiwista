@@ -23,7 +23,7 @@ type VersionsMode = Literal[
 type LocationFilter = Literal["any", "with", "none"]
 type RowStatus = Literal["ok", "missing", "no_sidecar", "unreadable", "unrecognized"]
 type StoreStatus = Literal["unknown", "available", "unavailable"]
-type PinState = Literal["ok", "missing", "sha256_mismatch"]
+type PinState = Literal["ok", "missing", "sha256_mismatch", "unknown"]
 type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
@@ -588,3 +588,95 @@ class ManifestStamp:
 
     mtime_ns: int | None
     size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRef:
+    """A discovered project as listed (``GET /projects``).
+
+    ``store`` is the configured store the manifest names, ``None`` when no
+    configured store matches ``store_dir`` (the manifest's own store path).
+    ``status`` is the producer's project status when the manifest was last
+    read (``None``: not checked); ``problem`` is the producer's message for
+    an invalid manifest. ``missing_pins`` counts pins whose version is not
+    present in the index or holds other content.
+    """
+
+    key: str
+    name: str
+    producer: str
+    path: str
+    store: str | None
+    store_dir: str
+    status: str | None
+    problem: str | None
+    scanned_at: datetime
+    tasks: int
+    pins: int
+    missing_pins: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectTaskRef:
+    """A task of a project with its existing command and options."""
+
+    task_id: str
+    command: str
+    options: dict[str, object]
+    status: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectPinRef:
+    """A version a project task pinned, joined with the index by path and SHA-256.
+
+    ``state`` is ``unknown`` when the project's store is not configured;
+    ``slot``, ``label`` and ``size_bytes`` come from the indexed version.
+    """
+
+    task: str | None
+    version: str
+    sha256: str | None
+    state: PinState
+    slot: str | None
+    label: str | None
+    size_bytes: int | None
+    is_current: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRecord:
+    """A project with its tasks (manifest order) and pinned versions."""
+
+    project: ProjectRef
+    tasks: tuple[ProjectTaskRef, ...]
+    pins: tuple[ProjectPinRef, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class UnusedVersions:
+    """Present versions that are not current, not a full sheet, not pinned.
+
+    A report for a person deciding about cleanup (Archiwista deletes
+    nothing). ``unique_bytes`` counts each content once;
+    ``reclaimable_bytes`` only contents no other present version holds.
+    """
+
+    store: str
+    products: tuple[ProductUsage, ...]
+    versions: int
+    unique_bytes: int
+    reclaimable_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class OrphanLink:
+    """A link whose sidecar names a version that is not present.
+
+    ``kind`` is ``link`` (the standard path) or ``full_sheet``.
+    """
+
+    slot: str
+    segment: str | None
+    kind: Literal["link", "full_sheet"]
+    version: str
