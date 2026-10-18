@@ -22,34 +22,41 @@ Kartografa).
 
 | ADR | Tytuł | Data | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta |
+| [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta (uzupełniona przez ADR-024) |
 | [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta |
 | [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta — częściowo zastąpiona przez ADR-019 |
-| [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta |
-| [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Przyjęta (odwracalna do v0.1) |
-| [ADR-006](#adr-006-mapa-w-maplibre-gl-js) | Mapa w MapLibre GL JS | 2026-10-17 | Przyjęta |
-| [ADR-007](#adr-007-zadania-w-tle-w-osobnych-procesach) | Zadania w tle w osobnych procesach | 2026-10-17 | Przyjęta |
-| [ADR-008](#adr-008-podglądy-przez-rio-tiler-z-pamięcią-po-sumie-wersji) | Podglądy przez rio-tiler z pamięcią po sumie wersji | 2026-10-17 | Przyjęta |
+| [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta (errata 2: potwierdzona po otwarciu architektury, 2026-10-18) |
+| [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Zastąpiona przez ADR-028 (Preact + htm bez budowania; zasada „API najpierw” zostaje) |
+| [ADR-006](#adr-006-mapa-w-maplibre-gl-js) | Mapa w MapLibre GL JS | 2026-10-17 | Przyjęta (errata 3: potwierdzona 2026-10-18; errata 1: „Stos” zastąpiony „Wachlarzem”, bez 3D) |
+| [ADR-007](#adr-007-zadania-w-tle-w-osobnych-procesach) | Zadania w tle w osobnych procesach | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18) |
+| [ADR-008](#adr-008-podglądy-przez-rio-tiler-z-pamięcią-po-sumie-wersji) | Podglądy przez rio-tiler z pamięcią po sumie wersji | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, podgląd roku z kafli arkuszy) |
 | [ADR-009](#adr-009-łączenie-danych-obróbka-w-kartografie-opakowanie-w-archiwiście) | Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście | 2026-10-17 | Proponowana (SPEC 15: P2, P3) |
 | [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
 | [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta |
-| [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Proponowana (SPEC 15: P1) |
+| [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta (decyzja użytkownika 2026-10-18; SPEC 15: P1) |
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 |
-| [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta |
+| [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
-| [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (czat, podglądy); Proponowana (wariant Stosu: mockup M4) |
-| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014) |
+| [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (errata 1: „Wachlarz” zastępuje „Stos”, M4/P12 rozstrzygnięte) |
+| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024) |
 | [ADR-020](#adr-020-format-danych-imgw-własny-sidecar-parquet-geojson) | Format danych IMGW: własny sidecar, Parquet, GeoJSON | 2026-10-17 | Proponowana (ADR IMGWTools; SPEC 12.8) |
-| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Proponowana (SPEC 15: P14–P16; mockup: M11) |
+| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2); Proponowana (mockup: M11) |
+| [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
+| [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18) |
+| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019) |
+| [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika) |
+| [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
+| [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika) |
+| [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
 
 ---
 
 ## ADR-001: Osobny projekt, Kartograf jako zależność
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17)
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełniona przez ADR-024 (Kartograf wymagany, IMGWTools opcjonalny)
 
 **Kontekst:** Roadmapa Kartografa (SCOPE 3.3) przewidywała podprojekt 5 „GUI webowe”
 (lokalny manager danych) jako nakładkę na bibliotekę. Użytkownik chce
@@ -75,6 +82,11 @@ Archiwista deklaruje wspierany zakres wersji Kartografa i testuje się
 przeciw jego gałęzi `develop`. Brakujące funkcje Kartografa są wymaganiami
 wobec niego (ADR-014, SPEC 12); roadmapę Kartografa aktualizuje
 koordynator.
+
+**Errata 1 (2026-10-17, decyzja użytkownika — ADR-024):** Kartograf zostaje wymaganą
+zależnością (`kartograf>=0.9,<0.10`, zakres ustala się przy wydaniu); IMGWTools jest
+opcjonalny (extra `archiwista[imgw]`), a adaptery źródeł są wtyczkami rejestrowanymi
+przez entry points.
 
 ---
 
@@ -149,7 +161,7 @@ funkcją IMGWTools (SPEC 8.4).
 ## ADR-004: Serwer w Pythonie z FastAPI
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (wybór technologii pozostawiony autorowi specu, 2026-10-17)
+**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18; wcześniej ponownie otwarta — errata 1)
 
 **Kontekst:** Kartograf jest biblioteką Pythona; Archiwista musi wywoływać jego funkcje,
 a nie parsować wynik CLI. Potrzebne jest jedno API HTTP dla interfejsu,
@@ -172,12 +184,21 @@ tekstu CLI — to odrzucił już ADR-037 Kartografa (opcja C).
 **Konsekwencje:** Python 3.12+, jak Kartograf. Kartograf jest importowany tylko w module
 adaptera (`archiwista/adapter/`), co pilnuje test importów.
 
+**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
+wyjścia do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona bez zmian
+po porównaniu wariantów architektury; wybór jest praktycznie wymuszony, bo Kartograf
+i IMGWTools to biblioteki Pythona.
+
 ---
 
 ## ADR-005: Interfejs jako SPA w Svelte, API najpierw
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (odwracalna do startu v0.1; SPEC 15, P11)
+**Status:** Zastąpiona przez ADR-028 (decyzja użytkownika 2026-10-18); zasada „API najpierw” i stan widoku w adresie URL zostają
 
 **Kontekst:** Główny ekran to aplikacja mapowa ze wspólnym stanem: obszar, produkt,
 warstwy lat, widoki „Mapa”, „Stos” i „Katalog”, panel „Zestawienie”, czat
@@ -201,12 +222,22 @@ najmniej kodu; czysty JS przy tylu widokach rośnie w nieuporządkowany kod.
 **Konsekwencje:** Dwa ekosystemy w repozytorium (Python i Node.js dla deweloperów). Mockup
 (SPEC 16) rozstrzyga wzorce interfejsu, nie framework.
 
+**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
+wyjścia do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** zastąpiona przez ADR-028:
+interfejs w Preact + htm bez kroku budowania (jak mockup) zamiast Svelte z Vite; z tej
+decyzji zostają: jedno API HTTP dla interfejsu, skryptów i asystenta oraz stan widoku
+w adresie URL.
+
 ---
 
 ## ADR-006: Mapa w MapLibre GL JS
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta (errata 3, decyzja użytkownika 2026-10-18; errata 1: „Stos” zastąpiony „Wachlarzem”, bez 3D)
 
 **Kontekst:** Mapa musi płynnie pokazać dziesiątki tysięcy obrysów, podkłady XYZ i WMS
 (GUGiK, CUZK) oraz widok „Stos” — warstwy lat nad mapą w rzucie
@@ -227,12 +258,28 @@ izometrycznym (wymaganie użytkownika 2026-10-17).
 **Konsekwencje:** Wyświetlanie w EPSG:3857; przeliczenia do wyświetlania wykonuje serwer
 przypiętą transformacją Kartografa (KA-6). Wymagana przeglądarka z WebGL.
 
+**Errata 1 (2026-10-17, decyzja użytkownika po mockupie — ADR-018 errata 1):** widok
+„Stos” usunięto; zastąpił go „Wachlarz” — komponent SVG interfejsu z miniaturami lat,
+nie warstwa mapy. Argumenty „nachylenie kamery i `fill-extrusion` dają Stos” oraz
+„tekstury w Stosie przez deck.gl” nie obowiązują. Wybór C zostaje: o MapLibre
+przesądzają WebGL przy dziesiątkach tysięcy obrysów i punktów stacji, style wektorowe
+i źródła XYZ/WMS (SPEC 5.2, 5.4).
+
+**Errata 2 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej (z errata 1) to dotychczasowa
+ocena, punkt wyjścia do decyzji.
+
+**Errata 3 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona; MapLibre
+sprawdził się w mockupie (tysiące obrysów, obrazy roku na mapie, warstwy liniowe
+danych własnych).
+
 ---
 
 ## ADR-007: Zadania w tle w osobnych procesach
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
 
 **Kontekst:** Pobrania, sprawdzenia, weryfikacje i łączenie trwają od sekund do godzin,
 korzystają z bibliotek natywnych (GDAL) i muszą dać się anulować. Kartograf
@@ -256,12 +303,21 @@ ani na udziale).
 (ok. 1 s) jest pomijalny przy tych operacjach. Pełne anulowanie bez ryzyka
 pozostawionej blokady manifestu wymaga KC-1.
 
+**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
+wyjścia do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona; procesy
+robocze obsługują też migawki danych własnych (A-ADR-027). Zachowanie na Windows
+(sygnały, `CTRL_BREAK_EVENT`) testowane przed v1.0.
+
 ---
 
 ## ADR-008: Podglądy przez rio-tiler z pamięcią po sumie wersji
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
 
 **Kontekst:** Podglądy mają objąć rastry (ASC, GeoTIFF, JPEG z JGW), GeoPackage, paczki
 ZIP i chmury LAZ, bez ciężkich serwerów map. Pliki ASC nie mają
@@ -280,6 +336,17 @@ pyogrio (GeoJSON obiektów w widoku), LAZ przez laspy (nagłówek, obraz 2D).
 
 **Konsekwencje:** Pierwszy podgląd pliku ASC trwa dłużej (budowa COG w tle). rio-tiler
 korzysta z rasterio i GDAL, które instaluje już Kartograf.
+
+**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
+wyjścia do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona.
+Podgląd roku produktu z arkuszy (NMT, NMPT, LAZ) składa się z podglądów
+poszczególnych arkuszy w magazynie — kafel na wersję pliku, pamięć po `sha256`;
+arkusze niepobrane zostają obrysami (PRD, „Widoki według rodzaju danych”; mockup:
+kafle z prawdziwych plików).
 
 ---
 
@@ -413,7 +480,7 @@ otwartą przeglądarkę; token można wyłączyć w konfiguracji (niezalecane).
 ## ADR-013: Tryb zespołu jako jeden serwer w sieci lokalnej
 
 **Data:** 2026-10-17
-**Status:** Proponowana — czeka na decyzję użytkownika (SPEC 15, P1)
+**Status:** Przyjęta (decyzja użytkownika 2026-10-18; SPEC 15, P1)
 
 **Kontekst:** Zespół ma pracować później na wspólnym magazynie na udziale SMB bez
 blokad zakresów bajtów. Kartograf gwarantuje bezpieczne równoległe zapisy
@@ -430,6 +497,9 @@ jedna historia i jeden indeks, a ścieżki są po stronie serwera.
 **Konsekwencje:** Od v0.1: dostęp do plików tylko przez API (bez założenia wspólnego
 systemu plików przeglądarki i serwera), wykonawca przy każdym działaniu,
 aliasy ścieżek. Tryb zespołu wymaga TLS, ról i dziennika działań (SPEC 10.2).
+
+**Errata 1 (2026-10-18, decyzja użytkownika):** B przyjęte; po zmianie numeracji
+(ADR-025) tryb zespołu to v0.4, w MVP.
 
 ---
 
@@ -469,7 +539,7 @@ a adapter IMGW czyta przez jego API odczytu (SPEC 12.7, IMGW-10). Test kontraktu
 ## ADR-015: Pakowanie i uruchamianie
 
 **Data:** 2026-10-17
-**Status:** Przyjęta
+**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
 
 **Kontekst:** Najpierw jedna osoba lokalnie, później serwer zespołu. Użytkownicy mają
 środowisko Pythona z Kartografem.
@@ -486,6 +556,15 @@ zespołu.
 
 **Konsekwencje:** Node.js potrzebny tylko do rozwoju interfejsu. Docker nie jest wymagany
 dla jednej osoby (montowanie SMB w kontenerze komplikuje instalację).
+
+**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
+ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
+zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
+wyjścia do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona. Po
+ADR-028 Node.js nie jest potrzebny także do rozwoju interfejsu: biblioteki interfejsu
+są dołączone do pakietu jako pliki ES modules.
 
 ---
 
@@ -556,7 +635,7 @@ Rozszerza ADR-010 (etykiety dotyczą wariantu, nie formatu).
 ## ADR-018: Wzorce interfejsu po mockupie: czat, Stos, podglądy
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (czat, podglądy); Proponowana (wariant układu „Stosu”, mockup M4)
+**Status:** Przyjęta (czat, podglądy; „Wachlarz” zastępuje „Stos” — errata 1, decyzja użytkownika 2026-10-17)
 
 **Kontekst:** Po obejrzeniu mockupu użytkownik rozstrzygnął pytanie M6 (położenie
 czatu), sformułował wymaganie dla „Stosu” (M4, P12) i ustalił zasadę wagi
@@ -584,12 +663,25 @@ zrzutów i podglądów.
 układu; układ „Stosu” z szablonu pochylonych płyt może się zmienić. Podglądy
 służą rozpoznaniu, nie analizie; pełne dane otwiera się w QGIS.
 
+**Errata 1 (2026-10-17, decyzja użytkownika po sprawdzeniu mockupu):** „Wachlarz”
+**całkowicie zastępuje „Stos”** — pkt 2 decyzji rozstrzygnięty wariantem B, a widok
+„Stos” (płyty pod kątem, opcja A) usunięty ze specu i z mockupu wraz z przełącznikiem
+„Wachlarz / Stos”. Widok nazywa się „Wachlarz” (przełącznik „Mapa / Wachlarz /
+Katalog”): warstwy lat (kampanii, wydań) jako miniatury obszaru na łuku jak stos
+plików w docku macOS, najnowszy rok na górze, każda miniatura w całości we własnym
+miejscu, wybrana powiększona w łuku i duża obok; miniatury pokazują obrysy arkuszy
+w kolorach pokrycia, a arkusze w magazynie — z lekkim podglądem (pkt 3). To komponent
+SVG interfejsu, nie warstwa mapy: odpadają `fill-extrusion`, nachylenie kamery
+i tekstury w deck.gl (errata 1 ADR-006). Rozstrzyga M4 i P12 (SPEC 5.4, 6.5 c, 15, 16).
+Wzmianki o „Stosie” w ADR-005, ADR-006 i ADR-017 opisują stan z chwili decyzji;
+obowiązuje „Wachlarz”.
+
 ---
 
 ## ADR-019: Dwóch producentów magazynu: Kartograf i IMGWTools
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014; uzupełniona przez ADR-024 (adaptery jako wtyczki)
 
 **Kontekst:** Użytkownik chce w Archiwiście v1.0 danych pomiarowych IMGW-PIB: hydro
 dobowych (H, Q, T), charakterystyk miesięcznych i półrocznych oraz meteo (opad,
@@ -651,6 +743,17 @@ drugiego pilnuje, że warstwy wyżej nie zależą od Kartografa. Konfiguracja ma
 wskazuje katalogi producentów; zadania w tle i propozycje asystenta niosą polecenia
 obu producentów (`producer`, SPEC 9.1).
 
+**Errata 1 (2026-10-17, decyzja użytkownika — SPEC 15, P18):** pkt 7 nie obowiązuje:
+dane IMGW są zadaniami projektu i przypięciami w v1.0 — w manifeście IMGWTools
+`imgw-project.json` (`imgw-project/1`) obok `kartograf-project.json`, zmienianym
+wyłącznie przez API IMGWTools (wymaganie IMGW-14; ADR-023). Zasada jednego właściciela
+formatu (pkt 1) zostaje: manifest Kartografa się nie zmienia. Wymagania wobec
+IMGWTools to odtąd IMGW-1..IMGW-14 (SPEC 12.7, `docs/wymagania-imgwtools.md`).
+
+**Errata 2 (2026-10-17, decyzja użytkownika — ADR-024):** adaptery producentów są
+wtyczkami: Kartograf jest wymaganą zależnością, IMGWTools extra `archiwista[imgw]`;
+brak IMGWTools oznacza źródło niedostępne, nie awarię (SPEC 5.3).
+
 ---
 
 ## ADR-020: Format danych IMGW: własny sidecar, Parquet, GeoJSON
@@ -705,12 +808,19 @@ wersji schematu (wzór HSG, ADR-036 D33), co chroni też przed wersjami różnym
 bajtami zapisu biblioteki Parquet. Koperta jest kandydatem na wspólny `store-meta/1`,
 gdyby doszedł trzeci producent.
 
+**Errata 1 (2026-10-17, decyzje użytkownika — SPEC 15, P13–P15, P18):** kolumna
+`hydro_year` jest w plikach szeregów wszystkich zbiorów, także meteo (oba rodzaje lat
+dla obu rodzajów danych, P15); szeregi zbioru obejmują wszystkie stacje, także
+z lukami (P14); stacja bez położenia jest w `stations.geojson` z `geometry: null`
+i powodem braku (P13, ADR-022); dochodzi schemat `imgw-project/1` (ADR-023), objęty tą
+samą polityką wersji (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
+
 ---
 
 ## ADR-021: Etykiety pokrycia szeregów IMGW
 
 **Data:** 2026-10-17
-**Status:** Proponowana — do potwierdzenia (SPEC 15: P14–P16; mockup: M11)
+**Status:** Przyjęta (P14, P15 — errata 1; P16 — errata 2; decyzje użytkownika 2026-10-17); Proponowana (mockup: M11)
 
 **Kontekst:** Użytkownik chce etykiet pokrycia szeregów stacji w czasie, np. „ciągły
 1951–2024”, „luki 3%”, zdefiniowanych precyzyjnie. Pokrycie stacji znane jest
@@ -738,6 +848,371 @@ szeregów.
 listę przerw dla każdej zmiennej; Archiwista liczy etykiety, lata pełne i oś czasu
 (indeks `series_years`), a interfejs, API i asystent mają jedno słownictwo.
 Uzupełnia ADR-010 (etykiety obszaru) o wymiar czasu.
+
+**Errata 1 (2026-10-17, decyzje użytkownika — SPEC 15, P14, P15):**
+- P14: „ciągły” = zero braków (potwierdzone). Pobiera się i pokazuje **wszystkie**
+  dane, także z brakami, z etykietą; nic nie jest odfiltrowywane z powodu braków —
+  mapa, „Zestawienie”, „Katalog”, zestaw, eksport i propozycje asystenta obejmują
+  każdą stację, a filtry pokrycia („≥ 30 lat pełnych”) działają tylko jawnie
+  (SPEC 4.8.4).
+- P15: oba rodzaje lat dla **obu** rodzajów danych (hydro i meteo) z przełącznikiem
+  (wcześniej: „rodzaj lat wg zbioru z przełącznikiem”). Domyślnie hydro —
+  hydrologiczny, meteo — kalendarzowy; wybór zapamiętywany osobno dla hydro i meteo
+  w ustawieniach użytkownika (w zespole — przy koncie), `year_type` w adresie URL ma
+  pierwszeństwo; widok mieszany używa wyboru dla hydro; charakterystyki półroczne
+  i roczne zostają w latach hydrologicznych, bo IMGW liczy je w półroczach XI–IV
+  i V–X (SPEC 4.8.2, 6.7). Potwierdzone przez użytkownika 2026-10-17:
+  charakterystyki półroczne i roczne IMGW są tylko w latach hydrologicznych,
+  a przełącznik rodzaju lat ich nie dotyczy.
+- P16: patrz errata 2.
+
+**Errata 2 (2026-10-17, decyzja użytkownika — SPEC 15, P16):** P16 rozstrzygnięte —
+etykiety pokrycia są liczone i pokazywane **osobno dla każdej wielkości**, nie jedna
+na stację: hydro — H, Q i T; meteo — opad, temperatura powietrza (Tmax, Tmin, Tśr)
+i inne zmienne zbioru. Stacja nie ma etykiety zbiorczej. Zmienia wcześniejszą
+rekomendację („jedna zmienna naraz”): panel stacji, „Zestawienie”, „Katalog”
+i karta stacji pokazują etykiety wszystkich zmiennych stacji razem; mapa koloruje
+punkt według jednej zmiennej wybranej chipem („Kolor punktów”), ale podpowiedź
+punktu podaje wszystkie; filtry pokrycia (lata pełne, etykieta) dotyczą wskazanej
+zmiennej i łączą się spójnikiem „i”, więc brak Q nie ukrywa H; API zwraca
+`coverage` osobno dla każdej zmiennej (SPEC 9, `GET /stations`). Model (SPEC 4.8.4,
+indeks `series_years`) i IMGW-8 liczyły już pokrycie per zmienna — zmienia się
+prezentacja, filtrowanie i kształt odpowiedzi API, nie kontrakt formatu IMGWTools
+(wymagania IMGWTools: IMGW-8).
+
+---
+
+## ADR-022: Dane bez położenia: Katalog zamiast mapy
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17; SPEC 15, P13)
+
+**Kontekst:** Część danych nie ma położenia: z 2 149 kodów listy meteo IMGWTools
+publiczne API IMGW ma współrzędne 562 stacji, 32 stacje API hydro mają zastępcze
+`0,0`, stacje zamknięte często nie mają współrzędnych w żadnym źródle; po stronie
+Kartografa są pliki, dla których `file_footprint` nie znajduje zasięgu („bez
+obrysu”), a archiwa i szeregi IMGW mają zasięg całego kraju. Pytanie P13 dotyczyło
+źródła współrzędnych stacji meteo; użytkownik rozstrzygnął, że stacji bez
+współrzędnych nie pokazuje się na mapie, a Archiwista potrzebuje drugiego sposobu
+prezentacji danych bez odniesienia przestrzennego — ogólnie, nie tylko dla IMGW.
+
+**Opcje:**
+- A) Przybliżone położenie na mapie (np. środek kwadratu 1° z kodu stacji) z oznaczeniem.
+- B) Osobna lista „Bez położenia” tylko dla stacji IMGW, obok mapy.
+- C) Ogólna zasada dla wszystkich producentów: mapa pokazuje wyłącznie obiekty
+  z położeniem, a wszystkie obiekty — także bez położenia — pokazuje widok bez mapy
+  („Katalog”: lista i karty z wyszukiwaniem i filtrami atrybutów); mapa ma licznik
+  obiektów bez położenia z przejściem do „Katalogu”.
+
+**Decyzja:** C (decyzja użytkownika 2026-10-17). A zgaduje położenie (kwadrat 1° to
+dziesiątki kilometrów) i łamie zasadę „nigdy zgadywanie”; B rozwiązuje jeden
+przypadek i zostawia pliki „bez obrysu” Kartografa bez widoku. Zasady (SPEC 4.3,
+6.8):
+1. Każdy obiekt indeksu ma rodzaj położenia: `footprint`, `point`, `country` albo
+   `none` z powodem (pliki: `no_source`, `unreadable`; stacje: powód z katalogu stacji
+   IMGWTools — `none`, `zero`, `outside_country`).
+2. Mapa rysuje tylko `footprint` i `point`; położenie nigdy nie jest zgadywane.
+3. „Katalog” (pozycja nawigacji i tryb „Mapy”) pokazuje wszystkie rodzaje położenia;
+   filtr obszaru dzieli wynik na grupy „w obszarze”, „na granicy obszaru”, „cały
+   kraj”, „bez położenia” z licznikami, a grupy „bez położenia” nigdy nie dołącza do
+   obszaru ani z niego nie usuwa po cichu. Obiekty bez położenia wybiera się filtrami
+   atrybutów (rzeka i kod hydrograficzny z dopływami — P19, nazwa, kod, kraj,
+   jednostka); kwadrat 1° z kodu stacji jest tylko zgrubną wskazówką.
+4. Każdy widok mapy z wynikiem podaje licznik obiektów bez położenia z przejściem do
+   „Katalogu” z tymi samymi filtrami.
+5. Położenie uzupełnia producent (np. nowa wersja katalogu stacji IMGWTools z plikiem
+   współrzędnych użytkownika); Archiwista go nie zapisuje.
+
+**Konsekwencje:** Indeks trzyma rodzaj położenia i powód braku (`versions`,
+`stations`); API `GET /slots` i `GET /stations` przyjmują `location` i zwracają grupy
+z licznikami; katalog stacji IMGWTools zapisuje stacje bez położenia jako pełnoprawne
+wpisy (`geometry: null` z powodem, IMGW-9). Stacje bez położenia trafiają do zadań
+projektu i zestawów tylko jawnie, a w zestawie są tabelą, nie warstwą mapy. „Katalog”
+jest w v0.1 (pliki „bez obrysu”) i w v0.9 (stacje). Źródła współrzędnych z P13 (API
+IMGW, plik użytkownika, wniosek do IMGW-PIB o wykaz) pozostają uzupełnieniem.
+
+---
+
+## ADR-023: Dane IMGW w projektach: manifest IMGWTools
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (dane IMGW w manifeście projektu w v1.0 i dwa pliki manifestu, `kartograf-project.json` i `imgw-project.json` — decyzja użytkownika 2026-10-17, potwierdzona; SPEC 15, P18)
+
+**Kontekst:** ADR-019 pkt 7 i dotychczasowa rekomendacja P18 wyłączały dane IMGW
+z projektów w v1.0, bo manifest `kartograf-project/1` przyjmuje tylko komendy
+Kartografa; odtwarzalność dawał sam zestaw (`zestaw.json`). Użytkownik zdecydował, że
+dane IMGW mają być w manifeście projektu już w v1.0: zadania (stacje, zmienne, lata)
+i przypięte wersje, z „Statusem”, „Weryfikuj”, aktualizacją i odtwarzaniem u kolegi
+— tak jak dane Kartografa. Zadanie IMGW ma trafiać do projektu przez API IMGWTools.
+
+**Opcje:**
+- A) Zadania IMGW w `kartograf-project.json` (Kartograf przyjmuje obce komendy albo
+  woła IMGWTools).
+- B) Wspólny manifest producentów (np. `store-project/1`) i wspólna biblioteka
+  projektu dla obu producentów.
+- C) Manifest IMGWTools `imgw-project.json` (`imgw-project/1`) w tym samym katalogu
+  projektu obok `kartograf-project.json`; każdy manifest ma jednego właściciela,
+  a Archiwista pokazuje projekt jako sumę obu.
+- D) Bez manifestu: wybór IMGW tylko w zestawie (dotychczasowa rekomendacja).
+
+**Decyzja:** C. Zgodna z ADR-019 (każdy producent jest jedynym właścicielem swojego
+formatu, żadnej zależności między Kartografem a IMGWTools) i z ADR-014 (Archiwista nie
+pisze formatów producentów). A łamie oba: Kartograf musiałby znać komendy IMGW albo je
+uruchamiać, a `kartograf-project/1` zmieniłby się poza rozszerzenia addytywne. B to
+refaktor świeżo wydanego manifestu Kartografa i trzech repozytoriów w kroku —
+przedwczesny przy dwóch producentach (jak opcja E w ADR-019). D nie spełnia decyzji
+użytkownika. Kształt (SPEC 12.7, IMGW-14): `schema`, `store_dir`, `tasks[]` (`name`,
+`command`, `options` — zbiór, stacje jako jawna lista kodów, zmienne, lata,
+`year_type`; przy wyborze obszarem także `geometry` i `geometry_sha256`), `pinned_at`,
+`imgwtools_version`, `files[]` (`role`, `path` wersji względna do `store_dir`,
+`sha256`, `station`); API = CLI (`init_project`, `open_project`, `add_project_task`,
+`remove_project_task`, `download_project`, `check_project`, `verify_project`,
+`get_project_status`; `imgw project …`); zapis atomowy pod blokadą
+`.imgw-project.lock` — wzorem manifestu Kartografa.
+
+**Konsekwencje:** Nowe wymaganie IMGW-14 (v0.9, potrzebne do v1.0). Archiwista
+odkrywa projekty po obu plikach, pokazuje zadania obu producentów z kolumną
+producenta, a „Dodaj do projektu…” dla stacji otwiera „Okno planu” z poleceniem
+`imgw project add` i woła API IMGWTools w procesie roboczym (SPEC 4.7). Zestaw bierze
+wersje IMGW z przypięć, `zestaw.json` zapisuje sumy obu manifestów, `polecenia.sh` —
+`imgw project download` (SPEC 8.4). Ryzyko niespójności dwóch manifestów (np. ta sama
+nazwa zadania) ogranicza widok projektu z ostrzeżeniem (SPEC 14). Gdy dojdzie trzeci
+producent, wraca opcja B. Zmienia pkt 7 ADR-019 (errata 1).
+
+**Errata 1 (2026-10-17, decyzja użytkownika — SPEC 15, P18):** potwierdzone dwa pliki
+manifestu (opcja C): `kartograf-project.json` i `imgw-project.json`; status
+zmieniony z „Proponowana” na „Przyjęta”. Nazwy pól `imgw-project/1` zapisane
+w wymaganiu IMGW-14 pozostają nazwami z wymagań dla IMGWTools (tak jak w
+wszystkich wymaganiach IMGW-n), bez wpływu na status decyzji.
+
+---
+
+## ADR-024: Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełnia ADR-001 i ADR-019
+
+**Kontekst:** ADR-001 przyjął Kartografa jako zależność, a ADR-019 dodał drugiego
+producenta, IMGWTools, za wspólnym interfejsem źródła. Nie rozstrzygnęły one, jak
+Archiwista deklaruje obie biblioteki w pakiecie. IMGWTools 2.1.1 jest w wersji Beta,
+jeszcze bez kontraktu magazynu (IMGW-1..IMGW-14), a Kartograf jest podstawą v0.1..v0.8.
+Wydania Archiwisty nie mogą czekać na IMGWTools, a konflikty wersji bibliotek
+naukowych obu producentów nie mogą uniemożliwiać instalacji osobom, które IMGW nie
+interesuje. Użytkownik zdecydował o modelu wtyczek.
+
+**Opcje:**
+- A) Obie biblioteki wymagane.
+- B) Kartograf wymagany, IMGWTools opcjonalny (extra), adaptery źródeł rejestrowane
+  jako wtyczki przez entry points.
+- C) Bez zależności od producentów: Archiwista czyta formaty plików i wywołuje CLI.
+- D) Producenci jako usługi HTTP.
+
+**Decyzja:** B (decyzja użytkownika 2026-10-17):
+1. Kartograf jest wymaganą zależnością pakietu `archiwista` (`kartograf>=0.9,<0.10`;
+   dokładny zakres ustala się przy wydaniu Archiwisty).
+2. IMGWTools jest extra `archiwista[imgw]`; instalacja: `pip install archiwista`
+   albo `pip install "archiwista[imgw]"`.
+3. Adaptery źródeł (ADR-019 pkt 3) są rejestrowane przez entry points, np. w grupie
+   `archiwista.sources`. Brak pakietu producenta oznacza „źródło niedostępne”,
+   a nie awarię aplikacji:
+   - interfejs ukrywa widoki stacji IMGW (warstwę stacji, „Zestawienie” i „Kartę
+     stacji”);
+   - API zwraca jasny błąd źródła niedostępnego (kod i komunikat po polsku, SPEC 9.1);
+   - asystent nie oferuje narzędzi IMGW (SPEC 7.3).
+4. Przy starcie (i w `archiwista doctor`) Archiwista sprawdza wersje producentów
+   i schematy, które czyta: `kartograf-meta/1`, `kartograf-project/1`, `imgw-meta/1`,
+   `imgw-project/…`; niezgodność kończy się czytelnym komunikatem po polsku (co jest
+   zainstalowane, jaki zakres jest wspierany, co zrobić) i dotyczy tylko źródła,
+   którego dotyczy.
+5. Jeden plik blokady zależności (lock) dla spójnego zestawu bibliotek naukowych
+   (z extra `[imgw]` włącznie), żeby oba źródła działały w jednym środowisku.
+6. CI w dwóch konfiguracjach: bez `[imgw]` i z `[imgw]`, plus testy kontraktu
+   względem gałęzi `develop` producentów (wczesne wykrycie zmian łamiących).
+7. Trzeci producent to nowa wtyczka (nowy adapter i entry point) bez zmian
+   w warstwach wyżej.
+
+Odrzucone: A — IMGWTools w wersji Beta blokowałby wydania Archiwisty, a konflikty
+wersji bibliotek naukowych utrudniałyby instalację; C — bez zależności, z czytaniem
+formatów i wywoływaniem CLI, łamie ADR-014 (wiedza o formacie tylko u producenta);
+D — usługi HTTP: koszt (dodatkowe procesy, uwierzytelnianie, wdrożenie).
+
+**Konsekwencje:** Zmiany w SPEC: 5.1–5.3 i 5.5 (interfejs źródła, rejestracja
+wtyczek, instalacja i konfiguracja), 7.3 (narzędzia zależne od dostępnych źródeł),
+9.1 (błąd źródła niedostępnego), 11 (dwie konfiguracje CI, testy kontraktu), 13
+(v0.1: mechanizm wtyczek z atrapą drugiego adaptera; v0.9: extra `[imgw]`), 14
+(zależność od IMGWTools jest teraz opcjonalna). Test importów z ADR-019 zostaje,
+a Archiwista bez IMGWTools przechodzi pełny zestaw testów poza testami IMGW.
+Zależność od IMGWTools ogranicza już tylko v0.9, nie wydania v0.1..v0.8.
+
+---
+
+## ADR-025: Zakres MVP i kolejność wydań
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17)
+
+**Kontekst:** Roadmapa SPEC 13 miała dziesięć wersji, a v1.0 obejmowało wszystko:
+przeglądanie, podglądy, działania, zestaw do QGIS, asystenta, łączenie, tryb zespołu
+i dane IMGW. Przed planem implementacji użytkownik chce dokładnie ustalić wymagania
+produktu i zakres (nowe dokumenty `docs/PRD.md` i `docs/SCOPE.md`, wzór rodziny
+projektów: Hydraulik, Kartograf, Hydrolog).
+
+**Opcje:**
+- A) Zostawić v1.0 jako całość roadmapy.
+- B) Wydzielić MVP z wybranych obszarów, resztę przenieść za MVP.
+
+**Decyzja:** B (decyzja użytkownika 2026-10-17). MVP = v1.0 i obejmuje: Przeglądarkę,
+Podglądy i Wachlarz, Działania, Tryb zespołu, Dane IMGW. Po MVP: Zestaw do QGIS,
+Asystent, Łączenie. Nowa numeracja (stara → nowa): v0.1, v0.2, v0.3 bez zmian;
+v0.8 „Zespół” → v0.4; v0.9 „Stacje IMGW” → v0.5; v1.0 „Wydanie” → v1.0 „Wydanie
+(MVP)”; v0.4 „Zestaw” → v1.1; v0.5 „Asystent” → v1.2; v0.6 „Mozaika i porównanie”
+→ v1.3; v0.7 „PL + CZ” → v1.4. Części dawnego v0.9 zależne od zestawu i asystenta
+(zestaw z danymi IMGW, narzędzia asystenta IMGW, UC-18) przechodzą do v1.1 i v1.2.
+Wymagania KB-6, KD-3, KD-4 idą z „Zestawem” (v1.1) — do potwierdzenia (PRD, otwarte
+decyzje). Przed v0.1 dochodzi etap 0 „Architektura i plan” (architektura otwarta:
+ADR-004..008, 015).
+
+**Konsekwencje:** Kolejność i zakres wydań określa `docs/SCOPE.md`; SPEC 13 trzyma
+szczegóły i kryteria akceptacji w nowej numeracji; SPEC i `docs/wymagania-imgwtools.md`
+przenumerowane. Wcześniejsze wpisy tego rejestru zachowują numerację z chwili decyzji
+(np. „v0.9” w ADR-019..024 = dzisiejsze v0.5, „v0.8” = v0.4). MVP zależy od wydania
+IMGWTools z IMGW-1..IMGW-14; tryb zespołu wchodzi do MVP przed danymi IMGW.
+
+**Errata 1 (2026-10-18, decyzja użytkownika):** KD-4 (dostępność wydań produktów
+jednostkowych, np. BDOT10k) przechodzi z v1.1 do v0.3, żeby produkty bez arkuszy miały
+w MVP etykiety pokrycia i pełne widoki (PRD F6.3, „Widoki według rodzaju danych”).
+KD-3 i KB-6 zostają w v1.1 — nadal do decyzji.
+
+**Errata 2 (2026-10-18, decyzja użytkownika):** KD-3 (dostępność obrazów PL: lata
+i pełność arkuszy ortofotomapy, true orto i intensywności) przechodzi do v0.3 — bez
+niego ortofotomapa w MVP nie ma lat z etykietami pokrycia (PRD F6.4). KB-6 („Polecenie
+Kartografa” i „Dodaj do projektu” z karty pliku) zostaje w v1.1: w MVP do projektu
+dodaje się dane z wyniku dostępności.
+
+---
+
+## ADR-026: Licencja MIT i kontrybucje z CLA
+
+**Data:** 2026-10-17
+**Status:** Przyjęta (licencja MIT — SPEC 15, P8; CLA — errata 1, decyzja użytkownika 2026-10-18)
+
+**Kontekst:** Repozytorium nie miało pliku licencji ani zasad kontrybucji. Wszystkie
+projekty autora (Kartograf, Hydraulik, Hydrograf, Hydrolog, IMGWTools, Retman) są na
+licencji MIT; Hydraulik ma dodatkowo `CONTRIBUTING.md`, `CONTRIBUTORS.md` (rejestr
+podpisów) i `docs/CLA.md` — adaptację Apache ICLA 2.2 z odbiorcą wskazanym osobą
+(Piotr de Bever), nie projektem.
+
+**Opcje:**
+- A) MIT, kontrybucje z CLA jak w Hydrauliku (podpis komentarzem w pull requeście).
+- B) MIT, DCO (`Signed-off-by`) bez przeniesienia praw.
+- C) MIT bez CLA (wkład na tej samej licencji, inbound = outbound).
+
+**Decyzja:** A — wzór rodziny projektów. Pliki: `LICENSE` (MIT, Copyright (c) 2026
+Piotr de Bever), `CONTRIBUTING.md` i `CONTRIBUTORS.md` po polsku (zasada językowa
+Archiwisty), `docs/CLA.md` bez zmian względem Hydraulika (tekst prawny po angielsku;
+odbiorca to osoba, więc ten sam tekst obowiązuje w każdym projekcie autora). Wybór CLA
+zamiast B i C czeka na potwierdzenie użytkownika.
+
+**Konsekwencje:** CLA zachowuje możliwość zmiany licencji w przyszłości; wymaga
+ręcznego prowadzenia `CONTRIBUTORS.md` przy scalaniu. Zależności Archiwisty muszą mieć
+licencje zgodne z MIT; zależność copyleft wymaga osobnej decyzji (PRD N7.2). CLA nie
+był przeglądany przez prawnika (zastrzeżenie w `docs/CLA.md`).
+
+**Errata 1 (2026-10-18, decyzja użytkownika):** CLA przyjęte („korzystamy z tego, co
+już mamy”). Ten sam proces ma już IMGWTools (commit `999c8a7`: `docs/CLA.md` identyczny
+z Hydraulikiem, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, szablon pull requestu
+`.github/pull_request_template.md`); pozostałe projekty (Kartograf, Hydrograf, Hydrolog,
+Retman) mają tylko `LICENSE` MIT, żaden nie używa DCO. Archiwista dostaje też szablon
+pull requestu z polem podpisu CLA (po polsku; bez punktów o testach, dopóki nie ma kodu).
+
+**Errata 2 (2026-10-18, decyzja użytkownika):** polski w `CONTRIBUTING.md`,
+`CONTRIBUTORS.md` i szablonie pull requestu to błąd — pliki dla kontrybutorów są po
+angielsku, jak w Hydrauliku i IMGWTools (cały kod i to, co go opisuje, po angielsku;
+`docs/DEVELOPMENT_STANDARDS.md` sekcja 0). Tłumaczenie to pierwsze zadanie
+implementacji (`docs/PROGRESS.md`).
+
+---
+
+## ADR-027: Dane własne w katalogu projektu i migawki Archiwisty
+
+**Data:** 2026-10-18
+**Status:** Przyjęta (decyzja użytkownika 2026-10-18)
+
+**Kontekst:** Użytkownicy mają własne zbiory (np. warstwę liniową sieci kanalizacyjnej),
+które chcą widzieć na mapie razem z danymi projektu i wersjonować. Archiwista indeksował
+dotąd tylko katalogi producentów (Kartograf, IMGWTools), a plik bez sidecara był
+„problemem” magazynu; Kartograf nie zna plików, których nie pobrał. Użytkownik wybrał
+folder tylko do odczytu w MVP, wersjonowanie migawkami całych plików i zdecydował, że
+migawki robi Archiwista, bo użytkownicy sami nie będą ich robić konsekwentnie.
+
+**Opcje:**
+- Gdzie dane własne: A) folder przypisany do projektu; B) foldery w ustawieniach magazynu,
+  niezależne od projektów; C) oba.
+- Kto robi migawki: A) użytkownik (kopie z datą w nazwie), Archiwista je rozpoznaje;
+  B) Archiwista w katalogu projektu; C) Kartograf przez API (dane własne w magazynie);
+  D) osobny mały producent jako wtyczka.
+- Co jest wersją: A) migawka całego pliku; B) historia pojedynczych obiektów.
+
+**Decyzja:** folder przypisany do projektu (A), migawki robi Archiwista w katalogu
+projektu (B), wersja = migawka całego pliku (A):
+1. Folder danych własnych projektu — domyślnie `<katalog projektu>/dane/`, można wskazać
+   inny; przypisanie w konfiguracji Archiwisty, nie w manifeście producenta. Folder jest
+   indeksowany tylko do odczytu (rodzaj ogólny, PRD N8.3).
+2. „Zrób migawkę” kopiuje plik do `<folder danych>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/`
+   z `migawka.json` (`archiwista-snapshot/1`; nazwy katalogów i schematu — propozycja do
+   planu v0.2). Kontrakt celowo najprostszy: tylko przyrost (bez nadpisywania, usuwania
+   i dowiązań), zapis atomowy (katalog roboczy `.incoming/`, publikacja zmianą nazwy, błąd
+   gdy cel istnieje), spójna kopia pliku w użyciu (GeoPackage przez kopię zapasową
+   SQLite, formaty wieloplikowe jako komplet), ta sama treść = brak nowej migawki.
+3. Migawki to wersje pliku w interfejsie (oś wersji, „Wachlarz”, kurtyna, porównanie
+   metadanych); zmiana pliku od ostatniej migawki jest wykrywana skanem.
+4. Zakres: v0.2 (MVP); w zespole migawkę robi „operator”.
+
+Odrzucone: rozpoznawanie kopii robionych ręcznie — użytkownicy nie będą ich robić
+konsekwentnie; Kartograf — dane prywatne w magazynie danych publicznych, nowa rola
+Kartografa i zależność MVP od jego wydania; osobny producent — trzecia biblioteka do
+utrzymania; historia obiektów — klasa narzędzia edycyjnego, poza granicami Archiwisty.
+
+**Konsekwencje:** Archiwista po raz pierwszy zapisuje dane (kopie plików użytkownika),
+ale wyłącznie w katalogu projektu i na polecenie użytkownika — jak pliki obszarów
+i zestawy; magazyn producentów pozostaje tylko do odczytu (ADR-003, ADR-019 bez zmian).
+Migawki nie są stanem Archiwisty: nie da się ich odbudować, więc są w otwartym formacie,
+czytelne bez Archiwisty, i przenoszą się z katalogiem projektu. To trzecia implementacja
+semantyki wersji (obok ADR-036 Kartografa i katalogu IMGW) — stąd minimalny kontrakt
+i testy przerwania. Dane własne nie trafiają do manifestu projektu (brak przypięć,
+„Weryfikuj” i odtworzenia u kolegi). Zmiany w SPEC: 1.3, 2, 4.7.1, 10.1, 13 (v0.2);
+PRD F15, N2.5; SCOPE.
+
+---
+
+## ADR-028: Interfejs w Preact + htm bez kroku budowania
+
+**Data:** 2026-10-18
+**Status:** Przyjęta (decyzja użytkownika 2026-10-18); zastępuje ADR-005
+
+**Kontekst:** Etap 0 (SCOPE) ponownie rozstrzyga architekturę. ADR-005 wybrał Svelte
+z Vite, co wprowadza drugi ekosystem (Node.js, krok budowania) — ryzyko kosztu
+utrzymania (SPEC 14). Tymczasem mockup (SPEC 16) działa w Preact + htm bez budowania
+i sprawdził główny ekran: mapę, Wachlarz, Katalog, panele, zadania, dane własne.
+
+**Opcje:**
+- A) Svelte 5 + TypeScript + Vite (ADR-005).
+- B) Preact + htm, moduły ES bez kroku budowania, biblioteki dołączone do pakietu.
+- C) Szablony serwerowe + htmx.
+
+**Decyzja:** B. Jeden ekosystem narzędzi (Python); mockup jest punktem wyjścia
+interfejsu; biblioteki (Preact, htm, MapLibre) leżą w pakiecie jako pliki ES modules —
+bez CDN, działa offline i spełnia CSP z SPEC 10.1. Zasady z ADR-005 zostają: jedno API
+HTTP („API najpierw”), stan widoku w adresie URL.
+
+Odrzucone: A — drugi ekosystem do utrzymania i przepisanie mockupu; C — główny ekran to
+aplikacja mapowa ze wspólnym stanem, który w htmx rozpada się na fragmenty HTML
+i ręczny JS.
+
+**Konsekwencje:** Brak kontroli typów w interfejsie — ograniczają to testy w przeglądarce
+(Playwright) i adnotacje JSDoc. Odwracalność: dodanie Vite i TypeScriptu później nie
+wymaga przepisania komponentów. Zmiany w SPEC: 5.1, 5.2, 14 (ryzyko „dwa ekosystemy”),
+15 (P11).
 
 ---
 

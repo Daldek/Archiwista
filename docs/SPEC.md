@@ -1,17 +1,18 @@
 # Archiwista — specyfikacja
 
 **Data:** 2026-10-17
-**Status:** specyfikacja do przeglądu (bez kodu aplikacji); decyzje:
-[`docs/DECISIONS.md`](DECISIONS.md); mockup interfejsu: `mockup/` na gałęzi
-`feat/mockup` (sekcja 16)
+**Status:** specyfikacja do przeglądu (bez kodu aplikacji); wymagania produktowe: [`docs/PRD.md`](PRD.md), zakres i priorytety wydań: [`docs/SCOPE.md`](SCOPE.md) (mają pierwszeństwo w kwestiach zakresu i priorytetów); szczegóły w tym specu; decyzje:
+[`docs/DECISIONS.md`](DECISIONS.md); mockup interfejsu: katalog `mockup/`
+(sekcja 16)
 **Zależność:** Kartograf 0.8.0 (`develop`) — publiczne API
 (`kartograf/__init__.py`, `__all__`) i formaty na dysku: sidecar
 `kartograf-meta/1`, układ `data/` z magazynem wersji (`versions/`), manifest
 projektu `kartograf-project/1`, plan aktualizacji `kartograf-plan/1`, raport
-dostępności `kartograf-availability/1`; od v0.9 IMGWTools (dane IMGW) —
-wydanie z wymaganiami IMGW-1..IMGW-13 (sekcja 12.7; dziś 2.1.1, Beta, bez
-magazynu): katalog `imgw-store/1`, sidecar `imgw-meta/1`, szeregi
-`imgw-series/1` (12.8)
+dostępności `kartograf-availability/1`; od v0.5 IMGWTools (dane IMGW) —
+wydanie z wymaganiami IMGW-1..IMGW-14 (sekcja 12.7, dokument
+[`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md); dziś 2.1.1, Beta,
+bez magazynu): katalog `imgw-store/1`, sidecar `imgw-meta/1`, szeregi
+`imgw-series/1` (12.8), manifest projektu `imgw-project/1` (IMGW-14)
 **Dokumenty źródłowe (repozytorium Kartografa):** `docs/ARCHITECTURE.md` 1
 i 3.1-3.5, `docs/USAGE.md`, `docs/SCOPE.md` 3.3 (roadmapa, zasady nakładek),
 `docs/DECISIONS.md` ADR-022, ADR-024, ADR-027, ADR-036, ADR-037, ADR-039 do
@@ -30,7 +31,7 @@ są zapisane w `kodzie`; teksty interfejsu w cudzysłowie „…”; prawdziwe
 „SCOPE” i „ADR-0xx” bez dopisku dotyczą dokumentów Kartografa; decyzje
 Archiwisty mają postać „A-ADR-0xx” (`docs/DECISIONS.md` w tym repozytorium).
 Wymagania wobec producentów to „KA-1”…„KH-2” (Kartograf) i „IMGW-1”…
-„IMGW-13” (IMGWTools, 12.7); odwołania `plik:linia` do innych repozytoriów
+„IMGW-14” (IMGWTools, 12.7); odwołania `plik:linia` do innych repozytoriów
 zaczynają się od ich nazwy (np. `IMGWTools/src/imgwtools/stations.py:349`).
 
 **Spis treści:** 1. Cel i użytkownicy · 2. Słownik pojęć · 3. Przypadki
@@ -109,9 +110,10 @@ zrozumiałe i wygodne dla ludzi.** W praktyce:
 - **Nie jest programem GIS.** Podglądy służą rozpoznaniu danych, a nie
   analizie; analizy robi się w QGIS (Archiwista przygotowuje do tego
   zestaw, sekcja 8.4).
-- **Nie pobiera i nie przetwarza danych sam.** Robią to producenci
-  magazynu: Kartograf (dane przestrzenne) i IMGWTools (dane IMGW;
-  A-ADR-019). Nakładki wołają wyłącznie publiczne API bibliotek i nie mają
+- **Nie ma własnego mechanizmu pobierania ani obróbki.** Pobieranie
+  i aktualizację danych Archiwista zleca producentom magazynu: Kartografowi
+  (dane przestrzenne) i IMGWTools (dane IMGW; A-ADR-019). Nakładki wołają
+  wyłącznie publiczne API bibliotek i nie mają
   własnej logiki pobierania ani obróbki (SCOPE 3.3). Brakująca funkcja
   producenta to wymaganie wobec niego (sekcja 12), a nie obejście
   w Archiwiście.
@@ -119,14 +121,20 @@ zrozumiałe i wygodne dla ludzi.** W praktyce:
   P4).
 - **Nie trzyma niczego na udziale sieciowym.** Indeks, podglądy i historia
   zadań leżą lokalnie i można je w każdej chwili odbudować; źródłem prawdy
-  są sidecary i manifesty (SCOPE 3.3).
+  są sidecary i manifesty (SCOPE 3.3). Wyjątkiem są dane użytkownika,
+  które Archiwista zapisuje na jego polecenie w katalogu projektu (zestawy,
+  pliki obszarów, migawki danych własnych — 4.7.1, A-ADR-027): to nie stan
+  Archiwisty, tylko pliki w otwartym formacie, czytelne bez niego.
+- **Nie jest edytorem danych ani systemem historii obiektów.** Dane własne
+  wersjonuje migawkami całych plików (4.7.1); edycja i historia zmian
+  pojedynczych obiektów są poza zakresem.
 - **Nie zastępuje wtyczki QGIS** (podprojekt 4 roadmapy Kartografa). Zastępuje
   podprojekt 5 („GUI webowe”) i jest osobnym projektem (A-ADR-001).
 - **Nie jest programem analiz hydrologicznych.** Pokazuje fakty o szeregach
   IMGW (pokrycie, luki, wartości i ekstrema opublikowane przez IMGW), ale
   nie liczy przepływów charakterystycznych, analiz częstości ani statystyk;
   robią to Hydrolog i Retman, a Archiwista przygotowuje dla nich dane
-  (założenie do potwierdzenia: sekcja 15, P17).
+  (decyzja użytkownika 2026-10-17; sekcja 15, P17).
 - **Nie pokazuje danych bieżących IMGW** (stany wody, ostrzeżenia) — tylko
   archiwa i szeregi z magazynu (decyzja użytkownika 2026-10-17).
 
@@ -143,7 +151,7 @@ Tryby pracy:
 
 - **Lokalny (od v0.1, domyślny):** jedna osoba, serwer na `127.0.0.1`,
   bez logowania; magazyn na dysku lokalnym albo na udziale SMB.
-- **Zespołowy (v0.8):** jeden serwer Archiwisty w sieci lokalnej
+- **Zespołowy (v0.4):** jeden serwer Archiwisty w sieci lokalnej
   z logowaniem i rolami, wspólny magazyn na udziale SMB bez blokad zakresów
   bajtów (A-ADR-013; sekcja 15, P1). Architektura od v0.1 nie zakłada, że
   przeglądarka i serwer widzą ten sam system plików (sekcja 5.1).
@@ -171,9 +179,9 @@ zachowują jego znaczenie.
 | **Wydanie** | Wersja publikacji źródła bez kampanii: rocznik BDOT10k, `2.0` SoilGrids, data wpisu feedu ATOM CUZK | ADR-036 D29, ADR-042 |
 | **Arkusz pełny / niepełny** | Rekord skorowidza `TAK`/`NIE` (`czy_ark_wypelniony`, w sidecarze `extra.source.full_sheet`): czy arkusz jest w całości wypełniony treścią | ARCH 3.2 |
 | **Zadanie Kartografa (obszarowe)** | Jedno wywołanie dla obszaru; jego pliki — także po obu stronach granicy PL/CZ — łączy wspólne `extra.parent_request` | ARCH 3.4 |
-| **Projekt** | Katalog z `kartograf-project.json` (`kartograf-project/1`): zadania projektu (komendy danych z opcjami) i przypięte wersje plików | ARCH 3.5, ADR-040 |
-| **Zadanie projektu** | Wpis `tasks[]` manifestu: nazwa, komenda (np. `elevation download`) i opcje | spec manifestu 3.3 |
-| **Przypięcie** | Wpis `files[]` zadania projektu: która wersja (`version`, `sha256`) jest używana | spec manifestu 3.3 |
+| **Projekt** | Katalog z manifestem Kartografa `kartograf-project.json` (`kartograf-project/1`) i/lub manifestem IMGWTools `imgw-project.json` (`imgw-project/1`): zadania projektu (komendy danych producenta z opcjami) i przypięte wersje plików; każdy manifest zapisuje tylko jego producent | ARCH 3.5, ADR-040; IMGW-14, A-ADR-023 |
+| **Zadanie projektu** | Wpis `tasks[]` manifestu: nazwa, komenda (np. `elevation download` albo komenda IMGW `series select`) i opcje | spec manifestu 3.3; IMGW-14 |
+| **Przypięcie** | Wpis `files[]` zadania projektu: która wersja (`version` albo `path` wersji w katalogu IMGW, `sha256`) jest używana | spec manifestu 3.3; IMGW-14 |
 | **Dostępność** | Co źródło ma dla obszaru: lata, warianty, kompletność arkuszy — raport `check_availability` (`kartograf-availability/1`) | ADR-041 |
 | **Wariant** | (Archiwista) zestaw plików produktu o wspólnym: rok, układzie poziomym, rozdzielczości, układzie wysokości i zgłoszeniu/kampanii; formaty plików (np. `ASC`, `ASCII-NMT`) są jego plakietkami, nie kluczem; jedna karta w interfejsie | sekcja 6.4, A-ADR-017 |
 | **Aktualność** | Czy lokalna albo przypięta wersja jest najnowsza u źródła — plan `check_*` (`kartograf-plan/1`; statusy `current`, `newer`, `missing`, `unverifiable`, `check_failed`) | ADR-036 |
@@ -187,14 +195,18 @@ zachowują jego znaczenie.
 | **Katalog stacji** | Wersjonowana lista stacji z położeniem, jego źródłem i niepewnością (IMGWTools, GeoJSON) | sekcja 4.8.1, IMGW-9 |
 | **Szereg** | Wartości zmiennych jednej stacji z jednego zbioru IMGW w kolejnych dniach (miesiącach, półroczach): plik Parquet stacji w wersji **szeregów zbioru** — migawki wszystkich stacji zbioru zbudowanej przez IMGWTools z określonych wersji archiwów | sekcja 4.8.1, IMGW-7 |
 | **Zmienna** | Wielkość szeregu: H — stan wody [cm], Q — przepływ [m³/s], T — temperatura wody [°C], P — opad [mm], Tmax, Tmin, Tśr — temperatura powietrza [°C] | sekcja 4.8 |
-| **Rok hydrologiczny** | Od 1 XI roku poprzedniego do 31 X (np. r.h. 2024 = 2023.11.01–2024.10.31); numeruje archiwa i charakterystyki hydro IMGW; meteo używa roku kalendarzowego | sekcja 4.8.2 |
-| **Pokrycie szeregu** | (Archiwista) etykieta zmiennej stacji w zakresie lat: „ciągły · 1951–2025”, „luki 3% · najdł. …”, „częściowy · od 1972”, „brak danych”, „nieznane” — oraz plakietka archiwów w magazynie („pobrane 60/75 lat”) | sekcja 4.8.4, A-ADR-021 |
+| **Rok hydrologiczny** | Od 1 XI roku poprzedniego do 31 X (np. r.h. 2024 = 2023.11.01–2024.10.31); numeruje archiwa i charakterystyki hydro IMGW, a archiwa meteo numeruje rok kalendarzowy; w interfejsie oba rodzaje lat są dostępne dla danych hydro i meteo (przełącznik) | sekcje 4.8.2, 6.7 |
+| **Pokrycie szeregu** | (Archiwista) etykieta jednej wielkości (zmiennej) stacji w zakresie lat — osobna dla każdej wielkości, nigdy jedna na stację (P16): „ciągły · 1951–2025”, „luki 3% · najdł. …”, „częściowy · od 1972”, „brak danych”, „nieznane” — oraz plakietka archiwów w magazynie („pobrane 60/75 lat”) | sekcja 4.8.4, A-ADR-021 |
+| **Położenie (geometria)** | (Archiwista) odniesienie przestrzenne obiektu indeksu: obrys wersji, punkt stacji, zasięg kraju — albo **brak położenia** z powodem (np. stacja bez współrzędnych, plik bez rozpoznanego zasięgu). Obiekty bez położenia nie są na mapie; pokazuje je „Katalog” | sekcje 4.3, 6.8, A-ADR-022 |
+| **Wachlarz** | (Archiwista) widok warstw lat (kampanii, wydań) wyniku: miniatury obszaru ułożone na łuku jak stos plików w docku macOS, każda w całości, wybrana powiększona; zastąpił „Stos” (decyzja użytkownika 2026-10-17) | sekcje 5.4, 6.5 c, A-ADR-018 |
 | **Indeks** | (Archiwista) lokalna baza SQLite z opisem magazynów i projektów; pamięć podręczna, nie źródło prawdy | sekcja 4 |
+| **Dane własne** | (Archiwista) pliki rastrowe i wektorowe użytkownika (np. sieć kanalizacyjna) w folderze danych projektu, domyślnie `<katalog projektu>/dane/`; nie należą do żadnego producenta, Archiwista je czyta i robi ich migawki | sekcja 4.7.1, A-ADR-027 |
+| **Migawka** | (Archiwista) niezmienna kopia pliku danych własnych z sumą SHA-256 i opisem `migawka.json`, zapisana przez Archiwistę na polecenie użytkownika w `<folder danych>/.wersje/`; tylko przyrost | sekcja 4.7.1, A-ADR-027 |
 | **Zadanie w tle** | (Archiwista) długa operacja — skan, sprawdzenie, pobranie, łączenie, eksport — w osobnym procesie, z postępem i anulowaniem; widok „Zadania” | sekcja 5.6 |
 | **Propozycja** | (Archiwista) plan działań przygotowany przez asystenta; staje się zadaniami w tle dopiero po potwierdzeniu użytkownika | sekcja 7 |
 
 „Zadanie” bez dopisku nie występuje w interfejsie: zawsze „zadanie
-projektu” (Kartograf) albo „zadanie w tle” (Archiwista).
+projektu” (Kartograf albo IMGWTools) albo „zadanie w tle” (Archiwista).
 
 ## 3. Przypadki użycia
 
@@ -218,8 +230,8 @@ arkuszy.
 4. Wynik pojawia się jako warstwy lat na mapie i w panelu „Zestawienie”:
    2023 „pełne · 2 kampanie” z plakietką „pobrane 5/12”, 2022 „częściowe ·
    58%”, a przy 2019 dopisek „1 ark. niepełny” (definicje: sekcja 6.4). Ola
-   przełącza panel na „Oś czasu”, a mapę na „Stos”, żeby zobaczyć lata
-   jednym spojrzeniem.
+   przełącza panel na „Oś czasu”, a widok na „Wachlarz”, żeby zobaczyć
+   wszystkie lata naraz, każdy w całości.
 5. Przy roku 2023 klika „Pobierz…”. Okno planu (`check_data(…, year=2023)`)
    mówi: 12 arkuszy, 5 już w magazynie, 7 do pobrania, ok. 265 MB, zapis do
    magazynu „Zespół”; pokazuje polecenie `kartograf elevation download …`
@@ -240,7 +252,7 @@ obszar, pogrupowane wg produktu i roku danych, z lokalnym pokryciem
 obszaru. Sprawdzenie u źródła jest wyłączone z komunikatem „Brak sieci —
 pokazuję tylko magazyn”; jeśli wcześniej sprawdzano ten obszar, widać
 ostatni raport z datą.
-Od v0.9 widać też stacje IMGW obszaru z etykietami pokrycia z lokalnych
+Od v0.5 widać też stacje IMGW obszaru z etykietami pokrycia z lokalnych
 szeregów (4.8.4).
 
 **Sukces:** odpowiedź w sekundę, bez jednego zapytania sieciowego.
@@ -281,7 +293,9 @@ polecenia Kartografa) i przypięte wersje. „Status” odpowiada natychmiast
 (`check_project`), „Przepnij” przechodzi na nowsze dane jednego zadania
 (`download_project(update="upgrade", tasks=["teren"])`). Z wyniku
 dostępności (UC-01) dodaje zadanie „Dodaj rok 2025 do projektu”
-(`add_project_task` z `year=2025`).
+(`add_project_task` z `year=2025`). Projekt „Raba” ma też zadanie IMGW
+„przeplywy” (manifest `imgw-project.json`, IMGW-14): te same akcje wołają
+funkcje projektu IMGWTools, a lista zadań ma kolumnę producenta.
 
 ### UC-07. Które projekty używają tego pliku?
 
@@ -290,7 +304,7 @@ Kierownik zespołu przed porządkami w magazynie filtruje „Nieużywane przez
 Na karcie pliku widać „Przypięta w: Raba (teren), Wisła-2026 (dem)”.
 Archiwista niczego nie usuwa; raport służy decyzji (sekcja 15, P4).
 
-### UC-08. Mozaika arkuszy
+### UC-08. Mozaika arkuszy (od v1.3)
 
 Marek potrzebuje NMT 0,5 m z 2023 dla obszaru jako jednej warstwy.
 Z wiersza roku wybiera „Łączenie › Mozaika”: VRT (natychmiast, bez kopii
@@ -298,7 +312,7 @@ danych) albo GeoTIFF na wspólnej siatce przycięty do obszaru. Plan pokazuje
 wejścia (konkretne wersje), siatkę i rozmiar wyniku. Wynik trafia do
 magazynu jako produkt pochodny z sidecarem (sekcja 8.2).
 
-### UC-09. Pogranicze PL + CZ
+### UC-09. Pogranicze PL + CZ (zestaw bez scalania od v1.1, powierzchnia od v1.4)
 
 Marek modeluje zlewnię Olzy. Obszar przecina granicę; dostępność pokazuje
 lata PL i bieżące modele CZ. Pobranie idzie jednym zadaniem Kartografa
@@ -308,21 +322,21 @@ lata PL i bieżące modele CZ. Pobranie idzie jednym zadaniem Kartografa
 (obie warstwy w projekcie QGIS), a po dodaniu funkcji do Kartografa —
 jedną powierzchnię na wspólnej siatce (sekcja 8.3).
 
-### UC-10. Zestaw do QGIS
+### UC-10. Zestaw do QGIS (od v1.1)
 
 Ola wybiera w projekcie „Zestaw QGIS”. W katalogu projektu powstaje
 `zestawy/<nazwa>/` z plikiem `.qgz`, listą ścieżek i atrybucjami. QGIS
 otwiera projekt bez pytań o układy, a warstwy wskazują dokładnie przypięte
 wersje (sekcja 8.4).
 
-### UC-11. Porównanie lotów
+### UC-11. Porównanie lotów (model różnic od v1.3)
 
 Marek porównuje loty 2019 i 2025 jednego arkusza: tabela różnic metadanych,
 kurtyna na mapie, a po dodaniu funkcji do Kartografa — model różnic
 wysokości ze statystyką („średnia zmiana −0,04 m; 2,1 ha zmian > 0,5 m”)
 (sekcja 8.5).
 
-### UC-12. Asystent
+### UC-12. Asystent (od v1.2)
 
 Ola pisze: „Przygotuj NMT 1 m i ortofotomapę dla zaznaczonego obszaru
 z najnowszego roku z pełnym pokryciem i dodaj do projektu Raba”. Asystent
@@ -343,7 +357,7 @@ projektów bez pliku w magazynie; w katalogu IMGW — pozostałości
 `.incoming/`, katalog w nieobsługiwanej wersji kontraktu i szeregi
 nieaktualne wobec archiwów.
 
-### UC-14. Zespół (od v0.8)
+### UC-14. Zespół (od v0.4)
 
 Kasia loguje się do Archiwisty zespołu. Widzi historię („Marek pobrał NMT
 2025 dla Raby, wczoraj 14:02”) i wspólną kolejkę zadań, więc nie pobiera
@@ -357,7 +371,7 @@ Marek wkleja `kartograf elevation download --product nmt --sheet … -o
 `kartograf project add`), wypełnia formularz, zamienia `-o` na wybrany
 magazyn, pokazuje plan i uruchamia zadanie w tle.
 
-### UC-16. Stacje w zlewni i pokrycie szeregów (od v0.9)
+### UC-16. Stacje w zlewni i pokrycie szeregów (od v0.5)
 
 **Ola** liczy przepływy dla zlewni Raby i szuka wodowskazów z długimi
 szeregami.
@@ -365,21 +379,30 @@ szeregami.
 1. Wczytuje granicę zlewni z Hydrografa (`zlewnia.gpkg`, EPSG:2180) jako
    obszar.
 2. Wybiera produkt „Stany i przepływy dobowe” (grupa „Pomiary IMGW”)
-   i zmienną „Q”.
+   i zmienną, według której mapa koloruje punkty („Q”); etykiety wszystkich
+   zmiennych (H, Q, T) są pokazane osobno.
 3. Mapa pokazuje wodowskazy obszaru jako punkty; stacja blisko granicy ma
-   plakietkę „na granicy obszaru”, stacje bez położenia są na liście obok
-   mapy. „Zestawienie” ma wiersz na stację z etykietą pokrycia Q w latach
-   hydrologicznych (4.8.4), a sprawdzenie u źródła podaje lata opublikowane
-   (rocznik 2025: publikacja 2026.08.31).
+   plakietkę „na granicy obszaru”. Stacji bez położenia nie ma na mapie:
+   licznik „2 stacje bez położenia” prowadzi do „Katalogu” (6.8), gdzie
+   wybiera się je po rzece albo kodzie hydrograficznym (P13, P19).
+   „Zestawienie” ma wiersz na stację z osobną etykietą pokrycia dla H,
+   Q i T w latach hydrologicznych (domyślnie dla hydro, przełącznik na
+   kalendarzowe — 4.8.4, 6.7), a sprawdzenie u źródła podaje lata opublikowane (rocznik
+   2025: publikacja 2026.08.31).
 4. Bez archiwów w magazynie etykiety brzmią „nieznane”; „Pobierz
    archiwa…” otwiera „Okno planu” z poleceniem `imgw …`, a po pobraniu
    IMGWTools buduje szeregi zbioru i etykiety się pojawiają.
-5. Filtr „≥ 30 lat pełnych” zawęża listę.
+5. Lista obejmuje wszystkie stacje obszaru, także z lukami i bez danych Q
+   — każda z etykietą (P14). Ola zawęża ją jawnymi filtrami: „≥ 30 lat
+   pełnych” albo „rzeka: Raba z dopływami” (kod hydrograficzny `2138…`,
+   P19).
+6. „Dodaj do projektu…” zapisuje wybór (stacje jako lista kodów, zmienna,
+   lata i ich rodzaj) jako zadanie projektu IMGW (IMGW-14, A-ADR-023).
 
 **Sukces:** etykiety zgodne z ręcznym wyliczeniem z archiwów, a katalog
 IMGW bajtowo taki sam jak po tym samym poleceniu `imgw` z CLI.
 
-### UC-17. Karta stacji i porównanie (od v0.9)
+### UC-17. Karta stacji i porównanie (od v0.5)
 
 Ola otwiera stację „Stróża”: karta stacji ma metadane (kod, rzeka i jej kod
 hydrograficzny, położenie ze źródłem i niepewnością), pokrycie H, Q i T,
@@ -388,17 +411,18 @@ IMGW jako punkty), wersje szeregów i archiwów oraz formuły IMGW
 z „Kopiuj atrybucję”. „Porównaj z…” nakłada Q z Gdowa i Proszówek na
 wspólnej osi czasu. Archiwista nie liczy statystyk (1.3).
 
-### UC-18. Przepływy dobowe dla zlewni przez asystenta (od v0.9)
+### UC-18. Przepływy dobowe dla zlewni przez asystenta (od v1.2)
 
 Ola pisze: „Przygotuj przepływy dobowe dla stacji w tej zlewni”. Asystent
 wyszukuje stacje, sprawdza pokrycie i lata opublikowane, planuje
-synchronizację archiwów i szeregi, a do propozycji dodaje zestaw z CSV dla
-Hydrologa i ostrzeżenia (stacja od 1972, luki, tylko H, opóźnienie
-publikacji, cel użycia danych IMGW). Po „Zatwierdź i uruchom” startują
-zadania w tle IMGWTools. Obliczenia, np. przepływy charakterystyczne, robi
-Hydrolog albo Retman — założenie do potwierdzenia (7.11; sekcja 15, P17).
+synchronizację archiwów i szeregi, a do propozycji dodaje zadanie projektu
+IMGW, zestaw z CSV dla Hydrologa i ostrzeżenia (stacja od 1972, luki, tylko
+H, opóźnienie publikacji, cel użycia danych IMGW); stacji z lukami nie
+pomija (P14). Po „Zatwierdź i uruchom” startują zadania w tle IMGWTools.
+Obliczenia, np. przepływy charakterystyczne, robi Hydrolog albo Retman
+(decyzja użytkownika 2026-10-17; 7.11; sekcja 15, P17).
 
-### UC-19. Nowa publikacja IMGW (od v0.9)
+### UC-19. Nowa publikacja IMGW (od v0.5)
 
 Marek klika „Sprawdź aktualność” przy archiwach hydro dobowych. IMGWTools
 wysyła zapytania `HEAD` i porównuje `ETag` i `Last-Modified` z wersjami
@@ -419,7 +443,7 @@ Wszystko, co pokazuje, wynika z plików producentów — Kartografa i IMGWTools:
 | Sidecar wersji | `<segment>/versions/<hierarchia>/<etykieta>_<sha8>/<plik>.meta.json` | niezmienny (ADR-036) | raz, przy pierwszym zobaczeniu katalogu wersji |
 | Plik danych wersji | obok sidecara wersji | niezmienny | podczas indeksowania wyłącznie `stat` (rozmiar); treść tylko na żądanie (podgląd, weryfikacja) |
 | Sidecar ścieżki standardowej i `full_sheet/` | `<segment>/<hierarchia>/<plik>.meta.json`, `<segment>/full_sheet/…` | zmienny (dowiązanie przestawiane na nowszą wersję) | przy zmianie rozmiaru albo czasu modyfikacji; cel dowiązania wyłącznie z `extra.link_target` |
-| Manifest projektu | `<katalog projektu>/kartograf-project.json` | zmienny | przy zmianie czasu modyfikacji albo sumy pliku; zawsze przez `open_project` (ścisła walidacja Kartografa) |
+| Manifest projektu | `<katalog projektu>/kartograf-project.json` i `<katalog projektu>/imgw-project.json` | zmienny | przy zmianie czasu modyfikacji albo sumy pliku; zawsze przez `open_project` producenta (ścisła walidacja Kartografa; IMGWTools — IMGW-14) |
 | Plan aktualizacji | plik `kartograf-plan/1` zapisany `--plan` | jednorazowy | na żądanie (import planu z CLI) |
 | Znacznik katalogu IMGW | `<katalog IMGW>/imgw-store.json` | zmienia się tylko z wersją kontraktu | przy każdym skanie: rozpoznanie katalogu i wersji `imgw-store/1` (IMGW-13) |
 | Sidecar wersji IMGW (archiwum, katalog stacji, szeregi zbioru) | `<katalog IMGW>/{archives,stations,series}/versions/…/<plik>.meta.json` (`imgw-meta/1`) | niezmienny | raz, przez `read_meta` (IMGW-10) |
@@ -444,7 +468,8 @@ nieczytany; IMGW-13).
 producentów). W katalogu projektu
 zapisuje wyłącznie katalog zestawu (sekcja 8.4) i plik geometrii obszaru
 (narysowanego albo wczytanego z pliku) dla nowego zadania projektu
-(`obszary/`, 10.1); manifest zmienia tylko API Kartografa (A-ADR-003).
+(`obszary/`, 10.1); manifesty zmieniają tylko API ich producentów —
+Kartografa i IMGWTools (A-ADR-003, A-ADR-023).
 
 ### 4.2 Odczyt przez API producentów
 
@@ -471,7 +496,8 @@ Indeks (A-ADR-002) to plik SQLite (tryb WAL) na dysku lokalnym, w katalogu danyc
 użytkownika (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
 `%LOCALAPPDATA%\Archiwista\`); obok leżą pamięć podglądów (`cache/`)
 i dzienniki zadań (`jobs/`). Konfiguracja (magazyny, katalogi projektów,
-limity, dostawca asystenta) jest w czytelnym pliku TOML w katalogu
+limity, dostawca asystenta, preferencje widoku — np. zapamiętany rodzaj
+lat dla danych hydro i meteo, 6.7) jest w czytelnym pliku TOML w katalogu
 konfiguracji użytkownika i w widoku „Ustawienia”. Indeks można usunąć
 w każdej chwili — „Przebuduj indeks” odtworzy go z magazynów i manifestów;
 tracona jest tylko historia zadań i rozmów asystenta.
@@ -483,14 +509,14 @@ Zawartość (tabele logiczne; schemat ustali plan implementacji):
 | `stores` | magazyny: identyfikator (krótka nazwa nadana przez użytkownika, np. `zespol`), katalogi producentów (Kartograf, IMGW) i aliasy ścieżek, dostępność, czasy i statystyki skanów |
 | `segments` | segmenty: producent, produkt, źródło (`dataset`), ludzka nazwa (`describe_segment`; dla IMGW nazwa zbioru), rozpoznany / nierozpoznany |
 | `slots` | sloty: segment, hierarchia, nazwa, rodzaj i kod jednostki, bieżąca wersja, wersja `full_sheet/`, liczba wersji; w katalogu IMGW slotem jest plik archiwum (ścieżka na serwerze), katalog stacji albo szeregi zbioru |
-| `versions` | wersje: etykieta i jej źródło, `sha256`, rozmiar, układy, rozdzielczość, `nodata`, rok i data danych, kampania i numer zgłoszenia, wydanie, data pobrania, pełny arkusz, pokrycie (`extra.coverage`), licencja, klucz grupy `parent_request`, zasięg natywny i jego źródło, stan, pełny sidecar (JSON) |
-| `footprints` | R*Tree: zasięg wersji w WGS84 (filtr obszaru i mapa) |
-| `stations` | stacje z bieżącej wersji katalogu stacji: kod, rodzaj, nazwa, rzeka, kod hydrograficzny i kolejność, położenie (WGS84) ze źródłem i niepewnością, czynna albo historyczna, rok założenia, rzędna zera wodowskazu, kilometr biegu rzeki |
+| `versions` | wersje: etykieta i jej źródło, `sha256`, rozmiar, układy, rozdzielczość, `nodata`, rok i data danych, kampania i numer zgłoszenia, wydanie, data pobrania, pełny arkusz, pokrycie (`extra.coverage`), licencja, klucz grupy `parent_request`, zasięg natywny i jego źródło, rodzaj położenia (`footprint`, `country`, `none` z powodem; A-ADR-022), stan, pełny sidecar (JSON) |
+| `footprints` | R*Tree: zasięg wersji w WGS84 (filtr obszaru i mapa) — tylko wersje z obrysem |
+| `stations` | stacje z bieżącej wersji katalogu stacji: kod, rodzaj, nazwa, rzeka, kod hydrograficzny (z indeksem prefiksowym, P19) i kolejność, położenie (WGS84) ze źródłem i niepewnością albo brak położenia z powodem z katalogu (IMGW-9), kwadrat 1° z kodu, czynna albo historyczna, rok założenia, rzędna zera wodowskazu, kilometr biegu rzeki |
 | `station_points` | R*Tree: punkty stacji (prostokąty zdegenerowane) — filtr obszaru i warstwa stacji |
 | `station_series` | szereg stacji w wersji szeregów zbioru: plik, `sha256`, zmienne z jednostkami, pierwsza i ostatnia data, lista przerw, liczba sum zbiorczych (ze spisu `series.json`, IMGW-8) oraz okresy znane wersji |
 | `series_years` | pokrycie zmiennej po latach hydrologicznych i kalendarzowych (jednostki, jednostki z wartością, najdłuższa przerwa) — wyliczane przy indeksowaniu z list przerw; Oś czasu i filtry |
 | `search` | FTS5: godła, TERYT, KU, etykiety, numery zgłoszeń, nazwy plików, ludzkie nazwy produktów, nazwy projektów i zadań projektów, kody i nazwy stacji, nazwy rzek |
-| `projects`, `project_tasks`, `pins` | znane projekty, ich zadania i przypięcia powiązane z wersjami — indeks „które projekty używają pliku” (SCOPE 3.3) |
+| `projects`, `project_tasks`, `pins` | znane projekty, ich zadania i przypięcia powiązane z wersjami, z producentem manifestu (Kartograf, IMGWTools) — indeks „które projekty używają pliku” (SCOPE 3.3) |
 | `availability` | ostatnie raporty dostępności per obszar i produkt, z datą (widoczne bez sieci); dla zbiorów IMGW — lata opublikowane z datami publikacji |
 | `jobs`, `job_events` | historia zadań w tle i ich zdarzenia |
 | `conversations`, `messages`, `proposals` | rozmowy z asystentem i jego propozycje |
@@ -506,12 +532,36 @@ wersja bez roku danych ma rok pusty, a nie rok pobrania.
 SoilGrids, HSG) → godło z parsera (PL-1992, PL-2000, TM33) → nagłówek pliku
 (GeoTIFF, ASC, JPEG z JGW, GeoPackage, LAS) → jednostka (TERYT z PRG, KU
 z RUIAN, arkusz SM5 z indeksu CUZK — z siecią i pamięcią podręczną) → kraj.
-Zasięg bez źródła oznaczamy „bez obrysu” (plik jest na liście, nie ma go
-na mapie). Przeliczenie do WGS84 wyłącznie przypiętą transformacją
+Zasięg bez źródła oznaczamy „bez obrysu” (plik jest w „Katalogu”, nie ma
+go na mapie). Przeliczenie do WGS84 wyłącznie przypiętą transformacją
 Kartografa (KA-6): domyślny transformator potrafi cicho użyć operacji
 przybliżonej, a dla S-JTSK to przesunięcie rzędu 100 m (ADR-024).
 Archiwa i szeregi IMGW mają zasięg „kraj”; na mapie są stacje — punkty
 z katalogu stacji (IMGW-9) w R*Tree `station_points`.
+
+**Położenie obiektów (P13, A-ADR-022).** Każdy obiekt indeksu — wersja,
+slot, stacja — ma rodzaj położenia: `footprint` (obrys), `point` (stacja),
+`country` (zasięg kraju: pliki krajowe, archiwa i szeregi IMGW) albo
+`none` z powodem — pliki: `no_source` („bez obrysu”), `unreadable`
+(sidecar nieczytelny); stacje: powód z katalogu stacji (IMGW-9: `none`
+— żadne źródło nie ma współrzędnych, `zero` — `0,0`, `outside_country`).
+Zasady wspólne dla wszystkich producentów i produktów:
+
+1. Mapa rysuje tylko `footprint` i `point`; położenie nigdy nie jest
+   zgadywane ani przybliżane (np. środkiem kwadratu 1° z kodu stacji).
+2. Obiekty `country` i `none` są w „Katalogu” (6.8) — widoku bez mapy
+   z wyszukiwaniem i filtrami atrybutów, który pokazuje wszystkie rodzaje
+   położenia.
+3. Filtr obszaru dzieli wynik na „w obszarze” (przecięcie), „na granicy
+   obszaru” (stacje, 6.7), „cały kraj” (`country`, gdy kraj obszaru się
+   zgadza) i „bez położenia” (`none`) — ostatnia grupa nigdy nie jest
+   po cichu dołączana do obszaru ani z niego usuwana; zawęża się ją
+   filtrami atrybutów (rzeka i kod hydrograficzny, nazwa, kraj, jednostka,
+   produkt). Dla stacji dochodzi zgrubna wskazówka „kwadrat 1° z kodu
+   przecina obszar” (4.8.1), opisana jako wniosek z kodu, nie położenie.
+4. Każdy widok mapy z wynikiem podaje licznik obiektów bez położenia
+   („3 stacje bez położenia”, „2 pliki bez obrysu”) z przejściem do
+   „Katalogu” z tym samym produktem i filtrami.
 
 ### 4.4 Budowa i odświeżanie
 
@@ -574,10 +624,10 @@ test na magazynie syntetycznym z generatora, sekcja 11):
 | obrysy w widoku mapy (≤ 5 000 obiektów; powyżej agregacja do siatki), p95 | ≤ 300 ms | ≤ 300 ms |
 | wyszukiwanie tekstowe, p95 | ≤ 200 ms | ≤ 200 ms |
 | karta pliku bez podglądu, p95 | ≤ 200 ms | ≤ 200 ms |
-| (v0.9) warstwa stacji w widoku (≤ 5 000 punktów; powyżej skupienia), p95 | ≤ 300 ms | ≤ 300 ms |
-| (v0.9) tabela stacji obszaru z etykietami pokrycia (≤ 200 stacji), p95 | ≤ 300 ms | ≤ 300 ms |
-| (v0.9) wykres pełnego szeregu dobowego stacji (ok. 27 tys. dni → ≤ 2 000 punktów), pierwszy odczyt, p95 | ≤ 500 ms | ≤ 200 ms |
-| (v0.9) pierwszy skan katalogu IMGW odniesienia | ≤ 2 min | ≤ 30 s |
+| (v0.5) warstwa stacji w widoku (≤ 5 000 punktów; powyżej skupienia), p95 | ≤ 300 ms | ≤ 300 ms |
+| (v0.5) tabela stacji obszaru z etykietami pokrycia (≤ 200 stacji), p95 | ≤ 300 ms | ≤ 300 ms |
+| (v0.5) wykres pełnego szeregu dobowego stacji (ok. 27 tys. dni → ≤ 2 000 punktów), pierwszy odczyt, p95 | ≤ 500 ms | ≤ 200 ms |
+| (v0.5) pierwszy skan katalogu IMGW odniesienia | ≤ 2 min | ≤ 30 s |
 
 Indeks ≤ 500 MB dla 80 000 wersji; pamięć serwera ≤ 500 MB bez podglądów.
 Katalog IMGW odniesienia: zbiory z 4.8 w pełnym zakresie lat (ok. 2 000
@@ -623,33 +673,91 @@ indeksu („Indeks z 14:02, skan trwa: 63%”) jest zawsze widoczny.
 ### 4.7 Projekty
 
 - **Odkrywanie:** katalogi projektów z konfiguracji są przeszukiwane
-  w poszukiwaniu `kartograf-project.json` (głębokość ≤ 4, z pominięciem
-  `.git`, katalogów magazynów i katalogów ukrytych); projekt można też
-  dodać ręcznie albo utworzyć (`init_project`).
-- **Odczyt:** zawsze `open_project`. Niepoprawny manifest jest widoczny
-  z tekstem błędu Kartografa (np. „nieznany klucz 'optons'”).
-- **Powiązanie z magazynem:** `output_dir` projektu dopasowujemy do
-  skonfigurowanego magazynu po ścieżce rozstrzygniętej albo aliasie; brak
-  dopasowania — „Magazyn projektu nieznany: dodaj magazyn”.
+  w poszukiwaniu `kartograf-project.json` i `imgw-project.json` (głębokość
+  ≤ 4, z pominięciem `.git`, katalogów magazynów i katalogów ukrytych);
+  projektem jest katalog z jednym z nich albo z oboma. Projekt można też
+  dodać ręcznie albo utworzyć (`init_project` producenta, którego dane
+  dodaje się jako pierwsze; drugi manifest powstaje przy pierwszym
+  zadaniu drugiego producenta).
+- **Odczyt:** zawsze `open_project` producenta. Niepoprawny manifest jest
+  widoczny z tekstem błędu producenta (np. „nieznany klucz 'optons'”);
+  błąd jednego manifestu nie ukrywa zadań drugiego.
+- **Powiązanie z magazynem:** `output_dir` projektu (a w manifeście IMGW
+  `store_dir`) dopasowujemy do katalogu producenta w skonfigurowanym
+  magazynie po ścieżce rozstrzygniętej albo aliasie; brak dopasowania —
+  „Magazyn projektu nieznany: dodaj magazyn”.
 - **Przypięcia → wersje:** po ścieżce `version` (względnej do magazynu)
   i `sha256`; przypięcie bez wersji w indeksie ma stan „brak pliku”.
 - **Indeks użycia** („Przypięta w: …”) to tabela przypięć; nic nie trafia
   do sidecarów (sidecar jest niezmienny, SCOPE 3.3).
 - **Zmiany manifestu** wykrywamy po czasie modyfikacji i sumie pliku;
   manifest zmieniony w trakcie pracy (inny proces, CLI) jest czytany
-  ponownie przed każdą akcją, a konflikt zgłasza Kartograf (blokada
-  `.kartograf-project.lock`, scalanie per zadanie).
-- **Dane IMGW a projekty:** manifest `kartograf-project/1` przyjmuje tylko
-  komendy Kartografa, więc w v1.0 dane IMGW nie są zadaniami projektu ani
-  przypięciami. Odtwarzalność dają niezmienne wersje w katalogu IMGW
-  i zestaw (8.4): `zestaw.json` zapisuje wersje szeregów i katalogu stacji
-  z `sha256`, a `polecenia.sh` — polecenia `imgw …` (sekcja 15, P18).
+  ponownie przed każdą akcją, a konflikt zgłasza producent (blokady
+  `.kartograf-project.lock` i `.imgw-project.lock`, scalanie per zadanie).
+- **Dane IMGW w projektach (P18, A-ADR-023):** od v0.5 dane IMGW są
+  zadaniami projektu i przypięciami w manifeście IMGWTools
+  `imgw-project.json` (`imgw-project/1`, IMGW-14) obok
+  `kartograf-project.json`; format manifestu Kartografa się nie zmienia.
+  Zadanie IMGW trafia do projektu wyłącznie przez API IMGWTools:
+  „Dodaj do projektu…” (z „Zestawienia” stacji, „Katalogu”, „Karty
+  stacji” albo propozycji asystenta) otwiera „Okno planu” z poleceniem
+  `imgw project add …`, a po potwierdzeniu proces roboczy woła
+  `add_project_task` (walidacja jak w CLI) i — jeśli wybrano „Pobierz
+  teraz” — `download_project`, który synchronizuje potrzebne archiwa,
+  buduje albo ponownie używa szeregów zbioru i przypina wersje (szeregi
+  zbioru, pliki stacji, katalog stacji, archiwa wejściowe). Stacje są
+  zapisane jawną listą kodów; wybór obszarem zapisuje też plik geometrii
+  z sumą (jak w Kartografie), a stacje bez położenia dodaje się tylko
+  jawnie (A-ADR-022). „Status”, „Weryfikuj”, „Sprawdź aktualizacje”
+  i „Przepnij” działają dla zadań obu producentów, każdy przez swoje API.
+  Zestaw (8.4) bierze wersje IMGW z przypięć, a `polecenia.sh` odtwarza je
+  poleceniem `imgw project download`.
+
+#### 4.7.1 Dane własne i migawki (v0.2, A-ADR-027)
+
+Decyzja użytkownika 2026-10-18: dane własne są czytane z folderu przypisanego
+do projektu, a migawki robi Archiwista w tym folderze.
+
+- **Folder danych:** każdy projekt ma folder danych własnych — domyślnie
+  `<katalog projektu>/dane/`, w ustawieniach projektu można wskazać inny
+  (zapis w konfiguracji Archiwisty, nie w manifeście producenta). Folder jest
+  indeksowany jak magazyn tylko do odczytu: pliki rastrowe i wektorowe
+  rozpoznane przez GDAL/OGR (GeoPackage, Shapefile jako komplet plików,
+  GeoTIFF, GeoJSON, FlatGeobuf…), z zasięgiem, układem, warstwami, liczbą
+  obiektów i schematem atrybutów; inne pliki — „nierozpoznane”. Odczyt
+  w procesie roboczym jak przy plikach geometrii (10.1).
+- **Widok:** rodzaj ogólny (PRD N8.3): obrys z zasięgu, podgląd jak dla
+  plików magazynu (5.7), metadane; w widoku projektu grupa „Dane własne”
+  obok zadań producentów, na mapie razem z przypiętymi danymi projektu.
+  Bez etykiet dostępności (brak źródła zdalnego).
+- **Migawka** („Zrób migawkę”, rola „operator” w zespole): plan pokazuje
+  plik, rozmiar i miejsce; kopia trafia do
+  `<folder danych>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/` razem
+  z `migawka.json` (`archiwista-snapshot/1`: ścieżka źródłowa, pliki z sumami
+  SHA-256, rozmiar, data, autor, liczba obiektów, zasięg, opis
+  użytkownika). Zasady:
+  1. tylko przyrost: migawek nie nadpisuje się ani nie usuwa;
+  2. zapis atomowy: kopia do `.wersje/.incoming/<host>_<pid>_<token>/`,
+     sprawdzenie sum, publikacja przez zmianę nazwy katalogu — błąd, gdy
+     cel istnieje; pozostałości starsze niż 24 h zgłasza „Magazyn”;
+  3. spójna kopia pliku w użyciu: GeoPackage przez kopię zapasową SQLite
+     (nie kopię bajtów przy otwartym WAL), Shapefile i inne formaty
+     wieloplikowe jako komplet;
+  4. ta sama treść co ostatnia migawka = „bez zmian od migawki z …”, bez
+     nowego katalogu.
+- **Seria wersji:** migawki pliku to jego wersje: oś wersji w „Karcie
+  pliku”, warstwy w „Wachlarzu”, kurtyna i porównanie metadanych (liczba
+  obiektów, zasięg, schemat). Różnica obiektów (dodane, usunięte, zmienione)
+  — później, osobną decyzją.
+- **Zmiana od migawki:** skan porównuje bieżący plik z ostatnią migawką
+  (suma, data, liczba obiektów) i pokazuje „zmieniony od migawki z …”;
+  historia zaobserwowanych stanów (bez treści) leży w indeksie.
 
 ### 4.8 Dane IMGW: zbiory, stacje, szeregi
 
 Dane pomiarowe IMGW-PIB zapisuje IMGWTools w katalogu IMGW magazynu
 (A-ADR-019; kontrakt: 12.7–12.8). Archiwista czyta je przez API odczytu
-IMGWTools, a w indeksie trzyma tylko pamięć podręczną (4.3). Zakres v1.0
+IMGWTools, a w indeksie trzyma tylko pamięć podręczną (4.3). Zakres v0.5 (MVP v1.0)
 (decyzja użytkownika 2026-10-17; ścieżki względem
 `https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/`,
 `IMGWTools/src/imgwtools/core/url_builder.py:104-250`):
@@ -662,7 +770,7 @@ IMGWTools, a w indeksie trzyma tylko pamięć podręczną (4.3). Zakres v1.0
 | Meteo dobowe — klimat (`pl.imgw.meteo_climate_daily`) | `dane_meteorologiczne/dobowe/klimat/<folder>/<rok>_k.zip` (do 2000; folder = pięciolecie), `<rok>_<mm>_k.zip` (od 2001) | Tmax, Tmin, Tśr — temperatura powietrza [°C]; P — suma dobowa opadu [mm] | doba; kalendarzowe, od 1951 |
 | Meteo dobowe — opad (`pl.imgw.meteo_precip_daily`) | `dane_meteorologiczne/dobowe/opad/<folder>/<rok>_o.zip` (do 2000), `<rok>_<mm>_o.zip` (od 2001) | P [mm] | doba; kalendarzowe, od 1950 |
 
-Poza zakresem v1.0: dane bieżące i ostrzeżenia (API IMGW), stany alarmowe,
+Poza zakresem MVP v1.0: dane bieżące i ostrzeżenia (API IMGW), stany alarmowe,
 zjawiska lodowe (`zjaw_<rok>.zip`), meteo terminowe i miesięczne, synop
 (pliki na stację), PMAXTP i siatki IMGW (np. PL1GD-T). Archiwa obsługuje
 jeden mechanizm, więc kolejne zbiory to nowe wpisy IMGWTools, bez zmian
@@ -708,8 +816,11 @@ w tej kolejności:
 | plik współrzędnych użytkownika (kod, `lon`, `lat`, opis źródła) | uzupełnienia, np. stacji zamkniętych | `location_source = "user"` |
 | API mapy `hydro-back.imgw.pl` (nieudokumentowane) | 910 stacji hydro z TERYT i biurem IMGW | bez `User-Agent` odpowiada 403 — **niewymagane** |
 
-Stacja bez położenia nie jest zgadywana: zostaje „bez położenia”, a jej
-zgrubnym filtrem jest kwadrat 1° z kodu (6.7). Niepewność położenia to
+Stacja bez położenia nie jest zgadywana ani pokazywana na mapie (P13,
+A-ADR-022): zostaje w katalogu stacji z powodem braku (IMGW-9),
+a Archiwista pokazuje ją w „Katalogu” (6.8), gdzie wybiera się ją po
+atrybutach (rzeka i kod hydrograficzny, nazwa, rodzaj); kwadrat 1° z kodu
+jest tam tylko zgrubną wskazówką. Niepewność położenia to
 większa z wartości: 150 m (p90 różnic między źródłami, zaokrąglone w górę)
 i połowa kroku zaokrąglenia współrzędnych (dwa miejsca po przecinku — do
 ok. 550 m).
@@ -720,10 +831,20 @@ ok. 550 m).
   (`IMGWTools/src/imgwtools/db/models.py:101-140`); numeruje archiwa
   i charakterystyki hydro. Półrocza: zimowe XI–IV (wskaźnik 13), letnie V–X
   (14), rok (15) (`IMGWTools/data/desc/dane_hydrologiczne/polr_info.txt`).
-- **Meteo** używa roku kalendarzowego (tak są numerowane archiwa).
+- **Archiwa meteo** są numerowane rokiem kalendarzowym. Numeracja archiwów
+  nie wiąże widoku: oba rodzaje lat są dostępne dla danych hydro i meteo
+  (P15, 6.7). Rok hydrologiczny meteo zaczyna się 1 XI poprzedniego roku
+  kalendarzowego, więc jest znany dopiero z archiwami XI–XII tego roku;
+  rok kalendarzowy hydro — analogicznie z archiwami I–X i XI–XII dwóch
+  lat hydrologicznych. Wyjątek: charakterystyki półroczne i roczne IMGW
+  są liczone w latach hydrologicznych (półrocza XI–IV i V–X) i nie mają
+  odpowiednika kalendarzowego, więc ten zbiór zostaje w latach
+  hydrologicznych, a przełącznik rodzaju lat go nie dotyczy (wyjaśnienie
+  przy przełączniku; decyzja użytkownika 2026-10-17, P15).
 - **Daty w szeregach** są kalendarzowe (ISO w plikach i API, `RRRR.MM.DD`
-  w interfejsie, A-ADR-016); rok hydrologiczny jest kolumną pomocniczą.
-  Widok liczy pokrycie w wybranym rodzaju lat (6.7).
+  w interfejsie, A-ADR-016); rok hydrologiczny jest kolumną pomocniczą we
+  wszystkich zbiorach (IMGW-7). Widok liczy pokrycie w wybranym rodzaju
+  lat (6.7).
 - **Publikacja z opóźnieniem:** archiwa hydro pojawiają się albo są
   odświeżane 10–19 miesięcy po końcu roku (pomiar `Last-Modified`
   2026-10-17: `codz_2023.zip` — 2024-12-11, `codz_2024.zip` — 2025-08-28,
@@ -750,7 +871,18 @@ stacji.
 
 Etykieta (A-ADR-021) mówi, jak kompletna jest zmienna stacji w zakresie
 lat. Liczy ją serwer z list przerw w spisie szeregów (IMGW-8), osobno dla
-każdej zmiennej. Oznaczenia dla stacji i zmiennej:
+każdej zmiennej.
+
+**Etykiety osobno dla każdej wielkości (P16, decyzja użytkownika
+2026-10-17).** Stacja nie ma jednej etykiety pokrycia: każda wielkość
+zbioru ma własną etykietę, lata pełne i listę przerw — hydro: H, Q i T;
+meteo: opad, temperatura powietrza (Tmax, Tmin, Tśr) i inne zmienne zbioru.
+Interfejs pokazuje je razem i osobno (panel stacji, „Zestawienie”,
+„Katalog”, karta stacji), a filtry pokrycia dotyczą wskazanej zmiennej
+(„Q: ≥ 30 lat pełnych”) i nie wpływają na pozostałe: brak Q nie ukrywa H.
+Wiersz zmiennej ma skróconą postać „brak danych (tylko H)”, a bez nazwy
+zmiennej obok — „brak danych Q (tylko H)”. Oznaczenia dla stacji
+i zmiennej:
 
 - **R** — zakres lat widoku w wybranym rodzaju lat (4.8.2); domyślnie od
   pierwszego roku zbioru do ostatniego opublikowanego.
@@ -783,6 +915,17 @@ braków; filtr „≥ 30 lat pełnych” odpowiada progowi, poniżej którego Hy
 ostrzega przy analizie częstości wezbrań —
 `Hydrolog/hydrolog/statistics/high_flows.py:167-172`), przerwy dłuższe niż
 30 dni i liczba sum zbiorczych.
+
+**Wszystkie dane, także z brakami (P14, decyzja użytkownika 2026-10-17).**
+„Ciągły” znaczy zero braków — bez tolerancji. Etykieta opisuje szereg, ale
+niczego nie odfiltrowuje: IMGWTools pobiera wszystkie archiwa zakresu
+i buduje szeregi wszystkich stacji zbioru (IMGW-7), a mapa, „Zestawienie”,
+„Oś czasu”, „Katalog”, karta stacji, zestaw, eksport CSV (IMGW-12)
+i propozycje asystenta obejmują każdą stację i każdy szereg niezależnie od
+braków, z etykietą („luki 3%”, „częściowy”, „brak danych Q (tylko H)”).
+Filtry pokrycia („≥ 30 lat pełnych”, „etykieta: ciągły”) działają tylko
+po jawnym włączeniu, są widoczne jako chipy, a licznik mówi, ile stacji
+ukrywają („ukryte filtrem: 4”).
 
 **Plakietka archiwów w magazynie** — archiwa są krajowe, więc jedna dla
 zbioru i zakresu, nie dla stacji:
@@ -833,11 +976,13 @@ informuje o warunkach, ale ich nie egzekwuje — nie zna celu użycia.
 
 ## 5. Architektura
 
+Status: przyjęta (etap 0, decyzja użytkownika 2026-10-18): A-ADR-004, 006, 007, 008, 013, 015 i A-ADR-028 (interfejs w Preact + htm bez kroku budowania, zastępuje A-ADR-005). Wymagania produktowe niezależne od technologii są w `docs/PRD.md`.
+
 ### 5.1 Przegląd
 
 ```mermaid
 flowchart LR
-  UI["Przeglądarka: SPA<br/>Mapa, Stos, Katalog, Zestawienie,<br/>Karta pliku, Karta stacji, Zadania, Asystent"]
+  UI["Przeglądarka: aplikacja Preact + htm<br/>Mapa, Wachlarz, Katalog, Zestawienie,<br/>Karta pliku, Karta stacji, Zadania, Asystent"]
   subgraph S["Serwer Archiwisty (127.0.0.1)"]
     API["API HTTP /api/v1 + SSE"]
     SVC["Warstwa usług"]
@@ -890,6 +1035,11 @@ Zasady architektury:
   test importów CLI w Kartografie, ADR-037 Z1). Reszta Archiwisty zna tylko
   interfejs źródła (5.3). Adapter tłumaczy, nie decyduje: żadnych reguł
   danych, wyboru arkuszy, wersji, transformacji ani normalizacji wartości.
+- **Źródła jako wtyczki.** Kartograf jest wymaganą zależnością, IMGWTools
+  opcjonalną (extra `archiwista[imgw]`); adaptery rejestruje się przez entry
+  points (grupa `archiwista.sources`), a brak pakietu producenta daje „źródło
+  niedostępne” — ukryte widoki, błąd API i brak narzędzi asystenta — nie
+  awarię aplikacji (5.8, A-ADR-024).
 - **Operacje długie i zapisujące w procesach roboczych.** Serwer nie
   wykonuje pobrań ani ciężkich obliczeń w swoim procesie (budowa COG,
   łączenie, sumy SHA-256 — to zadania w tle, 5.6); w serwerze zostaje tylko
@@ -905,8 +1055,7 @@ Zasady architektury:
 
 ### 5.2 Wybór technologii
 
-Użytkownik zostawił wybór technologii wolny. Decyzje (szczegóły:
-A-ADR-004 do A-ADR-008, A-ADR-011, A-ADR-015):
+Wybory technologii przyjęte w etapie 0 (decyzja użytkownika 2026-10-18; A-ADR-004, 006, 007, 008, 015, 028). Kolumna „Odrzucone warianty” dokumentuje ocenę:
 
 | Obszar | Wybór | Odrzucone warianty i powód |
 |---|---|---|
@@ -915,14 +1064,14 @@ A-ADR-004 do A-ADR-008, A-ADR-011, A-ADR-015):
 | Indeks | **SQLite (WAL) na dysku lokalnym + R*Tree + FTS5** — w standardowym module `sqlite3`, zero usług | PostgreSQL/PostGIS: serwer do instalacji dla jednej osoby; DuckDB z rozszerzeniem przestrzennym: rozszerzenie pobierane z sieci, jeden pisarz; SpatiaLite: dodatkowa biblioteka natywna, a obrysy prostokątne wystarczą R*Tree; indeks tylko w pamięci: pełny skan przy każdym starcie (minuty na SMB); SQLite na udziale: wykluczone (SCOPE 3.3) |
 | Zadania w tle | **Procesy robocze uruchamiane przez nadzorcę w serwerze**, kolejka w indeksie, zdarzenia w JSON Lines przez potok | wątki w procesie serwera: wątku nie da się przerwać, awaria biblioteki natywnej kładzie serwer; Celery/RQ + Redis: infrastruktura ponad potrzeby jednej osoby i małego zespołu; asyncio: Kartograf jest synchroniczny |
 | Strumień do przeglądarki | **Server-Sent Events** (postęp, komunikaty, odpowiedź asystenta) | WebSocket: dwukierunkowość zbędna, trudniejsze proxy i testy; odpytywanie: opóźnienia i ruch |
-| Interfejs | **SPA: Svelte 5 + TypeScript + Vite**, zbudowane do plików statycznych w pakiecie Pythona (użytkownik nie potrzebuje Node.js) | szablony serwerowe + htmx: dobre dla list i formularzy, ale główny ekran to aplikacja mapowa ze wspólnym stanem (obszar, warstwy lat, Stos, panel, czat, postęp), który w htmx rozpada się na fragmenty HTML i ręczny JS; React: więcej kodu i zależności dla tej skali; Vue: porównywalny — Svelte daje mniej kodu (reaktywność w kompilatorze); czysty JS jak w Hydrografie: przy tylu widokach rośnie w nieuporządkowany kod. Wybór frameworka jest odwracalny do v0.1 (mockup go nie przesądza) |
-| Mapa | **MapLibre GL JS** — WebGL (płynnie dziesiątki tysięcy obrysów), nachylenie kamery i `fill-extrusion` z wysokością bazową: widok „Stos” bez osobnego silnika 3D; źródła XYZ i WMS (GUGiK, CUZK) w EPSG:3857 | Leaflet (precedens Hydrografa, jego ADR-003): bez nachylenia i 3D, wydajność warstwy canvas; OpenLayers: dowolne układy, ale bez widoku 3D (a przeliczenie do wyświetlania i tak robi serwer); CesiumJS: ciężki silnik globu; deck.gl: możliwy dodatek później (chmury punktów, tekstury w Stosie), dziś zbędna warstwa |
-| Wykresy | **Własne komponenty SVG**: oś czasu lat i pokrycia, wykres szeregu i porównanie do 5 serii, z agregacją po stronie serwera do ≤ 2 000 punktów na serię | biblioteki wykresów (np. uPlot, ECharts): po agregacji serwera kilka serii po 2 000 punktów to lekki SVG; zależność dopiero, gdy pomiar w v0.9 pokaże, że SVG nie wystarcza |
+| Interfejs | **Preact + htm, moduły ES bez kroku budowania** (A-ADR-028) — jak mockup; biblioteki (Preact, htm, MapLibre) dołączone do pakietu Pythona, bez CDN i bez Node.js | Svelte 5 + TypeScript + Vite (A-ADR-005, zastąpiona): drugi ekosystem (Node.js, krok budowania) i przepisanie mockupu; szablony serwerowe + htmx: dobre dla list i formularzy, ale główny ekran to aplikacja mapowa ze wspólnym stanem (obszar, warstwy lat, Wachlarz, panele, czat, postęp), który w htmx rozpada się na fragmenty HTML i ręczny JS; React, Vue: krok budowania i więcej zależności przy tej samej skali |
+| Mapa | **MapLibre GL JS** — WebGL (płynnie dziesiątki tysięcy obrysów i punktów stacji), style wektorowe i wyrażenia (kolor i wzór wg pokrycia i stanu), źródła XYZ i WMS (GUGiK, CUZK) w EPSG:3857. „Wachlarz” nie jest warstwą mapy, tylko komponentem SVG interfejsu (5.4), więc nie wymaga 3D (errata A-ADR-006) | Leaflet (precedens Hydrografa, jego ADR-003): wydajność warstwy canvas przy dziesiątkach tysięcy obrysów; OpenLayers: dowolne układy, ale cięższe API (a przeliczenie do wyświetlania i tak robi serwer); CesiumJS: ciężki silnik globu; deck.gl: możliwy dodatek później (chmury punktów), dziś zbędna warstwa |
+| Wykresy | **Własne komponenty SVG**: oś czasu lat i pokrycia, wykres szeregu i porównanie do 5 serii, z agregacją po stronie serwera do ≤ 2 000 punktów na serię | biblioteki wykresów (np. uPlot, ECharts): po agregacji serwera kilka serii po 2 000 punktów to lekki SVG; zależność dopiero, gdy pomiar w v0.5 pokaże, że SVG nie wystarcza |
 | Podglądy rastrów | **rio-tiler** (biblioteka na rasterio/GDAL, które instaluje już Kartograf): kafle XYZ na żądanie; lokalny COG dla plików bez kafelkowania; pamięć po `sha256` wersji | TiTiler jako osobna usługa: dodatkowy proces; GeoServer/MapServer: ciężkie serwery i konfiguracja warstw; `gdal2tiles` z góry: minuty i gigabajty na arkusz |
 | Podglądy wektorów | **pyogrio** (już w zależnościach Kartografa) → GeoJSON obiektów w widoku; kafle MVT później, gdy potrzebne | GeoServer, Martin, pg_tileserv: wymagają serwera albo PostGIS |
 | Chmury punktów | **laspy + lazrs**: nagłówek i obraz 2D z próbki; 3D po v1.0 | Potree: konwersja do oktdrzewa (osobne narzędzie C++); COPC: konwersja całej chmury — później |
 | Asystent | **Cienki własny adapter dostawców** (Anthropic Messages API, API zgodne z OpenAI — także modele lokalne: Ollama, vLLM, llama.cpp) z narzędziami = operacjami API Archiwisty | LangChain, LlamaIndex: duże zależności i abstrakcje ponad potrzebę; agent w przeglądarce: klucze API w przeglądarce; wyłącznie zewnętrzny agent przez MCP: wymaga osobnego klienta (MCP jako dodatkowe wejście do tych samych narzędzi — po v1.0) |
-| Pakowanie | **Pakiet Pythona `archiwista`**, komenda `archiwista`, instalacja `pipx`/`uv tool` obok Kartografa; obraz Dockera opcjonalnie dla serwera zespołu | Electron/Tauri: przeglądarka wystarcza, więcej do utrzymania; Docker jako jedyna droga: zbędny dla jednej osoby, montowanie SMB w kontenerze komplikuje instalację |
+| Pakowanie | **Pakiet Pythona `archiwista`**, komenda `archiwista`; Kartograf zależnością wymaganą, IMGWTools extra `archiwista[imgw]` (wtyczki, A-ADR-024, 5.8); instalacja `pip`, `pipx` albo `uv tool`; obraz Dockera opcjonalnie dla serwera zespołu | Electron/Tauri: przeglądarka wystarcza, więcej do utrzymania; Docker jako jedyna droga: zbędny dla jednej osoby, montowanie SMB w kontenerze komplikuje instalację |
 
 ### 5.3 Moduły serwera
 
@@ -933,22 +1082,22 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 | `archiwista/app.py` | aplikacja FastAPI, rejestracja tras, pliki statyczne interfejsu |
 | `archiwista/config.py` | konfiguracja (TOML): magazyny (katalogi producentów), aliasy ścieżek, katalogi projektów, limity, podkłady, dostawca asystenta |
 | `archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP; później uwierzytelnianie i role |
-| `archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów |
+| `archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów ładowanych z entry points (grupa `archiwista.sources`), stany źródeł, sprawdzenie wersji i schematów producentów (5.8) |
 | `archiwista/adapter/kartograf/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
-| `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-13 i konwersje typów |
+| `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 i konwersje typów |
 | `archiwista/index/` | schemat, skaner, zapytania, obrysy, wyszukiwanie, stacje i pokrycie szeregów |
 | `archiwista/jobs/` | nadzorca, kolejka, proces roboczy (`python -m archiwista.jobs.worker`), protokół zdarzeń |
 | `archiwista/previews/` | kafle i podglądy rastrów, wektorów, LAZ, ZIP; dane wykresów szeregów (agregacja do wyświetlenia); pamięć podglądów |
 | `archiwista/sets/` | zestaw do projektu/QGIS (tryb 3 łączenia, sekcja 8.4) |
 | `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
 | `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
-| `archiwista/web/` | zbudowany interfejs (artefakt Vite) |
+| `archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
 | `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port) |
 
-Interfejs (`frontend/` w repozytorium, budowany do `archiwista/web/`): trasy
+Interfejs (`archiwista/web/`, A-ADR-028): trasy
 z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link
-można wysłać koledze), komponenty widoków z sekcji 6, typy API generowane
-z OpenAPI serwera, teksty interfejsu w jednym słowniku (polski; inne języki
+można wysłać koledze), komponenty widoków z sekcji 6, zgodność z OpenAPI
+serwera sprawdzana testami kontraktu, teksty interfejsu w jednym słowniku (polski; inne języki
 możliwe później).
 
 **Interfejs źródła** (`archiwista/sources/`; nazwy ustali plan
@@ -960,17 +1109,18 @@ który producent zapisał plik:
 | `probe(root)` | rozpoznanie katalogu producenta i wersji kontraktu | układ `data/` (KA-1) | `store_info` (`imgw-store/1`; IMGW-10, IMGW-13) |
 | `iter_entries(root, *, scope)` | skan: wersje, wersje bieżące, problemy (4.4) | `iter_store` (KA-1), `link_target` (KA-5) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadane we wspólnej kopercie: zbiór, etykieta i jej źródło, daty, `sha256`, rozmiar, licencja, wejścia (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `imgw-meta/1` (IMGW-3) |
-| `footprint(entry)` | geometria na mapie | obrys `file_footprint` (KA-4) | kraj dla archiwów i szeregów; punkty stacji z katalogu (IMGW-9) |
+| `footprint(entry)` | geometria na mapie albo brak położenia z powodem (4.3, A-ADR-022) | obrys `file_footprint` (KA-4); bez źródła — `no_source` | kraj dla archiwów i szeregów; punkty stacji z katalogu albo powód braku (IMGW-9) |
 | `commands()`, `validate(…)`, `format_command(…)` | formularze i polecenie do skopiowania | KB-1, KB-3, KB-4 | IMGW-11 |
 | `plan(command, options)` | „Okno planu” bez pobierania | `check_command` (KB-5) | `check_store` (IMGW-5) |
 | `run(command, options, *, on_progress, on_notice, cancel)` | działanie — tylko w procesie roboczym (5.6) | `run_command` (KB-5) | `run_command` → `sync_store`, `build_series` (IMGW-5, IMGW-7, IMGW-11) |
+| `project(…)` | manifest projektu producenta: odczyt, dodanie i usunięcie zadania, pobranie z przypięciem, sprawdzenie, weryfikacja, status (4.7) | `open_project`, `add_project_task`, `remove_project_task`, `download_project`, `check_project`, `verify_project`, `get_project_status` | te same funkcje projektu IMGWTools (IMGW-14) |
 
 Adapter IMGW ma też zdolność „stacje i szeregi”, której adapter Kartografa
 nie implementuje: `stations(version)` (IMGW-9), `series_index(version)`
 (spis z pokryciem, IMGW-8), `read_series(version, station, …)` (IMGW-10)
-i `export_series(…)` (IMGW-12). Od v0.1 interfejs ma jeden adapter
-(Kartograf), a test z atrapą drugiego adaptera pilnuje, że warstwy wyżej
-nie zależą od Kartografa (sekcje 11 i 13).
+i od v1.1 `export_series(…)` (IMGW-12). Adaptery rejestruje się jako wtyczki (5.8): interfejs ma od v0.1
+adapter Kartografa i mechanizm wtyczek z atrapą drugiego adaptera, a test
+pilnuje, że warstwy wyżej nie zależą od Kartografa (sekcje 11 i 13).
 
 ### 5.4 Mapa, podkłady i kafle
 
@@ -984,30 +1134,38 @@ nie zależą od Kartografa (sekcje 11 i 13).
   (kafle `/api/v1/…/tiles/{z}/{x}/{y}.png`), obiekty wektorowe (GeoJSON).
 - Warstwa stacji IMGW: punkty z indeksu (`station_points`), symbol wg
   rodzaju stacji, stan pokrycia kolorem i wzorem, skupienia przy małym
-  przybliżeniu (6.7); nie ma jej w „Stosie” (to nie warstwy lat).
+  przybliżeniu (6.7). Stacji bez położenia na mapie nie ma — licznik
+  prowadzi do „Katalogu” (4.3, 6.8). Warstwy stacji nie ma
+  w „Wachlarzu” (to nie warstwy lat).
 - Siatka godeł (PL-1992, PL-2000, TM33) jako nakładka do wyboru arkuszy:
   serwer liczy ją dla widoku funkcjami Kartografa (`find_sheets_for_bbox`,
   parsery).
-- „Stos”: warstwy lat albo kampanii jako płyty `fill-extrusion` na
-  rosnących wysokościach nad mapą, z płynnym przejściem nachylenia kamery;
-  najechanie podświetla rok, kliknięcie wybiera go w panelu. Płyty
-  pokazują obrysy arkuszy w kolorach pokrycia; tekstury z podglądami danych
-  — po decyzji z mockupu (sekcja 16, M4). **Wymaganie (A-ADR-018):** wybrany
-  rok jest widoczny w całości — nie może być zasłonięty przez płyty innych
-  lat. Kierunek do sprawdzenia w mockupie: lata rozłożone wachlarzem jak stos
-  plików w docku macOS (każda warstwa widoczna, wybrana powiększona); wariant
-  do potwierdzenia po mockupie (sekcja 16, M4).
+- „Wachlarz” (6.5 c; A-ADR-018, errata 1) nie jest warstwą mapy, tylko
+  komponentem SVG interfejsu: warstwy lat (kampanii, wydań) wyniku jako
+  miniatury obszaru ułożone na łuku jak stos plików w docku macOS —
+  najnowszy rok na górze, każda miniatura w całości we własnym miejscu na
+  łuku (żadna nie zasłania innej), wybrana powiększona w łuku, a na
+  szerokim ekranie także duży podgląd obok. Miniatura to obrys obszaru
+  i arkuszy w układzie obszaru (PL: EPSG:2180, z obrysów indeksu przez
+  KA-6) w kolorach pokrycia (6.4: pełne, kampanie roku, kreskowanie
+  niepełnych), a arkusze w magazynie — z lekkim podglądem danych (5.7)
+  i obwódką „pobrane”. Obok miniatury stoi podpis: rok, etykieta pokrycia,
+  plakietka magazynu, wariant. Najechanie podświetla rok, kliknięcie
+  wybiera go w panelu i na mapie; wynik zadania (np. mozaika) jest
+  dodatkową miniaturą na szczycie. Wymaganie A-ADR-018: wybrany rok jest
+  zawsze widoczny w całości.
 
 ### 5.5 Konfiguracja i uruchomienie
 
 `archiwista serve` uruchamia serwer na `127.0.0.1` (port z konfiguracji),
 otwiera przeglądarkę z jednorazowym tokenem w adresie (sekcja 10.1)
 i wypisuje adres w terminalu. Przy pierwszym uruchomieniu kreator pyta
-o magazyn — katalog `--output` Kartografa i, opcjonalnie, katalog IMGW
-(magazyn IMGWTools, A-ADR-019) — i o katalogi projektów, sprawdza wersje
-Kartografa i IMGWTools (zakresy zgodne z wymaganiami z sekcji 12) oraz to,
+o magazyn — katalog `--output` Kartografa i, opcjonalnie (tylko gdy źródło IMGW
+jest dostępne, 5.8), katalog IMGW (magazyn IMGWTools, A-ADR-019) — i o katalogi
+projektów, sprawdza wersje i schematy producentów (5.8; zakresy zgodne z wymaganiami z sekcji 12) oraz to,
 że żaden katalog producenta nie leży wewnątrz drugiego, i zakłada indeks.
-`archiwista doctor` wypisuje diagnostykę po polsku (wersje, dostępność
+`archiwista doctor` wypisuje diagnostykę po polsku (wersje i stan wtyczek
+źródeł, zgodność schematów producentów, dostępność
 magazynów i katalogów producentów, wersja kontraktu `imgw-store/1`,
 uprawnienia, dowiązania twarde na udziale, port). Wpis magazynu
 w konfiguracji (schemat ustali plan implementacji):
@@ -1030,7 +1188,7 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 | `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → plan `kartograf-plan/1`; IMGW: `check_store` (IMGW-5) → plan aktualności archiwów i stan szeregów | tak | — |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` z `update` i `plan`; IMGW: `sync_store` (IMGW-5) | tak | magazyn (przez producenta) |
 | `series` | `build_series` IMGWTools (IMGW-7) — szeregi zbioru z bieżących archiwów | nie | katalog IMGW (przez IMGWTools) |
-| `project` | `download_project`, `check_project`, `verify_project` | zależnie od trybu | magazyn, manifest (przez Kartografa) |
+| `project` | `download_project`, `check_project`, `verify_project` producenta zadania (Kartograf; IMGWTools — IMGW-14) | zależnie od trybu | magazyn, manifest (przez producenta) |
 | `compose` | funkcje łączenia Kartografa (KE, KF, KG) | zwykle nie | magazyn (przez Kartografa) |
 | `export` | zestaw do QGIS (Archiwista), szeregi do CSV przez `export_series` (IMGW-12) | nie | katalog zestawu w projekcie |
 | `preview` | lokalny COG albo podgląd dużego pliku | nie | pamięć podglądów |
@@ -1061,7 +1219,9 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
   ręcznie — Archiwista rozpoznaje ten stan i pokazuje instrukcję (sekcja
   14). Po anulowaniu Archiwista odświeża sloty, których dotyczyło zadanie.
   Zadania IMGWTools tak samo: `cancel` (IMGW-11), a do tego czasu sygnał
-  przerwania; zapis przez `.incoming/` (IMGW-2) nie zostawia połowy wersji.
+  przerwania; zapis przez `.incoming/` (IMGW-2) nie zostawia połowy wersji,
+  a pozostawioną blokadę `.imgw-project.lock` (IMGW-14) rozpoznajemy jak
+  blokadę Kartografa.
 - **Restart serwera:** zadania „trwa” bez żywego procesu dostają stan
   „przerwane” z przyciskiem „Ponów”; ponowienie jest bezpieczne (Kartograf
   używa gotowych wersji lokalnych).
@@ -1107,6 +1267,77 @@ rastra; służą rozpoznaniu zawartości, nie analizie. Zrzuty ekranu i podgląd
 przechowywane w repozytorium (dokumentacja, mockup) to WebP albo JPEG
 o szerokości ok. 1280 px, nie PNG pełnej rozdzielczości.
 
+### 5.8 Źródła jako wtyczki: rejestracja, instalacja, wersje
+
+Decyzja A-ADR-024 (uzupełnia A-ADR-001 i A-ADR-019). Odrzucone: obie
+biblioteki wymagane (IMGWTools Beta blokowałby wydania, konflikty wersji),
+czytanie formatów i wywoływanie CLI bez zależności (łamie A-ADR-014),
+producenci jako usługi HTTP (koszt).
+
+**Instalacja.** Kartograf jest wymaganą zależnością (`kartograf>=0.9,<0.10`;
+dokładny zakres ustala się przy wydaniu Archiwisty), IMGWTools — extra:
+
+```bash
+pip install archiwista             # Kartograf; źródło IMGW niedostępne
+pip install "archiwista[imgw]"     # Kartograf + IMGWTools
+```
+
+`pipx` i `uv tool` działają tak samo (`pipx install "archiwista[imgw]"`).
+Doinstalowanie IMGWTools do istniejącej instalacji nie wymaga zmian
+konfiguracji: wpis katalogu IMGW w magazynie jest wtedy zaczytywany przy
+następnym starcie, a indeks odświeżany zwykłym skanem.
+
+**Rejestracja.** Adaptery źródeł są wtyczkami wskazanymi przez entry points
+w grupie `archiwista.sources` (`pyproject.toml`):
+
+```toml
+[project.entry-points."archiwista.sources"]
+kartograf = "archiwista.adapter.kartograf:load"
+imgw = "archiwista.adapter.imgw:load"   # ładowany tylko z extra [imgw]
+```
+
+Rejestr (`archiwista/sources/`) ładuje entry points leniwie, po jednym,
+i zapisuje stan każdego źródła: `available`, `not_installed` (ImportError
+pakietu producenta), `incompatible` (wersja albo schemat poza wspieranym
+zakresem) albo `error` (wyjątek przy ładowaniu — nie kładzie serwera i jest
+widoczny w `GET /sources`, „Ustawieniach” i `archiwista doctor`). Fabryka
+wtyczki zwraca adapter z interfejsem źródła (5.3) i deklaracją: identyfikator
+producenta, biblioteka i wspierany zakres wersji, czytane schematy. Test
+importów z A-ADR-019 zostaje: wyłącznie adapter importuje bibliotekę
+producenta, a rejestr i reszta Archiwisty znają tylko interfejs.
+
+**Źródło niedostępne** (stan inny niż `available`) to stan, nie awaria
+aplikacji:
+
+- interfejs ukrywa widoki tego źródła (dla IMGW: warstwę stacji, „Zestawienie”
+  i „Kartę stacji”, grupę „bez położenia” stacji) i pokazuje w „Ustawieniach”
+  i „Magazynie” stan oraz jak go naprawić (6.2);
+- API zwraca `503` z kodem `source_unavailable` albo `source_incompatible`
+  (komunikat po polsku, np. „pip install \"archiwista[imgw]\"”), a `GET /sources`
+  podaje stany (9.1);
+- asystent nie oferuje narzędzi tego źródła (7.3);
+- skan pomija katalog źródła, ale nie usuwa jego wpisów w konfiguracji;
+  zadania w tle takiego źródła nie startują.
+
+**Wersje i schematy.** Przy starcie, w kreatorze i w `archiwista doctor`
+Archiwista sprawdza wersję każdej biblioteki producenta względem zakresu
+z `pyproject.toml` oraz schematy, które czyta: `kartograf-meta/1`,
+`kartograf-project/1`, `imgw-meta/1`, `imgw-project/…` (wersje kontraktu:
+`store_info`, IMGW-10, IMGW-13). Niezgodność daje czytelny komunikat po
+polsku (zainstalowana wersja, wspierany zakres, polecenie naprawy) i stan
+`incompatible` wyłącznie dla tego źródła. Napotkanie nieznanej wersji schematu
+w pliku (np. `imgw-meta/2`) jest problemem pliku w indeksie, nie stanem
+źródła.
+
+**Zależności i CI.** Jeden plik blokady zależności (lock) obejmuje spójny
+zestaw bibliotek naukowych z extra `[imgw]` włącznie, więc oba źródła działają
+w jednym środowisku. CI ma dwie konfiguracje (bez i z `[imgw]`) oraz zadanie
+testów kontraktu względem gałęzi `develop` producentów (sekcja 11).
+
+**Trzeci producent** to nowa wtyczka: nowy adapter i entry point, bez zmian
+w warstwach wyżej; wtedy wraca rozważenie wspólnej biblioteki kontraktu
+(A-ADR-019, opcja E; A-ADR-023).
+
 ## 6. Interfejs
 
 Wzorce interfejsu zostaną potwierdzone na mockupie przed implementacją
@@ -1115,10 +1346,51 @@ i mockupu.
 
 ### 6.1 Zasady
 
-- **Mapa w centrum, zestawienie obok.** Główny ekran to mapa z panelem
-  bocznym „Zestawienie”; ten sam wynik można oglądać jako „Mapa”, „Stos”
-  albo „Katalog” (przełącznik widoku), a w panelu jako „Tabela” albo „Oś
-  czasu”.
+- **Mapa w centrum, przegląd w środku, szczegóły obok.** Główny ekran to
+  mapa; ten sam wynik można oglądać jako „Mapa”, „Wachlarz” albo „Katalog”
+  (przełącznik widoku), a „Katalog” pokazuje cały zestaw jako „Kafle”,
+  „Lista” albo „Oś czasu”. Panel boczny po prawej to „Szczegóły zestawu”
+  — jeden, wybrany zestaw.
+- **Jedna informacja — jedno miejsce** (uwaga użytkownika 2026-10-17 po
+  przeglądzie mockupu: prawy panel powtarzał treść środka). Każda
+  informacja ma jedno miejsce, a role obszarów są stałe:
+
+  | Obszar | Co pokazuje | Czego nie powtarza |
+  |---|---|---|
+  | Panel „Wybór” (lewy) | obszar, produkt, podsumowanie sprawdzenia: lata wg etykiet pokrycia, data raportu, źródło liczb | listy lat ani szczegółów zestawu |
+  | Środek: „Mapa”, „Wachlarz”, „Katalog” | przegląd zestawów i wybór: lata jako przyciski na mapie, warstwy lat w „Wachlarzu”, wszystkie warianty w „Katalogu” (karty, lista, oś czasu); kafel, wiersz i komórka osi to zestaw — kliknięcie, `Enter` albo `Spacja` go wybiera | nalotu, kampanii i polecenia pobrania wybranego zestawu |
+  | Panel „Szczegóły zestawu” (prawy) | tylko wybrany zestaw: formaty (wybór formatu pobrania), arkusze TAK/NIE, nalot, kampanie, pokrycie, polecenie producenta, akcje („Pobierz…”, „Mozaika…”, „Karta pliku”), poza „Katalogiem” przełącznik wariantów roku | listy lat, tabeli ani osi czasu |
+  | „Asystent” | rozmowa, plany i postęp zadań | — |
+
+  Wybór jest jeden i wspólny: zestaw wybrany w dowolnym widoku zaznacza się
+  w pozostałych (mapa, „Wachlarz”, „Katalog”, panel). Panel szczegółów
+  pojawia się dopiero z wynikiem i można go zwinąć; plakietka roku na mapie
+  jest tylko wtedy, gdy panel jest zwinięty. Szkice 6.5 a, b, i, j pokazują
+  wcześniejszy układ z panelem „Zestawienie” (Tabela, Oś czasu) — ich
+  tabela i oś czasu należą według tej zasady do środka („Katalog”: „Lista”,
+  „Oś czasu”). Mockup: zrzuty `24-katalog-wybor`, `25-panel-szczegoly`.
+- **Szerokie ekrany (≥ 2400 px, ultrawide do 5120 px).** Dodatkowe miejsce
+  dostają panele i treść, a nie tylko mapa: „Wybór”, „Asystent”
+  i „Szczegóły zestawu” stoją obok mapy jednocześnie, z domyślną
+  szerokością rosnącą z ekranem (panel szczegółów najmniej — trzyma jeden
+  zestaw); „Oś czasu” w „Katalogu” daje latom więcej miejsca bez
+  powiększania tekstu; „Wachlarz” powiększa miniatury i podgląd wybranego
+  roku i jest wyśrodkowany, „Katalog” układa lata w kolumnach. Gdy na
+  środek zostaje ≥ 2000 px, „Wachlarz” albo „Katalog” stoi obok mapy (dwie
+  połowy) zamiast ją zastępować. Tekst nie rozciąga się na całą szerokość
+  (czytelna długość linii, ok. 80 znaków).
+- **Regulowana szerokość paneli bocznych.** Każdy panel na komputerze ma
+  uchwyt na krawędzi (`role="separator"`, `aria-valuenow/min/max`):
+  przeciąganie myszą lub dotykiem, strzałki na uchwycie (z `Shift` większy
+  krok), `Home`/`End` = minimum/maksimum, dwuklik albo `Enter` = szerokość
+  domyślna. Szerokości mają granice (np. „Szczegóły zestawu” 340–720 px), środek
+  zachowuje co najmniej 480 px, a szerokości użytkownika są zapamiętywane
+  w przeglądarce (`localStorage`). Mapa (MapLibre `resize()`) i „Wachlarz”
+  dopasowują się na bieżąco. Mockup: zrzuty `22-ultrawide-*`, `23`.
+- **Na mapie tylko obiekty z położeniem** (P13, A-ADR-022): obiekty bez
+  położenia (stacje bez współrzędnych, pliki bez obrysu) pokazuje
+  „Katalog” (6.8); mapa podaje ich licznik z przejściem do „Katalogu”
+  i nigdy nie zgaduje położenia.
 - **Jedno pole wyszukiwania** (paleta poleceń, `Ctrl+K`): godło, TERYT,
   produkt, projekt, etykieta wersji albo akcja („Sprawdź aktualność”).
 - **Stan w adresie URL:** obszar, produkt, filtry, widok i położenie mapy —
@@ -1147,15 +1419,21 @@ i mockupu.
 
 | Pozycja | Zawartość |
 |---|---|
-| „Mapa” | główny przepływ (6.3): obszar → produkt → dostępność; tryby „Mapa”, „Stos”, „Katalog”; panel „Zestawienie” |
+| „Mapa” | główny przepływ (6.3): obszar → produkt → dostępność; tryby „Mapa”, „Wachlarz”, „Katalog”; panel „Zestawienie” |
+| „Katalog” | widok bez mapy (6.8): wszystkie obiekty produktu albo zbioru z wyszukiwaniem i filtrami — z obszarem albo bez, także obiekty bez położenia; ten sam stan co tryb „Katalog” w „Mapie” |
 | „Projekty” | lista znanych projektów, widok projektu (6.5 g) |
 | „Zadania” | kolejka i historia zadań w tle (6.5 f); licznik trwających przy nazwie |
 | „Łączenie” | kreatory: „Mozaika”, „PL + CZ”, „Zestaw QGIS”, „Porównanie” (sekcja 8) |
 | „Magazyn” | magazyny, zajętość wg produktów, stan i problemy (UC-13) |
 | „Ustawienia” | magazyny i aliasy ścieżek, katalogi projektów, podkłady i tryb offline, limity, pamięć podglądów, asystent |
 | „Asystent” | czat dostępny z każdego widoku: na komputerze przypięty panel boczny (mapa się zwęża), na telefonie szuflada (sekcja 7.5, A-ADR-018) |
-| „Karta pliku” | otwierana nad bieżącym widokiem (z własnym adresem URL) z listy, mapy, Stosu, Katalogu i wyszukiwania |
-| „Karta stacji” | stacja IMGW: metadane, położenie, pokrycie, wykres, wersje (6.5 k, 6.7); otwierana jak „Karta pliku” z mapy, „Zestawienia”, wyszukiwania i porównania |
+| „Karta pliku” | otwierana nad bieżącym widokiem (z własnym adresem URL) z listy, mapy, Wachlarza, Katalogu i wyszukiwania |
+| „Karta stacji” | stacja IMGW: metadane, położenie albo powód jego braku, pokrycie, wykres, wersje (6.5 k, 6.7); otwierana jak „Karta pliku” z mapy, „Zestawienia”, „Katalogu”, wyszukiwania i porównania |
+
+Widoki i pozycje związane ze źródłem niedostępnym (np. bez IMGWTools: warstwa
+stacji, „Zestawienie” stacji, „Karta stacji”, wybór IMGW w „Ustawieniach”
+i grupa „bez położenia” stacji) są ukryte; „Ustawienia” i „Magazyn” pokazują
+stan źródeł i jak doinstalować brakujące (`archiwista[imgw]`; 5.8).
 
 ### 6.3 Główny przepływ: obszar → produkt → dostępność
 
@@ -1191,9 +1469,10 @@ i mockupu.
    | SoilGrids, CORINE, HSG | plan `check_*`; wydanie z sygnału `metadata` (HSG: wydanie wejść) | wydania |
    | Pomiary IMGW (stacje i szeregi) | lata opublikowane: listing katalogów i `HEAD` archiwów (`Last-Modified`, `ETag`; `check_store`, IMGW-5); stacje z katalogu stacji; pokrycie stacji znane dopiero z archiwów w magazynie (IMGW nie publikuje indeksu stacji) | stacje (Tabela), stacje × lata (Oś czasu); 6.7 |
 
-4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z listą
-   przełączników, panel „Zestawienie” (Tabela albo Oś czasu), przełącznik
-   „Mapa / Stos / Katalog”. Nad tabelą stoi aktywny filtr wariantu w postaci
+4. **Wynik.** Warstwy lat (albo kampanii, wydań) na mapie z przyciskami
+   lat, przełącznik „Mapa / Wachlarz / Katalog” („Katalog”: Kafle, Lista,
+   Oś czasu) i panel „Szczegóły zestawu” wybranego zestawu (6.1). Nad
+   widokiem stoi aktywny filtr wariantu w postaci
    chipów („NMT · 1 m · EVRF2007 · ASC · układ arkuszy: dowolny”). Wiersz
    i karta to wariant (6.4: rok, układ poziomy, rozdzielczość, układ
    wysokości, zgłoszenie); formaty tego samego zestawu są jego plakietkami,
@@ -1204,12 +1483,14 @@ i mockupu.
    ma inne warianty. Domyślny wariant jest widoczny i zmienialny — nic nie
    jest wybierane po cichu.
    Dla pomiarów IMGW wiersz to stacja, a chipy — zmienna (np. „Q”) i rodzaj
-   lat (6.7).
+   lat (6.7); lista obejmuje wszystkie stacje obszaru, także z lukami
+   (P14), a licznik „N stacji bez położenia” prowadzi do „Katalogu” (6.8).
 5. **Akcje wiersza.** „Pobierz…”, „Dodaj do projektu…”, „Pokaż na mapie”,
    „Porównaj z…”, „Mozaika…”, „Polecenie Kartografa”; dla stacji IMGW:
    „Karta stacji”, „Porównaj z…”, „Pobierz archiwa…”, „Przygotuj
-   szeregi…”, „Dodaj do zestawu”, „Polecenie IMGWTools”. Każda z siecią
-   albo zapisem przechodzi przez „Okno planu”.
+   szeregi…”, „Dodaj do projektu…” (zadanie projektu IMGW, IMGW-14),
+   „Dodaj do zestawu”, „Polecenie IMGWTools”. Każda z siecią albo zapisem
+   przechodzi przez „Okno planu”.
 
 ### 6.4 Etykiety pokrycia
 
@@ -1254,7 +1535,7 @@ PL-2000 — „pełne” z jednej kampanii, więc wiersz 2023 pokazuje „pełne
 PL-2000”, a PL-1992 jest pod „+1 wariant”. Kto potrzebuje arkuszy
 w EPSG:2180, ustala „układ arkuszy: PL-1992” i ranking go nie zmienia.
 
-**Wariant i formaty (A-ADR-017).** Karta w „Zestawieniu”, „Stosie”
+**Wariant i formaty (A-ADR-017).** Karta w „Zestawieniu”, „Wachlarzu”
 i „Katalogu” to **wariant**: (produkt, rok, układ poziomy, rozdzielczość,
 układ wysokości, zgłoszenie/kampania). Format plików nie należy do klucza
 wariantu: pliki tego samego zestawu w kilku formatach (np. NMT 2019,
@@ -1265,7 +1546,7 @@ ASCII-NMT”. Archiwista grupuje je sam z kombinacji raportu
 zmienia). Zasady:
 
 - Liczniki („N wariantów”, chip „+N warianty”), wiersze tabeli, słupki osi
-  czasu, płyty „Stosu”, karty „Katalogu”, miniatury i ranking powyżej
+  czasu, miniatury „Wachlarza”, karty „Katalogu”, miniatury i ranking powyżej
   liczą warianty, nie formaty: dwa formaty jednego zestawu to jeden
   wariant. Etykieta pokrycia i rozmiar dotyczą zestawu arkuszy, więc są
   wspólne dla formatów; rozmiar jest podawany dla formatu domyślnego.
@@ -1318,10 +1599,10 @@ PL-1992 (jak w UC-01).
 
 ```text
 +-----------------------------------------------------------------------------+
-| ARCHIWISTA  Mapa  Projekty  Zadania (1)  Łączenie  Magazyn  [Ctrl+K]        |
+| ARCHIWISTA  Mapa  Katalog  Projekty  Zadania (1)  Łączenie  Magazyn [Ctrl+K] |
 +-----------------------------------------------------------------------------+
 | Obszar: Kraków · 120 km² · PL [Zmień]   Produkt: [NMT v]                    |
-| Widok: (Mapa) Stos Katalog                                                  |
+| Widok: (Mapa) Wachlarz Katalog                                              |
 +---------------------------------------+-------------------------------------+
 |                                       | ZESTAWIENIE      [Tabela] Oś czasu  |
 |  +----+----+----+----+                | NMT · 1 m · EVRF2007 · PL-1992      |
@@ -1357,25 +1638,28 @@ słupkiem stan magazynu)
  ## pełne arkusze  // niepełne  (=) pobrane  5/12 częściowo  ( ) niepobrane
 ```
 
-**c) „Stos”** (płyty lat rozłożone wachlarzem nad mapą jak stos plików
-w docku macOS: każda warstwa widoczna, wybrana powiększona i w całości;
-kliknięcie wybiera rok w panelu; wariant do potwierdzenia po mockupie,
-A-ADR-018, M4)
+**c) „Wachlarz”** (warstwy lat wyniku jako miniatury obszaru na łuku jak
+stos plików w docku macOS: najnowszy rok na górze, każda miniatura
+w całości we własnym miejscu, wybrana powiększona w łuku i duża obok;
+kliknięcie wybiera rok w panelu i na mapie; 5.4, A-ADR-018 errata 1;
+mockup: zrzuty `05a`–`05c`, `14`, `17`, `21-wachlarz-*`)
 
 ```text
-   WYBRANY: 2023  (powiększony, w całości)
-        +--------------------------------+
-        |####/####/####/////####/####/###|  pełne · 2 kampanie   5/12
-        |####/####/////####/####/####/###|
-        +--------------------------------+
-   2025 ____________________________        2022 ________________________
-       /####/####/####/####/  pełne        /####/////..../////  częściowe · 58%
-      (pozostałe lata: wachlarz, każdy widoczny, nic nie zasłania wybranego)
-   ===================================  mapa (obszar)
+ WACHLARZ LAT · 5 warstw    najnowszy rok na górze · każda w całości
+        [####]  2025  pełne                 niepobrane
+      [####]    2024  pełne                 niepobrane
+   +--------+                                2023 pełne · 2 kampanie
+   |##//##//|  2023  pełne · 2 kampanie    +---------------------------+
+   |##//##//|        pobrane 5/12          |####////####////####////###|
+   +--------+        1 m · PL-1992         |####////####////####////###|
+      [##..]    2022  częściowe · 58%      | (wybrany rok, duży widok) |
+        [#...]  2019  częściowe · 97%      +---------------------------+
+ #### arkusz pełny  // kampanie roku  .... niepełny  [=] pobrane (podgląd)
 ```
 
 **d) „Katalog”** (cały zestaw jako karty; miniatura z podglądów, gdy dane
-są lokalnie, inaczej schemat arkuszy)
+są lokalnie, inaczej schemat arkuszy; tryb listy i obiekty bez położenia —
+6.8, szkic m)
 
 ```text
 +--------------------+ +--------------------+ +--------------------+
@@ -1448,44 +1732,53 @@ z listy IMGW; pokrycie, lata i liczby ilustracyjne)
 
 ```text
 +-----------------------------------------------------------------------------+
-| ARCHIWISTA  Mapa  Projekty  Zadania  Łączenie  Magazyn  [Ctrl+K]            |
+| ARCHIWISTA  Mapa  Katalog  Projekty  Zadania  Łączenie  Magazyn  [Ctrl+K]   |
 +-----------------------------------------------------------------------------+
 | Obszar: Zlewnia Raby (zlewnia.gpkg) · 1 470 km² · PL [Zmień]                |
-| Produkt: [Stany i przepływy dobowe (IMGW) v]   Zmienna: (Q) H T             |
+| Produkt: [Stany i przepływy dobowe (IMGW) v]   Kolor punktów: (Q) H T       |
 | Lata: [hydrologiczne v] 1951–2025                   Widok: (Mapa) Katalog   |
 +---------------------------------------+-------------------------------------+
 |                                       | ZESTAWIENIE      [Tabela] Oś czasu  |
-|   [^] Rabka 2                         | Q dobowe · 9 stacji · 1951–2025     |
+|   [^] Rabka 2                         | Hydro dobowe · 9 stacji · 1951–2025 |
 |           [^] Mszana Dolna            | ----------------------------------- |
-|       [^] Kasinka Mała                | Stacja          Pokrycie Q          |
-|  [^] Stróża       [.] Dobczyce        | Proszówki       ciągły · 1951–2025  |
-|                [^] Gdów               | Stróża          luki 3% · najdł.    |
-|                      [^] Proszówki    |             1981.06.02–1982.12.31   |
-|  [^?] Stradomka                       | Mszana Dolna    częściowy · od 1972 |
-|                                       | Kasinka Mała    częściowy · do 1990 |
-|  [^] wodowskaz  [.] brak danych Q     | Dobczyce        brak danych Q       |
-|  [?] na granicy obszaru               |                 (tylko H)           |
-|  Bez położenia: 0                     | ...                                 |
+|       [^] Kasinka Mała                | Proszówki                           |
+|  [^] Stróża       [.] Dobczyce        |   H ciągły · 1951–2025              |
+|                [^] Gdów               |   Q ciągły · 1951–2025              |
+|                      [^] Proszówki    |   T częściowy · od 1972             |
+|  [^?] Stradomka                       | Stróża                              |
+|                                       |   H ciągły · 1951–2025              |
+|  [^] wodowskaz  [.] brak danych Q     |   Q luki 3% · najdł. 1981.06.02–    |
+|  [?] na granicy obszaru               |     1982.12.31                      |
+|  2 bez położenia → [Katalog]          |   T luki 12% · od 1972              |
+|                                       | Dobczyce                            |
+|                                       |   H ciągły · 1951–2025              |
+|                                       |   Q brak danych (tylko H)           |
+|                                       |   T brak danych                     |
+|                                       | ...                                 |
 |                                       | Archiwa: pobrane · szeregi aktualne |
 |                                       | r.h. 2025 opubl. 2026.08.31         |
 |                                       | [Sprawdź aktualność] [Zestaw...]    |
 +---------------------------------------+-------------------------------------+
 ```
 
-**j) „Zestawienie” stacji — Oś czasu** (wiersz = stacja, kolumna = rok
+**j) „Zestawienie” stacji — Oś czasu** (wiersz = stacja × zmienna — stacja
+rozwija się do wierszy zmiennych, każda z własnym pokryciem; kolumna = rok
 w wybranym rodzaju lat; pod spodem archiwa w magazynie — wspólne dla
 wszystkich stacji, bo archiwa są krajowe)
 
 ```text
- ZESTAWIENIE  Tabela [Oś czasu]          Q dobowe · lata hydrologiczne (XI–X)
-               1951    1961    1971    1981    1991    2001    2011    2025
-               |       |       |       |       |       |       |          |
- Proszówki     ############################################################
- Stróża        ########################::###############:##################
- Mszana Dolna  ................############################################
- Kasinka Mała  ################################............................
- Dobczyce      ............................................................
- Archiwa       ============================================================
+ ZESTAWIENIE  Tabela [Oś czasu]     Hydro dobowe · lata hydrologiczne (XI–X)
+                  1951    1961    1971    1981    1991    2001    2011    2025
+                  |       |       |       |       |       |       |          |
+ Proszówki    H   ############################################################
+              Q   ############################################################
+ Stróża       H   ############################################################
+              Q   ########################::###############:##################
+ Mszana Dolna Q   ................############################################
+ Kasinka Mała Q   ################################............................
+ Dobczyce     H   ############################################################
+              Q   ............................................................
+ Archiwa          ============================================================
  # rok pełny   : rok z lukami   . brak danych   ? nieznane (archiwum
    niepobrane)   = archiwa w magazynie   (szkic: 1 znak = 1,25 roku;
    w interfejsie komórka = 1 rok, podpowiedź: etykieta i najdł. przerwa)
@@ -1510,8 +1803,10 @@ Położenie: 49,7963° N, 19,9247° E · API IMGW (danepubliczne), 2026.10.17
       wykres uproszczony: min./śr./maks. z 14 dni · przerwa = brak danych
       o maks. roczne opublikowane przez IMGW (polr_Q)
 -----------------------------------------------------------------------------
+Pokrycie — osobno dla każdej zmiennej:
+H: ciągły · 1951–2025 · 75 lat pełnych
 Q: luki 3% · najdł. 1981.06.02–1982.12.31 (578 dni) · 71 lat pełnych
-H: ciągły · 1951–2025       T: częściowy · od 1972 · luki 12%
+T: częściowy · od 1972 · luki 12%
 Szeregi: hydro dobowe · wersja 2026-08-31_ab12cd34 · z 867 archiwów [Lista]
 -----------------------------------------------------------------------------
 [Kopiuj ścieżkę pliku] [Polecenie IMGWTools] [Sprawdź aktualność]
@@ -1535,6 +1830,38 @@ POBRAĆ?  Archiwa IMGW · hydro dobowe · lata hydrologiczne 1951–2025
   [Anuluj]                                         [Pobierz 147 plików]
 ```
 
+**m) „Katalog” — lista z obiektami bez położenia** (stacje IMGW; dla
+plików Kartografa ten sam układ z grupą „bez obrysu”; nazwy i kody stacji
+bez położenia zastąpione opisem — szkic pokazuje układ; 6.8)
+
+```text
++-----------------------------------------------------------------------------+
+| ARCHIWISTA  Mapa  Katalog  Projekty  Zadania  Łączenie  Magazyn  [Ctrl+K]   |
++-----------------------------------------------------------------------------+
+| KATALOG  Stany i przepływy dobowe (IMGW)   [Szukaj: nazwa, kod, rzeka]      |
+| Zakres: [obszar: Zlewnia Raby v]   Rzeka: [2138 · Raba z dopływami v]       |
+| Położenie: [x] w obszarze [x] na granicy [x] bez położenia   Lata: [r.h. v] |
+| Widok: (Lista) Karty                  Pokrycie: H, Q i T osobno [Filtr +]   |
++-----------------------------------------------------------------------------+
+| W OBSZARZE (9)                                             [Pokaż na mapie] |
+| Stacja      Kod        Rzeka (kod)  Pokrycie                     Położenie  |
+| Proszówki   (kod)      Raba (2138)  H ciągły · 1951–2025         API IMGW   |
+|                                     Q ciągły · 1951–2025                    |
+| Stróża      149190310  Raba (2138)  H ciągły · 1951–2025         API IMGW   |
+|                                     Q luki 3% · najdł. …                    |
+|                                     T częściowy · od 1972                   |
+| …                                                                           |
+| BEZ POŁOŻENIA (2) — pasują do filtrów atrybutów; nie ma ich na mapie        |
+| (nazwa)     (kod)      (dopływ)     H ciągły · 1951–1990         brak: 0,0  |
+|                        (2138…)      Q częściowy · do 1990                   |
+| (nazwa)     (kod)      (dopływ)     H ciągły · 1951–2025         brak       |
+|                        (2138…)      Q brak danych (tylko H)                 |
+|   kwadrat 1° z kodu przecina obszar — wskazówka zgrubna, nie położenie      |
++-----------------------------------------------------------------------------+
+| [Dodaj do projektu...]  [Dodaj do zestawu]  [Plik współrzędnych...]         |
++-----------------------------------------------------------------------------+
+```
+
 ### 6.6 Wyszukiwanie i filtry
 
 Filtry (w panelu i w adresie URL): produkt; kraj; układ poziomy; układ
@@ -1545,16 +1872,33 @@ obszar (z mapy); projekt („używane przez”, „nieużywane przez żaden
 projekt”); stan („w porządku”, „brak pliku”, „bez sidecara”,
 „nierozpoznane”); dostawca i licencja; data pobrania.
 Dla pomiarów IMGW dochodzą: rodzaj stacji (wodowskaz, klimatologiczna,
-opadowa); zmienna; rodzaj lat (hydrologiczne, kalendarzowe); lata pełne
-(np. „≥ 30”); stacja czynna albo historyczna; z położeniem albo bez; rzeka
-(nazwa albo kod hydrograficzny); etykieta pokrycia.
+opadowa); zmienna (stacje, które ją mają; nie ogranicza kolumn pokrycia); rodzaj
+lat (hydrologiczne, kalendarzowe — dla hydro i meteo, 6.7); stacja czynna
+albo historyczna; filtry pokrycia osobno dla wskazanej zmiennej (P16):
+lata pełne („Q: ≥ 30”) i etykieta pokrycia („H: ciągły”) — kilka takich
+chipów łączy się spójnikiem „i”, a brak jednej zmiennej nie ukrywa
+pozostałych; rzeka — nazwa albo kod hydrograficzny (P19, decyzja
+użytkownika 2026-10-17) w dwóch odmianach: „dokładnie ta rzeka” (równy
+kod) albo „z dopływami” (kod zaczyna się od kodu rzeki: Raba `2138`
+obejmuje Mszankę `21382` i Stradomkę `21388`). Filtr rzeki działa na
+atrybutach katalogu stacji, więc obejmuje też stacje bez położenia;
+podpowiedź wymienia rzeki objęte filtrem. Reguła prefiksu to hierarchia
+kodów podziału hydrograficznego (MPHP) — wniosek z listy IMGW, sprawdzany
+testem na przykładach z tej listy. Filtry pokrycia działają tylko po
+jawnym włączeniu (P14, 4.8.4).
+
+Dla wszystkich produktów dochodzi **położenie** (4.3, A-ADR-022): „w obszarze”,
+„na granicy obszaru” (stacje), „cały kraj”, „bez położenia” (stacje bez
+współrzędnych, pliki bez obrysu) — z licznikami; obiekty bez położenia
+pokazuje tylko „Katalog” (6.8).
 
 Wyszukiwanie rozpoznaje: godło PL-1992, PL-2000, TM33 i SM5; TERYT (2, 4,
 6 i 7 cyfr); KU (6 cyfr); kod EPSG; etykietę wersji (`2025-04-26_82710`);
 numer zgłoszenia pracy; początek sumy SHA-256 (od 8 znaków); nazwę pliku;
 nazwę projektu i zadania projektu; kod stacji IMGW (9 cyfr), nazwę stacji
 i rzeki. Dla wprawnych: prefiksy `produkt:nmt rok:2023 uklad:2180
-projekt:raba`, `stacja:149190310 zmienna:Q rzeka:Raba` (każdy prefiks ma
+projekt:raba`, `stacja:149190310 zmienna:Q rzeka:Raba`, `kodrzeki:2138`
+(z dopływami `kodrzeki:2138*`), `polozenie:brak` (każdy prefiks ma
 odpowiednik w filtrach).
 
 ### 6.7 Stacje i szeregi IMGW
@@ -1564,38 +1908,61 @@ potwierdzenia na mockupie, M11):
 
 - **Punkty na mapie.** Stacje obszaru z warstwy `station_points`: symbol
   wg rodzaju (wodowskaz, stacja klimatologiczna, posterunek opadowy), stan
-  pokrycia wybranej zmiennej kolorem i wzorem obwódki (4.8.4), podpis —
+  pokrycia jednej zmiennej kolorem i wzorem obwódki (4.8.4), podpis —
   nazwa, a dla wodowskazu także rzeka; przy małym przybliżeniu skupienia
-  z liczbą stacji. Rodzaj stacji i zmienną wybierają chipy nad panelem;
-  „Opad dobowy” łączy stacje klimatologiczne i posterunki opadowe.
+  z liczbą stacji. Rodzaj stacji i zmienną koloru („Kolor punktów”)
+  wybierają chipy nad panelem; „Opad dobowy” łączy stacje klimatologiczne
+  i posterunki opadowe. Punkt ma jeden kolor, ale podpowiedź punktu i panel
+  stacji podają etykiety wszystkich jej zmiennych osobno (H, Q, T albo
+  opad, temperatura i inne zmienne zbioru; P16) — stacja nie ma jednej
+  etykiety pokrycia.
 - **Stacja w obszarze** to punkt w wielokącie obszaru (punkty WGS84
   przeliczone do układu obszaru przypiętą transformacją, KA-6). Stacja
   bliżej granicy niż jej niepewność położenia (4.8.1) ma plakietkę „na
   granicy obszaru”, a przełącznik „Uwzględnij stacje na granicy”
   (domyślnie tak) jest zawsze widoczny. Stacje bez położenia nie trafiają
-  na mapę ani do wyboru po cichu: lista „Bez położenia (N)” obejmuje
-  stacje, których kwadrat 1° z kodu przecina obszar, z uwagą, że to filtr
-  zgrubny.
-- **Zestawienie.** „Tabela”: stacja, rzeka, rodzaj, etykieta pokrycia,
-  lata pełne, plakietka szeregów; sortowanie wg kolejności wzdłuż rzek
-  (z listy IMGW), nazwy albo liczby lat pełnych. „Oś czasu”: stacje × lata,
-  komórka = udział jednostek z wartością w roku (pełna, ułamek, brak,
+  na mapę ani do wyboru po cichu (P13, A-ADR-022): licznik „N stacji bez
+  położenia” prowadzi do „Katalogu” (6.8), gdzie wybiera się je po
+  atrybutach — rzece i kodzie hydrograficznym (także z dopływami, P19),
+  nazwie, rodzaju; kwadrat 1° z kodu przecinający obszar jest tam tylko
+  zgrubną wskazówką.
+- **Zestawienie.** „Tabela”: stacja, rzeka, rodzaj, a dla każdej zmiennej
+  zbioru osobno etykieta pokrycia i lata pełne (P16), plakietka szeregów;
+  sortowanie wg kolejności wzdłuż rzek (z listy IMGW), nazwy albo liczby
+  lat pełnych wskazanej zmiennej. „Oś czasu”: stacja × zmienna × lata
+  (stacja rozwija się do wierszy zmiennych), komórka = udział jednostek z wartością w roku (pełna, ułamek, brak,
   nieznane), podpowiedź z etykietą i najdłuższą przerwą; pod osią pasek
-  archiwów w magazynie i daty publikacji ostatnich roczników. „Stos” nie
-  dotyczy stacji, a „Katalog” pokazuje je jako karty.
-- **Rodzaj lat.** Przełącznik „lata hydrologiczne / kalendarzowe”,
-  domyślnie hydrologiczne dla zbiorów hydro i kalendarzowe dla meteo
-  (P15). Zmiana przelicza etykiety z list przerw, bez odczytu szeregów,
-  a nagłówki zawsze pokazują konwencję: „r.h. 2024 (2023.11.01–2024.10.31)”.
+  archiwów w magazynie i daty publikacji ostatnich roczników. Wiersze
+  obejmują wszystkie stacje, także z lukami i bez danych (P14). „Wachlarz”
+  nie dotyczy stacji (to nie warstwy lat), a „Katalog” pokazuje je jako
+  listę albo karty, także bez położenia (6.8).
+- **Rodzaj lat (P15, decyzja użytkownika 2026-10-17).** Przełącznik
+  „lata hydrologiczne / kalendarzowe” jest dostępny dla danych hydro
+  i meteo. Domyślnie: hydro — hydrologiczne (jak archiwa, charakterystyki
+  IMGW i Hydrolog), meteo — kalendarzowe (jak archiwa). Wybór jest
+  zapamiętywany osobno dla danych hydro i meteo w ustawieniach użytkownika
+  (plik konfiguracji, 4.3; w trybie zespołu — przy koncie) i obowiązuje we
+  wszystkich widokach do następnej zmiany; parametr `year_type` w adresie
+  URL ma pierwszeństwo (link otwiera ten sam widok), ale nie zmienia
+  zapamiętanego wyboru. W widoku mieszanym (porównanie stacji hydro
+  i meteo, „Wszystkie produkty”) obowiązuje jeden rodzaj lat — wybór
+  zapamiętany dla hydro. Wyjątek: charakterystyki półroczne i roczne
+  zostają w latach hydrologicznych (4.8.2). Zmiana przelicza etykiety
+  z list przerw, bez odczytu szeregów, a nagłówki zawsze pokazują
+  konwencję: „r.h. 2024 (2023.11.01–2024.10.31)” albo „2024
+  (kalendarzowy)”; zestaw (8.4) i eksport CSV (IMGW-12) zapisują rodzaj
+  lat.
 - **Karta stacji** (6.5 k): metadane (kod, rodzaj, rzeka i kod
   hydrograficzny, rok założenia, rzędna zera wodowskazu, kilometr biegu
-  rzeki), położenie ze źródłem, datą katalogu i niepewnością, pokrycie
-  każdej zmiennej, wykres, wersje szeregów i archiwów wejściowych
+  rzeki), położenie ze źródłem, datą katalogu i niepewnością albo powód
+  braku położenia, pokrycie
+  każdej zmiennej osobno (etykieta, lata pełne, najdłuższa przerwa; bez
+  etykiety zbiorczej stacji, P16), wykres, wersje szeregów i archiwów wejściowych
   (`sha256`, `ETag`, `Last-Modified`), formuły IMGW z „Kopiuj atrybucję”
   i link „Strona stacji IMGW” (`https://hydro.imgw.pl/#/station/hydro/<kod>`
   — zwykły link, bez zapytań w tle). Akcje: „Kopiuj ścieżkę pliku”,
   „Polecenie IMGWTools”, „Sprawdź aktualność”, „Przygotuj szeregi…”,
-  „Porównaj z…”, „Dodaj do zestawu”.
+  „Porównaj z…”, „Dodaj do projektu…” (IMGW-14), „Dodaj do zestawu”.
 - **Wykres.** Jedna zmienna albo dwie o różnych jednostkach (dwie osie);
   zakres przez zaznaczenie. Serwer zwraca najwyżej 2 000 punktów na serię:
   przy dłuższym zakresie min./śr./maks. w przedziałach z dopiskiem
@@ -1616,6 +1983,50 @@ potwierdzenia na mockupie, M11):
   lotów NMT i pokrycia szeregów.
 - **Licencja.** Pod wykresem, w karcie stacji i w porównaniu stoją
   formuły IMGW (4.8.5).
+
+### 6.8 Katalog: dane bez położenia
+
+„Katalog” to drugi, bezprzestrzenny sposób prezentacji danych (P13,
+decyzja użytkownika 2026-10-17; A-ADR-022). Mapa pokazuje tylko obiekty
+z położeniem (4.3); „Katalog” pokazuje wszystkie obiekty wybranego
+produktu albo zbioru — także bez położenia — i dotyczy każdego producenta
+i produktu, nie tylko IMGW (szkice 6.5 d, m).
+
+- **Wejście.** Pozycja nawigacji „Katalog” (6.2), tryb „Katalog”
+  w „Mapie” (ten sam stan: produkt, obszar, filtry, adres URL), licznik
+  „N stacji bez położenia” albo „N plików bez obrysu” na mapie i w
+  „Zestawieniu” (otwiera „Katalog” z tym samym produktem i filtrami
+  i z rozwiniętą grupą „bez położenia”), wyszukiwanie (`Ctrl+K`).
+- **Zakres.** Z obszarem albo bez. Z obszarem wynik dzieli się na grupy
+  z 4.3 (pkt 3): „w obszarze”, „na granicy obszaru”, „cały kraj”, „bez
+  położenia” — każda z licznikiem, żadna nie jest ukryta domyślnie,
+  a obiekty bez położenia nigdy nie są przypisywane do obszaru. Bez
+  obszaru — wszystkie obiekty produktu albo zbioru.
+- **Wyszukiwanie i filtry** jak w 6.6 (chipy, adres URL), w tym filtry
+  niezależne od geometrii: nazwa, kod i identyfikator (kod stacji, godło,
+  TERYT, etykieta wersji), rzeka i kod hydrograficzny (z dopływami, P19),
+  kraj, produkt i wariant, stan, projekt; dla stacji także rodzaj,
+  zmienna, etykieta i lata pełne wskazanej zmiennej (P16), czynna albo
+  historyczna.
+- **Układ.** „Lista” (wiersze z sortowaniem, wirtualizowana — cel z 4.5)
+  albo „Karty” (szkic 6.5 d; M5). Kolumny: nazwa, identyfikator,
+  producent i produkt, położenie (źródło albo powód braku z podpowiedzią,
+  4.3), etykiety pokrycia osobno dla każdej zmiennej (w „Liście” kolejne
+  wiersze zmiennych, w „Kartach” lista zmiennych; P16) i plakietka magazynu,
+  bieżąca wersja. Stacje są
+  sortowane jak w „Zestawieniu” (kolejność wzdłuż rzek z listy IMGW),
+  pozostałe obiekty — wg nazwy albo identyfikatora.
+- **Akcje** jak na mapie i w „Zestawieniu”: „Karta pliku”, „Karta
+  stacji”, „Pokaż na mapie” (tylko z położeniem), „Porównaj z…”,
+  „Pobierz…”, „Dodaj do projektu…” (stacje bez położenia tylko jawnie,
+  A-ADR-023), „Dodaj do zestawu”. W zestawie (8.4) obiekty bez położenia
+  są tabelami bez geometrii (np. CSV stacji z powodem braku położenia),
+  nie warstwami mapy.
+- **Uzupełnienie położenia stacji.** „Plik współrzędnych…” otwiera „Okno
+  planu” z poleceniem IMGWTools, które buduje nową wersję katalogu
+  stacji z plikiem współrzędnych użytkownika (`location_source = "user"`,
+  4.8.1, IMGW-9); Archiwista nie zapisuje współrzędnych sam. Stacja
+  z położeniem z nowej wersji trafia na mapę po przeindeksowaniu.
 
 ## 7. Asystent (agent czatu)
 
@@ -1642,7 +2053,7 @@ promptu):
   w „Ustawieniach” (7.6).
 - **Niczego nie liczy:** przygotowuje dane i polecenia dla Hydrologa
   i Retmana, ale nie oblicza statystyk ani wskaźników hydrologicznych (1.3;
-  założenie do potwierdzenia, sekcja 15, P17).
+  decyzja użytkownika 2026-10-17, sekcja 15, P17).
 
 ### 7.2 Przebieg
 
@@ -1689,19 +2100,25 @@ widoczny jako plakietka w polu wiadomości („Kontekst: Kraków · NMT ·
 | `search_store` | wyszukiwanie w indeksie z filtrami (jak `GET /api/v1/slots`) | odczyt |
 | `get_slot`, `get_version` | karta pliku: wersje, metadane, przypięcia | odczyt |
 | `list_projects`, `get_project` | projekty, zadania projektów, przypięcia, stan (bez sieci) | odczyt |
-| `find_stations` | stacje obszaru: rodzaj, zmienna, lata, etykiety pokrycia, położenie i jego źródło (jak `GET /stations`) | odczyt |
-| `get_station` | karta stacji: metadane, pokrycie zmiennych, wersje szeregów i archiwów, formuły IMGW | odczyt |
+| `find_stations` | stacje obszaru albo po atrybutach (rzeka i kod hydrograficzny z dopływami, P19): rodzaj, zmienna, lata, etykiety pokrycia osobno dla każdej zmiennej stacji (P16), położenie i jego źródło albo powód braku; zawsze z licznikiem stacji bez położenia (jak `GET /stations`) | odczyt |
+| `get_station` | karta stacji: metadane, pokrycie każdej zmiennej osobno, wersje szeregów i archiwów, formuły IMGW | odczyt |
 | `get_series_coverage` | pokrycie zmiennych stacji po latach z indeksu; bez archiwów — „nieznane” i plan ich pobrania | odczyt |
 | `check_availability` | dostępność u źródła dla obszaru; dla zbiorów IMGW — lata opublikowane i daty publikacji | odczyt z siecią (limit na turę, wyłączalny) |
 | `plan_command` | plan polecenia producenta (`check_command` KB-5, `check_store` IMGW-5): jednostki albo pliki, lokalne, do pobrania, rozmiar | odczyt z siecią |
 | `validate_command`, `format_command` | walidacja bez sieci i tekst polecenia (KB-3, KB-4, IMGW-11) | odczyt |
 | `get_job`, `list_jobs` | stan i wynik zadań w tle | odczyt |
 | `show_on_map`, `open_view` | podświetlenie jednostek albo obszaru, przybliżenie, otwarcie widoku lub karty pliku | efekt w interfejsie (bez zmian danych) |
-| `propose_actions` | propozycja: lista działań (pobranie, zadanie projektu, przepięcie, łączenie, zestaw) | propozycja — wymaga potwierdzenia |
+| `propose_actions` | propozycja: lista działań (pobranie, zadanie projektu Kartografa albo IMGW, przepięcie, łączenie, zestaw) | propozycja — wymaga potwierdzenia |
 
 Wykonanie propozycji nie jest narzędziem asystenta. Serwer przyjmuje je
 wyłącznie z interfejsu, z tokenem CSRF sesji użytkownika (sekcja 10.1);
 w trybie zespołu — z uprawnieniami osoby, która zatwierdza.
+
+Zestaw narzędzi zależy od dostępnych źródeł (A-ADR-024, 5.8): bez zainstalowanego
+IMGWTools asystent nie dostaje narzędzi IMGW (`find_stations`, `get_station`,
+`get_series_coverage` ani wariantów IMGW pozostałych narzędzi), a jego opis zawiera
+tylko dostępne źródła; zapytanie o dane IMGW kończy się wskazówką, że źródło
+IMGW jest niedostępne, i jak je doinstalować — bez próby obejścia.
 
 ### 7.4 Propozycja i potwierdzenie
 
@@ -1831,15 +2248,15 @@ jest w dokumentacji użytkownika — zestaw zmienia się szybciej niż spec.
 
 Zestaw ewaluacyjny: co najmniej 30 poleceń po polsku (obszar, produkt,
 rok, projekt, pogranicze, łączenie, polecenia niejednoznaczne i wrogie;
-od v0.9 także co najmniej 5 o danych IMGW: stacje w zlewni, zmienna,
+od v1.2 także co najmniej 5 o danych IMGW: stacje w zlewni, zmienna,
 lata, cel użycia) na magazynie testowym z nagranymi odpowiedziami
 producentów; oczekiwane propozycje (polecenia i opcje) porównywane
 automatycznie. W bramce offline — nagrane odpowiedzi modelu
 (deterministycznie); na żywo — przy zmianie modelu albo promptu. Kryteria
-v0.5: co najmniej 80% poprawnych propozycji na modelu referencyjnym i zero
+v1.2: co najmniej 80% poprawnych propozycji na modelu referencyjnym i zero
 wykonań bez potwierdzenia (także dla poleceń wrogich).
 
-### 7.11 Przykład: przepływy dobowe dla stacji w zlewni
+### 7.11 Przykład: przepływy dobowe dla stacji w zlewni (od v1.2)
 
 Ola (obszar: granica zlewni Raby z pliku Hydrografa) pisze: „Przygotuj
 przepływy dobowe dla stacji w tej zlewni”. Przebieg (nazwy stacji z listy
@@ -1847,14 +2264,17 @@ IMGW, liczby ilustracyjne, polecenia IMGWTools — propozycje z 12.7):
 
 1. `get_view_context` — obszar i bieżący produkt.
 2. `find_stations(area, product="hydro_daily", variable="Q")` — 9 stacji
-   z etykietami pokrycia; gdy archiwów nie ma w magazynie — „nieznane”.
+   z etykietami pokrycia (wszystkie, także z lukami, P14) i licznik stacji
+   bez położenia; gdy archiwów nie ma w magazynie — „nieznane”.
 3. `check_availability(product="hydro_daily")` — lata opublikowane
    1951–2025, rocznik 2025 opublikowany 2026.08.31.
 4. `plan_command(producer="imgwtools", command="store sync", …)` — 867
    plików: 720 w magazynie, 147 do pobrania (ok. 30 MB), potem szeregi
    zbioru.
 5. `propose_actions` — karta propozycji: (1) synchronizacja archiwów
-   i szeregi zbioru, (2) zestaw „raba-przeplywy” z CSV przepływów 9 stacji
+   i szeregi zbioru, (2) zadanie projektu IMGW „przeplywy” w projekcie Raba
+   (`imgw project add`, 9 stacji jako lista kodów, Q, lata hydrologiczne;
+   IMGW-14), (3) zestaw „raba-przeplywy” z CSV przepływów 9 stacji
    (eksport IMGWTools), warstwą stacji i `ATRYBUCJE.txt`; ostrzeżenia:
    „Mszana Dolna: dane od 1972”, „Stróża: luki 3%”, „Dobczyce: tylko H”,
    „r.h. 2025 opublikowany 2026.08.31” i komunikat IMGWTools o celu użycia
@@ -1864,10 +2284,13 @@ IMGW, liczby ilustracyjne, polecenia IMGWTools — propozycje z 12.7):
    `dates`), ale niczego nie liczy.
 
 Pytania doprecyzowujące: Q czy H, zakres lat (domyślnie pełny), co ze
-stacjami na granicy obszaru i bez położenia. **Założenie do potwierdzenia
-(sekcja 15, P17):** obliczenia — przepływy charakterystyczne, analiza
-częstości, niżówki — robią Hydrolog albo Retman; asystent Archiwisty tylko
-przygotowuje dane i polecenia.
+stacjami na granicy obszaru i bez położenia (te ostatnie tylko jawnie, po
+rzece albo kodzie hydrograficznym — 6.8). Stacji z lukami asystent nie
+pomija: każda trafia do propozycji z etykietą pokrycia (P14), a wybór
+zapisuje jako zadanie projektu IMGW (IMGW-14). **Decyzja użytkownika
+2026-10-17 (sekcja 15, P17):** obliczenia — przepływy charakterystyczne,
+analiza częstości, niżówki — robią Hydrolog albo Retman; asystent
+Archiwisty tylko przygotowuje dane i polecenia.
 
 ## 8. Łączenie danych
 
@@ -2040,7 +2463,7 @@ albo wektory: granice PRG i RUIAN, BDOT10k i ZABAGED.
 
 **Wynik.** Dwa warianty:
 
-- **„Zestaw bez scalania”** (od v0.4, bez zmian w Kartografie): pliki PL
+- **„Zestaw bez scalania”** (od v1.1, bez zmian w Kartografie): pliki PL
   i CZ razem na mapie i w katalogu (grupa `parent_request`), sprawdzenie
   zgodności (układy, rozdzielczości, pion, daty) z podpowiedzią brakującego
   pobrania (np. CZ w EVRF2007: `--vertical-crs pl=EVRF2007,cz=EVRF2007`)
@@ -2098,15 +2521,19 @@ kandydaci do API) z regułą styku, kontrolą pionu i raportem.
 `parent_request`, kontrola zgodności z podpowiedzią i zestaw bez scalania —
 Archiwista.
 
-### 8.4 Tryb 3: zestaw do projektu i QGIS
+### 8.4 Tryb 3: zestaw do projektu i QGIS (od v1.1)
 
 **Wejście.** Projekt (wszystkie albo wybrane zadania projektu) z przypiętymi
 wersjami — droga główna. Także zaznaczenie w katalogu albo na mapie
 (bieżące wersje) — „zestaw doraźny”, z zachętą „Dodaj do projektu, by
 zachować wersje”.
-Do każdego zestawu można dołączyć stacje IMGW (zaznaczenie na mapie,
-wiersze „Zestawienia”, propozycja asystenta) — dane IMGW nie są zadaniami
-projektu (4.7), więc ich wybór i wersje zapisuje `zestaw.json`.
+Stacje IMGW wchodzą do zestawu przez zadania projektu IMGW z przypiętymi
+wersjami (`imgw-project.json`, IMGW-14; 4.7) — tak jak dane Kartografa.
+Zestaw doraźny może też dołączyć stacje bez zadania projektu (zaznaczenie
+na mapie albo w „Katalogu”, wiersze „Zestawienia”, propozycja asystenta)
+— wtedy ich wybór i bieżące wersje zapisuje tylko `zestaw.json`. Stacje
+bez położenia są w zestawie tabelą (CSV z powodem braku położenia), nie
+punktami warstwy stacji (6.8).
 
 **Wynik** — katalog zestawu:
 
@@ -2118,14 +2545,14 @@ projektu (4.7), więc ich wybór i wersje zapisuje `zestaw.json`.
 | `pliki.txt` | sama lista ścieżek wersji (do skryptów, np. Hydrografa) |
 | `szeregi/` | szeregi IMGW w CSV (`<kod>_<zbiór>.csv`) z eksportu IMGWTools (IMGW-12) — nie przeróbka Archiwisty; jednostki w nagłówku, braki jako puste komórki, kolumna flag; wejście m.in. dla Hydrologa |
 | `ATRYBUCJE.txt` | teksty atrybucji z sidecarów (`license.attribution`) bez powtórzeń — wymóg licencji GUGiK (art. 40a), CC BY 4.0 CUZK i regulaminu IMGW-PIB (§5 ust. 3 i 4; 4.8.5) |
-| `polecenia.sh` | polecenia Kartografa odtwarzające zadania projektu (`format_command`, KB-4) i polecenia `imgw …` odtwarzające archiwa i szeregi IMGW (IMGW-11) |
-| `zestaw.json` | opis zestawu (`archiwista-set/1`): projekt, suma manifestu, chwila wygenerowania, wersje Archiwisty, Kartografa i IMGWTools, lista plików, a dla IMGW — stacje, zmienne, lata i ich rodzaj, wersje szeregów i katalogu stacji — pozwala wykryć zestaw nieaktualny |
+| `polecenia.sh` | polecenia Kartografa odtwarzające zadania projektu (`format_command`, KB-4) i polecenia `imgw project download` odtwarzające zadania projektu IMGW, a dla stacji doraźnych — polecenia `imgw …` odtwarzające archiwa i szeregi (IMGW-11, IMGW-14) |
+| `zestaw.json` | opis zestawu (`archiwista-set/1`): projekt, sumy obu manifestów, chwila wygenerowania, wersje Archiwisty, Kartografa i IMGWTools, lista plików, a dla IMGW — stacje, zmienne, lata i ich rodzaj, wersje szeregów i katalogu stacji — pozwala wykryć zestaw nieaktualny |
 
 **Gdzie zapisywany.** Domyślnie `<katalog projektu>/zestawy/<nazwa>/`, nie
 w magazynie (to nie dane) i bez wersji; ponowne wygenerowanie podmienia
 katalog atomowo (nowy katalog, potem zamiana nazwy). Zmiana przypięć
-w manifeście po wygenerowaniu oznacza zestaw jako „nieaktualny —
-wygeneruj ponownie”. Ścieżki w `.qgz` i VRT są względne do pliku, gdy
+w manifeście (Kartografa albo IMGW) po wygenerowaniu oznacza zestaw jako
+„nieaktualny — wygeneruj ponownie”. Ścieżki w `.qgz` i VRT są względne do pliku, gdy
 projekt i magazyn mają wspólny korzeń (np. ten sam udział), inaczej
 bezwzględne; w trybie zespołu w postaci właściwej dla klienta (aliasy
 ścieżek, 4.6).
@@ -2133,7 +2560,7 @@ Nowa bieżąca wersja szeregów zbioru oznacza w ten sam sposób zestaw ze
 starszą wersją jako „nieaktualny”; wersje wskazane w zestawie zostają
 w katalogu IMGW (nikt ich nie usuwa).
 
-**Opcja „z kopią danych”** (od v0.6, domyślnie wyłączona): kopia
+**Opcja „z kopią danych”** (od v1.3, domyślnie wyłączona): kopia
 przypiętych plików z sidecarami do `dane/<zadanie projektu>/` — paczka do
 przekazania poza zespół; plan pokazuje rozmiar przed kopiowaniem.
 
@@ -2152,8 +2579,8 @@ sidecary z układami i licencją, `verify_project` (zestaw można zweryfikować
 przed przekazaniem).
 
 **Co trzeba dodać.** Od Kartografa nic obowiązkowego; `format_command`
-(KB-4) do `polecenia.sh`. Od IMGWTools: `export_series` (IMGW-12)
-i `format_command` (IMGW-11).
+(KB-4) do `polecenia.sh`. Od IMGWTools: `export_series` (IMGW-12),
+`format_command` (IMGW-11) i manifest projektu z przypięciami (IMGW-14).
 
 **Gdzie implementować.** Archiwista w całości — to opakowanie
 i prezentacja bez obróbki danych (CSV szeregów IMGW eksportuje IMGWTools).
@@ -2173,7 +2600,7 @@ z „Zestawienia” (zbiory wersji).
    i pokrycie, rozdzielczość, układy, `sha256`, rozmiar, adres źródła,
    licencja, wersja Kartografa.
 2. **Wizualnie** (z podglądów): kurtyna i przenikanie na mapie, dwa widoki
-   obok siebie zsynchronizowane, przełączanie w „Stosie”.
+   obok siebie zsynchronizowane, przełączanie lat w „Wachlarzu”.
 3. **Różnice obliczone** (KG): raster — model różnic `B − A` na wspólnej
    siatce ze statystyką (średnia, odchylenie, percentyle, powierzchnia
    zmian powyżej progu, histogram); wektor — liczby obiektów w warstwach,
@@ -2278,10 +2705,15 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
   przez SSE (`/jobs/{id}/events`).
 - **Błędy:** RFC 9457 (`application/problem+json`) z polami `type`,
   `title`, `status`, `detail` (po polsku), `code` (`validation_error`,
-  `not_found`, `conflict`, `store_unavailable`, `kartograf_error`,
-  `imgwtools_error`, `budget_exceeded`…) i — gdy błąd pochodzi od
+  `not_found`, `conflict`, `store_unavailable`, `source_unavailable`,
+  `source_incompatible`, `kartograf_error`, `imgwtools_error`,
+  `budget_exceeded`…) i — gdy błąd pochodzi od
   producenta — `kartograf` albo `imgwtools` (`exception`, `message` bez
-  zmian).
+  zmian). Operacja na źródle, którego pakiet nie jest zainstalowany
+  (`source_unavailable`, stan `not_installed`) albo którego wersja lub schemat
+  jest niezgodny (`source_incompatible`), zwraca `503` z polem `source`
+  (`id`, `state`, komunikat po polsku z poleceniem instalacji albo
+  wspieranym zakresem); `GET /sources` podaje stan każdego źródła (5.8).
 - **Stronicowanie:** `limit` (do 200) i nieprzezroczysty `cursor`.
 - **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
   w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo
@@ -2295,10 +2727,11 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | Metoda i ścieżka | Co robi |
 |---|---|
 | `GET /stores` | magazyny, dostępność, statystyki |
+| `GET /sources` | źródła danych (wtyczki): producent, stan (`available`, `not_installed`, `incompatible`, `error`), wersja biblioteki, wspierany zakres, schematy, komunikat po polsku (5.8) |
 | `GET /stores/{store}` | stan magazynu: zajętość wg produktów, problemy, ostatni skan |
 | `POST /stores/{store}/scan` | skan (`mode`: `incremental` albo `full`, opcjonalnie `segment`) → zadanie w tle |
 | `GET /products` | produkty z opisami, krajami i licznikami w magazynach (KB-1, IMGW-11 + indeks) |
-| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją |
+| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją; `location` (`any` — domyślnie, `with`, `none`) i grupy położenia z licznikami (4.3, 6.8) |
 | `GET /stores/{store}/slots/{slot}` | karta pliku: wersje, bieżąca i pełna, przypięcia |
 | `GET /stores/{store}/versions/{version}` | wersja: metadane po ludzku i sidecar |
 | `GET /stores/{store}/versions/{version}/sidecar` | surowy sidecar |
@@ -2312,9 +2745,9 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | `GET /map/footprints` | obrysy w widoku (`bbox`, `zoom`, filtry) albo agregacja |
 | `GET /map/sheets` | siatka godeł w widoku (`system`, `scale`) |
 | `GET /map/stations` | punkty stacji IMGW w widoku (`bbox`, `zoom`, filtry) jako GeoJSON albo skupienia |
-| `GET /stations` | stacje w obszarze i filtrach (`area_id` albo `bbox` + `bbox_crs`, `product`, `variable`, `kind`, `years`, `year_type`, `min_complete_years`, `active`, `boundary`) z etykietami pokrycia, plakietką archiwów i listą stacji bez położenia |
-| `GET /stations/{code}` | karta stacji: metadane, położenie ze źródłem i niepewnością, pokrycie zmiennych, wersje szeregów i archiwów wejściowych, formuły IMGW |
-| `GET /stations/{code}/coverage` | pokrycie zmiennej po latach (`variable`, `year_type`, `years`) — Oś czasu |
+| `GET /stations` | stacje w obszarze i filtrach (`area_id` albo `bbox` + `bbox_crs`, `product`, `variable` (powtarzalny: stacje mające zmienną), `kind`, `years`, `year_type`, `coverage` (powtarzalny filtr jednej zmiennej, np. `Q:continuous`, `H:gaps`), `min_complete_years` (powtarzalny, np. `Q:30`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` albo `tributaries`) z etykietami pokrycia osobno dla każdej zmiennej stacji (P16), plakietką archiwów i grupami położenia z licznikami (stacje bez położenia — po filtrach atrybutów, 6.8) |
+| `GET /stations/{code}` | karta stacji: metadane, położenie ze źródłem i niepewnością, pokrycie każdej zmiennej osobno, wersje szeregów i archiwów wejściowych, formuły IMGW |
+| `GET /stations/{code}/coverage` | pokrycie zmiennych po latach (`variable` powtarzalny, domyślnie wszystkie zmienne stacji; `year_type`, `years`) — Oś czasu |
 | `GET /stations/{code}/series` | dane wykresu (`variable`, `from`, `to`, `max_points` ≤ 2 000, `version`): wartości albo min./śr./maks. w przedziałach, braki jako `null`, znaczniki sum zbiorczych i ekstremów IMGW; tylko do wyświetlenia |
 | `GET /stations/compare` | 2–5 stacji jednej zmiennej (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) na wspólnej osi czasu |
 | `POST /areas` | obszar z GeoJSON albo z pliku geometrii → `id`, powierzchnia, kraje |
@@ -2329,17 +2762,18 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | `GET /jobs/{id}/events` | strumień SSE: `progress`, `notice`, `state` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | anulowanie, ponowienie |
 | `GET /jobs/{id}/log` | dziennik zadania |
-| `GET /projects`, `POST /projects` | lista; rejestracja istniejącego (`path`) albo nowy (`path`, `output_dir` → `init_project`) |
-| `GET /projects/{id}` | zadania projektu, przypięcia, stan z indeksu |
-| `GET /projects/{id}/status` | `get_project_status` (bez sieci, szybkie) |
-| `POST /projects/{id}/tasks` | `add_project_task` (walidacja bez sieci) |
-| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` (pliki zostają w magazynie) |
+| `GET /projects`, `POST /projects` | lista; rejestracja istniejącego (`path`) albo nowy (`path`, `producer`, `output_dir` albo `store_dir` → `init_project` producenta) |
+| `GET /projects/{id}` | zadania projektu obu producentów (pole `producer`), przypięcia, stan z indeksu |
+| `GET /projects/{id}/status` | `get_project_status` producentów (bez sieci, szybkie) |
+| `POST /projects/{id}/tasks` | `add_project_task` producenta (`producer`; walidacja bez sieci; IMGW: IMGW-14) |
+| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` producenta zadania (pliki zostają w magazynie) |
 | `POST /projects/{id}/sets`, `GET /projects/{id}/sets` | zestaw do QGIS (zadanie `export`), lista zestawów |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | rozmowy |
 | `POST /assistant/conversations/{id}/messages` | wiadomość → strumień SSE (tekst, wywołania narzędzi, propozycje, efekty w interfejsie) |
 | `GET /assistant/proposals/{id}` | propozycja |
 | `POST /assistant/proposals/{id}/execute`, `…/reject` | wykonanie albo odrzucenie — tylko z interfejsu, z tokenem CSRF |
 | `GET /settings`, `PUT /settings` | ustawienia (w zespole: administrator) |
+| `GET /preferences`, `PUT /preferences` | preferencje widoku osoby: zapamiętany rodzaj lat dla danych hydro i meteo (6.7); w zespole — przy koncie, bez uprawnień administratora |
 | `GET /health` | wersje Archiwisty, Kartografa i IMGWTools, stan magazynów (katalogów producentów), indeksu i zadań |
 
 ### 9.3 Przykłady
@@ -2443,15 +2877,32 @@ data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
 }
 ```
 
-**Stacje w obszarze** — `GET /api/v1/stations?area_id=raba&product=hydro_daily&variable=Q&years=1951-2025&year_type=hydrological&limit=1`
-(pole `label` to tekst interfejsu z datami `RRRR.MM.DD`, pola strukturalne
+**Źródło niedostępne** — `GET /api/v1/stations?…` bez zainstalowanego IMGWTools,
+`503`, `application/problem+json` (kod `source_unavailable`, A-ADR-024):
+
+```json
+{
+  "type": "/api/v1/problems/source-unavailable",
+  "title": "Źródło danych niedostępne",
+  "status": 503,
+  "code": "source_unavailable",
+  "detail": "Źródło danych IMGW jest niedostępne: pakiet IMGWTools nie jest zainstalowany. Zainstaluj go poleceniem: pip install \"archiwista[imgw]\".",
+  "source": {"id": "imgw", "state": "not_installed", "extra": "imgw"}
+}
+```
+
+**Stacje w obszarze** — `GET /api/v1/stations?area_id=raba&product=hydro_daily&years=1951-2025&year_type=hydrological&limit=1`
+(`coverage` ma osobny wpis dla każdej zmiennej stacji — nigdy jeden dla
+całej stacji, P16; pole `label` to tekst interfejsu z datami `RRRR.MM.DD`, pola strukturalne
 w ISO; liczby ilustracyjne)
 
 ```json
 {
   "area": {"id": "raba", "area_km2": 1470.0, "countries": ["PL"]},
   "product": "hydro_daily",
-  "variable": {"code": "Q", "label": "przepływ", "unit": "m3/s"},
+  "variables": [{"code": "H", "label": "stan wody", "unit": "cm"},
+                {"code": "Q", "label": "przepływ", "unit": "m3/s"},
+                {"code": "T", "label": "temperatura wody", "unit": "°C"}],
   "years": {"from": 1951, "to": 2025, "type": "hydrological"},
   "archives": {"label": "pobrane", "years_local": 75, "of": 75,
                "published": {"last_year": 2025, "last_modified": "2026-08-31"}},
@@ -2465,13 +2916,21 @@ w ISO; liczby ilustracyjne)
       "location": {"lon": 19.9247, "lat": 49.7963, "source": "imgw_api_hydro",
                    "catalog": "2026-10-17", "uncertainty_m": 150,
                    "on_boundary": false},
-      "coverage": {"state": "gaps",
-                   "label": "luki 3% · najdł. 1981.06.02–1982.12.31",
-                   "first": "1950-11-01", "last": "2025-10-31",
-                   "units": 27394, "with_value": 26804, "missing_share": 0.0215,
-                   "longest_gap": {"from": "1981-06-02", "to": "1982-12-31",
-                                   "units": 578},
-                   "complete_years": 71, "unknown_years": []},
+      "coverage": {
+        "H": {"state": "continuous", "label": "ciągły · 1951–2025",
+              "first": "1950-11-01", "last": "2025-10-31", "missing_share": 0.0,
+              "complete_years": 75, "unknown_years": []},
+        "Q": {"state": "gaps",
+              "label": "luki 3% · najdł. 1981.06.02–1982.12.31",
+              "first": "1950-11-01", "last": "2025-10-31",
+              "units": 27394, "with_value": 26804, "missing_share": 0.0215,
+              "longest_gap": {"from": "1981-06-02", "to": "1982-12-31",
+                              "units": 578},
+              "complete_years": 71, "unknown_years": []},
+        "T": {"state": "partial", "label": "częściowy · od 1972 · luki 12%",
+              "first": "1971-11-01", "last": "2025-10-31",
+              "missing_share": 0.12, "complete_years": 41, "unknown_years": []}
+      },
       "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet"
     }
   ],
@@ -2527,11 +2986,12 @@ Decyzja: A-ADR-012.
   wychodzące poza korzeń są odrzucane.
 - **Zapis:** Archiwista nie ma kodu zapisującego w magazynie (w żadnym
   z katalogów producentów); zapisuje
-  tylko indeks, pamięć podglądów i dzienniki (lokalnie), katalog zestawu
-  i — przy dodawaniu zadania projektu z obszarem narysowanym albo
-  wczytanym z pliku — plik geometrii w `<katalog projektu>/obszary/`
-  (zalecenie specu manifestu: geometria w katalogu projektu przenosi się
-  razem z nim).
+  tylko indeks, pamięć podglądów i dzienniki (lokalnie) oraz — na polecenie
+  użytkownika — w katalogu projektu: migawki danych własnych
+  w `<folder danych>/.wersje/` (4.7.1, od v0.2), plik geometrii
+  w `<katalog projektu>/obszary/` przy dodawaniu zadania projektu z obszarem
+  narysowanym albo wczytanym z pliku (zalecenie specu manifestu: geometria
+  w katalogu projektu przenosi się razem z nim) i katalog zestawu (od v1.1).
 - **Pliki geometrii od użytkownika:** limit rozmiaru (50 MB), odczyt
   w procesie roboczym (GDAL na niezaufanym wejściu nie kładzie serwera),
   kopia w lokalnym katalogu roboczym.
@@ -2542,21 +3002,21 @@ Decyzja: A-ADR-012.
 - **Zależności:** wersje przypięte; audyt podatności (`pip-audit`,
   `npm audit`) w bramce wydania.
 
-### 10.2 Tryb zespołu (v0.8)
+### 10.2 Tryb zespołu (v0.4; rozszerzenia od v1.1 i v1.2)
 
 - **Logowanie:** konta lokalne serwera (hasła Argon2id w lokalnej bazie
   serwera, sesje z wygasaniem) albo uwierzytelnianie przez odwrotne proxy
   (nagłówek ufany wyłącznie od skonfigurowanego adresu proxy — droga do SSO
   i Active Directory); bezpośrednie LDAP później.
-- **Role:** „czytelnik” (przegląd, podglądy, zestawy, rozmowy z asystentem
+- **Role:** „czytelnik” (przegląd, podglądy; od v1.1 zestawy, od v1.2 rozmowy z asystentem
   bez wykonywania propozycji), „operator” (zadania w tle: pobieranie,
-  łączenie, projekty, wykonanie propozycji), „administrator” (ustawienia,
-  magazyny, dostawca asystenta, konta).
+  projekty; od v1.2 wykonanie propozycji; od v1.3 łączenie), „administrator” (ustawienia,
+  magazyny, konta; od v1.2 dostawca asystenta).
 - **TLS** obowiązkowe poza `127.0.0.1` (odwrotne proxy z certyfikatem albo
   TLS serwera); HSTS.
 - **Dziennik działań:** kto zlecił i anulował zadanie, zatwierdził
-  propozycję, zmienił ustawienia — w lokalnej bazie serwera, z eksportem.
-- **Limity per osoba:** liczba zadań w tle naraz, budżet asystenta.
+  propozycję (od v1.2), zmienił ustawienia — w lokalnej bazie serwera, z eksportem.
+- **Limity per osoba:** liczba zadań w tle naraz; budżet asystenta od v1.2.
 - Zapisy do wspólnego magazynu nadal wyłącznie przez producentów (Kartograf,
   IMGWTools) w procesach roboczych serwera; równoległe użycie CLI przez
   członków zespołu jest bezpieczne dzięki gwarancjom producentów (zapis
@@ -2580,9 +3040,9 @@ Decyzja: A-ADR-012.
 ## 11. Testy i weryfikacja
 
 - **Bramka (jak w Kartografie):** `pytest -m "not live"`, `ruff check .`,
-  `ruff format --check .`, `mypy archiwista/ tests/`; interfejs:
-  `svelte-check`, testy jednostkowe (Vitest), ESLint, budowa SPA. Wszystko
-  offline.
+  `ruff format --check .`, `mypy archiwista/ tests/`; interfejs: testy
+  w przeglądarce (Playwright) i kontrola składni modułów ES; bez kroku
+  budowania (A-ADR-028). Wszystko offline.
 - **Magazyn testowy:** generator (`tests/fixtures/make_store.py`) buduje
   mały magazyn obejmujący każdą rodzinę produktów (rastry 64 × 64 px, małe
   GeoPackage, ZIP, LAZ z kilkoma punktami), wersje i dowiązania twarde,
@@ -2592,17 +3052,19 @@ Decyzja: A-ADR-012.
   na tym magazynie daje oczekiwaną listę — magazyn testowy jest zgodny
   z formatem Kartografa, a nie z wyobrażeniem Archiwisty. Osobno duży
   magazyn syntetyczny (50 000 slotów) do testów wydajności (`-m perf`).
-- **Katalog IMGW testowy (od v0.9):** buduje go IMGWTools (nie Archiwista)
+- **Katalog IMGW testowy (od v0.5):** buduje go IMGWTools (nie Archiwista)
   z małych archiwów-fixtur: kilka stacji, oba układy plików dobowych hydro
   (miesięczne do 2022, roczne od 2023), CP1250, UTF-8 z BOM, linie
   w cudzysłowach, kody braków, statusy „8” i „9”, suma zbiorcza opadu;
   wersje archiwów (także `relabeled`), dwie wersje szeregów zbioru (bieżąca
   i nieaktualna), katalog stacji (stacja bez położenia, `0,0`, współrzędne
   z dwoma miejscami po przecinku) i przypadki brzegowe (`.incoming/`,
-  nieznana wersja kontraktu, sidecar nieczytelny, plik bez sidecara). Test
-  kontraktu: `iter_store` IMGWTools (IMGW-10) na tym katalogu daje
-  oczekiwaną listę — katalog jest zgodny z formatem IMGWTools, a nie
-  z wyobrażeniem Archiwisty.
+  nieznana wersja kontraktu, sidecar nieczytelny, plik bez sidecara) oraz
+  katalog projektu z `imgw-project.json` obok `kartograf-project.json`
+  (zadanie przypięte i niepobrane, manifest niepoprawny, pozostawiona
+  blokada). Test kontraktu: `iter_store` i `open_project` IMGWTools
+  (IMGW-10, IMGW-14) na tym katalogu dają oczekiwaną listę — katalog jest
+  zgodny z formatem IMGWTools, a nie z wyobrażeniem Archiwisty.
 - **Testy jednostkowe i integracyjne:** indeks (skan pełny, przyrostowy,
   zniknięcia, magazyn niedostępny, dowiązania na „udziale” bez i-węzłów);
   etykiety pokrycia (6.4) na nagranych raportach dostępności, w tym obszar
@@ -2612,14 +3074,21 @@ Decyzja: A-ADR-012.
   pamięci; zestaw (warstwy, układy i ścieżki w `.qgz`, `pliki.csv`,
   atrybucje); asystent (narzędzia, walidacja propozycji, wykonanie tylko
   z CSRF, polecenia wrogie na nagranych odpowiedziach modelu).
-- **Etykiety szeregów i stacje w obszarze (od v0.9):** tabela przypadków
+- **Etykiety szeregów i stacje w obszarze (od v0.5):** tabela przypadków
   granicznych 4.8.4 — zero braków, jeden dzień braku („<1%”), zaokrąglenie
   w górę (2,15% → „3%”), rok przestępny, granica roku hydrologicznego
-  (31 X / 1 XI), zmiana rodzaju lat, stacja otwarta albo zamknięta
-  w zakresie („częściowy”), brak Q przy H, lata nieznane, opad „brak
-  zjawiska” = 0, suma zbiorcza; wybór stacji w obszarze (granica,
-  niepewność położenia, stacje bez położenia); wykres bez interpolacji
-  braków.
+  (31 X / 1 XI), etykiety osobno dla każdej zmiennej (P16: stacja z H bez Q ma dwie różne etykiety, filtr „Q: …” nie ukrywa H), zmiana rodzaju lat dla hydro i dla meteo (P15; także
+  zapamiętanie wyboru, pierwszeństwo `year_type` z adresu URL i zbiór
+  półroczny zostający w latach hydrologicznych), stacja otwarta albo
+  zamknięta w zakresie („częściowy”), brak Q przy H, lata nieznane, opad
+  „brak zjawiska” = 0, suma zbiorcza; żadna stacja nie znika z listy
+  z powodu braków bez jawnego filtra (P14); wybór stacji w obszarze
+  (granica, niepewność położenia); obiekty bez położenia — grupy
+  położenia i liczniki, brak na mapie, obecność w „Katalogu”, filtry
+  atrybutów (P13, 4.3, 6.8), także dla plików Kartografa „bez obrysu”;
+  filtr kodu hydrograficznego „dokładnie” i „z dopływami” na przykładach
+  z listy IMGW (Raba `2138`, Mszanka `21382`, Stradomka `21388`; P19);
+  wykres bez interpolacji braków.
 - **Zgodność z producentami:** test importów — Kartograf tylko
   w `archiwista/adapter/kartograf/`, IMGWTools tylko
   w `archiwista/adapter/imgw/`, reszta zna wyłącznie `archiwista/sources/`
@@ -2627,23 +3096,37 @@ Decyzja: A-ADR-012.
   pobranie przez API Archiwisty i tym samym poleceniem CLI na nagranych
   odpowiedziach źródeł daje ten sam magazyn (wersje, `sha256`, sidecary
   przy zamrożonym zegarze) i te same przypięcia w manifeście (wzór: testy
-  zgodności Kartografa, ADR-037 Z7), a od v0.9 tak samo synchronizacja
+  zgodności Kartografa, ADR-037 Z7), a od v0.5 tak samo synchronizacja
   i szeregi IMGW wobec poleceń `imgw …`; wspierane zakresy wersji
-  Kartografa i IMGWTools w `pyproject.toml` i zadania CI przeciw gałęzi
-  `develop` Kartografa i `master` IMGWTools (wczesne wykrycie zmian
-  łamiących).
+  Kartografa (zależność wymagana) i IMGWTools (extra `[imgw]`)
+  w `pyproject.toml` (5.8).
+- **Dwie konfiguracje (A-ADR-024):** CI uruchamia pełny zestaw (bramka
+  powyżej) osobno bez `[imgw]` i z `[imgw]`. Bez IMGWTools: testy IMGW
+  pomijane z jawnym powodem, a interfejs, API i asystent zachowują się
+  zgodnie z „źródło niedostępne” (ukryte widoki stacji, błąd
+  `source_unavailable` po polsku, brak narzędzi IMGW w asystencie);
+  test importów pilnuje, że Archiwista startuje bez pakietu `imgwtools`.
+  Z `[imgw]`: testy adaptera IMGW i kontraktu na katalogu zbudowanym przez
+  IMGWTools. Sprawdzenie wersji i schematów (`kartograf-meta/1`,
+  `kartograf-project/1`, `imgw-meta/1`, `imgw-project/…`) ma testy
+  zgodności i niezgodności z komunikatem, a rejestr wtyczek — test
+  z atrapą drugiego adaptera zarejestrowaną przez entry point i test
+  uszkodzonej wtyczki (wyjątek przy ładowaniu nie kładzie serwera).
+  Osobne zadanie CI: testy kontraktu względem `develop` Kartografa
+  i `master` IMGWTools (wczesne wykrycie zmian łamiących); jeden plik
+  blokady (lock) dla obu konfiguracji.
 - **Interfejs:** Playwright offline na magazynie testowym ze źródłami
   z nagrań: główny przepływ (UC-01), karta pliku, zadanie z anulowaniem,
-  status i weryfikacja projektu, zestaw, asystent z nagranym modelem, od
-  v0.9 stacje w zlewni (UC-16), karta stacji z wykresem z luką (UC-17)
+  status i weryfikacja projektu, od v1.1 zestaw, od v1.2 asystent z nagranym modelem, od
+  v0.5 stacje w zlewni (UC-16), karta stacji z wykresem z luką (UC-17)
   i nowa publikacja IMGW (UC-19);
   dostępność cyfrowa (axe) na kluczowych widokach; zrzuty kluczowych
   ekranów do porównań.
 - **Wydajność:** cele z 4.5 na magazynie syntetycznym; pomiar na
   prawdziwym udziale SMB jako scenariusz świadomy (`-m smb`).
 - **Testy na żywo (świadomie, `-m live`):** UC-01 (Kraków, NMT), UC-05,
-  UC-06, UC-09 (pogranicze), UC-10 (otwarcie zestawu w QGIS — ręcznie),
-  od v0.9 UC-19 (`HEAD` archiwów hydro 2023–2025, synchronizacja jednego
+  UC-06, od v1.1 UC-09 (pogranicze), UC-10 (otwarcie zestawu w QGIS — ręcznie),
+  od v0.5 UC-19 (`HEAD` archiwów hydro 2023–2025, synchronizacja jednego
   roku) i katalog stacji z publicznego API IMGW;
   dane wyłącznie w `<katalog-danych>` poza repo i poza `/tmp`; raport
   w `docs/research/<RRRR-MM-DD>-<temat>/raport.md` z dokładnymi poleceniami
@@ -2688,7 +3171,7 @@ Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
 | KB-3 | `validate_command(command, options) -> None` — walidacja bez sieci (ta sama co `add_project_task`); `ValidationError` z nazwą opcji, której dotyczy | błędy przy właściwym polu formularza | v0.3 |
 | KB-4 | `format_command(command, options) -> str` — tekst `kartograf …` | „Polecenie Kartografa”, `polecenia.sh`, propozycje asystenta | v0.3 |
 | KB-5 | `run_command(command, options, *, output_dir, update=None, plan=None, cache, workers=None, on_progress=None, on_notice=None, cancel=None)` i `check_command(...) -> UpdatePlan` — wywołanie po nazwie komendy z raportem jej rodziny | proces roboczy bez przełącznika po funkcjach Kartografa | v0.3 |
-| KB-6 | `command_for_file(sidecar) -> CommandCall` — polecenie, które wybiera ten plik (z `request`, `dataset`, wariantu i roku) | „Polecenie Kartografa” i „Dodaj do projektu” z karty pliku | v0.4 |
+| KB-6 | `command_for_file(sidecar) -> CommandCall` — polecenie, które wybiera ten plik (z `request`, `dataset`, wariantu i roku) | „Polecenie Kartografa” i „Dodaj do projektu” z karty pliku | v1.1 |
 | KB-7 | `find_admin_units(query, *, country, level) -> list[AdminUnit]` (kod, nazwa, poziom, obwiednia) — PRG i RUIAN, po nazwie albo kodzie | wybór obszaru po nazwie gminy lub powiatu; narzędzie asystenta | v0.3 (bez KB-7: tylko kody) |
 
 ### 12.3 KC — długie operacje
@@ -2705,16 +3188,16 @@ Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
 |---|---|---|---|
 | KD-1 | w `AvailabilityCombination` szczegóły arkuszy: arkusz → rekord, który pobierze Kartograf (kampania, data lotu, pełny) oraz kompletność każdej kampanii z osobna | etykiety „pełne” i „pełne · N kampanie” (6.4) | v0.3 |
 | KD-2 | `AvailabilityCombination.full_m2` — ląd obszaru w ramkach pełnych arkuszy (z tej samej siatki 1 m co `complete`) | „częściowe · 58%” (6.4) | v0.3 |
-| KD-3 | raport dostępności dla obrazów PL (ortofotomapa, true orto, intensywność): lata i pełność arkuszy ze skorowidza WMS | zestawienie lat dla obrazów | v0.4 |
-| KD-4 | dostępność wydań produktów jednostkowych (BDOT10k i jego archiwum, BDOO, modele 3D, CORINE): które jednostki obszaru mają paczkę w danym wydaniu | wiersze wydań z etykietą pokrycia (6.4) | v0.4 |
+| KD-3 | raport dostępności dla obrazów PL (ortofotomapa, true orto, intensywność): lata i pełność arkuszy ze skorowidza WMS | zestawienie lat dla obrazów | v0.3 |
+| KD-4 | dostępność wydań produktów jednostkowych (BDOT10k i jego archiwum, BDOO, modele 3D, CORINE): które jednostki obszaru mają paczkę w danym wydaniu | wiersze wydań z etykietą pokrycia (6.4) | v0.3 |
 
 ### 12.5 KE, KF, KG — łączenie (sekcja 8)
 
 | ID | API (propozycja) | Po co | Wersja |
 |---|---|---|---|
-| KE | `build_mosaic` / `check_mosaic` (+ `kartograf elevation mosaic`, `kartograf imagery mosaic`; pozycje projektu): wejście jako wybór danych albo lista wersji; VRT albo GeoTIFF na wspólnej siatce; reprojekcja przypięta; produkt pochodny z `extra.derived` i `extra.source_files` | tryb 1 (8.2) | v0.6 |
-| KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 z backlogu: wspólna siatka, EVRF2007 po obu stronach, reguła styku, raport styku | tryb 2, scalona powierzchnia (8.3) | v0.7 |
-| KG | `compare_versions` / `check_compare` (+ `kartograf elevation compare`): model różnic ze statystyką i progiem istotności; później `compare_vector_versions` | tryb 4, poziom 3 (8.5) | v0.6 |
+| KE | `build_mosaic` / `check_mosaic` (+ `kartograf elevation mosaic`, `kartograf imagery mosaic`; pozycje projektu): wejście jako wybór danych albo lista wersji; VRT albo GeoTIFF na wspólnej siatce; reprojekcja przypięta; produkt pochodny z `extra.derived` i `extra.source_files` | tryb 1 (8.2) | v1.3 |
+| KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 z backlogu: wspólna siatka, EVRF2007 po obu stronach, reguła styku, raport styku | tryb 2, scalona powierzchnia (8.3) | v1.4 |
+| KG | `compare_versions` / `check_compare` (+ `kartograf elevation compare`): model różnic ze statystyką i progiem istotności; później `compare_vector_versions` | tryb 4, poziom 3 (8.5) | v1.3 |
 
 ### 12.6 KH — projekty
 
@@ -2740,23 +3223,26 @@ wyjątki z hierarchii `IMGWError`, eksport w `imgwtools.__all__`, CLI = API,
 testy offline na fixturach archiwów. Rdzeń zostaje lekki (`httpx`,
 `pydantic`), a zapis i odczyt Parquet idą do dodatku (np.
 `imgwtools[store]`). IMGW-2, IMGW-4 i IMGW-11 naprawiają też błędy
-niezależne od Archiwisty.
+niezależne od Archiwisty. Samodzielny dokument wymagań dla zespołu
+IMGWTools (cel, kryteria akceptacji, priorytety, zależności i kolejność
+wdrożenia): [`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md).
 
 | ID | Wymaganie (propozycja) | Po co | Wersja |
 |---|---|---|---|
-| IMGW-1 | **Magazyn wersjonowany** (`imgw-store/1`, 12.8): własny katalog ze znacznikiem `imgw-store.json`, nigdy wewnątrz katalogu Kartografa (ani odwrotnie); niezmienne wersje `<etykieta>_<sha8>` (tożsamość = SHA-256 treści) archiwów, katalogu stacji i szeregów zbiorów; katalog tylko przyrostowy — bez nadpisywania, usuwania, dowiązań twardych i plików zmiennych; wersję bieżącą wylicza API (IMGW-10) z reguły z 4.8.1; ścieżki niezależne od bieżącego katalogu (dziś `data_dir` i `db_path` są względne, `IMGWTools/src/imgwtools/config.py:35-39`); cache SQLite tylko lokalnie, nigdy w katalogu IMGW | wersje, odtwarzalne zestawy i praca zespołowa na SMB bez blokad; prostsza semantyka niż ADR-036 Kartografa to mniej miejsc na rozbieżność dwóch implementacji | v0.9 |
-| IMGW-2 | **Zapis atomowy**: katalog roboczy `.incoming/<host>_<pid>_<token>/` na tym samym systemie plików, jeden odczyt treści (SHA-256), `fsync`, publikacja wyłączna (np. `os.rename` gotowego katalogu wersji — błąd, gdy cel istnieje), sprzątanie pozostałości starszych niż 24 h; pliki szeregów budowane lokalnie i kopiowane jako gotowe bajty; płaskie `imgw fetch` — `.part` i `os.replace`, a niepełny plik nigdy nie jest „już istnieje” (dziś zapis wprost do pliku docelowego, `IMGWTools/src/imgwtools/cli/fetch.py:28-67`) | brak połowicznych plików po przerwaniu i anulowaniu (5.6) | v0.9 |
-| IMGW-3 | **Sidecar `imgw-meta/1`** (12.8): `<plik>.meta.json` przy każdej wersji, pisany raz; wspólna koperta pól z `kartograf-meta/1` i pola IMGW (producent i jego wersja, okres, schemat szeregów, źródła katalogu stacji); `license.attribution` z formułami IMGW (4.8.5) | jedna logika wersji, pochodzenia i licencji w indeksie dla obu producentów | v0.9 |
-| IMGW-4 | **Archiwa 1:1 i rozdzielone nazwy**: publiczny katalog plików `archive_files(dataset, *, years, months=None)` ze ścieżką względną jak na serwerze i polami okresu; slot archiwum = ta ścieżka, więc `dane_meteorologiczne/dobowe/klimat/2001/2001_01_k.zip` i `…/terminowe/klimat/2001/2001_01_k.zip` się nie zderzają (dziś w płaskim `--output` drugi plik jest po cichu pomijany, `IMGWTools/src/imgwtools/core/url_builder.py:230-241`); ten sam układ w płaskim `imgw fetch`; listy stacji IMGW (`lista_stacji_hydro.csv`, `wykaz_stacji.csv`) też jako archiwa | brak cichych pominięć; jedna lista plików dla CLI, API i Archiwisty | v0.9 |
-| IMGW-5 | **Aktualność i synchronizacja**: `check_store(root, *, datasets, years) -> StorePlan` bez pobierania — `HEAD` archiwów (`ETag`, `Last-Modified`; `Content-Length` jako rozmiar w planie) i listing lat opublikowanych; statusy jak `kartograf-plan/1` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`) i stan szeregów zbiorów (`current`, `outdated`); postać JSON `imgw-plan/1` dla `--plan`; `sync_store(root, *, plan=None, series=True, …)`: nowa wersja tylko przy innej treści, ta sama treść pod nowymi nagłówkami = `relabeled` (nowa etykieta, kopia treści — archiwa są małe), pozycje zmienione od planu zgłaszane jako nieaktualne; `download_*` zwracają też nagłówki odpowiedzi (dziś same bajty, `IMGWTools/src/imgwtools/fetch.py:453-460, 549-556`) | „Sprawdź aktualność” i „Pobierz nowsze” (UC-19); opóźnione i ponowne publikacje IMGW (4.8.2) | v0.9 |
-| IMGW-6 | **Parsery i normalizacja**: parsery dobowe meteo — klimat (`k_d`) i opad (`o_d`) — obok hydro (`IMGWTools/src/imgwtools/db/parsers.py:436-445`); rekordy z flagą: wartość, brak, brak zjawiska = 0, suma zbiorcza opadu (4.8.3); wykrywanie kodowania, separatora i cudzysłowów dla wszystkich roczników 1951–2025 (dziś sprawdzone 2019–2024) | wartości i braki bez wiedzy o formacie IMGW poza IMGWTools (A-ADR-014) | v0.9 |
-| IMGW-7 | **Szeregi zbioru**: `build_series(root, *, dataset) -> SeriesReport` — migawka wszystkich stacji zbioru z bieżących wersji archiwów: plik Parquet `imgw-series/1` na stację i spis `series.json` (12.8); `source_files[]` = archiwa wejściowe; ten sam zestaw `sha256` wejść i ta sama wersja schematu = `reused`, bez zapisu (wzór HSG, ADR-036 D33) — chroni też przed wersjami różnymi tylko bajtami zapisu biblioteki Parquet; publikacja jak IMGW-2 | wykres, pokrycie, zestaw i Hydrolog bez parsowania archiwów | v0.9 |
-| IMGW-8 | **Pokrycie szeregów**: `summarize_coverage(records) -> list[StationCoverage]` — dla stacji i zmiennej: pierwsza i ostatnia data z wartością, lista przerw (od–do), liczba jednostek z wartością i sum zbiorczych; zapis w `series.json` razem z okresami wejść | etykiety 4.8.4 dla dowolnego zakresu i rodzaju lat bez czytania szeregów (A-ADR-021) | v0.9 |
-| IMGW-9 | **Katalog stacji**: wersjonowany `stations.geojson` (RFC 7946) z polami z 4.8.1 dla hydro i meteo; źródła i walidacja z 4.8.1 (publiczne API IMGW → statyczny plik IMGWTools → plik użytkownika; `0,0` i punkty poza krajem = brak położenia); kod hydrograficzny i kolejność z listy IMGW (dziś odrzucane, `IMGWTools/src/imgwtools/stations.py:284-292`); naprawa nieistniejącego pola `riverName` (`IMGWTools/src/imgwtools/stations.py:349`); API mapy `hydro-back` niewymagane | stacje na mapie i w zlewni; odtwarzalny wybór stacji, gdy źródła się zmienią | v0.9 |
-| IMGW-10 | **API odczytu** (odpowiednik KA): `store_info(root)` (wersje kontraktów), `iter_store(root, *, kind=None) -> Iterator[StoreEntry]` (wersje i problemy: `.incoming/` starsze niż 24 h, sidecar nieczytelny, nieznana wersja schematu, plik bez sidecara, katalog nieznany), `read_meta(path) -> Meta` (typowany, tolerancyjny), `current_version(slot)`, `read_catalog(version)`, `read_series_index(version)`, `read_series(version, *, station, variables, start=None, end=None)` | adapter IMGW bez własnego parsera plików (A-ADR-014, A-ADR-019) | v0.9 |
-| IMGW-11 | **Katalog komend i CLI = API** (odpowiednik KB): `data_commands()` (komendy, opcje, dozwolone wartości, opisy po polsku), `validate_command`, `format_command` → `imgw …`, `run_command` i `check_command` z `on_progress`, `on_notice` (poziom, kod, tekst — także informacja o celu użycia danych, 4.8.5) i `cancel` sprawdzanym między plikami; CLI woła te same funkcje (dziś `imgw fetch` pobiera własną `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); wyjątki z hierarchii `IMGWError` | formularze, „Okno planu”, polecenie do skopiowania, anulowanie bez zabijania procesu | v0.9 |
-| IMGW-12 | **Eksport szeregu**: `export_series(version, station, path, *, variables, format="csv")` — UTF-8, separator `,`, kropka dziesiętna, daty ISO, nagłówek z jednostkami, pusta komórka = brak, kolumna flag | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`) | v0.9 |
-| IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1` — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.9 |
+| IMGW-1 | **Magazyn wersjonowany** (`imgw-store/1`, 12.8): własny katalog ze znacznikiem `imgw-store.json`, nigdy wewnątrz katalogu Kartografa (ani odwrotnie); niezmienne wersje `<etykieta>_<sha8>` (tożsamość = SHA-256 treści) archiwów, katalogu stacji i szeregów zbiorów; katalog tylko przyrostowy — bez nadpisywania, usuwania, dowiązań twardych i plików zmiennych; wersję bieżącą wylicza API (IMGW-10) z reguły z 4.8.1; ścieżki niezależne od bieżącego katalogu (dziś `data_dir` i `db_path` są względne, `IMGWTools/src/imgwtools/config.py:35-39`); cache SQLite tylko lokalnie, nigdy w katalogu IMGW | wersje, odtwarzalne zestawy i praca zespołowa na SMB bez blokad; prostsza semantyka niż ADR-036 Kartografa to mniej miejsc na rozbieżność dwóch implementacji | v0.5 |
+| IMGW-2 | **Zapis atomowy**: katalog roboczy `.incoming/<host>_<pid>_<token>/` na tym samym systemie plików, jeden odczyt treści (SHA-256), `fsync`, publikacja wyłączna (np. `os.rename` gotowego katalogu wersji — błąd, gdy cel istnieje), sprzątanie pozostałości starszych niż 24 h; pliki szeregów budowane lokalnie i kopiowane jako gotowe bajty; płaskie `imgw fetch` — `.part` i `os.replace`, a niepełny plik nigdy nie jest „już istnieje” (dziś zapis wprost do pliku docelowego, `IMGWTools/src/imgwtools/cli/fetch.py:28-67`) | brak połowicznych plików po przerwaniu i anulowaniu (5.6) | v0.5 |
+| IMGW-3 | **Sidecar `imgw-meta/1`** (12.8): `<plik>.meta.json` przy każdej wersji, pisany raz; wspólna koperta pól z `kartograf-meta/1` i pola IMGW (producent i jego wersja, okres, schemat szeregów, źródła katalogu stacji); `license.attribution` z formułami IMGW (4.8.5) | jedna logika wersji, pochodzenia i licencji w indeksie dla obu producentów | v0.5 |
+| IMGW-4 | **Archiwa 1:1 i rozdzielone nazwy**: publiczny katalog plików `archive_files(dataset, *, years, months=None)` ze ścieżką względną jak na serwerze i polami okresu; slot archiwum = ta ścieżka, więc `dane_meteorologiczne/dobowe/klimat/2001/2001_01_k.zip` i `…/terminowe/klimat/2001/2001_01_k.zip` się nie zderzają (dziś w płaskim `--output` drugi plik jest po cichu pomijany, `IMGWTools/src/imgwtools/core/url_builder.py:230-241`); ten sam układ w płaskim `imgw fetch`; listy stacji IMGW (`lista_stacji_hydro.csv`, `wykaz_stacji.csv`) też jako archiwa | brak cichych pominięć; jedna lista plików dla CLI, API i Archiwisty | v0.5 |
+| IMGW-5 | **Aktualność i synchronizacja**: `check_store(root, *, datasets, years) -> StorePlan` bez pobierania — `HEAD` archiwów (`ETag`, `Last-Modified`; `Content-Length` jako rozmiar w planie) i listing lat opublikowanych; statusy jak `kartograf-plan/1` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`) i stan szeregów zbiorów (`current`, `outdated`); postać JSON `imgw-plan/1` dla `--plan`; `sync_store(root, *, plan=None, series=True, …)`: nowa wersja tylko przy innej treści, ta sama treść pod nowymi nagłówkami = `relabeled` (nowa etykieta, kopia treści — archiwa są małe), pozycje zmienione od planu zgłaszane jako nieaktualne; `download_*` zwracają też nagłówki odpowiedzi (dziś same bajty, `IMGWTools/src/imgwtools/fetch.py:453-460, 549-556`) | „Sprawdź aktualność” i „Pobierz nowsze” (UC-19); opóźnione i ponowne publikacje IMGW (4.8.2) | v0.5 |
+| IMGW-6 | **Parsery i normalizacja**: parsery dobowe meteo — klimat (`k_d`) i opad (`o_d`) — obok hydro (`IMGWTools/src/imgwtools/db/parsers.py:436-445`); rekordy z flagą: wartość, brak, brak zjawiska = 0, suma zbiorcza opadu (4.8.3); wykrywanie kodowania, separatora i cudzysłowów dla wszystkich roczników 1951–2025 (dziś sprawdzone 2019–2024) | wartości i braki bez wiedzy o formacie IMGW poza IMGWTools (A-ADR-014) | v0.5 |
+| IMGW-7 | **Szeregi zbioru**: `build_series(root, *, dataset) -> SeriesReport` — migawka wszystkich stacji zbioru z bieżących wersji archiwów, także stacji z lukami i bez położenia (nic nie jest pomijane z powodu braków, P14): plik Parquet `imgw-series/1` na stację i spis `series.json` (12.8); kolumna `hydro_year` we wszystkich zbiorach, także meteo (oba rodzaje lat dla obu rodzajów danych, P15); `source_files[]` = archiwa wejściowe; ten sam zestaw `sha256` wejść i ta sama wersja schematu = `reused`, bez zapisu (wzór HSG, ADR-036 D33) — chroni też przed wersjami różnymi tylko bajtami zapisu biblioteki Parquet; publikacja jak IMGW-2 | wykres, pokrycie, zestaw i Hydrolog bez parsowania archiwów | v0.5 |
+| IMGW-8 | **Pokrycie szeregów**: `summarize_coverage(records) -> list[StationCoverage]` — osobno dla każdej zmiennej stacji (P16; wynik per stacja × zmienna, bez agregatu stacji): pierwsza i ostatnia data z wartością, lista przerw (od–do), liczba jednostek z wartością i sum zbiorczych; zapis w `series.json` razem z okresami wejść | etykiety 4.8.4 dla dowolnego zakresu i rodzaju lat bez czytania szeregów (A-ADR-021) | v0.5 |
+| IMGW-9 | **Katalog stacji**: wersjonowany `stations.geojson` (RFC 7946) z polami z 4.8.1 dla hydro i meteo; źródła i walidacja z 4.8.1 (publiczne API IMGW → statyczny plik IMGWTools → plik użytkownika; `0,0` i punkty poza krajem = brak położenia); stacja bez położenia to pełnoprawny wpis (`geometry: null` i powód braku: `none`, `zero`, `outside_country`), nigdy pomijany (P13, A-ADR-022); kod hydrograficzny jako tekst (porównanie prefiksów, P19) i kolejność z listy IMGW (dziś odrzucane, `IMGWTools/src/imgwtools/stations.py:284-292`); naprawa nieistniejącego pola `riverName` (`IMGWTools/src/imgwtools/stations.py:349`); API mapy `hydro-back` niewymagane | stacje na mapie, w Katalogu (także bez położenia) i w zlewni; odtwarzalny wybór stacji, gdy źródła się zmienią | v0.5 |
+| IMGW-10 | **API odczytu** (odpowiednik KA): `store_info(root)` (wersje kontraktów), `iter_store(root, *, kind=None) -> Iterator[StoreEntry]` (wersje i problemy: `.incoming/` starsze niż 24 h, sidecar nieczytelny, nieznana wersja schematu, plik bez sidecara, katalog nieznany), `read_meta(path) -> Meta` (typowany, tolerancyjny), `current_version(slot)`, `read_catalog(version)`, `read_series_index(version)`, `read_series(version, *, station, variables, start=None, end=None)` | adapter IMGW bez własnego parsera plików (A-ADR-014, A-ADR-019) | v0.5 |
+| IMGW-11 | **Katalog komend i CLI = API** (odpowiednik KB): `data_commands()` (komendy, opcje, dozwolone wartości, opisy po polsku), `validate_command`, `format_command` → `imgw …`, `run_command` i `check_command` z `on_progress`, `on_notice` (poziom, kod, tekst — także informacja o celu użycia danych, 4.8.5) i `cancel` sprawdzanym między plikami; CLI woła te same funkcje (dziś `imgw fetch` pobiera własną `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); wyjątki z hierarchii `IMGWError` | formularze, „Okno planu”, polecenie do skopiowania, anulowanie bez zabijania procesu | v0.5 |
+| IMGW-12 | **Eksport szeregu**: `export_series(version, station, path, *, variables, year_type=None, format="csv")` — UTF-8, separator `,`, kropka dziesiętna, daty ISO, nagłówek z jednostkami, kolumna roku w wybranej konwencji (`year_type`: `hydrological` albo `calendar`, dla hydro i meteo, P15; `None` = konwencja numeracji archiwów zbioru, czyli `year_type` spisu `series.json`), pusta komórka = brak, kolumna flag; wszystkie dni ciągłego kalendarza stacji, także z brakami (P14) | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`), konsumowany przez Archiwistę od v1.1 | v0.5 (IMGWTools) |
+| IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.5 |
+| IMGW-14 | **Manifest projektu IMGW** (`imgw-project/1`, P18, A-ADR-023): plik `imgw-project.json` w katalogu projektu obok `kartograf-project.json` (każdy plik ma jednego właściciela; projekt może mieć jeden albo oba); pola: `schema`, `store_dir` (katalog IMGW; ścieżki względne i bezwzględne jak w manifeście Kartografa), `tasks[]` — `name` (reguły nazw Kartografa), `command` (komenda IMGW z IMGW-11, np. `series select`), `options` (zbiór, stacje jako jawna lista kodów — wybór obszarem zapisany po rozstrzygnięciu, z `geometry` i `geometry_sha256` jak w Kartografie — zmienne, lata i `year_type`), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — ścieżka wersji względna do `store_dir`; `sha256`; `station` dla plików stacji); API = CLI (`imgw project init/add/remove/download/status/verify`): `init_project`, `open_project` (pełna walidacja, błędy po polsku), `add_project_task` (walidacja jak `validate_command`), `remove_project_task`, `download_project` (synchronizacja potrzebnych archiwów, szeregi z `reused`, przypięcie; odtwarzanie tylko przy identycznych `sha256`), bliźniak `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (bez sieci); zapis atomowy (`os.replace`) pod blokadą `.imgw-project.lock` (`mkdir`, właściciel, bez przejmowania) i scalanie per zadanie | dane IMGW jako zadania i przypięcia projektu w v1.0: „Dodaj do projektu” dla stacji, status, weryfikacja, odtwarzanie u kolegi, zestaw z przypięć (4.7, 8.4) | v0.5 |
 
 ### 12.8 Kontrakt formatu IMGW (rekomendacja, A-ADR-020)
 
@@ -2807,10 +3293,13 @@ kandydatem na wspólny `store-meta/1`, gdyby doszedł trzeci producent.
 **Szeregi zbioru (`imgw-series/1`).** Jedna wersja to migawka wszystkich
 stacji zbioru zbudowana z określonych wersji archiwów: plik Parquet na
 stację (ciągły kalendarz od pierwszego do ostatniego rekordu stacji;
-kolumny: `date` — data kalendarzowa, dla hydro także `hydro_year`, a dla
+kolumny: `date` — data kalendarzowa, `hydro_year` we wszystkich zbiorach
+(także meteo, P15), a dla
 każdej zmiennej wartość i flaga: `value`, `missing`, `no_phenomenon`,
 `accumulated`; jednostki w metadanych pliku) oraz spis `series.json`
-z okresami wejść (`periods`) i — dla każdej stacji — plikiem, jego
+z konwencją numeracji archiwów zbioru (`year_type`; to nie rodzaj lat
+widoku — ten wybiera użytkownik, 6.7), okresami wejść (`periods`) i — dla
+każdej stacji — plikiem, jego
 `sha256`, liczbą wierszy i pokryciem zmiennych (IMGW-8). Ze spisu
 Archiwista buduje indeks pokrycia jednym odczytem; pliki Parquet czyta
 dopiero do wykresu i zestawu. Sidecar i spis (fragmenty, wartości
@@ -2865,8 +3354,8 @@ ilustracyjne):
 }
 ```
 
-**Wersjonowanie schematów (IMGW-13):** `imgw-store/1`, `imgw-meta/1`
-i `imgw-series/1` zmieniają się addytywnie; zmiana niezgodna to `/2`
+**Wersjonowanie schematów (IMGW-13):** `imgw-store/1`, `imgw-meta/1`,
+`imgw-series/1` i `imgw-project/1` zmieniają się addytywnie; zmiana niezgodna to `/2`
 i czytnik obu wersji w okresie przejściowym. Archiwista deklaruje
 obsługiwane wersje, a katalogu w nieznanej wersji nie czyta, tylko go
 zgłasza (UC-13).
@@ -2885,34 +3374,33 @@ zgłasza (UC-13).
   Archiwista z list przerw), żadnej zależności od Kartografa (i odwrotnie);
   API mapy `hydro-back` nie jest wymagane (4.8.1).
 
-## 13. Roadmapa (v0.1 → v1.0)
+## 13. Roadmapa (v0.1 → v1.0 MVP → v1.x)
 
-Kolejność daje najpierw wartość bez nowych funkcji Kartografa tam, gdzie
-się da, i dokłada tryby zależne od Kartografa, gdy ten je wyda. Dane IMGW
-(v0.9) czekają na wydanie IMGWTools z kontraktem (12.7); interfejs źródła
-powstaje w v0.1, więc drugi adapter nie wymaga przebudowy.
+MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025). Kolejność i zakres wydań określa `docs/SCOPE.md`; ta sekcja zachowuje szczegóły zakresu poszczególnych wersji i kryteria akceptacji. Najpierw powstają funkcje niewymagające nowych funkcji Kartografa, a później tryby zależne od jego wydań. Dane IMGW (v0.5) czekają na wydanie IMGWTools z kontraktem (12.7); interfejs źródła i mechanizm wtyczek powstają w v0.1 (A-ADR-024), więc adapter IMGW (extra `archiwista[imgw]`) nie wymaga przebudowy.
 
 | Wersja | Zakres | Wymaga od producentów |
 |---|---|---|
-| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru | KA-1..KA-6 |
-| v0.2 „Podglądy” | podglądy, Stos i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna | — |
-| v0.3 „Działania” | dostępność u źródła z etykietami, Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1, KD-2, KH-1 |
-| v0.4 „Zestaw” | zestaw do QGIS, PL + CZ bez scalania, dostępność obrazów i wydań, polecenie z karty pliku | KB-6, KD-3, KD-4 |
-| v0.5 „Asystent” | czat z narzędziami, propozycje i potwierdzenie | — |
-| v0.6 „Mozaika i porównanie” | mozaika VRT/GeoTIFF, model różnic, zestaw z kopią danych | KE, KG |
-| v0.7 „PL + CZ” | scalona powierzchnia przygraniczna | KF |
-| v0.8 „Zespół” | serwer w sieci lokalnej: logowanie, role, TLS, dziennik działań, wspólna kolejka | — |
-| v0.9 „Stacje IMGW” | katalog IMGW: stacje na mapie, Zestawienie i Karta stacji z wykresem, porównanie stacji, etykiety pokrycia szeregów, aktualność i synchronizacja archiwów, szeregi, zestaw z danymi IMGW, narzędzia asystenta | IMGWTools: IMGW-1..IMGW-13 |
-| v1.0 „Wydanie” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty | wydania Kartografa i IMGWTools ze wszystkimi powyższymi |
+| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera | KA-1..KA-6 |
+| v0.2 „Podglądy” | podglądy, Wachlarz i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna; dane własne projektu i migawki | — |
+| v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
+| v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, role, TLS, dziennik działań, wspólna kolejka | — |
+| v0.5 „Stacje IMGW” | extra `archiwista[imgw]` (adapter IMGW jako wtyczka); katalog IMGW: stacje na mapie i w Katalogu (także bez położenia), Zestawienie i Karta stacji z wykresem, porównanie stacji, etykiety pokrycia szeregów osobno dla każdej zmiennej, w obu rodzajach lat, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW | IMGWTools: IMGW-1..IMGW-14 |
+| v1.0 „Wydanie (MVP)” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty; scenariusze MVP | wydania Kartografa i IMGWTools wymagane do v0.5 |
+| v1.1 „Zestaw” | zestaw do QGIS (w tym warstwa stacji IMGW, CSV i formuły), PL + CZ bez scalania, polecenie z karty pliku | KB-6; IMGW-12 |
+| v1.2 „Asystent” | czat z narzędziami (także IMGW), propozycje i potwierdzenie; budżet asystenta per osoba | — |
+| v1.3 „Mozaika i porównanie” | mozaika VRT/GeoTIFF, model różnic, zestaw z kopią danych | KE, KG |
+| v1.4 „PL + CZ” | scalona powierzchnia przygraniczna | KF |
 
 ### v0.1 „Przeglądarka”
 
 Zakres: `archiwista serve` z kreatorem pierwszego uruchomienia; magazyny
-i katalogi projektów; interfejs źródła z adapterem Kartografa (5.3);
+i katalogi projektów; interfejs źródła z adapterem Kartografa (5.3) i mechanizm
+wtyczek (rejestr z entry points, stany źródeł, sprawdzenie wersji i schematów,
+błąd „źródło niedostępne”; 5.8) z atrapą drugiego adaptera;
 indeks (pełny, przyrostowy, odświeżanie widoku);
 „Mapa” z obrysami i zaznaczaniem obszaru (prostokąt, wielokąt, godło, plik)
 oraz stanem magazynu dla obszaru i produktu („lokalnie 83% obszaru”);
-„Katalog” z filtrami i wyszukiwaniem; „Karta pliku” (wersje, metadane,
+„Katalog” z filtrami, wyszukiwaniem i grupą „bez obrysu” (6.8); „Karta pliku” (wersje, metadane,
 licencja, grupa `parent_request`, kopiowanie ścieżek); „Projekty” (manifesty,
 przypięcia, `get_project_status`, indeks użycia); „Magazyn” (zajętość,
 problemy); ochrona trybu lokalnego (10.1).
@@ -2932,22 +3420,34 @@ Kryteria akceptacji:
    dostęp do wartości technicznej.
 7. Warstwy poza adapterami korzystają tylko z interfejsu źródła: test
    importów i test z atrapą drugiego adaptera zielone (sekcja 11).
+8. Mechanizm wtyczek (A-ADR-024): adaptery rejestrowane przez entry points
+   w grupie `archiwista.sources`; atrapa drugiego adaptera, zarejestrowana
+   w teście tą samą drogą, pojawia się w interfejsie i API bez zmian
+   w warstwach wyżej; brak pakietu producenta daje „źródło niedostępne”
+   (nie awarię), a sprawdzenie wersji i schematów przy starcie pokazuje
+   czytelny komunikat po polsku (5.8).
 
 ### v0.2 „Podglądy”
 
-Zakres: podglądy (5.7) z pamięcią po `sha256`; „Stos” i „Oś czasu” dla
+Zakres: podglądy (5.7) z pamięcią po `sha256`; „Wachlarz” i „Oś czasu” dla
 danych lokalnych (lata i kampanie w magazynie); porównanie metadanych
-i kurtyna (8.5, poziomy 1 i 2).
+i kurtyna (8.5, poziomy 1 i 2); dane własne i migawki (4.7.1, A-ADR-027).
 
 Kryteria: każdy typ pliku przykładowego magazynu ma podgląd albo podany
 powód braku; obrysy CZ zgodne z rzeczywistością (punkt kontrolny na styku
 PL/CZ, odchyłka ≤ 2 m); ten sam plik nie jest przeliczany drugi raz; limit
 pamięci podglądów przestrzegany; mapa z 5 000 obrysów płynna (≥ 30 klatek/s
-na komputerze odniesienia).
+na komputerze odniesienia). Dane własne: folder projektu z GeoPackage,
+Shapefile i GeoTIFF zaindeksowany z zasięgiem i podglądem; migawka
+GeoPackage otwartego do edycji w QGIS daje spójną kopię (test integralności
+SQLite); przerwanie migawki nie zostawia częściowej wersji; ta sama treść
+nie tworzy drugiej migawki; zmiana pliku po migawce jest wykryta.
 
 ### v0.3 „Działania”
 
-Zakres: główny przepływ z dostępnością u źródła (wysokości PL i CZ)
+Zakres: główny przepływ z dostępnością u źródła (wysokości PL i CZ; obrazy
+PL — KD-3; wydania produktów jednostkowych, np. BDOT10k — KD-4; decyzje
+użytkownika 2026-10-18)
 i etykietami pokrycia (6.4); „Okno planu”; pobieranie z formularza
 i z wklejonego polecenia; zadania w tle z postępem i anulowaniem;
 sprawdzanie aktualności i „Pobierz nowsze”; akcje projektów (utworzenie,
@@ -2967,73 +3467,42 @@ Kryteria:
    ponownie gotowych jednostek.
 6. Testy na żywo UC-01 i UC-06 z raportem.
 
-### v0.4 „Zestaw”
-
-Zakres: tryb 3 (8.4), tryb 2 bez scalania (8.3), dostępność obrazów PL
-i wydań produktów jednostkowych (KD-3, KD-4), „Polecenie Kartografa”
-i „Dodaj do projektu” z karty pliku (KB-6), „Katalog” jako karty.
-
-Kryteria: `.qgz` otwiera się w QGIS 3.34 LTR i 3.40 bez pytań o układ;
-warstwy wskazują pliki wersji; sumy w `pliki.csv` równe przypięciom;
-`ATRYBUCJE.txt` wymienia każdego dostawcę zestawu; zmiana przypięć
-w manifeście oznacza zestaw jako nieaktualny; UC-09 (pogranicze) na żywo
-w wariancie bez scalania.
-
-### v0.5 „Asystent”
-
-Zakres: sekcja 7.
-
-Kryteria: zero wykonań bez potwierdzenia (także dla poleceń wrogich);
-co najmniej 80% poprawnych propozycji w zestawie ewaluacyjnym na modelu
-referencyjnym; licznik kosztów i limit miesięczny działają; `provider =
-"none"` wyłącza panel i wszystkie zapytania do dostawców; wynik modelu
-lokalnego (API zgodne z OpenAI) jest zmierzony i opublikowany w dokumentacji.
-
-### v0.6 „Mozaika i porównanie”
-
-Zakres: tryb 1 (8.2), tryb 4 poziom 3 (8.5), zestaw „z kopią danych”.
-
-Kryteria: mozaika VRT i GeoTIFF arkuszy NMT 0,5 m dla obszaru trafia do
-magazynu z sidecarem i `source_files`, a ponowne uruchomienie daje
-`reused`; różne układy wysokości kończą się błędem z podpowiedzią; model
-różnic ma statystykę i próg istotności; obie operacje działają jako zadania
-projektu z przypięciem wejść i wyniku.
-
-### v0.7 „PL + CZ”
-
-Zakres: tryb 2, scalona powierzchnia (8.3).
-
-Kryteria: powierzchnia dla obszaru przy granicy (np. Cieszyn) w EPSG:2180
-i EPSG:5514 z raportem styku; Bpv z EVRF2007 → błąd z podpowiedzią; ani
-jednego zera w miejscu `nodata`.
-
-### v0.8 „Zespół”
+### v0.4 „Zespół”
 
 Zakres: 10.2 i topologia z A-ADR-013 (serwer w sieci lokalnej): logowanie,
-role, TLS, dziennik działań, wspólna kolejka, limity per osoba, aliasy
-ścieżek per klient, pobieranie plików przez HTTP.
+role, TLS, dziennik działań, wspólna kolejka, limity zadań per osoba,
+aliasy ścieżek per klient, pobieranie plików przez HTTP.
 
 Kryteria: scenariusz na żywo z trzema osobami — wspólna kolejka nie pobiera
 tej samej jednostki dwa razy; uprawnienia ról sprawdzone testami; dziennik
 działań kompletny; serwer nie startuje poza `127.0.0.1` bez logowania i TLS.
 
-### v0.9 „Stacje IMGW”
+### v0.5 „Stacje IMGW”
 
-Zakres: adapter IMGW i katalog IMGW w konfiguracji magazynu (A-ADR-019);
-indeks stacji, szeregów i archiwów; warstwa stacji, „Zestawienie” stacji
-(Tabela, Oś czasu) z etykietami pokrycia szeregów (4.8.4) i przełącznikiem
-rodzaju lat; „Karta stacji” z wykresem; porównanie stacji; sprawdzenie
-aktualności archiwów (`ETag`, `Last-Modified`), synchronizacja i szeregi
-jako zadania w tle IMGWTools z „Oknem planu” i poleceniem `imgw …`; zestaw
-(8.4) z warstwą stacji, szeregami w CSV i formułami IMGW; narzędzia
-asystenta (7.3, 7.11); w zespole pobiera „operator”, jak dla Kartografa.
+Zakres: adapter IMGW jako wtyczka (`archiwista[imgw]`, A-ADR-024) i katalog IMGW w konfiguracji magazynu (A-ADR-019);
+indeks stacji, szeregów i archiwów; warstwa stacji, „Katalog” stacji
+z grupą „bez położenia” i filtrem kodu hydrograficznego (6.8, P13, P19),
+„Zestawienie” stacji (Tabela, Oś czasu) z etykietami pokrycia szeregów
+osobnymi dla każdej zmiennej (4.8.4, P16) i przełącznikiem rodzaju lat dla hydro i meteo (P15); „Karta
+stacji” z wykresem; porównanie stacji; sprawdzenie aktualności archiwów
+(`ETag`, `Last-Modified`), synchronizacja i szeregi jako zadania w tle
+IMGWTools z „Oknem planu” i poleceniem `imgw …`; zadania projektu IMGW
+z przypięciami (`imgw-project.json`, IMGW-14, A-ADR-023); w zespole pobiera „operator”, jak dla Kartografa.
 
-Dlaczego v0.9: korzysta z mechanizmów v0.3–v0.8 (zadania w tle, „Okno
-planu”, zestaw, asystent, tryb zespołu), a IMGWTools potrzebuje czasu na
+Dlaczego v0.5: korzysta z mechanizmów v0.3–v0.4 (zadania w tle, „Okno
+planu”, tryb zespołu), a IMGWTools potrzebuje czasu na
 kontrakt magazynu (dziś Beta bez magazynu); jest przed v1.0, bo dane IMGW
 należą do zakresu wydania (decyzja użytkownika 2026-10-17). Gdy IMGWTools
 wyda IMGW-1..IMGW-10 wcześniej, część tylko do odczytu (mapa, karta,
 wykres) może wejść wcześniej bez zmiany kolejności pozostałych wersji.
+
+Extra `archiwista[imgw]` (A-ADR-024): adapter IMGW jest wtyczką, więc v0.5
+korzysta z interfejsu źródła i mechanizmu wtyczek z v0.1; wersja wnosi do pakietu
+extra `[imgw]` (zakres wersji IMGWTools ustalany przy wydaniu), wpis
+entry point adaptera IMGW, sprawdzenie wersji i schematów `imgw-meta/1`
+i `imgw-project/…` oraz drugą konfigurację CI (z `[imgw]`). Bez
+IMGWTools aplikacja działa jak w v0.4, a widoki IMGW są
+ukryte (5.8).
 
 Kryteria akceptacji:
 
@@ -3044,35 +3513,90 @@ Kryteria akceptacji:
    poleceniem `imgw …` dają te same wersje i `sha256` (nagrane odpowiedzi
    IMGW, zamrożony zegar).
 3. Etykiety pokrycia zgodne z ręcznym wyliczeniem dla tabeli przypadków
-   granicznych (sekcja 11), w obu rodzajach lat.
+   granicznych (sekcja 11), w obu rodzajach lat dla hydro i meteo;
+   wszystkie stacje obecne niezależnie od braków (P14).
 4. Nowe `ETag` i `Last-Modified` na nagraniu → „nowsza publikacja”; po
    pobraniu nowa wersja archiwum i nowa wersja szeregów zbioru, stare
-   wersje nietknięte, a zestaw ze starszymi szeregami oznaczony
-   „nieaktualny”.
+   wersje nietknięte.
 5. Anulowanie synchronizacji w trakcie: brak częściowych wersji; skan bez
    błędów poza zgłoszonymi pozostałościami `.incoming/`.
 6. Stacje w zlewni z pliku Hydrografa (EPSG:2180) zgodne z ręcznym
    przecięciem; stacje przy granicy z plakietką wg niepewności położenia;
-   stacje bez położenia tylko na liście.
+   stacje bez położenia nie na mapie, tylko w „Katalogu” — z licznikiem
+   na mapie i wyborem po rzece albo kodzie hydrograficznym (6.8).
 7. Wykres pełnego szeregu dobowego stacji spełnia cel z 4.5, a luka
    w danych jest przerwą linii (test na szeregu z luką — zero interpolacji).
 8. Formuły IMGW (§5 ust. 3, przy szeregach także ust. 4) w sidecarach,
-   karcie stacji, porównaniu i `ATRYBUCJE.txt` zestawu.
-9. Asystent: co najmniej 5 poleceń IMGW w zestawie ewaluacyjnym, zero
-   wykonań bez potwierdzenia, propozycje bez obliczeń.
+   karcie stacji i porównaniu.
+9. Zadanie projektu IMGW: „Dodaj do projektu…” i tym samym poleceniem
+   `imgw project add` dają ten sam `imgw-project.json`; `download_project`
+   przypina wersje, a na pustym katalogu IMGW kolegi odtwarza je
+   z identycznymi `sha256`; „Status” i „Weryfikuj” działają dla zadań obu
+   producentów w jednym projekcie.
 10. Test na żywo (świadomy) z raportem: aktualność roczników 2023–2025
     hydro dobowych i synchronizacja jednego roku z szeregami.
 
-### v1.0 „Wydanie”
+### v1.0 „Wydanie (MVP)”
 
 Zakres: stabilne `/api/v1`; instalacja `pipx`/`uv tool` na Linuksie
 i Windows, obraz Dockera dla serwera zespołu; dokumentacja użytkownika po
 polsku; audyt dostępności cyfrowej (WCAG 2.1 AA) i przegląd bezpieczeństwa;
 pomiar wydajności na prawdziwym udziale SMB.
 
-Kryteria: scenariusze UC-01..UC-19 przejdą na żywo i są opisane w raporcie;
-cele z 4.5 spełnione na prawdziwym udziale; brak znanych błędów
-krytycznych; CI zielone z bieżącymi wydaniami Kartografa i IMGWTools.
+Kryteria: scenariusze MVP UC-01..UC-07, UC-13..UC-17 i UC-19 przejdą
+na żywo i są opisane w raporcie. Po MVP: UC-08 od v1.3, UC-09 od v1.1
+(bez scalania) i v1.4 (scalenie), UC-10 od v1.1, UC-11 od v1.3
+(model różnic; kurtyna jest od v0.2), UC-12 i UC-18 od v1.2.
+Cele z 4.5 spełnione na prawdziwym udziale; brak znanych błędów
+krytycznych; CI zielone w obu konfiguracjach (bez i z `[imgw]`)
+z bieżącymi wydaniami Kartografa i IMGWTools.
+
+### Po MVP
+
+### v1.1 „Zestaw”
+
+Zakres: tryb 3 (8.4), tryb 2 bez scalania (8.3), „Polecenie Kartografa”
+i „Dodaj do projektu” z karty pliku (KB-6), „Katalog” jako karty.
+
+Kryteria: `.qgz` otwiera się w QGIS 3.34 LTR i 3.40 bez pytań o układ;
+warstwy wskazują pliki wersji; sumy w `pliki.csv` równe przypięciom;
+`ATRYBUCJE.txt` wymienia każdego dostawcę zestawu; zmiana przypięć
+w manifeście oznacza zestaw jako nieaktualny; UC-09 (pogranicze) na żywo
+w wariancie bez scalania. Zestaw IMGW obejmuje warstwę stacji, szeregi CSV
+z eksportu IMGWTools (IMGW-12) i formuły IMGW w `ATRYBUCJE.txt`;
+zestaw z przypięć IMGW bierze wersje z `imgw-project.json`, a po aktualizacji
+szeregów zestaw ze starszymi wersjami jest oznaczony „nieaktualny”.
+
+### v1.2 „Asystent”
+
+Zakres: sekcja 7, w tym narzędzia IMGW (7.3, 7.11) i UC-18; od tej wersji
+obowiązują limity budżetu asystenta per osoba w zespole.
+
+Kryteria: zero wykonań bez potwierdzenia (także dla poleceń wrogich);
+co najmniej 80% poprawnych propozycji w zestawie ewaluacyjnym na modelu
+referencyjnym; licznik kosztów i limit miesięczny działają; `provider =
+"none"` wyłącza panel i wszystkie zapytania do dostawców; wynik modelu
+lokalnego (API zgodne z OpenAI) jest zmierzony i opublikowany w dokumentacji;
+co najmniej 5 poleceń IMGW w zestawie ewaluacyjnym, zero wykonań IMGW
+bez potwierdzenia, propozycje bez obliczeń.
+
+### v1.3 „Mozaika i porównanie”
+
+Zakres: tryb 1 (8.2), tryb 4 poziom 3 (8.5), zestaw „z kopią danych”.
+
+Kryteria: mozaika VRT i GeoTIFF arkuszy NMT 0,5 m dla obszaru trafia do
+magazynu z sidecarem i `source_files`, a ponowne uruchomienie daje
+`reused`; różne układy wysokości kończą się błędem z podpowiedzią; model
+różnic ma statystykę i próg istotności; obie operacje działają jako zadania
+projektu z przypięciem wejść i wyniku.
+
+### v1.4 „PL + CZ”
+
+Zakres: tryb 2, scalona powierzchnia (8.3).
+
+Kryteria: powierzchnia dla obszaru przy granicy (np. Cieszyn) w EPSG:2180
+i EPSG:5514 z raportem styku; Bpv z EVRF2007 → błąd z podpowiedzią; ani
+jednego zera w miejscu `nodata`.
 
 ## 14. Ryzyka
 
@@ -3089,51 +3613,62 @@ krytycznych; CI zielone z bieżącymi wydaniami Kartografa i IMGWTools.
 | Etykiety pokrycia źle rozumiane | zły wybór roku | średnia | mockup (M2), definicje w podpowiedziach, dolna i górna granica w szczegółach |
 | Windows w zespole (ścieżki UNC, sygnały, dowiązania twarde na SMB) | różne zachowanie | średnia | aliasy ścieżek, `CTRL_BREAK_EVENT`, `archiwista doctor`, testy na Windows przed v1.0 |
 | Obciążenie publicznych usług | spowolnienia, blokady po stronie źródeł | niska | cache Kartografa, limity asystenta, 2 zadania sieciowe naraz |
-| Dwa ekosystemy (Python i Node.js) | koszt utrzymania | średnia | prosty stos (Svelte, Vite), zbudowany interfejs w pakiecie, testy Playwright |
+| Interfejs bez kontroli typów (A-ADR-028: Preact + htm bez kroku budowania) | błędy wykrywane dopiero w działaniu | średnia | testy w przeglądarce (Playwright), adnotacje JSDoc, testy kontraktu z OpenAPI; dodanie Vite i TypeScriptu później bez przepisywania komponentów |
 | Warunki licencji danych przy przekazaniu | naruszenie atrybucji | niska | atrybucje w karcie pliku, zestawie i kopii danych |
-| Zależność od IMGWTools (2.1.1, Beta, bez magazynu; IMGW-1..IMGW-13) | v0.9 i v1.0 czekają | wysoka | kontrakt uzgodniony wcześnie (12.7–12.8), interfejs źródła od v0.1, testy kontraktu na katalogu zbudowanym przez IMGWTools; IMGW-2, IMGW-4 i IMGW-11 naprawiają błędy niezależne od Archiwisty |
+| Zależność od IMGWTools (2.1.1, Beta, bez magazynu; IMGW-1..IMGW-14); od A-ADR-024 opcjonalna (extra `[imgw]`) | dane IMGW (v0.5), a z nimi MVP (v1.0, A-ADR-025), czekają na IMGWTools; wydania v0.1–v0.4 i instalacja bez IMGW go nie potrzebują | średnia | IMGWTools jest wtyczką i nie blokuje v0.1–v0.4 (5.8); kontrakt uzgodniony wcześnie (12.7–12.8, `docs/wymagania-imgwtools.md`), interfejs źródła od v0.1, testy kontraktu na katalogu zbudowanym przez IMGWTools; IMGW-2, IMGW-4 i IMGW-11 naprawiają błędy niezależne od Archiwisty |
+| Konflikty wersji bibliotek naukowych między Kartografem i IMGWTools (numpy, pandas, GDAL/rasterio, pyarrow) | niemożliwa instalacja albo rozjazd środowiska z `[imgw]` | średnia | jeden plik blokady dla spójnego zestawu, CI w dwóch konfiguracjach (bez i z `[imgw]`), testy kontraktu względem `develop` producentów (5.8, 11, A-ADR-024) |
+| Niezgodna wersja albo schemat zainstalowanego producenta (np. `imgw-meta/2`) | źródło nie działa albo czyta błędnie | średnia | sprawdzenie przy starcie i w `archiwista doctor`, czytelny komunikat po polsku, wyłączone tylko to źródło (5.8) |
 | Dwie implementacje semantyki wersji (ADR-036 Kartografa i katalog IMGW) | rozbieżne gwarancje („nigdy nie nadpisuje”) | średnia | prostszy kontrakt IMGW (tylko przyrost, bez dowiązań i plików zmiennych), testy kontraktu po obu stronach, opis w ADR IMGWTools |
 | Nieudokumentowane API mapy IMGW (`hydro-back`, bez `User-Agent` odpowiada 403) | brak położenia stacji, kruchy katalog stacji | średnia | API mapy niewymagane: podstawą publiczne API `danepubliczne` (hydro i meteo; odpowiada bez `User-Agent`, pomiar 2026-10-17); katalog stacji wersjonowany w magazynie |
-| Brak położenia stacji meteo (z 2 149 kodów listy meteo IMGWTools publiczne API ma 562) | stacje poza mapą, niepełny wybór w zlewni | wysoka | lista „Bez położenia” z kwadratem 1° z kodu, plik współrzędnych użytkownika, wniosek do IMGW-PIB o wykaz (P13) |
+| Brak położenia stacji meteo (z 2 149 kodów listy meteo IMGWTools publiczne API ma 562) | stacje poza mapą, niepełny wybór w zlewni | wysoka | „Katalog” z grupą „bez położenia” i filtrami atrybutów (rzeka, kod hydrograficzny z dopływami; 6.8, P13, P19), licznik na mapie, plik współrzędnych użytkownika, wniosek do IMGW-PIB o wykaz |
 | Jakość współrzędnych (`0,0` u 32 z 913 stacji API hydro, 1–3 miejsca po przecinku u 46; różnice źródeł: p90 127 m, maks. 2,9 km) | stacja w złej zlewni | średnia | walidacja w IMGWTools (`0,0` i poza krajem = brak), niepewność w atrybutach, plakietka „na granicy obszaru”, źródło w karcie stacji |
 | Opóźnienie publikacji IMGW (10–19 miesięcy) i ponowne publikacje archiwów | niekompletny ostatni rok, ciche zmiany danych | wysoka | lata opublikowane i daty publikacji w interfejsie; sygnał `ETag`/`Last-Modified`; nowe wersje zamiast nadpisania; zestawy ze starszymi wersjami oznaczone |
 | Warunki IMGW (cel użycia, regulamin §3 ust. 2; formuły, §5 ust. 3–4) | naruszenie regulaminu | średnia | formuły w sidecarach, karcie stacji i zestawie; komunikat IMGWTools o celu użycia w planie; założenie: użytek prywatny albo badawczy (4.8.5) |
-| Przyrost wersji szeregów (pełna migawka zbioru po każdej zmianie archiwów) | zajętość katalogu IMGW (rząd 0,1 GB na migawkę zbioru — szacunek) | średnia | `reused` przy tych samych wejściach, synchronizacja tylko na żądanie, pomiar w v0.9 |
-| Asystent Archiwisty a Retman | dublowanie, niejasny podział | niska | Archiwista tylko przygotowuje dane, obliczenia w Hydrologu i Retmanie (P17); wspólnym językiem są polecenia producentów |
+| Przyrost wersji szeregów (pełna migawka zbioru po każdej zmianie archiwów) | zajętość katalogu IMGW (rząd 0,1 GB na migawkę zbioru — szacunek) | średnia | `reused` przy tych samych wejściach, synchronizacja tylko na żądanie, pomiar w v0.5 |
+| Asystent Archiwisty a Retman | dublowanie, niejasny podział | niska | Archiwista tylko przygotowuje dane, obliczenia w Hydrologu i Retmanie (P17, decyzja użytkownika 2026-10-17); wspólnym językiem są polecenia producentów |
+| Dwa manifesty w jednym projekcie (Kartograf i IMGWTools) | niespójny obraz projektu (np. ta sama nazwa zadania u obu producentów, jeden manifest niepoprawny) | niska | widok projektu z kolumną producenta, ostrzeżenie o powtórzonej nazwie, błąd jednego manifestu nie ukrywa drugiego, `zestaw.json` z sumami obu; wspólny manifest producentów — gdy dojdzie trzeci producent (A-ADR-023) |
 
 ## 15. Pytania otwarte (z rekomendacjami)
 
 | # | Pytanie | Rekomendacja |
 |---|---|---|
-| P1 | Zespół: instancja na osobę (każdy lokalnie, wspólny udział) czy jeden serwer w sieci lokalnej? | **Jeden serwer** od v0.8 (wspólna kolejka bez podwójnych pobrań, jedna historia, ścieżki po stronie serwera); instancje lokalne zawsze wspierane (A-ADR-013) |
+| P1 | Zespół: instancja na osobę (każdy lokalnie, wspólny udział) czy jeden serwer w sieci lokalnej? | **Rozstrzygnięte 2026-10-18 (decyzja użytkownika, A-ADR-013):** jeden serwer od v0.4 (wspólna kolejka bez podwójnych pobrań, jedna historia, ścieżki po stronie serwera); instancje lokalne zawsze wspierane |
 | P2 | Czy wyniki łączenia (mozaika, PL + CZ, różnice) mają być produktami pochodnymi w magazynie Kartografa (wzór HSG, nowe tokeny segmentów `mosaic`, `diff`, kraj `pl-cz`)? | **Tak** (8.6, A-ADR-009); alternatywa — osobny katalog wyników poza magazynem — traci wersjonowanie, współdzielenie i przypinanie w projektach |
 | P3 | Komendy łączenia w grupach danych (`kartograf elevation mosaic`, jak `soil hsg`) czy nowa grupa (`kartograf compose …`)? | **W grupach danych** (ADR-039: grupy wg typu danych) |
 | P4 | Usuwanie wersji z magazynu? | **Nie w v1.0:** tylko raport „kandydaci do usunięcia” (niebieżące i nieprzypięte w znanych projektach) z zajętością. Usuwanie — jeśli kiedyś — jako funkcja Kartografa z potwierdzeniem, bo Archiwista nie zna projektów spoza swojego indeksu |
 | P5 | Podgląd 3D chmur punktów LAZ? | **Po v1.0;** do rozpoznania danych wystarcza nagłówek i obraz 2D |
 | P6 | Podkłady online (OSM, WMS GUGiK i CUZK) ujawniają obszar zainteresowania zewnętrznym serwerom — dopuszczalne? | **Rozstrzygnięte 2026-10-17 (A-ADR-016):** podkład to monochromatyczna (szara) wersja OSM, **online domyślnie**, z trybem offline (przełącznik „Tryb offline”); w zespole decyduje administrator |
 | P7 | Domyślny dostawca modelu asystenta? | **Brak** (asystent wyłączony) do świadomego wyboru; dla projektów poufnych model lokalny |
-| P8 | Licencja Archiwisty? | **MIT**, jak Kartograf |
+| P8 | Licencja Archiwisty? | ~~MIT, jak Kartograf~~ **Rozstrzygnięte 2026-10-17: MIT (plik `LICENSE`); kontrybucje z CLA jak w Hydrauliku — A-ADR-026.** |
 | P9 | Przypinanie w projekcie dowolnej starszej wersji wskazanej w przeglądarce? Model zadań Kartografa wybiera wersję tylko opcjami (np. `year`), a dla produktów z etykietą daty pobrania starszej wersji nie da się wskazać | **Nie w v1.0;** przypinamy przez zadania projektu (KB-6 podpowiada opcje); starsze wersje — porównanie i zestaw doraźny |
 | P10 | Platformy | **Linux i Windows** od v1.0; macOS bez gwarancji |
-| P11 | Framework interfejsu | **Svelte**; ostateczne potwierdzenie przed startem v0.1 (mockup go nie rozstrzyga) |
-| P12 | „Stos”: płyty z obrysami (MapLibre) czy z teksturami podglądów (dodatkowo deck.gl)? Wybrany rok musi być widoczny w całości; wariant układu (wachlarz jak stos w docku macOS?) do potwierdzenia po mockupie | **Obrysy** w v0.2; tekstury tylko, jeśli mockup pokaże wyraźną wartość (M4); układ wachlarzem — **otwarte** (A-ADR-018, M4) |
-| P13 | Źródło współrzędnych stacji meteo, zwłaszcza zamkniętych (publiczne API meteo ma tylko stacje sieci telemetrycznej: 787 z położeniem) | **Publiczne API IMGW** dla czynnych; dla pozostałych **wniosek do IMGW-PIB o wykaz stacji ze współrzędnymi** (regulamin §8); do tego czasu „bez położenia” z kwadratem 1° z kodu jako filtrem zgrubnym i opcjonalny plik współrzędnych użytkownika (`location_source = "user"`) — nigdy zgadywanie |
-| P14 | Definicja „ciągłości” szeregu | **Zero brakujących jednostek** w znanych latach zakresu, bez tolerancji; przydatność mówi osobno liczba lat pełnych i filtr „≥ 30 lat pełnych” (4.8.4, A-ADR-021) |
-| P15 | Rok hydrologiczny czy kalendarzowy w interfejsie? | **Wg zbioru:** hydro — hydrologiczny (XI–X, jak archiwa, charakterystyki IMGW i Hydrolog), meteo — kalendarzowy; przełącznik w widoku, konwencja zawsze w nagłówku (6.7) |
-| P16 | Q i H osobno? | **Tak:** etykieta, filtr i oś czasu dla jednej zmiennej naraz; brak Q nie oznacza braku H, więc wiersz mówi „brak danych Q (tylko H)” |
-| P17 | Czy asystent tylko przygotowuje dane, a obliczenia (przepływy charakterystyczne, analiza częstości, niżówki) robią Hydrolog i Retman? | **Tak — założenie do potwierdzenia;** asystent może wskazać wejście Hydrologa (CSV: `daily_values`, `dates`), ale niczego nie liczy (1.3, 7.11) |
-| P18 | Dane IMGW w projektach: manifest `kartograf-project/1` przyjmuje tylko komendy Kartografa | **Nie w v1.0:** odtwarzalność przez niezmienne wersje i zestaw (`zestaw.json`, 4.7, 8.4); po v1.0 — wspólny manifest producentów albo manifest IMGWTools, decyzja w ADR producentów |
-| P19 | Kod hydrograficzny jako filtr „zlewnia rzeki” (prefiks: Raba `2138`, Mszanka `21382`, Stradomka `21388`)? | **Tak, po potwierdzeniu hierarchii kodów** u IMGW-PIB albo w MPHP; do tego czasu wybór stacji tylko geometrią obszaru |
+| P11 | Framework interfejsu | ~~Svelte~~ **Rozstrzygnięte 2026-10-18 (decyzja użytkownika, A-ADR-028):** Preact + htm bez kroku budowania, jak mockup |
+| P12 | „Stos”: płyty z obrysami (MapLibre) czy z teksturami podglądów (dodatkowo deck.gl)? Wybrany rok musi być widoczny w całości; wariant układu (wachlarz jak stos w docku macOS?) do potwierdzenia po mockupie | ~~Obrysy w v0.2; tekstury tylko, jeśli mockup pokaże wyraźną wartość; układ wachlarzem — otwarte~~ **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-018 errata 1):** „Wachlarz” całkowicie zastępuje „Stos” — miniatury lat na łuku, każda w całości, wybrana powiększona; obrysy arkuszy w kolorach pokrycia, a arkusze w magazynie z lekkim podglądem (5.4, 6.5 c); widok izometryczny, `fill-extrusion` i tekstury w deck.gl odpadają |
+| P13 | Źródło współrzędnych stacji meteo, zwłaszcza zamkniętych (publiczne API meteo ma tylko stacje sieci telemetrycznej: 787 z położeniem) | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-022):** stacje bez współrzędnych **nie są pokazywane na mapie**; dane bez położenia (każdego producenta, nie tylko IMGW) pokazuje „Katalog” — lista i karty z wyszukiwaniem i filtrami atrybutów, a mapa ma licznik „N stacji bez położenia” z przejściem do niego (4.3, 6.8). Źródła współrzędnych bez zmian: publiczne API IMGW dla czynnych, plik współrzędnych użytkownika (`location_source = "user"`), wniosek do IMGW-PIB o wykaz (regulamin §8) — nigdy zgadywanie; kwadrat 1° z kodu tylko jako zgrubna wskazówka w „Katalogu” |
+| P14 | Definicja „ciągłości” szeregu | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-021 errata 1):** „ciągły” = **zero brakujących jednostek** w znanych latach zakresu, bez tolerancji. Pobieramy i pokazujemy **wszystkie** dane, także z brakami — z odpowiednią etykietą; nic nie jest odfiltrowywane z powodu braków, a filtry pokrycia („≥ 30 lat pełnych”) działają tylko jawnie (4.8.4) |
+| P15 | Rok hydrologiczny czy kalendarzowy w interfejsie? | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-021 errata 1):** oba rodzaje lat dla **obu** rodzajów danych (hydro i meteo) z przełącznikiem; domyślnie hydro — hydrologiczny, meteo — kalendarzowy; wybór zapamiętywany osobno dla hydro i meteo w ustawieniach użytkownika, `year_type` w adresie URL ma pierwszeństwo; charakterystyki półroczne i roczne IMGW tylko w latach hydrologicznych, przełącznik ich nie dotyczy — potwierdzone (4.8.2, 6.7) |
+| P16 | Q i H osobno? | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-021 errata 2):** etykiety pokrycia **osobno dla każdej wielkości**, nie jedna na stację — hydro: H, Q, T; meteo: opad, temperatura i inne zmienne zbioru. Panel stacji, „Zestawienie”, „Katalog” i karta stacji pokazują je razem; filtry pokrycia dotyczą wskazanej zmiennej; API zwraca `coverage` per zmienna (4.8.4, 6.7, 6.8, 9) |
+| P17 | Czy asystent tylko przygotowuje dane, a obliczenia (przepływy charakterystyczne, analiza częstości, niżówki) robią Hydrolog i Retman? | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika):** tak — asystent tylko przygotowuje dane i polecenia, może wskazać wejście Hydrologa (CSV: `daily_values`, `dates`), ale niczego nie liczy; obliczenia w Hydrologu i Retmanie (1.3, 7.1, 7.11) |
+| P18 | Dane IMGW w projektach: manifest `kartograf-project/1` przyjmuje tylko komendy Kartografa | ~~Nie w v1.0: odtwarzalność przez niezmienne wersje i zestaw~~ **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-023):** dane IMGW **są w manifeście projektu w v1.0** — w manifeście IMGWTools `imgw-project.json` (`imgw-project/1`) obok `kartograf-project.json`; zadanie IMGW trafia do projektu wyłącznie przez API IMGWTools (`add_project_task`, `download_project`; CLI `imgw project …`) — nowe wymaganie IMGW-14 (v0.5); dwa pliki manifestu (`kartograf-project.json` i `imgw-project.json`) — potwierdzone; format manifestu Kartografa bez zmian (4.7, 8.4, 12.7) |
+| P19 | Kod hydrograficzny jako filtr „zlewnia rzeki” (prefiks: Raba `2138`, Mszanka `21382`, Stradomka `21388`)? | **Rozstrzygnięte 2026-10-17 (decyzja użytkownika):** tak — jako jeden z wielu filtrów: „dokładnie ta rzeka” albo „z dopływami” (prefiks kodu); działa na atrybutach, więc obejmuje też stacje bez położenia; reguła prefiksu sprawdzana testem na liście IMGW (6.6, 6.8, IMGW-9) |
 
 ## 16. Mockup
 
 Równolegle z tym specem powstaje klikalny mockup interfejsu: katalog
-`mockup/` na gałęzi `feat/mockup` (worktree tego repozytorium). To statyczny
+`mockup/` w tym repozytorium (historia pierwszych wersji: gałąź `feat/mockup`). To statyczny
 prototyp na danych z prawdziwych rekordów skorowidza GUGiK dla obszaru
 „Kraków” (bbox `561000,239000,573000,249000`, EPSG:2180) — nie kod
 produkcyjny i nie wybór technologii. Pola proponowane dla Kartografa
 (KD-1: arkusz → kampania, KD-2: `full_m2`) mockup wylicza z tych samych
 rekordów i oznacza jako proponowane.
+
+Aktualizacja 2026-10-18 (zakres MVP): mockup pokazuje podglądy zgodnie
+z PRD („Widoki według rodzaju danych”) — ortofotomapę każdego roku
+z archiwalnego WMS GUGiK z wymiarem czasu, NMT składany z kafli arkuszy
+w magazynie (cieniowanie z prawdziwych plików arkuszy pobranych Kartografem;
+usługa cieniowania GUGiK nie ma wymiaru czasu), BDOT10k jako powiaty z PRG — oraz dane własne projektu
+z migawkami (4.7.1, A-ADR-027; sieć kanalizacyjna to dane przykładowe).
+Asystent i mozaika mają w mockupie plakietkę „po MVP”.
 
 Decyzje, które mockup ma pomóc podjąć:
 
@@ -3142,8 +3677,8 @@ Decyzje, które mockup ma pomóc podjąć:
 | M1 | Czy start od mapy (obszar → produkt → dostępność) jest naturalny, czy lepszy byłby start od katalogu? |
 | M2 | Czy etykiety „pełne”, „pełne · 2 kampanie”, „częściowe · 58%”, „brak danych” i plakietka magazynu są zrozumiałe bez instrukcji; kolory i wzory (6.4) |
 | M3 | „Zestawienie”: domyślnie „Tabela” czy „Oś czasu”; ile informacji w wierszu |
-| M4 | „Stos”: czy widok izometryczny pomaga wybrać rok (zostaje jako tryb czy znika); płyty z obrysami czy z teksturami (P12). **Wymaganie 2026-10-17 (A-ADR-018):** wybrany rok widoczny w całości; **otwarte — wariant do potwierdzenia po mockupie:** wachlarz warstw jak stos plików w docku macOS (każda widoczna, wybrana powiększona) czy inny układ |
-| M5 | „Katalog”: karty czy lista; co pokazuje karta |
+| M4 | ~~„Stos”: czy widok izometryczny pomaga wybrać rok (zostaje jako tryb czy znika); płyty z obrysami czy z teksturami (P12); wariant układu~~ **Rozstrzygnięte 2026-10-17 (decyzja użytkownika, A-ADR-018 errata 1):** „Wachlarz” całkowicie zastępuje „Stos” — warstwy lat jako miniatury na łuku jak stos plików w docku macOS, każda w całości, wybrana powiększona; izometryczny „Stos” i przełącznik „Wachlarz / Stos” usunięte z mockupu (zrzuty `05a`–`05c`, `14`, `17`, `21-wachlarz-*`) |
+| M5 | „Katalog”: karty czy lista; co pokazuje karta; grupa „bez położenia” i licznik na mapie (6.8, P13) |
 | M6 | „Asystent”: ~~panel boczny czy dolny~~ **rozstrzygnięte 2026-10-17 (A-ADR-018):** komputer — przypięty panel boczny (mapa się zwęża), telefon — szuflada; otwarte: wygląd karty propozycji i podświetlenia na mapie |
 | M7 | Postęp zadań: na mapie (jednostki zmieniają kolor) i w pasku „Zadania” |
 | M8 | „Karta pliku”: oś wersji, przypięcia, kolejność i nazwy akcji |
@@ -3152,7 +3687,7 @@ Decyzje, które mockup ma pomóc podjąć:
 | M11 | Stacje IMGW: symbole i skupienia na mapie, etykiety pokrycia szeregów (4.8.4) i ich wzory, Oś czasu stacji × lata, przełącznik rodzaju lat, „Karta stacji” z wykresem (agregacja, przerwy, ekstrema), porównanie stacji, karta propozycji asystenta dla danych IMGW |
 
 Słownictwo uzgodnione z autorem mockupu (2026-10-17): widoki „Mapa”,
-„Stos”, „Katalog”, panel „Zestawienie” z zakładkami „Tabela” i „Oś czasu”,
+„Wachlarz” (zastąpił „Stos”, decyzja użytkownika 2026-10-17), „Katalog”, panel „Zestawienie” z zakładkami „Tabela” i „Oś czasu”,
 „Karta pliku”, „Zadania”, „Asystent”; w nawigacji „Projekty”, „Łączenie”,
 „Magazyn”, „Ustawienia” (w mockupie nieaktywne); etykiety pokrycia
 i plakietki z 6.4 (z odmianą „2-4 kampanie”, „5+ kampanii”), chip „+N
@@ -3161,5 +3696,5 @@ warianty” oraz przyciski karty propozycji asystenta „Zatwierdź i uruchom”
 
 Po przeglądzie mockupu decyzje użytkownika trafią do `docs/DECISIONS.md`
 (nowy ADR „Wzorce interfejsu po mockupie”) i do sekcji 6 tego specu.
-Mockup zostaje na gałęzi `feat/mockup` jako materiał porównawczy; nie jest
-scalany do `develop` jako kod aplikacji.
+Mockup leży w katalogu `mockup/` jako materiał porównawczy; nie jest kodem
+aplikacji.
