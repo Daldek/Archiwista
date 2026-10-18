@@ -98,3 +98,25 @@ class StateError(ArchiwistaError):
     For example a database written by a newer Archiwista, or a backup
     imported into a database that is not empty; the message is Polish.
     """
+
+
+class JobConflictError(ConflictError):
+    """Another job already writes the store's index (``409 conflict``).
+
+    Parameters
+    ----------
+    message : str
+        Polish description naming the job in the way.
+    job_id, kind, state : str
+        That job, for the problem's ``job`` member.
+    """
+
+    def __init__(self, message: str, *, job_id: str, kind: str, state: str) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+        self.kind = kind
+        self.state = state
+
+
+class OfflineModeError(ArchiwistaError):
+    """An action needs the network while offline mode is on (``409 offline_mode``)."""

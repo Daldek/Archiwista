@@ -85,6 +85,8 @@ markers = [
 
 [tool.coverage.run]
 source = ["archiwista"]
+# Job workers run as subprocesses (``python -m archiwista.jobs.worker``).
+patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true

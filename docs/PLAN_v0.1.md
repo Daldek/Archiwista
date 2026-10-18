@@ -455,6 +455,68 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `error`; zdarzenia SSE (SPEC 9.2): `progress`, `notice`, `state` — stany
   `queued`, `running`, `succeeded`, `failed`, `interrupted` (od v0.3 także
   `cancelled`), przy `failed` obiekt `error` (`code`, `detail`).
+  Stan po kroku 6b:
+  - *Nadzorca* (`supervisor.py`, eksport z `archiwista.jobs`):
+    `JobSupervisor(paths, settings: SettingsService, *, worker_command,
+    max_jobs, max_network_jobs, stop_timeout_s)` — `start()`/`close()` (albo
+    `with`); `submit(kind, *, store, params, actor) -> JobRecord`: `scan`
+    (`mode` `incremental`/`full`, `segment`), `footprints`, `link_check`
+    (`slot`); `NotFoundError` (magazyn spoza ustawień), `OfflineModeError`
+    (`footprints` w trybie offline, nic nie zapisuje; `409 offline_mode`),
+    `JobConflictError(job_id, kind, state)` (podklasa `ConflictError`:
+    trwający `scan`/`footprints` magazynu, także innego procesu, np.
+    `archiwista reindex`), `ValueError` (rodzaj, parametry). Odczyt: `get`,
+    `list(*, kind, store, state, limit ≤ 200, cursor) -> JobPage` (od
+    najnowszych; obcy kursor → `IndexQueryError`), `events(job_id, *,
+    after) -> JobEvent(job_id, seq, type, data, at)` (`seq` od 1 = `id:`
+    SSE), `subscribe(listener, *, job_id)` (wywołanie w wątku nadzorcy,
+    w kolejności `seq`; słuchacz oddaje zdarzenie, np.
+    `loop.call_soon_threadsafe`, i wraca), `cancel`, `wait`, `recover`,
+    `scan_history`. `JobRecord(id, kind, state, actor, store, params,
+    created_at, started_at, finished_at, progress, result, error:
+    JobError(code, detail))`; `error` ma każde zadanie, które nie
+    zakończyło się sukcesem. Na serwer: `create_app(..., jobs=)` →
+    `app.state.jobs`.
+  - *Zdarzenia*: `state` (`queued`, `running`, na końcu `succeeded`
+    z `result` albo `failed`/`interrupted`/`cancelled` z `error`),
+    `progress` (`current`, `total`; skan także `segment`, `entries`;
+    obrysy `written`, `failed`), `notice` (`level`, `code`, `message`).
+    Kody `error.code`: `store_unavailable`, `source_unavailable`,
+    `source_incompatible`, `kartograf_error` (`<pakiet>_error`),
+    `offline_mode`, `not_found`, `unsupported`, `internal_error`,
+    `worker_crashed` (sygnał albo kod wyjścia i ścieżka dziennika),
+    `interrupted`, `cancelled`.
+  - *Proces roboczy* (`worker.py`): stdin — jedna linia `JobSpec`
+    (ustawienia z chwili startu), potem otwarte do końca: jego koniec
+    oznacza zniknięcie nadzorcy i przerywa zadanie; stdout tylko JSON
+    Lines (deskryptor 1 kierowany na stderr), stderr to dziennik
+    `<jobs>/<id>.log` (90 dni albo 1 GB). Anulowanie i zatrzymanie serwera:
+    SIGINT (Windows: CTRL_BREAK_EVENT, osobna grupa procesów), po 30 s
+    zabicie; skan porzuca przebieg, więc nic nie zostaje oznaczone. Każdy
+    nadzorujący proces trzyma blokadę `<jobs>/owner-<pid>.lock`; zadanie
+    bez żywego nadzorcy (restart, awaria) dostaje `interrupted`.
+  - *Wyniki*: `scan` — sumy `ScanSummary` (`entries`, `versions_written`,
+    `links_changed`, `issues_added`, `footprints_written`,
+    `footprints_failed`, `missing`, `reappeared`, `removed`,
+    `slots_removed`, `unlinked`, `issues_resolved`, `seconds`, `segments`,
+    `projects`); `footprints` — `total`, `written`, `failed`, `seconds`
+    (sieć tylko dla wersji bez obrysu, pamięć jednostek adaptera; przed
+    startem `probe`, pusty punkt montowania → `store_unavailable`);
+    `link_check` — `status` (`confirmed`, `index_outdated`, `mismatch` →
+    problem `link_mismatch` pochodzenia `check`, `missing`, `not_a_link`),
+    `expected`, `confirmed`.
+  - *Harmonogram* (`scheduler.py`): `ScanScheduler(jobs, settings,
+    registry, *, index_path, actor="local")` uruchamia `serve`;
+    `plan_scans` — przy starcie skan, gdy ostatni starszy niż 15 min
+    (nigdy → pełny), potem interwał rodzaju magazynu od końca ostatniego
+    skanu, pełny co 24 h; magazyn `unavailable` tylko `probe` (osobny
+    wątek, 10 s) co minutę i skan po powrocie; nowy albo przeniesiony
+    magazyn w ustawieniach → pełny skan.
+  - *CLI*: `archiwista reindex [--store ID]` (`jobs/reindex.py`) — pełny
+    skan jako zadanie `local` na pierwszym planie, postęp na stderr,
+    podsumowanie na stdout; wyjście 0, 1 (błąd albo kod `conflict`), 2
+    (nieznany magazyn); Ctrl+C anuluje. Pokrycie procesów roboczych:
+    `[tool.coverage.run] patch = ["subprocess"]`.
 - **API i bezpieczeństwo — `archiwista/api/` (9a–9c), `archiwista/security.py`
   (8):** jeden zestaw modeli Pydantic dla JSON i OpenAPI; problem RFC 9457:
   `type`, `title`, `status`, `detail` (po polsku), `code`, a gdy dotyczy —

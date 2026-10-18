@@ -7,6 +7,7 @@ from collections.abc import Callable
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
 from archiwista.config import AppPaths, SourceRegistryView
 from archiwista.doctor import doctor_main
+from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import MESSAGES
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
@@ -78,6 +79,12 @@ def main(
     token.add_argument(
         "--json", action="store_true", help=MESSAGES["cli_token_json_help"]
     )
+    reindex = commands.add_parser(
+        "reindex",
+        help=MESSAGES["cli_reindex_help"],
+        description=MESSAGES["cli_reindex_help"],
+    )
+    reindex.add_argument("--store", help=MESSAGES["cli_reindex_store_help"])
     add_admin_commands(commands)
     args = parser.parse_args(argv)
     if args.command is None:
@@ -103,6 +110,8 @@ def main(
             access_log=args.access_log,
             on_ready=None if args.no_browser else open_in_browser,
         )
+    if args.command == "reindex":
+        return reindex_main(paths, registry, sys.stdout, sys.stderr, store=args.store)
     return doctor_main(paths, registry, sys.stdout)
 
 

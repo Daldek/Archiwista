@@ -7,8 +7,9 @@ headers), answers errors with RFC 9457 problems, mounts the routers under
 (``/`` and ``/static/…``), which needs no session. Routers reach the shared
 objects through ``request.app.state``: ``settings`` (``SettingsService``),
 ``sessions`` (``SessionStore``), ``index_path``, ``port``, ``authorizer``
-(``Authorizer`` over the state database) and ``queries`` (``IndexQueries``),
-the last two also as the dependencies of ``archiwista.api.dependencies``.
+(``Authorizer`` over the state database), ``queries`` (``IndexQueries``),
+the last two also as the dependencies of ``archiwista.api.dependencies``,
+and ``jobs`` (``JobSupervisor``, ``None`` without background jobs).
 """
 
 from collections.abc import AsyncIterator
@@ -25,6 +26,7 @@ from archiwista.api.errors import ApiError, install_error_handlers
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import MESSAGES
 from archiwista.security import SecurityMiddleware, SessionStore
 from archiwista.sources.registry import APP_DISTRIBUTION
@@ -41,6 +43,7 @@ def create_app(
     state: StateStore,
     sessions: SessionStore | None = None,
     web_dir: Path = WEB_DIR,
+    jobs: JobSupervisor | None = None,
 ) -> FastAPI:
     """Build the Archiwista application for one server.
 
@@ -59,6 +62,8 @@ def create_app(
     web_dir : Path, optional
         Interface files: ``index.html`` at ``/`` and every file under
         ``/static/``.
+    jobs : JobSupervisor or None, optional
+        The started supervisor of background jobs (``app.state.jobs``).
 
     Returns
     -------
@@ -88,6 +93,7 @@ def create_app(
     app.state.port = port
     app.state.authorizer = Authorizer(state, settings.get)
     app.state.queries = queries
+    app.state.jobs = jobs
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)

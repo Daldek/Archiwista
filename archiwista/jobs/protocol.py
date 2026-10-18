@@ -1,0 +1,222 @@
+"""JSON Lines protocol between the job supervisor and a worker (SPEC 5.6).
+
+The supervisor starts one worker process per job (``python -m
+archiwista.jobs.worker``, A-ADR-007) and writes the job (``JobSpec``) to its
+standard input as one JSON line. The input then stays open without further
+data: its end tells the worker that the supervisor is gone. The worker
+answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
+
+- ``progress``: how far the job is, with integers ``current`` and ``total``
+  and counts of the job's kind (a scan adds ``segment`` and ``entries``);
+- ``notice``: something the person should know: ``level`` (``info`` or
+  ``warning``), a stable ``code`` and a Polish ``message``;
+- ``result``: the job's summary, a JSON object; the last line of a job
+  that succeeded;
+- ``error``: why the job failed: a stable ``code``, a Polish ``detail``
+  and the ``exception`` class behind it.
+
+Everything else the worker or a library writes goes to standard error, the
+job's log. The supervisor keeps ``progress`` and ``notice`` as job events
+and turns ``result`` and ``error`` into the job's final state.
+"""
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from pydantic import ValidationError
+
+from archiwista.config import AppSettings
+
+PROTOCOL_VERSION = 1
+# Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
+INTERRUPTED_EXIT = 130
+
+type JobKind = Literal["scan", "footprints", "link_check"]
+type MessageType = Literal["progress", "notice", "result", "error"]
+type NoticeLevel = Literal["info", "warning"]
+type JsonObject = dict[str, Any]
+
+JOB_KINDS: tuple[JobKind, ...] = ("scan", "footprints", "link_check")
+MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error")
+NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
+
+# Codes of a job that did not succeed (its ``error.code``), besides those of
+# the HTTP API (``store_unavailable``, ``source_unavailable``,
+# ``source_incompatible``, ``offline_mode``, ``not_found`` and
+# ``<package>_error`` for a producer's own error, e.g. ``kartograf_error``).
+CODE_UNSUPPORTED = "unsupported"
+CODE_INTERNAL_ERROR = "internal_error"
+CODE_PROTOCOL_ERROR = "protocol_error"
+CODE_WORKER_CRASHED = "worker_crashed"
+CODE_INTERRUPTED = "interrupted"
+CODE_CANCELLED = "cancelled"
+
+
+class ProtocolError(ValueError):
+    """A line of the job protocol is not a valid message or job."""
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerMessage:
+    """One line a worker writes: its ``type`` and its JSON object ``data``."""
+
+    type: MessageType
+    data: JsonObject
+
+
+@dataclass(frozen=True, slots=True)
+class JobSpec:
+    """A job as its worker receives it, with the local resources it may use.
+
+    Attributes
+    ----------
+    job_id : str
+        The job's id in the index.
+    kind : {"scan", "footprints", "link_check"}
+        What to run.
+    store : str
+        Configured id of the store the job works on.
+    params : dict
+        Parameters of the kind, validated by the supervisor (``scan``:
+        ``mode`` and ``segment``; ``link_check``: ``slot``).
+    actor : str
+        Who asked for the job (``Principal.id``).
+    index_path : Path
+        The local index.
+    cache_dir : Path
+        Root of the local caches, one directory per producer.
+    settings : AppSettings
+        Settings in effect when the job started.
+    """
+
+    job_id: str
+    kind: JobKind
+    store: str
+    params: JsonObject
+    actor: str
+    index_path: Path
+    cache_dir: Path
+    settings: AppSettings
+
+
+def encode_message(message: WorkerMessage) -> str:
+    """Return a message as one JSON line, without the line end."""
+    return _dump({"type": message.type, "data": message.data})
+
+
+def decode_message(line: str) -> WorkerMessage:
+    """Read one line of a worker's output.
+
+    Parameters
+    ----------
+    line : str
+        One line of standard output, with or without its line end.
+
+    Returns
+    -------
+    WorkerMessage
+        The message, its data checked for the members of its type.
+
+    Raises
+    ------
+    ProtocolError
+        The line is not JSON, names no known type or lacks a member.
+    """
+    value = _load(line)
+    kind = value.get("type")
+    data = value.get("data")
+    if kind not in MESSAGE_TYPES or not isinstance(data, dict):
+        raise ProtocolError(f"not a worker message: {line.strip()[:200]!r}")
+    message_type = cast(MessageType, kind)
+    _check(message_type, data)
+    return WorkerMessage(message_type, data)
+
+
+def encode_spec(spec: JobSpec) -> str:
+    """Return a job as the one JSON line a worker reads first."""
+    return _dump(
+        {
+            "protocol": PROTOCOL_VERSION,
+            "job": {
+                "id": spec.job_id,
+                "kind": spec.kind,
+                "store": spec.store,
+                "params": spec.params,
+                "actor": spec.actor,
+            },
+            "index_path": str(spec.index_path),
+            "cache_dir": str(spec.cache_dir),
+            "settings": spec.settings.model_dump(mode="json"),
+        }
+    )
+
+
+def decode_spec(line: str) -> JobSpec:
+    """Read the job a worker received.
+
+    Raises
+    ------
+    ProtocolError
+        Another protocol version, a missing member or invalid settings.
+    """
+    value = _load(line)
+    if value.get("protocol") != PROTOCOL_VERSION:
+        raise ProtocolError(f"unsupported job protocol {value.get('protocol')!r}")
+    job = value.get("job")
+    try:
+        if not isinstance(job, dict):
+            raise TypeError("job")
+        kind = job["kind"]
+        if kind not in JOB_KINDS:
+            raise ValueError(f"unknown job kind {kind!r}")
+        params = job["params"]
+        if not isinstance(params, dict):
+            raise TypeError("params")
+        return JobSpec(
+            job_id=str(job["id"]),
+            kind=kind,
+            store=str(job["store"]),
+            params=params,
+            actor=str(job["actor"]),
+            index_path=Path(value["index_path"]),
+            cache_dir=Path(value["cache_dir"]),
+            settings=AppSettings.model_validate(value["settings"]),
+        )
+    except (KeyError, TypeError, ValueError, ValidationError) as error:
+        raise ProtocolError(f"invalid job: {error}") from error
+
+
+def _dump(value: JsonObject) -> str:
+    # JSON escapes control characters, so a value never breaks the line.
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _load(line: str) -> JsonObject:
+    try:
+        value = json.loads(line)
+    except ValueError as error:
+        raise ProtocolError(f"not JSON: {line.strip()[:200]!r}") from error
+    if not isinstance(value, dict):
+        raise ProtocolError(f"not a JSON object: {line.strip()[:200]!r}")
+    return value
+
+
+def _check(kind: MessageType, data: JsonObject) -> None:
+    """Require the members the supervisor relies on for each message type."""
+    if kind == "progress":
+        valid = all(
+            isinstance(data.get(name), int) and not isinstance(data.get(name), bool)
+            for name in ("current", "total")
+        )
+    elif kind == "notice":
+        valid = data.get("level") in NOTICE_LEVELS and all(
+            isinstance(data.get(name), str) for name in ("code", "message")
+        )
+    elif kind == "error":
+        valid = all(isinstance(data.get(name), str) for name in ("code", "detail"))
+    else:
+        valid = True
+    if not valid:
+        raise ProtocolError(f"{kind} message without its members: {data!r}"[:300])

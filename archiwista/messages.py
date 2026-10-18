@@ -452,6 +452,81 @@ MESSAGES = MappingProxyType(
         ),
         "cli_access_default": " (widoczność domyślna — projekt nie ma własnego wpisu)",
         "cli_none": "brak",
+        # Background jobs, their scheduler and ``archiwista reindex`` (step 6b).
+        "job_kind_scan": "skan",
+        "job_kind_footprints": "obrysy jednostek",
+        "job_kind_link_check": "potwierdzenie dowiązania",
+        "job_state_queued": "w kolejce",
+        "job_state_running": "trwa",
+        "job_state_succeeded": "zakończone",
+        "job_state_failed": "błąd",
+        "job_state_interrupted": "przerwane",
+        "job_state_cancelled": "anulowane",
+        "job_store_unknown": "Magazyn „{store}” nie jest skonfigurowany.",
+        "job_not_found": "Nie ma zadania „{job}”.",
+        "job_conflict": (
+            "Magazyn „{store}” ma już zadanie zapisujące indeks: {kind}, {state}"
+            " (zadanie {job}). Poczekaj na jego koniec."
+        ),
+        "job_offline_mode": (
+            "Tryb offline jest włączony: obrysy jednostek wymagają sieci, więc"
+            " zadanie nie zostało uruchomione."
+        ),
+        "job_cancelled": "Zadanie anulowano.",
+        "job_interrupted_stop": (
+            "Archiwistę zatrzymano w trakcie zadania. Można je bezpiecznie ponowić."
+        ),
+        "job_interrupted_restart": (
+            "Proces nadzorujący zadanie zakończył się w trakcie (zatrzymanie albo"
+            " awaria). Można je bezpiecznie ponowić."
+        ),
+        "job_interrupted_signal": (
+            "Proces roboczy zadania przerwano z zewnątrz. Można je bezpiecznie ponowić."
+        ),
+        "job_worker_crashed": (
+            "Proces roboczy zadania zakończył się nieoczekiwanie ({status});"
+            " szczegóły w dzienniku {log}."
+        ),
+        "job_status_signal": "sygnał {signal}",
+        "job_status_code": "kod wyjścia {code}",
+        "job_worker_not_started": "Nie można uruchomić procesu roboczego: {detail}",
+        "job_internal_error": (
+            "Błąd wewnętrzny Archiwisty ({detail}); szczegóły w dzienniku zadania."
+        ),
+        "job_footprints_failed": (
+            "Plików bez wyznaczonego obrysu jednostki: {count} — spróbuj ponownie"
+            " później. Komunikat producenta: {detail}"
+        ),
+        "job_slot_not_found": "Slotu „{slot}” magazynu „{store}” nie ma w indeksie.",
+        "job_link_check_unsupported": "Źródło {producer} nie potwierdza dowiązań.",
+        "job_link_mismatch": "{problem}. {fix}",
+        "job_link_index_outdated": (
+            "Dowiązanie {slot} zawiera wersję {version}, a indeks wskazuje inną —"
+            " odśwież magazyn."
+        ),
+        "cli_reindex_help": (
+            "Przebudowuje indeks: pełny skan magazynu (bez --store — wszystkich)"
+            " jako zadanie, wykonywane na pierwszym planie."
+        ),
+        "cli_reindex_store_help": "identyfikator magazynu z ustawień",
+        "reindex_failed": "Nie można przebudować indeksu",
+        "reindex_no_stores": (
+            "Nie skonfigurowano żadnego magazynu — dodaj go w kreatorze po"
+            " uruchomieniu „archiwista serve”."
+        ),
+        "reindex_started": "Magazyn „{store}”: pełny skan, zadanie {job}.",
+        "reindex_progress": (
+            "Magazyn „{store}”: segmenty {current} z {total}, wpisy {entries}."
+        ),
+        "reindex_notice": "Magazyn „{store}”: {message}",
+        "reindex_cancelling": "Przerywanie zadania {job}…",
+        "reindex_succeeded": (
+            "Magazyn „{store}”: pełny skan zakończony w {seconds} s — wpisy"
+            " {entries}, zapisane wersje {versions}, nowe braki {missing},"
+            " usunięte {removed}."
+        ),
+        "reindex_job_failed": "Magazyn „{store}”: zadanie {job} — {state}: {detail}",
+        "reindex_error": "{message} (kod {code})",
     }
 )
 

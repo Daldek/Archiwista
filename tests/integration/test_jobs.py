@@ -1,0 +1,746 @@
+"""Background jobs in worker processes (plan step 6b).
+
+Every test runs real worker processes (``tests.fixtures.job_worker``: the
+real worker with hooks for slow scans, crashes and a refused network) on a
+generated Kartograf store, offline.
+"""
+
+import io
+import json
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from kartograf import BBox
+
+from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
+from archiwista.auth import ALL_PROJECTS
+from archiwista.config import AppPaths, ConfigStore, SettingsService, StoreConfig
+from archiwista.errors import (
+    IndexQueryError,
+    JobConflictError,
+    NotFoundError,
+    OfflineModeError,
+)
+from archiwista.index import IndexQueries
+from archiwista.jobs import JobEvent, JobSupervisor, ScanScheduler
+from archiwista.jobs.protocol import decode_message
+from archiwista.jobs.reindex import reindex_main
+from archiwista.messages import MESSAGES
+from archiwista.sources.registry import load_registry
+from tests.fixtures.jobs import (
+    CRASH_ENV,
+    DELAY_ENV,
+    NO_NETWORK_ENV,
+    SLOW_ENTRY_S,
+    STORE,
+    TEST_WORKER,
+    JobsEnv,
+    jobs_env,
+    store_settings,
+    worker_path,
+)
+from tests.fixtures.local_server import NoSources, serving
+from tests.fixtures.make_store import ExpectedEntry, make_store
+from tests.fixtures.store_edits import add_version, remove_version, sidecar_path
+
+# Headers of the synthetic JPEG sheets carry no geotransform (their outline
+# comes from the world file); rasterio says so while reading them.
+pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+
+WAIT_S = 60.0
+
+
+@pytest.fixture
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[JobsEnv]:
+    """Yield a fresh store with a started supervisor of test workers."""
+    with jobs_env(tmp_path, monkeypatch) as created:
+        yield created
+
+
+def test_worker_protocol_maps_to_sse_events(env: JobsEnv) -> None:
+    """Worker lines become numbered job events; the last state carries the result."""
+    # Arrange
+    heard: list[JobEvent] = []
+    env.jobs.subscribe(heard.append)
+
+    # Act
+    record = env.run("scan", mode="full")
+    stored = env.jobs.events(record.id)
+    tail = env.jobs.events(record.id, after=3)
+
+    # Assert
+    assert record.state == "succeeded" and record.result is not None
+    assert heard == list(stored)
+    assert [event.seq for event in stored] == list(range(1, len(stored) + 1))
+    assert {event.type for event in stored} == {"state", "progress"}
+    states = [event.data for event in stored if event.type == "state"]
+    assert states == [
+        {"state": "queued"},
+        {"state": "running"},
+        {"state": "succeeded", "result": record.result},
+    ]
+    progress = [event.data for event in stored if event.type == "progress"]
+    segments = len(record.result["segments"])
+    assert progress[0] == {
+        "current": 0,
+        "total": segments,
+        "segment": None,
+        "entries": 0,
+    }
+    assert [item["current"] for item in progress] == list(range(segments + 1))
+    assert record.progress == progress[-1]
+    assert record.result["entries"] == progress[-1]["entries"] > 0
+    assert (record.result["store"], record.result["mode"]) == (STORE, "full")
+    assert tail == stored[3:]
+    status = env.state()
+    assert status.last_scan is not None and status.last_scan.id == record.id
+    assert status.last_scan.progress == (segments, segments)
+    assert status.running_job is None
+
+
+def test_second_index_job_for_store_conflicts(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a scan writes the index, another scan or footprints job conflicts."""
+    # Arrange
+    env.scan("full")
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    running = env.jobs.submit("scan", store=STORE, actor="local")
+    env.follow(running.id, _after_first_segment)
+    link = env.store.by_kind("link")[0].path
+
+    # Act
+    conflicts = []
+    for kind in ("scan", "footprints"):
+        with pytest.raises(JobConflictError) as raised:
+            env.jobs.submit(kind, store=STORE, actor="local")
+        conflicts.append(raised.value)
+    check = env.run("link_check", slot=link)
+    env.jobs.cancel(running.id)
+    ended = env.wait(running.id)
+    monkeypatch.delenv(DELAY_ENV)
+    after = env.run("scan")
+
+    # Assert
+    assert [(c.job_id, c.kind, c.state) for c in conflicts] == [
+        (running.id, "scan", "running")
+    ] * 2
+    assert all(STORE in str(c) and running.id in str(c) for c in conflicts)
+    assert env.jobs.list(kind="footprints").items == ()
+    assert check.state == "succeeded"
+    assert ended.state == "cancelled"
+    assert after.state == "succeeded"
+
+
+def test_cancelled_scan_leaves_no_partial_state(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancelled scan abandons its pass: a vanished version is not marked."""
+    # Arrange
+    env.scan("full")
+    gone = next(
+        entry
+        for entry in env.store.by_kind("version")
+        if not entry.current and entry.case == "regular"
+    )
+    remove_version(env.store.root, gone.path)
+    before = env.rows()
+    indexed = env.state()
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    job = env.jobs.submit("scan", store=STORE, params={"mode": "full"}, actor="local")
+    env.follow(job.id, _after_first_segment)
+
+    # Act
+    env.jobs.cancel(job.id)
+    cancelled = env.wait(job.id)
+    after = env.rows()
+    state = env.state()
+    monkeypatch.delenv(DELAY_ENV)
+    rescan = env.scan("full")
+
+    # Assert
+    assert cancelled.state == "cancelled"
+    assert cancelled.error is not None and cancelled.error.code == "cancelled"
+    assert cancelled.finished_at is not None and cancelled.result is None
+    assert after == before
+    assert (state.status, state.indexed_at) == ("available", indexed.indexed_at)
+    assert state.missing_versions == 0
+    assert rescan.result is not None and rescan.result["missing"] == 1
+
+
+def test_worker_crash_fails_job(env: JobsEnv, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A worker killed mid-scan fails its job; the index and later scans are fine."""
+    # Arrange
+    env.scan("full")
+    before = env.rows()
+    monkeypatch.setenv(CRASH_ENV, "5")
+
+    # Act
+    crashed = env.run("scan", mode="full")
+    after = env.rows()
+    monkeypatch.delenv(CRASH_ENV)
+    rescan = env.scan("incremental")
+
+    # Assert
+    assert crashed.state == "failed"
+    assert crashed.error is not None
+    assert crashed.error.code == "worker_crashed"
+    assert "SIGKILL" in crashed.error.detail
+    assert f"{crashed.id}.log" in crashed.error.detail
+    assert after == before
+    assert env.state().status == "available"
+    assert rescan.result is not None and rescan.result["missing"] == 0
+
+
+def test_close_interrupts_running_and_waiting_jobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A waiting job cancels at once; stopping interrupts running and waiting ones."""
+    # Arrange
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    with jobs_env(tmp_path, monkeypatch, max_jobs=1) as env:
+        running = env.jobs.submit("scan", store=STORE, actor="local")
+        link = {"slot": env.store.by_kind("link")[0].path}
+        waiting = env.jobs.submit("link_check", store=STORE, params=link, actor="local")
+        dropped = env.jobs.submit("link_check", store=STORE, params=link, actor="local")
+        env.follow(running.id, lambda event: event.type == "progress")
+
+        # Act
+        cancelled = env.jobs.cancel(dropped.id)
+        env.jobs.close()
+        with JobSupervisor(env.paths, env.settings) as reader:
+            records = {job.id: job for job in reader.list().items}
+
+    # Assert
+    assert (waiting.state, dropped.state) == ("queued", "queued")
+    assert cancelled.state == "cancelled"
+    assert [records[job.id].state for job in (running, waiting, dropped)] == [
+        "interrupted",
+        "interrupted",
+        "cancelled",
+    ]
+    error = records[running.id].error
+    assert error is not None
+    assert (error.code, error.detail) == (
+        "interrupted",
+        MESSAGES["job_interrupted_stop"],
+    )
+
+
+def test_restart_marks_running_job_interrupted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A job of a server that died is interrupted; its worker stops by itself."""
+    # Arrange
+    worker_path(monkeypatch)
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
+    ConfigStore(paths.config_file).save(store_settings(store))
+    owner = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "tests.fixtures.job_owner",
+            str(paths.config_file),
+            str(paths.data_dir),
+            STORE,
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert owner.stdout is not None
+    job_id = owner.stdout.readline().strip()
+    settings = SettingsService(ConfigStore(paths.config_file), NoSources())
+    with JobSupervisor(paths, settings) as jobs:
+        _await(lambda: _progressed(jobs, job_id))
+        alive = jobs.get(job_id)
+        worker = _worker_pid(paths, job_id)
+
+        # Act
+        owner.kill()
+        owner.wait()
+        _await(lambda: not _running(worker))
+        recovered = jobs.recover()
+        record = jobs.get(job_id)
+
+    # Assert
+    assert alive is not None and alive.state == "running"
+    assert recovered == 1
+    assert record is not None and record.state == "interrupted"
+    assert record.error is not None
+    assert (record.error.code, record.error.detail) == (
+        "interrupted",
+        MESSAGES["job_interrupted_restart"],
+    )
+    assert record.finished_at is not None
+    with IndexQueries(paths.index_file) as queries:
+        state = next(s for s in queries.status().stores if s.store == STORE)
+    assert (state.missing_versions, state.indexed_at) == (0, None)
+
+
+def test_jobs_record_actor(env: JobsEnv) -> None:
+    """Each job keeps who asked for it, also as the store's last scan."""
+    # Arrange
+    link = env.store.by_kind("link")[0].path
+
+    # Act
+    scan = env.run("scan", actor="agent-7")
+    check = env.run("link_check", actor="local", slot=link)
+    listed = env.jobs.list(store=STORE)
+
+    # Assert
+    assert (scan.actor, check.actor) == ("agent-7", "local")
+    assert [(job.id, job.actor) for job in listed.items] == [
+        (check.id, "local"),
+        (scan.id, "agent-7"),
+    ]
+    last = env.state().last_scan
+    assert last is not None and (last.id, last.actor) == (scan.id, "agent-7")
+
+
+def test_footprints_job_assigns_cached_unit_outlines(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unit outlines put in the local memory after a scan reach their versions."""
+    # Arrange
+    network = tmp_path / "network.log"
+    monkeypatch.setenv(NO_NETWORK_ENV, str(network))
+    env.scan("full")
+    entries = {entry.path: entry for entry in env.store.entries}
+    keys = {
+        path: _unit_key(entries[path])
+        for path in (
+            item.relative_path.as_posix()
+            for item in env.queries.entries_without_footprint(STORE)
+        )
+    }
+    cache = UnitBBoxCache(env.paths.cache_dir / "kartograf" / "unit_bboxes.sqlite")
+    for kind, code in set(keys.values()):
+        cache[(kind, code)] = _unit_box(kind)
+    cache.close()
+
+    # Act
+    record = env.run("footprints")
+
+    # Assert
+    assert {kind for kind, _ in keys.values()} == {"teryt", "ku"}
+    assert record.state == "succeeded" and record.result is not None
+    assert {name: record.result[name] for name in ("total", "written", "failed")} == {
+        "total": len(keys),
+        "written": len(keys),
+        "failed": 0,
+    }
+    for path in keys:
+        version = env.queries.version(STORE, path, visible=ALL_PROJECTS)
+        assert version is not None
+        location = version.summary.location
+        assert (location.kind, location.source) == ("footprint", "unit")
+    assert env.queries.entries_without_footprint(STORE) == ()
+    assert not network.exists()
+
+
+def test_footprints_job_refused_offline(env: JobsEnv) -> None:
+    """In offline mode the footprints job is refused before it is recorded."""
+    # Arrange
+    env.settings.update(env.settings.get().model_copy(update={"offline": True}))
+
+    # Act
+    with pytest.raises(OfflineModeError) as raised:
+        env.jobs.submit("footprints", store=STORE, actor="local")
+
+    # Assert
+    assert str(raised.value) == MESSAGES["job_offline_mode"]
+    assert env.jobs.list().items == ()
+
+
+def test_link_check_reports_mismatch(env: JobsEnv) -> None:
+    """A link holding another version than its sidecar names becomes a problem."""
+    # Arrange
+    env.scan("full")
+    mismatch = next(
+        entry for entry in env.store.by_case("link_mismatch") if entry.kind == "link"
+    )
+    regular = next(
+        entry for entry in env.store.by_kind("link") if entry.case == "regular"
+    )
+
+    # Act
+    found = env.run("link_check", slot=mismatch.path)
+    fine = env.run("link_check", slot=regular.path)
+    notices = [
+        event.data for event in env.jobs.events(found.id) if event.type == "notice"
+    ]
+    env.scan("full")
+    issues = [
+        (issue.code, issue.origin)
+        for issue in env.queries.issues(STORE)
+        if issue.path == mismatch.path
+    ]
+
+    # Assert
+    assert found.result == {
+        "store": STORE,
+        "slot": mismatch.path,
+        "expected": mismatch.version_path,
+        "confirmed": None,
+        "status": "mismatch",
+    }
+    assert [notice["code"] for notice in notices] == ["link_mismatch"]
+    assert mismatch.path in notices[0]["message"]
+    assert fine.result is not None
+    assert (fine.result["status"], fine.result["confirmed"]) == (
+        "confirmed",
+        regular.version_path,
+    )
+    assert issues == [("link_mismatch", "check")]
+
+
+def test_reindex_runs_full_scan_in_foreground(env: JobsEnv) -> None:
+    """``archiwista reindex`` records a full scan by ``local`` and reports it."""
+    # Arrange
+    out = io.StringIO()
+    err = io.StringIO()
+
+    # Act
+    status = reindex_main(env.paths, NoSources(), out, err, worker_command=TEST_WORKER)
+
+    # Assert
+    assert status == 0, err.getvalue()
+    job = env.jobs.list(kind="scan").items[0]
+    assert (job.state, job.actor, job.params) == (
+        "succeeded",
+        "local",
+        {"mode": "full", "segment": None},
+    )
+    assert f"„{STORE}”: pełny skan zakończony" in out.getvalue()
+    assert job.id in err.getvalue()
+
+
+def test_reindex_conflict_exits_nonzero(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A running index job of the store makes ``reindex`` fail with ``conflict``."""
+    # Arrange
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    running = env.jobs.submit("scan", store=STORE, actor="local")
+    env.follow(running.id, lambda event: event.type == "progress")
+    err = io.StringIO()
+
+    # Act
+    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store=STORE)
+    env.jobs.cancel(running.id)
+
+    # Assert
+    assert status == 1
+    assert "(kod conflict)" in err.getvalue()
+    assert running.id in err.getvalue()
+    assert [job.id for job in env.jobs.list(kind="scan").items] == [running.id]
+
+
+def test_reindex_unknown_store(env: JobsEnv) -> None:
+    """An unknown store is an argument error; nothing is recorded."""
+    err = io.StringIO()
+
+    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store="brak")
+
+    assert status == 2
+    assert err.getvalue() == MESSAGES["job_store_unknown"].format(store="brak") + "\n"
+    assert env.jobs.list().items == ()
+
+
+def test_job_list_pages_with_cursor_of_its_filters(env: JobsEnv) -> None:
+    """Jobs list newest first in pages; a cursor of other filters is refused."""
+    # Arrange
+    links = [entry.path for entry in env.store.by_kind("link")[:3]]
+    done = [env.run("link_check", slot=link) for link in links]
+
+    # Act
+    first = env.jobs.list(kind="link_check", limit=2)
+    second = env.jobs.list(kind="link_check", limit=2, cursor=first.next_cursor)
+
+    # Assert
+    assert [job.id for job in first.items + second.items] == [
+        job.id for job in reversed(done)
+    ]
+    assert second.next_cursor is None
+    with pytest.raises(IndexQueryError):
+        env.jobs.list(kind="scan", cursor=first.next_cursor)
+    with pytest.raises(IndexQueryError):
+        env.jobs.list(limit=0)
+
+
+def test_server_scans_configured_store_at_start(tmp_path: Path) -> None:
+    """``archiwista serve`` fully scans a store it never indexed, as ``local``."""
+    # Arrange
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
+    ConfigStore(paths.config_file).save(store_settings(store))
+
+    # Act
+    with serving(paths), IndexQueries(paths.index_file) as queries:
+        _await(lambda: _last_scan(queries) == "succeeded")
+        state = next(s for s in queries.status().stores if s.store == STORE)
+
+    # Assert
+    assert state.last_scan is not None and state.last_scan.actor == "local"
+    assert state.indexed_at is not None and state.versions > 0
+
+
+@pytest.mark.parametrize(
+    ("kind", "params"),
+    [
+        ("scan", {"mode": "quick"}),
+        ("scan", {"segment": 7}),
+        ("scan", {"mode": "full", "units": ["N-34"]}),
+        ("link_check", {}),
+        ("link_check", {"slot": ""}),
+        ("footprints", {"mode": "full"}),
+        ("download", {}),
+    ],
+)
+def test_submit_rejects_invalid_parameters(
+    env: JobsEnv, kind: str, params: dict[str, object]
+) -> None:
+    """A job with an unknown kind or parameters is refused and not recorded."""
+    with pytest.raises(ValueError):
+        env.jobs.submit(kind, store=STORE, params=params, actor="local")
+    with pytest.raises(NotFoundError):
+        env.jobs.submit("scan", store="brak", actor="local")
+
+    assert env.jobs.list().items == ()
+
+
+def test_link_check_finds_outdated_index_and_missing_link(env: JobsEnv) -> None:
+    """A link moved after the scan, or deleted, is reported without a problem."""
+    # Arrange
+    env.scan("full")
+    moved, deleted = [
+        entry for entry in env.store.by_kind("link") if entry.case == "regular"
+    ][:2]
+    version = add_version(env.store.root, moved.path, label="2026-10-01_99999")
+    (env.store.root / deleted.path).unlink()
+
+    # Act
+    outdated = env.run("link_check", slot=moved.path)
+    missing = env.run("link_check", slot=deleted.path)
+    notices = [
+        event.data["code"]
+        for event in env.jobs.events(outdated.id)
+        if event.type == "notice"
+    ]
+
+    # Assert
+    assert outdated.result is not None and missing.result is not None
+    assert (outdated.result["status"], outdated.result["confirmed"]) == (
+        "index_outdated",
+        version,
+    )
+    assert outdated.result["expected"] == moved.version_path
+    assert notices == ["index_outdated"]
+    assert (missing.result["status"], missing.result["confirmed"]) == ("missing", None)
+    assert not [i for i in env.queries.issues(STORE) if i.code == "link_mismatch"]
+
+
+def test_footprints_job_on_disconnected_store_changes_nothing(env: JobsEnv) -> None:
+    """With the share gone, the footprints job fails and keeps every reason."""
+    # Arrange
+    env.scan("full")
+    before = env.rows()
+    root = env.store.root
+    root.rename(root.with_name("data-away"))
+    root.mkdir()
+
+    # Act
+    record = env.run("footprints")
+
+    # Assert
+    assert record.state == "failed"
+    assert record.error is not None and record.error.code == "store_unavailable"
+    assert env.state().status == "unavailable"
+    assert env.rows() == before
+
+
+def test_removed_store_cancels_its_jobs(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Removing a store from the settings cancels its job and drops its entries."""
+    # Arrange
+    env.scan("full")
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    job = env.jobs.submit("scan", store=STORE, actor="local")
+    env.follow(job.id, _after_first_segment)
+
+    # Act
+    env.settings.update(env.settings.get().model_copy(update={"stores": ()}))
+    record = env.wait(job.id)
+
+    # Assert
+    assert record.state == "cancelled"
+    assert env.queries.status().stores == ()
+
+
+def test_new_store_in_settings_gets_full_scan(env: JobsEnv, tmp_path: Path) -> None:
+    """The scheduler scans a store added to the settings fully, as ``local``."""
+    # Arrange
+    other = make_store(tmp_path / "other", slots=24, seed=8)
+    added = StoreConfig(id="drugi", name="Drugi", kartograf=other.root, kind="local")
+    registry = load_registry(cache_dir=env.paths.cache_dir)
+    scheduler = ScanScheduler(
+        env.jobs, env.settings, registry, index_path=env.paths.index_file, tick_s=3600
+    )
+    scheduler.start()
+    try:
+        # Act
+        settings = env.settings.get()
+        env.settings.update(
+            settings.model_copy(update={"stores": (*settings.stores, added)})
+        )
+        jobs = env.jobs.list(store="drugi").items
+        record = env.wait(jobs[0].id)
+    finally:
+        scheduler.stop()
+
+    # Assert
+    assert len(jobs) == 1
+    assert (record.params["mode"], record.actor, record.state) == (
+        "full",
+        "local",
+        "succeeded",
+    )
+
+
+def test_worker_rejects_unreadable_job() -> None:
+    """A worker given no valid job reports a protocol error and exits with 2."""
+    finished = subprocess.run(
+        [sys.executable, "-m", "archiwista.jobs.worker"],
+        input=b'{"protocol": 1}\n',
+        capture_output=True,
+        timeout=WAIT_S,
+        check=False,
+    )
+
+    message = decode_message(finished.stdout.decode("utf-8"))
+    assert finished.returncode == 2
+    assert (message.type, message.data["code"]) == ("error", "protocol_error")
+
+
+def test_start_forgets_old_jobs_but_each_store_last(env: JobsEnv) -> None:
+    """Finished jobs older than 90 days go, except each store's last of a kind."""
+    # Arrange
+    links = [entry.path for entry in env.store.by_kind("link")[:2]]
+    old, last = [env.run("link_check", slot=link) for link in links]
+    recent = env.run("scan")
+    env.jobs.close()
+    with sqlite3.connect(env.paths.index_file) as db:
+        for job, days in ((old, 92), (last, 91)):
+            moment = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+            db.execute(
+                "UPDATE jobs SET created_at = ?, finished_at = ? WHERE id = ?",
+                (moment, moment, job.id),
+            )
+    db.close()
+
+    # Act
+    with JobSupervisor(env.paths, env.settings) as jobs:
+        kept = [job.id for job in jobs.list().items]
+        events = jobs.events(old.id)
+
+    # Assert
+    assert kept == [recent.id, last.id]
+    assert events == ()
+
+
+@pytest.mark.live
+def test_footprints_job_fetches_teryt_unit_live(env: JobsEnv) -> None:
+    """With the network, a TERYT unit outline comes from PRG and is kept."""
+    # Arrange
+    env.scan("full")
+    path = next(
+        item.relative_path.as_posix()
+        for item in env.queries.entries_without_footprint(STORE)
+        if "/teryt/" in item.relative_path.as_posix()
+    )
+    sidecar = sidecar_path(env.store.root, path)
+    content = json.loads(sidecar.read_text(encoding="utf-8"))
+    content["request"]["teryt"] = "1465"  # Warszawa
+    sidecar.write_text(json.dumps(content), encoding="utf-8")
+
+    # Act
+    record = env.run("footprints")
+
+    # Assert
+    assert record.state == "succeeded", record
+    version = env.queries.version(STORE, path, visible=ALL_PROJECTS)
+    assert version is not None and version.summary.location.source == "unit"
+    assert version.footprint is not None
+    ring = version.footprint["coordinates"][0]  # type: ignore[index]
+    longitudes = [point[0] for point in ring]
+    latitudes = [point[1] for point in ring]
+    assert min(longitudes) < 21.0 < max(longitudes)
+    assert min(latitudes) < 52.2 < max(latitudes)
+    cache = UnitBBoxCache(env.paths.cache_dir / "kartograf" / "unit_bboxes.sqlite")
+    assert ("teryt", "1465") in cache
+    cache.close()
+
+
+def _after_first_segment(event: JobEvent) -> bool:
+    """Accept a scan's progress once its first segment is written."""
+    return event.type == "progress" and event.data["current"] >= 1
+
+
+def _progressed(jobs: JobSupervisor, job_id: str) -> bool:
+    record = jobs.get(job_id)
+    return record is not None and record.progress is not None
+
+
+def _last_scan(queries: IndexQueries) -> str | None:
+    state = next((s for s in queries.status().stores if s.store == STORE), None)
+    return None if state is None or state.last_scan is None else state.last_scan.state
+
+
+def _unit_key(entry: ExpectedEntry) -> tuple[str, str]:
+    """Return ``(kind, code)`` of a unit version's outline in the local memory."""
+    assert entry.unit is not None, entry
+    return entry.hierarchy.split("/", 1)[0], entry.unit
+
+
+def _unit_box(kind: str) -> BBox:
+    """Return a native box of a unit: in CS92 for TERYT, in Křovák for KU."""
+    if kind == "teryt":
+        return BBox(500_000.0, 400_000.0, 520_000.0, 420_000.0, "EPSG:2180")
+    return BBox(-600_000.0, -1_100_000.0, -590_000.0, -1_090_000.0, "EPSG:5514")
+
+
+def _worker_pid(paths: AppPaths, job_id: str) -> int:
+    """Return the worker process of a job, from the first line of its log."""
+    log = (paths.jobs_dir / f"{job_id}.log").read_text(encoding="utf-8")
+    match = re.search(r"process (\d+)", log)
+    assert match is not None, log
+    return int(match.group(1))
+
+
+def _running(pid: int) -> bool:
+    """Whether a process runs (a zombie waiting for its parent does not)."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    return stat.rpartition(")")[2].split()[0] != "Z"
+
+
+def _await(condition: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + WAIT_S
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(0.05)
+    raise AssertionError("condition not met in time")

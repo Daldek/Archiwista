@@ -1,0 +1,1294 @@
+"""Run background jobs in worker processes and keep them in the local index.
+
+``JobSupervisor`` lives in the server and in ``archiwista reindex``. It
+records every job in the index (``jobs``, with its ``actor``), starts one
+worker process per job (``python -m archiwista.jobs.worker``, A-ADR-007),
+reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
+numbered job events (``job_events``), which it also hands to subscribers
+(SSE, SPEC 9.2): ``progress``, ``notice`` and ``state``. A job is
+``queued``, then ``running``, then ``succeeded``, ``failed``, ``interrupted``
+or ``cancelled``; one that did not succeed has an ``error`` (``code``,
+``detail``).
+
+Rules of SPEC 5.6: one job writing a store's index at a time (``scan``,
+``footprints``; another one is a ``JobConflictError``), at most two network
+jobs and at most half the processors' worth of workers, the rest waiting in
+the queue; ``footprints`` needs the network and is refused in offline mode.
+Cancelling interrupts the worker as Ctrl+C would (SIGINT; CTRL_BREAK_EVENT
+to its process group on Windows) and kills it after 30 s.
+
+A job whose supervising process is gone (a server stopped or crashed) becomes
+``interrupted`` as soon as a supervisor meets it: every supervising process
+locks ``<jobs>/owner-<pid>.lock``, which the system releases when the
+process ends, and records its pid with each of its jobs. A worker whose
+supervisor is gone interrupts itself. Each worker's standard error is its
+job's log, ``<jobs>/<id>.log``; logs and finished jobs are kept 90 days (the
+last finished job of each store and kind stays) and logs while under 1 GB.
+"""
+
+import base64
+import binascii
+import hashlib
+import json
+import logging
+import os
+import secrets
+import signal
+import sqlite3
+import subprocess
+import sys
+import threading
+import time
+from collections import deque
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import TracebackType
+from typing import IO, Any, Literal, Self, cast
+
+from archiwista.config import AppPaths, AppSettings, SettingsService
+from archiwista.errors import (
+    IndexQueryError,
+    JobConflictError,
+    NotFoundError,
+    OfflineModeError,
+)
+from archiwista.index import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, IndexWriter
+from archiwista.index.schema import connect, initialize
+from archiwista.jobs.protocol import (
+    CODE_CANCELLED,
+    CODE_INTERNAL_ERROR,
+    CODE_INTERRUPTED,
+    CODE_WORKER_CRASHED,
+    INTERRUPTED_EXIT,
+    JOB_KINDS,
+    JobKind,
+    JobSpec,
+    JsonObject,
+    ProtocolError,
+    WorkerMessage,
+    decode_message,
+    encode_spec,
+)
+from archiwista.messages import MESSAGES
+
+if sys.platform == "win32":  # pragma: no cover - Windows
+    import msvcrt
+else:
+    import fcntl
+
+logger = logging.getLogger(__name__)
+
+type JobState = Literal[
+    "queued", "running", "succeeded", "failed", "interrupted", "cancelled"
+]
+type EventType = Literal["progress", "notice", "state"]
+
+JOB_STATES: tuple[JobState, ...] = (
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "interrupted",
+    "cancelled",
+)
+ACTIVE_STATES: tuple[JobState, ...] = ("queued", "running")
+FINISHED_STATES: tuple[JobState, ...] = (
+    "succeeded",
+    "failed",
+    "interrupted",
+    "cancelled",
+)
+# Kinds writing a store's index: one job of them per store at a time.
+INDEX_JOB_KINDS: frozenset[JobKind] = frozenset({"scan", "footprints"})
+# Kinds using the network.
+NETWORK_JOB_KINDS: frozenset[JobKind] = frozenset({"footprints"})
+MAX_NETWORK_JOBS = 2
+# Seconds an interrupted worker has to stop before it is killed.
+STOP_TIMEOUT_S = 30.0
+LOG_MAX_AGE = timedelta(days=90)
+LOG_MAX_BYTES = 1024**3
+WORKER_COMMAND: tuple[str, ...] = (sys.executable, "-m", "archiwista.jobs.worker")
+SCAN_MODES: tuple[str, ...] = ("incremental", "full")
+
+_ACTIVE_SQL = "('queued', 'running')"
+_FINISHED_SQL = "('succeeded', 'failed', 'interrupted', 'cancelled')"
+_INDEX_KINDS_SQL = "('scan', 'footprints')"
+_JOB_COLUMNS = (
+    "id, kind, state, actor, store, params, created_at, started_at, finished_at,"
+    " summary, error"
+)
+_CURSOR_VERSION = 1
+
+# Jobs waiting or running under a supervisor of this process, and the owner
+# locks this process holds (with the number of supervisors using each).
+_PROCESS_LOCK = threading.Lock()
+_ACTIVE_JOBS: set[str] = set()
+_OWNER_LOCKS: dict[Path, tuple[IO[bytes], int]] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class JobError:
+    """Why a job did not succeed: stable ``code`` and Polish ``detail``."""
+
+    code: str
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class JobRecord:
+    """A background job (``GET /jobs/{id}``).
+
+    Attributes
+    ----------
+    id : str
+        Opaque job id.
+    kind : {"scan", "footprints", "link_check"}
+        What the job does.
+    state : {"queued", "running", "succeeded", "failed", "interrupted", "cancelled"}
+        Where the job is in its life.
+    actor : str
+        Who asked for it (``Principal.id``; ``local`` in local mode).
+    store : str or None
+        Configured id of the store it works on.
+    params : dict
+        Its parameters (``scan``: ``mode``, ``segment``; ``link_check``:
+        ``slot``).
+    created_at, started_at, finished_at : datetime or None
+        When it was submitted, started and finished (UTC).
+    progress : dict or None
+        Data of its last ``progress`` event (``current``, ``total``…).
+    result : dict or None
+        Summary of a job that succeeded.
+    error : JobError or None
+        Why a job did not succeed.
+    """
+
+    id: str
+    kind: JobKind
+    state: JobState
+    actor: str
+    store: str | None
+    params: JsonObject
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    progress: JsonObject | None = None
+    result: JsonObject | None = None
+    error: JobError | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class JobEvent:
+    """A job event, as kept in the index and sent over SSE.
+
+    ``seq`` numbers a job's events from 1 (the SSE ``id``; resume after it
+    with ``JobSupervisor.events``). ``type`` is ``progress``, ``notice`` or
+    ``state``; a ``state`` event has ``data["state"]`` and, at the end,
+    ``result`` (succeeded) or ``error`` (``code``, ``detail``).
+    """
+
+    job_id: str
+    seq: int
+    type: EventType
+    data: JsonObject
+    at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class JobPage:
+    """Jobs, newest first; ``next_cursor`` is ``None`` on the last page."""
+
+    items: tuple[JobRecord, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ScanHistory:
+    """When a store was scanned, for the scheduler.
+
+    ``finished_at`` is the end of the store's last scan whatever its outcome,
+    ``full_at`` the end of its last successful full scan of the whole store
+    and ``busy`` whether a job writing its index waits or runs.
+    """
+
+    finished_at: datetime | None = None
+    full_at: datetime | None = None
+    busy: bool = False
+
+
+type JobListener = Callable[[JobEvent], None]
+
+
+@dataclass(slots=True)
+class _Waiting:
+    job_id: str
+    kind: JobKind
+    store: str
+
+
+@dataclass(slots=True)
+class _Run:
+    """A running worker and what it reported so far."""
+
+    job_id: str
+    kind: JobKind
+    store: str
+    process: subprocess.Popen[bytes]
+    log: IO[bytes]
+    seq: int
+    result: JsonObject | None = None
+    error: JsonObject | None = None
+    cancel: bool = False
+    stop: bool = False
+    reader: threading.Thread | None = None
+    killer: threading.Timer | None = None
+
+
+def default_max_jobs() -> int:
+    """Workers running at once: half the processors, at least two."""
+    return max(2, (os.cpu_count() or 2) // 2)
+
+
+def label(prefix: str, value: str) -> str:
+    """Return the Polish name of a job kind or state (``job_kind``, ``job_state``)."""
+    return MESSAGES.get(f"{prefix}_{value}", value)
+
+
+class JobSupervisor:
+    """Start, follow and record background jobs.
+
+    Parameters
+    ----------
+    paths : AppPaths
+        The local index and the jobs directory (logs, owner locks).
+    settings : SettingsService
+        Settings in effect: stores, offline mode. The index's stores follow
+        them (``IndexWriter.sync_stores``) before every job starts and after
+        every change; jobs of a removed store are cancelled.
+    worker_command : Sequence[str], optional
+        Command of a worker process, ``python -m archiwista.jobs.worker`` by
+        default.
+    max_jobs : int or None, optional
+        Workers running at once; half the processors (at least two) by
+        default.
+    max_network_jobs : int, default 2
+        Network jobs running at once.
+    stop_timeout_s : float, default 30.0
+        Seconds an interrupted worker has before it is killed.
+
+    Notes
+    -----
+    ``start`` must come first and ``close`` last (or use ``with``). All
+    methods are thread-safe. Listeners run in a supervisor thread while it
+    holds its lock, in the order of each job's events: they must return
+    quickly (e.g. hand the event to an event loop) and must not wait for a
+    job.
+    """
+
+    def __init__(
+        self,
+        paths: AppPaths,
+        settings: SettingsService,
+        *,
+        worker_command: Sequence[str] = WORKER_COMMAND,
+        max_jobs: int | None = None,
+        max_network_jobs: int = MAX_NETWORK_JOBS,
+        stop_timeout_s: float = STOP_TIMEOUT_S,
+    ) -> None:
+        self._paths = paths
+        self._settings = settings
+        self._command = tuple(worker_command)
+        self._max_jobs = default_max_jobs() if max_jobs is None else max_jobs
+        self._max_network_jobs = max_network_jobs
+        self._stop_timeout_s = stop_timeout_s
+        self._lock = threading.RLock()
+        self._changed = threading.Condition(self._lock)
+        self._queue: deque[_Waiting] = deque()
+        self._running: dict[str, _Run] = {}
+        self._listeners: list[tuple[str | None, JobListener]] = []
+        self._db: sqlite3.Connection | None = None
+        self._local = threading.local()
+        self._readers: list[sqlite3.Connection] = []
+        self._owner: Path | None = None
+        self._unsubscribe: Callable[[], None] | None = None
+        self._synced: AppSettings | None = None
+        self._phase: Literal["new", "open", "closing", "closed"] = "new"
+
+    def __enter__(self) -> Self:
+        """Start the supervisor for a ``with`` block."""
+        self.start()
+        return self
+
+    def __exit__(
+        self,
+        kind: type[BaseException] | None,
+        error: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Close the supervisor."""
+        self.close()
+
+    def start(self) -> int:
+        """Claim this process's jobs, follow the settings and recover jobs.
+
+        Job logs and finished jobs older than 90 days are deleted first (the
+        last finished job of each store and kind stays).
+
+        Returns
+        -------
+        int
+            Jobs found without a live supervising process, now
+            ``interrupted``.
+        """
+        with self._lock:
+            if self._phase != "new":
+                raise RuntimeError("a supervisor starts once")
+            jobs_dir = self._paths.jobs_dir
+            jobs_dir.mkdir(parents=True, exist_ok=True)
+            initialize(self._paths.index_file)
+            self._owner = _hold_owner_lock(jobs_dir)
+            db = self._db = _connect(self._paths.index_file)
+            self._phase = "open"
+            _prune_logs(jobs_dir, now=_now())
+            _prune_jobs(db, now=_now())
+            self._sync(self._settings.get())
+            self._unsubscribe = self._settings.subscribe(self._settings_changed)
+        return self.recover()
+
+    def close(self) -> None:
+        """Stop: waiting jobs and running workers end ``interrupted``.
+
+        Running workers are interrupted and waited for (killed after
+        ``stop_timeout_s``), so a scan abandons its pass.
+        """
+        with self._lock:
+            if self._phase == "new":
+                self._phase = "closed"
+            if self._phase != "open":
+                return
+            self._phase = "closing"
+            if self._unsubscribe is not None:
+                self._unsubscribe()
+            stopped = JobError(CODE_INTERRUPTED, MESSAGES["job_interrupted_stop"])
+            while self._queue:
+                self._end_waiting(self._queue.popleft(), "interrupted", stopped)
+            runs = tuple(self._running.values())
+            for run in runs:
+                run.stop = True
+                self._interrupt(run)
+        for run in runs:
+            if run.reader is not None:
+                run.reader.join(self._stop_timeout_s + 10)
+        with self._lock:
+            self._phase = "closed"
+            for connection in (self._db, *self._readers):
+                if connection is not None:
+                    connection.close()
+            self._db = None
+            self._readers.clear()
+            if self._owner is not None:
+                _release_owner_lock(self._owner)
+                self._owner = None
+
+    def submit(
+        self,
+        kind: str,
+        *,
+        store: str,
+        params: Mapping[str, object] | None = None,
+        actor: str,
+    ) -> JobRecord:
+        """Record a job and start it when there is room.
+
+        Parameters
+        ----------
+        kind : {"scan", "footprints", "link_check"}
+            What to run.
+        store : str
+            Configured store id.
+        params : Mapping or None, optional
+            ``scan``: ``mode`` (``incremental``, the default, or ``full``)
+            and optional ``segment``; ``link_check``: ``slot`` (its path);
+            ``footprints``: none.
+        actor : str
+            Who asks (``Principal.id``).
+
+        Returns
+        -------
+        JobRecord
+            The job, ``queued`` or already ``running``.
+
+        Raises
+        ------
+        NotFoundError
+            The store is not configured.
+        OfflineModeError
+            A network job while offline mode is on; nothing is recorded.
+        JobConflictError
+            Another job writes the store's index (``scan``, ``footprints``);
+            it names that job.
+        ValueError
+            An unknown kind or invalid parameters.
+        """
+        job_kind = _job_kind(kind)
+        settings = self._settings.get()
+        if settings.store(store) is None:
+            raise NotFoundError(MESSAGES["job_store_unknown"].format(store=store))
+        values = _job_params(job_kind, params or {})
+        if job_kind in NETWORK_JOB_KINDS and settings.offline:
+            raise OfflineModeError(MESSAGES["job_offline_mode"])
+        job_id = secrets.token_hex(8)
+        now = _now()
+        with self._lock:
+            db = self._open_db()
+            busy = None
+            events: list[JobEvent] = []
+            # Claimed first: a recovery meeting the new row sees a live owner.
+            _set_active(job_id, active=True)
+            try:
+                with _transaction(db):
+                    if job_kind in INDEX_JOB_KINDS:
+                        rows = db.execute(
+                            "SELECT id, kind, state, pid FROM jobs WHERE store = ?"
+                            f" AND kind IN {_INDEX_KINDS_SQL}"
+                            f" AND state IN {_ACTIVE_SQL} ORDER BY created_at",
+                            (store,),
+                        ).fetchall()
+                        for row in rows:
+                            if self._owner_alive(row["id"], row["pid"]):
+                                busy = busy or row
+                            else:
+                                events.append(self._mark_stale(db, row["id"], now))
+                    if busy is None:
+                        db.execute(
+                            "INSERT INTO jobs (id, kind, actor, store, params, state,"
+                            " created_at, pid) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+                            (
+                                job_id,
+                                job_kind,
+                                actor,
+                                store,
+                                _json(values),
+                                _iso(now),
+                                os.getpid(),
+                            ),
+                        )
+                        events.append(
+                            _insert_event(
+                                db, job_id, 1, "state", {"state": "queued"}, now
+                            )
+                        )
+            except BaseException:
+                _set_active(job_id, active=False)
+                raise
+            for event in events:
+                self._publish(event)
+            if busy is not None:
+                _set_active(job_id, active=False)
+                message = MESSAGES["job_conflict"].format(
+                    store=store,
+                    kind=label("job_kind", busy["kind"]),
+                    job=busy["id"],
+                    state=label("job_state", busy["state"]),
+                )
+                raise JobConflictError(
+                    message, job_id=busy["id"], kind=busy["kind"], state=busy["state"]
+                )
+            self._queue.append(_Waiting(job_id, job_kind, store))
+            self._dispatch()
+        return self._record(job_id)
+
+    def cancel(self, job_id: str) -> JobRecord:
+        """Cancel a job of this supervisor.
+
+        A waiting job ends at once; a running worker is interrupted (and
+        killed after ``stop_timeout_s``) and the job ends ``cancelled`` when
+        the worker is gone. A finished job, or one another process
+        supervises, is returned unchanged.
+
+        Raises
+        ------
+        NotFoundError
+            No job has this id.
+        """
+        with self._lock:
+            waiting = next(
+                (item for item in self._queue if item.job_id == job_id), None
+            )
+            if waiting is not None:
+                self._queue.remove(waiting)
+                error = JobError(CODE_CANCELLED, MESSAGES["job_cancelled"])
+                self._end_waiting(waiting, "cancelled", error)
+            run = self._running.get(job_id)
+            if run is not None and not run.cancel:
+                run.cancel = True
+                self._interrupt(run)
+        return self._record(job_id)
+
+    def wait(self, job_id: str, timeout: float | None = None) -> JobRecord:
+        """Wait until a job of this supervisor ends (or ``timeout`` passes).
+
+        Raises
+        ------
+        NotFoundError
+            No job has this id.
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._changed:
+            while self._owns(job_id):
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    break
+                self._changed.wait(remaining)
+        return self._record(job_id)
+
+    def recover(self) -> int:
+        """Mark jobs whose supervising process is gone as ``interrupted``.
+
+        Returns
+        -------
+        int
+            Jobs marked.
+        """
+        with self._lock:
+            db = self._open_db()
+            now = _now()
+            with _transaction(db):
+                rows = db.execute(
+                    f"SELECT id, pid FROM jobs WHERE state IN {_ACTIVE_SQL}"
+                ).fetchall()
+                events = [
+                    self._mark_stale(db, row["id"], now)
+                    for row in rows
+                    if not self._owner_alive(row["id"], row["pid"])
+                ]
+            for event in events:
+                self._publish(event)
+        return len(events)
+
+    def subscribe(
+        self, listener: JobListener, *, job_id: str | None = None
+    ) -> Callable[[], None]:
+        """Call ``listener(event)`` for each new event of one job or of all.
+
+        Returns
+        -------
+        Callable[[], None]
+            Ends the subscription.
+        """
+        entry = (job_id, listener)
+        with self._lock:
+            self._listeners.append(entry)
+
+        def unsubscribe() -> None:
+            with self._lock:
+                if entry in self._listeners:
+                    self._listeners.remove(entry)
+
+        return unsubscribe
+
+    def get(self, job_id: str) -> JobRecord | None:
+        """Return a job, or ``None`` when no job has this id."""
+        with self._reading() as connection:
+            row = connection.execute(
+                f"SELECT {_JOB_COLUMNS} FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            return None if row is None else _job_record(connection, row)
+
+    def events(self, job_id: str, *, after: int = 0) -> tuple[JobEvent, ...]:
+        """Return a job's events after ``seq`` ``after`` (SSE ``Last-Event-ID``)."""
+        with self._reading() as connection:
+            rows = connection.execute(
+                "SELECT seq, type, data, at FROM job_events"
+                " WHERE job_id = ? AND seq > ? ORDER BY seq",
+                (job_id, after),
+            ).fetchall()
+        return tuple(
+            JobEvent(
+                job_id=job_id,
+                seq=int(row["seq"]),
+                type=row["type"],
+                data=json.loads(row["data"]),
+                at=datetime.fromisoformat(row["at"]),
+            )
+            for row in rows
+        )
+
+    def scan_history(self, store: str) -> ScanHistory:
+        """Return when a store was last scanned and whether it is busy."""
+        with self._reading() as connection:
+            finished = connection.execute(
+                "SELECT max(coalesce(finished_at, created_at)) FROM jobs"
+                f" WHERE store = ? AND kind = 'scan' AND state IN {_FINISHED_SQL}",
+                (store,),
+            ).fetchone()[0]
+            full = connection.execute(
+                "SELECT max(finished_at) FROM jobs WHERE store = ? AND kind = 'scan'"
+                " AND state = 'succeeded' AND json_extract(params, '$.mode') = 'full'"
+                " AND json_extract(params, '$.segment') IS NULL",
+                (store,),
+            ).fetchone()[0]
+            busy = connection.execute(
+                f"SELECT 1 FROM jobs WHERE store = ? AND kind IN {_INDEX_KINDS_SQL}"
+                f" AND state IN {_ACTIVE_SQL} LIMIT 1",
+                (store,),
+            ).fetchone()
+        return ScanHistory(
+            finished_at=_datetime(finished),
+            full_at=_datetime(full),
+            busy=busy is not None,
+        )
+
+    def list(
+        self,
+        *,
+        kind: str | None = None,
+        store: str | None = None,
+        state: str | None = None,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+    ) -> JobPage:
+        """Return jobs newest first (``GET /jobs``).
+
+        Parameters
+        ----------
+        kind, store, state : str or None, optional
+            Only jobs of this kind, store or state.
+        limit : int, default 50
+            Page size, 1 to 200.
+        cursor : str or None, optional
+            ``next_cursor`` of the previous page of the same filters.
+
+        Raises
+        ------
+        IndexQueryError
+            Limit out of range, or a cursor of other filters.
+        """
+        if not 1 <= limit <= MAX_PAGE_LIMIT:
+            raise IndexQueryError(
+                MESSAGES["index_invalid_limit"].format(limit=MAX_PAGE_LIMIT)
+            )
+        fingerprint = hashlib.sha256(
+            json.dumps([kind, store, state]).encode()
+        ).hexdigest()[:16]
+        after = _decode_cursor(cursor, fingerprint)
+        conditions: list[str] = []
+        values: list[object] = []
+        for column, value in (("kind", kind), ("store", store), ("state", state)):
+            if value is not None:
+                conditions.append(f"{column} = ?")
+                values.append(value)
+        if after is not None:
+            conditions.append("(created_at, id) < (?, ?)")
+            values.extend(after)
+        where = " AND ".join(conditions) or "1"
+        with self._reading() as connection:
+            rows = connection.execute(
+                f"SELECT {_JOB_COLUMNS} FROM jobs WHERE {where}"
+                " ORDER BY created_at DESC, id DESC LIMIT ?",
+                (*values, limit + 1),
+            ).fetchall()
+            items = tuple(_job_record(connection, row) for row in rows[:limit])
+        next_cursor = None
+        if len(rows) > limit:
+            last = rows[limit - 1]
+            next_cursor = _encode_cursor(fingerprint, [last["created_at"], last["id"]])
+        return JobPage(items=items, next_cursor=next_cursor)
+
+    # Internals; methods named ``_…`` that change state run with the lock.
+
+    def _record(self, job_id: str) -> JobRecord:
+        record = self.get(job_id)
+        if record is None:
+            raise NotFoundError(MESSAGES["job_not_found"].format(job=job_id))
+        return record
+
+    def _owns(self, job_id: str) -> bool:
+        return job_id in self._running or any(
+            item.job_id == job_id for item in self._queue
+        )
+
+    def _dispatch(self) -> None:
+        """Start waiting jobs, oldest first, while there is room."""
+        if self._phase != "open":
+            return
+        for waiting in tuple(self._queue):
+            if not self._room(waiting.kind):
+                continue
+            self._queue.remove(waiting)
+            try:
+                self._start(waiting)
+            except Exception as error:  # the job must not stay waiting
+                logger.exception("Starting job %s failed", waiting.job_id)
+                detail = MESSAGES["job_internal_error"].format(
+                    detail=f"{type(error).__name__}: {error}"
+                )
+                self._end_waiting(
+                    waiting, "failed", JobError(CODE_INTERNAL_ERROR, detail)
+                )
+
+    def _room(self, kind: JobKind) -> bool:
+        if len(self._running) >= self._max_jobs:
+            return False
+        if kind in NETWORK_JOB_KINDS:
+            network = sum(
+                run.kind in NETWORK_JOB_KINDS for run in self._running.values()
+            )
+            return network < self._max_network_jobs
+        return True
+
+    def _start(self, waiting: _Waiting) -> None:
+        """Mark a job running and start its worker with the current settings."""
+        settings = self._settings.get()
+        if settings.store(waiting.store) is None:
+            error = JobError(
+                CODE_CANCELLED,
+                MESSAGES["job_store_unknown"].format(store=waiting.store),
+            )
+            self._end_waiting(waiting, "cancelled", error)
+            return
+        if waiting.kind in NETWORK_JOB_KINDS and settings.offline:
+            error = JobError("offline_mode", MESSAGES["job_offline_mode"])
+            self._end_waiting(waiting, "failed", error)
+            return
+        self._sync(settings)
+        db = self._open_db()
+        now = _now()
+        with _transaction(db):
+            row = db.execute(
+                "SELECT params, actor, (SELECT max(seq) FROM job_events e"
+                " WHERE e.job_id = jobs.id) AS seq FROM jobs WHERE id = ?",
+                (waiting.job_id,),
+            ).fetchone()
+            db.execute(
+                "UPDATE jobs SET state = 'running', started_at = ? WHERE id = ?",
+                (_iso(now), waiting.job_id),
+            )
+            seq = int(row["seq"] or 0) + 1
+            event = _insert_event(
+                db, waiting.job_id, seq, "state", {"state": "running"}, now
+            )
+        self._publish(event)
+        spec = JobSpec(
+            job_id=waiting.job_id,
+            kind=waiting.kind,
+            store=waiting.store,
+            params=json.loads(row["params"]),
+            actor=row["actor"],
+            index_path=self._paths.index_file,
+            cache_dir=self._paths.cache_dir,
+            settings=settings,
+        )
+        log = _log_path(self._paths.jobs_dir, waiting.job_id).open("ab")
+        try:
+            process = subprocess.Popen(
+                self._command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=log,
+                cwd=self._paths.jobs_dir,
+                **_process_group(),
+            )
+        except OSError as error:
+            log.close()
+            failed = JobError(
+                CODE_WORKER_CRASHED,
+                MESSAGES["job_worker_not_started"].format(detail=error),
+            )
+            self._end_waiting(waiting, "failed", failed)
+            return
+        run = _Run(
+            job_id=waiting.job_id,
+            kind=waiting.kind,
+            store=waiting.store,
+            process=process,
+            log=log,
+            seq=seq,
+        )
+        self._running[run.job_id] = run
+        stdin = cast(IO[bytes], process.stdin)
+        try:
+            # The input stays open: its end tells the worker we are gone.
+            stdin.write((encode_spec(spec) + "\n").encode("utf-8"))
+            stdin.flush()
+        except OSError:  # the worker ended at once; its reader finishes the job
+            pass
+        run.reader = threading.Thread(
+            target=self._read,
+            args=(run,),
+            name=f"archiwista-job-{run.job_id}",
+            daemon=True,
+        )
+        run.reader.start()
+
+    def _read(self, run: _Run) -> None:
+        """Follow a worker's output until it ends, then finish its job."""
+        stdout = cast(IO[bytes], run.process.stdout)
+        try:
+            for raw in stdout:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                try:
+                    message = decode_message(line)
+                except ProtocolError as error:
+                    logger.warning("Job %s: %s", run.job_id, error)
+                    continue
+                self._receive(run, message)
+        except Exception:  # the job must not stay running
+            logger.exception("Following job %s failed", run.job_id)
+        finally:
+            self._finish(run, run.process.wait())
+
+    def _receive(self, run: _Run, message: WorkerMessage) -> None:
+        if message.type == "result":
+            run.result = message.data
+            return
+        if message.type == "error":
+            run.error = message.data
+            return
+        with self._lock:
+            db = self._open_db()
+            now = _now()
+            with _transaction(db):
+                event = _insert_event(
+                    db, run.job_id, run.seq + 1, message.type, message.data, now
+                )
+            run.seq += 1
+            self._publish(event)
+
+    def _finish(self, run: _Run, status: int) -> None:
+        with self._lock:
+            state, error = _outcome(
+                run, status, _log_path(self._paths.jobs_dir, run.job_id)
+            )
+            try:
+                if run.killer is not None:
+                    run.killer.cancel()
+                data: JsonObject = {"state": state}
+                if run.result is not None and state == "succeeded":
+                    data["result"] = run.result
+                if error is not None:
+                    data["error"] = {"code": error.code, "detail": error.detail}
+                db = self._open_db()
+                now = _now()
+                with _transaction(db):
+                    db.execute(
+                        "UPDATE jobs SET state = ?, finished_at = ?, summary = ?,"
+                        " error = ? WHERE id = ?",
+                        (
+                            state,
+                            _iso(now),
+                            None if state != "succeeded" else _json(run.result),
+                            None if error is None else _json(data["error"]),
+                            run.job_id,
+                        ),
+                    )
+                    event = _insert_event(
+                        db, run.job_id, run.seq + 1, "state", data, now
+                    )
+                run.seq += 1
+                self._publish(event)
+            finally:
+                self._running.pop(run.job_id, None)
+                _set_active(run.job_id, active=False)
+                for stream in (run.process.stdin, run.process.stdout, run.log):
+                    if stream is not None:
+                        _close_quietly(stream)
+                self._changed.notify_all()
+                self._dispatch()
+
+    def _end_waiting(self, waiting: _Waiting, state: JobState, error: JobError) -> None:
+        """Finish a job that never started."""
+        db = self._open_db()
+        now = _now()
+        with _transaction(db):
+            event = _finish_row(db, waiting.job_id, state, error, now)
+        _set_active(waiting.job_id, active=False)
+        self._publish(event)
+        self._changed.notify_all()
+
+    def _mark_stale(
+        self, db: sqlite3.Connection, job_id: str, now: datetime
+    ) -> JobEvent:
+        error = JobError(CODE_INTERRUPTED, MESSAGES["job_interrupted_restart"])
+        return _finish_row(db, job_id, "interrupted", error, now)
+
+    def _interrupt(self, run: _Run) -> None:
+        try:
+            run.process.send_signal(_interrupt_signal())
+        except OSError:  # already gone
+            return
+        if run.killer is None:
+            run.killer = threading.Timer(
+                self._stop_timeout_s, _kill, args=(run.process,)
+            )
+            run.killer.daemon = True
+            run.killer.start()
+
+    def _owner_alive(self, job_id: str, pid: int | None) -> bool:
+        """Whether a waiting or running job still has its supervisor."""
+        if pid is None:
+            return False
+        if pid == os.getpid():
+            with _PROCESS_LOCK:
+                return job_id in _ACTIVE_JOBS
+        return _owner_lock_held(self._paths.jobs_dir, pid)
+
+    def _publish(self, event: JobEvent) -> None:
+        for job_id, listener in tuple(self._listeners):
+            if job_id is not None and job_id != event.job_id:
+                continue
+            try:
+                listener(event)
+            except Exception:
+                logger.exception("Job listener %r failed", listener)
+
+    def _settings_changed(self, previous: AppSettings, current: AppSettings) -> None:
+        """Cancel the jobs of removed stores and follow the new stores."""
+        removed = {store.id for store in previous.stores} - {
+            store.id for store in current.stores
+        }
+        with self._lock:
+            if self._phase != "open":
+                return
+            doomed = [item.job_id for item in self._queue if item.store in removed]
+            doomed += [
+                run.job_id for run in self._running.values() if run.store in removed
+            ]
+            for job_id in doomed:
+                self.cancel(job_id)
+            self._sync(current)
+
+    def _sync(self, settings: AppSettings) -> None:
+        """Make the index's stores those of the settings (once per change)."""
+        if settings is self._synced:
+            return
+        with IndexWriter(self._paths.index_file) as writer:
+            writer.sync_stores({store.id: store.roots() for store in settings.stores})
+        self._synced = settings
+
+    def _open_db(self) -> sqlite3.Connection:
+        if self._db is None or self._phase == "closed":
+            raise RuntimeError("the job supervisor is not running")
+        return self._db
+
+    @contextmanager
+    def _reading(self) -> Iterator[sqlite3.Connection]:
+        """Yield this thread's read-only connection, in one snapshot."""
+        if self._phase in ("new", "closed"):
+            raise RuntimeError("the job supervisor is not running")
+        connection: sqlite3.Connection | None = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = _connect(self._paths.index_file, readonly=True)
+            self._local.connection = connection
+            with self._lock:
+                self._readers.append(connection)
+        connection.execute("BEGIN")
+        try:
+            yield connection
+        finally:
+            connection.execute("COMMIT")
+
+
+def _job_kind(kind: str) -> JobKind:
+    if kind not in JOB_KINDS:
+        raise ValueError(f"unknown job kind {kind!r}")
+    return kind
+
+
+def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
+    """Check a kind's parameters and return them with defaults."""
+    if kind == "scan":
+        mode = params.get("mode", "incremental")
+        segment = params.get("segment")
+        unknown = set(params) - {"mode", "segment"}
+        if mode not in SCAN_MODES or not (segment is None or isinstance(segment, str)):
+            raise ValueError(f"invalid scan parameters {dict(params)!r}")
+        if unknown:
+            raise ValueError(f"unknown scan parameters {sorted(unknown)}")
+        return {"mode": mode, "segment": segment or None}
+    if kind == "link_check":
+        slot = params.get("slot")
+        if not isinstance(slot, str) or not slot or set(params) != {"slot"}:
+            raise ValueError(f"invalid link check parameters {dict(params)!r}")
+        return {"slot": slot}
+    if params:
+        raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
+    return {}
+
+
+def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | None]:
+    """Return the final state of a job whose worker ended with ``status``."""
+    if run.result is not None:
+        return "succeeded", None
+    if run.cancel:
+        return "cancelled", JobError(CODE_CANCELLED, MESSAGES["job_cancelled"])
+    if run.stop:
+        return "interrupted", JobError(
+            CODE_INTERRUPTED, MESSAGES["job_interrupted_stop"]
+        )
+    if run.error is not None:
+        return "failed", JobError(str(run.error["code"]), str(run.error["detail"]))
+    if status in (INTERRUPTED_EXIT, -signal.SIGINT):
+        detail = MESSAGES["job_interrupted_signal"]
+        return "interrupted", JobError(CODE_INTERRUPTED, detail)
+    if status < 0:
+        ending = MESSAGES["job_status_signal"].format(
+            signal=signal.Signals(-status).name
+        )
+    else:
+        ending = MESSAGES["job_status_code"].format(code=status)
+    detail = MESSAGES["job_worker_crashed"].format(status=ending, log=log)
+    return "failed", JobError(CODE_WORKER_CRASHED, detail)
+
+
+def _finish_row(
+    db: sqlite3.Connection,
+    job_id: str,
+    state: JobState,
+    error: JobError,
+    now: datetime,
+) -> JobEvent:
+    """End a job that has no worker (any more) and record its state event."""
+    payload = {"code": error.code, "detail": error.detail}
+    db.execute(
+        "UPDATE jobs SET state = ?, finished_at = ?, error = ? WHERE id = ?",
+        (state, _iso(now), _json(payload), job_id),
+    )
+    seq = db.execute(
+        "SELECT coalesce(max(seq), 0) FROM job_events WHERE job_id = ?", (job_id,)
+    ).fetchone()[0]
+    return _insert_event(
+        db, job_id, int(seq) + 1, "state", {"state": state, "error": payload}, now
+    )
+
+
+def _insert_event(
+    db: sqlite3.Connection,
+    job_id: str,
+    seq: int,
+    kind: EventType,
+    data: JsonObject,
+    at: datetime,
+) -> JobEvent:
+    db.execute(
+        "INSERT INTO job_events (job_id, seq, type, data, at) VALUES (?, ?, ?, ?, ?)",
+        (job_id, seq, kind, _json(data), _iso(at)),
+    )
+    return JobEvent(job_id=job_id, seq=seq, type=kind, data=data, at=at)
+
+
+def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
+    progress = connection.execute(
+        "SELECT data FROM job_events WHERE job_id = ? AND type = 'progress'"
+        " ORDER BY seq DESC LIMIT 1",
+        (row["id"],),
+    ).fetchone()
+    error = None if row["error"] is None else json.loads(row["error"])
+    return JobRecord(
+        id=row["id"],
+        kind=row["kind"],
+        state=row["state"],
+        actor=row["actor"],
+        store=row["store"],
+        params=json.loads(row["params"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        started_at=_datetime(row["started_at"]),
+        finished_at=_datetime(row["finished_at"]),
+        progress=None if progress is None else json.loads(progress["data"]),
+        result=None if row["summary"] is None else json.loads(row["summary"]),
+        error=None if error is None else JobError(error["code"], error["detail"]),
+    )
+
+
+@contextmanager
+def _transaction(db: sqlite3.Connection) -> Iterator[None]:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+    db.execute("COMMIT")
+
+
+def _connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
+    connection = connect(path, readonly=readonly)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _iso(value: datetime) -> str:
+    # Microseconds: jobs of one second still sort by time.
+    return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+def _datetime(value: object) -> datetime | None:
+    return None if value is None else datetime.fromisoformat(str(value))
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _encode_cursor(fingerprint: str, values: Sequence[object]) -> str:
+    data = json.dumps([_CURSOR_VERSION, fingerprint, *values])
+    return base64.urlsafe_b64encode(data.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str | None, fingerprint: str) -> tuple[str, str] | None:
+    if cursor is None:
+        return None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise IndexQueryError(MESSAGES["index_invalid_cursor"]) from None
+    if (
+        not isinstance(data, list)
+        or len(data) != 4
+        or data[:2] != [_CURSOR_VERSION, fingerprint]
+        or not all(isinstance(value, str) for value in data[2:])
+    ):
+        raise IndexQueryError(MESSAGES["index_invalid_cursor"])
+    return data[2], data[3]
+
+
+def _log_path(jobs_dir: Path, job_id: str) -> Path:
+    return jobs_dir / f"{job_id}.log"
+
+
+def _prune_logs(jobs_dir: Path, *, now: datetime) -> None:
+    """Delete job logs older than 90 days, then the oldest beyond 1 GB."""
+    logs: list[tuple[float, int, Path]] = []
+    for path in jobs_dir.glob("*.log"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        logs.append((stat.st_mtime, stat.st_size, path))
+    oldest = (now - LOG_MAX_AGE).timestamp()
+    kept = 0
+    for modified, size, path in sorted(logs, reverse=True):
+        if modified < oldest or kept + size > LOG_MAX_BYTES:
+            path.unlink(missing_ok=True)
+        else:
+            kept += size
+
+
+def _prune_jobs(db: sqlite3.Connection, *, now: datetime) -> None:
+    """Forget finished jobs older than their logs, but each store's last ones.
+
+    The newest finished job of every store and kind stays, so a store still
+    shows its last scan; the events go with their job.
+    """
+    with _transaction(db):
+        db.execute(
+            f"DELETE FROM jobs WHERE state IN {_FINISHED_SQL}"
+            " AND coalesce(finished_at, created_at) < ? AND id NOT IN ("
+            " SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY store, kind"
+            " ORDER BY coalesce(finished_at, created_at) DESC) AS place"
+            f" FROM jobs WHERE state IN {_FINISHED_SQL}) WHERE place = 1)",
+            (_iso(now - LOG_MAX_AGE),),
+        )
+
+
+def _set_active(job_id: str, *, active: bool) -> None:
+    with _PROCESS_LOCK:
+        if active:
+            _ACTIVE_JOBS.add(job_id)
+        else:
+            _ACTIVE_JOBS.discard(job_id)
+
+
+def _owner_lock_path(jobs_dir: Path, pid: int) -> Path:
+    return jobs_dir / f"owner-{pid}.lock"
+
+
+def _hold_owner_lock(jobs_dir: Path) -> Path:
+    """Lock this process's owner file (shared by its supervisors)."""
+    path = _owner_lock_path(jobs_dir, os.getpid())
+    with _PROCESS_LOCK:
+        held = _OWNER_LOCKS.get(path)
+        if held is not None:
+            _OWNER_LOCKS[path] = (held[0], held[1] + 1)
+            return path
+        handle = path.open("a+b")
+        if not _try_lock(handle):  # pragma: no cover - pids are unique
+            handle.close()
+            raise OSError(f"{path} is locked by another process")
+        _OWNER_LOCKS[path] = (handle, 1)
+    return path
+
+
+def _release_owner_lock(path: Path) -> None:
+    with _PROCESS_LOCK:
+        held = _OWNER_LOCKS.get(path)
+        if held is None:
+            return
+        handle, users = held
+        if users > 1:
+            _OWNER_LOCKS[path] = (handle, users - 1)
+            return
+        del _OWNER_LOCKS[path]
+        handle.close()
+    path.unlink(missing_ok=True)
+
+
+def _owner_lock_held(jobs_dir: Path, pid: int) -> bool:
+    """Whether a live process holds the owner lock of ``pid``."""
+    try:
+        handle = _owner_lock_path(jobs_dir, pid).open("r+b")
+    except FileNotFoundError:
+        return False
+    except OSError:  # cannot tell: do not interrupt another process's job
+        return True
+    with handle:
+        return not _try_lock(handle)
+
+
+def _try_lock(handle: IO[bytes]) -> bool:
+    """Lock a file without waiting; the lock ends when the handle closes."""
+    if sys.platform == "win32":  # pragma: no cover - Windows
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _process_group() -> dict[str, Any]:
+    """Start a worker in its own process group, out of reach of the terminal."""
+    if sys.platform == "win32":  # pragma: no cover - Windows
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _interrupt_signal() -> int:
+    if sys.platform == "win32":  # pragma: no cover - Windows
+        return signal.CTRL_BREAK_EVENT
+    return signal.SIGINT
+
+
+def _kill(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.kill()
+
+
+def _close_quietly(stream: IO[bytes]) -> None:
+    with suppress(OSError):
+        stream.close()

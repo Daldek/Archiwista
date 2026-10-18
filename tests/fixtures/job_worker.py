@@ -1,0 +1,84 @@
+"""Worker process of the job tests: the real worker with test hooks.
+
+A test's ``JobSupervisor`` starts ``python -m tests.fixtures.job_worker``
+(``TEST_WORKER`` of ``tests.fixtures.jobs``). The hooks come from the
+environment the test sets, which the worker inherits:
+
+``ARCHIWISTA_TEST_ENTRY_DELAY_S``
+    Seconds Kartograf's adapter waits before each scanned entry, so a scan
+    lasts long enough to be queried, cancelled or interrupted.
+``ARCHIWISTA_TEST_CRASH_AFTER``
+    The worker kills itself (SIGKILL) after this many scanned entries.
+``ARCHIWISTA_TEST_NO_NETWORK``
+    Every connection attempt fails and is appended to this file.
+"""
+
+import os
+import signal
+import socket
+import sys
+import threading
+import time
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+from archiwista.adapter.kartograf.adapter import KartografAdapter
+from archiwista.jobs import worker
+from archiwista.sources import ScanScope, SourceEntry
+
+DELAY_ENV = "ARCHIWISTA_TEST_ENTRY_DELAY_S"
+CRASH_ENV = "ARCHIWISTA_TEST_CRASH_AFTER"
+NO_NETWORK_ENV = "ARCHIWISTA_TEST_NO_NETWORK"
+
+
+def _hook_entries(delay_s: float, crash_after: int | None) -> None:
+    """Slow down the scanned entries, or crash after some of them."""
+    real = KartografAdapter.iter_entries
+    lock = threading.Lock()
+    seen = 0
+
+    def iter_entries(
+        self: KartografAdapter, root: Path, *, scope: ScanScope | None = None
+    ) -> Iterator[SourceEntry]:
+        nonlocal seen
+        for entry in real(self, root, scope=scope):
+            time.sleep(delay_s)
+            with lock:
+                seen += 1
+                crash = crash_after is not None and seen > crash_after
+            if crash:
+                os.kill(os.getpid(), signal.SIGKILL)
+            yield entry
+
+    KartografAdapter.iter_entries = iter_entries  # type: ignore[method-assign]
+
+
+def _refuse_network(record: Path) -> None:
+    """Fail every connection attempt and note it in ``record``."""
+
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        with record.open("a", encoding="utf-8") as file:
+            file.write(f"{args!r}\n")
+        raise OSError("network disabled by the job tests")
+
+    socket.socket.connect = refuse  # type: ignore[method-assign]
+    socket.socket.connect_ex = refuse  # type: ignore[method-assign]
+    socket.create_connection = refuse
+    socket.getaddrinfo = refuse
+
+
+def main() -> int:
+    """Arm the hooks named in the environment and run the real worker."""
+    delay = float(os.environ.get(DELAY_ENV, "0"))
+    crash = os.environ.get(CRASH_ENV)
+    if delay or crash:
+        _hook_entries(delay, None if crash is None else int(crash))
+    record = os.environ.get(NO_NETWORK_ENV)
+    if record:
+        _refuse_network(Path(record))
+    return worker.main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

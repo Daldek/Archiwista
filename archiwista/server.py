@@ -4,7 +4,9 @@
 anything else (team mode with login comes in v0.4), binds the port, issues
 the one-time startup token, prints ``http://127.0.0.1:<port>/#token=…``,
 optionally opens it in the browser and serves until Ctrl+C. Uvicorn's access
-log is off unless asked for; when on, ``token=`` values are redacted.
+log is off unless asked for; when on, ``token=`` values are redacted. While
+it serves, background jobs run under its ``JobSupervisor`` and the
+``ScanScheduler`` scans the stores; stopping interrupts running jobs.
 ``token`` prints the one-time address of a next session, e.g. for an agent.
 """
 
@@ -33,6 +35,7 @@ from archiwista.config import (
 )
 from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
+from archiwista.jobs import JobSupervisor, ScanScheduler
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.security import (
     LOOPBACK_HOST,
@@ -166,8 +169,8 @@ def serve_main(
     -------
     int
         ``0`` after a normal stop, ``2`` for a refused address, ``1`` when
-        the settings, the index, the state database or the port cannot be
-        used.
+        the settings, the index, the state database, the jobs directory or
+        the port cannot be used.
     """
     if host != LOOPBACK_HOST:
         message = MESSAGES["serve_host_refused"].format(
@@ -194,32 +197,45 @@ def serve_main(
         return 1
     with sock:
         bound_port: int = sock.getsockname()[1]
-        app = create_app(
-            port=bound_port,
-            settings=settings,
-            index_path=paths.index_file,
-            state=state,
-            sessions=SessionStore(),
-        )
-        issued = issue_one_time_token(
-            paths.index_file, "startup", minted_by=LOCAL_OWNER
-        )
-        server = LocalServer(
-            sock,
-            app,
-            url=fragment_url(bound_port, issued.token),
-            access_log=access_log,
-        )
-        out.write(
-            MESSAGES["serve_started"].format(
-                url=server.url, minutes=_minutes("startup")
+        jobs = JobSupervisor(paths, settings)
+        try:
+            jobs.start()
+        except OSError as error:
+            err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
+            return 1
+        scheduler = ScanScheduler(jobs, settings, registry, index_path=paths.index_file)
+        try:
+            app = create_app(
+                port=bound_port,
+                settings=settings,
+                index_path=paths.index_file,
+                state=state,
+                sessions=SessionStore(),
+                jobs=jobs,
             )
-            + "\n"
-        )
-        out.flush()
-        if on_ready is not None:
-            on_ready(server)
-        server.run()
+            issued = issue_one_time_token(
+                paths.index_file, "startup", minted_by=LOCAL_OWNER
+            )
+            server = LocalServer(
+                sock,
+                app,
+                url=fragment_url(bound_port, issued.token),
+                access_log=access_log,
+            )
+            out.write(
+                MESSAGES["serve_started"].format(
+                    url=server.url, minutes=_minutes("startup")
+                )
+                + "\n"
+            )
+            out.flush()
+            if on_ready is not None:
+                on_ready(server)
+            scheduler.start()
+            server.run()
+        finally:
+            scheduler.stop()
+            jobs.close()
     return 0
 
 

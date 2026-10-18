@@ -270,10 +270,15 @@ tests/
 │   ├── test_snapshots.py    # Migawki danych własnych (A-ADR-027)
 │   ├── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
 │   ├── test_authorize.py    # Macierz widoczności, role, store.write (A-ADR-029)
-│   └── test_project_visibility.py  # Filtr widoczności w zapytaniach i usługach
+│   ├── test_project_visibility.py  # Filtr widoczności w zapytaniach i usługach
+│   ├── test_job_protocol.py # JSON Lines nadzorcy i procesu roboczego (SPEC 5.6)
+│   └── test_scheduler.py    # Kiedy i jak harmonogram skanuje magazyn (SPEC 4.4)
 ├── integration/
 │   ├── test_projects.py     # Projekty: odkrywanie, przypięcia, błędny manifest
 │   ├── test_scanner.py      # Skaner i odświeżenie widoku na magazynie testowym
+│   ├── test_jobs.py         # Zadania w procesach roboczych: konflikt, anulowanie, awaria
+│   ├── test_scan_worker.py  # Zapytania indeksu w trakcie skanu w procesie roboczym
+│   ├── test_disconnected_store.py  # Odłączony udział: tylko probe, potem skan przyrostowy
 │   ├── test_permissions_api.py  # Uprawnienia przez HTTP: 404/403, CSRF, dziennik
 │   ├── test_state.py        # Baza stanu: migracje, przebudowa indeksu, eksport/import
 │   ├── test_cli.py          # CLI --json równe odpowiedziom API
@@ -289,7 +294,10 @@ tests/
 │   ├── index_data.py        # Wpisy źródła budowane ręcznie dla testów indeksu
 │   ├── store_edits.py       # Zmiany magazynu jak przy pobraniu: nowa wersja, przepięcie
 │   ├── permissions.py       # Cztery tożsamości i grupa do macierzy uprawnień
-│   └── api_session.py       # Aplikacja w TestClient z sesjami wskazanych osób
+│   ├── api_session.py       # Aplikacja w TestClient z sesjami wskazanych osób
+│   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
+│   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
+│   └── job_owner.py         # Osobny proces-nadzorca do testu zabitego serwera
 ├── perf/
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
 │   └── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
@@ -472,6 +480,8 @@ class NotFoundError(ArchiwistaError):          # 404 not_found (też projekt nie
 class ConflictError(ArchiwistaError):          # 409 conflict (np. zajęty identyfikator)
 class InvalidChangeError(ArchiwistaError):     # 422 validation_error (błędna zmiana)
 class StateError(ArchiwistaError):             # baza stanu nowsza, import do niepustej
+class JobConflictError(ConflictError):         # 409 conflict + trwające zadanie (job)
+class OfflineModeError(ArchiwistaError):       # 409 offline_mode (zadanie wymaga sieci)
 ```
 
 Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter
