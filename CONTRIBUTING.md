@@ -1,66 +1,73 @@
-# Jak współtworzyć Archiwistę
+# Contributing to Archiwista
 
-Dziękujemy za zainteresowanie Archiwistą! Mile widziane są wszystkie rodzaje
-wkładu: zgłoszenia błędów, uwagi do specyfikacji, poprawki, nowe funkcje
-i dokumentacja.
+Thanks for your interest in Archiwista! Bug reports, feedback on the
+specification, fixes, features, and documentation are welcome.
 
-## Stan projektu
+## Project status
 
-Archiwista jest na etapie specyfikacji: w repozytorium nie ma jeszcze kodu
-aplikacji. Najcenniejsze są teraz uwagi do dokumentów:
+Archiwista is currently in the specification phase; there is no application
+code yet. Feedback on these documents is especially useful:
 
-- [`docs/PRD.md`](docs/PRD.md) — wymagania produktu,
-- [`docs/SCOPE.md`](docs/SCOPE.md) — zakres i etapy,
-- [`docs/SPEC.md`](docs/SPEC.md) — szczegółowa specyfikacja,
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — decyzje (ADR).
+- [`docs/PRD.md`](docs/PRD.md) — product requirements;
+- [`docs/SCOPE.md`](docs/SCOPE.md) — scope and milestones;
+- [`docs/SPEC.md`](docs/SPEC.md) — detailed specification;
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decisions.
 
-Kod powstaje dopiero po zatwierdzeniu specyfikacji i planu (kolejność:
-spec → plan → implementacja).
+Implementation starts only after the specification and plan have been
+approved: specification → plan → implementation.
 
-## Zasady
+## Contribution guidelines
 
-- **Granice projektu.** Archiwista nie ma własnego mechanizmu pobierania ani
-  obróbki danych: zleca je producentom magazynu (Kartograf, IMGWTools) przez publiczne
-  API. Brakująca funkcja producenta to wymaganie wobec niego
-  (`docs/SPEC.md`, sekcja 12), a nie obejście w Archiwiście.
-- **Język.** Dokumentacja i teksty interfejsu po polsku; docstringi
-  i komentarze po angielsku; identyfikatory (API HTTP, klucze JSON, nazwy
-  w kodzie) po angielsku.
-- **Commity.** [Conventional Commits](https://www.conventionalcommits.org/)
-  z opisem po polsku, np. `docs(spec): doprecyzowanie etykiet pokrycia`.
-- **Gałęzie.** Pull requesty do `develop`; jedna sprawa na pull request.
-- **Dane.** Żadnych danych pobranych w trakcie pracy w repozytorium;
-  w dokumentach ścieżki danych zapisuj jako `<katalog-danych>`.
+- **Project boundaries.** Archiwista does not download or process source
+  data itself: it delegates these tasks to store producers (Kartograf,
+  IMGWTools) through their public APIs. If a producer lacks a function,
+  document a requirement for that producer (`docs/SPEC.md`, section 12)
+  instead of working around it in Archiwista. The Kartograf store is read-only
+  to Archiwista; writes to that store go through Kartograf's public API.
+- **Language.** Code, identifiers, docstrings, comments, logs, tests, and
+  contributor-facing files are in English. Project documentation and UI text
+  are in Polish.
+- **Commits.** Use [Conventional Commits](https://www.conventionalcommits.org/)
+  with descriptions in Polish, for example
+  `docs(spec): doprecyzowanie etykiet pokrycia`.
+- **Branches.** Open pull requests against `develop`; address one concern
+  per pull request.
+- **Data.** Do not put downloaded data in the repository or `/tmp`; use an
+  explicit directory elsewhere. In documentation, write data paths as
+  `<katalog-danych>`.
+- **Python environment.** Use the repository-local `.venv` for Python. Once
+  application code is available, follow
+  [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) for the
+  applicable `pytest`, `ruff`, and `mypy` checks before opening a pull request.
 
-## Umowa licencyjna kontrybutora (CLA)
+## Contributor License Agreement (CLA)
 
-Zanim pierwszy wkład zostanie scalony, prosimy o podpisanie **umowy
-licencyjnej kontrybutora** (Contributor License Agreement). W skrócie:
+Before your first contribution can be merged, please sign our **Contributor
+License Agreement**. In plain terms:
 
-- **Czym jest.** Krótka umowa, w której potwierdzasz, że jesteś autorem
-  wkładu (albo masz prawo go przekazać) i udzielasz praw potrzebnych do jego
-  używania i rozpowszechniania. Pełny tekst (po angielsku, adaptacja Apache
-  ICLA 2.2): [`docs/CLA.md`](docs/CLA.md).
-- **Dlaczego jest wymagana.** Utrzymuje licencję projektu na pewnych
-  podstawach prawnych i zachowuje możliwość zmiany licencji w przyszłości.
-  Bez niej jeden wkład o niejasnych prawach mógłby taką zmianę zablokować.
-- **Twój wkład pozostaje na MIT.** Podpisanie CLA **nie** zmienia licencji:
-  projekt jest i pozostaje na [licencji MIT](LICENSE), tak jak Twój wkład.
-- **Podpis to jeden komentarz — proces jest ręczny.** Bez bota i formularza.
-  Gdy pull request jest gotowy, dodaj pod nim komentarz o dokładnie takiej
-  treści:
+- **What it is.** A short agreement confirming that you wrote your
+  contribution (or have the right to submit it) and granting the rights needed
+  to use and redistribute it. The full text is in
+  [`docs/CLA.md`](docs/CLA.md).
+- **Why it is required.** It provides a sound basis for the project's
+  licensing and preserves the option to relicense in the future.
+- **Your contribution stays MIT.** Signing the CLA does **not** change the
+  license: the project and your contribution remain under the
+  [MIT License](LICENSE).
+- **Signing is one comment — the process is manual.** There is no bot or
+  form. When your pull request is ready, comment with exactly:
 
   > I have read the CLA document and hereby sign it.
 
-  Przy scalaniu pull requestu opiekun zapisuje Twój podpis — login GitHub,
-  datę i numer pull requestu — w [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
-  Podpisujesz raz; podpis obejmuje też przyszłe wkłady.
+  On merging your pull request, the maintainer records your GitHub handle,
+  the date, and the pull-request number in
+  [`CONTRIBUTORS.md`](CONTRIBUTORS.md). You only sign once; it also covers
+  future contributions.
 
-  Zaznacz też pole CLA w szablonie pull requestu.
+Please also tick the CLA box in the pull-request template.
 
-## Zgłaszanie problemów
+## Reporting issues
 
-Błąd albo pomysł na funkcję? Otwórz zgłoszenie (issue) w repozytorium
-projektu na GitHubie i podaj jak najwięcej szczegółów: kroki do odtworzenia,
-oczekiwane i faktyczne zachowanie, środowisko (system, wersje Archiwisty,
-Kartografa i IMGWTools).
+Found a bug or have a feature idea? Open a GitHub issue with steps to
+reproduce, expected and actual behavior, and your environment (OS and
+Archiwista, Kartograf, and IMGWTools versions, where applicable).

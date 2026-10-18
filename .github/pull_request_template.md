@@ -1,13 +1,16 @@
-## Opis
+## Description
 
-<!-- Krótko: co zmienia ten pull request i dlaczego. -->
+<!-- Briefly describe what this pull request changes and why. -->
 
-## Powiązane zgłoszenia
+## Related issues
 
-<!-- np. Closes #123 -->
+<!-- e.g. Closes #123 -->
 
-## Lista kontrolna
+## Checklist
 
-- [ ] Podpisałem/podpisałam CLA (docs/CLA.md) — komentarz pod tym pull requestem
-- [ ] Commity w stylu Conventional Commits, opis po polsku
-- [ ] Zaktualizowałem/zaktualizowałam dokumentację, jeśli to potrzebne
+- [ ] I have signed the CLA (`docs/CLA.md`) in a comment on this pull request
+- [ ] My commits follow Conventional Commits, with descriptions in Polish
+- [ ] Tests pass (`.venv/bin/python -m pytest -m "not live"`)
+- [ ] `ruff check` and `ruff format --check` report no errors
+- [ ] `mypy` reports no errors
+- [ ] I have updated the documentation if necessary

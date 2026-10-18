@@ -1,14 +1,14 @@
-# Kontrybutorzy
+# Contributors
 
-Ten plik jest rejestrem podpisów umowy licencyjnej kontrybutora
-([`docs/CLA.md`](docs/CLA.md)). Każdy zewnętrzny kontrybutor podpisuje CLA
-raz, komentarzem pod swoim pull requestem (zob.
-[`CONTRIBUTING.md`](CONTRIBUTING.md)); opiekun dopisuje wiersz przy scalaniu
-pull requestu.
+This file is the signature log for the Contributor License Agreement
+([`docs/CLA.md`](docs/CLA.md)). Every external contributor signs the CLA once
+by commenting on their pull request (see
+[`CONTRIBUTING.md`](CONTRIBUTING.md)); the maintainer adds a row below when
+the pull request is merged.
 
-| Login GitHub | Data podpisu | Numer PR |
-|--------------|--------------|----------|
+| GitHub handle | Date of signing | PR number |
+|---------------|-----------------|-----------|
 
-<!-- Przykład:
+<!-- Example:
 | @daldek | 2026-10-17 | #1 |
 -->
