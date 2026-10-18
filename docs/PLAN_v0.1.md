@@ -710,6 +710,16 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     otwierają Katalog z kursorem w polu wyszukiwania i przenoszą filtry
     bieżącego adresu o nazwach `/slots`.
   - *Testy*: `tests/e2e/test_catalog.py`.
+  Stan po kroku 11:
+  - *Karta pliku* (`src/views/file.js`, nakładka `OVERLAYS`): adres
+    `file=<magazyn>/<ścieżka slotu>` (identyfikator magazynu nie ma `/`)
+    i opcjonalnie `file_version=<ścieżka wersji>`; karta sama usuwa
+    `file_version` po zamknięciu. Widoki `projects` (`project=<id>`,
+    `store=<id>`) i `store` (`store=<id>`) w `src/views/{projects,store}.js`;
+    wspólne części (`IssueList`, `useJob` + `JobStatus` dla SSE, `FileLink`,
+    `CopyAction`, nazwy układów EPSG) w `src/views/cards.js`, style
+    w `cards.css`, teksty w `labels/{cards,file,projects,store}.js`.
+  - *Testy*: `tests/e2e/test_file_projects_store.py`.
 
 ## Kolejność prac
 

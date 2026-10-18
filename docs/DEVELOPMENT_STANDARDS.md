@@ -296,6 +296,7 @@ tests/
 ├── e2e/
 │   ├── conftest.py          # Prawdziwy archiwista serve (serve) i strona Chromium (tab)
 │   ├── test_catalog.py      # Katalog: filtry /slots w adresie, kursor, dokładna jednostka, bez obrysu, Ctrl+K, druga wtyczka
+│   ├── test_file_projects_store.py  # Karta pliku, Projekty, Magazyn: nazwy i wartości techniczne, przypięcia, kopiowanie, baner, dowiązanie, wykonawca skanu
 │   └── test_shell.py        # Powłoka: sesja z tokenu, brak sesji, kreator, CSP offline, moduły ES
 ├── fixtures/
 │   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)

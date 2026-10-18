@@ -38,11 +38,15 @@
 /** @type {ViewRoute[]} */
 export const VIEWS = [
   { id: "catalog", icon: "table", load: () => import("./views/catalog.js") },
+  { id: "projects", icon: "folder", load: () => import("./views/projects.js") },
+  { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
 ];
 
 /** @type {OverlayRoute[]} */
-export const OVERLAYS = [];
+export const OVERLAYS = [
+  { param: "file", load: () => import("./views/file.js") },
+];
 
 /** The view opened without `view=`: the one marked `start`, else the first. */
 export function startView() {
