@@ -355,7 +355,7 @@ def test_status_shows_last_full_scan(
     """``/health``, ``status --json`` and ``status`` show the last full scan."""
     # Arrange
     full_at = datetime.fromisoformat("2026-10-18T03:14:07+00:00")
-    with served_store(tmp_path, slots=2) as served:
+    with served_store(tmp_path, slots=17) as served:
         run = _Reader(served, capsys)
         before = run.cli("status")["stores"][0]["state"]["full_scan_at"]
         with sqlite3.connect(served.api.paths.index_file) as connection:

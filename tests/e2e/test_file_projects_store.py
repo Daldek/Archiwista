@@ -411,3 +411,25 @@ def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> N
     expect(row).to_contain_text("Wykonawca: olga")
     expect(raw(row, started.json()["id"])).to_be_visible()
     tab.assert_clean()
+
+
+def test_store_full_scan_row_and_button(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """The last full scan shows with its interval; „Pełny skan” asks for a full one."""
+    _, served, page = served_store(serve, tab, tmp_path)
+    page.goto(f"{served.base}/?view=store")
+    row = value(page, "Ostatni pełny skan")
+    expect(row).not_to_contain_text("jeszcze nie było")
+    expect(row).to_contain_text("co 24 h")
+
+    with page.expect_request(
+        lambda request: (
+            request.method == "POST"
+            and request.url.endswith(f"/api/v1/stores/{STORE}/scan")
+        )
+    ) as posted:
+        page.get_by_role("button", name="Pełny skan").click()
+    wait_indexed(page)
+
+    assert posted.value.post_data_json == {"mode": "full"}
+    expect(page.locator(".job")).to_contain_text("Skan: zakończone")
+    tab.assert_clean()
