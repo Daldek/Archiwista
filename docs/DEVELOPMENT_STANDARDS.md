@@ -269,11 +269,13 @@ tests/
 ├── integration/
 │   └── test_api.py          # Endpointy /api/v1
 ├── contract/
-│   └── test_imports.py      # Producenci tylko w adapterach
+│   ├── test_imports.py      # Producenci tylko w adapterach
+│   └── test_store_fixture.py  # Magazyn testowy oczami czytników Kartografa
 ├── e2e/
 │   └── test_ui.py           # Playwright: przepływy interfejsu
 ├── fixtures/
-│   └── make_store.py        # Generator magazynu testowego
+│   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)
+│   └── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
 └── conftest.py              # Shared fixtures
 
 # Markery: live (sieć i prawdziwe usługi), perf (magazyn syntetyczny
