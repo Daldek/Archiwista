@@ -17,7 +17,9 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 - Magazyn Kartografa jest dla Archiwisty tylko do odczytu: zapis wylacznie
   przez API Kartografa. Zadnej bazy SQLite ani plikow Archiwisty na udziale
   sieciowym ani w magazynie; indeks, cache podgladow i historia zadan leza
-  lokalnie i mozna je odbudowac.
+  lokalnie i mozna je odbudowac. Jedyny wyjatek: dane uzytkownika zapisywane
+  na jego polecenie w katalogu projektu (migawki danych wlasnych, pliki
+  obszarow, zestawy; A-ADR-027) - otwarty format, czytelny bez Archiwisty.
 - Nadrzedna zasada produktowa: uklad, interfejs i API proste, zrozumiale
   i wygodne dla ludzi.
 - Dane pobierane w trakcie pracy: poza repo i poza `/tmp`, zawsze jawny
@@ -26,19 +28,24 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 - Git: praca na `develop` albo na krotkotrwalej galezi z `develop`;
   Conventional Commits z opisem po polsku; autor `Daldek <git@debever.pl>`,
   bez stopki `Co-Authored-By`; repozytorium bez remote (bez push).
-- Jezyk: dokumentacja po polsku; docstringi i komentarze po angielsku;
-  identyfikatory (API HTTP, klucze JSON, nazwy w kodzie) po angielsku;
-  teksty interfejsu po polsku.
+- Jezyk: projekt jest dla polskiego rynku, ale caly kod i to, co go opisuje,
+  jest po angielsku: identyfikatory (API HTTP, klucze JSON, nazwy w kodzie),
+  docstringi, komentarze, logi, pliki dla kontrybutorow (`CONTRIBUTING.md`,
+  `CONTRIBUTORS.md`, szablon PR). Po polsku: dokumentacja projektu (`docs/`,
+  `README.md`), teksty interfejsu, opisy commitow. Szczegoly:
+  `docs/DEVELOPMENT_STANDARDS.md` sekcja 0.
 - `docs/DECISIONS.md` ma konce linii LF (inaczej niz w Kartografie).
 
 ## Mapa dokumentacji
 
 |Czego szukasz|Gdzie|
 |---|---|
+|Wymagania produktu (F/N), miary sukcesu, otwarte decyzje|`docs/PRD.md`|
+|Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
 |Cel, uzytkownicy, slownik pojec|`docs/SPEC.md` 1-2|
 |Przypadki uzycia i scenariusze|`docs/SPEC.md` 3|
 |Model danych, indeks, odswiezanie, SMB|`docs/SPEC.md` 4|
-|Architektura, zadania w tle, podglady|`docs/SPEC.md` 5|
+|Architektura (przyjeta 2026-10-18), zadania w tle, podglady|`docs/SPEC.md` 5|
 |Interfejs, widoki, etykiety pokrycia|`docs/SPEC.md` 6|
 |Agent czatu|`docs/SPEC.md` 7|
 |Laczenie danych (4 tryby)|`docs/SPEC.md` 8|
@@ -47,4 +54,6 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Wymagania wobec Kartografa|`docs/SPEC.md` 12|
 |Roadmapa, ryzyka, pytania otwarte, mockup|`docs/SPEC.md` 13-16|
 |Decyzje (ADR)|`docs/DECISIONS.md`|
+|Standardy kodowania, jezyk, testy, git|`docs/DEVELOPMENT_STANDARDS.md`|
+|Licencja, kontrybucje, CLA|`LICENSE`, `CONTRIBUTING.md`, `docs/CLA.md`|
 |Kontrakty formatu na dysku (sidecar, `data/`, manifest, plan)|Kartograf: `docs/ARCHITECTURE.md` 3.1-3.5|
