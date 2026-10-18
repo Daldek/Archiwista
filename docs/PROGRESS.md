@@ -120,7 +120,7 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
   (pozycje planu), KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa
   Kartografa niezaktualizowana (czeka na decyzję użytkownika); KF (scalona
   powierzchnia, dziś R6 w backlogu, poza publicznym API 0.8.0) blokuje v0.6,
-  a więc MVP. IMGWTools — `docs/wymagania-imgwtools.md` (IMGW-1..19) do
+  a więc MVP. IMGWTools — `docs/wymagania-imgwtools.md` (IMGW-1..20) do
   przekazania; IMGW-1..14 blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś
   szkic „Obserwator” bez kodu) — v0.6, a więc MVP — największe ryzyko
   harmonogramu.

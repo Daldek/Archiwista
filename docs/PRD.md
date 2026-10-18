@@ -250,7 +250,7 @@ każdego wymagania: wskazana sekcja SPEC.
 
 | Założenie | Skutek | Jak komunikujemy |
 | --- | --- | --- |
-| Producenci dostarczą wymagane API (Kartograf KA–KH, IMGWTools IMGW-1..19) | wydania Archiwisty czekają na wydania producentów | wymagania w SPEC 12 i `docs/wymagania-imgwtools.md`; kolumna „wymaga” w SCOPE |
+| Producenci dostarczą wymagane API (Kartograf KA–KH, IMGWTools IMGW-1..20) | wydania Archiwisty czekają na wydania producentów | wymagania w SPEC 12 i `docs/wymagania-imgwtools.md`; kolumna „wymaga" w SCOPE |
 | IMGWTools (2.1.1, Beta) nie ma dziś magazynu | dane IMGW (v0.5), a więc i MVP, zależą od IMGWTools | wymagania uzgodnione wcześnie; źródło IMGW jako dodatek |
 | KF (scalona powierzchnia PL + CZ) nie jest jeszcze w publicznym API Kartografa; stacje ČHMÚ w IMGWTools dopiero w przygotowaniu | v0.6, a więc i MVP, zależy od obu wydań | wymagania KF (SPEC 12.5) i IMGW-15..IMGW-19 (SPEC 12.7) zgłoszone wcześnie; ryzyko w SCOPE i SPEC 14 |
 | Opóźnienie publikacji IMGW (10–19 miesięcy), ponowne publikacje archiwów | niepełny ostatni rok, zmiany danych | lata opublikowane i daty publikacji w interfejsie; nowe wersje zamiast nadpisania |
