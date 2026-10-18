@@ -35,6 +35,7 @@ from typing import IO, cast
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.errors import (
+    PathOutsideRootError,
     ProducerError,
     SourceIncompatibleError,
     SourceStateError,
@@ -64,6 +65,7 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.messages import MESSAGES
+from archiwista.paths import resolve_indexed_path
 from archiwista.services.problems import explain
 from archiwista.sources import (
     LinkCheckAdapter,
@@ -273,6 +275,9 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     which the index does not know yet), ``mismatch`` (it does not hold the
     version its sidecar names: problem ``link_mismatch``), ``missing`` (no
     file at the standard path) or ``not_a_link`` (no version is linked).
+    A standard path resolving outside the store (a symbolic link leaving
+    it, SPEC 10.1) fails the job with ``path_outside_root`` before the
+    producer reads it.
     """
     config = _store(spec)
     slot = str(spec.params["slot"])
@@ -301,8 +306,14 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
         raise JobFailure(CODE_UNSUPPORTED, message)
     with IndexWriter(spec.index_path) as writer:
         _require_reachable(adapter, root, writer, config.id)
-        if not (root / slot).exists():
+        try:
+            resolve_indexed_path(root, slot)
+        except (FileNotFoundError, NotADirectoryError):
             return {**result, "status": "missing"}
+        except PathOutsideRootError as error:
+            raise JobFailure(
+                "path_outside_root", str(error), type(error).__name__
+            ) from error
         segment = detail.segment.segment
         confirmed = adapter.confirm_link(
             SourceEntry(

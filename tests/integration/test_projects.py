@@ -16,6 +16,7 @@ import pytest
 from archiwista.adapter.kartograf.adapter import KartografAdapter
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
+from archiwista.errors import PathOutsideRootError
 from archiwista.index import IndexQueries, IndexWriter, scan_projects
 from archiwista.services import project_detail, project_status, store_summary
 from archiwista.sources import ProjectInfo, SourceContext
@@ -392,8 +393,20 @@ def test_project_status_asks_the_producer_now(
     registry = load_registry(cache_dir=tmp_path / "registry")
 
     # Act
-    live = project_status(queries, registry, "projekt-01", visible=ALL_PROJECTS)
-    unknown = project_status(queries, registry, "nie-ma", visible=ALL_PROJECTS)
+    live = project_status(
+        queries,
+        registry,
+        "projekt-01",
+        visible=ALL_PROJECTS,
+        project_dirs=[store.projects_dir],
+    )
+    unknown = project_status(
+        queries,
+        registry,
+        "nie-ma",
+        visible=ALL_PROJECTS,
+        project_dirs=[store.projects_dir],
+    )
 
     # Assert
     assert live is not None
@@ -404,3 +417,100 @@ def test_project_status_asks_the_producer_now(
         "plan": "not_downloaded",
     }
     assert unknown is None
+
+
+@pytest.mark.parametrize("planted", ["directory", "manifest"])
+def test_project_status_refuses_project_leaving_project_dirs(
+    store: StoreManifest,
+    adapter: _CountingAdapter,
+    index: tuple[IndexWriter, IndexQueries],
+    tmp_path: Path,
+    planted: str,
+) -> None:
+    """A project directory or manifest symlinked outside is refused unread."""
+    # Arrange
+    writer, queries = index
+    scan_projects(
+        adapter,
+        writer,
+        project_dirs=[store.projects_dir],
+        stores=[_config(store.root)],
+    )
+    project = store.output_dir / store.project("projekt-01").path
+    outside = tmp_path / "outside" / project.name
+    shutil.copytree(project, outside)
+    if planted == "directory":
+        shutil.rmtree(project)
+        project.symlink_to(outside, target_is_directory=True)
+    else:
+        (project / MANIFEST_NAME).unlink()
+        (project / MANIFEST_NAME).symlink_to(outside / MANIFEST_NAME)
+    registry = load_registry(cache_dir=tmp_path / "registry")
+
+    # Act
+    with pytest.raises(PathOutsideRootError) as refused:
+        project_status(
+            queries,
+            registry,
+            "projekt-01",
+            visible=ALL_PROJECTS,
+            project_dirs=[store.projects_dir],
+        )
+
+    # Assert
+    assert str(project.relative_to(store.projects_dir)) in str(refused.value)
+
+
+def test_project_status_refuses_project_outside_configured_dirs(
+    store: StoreManifest,
+    adapter: _CountingAdapter,
+    index: tuple[IndexWriter, IndexQueries],
+    tmp_path: Path,
+) -> None:
+    """A project indexed below a directory no longer configured is refused."""
+    # Arrange
+    writer, queries = index
+    scan_projects(
+        adapter,
+        writer,
+        project_dirs=[store.projects_dir],
+        stores=[_config(store.root)],
+    )
+    registry = load_registry(cache_dir=tmp_path / "registry")
+    other = tmp_path / "inne-projekty"
+    other.mkdir()
+
+    # Act / Assert
+    with pytest.raises(PathOutsideRootError):
+        project_status(
+            queries,
+            registry,
+            "projekt-01",
+            visible=ALL_PROJECTS,
+            project_dirs=[other],
+        )
+
+
+def test_project_status_accepts_symlinked_project_dirs_root(
+    store: StoreManifest,
+    adapter: _CountingAdapter,
+    index: tuple[IndexWriter, IndexQueries],
+    tmp_path: Path,
+) -> None:
+    """A configured project directory that is itself a symlink keeps working."""
+    # Arrange
+    writer, queries = index
+    # Beside the real one, so the manifests' relative store paths still match.
+    alias = store.output_dir / "projekty-alias"
+    alias.symlink_to(store.projects_dir, target_is_directory=True)
+    scan_projects(adapter, writer, project_dirs=[alias], stores=[_config(store.root)])
+    registry = load_registry(cache_dir=tmp_path / "registry")
+
+    # Act
+    live = project_status(
+        queries, registry, "projekt-01", visible=ALL_PROJECTS, project_dirs=[alias]
+    )
+
+    # Assert
+    assert live is not None and live.problem is None
+    assert {t.status for t in live.tasks} <= {"ok", "not_downloaded"}

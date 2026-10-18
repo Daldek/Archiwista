@@ -7,6 +7,7 @@ generated Kartograf store, offline.
 
 import io
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -548,6 +549,60 @@ def test_link_check_finds_outdated_index_and_missing_link(env: JobsEnv) -> None:
     assert notices == ["index_outdated"]
     assert (missing.result["status"], missing.result["confirmed"]) == ("missing", None)
     assert not [i for i in env.queries.issues(STORE) if i.code == "link_mismatch"]
+
+
+def test_link_check_refuses_standard_path_leaving_store(
+    env: JobsEnv, tmp_path: Path
+) -> None:
+    """A standard path symlinked outside the store fails the job unchecked."""
+    # Arrange
+    env.scan("full")
+    planted = next(
+        entry for entry in env.store.by_kind("link") if entry.case == "regular"
+    )
+    assert planted.version_path is not None
+    outside = tmp_path / "outside" / Path(planted.path).name
+    outside.parent.mkdir()
+    # The same file as the version: followed, it would be ``confirmed``.
+    os.link(env.store.root / planted.version_path, outside)
+    slot = env.store.root / planted.path
+    slot.unlink()
+    slot.symlink_to(outside)
+
+    # Act
+    record = env.run("link_check", slot=planted.path)
+
+    # Assert
+    assert (record.state, record.result) == ("failed", None)
+    assert record.error is not None
+    assert record.error.code == "path_outside_root"
+    assert record.error.detail == MESSAGES["path_outside_root"].format(
+        path=planted.path
+    )
+    assert not [i for i in env.queries.issues(STORE) if i.code == "link_mismatch"]
+
+
+def test_link_check_follows_symlink_inside_store(env: JobsEnv) -> None:
+    """A standard path symlinked to its version in the store is confirmed."""
+    # Arrange
+    env.scan("full")
+    linked = next(
+        entry for entry in env.store.by_kind("link") if entry.case == "regular"
+    )
+    assert linked.version_path is not None
+    slot = env.store.root / linked.path
+    slot.unlink()
+    slot.symlink_to(env.store.root / linked.version_path)
+
+    # Act
+    record = env.run("link_check", slot=linked.path)
+
+    # Assert
+    assert record.result is not None, record.error
+    assert (record.result["status"], record.result["confirmed"]) == (
+        "confirmed",
+        linked.version_path,
+    )
 
 
 def test_footprints_job_on_disconnected_store_changes_nothing(env: JobsEnv) -> None:

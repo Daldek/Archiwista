@@ -103,6 +103,9 @@ def check_project(
     SourceUnavailableError
         Without a ``state``: the project's store is unavailable and no scan
         checked the project (``503 store_unavailable``).
+    PathOutsideRootError
+        The project's directory or manifest resolves outside the project
+        directories (``403 path_outside_root``).
     ProducerError
         The producer cannot read the manifest.
     """
@@ -132,7 +135,9 @@ def check_project(
             ],
         )
     checked_at = datetime.now(UTC)
-    info = project_status(queries, registry, key, visible=visible)
+    info = project_status(
+        queries, registry, key, visible=visible, project_dirs=settings.project_dirs
+    )
     if info is None:  # pragma: no cover - removed by a scan in between
         raise NotFoundError(MESSAGES["project_not_found"].format(project=key))
     return ProjectStatus(
@@ -189,7 +194,7 @@ def get_project(project: _Project, visible: _Visible, queries: _Queries) -> Proj
 @router.get(
     "/{project}/status",
     response_model=ProjectStatus,
-    responses=problem_responses(404, 422, 503),
+    responses=problem_responses(403, 404, 422, 503),
 )
 def get_project_status(
     project: _Project,
@@ -201,6 +206,7 @@ def get_project_status(
     """Return the producer's check of the project now: each task's worst file.
 
     No network and no hashing. While the store is unavailable the answer is
-    the last scan's check, marked `stale`.
+    the last scan's check, marked `stale`. A project directory that leaves
+    the project directories (a symbolic link) is refused (`path_outside_root`).
     """
     return check_project(queries, settings.get(), registry, project, visible=visible)
