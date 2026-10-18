@@ -1074,7 +1074,12 @@ class IndexQueries:
                 " AND v.state = 'missing') AS missing,"
                 " (SELECT count(*) FROM versions v WHERE v.store_id = st.id"
                 " AND v.location = 'none') AS unlocated,"
-                " (SELECT count(*) FROM issues i WHERE i.store_id = st.id) AS issues"
+                " (SELECT count(*) FROM issues i WHERE i.store_id = st.id) AS issues,"
+                # Same rule as JobSupervisor.scan_history's full_at.
+                " (SELECT max(j.finished_at) FROM jobs j WHERE j.store = st.key"
+                " AND j.kind = 'scan' AND j.state = 'succeeded'"
+                " AND json_extract(j.params, '$.mode') = 'full'"
+                " AND json_extract(j.params, '$.segment') IS NULL) AS full_scan_at"
                 " FROM stores st ORDER BY st.key"
             ).fetchall()
             states = tuple(
@@ -1084,6 +1089,7 @@ class IndexQueries:
                     status_at=_datetime(row["status_at"]),
                     detail=row["detail"],
                     indexed_at=_datetime(row["indexed_at"]),
+                    full_scan_at=_datetime(row["full_scan_at"]),
                     slots=int(row["slots"]),
                     versions=int(row["versions"]),
                     missing_versions=int(row["missing"]),

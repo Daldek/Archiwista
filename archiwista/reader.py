@@ -328,6 +328,11 @@ def _health_text(health: Health) -> str:
             missing=state.missing_versions,
             issues=state.issues,
             indexed_at=_time(state.indexed_at),
+            full_scan_at=(
+                MESSAGES["cli_none"]
+                if state.full_scan_at is None
+                else _time(state.full_scan_at)
+            ),
         )
         if state.running_job is not None:
             line += MESSAGES["cli_store_job"].format(

@@ -647,7 +647,7 @@ MESSAGES = MappingProxyType(
         "cli_store_line": (
             "Magazyn „{store}” ({name}): {status}; sloty {slots}, wersje"
             " {versions}, brakujące {missing}, problemy {issues}; indeks z"
-            " {indexed_at}."
+            " {indexed_at}; ostatni pełny skan: {full_scan_at}."
         ),
         "cli_store_job": " Zadanie: {kind}, {state}.",
         "cli_store_status_unknown": "jeszcze nie zeskanowany",

@@ -7,6 +7,7 @@ refusals included, so scripts and agents can use either (A-ADR-029, step
 
 import argparse
 import json
+import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -348,6 +349,41 @@ def test_status_json_equals_health(
     assert sources == run.http("/sources")
 
 
+def test_status_shows_last_full_scan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``/health``, ``status --json`` and ``status`` show the last full scan."""
+    # Arrange
+    full_at = datetime.fromisoformat("2026-10-18T03:14:07+00:00")
+    with served_store(tmp_path, slots=2) as served:
+        run = _Reader(served, capsys)
+        before = run.cli("status")["stores"][0]["state"]["full_scan_at"]
+        with sqlite3.connect(served.api.paths.index_file) as connection:
+            connection.execute(
+                "INSERT INTO jobs (id, kind, actor, actor_kind, store, params,"
+                " state, created_at, finished_at) VALUES ('j1', 'scan',"
+                " 'scheduler', 'scheduler', ?, '{\"mode\": \"full\"}',"
+                " 'succeeded', '2026-10-18T03:00:00+00:00', ?)",
+                (api_store.STORE, full_at.isoformat()),
+            )
+        connection.close()
+
+        # Act
+        status = run.cli("status")
+        health = run.http("/health")
+        capsys.readouterr()
+        code = main(["status"], registry=served.registry, paths=served.api.paths)
+        text = capsys.readouterr().out
+
+    # Assert
+    shown = status["stores"][0]["state"]["full_scan_at"]
+    assert before is None
+    assert status == health
+    assert datetime.fromisoformat(shown) == full_at
+    stamp = full_at.astimezone().strftime("%Y-%m-%d %H:%M")
+    assert code == 0 and f"ostatni pełny skan: {stamp}." in text
+
+
 def test_entry_json_equals_slot_card(
     served: ServedStore, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -396,6 +432,7 @@ def test_read_commands_text_for_people(
 
     # Assert
     assert status[0] == 0 and "Magazyn „zespol”" in status[1]
+    assert "ostatni pełny skan: brak." in status[1]
     assert page[0] == 0 and "Następna strona: --cursor " in page[1]
     assert refused[0] == 1 and refused[1] == ""
     assert "query.limit" in refused[2]

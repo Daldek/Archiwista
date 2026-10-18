@@ -70,6 +70,7 @@ def test_config_store_round_trip_restores_all_settings(
         scan_threads=3,
         scan_interval_local_min=2,
         scan_interval_share_min=30,
+        full_scan_interval_h=6,
         project_dirs=(tmp_path / "projekty",),
         stores=(
             make_store(
@@ -133,6 +134,7 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     assert settings.scan_threads == 8
     assert settings.scan_interval_s("local") == 5 * 60
     assert settings.scan_interval_s("share") == 15 * 60
+    assert settings.full_scan_interval_h == 24
     assert [basemap.grayscale for basemap in settings.basemaps] == [False]
     assert settings.basemaps[0].origin == "https://sgx.geodatenzentrum.de"
     assert settings.store_write_for_all is False
@@ -173,6 +175,23 @@ def test_config_parse_reports_every_invalid_field() -> None:
     assert "bezwzględna" in messages["project_dirs[0]"]
     assert "„a” powtarza się" in messages["stores"]
     assert "public, private" in messages["default_project_visibility"]
+
+
+@pytest.mark.parametrize("hours", [1, 720])
+def test_config_full_scan_interval_accepts_bounds(hours: int) -> None:
+    """The full control scan may run every hour or every 30 days."""
+    assert parse_settings({"full_scan_interval_h": hours}).full_scan_interval_h == hours
+
+
+@pytest.mark.parametrize("hours", [0, 721])
+def test_config_full_scan_interval_rejects_out_of_range(hours: int) -> None:
+    """An interval under an hour or over 30 days is refused for its field."""
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"full_scan_interval_h": hours})
+
+    assert [problem.field for problem in error.value.problems] == [
+        "full_scan_interval_h"
+    ]
 
 
 def test_config_basemap_tile_template_requires_coordinates() -> None:

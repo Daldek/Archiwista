@@ -36,6 +36,7 @@ DEFAULT_PORT = 8090
 DEFAULT_SCAN_THREADS = 8
 DEFAULT_SCAN_INTERVAL_LOCAL_MIN = 5
 DEFAULT_SCAN_INTERVAL_SHARE_MIN = 15
+DEFAULT_FULL_SCAN_INTERVAL_H = 24
 SHARE_FILESYSTEMS = frozenset({"cifs", "smb3", "smbfs", "nfs", "nfs4"})
 MOUNTINFO_PATH = Path("/proc/self/mountinfo")
 
@@ -342,6 +343,10 @@ class AppSettings(BaseModel):
         I/O latency, not CPU. A local store is read by one thread.
     scan_interval_local_min, scan_interval_share_min : int
         Incremental scan interval for local stores and network shares.
+    full_scan_interval_h : int
+        Hours between two scheduled full control scans of a store:
+        incremental scans do not list known version directories again, so
+        only a full scan notices a file deleted or added inside one.
     project_dirs : tuple[Path, ...]
         Directories searched for producer project manifests.
     stores : tuple[StoreConfig, ...]
@@ -366,6 +371,9 @@ class AppSettings(BaseModel):
     )
     scan_interval_share_min: int = Field(
         default=DEFAULT_SCAN_INTERVAL_SHARE_MIN, ge=1, le=1440
+    )
+    full_scan_interval_h: int = Field(
+        default=DEFAULT_FULL_SCAN_INTERVAL_H, ge=1, le=720
     )
     project_dirs: tuple[AbsolutePath, ...] = ()
     stores: tuple[StoreConfig, ...] = ()

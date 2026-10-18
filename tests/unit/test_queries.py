@@ -1,5 +1,6 @@
 """Index queries: search by identifiers, the map, areas and cards (step 5)."""
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -469,6 +470,82 @@ def test_queries_status_reports_jobs_and_areas_are_kept(
     assert (state.running_job.id, state.running_job.progress) == ("j2", (3, 7))
     assert kept == area
     assert queries.area("brak") is None
+
+
+@pytest.mark.parametrize(
+    ("jobs", "expected"),
+    [
+        ([], None),
+        (
+            [
+                ("full", STORE, {"mode": "full"}, "succeeded", "03:14:07"),
+                (
+                    "segment",
+                    STORE,
+                    {"mode": "full", "segment": NMT},
+                    "succeeded",
+                    "05:00:00",
+                ),
+                (
+                    "incremental",
+                    STORE,
+                    {"mode": "incremental"},
+                    "succeeded",
+                    "06:00:00",
+                ),
+                ("failed", STORE, {"mode": "full"}, "failed", "07:00:00"),
+                ("other", "inny", {"mode": "full"}, "succeeded", "08:00:00"),
+            ],
+            datetime(2026, 10, 18, 3, 14, 7, tzinfo=UTC),
+        ),
+        (
+            [
+                (
+                    "segment",
+                    STORE,
+                    {"mode": "full", "segment": NMT},
+                    "succeeded",
+                    "05:00:00",
+                )
+            ],
+            None,
+        ),
+    ],
+)
+def test_queries_status_full_scan_at_counts_succeeded_whole_store_full_scans(
+    index: Index,
+    tmp_path: Path,
+    jobs: list[tuple[str, str, dict[str, str], str, str]],
+    expected: datetime | None,
+) -> None:
+    """Segment-only, incremental, failed and other stores' scans are not full scans."""
+    # Arrange
+    _, queries = index
+    connection = sqlite3.connect(tmp_path / "index.sqlite")
+    connection.executemany(
+        "INSERT INTO jobs (id, kind, actor, actor_kind, store, params, state,"
+        " created_at, finished_at)"
+        " VALUES (?, 'scan', 'scheduler', 'scheduler', ?, ?, ?, ?, ?)",
+        [
+            (
+                job,
+                store,
+                json.dumps(params),
+                state,
+                f"2026-10-18T{ended[:2]}:00:00+00:00",
+                f"2026-10-18T{ended}+00:00",
+            )
+            for job, store, params, state, ended in jobs
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    # Act
+    state = queries.status().stores[0]
+
+    # Assert
+    assert state.full_scan_at == expected
 
 
 @pytest.mark.parametrize(

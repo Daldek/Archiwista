@@ -140,6 +140,9 @@
  * @property {string|null} status_at
  * @property {string|null} detail - Why the store is unavailable.
  * @property {string|null} indexed_at - End of the last complete pass over the store.
+ * @property {string|null} full_scan_at - End of the last successful full scan of the
+ *   whole store; incremental scans trust known version directories, so this is the
+ *   last check of their contents.
  * @property {number} slots
  * @property {number} versions
  * @property {number} missing_versions
@@ -758,6 +761,9 @@
  * @property {number} [scan_threads] - Threads reading a store on a share.
  * @property {number} [scan_interval_local_min]
  * @property {number} [scan_interval_share_min]
+ * @property {number} [full_scan_interval_h] - Hours between scheduled full control
+ *   scans; only a full scan notices files deleted or added inside known version
+ *   directories.
  * @property {string[]} [project_dirs] - Absolute directories searched for projects.
  * @property {StoreSettings[]} [stores]
  * @property {BasemapSettings[]} [basemaps] - Grey BKG TopPlusOpen when omitted.

@@ -13,9 +13,9 @@ START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 STORE = "zespol"
 
 
-def _settings(kind: StoreKind) -> AppSettings:
+def _settings(kind: StoreKind, *, full_scan_interval_h: int = 24) -> AppSettings:
     store = StoreConfig(id=STORE, name="Zespół", kartograf=Path("/srv/dane"), kind=kind)
-    return AppSettings(stores=(store,))
+    return AppSettings(stores=(store,), full_scan_interval_h=full_scan_interval_h)
 
 
 def _minutes(value: float | None) -> datetime | None:
@@ -40,7 +40,7 @@ def _minutes(value: float | None) -> datetime | None:
         ("local", 30, -60, 35, "incremental"),
         ("share", 30, -60, 44.9, None),
         ("share", 30, -60, 45, "incremental"),
-        # The daily control scan replaces a due incremental one.
+        # The control scan (daily by default) replaces a due incremental one.
         ("local", 30, -24 * 60 + 35, 35, "full"),
         ("local", 30, -24 * 60 + 36, 35, "incremental"),
     ],
@@ -64,6 +64,24 @@ def test_plan_scans_timing(
     )
 
     assert planned == (() if expected is None else (PlannedScan(STORE, expected),))
+
+
+@pytest.mark.parametrize(("hours", "expected"), [(1, "full"), (24, "incremental")])
+def test_plan_scans_full_scan_interval_from_settings(
+    hours: int, expected: ScanMode
+) -> None:
+    """A store fully scanned 2 h ago is scanned fully only under a shorter interval."""
+    history = {STORE: ScanHistory(finished_at=_minutes(-30), full_at=_minutes(-120))}
+
+    planned = plan_scans(
+        _settings("local", full_scan_interval_h=hours),
+        history,
+        (),
+        now=START,
+        started_at=START,
+    )
+
+    assert planned == (PlannedScan(STORE, expected),)
 
 
 def test_plan_scans_leaves_busy_store_alone() -> None:

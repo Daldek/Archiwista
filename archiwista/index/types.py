@@ -457,8 +457,10 @@ class StoreIndexState:
     """Index state of one store ("Indeks z 14:02, skan trwa: 63%").
 
     ``indexed_at`` is the end of the last complete pass over the store.
-    ``stale`` is true while the store is unavailable: answers come from the
-    index as it was at ``indexed_at``.
+    ``full_scan_at`` is the end of the last successful full scan of the
+    whole store: incremental scans trust known version directories, so it
+    is the last check of their contents. ``stale`` is true while the store
+    is unavailable: answers come from the index as it was at ``indexed_at``.
     """
 
     store: str
@@ -466,6 +468,7 @@ class StoreIndexState:
     status_at: datetime | None
     detail: str | None
     indexed_at: datetime | None
+    full_scan_at: datetime | None
     slots: int
     versions: int
     missing_versions: int

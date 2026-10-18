@@ -5,11 +5,14 @@ ago (or never) gets an incremental scan at once; otherwise its first scan
 comes one interval after the start. Afterwards a store is scanned one
 interval after its last scan ended, whatever started that scan: every
 5 minutes on a local disk, every 15 minutes on a share (the settings). Once
-a day the scan is a full control scan instead, and a store never fully
-scanned gets a full one. An unavailable store is only probed, at every tick:
-it is scanned as soon as the probe finds it again and its directory is not
-an empty mount point. A store added to the settings, or moved, gets a full
-scan right away. A store with a job writing its index is left alone.
+every ``full_scan_interval_h`` hours (the settings, daily by default) the
+scan is a full control scan instead, and a store never fully scanned gets a
+full one: incremental scans do not list known version directories again,
+so only a full scan notices files deleted or added inside them. An
+unavailable store is only probed, at every tick: it is scanned as soon as
+the probe finds it again and its directory is not an empty mount point. A
+store added to the settings, or moved, gets a full scan right away. A store
+with a job writing its index is left alone.
 """
 
 import logging
@@ -35,8 +38,6 @@ logger = logging.getLogger(__name__)
 
 # A scan this recent when the server starts is not repeated at once.
 STARTUP_STALE = timedelta(minutes=15)
-# Age of the last full scan after which the next scan is a full one.
-FULL_SCAN_INTERVAL = timedelta(days=1)
 # Seconds between two plannings (and probes of unavailable stores).
 TICK_S = 60.0
 # Seconds a probe of an unavailable store may take (a hung share).
@@ -65,7 +66,7 @@ def plan_scans(
     Parameters
     ----------
     settings : AppSettings
-        Stores, their kinds and the scan intervals.
+        Stores, their kinds, the scan intervals and the full scan interval.
     history : Mapping[str, ScanHistory]
         Scans of each store (``JobSupervisor.scan_history``).
     unavailable : Collection[str]
@@ -81,11 +82,12 @@ def plan_scans(
         Scans due now, in the order of the settings.
     """
     planned = []
+    full_interval = timedelta(hours=settings.full_scan_interval_h)
     for store in settings.stores:
         scans = history.get(store.id, ScanHistory())
         if scans.busy:
             continue
-        full = scans.full_at is None or now - scans.full_at >= FULL_SCAN_INTERVAL
+        full = scans.full_at is None or now - scans.full_at >= full_interval
         mode: ScanMode = "full" if full else "incremental"
         if store.id in unavailable:
             planned.append(PlannedScan(store.id, mode, probe=True))

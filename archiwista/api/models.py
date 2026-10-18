@@ -235,6 +235,7 @@ _STORE_STATE_EXAMPLE = {
     "status_at": "2026-10-18T12:02:31Z",
     "detail": None,
     "indexed_at": "2026-10-18T12:02:31Z",
+    "full_scan_at": "2026-10-18T03:14:07Z",
     "slots": 50000,
     "versions": 80000,
     "missing_versions": 3,
@@ -1768,6 +1769,13 @@ class StoreState(BaseModel):
     indexed_at: datetime | None = Field(
         description="End of the last complete pass over the store."
     )
+    full_scan_at: datetime | None = Field(
+        description=(
+            "End of the last successful full scan of the whole store;"
+            " incremental scans trust known version directories, so this is"
+            " the last check of their contents."
+        )
+    )
     slots: int
     versions: int
     missing_versions: int
@@ -1786,6 +1794,7 @@ class StoreState(BaseModel):
                 status_at=None,
                 detail=None,
                 indexed_at=None,
+                full_scan_at=None,
                 slots=0,
                 versions=0,
                 missing_versions=0,
@@ -1800,6 +1809,7 @@ class StoreState(BaseModel):
             status_at=state.status_at,
             detail=state.detail,
             indexed_at=state.indexed_at,
+            full_scan_at=state.full_scan_at,
             slots=state.slots,
             versions=state.versions,
             missing_versions=state.missing_versions,
@@ -2271,6 +2281,7 @@ class Settings(BaseModel):
             "scan_threads": 8,
             "scan_interval_local_min": 5,
             "scan_interval_share_min": 15,
+            "full_scan_interval_h": 24,
             "project_dirs": ["/mnt/nas/projekty"],
             "stores": [_STORE_SETTINGS_EXAMPLE],
             "basemaps": [_BASEMAP_EXAMPLE],
@@ -2290,6 +2301,15 @@ class Settings(BaseModel):
     )
     scan_interval_local_min: int = Field(default=5, ge=1, le=1440)
     scan_interval_share_min: int = Field(default=15, ge=1, le=1440)
+    full_scan_interval_h: int = Field(
+        default=24,
+        ge=1,
+        le=720,
+        description=(
+            "Hours between scheduled full control scans; only a full scan"
+            " notices files deleted or added inside known version directories."
+        ),
+    )
     project_dirs: list[str] = Field(
         default_factory=list, description="Absolute directories searched for projects."
     )
@@ -2315,6 +2335,7 @@ class Settings(BaseModel):
             scan_threads=settings.scan_threads,
             scan_interval_local_min=settings.scan_interval_local_min,
             scan_interval_share_min=settings.scan_interval_share_min,
+            full_scan_interval_h=settings.full_scan_interval_h,
             project_dirs=[str(path) for path in settings.project_dirs],
             stores=[StoreSettings.of(store) for store in settings.stores],
             basemaps=[BasemapSettings.of(basemap) for basemap in settings.basemaps],
