@@ -145,6 +145,21 @@ MESSAGES = MappingProxyType(
         "fix_port": "zmień port w ustawieniach albo zatrzymaj program, który go używa.",
         "store_kind_local": "dysk lokalny",
         "store_kind_share": "udział sieciowy",
+        # Local index queries (422 validation_error).
+        "index_invalid_cursor": (
+            "Kursor nie pasuje do tego zapytania — pobierz listę od pierwszej strony."
+        ),
+        "index_invalid_limit": "Limit musi być liczbą od 1 do {limit}.",
+        "index_invalid_years": "Zakres lat jest odwrócony: od {start} do {end}.",
+        "index_invalid_area": (
+            "Obszar musi być wielokątem GeoJSON (Polygon albo MultiPolygon)"
+            " we współrzędnych WGS84."
+        ),
+        "index_invalid_bbox": (
+            "Widok mapy musi być prostokątem min_lon, min_lat, max_lon, max_lat"
+            " w WGS84."
+        ),
+        "index_invalid_grid": "Siatka agregacji musi mieć od 1 do {limit} kolumn.",
     }
 )
 

@@ -262,8 +262,10 @@ export function coverage(variant) {
 ```
 tests/
 ├── unit/
-│   ├── test_index.py        # Indeks: schemat, skan, zapytania
-│   ├── test_coverage.py     # Etykiety pokrycia (SPEC 6.4)
+│   ├── conftest.py          # Pusty indeks z magazynem testowym (fixture `index`)
+│   ├── test_index.py        # Indeks: przebiegi zapisu, grupy, kursory, filtry
+│   ├── test_queries.py      # Indeks: wyszukiwanie, mapa, obszar, karty
+│   ├── test_coverage.py     # Pokrycie lokalne w układzie płaskim (decyzja 5)
 │   ├── test_snapshots.py    # Migawki danych własnych (A-ADR-027)
 │   └── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
 ├── integration/
@@ -275,11 +277,15 @@ tests/
 │   └── test_ui.py           # Playwright: przepływy interfejsu
 ├── fixtures/
 │   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)
-│   └── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
+│   ├── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
+│   └── index_data.py        # Wpisy źródła budowane ręcznie dla testów indeksu
+├── perf/
+│   └── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
 └── conftest.py              # Shared fixtures
 
 # Markery: live (sieć i prawdziwe usługi), perf (magazyn syntetyczny
-# 50 000 slotów), smb (prawdziwy udział SMB) — domyślnie wyłączone.
+# 50 000 slotów; ścieżka w ARCHIWISTA_PERF_STORE), smb (prawdziwy udział
+# SMB) — domyślnie wyłączone.
 ```
 
 ### 5.2 Nazewnictwo testów
@@ -444,6 +450,10 @@ class PathOutsideRootError(ArchiwistaError):
 class SnapshotError(ArchiwistaError):
     """Own-data snapshot could not be made consistently."""
     pass
+
+class IndexQueryError(ArchiwistaError):
+    """A query of the local index has invalid parameters (cursor, limit, area)."""
+    pass
 ```
 
 Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter
@@ -452,7 +462,9 @@ producenta trafia do użytkownika bez zmian (PRD N1.3). Rejestr wtyczek
 zgłasza `SourceUnavailableError`/`SourceIncompatibleError` ze stanem
 źródła (`state`). API HTTP zamienia wyjątek na kod (`source_unavailable`,
 `source_incompatible`, `kartograf_error`, `not_found`, `conflict`…)
-i polski komunikat (SPEC 9.1).
+i polski komunikat (SPEC 9.1); `IndexQueryError` (obcy kursor, limit poza
+zakresem, odwrócone lata, obszar spoza WGS84) to `422 validation_error`
+z komunikatem po polsku ze słownika tekstów.
 
 ### 8.2 Walidacja na wejściu
 

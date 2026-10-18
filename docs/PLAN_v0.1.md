@@ -316,12 +316,51 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 - **Indeks — `archiwista/index/`** (krok 5; skaner 6a; projekty 7):
   `IndexQueries` zwraca typowane `SlotPage` (`items`, `next_cursor`,
   liczniki grup położenia), `SlotDetail`, `VersionDetail`, `FootprintPage`,
-  `ProjectDetail`, `StoreSummary`, `LocalCoverage`, `IndexStatus`;
-  `IndexWriter` przyjmuje typy protokołu, nie obiekty Kartografa. Klucze
-  publiczne: krótka nazwa magazynu i ścieżka względna slotu/wersji. HTTP
-  i CLI używają jednego `IndexQueries`; drzewo magazynu przechodzą tylko
-  skaner i `refresh_view`. Funkcję `scan_projects` (krok 7) wywołuje
-  zadanie `scan` (krok 6b) po przejściu magazynu.
+  `LocalCoverageReport`, `IndexStatus`, `StoreUsage`; `ProjectDetail`
+  i `StoreSummary` składa krok 7 w `archiwista/services/` z tych zapytań
+  i tabel projektów. `IndexWriter` przyjmuje typy protokołu, nie obiekty
+  Kartografa. Klucze publiczne: krótka nazwa magazynu i ścieżka względna
+  slotu/wersji. HTTP i CLI używają jednego `IndexQueries`; drzewo magazynu
+  przechodzą tylko skaner i `refresh_view`. Funkcję `scan_projects`
+  (krok 7) wywołuje zadanie `scan` (krok 6b) po przejściu magazynu.
+  Stan po kroku 5:
+  - *Schemat* (`schema.py`): `SCHEMA_VERSION` w `PRAGMA user_version`;
+    inna wersja → `initialize` przebudowuje pusty indeks w jednej
+    transakcji (bez migracji); WAL; `IndexUnsupportedError`, gdy SQLite
+    < 3.35 albo bez FTS5, R*Tree lub JSON. Tabele `jobs`, `job_events`
+    i `session_tokens` zakłada krok 5, piszą do nich 6b i 8.
+  - *Zapis* (`IndexWriter(path)`, jeden wątek naraz):
+    `sync_stores({id: {producent: katalog}})` (magazyn spoza ustawień
+    znika z indeksu), `set_store_status(store, status, *, detail)`,
+    `write_segments(store, producer, segmenty)`, przebieg
+    `begin_pass(store, producer, *, segment, slots, full) -> ScanPass` →
+    `known_versions(segment)` (do `ScanScope.known_versions`) →
+    `write_entries(paczka) -> BatchResult` (paczka = jedna transakcja;
+    `needs_footprint`: wersje nowe i bez policzonego położenia, w pełnym
+    przebiegu także bez obrysu) → `write_footprints(store, [(wpis,
+    Footprint)])` (istniejącego obrysu nie nadpisuje) → `finish_pass() ->
+    PassSummary` albo `abandon_pass()` (nic nie oznacza). `finish_pass`
+    oznacza niewidziane w zakresie wersje „brak pliku” z datą, usuwa
+    wersje już brakujące przy przebiegu pełnym, czyści niewidziane
+    dowiązania, rozwiązuje problemy, usuwa puste sloty; przebieg całego
+    magazynu ustawia też `indexed_at` i stan `available`. `slots` (ścieżki
+    slotów) zawęża przebieg `refresh_view`. Niezmieniony wpis nie kosztuje
+    zapisu. Projekty: `project_stamps(producer)`, `write_project(info, *,
+    store, stamp) -> klucz`, `remove_projects(producer, *, keep)`;
+    obszary: `write_area(AreaRecord)`; problemy zadań kontrolnych
+    (`link_mismatch`): `record_issue`, `clear_issue` — skan ich nie usuwa.
+  - *Odczyt* (`IndexQueries(path)`, bezpieczne dla wątków, jedna migawka
+    na wywołanie): `slots(SlotQuery)`, `slot(store, slot)`,
+    `version(store, path)`, `sidecar(store, path)`,
+    `group(parent_request)`, `footprints(MapQuery)`, `products(*, store)`,
+    `usage(store)`, `issues(store)`, `status()`, `area(id)`,
+    `local_coverage(area, *, store, product, transformer, countries,
+    segment)` (transformator `GeoAdapter.transformer` wstrzyknięty),
+    `slots_in_bbox(store, bbox, *, segment, product)` (6a) i
+    `entries_without_footprint(store, *, segment)` (zadanie `footprints`).
+    Obcy kursor, limit poza 1–200, odwrócone lata, obszar spoza WGS84 →
+    `IndexQueryError` (`422 validation_error`). Wyniki p95 na magazynie
+    50 000 slotów: `tests/perf/test_index_perf.py` (`-m perf`).
 - **Zadania w tle — `archiwista/jobs/`** (krok 6b):
   `JobSupervisor.submit(kind, *, store, params, actor) -> JobRecord`
   (`JobConflictError` z identyfikatorem trwającego zadania), `get`, `list`,

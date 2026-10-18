@@ -57,3 +57,11 @@ class PathOutsideRootError(ArchiwistaError):
 
 class SnapshotError(ArchiwistaError):
     """An own-data snapshot could not be made consistently."""
+
+
+class IndexQueryError(ArchiwistaError):
+    """A query of the local index has invalid parameters.
+
+    The message is Polish and names the parameter (cursor, limit, years,
+    area or view); the HTTP API answers ``422 validation_error``.
+    """
