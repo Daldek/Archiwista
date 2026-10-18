@@ -1267,11 +1267,15 @@ def _prune_jobs(db: sqlite3.Connection, *, now: datetime) -> None:
 
 
 # A scan's summary recording nothing changed: every count zero, no project
-# manifest read or removed, no project directory unreadable.
+# manifest read but those without a store (read again at every scan, see
+# ``IndexWriter.project_stamps``), none removed, no project directory
+# unreadable.
 _UNCHANGED_SQL = " AND ".join(
     [
         *(f"json_extract(summary, '$.{name}') = 0" for name in _SCAN_CHANGES),
-        "coalesce(json_extract(summary, '$.projects.read'), 0) = 0",
+        "coalesce(json_extract(summary, '$.projects.read'), 0)"
+        " = coalesce(json_extract(summary, '$.projects.invalid'), 0)"
+        " + coalesce(json_extract(summary, '$.projects.unknown_store'), 0)",
         "coalesce(json_extract(summary, '$.projects.removed'), 0) = 0",
         "coalesce(json_array_length(summary, '$.projects.unreadable_dirs'), 0) = 0",
     ]

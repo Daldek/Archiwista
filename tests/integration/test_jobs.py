@@ -21,7 +21,7 @@ import pytest
 from kartograf import BBox
 
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
-from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, SCHEDULER, Principal
 from archiwista.config import AppPaths, ConfigStore, SettingsService, StoreConfig
 from archiwista.errors import (
     IndexQueryError,
@@ -730,6 +730,62 @@ def test_start_forgets_old_jobs_but_each_store_last(env: JobsEnv) -> None:
     # Assert
     assert kept == [recent.id, last.id]
     assert events == ()
+
+
+def test_prune_forgets_routine_scans_after_48_hours_but_newest(env: JobsEnv) -> None:
+    """Unchanged scheduled scans go after 48 h, but the newest; other scans stay."""
+    # Arrange
+    first = env.scan("full")
+    oldest, young, newest = (
+        env.run("scan", actor=SCHEDULER, mode="incremental") for _ in range(3)
+    )
+    noticed = env.run("scan", actor=SCHEDULER, mode="incremental")
+    owners = env.run("scan", mode="incremental")
+    full = env.run("scan", actor=SCHEDULER, mode="full")
+    link = env.store.by_kind("link")[0].path
+    add_version(env.store.root, link, label="2026-10-01_99999")
+    changed = env.run("scan", actor=SCHEDULER, mode="incremental")
+    now = datetime.now(UTC)
+    hours_ago = [
+        (first, 60),
+        (noticed, 60),
+        (owners, 60),
+        (full, 60),
+        (changed, 60),
+        (oldest, 49),
+        (young, 47),
+        (newest, 46),
+    ]
+    with sqlite3.connect(env.paths.index_file) as db:
+        for job, hours in hours_ago:
+            moment = (now - timedelta(hours=hours)).isoformat(timespec="microseconds")
+            db.execute(
+                "UPDATE jobs SET created_at = ?, finished_at = ? WHERE id = ?",
+                (moment, moment, job.id),
+            )
+        db.execute(
+            "INSERT INTO job_events (job_id, seq, type, data, at)"
+            " VALUES (?, 1000, 'notice', '{}', ?)",
+            (noticed.id, now.isoformat()),
+        )
+    db.close()
+    log = env.paths.jobs_dir / f"{oldest.id}.log"
+    logged = log.exists()
+
+    # Act
+    forgotten_now = env.jobs.prune(now)
+    kept_now = {job.id for job in env.jobs.list(limit=100).items}
+    forgotten_later = env.jobs.prune(now + timedelta(days=10))
+    kept_later = {job.id for job in env.jobs.list(limit=100).items}
+
+    # Assert
+    assert all(job.state == "succeeded" for job, _ in hours_ago)
+    assert changed.result is not None and changed.result["versions_written"] == 1
+    assert (forgotten_now, forgotten_later) == (1, 1)
+    assert kept_now == {job.id for job, _ in hours_ago} - {oldest.id}
+    assert kept_later == kept_now - {young.id}
+    assert env.jobs.events(oldest.id) == ()
+    assert logged and not log.exists()
 
 
 @pytest.mark.live
