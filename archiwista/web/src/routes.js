@@ -37,6 +37,7 @@
 
 /** @type {ViewRoute[]} */
 export const VIEWS = [
+  { id: "catalog", icon: "table", load: () => import("./views/catalog.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
 ];
 

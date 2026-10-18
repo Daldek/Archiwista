@@ -12,6 +12,7 @@ import { stamp } from "./format.js";
 import { T, t } from "./labels/index.js";
 import { Link, navigate, setParams, useRoute } from "./router.js";
 import { findView, OVERLAYS, startView, VIEWS } from "./routes.js";
+import { SearchButton } from "./search.js";
 import {
   CopyButton,
   html,
@@ -140,6 +141,7 @@ function TopBar() {
         </div>`
       : null}
     <div class="top-actions">
+      <${SearchButton} />
       <span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
         <${Tech} value=${session.actor}>${t(L.session_label, { actor })}</${Tech}>
       </span>

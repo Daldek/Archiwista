@@ -691,6 +691,25 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `archiwista serve` z rejestrem wtyczek, nadzorcą i harmonogramem;
     `tab` — strona Chromium zapisująca naruszenia CSP, błędy, żądania
     i workery) oraz `tests/fixtures/browser.py` (`Served`, `Tab`).
+  Stan po kroku 10c:
+  - *Katalog* (`src/views/catalog.js`, `catalog-grid.js`,
+    `catalog-filters.js`, `catalog.css`, `labels/catalog.js`): adres to
+    zapytanie `GET /slots` — parametry o nazwach API (`SLOT_PARAMS`
+    w `src/search.js`: `q`, `store`, `product`, `country`, `years`, `unit`,
+    `location`, `versions`, `status`, `area_id`, `bbox`, `bbox_crs`,
+    `limit`), kursor nigdy w adresie; strony po 200 wierszy, gdy koniec
+    listy się zbliża; siatka ARIA rysuje tylko wiersze blisko widoku
+    (50 000 wczytanych wierszy: ok. 25 elementów); grupy położenia
+    z licznikami `groups` to filtr `location` (`any`, `with`, `none` —
+    „Bez obrysu”). Licznik „bez obrysu” mapy prowadzi do
+    `href("catalog", {…filtry, location: "none"})`; „Pokaż na mapie” tylko
+    dla wiersza z obrysem (`?view=map&store&product&unit`); wiersz otwiera
+    kartę pliku `file=<magazyn>/<slot>` (`file_version` poza `current`).
+  - *Wyszukiwanie* (`src/search.js`, przycisk `SearchButton` w pasku
+    powłoki): `Ctrl+K`/`⌘K` i `/` (poza polami tekstu) z każdego widoku
+    otwierają Katalog z kursorem w polu wyszukiwania i przenoszą filtry
+    bieżącego adresu o nazwach `/slots`.
+  - *Testy*: `tests/e2e/test_catalog.py`.
 
 ## Kolejność prac
 
