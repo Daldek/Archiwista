@@ -1,0 +1,253 @@
+"""The shell in Chromium on a real server (plan v0.1, step 10a).
+
+A session from the one-time token of the address, the instruction without a
+session, the first-run wizard, offline mode with MapLibre's worker and the
+packaged glyphs under the CSP, and every ES module loading without errors
+(the syntax check without Node.js).
+"""
+
+import re
+from collections.abc import Callable
+from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
+
+from playwright.sync_api import Browser, Page, expect
+
+import archiwista.web
+from archiwista.config import AppSettings, StoreConfig
+from tests.fixtures.browser import Served, Tab
+from tests.fixtures.make_store import make_store
+
+WEB_DIR = Path(archiwista.web.__file__).resolve().parent
+GLYPHS = "/static/vendor/glyphs/noto-sans-regular/"
+# A map like a map view's: a polygon and a label whose letters need three
+# glyph ranges (Latin-1, Latin Extended-A for „Ł” and „ź”, punctuation „–”).
+DRAW_MAP = """
+async () => {
+  const { GLYPHS, GLYPH_FONT, loadMapLibre } = await import("/static/src/maplibre.js");
+  const maplibre = await loadMapLibre();
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;left:0;top:0;width:480px;height:320px";
+  document.body.append(box);
+  const map = new maplibre.Map({
+    container: box,
+    attributionControl: false,
+    center: [19.95, 50.05],
+    zoom: 10,
+    style: {
+      version: 8,
+      glyphs: GLYPHS,
+      sources: {
+        area: {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            properties: { name: "Łódź – N-34-130" },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [[19.9, 50.0], [20.0, 50.0], [20.0, 50.1], [19.9, 50.1], [19.9, 50.0]],
+              ],
+            },
+          },
+        },
+      },
+      layers: [
+        { id: "background", type: "background", paint: { "background-color": "#eee" } },
+        { id: "fill", type: "fill", source: "area", paint: { "fill-color": "#46e" } },
+        {
+          id: "label",
+          type: "symbol",
+          source: "area",
+          layout: { "text-field": ["get", "name"], "text-font": [GLYPH_FONT] },
+        },
+      ],
+    },
+  });
+  await new Promise((resolve, reject) => {
+    map.once("idle", resolve);
+    map.once("error", (event) => reject(event.error));
+  });
+  const labels = map.queryRenderedFeatures({ layers: ["label"] }).length;
+  map.remove();
+  box.remove();
+  return { version: maplibre.getVersion(), labels };
+}
+"""
+IMPORT_ALL = """
+async (paths) => {
+  const results = await Promise.allSettled(
+    paths.map((path) => import(`/static/${path}`)),
+  );
+  return results.flatMap((result, index) =>
+    result.status === "rejected" ? [`${paths[index]}: ${result.reason}`] : []);
+}
+"""
+
+Serve = Callable[..., Served]
+
+
+def open_shell(page: Page, url: str) -> None:
+    """Open an address and wait for the shell of a started session."""
+    page.goto(url)
+    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+
+
+def zespol(root: Path) -> StoreConfig:
+    """Return the generated store as the ``zespol`` store."""
+    return StoreConfig(id="zespol", name="Zespół", kartograf=root, kind="local")
+
+
+def test_fragment_token_starts_session_and_is_removed_from_url(
+    serve: Serve, tab: Tab, chromium: Browser
+) -> None:
+    """The token of ``#token=`` becomes a session and leaves the address at once."""
+    served = serve()
+    url = served.token_url()
+    token = url.partition("#token=")[2]
+
+    open_shell(tab.page, url)
+    address = tab.page.url
+    cookies = {cookie["name"]: cookie for cookie in tab.page.context.cookies()}
+    tab.page.reload()
+    expect(tab.page.get_by_text("Sesja: właściciel lokalny")).to_be_visible()
+    other = chromium.new_context()
+    replay = other.new_page()
+    replay.goto(url)
+
+    assert token not in address
+    assert urlsplit(address).fragment == ""
+    assert cookies["archiwista_session"]["httpOnly"] is True
+    assert cookies["archiwista_session"]["sameSite"] == "Strict"
+    assert cookies["archiwista_csrf"]["httpOnly"] is False
+    expect(replay.get_by_role("heading", name="Wymagana sesja")).to_be_visible()
+    expect(
+        replay.get_by_text("Token jest nieznany, wygasł albo został już użyty")
+    ).to_be_visible()
+    other.close()
+    tab.assert_clean()
+
+
+def test_no_session_shows_instruction(serve: Serve, tab: Tab) -> None:
+    """Without a session — or once it is gone — the page says how to open one."""
+    served = serve()
+
+    tab.page.goto(served.base + "/")
+    expect(tab.page.get_by_role("heading", name="Wymagana sesja")).to_be_visible()
+    expect(tab.page.get_by_text("Brak ważnej sesji.")).to_be_visible()
+    expect(tab.page.get_by_text("Otwórz adres z terminala")).to_be_visible()
+    expect(tab.page.get_by_text("archiwista token", exact=True)).to_be_visible()
+    open_shell(tab.page, served.token_url())
+    tab.page.context.clear_cookies()
+    tab.page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+
+    expect(
+        tab.page.get_by_text("Sesja wygasła albo serwer został uruchomiony ponownie.")
+    ).to_be_visible()
+    expect(tab.page.get_by_role("navigation", name="Widoki")).to_have_count(0)
+    tab.assert_clean()
+
+
+def test_first_run_wizard_saves_settings(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """The wizard saves a store and project directory; the server then indexes it."""
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    served = serve()
+    page = tab.page
+    open_shell(page, served.token_url())
+    expect(page.get_by_role("heading", name="Pierwsze uruchomienie")).to_be_visible()
+    expect(
+        page.get_by_text("Nie skonfigurowano jeszcze żadnego magazynu")
+    ).to_be_visible()
+
+    page.get_by_label("Nazwa", exact=True).fill("Zespół")
+    page.get_by_label("Katalog Kartografa").fill(str(tmp_path / "missing"))
+    page.get_by_role("button", name="Dalej").click()
+    page.get_by_role("button", name="Dodaj katalog").click()
+    page.get_by_label("Katalog projektów 1").fill(str(store.projects_dir))
+    page.get_by_role("button", name="Dalej").click()
+    page.get_by_role("button", name="Dalej").click()
+    page.get_by_role("button", name="Zapisz i zindeksuj").click()
+    field = page.get_by_label("Katalog Kartografa")
+    expect(field).to_have_attribute("aria-invalid", "true")
+    expect(
+        page.get_by_text("nie istnieje albo udział nie jest podłączony")
+    ).to_be_visible()
+    refused = served.settings()
+    expect(page.get_by_label("Identyfikator")).to_have_value("zespol")
+    field.fill(str(store.root))
+    page.get_by_role("button", name=re.compile("Zapis$")).click()
+    page.get_by_role("button", name="Zapisz i zindeksuj").click()
+    expect(page.get_by_text("Zapisano ustawienia.")).to_be_visible()
+    expect(page.get_by_text("Magazyn „Zespół” zindeksowany")).to_be_visible(
+        timeout=60_000
+    )
+    saved = served.settings()
+
+    assert refused.stores == ()
+    assert saved.stores == (zespol(store.root),)
+    assert saved.project_dirs == (store.projects_dir,)
+    query = dict(parse_qsl(urlsplit(page.url).query))
+    assert query == {"view": "setup", "step": "save", "saved": "1"}
+    tab.assert_clean()
+
+
+def test_no_csp_violations_offline(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """Offline, the shell and MapLibre (worker, glyphs) stay within the CSP."""
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    served = serve(
+        AppSettings(
+            offline=True,
+            stores=(zespol(store.root),),
+            project_dirs=(store.projects_dir,),
+        )
+    )
+    page = tab.page
+    open_shell(page, served.token_url())
+    document = page.goto(served.base + "/?view=setup")
+    expect(page.get_by_role("heading", name="Ustawienia")).to_be_visible()
+    for step in ("Projekty", "Zapis", "Tryb pracy"):
+        page.get_by_role("button", name=re.compile(f"{step}$")).click()
+        expect(page.locator("[aria-current=step]")).to_contain_text(step)
+    expect(page.get_by_label("Tryb offline")).to_be_checked()
+    page.goto(served.base + "/?view=nieznany")
+    expect(page.get_by_text("Nie ma widoku „nieznany”.")).to_be_visible()
+
+    drawn = page.evaluate(DRAW_MAP)
+
+    assert document is not None
+    policy = document.headers["content-security-policy"]
+    assert "worker-src 'self';" in policy
+    assert "http" not in policy
+    assert drawn == {"version": "6.14.0", "labels": 1}
+    assert {urlsplit(url).path for url in tab.workers} == {
+        "/static/vendor/maplibre-gl/maplibre-gl-worker.mjs"
+    }
+    glyphs = {
+        f"{served.base}{GLYPHS}{part}.pbf" for part in ("0-255", "256-511", "8192-8447")
+    }
+    assert glyphs <= set(tab.requests)
+    assert tab.foreign_requests(served.base) == []
+    tab.assert_clean()
+
+
+def test_all_modules_load_without_errors(serve: Serve, tab: Tab) -> None:
+    """Every module of src/ and every vendored module imports in Chromium."""
+    served = serve()
+    open_shell(tab.page, served.token_url())
+    sources = sorted(
+        path.relative_to(WEB_DIR).as_posix() for path in (WEB_DIR / "src").rglob("*.js")
+    )
+    vendored = sorted(
+        path.relative_to(WEB_DIR).as_posix()
+        for path in (WEB_DIR / "vendor").rglob("*.mjs")
+        if not path.name.endswith("-worker.mjs")
+    )
+
+    failures = tab.page.evaluate(IMPORT_ALL, sources + vendored)
+
+    assert {"src/main.js", "src/setup.js", "src/labels/index.js"} <= set(sources)
+    assert "vendor/maplibre-gl/maplibre-gl.mjs" in vendored
+    assert failures == []
+    tab.assert_clean()

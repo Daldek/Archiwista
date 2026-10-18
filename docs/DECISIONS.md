@@ -504,7 +504,7 @@ bez zmiany decyzji:
 - kolejne sesje (agent zewnętrzny): jednorazowy token ważny 5 min z
   `POST /api/v1/session/tokens` (sesja i CSRF) albo z `archiwista token` w terminalu
   właściciela; w indeksie leży tylko skrót SHA-256 tokenu;
-- CSP ma `worker-src 'self'` (worker MapLibre w wersji CSP z pakietu) oraz źródła
+- CSP ma `worker-src 'self'` (worker MapLibre z pakietu, moduł z tego samego pochodzenia) oraz źródła
   skonfigurowanych podkładów w `connect-src` i `img-src` — tylko w trybie online, bo
   MapLibre pobiera kafle przez `fetch`;
 - dziennik dostępu serwera jest domyślnie wyłączony, a włączony redaguje `token=`.

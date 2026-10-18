@@ -198,9 +198,11 @@ nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
      'self'; frame-ancestors 'none'`, gdzie `<P>` to źródła (schemat, host,
      port) skonfigurowanych podkładów — tylko przy `offline = false`.
      MapLibre pobiera kafle przez `fetch` (`connect-src`), dlatego źródła
-     podkładów są także tam; worker to dołączona wersja CSP
-     (`maplibre-gl-csp-worker.js` przez `setWorkerUrl`), bez `blob:`
-     w `worker-src`. Zmiana trybu offline albo podkładów przeładowuje stronę
+     podkładów są także tam; worker to dołączony moduł roboczy MapLibre 6
+     (`maplibre-gl-worker.mjs`, uruchamiany jako moduł z tego samego
+     pochodzenia; wydanie ESM zastąpiło w MapLibre 6 osobną wersję CSP —
+     decyzja 2026-10-18 przy kroku 10a), bez `blob:` w `worker-src`.
+     Zmiana trybu offline albo podkładów przeładowuje stronę
      (CSP dotyczy dokumentu). Dodatkowo `Referrer-Policy: no-referrer`,
      `X-Content-Type-Options: nosniff`, bez CORS.
 9. **Brak danych producenta ≠ wynik pusty.** `not_installed`,
@@ -652,6 +654,43 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   składany przez `src/labels/index.js` z 10a), więc 10b, 10c i 11 nie
   edytują wspólnego pliku. Ekran v0.1 nie importuje `mockup/src/data.js`
   ani `assistant.js`.
+  Stan po kroku 10a:
+  - *Pliki*: `index.html` (bez skryptów inline, `/static/src/main.js` jako
+    moduł), `styles.css` (tokeny, powłoka i wspólne komponenty z mockupu),
+    `favicon.svg`, `vendor/` z przypiętymi plikami i licencjami w
+    `vendor/vendor.json`: Preact 10.29.8 (MIT), htm 3.1.1 (Apache-2.0),
+    MapLibre GL JS 6.14.0 (BSD-3-Clause, wydanie ESM), glify Noto Sans
+    Regular z openmaptiles/fonts 2.0 (OFL-1.1; U+0000–U+01FF
+    i U+2000–U+20FF). CSP blokuje mapy importów inline, więc moduły
+    importują ścieżki względne; jedyna zmiana w plikach z npm to import
+    `"preact"` → `"./preact.mjs"` w `vendor/preact/hooks.mjs`.
+  - *Moduły* (`src/`): `main.js` (sesja, potem powłoka; adres z tokenem
+    wklejony do otwartej karty też zaczyna sesję), `api.js` (funkcja na
+    każdą trasę 8 i 9a–9c, nazwa = `operationId` w camelCase; `ApiError`
+    z problemem RFC 9457, `onSessionLost`, `watchJob` dla SSE, `uploadArea`
+    dla pliku obszaru), `types.js` (JSDoc modeli), `router.js`
+    (`/?view=<widok>&…`: `useRoute`, `navigate`, `setParams`, `href`,
+    `Link`), `routes.js` (`VIEWS`, `OVERLAYS`), `shell.js` (pasek, nawigacja,
+    baner, widok, nakładki), `context.js` (`useApp()`: sesja, ustawienia,
+    `/health` co 2 s przy skanie albo czekającym magazynie, inaczej co
+    15 s; `refreshHealth()`), `banner.js` (stan indeksu, także odłączony
+    magazyn z czasem ostatniego przejścia), `setup.js` (kreator i późniejsze
+    ustawienia, krok w adresie), `ui.js` (Preact i htm w jednym imporcie,
+    `Icon`, `Tech`, `ProblemView`, `Spinner`, `CopyButton`,
+    `loadStylesheet`), `panels.js` (`ViewLayout`, `Resizer`,
+    `usePanelWidths`), `hooks.js` (`useResource`, `useMedia`, `NARROW`),
+    `format.js` (`day`, `stamp`, `int`, `size`, `plural`, `count`),
+    `maplibre.js` (`loadMapLibre`, `GLYPHS`, `GLYPH_FONT`).
+  - *Umowa widoku*: linia w `VIEWS` (`id`, `icon`, `load`, opcjonalnie
+    `start`, `bottom`) albo w `OVERLAYS` (`param`, `load`); moduł eksportuje
+    domyślnie komponent (`route`; nakładka także `value` i `onClose`);
+    nazwy widoków `map`, `catalog`, `projects`, `store` są już
+    w `labels/shell.js` (`nav`); teksty widoku w `labels/<widok>.js`,
+    importowanym przez widok; własny arkusz stylów przez `loadStylesheet`.
+  - *Testy*: `tests/e2e/conftest.py` (`serve(settings)` — prawdziwy
+    `archiwista serve` z rejestrem wtyczek, nadzorcą i harmonogramem;
+    `tab` — strona Chromium zapisująca naruszenia CSP, błędy, żądania
+    i workery) oraz `tests/fixtures/browser.py` (`Served`, `Tab`).
 
 ## Kolejność prac
 
@@ -1104,9 +1143,9 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `src/{main,api,router,routes,setup}.js`, `src/labels/`. Przenieść wygląd
   i użyteczne komponenty z `mockup/` (panele, resizery), usunąć CDN, fonty
   online, `mockup/data` i symulowane zadania; dołączyć Preact, htm
-  i MapLibre w wersji CSP (`maplibre-gl-csp.js`,
-  `maplibre-gl-csp-worker.js`, CSS, glify) z przypiętymi wersjami
-  i licencjami (zgodnymi z MIT). `api.js`: wymiana tokenu z
+  i MapLibre 6 w wydaniu ESM (`maplibre-gl.mjs`, moduł roboczy
+  `maplibre-gl-worker.mjs` z tego samego pochodzenia, CSS, glify)
+  z przypiętymi wersjami i licencjami (zgodnymi z MIT). `api.js`: wymiana tokenu z
   `location.hash`, usunięcie fragmentu, nagłówek `X-Archiwista-CSRF`
   z ciasteczka `archiwista_csrf` (po przeładowaniu — `GET /session`),
   obsługa problemów RFC 9457 i `401` (instrukcja po polsku: „otwórz adres

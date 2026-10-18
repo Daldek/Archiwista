@@ -3178,8 +3178,8 @@ Decyzja: A-ADR-012.
   form-action 'self'; frame-ancestors 'none'` — `<podkłady>` to źródła
   skonfigurowanych podkładów, tylko w trybie online (MapLibre pobiera kafle
   przez `fetch`, więc potrzebują ich także `connect-src`); worker MapLibre
-  w wersji CSP z pakietu, bez `blob:`. Zmiana trybu offline albo podkładów
-  przeładowuje stronę. Dodatkowo `Referrer-Policy: no-referrer`
+  z pakietu jako moduł z tego samego pochodzenia, bez `blob:`. Zmiana trybu
+  offline albo podkładów przeładowuje stronę. Dodatkowo `Referrer-Policy: no-referrer`
   i `X-Content-Type-Options: nosniff`. Biblioteki interfejsu są w pakiecie
   (bez CDN — działa też bez internetu).
 - **Ścieżki:** API przyjmuje tylko ścieżki znane indeksowi; plik do

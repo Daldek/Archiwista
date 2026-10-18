@@ -11,7 +11,7 @@ from pathlib import Path
 from archiwista.config import AppPaths
 from archiwista.server import LocalServer, serve_main
 from archiwista.sources import SourceAdapter, SourceState
-from archiwista.sources.registry import source_error
+from archiwista.sources.registry import PluginRegistry, source_error
 
 START_TIMEOUT_S = 10.0
 
@@ -50,11 +50,15 @@ def local_paths(tmp_path: Path) -> AppPaths:
 
 @contextmanager
 def serving(
-    paths: AppPaths, *, access_log: bool = False
+    paths: AppPaths,
+    *,
+    access_log: bool = False,
+    registry: PluginRegistry | None = None,
 ) -> Iterator[tuple[LocalServer, str]]:
     """Run ``serve_main`` on a free port; yield the server and what it printed.
 
-    The server stops when the block ends and must then exit with status 0.
+    Without ``registry`` the server has no producers (``NoSources``). The
+    server stops when the block ends and must then exit with status 0.
     """
     out = io.StringIO()
     err = io.StringIO()
@@ -65,7 +69,7 @@ def serving(
         statuses.append(
             serve_main(
                 paths,
-                NoSources(),
+                registry if registry is not None else NoSources(),
                 out,
                 err,
                 port=0,

@@ -293,7 +293,8 @@ tests/
 │   ├── test_imports.py      # Producenci tylko w adapterach
 │   └── test_store_fixture.py  # Magazyn testowy oczami czytników Kartografa
 ├── e2e/
-│   └── test_ui.py           # Playwright: przepływy interfejsu
+│   ├── conftest.py          # Prawdziwy archiwista serve (serve) i strona Chromium (tab)
+│   └── test_shell.py        # Powłoka: sesja z tokenu, brak sesji, kreator, CSP offline, moduły ES
 ├── fixtures/
 │   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)
 │   ├── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
@@ -302,6 +303,8 @@ tests/
 │   ├── permissions.py       # Cztery tożsamości i grupa do macierzy uprawnień
 │   ├── api_session.py       # Aplikacja w TestClient z sesjami wskazanych osób
 │   ├── api_store.py         # Magazyn testowy zeskanowany i podany przez API
+│   ├── browser.py           # Serwer testu i karta Chromium: naruszenia CSP, błędy, żądania, workery
+│   ├── local_server.py      # archiwista serve w wątku na wolnym porcie (rejestr do wyboru)
 │   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
 │   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
 │   ├── jobs_api.py          # Aplikacja z nadzorcą zadań testowych procesów roboczych
