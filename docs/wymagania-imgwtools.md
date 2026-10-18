@@ -2,7 +2,7 @@
 
 **Data:** 2026-10-17
 **Status:** propozycja do uzgodnienia z zespołem IMGWTools
-**Źródło:** `docs/SPEC.md` 12.7–12.9 (wymagania IMGW-1..IMGW-19, kontrakt
+**Źródło:** `docs/SPEC.md` 12.7–12.9 (wymagania IMGW-1..IMGW-20, kontrakt
 formatu, czego nie wymagamy) oraz SPEC 4.6–4.8 (stacje ČHMÚ: 4.8.6), 5.6, 6.7, 11, 13 i 14;
 decyzje `docs/DECISIONS.md`: A-ADR-019 (dwóch producentów), A-ADR-020
 (format danych IMGW), A-ADR-021 (etykiety pokrycia szeregów), A-ADR-022
@@ -22,7 +22,7 @@ komend, pól i schematów są propozycjami — ostateczne ustali ADR IMGWTools
 (SPEC 12).
 
 **Spis treści:** 1. Wstęp · 2. Stan obecny IMGWTools 2.1.1 · 3. Wspólne
-reguły · 4. Wymagania IMGW-1..IMGW-19 (stacje ČHMÚ: 4.15–4.19) · 5. Proponowana
+reguły · 4. Wymagania IMGW-1..IMGW-20 (stacje ČHMÚ: 4.15–4.19; klucze zbiorów: 4.20) · 5. Proponowana
 kolejność wdrożenia · 6. Pytania otwarte
 
 ## 1. Wstęp
@@ -140,7 +140,7 @@ poniżej rozdziela je według tego, co da się wydać wcześniej:
 | Priorytet | Znaczenie | Wymagania |
 |---|---|---|
 | **P1** | blokuje część tylko do odczytu v0.5: katalog IMGW w indeksie, stacje na mapie i w „Katalogu”, „Zestawienie”, karta stacji, wykres | IMGW-1..IMGW-10 |
-| **P2** | blokuje pełne v0.5: działania z interfejsu („Okno planu”, polecenie `imgw …`, anulowanie), deklaracja obsługiwanych wersji kontraktu, zadania projektu IMGW; IMGW-12 jest wymagany od IMGWTools już do v0.5, lecz Archiwista używa eksportu CSV w zestawie od v1.1 | IMGW-11..IMGW-14 |
+| **P2** | blokuje pełne v0.5: działania z interfejsu („Okno planu”, polecenie `imgw …`, anulowanie), deklaracja obsługiwanych wersji kontraktu, zadania projektu IMGW; IMGW-12 jest wymagany od IMGWTools już do v0.5, lecz Archiwista używa eksportu CSV w zestawie od v1.1; konwencja kluczy zbiorów (IMGW-20) obowiązuje jak IMGW-13 od pierwszego zapisu | IMGW-11..IMGW-14, IMGW-20 |
 | **P3** | blokuje v0.6 „PL + CZ”, a więc MVP: stacje ČHMÚ w widokach v0.5 | IMGW-15..IMGW-19 |
 
 Uzasadnienie:
@@ -308,7 +308,7 @@ domyślnie i ich nie powtarzają.
 - **R12. Granice z 1.4** — żadnych pól ani plików Archiwisty, żadnej
   zależności od Kartografa, żadnej logiki interfejsu.
 
-## 4. Wymagania IMGW-1..IMGW-19
+## 4. Wymagania IMGW-1..IMGW-20
 
 Podsumowanie (szczegóły w podsekcjach; „Fala” — sekcja 5):
 
@@ -333,6 +333,7 @@ Podsumowanie (szczegóły w podsekcjach; „Fala” — sekcja 5):
 | IMGW-17 | Katalog stacji ČHMÚ | P3 | IMGW-15, IMGW-9 | 10 | — |
 | IMGW-18 | Szeregi i pokrycie ČHMÚ | P3 | IMGW-16, IMGW-7, IMGW-8 | 10 | — |
 | IMGW-19 | Komendy, projekt i licencja ČHMÚ | P3 | IMGW-16..IMGW-18, IMGW-11, IMGW-12, IMGW-14 | 10 | — |
+| IMGW-20 | Konwencja kluczy zbiorów | P2 | — (dotyczy pola `dataset` z IMGW-3, IMGW-7, IMGW-15) | 1 (polityka) | — |
 
 SPEC (12.7, 14) wskazuje IMGW-2, IMGW-4 i IMGW-11 jako wymagania, które
 naprawiają też błędy niezależne od Archiwisty; ich część „naprawcza”
@@ -474,7 +475,7 @@ stacji, szeregi zbioru), pisany raz. Koperta wspólna z `kartograf-meta/1`
 | Pole | Znaczenie w `imgw-meta/1` |
 |---|---|
 | `schema` | `imgw-meta/1` |
-| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`), `PL`, `IMGW-PIB` |
+| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`; konwencja kluczy — IMGW-20), `PL`, `IMGW-PIB` |
 | `request` | archiwum — ścieżka na serwerze i okres; szeregi zbioru — zbiór i okresy wejść; katalog stacji — źródła |
 | `license` | `{id, attribution, url}` z formułami IMGW (SPEC 4.8.5) |
 | `downloaded_at` | chwila zapisu wersji (UTC, ISO 8601) |
@@ -1324,6 +1325,61 @@ i jego formuły nie dotyczą danych ČHMÚ.
 
 **Odwołania.** SPEC 4.8.6, 12.7 (IMGW-19), 13 v0.6 (kryteria 6–7); UC-20.
 
+### 4.20 IMGW-20. Konwencja kluczy zbiorów
+
+**Cel.** Klucz zbioru, który Archiwista może przechowywać w indeksie,
+filtrach i przypięciach bez rozbierania go na części — ten sam kontrakt
+kluczy co w Kartografie (SPEC 4.2.1, KA-8) — oraz sidecary czytelne także
+po zmianie nazwy zbioru.
+
+**Opis.**
+
+- **Postać.** Klucz zbioru (pole `dataset` sidecara `imgw-meta/1` i spisu
+  `series.json`, klucz deskryptora zbioru) to
+  `<kraj>.<dostawca>.<zbiór>[_<wariant>]`: małe litery ASCII i cyfry,
+  kropka tylko między trzema częściami, podkreślenie wewnątrz części
+  (`pl.imgw.hydro_daily`, `pl.imgw.meteo_climate_daily`,
+  `cz.chmi.hydro_daily`). `<kraj>` — kod ISO 3166-1 alfa-2 małymi
+  literami.
+- **Niezmienność.** Klucz opublikowany w wydaniu IMGWTools z magazynem się
+  nie zmienia; sidecary wersji są niezmienne (IMGW-1), więc zapisany klucz
+  zostaje na dysku na zawsze.
+- **Zmiana nazwy tylko przez tabelę aliasów IMGWTools.** Surowy `dataset`
+  zostaje w sidecarze bez zmian, a `read_meta` (IMGW-10) podaje obok
+  znormalizowany `dataset_key` (bieżący klucz deskryptora). Wzór:
+  `_DEV_DATASETS` Kartografa (`Kartograf/kartograf/store.py:186`) czytane
+  przez `read_sidecar`. Klucz nieznany IMGWTools daje pusty `dataset_key`,
+  nie błąd.
+- **Dostawca z pola `provider`.** Tożsamość dostawcy jest wyłącznie
+  w polu `provider` sidecara i deskryptora (`IMGW-PIB`, `CHMI`), a kraj
+  w `country`; środkowa część klucza (`imgw`, `chmi`) to przedrostek klucza
+  (`key_prefix`), nie identyfikator dostawcy (IMGW-15).
+- Archiwista traktuje klucz jako nieprzejrzysty identyfikator: porównuje
+  go w całości, ale nie wyprowadza z niego zbioru, wariantu, dostawcy ani
+  kraju.
+
+**Kryteria akceptacji.**
+
+1. Każdy klucz w rejestrze zbiorów IMGWTools ma postać
+   `<kraj>.<dostawca>.<zbiór>[_<wariant>]` — test na całym rejestrze
+   (wzorzec `^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$`).
+2. Sidecar zapisany ze starym kluczem z tabeli aliasów: `read_meta`
+   zwraca surowy `dataset` bez zmian i `dataset_key` równy bieżącemu
+   kluczowi; plik na dysku pozostaje nietknięty.
+3. Sidecar z kluczem nieznanym IMGWTools: `read_meta` zwraca `dataset`
+   i pusty `dataset_key`, bez wyjątku.
+4. Polityka niezmienności kluczy i tabeli aliasów jest opisana
+   w dokumentacji IMGWTools (ADR), a każdy alias — w historii zmian.
+
+**Priorytet.** P2 — polityka obowiązuje jednak od pierwszego zapisu
+(fala 1), jak IMGW-13.
+
+**Zależności.** Brak; dotyczy pola `dataset` z IMGW-3, IMGW-7 i IMGW-15
+oraz `read_meta` z IMGW-10.
+
+**Odwołania.** SPEC 2 („Źródło (zbiór)”), 4.2.1, 12.1 (KA-8), 12.7
+(IMGW-20), 12.8.
+
 ## 5. Proponowana kolejność wdrożenia
 
 Kolejność wynika z zależności z sekcji 4. Strzałka A → B: B wymaga A.
@@ -1345,7 +1401,9 @@ flowchart TD
   I12["IMGW-12<br/>eksport CSV"]
   I14["IMGW-14<br/>manifest projektu"]
   I15["IMGW-15..19<br/>stacje ČHMÚ"]
+  I20["IMGW-20<br/>klucze zbiorów"]
   I13 -.-> I1
+  I20 -.-> I3
   I1 --> I2 --> I3 --> I4 --> I5
   I6 --> I8 --> I7
   I4 --> I7
@@ -1368,7 +1426,7 @@ flowchart TD
 | Fala | Wymagania | Wynik | Co odblokowuje |
 |---|---|---|---|
 | 0 | części naprawcze: płaskie `imgw fetch` przez `.part` i `os.replace` (IMGW-2); `archive_files` i układ jak na serwerze w płaskim `imgw fetch` (IMGW-4); nagłówki odpowiedzi w `download_*` (IMGW-5); CLI przez publiczne API (IMGW-11); `riverName` (IMGW-9) | poprawki niezależne od Archiwisty | brak cichych pominięć i połowicznych plików dla wszystkich użytkowników |
-| 1 | IMGW-13 (polityka), IMGW-1, IMGW-2, IMGW-3 | katalog `imgw-store/1`, zapis wersji z sidecarem | fundament |
+| 1 | IMGW-13 (polityka), IMGW-20 (polityka), IMGW-1, IMGW-2, IMGW-3 | katalog `imgw-store/1`, zapis wersji z sidecarem | fundament |
 | 2 | IMGW-4, IMGW-5 (bez szeregów) | archiwa w magazynie, `check_store`, `sync_store` | pierwsze funkcje IMGW-10 (`store_info`, `iter_store`, `read_meta`, `current_version`) i testy kontraktu |
 | 3 | IMGW-6 | parsery meteo, normalizacja, pełny przegląd roczników | szeregi |
 | 4 | IMGW-8, IMGW-7 (i `series=True` w IMGW-5) | szeregi zbioru ze spisem pokrycia | etykiety pokrycia, wykres |
@@ -1389,8 +1447,9 @@ Uwagi:
 - IMGW-10 warto budować przyrostowo od fali 2: wczesne `iter_store`
   pozwala uruchomić test kontraktu po obu stronach (SPEC 11, 14) zanim
   powstaną szeregi.
-- IMGW-13 (polityka) musi obowiązywać od pierwszego zapisanego pliku;
-  późniejsza zmiana nazw schematów oznaczałaby `/2` już na starcie.
+- IMGW-13 i IMGW-20 (polityki) muszą obowiązywać od pierwszego zapisanego
+  pliku; późniejsza zmiana nazw schematów oznaczałaby `/2` już na starcie,
+  a zmiana kluczy zbiorów — aliasy od pierwszego wydania.
 
 ## 6. Pytania otwarte
 

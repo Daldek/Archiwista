@@ -175,7 +175,7 @@ zachowują jego znaczenie.
 | **Producent** | Biblioteka, która jako jedyna zapisuje swój katalog magazynu i jest właścicielem jego formatu: Kartograf (dane przestrzenne) albo IMGWTools (dane IMGW) | A-ADR-019 |
 | **Interfejs źródła** | (Archiwista) wspólny interfejs adapterów producentów: skan, metadane, zasięg, polecenia, plan, wykonanie; adapter Kartografa i adapter IMGW to jedyne miejsca importu ich bibliotek | sekcja 5.3 |
 | **Produkt** | Rodzaj danych wybierany `--product` w grupie komend (NMT, ortofotomapa, BDOT10k, granice PRG…); katalog najwyższego poziomu magazynu | ARCH 3.3 reguła 10 |
-| **Źródło (zbiór)** | Deskryptor Kartografa; klucz `<kraj>.<dostawca>.<nazwa>` = pole `dataset` sidecara, np. `pl.gugik.nmt_1m`; dla danych IMGW — zbiór IMGW z kluczem `pl.imgw.<zbiór>` w sidecarze `imgw-meta/1`, np. `pl.imgw.hydro_daily` | ARCH 3.1; sekcja 4.8 |
+| **Źródło (zbiór)** | Deskryptor Kartografa; dla danych IMGW — zbiór IMGWTools. **Klucz zbioru** `<kraj>.<dostawca>.<zbiór>[_<wariant>]` = pole `dataset` sidecara, np. `pl.gugik.nmt_1m`, `pl.imgw.hydro_daily`; dla Archiwisty nieprzejrzysty identyfikator (bez rozbioru na części), niezmienny po wydaniu producenta (4.2.1). Dostawcę mówi pole `provider`, nie środkowa część klucza | ARCH 3.1; sekcje 4.2.1, 4.8 |
 | **Segment** | Katalog `<produkt>/<kraj>_<tokeny>` — jeden wariant treści (układ, rozdzielczość, układ wysokości, format, rocznik, poziom…), np. `nmt/pl_1992_1m_evrf2007` | ARCH 3.3 reguły 1, 8-10 |
 | **Jednostka** | Obszar jednego pliku: godło arkusza, kafel, TERYT, KU, kod kraju albo wycinek `<coords>` | `UnitFile.unit`, `PlanItem.unit` |
 | **Slot (miejsce pliku)** | Segment + hierarchia jednostki + nazwa pliku, czyli „ten plik” niezależnie od wersji, np. `nmt/pl_1992_1m_evrf2007` + `N-34/130/D/d/2/4` + `N-34-130-D-d-2-4.asc` | `PlanItem` (`segment`, `hierarchy`, `name`) |
@@ -517,6 +517,47 @@ IMGWTools (IMGW-10: `store_info`, `iter_store`, `read_meta`,
 własnego parsera archiwów ZIP, plików Parquet ani sidecarów `imgw-meta/1`
 (A-ADR-014, A-ADR-019). Oba adaptery stoją za wspólnym interfejsem źródła
 (5.3): indeks, mapa i działania nie wiedzą, który producent zapisał plik.
+
+#### 4.2.1 Klucze zbiorów (kontrakt z producentami)
+
+Klucz zbioru — pole `dataset` sidecara (`kartograf-meta/1`, `imgw-meta/1`)
+i klucz deskryptora źródła Kartografa albo zbioru IMGWTools — ma postać
+`<kraj>.<dostawca>.<zbiór>[_<wariant>]`:
+
+- małe litery ASCII i cyfry; kropka tylko między trzema częściami,
+  podkreślenie wewnątrz części (`pl.gugik.nmt_0_5m`, `cz.cuzk.dmr5g_laz`,
+  `pl.imgw.meteo_climate_daily`);
+- `<kraj>` — kod ISO 3166-1 alfa-2 małymi literami, a dla zbiorów
+  ponadnarodowych zasięg (`eu.clms.corine`, `global.isric.soilgrids`);
+- `<dostawca>` — przedrostek klucza nadany przez producenta (`gugik`,
+  `cuzk`, `imgw`, `chmi`), a nie identyfikator dostawcy;
+- `<zbiór>[_<wariant>]` — nazwa zbioru i opcjonalny wariant.
+
+Zobowiązania producentów (KA-8, IMGW-20):
+
+1. **Niezmienność.** Klucz opublikowany w wydaniu producenta się nie
+   zmienia; sidecary wersji są niezmienne (ADR-036, IMGW-1), więc każdy
+   kiedykolwiek zapisany klucz zostaje na dysku na zawsze.
+2. **Zmiana nazwy tylko przez tabelę aliasów producenta.** Surowy `dataset`
+   zostaje w sidecarze bez zmian, a API odczytu podaje obok znormalizowany
+   `dataset_key` (bieżący klucz deskryptora). Wzór: `_DEV_DATASETS`
+   Kartografa (`Kartograf/kartograf/store.py:186`, ADR-044 D7) czytane
+   przez `read_sidecar` (KA-2). Klucz nieznany producentowi daje pusty
+   `dataset_key`, nie błąd.
+3. **Dostawca z pola `provider`.** Tożsamość dostawcy jest w polu
+   `provider` sidecara i deskryptora (Kartograf: `provider_name`
+   deskryptora, np. `GUGiK`, `CUZK`, `Copernicus CLMS`, `ISRIC` —
+   `Kartograf/kartograf/sources/sidecar.py:242`; IMGWTools: `IMGW-PIB`,
+   `CHMI` — IMGW-15), a kraj w polu `country`; środkowa część klucza
+   (`imgw`, `chmi`) nie jest identyfikatorem dostawcy.
+
+Archiwista traktuje klucz jako nieprzejrzysty identyfikator: porównuje go
+w całości (indeks, filtry, powiązanie wersji z segmentem), ale nigdy nie
+wyprowadza z niego produktu, wariantu, dostawcy ani kraju — bierze je
+z pól sidecara i z `describe_segment` (KA-3). Dzięki temu nieregularne
+klucze niczego nie psują, np. `pl.gugik.nmpt` (NMPT 1 m bez `_1m`; klucz
+z 0.7 (ADR-031) zachowany w ADR-041 i ADR-044,
+`Kartograf/kartograf/sources/registry.py:313`).
 
 ### 4.3 Indeks lokalny
 
@@ -3373,6 +3414,15 @@ wątek), tak samo `read_sidecar`, `describe_segment` i `link_target`.
 | KA-5 | `link_target(path) -> Path \| None` — cel ścieżki standardowej albo `full_sheet/` z `extra.link_target`, z potwierdzeniem treścią na udziałach bez stabilnych i-węzłów (może przeczytać cały plik, by policzyć SHA-256) | „bieżąca wersja” bez logiki i-węzłów (4.6) — wyłącznie na żądanie (zadanie `link_check`, 5.6); skan bierze cel z sidecara dowiązania (`StoreEntry.version_path`) | v0.1 |
 | KA-6 | `pinned_transform(src_crs, dst_crs) -> PinnedTransform` — publiczny dostęp do `transform/crs.py` (`transform(xs, ys)`, `description`, `accuracy_m`) | obrysy i wektory na mapie bez operacji przybliżonych (S-JTSK: ok. 100 m) | v0.1 |
 | KA-7 | (opcjonalnie, po pomiarach z v0.1) dziennik zmian magazynu: osobny plik na proces piszący (bez wspólnego pliku i blokad), z listą nowych wersji i przestawionych dowiązań | tańsze odświeżanie indeksu na SMB (4.4) | — |
+| KA-8 | **Konwencja kluczy zbiorów** (4.2.1) jako reguła kontraktu w ARCH: klucz deskryptora = `dataset` sidecara w postaci `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (małe litery, kropki między częściami, podkreślenia wewnątrz); niezmienny po wydaniu; zmiana nazwy wyłącznie przez tabelę aliasów (surowy `dataset` w sidecarze bez zmian, znormalizowany `dataset_key` przy odczycie — jak `_DEV_DATASETS`, `Kartograf/kartograf/store.py:186`); dostawca w polu `provider` sidecara (`provider_name` deskryptora), nie w kluczu | indeks, filtry i przypięcia oparte na kluczu bez rozbioru klucza; stare sidecary czytelne po zmianie nazwy | v0.1 (0.8.0 spełnia w kodzie; brak zapisanej reguły) |
+
+Uwagi do KA-8 (do decyzji Kartografa, niewymagane — Archiwista nie czyta
+klucza po częściach): klucze ponadnarodowe `eu.clms.corine`
+i `global.isric.soilgrids` (`Kartograf/kartograf/sources/registry.py:2888,
+2919`) mają w pierwszej części zasięg, a nie kod kraju (w deskryptorze
+`country` `EU` i `GLOBAL`) — 4.2.1 przyjmuje to jako regułę; `pl.gugik.nmpt`
+(NMPT 1 m bez `_1m`) to znany wyjątek historyczny (klucz z 0.7, ADR-031;
+zachowany w ADR-041 i ADR-044) — bez zmiany.
 
 ### 12.2 KB — katalog komend i wywołanie ogólne
 
@@ -3473,6 +3523,7 @@ dostawcy `CHMI` (nazwa wyświetlana „ČHMÚ”), plik nieopublikowany przez
 | IMGW-17 | **Katalog stacji ČHMÚ**: wersjonowany wpis katalogu stacji (hydro z `meta1.json`, meteo z listy stacji ČHMÚ) z polami i walidacją 4.8.1 (położenie WGS84 ze źródłem i niepewnością; poza CZ albo `0,0` = brak położenia, wpis zostaje); nazwa, rzeka, kod hierarchii zlewni jako tekst, jeśli źródło go podaje; progi SPA jako atrybuty | stacje ČHMÚ na mapie, w „Katalogu” i w zlewni | v0.6 |
 | IMGW-18 | **Szeregi i pokrycie ČHMÚ**: `build_series` dla `cz.chmi.*` (`imgw-series/1`: te same kolumny, `null` → brak z flagą, `hydro_year` XI–X dla hydro i meteo); `summarize_coverage` osobno dla każdej zmiennej (IMGW-8) zapisane w `series.json`; `read_series`, `read_series_index` i `export_series` bez zmian sygnatur | etykiety pokrycia, wykres i zestaw dla stacji ČHMÚ tak samo jak dla IMGW | v0.6 |
 | IMGW-19 | **Komendy, projekt i licencja ČHMÚ**: komendy synchronizacji i szeregów ČHMÚ w `data_commands()` z `format_command` → `imgw …` (CLI = API, `cancel`); zadania projektu `imgw-project/1` ze stacjami obu dostawców; `license` CC BY 4.0 z atrybucją wymaganą przez ČHMÚ w sidecarach archiwów, katalogu i szeregów oraz w eksporcie CSV; komunikaty `on_notice` po polsku | „Okno planu”, polecenie do skopiowania, zadania projektu i atrybucje bez wiedzy Archiwisty o ČHMÚ | v0.6 |
+| IMGW-20 | **Konwencja kluczy zbiorów** (4.2.1): klucz zbioru = `dataset` sidecara `imgw-meta/1` i spisu `series.json` w postaci `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (małe litery, kropki między częściami, podkreślenia wewnątrz: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); niezmienny od pierwszego wydania z magazynem; zmiana nazwy wyłącznie przez tabelę aliasów IMGWTools — surowy `dataset` w sidecarze bez zmian, znormalizowany `dataset_key` z `read_meta` (wzór: `_DEV_DATASETS` Kartografa); dostawca wyłącznie w polu `provider` (`IMGW-PIB`, `CHMI`), a przedrostek klucza (`imgw`, `chmi`) nie jest jego identyfikatorem (IMGW-15) | indeks, filtry i przypięcia oparte na kluczu bez rozbioru klucza; ten sam kontrakt kluczy co w Kartografie (KA-8); stare sidecary czytelne po zmianie nazwy | v0.5 |
 
 ### 12.8 Kontrakt formatu IMGW (rekomendacja, A-ADR-020)
 
@@ -3489,7 +3540,7 @@ pól:
 | Pole | Znaczenie w `imgw-meta/1` |
 |---|---|
 | `schema` | `imgw-meta/1` |
-| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`), `PL`, `IMGW-PIB` |
+| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`; konwencja kluczy 4.2.1, IMGW-20), `PL`, `IMGW-PIB` |
 | `request` | co dało plik: archiwum — ścieżka na serwerze i okres; szeregi zbioru — zbiór i okresy wejść; katalog stacji — źródła |
 | `license` | `{id, attribution, url}` z formułami IMGW (4.8.5) |
 | `downloaded_at` | chwila zapisu wersji (UTC, ISO 8601) |

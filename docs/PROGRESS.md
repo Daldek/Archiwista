@@ -99,6 +99,7 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
   CSRF, reguła `Origin`, CSP z podkładami i workerem MapLibre (A-ADR-012
   errata 1); jedna tabela `jobs` z `actor`; TERYT/KU w v0.1 tylko jako
   filtr; kroki 6, 9 i 10 podzielone (6a/6b, 9a–9c, 10a–10c).
+- **Klucze zbiorów** (2026-10-18, SPEC 4.2.1): `<kraj>.<dostawca>.<zbiór>[_<wariant>]`, niezmienne, zmiany nazw tylko przez tabelę aliasów producenta, dostawca z pola `provider`; Archiwista nie rozbiera kluczy; wymagania KA-8 i IMGW-20.
 
 ### Otwarte
 
