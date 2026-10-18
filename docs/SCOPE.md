@@ -106,7 +106,7 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 | v0.2 | — |
 | v0.3 | Kartograf: KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 | — |
-| v0.5 | IMGWTools: IMGW-1..IMGW-14 |
+| v0.5 | IMGWTools: IMGW-1..IMGW-14, IMGW-20 (konwencja kluczy zbiorów) |
 | v0.6 | Kartograf: KF (scalona powierzchnia PL + CZ); IMGWTools: IMGW-15..IMGW-19 (stacje ČHMÚ) |
 | v1.0 | wydania Kartografa i IMGWTools ze wszystkimi powyższymi |
 | v1.1 | Kartograf: KB-6 |

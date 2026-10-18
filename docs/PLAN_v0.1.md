@@ -1343,6 +1343,29 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   i osobno SMB) oraz ≤ 500 MB indeksu i RSS; bez udziału SMB jego próg
   pozostaje niezaliczony. **Zależności:** 4, 6b, 9a–9c, 10a–10c, 11, 12
   (perf od 6b i 9a). **Równolegle:** testy perf z 10–12.
+- **Stan po kroku 13:** `tests/e2e/test_acceptance.py` (przejście od
+  kreatora przez wyszukiwanie, mapę, kartę, Katalog, Projekty i Magazyn;
+  magazyn tylko do odczytu przez chmod i prawdziwe `archiwista serve`
+  w przestrzeni nazw użytkownika z montowaniem `ro`; odłączony udział
+  i powrót bez przebudowy; API z sesją przeglądarki; druga wtyczka obok
+  Kartografa), `tests/perf/test_store_50k.py` (cały serwer jako osobny
+  proces: skany z harmonogramu i `POST`, `/local-coverage` ≤ 500 slotów,
+  p95 HTTP, RSS serwera i procesów roboczych, mapa 5000 obrysów
+  w Chromium, otwarcia sidecarów hakiem audytu wobec tabeli kosztów,
+  odtworzenie magazynu z ziarna z czasem generatora),
+  `tests/integration/test_live_store.py` (`-m live`, trzy magazyny testu
+  na żywo Kartografa 0.8.0, także klucze wersji deweloperskiej). Ścieżki
+  magazynów w zmiennych `ARCHIWISTA_PERF_STORE`, `ARCHIWISTA_SMB_STORE`
+  i `ARCHIWISTA_LIVE_STORE` (konwencja z kroków 5–9a zamiast opcji
+  `--store`); pomiary z `--no-cov`. Wyniki, metoda i poprawki (brak
+  `TCP_NODELAY` — +40 ms na żądanie, czytelnicy indeksu bez `mmap` — RSS
+  serwera 638 → 179 MiB, filtr „przypięte” z przypięć — 228 → 12 ms p95):
+  `docs/raporty/v0.1-pomiary.md`. Otwarte: skan przyrostowy na SSD na
+  granicy 20 s (19,3 i 20,3 s); na prawdziwym SMB 3 (1 Gb/s) pełny skan
+  477 s w progu, ale przyrostowy 342 s (cel 180 s) i odświeżenie widoku
+  10,6 s (cel 5 s) poza progami — największy segment czyta jeden wątek
+  (równoległość tylko po segmentach); płynność mapy v0.2 bez GPU
+  niezweryfikowana.
 
 ### 14. Dokumentacja, bramka i wydanie
 - **Cel:** `README.md`, `CHANGELOG.md`, `docs/API_dla_agentow.md` (nowy
@@ -1369,7 +1392,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 |---|---|
 | 1. Zgodność ze sklepem testu na żywo Kartografa 0.8.0 (`<katalog-danych>`) | `tests/contract/test_kartograf.py` (2) i `tests/integration/test_live_store.py::test_index_matches_iter_store_on_live_store` (13, `-m live` na *tym* magazynie): zbiór `(segment, path, kind, version_path, problem)` z indeksu = z `iter_store`, także klucze deweloperskie; bez zapisu w źródle. |
 | 2. Cele wydajności SPEC 4.5 | `tests/perf/test_store_50k.py` (13; `-m perf`, osobno `-m smb`): SSD ≤ 120/20/1 s, SMB ≤ 600/180/5 s dla pełnego/przyrostowego/widoku; p95 lista/wyszukiwanie/karta ≤ 200 ms, obrysy ≤ 300 ms; indeks i RSS ≤ 500 MB; liczby z metodologią w raporcie. |
-| 3. Magazyn tylko do odczytu | `tests/integration/test_read_only_store.py::test_read_only_store_scan_and_browse` (9a) i smoke `archiwista serve` na montowaniu read-only (13): Mapa, Katalog, Karta, Projekty, Magazyn; źródło bez nowych plików. |
+| 3. Magazyn tylko do odczytu | `tests/integration/test_read_only_store.py::test_read_only_store_scan_and_browse` (9a) i smoke `archiwista serve` na montowaniu read-only (13: `tests/e2e/test_acceptance.py::test_acceptance_serve_on_read_only_mount`, także `::test_acceptance_read_only_store_every_view`): Mapa, Katalog, Karta, Projekty, Magazyn; źródło bez nowych plików. |
 | 4. Odłączony udział i ponowne podłączenie | `tests/integration/test_disconnected_store.py::test_disconnect_preserves_index_then_incremental_refresh` (6b) i `tests/e2e/test_file_projects_store.py::test_disconnected_store_banner` (11): baner z czasem, zachowany wynik, nowa wersja po powrocie bez przebudowy. |
 | 5. Host/token/CSRF/ścieżki i odmowa bind | `tests/unit/test_security.py` i `tests/integration/test_serve.py::test_serve_refuses_non_loopback_host` (8): bez sesji 401, obcy `Host`/`Origin`, brak CSRF, symlink/traversal odrzucone, token poza dziennikami. |
 | 6. Wartość techniczna ↔ nazwa dla człowieka | `tests/e2e/test_file_projects_store.py::test_human_labels_expose_raw_values` (11): nazwa z `describe_segment`, czytelny rok danych, licencja/atrybucja, odsłonięte segment/EPSG/`sha256`/ścieżka; nieznany produkt pokazany jako nieznany. |

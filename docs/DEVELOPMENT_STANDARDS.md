@@ -289,12 +289,14 @@ tests/
 │   ├── test_local_coverage.py  # Pokrycie lokalne: odświeżenie przed odpowiedzią, układ płaski, stale
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
 │   ├── test_basemap_live.py  # Domyślny podkład daje te same kafle bez nagłówka Referer (live)
+│   ├── test_live_store.py   # Indeks żywego magazynu Kartografa 0.8.0 = iter_store, klucze, segmenty (live)
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach
 │   └── test_store_fixture.py  # Magazyn testowy oczami czytników Kartografa
 ├── e2e/
 │   ├── conftest.py          # Prawdziwy archiwista serve (serve) i strona Chromium (tab)
+│   ├── test_acceptance.py   # Odbiór v0.1: kreator → wyszukiwanie → mapa → karta → projekty → magazyn, read-only (chmod i montowanie ro), odłączony udział, API z sesją, druga wtyczka
 │   ├── test_catalog.py      # Katalog: filtry /slots w adresie, kursor, dokładna jednostka, bez obrysu, Ctrl+K, druga wtyczka
 │   ├── test_file_projects_store.py  # Karta pliku, Projekty, Magazyn: nazwy i wartości techniczne, przypięcia, kopiowanie, baner, dowiązanie, wykonawca skanu
 │   ├── test_map.py          # Mapa: narzędzia obszaru, stan lokalny po odświeżeniu, siatka >5000, „bez obrysu”, podkład z CSP, offline, klawiatura, 1440/390 px
@@ -317,14 +319,17 @@ tests/
 │   ├── slow_area_reader.py  # Proces odczytu obszaru, który nie odpowiada (limit czasu)
 │   └── job_owner.py         # Osobny proces-nadzorca do testu zabitego serwera
 ├── perf/
+│   ├── test_store_50k.py    # SPEC 4.5 przez archiwista serve: skany, odświeżenie widoku, p95 HTTP, pamięć, mapa 5000 obrysów, otwarcia sidecarów, generator (perf/smb)
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
 │   ├── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
 │   └── test_api_perf.py     # API przez HTTP: p95 listy, wyszukiwania, karty i mapy
 └── conftest.py              # Shared fixtures
 
-# Markery: live (sieć i prawdziwe usługi), perf (magazyn syntetyczny
-# 50 000 slotów; ścieżka w ARCHIWISTA_PERF_STORE), smb (prawdziwy udział
-# SMB) — domyślnie wyłączone.
+# Markery: live (sieć i prawdziwe usługi; żywy magazyn w ARCHIWISTA_LIVE_STORE),
+# perf (magazyn syntetyczny 50 000 slotów na SSD; ścieżka w
+# ARCHIWISTA_PERF_STORE), smb (ten magazyn na prawdziwym udziale SMB 3;
+# ścieżka w ARCHIWISTA_SMB_STORE, lokalny katalog indeksu w
+# ARCHIWISTA_SMB_WORK) — domyślnie wyłączone; perf i smb z --no-cov.
 ```
 
 ### 5.2 Nazewnictwo testów
