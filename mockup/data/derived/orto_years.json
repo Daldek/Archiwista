@@ -1,0 +1,19 @@
+{
+ "built": "2026-10-18T10:09:10+00:00",
+ "source": "https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolutionTime",
+ "previews": {
+  "2003": "data/previews/orto_2003.jpg",
+  "2004": "data/previews/orto_2004.jpg",
+  "2009": "data/previews/orto_2009.jpg",
+  "2013": "data/previews/orto_2013.jpg",
+  "2015": "data/previews/orto_2015.jpg",
+  "2017": "data/previews/orto_2017.jpg",
+  "2018": "data/previews/orto_2018.jpg",
+  "2019": "data/previews/orto_2019.jpg",
+  "2021": "data/previews/orto_2021.jpg",
+  "2022": "data/previews/orto_2022.jpg",
+  "2023": "data/previews/orto_2023.jpg",
+  "2024": "data/previews/orto_2024.jpg",
+  "2025": "data/previews/orto_2025.jpg"
+ }
+}

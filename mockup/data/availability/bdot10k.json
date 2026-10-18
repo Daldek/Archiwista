@@ -1,0 +1,481 @@
+{
+  "schema": "archiwista-mockup-bdot10k/1",
+  "note": "Built by tools/build_orto_bdot.py on 2026-10-17T11:05:44+00:00 in 8 s. Powiats: PRG WFS A02_Granice_powiatow intersecting the bbox (Kartograf discover_teryts_for_bbox, the method of landcover download --bbox; names from JPT_NAZWA_ of the same service). Current package: the GPKG URL of Bdot10kProvider (schemat2021); releases: the archive variants of the registry (pl.gugik.bdot10k, years 2014-2025, GML and SHP). 50 files checked with one HEAD each (a second HEAD after a failure other than 404; 404 = exists:false, a repeated failure = exists:null with error); no file was downloaded. last_modified = date of the HTTP Last-Modified header, null when the server sends none (50 files found, 0 of them with Last-Modified in this run).",
+  "request": {
+    "product": "bdot10k",
+    "country": "pl",
+    "bbox": [
+      561000.0,
+      239000.0,
+      573000.0,
+      249000.0
+    ],
+    "bbox_crs": "EPSG:2180"
+  },
+  "checked_at": "2026-10-17T11:05:44+00:00",
+  "units": [
+    {
+      "teryt": "1206",
+      "name": "powiat krakowski"
+    },
+    {
+      "teryt": "1261",
+      "name": "powiat Kraków"
+    }
+  ],
+  "current": {
+    "format": "GPKG",
+    "units": {
+      "1206": {
+        "exists": true,
+        "size_bytes": 62761576,
+        "last_modified": null,
+        "url": "https://opendata.geoportal.gov.pl/bdot10k/schemat2021/GPKG/12/1206_GPKG.zip"
+      },
+      "1261": {
+        "exists": true,
+        "size_bytes": 35178420,
+        "last_modified": null,
+        "url": "https://opendata.geoportal.gov.pl/bdot10k/schemat2021/GPKG/12/1261_GPKG.zip"
+      }
+    }
+  },
+  "releases": [
+    {
+      "year": 2025,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 81394628,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2025/GML/12/1206_GML_2025.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 46808424,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2025/GML/12/1261_GML_2025.zip"
+        }
+      }
+    },
+    {
+      "year": 2025,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 57918084,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2025/SHP/12/1206_SHP_2025.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 30561298,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2025/SHP/12/1261_SHP_2025.zip"
+        }
+      }
+    },
+    {
+      "year": 2024,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 76570879,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2024/GML/12/1206_GML_2024.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 42585266,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2024/GML/12/1261_GML_2024.zip"
+        }
+      }
+    },
+    {
+      "year": 2024,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 86481305,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2024/SHP/12/1206_SHP_2024.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 47404309,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2024/SHP/12/1261_SHP_2024.zip"
+        }
+      }
+    },
+    {
+      "year": 2023,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 76306323,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2023/GML/12/1206_GML_2023.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 42528829,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2023/GML/12/1261_GML_2023.zip"
+        }
+      }
+    },
+    {
+      "year": 2023,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 86065538,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2023/SHP/12/1206_SHP_2023.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 46762581,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2023/SHP/12/1261_SHP_2023.zip"
+        }
+      }
+    },
+    {
+      "year": 2022,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 76306323,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2022/GML/12/1206_GML_2022.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 42528829,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2022/GML/12/1261_GML_2022.zip"
+        }
+      }
+    },
+    {
+      "year": 2022,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 86065538,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2022/SHP/12/1206_SHP_2022.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 46762581,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2022/SHP/12/1261_SHP_2022.zip"
+        }
+      }
+    },
+    {
+      "year": 2021,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 76287669,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2021/GML/12/1206_GML_2021.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 42529067,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2021/GML/12/1261_GML_2021.zip"
+        }
+      }
+    },
+    {
+      "year": 2021,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 86046690,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2021/SHP/12/1206_SHP_2021.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 46776701,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2021/SHP/12/1261_SHP_2021.zip"
+        }
+      }
+    },
+    {
+      "year": 2020,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 72325544,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2020/GML/12/1206_GML_2020.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40197361,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2020/GML/12/1261_GML_2020.zip"
+        }
+      }
+    },
+    {
+      "year": 2020,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 80602328,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2020/SHP/12/1206_SHP_2020.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44938488,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2020/SHP/12/1261_SHP_2020.zip"
+        }
+      }
+    },
+    {
+      "year": 2019,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 72324167,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2019/GML/12/1206_GML_2019.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40197441,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2019/GML/12/1261_GML_2019.zip"
+        }
+      }
+    },
+    {
+      "year": 2019,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 80587642,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2019/SHP/12/1206_SHP_2019.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44661703,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2019/SHP/12/1261_SHP_2019.zip"
+        }
+      }
+    },
+    {
+      "year": 2018,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 72324406,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2018/GML/12/1206_GML_2018.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40030676,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2018/GML/12/1261_GML_2018.zip"
+        }
+      }
+    },
+    {
+      "year": 2018,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 80590271,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2018/SHP/12/1206_SHP_2018.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44515074,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2018/SHP/12/1261_SHP_2018.zip"
+        }
+      }
+    },
+    {
+      "year": 2017,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 71433960,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2017/GML/12/1206_GML_2017.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40030200,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2017/GML/12/1261_GML_2017.zip"
+        }
+      }
+    },
+    {
+      "year": 2017,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 80023239,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2017/SHP/12/1206_SHP_2017.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44385156,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2017/SHP/12/1261_SHP_2017.zip"
+        }
+      }
+    },
+    {
+      "year": 2016,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 71432620,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2016/GML/12/1206_GML_2016.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40030120,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2016/GML/12/1261_GML_2016.zip"
+        }
+      }
+    },
+    {
+      "year": 2016,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 79692589,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2016/SHP/12/1206_SHP_2016.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44386726,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2016/SHP/12/1261_SHP_2016.zip"
+        }
+      }
+    },
+    {
+      "year": 2015,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 70875785,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2015/GML/12/1206_GML_2015.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 40082960,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2015/GML/12/1261_GML_2015.zip"
+        }
+      }
+    },
+    {
+      "year": 2015,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 79384001,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2015/SHP/12/1206_SHP_2015.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 44539843,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2015/SHP/12/1261_SHP_2015.zip"
+        }
+      }
+    },
+    {
+      "year": 2014,
+      "format": "GML",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 69385337,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2014/GML/12/1206_GML_2014.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 38913857,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2014/GML/12/1261_GML_2014.zip"
+        }
+      }
+    },
+    {
+      "year": 2014,
+      "format": "SHP",
+      "units": {
+        "1206": {
+          "exists": true,
+          "size_bytes": 77554715,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2014/SHP/12/1206_SHP_2014.zip"
+        },
+        "1261": {
+          "exists": true,
+          "size_bytes": 43306125,
+          "last_modified": null,
+          "url": "https://opendata.geoportal.gov.pl/Archiwum/bdot10k/2014/SHP/12/1261_SHP_2014.zip"
+        }
+      }
+    }
+  ],
+  "download_hint": {
+    "current": "landcover download --product bdot10k --bbox 561000,239000,573000,249000",
+    "release": "landcover download --product bdot10k --bbox 561000,239000,573000,249000 --year {year} --format {format}"
+  }
+}

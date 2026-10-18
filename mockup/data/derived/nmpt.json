@@ -1,0 +1,2553 @@
+{
+ "schema": "archiwista-mockup-derived/1",
+ "note": "Pola proponowane dla Kartografa (SPEC 12): full_m2 = land_m2 - piksele ladu poza ramami pelnych arkuszy (pomiar _measure raportu); sheet_records = rekord skorowidza, ktory pobierze --year (najnowszy pelny, inaczej najnowszy); campaigns_selected = kampanie pelnych arkuszy.",
+ "product": "nmpt",
+ "land_m2": 120000000.0,
+ "combinations": [
+  {
+   "year": 2025,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "EVRF2007",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "GK-FOTO.6201.5.2025"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "GK-FOTO.6201.5.2025",
+     "date": "2025-04-28",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2023,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "EVRF2007",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "GI-FOTO.6201.11.2023",
+    "GI-FOTO.6201.23.2023"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "GI-FOTO.6201.23.2023",
+     "date": "2023-09-08",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "GI-FOTO.6201.11.2023",
+     "date": "2023-04-21",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2023,
+   "horizontal": "PL-2000",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "EVRF2007",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "DFT.7201.001.2023"
+   ],
+   "sheet_records": {
+    "7.124.10.04": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.05": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.09": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.10": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.01": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.02": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.03": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.04": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.05": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.06": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.07": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.08": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.09": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.10": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.13": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.01": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.02": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.06": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.07": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-02",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.04": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.05": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.09": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.10": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.19": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.20": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.24": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.25": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.01": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.02": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.03": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.04": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.05": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.06": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.07": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.08": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.09": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.10": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.13": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.16": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.17": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.18": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.19": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.20": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.21": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.22": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.23": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.24": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.25": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.01": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.02": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.06": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.07": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.16": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.17": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.21": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.22": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.19": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.20": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.24": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.25": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.13": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.14": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.15": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.16": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.17": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.18": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.19": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.20": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.21": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.22": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.23": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.24": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.25": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.11": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.12": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-18",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.16": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.17": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.21": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.22": {
+     "campaign": "DFT.7201.001.2023",
+     "date": "2023-03-17",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2021,
+   "horizontal": "PL-2000",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "EVRF2007",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "DFT.7201.036.2021"
+   ],
+   "sheet_records": {
+    "7.124.10.04": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.05": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.09": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.10": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.10.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.01": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.02": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.03": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.04": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.05": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.06": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.07": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.08": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.09": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.10": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.13": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.11.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.01": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.02": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.06": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.07": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.124.12.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-08",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.04": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.05": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.09": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.10": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.19": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.20": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.24": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.10.25": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.01": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.02": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.03": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.04": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.05": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.06": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.07": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.08": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.09": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.10": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.13": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.16": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.17": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.18": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.19": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.20": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.21": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.22": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.23": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.24": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.11.25": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.01": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.02": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.06": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.07": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.16": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.17": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.21": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.125.12.22": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-05",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.19": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.20": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.24": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.10.25": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.13": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.14": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.15": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.16": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.17": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.18": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.19": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.20": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.21": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.22": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.23": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.24": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.11.25": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.11": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.12": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.16": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.17": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-03",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.21": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    },
+    "7.126.12.22": {
+     "campaign": "DFT.7201.036.2021",
+     "date": "2021-10-04",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2017,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "KRON86",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "DFT.7201.059.2017"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2017,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_xyz_0_5m",
+   "vertical_crs": "KRON86",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "DFT.7201.059.2017"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-04",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-12",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-10-21",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "DFT.7201.059.2017",
+     "date": "2017-11-05",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2012,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_0_5m",
+   "vertical_crs": "KRON86",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "NM-34-011/11"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    }
+   }
+  },
+  {
+   "year": 2012,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmpt_xyz_0_5m",
+   "vertical_crs": "KRON86",
+   "full_m2": 120000000.0,
+   "campaigns_selected": [
+    "NM-34-011/11"
+   ],
+   "sheet_records": {
+    "M-34-64-D-a-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-a-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-3-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-05",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-b-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-2-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-c-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-1-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-2-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-3-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-2": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-64-D-d-4-4": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-a-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-1-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-07",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-1": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    },
+    "M-34-65-C-c-3-3": {
+     "campaign": "NM-34-011/11",
+     "date": "2012-07-06",
+     "full": true,
+     "records": 1
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,34 @@
+{
+ "name": "Kraków — śródmieście i okolice",
+ "bbox": [
+  561000.0,
+  239000.0,
+  573000.0,
+  249000.0
+ ],
+ "bbox_crs": "EPSG:2180",
+ "area_m2": 120000000.0,
+ "ring4326": [
+  [
+   19.8532808,
+   50.1051086
+  ],
+  [
+   20.0211134,
+   50.1037538
+  ],
+  [
+   20.0192057,
+   50.0138014
+  ],
+  [
+   19.8516866,
+   50.0151519
+  ]
+ ],
+ "previews": {
+  "relief": "data/previews/nmt_relief.jpg",
+  "orto": "data/previews/orto.jpg",
+  "source": "GUGiK WMS (NMT GRID1 ShadedRelief, ORTO StandardResolution)"
+ }
+}
