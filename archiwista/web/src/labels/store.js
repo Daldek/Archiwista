@@ -20,6 +20,9 @@ export const store = {
   actions: {
     refresh: "Odśwież",
     refresh_hint: "Skan przyrostowy: czyta tylko zmienione segmenty i nowe wersje.",
+    full_scan: "Pełny skan",
+    full_scan_hint:
+      "Czyta cały magazyn, także znane katalogi wersji: wykrywa pliki usunięte albo dodane w nich ręcznie.",
     footprints: "Uzupełnij obrysy jednostek",
     footprints_hint: "Pobiera z sieci granice jednostek (TERYT, KU) dla wersji bez obrysu.",
     footprints_offline:
@@ -36,6 +39,11 @@ export const store = {
     issues: "problemy: {count}",
     last_scan: "Ostatni skan",
     last_scan_none: "jeszcze nie było",
+    full_scan_at: "Ostatni pełny skan",
+    full_scan_hint:
+      "Skan przyrostowy nie czyta ponownie znanych katalogów wersji — plik usunięty albo dodany w nich ręcznie widać dopiero po pełnym skanie, wykonywanym okresowo w tle.",
+    full_scan_hint_hours:
+      "Skan przyrostowy nie czyta ponownie znanych katalogów wersji — plik usunięty albo dodany w nich ręcznie widać dopiero po pełnym skanie, wykonywanym w tle co {hours} h.",
     last_scan_value: "{at} · {state}",
     duration: "{seconds} s",
     source: "Źródło danych",

@@ -682,7 +682,11 @@ Zasady wspólne dla wszystkich producentów i produktów:
   15 min), interwał (domyślnie 15 min dla udziału, 5 min dla dysku
   lokalnego), przycisk „Odśwież” (magazyn, segment, widok), koniec zadania
   w tle; obserwacja zmian systemu plików tylko dla dysków lokalnych
-  (opcjonalnie).
+  (opcjonalnie). Pełny skan kontrolny co `full_scan_interval_h` godzin
+  (ustawienie, domyślnie 24 h) albo na żądanie przyciskiem „Pełny skan”
+  w widoku „Magazyn” — tylko on zauważa plik usunięty albo dodany ręcznie
+  wewnątrz znanego katalogu wersji. Czas ostatniego pełnego skanu widać
+  w „Magazynie”, w `/health` (`full_scan_at`) i w `archiwista status`.
 - **Magazyn niedostępny** (brak katalogu albo pusty punkt montowania):
   skan przerwany, indeks bez zmian, baner „Magazyn niedostępny od 14:02 —
   pokazuję stan z indeksu”; działania zapisu wyłączone. Nigdy nie

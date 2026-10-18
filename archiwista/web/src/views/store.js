@@ -2,10 +2,12 @@
  * The Store view (docs/SPEC.md UC-07 and UC-13; plan v0.1 step 11): one
  * configured store (`?view=store&store=<id>`, the first one by default) —
  * its availability, source plugin and index, the last scan with who started
- * it, „Odśwież” (an incremental scan, `POST /stores/{store}/scan`) and
- * „Uzupełnij obrysy jednostek” (`…/footprints`, which needs the network and
- * is off in offline mode) followed live through the job's events; a `409`
- * follows the job already running. Below: disk usage per product with each
+ * it and the last full scan (the only check of files deleted or added inside
+ * known version directories), „Odśwież” (an incremental scan,
+ * `POST /stores/{store}/scan`), „Pełny skan” (the same with `mode: "full"`)
+ * and „Uzupełnij obrysy jednostek” (`…/footprints`, which needs the network
+ * and is off in offline mode) followed live through the job's events; a
+ * `409` follows the job already running. Below: disk usage per product with each
  * version counted once, the versions neither current, nor in `full_sheet/`,
  * nor pinned (a report for a decision — Archiwista deletes nothing), the
  * store's problems with their fixes and the visible projects naming it. The
@@ -19,7 +21,7 @@ import { useResource } from "../hooks.js";
 import { store as L } from "../labels/store.js";
 import { T, t } from "../labels/index.js";
 import { Link, setParams } from "../router.js";
-import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect } from "../ui.js";
+import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect, useState } from "../ui.js";
 import {
   actorName,
   Badge,
@@ -91,10 +93,16 @@ function StoreDetail({ item }) {
 
   const busy = job.starting || job.running;
   const offline = settings?.offline === true;
-  const start = (kind) => {
-    const call = kind === "scan" ? () => startScan(item.store, { mode: "incremental" }) : () => startFootprints(item.store);
+  const [scanMode, setScanMode] = useState("incremental");
+  const start = (kind, mode = "incremental") => {
+    if (kind === "scan") setScanMode(mode);
+    const call = kind === "scan" ? () => startScan(item.store, { mode }) : () => startFootprints(item.store);
     job.run(call, kind).then(refreshHealth);
   };
+  const scanSpinner = (mode, icon) =>
+    busy && job.kind === "scan" && scanMode === mode
+      ? html`<span class="spinner" aria-hidden="true"></span>`
+      : html`<${Icon} name=${icon} />`;
   const values = [
     ["store", item.store],
     ["kind", item.kind],
@@ -113,8 +121,13 @@ function StoreDetail({ item }) {
       <div class="store-actions">
         <button type="button" class="btn primary" disabled=${busy} title=${L.actions.refresh_hint}
           onClick=${() => start("scan")}>
-          ${busy && job.kind === "scan" ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="rotate" />`}
+          ${scanSpinner("incremental", "rotate")}
           ${L.actions.refresh}
+        </button>
+        <button type="button" class="btn" disabled=${busy} title=${L.actions.full_scan_hint}
+          onClick=${() => start("scan", "full")}>
+          ${scanSpinner("full", "database")}
+          ${L.actions.full_scan}
         </button>
         <button type="button" class="btn" disabled=${busy || offline}
           title=${offline ? L.actions.footprints_offline : L.actions.footprints_hint}
@@ -131,7 +144,7 @@ function StoreDetail({ item }) {
     ${detail.error ? html`<${ProblemView} problem=${detail.error.problem} />` : null}
     <div class="store-grid">
       <div class="store-column">
-        <${StateSection} item=${item} health=${health} />
+        <${StateSection} item=${item} health=${health} fullScanHours=${settings?.full_scan_interval_h} />
         ${detail.data
           ? html`<${UsageSection} detail=${detail.data} products=${products.data} />`
           : detail.error ? null : html`<${Spinner} />`}
@@ -152,7 +165,7 @@ function StoreDetail({ item }) {
     </div>`;
 }
 
-function StateSection({ item, health }) {
+function StateSection({ item, health, fullScanHours }) {
   const state = item.state;
   const scan = state.last_scan;
   const sources = health.sources.filter((source) => item.producers.includes(source.producer));
@@ -181,6 +194,13 @@ function StateSection({ item, health }) {
       </dd>
       <dt>${L.state.last_scan}</dt>
       <dd class="store-scan">${scan ? html`<${ScanRow} scan=${scan} />` : L.state.last_scan_none}</dd>
+      <dt>${L.state.full_scan_at}</dt>
+      <dd>
+        ${state.full_scan_at ? stamp(state.full_scan_at) : L.state.last_scan_none}
+        <p class="hint">${fullScanHours
+          ? t(L.state.full_scan_hint_hours, { hours: int(fullScanHours) })
+          : L.state.full_scan_hint}</p>
+      </dd>
       ${sources.map(
         (source) => html`<dt key=${`dt-${source.producer}`}>${L.state.source}</dt>
           <dd key=${`dd-${source.producer}`}>
