@@ -42,6 +42,7 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |---|---|
 |Wymagania produktu (F/N), miary sukcesu, otwarte decyzje|`docs/PRD.md`|
 |Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
+|Plan wdrozenia v0.1: kroki, zaleznosci, bramka akceptacji|`docs/PLAN_v0.1.md`|
 |Cel, uzytkownicy, slownik pojec|`docs/SPEC.md` 1-2|
 |Przypadki uzycia i scenariusze|`docs/SPEC.md` 3|
 |Model danych, indeks, odswiezanie, SMB|`docs/SPEC.md` 4|

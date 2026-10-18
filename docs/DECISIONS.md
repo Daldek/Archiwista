@@ -22,7 +22,7 @@ Kartografa).
 
 | ADR | Tytuł | Data | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta (uzupełniona przez ADR-024) |
+| [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta (uzupełniona przez ADR-024; errata 2: `kartograf>=0.8.0,<0.9`) |
 | [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta |
 | [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta — częściowo zastąpiona przez ADR-019 |
 | [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta (errata 2: potwierdzona po otwarciu architektury, 2026-10-18) |
@@ -33,9 +33,9 @@ Kartografa).
 | [ADR-009](#adr-009-łączenie-danych-obróbka-w-kartografie-opakowanie-w-archiwiście) | Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście | 2026-10-17 | Proponowana (SPEC 15: P2, P3) |
 | [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
-| [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta |
+| [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta (errata 1: token we fragmencie, osobny token CSRF, reguła `Origin`, CSP z podkładami) |
 | [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta (decyzja użytkownika 2026-10-18; SPEC 15: P1) |
-| [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 |
+| [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 (errata 2: KA w Kartografie 0.8.0, `skip_versions`, `list_segments`, KA-5 na żądanie) |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
@@ -45,7 +45,7 @@ Kartografa).
 | [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2); Proponowana (mockup: M11) |
 | [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
 | [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18) |
-| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019) |
+| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
 | [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika) |
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
 | [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika) |
@@ -87,6 +87,10 @@ koordynator.
 zależnością (`kartograf>=0.9,<0.10`, zakres ustala się przy wydaniu); IMGWTools jest
 opcjonalny (extra `archiwista[imgw]`), a adaptery źródeł są wtyczkami rejestrowanymi
 przez entry points.
+
+**Errata 2 (2026-10-18, decyzja użytkownika — ADR-024 errata 1):** zakres wersji z errata 1
+nie obowiązuje: publiczny odczyt magazynu (KA-1..KA-6) wchodzi do Kartografa 0.8.0, więc
+zależność to `kartograf>=0.8.0,<0.9`.
 
 ---
 
@@ -475,6 +479,29 @@ zespołu z logowaniem.
 **Konsekwencje:** Pierwsze otwarcie zawsze przez adres z terminala albo automatycznie
 otwartą przeglądarkę; token można wyłączyć w konfiguracji (niezalecane).
 
+**Errata 1 (2026-10-18, plan v0.1 po przeglądzie — SPEC 10.1):** doprecyzowanie opcji B
+bez zmiany decyzji:
+- token startowy jest we fragmencie adresu (`http://127.0.0.1:<port>/#token=…`), więc nie
+  trafia do serwera, dziennika dostępu ani nagłówka `Referer`; jest jednorazowy (10 min),
+  a interfejs wymienia go przez `POST /api/v1/session` i usuwa z adresu;
+- sesja to ciasteczko `HttpOnly`, `SameSite=Strict`, a token CSRF jest osobną 128-bitową
+  wartością sesji (ciasteczko `archiwista_csrf` bez `HttpOnly` i odpowiedź
+  `POST`/`GET /api/v1/session`): JavaScript nie przeczyta ciasteczka `HttpOnly`, więc
+  nagłówek `X-Archiwista-CSRF` nie może nieść wartości sesji; serwer porównuje nagłówek
+  z tokenem sesji i ciasteczkiem (double-submit);
+- obecny `Origin` musi być adresem serwera; żądanie zmieniające stan z `Sec-Fetch-Site`
+  (przeglądarka) musi mieć `Sec-Fetch-Site: same-origin` i `Origin`, a odczyt
+  z `cross-site` jest odrzucany (`none` — adres wpisany albo otwarty z terminala —
+  przechodzi); klient bez tych nagłówków (curl, skrypt agenta) przechodzi wyłącznie
+  z sesją i, przy zmianie stanu, z nagłówkiem CSRF;
+- kolejne sesje (agent zewnętrzny): jednorazowy token ważny 5 min z
+  `POST /api/v1/session/tokens` (sesja i CSRF) albo z `archiwista token` w terminalu
+  właściciela; w indeksie leży tylko skrót SHA-256 tokenu;
+- CSP ma `worker-src 'self'` (worker MapLibre w wersji CSP z pakietu) oraz źródła
+  skonfigurowanych podkładów w `connect-src` i `img-src` — tylko w trybie online, bo
+  MapLibre pobiera kafle przez `fetch`;
+- dziennik dostępu serwera jest domyślnie wyłączony, a włączony redaguje `token=`.
+
 ---
 
 ## ADR-013: Tryb zespołu jako jeden serwer w sieci lokalnej
@@ -533,6 +560,19 @@ producenta tylko u tego producenta. Układ `data/` i `kartograf-meta/1` zna Kart
 `imgw-series/1`), kody braków i kodowania archiwów IMGW zna wyłącznie IMGWTools,
 a adapter IMGW czyta przez jego API odczytu (SPEC 12.7, IMGW-10). Test kontraktu:
 `iter_store` IMGWTools na katalogu testowym zbudowanym przez IMGWTools.
+
+**Errata 2 (2026-10-18, ADR-045 Kartografa i plan v0.1 po przeglądzie — SPEC 4.4, 5.3,
+5.6, 12.1):** KA-1..KA-6 przyjęte w Kartografie 0.8.0 (ADR-045, ARCH 3.3.1). KA-1
+rozszerzono o `list_segments(output_dir)` (lista segmentów do skanu równoległego; wywołania
+`iter_store` dla różnych segmentów albo rozłącznych paczek jednostek mogą biec naraz)
+i `iter_store(..., skip_versions=...)` (znane katalogi wersji wracają bez otwierania
+sidecara: `sidecar=None`, `skipped=True`) — skan przyrostowy nie czyta ponownie
+niezmiennych wersji. Skan nie woła `link_target` (KA-5): bieżącą wersję bierze
+z `StoreEntry.version_path` (sidecar dowiązania), bo na udziale bez stabilnych i-węzłów
+KA-5 liczy SHA-256 całego pliku; KA-5 jest wywoływane tylko na żądanie (zadanie
+`link_check`). `cache` KA-4 to mapa należąca do wywołującego (`(rodzaj, kod) → BBox`),
+trzymana lokalnie i czytana także bez sieci; brakujące obrysy jednostek uzupełnia
+z siecią osobne zadanie `footprints`.
 
 ---
 
@@ -1043,6 +1083,13 @@ wtyczek, instalacja i konfiguracja), 7.3 (narzędzia zależne od dostępnych źr
 (zależność od IMGWTools jest teraz opcjonalna). Test importów z ADR-019 zostaje,
 a Archiwista bez IMGWTools przechodzi pełny zestaw testów poza testami IMGW.
 Zależność od IMGWTools ogranicza już tylko v0.9, nie wydania v0.1..v0.8.
+
+**Errata 1 (2026-10-18, decyzja użytkownika):** pkt 1 — zakres to `kartograf>=0.8.0,<0.9`,
+nie `>=0.9,<0.10`: publiczny odczyt magazynu (KA-1..KA-6) wchodzi do Kartografa 0.8.0
+(przygotowane, jeszcze nieotagowane wydanie; `__version__` = `0.8.0`). Test kontraktu
+sprawdza obecność KA w `kartograf.__all__` i to, że zainstalowany `kartograf.__version__`
+mieści się w zakresie z `pyproject.toml`; przed wydaniem Archiwisty powtarza się go
+przeciw otagowanemu Kartografowi 0.8.0. SPEC 5.8.
 
 ---
 

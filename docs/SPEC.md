@@ -531,7 +531,9 @@ wersja bez roku danych ma rok pusty, a nie rok pobrania.
 źródeł: `request.bbox` z `bbox_crs` (wycinki, wyniki obszaru kolekcji,
 SoilGrids, HSG) → godło z parsera (PL-1992, PL-2000, TM33) → nagłówek pliku
 (GeoTIFF, ASC, JPEG z JGW, GeoPackage, LAS) → jednostka (TERYT z PRG, KU
-z RUIAN, arkusz SM5 z indeksu CUZK — z siecią i pamięcią podręczną) → kraj.
+z RUIAN, arkusz SM5 z indeksu CUZK — z siecią w zadaniu `footprints` (5.6)
+i lokalną pamięcią podręczną, z której skan bez sieci bierze obrysy już
+znanych jednostek) → kraj.
 Zasięg bez źródła oznaczamy „bez obrysu” (plik jest w „Katalogu”, nie ma
 go na mapie). Przeliczenie do WGS84 wyłącznie przypiętą transformacją
 Kartografa (KA-6): domyślny transformator potrafi cicho użyć operacji
@@ -566,13 +568,18 @@ Zasady wspólne dla wszystkich producentów i produktów:
 ### 4.4 Budowa i odświeżanie
 
 - **Pełny skan** (pierwsze uruchomienie, „Przebuduj indeks”): przejście
-  drzewa `iter_store` z odczytem sidecarów w puli wątków (opóźnienia SMB,
-  nie procesor), zapis do indeksu paczkami w transakcjach; zadanie w tle
-  z postępem.
+  `iter_store` osobno dla każdego segmentu z `list_segments` (KA-1)
+  w ograniczonej puli wątków (opóźnienia SMB, nie procesor); sidecar każdego
+  wpisu czyta raz sam `iter_store`, a zapis do indeksu idzie paczkami
+  w transakcjach; zadanie w tle z postępem.
 - **Skan przyrostowy:** katalogi wersji `<etykieta>_<sha8>` są niezmienne,
-  więc znanych wersji nie czytamy ponownie — sprawdzamy tylko pojawienie
+  więc znanych wersji nie czytamy ponownie (`skip_versions`, KA-1: znana
+  wersja kosztuje tylko listing swojego katalogu) — sprawdzamy pojawienie
   się nowych katalogów wersji, zniknięcie znanych i zmianę sidecarów
-  dowiązań. Czas modyfikacji katalogu jest tylko wskazówką (na udziale
+  dowiązań. Bieżącą wersję wyznacza sidecar dowiązania
+  (`StoreEntry.version_path`); skan nie woła `link_target` (KA-5), które na
+  udziale bez stabilnych i-węzłów potwierdza cel treścią — to działanie na
+  żądanie. Czas modyfikacji katalogu jest tylko wskazówką (na udziale
   z pamięcią atrybutów bywa opóźniony), dlatego okresowo wykonujemy pełny
   skan kontrolny (domyślnie raz na dobę, w tle).
 - **Odświeżenie na żądanie dla widoku:** gdy użytkownik pyta o obszar
@@ -1107,9 +1114,9 @@ który producent zapisał plik:
 | Operacja | Po co | Adapter Kartografa | Adapter IMGW |
 |---|---|---|---|
 | `probe(root)` | rozpoznanie katalogu producenta i wersji kontraktu | układ `data/` (KA-1) | `store_info` (`imgw-store/1`; IMGW-10, IMGW-13) |
-| `iter_entries(root, *, scope)` | skan: wersje, wersje bieżące, problemy (4.4) | `iter_store` (KA-1), `link_target` (KA-5) | `iter_store`, `current_version` (IMGW-10) |
+| `iter_entries(root, *, scope)` | skan: wersje, wersje bieżące, problemy (4.4) | `list_segments`, `iter_store` (KA-1; bieżąca wersja z sidecara dowiązania, bez `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadane we wspólnej kopercie: zbiór, etykieta i jej źródło, daty, `sha256`, rozmiar, licencja, wejścia (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `imgw-meta/1` (IMGW-3) |
-| `footprint(entry)` | geometria na mapie albo brak położenia z powodem (4.3, A-ADR-022) | obrys `file_footprint` (KA-4); bez źródła — `no_source` | kraj dla archiwów i szeregów; punkty stacji z katalogu albo powód braku (IMGW-9) |
+| `footprint(entry)` | geometria na mapie albo brak położenia z powodem (4.3, A-ADR-022) | obrys `file_footprint` (KA-4; sieć tylko w zadaniu `footprints`); bez źródła — `no_source` | kraj dla archiwów i szeregów; punkty stacji z katalogu albo powód braku (IMGW-9) |
 | `commands()`, `validate(…)`, `format_command(…)` | formularze i polecenie do skopiowania | KB-1, KB-3, KB-4 | IMGW-11 |
 | `plan(command, options)` | „Okno planu” bez pobierania | `check_command` (KB-5) | `check_store` (IMGW-5) |
 | `run(command, options, *, on_progress, on_notice, cancel)` | działanie — tylko w procesie roboczym (5.6) | `run_command` (KB-5) | `run_command` → `sync_store`, `build_series` (IMGW-5, IMGW-7, IMGW-11) |
@@ -1183,7 +1190,9 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 
 | Rodzaj | Co wywołuje | Sieć | Co zapisuje |
 |---|---|---|---|
-| `scan` | `iter_store` (KA-1), `open_project`; katalog IMGW: `iter_store` IMGWTools (IMGW-10) | nie | indeks |
+| `scan` | `list_segments`, `iter_store` (KA-1), `open_project`; katalog IMGW: `iter_store` IMGWTools (IMGW-10) | nie | indeks |
+| `footprints` | `file_footprint(network=True)` (KA-4) dla wersji bez obrysu, z lokalną pamięcią obrysów jednostek; odmowa w trybie offline | tak | indeks, pamięć obrysów jednostek |
+| `link_check` | `link_target` (KA-5) dla jednego slotu, na żądanie z „Karty pliku” | nie | indeks (problem przy niezgodności) |
 | `availability` | `check_availability` (wysokości), dla pozostałych produktów rozszerzenia KD; zbiory IMGW: lata opublikowane z listingu i `HEAD` (`check_store`, IMGW-5) | tak | raport w indeksie |
 | `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → plan `kartograf-plan/1`; IMGW: `check_store` (IMGW-5) → plan aktualności archiwów i stan szeregów | tak | — |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` z `update` i `plan`; IMGW: `sync_store` (IMGW-5) | tak | magazyn (przez producenta) |
@@ -1194,11 +1203,15 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 | `preview` | lokalny COG albo podgląd dużego pliku | nie | pamięć podglądów |
 
 - **Cykl życia:** „w kolejce” → „trwa” → „zakończone” / „błąd” /
-  „anulowane” / „przerwane” (serwer zatrzymany w trakcie). Propozycja
-  asystenta nie jest zadaniem, dopóki człowiek jej nie zatwierdzi.
+  „anulowane” / „przerwane” (serwer zatrzymany w trakcie); w API
+  `queued`, `running`, `succeeded`, `failed`, `cancelled`, `interrupted`.
+  Każde zadanie zapisuje wykonawcę (`actor`: lokalnie `local`, w zespole
+  konto). Propozycja asystenta nie jest zadaniem, dopóki człowiek jej nie
+  zatwierdzi.
 - **Równoległość (domyślnie):** 2 zadania sieciowe naraz, 1 zadanie na
   projekt (blokada manifestu), zadania obliczeniowe do połowy rdzeni,
-  1 skan na magazyn. Zadania nakładające się (ten sam segment i te same
+  1 zadanie zapisujące indeks na magazyn (`scan`, `footprints`; kolejne
+  dostaje `409 conflict`). Zadania nakładające się (ten sam segment i te same
   jednostki) są oznaczone ostrzeżeniem — Kartograf i tak zapisze wersję
   raz (zapis wyłączny), ale druga osoba straciłaby czas.
 - **Protokół proces roboczy → nadzorca:** JSON Lines na standardowym
@@ -1274,8 +1287,9 @@ biblioteki wymagane (IMGWTools Beta blokowałby wydania, konflikty wersji),
 czytanie formatów i wywoływanie CLI bez zależności (łamie A-ADR-014),
 producenci jako usługi HTTP (koszt).
 
-**Instalacja.** Kartograf jest wymaganą zależnością (`kartograf>=0.9,<0.10`;
-dokładny zakres ustala się przy wydaniu Archiwisty), IMGWTools — extra:
+**Instalacja.** Kartograf jest wymaganą zależnością (`kartograf>=0.8.0,<0.9`
+— publiczny odczyt magazynu KA-1..KA-6 wchodzi do Kartografa 0.8.0;
+A-ADR-024 errata 1), IMGWTools — extra:
 
 ```bash
 pip install archiwista             # Kartograf; źródło IMGW niedostępne
@@ -2702,10 +2716,13 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 - **Etykiety pokrycia liczy serwer** i zwraca obok wartości
   strukturalnych — interfejs, asystent i skrypty mają jedno słownictwo.
 - **Operacje długie:** `202 Accepted` z zasobem zadania w tle; zdarzenia
-  przez SSE (`/jobs/{id}/events`).
+  przez SSE (`/jobs/{id}/events`). Drugie zadanie zapisujące indeks tego
+  samego magazynu (skan, obrysy) dostaje `409 conflict` z identyfikatorem
+  trwającego zadania w polu `job`.
 - **Błędy:** RFC 9457 (`application/problem+json`) z polami `type`,
   `title`, `status`, `detail` (po polsku), `code` (`validation_error`,
-  `not_found`, `conflict`, `store_unavailable`, `source_unavailable`,
+  `not_found`, `conflict`, `offline_mode`, `session_required`,
+  `csrf_rejected`, `store_unavailable`, `source_unavailable`,
   `source_incompatible`, `kartograf_error`, `imgwtools_error`,
   `budget_exceeded`…) i — gdy błąd pochodzi od
   producenta — `kartograf` albo `imgwtools` (`exception`, `message` bez
@@ -2718,20 +2735,26 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 - **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
   w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo
   identyfikator obszaru.
-- **Bezpieczeństwo:** bez CORS; żądania zmieniające stan wymagają nagłówka
-  `X-Archiwista-CSRF` (10.1); w trybie zespołu — sesja zalogowanej osoby
-  i rola (10.2).
+- **Bezpieczeństwo:** bez CORS; żądania zmieniające stan wymagają sesji
+  i nagłówka `X-Archiwista-CSRF` z tokenem CSRF sesji (10.1); klienci bez
+  przeglądarki (skrypty, agent) używają tej samej sesji i nagłówka;
+  w trybie zespołu — sesja zalogowanej osoby i rola (10.2).
 
 ### 9.2 Zasoby
 
 | Metoda i ścieżka | Co robi |
 |---|---|
+| `POST /session` | wymiana jednorazowego tokenu na sesję (ciasteczko `HttpOnly`) i token CSRF (10.1) |
+| `GET /session` | stan sesji: wykonawca (`actor`), token CSRF, wygaśnięcie |
+| `POST /session/tokens` | jednorazowy token kolejnej sesji (np. agenta), ważny 5 min (10.1) |
 | `GET /stores` | magazyny, dostępność, statystyki |
 | `GET /sources` | źródła danych (wtyczki): producent, stan (`available`, `not_installed`, `incompatible`, `error`), wersja biblioteki, wspierany zakres, schematy, komunikat po polsku (5.8) |
 | `GET /stores/{store}` | stan magazynu: zajętość wg produktów, problemy, ostatni skan |
-| `POST /stores/{store}/scan` | skan (`mode`: `incremental` albo `full`, opcjonalnie `segment`) → zadanie w tle |
+| `POST /stores/{store}/scan` | skan (`mode`: `incremental` albo `full`, opcjonalnie `segment`) → zadanie w tle; `409 conflict`, gdy trwa zadanie zapisujące indeks magazynu |
+| `POST /stores/{store}/footprints` | obrysy jednostek (TERYT, KU, SM5) z siecią dla wersji bez obrysu → zadanie w tle (5.6); w trybie offline `409 offline_mode` |
+| `POST /stores/{store}/link-check` | potwierdzenie celu dowiązania slotu treścią (`slot`; KA-5) → zadanie w tle |
 | `GET /products` | produkty z opisami, krajami i licznikami w magazynach (KB-1, IMGW-11 + indeks) |
-| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją; `location` (`any` — domyślnie, `with`, `none`) i grupy położenia z licznikami (4.3, 6.8) |
+| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją; `location` (`any` — domyślnie, `with`, `none`) i grupy położenia z licznikami (4.3, 6.8); `unit` — dokładny kod jednostki (TERYT, KU, godło) |
 | `GET /stores/{store}/slots/{slot}` | karta pliku: wersje, bieżąca i pełna, przypięcia |
 | `GET /stores/{store}/versions/{version}` | wersja: metadane po ludzku i sidecar |
 | `GET /stores/{store}/versions/{version}/sidecar` | surowy sidecar |
@@ -2750,7 +2773,9 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | `GET /stations/{code}/coverage` | pokrycie zmiennych po latach (`variable` powtarzalny, domyślnie wszystkie zmienne stacji; `year_type`, `years`) — Oś czasu |
 | `GET /stations/{code}/series` | dane wykresu (`variable`, `from`, `to`, `max_points` ≤ 2 000, `version`): wartości albo min./śr./maks. w przedziałach, braki jako `null`, znaczniki sum zbiorczych i ekstremów IMGW; tylko do wyświetlenia |
 | `GET /stations/compare` | 2–5 stacji jednej zmiennej (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) na wspólnej osi czasu |
-| `POST /areas` | obszar z GeoJSON albo z pliku geometrii → `id`, powierzchnia, kraje |
+| `POST /areas` | obszar z GeoJSON albo z pliku geometrii → `id`, powierzchnia, kraje (limity: 10.1) |
+| `GET /areas/{id}` | obszar: geometria (WGS84), powierzchnia, kraje |
+| `GET /local-coverage` | stan magazynu dla obszaru i produktu („lokalnie 83% obszaru”; `area_id`, `product`, `store`) po odświeżeniu slotów obszaru (4.4); procent w układzie płaskim kraju produktu |
 | `POST /availability` | dostępność obszaru dla produktu → zadanie w tle; wynik: stan lokalny, raport źródła, wiersze z etykietami; dla zbiorów IMGW — lata opublikowane z datami publikacji i stacje obszaru z etykietami pokrycia |
 | `GET /availability` | ostatni raport dla obszaru i produktu (bez sieci) |
 | `GET /commands` | katalog komend danych producentów (KB-1, IMGW-11) |
@@ -2758,8 +2783,8 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | `POST /commands/validate` | walidacja bez sieci (KB-3, IMGW-11) |
 | `POST /commands/format` | opcje → tekst polecenia `kartograf …` albo `imgw …` (KB-4, IMGW-11) |
 | `POST /jobs` | zadanie w tle: `check`, `download`, `series`, `project`, `compose`, `export`, `preview`; polecenie z `producer` (9.1) |
-| `GET /jobs`, `GET /jobs/{id}` | lista i stan zadań |
-| `GET /jobs/{id}/events` | strumień SSE: `progress`, `notice`, `state` |
+| `GET /jobs`, `GET /jobs/{id}` | lista i stan zadań z wykonawcą (`actor`) |
+| `GET /jobs/{id}/events` | strumień SSE: `progress`, `notice`, `state` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, `interrupted`; przy `failed` — `error`); wznowienie przez `Last-Event-ID` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | anulowanie, ponowienie |
 | `GET /jobs/{id}/log` | dziennik zadania |
 | `GET /projects`, `POST /projects` | lista; rejestracja istniejącego (`path`) albo nowy (`path`, `producer`, `output_dir` albo `store_dir` → `init_project` producenta) |
@@ -2970,16 +2995,46 @@ Decyzja: A-ADR-012.
   zespołu ze skonfigurowanym logowaniem — inaczej serwer odmawia startu.
 - **Nagłówek `Host`** tylko `127.0.0.1:<port>` albo `localhost:<port>`
   (ochrona przed DNS rebinding).
-- **Token startowy:** losowy przy każdym uruchomieniu, w adresie otwieranym
-  przez `archiwista serve`; wymieniany na ciasteczko sesji (`HttpOnly`,
-  `SameSite=Strict`). Bez niego inny użytkownik albo proces tego samego
-  komputera dostaje `401`. Można go wyłączyć w konfiguracji (niezalecane).
-- **CSRF:** żądania zmieniające stan wymagają nagłówka `X-Archiwista-CSRF`
-  z wartością sesji; obca strona nie ustawi go bez CORS, a CORS jest
-  wyłączony; dodatkowo kontrola `Origin` i `Sec-Fetch-Site`.
-- **CSP:** `default-src 'self'`, bez skryptów inline, `connect-src 'self'`,
-  obrazy z `self` i skonfigurowanych podkładów, `frame-ancestors 'none'`.
-  Biblioteki interfejsu są w pakiecie (bez CDN — działa też bez internetu).
+- **Token startowy:** losowy (128 bitów) przy każdym uruchomieniu,
+  jednorazowy, ważny 10 min, we **fragmencie** adresu otwieranego przez
+  `archiwista serve` (`http://127.0.0.1:<port>/#token=…`) — fragment nie
+  trafia do serwera, dziennika dostępu ani nagłówka `Referer`. Interfejs
+  wymienia go przez `POST /api/v1/session` i usuwa z adresu
+  (`history.replaceState`). Bez sesji inny użytkownik albo proces tego
+  samego komputera dostaje `401`. Token można wyłączyć w konfiguracji
+  (niezalecane).
+- **Sesja:** ciasteczko `archiwista_session` (`HttpOnly`,
+  `SameSite=Strict`, `Path=/`); wykonawcą jest „lokalny użytkownik”
+  (`actor` = `local`).
+- **CSRF:** osobny 128-bitowy token CSRF sesji, wydawany przy wymianie
+  tokenu — w ciasteczku `archiwista_csrf` (bez `HttpOnly`,
+  `SameSite=Strict`) i w odpowiedzi `POST`/`GET /api/v1/session`. Żądania
+  zmieniające stan wymagają nagłówka `X-Archiwista-CSRF` równego tokenowi
+  sesji i ciasteczku (double-submit); obca strona nie ustawi go bez CORS,
+  a CORS jest wyłączony.
+- **`Origin` i `Sec-Fetch-Site`:** obecny `Origin` musi być adresem
+  serwera. Żądanie zmieniające stan z `Sec-Fetch-Site` (przeglądarka) musi
+  mieć `Sec-Fetch-Site: same-origin` i `Origin`; odczyt z `cross-site` jest
+  odrzucany, a `none` (adres wpisany albo otwarty z terminala)
+  i `same-origin` przechodzą. Klient bez `Origin` i `Sec-Fetch-*` (curl,
+  skrypt agenta) przechodzi wyłącznie z sesją i — przy zmianie stanu —
+  z nagłówkiem CSRF. Pliki interfejsu nie wymagają sesji, `/api/*` (poza
+  wymianą tokenu) — tak.
+- **Kolejne sesje (agent zewnętrzny):** jednorazowy token ważny 5 min
+  wystawia zalogowana przeglądarka (`POST /api/v1/session/tokens`, z CSRF)
+  albo właściciel w terminalu (`archiwista token`); w indeksie leży tylko
+  skrót SHA-256 tokenu. Dziennik dostępu serwera jest domyślnie wyłączony,
+  a włączony redaguje `token=`.
+- **CSP:** `default-src 'self'; script-src 'self'; style-src 'self';
+  worker-src 'self'; img-src 'self' data: blob: <podkłady>; connect-src
+  'self' <podkłady>; font-src 'self'; object-src 'none'; base-uri 'none';
+  form-action 'self'; frame-ancestors 'none'` — `<podkłady>` to źródła
+  skonfigurowanych podkładów, tylko w trybie online (MapLibre pobiera kafle
+  przez `fetch`, więc potrzebują ich także `connect-src`); worker MapLibre
+  w wersji CSP z pakietu, bez `blob:`. Zmiana trybu offline albo podkładów
+  przeładowuje stronę. Dodatkowo `Referrer-Policy: no-referrer`
+  i `X-Content-Type-Options: nosniff`. Biblioteki interfejsu są w pakiecie
+  (bez CDN — działa też bez internetu).
 - **Ścieżki:** API przyjmuje tylko ścieżki znane indeksowi; plik do
   odczytu jest rozstrzygany (`realpath`) i musi leżeć w korzeniu
   skonfigurowanego magazynu albo katalogu projektu; dowiązania symboliczne
@@ -2992,9 +3047,12 @@ Decyzja: A-ADR-012.
   w `<katalog projektu>/obszary/` przy dodawaniu zadania projektu z obszarem
   narysowanym albo wczytanym z pliku (zalecenie specu manifestu: geometria
   w katalogu projektu przenosi się razem z nim) i katalog zestawu (od v1.1).
-- **Pliki geometrii od użytkownika:** limit rozmiaru (50 MB), odczyt
-  w procesie roboczym (GDAL na niezaufanym wejściu nie kładzie serwera),
-  kopia w lokalnym katalogu roboczym.
+- **Pliki geometrii od użytkownika:** treść ≤ 50 MB; archiwum odrzucane
+  przed rozpakowaniem, gdy zadeklarowany rozmiar po rozpakowaniu przekracza
+  200 MB albo człon wychodzi poza katalog; odczyt w procesie roboczym
+  zabijanym po 30 s (GDAL na niezaufanym wejściu nie kładzie ani nie
+  blokuje serwera); geometria ≤ 100 000 wierzchołków, bez cichego
+  upraszczania; kopia w lokalnym katalogu roboczym usuwana po 7 dniach.
 - **Sekrety:** klucz dostawcy modelu tylko przez nazwę zmiennej
   środowiskowej (później: systemowy magazyn kluczy); nigdy w przeglądarce,
   w odpowiedziach API ani w dziennikach. Dane uwierzytelniające źródeł
@@ -3026,7 +3084,7 @@ Decyzja: A-ADR-012.
 
 | Zagrożenie | Skutek | Ochrona |
 |---|---|---|
-| Obca strona wysyła żądania do `127.0.0.1` (CSRF, DNS rebinding) | pobrania, odczyt danych | `Host`, token startowy, nagłówek CSRF, brak CORS, `SameSite=Strict` |
+| Obca strona wysyła żądania do `127.0.0.1` (CSRF, DNS rebinding) | pobrania, odczyt danych | `Host`, token startowy, token CSRF w nagłówku, `Origin` i `Sec-Fetch-Site`, brak CORS, `SameSite=Strict` |
 | Inna osoba na tym samym komputerze | dostęp do interfejsu | token startowy |
 | Ścieżka spoza magazynu w żądaniu | odczyt dowolnego pliku | tylko ścieżki z indeksu, `realpath` w korzeniach |
 | Złośliwy plik geometrii | awaria albo zawieszenie biblioteki natywnej | proces roboczy, limity rozmiaru i czasu |
@@ -3152,13 +3210,21 @@ Kolumna „Wersja” mówi, od której wersji Archiwisty wymaganie blokuje
 
 ### 12.1 KA — odczyt magazynu
 
+Stan (2026-10-18): KA-1..KA-6 przyjęte w Kartografie 0.8.0 (ADR-045, ARCH
+3.3.1; gałąź `feat/archiwista-store-api` do scalenia) — nazwy w tabeli są
+ostateczne, a kolumna „API” opisuje kontrakt, na którym opiera się plan
+v0.1. Wszystkie funkcje są tylko do odczytu; dowolnie wiele wywołań
+`iter_store` może biec naraz w osobnych wątkach (różne segmenty albo
+rozłączne paczki `units` jednego segmentu; każdy generator konsumuje jeden
+wątek), tak samo `read_sidecar`, `describe_segment` i `link_target`.
+
 | ID | API (propozycja) | Po co | Wersja |
 |---|---|---|---|
-| KA-1 | `iter_store(output_dir, *, segment=None, units=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `units` zawęża przejście do katalogów hierarchii podanych jednostek segmentu (godła, TERYT, `<coords>`), bez listowania całego segmentu; `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem | indeks bez własnej kopii reguł `data/` (4.2), szybkie odświeżenie widoku (4.4) | v0.1 |
+| KA-1 | `list_segments(output_dir) -> list[str]` — posortowane `<produkt>/<wariant>` wszystkich rzeczywistych katalogów drugiego poziomu (bez dowiązań symbolicznych i katalogów z kropką), także nierozpoznanych (1 listing katalogu `--output` + 1 na produkt); `iter_store(output_dir, *, segment=None, units=None, skip_versions=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `units` zawęża przejście do katalogów hierarchii podanych jednostek segmentu (godła, TERYT, `<coords>`), bez listowania całego segmentu; `skip_versions` — ścieżki względne katalogów wersji znanych wywołującemu (`<segment>/versions/<hierarchia>/<etykieta>_<sha8>`): ich pliki wracają bez otwierania sidecara (`sidecar=None`, `skipped=True`; koszt: listing katalogu); `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem, `skipped`. Koszt na wpis: katalog — 1 listing; dowiązanie, `full_sheet/`, nowa wersja, sidecar nieczytelny — 1 odczyt sidecara; wersja pominięta i brak sidecara — 0 otwarć; plik danych nigdy nie jest otwierany ani `stat`-owany | indeks bez własnej kopii reguł `data/` (4.2), skan równoległy po segmentach i przyrostowy bez ponownego czytania wersji, szybkie odświeżenie widoku (4.4) | v0.1 |
 | KA-2 | `read_sidecar(path) -> Sidecar` — typowany, tolerancyjny odczyt `kartograf-meta/1` (także sprzed ADR-031 i klucze deweloperskie 0.8.0-dev): pola z ARCH 3.2, surowy `dataset` i rozpoznany klucz deskryptora, znormalizowane: rok i data danych, kampania, numer zgłoszenia, wydanie, pełny arkusz, pokrycie, jednostka | filtry, karta pliku, rok danych ≠ data pobrania (4.3) | v0.1 |
 | KA-3 | `describe_segment(segment) -> SegmentInfo` — odwrotność `resolve_subdir`/`content_segment`: produkt, kraj, klucz deskryptora, nazwa dla ludzi (nazwa deskryptora + wariant: rozdzielczość, układ wysokości, format, rocznik, poziom), `known` | ludzkie nazwy („NMT 1 m · PL-1992 · EVRF2007”) | v0.1 |
-| KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — zasięg w WGS84 i natywny z układem i źródłem (`request`, `sheet`, `header`, `unit`); offline dla godeł PL i TM33, bboxów zadań i nagłówków; z siecią i cache dla TERYT (PRG), KU (RUIAN), SM5 (indeks CUZK); przyjmuje także pozycję planu (`PlanItem`) | mapa, filtr obszaru, podświetlanie planowanych jednostek (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |
-| KA-5 | `link_target(path) -> Path \| None` — cel ścieżki standardowej albo `full_sheet/` z `extra.link_target`, z potwierdzeniem treścią na udziałach bez stabilnych i-węzłów | „bieżąca wersja” bez logiki i-węzłów (4.6) | v0.1 |
+| KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — zasięg w WGS84 i natywny z układem i źródłem (`request`, `sheet`, `header`, `unit`); offline dla godeł PL i TM33, bboxów zadań i nagłówków; dla TERYT (PRG), KU (RUIAN), SM5 (indeks CUZK) — z `cache` należącym do wywołującego (`MutableMapping[tuple[str, str], BBox]`, klucz `("teryt" \| "ku" \| "sm5", kod)`), czytanym także bez sieci, a uzupełnianym tylko przy `network=True`; przyjmuje także pozycję planu (`PlanItem`) | mapa, filtr obszaru, podświetlanie planowanych jednostek (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |
+| KA-5 | `link_target(path) -> Path \| None` — cel ścieżki standardowej albo `full_sheet/` z `extra.link_target`, z potwierdzeniem treścią na udziałach bez stabilnych i-węzłów (może przeczytać cały plik, by policzyć SHA-256) | „bieżąca wersja” bez logiki i-węzłów (4.6) — wyłącznie na żądanie (zadanie `link_check`, 5.6); skan bierze cel z sidecara dowiązania (`StoreEntry.version_path`) | v0.1 |
 | KA-6 | `pinned_transform(src_crs, dst_crs) -> PinnedTransform` — publiczny dostęp do `transform/crs.py` (`transform(xs, ys)`, `description`, `accuracy_m`) | obrysy i wektory na mapie bez operacji przybliżonych (S-JTSK: ok. 100 m) | v0.1 |
 | KA-7 | (opcjonalnie, po pomiarach z v0.1) dziennik zmian magazynu: osobny plik na proces piszący (bez wspólnego pliku i blokad), z listą nowych wersji i przestawionych dowiązań | tańsze odświeżanie indeksu na SMB (4.4) | — |
 

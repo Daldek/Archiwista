@@ -2,10 +2,12 @@
 
 ## Start następnej sesji (stan 2026-10-18)
 
-**Status:** dokumentacja produktu i architektura przyjęte; bez kodu aplikacji.
-**Następny krok:** plan implementacji v0.1 (SCOPE, etap 0 — ostatni element
-przed kodem; zatwierdza użytkownik). Kolejność pracy: spec → plan →
-implementacja.
+**Status:** dokumentacja produktu i architektura przyjęte; plan v0.1
+(`docs/PLAN_v0.1.md`) poprawiony po przeglądzie; kroki 0 i 1 planu
+ukończone (`de157c3`, `c74f8d4`).
+**Następny krok:** kroki 2, 3 i 4 planu równolegle. Kroki 2 i 4 wymagają
+KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
+`feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
 
 ### Na samym początku implementacji (pierwsze zadania planu v0.1)
 
@@ -16,6 +18,10 @@ implementacja.
 2. Stosować `docs/DEVELOPMENT_STANDARDS.md` od pierwszego pliku: cały kod,
    docstringi, komentarze i logi po angielsku; polski tylko w tekstach
    interfejsu (słownik), dokumentacji projektu i opisach commitów.
+3. ✓ Krok 1 planu (`c74f8d4`): `pyproject.toml` z `kartograf>=0.8.0,<0.9`,
+   `requirements.lock`, Ruff/mypy/pytest z bramką pokrycia 80%, CLI
+   `archiwista --help`, interfejs źródła (`archiwista/sources/`). Umowę
+   źródła rozszerza wyłącznie krok 2 (plan, sekcja „Umowy”).
 
 ### Czytaj najpierw
 
@@ -24,21 +30,19 @@ implementacja.
 | `docs/PRD.md` | wymagania F1–F15, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
+| `docs/PLAN_v0.1.md` | plan implementacji v0.1: kontrakty, kolejność kroków, zależności i weryfikacja kryteriów akceptacji |
 | `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
 | `docs/DECISIONS.md` | A-ADR-001..028 (erraty na końcu wpisów) |
 | `mockup/README.md` | mockup: przepływ, co prawdziwe, co symulowane, zrzuty |
 
 ### Stan repozytorium
 
-- Gałęzie: `main`, `develop` (ostatni commit `db4d1e3`), `feat/mockup`
-  (historia pierwszych wersji mockupu, `e25e833`). Bez remote.
-- **NIEZACOMMITOWANE** (commit tylko na polecenie użytkownika; proponowany
-  podział po tematach): `docs/SPEC.md`, `docs/DECISIONS.md`, `README.md`,
-  `CLAUDE.md`, nowe `docs/PRD.md`, `docs/SCOPE.md`, `docs/PROGRESS.md`,
-  `docs/wymagania-imgwtools.md`, `LICENSE`, `CONTRIBUTING.md`,
-  `CONTRIBUTORS.md`, `docs/CLA.md`, `.github/pull_request_template.md`,
-  `docs/DEVELOPMENT_STANDARDS.md` (skopiowany z IMGWTools i dostosowany) oraz
-  cały katalog `mockup/` (z nowymi fixturami i zrzutami `26`–`35`).
+- Gałęzie: `main`, `develop` (plan v0.1 po przeglądzie i kod kroku 1),
+  `feat/mockup` (historia pierwszych wersji mockupu, `e25e833`). Bez
+  remote. Dokumentacja, mockup i kod kroku 1 są zacommitowane.
+- Kartograf: gałąź `feat/archiwista-store-api` (KA-1..KA-6 w wydaniu 0.8.0,
+  ADR-045) — scalenie do `develop` i tag `v0.8.0` dopiero po zgodzie
+  użytkownika.
 
 ### Decyzje (stan na 2026-10-18)
 
@@ -71,19 +75,30 @@ implementacja.
 - Interfejs i słownictwo: A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`, szary
   podkład OSM, asystent jako panel boczny); etykiety pokrycia A-ADR-010, 017;
   dane IMGW A-ADR-019..023.
+- **Plan v0.1 po przeglądzie (2026-10-18):** KA w Kartografie 0.8.0
+  (A-ADR-024 errata 1, A-ADR-001 errata 2); skan przyrostowy przez
+  `skip_versions`, skan równoległy po segmentach (`list_segments`), bez
+  `link_target` w skanie — KA-5 tylko na żądanie (A-ADR-014 errata 2);
+  zadanie `footprints` z siecią dla obrysów jednostek; pokrycie lokalne
+  w EPSG:2180/5514; sesja z tokenem we fragmencie adresu, osobny token
+  CSRF, reguła `Origin`, CSP z podkładami i workerem MapLibre (A-ADR-012
+  errata 1); jedna tabela `jobs` z `actor`; TERYT/KU w v0.1 tylko jako
+  filtr; kroki 6, 9 i 10 podzielone (6a/6b, 9a–9c, 10a–10c).
 
 ### Otwarte
 
-- **Plan v0.1** — do przygotowania i zatwierdzenia (komputer odniesienia dla
-  celów wydajności też tu).
+- **Plan v0.1** — gotowy po przeglądzie; kroki 2–14 do wykonania.
 - PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
   M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
-  łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v1.3),
-  komputer odniesienia (przed v0.1).
+  łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v1.3).
+  Komputer odniesienia dla SSD ustalony w planie v0.1 (decyzja 1); pomiar
+  SMB wymaga prawdziwego udziału SMB 3.
 - Mockup: pytania M3, M5–M8, M10, M11 (SPEC 16).
-- Producenci: Kartograf — KA-1..KA-6 blokują v0.1; v0.3: KA-4 (pozycje
-  planu), KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa Kartografa
-  niezaktualizowana (czeka na decyzję użytkownika). IMGWTools —
+- Producenci: Kartograf — KA-1..KA-6 (z `list_segments` i `skip_versions`)
+  na gałęzi `feat/archiwista-store-api`, blokują kroki 2, 4–7 i 9a–13 do
+  instalacji gałęzi, a wydanie v0.1 — do tagu `v0.8.0`; v0.3: KA-4
+  (pozycje planu), KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa
+  Kartografa niezaktualizowana (czeka na decyzję użytkownika). IMGWTools —
   `docs/wymagania-imgwtools.md` (IMGW-1..14) do przekazania; blokuje v0.5,
   a więc MVP — największe ryzyko harmonogramu.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
