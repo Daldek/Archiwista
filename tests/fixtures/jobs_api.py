@@ -39,6 +39,7 @@ def jobs_api(
             index_path=env.paths.index_file,
             state=state,
             registry=load_registry(cache_dir=env.paths.cache_dir),
+            areas_dir=env.paths.areas_dir,
             jobs=env.jobs,
         )
         with TestClient(app, base_url=BASE_URL) as client:

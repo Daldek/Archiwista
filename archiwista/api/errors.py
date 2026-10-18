@@ -8,8 +8,9 @@ command line uses too (``problem_of``, ``service_problem``). Some problems
 add members: ``source`` for an unavailable or incompatible producer plugin
 (with the pip requirement that fixes it), ``kartograf`` or ``imgwtools`` for
 a producer's own error (its exception and unchanged message), ``problems``
-for invalid settings, ``errors`` for invalid request data and ``job`` for
-the job in the way of a ``409 conflict``. Unknown routes
+for invalid settings, ``errors`` for invalid request data, ``job`` for
+the job in the way of a ``409 conflict`` and ``layers`` for an area file
+with several layers to choose from. Unknown routes
 answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
 ``Allow``) and unexpected failures ``500 internal_error``.
 """
@@ -27,6 +28,9 @@ from archiwista.api import API_PREFIX
 from archiwista.config import SettingsValidationError
 from archiwista.errors import (
     ArchiwistaError,
+    AreaTooComplexError,
+    AreaTooLargeError,
+    AreaUnreadableError,
     ConflictError,
     IndexQueryError,
     InvalidChangeError,
@@ -54,6 +58,9 @@ PROBLEMS: Mapping[type[ArchiwistaError], tuple[int, str]] = MappingProxyType(
         NotFoundError: (404, "not_found"),
         ConflictError: (409, "conflict"),
         OfflineModeError: (409, "offline_mode"),
+        AreaTooLargeError: (413, "area_too_large"),
+        AreaUnreadableError: (422, "area_unreadable"),
+        AreaTooComplexError: (422, "area_too_complex"),
         InvalidChangeError: (422, "validation_error"),
         IndexQueryError: (422, "validation_error"),
         SettingsValidationError: (422, "validation_error"),
@@ -92,6 +99,12 @@ _DOCUMENTED: Mapping[int, tuple[str, str, str]] = MappingProxyType(
             "Conflicts with the current state: `conflict` (e.g. another job"
             " already writes the store's index; `job` names it) or"
             " `offline_mode` (the job needs the network).",
+        ),
+        413: (
+            "area_too_large",
+            "api_title_area_too_large",
+            "The body is over 50 MB, or an archive declares more than 200 MB"
+            " unpacked (`area_too_large`).",
         ),
         422: (
             "validation_error",
@@ -258,6 +271,8 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
         ]
     elif isinstance(error, JobConflictError):
         members["job"] = {"id": error.job_id, "kind": error.kind, "state": error.state}
+    elif isinstance(error, AreaUnreadableError) and error.layers:
+        members["layers"] = list(error.layers)
     return problem_body(status, code, detail, members)
 
 

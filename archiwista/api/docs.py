@@ -55,6 +55,13 @@ it in `job`. `GET /jobs/{job}/events` streams the job's `progress`, `notice`
 and `state` events as Server-Sent Events (`id` = event number), resumes after
 `Last-Event-ID` and ends after the final state.
 
+**Areas.** `POST /areas` keeps an area: GeoJSON in WGS84 as
+`application/json`, or a GeoJSON, GeoPackage or zipped Shapefile as the raw
+body (at most 50 MB, an archive at most 200 MB unpacked, 100 000 vertices,
+read in a process killed after 30 s); its `id` is used by `GET /slots` and
+`GET /local-coverage`, which rescans the area's slots first and measures the
+share in the planar CRS of each country.
+
 **Errors** are RFC 9457 problems (`application/problem+json`) with a stable
 `code` and a Polish `detail`; see the `ProblemDetails` schema.
 """
@@ -63,6 +70,7 @@ _TAGS = [
     {"name": "stores", "description": "Configured stores and their state."},
     {"name": "catalog", "description": "Products, search, file cards, versions."},
     {"name": "map", "description": "Footprints in a map view and sheet grids."},
+    {"name": "areas", "description": "Areas of interest and local coverage."},
     {"name": "jobs", "description": "Background jobs and their events (SSE)."},
     {"name": "projects", "description": "Projects, their pins and status (read)."},
     {"name": "settings", "description": "Settings (changes: administrators)."},

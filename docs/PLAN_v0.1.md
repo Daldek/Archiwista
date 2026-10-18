@@ -603,6 +603,37 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `LocalServer(..., on_stop=)` kończy otwarte strumienie, zanim Uvicorn
     zacznie czekać na połączenia (inaczej Ctrl+C czekałoby na koniec
     zadania).
+  Stan po kroku 9c:
+  - *Trasy* (`archiwista/api/areas.py`, tag `areas`): `POST /areas`
+    (CSRF, `201` z `Location`) — `application/json` z `AreaInput`
+    (`geometry` WGS84, `name`, `source`: `drawn`/`view`/`sheet`) albo plik
+    jako surowa treść innego typu (`application/octet-stream`; bez
+    multipart) z parametrami `name` i `layer`; format z zawartości:
+    GeoJSON, GeoPackage, ZIP z jednym Shapefile (`.shp`, `.shx`, `.dbf`,
+    `.prj`). `GET /areas/{area_id}` → `Area` (`id`, `name`, `source`,
+    `geometry`, `bbox`, `area_km2`, `area_crs`, `countries`,
+    `created_at`). `GET /local-coverage?area_id&product&store[&segment]`
+    → `AreaCoverage` (`area`, `results`: `CountryCoverage` z `ratio`,
+    `percent` zaokrąglonym w dół, `label` „lokalnie 83% obszaru”;
+    `stale_reason`: `store_unavailable`, `refresh_timeout`,
+    `too_many_slots`). Operacje `create_area`, `get_area`,
+    `get_local_coverage`; funkcje bez HTTP `read_area`, `save_area`,
+    `save_area_file`, `read_local_coverage`.
+  - *Obszary* (`archiwista/areas.py`): id = 16 znaków SHA-256 geometrii
+    WGS84 (ta sama geometria — ten sam id i `created_at`; nazwa i źródło
+    z ostatniego żądania); pole w układzie płaskim pierwszego z krajów
+    obszaru w kolejności PL, CZ; poprawa `make_valid`, nigdy
+    upraszczanie; obwód > 5000° → `area_too_complex`. Plik czyta
+    `python -P -m archiwista.area_reader` (pyogrio, jawna zależność)
+    w katalogu o losowej nazwie, zabijany po 30 s (`AreaFiles`,
+    `app.state.area_files`); układ pliku → WGS84 przez
+    `GeoAdapter.transformer` po zagęszczeniu krawędzi. Kopia
+    w `<user_data_dir>/areas/<id>/` (`area.gpkg`, `area.geojson` albo
+    `area.shp`…), starsze niż 7 dni usuwa start aplikacji
+    (`create_app(..., areas_dir=)`).
+  - *Pokrycie*: jednostki z `slots_in_bbox` obrysu obszaru (siatka godeł
+    wymagałaby skali segmentu, której protokół nie podaje), razem ≤ 500,
+    `refresh_view` z limitem 10 s, potem `local_coverage`.
 - **Uprawnienia — `archiwista/state/`, `archiwista/auth/` (krok 8b,
   A-ADR-029, SPEC 4.3 i 10.2):** `StateStore` — baza stanu
   `<user_data_dir>/state.sqlite`, osobna od indeksu, migracje zamiast

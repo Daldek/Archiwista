@@ -103,6 +103,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
         index_path=index_path,
         state=StateStore(tmp_path / "data" / "state.sqlite"),
         registry=NoSources(),
+        areas_dir=tmp_path / "data" / "areas",
         sessions=SessionStore(clock=clock),
         web_dir=web_dir,
     )

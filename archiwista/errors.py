@@ -120,3 +120,39 @@ class JobConflictError(ConflictError):
 
 class OfflineModeError(ArchiwistaError):
     """An action needs the network while offline mode is on (``409 offline_mode``)."""
+
+
+class AreaTooLargeError(ArchiwistaError):
+    """An area file is over its size limit (``413 area_too_large``).
+
+    The body is over 50 MB, or an archive declares more than 200 MB once
+    unpacked; the message is Polish and gives the size and the limit.
+    """
+
+
+class AreaUnreadableError(ArchiwistaError):
+    """An area file cannot be read (``422 area_unreadable``).
+
+    For example an unknown format, an archive member leaving its directory,
+    a missing CRS, no polygon, or a read killed after its time limit; the
+    message is Polish.
+
+    Parameters
+    ----------
+    message : str
+        Polish description of what is wrong with the file.
+    layers : tuple[str, ...], optional
+        Layers to choose from when the file has several (``layer=``).
+    """
+
+    def __init__(self, message: str, *, layers: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.layers = layers
+
+
+class AreaTooComplexError(ArchiwistaError):
+    """An area has more vertices than allowed (``422 area_too_complex``).
+
+    Archiwista never simplifies an area silently; the message is Polish and
+    gives the count and the limit.
+    """

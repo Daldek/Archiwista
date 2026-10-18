@@ -236,6 +236,7 @@ def serve_main(
                 index_path=paths.index_file,
                 state=state,
                 registry=registry,
+                areas_dir=paths.areas_dir,
                 sessions=SessionStore(),
                 jobs=jobs,
             )

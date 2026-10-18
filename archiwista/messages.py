@@ -122,6 +122,81 @@ MESSAGES = MappingProxyType(
             "Magazyn „{store}” projektu „{project}” jest niedostępny, a żaden skan"
             " nie sprawdził jeszcze projektu."
         ),
+        # Areas and local coverage (step 9c).
+        "api_title_area_too_large": "Za duży plik obszaru",
+        "api_title_area_unreadable": "Nie można odczytać obszaru",
+        "api_title_area_too_complex": "Zbyt złożony obszar",
+        "area_body_too_large": (
+            "Treść żądania ma ponad {limit_mb} MB, a tyle najwyżej może mieć"
+            " obszar albo jego plik."
+        ),
+        "area_archive_too_large": (
+            "Archiwum po rozpakowaniu miałoby {size_mb} MB, a najwyżej {limit_mb} MB"
+            " — odrzucone przed rozpakowaniem."
+        ),
+        "area_format_unknown": (
+            "Nieznany format pliku obszaru. Wczytaj GeoJSON, GeoPackage albo"
+            " Shapefile spakowany do ZIP (pliki .shp, .shx, .dbf i .prj)."
+        ),
+        "area_archive_broken": "Nie można odczytać archiwum ZIP: {detail}",
+        "area_archive_unsafe": (
+            "Archiwum zawiera człon „{member}” wychodzący poza swój katalog"
+            " — odrzucone przed rozpakowaniem."
+        ),
+        "area_archive_link": (
+            "Archiwum zawiera dowiązanie symboliczne „{member}” — odrzucone przed"
+            " rozpakowaniem."
+        ),
+        "area_archive_encrypted": "Archiwum zawiera zaszyfrowany człon „{member}”.",
+        "area_archive_duplicate": "Archiwum zawiera dwa razy człon „{member}”.",
+        "area_archive_members": "Archiwum ma {count} członów, a najwyżej {limit}.",
+        "area_shapefile_missing": "Archiwum nie zawiera pliku .shp.",
+        "area_shapefile_parts": (
+            "Shapefile „{layer}” w archiwum nie ma plików {parts} (potrzebne są"
+            " .shp, .shx, .dbf i .prj)."
+        ),
+        "area_layers_many": (
+            "Plik ma kilka warstw z geometrią ({names}) — wybierz jedną"
+            " (parametr layer)."
+        ),
+        "area_layer_unknown": (
+            "Plik nie ma warstwy „{layer}” z geometrią (są: {names})."
+        ),
+        "area_layers_none": "Plik nie ma żadnej warstwy z geometrią.",
+        "area_crs_missing": (
+            "Plik nie podaje układu współrzędnych (np. brak pliku .prj), więc nie"
+            " wiadomo, gdzie leży obszar."
+        ),
+        "area_no_polygon": (
+            "Plik nie zawiera wielokątów, a obszar musi mieć powierzchnię."
+        ),
+        "area_not_polygonal": (
+            "Plik zawiera geometrie inne niż wielokąty ({types}), a obszar może"
+            " składać się tylko z wielokątów."
+        ),
+        "area_read_failed": "Nie można odczytać pliku obszaru: {detail}",
+        "area_read_timeout": (
+            "Odczyt pliku obszaru trwał ponad {seconds} s i został przerwany."
+        ),
+        "area_reader_crashed": (
+            "Proces odczytu pliku obszaru zakończył się bez odpowiedzi (kod"
+            " wyjścia {code})."
+        ),
+        "area_too_many_vertices": (
+            "Obszar ma {vertices} wierzchołków, a najwyżej {limit}. Uprość go"
+            " w programie GIS — Archiwista nie upraszcza geometrii."
+        ),
+        "area_too_long": (
+            "Krawędzie obszaru mają łącznie {length}°, a najwyżej {limit}° — obszar"
+            " jest zbyt rozległy, żeby go zmierzyć."
+        ),
+        "area_empty": "Obszar nie ma powierzchni.",
+        "local_coverage_percent": "lokalnie {percent}% obszaru",
+        "local_coverage_below_one": "lokalnie <1% obszaru",
+        "local_coverage_no_planar_crs": (
+            "lokalnie bez procentu: kraj bez układu płaskiego"
+        ),
+        "local_coverage_empty_area": "lokalnie bez procentu: obszar bez powierzchni",
         # Producer plugins and their adapters.
         "source_unavailable_producer": "Źródło danych {producer} jest niedostępne",
         "source_incompatible_producer": (

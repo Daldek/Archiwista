@@ -344,6 +344,7 @@ def test_event_stream_ends_when_server_stops(
             index_path=env.paths.index_file,
             state=StateStore(env.paths.state_file),
             registry=NoSources(),
+            areas_dir=env.paths.areas_dir,
             jobs=env.jobs,
         )
         server = LocalServer(

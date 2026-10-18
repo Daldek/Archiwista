@@ -285,6 +285,8 @@ tests/
 │   ├── test_agent_flow.py   # Agent przez HTTP: token, sesja, kursory, CSRF, SSE, problemy
 │   ├── test_api.py          # Endpointy /api/v1: trasy, filtry, kursor, problemy, OpenAPI
 │   ├── test_jobs_api.py     # Zadania przez HTTP: 202, 409 z job, offline, actor, SSE i Last-Event-ID
+│   ├── test_areas.py        # Obszary: GeoJSON, GPKG, SHP w ZIP, 50/200 MB, zabicie odczytu, 100 000 wierzchołków, porządki
+│   ├── test_local_coverage.py  # Pokrycie lokalne: odświeżenie przed odpowiedzią, układ płaski, stale
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
@@ -303,6 +305,8 @@ tests/
 │   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
 │   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
 │   ├── jobs_api.py          # Aplikacja z nadzorcą zadań testowych procesów roboczych
+│   ├── area_files.py        # Pliki obszarów: poprawne, zepsute, bomba ZIP, człon poza katalogiem
+│   ├── slow_area_reader.py  # Proces odczytu obszaru, który nie odpowiada (limit czasu)
 │   └── job_owner.py         # Osobny proces-nadzorca do testu zabitego serwera
 ├── perf/
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
@@ -489,6 +493,9 @@ class InvalidChangeError(ArchiwistaError):     # 422 validation_error (błędna 
 class StateError(ArchiwistaError):             # baza stanu nowsza, import do niepustej
 class JobConflictError(ConflictError):         # 409 conflict + trwające zadanie (job)
 class OfflineModeError(ArchiwistaError):       # 409 offline_mode (zadanie wymaga sieci)
+class AreaTooLargeError(ArchiwistaError):      # 413 area_too_large (treść > 50 MB, archiwum > 200 MB)
+class AreaUnreadableError(ArchiwistaError):    # 422 area_unreadable (+ layers przy kilku warstwach)
+class AreaTooComplexError(ArchiwistaError):    # 422 area_too_complex (> 100 000 wierzchołków)
 ```
 
 Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter

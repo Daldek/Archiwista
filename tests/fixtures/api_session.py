@@ -97,6 +97,7 @@ def running_api(
         index_path=paths.index_file,
         state=state,
         registry=plugins,
+        areas_dir=paths.areas_dir,
     )
     with TestClient(app, base_url=BASE_URL) as client:
         yield Api(client, paths, state)

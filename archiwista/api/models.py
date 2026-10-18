@@ -22,6 +22,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from archiwista.areas import area_crs
 from archiwista.config import (
     AppSettings,
     BasemapConfig,
@@ -37,12 +38,15 @@ from archiwista.index import (
     MAX_GRID_COLUMNS,
     MAX_PAGE_LIMIT,
     AreaFilter,
+    AreaRecord,
     BBox,
     FootprintPage,
     GridCell,
     GroupMember,
     IndexStatus,
     JobRef,
+    LocalCoverage,
+    LocalCoverageReport,
     LocationCounts,
     LocationFilter,
     LocationRef,
@@ -72,6 +76,7 @@ from archiwista.index import (
     VersionState,
     VersionSummary,
 )
+from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState
 from archiwista.messages import MESSAGES
 from archiwista.services import Problem, ProjectDetail, StoreSummary
@@ -2316,3 +2321,285 @@ class Settings(BaseModel):
             store_write_for_all=settings.store_write_for_all,
             default_project_visibility=settings.default_project_visibility,
         )
+
+
+# Areas and local coverage ---------------------------------------------------
+
+_AREA_ID = "5f2b9c0e7d41a3b6"
+_AREA_EXAMPLE = {
+    "id": _AREA_ID,
+    "name": "N-34-64-C-c-2-4",
+    "source": "sheet",
+    "geometry": _POLYGON,
+    "bbox": [19.9375, 50.0417, 19.9688, 50.0625],
+    "area_km2": 5.17,
+    "area_crs": "EPSG:2180",
+    "countries": ["PL"],
+    "created_at": "2026-10-18T12:05:00Z",
+}
+_COUNTRY_COVERAGE_EXAMPLE = {
+    "country": "PL",
+    "crs": "EPSG:2180",
+    "ratio": 0.8312,
+    "percent": 83,
+    "area_km2": 5.17,
+    "covered_km2": 4.297,
+    "versions_count": 3,
+    "reason": None,
+    "label": "lokalnie 83% obszaru",
+}
+
+
+class AreaInput(BaseModel):
+    """An area drawn on the map, the map view or a sheet: GeoJSON in WGS84.
+
+    A file (GeoJSON, GeoPackage, Shapefile in a ZIP archive) is sent as the
+    raw body instead (see `POST /areas`).
+    """
+
+    model_config = _examples(
+        {"geometry": _POLYGON, "name": "N-34-64-C-c-2-4", "source": "sheet"},
+        closed=True,
+    )
+
+    geometry: Geometry = Field(
+        description=(
+            "GeoJSON `Polygon` or `MultiPolygon` in WGS84 (longitude, latitude),"
+            " at most 100 000 vertices."
+        )
+    )
+    name: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Name shown with the area, e.g. a sheet code.",
+    )
+    source: Literal["drawn", "view", "sheet"] = Field(
+        default="drawn",
+        description=(
+            "How the area was chosen: `drawn` (rectangle or polygon), `view` (the"
+            " map view) or `sheet`."
+        ),
+    )
+
+
+class Area(BaseModel):
+    """An area kept in the index: geometry in WGS84, planar area, countries."""
+
+    model_config = _examples(_AREA_EXAMPLE)
+
+    id: str = Field(
+        description="Area id; it comes from the geometry, so the same area keeps it."
+    )
+    name: str | None = Field(description="Name shown with the area.")
+    source: str = Field(description="`drawn`, `view`, `sheet` or `file`.")
+    geometry: Geometry = Field(description="GeoJSON polygon in WGS84.")
+    bbox: list[float] = Field(description="`[min_lon, min_lat, max_lon, max_lat]`.")
+    area_km2: float | None = Field(
+        description="Area in km², measured in `area_crs`; null without a planar CRS."
+    )
+    area_crs: str | None = Field(
+        description=(
+            "Planar CRS of `area_km2`: of the first of `countries` in the order"
+            " PL (EPSG:2180), CZ (EPSG:5514); null for other countries."
+        )
+    )
+    countries: list[str] = Field(description="The producer's countries the area meets.")
+    created_at: datetime
+
+    @classmethod
+    def of(cls, record: AreaRecord) -> Self:
+        """Return the model of a kept area."""
+        measured = record.area_km2 is not None
+        return cls(
+            id=record.id,
+            name=record.name,
+            source=record.source,
+            geometry=record.geometry,
+            bbox=list(polygon_bounds(record.geometry) or ()),
+            area_km2=record.area_km2,
+            area_crs=area_crs(record.countries) if measured else None,
+            countries=list(record.countries),
+            created_at=record.created_at,
+        )
+
+
+class AreaRef(BaseModel):
+    """The area an answer is about."""
+
+    model_config = _examples(
+        {key: _AREA_EXAMPLE[key] for key in ("id", "name", "area_km2", "countries")}
+    )
+
+    id: str
+    name: str | None
+    area_km2: float | None
+    countries: list[str]
+
+    @classmethod
+    def of(cls, record: AreaRecord) -> Self:
+        """Return the reference of a kept area."""
+        return cls(
+            id=record.id,
+            name=record.name,
+            area_km2=record.area_km2,
+            countries=list(record.countries),
+        )
+
+
+class CountryCoverage(BaseModel):
+    """Local coverage of the area by the product in one country (decision 5)."""
+
+    model_config = _examples(
+        _COUNTRY_COVERAGE_EXAMPLE,
+        {
+            **_COUNTRY_COVERAGE_EXAMPLE,
+            "country": None,
+            "crs": None,
+            "ratio": None,
+            "percent": None,
+            "area_km2": None,
+            "covered_km2": None,
+            "versions_count": 1,
+            "reason": "no_planar_crs",
+            "label": MESSAGES["local_coverage_no_planar_crs"],
+        },
+    )
+
+    country: str | None = Field(
+        description="Country of the files, e.g. `PL`; null for files without one."
+    )
+    crs: str | None = Field(description="Planar CRS of the measurement.")
+    ratio: float | None = Field(
+        description=(
+            "Share of the area under the outlines of the current versions, 0–1"
+            " (overlaps count once); null with `reason`."
+        )
+    )
+    percent: int | None = Field(
+        description="`ratio` in whole percent, rounded down: 100 only if fully covered."
+    )
+    area_km2: float | None = Field(description="The area in `crs`, km².")
+    covered_km2: float | None = Field(description="Its covered part, km².")
+    versions_count: int = Field(
+        description="Current versions whose outline shares interior with the area."
+    )
+    reason: str | None = Field(
+        description="Why there is no share: `no_planar_crs` or `empty_area`."
+    )
+    label: str = Field(description="Polish text, e.g. „lokalnie 83% obszaru”.")
+
+    @classmethod
+    def of(cls, item: LocalCoverage) -> Self:
+        """Return the model of one country's local coverage."""
+        percent = None if item.ratio is None else _percent(item.ratio)
+        return cls(
+            country=item.country,
+            crs=item.crs,
+            ratio=item.ratio,
+            percent=percent,
+            area_km2=item.area_km2,
+            covered_km2=item.covered_km2,
+            versions_count=item.versions_count,
+            reason=item.reason,
+            label=_coverage_label(item, percent),
+        )
+
+
+class AreaCoverage(IndexAnswer):
+    """Local state of a product for an area („lokalnie 83% obszaru”).
+
+    The slots of the area are rescanned first (at most 500); when the store is
+    unavailable, the rescan runs out of time or the area holds more slots, the
+    answer comes from the index with `stale` and `stale_reason`.
+    """
+
+    model_config = _examples(
+        {
+            "area": {
+                key: _AREA_EXAMPLE[key]
+                for key in ("id", "name", "area_km2", "countries")
+            },
+            "store": _STORE,
+            "product": "nmt",
+            "segment": None,
+            "results": [_COUNTRY_COVERAGE_EXAMPLE],
+            "stale_reason": None,
+            **_FRESH,
+        }
+    )
+
+    area: AreaRef
+    store: str = Field(description="Store id.")
+    product: str = Field(description="Product, e.g. `nmt`.")
+    segment: str | None = Field(description="The only segment measured, if asked for.")
+    results: list[CountryCoverage] = Field(
+        description=(
+            "One result per country; empty when the store holds no version of the"
+            " product for the area."
+        )
+    )
+    stale_reason: str | None = Field(
+        description=(
+            "Why the slots were not rescanned first: `store_unavailable`,"
+            " `refresh_timeout` or `too_many_slots`; null when they were."
+        )
+    )
+
+    @classmethod
+    def of(
+        cls,
+        record: AreaRecord,
+        report: LocalCoverageReport,
+        *,
+        segment: str | None,
+        freshness: Iterable[StoreFreshness],
+    ) -> Self:
+        """Return the answer of a local coverage report (``stale`` included)."""
+        fields = staleness(freshness, {report.store})
+        return cls(
+            area=AreaRef.of(record),
+            store=report.store,
+            product=report.product,
+            segment=segment,
+            results=[CountryCoverage.of(item) for item in report.results],
+            stale=report.stale or fields["stale"],
+            stale_reason=report.stale_reason,
+            stale_stores=fields["stale_stores"],
+        )
+
+
+class CoverageQuery(BaseModel):
+    """The area, product and store of ``GET /local-coverage``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    area_id: str = Field(description="Area id (`POST /areas`).", examples=[_AREA_ID])
+    product: str = Field(description="Product, e.g. `nmt`.", examples=["nmt"])
+    store: str = Field(description="Store id.", examples=[_STORE])
+    segment: str | None = Field(
+        default=None,
+        description="Only this segment (variant) of the product.",
+        examples=[_SEGMENT],
+    )
+
+
+def _percent(ratio: float) -> int:
+    """Whole percent rounded down, so that 100 means fully covered.
+
+    Rounding to a millionth of a percent first absorbs the floating-point
+    error of a measured full coverage.
+    """
+    return math.floor(round(ratio * 100, 6))
+
+
+def _coverage_label(item: LocalCoverage, percent: int | None) -> str:
+    if item.ratio is None or percent is None:
+        key = (
+            "local_coverage_empty_area"
+            if item.reason == "empty_area"
+            else "local_coverage_no_planar_crs"
+        )
+        return MESSAGES[key]
+    if percent == 0 and item.ratio > 0:
+        return MESSAGES["local_coverage_below_one"]
+    return MESSAGES["local_coverage_percent"].format(percent=percent)

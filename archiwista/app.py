@@ -11,8 +11,9 @@ through ``request.app.state``: ``settings`` (``SettingsService``),
 (``Authorizer`` over the state database), ``queries`` (``IndexQueries``),
 ``registry`` (the producer plugins), the last three also as dependencies of
 ``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
-without background jobs, which leaves out their routes) and ``job_streams``
-(open job event streams, which the server ends as it stops).
+without background jobs, which leaves out their routes), ``job_streams``
+(open job event streams, which the server ends as it stops) and
+``area_files`` (``AreaFiles``: copies of area files and their reader).
 """
 
 from collections.abc import AsyncIterator
@@ -33,11 +34,13 @@ from archiwista.api import (
     slots,
     stores,
 )
+from archiwista.api import areas as area_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import map as map_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api.docs import install_docs, operation_id
 from archiwista.api.errors import ApiError, install_error_handlers
+from archiwista.areas import AreaFiles, prune_area_copies
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
@@ -57,6 +60,7 @@ def create_app(
     index_path: Path,
     state: StateStore,
     registry: PluginRegistry,
+    areas_dir: Path,
     sessions: SessionStore | None = None,
     web_dir: Path = WEB_DIR,
     jobs: JobSupervisor | None = None,
@@ -76,6 +80,9 @@ def create_app(
     registry : PluginRegistry
         Producer plugins: their states, and adapters for requests needing a
         producer (project status, sheet grids, areas in another CRS).
+    areas_dir : Path
+        Copies of uploaded area files (``AppPaths.areas_dir``); those older
+        than 7 days are deleted at start-up (``app.state.area_files``).
     sessions : SessionStore or None, optional
         Live sessions; a new, empty store when omitted.
     web_dir : Path, optional
@@ -96,6 +103,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        prune_area_copies(areas_dir)
         yield
         queries.close()
 
@@ -117,6 +125,7 @@ def create_app(
     app.state.jobs = jobs
     app.state.job_streams = job_routes.JobStreams()
     app.state.registry = registry
+    app.state.area_files = AreaFiles(areas_dir)
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
@@ -126,6 +135,7 @@ def create_app(
     app.include_router(map_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
+    app.include_router(area_routes.router, prefix=API_PREFIX)
     if jobs is not None:
         app.include_router(job_routes.router, prefix=API_PREFIX)
     install_docs(app)
