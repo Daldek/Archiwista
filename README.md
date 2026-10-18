@@ -15,24 +15,31 @@ a źródłem prawdy są pliki w magazynie (sidecary `kartograf-meta/1`
 i `imgw-meta/1`) i manifesty projektów. Archiwista trzyma tylko lokalny
 indeks i podglądy, które można w każdej chwili odbudować.
 
-**Status:** specyfikacja — w repozytorium nie ma jeszcze kodu aplikacji.
+**Status:** wdrażanie v0.1: dostępny jest pakiet, interfejs źródeł i pomoc CLI;
+widoki, indeks i działające komendy pojawią się w kolejnych krokach planu.
 Zakres pierwszego wydania (MVP, v1.0): przeglądanie magazynu, podglądy,
 działania (dostępność, pobieranie, aktualność, projekty), tryb zespołu i dane
 IMGW; zestaw do QGIS, asystent i łączenie danych — po MVP. Architektura
 przyjęta (2026-10-18): Python + FastAPI, interfejs Preact + htm, MapLibre GL.
 
-## Instalacja (planowana)
+## Instalacja deweloperska (krok 1)
 
-Kartograf jest wymaganą zależnością, a IMGWTools opcjonalnym dodatkiem;
-źródła danych są wtyczkami (decyzja A-ADR-024):
+Wymagany jest Python 3.12+ i sąsiednie repozytorium Kartografa z gałęzią
+`feat/archiwista-store-api` (albo z jej zmianami już scalonymi):
 
 ```bash
-pip install archiwista             # dane Kartografa; źródło IMGW niedostępne
-pip install "archiwista[imgw]"     # dodatkowo dane IMGW (IMGWTools)
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ../Kartograf
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/archiwista --help
 ```
 
-Bez `[imgw]` aplikacja działa w całości dla danych Kartografa: widoki stacji
-IMGW są ukryte, a API i asystent jasno mówią, że to źródło jest niedostępne.
+Plik `requirements.lock` przypina pakiety środowiska Python 3.13; instalacja
+lokalnego Kartografa pozostaje edytowalna, a ścieżka do niego nie jest
+zależnością pakietu wydania. W kroku 1 komenda udostępnia tylko pomoc — nie
+uruchamia jeszcze serwera ani skanu. Dodatek `archiwista[imgw]` powstanie
+dopiero w v0.5.
 
 | Dokument | Zawartość |
 |---|---|
