@@ -1394,7 +1394,13 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
   „przerwane” z przyciskiem „Ponów”; ponowienie jest bezpieczne (Kartograf
   używa gotowych wersji lokalnych).
 - **Dzienniki:** plik na zadanie (logger Kartografa na poziomie INFO
-  i zdarzenia), przechowywanie 90 dni albo 1 GB.
+  i zdarzenia), przechowywanie 90 dni albo 1 GB (ostatnie zadanie każdego
+  rodzaju w magazynie zostaje). Rutynowe skany — przyrostowe skany całego
+  magazynu z harmonogramu, zakończone sukcesem, bez komunikatów i bez
+  zmian (ponowny odczyt manifestów projektów bez magazynu, czytanych przy
+  każdym skanie, nie jest zmianą) — znikają z historią i dziennikiem po
+  48 h, poza najnowszym w magazynie; pełne skany zostają. Przycinanie
+  biegnie przy starcie serwera i co godzinę.
 - **Cache metadanych Kartografa:** procesy robocze dostają lokalny
   `MetadataCache` w katalogu danych Archiwisty — nigdy `cache=True` (plik
   w bieżącym katalogu) i nigdy na udziale (zasada M12 specu manifestu).
@@ -3238,7 +3244,10 @@ Decyzja: A-ADR-012.
 - **Ścieżki:** API przyjmuje tylko ścieżki znane indeksowi; plik do
   odczytu jest rozstrzygany (`realpath`) i musi leżeć w korzeniu
   skonfigurowanego magazynu albo katalogu projektu; dowiązania symboliczne
-  wychodzące poza korzeń są odrzucane.
+  wychodzące poza korzeń są odrzucane. Tak samo sprawdzanie dowiązań
+  i stan projektu w zadaniach. Manifest projektu będący dowiązaniem
+  symbolicznym poza skonfigurowany katalog projektów nie jest czytany:
+  projekt widać jako niepoprawny z komunikatem `path_outside_root`.
 - **Zapis:** Archiwista nie ma kodu zapisującego w magazynie (w żadnym
   z katalogów producentów); zapisuje
   tylko indeks, pamięć podglądów i dzienniki (lokalnie) oraz — na polecenie
@@ -3263,7 +3272,21 @@ Decyzja: A-ADR-012.
   w odpowiedziach API ani w dziennikach. Dane uwierzytelniające źródeł
   (`CLMS_CREDENTIALS`) — jak 5.6.
 - **Zależności:** wersje przypięte; audyt podatności (`pip-audit`,
-  `npm audit`) w bramce wydania.
+  `npm audit`) w bramce wydania. Pliki zewnętrzne interfejsu
+  (`archiwista/web/vendor/`) i Swagger UI z `/api/docs`
+  (`archiwista/api/swagger/`) są wbudowane w pakiet, bez CDN. Każdy z tych
+  katalogów ma manifest `vendor.json`: nazwa, wersja, licencja, źródło
+  (paczka npm z `integrity` rejestru albo archiwum z sha256), dla każdego
+  pliku ścieżka w źródle (`from`) i suma sha256; wyjątki są opisane
+  (`modified`). Test `tests/unit/test_vendor_integrity.py` sprawdza bez
+  sieci, że każdy plik tych katalogów jest w manifeście i ma zapisaną sumę;
+  nieznany albo zmieniony plik to błąd. Własne pliki Archiwisty
+  (`vendor.json`, `archiwista-docs.js`) są wyłączone z nazwy. Środowisko
+  Python przypina `requirements.lock` z sumami sha256 (`pip install
+  --require-hashes`); lokalne Kartograf i Archiwista instalują się potem
+  edytowalnie z `--no-deps`. Aktualizacja biblioteki zewnętrznej: pobrać
+  paczkę ze źródła, sprawdzić `integrity`, podmienić pliki i sumy
+  w manifeście w tym samym commicie.
 
 ### 10.2 Tryb zespołu i uprawnienia (model od v0.1, logowanie v0.4; rozszerzenia od v1.1 i v1.2)
 

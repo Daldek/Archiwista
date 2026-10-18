@@ -268,7 +268,9 @@ tests/
 │   ├── test_coverage.py     # Pokrycie lokalne w układzie płaskim (decyzja 5)
 │   ├── test_store_summary.py  # Stan magazynu: zajętość, raport porządków, problemy
 │   ├── test_snapshots.py    # Migawki danych własnych (A-ADR-027)
-│   ├── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
+│   ├── test_security.py     # Host, token, CSRF, sesje agentów, limity treści (SPEC 10.1)
+│   ├── test_paths.py        # Ścieżki z indeksu w korzeniu, prywatne katalogi danych 0700 (SPEC 10.1)
+│   ├── test_vendor_integrity.py  # Pliki zewnętrzne (web/vendor, api/swagger) zgodne z manifestami vendor.json (sha256, brak plików spoza manifestu)
 │   ├── test_authorize.py    # Macierz widoczności, role, store.write (A-ADR-029)
 │   ├── test_project_visibility.py  # Filtr widoczności w zapytaniach i usługach
 │   ├── test_job_protocol.py # JSON Lines nadzorcy i procesu roboczego (SPEC 5.6)
