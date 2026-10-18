@@ -281,7 +281,8 @@ tests/
 │   ├── test_disconnected_store.py  # Odłączony udział: tylko probe, potem skan przyrostowy
 │   ├── test_permissions_api.py  # Uprawnienia przez HTTP: 404/403, CSRF, dziennik
 │   ├── test_state.py        # Baza stanu: migracje, przebudowa indeksu, eksport/import
-│   ├── test_cli.py          # CLI --json równe odpowiedziom API
+│   ├── test_cli.py          # CLI --json równe odpowiedziom API (status, search, karty, token)
+│   ├── test_agent_flow.py   # Agent przez HTTP: token, sesja, kursory, CSRF, SSE, problemy
 │   ├── test_api.py          # Endpointy /api/v1: trasy, filtry, kursor, problemy, OpenAPI
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta

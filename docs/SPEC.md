@@ -1233,7 +1233,7 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 | `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
 | `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
 | `archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
-| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import` |
+| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista token` (jednorazowy token sesji agenta), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import`; polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API (`archiwista/reader.py`; `docs/API_dla_agentow.md`) |
 
 Interfejs (`archiwista/web/`, A-ADR-028): trasy
 z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link

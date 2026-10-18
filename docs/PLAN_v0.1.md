@@ -1163,6 +1163,17 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   (klient HTTP bez `Origin`: token z `archiwista token`, sesja,
   stronicowanie, `POST` skanu z CSRF → `202`, `source_unavailable` bez
   wtyczki). **Zależności:** 8, 8b, 9a. **Równolegle:** 9b–11.
+- **Stan po kroku 12:** polecenia odczytu żyją w `archiwista/reader.py`
+  (w `cli.py` tylko rejestracja): `status`, `sources`, `search`, `entry`,
+  a ponadto `version MAGAZYN WERSJA`, `projects [--store]` i `project
+  PROJEKT` (modele `/stores/{store}/versions/{version}`, `/projects`,
+  `/projects/{project}`). `--years` ma postać HTTP (`2020-2023`, `2020-`,
+  `-2023`), nie `OD:DO`; wartości z minusem podaje się z `=`. Opcje
+  `search` sprawdza `CatalogFilters`, a błędy to ten sam problem `422`
+  co trasa (wspólne `validation_problem` w `api/errors.py`). Widoczność
+  `LOCAL_OWNER` daje `Authorizer.visible_projects` jak w HTTP. Przewodnik
+  `docs/API_dla_agentow.md` powstał w tym kroku (z sekcją zadań i SSE
+  według 9b); krok 14 go aktualizuje. CLI nie ma poleceń zadań.
 
 ### 13. E2E, awarie udziału i pomiary
 - **Cel:** `tests/e2e/test_acceptance.py` (Playwright na **rzeczywistym

@@ -13,7 +13,7 @@ answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
 ``Allow``) and unexpected failures ``500 internal_error``.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -272,20 +272,36 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=status, media_type=PROBLEM_MEDIA_TYPE)
 
 
-async def _validation_error(
-    request: Request, error: RequestValidationError
-) -> JSONResponse:
-    errors = [
+def validation_problem(errors: Iterable[Mapping[str, Any]]) -> dict[str, object]:
+    """Return the ``422 validation_error`` problem of invalid request data.
+
+    Parameters
+    ----------
+    errors : Iterable[Mapping[str, Any]]
+        Pydantic errors; ``loc`` starts with where the value came from
+        (``query``, ``path``, ``body``), as FastAPI reports it.
+    """
+    items = [
         {
             "field": ".".join(str(part) for part in item.get("loc", ())),
             "type": item.get("type"),
             "message": item.get("msg"),
         }
-        for item in error.errors()
+        for item in errors
     ]
-    fields = ", ".join(str(item["field"]) for item in errors)
+    fields = ", ".join(str(item["field"]) for item in items)
     detail = MESSAGES["api_validation_error"].format(fields=fields)
-    return problem_response(422, "validation_error", detail, {"errors": errors})
+    return problem_body(422, "validation_error", detail, {"errors": items})
+
+
+async def _validation_error(
+    request: Request, error: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(
+        validation_problem(error.errors()),
+        status_code=422,
+        media_type=PROBLEM_MEDIA_TYPE,
+    )
 
 
 async def _http_error(request: Request, error: HTTPException) -> JSONResponse:

@@ -500,6 +500,115 @@ MESSAGES = MappingProxyType(
         ),
         "cli_access_default": " (widoczność domyślna — projekt nie ma własnego wpisu)",
         "cli_none": "brak",
+        # Read commands of the index for people, scripts and agents (step 12).
+        "cli_status_help": (
+            "Stan Archiwisty: wersje, źródła danych, indeks i magazyny"
+            " (jak GET /api/v1/health)."
+        ),
+        "cli_sources_help": (
+            "Wtyczki producentów danych i ich stan (jak GET /api/v1/sources)."
+        ),
+        "cli_search_help": (
+            "Wyszukuje i filtruje katalog plików (jak GET /api/v1/slots, opcje"
+            " o tych samych nazwach); kolejna strona: --cursor."
+        ),
+        "cli_entry_help": (
+            "Karta pliku: wszystkie wersje, bieżąca, pełny arkusz, przypięcia"
+            " i problemy (jak GET /api/v1/stores/{store}/slots/{slot})."
+        ),
+        "cli_version_help": (
+            "Karta jednej wersji: wartości z indeksu, surowy sidecar i ścieżka"
+            " (jak GET /api/v1/stores/{store}/versions/{version})."
+        ),
+        "cli_projects_help": "Projekty, które widzisz (jak GET /api/v1/projects).",
+        "cli_project_card_help": (
+            "Karta projektu: zadania, przypięcia i problemy"
+            " (jak GET /api/v1/projects/{project})."
+        ),
+        "cli_store_id_help": "identyfikator magazynu z ustawień, np. zespol",
+        "cli_slot_help": "ścieżka slotu w magazynie, jak pole slot wyników search",
+        "cli_version_path_help": "ścieżka wersji, jak pole version.path",
+        "cli_projects_store_help": "tylko projekty tego magazynu",
+        "cli_search_q_help": (
+            "szukany tekst; pasować musi każde słowo: godło, TERYT, KU, nazwa"
+            " pliku, produkt, etykieta wersji, kampania, początek SHA-256"
+        ),
+        "cli_search_store_help": "identyfikator magazynu",
+        "cli_search_product_help": "produkt, np. nmt",
+        "cli_search_country_help": "kod kraju, np. PL",
+        "cli_search_years_help": "rok danych: 2023, 2020-2023, 2020- albo -2023",
+        "cli_search_unit_help": "dokładny kod jednostki: godło arkusza, TERYT albo KU",
+        "cli_search_versions_help": (
+            "wiersze: current (bieżące, domyślnie), all, full_sheet, pinned"
+            " albo noncurrent_unpinned"
+        ),
+        "cli_search_status_help": (
+            "stan wiersza: ok, missing, no_sidecar, unreadable albo unrecognized"
+        ),
+        "cli_search_location_help": (
+            "położenie: any (domyślnie), with (obrys albo cały kraj) albo none"
+            " (bez położenia)"
+        ),
+        "cli_search_area_id_help": "obszar zapisany przez POST /api/v1/areas",
+        "cli_search_bbox_help": (
+            "prostokąt min_x,min_y,max_x,max_y w układzie z --bbox-crs"
+        ),
+        "cli_search_bbox_crs_help": (
+            "układ współrzędnych --bbox, np. EPSG:2180 (domyślnie EPSG:4326)"
+        ),
+        "cli_search_limit_help": "liczba wierszy na stronie: 1–200 (domyślnie 50)",
+        "cli_search_cursor_help": (
+            "next_cursor poprzedniej strony tego samego zapytania"
+        ),
+        "cli_read_failed": "Nie można odczytać indeksu",
+        "cli_status_line": "Archiwista {version}; indeks: schemat {schema}, {size}.",
+        "cli_source_line": "Źródło {producer} ({version}): {message}",
+        "cli_store_line": (
+            "Magazyn „{store}” ({name}): {status}; sloty {slots}, wersje"
+            " {versions}, brakujące {missing}, problemy {issues}; indeks z"
+            " {indexed_at}."
+        ),
+        "cli_store_job": " Zadanie: {kind}, {state}.",
+        "cli_store_status_unknown": "jeszcze nie zeskanowany",
+        "cli_store_status_available": "dostępny",
+        "cli_store_status_unavailable": "niedostępny",
+        "cli_stale_line": (
+            "Uwaga: magazyn „{store}” jest niedostępny — odpowiedź według"
+            " indeksu z {indexed_at}."
+        ),
+        "cli_never": "nigdy",
+        "cli_search_row": "{store}  {slot}  (wersja {label}, rok danych {year})",
+        "cli_search_summary": (
+            "Wierszy: {count}. Położenie w całym wyniku — obrys: {footprint},"
+            " kraj: {country}, brak: {none}."
+        ),
+        "cli_search_next": "Następna strona: --cursor {cursor}",
+        "cli_no_rows": "Brak wyników.",
+        "cli_entry_title": "{store}/{slot} — {name}",
+        "cli_entry_facts": (
+            "Segment: {segment}; jednostka: {unit}; produkt: {product}; kraj:"
+            " {country}; stan: {status}."
+        ),
+        "cli_version_line": "  {path} — {label}, rok danych {year}{marks}",
+        "cli_version_current": ", bieżąca",
+        "cli_version_full_sheet": ", pełny arkusz",
+        "cli_version_missing": ", brak pliku",
+        "cli_version_pinned": "; przypięta w: {projects}",
+        "cli_version_title": "{store}/{path} (slot {slot})",
+        "cli_version_facts": (
+            "Etykieta: {label}; rok danych: {year}; rozmiar: {size}; układ:"
+            " {crs}; SHA-256: {sha256}."
+        ),
+        "cli_version_license": "Licencja: {license}; atrybucja: {attribution}.",
+        "cli_path_line": "Ścieżka: {path}",
+        "cli_problem_line": "Problem: {message} {instruction}",
+        "cli_project_line": (
+            "{project} — {name}; magazyn: {store}; zadania {tasks}, przypięcia"
+            " {pins}, brakujące {missing}."
+        ),
+        "cli_no_projects": "Brak widocznych projektów.",
+        "cli_task_line": "  zadanie {task}: {command}; stan: {status}",
+        "cli_pin_line": "  przypięcie {version} (zadanie {task}): {state}",
         # Background jobs, their scheduler and ``archiwista reindex`` (step 6b).
         "job_kind_scan": "skan",
         "job_kind_footprints": "obrysy jednostek",

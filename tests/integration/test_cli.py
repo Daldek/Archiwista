@@ -5,19 +5,30 @@ refusals included, so scripts and agents can use either (A-ADR-029, step
 12).
 """
 
+import argparse
 import json
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
 from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.reader import add_read_commands
+from archiwista.security import redeem_one_time_token
 from archiwista.sources import ProjectInfo
+from tests.fixtures import api_store
 from tests.fixtures.api_session import Api, Caller, running_api
+from tests.fixtures.api_store import ServedStore, served_store
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
 from tests.fixtures.local_server import local_paths
+
+pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+KRAKOW = "19.9,50.0,20.0,50.05"
 
 
 @pytest.fixture
@@ -162,3 +173,265 @@ def test_admin_cli_taken_id_is_a_conflict(
     # Assert
     assert answered.status_code == 409
     assert printed == answered.json()
+
+
+# Read commands over a scanned store (step 12).
+
+
+@pytest.fixture(scope="module")
+def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ServedStore]:
+    """Serve one scanned store for the read commands."""
+    with served_store(tmp_path_factory.mktemp("cli")) as found:
+        yield found
+
+
+class _Reader:
+    """Run a read command with ``--json`` and the HTTP route it mirrors."""
+
+    def __init__(self, served: ServedStore, capsys: pytest.CaptureFixture[str]):
+        self._served = served
+        self._capsys = capsys
+
+    def cli(self, *argv: str, status: int = 0) -> Any:
+        self._capsys.readouterr()
+        code = main(
+            [*argv, "--json"],
+            registry=self._served.registry,
+            paths=self._served.api.paths,
+        )
+        captured = self._capsys.readouterr()
+        assert code == status, captured.err
+        return json.loads(captured.out)
+
+    def http(self, path: str, status: int = 200) -> Any:
+        response = self._served.owner.request("GET", path)
+        assert response.status_code == status, response.text
+        return response.json()
+
+
+def _search_argv(params: dict[str, str]) -> list[str]:
+    """Return ``search`` arguments of ``/slots`` parameters (``q`` positional)."""
+    argv = ["search"]
+    if "q" in params:
+        argv.append(params["q"])
+    argv += [
+        f"--{name.replace('_', '-')}={value}"
+        for name, value in params.items()
+        if name != "q"
+    ]
+    return argv
+
+
+def test_search_options_match_slots_parameters(served: ServedStore) -> None:
+    """``search`` has exactly one option per ``/slots`` parameter, of its name."""
+    # Arrange
+    parser = argparse.ArgumentParser()
+    commands = parser.add_subparsers(dest="command")
+    add_read_commands(commands)
+    document = served.owner.request("GET", "/openapi.json").json()
+    parameters = {
+        item["name"] for item in document["paths"]["/api/v1/slots"]["get"]["parameters"]
+    }
+
+    # Act
+    search = parser.parse_args(["search"])
+    options = {
+        action.dest: action.option_strings
+        for action in commands.choices["search"]._actions
+        if action.dest not in {"help", "json"}
+    }
+
+    # Assert
+    assert set(options) == parameters
+    assert options.pop("q") == []  # the positional QUERY
+    for name, strings in options.items():
+        assert strings == [f"--{name.replace('_', '-')}"]
+        assert getattr(search, name) is None  # the model's default applies
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"versions": "all", "limit": "7"},
+        {"product": "nmt", "years": "2019-2021", "versions": "all", "limit": "4"},
+        {"q": "nmt", "status": "ok", "limit": "5"},
+        {"location": "none", "store": "zespol"},
+        {"bbox": KRAKOW, "location": "with", "limit": "3"},
+        {"versions": "noncurrent_unpinned", "limit": "200"},
+    ],
+)
+def test_search_cli_equals_http(
+    served: ServedStore, capsys: pytest.CaptureFixture[str], params: dict[str, str]
+) -> None:
+    """Every page of a query, followed by its cursor, is the same on both doors."""
+    # Arrange
+    run = _Reader(served, capsys)
+    pages: list[tuple[Any, Any]] = []
+    cursor: dict[str, str] = {}
+
+    # Act
+    while len(pages) < 20:
+        query = {**params, **cursor}
+        pair = (run.cli(*_search_argv(query)), run.http(f"/slots?{urlencode(query)}"))
+        pages.append(pair)
+        if pair[1]["next_cursor"] is None:
+            break
+        cursor = {"cursor": pair[1]["next_cursor"]}
+
+    # Assert
+    assert pages[-1][1]["next_cursor"] is None
+    for from_cli, from_http in pages:
+        assert from_cli == from_http
+    assert any(page["items"] for _, page in pages) or params.get("location")
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"limit": "201"},
+        {"limit": "dużo"},
+        {"years": "2022-2020"},
+        {"years": "rok"},
+        {"store": "brak"},
+        {"bbox": "1,2,3"},
+        {"product": "nmt", "cursor": "obcy"},
+    ],
+)
+def test_search_cli_refusal_equals_http_problem(
+    served: ServedStore, capsys: pytest.CaptureFixture[str], params: dict[str, str]
+) -> None:
+    """Invalid options print the route's ``422`` problem and exit with status 1."""
+    # Arrange
+    run = _Reader(served, capsys)
+
+    # Act
+    printed = run.cli(*_search_argv(params), status=1)
+    answered = run.http(f"/slots?{urlencode(params)}", status=422)
+
+    # Assert
+    assert printed == answered
+    assert printed["code"] == "validation_error"
+
+
+def test_search_cursor_of_another_query_refused(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cursor is bound to its query on both doors."""
+    # Arrange
+    run = _Reader(served, capsys)
+    cursor = run.cli("search", "--limit=3")["next_cursor"]
+
+    # Act
+    printed = run.cli("search", "--product=nmt", f"--cursor={cursor}", status=1)
+    answered = run.http(f"/slots?product=nmt&cursor={cursor}", status=422)
+
+    # Assert
+    assert printed == answered
+
+
+def test_status_json_equals_health(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``status --json`` is ``GET /health``; ``sources --json`` is ``/sources``."""
+    # Arrange
+    run = _Reader(served, capsys)
+
+    # Act
+    status = run.cli("status")
+    health = run.http("/health")
+    sources = run.cli("sources")
+
+    # Assert
+    assert status == health
+    assert status["stores"][0]["state"]["slots"] > 0
+    assert sources == run.http("/sources")
+
+
+def test_entry_json_equals_slot_card(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """File, version and project cards are the routes' models; unknown is 404."""
+    # Arrange
+    run = _Reader(served, capsys)
+    store = api_store.STORE
+    slot = run.http("/slots?versions=all&limit=1")["items"][0]["slot"]
+    projects = run.http("/projects")
+    project = projects["items"][0]["project"]
+
+    # Act
+    entry = run.cli("entry", store, slot)
+    version = run.cli("version", store, entry["current"])
+    missing = run.cli("entry", store, "nie/ma.tif", status=1)
+
+    # Assert
+    assert entry == run.http(f"/stores/{store}/slots/{slot}")
+    assert entry["versions"]
+    path = entry["current"]
+    assert version == run.http(f"/stores/{store}/versions/{path}")
+    assert missing == run.http(f"/stores/{store}/slots/nie/ma.tif", status=404)
+    assert missing["code"] == "not_found"
+    assert run.cli("projects") == projects
+    assert run.cli("projects", "--store", store) == run.http(f"/projects?store={store}")
+    assert run.cli("project", project) == run.http(f"/projects/{project}")
+
+
+def test_read_commands_text_for_people(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Without ``--json`` the commands print Polish text, problems on stderr."""
+    # Arrange
+    paths = served.api.paths
+
+    def text(*argv: str) -> tuple[int, str, str]:
+        capsys.readouterr()
+        code = main(list(argv), registry=served.registry, paths=paths)
+        captured = capsys.readouterr()
+        return code, captured.out, captured.err
+
+    # Act
+    status = text("status")
+    page = text("search", "--limit=2")
+    refused = text("search", "--limit=0")
+
+    # Assert
+    assert status[0] == 0 and "Magazyn „zespol”" in status[1]
+    assert page[0] == 0 and "Następna strona: --cursor " in page[1]
+    assert refused[0] == 1 and refused[1] == ""
+    assert "query.limit" in refused[2]
+
+
+def test_token_is_one_time_and_expires(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``token --json`` gives one session to an agent, for five minutes only."""
+    # Arrange
+    run = _Reader(served, capsys)
+    client = served.api.client
+
+    # Act
+    issued = run.cli("token")
+    first = client.post("/api/v1/session", json={"token": issued["token"]})
+    client.cookies.clear()
+    second = client.post("/api/v1/session", json={"token": issued["token"]})
+    late = run.cli("token")
+    expires_at = datetime.fromisoformat(late["expires_at"])
+    expired = redeem_one_time_token(
+        served.api.paths.index_file,
+        late["token"],
+        now=expires_at,
+    )
+    in_time = redeem_one_time_token(
+        served.api.paths.index_file,
+        late["token"],
+        now=expires_at - timedelta(seconds=1),
+    )
+
+    # Assert
+    assert issued["url"].startswith("http://127.0.0.1:")
+    assert issued["url"].endswith(f"/#token={issued['token']}")
+    assert first.status_code == 200 and first.json()["actor"] == "local"
+    assert second.status_code == 401
+    assert second.json()["code"] == "session_required"
+    assert expired is None and in_time is not None
+    assert in_time.id == "local"
