@@ -424,4 +424,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if os.name == "posix":
+        os.umask(0o077)  # Unpacked members stay the user's alone.
     sys.exit(main())

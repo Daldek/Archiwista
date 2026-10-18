@@ -5,7 +5,7 @@
 opaque ``cursor``; ``GET /products`` lists what the index holds; the file
 card (``/stores/{store}/slots/{slot}``), a version with its raw sidecar and
 copy path (``/stores/{store}/versions/{version}``, ``…/sidecar``) and the
-files of one producer request (``/groups/{parent_request}``) answer from the
+files of one producer request (``/requests/{parent_request}``) answer from the
 index too. Routes only translate: ``IndexQueries`` reads and filters, also by
 the projects the principal sees. ``archiwista search`` and ``archiwista
 entry`` (step 12) call ``search_slots`` and ``slot_card``.
@@ -436,7 +436,7 @@ def get_version(
 
 
 @router.get(
-    "/groups/{parent_request:path}",
+    "/requests/{parent_request:path}",
     response_model=RequestFiles,
     responses=problem_responses(404),
 )

@@ -12,7 +12,9 @@ Tables (version 1): ``users``, ``groups``, ``memberships``, ``roles``,
 ``project_acl`` (key: the project directory after ``realpath``; owner and
 visibility), ``project_acl_entries`` (a person or a group per row) and
 ``permission_log`` (who, when, what, and the state before and after as
-JSON). Accounts have no passwords before v0.4.
+JSON). Version 2 records with each log entry how the actor acted
+(``actor_kind``: the owner, a person or an agent) and the label of its
+session. Accounts have no passwords before v0.4.
 """
 
 import sqlite3
@@ -22,6 +24,7 @@ from typing import Literal
 
 from archiwista.errors import StateError
 from archiwista.messages import MESSAGES
+from archiwista.paths import private_directory
 
 type Migration = Callable[[sqlite3.Connection], None]
 type StateSchemaState = Literal["created", "current", "migrated"]
@@ -105,8 +108,14 @@ def _version_1(connection: sqlite3.Connection) -> None:
         connection.execute(statement)
 
 
+def _version_2(connection: sqlite3.Connection) -> None:
+    """Record the actor's kind and session label in the permission log."""
+    connection.execute("ALTER TABLE permission_log ADD COLUMN actor_kind TEXT")
+    connection.execute("ALTER TABLE permission_log ADD COLUMN session TEXT")
+
+
 # Migration ``i`` takes a database from user_version ``i`` to ``i + 1``.
-MIGRATIONS: tuple[Migration, ...] = (_version_1,)
+MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2)
 STATE_SCHEMA_VERSION = len(MIGRATIONS)
 
 
@@ -146,7 +155,8 @@ def initialize(
     Parameters
     ----------
     path : Path
-        State database; its directory is created when missing.
+        State database; its directory is created when missing, and on POSIX
+        closed to other accounts (``0700``, ``private_directory``).
     migrations : Sequence[Migration], optional
         Schema steps; migration ``i`` takes ``user_version`` ``i`` to
         ``i + 1``.
@@ -165,7 +175,7 @@ def initialize(
         ``user_version``) or a migration broke a reference between tables;
         the database is left unchanged.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    private_directory(path.parent)
     target = len(migrations)
     connection = connect(path)
     try:

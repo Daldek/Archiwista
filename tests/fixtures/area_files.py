@@ -21,7 +21,7 @@ import shapely
 from pyproj import Transformer
 from shapely.geometry import Polygon
 
-from archiwista.security import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
+from archiwista.security import CSRF_HEADER, SESSION_COOKIE
 from tests.fixtures import slow_area_reader
 from tests.fixtures.api_session import Caller
 
@@ -170,7 +170,7 @@ def upload(
 ) -> httpx.Response:
     """Send a file as the raw body of ``POST /api/v1/areas`` in the session."""
     headers = {
-        "cookie": f"{SESSION_COOKIE}={caller.session_id}; {CSRF_COOKIE}={caller.csrf}",
+        "cookie": f"{SESSION_COOKIE}={caller.session_id}",
         "content-type": content_type,
     }
     if csrf:

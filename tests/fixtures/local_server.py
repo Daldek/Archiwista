@@ -4,7 +4,7 @@ import io
 import queue
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -54,16 +54,24 @@ def serving(
     *,
     access_log: bool = False,
     registry: PluginRegistry | None = None,
+    on_ready: Callable[[LocalServer], object] | None = None,
 ) -> Iterator[tuple[LocalServer, str]]:
     """Run ``serve_main`` on a free port; yield the server and what it printed.
 
-    Without ``registry`` the server has no producers (``NoSources``). The
-    server stops when the block ends and must then exit with status 0.
+    Without ``registry`` the server has no producers (``NoSources``);
+    ``on_ready`` runs as ``archiwista serve`` runs it (e.g. opening the
+    browser). The server stops when the block ends and must then exit with
+    status 0.
     """
     out = io.StringIO()
     err = io.StringIO()
     ready: queue.Queue[LocalServer] = queue.Queue()
     statuses: list[int] = []
+
+    def ready_now(server: LocalServer) -> None:
+        if on_ready is not None:
+            on_ready(server)
+        ready.put(server)
 
     def run() -> None:
         statuses.append(
@@ -74,7 +82,7 @@ def serving(
                 err,
                 port=0,
                 access_log=access_log,
-                on_ready=ready.put,
+                on_ready=ready_now,
             )
         )
 

@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
+from archiwista.auth import PrincipalKind
 from archiwista.errors import StateError
 from archiwista.messages import MESSAGES
 from archiwista.state.store import (
@@ -70,11 +71,17 @@ class ProjectAccessBackup(_Part):
 
 
 class ChangeBackup(_Part):
-    """An entry of the permission log."""
+    """An entry of the permission log.
+
+    ``actor_kind`` and ``session`` are missing from backups of entries
+    written before Archiwista recorded them.
+    """
 
     id: int
     at: AwareDatetime
     actor: str
+    actor_kind: PrincipalKind | None = None
+    session: str | None = None
     action: ChangeAction
     target: str
     before: dict[str, Any] | None
@@ -144,6 +151,8 @@ def export_state(store: StateStore, *, now: datetime | None = None) -> StateDocu
                 id=change.id,
                 at=change.at,
                 actor=change.actor,
+                actor_kind=change.actor_kind,
+                session=change.session,
                 action=change.action,
                 target=change.target,
                 before=change.before,
@@ -221,6 +230,8 @@ def import_state(store: StateStore, text: str | bytes) -> StateSnapshot:
                 id=change.id,
                 at=change.at,
                 actor=change.actor,
+                actor_kind=change.actor_kind,
+                session=change.session,
                 action=change.action,
                 target=change.target,
                 before=change.before,

@@ -2909,9 +2909,10 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 
 | Metoda i ścieżka | Co robi |
 |---|---|
-| `POST /session` | wymiana jednorazowego tokenu na sesję (ciasteczko `HttpOnly`) i token CSRF (10.1) |
-| `GET /session` | stan sesji: wykonawca (`actor`), token CSRF, wygaśnięcie |
-| `POST /session/tokens` | jednorazowy token kolejnej sesji (np. agenta), ważny 5 min (10.1) |
+| `POST /session` | wymiana jednorazowego tokenu na sesję (ciasteczko `HttpOnly`) i token CSRF wysyłany w każdym żądaniu (10.1); tylko tu odpowiedź zawiera token |
+| `GET /session` | stan sesji: wykonawca (`actor`), rodzaj (`kind`), etykieta (`label`), wygaśnięcie — bez tokenu CSRF |
+| `DELETE /session` | wylogowanie: koniec sesji i usunięcie ciasteczka |
+| `POST /session/tokens` | jednorazowy token sesji agenta, ważny 5 min (10.1); sesja agenta dostaje `403 permission_denied` |
 | `GET /stores` | magazyny, dostępność, statystyki |
 | `GET /sources` | źródła danych (wtyczki): producent, stan (`available`, `not_installed`, `incompatible`, `error`), wersja biblioteki, wspierany zakres, schematy, komunikat po polsku (5.8) |
 | `GET /stores/{store}` | stan magazynu: zajętość wg produktów, problemy, ostatni skan |
@@ -2928,7 +2929,7 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 | `GET /stores/{store}/versions/{version}/tiles/{z}/{x}/{y}.png` | kafle podglądu (`style`: `hillshade`, `rgb`, `classes`…) |
 | `GET /stores/{store}/versions/{version}/features` | obiekty wektorowe w widoku (`layer`, `bbox`, `limit`) |
 | `GET /stores/{store}/versions/{version}/members` | lista członów ZIP |
-| `GET /groups/{parent_request}` | pliki jednego zadania Kartografa (także PL i CZ) |
+| `GET /requests/{parent_request}` | pliki jednego zadania Kartografa (także PL i CZ); `/groups` należy do grup uprawnień |
 | `GET /compare?a=…&b=…` | porównanie metadanych dwóch wersji (8.5, poziom 1) |
 | `GET /map/footprints` | obrysy w widoku (`bbox`, `zoom`, filtry) albo agregacja |
 | `GET /map/sheets` | siatka godeł w widoku (`system`, `scale`) |
@@ -3173,13 +3174,21 @@ Decyzja: A-ADR-012.
   (niezalecane).
 - **Sesja:** ciasteczko `archiwista_session` (`HttpOnly`,
   `SameSite=Strict`, `Path=/`); wykonawcą jest „lokalny użytkownik”
-  (`actor` = `local`).
-- **CSRF:** osobny 128-bitowy token CSRF sesji, wydawany przy wymianie
-  tokenu — w ciasteczku `archiwista_csrf` (bez `HttpOnly`,
-  `SameSite=Strict`) i w odpowiedzi `POST`/`GET /api/v1/session`. Żądania
-  zmieniające stan wymagają nagłówka `X-Archiwista-CSRF` równego tokenowi
-  sesji i ciasteczku (double-submit); obca strona nie ustawi go bez CORS,
-  a CORS jest wyłączony.
+  (`actor` = `local`). Przeglądarki wysyłają ciasteczka do każdego portu
+  hosta, więc samo ciasteczko nigdy nie wystarcza (A-ADR-012 errata 2).
+- **Token CSRF sesji:** osobny 128-bitowy sekret sesji, zwracany wyłącznie
+  w odpowiedzi `POST /api/v1/session` (nie w ciasteczku i nie w `GET`).
+  **Każde** żądanie `/api` — także odczyt — wymaga nagłówka
+  `X-Archiwista-CSRF` równego temu tokenowi (inaczej `403 csrf_rejected`).
+  Interfejs trzyma go w `sessionStorage` swojego pochodzenia (schemat, host
+  i port), więc strona na innym porcie tego komputera go nie zna; nowa karta
+  dostaje go od otwartej karty Archiwisty (`BroadcastChannel`). Zdarzenia
+  zadań czyta przez `fetch` (z nagłówkiem), nie `EventSource`. Obca strona
+  nie ustawi nagłówka bez CORS, a CORS jest wyłączony. `DELETE
+  /api/v1/session` kończy sesję (wylogowanie).
+- **Odnośniki z sidecarów:** adres licencji z sidecara (dane ze wspólnego
+  magazynu) jest linkiem tylko dla `http(s)` do innego komputera — nigdy do
+  adresu pętli zwrotnej.
 - **`Origin` i `Sec-Fetch-Site`:** obecny `Origin` musi być adresem
   serwera. Żądanie zmieniające stan z `Sec-Fetch-Site` (przeglądarka) musi
   mieć `Sec-Fetch-Site: same-origin` i `Origin`; odczyt z `cross-site` jest
@@ -3189,10 +3198,33 @@ Decyzja: A-ADR-012.
   z nagłówkiem CSRF. Pliki interfejsu nie wymagają sesji, `/api/*` (poza
   wymianą tokenu) — tak.
 - **Kolejne sesje (agent zewnętrzny):** jednorazowy token ważny 5 min
-  wystawia zalogowana przeglądarka (`POST /api/v1/session/tokens`, z CSRF)
-  albo właściciel w terminalu (`archiwista token`); w indeksie leży tylko
-  skrót SHA-256 tokenu. Dziennik dostępu serwera jest domyślnie wyłączony,
-  a włączony redaguje `token=`.
+  wystawia sesja przeglądarki właściciela (`POST /api/v1/session/tokens`)
+  albo właściciel w terminalu (`archiwista token`); sesja agenta nie
+  wystawia tokenów (`403 permission_denied`). W indeksie leży tylko skrót
+  SHA-256 tokenu i kto go wystawił (`id`, `kind`) — role i grupy sesji są
+  czytane z bazy stanu przy każdym żądaniu, więc odebranie roli, wyłączenie
+  albo usunięcie konta działa od razu (wyłączone konto kończy sesje).
+  Sesja agenta kończy się najpóźniej po 12 h od startu; `archiwista token
+  --revoke-all` kończy od razu wszystkie sesje agentów i unieważnia
+  niewykorzystane tokeny agentów. Każda sesja ma etykietę (`label`), którą
+  zadania (`actor_kind`, `session`) i dziennik uprawnień zapisują obok
+  wykonawcy. Dziennik dostępu serwera jest domyślnie wyłączony, a włączony
+  redaguje `token=`.
+- **Otwarcie przeglądarki:** `archiwista serve` nie podaje adresu z tokenem
+  w wierszu poleceń przeglądarki (czytelnym dla innych kont przez
+  `/proc`): otwiera plik `open-<losowe>.html` (tryb `0600`) w prywatnym
+  katalogu danych, który przekierowuje na adres; plik znika po użyciu
+  tokenu, po jego wygaśnięciu i przy zatrzymaniu serwera. Adres jest też
+  wypisany w terminalu.
+- **Limity żądań:** treść żądania ≤ 4 KiB dla wymiany tokenu i ≤ 1 MiB dla
+  pozostałych tras (sprawdzane przed odczytem treści, także przy
+  `Transfer-Encoding: chunked`; `413 request_too_large`); pliki obszarów
+  mają własny limit 50 MB. Serwer obsługuje naraz najwyżej 100 połączeń.
+- **Dane lokalne prywatne:** katalog danych (indeks, baza stanu, kopie
+  obszarów, dzienniki zadań) ma tryb `0700` (także istniejący), polecenia
+  `archiwista` i procesy robocze działają z `umask 077`;
+  `archiwista doctor` ostrzega, gdy katalog danych jest dostępny dla innych
+  kont.
 - **CSP:** `default-src 'self'; script-src 'self'; style-src 'self';
   worker-src 'self'; img-src 'self' data: blob: <podkłady>; connect-src
   'self' <podkłady>; font-src 'self'; object-src 'none'; base-uri 'none';
@@ -3221,6 +3253,11 @@ Decyzja: A-ADR-012.
   zabijanym po 30 s (GDAL na niezaufanym wejściu nie kładzie ani nie
   blokuje serwera); geometria ≤ 100 000 wierzchołków, bez cichego
   upraszczania; kopia w lokalnym katalogu roboczym usuwana po 7 dniach.
+  GeoJSON jest najpierw czytany jako JSON: człon `crs` innego typu niż
+  `name` (np. `link`, `url`) jest odrzucany przed GDAL; proces odczytu
+  dostaje minimalne środowisko bez pośredników i poświadczeń, z
+  `GDAL_HTTP_PROXY` na zamknięty port lokalny, więc GDAL nie pobiera nic
+  z sieci.
 - **Sekrety:** klucz dostawcy modelu tylko przez nazwę zmiennej
   środowiskowej (później: systemowy magazyn kluczy); nigdy w przeglądarce,
   w odpowiedziach API ani w dziennikach. Dane uwierzytelniające źródeł
@@ -3283,7 +3320,7 @@ Decyzja: A-ADR-012.
 | Zagrożenie | Skutek | Ochrona |
 |---|---|---|
 | Obca strona wysyła żądania do `127.0.0.1` (CSRF, DNS rebinding) | pobrania, odczyt danych | `Host`, token startowy, token CSRF w nagłówku, `Origin` i `Sec-Fetch-Site`, brak CORS, `SameSite=Strict` |
-| Inna osoba na tym samym komputerze | dostęp do interfejsu | token startowy |
+| Inna osoba na tym samym komputerze | dostęp do interfejsu i danych lokalnych | token startowy poza wierszem poleceń (plik `0600`), token CSRF w nagłówku każdego żądania (ciasteczko wysłane na inny port nie wystarcza), katalog danych `0700`, `umask 077` |
 | Ścieżka spoza magazynu w żądaniu | odczyt dowolnego pliku | tylko ścieżki z indeksu, `realpath` w korzeniach |
 | Złośliwy plik geometrii | awaria albo zawieszenie biblioteki natywnej | proces roboczy, limity rozmiaru i czasu |
 | Wstrzyknięcie poleceń do asystenta | niechciane działania | brak narzędzi wykonujących, potwierdzenie człowieka (7.9) |

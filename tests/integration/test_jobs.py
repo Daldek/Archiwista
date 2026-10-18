@@ -21,7 +21,7 @@ import pytest
 from kartograf import BBox
 
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
-from archiwista.auth import ALL_PROJECTS
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal
 from archiwista.config import AppPaths, ConfigStore, SettingsService, StoreConfig
 from archiwista.errors import (
     IndexQueryError,
@@ -113,7 +113,7 @@ def test_second_index_job_for_store_conflicts(
     # Arrange
     env.scan("full")
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
-    running = env.jobs.submit("scan", store=STORE, actor="local")
+    running = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
     env.follow(running.id, _after_first_segment)
     link = env.store.by_kind("link")[0].path
 
@@ -121,7 +121,7 @@ def test_second_index_job_for_store_conflicts(
     conflicts = []
     for kind in ("scan", "footprints"):
         with pytest.raises(JobConflictError) as raised:
-            env.jobs.submit(kind, store=STORE, actor="local")
+            env.jobs.submit(kind, store=STORE, actor=LOCAL_OWNER)
         conflicts.append(raised.value)
     check = env.run("link_check", slot=link)
     env.jobs.cancel(running.id)
@@ -155,7 +155,9 @@ def test_cancelled_scan_leaves_no_partial_state(
     before = env.rows()
     indexed = env.state()
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
-    job = env.jobs.submit("scan", store=STORE, params={"mode": "full"}, actor="local")
+    job = env.jobs.submit(
+        "scan", store=STORE, params={"mode": "full"}, actor=LOCAL_OWNER
+    )
     env.follow(job.id, _after_first_segment)
 
     # Act
@@ -207,10 +209,14 @@ def test_close_interrupts_running_and_waiting_jobs(
     # Arrange
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
     with jobs_env(tmp_path, monkeypatch, max_jobs=1) as env:
-        running = env.jobs.submit("scan", store=STORE, actor="local")
+        running = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
         link = {"slot": env.store.by_kind("link")[0].path}
-        waiting = env.jobs.submit("link_check", store=STORE, params=link, actor="local")
-        dropped = env.jobs.submit("link_check", store=STORE, params=link, actor="local")
+        waiting = env.jobs.submit(
+            "link_check", store=STORE, params=link, actor=LOCAL_OWNER
+        )
+        dropped = env.jobs.submit(
+            "link_check", store=STORE, params=link, actor=LOCAL_OWNER
+        )
         env.follow(running.id, lambda event: event.type == "progress")
 
         # Act
@@ -294,18 +300,30 @@ def test_jobs_record_actor(env: JobsEnv) -> None:
     link = env.store.by_kind("link")[0].path
 
     # Act
-    scan = env.run("scan", actor="agent-7")
-    check = env.run("link_check", actor="local", slot=link)
+    agent = Principal(
+        id="ada",
+        kind="agent",
+        roles=frozenset(),
+        groups=frozenset(),
+        session="5b2d4c60",
+    )
+    scan = env.run("scan", actor=agent)
+    check = env.run("link_check", actor=LOCAL_OWNER, slot=link)
     listed = env.jobs.list(store=STORE)
 
     # Assert
-    assert (scan.actor, check.actor) == ("agent-7", "local")
+    assert (scan.actor, scan.actor_kind, scan.session) == ("ada", "agent", "5b2d4c60")
+    assert (check.actor, check.actor_kind, check.session) == (
+        "local",
+        "local_owner",
+        None,
+    )
     assert [(job.id, job.actor) for job in listed.items] == [
         (check.id, "local"),
-        (scan.id, "agent-7"),
+        (scan.id, "ada"),
     ]
     last = env.state().last_scan
-    assert last is not None and (last.id, last.actor) == (scan.id, "agent-7")
+    assert last is not None and (last.id, last.actor) == (scan.id, "ada")
 
 
 def test_footprints_job_assigns_cached_unit_outlines(
@@ -356,7 +374,7 @@ def test_footprints_job_refused_offline(env: JobsEnv) -> None:
 
     # Act
     with pytest.raises(OfflineModeError) as raised:
-        env.jobs.submit("footprints", store=STORE, actor="local")
+        env.jobs.submit("footprints", store=STORE, actor=LOCAL_OWNER)
 
     # Assert
     assert str(raised.value) == MESSAGES["job_offline_mode"]
@@ -432,7 +450,7 @@ def test_reindex_conflict_exits_nonzero(
     """A running index job of the store makes ``reindex`` fail with ``conflict``."""
     # Arrange
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
-    running = env.jobs.submit("scan", store=STORE, actor="local")
+    running = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
     env.follow(running.id, lambda event: event.type == "progress")
     err = io.StringIO()
 
@@ -513,9 +531,9 @@ def test_submit_rejects_invalid_parameters(
 ) -> None:
     """A job with an unknown kind or parameters is refused and not recorded."""
     with pytest.raises(ValueError):
-        env.jobs.submit(kind, store=STORE, params=params, actor="local")
+        env.jobs.submit(kind, store=STORE, params=params, actor=LOCAL_OWNER)
     with pytest.raises(NotFoundError):
-        env.jobs.submit("scan", store="brak", actor="local")
+        env.jobs.submit("scan", store="brak", actor=LOCAL_OWNER)
 
     assert env.jobs.list().items == ()
 
@@ -631,7 +649,7 @@ def test_removed_store_cancels_its_jobs(
     # Arrange
     env.scan("full")
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
-    job = env.jobs.submit("scan", store=STORE, actor="local")
+    job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
     env.follow(job.id, _after_first_segment)
 
     # Act

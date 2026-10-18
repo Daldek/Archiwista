@@ -68,6 +68,8 @@ def test_agent_session_paging_and_errors(
             # Act
             session = agent.post("/session", json={"token": issued["token"]})
             reused = agent.post("/session", json={"token": issued["token"]})
+            unchecked_read = agent.get("/health")
+            agent.headers[CSRF_HEADER] = session.json()["csrf_token"]
             pages: list[Any] = []
             cursor: dict[str, str] = {}
             while True:
@@ -80,11 +82,10 @@ def test_agent_session_paging_and_errors(
             foreign = agent.get(
                 "/slots", params={"product": "nmt", "cursor": pages[0]["next_cursor"]}
             )
-            unchecked = agent.post(f"/stores/{STORE}/scan")
-            scan = agent.post(
-                f"/stores/{STORE}/scan",
-                headers={CSRF_HEADER: session.json()["csrf_token"]},
+            unchecked = agent.post(
+                f"/stores/{STORE}/scan", headers={CSRF_HEADER: "wrong"}
             )
+            scan = agent.post(f"/stores/{STORE}/scan")
             events = _events(agent, scan.json()["id"])
             job = agent.get(f"/jobs/{scan.json()['id']}").json()
             no_plugin = agent.get("/slots", params={"bbox": KRAKOW})
@@ -98,6 +99,9 @@ def test_agent_session_paging_and_errors(
     assert foreign.status_code == 422 and foreign.json()["code"] == "validation_error"
     assert unchecked.status_code == 403
     assert unchecked.json()["code"] == "csrf_rejected"
+    # The session cookie alone reads nothing either.
+    assert unchecked_read.status_code == 403
+    assert unchecked_read.json()["code"] == "csrf_rejected"
     assert scan.status_code == 202, scan.text
     assert scan.headers["location"] == f"/api/v1/jobs/{scan.json()['id']}"
     assert scan.json()["actor"] == "local"

@@ -1,8 +1,9 @@
 """Run background jobs in worker processes and keep them in the local index.
 
 ``JobSupervisor`` lives in the server and in ``archiwista reindex``. It
-records every job in the index (``jobs``, with its ``actor``), starts one
-worker process per job (``python -m archiwista.jobs.worker``, A-ADR-007),
+records every job in the index (``jobs``, with its ``actor``: the
+principal's id, kind and session label), starts one
+worker process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
 reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
 (SSE, SPEC 9.2): ``progress``, ``notice`` and ``state``. A job is
@@ -24,6 +25,9 @@ process ends, and records its pid with each of its jobs. A worker whose
 supervisor is gone interrupts itself. Each worker's standard error is its
 job's log, ``<jobs>/<id>.log``; logs and finished jobs are kept 90 days (the
 last finished job of each store and kind stays) and logs while under 1 GB.
+Routine scans, the scheduler's incremental scans that succeeded without
+changing anything, go after 48 hours with their events and logs (the newest
+of each store stays); ``prune`` runs at the start and from the scheduler.
 """
 
 import base64
@@ -48,6 +52,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import IO, Any, Literal, Self, cast
 
+from archiwista.auth import Principal, PrincipalKind
 from archiwista.config import AppPaths, AppSettings, SettingsService
 from archiwista.errors import (
     IndexQueryError,
@@ -73,6 +78,7 @@ from archiwista.jobs.protocol import (
     encode_spec,
 )
 from archiwista.messages import MESSAGES
+from archiwista.paths import private_directory
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -110,15 +116,37 @@ MAX_NETWORK_JOBS = 2
 STOP_TIMEOUT_S = 30.0
 LOG_MAX_AGE = timedelta(days=90)
 LOG_MAX_BYTES = 1024**3
-WORKER_COMMAND: tuple[str, ...] = (sys.executable, "-m", "archiwista.jobs.worker")
+# Routine scans (scheduled, incremental, nothing changed) older than this go.
+ROUTINE_SCAN_MAX_AGE = timedelta(hours=48)
+# ``-P``: the working directory (the jobs directory) is not on ``sys.path``.
+WORKER_COMMAND: tuple[str, ...] = (
+    sys.executable,
+    "-P",
+    "-m",
+    "archiwista.jobs.worker",
+)
 SCAN_MODES: tuple[str, ...] = ("incremental", "full")
 
 _ACTIVE_SQL = "('queued', 'running')"
 _FINISHED_SQL = "('succeeded', 'failed', 'interrupted', 'cancelled')"
 _INDEX_KINDS_SQL = "('scan', 'footprints')"
 _JOB_COLUMNS = (
-    "id, kind, state, actor, store, params, created_at, started_at, finished_at,"
-    " summary, error"
+    "id, kind, state, actor, actor_kind, session, store, params, created_at,"
+    " started_at, finished_at, summary, error"
+)
+# Counts of a scan's summary that are all zero when it changed nothing.
+_SCAN_CHANGES = (
+    "versions_written",
+    "links_changed",
+    "issues_added",
+    "footprints_written",
+    "footprints_failed",
+    "missing",
+    "reappeared",
+    "removed",
+    "slots_removed",
+    "unlinked",
+    "issues_resolved",
 )
 _CURSOR_VERSION = 1
 
@@ -151,6 +179,12 @@ class JobRecord:
         Where the job is in its life.
     actor : str
         Who asked for it (``Principal.id``; ``local`` in local mode).
+    actor_kind : {"local_owner", "user", "agent", "scheduler"}
+        How: the owner, a person, an agent acting for ``actor``, or the
+        scan scheduler.
+    session : str or None
+        Label of the session it was asked in; ``None`` at the terminal and
+        for the scheduler.
     store : str or None
         Configured id of the store it works on.
     params : dict
@@ -170,6 +204,8 @@ class JobRecord:
     kind: JobKind
     state: JobState
     actor: str
+    actor_kind: PrincipalKind
+    session: str | None
     store: str | None
     params: JsonObject
     created_at: datetime
@@ -334,8 +370,7 @@ class JobSupervisor:
     def start(self) -> int:
         """Claim this process's jobs, follow the settings and recover jobs.
 
-        Job logs and finished jobs older than 90 days are deleted first (the
-        last finished job of each store and kind stays).
+        Old jobs and logs are pruned first (``prune``).
 
         Returns
         -------
@@ -346,17 +381,42 @@ class JobSupervisor:
         with self._lock:
             if self._phase != "new":
                 raise RuntimeError("a supervisor starts once")
-            jobs_dir = self._paths.jobs_dir
-            jobs_dir.mkdir(parents=True, exist_ok=True)
             initialize(self._paths.index_file)
+            jobs_dir = private_directory(self._paths.jobs_dir)
             self._owner = _hold_owner_lock(jobs_dir)
-            db = self._db = _connect(self._paths.index_file)
+            self._db = _connect(self._paths.index_file)
             self._phase = "open"
-            _prune_logs(jobs_dir, now=_now())
-            _prune_jobs(db, now=_now())
+            self.prune()
             self._sync(self._settings.get())
             self._unsubscribe = self._settings.subscribe(self._settings_changed)
         return self.recover()
+
+    def prune(self, now: datetime | None = None) -> int:
+        """Forget old jobs with their events and logs.
+
+        Routine scans, incremental scans the scheduler started that
+        succeeded without notices or changes, go after 48 hours, except the
+        newest of each store. Other finished jobs and logs go after 90 days
+        (the last finished job of each store and kind stays), and the oldest
+        logs beyond 1 GB. The scheduler calls it every hour.
+
+        Parameters
+        ----------
+        now : datetime or None, optional
+            The time of the pruning; the current time when omitted.
+
+        Returns
+        -------
+        int
+            Routine scans forgotten.
+        """
+        moment = now or _now()
+        with self._lock:
+            db = self._open_db()
+            routine = _prune_routine_scans(db, self._paths.jobs_dir, now=moment)
+            _prune_logs(self._paths.jobs_dir, now=moment)
+            _prune_jobs(db, now=moment)
+        return routine
 
     def close(self) -> None:
         """Stop: waiting jobs and running workers end ``interrupted``.
@@ -399,7 +459,7 @@ class JobSupervisor:
         *,
         store: str,
         params: Mapping[str, object] | None = None,
-        actor: str,
+        actor: Principal,
     ) -> JobRecord:
         """Record a job and start it when there is room.
 
@@ -413,8 +473,8 @@ class JobSupervisor:
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
             ``footprints``: none.
-        actor : str
-            Who asks (``Principal.id``).
+        actor : Principal
+            Who asks; the job keeps its id, kind and session label.
 
         Returns
         -------
@@ -464,12 +524,15 @@ class JobSupervisor:
                                 events.append(self._mark_stale(db, row["id"], now))
                     if busy is None:
                         db.execute(
-                            "INSERT INTO jobs (id, kind, actor, store, params, state,"
-                            " created_at, pid) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+                            "INSERT INTO jobs (id, kind, actor, actor_kind, session,"
+                            " store, params, state, created_at, pid)"
+                            " VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
                             (
                                 job_id,
                                 job_kind,
-                                actor,
+                                actor.id,
+                                actor.kind,
+                                actor.session,
                                 store,
                                 _json(values),
                                 _iso(now),
@@ -1094,6 +1157,8 @@ def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
         kind=row["kind"],
         state=row["state"],
         actor=row["actor"],
+        actor_kind=row["actor_kind"],
+        session=row["session"],
         store=row["store"],
         params=json.loads(row["params"]),
         created_at=datetime.fromisoformat(row["created_at"]),
@@ -1199,6 +1264,52 @@ def _prune_jobs(db: sqlite3.Connection, *, now: datetime) -> None:
             f" FROM jobs WHERE state IN {_FINISHED_SQL}) WHERE place = 1)",
             (_iso(now - LOG_MAX_AGE),),
         )
+
+
+# A scan's summary recording nothing changed: every count zero, no project
+# manifest read or removed, no project directory unreadable.
+_UNCHANGED_SQL = " AND ".join(
+    [
+        *(f"json_extract(summary, '$.{name}') = 0" for name in _SCAN_CHANGES),
+        "coalesce(json_extract(summary, '$.projects.read'), 0) = 0",
+        "coalesce(json_extract(summary, '$.projects.removed'), 0) = 0",
+        "coalesce(json_array_length(summary, '$.projects.unreadable_dirs'), 0) = 0",
+    ]
+)
+
+
+def _prune_routine_scans(
+    db: sqlite3.Connection, jobs_dir: Path, *, now: datetime
+) -> int:
+    """Forget routine scans older than 48 hours with their events and logs.
+
+    A routine scan is an incremental scan of a whole store that the
+    scheduler started and that succeeded without a notice and without
+    changing anything (``_UNCHANGED_SQL``; a summary lacking a count is kept).
+    The newest routine scan of each store stays.
+
+    Returns
+    -------
+    int
+        Jobs forgotten.
+    """
+    with _transaction(db):
+        rows = db.execute(
+            "SELECT id FROM (SELECT id, finished_at, row_number() OVER ("
+            " PARTITION BY store ORDER BY finished_at DESC, id DESC) AS place"
+            " FROM jobs WHERE kind = 'scan' AND actor_kind = 'scheduler'"
+            " AND state = 'succeeded'"
+            " AND json_extract(params, '$.mode') = 'incremental'"
+            " AND json_extract(params, '$.segment') IS NULL"
+            f" AND {_UNCHANGED_SQL} AND NOT EXISTS (SELECT 1 FROM job_events e"
+            " WHERE e.job_id = jobs.id AND e.type = 'notice'))"
+            " WHERE place > 1 AND finished_at < ?",
+            (_iso(now - ROUTINE_SCAN_MAX_AGE),),
+        ).fetchall()
+        db.executemany("DELETE FROM jobs WHERE id = ?", [(row["id"],) for row in rows])
+    for row in rows:
+        _log_path(jobs_dir, row["id"]).unlink(missing_ok=True)
+    return len(rows)
 
 
 def _set_active(job_id: str, *, active: bool) -> None:

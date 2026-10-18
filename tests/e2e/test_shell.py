@@ -119,7 +119,9 @@ def test_fragment_token_starts_session_and_is_removed_from_url(
     assert urlsplit(address).fragment == ""
     assert cookies["archiwista_session"]["httpOnly"] is True
     assert cookies["archiwista_session"]["sameSite"] == "Strict"
-    assert cookies["archiwista_csrf"]["httpOnly"] is False
+    # The CSRF token stays in the tab (sessionStorage), never in a cookie.
+    assert "archiwista_csrf" not in cookies
+    assert tab.page.evaluate("() => sessionStorage.getItem('archiwista_csrf')")
     expect(replay.get_by_role("heading", name="Wymagana sesja")).to_be_visible()
     expect(
         replay.get_by_text("Token jest nieznany, wygasł albo został już użyty")
@@ -134,7 +136,7 @@ def test_no_session_shows_instruction(serve: Serve, tab: Tab) -> None:
 
     tab.page.goto(served.base + "/")
     expect(tab.page.get_by_role("heading", name="Wymagana sesja")).to_be_visible()
-    expect(tab.page.get_by_text("Brak ważnej sesji.")).to_be_visible()
+    expect(tab.page.get_by_text("Ta karta nie zna tokenu sesji")).to_be_visible()
     expect(tab.page.get_by_text("Otwórz adres z terminala")).to_be_visible()
     expect(tab.page.get_by_text("archiwista token", exact=True)).to_be_visible()
     open_shell(tab.page, served.token_url())

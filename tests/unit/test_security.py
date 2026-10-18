@@ -20,7 +20,6 @@ from archiwista.auth import LOCAL_OWNER, LOCAL_ROLES, Principal
 from archiwista.config import AppSettings, BasemapConfig, ConfigStore, SettingsService
 from archiwista.index.schema import initialize
 from archiwista.security import (
-    CSRF_COOKIE,
     CSRF_HEADER,
     SESSION_COOKIE,
     TOKEN_TTL,
@@ -30,6 +29,7 @@ from archiwista.security import (
     current_principal,
     issue_one_time_token,
     redeem_one_time_token,
+    revoke_agent_sessions,
 )
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources, local_paths, serving
@@ -75,11 +75,11 @@ class Api:
 
 
 def cookies(session_id: str, csrf: str | None = None) -> dict[str, str]:
-    """Return a Cookie header with the session and, optionally, CSRF cookie."""
-    value = f"{SESSION_COOKIE}={session_id}"
+    """Return the session cookie and, optionally, the session's CSRF header."""
+    headers = {"cookie": f"{SESSION_COOKIE}={session_id}"}
     if csrf is not None:
-        value += f"; {CSRF_COOKIE}={csrf}"
-    return {"cookie": value}
+        headers[CSRF_HEADER] = csrf
+    return headers
 
 
 @pytest.fixture
@@ -170,29 +170,33 @@ def test_security_loopback_host_served(api: Api, host: str) -> None:
 
 
 def test_security_token_exchange_starts_session(api: Api) -> None:
-    """The exchange sets an HttpOnly session cookie and a separate CSRF token."""
+    """The exchange sets only an HttpOnly session cookie and answers the token."""
     issued = issue_one_time_token(api.index_path, "startup", minted_by=LOCAL_OWNER)
 
     response = api.client.post("/api/v1/session", json={"token": issued.token})
+    session_id = response.cookies[SESSION_COOKIE]
+    csrf = response.json()["csrf_token"]
+    api.client.cookies.clear()
+    cookie_only = api.client.get("/api/v1/session", headers=cookies(session_id))
+    state = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
     assert response.status_code == 200
     body = response.json()
-    assert body["actor"] == "local"
+    assert (body["actor"], body["kind"], body["label"]) == (
+        "local",
+        "local_owner",
+        issued.label,
+    )
     assert response.headers["cache-control"] == "no-store"
-    set_cookies = {
-        header.split("=", 1)[0]: header.lower()
-        for header in response.headers.get_list("set-cookie")
-    }
-    assert "httponly" in set_cookies[SESSION_COOKIE]
-    assert "httponly" not in set_cookies[CSRF_COOKIE]
-    for header in set_cookies.values():
-        assert "samesite=strict" in header
-        assert "path=/" in header
-    assert response.cookies[CSRF_COOKIE] == body["csrf_token"]
-    assert response.cookies[SESSION_COOKIE] not in (issued.token, body["csrf_token"])
-    state = api.client.get("/api/v1/session")
+    (set_cookie,) = response.headers.get_list("set-cookie")
+    assert set_cookie.startswith(f"{SESSION_COOKIE}=")
+    for attribute in ("httponly", "samesite=strict", "path=/"):
+        assert attribute in set_cookie.lower()
+    assert session_id not in (issued.token, csrf)
+    assert_problem(cookie_only, 403, "csrf_rejected")
     assert state.status_code == 200
-    assert state.json()["csrf_token"] == body["csrf_token"]
+    assert state.json() == {key: body[key] for key in state.json()}
+    assert "csrf_token" not in state.json()
     assert state.headers["cache-control"] == "no-store"
 
 
@@ -228,35 +232,40 @@ def test_security_token_valid_until_expiry(tmp_path: Path, kind: TokenKind) -> N
     assert expired is None
 
 
-def test_security_tokens_carry_minting_principal(tmp_path: Path) -> None:
-    """A startup session is its minter; an agent session acts for the minter."""
+def test_security_tokens_carry_minter_id_and_kind_only(tmp_path: Path) -> None:
+    """A token keeps who minted it, never their roles: those are read per request."""
     index_path = tmp_path / "index.sqlite"
     initialize(index_path)
     minter = Principal(
         id="kasia",
         kind="user",
-        roles=frozenset({"reader"}),
+        roles=frozenset({"admin"}),
         groups=frozenset({"gis", "hydro"}),
     )
     startup = issue_one_time_token(index_path, "startup", minted_by=minter)
     agent = issue_one_time_token(index_path, "agent", minted_by=minter)
+    with sqlite3.connect(index_path) as connection:
+        kept = [
+            row[0] for row in connection.execute("SELECT principal FROM session_tokens")
+        ]
 
     own = redeem_one_time_token(index_path, startup.token)
     delegated = redeem_one_time_token(index_path, agent.token)
 
-    assert own == minter
-    assert delegated == Principal(
-        id="kasia", kind="agent", roles=minter.roles, groups=minter.groups
-    )
+    assert kept == ['{"id": "kasia", "kind": "user"}'] * 2
+    assert own is not None and delegated is not None
+    assert (own.principal_id, own.kind, own.label) == ("kasia", "user", startup.label)
+    assert (delegated.principal_id, delegated.kind) == ("kasia", "agent")
+    assert delegated.label == agent.label != startup.label
 
 
 def test_security_current_principal_owner_then_agent(api: Api) -> None:
     """The owner's session acts as ``local``; a token it issues starts an agent."""
     session_id, csrf = api.login()
-    owner = api.client.get("/api/v1/principal", headers=cookies(session_id))
+    owner = api.client.get("/api/v1/principal", headers=cookies(session_id, csrf))
     issued = api.client.post(
         "/api/v1/session/tokens",
-        headers={**cookies(session_id, csrf), CSRF_HEADER: csrf},
+        headers=cookies(session_id, csrf),
     )
     exchanged = api.client.post(
         "/api/v1/session", json={"token": issued.json()["token"]}
@@ -264,7 +273,8 @@ def test_security_current_principal_owner_then_agent(api: Api) -> None:
     agent_id = exchanged.cookies[SESSION_COOKIE]
     api.client.cookies.clear()
 
-    agent = api.client.get("/api/v1/principal", headers=cookies(agent_id))
+    agent_csrf = exchanged.json()["csrf_token"]
+    agent = api.client.get("/api/v1/principal", headers=cookies(agent_id, agent_csrf))
 
     roles = sorted(LOCAL_ROLES)
     assert owner.json() == {
@@ -333,12 +343,12 @@ def test_security_api_without_session_rejected(
 
 def test_security_session_ends_after_idle_timeout(api: Api) -> None:
     """Each request extends the session; a day without requests ends it."""
-    session_id, _ = api.login()
+    session_id, csrf = api.login()
     api.clock.now = START + timedelta(hours=23)
-    kept = api.client.get("/api/v1/session", headers=cookies(session_id))
+    kept = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
     api.clock.now = START + timedelta(hours=23 + 24)
-    ended = api.client.get("/api/v1/session", headers=cookies(session_id))
+    ended = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
     assert kept.status_code == 200
     assert kept.json()["expires_at"] == "2026-10-20T11:00:00Z"
@@ -348,24 +358,125 @@ def test_security_session_ends_after_idle_timeout(api: Api) -> None:
 # CSRF, Origin and Sec-Fetch-Site ------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("header", "cookie"),
-    [(None, "valid"), ("wrong", "valid"), ("valid", None), ("valid", "wrong")],
-)
-def test_security_state_change_without_csrf_token_rejected(
-    api: Api, header: str | None, cookie: str | None
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize("header", [None, "wrong"])
+def test_security_every_request_needs_csrf_token(
+    api: Api, method: str, header: str | None
 ) -> None:
-    """The CSRF header and cookie must both carry the session's token."""
+    """The cookie alone, which other ports of the host also get, never acts."""
     session_id, csrf = api.login()
-    headers = cookies(session_id, None if cookie is None else csrf)
-    if cookie == "wrong":
-        headers = cookies(session_id, "wrong")
-    if header is not None:
-        headers[CSRF_HEADER] = csrf if header == "valid" else "wrong"
+    path = "/api/v1/session" if method == "GET" else "/api/v1/session/tokens"
+    api.clock.now = START + timedelta(hours=20)
 
-    response = api.client.post("/api/v1/session/tokens", headers=headers)
+    response = api.client.request(method, path, headers=cookies(session_id, header))
+    api.clock.now = START + timedelta(hours=25)
+    later = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
     assert_problem(response, 403, "csrf_rejected")
+    # A refused request does not keep the session alive.
+    assert_problem(later, 401, "session_required")
+
+
+def test_security_logout_ends_session(api: Api) -> None:
+    """DELETE /session ends the session at once and removes its cookie."""
+    session_id, csrf = api.login()
+
+    ended = api.client.delete("/api/v1/session", headers=cookies(session_id, csrf))
+    after = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
+
+    assert ended.status_code == 204
+    assert "max-age=0" in ended.headers["set-cookie"].lower()
+    assert_problem(after, 401, "session_required")
+
+
+def _agent(api: Api, session_id: str, csrf: str) -> tuple[str, str]:
+    """Open an agent session with a token the given session issues."""
+    issued = api.client.post(
+        "/api/v1/session/tokens", headers=cookies(session_id, csrf)
+    )
+    exchanged = api.client.post(
+        "/api/v1/session", json={"token": issued.json()["token"]}
+    )
+    agent = exchanged.cookies[SESSION_COOKIE], exchanged.json()["csrf_token"]
+    api.client.cookies.clear()
+    return agent
+
+
+def test_security_agent_cannot_issue_tokens(api: Api) -> None:
+    """An agent's session opens no further sessions: 403 permission_denied."""
+    agent_id, agent_csrf = _agent(api, *api.login())
+
+    refused = api.client.post(
+        "/api/v1/session/tokens", headers=cookies(agent_id, agent_csrf)
+    )
+
+    assert_problem(refused, 403, "permission_denied")
+
+
+def test_security_agent_session_ends_after_max_age(api: Api) -> None:
+    """An agent's session used every hour still ends 12 hours after its start."""
+    agent_id, agent_csrf = _agent(api, *api.login())
+    answers = []
+    for hour in range(1, 13):
+        api.clock.now = START + timedelta(hours=hour)
+        answers.append(
+            api.client.get("/api/v1/session", headers=cookies(agent_id, agent_csrf))
+        )
+
+    assert [answer.status_code for answer in answers[:-1]] == [200] * 11
+    assert answers[0].json()["expires_at"] == "2026-10-19T00:00:00Z"
+    assert_problem(answers[-1], 401, "session_required")
+
+
+def test_security_revoke_agent_sessions(api: Api) -> None:
+    """Revoking ends live agent sessions and unused agent tokens, not the owner's."""
+    owner = api.login()
+    agent_id, agent_csrf = _agent(api, *owner)
+    unused = issue_one_time_token(api.index_path, "agent", minted_by=LOCAL_OWNER)
+
+    refused = revoke_agent_sessions(api.index_path)
+    agent = api.client.get("/api/v1/session", headers=cookies(agent_id, agent_csrf))
+    kept = api.client.get("/api/v1/session", headers=cookies(*owner))
+    late = api.client.post("/api/v1/session", json={"token": unused.token})
+    next_agent = _agent(api, *owner)
+    fresh = api.client.get("/api/v1/session", headers=cookies(*next_agent))
+
+    assert refused == 1
+    assert_problem(agent, 401, "session_required")
+    assert kept.status_code == 200
+    assert_problem(late, 401, "session_required")
+    assert fresh.status_code == 200 and fresh.json()["kind"] == "agent"
+
+
+def test_security_body_over_limit_refused_before_reading(api: Api) -> None:
+    """Bodies over 4 KiB (exchange) or 1 MiB (other routes) answer 413."""
+    session_id, csrf = api.login()
+
+    declared = api.client.post(
+        "/api/v1/session", content=b"{}", headers={"content-length": "5000"}
+    )
+    chunked = api.client.post(
+        "/api/v1/session",
+        content=(b"x" * 1024 for _ in range(5)),
+        headers={"content-type": "application/json"},
+    )
+    settings = api.client.put(
+        "/api/v1/settings",
+        content=(b" " * 65536 for _ in range(17)),
+        headers={**cookies(session_id, csrf), "content-type": "application/json"},
+    )
+
+    for response in (declared, chunked, settings):
+        assert_problem(response, 413, "request_too_large")
+
+
+def test_security_docs_files_need_no_session(api: Api) -> None:
+    """/api/docs serves its files to a tab; the OpenAPI document needs the session."""
+    page = api.client.get("/api/docs")
+    document = api.client.get("/api/v1/openapi.json")
+
+    assert page.status_code == 200
+    assert_problem(document, 401, "session_required")
 
 
 def test_security_client_without_origin_passes_with_session_and_csrf(
@@ -373,9 +484,9 @@ def test_security_client_without_origin_passes_with_session_and_csrf(
 ) -> None:
     """A script without Origin and Sec-Fetch-* changes state with session+CSRF."""
     session_id, csrf = api.login()
-    headers = {**cookies(session_id, csrf), CSRF_HEADER: csrf}
-
-    response = api.client.post("/api/v1/session/tokens", headers=headers)
+    response = api.client.post(
+        "/api/v1/session/tokens", headers=cookies(session_id, csrf)
+    )
 
     assert response.status_code == 201
     body = response.json()
@@ -431,7 +542,7 @@ def test_security_browser_state_change_needs_same_origin(
 ) -> None:
     """A browser changes state only same-origin and with an Origin header."""
     session_id, csrf = api.login()
-    headers = {**cookies(session_id, csrf), CSRF_HEADER: csrf, "sec-fetch-site": site}
+    headers = {**cookies(session_id, csrf), "sec-fetch-site": site}
     if origin is not None:
         headers["origin"] = origin
 
@@ -442,12 +553,12 @@ def test_security_browser_state_change_needs_same_origin(
 
 def test_security_navigation_with_fetch_site_none_passes(api: Api) -> None:
     """An address typed or opened from the terminal (``none``) is served."""
-    session_id, _ = api.login()
+    session_id, csrf = api.login()
     navigation = {"sec-fetch-site": "none", "sec-fetch-mode": "navigate"}
 
     page = api.client.get("/", headers=navigation)
     data = api.client.get(
-        "/api/v1/session", headers={**navigation, **cookies(session_id)}
+        "/api/v1/session", headers={**navigation, **cookies(session_id, csrf)}
     )
 
     assert page.status_code == 200
@@ -457,7 +568,7 @@ def test_security_navigation_with_fetch_site_none_passes(api: Api) -> None:
 
 def test_security_no_cors_headers(api: Api) -> None:
     """Neither a preflight nor a same-origin request gets CORS headers."""
-    session_id, _ = api.login()
+    session_id, csrf = api.login()
 
     preflight = api.client.options(
         "/api/v1/session",
@@ -468,7 +579,7 @@ def test_security_no_cors_headers(api: Api) -> None:
         },
     )
     read = api.client.get(
-        "/api/v1/session", headers={"origin": BASE_URL, **cookies(session_id)}
+        "/api/v1/session", headers={"origin": BASE_URL, **cookies(session_id, csrf)}
     )
 
     assert read.status_code == 200
@@ -577,7 +688,10 @@ def test_token_not_logged(
         try:
             with httpx.Client(base_url=f"http://127.0.0.1:{server.port}") as client:
                 exchanged = client.post("/api/v1/session", json={"token": token})
-                queried = client.get("/api/v1/session", params={"token": token})
+                csrf = {CSRF_HEADER: exchanged.json()["csrf_token"]}
+                queried = client.get(
+                    "/api/v1/session", params={"token": token}, headers=csrf
+                )
                 client.get("/", params={"token": token})
         finally:
             for logger in loggers:

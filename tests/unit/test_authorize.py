@@ -57,7 +57,7 @@ def test_visibility_matrix(
     if kind == "agent":
         index = tmp_path / "index.sqlite"
         initialize(index)
-        acting = as_agent(index, acting)
+        acting = as_agent(index, state, acting)
 
     # Act
     can_view = authorizer.can(acting, "project.view", PROJECT)
@@ -159,8 +159,8 @@ def test_local_owner_sees_and_manages_every_project(state: StateStore) -> None:
 def test_principal_for_reads_roles_and_groups(state: StateStore) -> None:
     """Roles and groups come from the state; unknown or disabled accounts get none."""
     # Arrange
-    state.update_user(OWNER, roles=WRITER, actor="local")
-    state.update_user(OTHER, disabled=True, actor="local")
+    state.update_user(OWNER, roles=WRITER, actor=LOCAL_OWNER)
+    state.update_user(OTHER, disabled=True, actor=LOCAL_OWNER)
 
     # Act
     owner = principal_for(state, OWNER)

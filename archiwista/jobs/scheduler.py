@@ -12,7 +12,9 @@ so only a full scan notices files deleted or added inside them. An
 unavailable store is only probed, at every tick: it is scanned as soon as
 the probe finds it again and its directory is not an empty mount point. A
 store added to the settings, or moved, gets a full scan right away. A store
-with a job writing its index is left alone.
+with a job writing its index is left alone. Scheduled jobs act as the
+``scheduler`` for the owner; once an hour a tick also prunes old jobs
+(``JobSupervisor.prune``: routine scans after 48 hours).
 """
 
 import logging
@@ -22,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from archiwista.auth import LOCAL_PRINCIPAL_ID
+from archiwista.auth import SCHEDULER
 from archiwista.config import (
     AppSettings,
     SettingsService,
@@ -40,6 +42,8 @@ logger = logging.getLogger(__name__)
 STARTUP_STALE = timedelta(minutes=15)
 # Seconds between two plannings (and probes of unavailable stores).
 TICK_S = 60.0
+# Time between two prunings of old jobs from a tick.
+PRUNE_INTERVAL = timedelta(hours=1)
 # Seconds a probe of an unavailable store may take (a hung share).
 PROBE_TIMEOUT_S = 10.0
 
@@ -116,8 +120,6 @@ class ScanScheduler:
         Producer plugins, to probe unavailable stores.
     index_path : Path
         The local index (stores' availability).
-    actor : str, default "local"
-        Actor of the scheduled jobs (the local owner in v0.1).
     tick_s : float, default 60.0
         Seconds between two plannings.
     probe_timeout_s : float, default 10.0
@@ -131,7 +133,6 @@ class ScanScheduler:
         registry: SourceRegistryView,
         *,
         index_path: Path,
-        actor: str = LOCAL_PRINCIPAL_ID,
         tick_s: float = TICK_S,
         probe_timeout_s: float = PROBE_TIMEOUT_S,
     ) -> None:
@@ -139,10 +140,10 @@ class ScanScheduler:
         self._settings = settings
         self._registry = registry
         self._queries = IndexQueries(index_path)
-        self._actor = actor
         self._tick_s = tick_s
         self._probe_timeout_s = probe_timeout_s
         self._started_at = datetime.now(UTC)
+        self._pruned_at: datetime | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._unsubscribe: Callable[[], None] | None = None
@@ -170,7 +171,7 @@ class ScanScheduler:
         self._queries.close()
 
     def tick(self, now: datetime | None = None) -> tuple[JobRecord, ...]:
-        """Plan once and submit the scans due.
+        """Plan once and submit the scans due; prune old jobs once an hour.
 
         Parameters
         ----------
@@ -185,6 +186,9 @@ class ScanScheduler:
         moment = now or datetime.now(UTC)
         settings = self._settings.get()
         self._jobs.recover()
+        if self._pruned_at is None or moment - self._pruned_at >= PRUNE_INTERVAL:
+            self._jobs.prune(now=moment)
+            self._pruned_at = moment
         states = {state.store: state for state in self._queries.status().stores}
         history = {
             store.id: self._jobs.scan_history(store.id) for store in settings.stores
@@ -219,7 +223,7 @@ class ScanScheduler:
     def _submit(self, store: str, mode: ScanMode) -> JobRecord | None:
         try:
             return self._jobs.submit(
-                "scan", store=store, params={"mode": mode}, actor=self._actor
+                "scan", store=store, params={"mode": mode}, actor=SCHEDULER
             )
         except (JobConflictError, NotFoundError, OfflineModeError) as error:
             logger.info("Scheduled scan of store %s not submitted: %s", store, error)

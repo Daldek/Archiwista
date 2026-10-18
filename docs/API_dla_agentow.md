@@ -7,8 +7,8 @@ używa zwykłego API HTTP `/api/v1` albo poleceń `archiwista … --json` —
 nie narzędzi czatu ani MCP (tych v0.1 nie ma).
 
 Do v1.0 API może się zmieniać. Pełny schemat z przykładami jest zawsze pod
-`/api/v1/openapi.json`, a dokumentacja interaktywna pod `/api/docs` (oba
-wymagają sesji). Nazwy pól, parametrów i kodów są po angielsku, teksty dla
+`/api/v1/openapi.json` (wymaga sesji), a dokumentacja interaktywna pod
+`/api/docs` (korzysta z sesji otwartej karty Archiwisty). Nazwy pól, parametrów i kodów są po angielsku, teksty dla
 ludzi (`detail`, `title`, `message`) — po polsku.
 
 ## 1. Dwie drogi: CLI albo HTTP
@@ -54,12 +54,12 @@ Serwer słucha tylko na `127.0.0.1` (domyślnie port `8090`, ustawienie
    Token jest ważny 5 minut i tylko raz; indeks przechowuje wyłącznie jego
    skrót. Port w `url` pochodzi z ustawień (`--port N` go zmienia).
 3. Agent wymienia token na sesję: `POST /api/v1/session` z treścią
-   `{"token": "…"}`. Odpowiedź `200` ustawia ciasteczka `archiwista_session`
-   (`HttpOnly`) i `archiwista_csrf` oraz zwraca
-   `{"actor": "local", "csrf_token": "…", "expires_at": "…"}`.
-4. Każde żądanie zmieniające stan (`POST`, `PUT`, `PATCH`, `DELETE`) niesie
-   nagłówek `X-Archiwista-CSRF` równy `csrf_token` (i ciasteczko
-   `archiwista_csrf`, które klient z cookie-jar odsyła sam).
+   `{"token": "…"}`. Odpowiedź `200` ustawia ciasteczko `archiwista_session`
+   (`HttpOnly`) i zwraca `{"actor": "local", "kind": "agent", "label": "…",
+   "csrf_token": "…", "expires_at": "…"}` — `csrf_token` tylko tutaj.
+4. **Każde** żądanie `/api` — także `GET` — niesie ciasteczko sesji
+   i nagłówek `X-Archiwista-CSRF` równy `csrf_token`; bez nagłówka albo
+   z innym tokenem odpowiedź to `403 csrf_rejected`.
 
 Przykład z `curl` i cookie-jar (`jq` albo inny parser JSON):
 
@@ -69,9 +69,11 @@ JAR="$(mktemp)"            # plik tylko dla bieżącego użytkownika
 TOKEN="$(archiwista token --json | jq -r .token)"
 CSRF="$(curl -sf -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' \
   -d "{\"token\": \"$TOKEN\"}" "$BASE/session" | jq -r .csrf_token)"
+H="X-Archiwista-CSRF: $CSRF"
 
-curl -sf -b "$JAR" "$BASE/health"
-curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" -X POST "$BASE/stores/zespol/scan"
+curl -sf -b "$JAR" -H "$H" "$BASE/health"
+curl -sf -b "$JAR" -H "$H" -X POST "$BASE/stores/zespol/scan"
+curl -sf -b "$JAR" -H "$H" -X DELETE "$BASE/session"   # koniec pracy
 ```
 
 Zasady sesji:
@@ -83,11 +85,19 @@ Zasady sesji:
 - Token podaje się wyłącznie w treści `POST /session` — nigdy w adresie
   (`?token=` jest odrzucany).
 - Sesja agenta działa w imieniu osoby, która wydała token (`actor` w
-  zadaniach to jej identyfikator), z jej rolami i widocznością projektów.
-- Sesje żyją w pamięci serwera: wygasają po 24 h bezczynności, a restart
-  serwera kończy wszystkie (`401 session_required` → nowy token).
-- `GET /session` zwraca stan sesji i odnawia ciasteczko CSRF;
-  `POST /session/tokens` (z CSRF) daje token kolejnej sesji bez terminala.
+  zadaniach to jej identyfikator, `actor_kind` = `agent`, `session` =
+  etykieta sesji), z jej **bieżącymi** rolami i widocznością projektów
+  (czytanymi przy każdym żądaniu).
+- Sesje żyją w pamięci serwera: wygasają po 24 h bezczynności, sesja agenta
+  najpóźniej 12 h po starcie, a restart serwera kończy wszystkie
+  (`401 session_required` → nowy token). Właściciel kończy wszystkie sesje
+  agentów poleceniem `archiwista token --revoke-all`.
+- `GET /session` zwraca stan sesji (bez `csrf_token`); `DELETE /session`
+  kończy sesję. Agent nie wystawia tokenów kolejnych sesji
+  (`POST /session/tokens` → `403 permission_denied`) — nowy token daje
+  właściciel (`archiwista token`).
+- Treść żądania: najwyżej 1 MiB (wymiana tokenu: 4 KiB; pliki obszarów:
+  50 MB), inaczej `413 request_too_large`.
 
 **Sekrety.** Tokenu, ciasteczek, `csrf_token` ani pliku cookie-jar nie
 zapisuj w promptach, notatkach, dziennikach, historii powłoki ani
@@ -124,8 +134,8 @@ Wartości zaczynające się od minusa podawaj z `=`:
 ```sh
 archiwista search N-34-130-D-d-2-4 --json
 archiwista search --product=nmt --years=2020-2023 --versions=all --limit=200 --json
-curl -sf -b "$JAR" "$BASE/slots?product=nmt&years=2020-2023&versions=all&limit=200"
-curl -sf -b "$JAR" "$BASE/slots?bbox=19.9,50.0,20.0,50.05&location=with"
+curl -sf -b "$JAR" -H "$H" "$BASE/slots?product=nmt&years=2020-2023&versions=all&limit=200"
+curl -sf -b "$JAR" -H "$H" "$BASE/slots?bbox=19.9,50.0,20.0,50.05&location=with"
 ```
 
 Odpowiedź (`CatalogPage`, skrót):
@@ -191,7 +201,7 @@ To samo przez HTTP: `"$BASE/slots?versions=all&limit=200&cursor=$cursor"`
   `GET /stores/{store}/versions/{version}` — wszystkie wartości wersji
   z indeksu, obrys w WGS84 i surowy sidecar; sam sidecar:
   `GET …/versions/{version}/sidecar`.
-- `GET /groups/{parent_request}` — pliki jednego zgłoszenia producenta
+- `GET /requests/{parent_request}` — pliki jednego zgłoszenia producenta
   (np. obie strony granicy PL/CZ).
 - `archiwista projects` / `GET /projects` i `archiwista project PROJEKT` /
   `GET /projects/{project}` — projekty widoczne dla wykonawcy; ukryty
@@ -239,11 +249,12 @@ Decyzje opieraj na `status` i `code` — nigdy na tekście `detail`.
 |---|---|---|
 | 400 | `invalid_host` | nagłówek `Host` inny niż `127.0.0.1:<port>`/`localhost:<port>` |
 | 401 | `session_required` | brak, wygasła albo nieznana sesja; zły, użyty lub przeterminowany token → nowy token |
-| 403 | `csrf_rejected` | brak/zły `X-Archiwista-CSRF` przy zmianie albo obcy `Origin` |
+| 403 | `csrf_rejected` | brak/zły `X-Archiwista-CSRF` w dowolnym żądaniu `/api` albo obcy `Origin` |
 | 403 | `permission_denied` | wykonawca nie ma uprawnienia (np. zmiana ustawień bez roli `admin`) |
 | 403 | `path_outside_root` | ścieżka wychodzi poza magazyn |
 | 404 | `not_found` | nieznany zasób albo projekt niewidoczny dla wykonawcy |
 | 405 | `method_not_allowed` | inna metoda; dozwolone w nagłówku `Allow` |
+| 413 | `request_too_large` | treść żądania ponad limit (4 KiB wymiana tokenu, 1 MiB pozostałe) |
 | 409 | `conflict` | trwa już zadanie zapisujące indeks tego magazynu (pole `job`) — śledź je zamiast ponawiać |
 | 409 | `offline_mode` | operacja wymaga sieci, a włączony jest tryb offline |
 | 422 | `validation_error` | niepoprawne parametry lub treść: `errors` (`field`, `type`, `message`) albo `problems` (ustawienia) |
@@ -296,7 +307,8 @@ odpowiedź to `409 conflict` z polem `job` (`id`, `kind`, `state`) —
 
 Zadanie (`GET /jobs/{id}`) ma pola `id`, `kind` (`scan`, `footprints`,
 `link_check`), `state` (`queued`, `running`, `succeeded`, `failed`,
-`interrupted`, `cancelled`), `actor`, `store`, `params`, `created_at`,
+`interrupted`, `cancelled`), `actor`, `actor_kind` (`local_owner`, `user`,
+`agent`, `scheduler`), `session` (etykieta sesji), `store`, `params`, `created_at`,
 `started_at`, `finished_at`, `progress`, `result` i `error` (`code`,
 `detail`; `null`, gdy brak błędu). Lista: `GET /jobs?kind=&store=&state=`
 z `limit` (1–200) i `cursor`, najnowsze najpierw — stronicowanie jak
@@ -319,10 +331,10 @@ zerwaniu połączenia wznów z nagłówkiem `Last-Event-ID` równym ostatniemu
 odebranemu `id`.
 
 ```sh
-JOB="$(curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" -X POST \
+JOB="$(curl -sf -b "$JAR" -H "$H" -X POST \
   "$BASE/stores/zespol/scan" | jq -r .id)"
-curl -sfN -b "$JAR" "$BASE/jobs/$JOB/events"
-curl -sf -b "$JAR" "$BASE/jobs/$JOB" | jq '{state, error}'
+curl -sfN -b "$JAR" -H "$H" "$BASE/jobs/$JOB/events"
+curl -sf -b "$JAR" -H "$H" "$BASE/jobs/$JOB" | jq '{state, error}'
 ```
 
 Kody błędów zadania (`error.code`): `store_unavailable`,

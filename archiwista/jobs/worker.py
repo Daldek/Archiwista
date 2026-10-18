@@ -540,4 +540,6 @@ def _interrupt_self() -> None:
 
 
 if __name__ == "__main__":
+    if os.name == "posix":
+        os.umask(0o077)  # What the job writes locally is the user's alone.
     sys.exit(main())

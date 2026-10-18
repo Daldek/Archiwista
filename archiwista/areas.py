@@ -59,6 +59,7 @@ from archiwista.index.coverage import (
 )
 from archiwista.index.geometry import require_wgs84_area
 from archiwista.messages import MESSAGES
+from archiwista.paths import private_directory
 from archiwista.sources import GeoAdapter, GeoJSONGeometry
 
 type AreaSource = Literal["drawn", "view", "sheet", "file"]
@@ -316,6 +317,8 @@ def read_area_file(
     """
     if not content:
         raise AreaUnreadableError(MESSAGES["area_format_unknown"])
+    # Copies of the user's files: the areas directory is the user's alone.
+    private_directory(files.directory)
     directory = files.directory / INCOMING_DIR / secrets.token_hex(8)
     directory.mkdir(parents=True)
     try:

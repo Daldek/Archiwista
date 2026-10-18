@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from archiwista.cli import main
+from archiwista.security import CSRF_HEADER
 from archiwista.server import bind_loopback
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
@@ -61,7 +62,8 @@ def test_serve_prints_fragment_url(tmp_path: Path) -> None:
         port, token = int(match[1]), match[2]
         with httpx.Client(base_url=f"http://127.0.0.1:{port}") as client:
             exchanged = client.post("/api/v1/session", json={"token": token})
-            state = client.get("/api/v1/session")
+            csrf = {CSRF_HEADER: exchanged.json()["csrf_token"]}
+            state = client.get("/api/v1/session", headers=csrf)
             replayed = client.post("/api/v1/session", json={"token": token})
             rebound = client.get("/api/v1/session", headers={"host": "evil.example"})
 

@@ -14,18 +14,29 @@
  * The current session.
  *
  * @typedef {object} SessionState
- * @property {string} actor - Who acts; `local` in local mode.
- * @property {string} csrf_token - Send as X-Archiwista-CSRF with POST, PUT and DELETE.
- * @property {string} expires_at - End of the session unless used again (each request
- *   extends it).
+ * @property {string} actor - Who acts: the principal's id (`local` for the computer's owner).
+ * @property {"local_owner"|"user"|"agent"} kind - How: the owner, a signed-in person
+ *   (team mode) or an agent for `actor`.
+ * @property {string} label - Label of the session, recorded with its jobs and permission
+ *   changes.
+ * @property {string} expires_at - End of the session unless used again: each request
+ *   extends it by 24 h; an agent's session ends 12 h after its start at the latest.
  */
 
 /**
- * A one-time token for a next session, e.g. an agent's.
+ * A session just started, with its CSRF token (answered only here).
+ *
+ * @typedef {SessionState & {csrf_token: string}} NewSession - `csrf_token`: send as
+ *   X-Archiwista-CSRF with every /api request, reads included.
+ */
+
+/**
+ * A one-time token for an agent's session.
  *
  * @typedef {object} OneTimeToken
  * @property {string} token - Value for POST /api/v1/session (single use).
  * @property {string} url - Address that opens a browser session.
+ * @property {string} label - Label of the session it opens, recorded with its jobs.
  * @property {string} expires_at - End of validity (5 minutes).
  */
 
@@ -488,7 +499,7 @@
  * @property {string|null} edition
  * @property {number|null} coverage - Share of the sheet with data, 0–1.
  * @property {string|null} parent_request - Key of the producer request; files of one
- *   request: /groups/{key}.
+ *   request: /requests/{key}.
  * @property {string|null} license
  * @property {string|null} attribution
  * @property {string[]} source_files - Store paths of the input versions of a derived
@@ -793,6 +804,9 @@
  * @property {"scan"|"footprints"|"link_check"} kind
  * @property {"queued"|"running"|"succeeded"|"failed"|"interrupted"|"cancelled"} state
  * @property {string} actor - Who started it.
+ * @property {"local_owner"|"user"|"agent"|"scheduler"} actor_kind - How: the owner, an
+ *   account, an agent for `actor`, or the scheduler.
+ * @property {string|null} session - Label of the session it was started in.
  * @property {string} store
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check.

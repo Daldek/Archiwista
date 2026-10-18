@@ -50,7 +50,7 @@ from archiwista.index import (
 )
 from archiwista.index.geometry import polygon_bounds
 from archiwista.messages import MESSAGES
-from archiwista.security import current_principal, require_csrf
+from archiwista.security import current_principal
 from archiwista.sources.registry import PluginRegistry
 
 router = APIRouter(tags=["areas"])
@@ -352,7 +352,6 @@ _REQUEST_BODY = {
     "/areas",
     status_code=201,
     response_model=Area,
-    dependencies=[Depends(require_csrf)],
     responses=_with_422(
         "Invalid GeoJSON (`validation_error`), a file that cannot be read"
         " (`area_unreadable`; `layers` when it has several), more than 100 000"

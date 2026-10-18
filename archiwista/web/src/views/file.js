@@ -346,8 +346,37 @@ function Location({ details }) {
   return html`<${Tech} value=${values}>${why ? `${kind} — ${why}` : kind}</${Tech}>`;
 }
 
+/**
+ * A sidecar's licence address as a link target, or `null`: only `http(s)` to
+ * another computer. The sidecar comes from the shared store, and a link to a
+ * loopback address would reach other servers of this computer.
+ *
+ * @param {*} value - `license.url` of the raw sidecar.
+ * @returns {string|null}
+ */
+function licenseLink(value) {
+  if (typeof value !== "string") return null;
+  let address;
+  try {
+    address = new URL(value);
+  } catch {
+    return null;
+  }
+  if (address.protocol !== "http:" && address.protocol !== "https:") return null;
+  const host = address.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const loopback =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127\./.test(host) ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "::" ||
+    host.startsWith("::ffff:127.");
+  return loopback ? null : address.href;
+}
+
 function License({ details }) {
-  const url = details.sidecar?.license?.url ?? null;
+  const url = licenseLink(details.sidecar?.license?.url);
   return html`<div class="fc-block">
     <h4 class="section-title">${L.license.title}</h4>
     ${details.license || details.attribution

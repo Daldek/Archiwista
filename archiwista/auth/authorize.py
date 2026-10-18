@@ -20,13 +20,20 @@ Rules (v0.1):
 - ``store.write`` needs the ``store_writer`` role or the setting
   ``store_write_for_all`` (enforced from v0.3);
 - an ``agent`` acts with the roles, groups and id of the principal that
-  minted its token, so it may do exactly what they may.
+  minted its token, read again for each request (``session_principal``), so
+  it may do exactly what they may now.
 """
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Literal
 
-from archiwista.auth.principal import Principal
+from archiwista.auth.principal import (
+    LOCAL_OWNER,
+    LOCAL_PRINCIPAL_ID,
+    Principal,
+    PrincipalKind,
+)
 from archiwista.auth.visibility import ALL_PROJECTS, ProjectVisibility
 from archiwista.config import AppSettings, DefaultProjectVisibility
 from archiwista.errors import PermissionDeniedError
@@ -83,6 +90,46 @@ def principal_for(state: StateStore, user_id: str) -> Principal | None:
         roles=frozenset(user.roles),
         groups=frozenset(user.groups),
     )
+
+
+def session_principal(
+    state: StateStore,
+    principal_id: str,
+    kind: PrincipalKind,
+    *,
+    session: str | None = None,
+) -> Principal | None:
+    """Return who a session acts as now, with the current roles and groups.
+
+    Sessions and one-time tokens keep only an id and a kind; every request
+    reads the roles and groups again, so a revoked role or membership holds
+    for live sessions and agents too.
+
+    Parameters
+    ----------
+    state : StateStore
+        The state database.
+    principal_id : str
+        Who the session belongs to; ``local`` is the owner of a local
+        installation, who has no account.
+    kind : {"local_owner", "user", "agent"}
+        How the session acts: as that principal or as an agent for it.
+    session : str or None, optional
+        Label of the session, kept in the principal.
+
+    Returns
+    -------
+    Principal or None
+        ``None`` when the account is unknown or disabled: the session ends.
+    """
+    if principal_id == LOCAL_PRINCIPAL_ID:
+        base: Principal | None = LOCAL_OWNER
+    else:
+        base = principal_for(state, principal_id)
+    if base is None:
+        return None
+    acting = "agent" if kind == "agent" else base.kind
+    return replace(base, kind=acting, session=session)
 
 
 class Authorizer:

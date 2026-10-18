@@ -8,8 +8,8 @@ listed group for ``group``), another person and an administrator.
 from pathlib import Path
 from typing import Literal
 
-from archiwista.auth import Principal
-from archiwista.auth.authorize import principal_for
+from archiwista.auth import LOCAL_OWNER, Principal
+from archiwista.auth.authorize import principal_for, session_principal
 from archiwista.security import issue_one_time_token, redeem_one_time_token
 from archiwista.state import Role, StateStore, Visibility
 
@@ -44,11 +44,11 @@ WRITER: tuple[Role, ...] = ("store_writer",)
 
 def add_people(state: StateStore) -> None:
     """Create the four accounts and the group ``hydro`` with the listed person."""
-    state.add_user(OWNER, name="Olga Owczarek", actor="local")
-    state.add_user(LISTED, name="Lena Lis", actor="local")
-    state.add_user(OTHER, name="Igor Inny", actor="local")
-    state.add_user(ADMIN, name="Ada Admin", roles=ADMIN_ROLE, actor="local")
-    state.add_group(GROUP, name="Hydrologia", members=(LISTED,), actor="local")
+    state.add_user(OWNER, name="Olga Owczarek", actor=LOCAL_OWNER)
+    state.add_user(LISTED, name="Lena Lis", actor=LOCAL_OWNER)
+    state.add_user(OTHER, name="Igor Inny", actor=LOCAL_OWNER)
+    state.add_user(ADMIN, name="Ada Admin", roles=ADMIN_ROLE, actor=LOCAL_OWNER)
+    state.add_group(GROUP, name="Hydrologia", members=(LISTED,), actor=LOCAL_OWNER)
 
 
 def share(state: StateStore, project: str, visibility: Visibility) -> None:
@@ -59,7 +59,7 @@ def share(state: StateStore, project: str, visibility: Visibility) -> None:
         visibility=visibility,
         users=(LISTED,) if visibility == "users" else (),
         groups=(GROUP,) if visibility == "group" else (),
-        actor="local",
+        actor=LOCAL_OWNER,
     )
 
 
@@ -70,9 +70,13 @@ def principal(state: StateStore, who: Who) -> Principal:
     return found
 
 
-def as_agent(index_path: Path, minter: Principal) -> Principal:
+def as_agent(index_path: Path, state: StateStore, minter: Principal) -> Principal:
     """Return the agent acting with a token ``minter`` issued (the real flow)."""
     issued = issue_one_time_token(index_path, "agent", minted_by=minter)
-    agent = redeem_one_time_token(index_path, issued.token)
+    grant = redeem_one_time_token(index_path, issued.token)
+    assert grant is not None
+    agent = session_principal(
+        state, grant.principal_id, grant.kind, session=grant.label
+    )
     assert agent is not None
     return agent

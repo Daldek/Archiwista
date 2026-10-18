@@ -71,6 +71,8 @@ export const common = {
     producer: "Komunikat {package}:",
     running_job: "Trwa zadanie: {kind} ({state}).",
     stream: "Przerwano śledzenie zadania „{job}”.",
+    session_missing:
+      "Ta karta nie zna tokenu sesji: nie przyszła z adresu z tokenem, a żadna inna karta Archiwisty nie jest otwarta.",
   },
   units: {
     segments: ["segment", "segmenty", "segmentów"],

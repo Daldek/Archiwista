@@ -2,6 +2,7 @@
 
 import os
 import socket
+import stat
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -130,6 +131,9 @@ def run_doctor(
             )
     checks.extend(_store_checks(settings, registry))
     checks.append(_data_dir_check(paths.data_dir))
+    privacy = _privacy_check(paths.data_dir)
+    if privacy is not None:
+        checks.append(privacy)
     checks.append(_port_check(settings.port, port_available))
     return DoctorReport(tuple(checks))
 
@@ -234,6 +238,22 @@ def _data_dir_check(data_dir: Path) -> DoctorCheck:
         return DoctorCheck("ok", MESSAGES["doctor_data_dir_ok"].format(path=data_dir))
     message = MESSAGES["doctor_data_dir_unwritable"].format(path=data_dir)
     return DoctorCheck("error", message, MESSAGES["fix_data_dir"])
+
+
+def _privacy_check(data_dir: Path) -> DoctorCheck | None:
+    """Warn when other accounts of the computer may enter the local data (POSIX)."""
+    if os.name != "posix":
+        return None
+    try:
+        mode = stat.S_IMODE(data_dir.stat().st_mode)
+    except OSError:
+        return None
+    if not mode & 0o077:
+        return None
+    message = MESSAGES["doctor_data_dir_open"].format(path=data_dir, mode=f"{mode:04o}")
+    return DoctorCheck(
+        "warning", message, MESSAGES["fix_data_dir_open"].format(path=data_dir)
+    )
 
 
 def _port_check(port: int, port_available: Callable[[int], bool]) -> DoctorCheck:

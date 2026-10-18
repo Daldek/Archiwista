@@ -10,6 +10,7 @@ from archiwista.auth.principal import (
     LOCAL_OWNER,
     LOCAL_PRINCIPAL_ID,
     LOCAL_ROLES,
+    SCHEDULER,
     Principal,
     PrincipalKind,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "LOCAL_OWNER",
     "LOCAL_PRINCIPAL_ID",
     "LOCAL_ROLES",
+    "SCHEDULER",
     "Principal",
     "PrincipalKind",
     "ProjectVisibility",

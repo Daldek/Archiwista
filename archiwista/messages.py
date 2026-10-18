@@ -17,10 +17,14 @@ MESSAGES = MappingProxyType(
             "włącz dziennik dostępu (wartości token= są w nim ukryte)"
         ),
         "cli_token_help": (
-            "Wystawia jednorazowy adres kolejnej sesji (np. dla agenta), ważny 5 min."
+            "Wystawia jednorazowy adres sesji agenta, ważny 5 min (albo kończy"
+            " sesje agentów: --revoke-all)."
         ),
         "cli_token_port_help": "port serwera w adresie (domyślnie z ustawień)",
         "cli_token_json_help": "wypisz JSON jak odpowiedź POST /api/v1/session/tokens",
+        "cli_token_revoke_all_help": (
+            "zakończ wszystkie sesje agentów i unieważnij niewykorzystane tokeny"
+        ),
         "cli_port_invalid": "port musi być liczbą od {minimum} do 65535",
         "serve_host_refused": (
             "Odmowa uruchomienia na adresie {host}: bez trybu zespołu Archiwista"
@@ -33,10 +37,20 @@ MESSAGES = MappingProxyType(
             "Adres zawiera jednorazowy token ważny {minutes} min; kolejny wystawia"
             " „archiwista token”. Zatrzymanie: Ctrl+C."
         ),
+        "serve_launch_link": "Otwórz Archiwistę",
         "token_failed": "Nie można wystawić tokenu",
         "token_issued": (
-            "Jednorazowy adres sesji, ważny {minutes} min (do {time}). Przekaż go"
-            " agentowi albo otwórz w przeglądarce."
+            "Jednorazowy adres sesji agenta (etykieta {label}), ważny {minutes} min"
+            " (do {time}). Przekaż go agentowi albo otwórz w przeglądarce; sesja"
+            " agenta trwa najwyżej {hours} h."
+        ),
+        "token_revoked": (
+            "Sesje agentów zakończone; unieważnione niewykorzystane tokeny agentów:"
+            " {count}. Nowa sesja agenta wymaga nowego tokenu („archiwista token”)."
+        ),
+        "permission_session_tokens": (
+            "Sesja agenta nie wystawia tokenów kolejnych sesji; token dla agenta"
+            " wystawia właściciel („archiwista token”) albo jego przeglądarka."
         ),
         "api_title_invalid_host": "Niedozwolony adres serwera",
         "api_title_session_required": "Wymagana sesja",
@@ -45,6 +59,8 @@ MESSAGES = MappingProxyType(
         "api_title_not_found": "Nie znaleziono",
         "api_title_permission_denied": "Brak uprawnień",
         "api_title_conflict": "Konflikt",
+        "api_title_request_too_large": "Za duże żądanie",
+        "api_request_too_large": "Treść żądania przekracza limit {limit}.",
         "api_invalid_host": (
             "Archiwista przyjmuje tylko żądania na adres 127.0.0.1:{port}"
             " albo localhost:{port}."
@@ -57,14 +73,21 @@ MESSAGES = MappingProxyType(
             "Token jest nieznany, wygasł albo został już użyty. Wystaw nowy"
             " poleceniem „archiwista token”."
         ),
+        "api_session_ended": (
+            "Sesja zakończyła się: konto jest wyłączone albo usunięte, albo"
+            " właściciel zakończył sesje agentów („archiwista token --revoke-all”)."
+            " Otwórz nową sesję."
+        ),
         "api_cross_site": "Żądanie wysłane z innej strony zostało odrzucone.",
         "api_origin_missing": (
             "Przeglądarka nie podała nagłówka Origin przy żądaniu zmieniającym stan."
         ),
-        "api_csrf_missing": "Brak nagłówka X-Archiwista-CSRF z tokenem CSRF sesji.",
+        "api_csrf_missing": (
+            "Brak nagłówka X-Archiwista-CSRF z tokenem CSRF sesji (csrf_token"
+            " z odpowiedzi POST /api/v1/session); wymaga go każde żądanie /api."
+        ),
         "api_csrf_mismatch": (
-            "Nagłówek X-Archiwista-CSRF albo ciasteczko archiwista_csrf nie pasuje"
-            " do tokenu CSRF sesji."
+            "Nagłówek X-Archiwista-CSRF nie pasuje do tokenu CSRF tej sesji."
         ),
         "api_validation_error": "Niepoprawne dane żądania: {fields}.",
         "api_interface_missing": "Pliki interfejsu nie są zainstalowane.",
@@ -307,6 +330,10 @@ MESSAGES = MappingProxyType(
         "doctor_store_ok": "Magazyn „{store}” ({producer}, {kind}): {path}",
         "doctor_project_dir_ok": "Katalog projektów: {path}",
         "doctor_data_dir_ok": "Dane lokalne (indeks, pamięć, zadania): {path}",
+        "doctor_data_dir_open": (
+            "Dane lokalne {path} są dostępne dla innych kont tego komputera"
+            " (uprawnienia {mode}): indeks, obszary, konta i dzienniki zadań."
+        ),
         "doctor_data_dir_unwritable": (
             "Brak prawa zapisu do katalogu danych lokalnych: {path}"
         ),
@@ -337,6 +364,9 @@ MESSAGES = MappingProxyType(
         ),
         "fix_project_dir": "podłącz katalog albo usuń go z ustawień.",
         "fix_data_dir": "nadaj prawo zapisu do katalogu danych lokalnych.",
+        "fix_data_dir_open": (
+            "uruchom „archiwista serve” (zamyka katalog do 0700) albo: chmod 700 {path}"
+        ),
         "fix_port": "zmień port w ustawieniach albo zatrzymaj program, który go używa.",
         "store_kind_local": "dysk lokalny",
         "store_kind_share": "udział sieciowy",

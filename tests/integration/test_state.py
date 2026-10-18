@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from archiwista.auth import access_key
+from archiwista.auth import LOCAL_OWNER, access_key
 from archiwista.auth.authorize import Authorizer
 from archiwista.cli import main
 from archiwista.config import AppSettings
@@ -59,7 +59,7 @@ def _shared_state(path: Path) -> StateStore:
     add_people(state)
     for visibility, directory in DIRECTORIES.items():
         share(state, access_key(directory), visibility)
-    state.update_user("igor", roles=WRITER, actor="local")
+    state.update_user("igor", roles=WRITER, actor=LOCAL_OWNER)
     return state
 
 
@@ -232,7 +232,7 @@ def test_import_into_non_empty_state_is_rejected(tmp_path: Path) -> None:
     backup = tmp_path / "stan.json"
     assert main(["state", "export", "--output", str(backup)], paths=paths) == 0
     state = StateStore(paths.state_file)
-    state.remove_user("igor", actor="local")
+    state.remove_user("igor", actor=LOCAL_OWNER)
     before = state.snapshot()
 
     # Act

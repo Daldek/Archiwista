@@ -58,7 +58,7 @@ from archiwista.config import (
     detect_store_kind,
 )
 from archiwista.index import BBox, IndexQueries, IndexWriter, initialize, scan_store
-from archiwista.security import CSRF_COOKIE, CSRF_HEADER
+from archiwista.security import CSRF_HEADER
 from archiwista.sources import ScanScope, SourceEntry
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import VIEWPORT
@@ -306,11 +306,7 @@ class _Run:
 
     def post(self, path: str, body: object) -> Any:
         """Change something with the session's CSRF token."""
-        response = self.client.post(
-            f"/api/v1{path}",
-            json=body,
-            headers={CSRF_HEADER: self.client.cookies[CSRF_COOKIE]},
-        )
+        response = self.client.post(f"/api/v1{path}", json=body)
         assert response.status_code in (200, 201, 202), (path, response.text)
         return response.json()
 
@@ -409,6 +405,8 @@ def _session(url: str) -> httpx.Client:
     client = httpx.Client(base_url=f"http://127.0.0.1:{found[1]}", timeout=120.0)
     answer = client.post("/api/v1/session", json={"token": found[2]})
     assert answer.status_code == 200, answer.text
+    # Every request of the session carries its CSRF token (SPEC 10.1).
+    client.headers[CSRF_HEADER] = answer.json()["csrf_token"]
     return client
 
 

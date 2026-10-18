@@ -1,6 +1,7 @@
 """Command-line entry point for Archiwista."""
 
 import argparse
+import os
 import sys
 from collections.abc import Callable
 
@@ -39,6 +40,9 @@ def main(
     int
         Process exit status.
     """
+    if os.name == "posix":
+        # Local data (index, state, logs, area copies) is the user's alone.
+        os.umask(0o077)
     parser = argparse.ArgumentParser(
         prog="archiwista", description=MESSAGES["cli_description"]
     )
@@ -77,8 +81,14 @@ def main(
     token.add_argument(
         "--port", type=_port_type(1), help=MESSAGES["cli_token_port_help"]
     )
-    token.add_argument(
+    token_output = token.add_mutually_exclusive_group()
+    token_output.add_argument(
         "--json", action="store_true", help=MESSAGES["cli_token_json_help"]
+    )
+    token_output.add_argument(
+        "--revoke-all",
+        action="store_true",
+        help=MESSAGES["cli_token_revoke_all_help"],
     )
     reindex = commands.add_parser(
         "reindex",
@@ -97,7 +107,12 @@ def main(
         return admin_main(args, paths, sys.stdout, sys.stderr)
     if args.command == "token":
         return token_main(
-            paths, sys.stdout, sys.stderr, port=args.port, as_json=args.json
+            paths,
+            sys.stdout,
+            sys.stderr,
+            port=args.port,
+            as_json=args.json,
+            revoke_all=args.revoke_all,
         )
     if registry is None:
         registry = load_registry(cache_dir=paths.cache_dir)

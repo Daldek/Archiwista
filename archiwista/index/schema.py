@@ -22,7 +22,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-SCHEMA_VERSION = 3
+from archiwista.paths import private_directory
+
+SCHEMA_VERSION = 4
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -240,6 +242,10 @@ CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
     actor TEXT NOT NULL,
+    actor_kind TEXT NOT NULL CHECK (
+        actor_kind IN ('local_owner', 'user', 'agent', 'scheduler')
+    ),
+    session TEXT,
     store TEXT,
     params TEXT NOT NULL DEFAULT '{}',
     state TEXT NOT NULL CHECK (
@@ -256,6 +262,8 @@ CREATE TABLE jobs (
 );
 CREATE INDEX jobs_store ON jobs (store, kind, created_at);
 CREATE INDEX jobs_state ON jobs (state);
+-- GET /jobs pages newest first.
+CREATE INDEX jobs_created ON jobs (created_at, id);
 
 CREATE TABLE job_events (
     job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -266,12 +274,14 @@ CREATE TABLE job_events (
     PRIMARY KEY (job_id, seq)
 ) WITHOUT ROWID;
 
--- One-time session tokens (SHA-256 only) with the principal that minted each
--- (JSON: id, kind, roles, groups), for whom the new session acts.
+-- One-time session tokens (SHA-256 only) with who minted each (JSON: id and
+-- kind; roles and groups are read for every request) and the label of the
+-- session each opens; ``index_info`` holds the agent-session generation.
 CREATE TABLE session_tokens (
     hash TEXT PRIMARY KEY,
     kind TEXT NOT NULL CHECK (kind IN ('startup', 'agent')),
     principal TEXT NOT NULL,
+    label TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     used_at TEXT
@@ -336,7 +346,8 @@ def initialize(path: Path) -> SchemaState:
     Parameters
     ----------
     path : Path
-        Index file; its directory is created when missing.
+        Index file; its directory is created when missing, and on POSIX
+        closed to other accounts (``0700``, ``private_directory``).
 
     Returns
     -------
@@ -353,7 +364,7 @@ def initialize(path: Path) -> SchemaState:
         R*Tree or JSON functions.
     """
     _require_sqlite_features()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    private_directory(path.parent)
     connection = connect(path)
     try:
         connection.execute("PRAGMA journal_mode = WAL")

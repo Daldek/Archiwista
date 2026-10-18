@@ -8,6 +8,7 @@ prints the job id and waits until killed or its standard input ends.
 import sys
 from pathlib import Path
 
+from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.jobs import JobSupervisor
 from tests.fixtures.jobs import TEST_WORKER
@@ -20,7 +21,9 @@ def main(argv: list[str]) -> int:
     paths = AppPaths(config_file=Path(config), data_dir=Path(data))
     settings = SettingsService(ConfigStore(paths.config_file), NoSources())
     with JobSupervisor(paths, settings, worker_command=TEST_WORKER) as jobs:
-        job = jobs.submit("scan", store=store, params={"mode": "full"}, actor="local")
+        job = jobs.submit(
+            "scan", store=store, params={"mode": "full"}, actor=LOCAL_OWNER
+        )
         print(job.id, flush=True)
         sys.stdin.read()
     return 0

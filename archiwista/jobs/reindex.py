@@ -1,7 +1,8 @@
 """``archiwista reindex``: full scans of stores, run in the foreground.
 
 Each scan is a job like any other (``JobSupervisor``, table ``jobs``, actor
-``local``), so a running server shows it, and a job already writing the
+``local`` of kind ``local_owner``, without a session), so a running server
+shows it, and a job already writing the
 store's index makes it a conflict (code ``conflict``). Progress and notices
 go to standard error, the summary of each store to standard output. Ctrl+C
 cancels the scan: its pass is abandoned and nothing is marked missing.
@@ -11,7 +12,7 @@ from collections.abc import Sequence
 from typing import TextIO
 
 from archiwista.api.errors import problem_of
-from archiwista.auth import LOCAL_PRINCIPAL_ID
+from archiwista.auth import LOCAL_OWNER
 from archiwista.config import (
     AppPaths,
     ConfigStore,
@@ -87,7 +88,7 @@ def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
     """Fully scan one store and report it."""
     try:
         job = jobs.submit(
-            "scan", store=store, params={"mode": "full"}, actor=LOCAL_PRINCIPAL_ID
+            "scan", store=store, params={"mode": "full"}, actor=LOCAL_OWNER
         )
     except JobConflictError as error:
         problem = problem_of(error)

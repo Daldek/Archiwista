@@ -1,33 +1,46 @@
-"""Session routes: one-time token exchange, session state and next tokens.
+"""Session routes: token exchange, the session, logging out and agents' tokens.
 
-``POST /api/v1/session`` needs no session and no CSRF token, but passes the
-``Host`` and ``Origin`` rules; the other routes require the session, and
-``POST /api/v1/session/tokens`` also the CSRF token (SPEC 10.1).
+``POST /api/v1/session`` needs no session but passes the ``Host`` and
+``Origin`` rules; it answers the session's CSRF token, which every other
+``/api`` request carries in ``X-Archiwista-CSRF`` next to the session cookie
+(SPEC 10.1). ``GET`` shows the session without that token, ``DELETE`` ends
+it, and ``POST /api/v1/session/tokens`` issues a one-time token for an agent,
+which an agent's own session may not do.
 """
 
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.errors import ApiError
-from archiwista.auth import Principal
+from archiwista.auth import Principal, PrincipalKind
+from archiwista.errors import PermissionDeniedError
 from archiwista.messages import MESSAGES
 from archiwista.security import (
+    SESSION_COOKIE,
     Session,
     SessionStore,
+    TokenKind,
+    clear_session_cookie,
     current_principal,
     fragment_url,
     issue_one_time_token,
     redeem_one_time_token,
-    require_csrf,
     require_session,
-    set_session_cookies,
+    set_session_cookie,
 )
 
 router = APIRouter(prefix="/session", tags=["session"])
+
+_STATE_EXAMPLE: dict[str, Any] = {
+    "actor": "local",
+    "kind": "local_owner",
+    "label": "3f9c1a7e",
+    "expires_at": "2026-10-19T12:00:00Z",
+}
 
 
 class SessionExchange(BaseModel):
@@ -51,29 +64,49 @@ class SessionExchange(BaseModel):
 class SessionState(BaseModel):
     """The current session."""
 
+    model_config = ConfigDict(json_schema_extra={"examples": [_STATE_EXAMPLE]})
+
+    actor: str = Field(
+        description="Who acts: the principal's id (`local` for the computer's owner)."
+    )
+    kind: PrincipalKind = Field(
+        description=(
+            "How: `local_owner` (the owner), `user` (a signed-in person, team"
+            " mode) or `agent` (for `actor`, with a token they issued)."
+        )
+    )
+    label: str = Field(
+        description=(
+            "Label of the session, recorded with its jobs and permission changes."
+        )
+    )
+    expires_at: datetime = Field(
+        description=(
+            "End of the session unless used again: each request extends it by"
+            " 24 h; an agent's session ends 12 h after its start at the latest."
+        )
+    )
+
+
+class NewSession(SessionState):
+    """A session just started, with its CSRF token (answered only here)."""
+
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [
-                {
-                    "actor": "local",
-                    "csrf_token": "Yc1hR8kq0sV3nL5tW7xZ9A",
-                    "expires_at": "2026-10-19T12:00:00Z",
-                }
-            ]
+            "examples": [{**_STATE_EXAMPLE, "csrf_token": "Yc1hR8kq0sV3nL5tW7xZ9A"}]
         }
     )
 
-    actor: str = Field(description="Who acts; `local` in local mode.")
     csrf_token: str = Field(
-        description="Send as X-Archiwista-CSRF with POST, PUT and DELETE."
-    )
-    expires_at: datetime = Field(
-        description="End of the session unless used again (each request extends it)."
+        description=(
+            "Send as X-Archiwista-CSRF with every /api request, reads included,"
+            " together with the session cookie; keep it secret."
+        )
     )
 
 
 class OneTimeToken(BaseModel):
-    """A one-time token for a next session, e.g. an agent's."""
+    """A one-time token for an agent's session."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -81,6 +114,7 @@ class OneTimeToken(BaseModel):
                 {
                     "token": "pT0Vf1mWQ3uX9aZbC2dE4g",
                     "url": "http://127.0.0.1:8090/#token=pT0Vf1mWQ3uX9aZbC2dE4g",
+                    "label": "5b2d4c60",
                     "expires_at": "2026-10-18T12:05:00Z",
                 }
             ]
@@ -89,64 +123,90 @@ class OneTimeToken(BaseModel):
 
     token: str = Field(description="Value for POST /api/v1/session (single use).")
     url: str = Field(description="Address that opens a browser session.")
+    label: str = Field(
+        description="Label of the session it opens, recorded with its jobs."
+    )
     expires_at: datetime = Field(description="End of validity (5 minutes).")
 
 
 def _state(session: Session) -> SessionState:
     return SessionState(
-        actor=session.principal.id,
-        csrf_token=session.csrf_token,
+        actor=session.principal_id,
+        kind=session.kind,
+        label=session.label,
         expires_at=session.expires_at,
     )
 
 
-@router.post("", response_model=SessionState)
+def on_redeem(request: Request, kind: TokenKind) -> None:
+    """Tell the server that a one-time token of ``kind`` started a session.
+
+    ``archiwista serve`` deletes the browser's redirect file once its startup
+    token is used (``app.state.on_redeem``; nothing without it).
+    """
+    hook = getattr(request.app.state, "on_redeem", None)
+    if hook is not None:
+        hook(kind)
+
+
+@router.post("", response_model=NewSession)
 def exchange_token(
     body: SessionExchange, request: Request, response: Response
-) -> SessionState:
+) -> NewSession:
     """Exchange a one-time token for a session and its CSRF token.
 
-    Sets the ``HttpOnly`` cookie ``archiwista_session`` and the cookie
-    ``archiwista_csrf``. An unknown, used or expired token answers ``401
-    session_required``.
+    Sets the `HttpOnly` cookie `archiwista_session`; every later request also
+    sends `csrf_token` as `X-Archiwista-CSRF`, since the cookie alone never
+    acts. An unknown, used, expired or revoked token answers `401
+    session_required`.
     """
     index_path: Path = request.app.state.index_path
-    principal = redeem_one_time_token(index_path, body.token)
-    if principal is None:
+    grant = redeem_one_time_token(index_path, body.token)
+    if grant is None:
         raise ApiError(401, "session_required", MESSAGES["api_token_rejected"])
     sessions: SessionStore = request.app.state.sessions
-    session_id, session = sessions.create(principal)
-    set_session_cookies(response, session, session_id=session_id)
-    return _state(session)
+    session_id, session = sessions.create(grant)
+    set_session_cookie(response, session_id)
+    on_redeem(request, grant.token_kind)
+    return NewSession(**_state(session).model_dump(), csrf_token=session.csrf_token)
 
 
 @router.get("", response_model=SessionState)
 async def read_session(
-    session: Annotated[Session, Depends(require_session)], response: Response
+    session: Annotated[Session, Depends(require_session)],
 ) -> SessionState:
-    """Return the session's actor, CSRF token and expiry.
+    """Return who acts in the session, how, its label and its end.
 
-    Also renews the ``archiwista_csrf`` cookie, e.g. after a reload.
+    The CSRF token is not repeated: the request already carries it.
     """
-    set_session_cookies(response, session)
     return _state(session)
 
 
-@router.post(
-    "/tokens",
-    response_model=OneTimeToken,
-    status_code=201,
-    dependencies=[Depends(require_csrf)],
-)
+@router.delete("", status_code=204, response_class=Response)
+async def end_session(
+    request: Request, session: Annotated[Session, Depends(require_session)]
+) -> Response:
+    """End the session at once (log out) and remove its cookie."""
+    sessions: SessionStore = request.app.state.sessions
+    sessions.end(request.cookies.get(SESSION_COOKIE))
+    response = Response(status_code=204)
+    clear_session_cookie(response)
+    return response
+
+
+@router.post("/tokens", response_model=OneTimeToken, status_code=201)
 def issue_token(
     principal: Annotated[Principal, Depends(current_principal)], request: Request
 ) -> OneTimeToken:
     """Issue a one-time token, valid 5 minutes, for an agent's session.
 
     The user hands it over outside the API, e.g. to an agent, which
-    exchanges it with ``POST /api/v1/session`` and then acts for the
-    session's principal.
+    exchanges it with `POST /api/v1/session` and then acts for the session's
+    principal under the token's `label`. An agent's own session answers `403
+    permission_denied`: agents do not open further sessions.
     """
+    if principal.kind == "agent":
+        raise PermissionDeniedError(MESSAGES["permission_session_tokens"])
     issued = issue_one_time_token(
         request.app.state.index_path, "agent", minted_by=principal
     )
@@ -154,5 +214,6 @@ def issue_token(
     return OneTimeToken(
         token=issued.token,
         url=fragment_url(port, issued.token),
+        label=issued.label,
         expires_at=issued.expires_at,
     )

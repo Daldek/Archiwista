@@ -3,21 +3,28 @@
 ``serve`` refuses any listening address but ``127.0.0.1`` before doing
 anything else (team mode with login comes in v0.4), binds the port, issues
 the one-time startup token, prints ``http://127.0.0.1:<port>/#token=…``,
-optionally opens it in the browser and serves until Ctrl+C. Uvicorn's access
-log is off unless asked for; when on, ``token=`` values are redacted. While
-it serves, background jobs run under its ``JobSupervisor`` and the
-``ScanScheduler`` scans the stores; stopping ends the open job event streams
-first (they would hold it until their jobs end), then interrupts running jobs.
-``token`` prints the one-time address of a next session, e.g. for an agent.
+optionally opens it in the browser and serves until Ctrl+C. The browser gets
+the address through a private file (``LaunchFile``), never on its command
+line, which other accounts of the computer can read. Uvicorn's access log is
+off unless asked for; when on, ``token=`` values are redacted; it serves at
+most ``LIMIT_CONCURRENCY`` connections at once. While it serves, background
+jobs run under its ``JobSupervisor`` and the ``ScanScheduler`` scans the
+stores; stopping ends the open job event streams first (they would hold it
+until their jobs end), then interrupts running jobs. ``token`` prints the
+one-time address of an agent's session, or ends every agent session
+(``--revoke-all``).
 """
 
 import contextlib
 import copy
+import html
 import os
+import secrets
 import socket
 import threading
 import webbrowser
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TextIO
 
 import uvicorn
@@ -37,7 +44,9 @@ from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
 from archiwista.messages import MESSAGES, with_detail
+from archiwista.paths import private_directory
 from archiwista.security import (
+    AGENT_SESSION_MAX_AGE,
     LOOPBACK_HOST,
     TOKEN_TTL,
     SessionStore,
@@ -45,9 +54,13 @@ from archiwista.security import (
     TokenRedactionFilter,
     fragment_url,
     issue_one_time_token,
+    revoke_agent_sessions,
 )
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
+
+# Connections and tasks served at once; more are answered ``503``.
+LIMIT_CONCURRENCY = 100
 
 _REDACT_FILTER = "archiwista_redact_tokens"
 
@@ -102,6 +115,63 @@ class _Uvicorn(uvicorn.Server):
         await super().shutdown(sockets=sockets)
 
 
+class LaunchFile:
+    """The startup address in a private file that the browser opens.
+
+    A browser started with the address keeps it on its command line, which
+    other accounts of the computer can read (``/proc/<pid>/cmdline``), and
+    whoever uses the one-time token first gets the owner's session. The
+    browser therefore opens ``<directory>/open-<random>.html`` instead,
+    readable by the owner only, which redirects to the address (as Jupyter
+    does). Thread-safe.
+
+    Parameters
+    ----------
+    directory : Path
+        The private data directory (``AppPaths.data_dir``).
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory
+        self._path: Path | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def path(self) -> Path | None:
+        """The file while it exists."""
+        return self._path
+
+    def write(self, url: str) -> Path:
+        """Write the file redirecting to ``url`` (mode ``0600``) and return it."""
+        address = html.escape(url, quote=True)
+        page = (
+            '<!doctype html>\n<html lang="pl">\n<head>\n<meta charset="utf-8">\n'
+            f'<meta http-equiv="refresh" content="0;url={address}">\n'
+            "<title>Archiwista</title>\n</head>\n"
+            f'<body><p><a href="{address}">{MESSAGES["serve_launch_link"]}</a></p>'
+            "</body>\n</html>\n"
+        )
+        with self._lock:
+            self._remove()
+            private_directory(self._directory)
+            path = self._directory / f"open-{secrets.token_hex(8)}.html"
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                file.write(page)
+            self._path = path
+        return path
+
+    def remove(self) -> None:
+        """Delete the file (its token is used or expired, or the server stops)."""
+        with self._lock:
+            self._remove()
+
+    def _remove(self) -> None:
+        if self._path is not None:
+            self._path.unlink(missing_ok=True)
+            self._path = None
+
+
 class LocalServer:
     """The application on a listening loopback socket, ready to serve.
 
@@ -113,6 +183,8 @@ class LocalServer:
         The application.
     url : str
         One-time address of the first session.
+    launch : LaunchFile
+        Where ``open_in_browser`` puts the address for the browser.
     access_log : bool
         Write Uvicorn's access log, with ``token=`` values redacted.
     on_stop : Callable[[], None]
@@ -127,10 +199,12 @@ class LocalServer:
         app: ASGIApp,
         *,
         url: str,
+        launch: LaunchFile,
         access_log: bool,
         on_stop: Callable[[], None],
     ) -> None:
         self.url = url
+        self.launch = launch
         self.port: int = sock.getsockname()[1]
         self._socket = sock
         config = uvicorn.Config(
@@ -141,6 +215,7 @@ class LocalServer:
             access_log=access_log,
             proxy_headers=False,
             server_header=False,
+            limit_concurrency=LIMIT_CONCURRENCY,
         )
         self._server = _Uvicorn(config, on_stop)
 
@@ -156,8 +231,13 @@ class LocalServer:
 
 
 def open_in_browser(server: LocalServer) -> None:
-    """Open the server's one-time address in the default browser, not waiting."""
-    threading.Thread(target=webbrowser.open, args=(server.url,), daemon=True).start()
+    """Open the server's one-time address in the default browser, not waiting.
+
+    The browser gets the ``file:`` address of ``server.launch``, never the
+    token itself.
+    """
+    uri = server.launch.write(server.url).as_uri()
+    threading.Thread(target=webbrowser.open, args=(uri,), daemon=True).start()
 
 
 def serve_main(
@@ -191,7 +271,8 @@ def serve_main(
         Write the access log (``token=`` values redacted); off by default.
     on_ready : Callable[[LocalServer], object] or None, optional
         Called with the server after the address is printed and before it
-        serves, e.g. ``open_in_browser``.
+        serves, e.g. ``open_in_browser``. The launch file goes once the
+        startup token is used, when it expires, and when the server stops.
 
     Returns
     -------
@@ -232,6 +313,14 @@ def serve_main(
             err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
             return 1
         scheduler = ScanScheduler(jobs, settings, registry, index_path=paths.index_file)
+        launch = LaunchFile(paths.data_dir)
+        expiry = threading.Timer(TOKEN_TTL["startup"].total_seconds(), launch.remove)
+        expiry.daemon = True
+
+        def redeemed(kind: TokenKind) -> None:
+            if kind == "startup":
+                launch.remove()
+
         try:
             app = create_app(
                 port=bound_port,
@@ -242,6 +331,7 @@ def serve_main(
                 areas_dir=paths.areas_dir,
                 sessions=SessionStore(),
                 jobs=jobs,
+                on_redeem=redeemed,
             )
             issued = issue_one_time_token(
                 paths.index_file, "startup", minted_by=LOCAL_OWNER
@@ -250,6 +340,7 @@ def serve_main(
                 sock,
                 app,
                 url=fragment_url(bound_port, issued.token),
+                launch=launch,
                 access_log=access_log,
                 on_stop=app.state.job_streams.close,
             )
@@ -260,11 +351,14 @@ def serve_main(
                 + "\n"
             )
             out.flush()
+            expiry.start()
             if on_ready is not None:
                 on_ready(server)
             scheduler.start()
             server.run()
         finally:
+            expiry.cancel()
+            launch.remove()
             scheduler.stop()
             jobs.close()
     return 0
@@ -277,8 +371,9 @@ def token_main(
     *,
     port: int | None = None,
     as_json: bool = False,
+    revoke_all: bool = False,
 ) -> int:
-    """Run ``archiwista token``: a one-time address of a next session.
+    """Run ``archiwista token``: a one-time address of an agent's session.
 
     Parameters
     ----------
@@ -290,6 +385,9 @@ def token_main(
         Port in the address; the configured one when omitted.
     as_json : bool, optional
         Print the ``POST /api/v1/session/tokens`` response model instead.
+    revoke_all : bool, optional
+        Issue nothing: end every agent session, also of a running server,
+        and refuse the agent tokens not used yet.
 
     Returns
     -------
@@ -302,11 +400,16 @@ def token_main(
     except (SettingsValidationError, IndexUnsupportedError) as error:
         err.write(with_detail(MESSAGES["token_failed"], str(error)) + "\n")
         return 1
+    if revoke_all:
+        refused = revoke_agent_sessions(paths.index_file)
+        out.write(MESSAGES["token_revoked"].format(count=refused) + "\n")
+        return 0
     # The owner at the terminal mints a token for an agent acting for them.
     issued = issue_one_time_token(paths.index_file, "agent", minted_by=LOCAL_OWNER)
     token = OneTimeToken(
         token=issued.token,
         url=fragment_url(settings.port if port is None else port, issued.token),
+        label=issued.label,
         expires_at=issued.expires_at,
     )
     if as_json:
@@ -314,7 +417,12 @@ def token_main(
         return 0
     out.write(token.url + "\n")
     expires = issued.expires_at.astimezone().strftime("%H:%M")
-    message = MESSAGES["token_issued"].format(minutes=_minutes("agent"), time=expires)
+    message = MESSAGES["token_issued"].format(
+        label=issued.label,
+        minutes=_minutes("agent"),
+        time=expires,
+        hours=int(AGENT_SESSION_MAX_AGE.total_seconds()) // 3600,
+    )
     err.write(message + "\n")
     return 0
 

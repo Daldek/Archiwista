@@ -14,7 +14,7 @@ from playwright.sync_api import ConsoleMessage, Page, Request, ViewportSize, Wor
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths, AppSettings, ConfigStore
-from archiwista.security import fragment_url, issue_one_time_token
+from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
 from archiwista.server import LocalServer
 
 VIEWPORT: ViewportSize = {"width": 1440, "height": 900}
@@ -106,3 +106,10 @@ class Tab:
 
     def _worker(self, worker: Worker) -> None:
         self.workers.append(worker.url)
+
+
+def session_headers(page: Page) -> dict[str, str]:
+    """Return the CSRF header of the page's session (its ``sessionStorage``)."""
+    token = page.evaluate("() => sessionStorage.getItem('archiwista_csrf')")
+    assert isinstance(token, str), "the page has no session"
+    return {CSRF_HEADER: token}

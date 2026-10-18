@@ -4,21 +4,27 @@
  * route, named after its OpenAPI `operationId` in camelCase (`list_slots` →
  * `listSlots`); answers are typed in `types.js`.
  *
- * Session (A-ADR-012 errata 1, SPEC 10.1): `archiwista serve` opens
+ * Session (A-ADR-012 errata 1 and 2, SPEC 10.1): `archiwista serve` opens
  * `/#token=…`. `startSession` first removes the token from the address
  * (`history.replaceState`, so it stays in no history entry or bookmark),
- * then exchanges it (`POST /session`); after a reload it checks the session
- * cookie (`GET /session`, which also renews the CSRF cookie). Every `POST`,
- * `PUT`, `PATCH` and `DELETE` carries `X-Archiwista-CSRF` copied from the
- * `archiwista_csrf` cookie. Errors are RFC 9457 problems thrown as
- * `ApiError`; a `401` of any request after the start goes to the
- * `onSessionLost` listeners, so the shell can say how to open a new session.
+ * then exchanges it (`POST /session`) and keeps the session's CSRF token in
+ * this origin's `sessionStorage`; every request, reads included, carries it
+ * in `X-Archiwista-CSRF` next to the `HttpOnly` session cookie, which
+ * browsers also send to other ports of the host. A tab without the token
+ * (a new one, a link opened in another tab) asks the open tabs of this
+ * origin for it (`BroadcastChannel`); a tab starting a new session tells
+ * them its token. Job events stream through `fetch`, which can send the
+ * header (`EventSource` cannot), resuming after `Last-Event-ID`. Errors are
+ * RFC 9457 problems thrown as `ApiError`; a `401` or `csrf_rejected` of any
+ * request after the start goes to the `onSessionLost` listeners, so the
+ * shell can say how to open a new session.
  */
 
 import { T, t } from "./labels/index.js";
 
 /** @typedef {import("./types.js").Problem} Problem */
 /** @typedef {import("./types.js").SessionState} SessionState */
+/** @typedef {import("./types.js").NewSession} NewSession */
 /** @typedef {import("./types.js").OneTimeToken} OneTimeToken */
 /** @typedef {import("./types.js").Health} Health */
 /** @typedef {import("./types.js").SourceList} SourceList */
@@ -55,15 +61,32 @@ import { T, t } from "./labels/index.js";
  */
 
 export const API_PREFIX = "/api/v1";
-const CSRF_COOKIE = "archiwista_csrf";
 const CSRF_HEADER = "X-Archiwista-CSRF";
-const CHANGES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+// `sessionStorage` key of the session's CSRF token (this origin, this tab).
+export const TOKEN_KEY = "archiwista_csrf";
+const CHANNEL = "archiwista-session";
+// How long a tab without the token waits for an open tab to hand it over.
+const HANDOFF_MS = 300;
+// Pause before an event stream that broke off resumes.
+const RESUME_MS = 1000;
 const FINAL_JOB_STATES = new Set(["succeeded", "failed", "interrupted", "cancelled"]);
 
 /** @type {SessionState|null} */
 let current = null;
 /** @type {Set<(problem: Problem) => void>} */
 const sessionLost = new Set();
+/** @type {BroadcastChannel|null} */
+const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel(CHANNEL) : null;
+channel?.addEventListener("message", ({ data }) => {
+  if (current === null) return;
+  if (data?.type === "ask") {
+    const token = storedToken();
+    if (token !== null) channel.postMessage({ type: "token", token });
+  } else if (data?.type === "token" && typeof data.token === "string") {
+    // Another tab started a session: the shared cookie is now that one's.
+    sessionStorage.setItem(TOKEN_KEY, data.token);
+  }
+});
 
 /** A problem answered by the API (RFC 9457), or no answer at all (`status` 0). */
 export class ApiError extends Error {
@@ -91,7 +114,17 @@ export class ApiError extends Error {
  */
 export async function startSession() {
   const token = takeFragmentToken();
-  const state = token === null ? await readSession() : await exchangeToken(token);
+  if (token !== null) {
+    const started = await exchangeToken(token);
+    sessionStorage.setItem(TOKEN_KEY, started.csrf_token);
+    channel?.postMessage({ type: "token", token: started.csrf_token });
+    current = started;
+    return started;
+  }
+  const kept = storedToken() ?? (await askOpenTabs());
+  if (kept === null) throw new ApiError(sessionMissingProblem());
+  sessionStorage.setItem(TOKEN_KEY, kept);
+  const state = await readSession();
   current = state;
   return state;
 }
@@ -117,17 +150,12 @@ export function onSessionLost(listener) {
 }
 
 /**
- * The CSRF token of the session: the `archiwista_csrf` cookie, which `GET
- * /session` renews after a reload, else the one the session answered with.
+ * The CSRF token of the session this tab keeps (`sessionStorage`).
  *
  * @returns {string|null}
  */
 export function csrfToken() {
-  for (const part of document.cookie.split(";")) {
-    const [name, ...value] = part.trim().split("=");
-    if (name === CSRF_COOKIE) return decodeURIComponent(value.join("="));
-  }
-  return current?.csrf_token ?? null;
+  return storedToken();
 }
 
 /**
@@ -154,10 +182,8 @@ export async function request(method, path, { query, json, body, type, signal } 
   } else if (body !== undefined) {
     headers["Content-Type"] = type ?? "application/octet-stream";
   }
-  if (CHANGES.has(method)) {
-    const token = csrfToken();
-    if (token !== null) headers[CSRF_HEADER] = token;
-  }
+  const token = storedToken();
+  if (token !== null) headers[CSRF_HEADER] = token;
   let response;
   try {
     response = await fetch(API_PREFIX + path + search(query), {
@@ -173,8 +199,9 @@ export async function request(method, path, { query, json, body, type, signal } 
   }
   if (response.ok) return response.status === 204 ? null : response.json();
   const problem = await readProblem(response);
-  if (problem.status === 401 && current !== null) {
+  if ((problem.status === 401 || problem.code === "csrf_rejected") && current !== null) {
     current = null;
+    sessionStorage.removeItem(TOKEN_KEY);
     for (const listener of [...sessionLost]) listener(problem);
   }
   throw new ApiError(problem);
@@ -183,23 +210,38 @@ export async function request(method, path, { query, json, body, type, signal } 
 // Session (step 8) ------------------------------------------------------------
 
 /**
- * Exchange a one-time token for a session (`exchange_token`).
+ * Exchange a one-time token for a session (`exchange_token`); the answer
+ * alone carries the session's CSRF token.
  *
  * @param {string} token - Value after `#token=`.
- * @returns {Promise<SessionState>}
+ * @returns {Promise<NewSession>}
  */
 export function exchangeToken(token) {
   return request("POST", "/session", { json: { token } });
 }
 
 /**
- * The session of the cookie; renews the CSRF cookie (`read_session`).
+ * The session: who acts, how, its label and end (`read_session`).
  *
  * @param {RequestOptions} [options]
  * @returns {Promise<SessionState>}
  */
 export function readSession({ signal } = {}) {
   return request("GET", "/session", { signal });
+}
+
+/**
+ * End the session at once and forget its token (`end_session`).
+ *
+ * @returns {Promise<null>}
+ */
+export async function endSession() {
+  try {
+    return await request("DELETE", "/session");
+  } finally {
+    sessionStorage.removeItem(TOKEN_KEY);
+    current = null;
+  }
 }
 
 /**
@@ -324,7 +366,7 @@ export function getSidecar(store, version, { signal } = {}) {
  * @returns {Promise<RequestFiles>}
  */
 export function listRequestFiles(parentRequest, { signal } = {}) {
-  return request("GET", `/groups/${segments(parentRequest)}`, { signal });
+  return request("GET", `/requests/${segments(parentRequest)}`, { signal });
 }
 
 /**
@@ -463,35 +505,70 @@ export function getJob(job, { signal } = {}) {
 }
 
 /**
- * Follow a job's events (`get_job_events`, server-sent events): every event
- * since the start, then new ones until a final state ends the stream. A
- * dropped connection resumes after the last event (`Last-Event-ID`).
+ * Follow a job's events (`get_job_events`, server-sent events read with
+ * `fetch`, which sends the session's CSRF token): every event since the
+ * start, then new ones until a final state ends the stream. A stream that
+ * breaks off resumes after the last event (`Last-Event-ID`); an error answer
+ * stops following with `onError`.
  *
  * @param {string} job - Job id.
  * @param {JobHandlers} handlers
  * @returns {() => void} Stop following.
  */
 export function watchJob(job, { onProgress, onNotice, onState, onError } = {}) {
-  const source = new EventSource(`${API_PREFIX}/jobs/${one(job)}/events`);
-  const listen = (type, handler) =>
-    source.addEventListener(type, (event) => handler?.(JSON.parse(event.data)));
-  listen("progress", onProgress);
-  listen("notice", onNotice);
-  listen("state", (data) => {
-    if (FINAL_JOB_STATES.has(data.state)) source.close();
-    onState?.(data);
-  });
-  source.addEventListener("error", () => {
-    if (source.readyState !== EventSource.CLOSED) return;
-    onError?.({
-      type: "about:blank",
-      title: T.common.problem.http_title,
-      status: 0,
-      detail: t(T.common.problem.stream, { job }),
-      code: "stream_closed",
-    });
-  });
-  return () => source.close();
+  const handlers = { progress: onProgress, notice: onNotice, state: onState };
+  const controller = new AbortController();
+  let last = null;
+  let ended = false;
+  const follow = async () => {
+    while (!ended) {
+      const headers = { Accept: "text/event-stream" };
+      const token = storedToken();
+      if (token !== null) headers[CSRF_HEADER] = token;
+      if (last !== null) headers["Last-Event-ID"] = last;
+      let response;
+      try {
+        response = await fetch(`${API_PREFIX}/jobs/${one(job)}/events`, {
+          headers,
+          signal: controller.signal,
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+      } catch {
+        await pause(RESUME_MS, controller.signal);
+        continue;
+      }
+      if (response.status === 204) return;
+      if (!response.ok) {
+        ended = true;
+        onError?.({
+          type: "about:blank",
+          title: T.common.problem.http_title,
+          status: response.status,
+          detail: t(T.common.problem.stream, { job }),
+          code: "stream_closed",
+        });
+        return;
+      }
+      try {
+        for await (const message of eventMessages(response.body)) {
+          if (message.id !== null) last = message.id;
+          const data = JSON.parse(message.data);
+          if (message.event === "state" && FINAL_JOB_STATES.has(data.state)) ended = true;
+          handlers[message.event]?.(data);
+          if (ended) return;
+        }
+      } catch {
+        // The connection broke off: resume below.
+      }
+      await pause(RESUME_MS, controller.signal);
+    }
+  };
+  follow().finally(() => controller.abort());
+  return () => {
+    ended = true;
+    controller.abort();
+  };
 }
 
 // Areas and local coverage (9c) -----------------------------------------------
@@ -549,6 +626,82 @@ export function getLocalCoverage(query, { signal } = {}) {
 }
 
 // Helpers ---------------------------------------------------------------------
+
+/** The CSRF token this tab keeps, or `null`. */
+function storedToken() {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+/** Ask the open tabs of this origin for the session's token (or `null`). */
+function askOpenTabs() {
+  if (channel === null) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const answer = ({ data }) => {
+      if (data?.type === "token" && typeof data.token === "string") done(data.token);
+    };
+    const done = (token) => {
+      clearTimeout(timer);
+      channel.removeEventListener("message", answer);
+      resolve(token);
+    };
+    const timer = setTimeout(() => done(null), HANDOFF_MS);
+    channel.addEventListener("message", answer);
+    channel.postMessage({ type: "ask" });
+  });
+}
+
+/**
+ * Messages of a server-sent event stream: `{id, event, data}` per message.
+ *
+ * @param {ReadableStream<Uint8Array>} body
+ */
+async function* eventMessages(body) {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let message = { id: null, event: "message", data: null };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end).replace(/\r$/, "");
+      buffer = buffer.slice(end + 1);
+      if (line === "") {
+        if (message.data !== null) yield message;
+        message = { id: null, event: "message", data: null };
+      } else if (!line.startsWith(":")) {
+        const colon = line.indexOf(":");
+        const field = colon < 0 ? line : line.slice(0, colon);
+        const text = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+        if (field === "id") message.id = text;
+        else if (field === "event") message.event = text;
+        else if (field === "data") message.data = message.data === null ? text : `${message.data}\n${text}`;
+      }
+    }
+  }
+}
+
+/** Wait `ms`, or less when `signal` aborts. */
+function pause(ms, signal) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+function sessionMissingProblem() {
+  return {
+    type: "about:blank",
+    title: T.common.problem.http_title,
+    status: 401,
+    detail: T.common.problem.session_missing,
+    code: "session_required",
+  };
+}
 
 /** Remove `token=…` from the fragment and return it (or `null`). */
 function takeFragmentToken() {

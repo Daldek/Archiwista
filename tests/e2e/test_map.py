@@ -41,7 +41,9 @@ HEALTH = """async () => {
     (item) => item.state.indexed_at !== null && item.state.running_job === null);
 }"""
 API_GET = """async (path) => {
-  const answer = await fetch(`/api/v1${path}`);
+  const token = sessionStorage.getItem("archiwista_csrf");
+  const headers = { "X-Archiwista-CSRF": token };
+  const answer = await fetch(`/api/v1${path}`, { headers });
   return { status: answer.status, body: await answer.json() };
 }"""
 LOADED = re.compile("w widoku|Brak obrysów")

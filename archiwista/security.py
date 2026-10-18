@@ -1,17 +1,24 @@
-"""Local-mode access protection (SPEC 10.1, A-ADR-012 errata 1).
+"""Local-mode access protection (SPEC 10.1, A-ADR-012 errata 1 and 2).
 
 The server listens on ``127.0.0.1`` only and answers requests whose ``Host``
 is ``127.0.0.1:<port>`` or ``localhost:<port>`` (DNS rebinding). A one-time
 token, of which the local index keeps only the SHA-256 hash together with
-the principal that minted it, is exchanged for a session cookie and a
-separate CSRF token; the session acts as that ``Principal``
-(``current_principal`` for routers). ``/api/*`` requires the session (except
-the exchange itself), and state-changing requests also the
-``X-Archiwista-CSRF`` header equal to the session's CSRF token and to its
-cookie (double-submit). A present ``Origin`` must be the server itself; a
-browser (``Sec-Fetch-Site``) may change state only from the same origin and
-read only from the same origin or by a direct navigation (``none``). Every
-response carries a CSP computed from the current settings,
+who minted it (id and kind), is exchanged for a session: an ``HttpOnly``
+session cookie and a separate secret, the session's CSRF token, which the
+client keeps (the interface in ``sessionStorage``, bound to the server's
+origin) and sends as ``X-Archiwista-CSRF`` with every ``/api`` request,
+reads included. Browsers send cookies to every port of a host, so the cookie
+never acts alone. ``/api/*`` requires both, except the exchange itself and
+the static files of ``/api/docs``; the session acts as a ``Principal`` whose
+roles and groups are read for every request (``current_principal`` for
+routers). An agent's session ends 12 hours after its start at the latest,
+and at once when the owner revokes agent sessions
+(``revoke_agent_sessions``). A present ``Origin`` must be the server itself;
+a browser (``Sec-Fetch-Site``) may change state only from the same origin and
+read only from the same origin or by a direct navigation (``none``). Request
+bodies are capped before a route reads them: 4 KiB for the token exchange,
+1 MiB otherwise (area files keep their own 50 MB limit). Every response
+carries a CSP computed from the current settings,
 ``Referrer-Policy: no-referrer`` and ``X-Content-Type-Options: nosniff``;
 there is no CORS. Files are opened only through ``archiwista.paths``.
 """
@@ -22,8 +29,10 @@ import json
 import logging
 import re
 import secrets
+import sqlite3
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -37,30 +46,42 @@ from starlette.requests import HTTPConnection
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from archiwista.api import API_PREFIX
+from archiwista.api import API_PREFIX, DOCS_PATH
 from archiwista.api.errors import ApiError, problem_response
-from archiwista.auth import Principal
+from archiwista.auth import Principal, PrincipalKind
+from archiwista.auth.authorize import session_principal
 from archiwista.config import AppSettings
 from archiwista.index.schema import connect
 from archiwista.messages import MESSAGES
+from archiwista.state import StateStore
 
 type TokenKind = Literal["startup", "agent"]
 
 LOOPBACK_HOST = "127.0.0.1"
 SESSION_COOKIE = "archiwista_session"
-CSRF_COOKIE = "archiwista_csrf"
 CSRF_HEADER = "X-Archiwista-CSRF"
 SESSION_PATH = f"{API_PREFIX}/session"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Each request of a session moves its end by the idle timeout.
 SESSION_IDLE_TIMEOUT = timedelta(hours=24)
+# An agent's session ends this long after its start, used or not.
+AGENT_SESSION_MAX_AGE = timedelta(hours=12)
 TOKEN_TTL: Mapping[TokenKind, timedelta] = MappingProxyType(
     {"startup": timedelta(minutes=10), "agent": timedelta(minutes=5)}
 )
+# Request bodies read before a route: the token exchange, everything else.
+SESSION_BODY_LIMIT_BYTES = 4 * 1024
+BODY_LIMIT_BYTES = 1024**2
 REDACTED = "***"
 
 _TOKEN_BYTES = 16  # 128-bit one-time and CSRF tokens
 _SESSION_ID_BYTES = 32
+_LABEL_BYTES = 4
+# ``index_info`` key that ``revoke_agent_sessions`` increments: an agent
+# session started under another value has ended.
+_AGENT_GENERATION = "agent_session_generation"
+# ``POST /api/v1/areas`` reads its body itself, up to its own limit.
+_AREAS_PATH = f"{API_PREFIX}/areas"
 _TOKEN_VALUE = re.compile(r"(?i)(token=)[^&;#\s\"']*")
 # Scheme, host and port only: anything else would break the policy syntax.
 _CSP_SOURCE = re.compile(r"https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?")
@@ -84,6 +105,17 @@ def _whole_seconds(moment: datetime | None) -> datetime:
     return (moment or _utc_now()).astimezone(UTC).replace(microsecond=0)
 
 
+@contextmanager
+def _immediate(connection: sqlite3.Connection) -> Iterator[None]:
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    connection.execute("COMMIT")
+
+
 # One-time tokens -----------------------------------------------------------
 
 
@@ -97,12 +129,16 @@ class IssuedToken:
         128-bit URL-safe value.
     kind : {"startup", "agent"}
         Who asked for it: ``archiwista serve`` or a next session.
+    label : str
+        Label of the session the token opens (8 hexadecimal digits),
+        recorded with that session's jobs and permission changes.
     expires_at : datetime
         End of validity (UTC, whole seconds).
     """
 
     token: str
     kind: TokenKind
+    label: str
     expires_at: datetime
 
 
@@ -125,59 +161,76 @@ def issue_one_time_token(
         and ``POST /api/v1/session/tokens`` (valid 5 min): the session is an
         agent acting for ``minted_by``.
     minted_by : Principal
-        Who asked for the token; the token carries this principal.
+        Who asked for the token. The index keeps only its id and kind: the
+        session's roles and groups are read for each of its requests.
     now : datetime or None, optional
         Time of issue; the current time when omitted.
 
     Returns
     -------
     IssuedToken
-        The value to hand over and its expiry. Expired tokens are removed
-        from the index on the way.
+        The value to hand over, the label of its session and its expiry.
+        Expired tokens are removed from the index on the way.
     """
     issued_at = _whole_seconds(now)
     token = secrets.token_urlsafe(_TOKEN_BYTES)
+    label = secrets.token_hex(_LABEL_BYTES)
     expires_at = issued_at + TOKEN_TTL[kind]
-    principal = json.dumps(
-        {
-            "id": minted_by.id,
-            "kind": minted_by.kind,
-            "roles": sorted(minted_by.roles),
-            "groups": sorted(minted_by.groups),
-        }
-    )
+    principal = json.dumps({"id": minted_by.id, "kind": minted_by.kind})
     connection = connect(index_path)
     try:
-        connection.execute("BEGIN IMMEDIATE")
-        try:
+        with _immediate(connection):
             connection.execute(
                 "DELETE FROM session_tokens WHERE expires_at <= ?",
                 (issued_at.isoformat(),),
             )
             connection.execute(
                 "INSERT INTO session_tokens"
-                " (hash, kind, principal, created_at, expires_at)"
-                " VALUES (?, ?, ?, ?, ?)",
+                " (hash, kind, principal, label, created_at, expires_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     _digest(token),
                     kind,
                     principal,
+                    label,
                     issued_at.isoformat(),
                     expires_at.isoformat(),
                 ),
             )
-            connection.execute("COMMIT")
-        except BaseException:
-            connection.execute("ROLLBACK")
-            raise
     finally:
         connection.close()
-    return IssuedToken(token=token, kind=kind, expires_at=expires_at)
+    return IssuedToken(token=token, kind=kind, label=label, expires_at=expires_at)
+
+
+@dataclass(frozen=True, slots=True)
+class SessionGrant:
+    """What a used one-time token grants: who the new session acts as.
+
+    Parameters
+    ----------
+    principal_id : str
+        Who minted the token (``local`` for the owner of the computer).
+    kind : {"local_owner", "user", "agent"}
+        How the session acts: as the minter (startup token) or as an agent
+        for it (agent token).
+    label : str
+        Label of the session.
+    token_kind : {"startup", "agent"}
+        Kind of the token used.
+    generation : int
+        The index's agent-session generation when the token was used.
+    """
+
+    principal_id: str
+    kind: PrincipalKind
+    label: str
+    token_kind: TokenKind
+    generation: int
 
 
 def redeem_one_time_token(
     index_path: Path, token: str, *, now: datetime | None = None
-) -> Principal | None:
+) -> SessionGrant | None:
     """Use a one-time token: once, and only before it expires.
 
     Parameters
@@ -191,33 +244,87 @@ def redeem_one_time_token(
 
     Returns
     -------
-    Principal or None
+    SessionGrant or None
         Who the new session acts as: the minting principal for a startup
-        token, an ``agent`` with the minter's id, roles and groups for an
-        agent token. ``None`` for an unknown, already used or expired token;
-        concurrent uses of one token succeed at most once.
+        token, an ``agent`` for it for an agent token. ``None`` for an
+        unknown, already used, expired or revoked token; concurrent uses of
+        one token succeed at most once.
     """
     used_at = _whole_seconds(now).isoformat()
     connection = connect(index_path)
     try:
-        rows = connection.execute(
-            "UPDATE session_tokens SET used_at = ?"
-            " WHERE hash = ? AND used_at IS NULL AND expires_at > ?"
-            " RETURNING kind, principal",
-            (used_at, _digest(token), used_at),
-        ).fetchall()
+        # One transaction with the generation: a revocation comes either
+        # before (the token is gone) or after (the session ends).
+        with _immediate(connection):
+            rows = connection.execute(
+                "UPDATE session_tokens SET used_at = ?"
+                " WHERE hash = ? AND used_at IS NULL AND expires_at > ?"
+                " RETURNING kind, principal, label",
+                (used_at, _digest(token), used_at),
+            ).fetchall()
+            generation = _agent_generation(connection)
     finally:
         connection.close()
     if not rows:
         return None
-    kind, carried = rows[0]
+    token_kind, carried, label = rows[0]
     minter = json.loads(carried)
-    return Principal(
-        id=minter["id"],
-        kind=minter["kind"] if kind == "startup" else "agent",
-        roles=frozenset(minter["roles"]),
-        groups=frozenset(minter["groups"]),
+    return SessionGrant(
+        principal_id=minter["id"],
+        kind=minter["kind"] if token_kind == "startup" else "agent",
+        label=label,
+        token_kind=token_kind,
+        generation=generation,
     )
+
+
+def revoke_agent_sessions(index_path: Path) -> int:
+    """End every agent session and refuse the agent tokens not used yet.
+
+    The index's agent-session generation goes up by one; a running server
+    compares it with each agent session's at every request, so this works
+    from another process (``archiwista token --revoke-all``).
+
+    Parameters
+    ----------
+    index_path : Path
+        Local index; ``initialize`` must have created it.
+
+    Returns
+    -------
+    int
+        Agent tokens refused before anyone used them.
+    """
+    connection = connect(index_path)
+    try:
+        with _immediate(connection):
+            refused = connection.execute(
+                "DELETE FROM session_tokens WHERE kind = 'agent' AND used_at IS NULL"
+            ).rowcount
+            connection.execute(
+                "INSERT INTO index_info (key, value) VALUES (?, '1')"
+                " ON CONFLICT (key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
+                (_AGENT_GENERATION,),
+            )
+    finally:
+        connection.close()
+    return refused
+
+
+def agent_session_generation(index_path: Path) -> int:
+    """Return the index's agent-session generation (``revoke_agent_sessions``)."""
+    connection = connect(index_path, readonly=True)
+    try:
+        return _agent_generation(connection)
+    finally:
+        connection.close()
+
+
+def _agent_generation(connection: sqlite3.Connection) -> int:
+    row = connection.execute(
+        "SELECT value FROM index_info WHERE key = ?", (_AGENT_GENERATION,)
+    ).fetchone()
+    return 0 if row is None else int(row[0])
 
 
 def fragment_url(port: int, token: str) -> str:
@@ -238,22 +345,34 @@ class Session:
 
     Parameters
     ----------
-    principal : Principal
-        Who acts; services and background jobs receive it.
+    principal_id : str
+        Who the session belongs to (``local`` for the owner).
+    kind : {"local_owner", "user", "agent"}
+        How it acts; the roles and groups are read for each request
+        (``archiwista.auth.authorize.session_principal``).
+    label : str
+        Label recorded with the session's jobs and permission changes.
     csrf_token : str
-        128-bit token that state-changing requests carry in
-        ``X-Archiwista-CSRF`` and in the ``archiwista_csrf`` cookie.
+        128-bit secret that every ``/api`` request of the session carries in
+        ``X-Archiwista-CSRF``.
     created_at : datetime
         Start of the session (UTC).
     expires_at : datetime
-        End of the session unless used again; every request of the session
-        moves it ``SESSION_IDLE_TIMEOUT`` ahead.
+        End of the session unless used again; every request moves it
+        ``SESSION_IDLE_TIMEOUT`` ahead, an agent's session never past
+        ``AGENT_SESSION_MAX_AGE`` after its start.
+    generation : int, optional
+        The index's agent-session generation at the start; an agent session
+        ends when it changes.
     """
 
-    principal: Principal
+    principal_id: str
+    kind: PrincipalKind
+    label: str
     csrf_token: str
     created_at: datetime
     expires_at: datetime
+    generation: int = 0
 
 
 class SessionStore:
@@ -267,6 +386,8 @@ class SessionStore:
     ----------
     idle_timeout : timedelta, optional
         How long a session lives without requests.
+    agent_max_age : timedelta, optional
+        How long an agent's session lives at most, used or not.
     clock : Callable[[], datetime], optional
         Source of the current time (aware).
     """
@@ -275,15 +396,17 @@ class SessionStore:
         self,
         *,
         idle_timeout: timedelta = SESSION_IDLE_TIMEOUT,
+        agent_max_age: timedelta = AGENT_SESSION_MAX_AGE,
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._idle_timeout = idle_timeout
+        self._agent_max_age = agent_max_age
         self._clock = clock
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
-    def create(self, principal: Principal) -> tuple[str, Session]:
-        """Start a session acting as ``principal``.
+    def create(self, grant: SessionGrant) -> tuple[str, Session]:
+        """Start a session acting as a used token grants.
 
         Returns
         -------
@@ -293,10 +416,13 @@ class SessionStore:
         now = _whole_seconds(self._clock())
         session_id = secrets.token_urlsafe(_SESSION_ID_BYTES)
         session = Session(
-            principal=principal,
+            principal_id=grant.principal_id,
+            kind=grant.kind,
+            label=grant.label,
             csrf_token=secrets.token_urlsafe(_TOKEN_BYTES),
             created_at=now,
-            expires_at=now + self._idle_timeout,
+            expires_at=self._end(grant.kind, now, now),
+            generation=grant.generation,
         )
         with self._lock:
             expired = [
@@ -308,7 +434,7 @@ class SessionStore:
         return session_id, session
 
     def get(self, session_id: str | None) -> Session | None:
-        """Return the live session of a cookie value and extend it.
+        """Return the live session of a cookie value, without extending it.
 
         Returns
         -------
@@ -321,30 +447,100 @@ class SessionStore:
         now = _whole_seconds(self._clock())
         with self._lock:
             session = self._sessions.get(key)
-            if session is None:
-                return None
-            if session.expires_at <= now:
+            if session is not None and session.expires_at <= now:
                 del self._sessions[key]
                 return None
-            session = replace(session, expires_at=now + self._idle_timeout)
+        return session
+
+    def extend(self, session_id: str) -> Session | None:
+        """Move a live session's end ahead after a request it fully authorized.
+
+        Returns
+        -------
+        Session or None
+            The extended session; ``None`` when it ended meanwhile.
+        """
+        key = _digest(session_id)
+        now = _whole_seconds(self._clock())
+        with self._lock:
+            session = self._sessions.get(key)
+            if session is None:
+                return None
+            expires_at = self._end(session.kind, session.created_at, now)
+            if expires_at <= now:
+                del self._sessions[key]
+                return None
+            session = replace(session, expires_at=expires_at)
             self._sessions[key] = session
         return session
 
+    def end(self, session_id: str | None) -> bool:
+        """End a session at once (logout, a disabled account, a revocation).
 
-def set_session_cookies(
-    response: Response, session: Session, *, session_id: str | None = None
-) -> None:
-    """Set the CSRF cookie and, for a new session, the session cookie.
+        Returns
+        -------
+        bool
+            Whether the session was live.
+        """
+        if not session_id:
+            return False
+        with self._lock:
+            return self._sessions.pop(_digest(session_id), None) is not None
 
-    The session cookie is ``HttpOnly``; the CSRF cookie is readable by the
-    interface, which copies it to ``X-Archiwista-CSRF``. Both are
-    ``SameSite=Strict`` with ``Path=/`` and end with the browser session.
+    def _end(
+        self, kind: PrincipalKind, created_at: datetime, now: datetime
+    ) -> datetime:
+        idle_end = now + self._idle_timeout
+        if kind == "agent":
+            return min(idle_end, created_at + self._agent_max_age)
+        return idle_end
+
+
+def session_principals(
+    state: StateStore, index_path: Path
+) -> Callable[[Session], Principal | None]:
+    """Return who sessions act as now, for ``SecurityMiddleware``.
+
+    An agent session has ended once the index's agent-session generation is
+    not the one it started under (``revoke_agent_sessions``). Otherwise the
+    roles and groups come from the state database at each request
+    (``session_principal``): a disabled or removed account ends its sessions.
+
+    Parameters
+    ----------
+    state : StateStore
+        Accounts, their roles and groups.
+    index_path : Path
+        Local index with the agent-session generation.
     """
-    if session_id is not None:
-        response.set_cookie(
-            SESSION_COOKIE, session_id, httponly=True, samesite="strict", path="/"
+
+    def principal(session: Session) -> Principal | None:
+        if (
+            session.kind == "agent"
+            and agent_session_generation(index_path) != session.generation
+        ):
+            return None
+        return session_principal(
+            state, session.principal_id, session.kind, session=session.label
         )
-    response.set_cookie(CSRF_COOKIE, session.csrf_token, samesite="strict", path="/")
+
+    return principal
+
+
+def set_session_cookie(response: Response, session_id: str) -> None:
+    """Set the ``HttpOnly`` session cookie (``SameSite=Strict``, ``Path=/``).
+
+    It ends with the browser session. Browsers send it to every port of the
+    host, so it never acts alone: requests also carry the CSRF token.
+    """
+    response.set_cookie(
+        SESSION_COOKIE, session_id, httponly=True, samesite="strict", path="/"
+    )
+
+
+def clear_session_cookie(response: Response) -> None:
+    """Remove the session cookie from the browser (logout)."""
+    response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="strict", path="/")
 
 
 # Request rules -------------------------------------------------------------
@@ -372,7 +568,7 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
     str or None
         Polish reason, or ``None`` when the rule lets the request through.
         A client without ``Origin`` and ``Sec-Fetch-Site`` (curl, an agent's
-        script) passes here; the session and CSRF checks still apply.
+        script) passes here; the session and its CSRF token still apply.
     """
     origin = headers.get("origin")
     if origin is not None and origin.lower() != f"http://{host}":
@@ -392,13 +588,14 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
     return None
 
 
-def csrf_rejection(
-    headers: Headers, cookies: Mapping[str, str], session: Session
-) -> str | None:
-    """Return why a state-changing request fails the CSRF double-submit check.
+def csrf_rejection(headers: Headers, session: Session) -> str | None:
+    """Return why a request lacks its session's CSRF token.
 
-    The ``X-Archiwista-CSRF`` header and the ``archiwista_csrf`` cookie must
-    both equal the session's CSRF token.
+    Every ``/api`` request of a session, reads included, carries
+    ``X-Archiwista-CSRF`` equal to the session's token. Only a client given
+    the token knows it (the interface keeps it in its origin's
+    ``sessionStorage``), while browsers send the session cookie to every
+    port of the host.
 
     Returns
     -------
@@ -408,11 +605,23 @@ def csrf_rejection(
     header = headers.get(CSRF_HEADER)
     if not header:
         return MESSAGES["api_csrf_missing"]
-    header_matches = _same(header, session.csrf_token)
-    cookie_matches = _same(cookies.get(CSRF_COOKIE, ""), session.csrf_token)
-    if header_matches and cookie_matches:
+    if _same(header, session.csrf_token):
         return None
     return MESSAGES["api_csrf_mismatch"]
+
+
+def body_limit(method: str, path: str) -> int | None:
+    """Return how many bytes a request body may have before a route reads it.
+
+    4 KiB for ``/api/v1/session`` (the token exchange needs no session),
+    1 MiB otherwise; ``None`` for ``POST /api/v1/areas``, which reads an
+    area file itself up to its own limit.
+    """
+    if path == SESSION_PATH:
+        return SESSION_BODY_LIMIT_BYTES
+    if method == "POST" and path == _AREAS_PATH:
+        return None
+    return BODY_LIMIT_BYTES
 
 
 def _is_api(path: str) -> bool:
@@ -423,6 +632,56 @@ def _is_session_path(path: str) -> bool:
     return path == SESSION_PATH or path.startswith(f"{SESSION_PATH}/")
 
 
+def _is_public(method: str, path: str) -> bool:
+    """Return whether a request needs no session: the exchange, ``/api/docs``."""
+    if method == "POST" and path == SESSION_PATH:
+        return True
+    return method in ("GET", "HEAD") and (
+        path == DOCS_PATH or path.startswith(f"{DOCS_PATH}/")
+    )
+
+
+def _size(limit: int) -> str:
+    return f"{limit // 1024**2} MiB" if limit >= 1024**2 else f"{limit // 1024} KiB"
+
+
+async def _read_body(headers: Headers, receive: Receive, limit: int) -> Message | None:
+    """Read a request body of at most ``limit`` bytes; ``None`` beyond it.
+
+    A declared ``Content-Length`` over the limit is refused before reading;
+    a chunked body is counted as it arrives, so nothing over the limit is
+    kept in memory.
+    """
+    declared = headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > limit:
+        return None
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        message = await receive()
+        if message["type"] != "http.request":
+            return message  # The client left: the route learns it at once.
+        chunk: bytes = message.get("body", b"")
+        size += len(chunk)
+        if size > limit:
+            return None
+        chunks.append(chunk)
+        if not message.get("more_body", False):
+            return {"type": "http.request", "body": b"".join(chunks)}
+
+
+def _replay(first: Message, receive: Receive) -> Receive:
+    """Return ``receive`` answering the already read ``first`` message first."""
+    pending = [first]
+
+    async def replayed() -> Message:
+        if pending:
+            return pending.pop()
+        return await receive()
+
+    return replayed
+
+
 @dataclass(frozen=True, slots=True)
 class _Rejection:
     status: int
@@ -430,17 +689,28 @@ class _Rejection:
     detail: str
 
 
+@dataclass(frozen=True, slots=True)
+class _Authorized:
+    session: Session
+    principal: Principal
+
+
 class SecurityMiddleware:
     """Apply the local-mode rules to every HTTP request and response.
 
     Order: ``Host`` (``400 invalid_host``), ``Origin`` and ``Sec-Fetch-Site``
-    (``403 csrf_rejected``), then for ``/api/*`` except ``POST
-    /api/v1/session`` the session (``401 session_required``) and, for
-    state-changing methods, the CSRF token (``403 csrf_rejected``). The
-    session is left in ``request.state.session`` for ``require_session``.
-    Every response, including these problems, gets the CSP of the current
-    settings, ``Referrer-Policy: no-referrer`` and ``X-Content-Type-Options:
-    nosniff``; ``/api/v1/session*`` also ``Cache-Control: no-store``.
+    (``403 csrf_rejected``); then for ``/api/*``, except ``POST
+    /api/v1/session`` and the files of ``/api/docs``, the session cookie
+    (``401 session_required``), the session's CSRF token in every request
+    (``403 csrf_rejected``) and who the session acts as now (``401
+    session_required`` once its account is disabled or removed, or its agent
+    session revoked); last the size of the body (``413 request_too_large``).
+    Only a request passing all of them extends its session. The session and
+    its principal are left in ``request.state`` for ``require_session`` and
+    ``current_principal``. Every response, including these problems, gets
+    the CSP of the current settings, ``Referrer-Policy: no-referrer`` and
+    ``X-Content-Type-Options: nosniff``; ``/api/v1/session*`` also
+    ``Cache-Control: no-store``.
 
     Parameters
     ----------
@@ -452,6 +722,9 @@ class SecurityMiddleware:
         Live sessions.
     settings : Callable[[], AppSettings]
         Current settings (for the CSP of each response).
+    principals : Callable[[Session], Principal or None]
+        Who a session acts as now (``session_principals``); ``None`` ends
+        the session.
     """
 
     def __init__(
@@ -461,12 +734,14 @@ class SecurityMiddleware:
         port: int,
         sessions: SessionStore,
         settings: Callable[[], AppSettings],
+        principals: Callable[[Session], Principal | None],
     ) -> None:
         self.app = app
         self._port = port
         self._hosts = allowed_hosts(port)
         self._sessions = sessions
         self._settings = settings
+        self._principals = principals
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Check an HTTP request; other scopes (lifespan) pass unchanged."""
@@ -474,6 +749,7 @@ class SecurityMiddleware:
             await self.app(scope, receive, send)
             return
         path: str = scope["path"]
+        method: str = scope["method"]
         security_headers = [
             ("content-security-policy", csp_header(self._settings())),
             ("referrer-policy", "no-referrer"),
@@ -490,18 +766,28 @@ class SecurityMiddleware:
             await send(message)
 
         connection = HTTPConnection(scope)
-        outcome = self._check(connection, scope["method"], path)
+        outcome = self._check(connection, method, path)
+        limit = body_limit(method, path)
+        if not isinstance(outcome, _Rejection) and limit is not None:
+            body = await _read_body(connection.headers, receive, limit)
+            if body is None:
+                detail = MESSAGES["api_request_too_large"].format(limit=_size(limit))
+                outcome = _Rejection(413, "request_too_large", detail)
+            else:
+                receive = _replay(body, receive)
         if isinstance(outcome, _Rejection):
             response = problem_response(outcome.status, outcome.code, outcome.detail)
             await response(scope, receive, send_secured)
             return
         if outcome is not None:
-            scope.setdefault("state", {})["session"] = outcome
+            state = scope.setdefault("state", {})
+            state["session"] = outcome.session
+            state["principal"] = outcome.principal
         await self.app(scope, receive, send_secured)
 
     def _check(
         self, connection: HTTPConnection, method: str, path: str
-    ) -> _Rejection | Session | None:
+    ) -> _Rejection | _Authorized | None:
         host = connection.headers.get("host", "").lower()
         if host not in self._hosts:
             detail = MESSAGES["api_invalid_host"].format(port=self._port)
@@ -509,17 +795,22 @@ class SecurityMiddleware:
         reason = origin_rejection(method, connection.headers, host)
         if reason is not None:
             return _Rejection(403, "csrf_rejected", reason)
-        if not _is_api(path) or (method == "POST" and path == SESSION_PATH):
+        if not _is_api(path) or _is_public(method, path):
             return None
-        session = self._sessions.get(connection.cookies.get(SESSION_COOKIE))
-        if session is None:
+        session_id = connection.cookies.get(SESSION_COOKIE)
+        session = self._sessions.get(session_id)
+        if session_id is None or session is None:
             detail = MESSAGES["api_session_required"]
             return _Rejection(401, "session_required", detail)
-        if method not in SAFE_METHODS:
-            reason = csrf_rejection(connection.headers, connection.cookies, session)
-            if reason is not None:
-                return _Rejection(403, "csrf_rejected", reason)
-        return session
+        reason = csrf_rejection(connection.headers, session)
+        if reason is not None:
+            return _Rejection(403, "csrf_rejected", reason)
+        principal = self._principals(session)
+        extended = None if principal is None else self._sessions.extend(session_id)
+        if principal is None or extended is None:
+            self._sessions.end(session_id)
+            return _Rejection(401, "session_required", MESSAGES["api_session_ended"])
+        return _Authorized(extended, principal)
 
 
 # Route dependencies --------------------------------------------------------
@@ -527,15 +818,18 @@ class SecurityMiddleware:
 _SESSION_SCHEME = APIKeyCookie(
     name=SESSION_COOKIE,
     scheme_name="session",
-    description="Session cookie set by POST /api/v1/session.",
+    description=(
+        "Session cookie set by POST /api/v1/session; never enough alone, see"
+        " the csrf scheme."
+    ),
     auto_error=False,
 )
 _CSRF_SCHEME = APIKeyHeader(
     name=CSRF_HEADER,
     scheme_name="csrf",
     description=(
-        "CSRF token of the session (csrf_token of GET /api/v1/session), also"
-        " sent in the archiwista_csrf cookie; required by POST, PUT and DELETE."
+        "The session's csrf_token, answered only by POST /api/v1/session;"
+        " required with every /api request, reads included."
     ),
     auto_error=False,
 )
@@ -544,46 +838,31 @@ _CSRF_SCHEME = APIKeyHeader(
 async def require_session(
     request: Request,
     _cookie: Annotated[str | None, Security(_SESSION_SCHEME)],
+    _header: Annotated[str | None, Security(_CSRF_SCHEME)],
 ) -> Session:
     """Return the request's session or answer ``401 session_required``.
 
-    ``SecurityMiddleware`` has already found it for ``/api/*``; the
-    dependency names the requirement on the route (also in OpenAPI) and
-    holds for routes mounted elsewhere.
+    ``SecurityMiddleware`` checks the session cookie and the CSRF token of
+    every ``/api`` request and leaves the session here; the dependency names
+    both on the route (also in OpenAPI). Outside ``/api`` no request has a
+    session.
     """
     session = getattr(request.state, "session", None)
-    if isinstance(session, Session):
-        return session
-    store: SessionStore = request.app.state.sessions
-    session = store.get(request.cookies.get(SESSION_COOKIE))
-    if session is None:
+    if not isinstance(session, Session):
         raise ApiError(401, "session_required", MESSAGES["api_session_required"])
     return session
 
 
-async def require_csrf(
-    request: Request,
-    session: Annotated[Session, Depends(require_session)],
-    _header: Annotated[str | None, Security(_CSRF_SCHEME)],
-) -> Session:
-    """Return the session of a request with its CSRF token or answer ``403``.
-
-    Declare it on every state-changing route, like ``require_session``.
-    """
-    reason = csrf_rejection(request.headers, request.cookies, session)
-    if reason is not None:
-        raise ApiError(403, "csrf_rejected", reason)
-    return session
-
-
 async def current_principal(
-    session: Annotated[Session, Depends(require_session)],
+    request: Request, _session: Annotated[Session, Depends(require_session)]
 ) -> Principal:
     """Return who acts in the request's session (``401`` without one).
 
-    Routers pass it to every service and query (A-ADR-029).
+    Its roles and groups were read for this request. Routers pass it to
+    every service and query (A-ADR-029).
     """
-    return session.principal
+    principal: Principal = request.state.principal
+    return principal
 
 
 # Response headers ----------------------------------------------------------

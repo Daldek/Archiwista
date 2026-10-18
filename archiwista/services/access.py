@@ -7,7 +7,7 @@ rules of its own: accounts and groups need ``admin``; a project's access
 needs its owner or ``admin``. A project the principal does not see is
 ``NotFoundError`` (``404``), a visible one they may not manage is
 ``PermissionDeniedError`` (``403``). Every change lands in the permission
-log with the principal's id as the actor.
+log with the principal as the actor: its id, kind and session label.
 """
 
 from collections.abc import Collection
@@ -64,9 +64,7 @@ def add_user(
 ) -> UserRecord:
     """Create an account (``users.manage``); see ``StateStore.add_user``."""
     authorizer.require(principal, "users.manage")
-    return authorizer.state.add_user(
-        user_id, name=name, roles=roles, actor=principal.id
-    )
+    return authorizer.state.add_user(user_id, name=name, roles=roles, actor=principal)
 
 
 def update_user(
@@ -81,14 +79,14 @@ def update_user(
     """Change an account (``users.manage``); see ``StateStore.update_user``."""
     authorizer.require(principal, "users.manage")
     return authorizer.state.update_user(
-        user_id, name=name, roles=roles, disabled=disabled, actor=principal.id
+        user_id, name=name, roles=roles, disabled=disabled, actor=principal
     )
 
 
 def remove_user(authorizer: Authorizer, principal: Principal, user_id: str) -> None:
     """Remove an account (``users.manage``); see ``StateStore.remove_user``."""
     authorizer.require(principal, "users.manage")
-    authorizer.state.remove_user(user_id, actor=principal.id)
+    authorizer.state.remove_user(user_id, actor=principal)
 
 
 def list_groups(
@@ -110,7 +108,7 @@ def add_group(
     """Create a group (``groups.manage``); see ``StateStore.add_group``."""
     authorizer.require(principal, "groups.manage")
     return authorizer.state.add_group(
-        group_id, name=name, members=members, actor=principal.id
+        group_id, name=name, members=members, actor=principal
     )
 
 
@@ -122,13 +120,13 @@ def set_group_members(
 ) -> GroupRecord:
     """Replace a group's members (``groups.manage``)."""
     authorizer.require(principal, "groups.manage")
-    return authorizer.state.set_members(group_id, members, actor=principal.id)
+    return authorizer.state.set_members(group_id, members, actor=principal)
 
 
 def remove_group(authorizer: Authorizer, principal: Principal, group_id: str) -> None:
     """Remove a group (``groups.manage``); see ``StateStore.remove_group``."""
     authorizer.require(principal, "groups.manage")
-    authorizer.state.remove_group(group_id, actor=principal.id)
+    authorizer.state.remove_group(group_id, actor=principal)
 
 
 def project_access(
@@ -200,7 +198,7 @@ def share_project(
         visibility=visibility,
         users=users,
         groups=groups,
-        actor=principal.id,
+        actor=principal,
     )
     return _access(authorizer, ref)
 

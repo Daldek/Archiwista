@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from archiwista.auth import ALL_PROJECTS
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.index import SlotQuery
 from tests.fixtures.jobs import DELAY_ENV, SLOW_ENTRY_S, STORE, JobsEnv, jobs_env
 
@@ -34,7 +34,9 @@ def test_queries_answer_during_scan(
     query = SlotQuery(store=STORE, versions="all", limit=200)
     rows = len(env.queries.slots(query, visible=ALL_PROJECTS).items)
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
-    job = env.jobs.submit("scan", store=STORE, params={"mode": "full"}, actor="local")
+    job = env.jobs.submit(
+        "scan", store=STORE, params={"mode": "full"}, actor=LOCAL_OWNER
+    )
     env.follow(job.id, lambda event: event.type == "progress")
 
     # Act

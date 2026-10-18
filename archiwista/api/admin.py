@@ -19,7 +19,7 @@ from archiwista.api.dependencies import authorizer, index_queries
 from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.index import IndexQueries
-from archiwista.security import current_principal, require_csrf
+from archiwista.security import current_principal
 from archiwista.services import access as access_service
 from archiwista.state import (
     ID_PATTERN,
@@ -272,7 +272,6 @@ class AccessChange(BaseModel):
     )
 
 
-_CHANGE = [Depends(require_csrf)]
 _UserId = Annotated[str, Path(description="Account id.")]
 _GroupId = Annotated[str, Path(description="Group id.")]
 _ProjectId = Annotated[str, Path(description="Project id, as in /projects/{id}.")]
@@ -285,7 +284,7 @@ def list_users(principal: _Principal, decisions: _Authorizer) -> UserList:
     return UserList(items=[User.of(user) for user in users])
 
 
-@router.post("/users", response_model=User, status_code=201, dependencies=_CHANGE)
+@router.post("/users", response_model=User, status_code=201)
 def add_user(body: NewUser, principal: _Principal, decisions: _Authorizer) -> User:
     """Create an account (``admin``); a taken id answers ``409 conflict``."""
     user = access_service.add_user(
@@ -294,7 +293,7 @@ def add_user(body: NewUser, principal: _Principal, decisions: _Authorizer) -> Us
     return User.of(user)
 
 
-@router.patch("/users/{user_id}", response_model=User, dependencies=_CHANGE)
+@router.patch("/users/{user_id}", response_model=User)
 def update_user(
     user_id: _UserId,
     body: UserChange,
@@ -313,7 +312,7 @@ def update_user(
     return User.of(user)
 
 
-@router.delete("/users/{user_id}", status_code=204, dependencies=_CHANGE)
+@router.delete("/users/{user_id}", status_code=204)
 def remove_user(
     user_id: _UserId, principal: _Principal, decisions: _Authorizer
 ) -> None:
@@ -331,7 +330,7 @@ def list_groups(principal: _Principal, decisions: _Authorizer) -> GroupList:
     return GroupList(items=[Group.of(group) for group in groups])
 
 
-@router.post("/groups", response_model=Group, status_code=201, dependencies=_CHANGE)
+@router.post("/groups", response_model=Group, status_code=201)
 def add_group(body: NewGroup, principal: _Principal, decisions: _Authorizer) -> Group:
     """Create a group (``admin``); a taken id answers ``409 conflict``."""
     group = access_service.add_group(
@@ -340,7 +339,7 @@ def add_group(body: NewGroup, principal: _Principal, decisions: _Authorizer) -> 
     return Group.of(group)
 
 
-@router.put("/groups/{group_id}/members", response_model=Group, dependencies=_CHANGE)
+@router.put("/groups/{group_id}/members", response_model=Group)
 def set_group_members(
     group_id: _GroupId,
     body: GroupMembers,
@@ -354,7 +353,7 @@ def set_group_members(
     return Group.of(group)
 
 
-@router.delete("/groups/{group_id}", status_code=204, dependencies=_CHANGE)
+@router.delete("/groups/{group_id}", status_code=204)
 def remove_group(
     group_id: _GroupId, principal: _Principal, decisions: _Authorizer
 ) -> None:
@@ -378,9 +377,7 @@ def project_access(
     return ProjectAccess.of(access)
 
 
-@router.put(
-    "/projects/{project}/access", response_model=ProjectAccess, dependencies=_CHANGE
-)
+@router.put("/projects/{project}/access", response_model=ProjectAccess)
 def share_project(
     project: _ProjectId,
     body: AccessChange,

@@ -15,6 +15,7 @@ import httpx
 from kartograf import ValidationError, describe_segment, open_project, read_sidecar
 from playwright.sync_api import Locator, Page, expect
 
+from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import principal_for
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.security import CSRF_HEADER, issue_one_time_token
@@ -391,7 +392,7 @@ def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> N
     expect(row).to_contain_text("Wykonawca: właściciel lokalny")
     expect(raw(reveal(row), "local")).to_be_visible()
     state = StateStore(served.paths.state_file)
-    state.add_user("olga", name="Olga Owczarek", actor="local")
+    state.add_user("olga", name="Olga Owczarek", actor=LOCAL_OWNER)
     olga = principal_for(state, "olga")
     assert olga is not None
     token = issue_one_time_token(served.paths.index_file, "startup", minted_by=olga)

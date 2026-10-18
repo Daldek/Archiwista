@@ -471,4 +471,4 @@ def test_token_is_one_time_and_expires(
     assert second.status_code == 401
     assert second.json()["code"] == "session_required"
     assert expired is None and in_time is not None
-    assert in_time.id == "local"
+    assert in_time.principal_id == "local"

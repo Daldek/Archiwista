@@ -429,8 +429,8 @@ def test_queries_status_reports_jobs_and_areas_are_kept(
     writer, queries = index
     connection = sqlite3.connect(tmp_path / "index.sqlite")
     connection.executemany(
-        "INSERT INTO jobs (id, kind, actor, store, state, created_at, finished_at)"
-        " VALUES (?, ?, 'local', ?, ?, ?, ?)",
+        "INSERT INTO jobs (id, kind, actor, actor_kind, store, state, created_at,"
+        " finished_at) VALUES (?, ?, 'local', 'local_owner', ?, ?, ?, ?)",
         [
             (
                 "j1",

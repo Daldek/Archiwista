@@ -1,7 +1,8 @@
 """Background jobs over HTTP: start them, list them, follow their events.
 
 ``POST /stores/{store}/scan``, ``/footprints`` and ``/link-check`` (SPEC 9.2,
-5.6) record a job of the session's principal (its ``actor``) and answer
+5.6) record a job of the session's principal (its ``actor``, with the kind
+and the session label) and answer
 ``202`` with it at once, with ``Location: /api/v1/jobs/{job}``; a worker
 process runs it (``archiwista.jobs``). While another job writes the store's
 index (``scan``, ``footprints``) a second one answers ``409 conflict`` naming
@@ -45,7 +46,7 @@ from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
 from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor, label
 from archiwista.messages import MESSAGES
-from archiwista.security import current_principal, require_csrf
+from archiwista.security import current_principal
 
 router = APIRouter(tags=["jobs"])
 
@@ -280,14 +281,12 @@ _Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Streams = Annotated[JobStreams, Depends(job_streams)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"])]
-_CHANGE = [Depends(require_csrf)]
 
 
 @router.post(
     "/stores/{store}/scan",
     response_model=JobDetail,
     status_code=202,
-    dependencies=_CHANGE,
     responses={**problem_responses(404, 422), **_conflicts("conflict")},
 )
 def start_scan(
@@ -303,7 +302,7 @@ def start_scan(
     with `GET /jobs/{job}/events`.
     """
     params = (body or ScanRequest()).model_dump()
-    job = jobs.submit("scan", store=store, params=params, actor=principal.id)
+    job = jobs.submit("scan", store=store, params=params, actor=principal)
     return _accepted(job, response)
 
 
@@ -311,7 +310,6 @@ def start_scan(
     "/stores/{store}/footprints",
     response_model=JobDetail,
     status_code=202,
-    dependencies=_CHANGE,
     responses={**problem_responses(404), **_conflicts("conflict", "offline_mode")},
 )
 def start_footprints(
@@ -322,7 +320,7 @@ def start_footprints(
     Takes no body. In offline mode it answers `409 offline_mode` and records
     nothing.
     """
-    job = jobs.submit("footprints", store=store, actor=principal.id)
+    job = jobs.submit("footprints", store=store, actor=principal)
     return _accepted(job, response)
 
 
@@ -330,7 +328,6 @@ def start_footprints(
     "/stores/{store}/link-check",
     response_model=JobDetail,
     status_code=202,
-    dependencies=_CHANGE,
     responses=problem_responses(404, 422),
 )
 def start_link_check(
@@ -354,7 +351,7 @@ def start_link_check(
         message = MESSAGES["api_slot_unknown"].format(slot=body.slot, store=store)
         raise NotFoundError(message)
     job = jobs.submit(
-        "link_check", store=store, params={"slot": body.slot}, actor=principal.id
+        "link_check", store=store, params={"slot": body.slot}, actor=principal
     )
     return _accepted(job, response)
 
@@ -396,7 +393,7 @@ def get_job(job: _JobId, principal: _Principal, jobs: _Jobs) -> JobDetail:
         204: {
             "description": (
                 "The job has ended and no event follows `Last-Event-ID`;"
-                " EventSource stops reconnecting."
+                " a client stops reconnecting."
             )
         },
         **problem_responses(404, 422),
@@ -423,8 +420,8 @@ def get_job_events(
     adds `segment` and `entries`, footprints `written` and `failed`),
     `notice` has `level` (`info`, `warning`), `code` and a Polish `message`,
     `state` has `state` and, at the end, `result` (succeeded) or `error`
-    (`code`, `detail`). The stream ends after the final state; close the
-    EventSource then. A `: keepalive` comment comes after 15 s of silence.
+    (`code`, `detail`). The stream ends after the final state; stop
+    reconnecting then. A `: keepalive` comment comes after 15 s of silence.
     """
     after = last_event_id or 0
     record = _job(jobs, job)

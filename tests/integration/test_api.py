@@ -26,6 +26,7 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.security import CSRF_HEADER
 from archiwista.sources import ProjectInfo, SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
 from tests.fixtures.api_session import assert_problem, running_api
@@ -45,7 +46,7 @@ ROUTES = {
     ("get", "/api/v1/stores/{store}/slots/{slot}"),
     ("get", "/api/v1/stores/{store}/versions/{version}"),
     ("get", "/api/v1/stores/{store}/versions/{version}/sidecar"),
-    ("get", "/api/v1/groups/{parent_request}"),
+    ("get", "/api/v1/requests/{parent_request}"),
     ("get", "/api/v1/map/footprints"),
     ("get", "/api/v1/map/sheets"),
     ("get", "/api/v1/projects"),
@@ -164,7 +165,9 @@ def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) 
     route = served.owner.request("GET", "/nie-ma")
     method = served.owner.request("DELETE", "/slots")
     slot = served.owner.request("GET", f"/stores/{STORE}/slots/nmt/brak.asc")
-    group = served.owner.request("GET", "/groups/brak")
+    group = served.owner.request("GET", "/requests/brak")
+    # Permission groups own /groups: their paths are never a request key.
+    members = served.owner.request("GET", "/groups/hydro/members")
     sheets = served.owner.request(
         "GET", "/map/sheets?bbox=14,49,24.2,55&system=1992&scale=1:5000"
     )
@@ -176,6 +179,8 @@ def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) 
     assert_problem(route, 404, "not_found")
     assert_problem(method, 405, "method_not_allowed")
     assert method.headers["allow"] == "GET"
+    assert_problem(members, 405, "method_not_allowed")
+    assert members.headers["allow"] == "PUT"
     assert_problem(slot, 404, "not_found")
     assert_problem(group, 404, "not_found")
     assert_problem(sheets, 422, "validation_error")
@@ -324,10 +329,8 @@ def test_api_openapi_documents_routes_examples_and_problems(
     """Agents find every route, its parameters, examples and problem answers."""
     # Act
     document = _get(served, "/openapi.json")
-    docs = served.owner.client.get(
-        "/api/docs", headers={"cookie": f"archiwista_session={served.owner.session_id}"}
-    )
-    anonymous = served.api.client.get("/api/docs")
+    docs = served.api.client.get("/api/docs")
+    anonymous = served.api.client.get("/api/v1/openapi.json")
 
     # Assert
     operations = {
@@ -374,6 +377,7 @@ def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
         with httpx.Client() as agent, httpx.Client() as stranger:
             # Act
             exchanged = agent.post(f"{base}/session", json={"token": token[1]})
+            agent.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
             health = agent.get(f"{base}/health")
             refused = stranger.get(f"{base}/health")
 

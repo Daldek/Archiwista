@@ -34,9 +34,9 @@ from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig, S
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import FINISHED_STATES, scheduler
 from archiwista.messages import MESSAGES
-from archiwista.security import CSRF_COOKIE, CSRF_HEADER
+from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
-from tests.fixtures.browser import Served, Tab
+from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import (
     NMT,
@@ -172,7 +172,9 @@ def start_session(page: Page, url: str) -> None:
 
 def api(page: Page, base: str, path: str, params: dict[str, Any] | None = None) -> Any:
     """Read ``/api/v1`` with the page's session; the answer must be ``200``."""
-    response = page.request.get(f"{base}/api/v1{path}", params=params)
+    response = page.request.get(
+        f"{base}/api/v1{path}", params=params, headers=session_headers(page)
+    )
     assert response.status == 200, response.text()
     return response.json()
 
@@ -691,22 +693,27 @@ def test_acceptance_api_requests_with_browser_session(
     start_session(page, served.token_url())
     wait_indexed(page, base)
     request = page.request
+    auth = session_headers(page)
     scan_url = f"{base}/api/v1/stores/{STORE}/scan"
     slot = archive_pin(store).path
 
-    health = request.get(f"{base}/api/v1/health")
-    pages = [request.get(f"{base}/api/v1/slots", params={"limit": "10"})]
+    health = request.get(f"{base}/api/v1/health", headers=auth)
+    pages = [request.get(f"{base}/api/v1/slots", params={"limit": "10"}, headers=auth)]
     while (cursor := pages[-1].json()["next_cursor"]) is not None:
         pages.append(
             request.get(
-                f"{base}/api/v1/slots", params={"limit": "10", "cursor": cursor}
+                f"{base}/api/v1/slots",
+                params={"limit": "10", "cursor": cursor},
+                headers=auth,
             )
         )
-    card = request.get(f"{base}/api/v1/stores/{STORE}/slots/{slot}")
+    card = request.get(f"{base}/api/v1/stores/{STORE}/slots/{slot}", headers=auth)
     footprints = request.get(
-        f"{base}/api/v1/map/footprints", params={"bbox": WORLD, "limit": "5000"}
+        f"{base}/api/v1/map/footprints",
+        params={"bbox": WORLD, "limit": "5000"},
+        headers=auth,
     )
-    projects = request.get(f"{base}/api/v1/projects")
+    projects = request.get(f"{base}/api/v1/projects", headers=auth)
     reads = [health, *pages, card, footprints, projects]
     assert [response.status for response in reads] == [200] * len(reads)
     rows = [item for answer in pages for item in answer.json()["items"]]
@@ -734,7 +741,8 @@ def test_acceptance_api_requests_with_browser_session(
     )
 
     cookies = {cookie["name"]: cookie["value"] for cookie in page.context.cookies()}
-    csrf = request.get(f"{base}/api/v1/session").json()["csrf_token"]
+    csrf = session_headers(page)[CSRF_HEADER]
+    cookie_only = page.request.get(f"{base}/api/v1/session")
     refused = request.post(scan_url, data={"mode": "incremental"})
     started = request.post(
         scan_url, data={"mode": "incremental"}, headers={CSRF_HEADER: csrf}
@@ -765,7 +773,8 @@ def test_acceptance_api_requests_with_browser_session(
     assert len({(item["store"], item["slot"]) for item in rows}) == len(rows)
     assert card.json()["current"] == current["path"]
     assert len(versions) == len(versions_of(store, slot))
-    assert csrf == cookies[CSRF_COOKIE]
+    assert set(cookies) == {"archiwista_session"}
+    assert_problem(cookie_only, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
     assert_problem(refused, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
     assert started.status == 202, started.text()
     assert started.headers["location"] == f"/api/v1/jobs/{started.json()['id']}"

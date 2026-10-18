@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from archiwista.auth import ALL_PROJECTS
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -85,7 +85,9 @@ class JobsEnv:
         assert record.state not in ACTIVE_STATES, record
         return record
 
-    def run(self, kind: str, *, actor: str = "local", **params: Any) -> JobRecord:
+    def run(
+        self, kind: str, *, actor: Principal = LOCAL_OWNER, **params: Any
+    ) -> JobRecord:
         """Submit a job and wait for its end."""
         job = self.jobs.submit(kind, store=STORE, params=params, actor=actor)
         return self.wait(job.id)

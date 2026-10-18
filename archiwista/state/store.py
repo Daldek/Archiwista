@@ -2,7 +2,8 @@
 
 ``StateStore`` reads and changes the state database (``schema``). Every
 change runs in one transaction together with its ``permission_log`` entries:
-who (``actor``, a principal id), when, what (``action`` and ``target``) and
+who (``actor``, a principal id, with its kind and session label), when, what
+(``action`` and ``target``) and
 the state before and after. Removing an account or a group also takes it out
 of memberships and project access entries (an account's projects are left
 without an owner); each group or project changed that way gets its own
@@ -23,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from archiwista.auth import LOCAL_PRINCIPAL_ID
+from archiwista.auth import LOCAL_PRINCIPAL_ID, Principal, PrincipalKind
 from archiwista.errors import (
     ConflictError,
     InvalidChangeError,
@@ -177,6 +178,11 @@ class PermissionChange:
         When (UTC).
     actor : str
         Who: the acting principal's id (``local`` in local mode).
+    actor_kind : {"local_owner", "user", "agent"} or None
+        How: the owner, a person, or an agent acting for ``actor``; ``None``
+        for entries written before Archiwista recorded it.
+    session : str or None
+        Label of the session the change came from; ``None`` at the terminal.
     action : ChangeAction
         What: ``user.add``, ``user.update``, ``user.remove``,
         ``group.add``, ``group.members``, ``group.remove`` or
@@ -191,6 +197,8 @@ class PermissionChange:
     id: int
     at: datetime
     actor: str
+    actor_kind: PrincipalKind | None
+    session: str | None
     action: ChangeAction
     target: str
     before: dict[str, object] | None
@@ -296,7 +304,7 @@ class StateStore:
         *,
         name: str | None = None,
         roles: Collection[Role] = (),
-        actor: str,
+        actor: Principal,
     ) -> UserRecord:
         """Create an account.
 
@@ -309,8 +317,8 @@ class StateStore:
             Display name; the id when omitted.
         roles : Collection[Role], optional
             ``admin`` and/or ``store_writer``.
-        actor : str
-            Id of the principal making the change (for the log).
+        actor : Principal
+            Who makes the change (for the log).
 
         Raises
         ------
@@ -343,7 +351,7 @@ class StateStore:
         name: str | None = None,
         roles: Collection[Role] | None = None,
         disabled: bool | None = None,
-        actor: str,
+        actor: Principal,
     ) -> UserRecord:
         """Change an account's name, roles or whether it is disabled.
 
@@ -357,8 +365,8 @@ class StateStore:
             The complete new set of roles; unchanged when omitted.
         disabled : bool or None, optional
             Disable or enable the account; unchanged when omitted.
-        actor : str
-            Id of the principal making the change.
+        actor : Principal
+            Who makes the change.
 
         Raises
         ------
@@ -403,7 +411,7 @@ class StateStore:
             )
         return after
 
-    def remove_user(self, user_id: str, *, actor: str) -> None:
+    def remove_user(self, user_id: str, *, actor: Principal) -> None:
         """Remove an account, its roles, memberships and access entries.
 
         Projects it owned are left without an owner, which only narrows who
@@ -446,7 +454,7 @@ class StateStore:
         *,
         name: str | None = None,
         members: Collection[str] = (),
-        actor: str,
+        actor: Principal,
     ) -> GroupRecord:
         """Create a group, optionally with its members.
 
@@ -478,7 +486,7 @@ class StateStore:
         return after
 
     def set_members(
-        self, group_id: str, members: Collection[str], *, actor: str
+        self, group_id: str, members: Collection[str], *, actor: Principal
     ) -> GroupRecord:
         """Replace a group's members.
 
@@ -515,7 +523,7 @@ class StateStore:
             )
         return after
 
-    def remove_group(self, group_id: str, *, actor: str) -> None:
+    def remove_group(self, group_id: str, *, actor: Principal) -> None:
         """Remove a group, its memberships and its project access entries.
 
         Raises
@@ -554,7 +562,7 @@ class StateStore:
         visibility: Visibility,
         users: Collection[str] = (),
         groups: Collection[str] = (),
-        actor: str,
+        actor: Principal,
     ) -> ProjectAccessRecord:
         """Set a project's owner, visibility and listed people or groups.
 
@@ -572,8 +580,8 @@ class StateStore:
         groups : Collection[str], optional
             Groups whose members see the project; required for ``group``
             and only allowed there.
-        actor : str
-            Id of the principal making the change.
+        actor : Principal
+            Who makes the change.
 
         Raises
         ------
@@ -874,14 +882,16 @@ def _existing_access(
 
 def _changes(connection: sqlite3.Connection) -> tuple[PermissionChange, ...]:
     rows = connection.execute(
-        "SELECT id, at, actor, action, target, before, after FROM permission_log"
-        " ORDER BY id"
+        "SELECT id, at, actor, actor_kind, session, action, target, before, after"
+        " FROM permission_log ORDER BY id"
     ).fetchall()
     return tuple(
         PermissionChange(
             id=int(row["id"]),
             at=datetime.fromisoformat(row["at"]),
             actor=row["actor"],
+            actor_kind=row["actor_kind"],
+            session=row["session"],
             action=row["action"],
             target=row["target"],
             before=None if row["before"] is None else json.loads(row["before"]),
@@ -971,13 +981,16 @@ def _restore(connection: sqlite3.Connection, snapshot: StateSnapshot) -> None:
         )
         _insert_entries(connection, access.project, people, teams)
     connection.executemany(
-        "INSERT INTO permission_log (id, at, actor, action, target, before, after)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO permission_log"
+        " (id, at, actor, actor_kind, session, action, target, before, after)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 change.id,
                 _iso(change.at),
                 change.actor,
+                change.actor_kind,
+                change.session,
                 change.action,
                 change.target,
                 _json(change.before),
@@ -993,7 +1006,7 @@ def _restore(connection: sqlite3.Connection, snapshot: StateSnapshot) -> None:
 
 def _log(
     connection: sqlite3.Connection,
-    actor: str,
+    actor: Principal,
     action: ChangeAction,
     target: str,
     before: dict[str, object] | None,
@@ -1001,15 +1014,25 @@ def _log(
     at: str,
 ) -> None:
     connection.execute(
-        "INSERT INTO permission_log (at, actor, action, target, before, after)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (at, actor, action, target, _json(before), _json(after)),
+        "INSERT INTO permission_log"
+        " (at, actor, actor_kind, session, action, target, before, after)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            at,
+            actor.id,
+            actor.kind,
+            actor.session,
+            action,
+            target,
+            _json(before),
+            _json(after),
+        ),
     )
 
 
 def _log_cascade(
     connection: sqlite3.Connection,
-    actor: str,
+    actor: Principal,
     groups: Iterable[GroupRecord],
     projects: Iterable[ProjectAccessRecord],
     at: str,

@@ -1,15 +1,45 @@
-"""Paths taken from the index, joined and resolved inside their root (SPEC 10.1).
+"""Local paths: indexed paths inside their root, private local data (SPEC 10.1).
 
 The API accepts only paths the index knows; a file is opened only through
 ``resolve_indexed_path``, which resolves symbolic links and refuses a path
-whose real location leaves its store or project root. Without web
-dependencies, so background job workers use it too.
+whose real location leaves its store or project root. Local data (the
+index, the state database, job logs, copies of area files) belongs to its
+user alone: ``private_directory`` keeps its directories closed to other
+accounts. Without web dependencies, so background job workers use it too.
 """
 
+import contextlib
+import os
+import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from archiwista.errors import PathOutsideRootError
 from archiwista.messages import MESSAGES
+
+# Owner only: read, write, enter.
+PRIVATE_DIRECTORY_MODE = 0o700
+
+
+def private_directory(path: Path) -> Path:
+    """Create a directory only its owner may enter, or close an existing one.
+
+    On POSIX the directory gets mode ``0700``, also when it existed with a
+    wider one (data written by an older Archiwista); a directory of another
+    account keeps its mode (``archiwista doctor`` reports it). Missing
+    parents are created as usual. Elsewhere it is only created.
+
+    Returns
+    -------
+    Path
+        ``path``.
+    """
+    path.mkdir(mode=PRIVATE_DIRECTORY_MODE, parents=True, exist_ok=True)
+    if os.name == "posix" and (
+        stat.S_IMODE(path.stat().st_mode) != PRIVATE_DIRECTORY_MODE
+    ):
+        with contextlib.suppress(PermissionError):
+            path.chmod(PRIVATE_DIRECTORY_MODE)
+    return path
 
 
 def indexed_path(root: Path, relative: str) -> Path:

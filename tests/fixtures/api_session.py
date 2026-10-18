@@ -12,12 +12,7 @@ from archiwista.app import create_app
 from archiwista.auth import Principal
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.index.schema import initialize
-from archiwista.security import (
-    CSRF_COOKIE,
-    CSRF_HEADER,
-    SESSION_COOKIE,
-    issue_one_time_token,
-)
+from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources
@@ -42,10 +37,11 @@ class Caller:
         json: object = None,
         csrf: bool = True,
     ) -> httpx.Response:
-        """Send ``method path`` under ``/api/v1`` with the session (and CSRF)."""
-        headers = {
-            "cookie": f"{SESSION_COOKIE}={self.session_id}; {CSRF_COOKIE}={self.csrf}"
-        }
+        """Send ``method path`` under ``/api/v1`` with the session cookie.
+
+        Every request carries the session's CSRF token unless ``csrf`` is off.
+        """
+        headers = {"cookie": f"{SESSION_COOKIE}={self.session_id}"}
         if csrf:
             headers[CSRF_HEADER] = self.csrf
         response: httpx.Response = self.client.request(

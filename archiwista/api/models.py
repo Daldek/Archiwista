@@ -23,6 +23,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from archiwista.areas import area_crs
+from archiwista.auth import PrincipalKind
 from archiwista.config import (
     AppSettings,
     BasemapConfig,
@@ -173,6 +174,8 @@ _JOB_DETAIL_EXAMPLE = {
     "kind": "scan",
     "state": "succeeded",
     "actor": "local",
+    "actor_kind": "scheduler",
+    "session": None,
     "store": _STORE,
     "params": {"mode": "incremental", "segment": None},
     "created_at": "2026-10-18T12:00:00Z",
@@ -221,6 +224,8 @@ _JOB_FAILED_EXAMPLE = {
     "kind": "footprints",
     "state": "failed",
     "actor": "local",
+    "actor_kind": "agent",
+    "session": "5b2d4c60",
     "store": _STORE,
     "params": {},
     "created_at": "2026-10-18T13:40:00Z",
@@ -1626,6 +1631,19 @@ class JobDetail(BaseModel):
             " account that minted its token."
         )
     )
+    actor_kind: PrincipalKind = Field(
+        description=(
+            "How: `local_owner` (the computer's owner), `user` (an account),"
+            " `agent` (with a token `actor` issued) or `scheduler` (scheduled"
+            " scans, for the owner)."
+        )
+    )
+    session: str | None = Field(
+        description=(
+            "Label of the session it was started in (`label` of GET"
+            " /api/v1/session); `null` at the terminal and for the scheduler."
+        )
+    )
     store: str | None = Field(description="Store id.")
     params: dict[str, Any] = Field(
         description=(
@@ -1664,6 +1682,8 @@ class JobDetail(BaseModel):
             kind=job.kind,
             state=job.state,
             actor=job.actor,
+            actor_kind=job.actor_kind,
+            session=job.session,
             store=job.store,
             params=job.params,
             created_at=job.created_at,

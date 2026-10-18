@@ -22,7 +22,7 @@ from archiwista.config import AppSettings, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import scheduler
 from archiwista.sources.registry import load_registry
-from tests.fixtures.browser import Served, Tab
+from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import StoreManifest, make_store
 
@@ -81,7 +81,9 @@ def wait_indexed(page: Page, base: str) -> None:
 
 def api(page: Page, base: str, path: str, params: dict[str, Any] | None = None) -> Any:
     """Read ``/api/v1`` with the page's session."""
-    response = page.request.get(f"{base}/api/v1{path}", params=params)
+    response = page.request.get(
+        f"{base}/api/v1{path}", params=params, headers=session_headers(page)
+    )
     assert response.ok, response.text()
     return response.json()
 

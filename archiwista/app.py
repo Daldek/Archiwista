@@ -1,7 +1,8 @@
 """FastAPI application: local-mode security, API routers and interface files.
 
 ``create_app`` wraps every request in ``SecurityMiddleware`` (``Host``,
-``Origin``/``Sec-Fetch-Site``, session and CSRF rules, CSP and other
+``Origin``/``Sec-Fetch-Site``, session cookie and CSRF token rules, body
+limits, CSP and other
 headers), answers errors with RFC 9457 problems, mounts the routers under
 ``/api/v1`` (with the OpenAPI document and the local ``/api/docs``) and
 serves the build-free interface from ``archiwista/web`` (``/`` and
@@ -12,11 +13,12 @@ through ``request.app.state``: ``settings`` (``SettingsService``),
 ``registry`` (the producer plugins), the last three also as dependencies of
 ``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
 without background jobs, which leaves out their routes), ``job_streams``
-(open job event streams, which the server ends as it stops) and
-``area_files`` (``AreaFiles``: copies of area files and their reader).
+(open job event streams, which the server ends as it stops),
+``area_files`` (``AreaFiles``: copies of area files and their reader) and
+``on_redeem`` (told when a one-time token starts a session).
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
@@ -46,7 +48,12 @@ from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import MESSAGES
-from archiwista.security import SecurityMiddleware, SessionStore
+from archiwista.security import (
+    SecurityMiddleware,
+    SessionStore,
+    TokenKind,
+    session_principals,
+)
 from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
 from archiwista.state import StateStore
 
@@ -64,6 +71,7 @@ def create_app(
     sessions: SessionStore | None = None,
     web_dir: Path = WEB_DIR,
     jobs: JobSupervisor | None = None,
+    on_redeem: Callable[[TokenKind], None] | None = None,
 ) -> FastAPI:
     """Build the Archiwista application for one server.
 
@@ -91,6 +99,9 @@ def create_app(
     jobs : JobSupervisor or None, optional
         The started supervisor of background jobs (``app.state.jobs``);
         without it the routes of jobs are left out.
+    on_redeem : Callable[[TokenKind], None] or None, optional
+        Called with the token's kind after a one-time token starts a session,
+        e.g. ``archiwista serve`` deleting the browser's launch file.
 
     Returns
     -------
@@ -126,6 +137,7 @@ def create_app(
     app.state.job_streams = job_routes.JobStreams()
     app.state.registry = registry
     app.state.area_files = AreaFiles(areas_dir)
+    app.state.on_redeem = on_redeem
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
@@ -150,6 +162,10 @@ def create_app(
 
     app.mount("/static", StaticFiles(directory=web_dir), name="static")
     app.add_middleware(
-        SecurityMiddleware, port=port, sessions=sessions, settings=settings.get
+        SecurityMiddleware,
+        port=port,
+        sessions=sessions,
+        settings=settings.get,
+        principals=session_principals(state, index_path),
     )
     return app

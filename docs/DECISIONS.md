@@ -33,7 +33,7 @@ Kartografa).
 | [ADR-009](#adr-009-łączenie-danych-obróbka-w-kartografie-opakowanie-w-archiwiście) | Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście | 2026-10-17 | Proponowana (SPEC 15: P2, P3) |
 | [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
-| [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta (errata 1: token we fragmencie, osobny token CSRF, reguła `Origin`, CSP z podkładami) |
+| [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta (errata 1: token we fragmencie, osobny token CSRF, reguła `Origin`, CSP z podkładami; errata 2: token CSRF w każdym żądaniu zamiast ciasteczka, sesje agentów ograniczone) |
 | [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1; decyzja użytkownika 2026-10-18; SPEC 15: P1) |
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 (errata 2: KA w Kartografie 0.8.0, `skip_versions`, `list_segments`, KA-5 na żądanie) |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
@@ -508,6 +508,28 @@ bez zmiany decyzji:
   skonfigurowanych podkładów w `connect-src` i `img-src` — tylko w trybie online, bo
   MapLibre pobiera kafle przez `fetch`;
 - dziennik dostępu serwera jest domyślnie wyłączony, a włączony redaguje `token=`.
+
+**Errata 2 (2026-10-19, przegląd bezpieczeństwa v0.1, ARCH-SEC-001..005, 008 — SPEC 10.1):**
+ciasteczka są związane z hostem, nie z portem (RFC 6265 8.5), więc przeglądarka wysyła
+`archiwista_session` i `archiwista_csrf` także do innego programu na
+`127.0.0.1:<inny port>` (np. innego konta na wspólnym komputerze), a `SameSite=Strict`
+tego nie blokuje. Zmiany bez zmiany opcji B:
+- uwierzytelnieniem jest ciasteczko sesji **i** token CSRF sesji w nagłówku
+  `X-Archiwista-CSRF` w **każdym** żądaniu `/api` (także odczytach); token zwraca wyłącznie
+  `POST /api/v1/session`, interfejs trzyma go w `sessionStorage` swojego pochodzenia,
+  nowa karta dostaje go od otwartej karty (`BroadcastChannel`), zdarzenia zadań idą
+  przez `fetch` zamiast `EventSource`; ciasteczka `archiwista_csrf` nie ma, `GET
+  /api/v1/session` nie zwraca tokenu; double-submit z errata 1 nie obowiązuje;
+- `archiwista serve` otwiera przeglądarkę przez prywatny plik przekierowania (`0600`,
+  usuwany po użyciu albo wygaśnięciu tokenu), nie przez adres z tokenem w wierszu
+  poleceń;
+- tokeny i sesje przechowują tylko `id` i `kind` wystawcy; role i grupy są czytane przy
+  każdym żądaniu; sesja agenta nie wystawia tokenów (`403`), kończy się najpóźniej po
+  12 h, a `archiwista token --revoke-all` kończy wszystkie sesje agentów; `DELETE
+  /api/v1/session` wylogowuje; zadania i dziennik uprawnień zapisują rodzaj wykonawcy
+  i etykietę sesji;
+- treść żądań jest ograniczona (4 KiB wymiana tokenu, 1 MiB pozostałe), dane lokalne
+  mają tryb `0700` i `umask 077`.
 
 ---
 

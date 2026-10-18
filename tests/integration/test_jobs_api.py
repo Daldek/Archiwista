@@ -22,8 +22,8 @@ from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import MESSAGES
-from archiwista.security import SESSION_COOKIE, issue_one_time_token
-from archiwista.server import LocalServer, bind_loopback
+from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
+from archiwista.server import LaunchFile, LocalServer, bind_loopback
 from archiwista.state import StateStore
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.jobs import (
@@ -56,7 +56,10 @@ def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[JobsApi]
 
 def _stream(served: JobsApi, job: str, last_event_id: str | None = None) -> Any:
     """Read a job's event stream (to its end) with the owner's session."""
-    headers = {"cookie": f"{SESSION_COOKIE}={served.owner.session_id}"}
+    headers = {
+        "cookie": f"{SESSION_COOKIE}={served.owner.session_id}",
+        CSRF_HEADER: served.owner.csrf,
+    }
     if last_event_id is not None:
         headers["Last-Event-ID"] = last_event_id
     return served.api.client.get(f"{API_PREFIX}/jobs/{job}/events", headers=headers)
@@ -242,7 +245,7 @@ def test_sse_follows_job_of_another_supervisor(
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
     env = served.env
     with JobSupervisor(env.paths, env.settings, worker_command=TEST_WORKER) as other:
-        job = other.submit("scan", store=STORE, actor="local")
+        job = other.submit("scan", store=STORE, actor=LOCAL_OWNER)
 
         # Act
         messages = _messages(_stream(served, job.id))
@@ -348,18 +351,25 @@ def test_event_stream_ends_when_server_stops(
             jobs=env.jobs,
         )
         server = LocalServer(
-            sock, app, url="", access_log=False, on_stop=app.state.job_streams.close
+            sock,
+            app,
+            url="",
+            launch=LaunchFile(env.paths.data_dir),
+            access_log=False,
+            on_stop=app.state.job_streams.close,
         )
         serving = threading.Thread(target=server.run, daemon=True)
         serving.start()
-        job = env.jobs.submit("scan", store=STORE, actor="local")
+        job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
         token = issue_one_time_token(
             env.paths.index_file, "startup", minted_by=LOCAL_OWNER
         )
         client = httpx.Client(
             base_url=f"http://127.0.0.1:{port}{API_PREFIX}", timeout=None
         )
-        assert client.post("/session", json={"token": token.token}).status_code == 200
+        exchanged = client.post("/session", json={"token": token.token})
+        assert exchanged.status_code == 200
+        client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
 
         def follow() -> None:
             with client.stream("GET", f"/jobs/{job.id}/events") as response:
