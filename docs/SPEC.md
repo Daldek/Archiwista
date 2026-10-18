@@ -1396,9 +1396,10 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 - **Dzienniki:** plik na zadanie (logger Kartografa na poziomie INFO
   i zdarzenia), przechowywanie 90 dni albo 1 GB (ostatnie zadanie każdego
   rodzaju w magazynie zostaje). Rutynowe skany — przyrostowe skany całego
-  magazynu z harmonogramu, zakończone sukcesem, bez komunikatów i bez
-  zmian (ponowny odczyt manifestów projektów bez magazynu, czytanych przy
-  każdym skanie, nie jest zmianą) — znikają z historią i dziennikiem po
+  magazynu z harmonogramu, zakończone sukcesem i bez zmian w indeksie, bez
+  komunikatów poza `footprints_failed` (obrysy, które nie wyszły, ponawia
+  każdy skan; to też nie jest zmiana, podobnie jak ponowny odczyt
+  manifestów projektów bez magazynu) — znikają z historią i dziennikiem po
   48 h, poza najnowszym w magazynie; pełne skany zostają. Przycinanie
   biegnie przy starcie serwera i co godzinę.
 - **Cache metadanych Kartografa:** procesy robocze dostają lokalny
