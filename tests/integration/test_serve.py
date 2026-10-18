@@ -2,18 +2,24 @@
 
 import asyncio
 import json
+import os
 import re
 import socket
+import stat
 import threading
+import time
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
 import pytest
 
+from archiwista import server as server_module
 from archiwista.cli import main
-from archiwista.security import CSRF_HEADER
-from archiwista.server import bind_loopback
+from archiwista.security import CSRF_HEADER, SESSION_COOKIE, TOKEN_TTL
+from archiwista.server import LocalServer, bind_loopback, open_in_browser
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
@@ -153,3 +159,119 @@ def test_token_command_issues_one_time_url(
     assert first.status_code == 200
     assert second.status_code == 401
     assert other.status_code == 200
+
+
+def test_serve_browser_opens_private_file_removed_once_token_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The browser gets a 0600 file, never the token; using the token deletes it."""
+    opened: list[str] = []
+    browsed = threading.Event()
+
+    def browser(uri: str) -> bool:
+        opened.append(uri)
+        browsed.set()
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", browser)
+    paths = local_paths(tmp_path)
+    with serving(paths, on_ready=open_in_browser) as (server, _):
+        assert browsed.wait(10)
+        launch = server.launch.path
+        assert launch is not None
+        mode = stat.S_IMODE(launch.stat().st_mode)
+        page = launch.read_text("utf-8")
+        match = FRAGMENT_URL.fullmatch(server.url)
+        assert match is not None
+        with httpx.Client(base_url=f"http://127.0.0.1:{server.port}") as client:
+            exchanged = client.post("/api/v1/session", json={"token": match[2]})
+        kept_after_use = launch.exists()
+
+    assert opened == [launch.as_uri()]
+    assert match[2] not in opened[0]
+    assert launch.parent == paths.data_dir
+    if os.name == "posix":
+        assert mode == 0o600
+    assert f'content="0;url={server.url}"' in page
+    assert exchanged.status_code == 200
+    assert not kept_after_use
+    assert server.launch.path is None
+
+
+def test_serve_launch_file_removed_on_stop(tmp_path: Path) -> None:
+    """A token nobody used leaves no launch file once the server stops."""
+    with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
+        launch = server.launch.path
+        assert launch is not None
+        existed = launch.exists()
+
+    assert existed
+    assert not launch.exists()
+
+
+def test_serve_launch_file_removed_when_token_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The launch file goes when the startup token expires, server still running."""
+    expiring = {**TOKEN_TTL, "startup": timedelta(seconds=0.2)}
+    monkeypatch.setattr(server_module, "TOKEN_TTL", expiring)
+    with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
+        launch = server.launch.path
+        assert launch is not None
+        deadline = time.monotonic() + 10
+        while launch.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        removed_while_serving = not launch.exists()
+
+    assert removed_while_serving
+
+
+def test_token_revoke_all_ends_agent_sessions_of_running_server(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``archiwista token --revoke-all`` ends agents' sessions, not the owner's."""
+    paths = local_paths(tmp_path)
+    with serving(paths) as (server, output):
+        owner_token = FRAGMENT_URL.search(output)
+        assert owner_token is not None
+        main(["token", "--port", str(server.port)], paths=paths)
+        agent_url = FRAGMENT_URL.fullmatch(capsys.readouterr().out.strip())
+        main(["token", "--port", str(server.port)], paths=paths)
+        unused_url = FRAGMENT_URL.fullmatch(capsys.readouterr().out.strip())
+        assert agent_url is not None and unused_url is not None
+        with httpx.Client(base_url=f"http://127.0.0.1:{server.port}") as client:
+            owner = _session(client, owner_token[2])
+            agent = _session(client, agent_url[2])
+            before = client.get("/api/v1/session", headers=agent)
+
+            status = main(["token", "--revoke-all"], paths=paths)
+            printed = capsys.readouterr().out
+
+            ended = client.get("/api/v1/session", headers=agent)
+            kept = client.get("/api/v1/session", headers=owner)
+            late = client.post("/api/v1/session", json={"token": unused_url[2]})
+
+    assert status == 0
+    assert "unieważnione niewykorzystane tokeny agentów: 1." in printed
+    assert before.status_code == 200 and before.json()["kind"] == "agent"
+    assert ended.status_code == 401
+    assert ended.json()["code"] == "session_required"
+    assert kept.status_code == 200 and kept.json()["kind"] == "local_owner"
+    assert late.status_code == 401
+
+
+def _write_launch(server: LocalServer) -> None:
+    """Write the launch file as ``open_in_browser`` does, opening no browser."""
+    server.launch.write(server.url)
+
+
+def _session(client: httpx.Client, token: str) -> dict[str, str]:
+    """Exchange ``token``; return the headers carrying that session."""
+    exchanged = client.post("/api/v1/session", json={"token": token})
+    assert exchanged.status_code == 200, exchanged.text
+    cookie = exchanged.cookies[SESSION_COOKIE]
+    client.cookies.clear()
+    return {
+        "cookie": f"{SESSION_COOKIE}={cookie}",
+        CSRF_HEADER: exchanged.json()["csrf_token"],
+    }

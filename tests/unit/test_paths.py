@@ -1,12 +1,15 @@
-"""Indexed paths resolved inside their store or project root (SPEC 10.1)."""
+"""Indexed paths inside their root and private local data (SPEC 10.1)."""
 
 import os
+import stat
 from pathlib import Path
 
 import pytest
 
 from archiwista.errors import PathOutsideRootError
-from archiwista.paths import resolve_indexed_path
+from archiwista.paths import private_directory, resolve_indexed_path
+
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 
 
 @pytest.fixture
@@ -59,3 +62,27 @@ def test_paths_resolve_indexed_path_follows_link_inside_root(store: Path) -> Non
     resolved = resolve_indexed_path(store, "nmt/a.asc")
 
     assert resolved == target.resolve()
+
+
+@posix_only
+def test_paths_private_directory_created_closed_to_others(tmp_path: Path) -> None:
+    """A new data directory is the owner's alone even under a permissive umask."""
+    os.umask(0o022)
+
+    created = private_directory(tmp_path / "data" / "jobs")
+
+    assert stat.S_IMODE(created.stat().st_mode) == 0o700
+
+
+@posix_only
+def test_paths_private_directory_closes_existing_open_one(tmp_path: Path) -> None:
+    """Data left readable by an older version is closed to ``0700``; files stay."""
+    existing = tmp_path / "data"
+    existing.mkdir(mode=0o755)
+    existing.chmod(0o755)
+    (existing / "index.sqlite").write_bytes(b"")
+
+    private_directory(existing)
+
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o700
+    assert (existing / "index.sqlite").exists()

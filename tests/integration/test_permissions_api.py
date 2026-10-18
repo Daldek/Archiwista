@@ -20,6 +20,7 @@ from tests.fixtures.api_session import Api, assert_problem, running_api
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.permissions import (
+    ADMIN,
     GROUP,
     LISTED,
     MANAGES,
@@ -358,3 +359,82 @@ def test_local_owner_sees_and_manages_everything(api: Api) -> None:
     assert [user["id"] for user in users.json()["items"]] == sorted(
         ["ada", "igor", "lena", "olga"]
     )
+
+
+@pytest.mark.parametrize("token", ["startup", "agent"])
+def test_revoked_admin_role_holds_for_live_session(
+    api: Api, token: Literal["startup", "agent"]
+) -> None:
+    """A session opened as administrator loses admin routes once the role goes."""
+    # Arrange
+    admin = api.session(principal(api.state, "admin"), token=token)
+    local = api.session(LOCAL_OWNER)
+    before = admin.request("GET", "/users")
+
+    # Act
+    revoked = local.request("PATCH", f"/users/{ADMIN}", json={"roles": []})
+    after = admin.request("GET", "/users")
+    still_signed_in = admin.request("GET", "/session")
+
+    # Assert
+    assert before.status_code == 200
+    assert revoked.status_code == 200 and revoked.json()["roles"] == []
+    assert_problem(after, 403, "permission_denied")
+    assert still_signed_in.status_code == 200
+
+
+@pytest.mark.parametrize("change", ["disable", "remove"])
+@pytest.mark.parametrize("token", ["startup", "agent"])
+def test_disabled_or_removed_account_ends_its_sessions(
+    api: Api, token: Literal["startup", "agent"], change: str
+) -> None:
+    """The next request of a disabled or removed account's session gets 401."""
+    # Arrange
+    owner = api.session(principal(api.state, "owner"), token=token)
+    local = api.session(LOCAL_OWNER)
+    before = owner.request("GET", "/session")
+
+    # Act
+    if change == "disable":
+        done = local.request("PATCH", f"/users/{OWNER}", json={"disabled": True})
+    else:
+        done = local.request("DELETE", f"/users/{OWNER}")
+    ended = owner.request("GET", "/session")
+    again = owner.request("GET", "/session")
+
+    # Assert
+    assert before.status_code == 200
+    assert done.status_code in (200, 204)
+    assert_problem(ended, 401, "session_required")
+    assert_problem(again, 401, "session_required")
+
+
+def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
+    """A logged change keeps who acted, how (owner, person, agent) and the session."""
+    # Arrange
+    local = api.session(LOCAL_OWNER)
+    owner = api.session(principal(api.state, "owner"))
+    agent = api.session(principal(api.state, "admin"), token="agent")
+    share(api.state, KEY, "private")
+    logged = len(api.state.changes())
+    labels = [
+        caller.request("GET", "/session").json()["label"]
+        for caller in (local, owner, agent)
+    ]
+
+    # Act
+    local.request("PATCH", f"/users/{OTHER}", json={"name": "Igor Nowy"})
+    owner.request("PUT", ACCESS, json={"visibility": "public"})
+    agent.request("POST", "/groups", json={"id": "geodezja"})
+
+    # Assert
+    changes = api.state.changes()[logged:]
+    assert [
+        (change.actor, change.actor_kind, change.session, change.action)
+        for change in changes
+    ] == [
+        ("local", "local_owner", labels[0], "user.update"),
+        (OWNER, "user", labels[1], "project.access"),
+        (ADMIN, "agent", labels[2], "group.add"),
+    ]
+    assert len(set(labels)) == 3

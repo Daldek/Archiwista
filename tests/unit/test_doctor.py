@@ -1,6 +1,8 @@
 """Consumer-facing checks for ``archiwista doctor`` diagnostics."""
 
+import os
 import socket
+import stat
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -237,6 +239,35 @@ def test_doctor_busy_port_is_a_warning(paths: AppPaths, store_root: Path) -> Non
     assert [check.message for check in report.checks if check.level == "warning"] == [
         "Port 8123 na 127.0.0.1 jest zajęty (może działać już Archiwista)"
     ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+@pytest.mark.parametrize(
+    ("mode", "warned"), [(0o755, True), (0o750, True), (0o700, False)]
+)
+def test_doctor_warns_when_local_data_open_to_others(
+    paths: AppPaths, store_root: Path, mode: int, warned: bool
+) -> None:
+    """Local data other accounts may enter is a warning naming the fix; 0700 is not."""
+    configure(paths, store_root)
+    paths.data_dir.mkdir(parents=True)
+    paths.data_dir.chmod(mode)
+
+    report = run_doctor(paths, FakeRegistry(), port_available=lambda port: True)
+
+    warnings = [check for check in report.checks if check.level == "warning"]
+    assert report.errors == 0
+    assert stat.S_IMODE(paths.data_dir.stat().st_mode) == mode
+    if warned:
+        [warning] = warnings
+        assert warning.message == (
+            f"Dane lokalne {paths.data_dir} są dostępne dla innych kont tego"
+            f" komputera (uprawnienia {mode:04o}): indeks, obszary, konta i"
+            " dzienniki zadań."
+        )
+        assert f"chmod 700 {paths.data_dir}" in str(warning.fix)
+    else:
+        assert warnings == []
 
 
 def test_doctor_is_port_available_detects_listener() -> None:
