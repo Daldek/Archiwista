@@ -23,7 +23,7 @@ Kartografa).
 | ADR | Tytuł | Data | Status |
 |---|---|---|---|
 | [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta (uzupełniona przez ADR-024; errata 2: `kartograf>=0.8.0,<0.9`) |
-| [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta |
+| [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (osobna lokalna baza stanu nieodtwarzalnego) |
 | [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta — częściowo zastąpiona przez ADR-019 |
 | [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta (errata 2: potwierdzona po otwarciu architektury, 2026-10-18) |
 | [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Zastąpiona przez ADR-028 (Preact + htm bez budowania; zasada „API najpierw” zostaje) |
@@ -34,7 +34,7 @@ Kartografa).
 | [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
 | [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta (errata 1: token we fragmencie, osobny token CSRF, reguła `Origin`, CSP z podkładami) |
-| [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta (decyzja użytkownika 2026-10-18; SPEC 15: P1) |
+| [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1; decyzja użytkownika 2026-10-18; SPEC 15: P1) |
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 (errata 2: KA w Kartografie 0.8.0, `skip_versions`, `list_segments`, KA-5 na żądanie) |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
@@ -48,9 +48,9 @@ Kartografa).
 | [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
 | [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika) |
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
-| [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika) |
+| [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika; errata 1: migawkę w zespole robi właściciel projektu albo administrator, ADR-029) |
 | [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
-| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Proponowana (kierunek od użytkownika; szczegóły w planach v0.4 i v1.5) |
+| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Przyjęta (decyzja użytkownika; uzupełnia ADR-013; model uprawnień od v0.1) |
 
 ---
 
@@ -98,7 +98,7 @@ zależność to `kartograf>=0.8.0,<0.9`.
 ## ADR-002: Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (zasady SCOPE 3.3 Kartografa i decyzja użytkownika 2026-10-17)
+**Status:** Przyjęta — uzupełniona przez ADR-029 (osobna lokalna baza stanu nieodtwarzalnego); zasady SCOPE 3.3 Kartografa i decyzja użytkownika 2026-10-17
 
 **Kontekst:** Magazyn może leżeć na udziale SMB bez blokad zakresów bajtów, więc nie
 może tam być bazy SQLite; źródłem prawdy są sidecary i manifesty, a indeks
@@ -121,6 +121,12 @@ zmiany, których nie widać po czasach katalogów (SPEC 4.4).
 **Konsekwencje:** Dwie instancje mogą chwilowo widzieć różny stan — interfejs zawsze
 pokazuje czas indeksu. Zmiana schematu indeksu oznacza przebudowę, bez
 migracji. Cele wydajności: SPEC 4.5.
+
+**Errata 1 (2026-10-18, decyzja użytkownika, ADR-029):** konta, grupy, role i widoczność
+projektów nie wynikają z plików na dysku, więc nie trafiają do indeksu, tylko do
+osobnej lokalnej bazy stanu (`<user_data_dir>/state.sqlite`, nigdy na udziale), którą
+przebudowa indeksu omija; jej schemat zmienia się migracjami, a kopia zapasowa to
+`archiwista state export` (odtworzenie: `archiwista state import`).
 
 ---
 
@@ -508,7 +514,7 @@ bez zmiany decyzji:
 ## ADR-013: Tryb zespołu jako jeden serwer w sieci lokalnej
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-18; SPEC 15, P1)
+**Status:** Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1); decyzja użytkownika 2026-10-18; SPEC 15, P1
 
 **Kontekst:** Zespół ma pracować później na wspólnym magazynie na udziale SMB bez
 blokad zakresów bajtów. Kartograf gwarantuje bezpieczne równoległe zapisy
@@ -528,6 +534,11 @@ aliasy ścieżek. Tryb zespołu wymaga TLS, ról i dziennika działań (SPEC 10.
 
 **Errata 1 (2026-10-18, decyzja użytkownika):** B przyjęte; po zmianie numeracji
 (ADR-025) tryb zespołu to v0.4, w MVP.
+
+**Errata 2 (2026-10-18, decyzja użytkownika, ADR-029):** role „czytelnik”, „operator”,
+„administrator” zastępują „administrator” (`admin`), „zapis do magazynu”
+(`store_writer`) i zwykły „użytkownik”; model uprawnień i widoczność projektów działają
+od v0.1 (jeden lokalny właściciel), logowanie i ekrany kont zostają w v0.4.
 
 ---
 
@@ -1231,6 +1242,10 @@ i testy przerwania. Dane własne nie trafiają do manifestu projektu (brak przyp
 „Weryfikuj” i odtworzenia u kolegi). Zmiany w SPEC: 1.3, 2, 4.7.1, 10.1, 13 (v0.2);
 PRD F15, N2.5; SCOPE.
 
+**Errata 1 (2026-10-18, decyzja użytkownika, ADR-029):** w zespole migawkę robi
+właściciel projektu albo administrator (rola „operator” zniknęła); widoczność danych
+własnych i migawek wynika z widoczności projektu.
+
 ---
 
 ## ADR-028: Interfejs w Preact + htm bez kroku budowania
@@ -1267,60 +1282,82 @@ wymaga przepisania komponentów. Zmiany w SPEC: 5.1, 5.2, 14 (ryzyko „dwa ekos
 ## ADR-029: Rola zapisu do magazynu i udostępnianie projektów
 
 **Data:** 2026-10-18
-**Status:** Proponowana (kierunek od użytkownika 2026-10-18; szczegóły do planów v0.4 i v1.5)
+**Status:** Przyjęta (decyzja użytkownika 2026-10-18); uzupełnia ADR-013
 
 **Kontekst:** Firma wdraża Archiwistę z jednym centralnym magazynem Kartografa.
 Użytkownicy mają też własne projekty z wersjonowanymi danymi własnymi (ADR-027) i chcą
 decydować, kto je widzi: projekt publiczny (cała firma), wybrane osoby, wybrana grupa
-(np. dział) albo prywatny (tylko właściciel). Tryb zespołu (ADR-013, v0.4) przewiduje
-logowanie i role „czytelnik”, „operator”, „administrator” (SPEC 10.2), ale nie mówi,
+(np. dział) albo prywatny (tylko właściciel). Tryb zespołu (ADR-013, v0.4) przewidywał
+logowanie i role „czytelnik”, „operator”, „administrator” (SPEC 10.2), ale nie mówił,
 kto może zapisywać w magazynie centralnym ani jak dzielić projekty. Trzeba też ustalić,
-gdzie kończy się odpowiedzialność Archiwisty za bezpieczeństwo.
+gdzie kończy się odpowiedzialność Archiwisty za bezpieczeństwo. Użytkownik chce tych
+wymagań wcześnie, a nie jako dodatku po MVP.
 
 **Opcje:**
 - Granica uprawnień: A) Archiwista egzekwuje uprawnienia tylko we własnej powierzchni;
   B) Archiwista zarządza też prawami do plików na serwerze i udziale.
-- Zapis do magazynu: A) każdy operator; B) osobne uprawnienie dla administratora
+- Zapis do magazynu: A) każdy „operator”; B) osobne uprawnienie dla administratora
   Archiwisty i wybranych osób, z ustawieniem „wszyscy”.
-- Udostępnianie projektów: A) w MVP; B) osobne wydanie po MVP, z przygotowaniem w kodzie
-  od v0.1.
+- Kiedy model uprawnień: A) razem z logowaniem w v0.4; B) model i egzekwowanie od v0.1
+  (jeden lokalny właściciel), logowanie i ekrany w v0.4; C) po MVP.
 
-**Decyzja (proponowana):** granica A, zapis B, udostępnianie B:
+**Decyzja:** granica A, zapis B, model B:
 1. **Granica odpowiedzialności.** Archiwista egzekwuje uprawnienia wyłącznie we własnej
    powierzchni: interfejs, API HTTP, CLI, tokeny agentów i pamięć podglądów.
    Bezpieczeństwo serwera i udziału oraz to, kto ma dostęp do systemu plików, należą do
    administratora serwera, nie do Archiwisty. Osoba z dostępem do udziału widzi pliki
    niezależnie od ustawień projektu w Archiwiście — dokumentacja wdrożenia mówi to
    wprost.
-2. **Zapis do magazynu centralnego** wyłącznie przez API Kartografa (jak działania v0.3)
-   i tylko z uprawnieniem „zapis do magazynu” (`store_writer`). Ma je administrator
-   Archiwisty (rola w aplikacji, nie administrator serwera) i wybrane osoby; ustawienie
-   może je nadać wszystkim. W trybie lokalnym ma je jedyny właściciel.
-3. **Udostępnianie projektów:** właściciel projektu, grupy osób, widoczność projektu
-   (publiczny, wybrane osoby, wybrana grupa, prywatny), ekran udostępniania, dziennik
-   zmian uprawnień, pamięć podglądów i zapytania wyszukiwania oraz indeksu
-   uwzględniające uprawnienia, opcjonalnie grupy z LDAP/AD.
-4. **Kolejność:** podstawa ról i logowania — v0.4 „Zespół” (ADR-013); uprawnienie
-   `store_writer` — sprawdzane przy działaniach v0.3, nadawane osobom w v0.4;
-   udostępnianie projektów — nowe wydanie po MVP, np. v1.5 „Udostępnianie”.
-5. **Przygotowanie od v0.1:** każda usługa i każde zapytanie przyjmuje `Principal`
-   (tożsamość, role, grupy). W trybie lokalnym `Principal` to właściciel z rolami
-   `admin` i `store_writer`. Punkt zaczepienia: zależność `current_principal` z kroku 8
-   planu v0.1; kroki 9a–12 przekazują ją do usług.
+2. **Role:** „administrator” (`admin`; administrator systemu Archiwista, nie serwera:
+   ustawienia, magazyny, konta, grupy, uprawnienia), „zapis do magazynu”
+   (`store_writer`) i zwykły „użytkownik” (bez ról). Zastępują role „czytelnik”,
+   „operator”, „administrator” z SPEC 10.2. Zapis do magazynu centralnego wyłącznie
+   przez API Kartografa (i IMGWTools) i tylko z `store_writer`; ustawienie
+   `store_write_for_all` nadaje je wszystkim. Zmiany projektu (manifest, migawki,
+   udostępnianie) — właściciel i administrator; pobranie do magazynu wymaga dodatkowo
+   `store_writer`.
+3. **Widoczność projektu:** `public` (wszyscy), `users` (wybrane osoby), `group`
+   (wybrana grupa, np. dział), `private` (tylko właściciel); administrator widzi
+   wszystkie projekty (zarządzanie, przekazanie własności). Projekt bez wpisu (znaleziony
+   skanem) ma widoczność z ustawienia `default_project_visibility` (domyślnie `public`).
+   Magazyn centralny widzą wszyscy; widoczność dotyczy projektów, ich danych własnych,
+   migawek i przypięć. Zapytania indeksu (lista projektów, „Przypięta w:”, wyszukiwanie)
+   i pamięć podglądów danych własnych filtrują według widoczności; projekt niewidoczny
+   = `404`, brak uprawnienia do działania = `403`.
+4. **Kolejność:** v0.1 — model, egzekwowanie w API, CLI i zapytaniach dla jednego
+   lokalnego właściciela, sprawdzone testami z wieloma tożsamościami na poziomie usług
+   i API; administracyjne API i CLI kont, grup i udostępniania; dziennik zmian
+   uprawnień. v0.3 — `store_writer` sprawdzane przy działaniach (pobieranie przez
+   Kartografa). v0.4 — logowanie, zarządzanie kontami w interfejsie, ekran
+   udostępniania, opcjonalnie grupy z LDAP/AD.
+5. **`Principal`** (`id`, `kind`, `roles`, `groups`) przyjmuje każda usługa i każde zapytanie.
+   W trybie lokalnym to właściciel z rolami `admin` i `store_writer` (zależność
+   `current_principal`, krok 8 planu v0.1); autoryzacja: `can(principal, action,
+   resource)` i filtr `visible_projects(principal)`.
+6. **Stan nieodtwarzalny osobno od indeksu.** Konta, grupy, członkostwa, role, wpisy
+   widoczności projektów i dziennik zmian uprawnień nie wynikają z plików na dysku,
+   więc leżą w osobnej lokalnej bazie stanu (`<user_data_dir>/state.sqlite`), nigdy na
+   udziale ani w magazynie. Przebudowa indeksu jej nie dotyka; kopia zapasowa przez
+   `archiwista state export`, odtworzenie przez `archiwista state import` do pustej
+   bazy. Klucz projektu w bazie stanu nie zależy od indeksu
+   (katalog projektu po `realpath`).
 
 Odrzucone: zarządzanie prawami plików na serwerze — wymaga uprawnień systemowych, dubluje
-administrację serwera i daje fałszywe poczucie ochrony; zapis dla każdego operatora —
+administrację serwera i daje fałszywe poczucie ochrony; zapis dla każdego „operatora” —
 w firmie magazyn centralny jest wspólny i jego rozrost ma kontrolować wskazana osoba;
-udostępnianie w MVP — wydłuża drogę do v1.0, a tryb zespołu działa bez niego.
+model razem z logowaniem albo po MVP — filtry dopisywane do gotowych warstw łatwo
+pominąć (wyciek przez wyszukiwanie, „Przypięta w:”, podglądy), a model od v0.1 jest
+tani, gdy usługi od początku przyjmują `Principal`.
 
-**Konsekwencje:** Koszt udostępniania szacowany jako średni; jest niski, jeśli od v0.1
-usługi i zapytania przyjmują `Principal` — wtedy v1.5 dodaje filtry uprawnień zamiast
-przepisywać warstwy. Tryb lokalny zachowuje się jak dotąd (jeden właściciel ze
-wszystkimi uprawnieniami). Pamięć podglądów i wyniki indeksu nie mogą ujawniać projektów
-prywatnych — w v1.5 klucze pamięci i zapytania uwzględniają widoczność. Relację
-`store_writer` do roli „operator” (SPEC 10.2) rozstrzyga plan v0.4. Zmiany teraz: SCOPE
-(poza MVP), PRD (otwarte decyzje), plan v0.1 (kroki 9a i 12); przy przyjęciu: SPEC 10.2
-i 13 (v0.4, v1.5).
+**Konsekwencje:** Archiwista ma od v0.1 drugą lokalną bazę: indeks (odtwarzalny)
+i stan (nieodtwarzalny: migracje schematu zamiast przebudowy, eksport). Zasada „stan
+Archiwisty można odbudować” dotyczy indeksu, podglądów i historii zadań, nie bazy stanu.
+Tryb lokalny działa jak dotąd (jeden właściciel ze wszystkimi uprawnieniami); konta
+tworzone w v0.1 nie mogą się logować przed v0.4. Raporty zbiorcze (np. „nieużywane przez
+żaden projekt”) liczą wszystkie projekty, ale nazwy podają tylko widocznych. Zmiany:
+SPEC 1.3, 1.4, 3 (UC-14), 4.3, 4.7.1, 5.3, 9.1, 9.2, 10.2, 11, 13 (v0.1, v0.3, v0.4,
+v0.5), 14; PRD F10, F16, N2.3, N5.2; SCOPE; plan v0.1 (krok 8b, kroki 9a, 11, 12,
+bramka).
 
 ---
 

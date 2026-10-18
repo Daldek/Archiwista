@@ -3,11 +3,12 @@
 ## Start następnej sesji (stan 2026-10-18)
 
 **Status:** dokumentacja produktu i architektura przyjęte; plan v0.1
-(`docs/PLAN_v0.1.md`) poprawiony po przeglądzie; kroki 0 i 1 planu
-ukończone (`de157c3`, `c74f8d4`).
-**Następny krok:** kroki 2, 3 i 4 planu równolegle. Kroki 2 i 4 wymagają
-KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
-`feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
+(`docs/PLAN_v0.1.md`) poprawiony po przeglądzie i uzupełniony o krok 8b
+„Model uprawnień” (A-ADR-029); kroki 0–5, 7 i 8 planu ukończone (ostatni:
+`1347bb8`), krok 6a w toku.
+**Następny krok:** 6a i 8b (równolegle), potem 6b i 9a. Kroki wymagające
+KA-1..KA-6 (z `list_segments` i `skip_versions`) korzystają z gałęzi
+Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
 
 ### Na samym początku implementacji (pierwsze zadania planu v0.1)
 
@@ -27,7 +28,7 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 
 | Dokument | Rola |
 |---|---|
-| `docs/PRD.md` | wymagania F1–F15, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
+| `docs/PRD.md` | wymagania F1–F16, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
 | `docs/PLAN_v0.1.md` | plan implementacji v0.1: kontrakty, kolejność kroków, zależności i weryfikacja kryteriów akceptacji |
@@ -37,9 +38,9 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 
 ### Stan repozytorium
 
-- Gałęzie: `main`, `develop` (plan v0.1 po przeglądzie i kod kroku 1),
+- Gałęzie: `main`, `develop` (plan v0.1 i kod kroków 0–5, 7 i 8),
   `feat/mockup` (historia pierwszych wersji mockupu, `e25e833`). Bez
-  remote. Dokumentacja, mockup i kod kroku 1 są zacommitowane.
+  remote.
 - Kartograf: gałąź `feat/archiwista-store-api` (KA-1..KA-6 w wydaniu 0.8.0,
   ADR-045) — scalenie do `develop` i tag `v0.8.0` dopiero po zgodzie
   użytkownika.
@@ -75,15 +76,18 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 - Interfejs i słownictwo: A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`, szary
   podkład OSM, asystent jako panel boczny); etykiety pokrycia A-ADR-010, 017;
   dane IMGW A-ADR-019..023.
-- **Uprawnienia i udostępnianie** (A-ADR-029, proponowana, 2026-10-18):
-  Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (UI, API,
-  CLI, tokeny agentów, pamięć podglądów); bezpieczeństwo serwera i udziału
-  to odpowiedzialność administratora serwera. Zapis do magazynu centralnego
-  tylko przez API Kartografa, z uprawnieniem `store_writer` (administrator
-  Archiwisty i wybrane osoby albo wszyscy; v0.3/v0.4). Udostępnianie
-  projektów (publiczny, osoby, grupa, prywatny) — v1.5 „Udostępnianie”.
-  Od v0.1 usługi i zapytania przyjmują `Principal` (krok 8:
-  `current_principal`; kroki 9a–12 przekazują go dalej).
+- **Uprawnienia** (A-ADR-029, przyjęta 2026-10-18): Archiwista egzekwuje
+  uprawnienia tylko we własnej powierzchni (UI, API, CLI, tokeny agentów,
+  pamięć podglądów); bezpieczeństwo serwera i udziału to odpowiedzialność
+  administratora serwera. Role `admin` (administrator systemu Archiwista),
+  `store_writer` i zwykły użytkownik (zastępują „czytelnik/operator/
+  administrator”), ustawienie `store_write_for_all`; widoczność projektu
+  `public`/`users`/`group`/`private`. v0.1 — model i egzekwowanie dla
+  jednego lokalnego właściciela, testy z wieloma tożsamościami, osobna
+  lokalna baza stanu `state.sqlite` (nieodtwarzalna; `archiwista state
+  export`/`import`), API i CLI administratora (plan: krok 8b); v0.3 —
+  `store_writer` przy działaniach; v0.4 — logowanie, konta i ekran
+  udostępniania w interfejsie, opcjonalnie grupy LDAP/AD.
 - **Plan v0.1 po przeglądzie (2026-10-18):** KA w Kartografie 0.8.0
   (A-ADR-024 errata 1, A-ADR-001 errata 2); skan przyrostowy przez
   `skip_versions`, skan równoległy po segmentach (`list_segments`), bez
@@ -96,15 +100,14 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 
 ### Otwarte
 
-- **Plan v0.1** — gotowy po przeglądzie; kroki 2–14 do wykonania.
+- **Plan v0.1** — kroki 6a, 6b, 8b i 9a–14 do wykonania.
 - PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
   M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
   łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v1.3).
   Komputer odniesienia dla SSD ustalony w planie v0.1 (decyzja 1); pomiar
   SMB wymaga prawdziwego udziału SMB 3.
-- A-ADR-029 (rola zapisu do magazynu, udostępnianie projektów) — proponowana;
-  zatwierdzenie i szczegóły `store_writer` przed planem v0.4, udostępnianie
-  przed v1.5.
+- A-ADR-029: nazwy akcji `can(...)` i schemat bazy stanu ustala krok 8b
+  planu v0.1.
 - Mockup: pytania M3, M5–M8, M10, M11 (SPEC 16).
 - Producenci: Kartograf — KA-1..KA-6 (z `list_segments` i `skip_versions`)
   na gałęzi `feat/archiwista-store-api`, blokują kroki 2, 4–7 i 9a–13 do

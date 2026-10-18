@@ -153,7 +153,7 @@ każdego wymagania: wskazana sekcja SPEC.
 
 **F10. Tryb zespołu** (SPEC 10.2, UC-14)
 
-- F10.1 Jeden serwer w sieci lokalnej, logowanie (konta lokalne albo odwrotne proxy), role „czytelnik”, „operator”, „administrator”. (v0.4)
+- F10.1 Jeden serwer w sieci lokalnej, logowanie (konta lokalne albo odwrotne proxy), zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy z LDAP/AD — na modelu uprawnień F16. (v0.4)
 - F10.2 Wspólna kolejka zadań bez podwójnych pobrań, historia i dziennik działań, limity per osoba, pobieranie plików przez HTTP, aliasy ścieżek per klient. (v0.4)
 
 **F11. Dane IMGW** (SPEC 4.8, 6.7, UC-16, UC-17, UC-19)
@@ -171,12 +171,20 @@ każdego wymagania: wskazana sekcja SPEC.
 - F15.3 Migawki jako wersje: oś wersji, „Wachlarz”, kurtyna, porównanie metadanych (liczba obiektów, zasięg, schemat). (v0.2)
 - F15.4 Wykrycie zmiany pliku od ostatniej migawki i podpowiedź „zrób migawkę”; historia zaobserwowanych stanów w indeksie (bez treści). (v0.2)
 
+**F16. Uprawnienia i udostępnianie projektów** (SPEC 10.2, A-ADR-029)
+
+- F16.1 Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (interfejs, API, CLI, tokeny agentów, pamięć podglądów); bezpieczeństwo serwera i udziału oraz dostęp do systemu plików to odpowiedzialność administratora serwera. (v0.1)
+- F16.2 Role: „administrator” (`admin`; administrator systemu Archiwista: ustawienia, magazyny, konta, grupy, uprawnienia), „zapis do magazynu” (`store_writer`) i zwykły „użytkownik”; ustawienie `store_write_for_all` nadaje zapis wszystkim. W trybie lokalnym właściciel ma `admin` i `store_writer`. (v0.1)
+- F16.3 Widoczność projektu: publiczny, wybrane osoby, wybrana grupa (np. dział), prywatny; właściciel projektu; administrator widzi wszystkie. Lista projektów, „Przypięta w:”, wyszukiwanie i podglądy danych własnych uwzględniają widoczność; zmiany uprawnień trafiają do dziennika. (v0.1)
+- F16.4 Konta, grupy, członkostwa, role i widoczność projektów w osobnej lokalnej bazie stanu z kopią zapasową (`archiwista state export`, odtworzenie `archiwista state import`); przebudowa indeksu jej nie dotyka. Administracja przez API i CLI. (v0.1)
+- F16.5 Zapis do magazynu centralnego wyłącznie przez API producentów i tylko z uprawnieniem „zapis do magazynu”. (v0.3)
+- F16.6 Logowanie, zarządzanie kontami i ekran udostępniania w interfejsie, opcjonalnie grupy z LDAP/AD (F10.1). (v0.4)
+
 **Po MVP** (szczegóły: SCOPE, „Poza zakresem MVP”)
 
 - F12 Zestaw do projektu i QGIS: `.qgz`, lista ścieżek, atrybucje, także dane IMGW (SPEC 8.4). (v1.1)
 - F13 Asystent (agent LLM): planuje przygotowanie danych, wykonuje dopiero po „Zatwierdź i uruchom”; domyślnie wyłączony (SPEC 7). (v1.2)
 - F14 Łączenie: mozaika, porównanie wersji z modelem różnic (v1.3), scalona powierzchnia PL + CZ (v1.4) — obróbka w Kartografie (SPEC 8).
-- F16 Udostępnianie projektów (A-ADR-029, proponowana): właściciel projektu, grupy osób, widoczność publiczny / wybrane osoby / wybrana grupa / prywatny, ekran udostępniania, dziennik zmian uprawnień, podglądy i wyszukiwanie uwzględniające uprawnienia, opcjonalnie grupy LDAP/AD. Zapis do magazynu centralnego tylko przez API Kartografa i tylko z uprawnieniem „zapis do magazynu” (administrator Archiwisty i wybrane osoby albo wszyscy — ustawienie; v0.3/v0.4). (v1.5, propozycja)
 
 ## Wymagania niefunkcjonalne
 
@@ -191,7 +199,7 @@ każdego wymagania: wskazana sekcja SPEC.
 
 - N2.1 Magazyn tylko do odczytu: Archiwista nie zapisuje w katalogach producentów; zapis wyłącznie przez API Kartografa i IMGWTools.
 - N2.2 Parytet z CLI: działanie przez Archiwistę i to samo polecenie CLI dają te same wersje, `sha256` i przypięcia.
-- N2.3 Stan Archiwisty (indeks, podglądy, historia zadań) wyłącznie lokalnie i odtwarzalny; nic na udziale sieciowym ani w magazynie.
+- N2.3 Stan Archiwisty (indeks, podglądy, historia zadań) wyłącznie lokalnie i odtwarzalny; konta, grupy i widoczność projektów — w osobnej lokalnej bazie stanu z eksportem, bo nie da się ich odtworzyć z dysku; nic na udziale sieciowym ani w magazynie.
 - N2.4 Wiedza o formacie magazynu tylko u producentów (A-ADR-014): brakująca funkcja = wymaganie wobec producenta (SPEC 12).
 - N2.5 Poza indeksem Archiwista zapisuje wyłącznie na polecenie użytkownika i wyłącznie w katalogu projektu (migawki danych własnych, pliki obszarów, zestawy) — w otwartym formacie, czytelnym bez Archiwisty.
 
@@ -210,7 +218,7 @@ każdego wymagania: wskazana sekcja SPEC.
 **N5. Bezpieczeństwo** (SPEC 10)
 
 - N5.1 Tryb lokalny: serwer tylko na `127.0.0.1`, ochrona przed CSRF i DNS rebinding, dostęp tylko dla osoby, która uruchomiła serwer; odmowa startu poza `127.0.0.1` bez trybu zespołu.
-- N5.2 Tryb zespołu: logowanie, role, TLS poza `127.0.0.1`, dziennik działań.
+- N5.2 Tryb zespołu: logowanie, role, TLS poza `127.0.0.1`, dziennik działań; od v0.1 każda usługa i zapytanie sprawdza uprawnienia `Principal` (F16).
 - N5.3 Odczyt plików tylko w korzeniach skonfigurowanych magazynów i projektów; niezaufane wejście (pliki geometrii, archiwa IMGW) bez ryzyka dla serwera.
 - N5.4 Sekrety tylko po stronie serwera; zależności z przypiętymi wersjami i audytem podatności w bramce wydania.
 
@@ -267,4 +275,3 @@ Kryteria sukcesu MVP (v1.0):
 | Format danych IMGW | `imgw-meta/1`, Parquet, GeoJSON (A-ADR-020) | z zespołem IMGWTools, przed v0.5 |
 | Wyniki łączenia jako produkty pochodne Kartografa | tak, wzór HSG (A-ADR-009; SPEC 15 P2, P3) | przed v1.3 |
 | Komputer odniesienia dla celów wydajności | do ustalenia | przed v0.1 |
-| Rola zapisu do magazynu i udostępnianie projektów | kierunek użytkownika (A-ADR-029, proponowana): Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (UI, API, CLI, tokeny agentów, pamięć podglądów), dostęp do plików na serwerze to sprawa administratora serwera; `store_writer` w v0.3/v0.4; udostępnianie w v1.5; `Principal` w usługach od v0.1 | uprawnienie zapisu — przed planem v0.4; udostępnianie — przed v1.5 |

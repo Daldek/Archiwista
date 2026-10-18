@@ -4,10 +4,11 @@
 uwagi przeglądu oraz decyzje kontraktowe z Kartografem (decyzje 2–5 i 8
 poniżej). Kroki 0 i 1 ukończone; pozostałe według tego planu.
 **Zakres:** wyłącznie lokalny, tylko odczyt magazynu Kartografa; zapisy
-Archiwisty to konfiguracja i odtwarzalny indeks na dysku lokalnym.
+Archiwisty to konfiguracja, odtwarzalny indeks i baza stanu uprawnień
+(konta, grupy, widoczność projektów; krok 8b) na dysku lokalnym.
 Obowiązują kolejno `PRD.md` i `SCOPE.md` w kwestiach zakresu, `SPEC.md`
 (zwłaszcza 4–6, 9–11, 12.1 i 13), `DEVELOPMENT_STANDARDS.md` oraz A-ADR-002,
-004, 006, 007, 012, 013, 014, 015, 022, 024, 025 i 028 (z erratami). Mockup
+004, 006, 007, 012, 013, 014, 015, 022, 024, 025, 028 i 029 (z erratami). Mockup
 (`mockup/README.md`) jest punktem wyjścia dla układu, a **nie** źródłem
 danych, skanera ani działań. Każdy krok kończy się podaną próbą odbioru;
 nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
@@ -411,9 +412,8 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 - **API i bezpieczeństwo — `archiwista/api/` (9a–9c), `archiwista/security.py`
   (8):** jeden zestaw modeli Pydantic dla JSON i OpenAPI; problem RFC 9457:
   `type`, `title`, `status`, `detail` (po polsku), `code`, a gdy dotyczy —
-  `source`, `kartograf`, `job`. Kody v0.1: `400 invalid_host`,
-  `401 session_required`, `403 csrf_rejected`, `404 not_found`,
-  `409 conflict`, `409 offline_mode`, `413 area_too_large`,
+  `401 session_required`, `403 csrf_rejected`, `403 permission_denied`,
+  `404 not_found`, `409 conflict`, `409 offline_mode`, `413 area_too_large`,
   `422 validation_error`, `422 area_unreadable`, `422 area_too_complex`,
   `422 kartograf_error`, `503 store_unavailable`, `503 source_unavailable`,
   `503 source_incompatible`; `code` nie zależy od polskiego `detail`.
@@ -447,6 +447,17 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `/api/v1/openapi.json` wymaga sesji, domyślnych `/docs` brak.
     `archiwista serve [--host] [--port] [--no-browser] [--access-log]`
     i `archiwista token [--port] [--json]` (`archiwista/server.py`).
+- **Uprawnienia — `archiwista/state/`, `archiwista/auth/` (krok 8b,
+  A-ADR-029, SPEC 4.3 i 10.2):** `StateStore` — baza stanu
+  `<user_data_dir>/state.sqlite`, osobna od indeksu, migracje zamiast
+  przebudowy; `Authorizer(state, settings)` z `can(principal, action,
+  resource) -> bool`, `require(...)` (`PermissionDeniedError` →
+  `403 permission_denied`) i `visible_projects(principal) ->
+  ProjectVisibility` (zbiór kluczy projektów albo „wszystkie”), zależność
+  tras `authorizer`. Każda usługa i każde zapytanie o projekty dostaje
+  `principal`; routery i CLI nie liczą uprawnień same. Projekt niewidoczny
+  → `404 not_found`, widoczny bez uprawnienia do działania →
+  `403 permission_denied`.
 - **Interfejs WWW — `archiwista/web/`** (10a–11): `src/api.js` konsumuje
   tylko `/api/v1` (nie `mockup/data/` ani ścieżek plików serwera);
   `main.js`, router i `src/routes.js` należą do 10a (widok dopisuje jedną
@@ -469,16 +480,17 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 | 6b | Zadania w tle: skan, obrysy, potwierdzenie dowiązania | 3, 6a, 7 | 8, 9a | |
 | 7 | Projekty i stan magazynu | 2, 4, 5 | 6a, 8 | |
 | 8 | Ochrona dostępu lokalnego, sesja i `serve` | 3, 5 | 6a, 7 | |
-| 9a | FastAPI: odczyt, modele, błędy, ustawienia | 3, 6a, 7, 8 | 6b | |
+| 8b | Model uprawnień | 5, 8 | 6a | |
+| 9a | FastAPI: odczyt, modele, błędy, ustawienia | 3, 6a, 7, 8, 8b | 6b | |
 | 9b | Zadania w tle przez HTTP i SSE | 6b, 9a | 9c, 10a, 12 | |
 | 9c | Obszary i pokrycie lokalne przez HTTP | 6a, 9a | 9b, 10a, 12 | |
 | 10a | Powłoka interfejsu, sesja w przeglądarce, kreator | 6b, 8, 9a | 9b, 9c, 12 | |
 | 10b | Mapa | 9c, 10a | 10c, 11, 12 | |
 | 10c | Katalog | 9a, 10a | 10b, 11, 12 | |
 | 11 | Karta pliku, Projekty i Magazyn | 7, 9b, 10a | 10b, 10c, 12 | |
-| 12 | CLI i przewodnik dla agentów | 8, 9a | 9b–11 | |
+| 12 | CLI i przewodnik dla agentów | 8, 8b, 9a | 9b–11 | |
 | 13 | E2E, awarie udziału i pomiary | 4, 6b, 9a–9c, 10a–10c, 11, 12 (perf od 6b i 9a) | perf z 10–12 | |
-| 14 | Dokumentacja, bramka i wydanie | 0–13; Kartograf 0.8.0 z KA | — | |
+| 14 | Dokumentacja, bramka i wydanie | 0–13 (z 8b); Kartograf 0.8.0 z KA | — | |
 
 ### 0. Angielskie pliki kontrybutorów — ukończony
 - **Stan:** `de157c3` — `CONTRIBUTING.md`, `CONTRIBUTORS.md`
@@ -749,6 +761,77 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   przez prawdziwy serwer w wątku). **Zależności:** 3, 5. **Równolegle:** 6a
   i 7.
 
+### 8b. Model uprawnień
+- **Cel (A-ADR-029, SPEC 4.3, 10.2):** model i egzekwowanie uprawnień dla
+  jednego lokalnego właściciela, sprawdzone testami z wieloma tożsamościami;
+  logowanie innych osób dopiero w v0.4.
+  - `archiwista/state/{schema,store,export}.py`: baza stanu
+    `<user_data_dir>/state.sqlite` (SQLite WAL, wyłącznie lokalnie, nigdy
+    na udziale ani w magazynie, osobny plik obok `index.sqlite`),
+    `PRAGMA user_version` i migracje schematu — przebudowa indeksu jej nie
+    dotyka. Tabele: `users` (`id`, nazwa wyświetlana, `disabled`, czasy),
+    `groups`, `memberships`, `roles` (`user_id`, `admin`/`store_writer`),
+    `project_acl` (klucz projektu = katalog projektu po `realpath`,
+    niezależny od identyfikatorów indeksu; `owner`; `visibility`
+    `public`/`users`/`group`/`private`), `project_acl_entries` (osoba albo
+    grupa), `permission_log` (kto, kiedy, co, stan przed i po). Konta z v0.1
+    nie mają haseł i nie mogą się logować (v0.4).
+  - `archiwista/auth/`: `Principal(id, kind, roles, groups)` i
+    `LOCAL_OWNER` z kroku 8 bez zmian; `principal_for(state, user_id)`
+    (role i grupy z bazy stanu); `authorize.py` z `can(principal, action,
+    resource)` — akcje v0.1: `project.view`, `project.share`,
+    `users.manage`, `groups.manage`, `settings.write`, `store.write` —
+    `require(...)` i `visible_projects(principal)`. Reguły: `admin` widzi
+    wszystkie projekty i zarządza kontami, grupami, ustawieniami
+    i udostępnianiem każdego projektu; właściciel — swojego projektu;
+    `public` widzą wszyscy, `users` — osoby z wpisu, `group` — członkowie
+    grupy z wpisu, `private` — tylko właściciel; projekt bez wpisu ma
+    widoczność z ustawienia `default_project_visibility` (domyślnie
+    `public`); `agent` z tokenu działa z rolami i grupami wystawiającego
+    (krok 8). `store.write` = rola `store_writer` albo ustawienie
+    `store_write_for_all` (domyślnie `false`): punkt kontroli bez działań
+    w v0.1, pierwsze użycie w v0.3.
+  - Filtr `visible_projects(principal)` w zapytaniach indeksu i usługach
+    kroku 7: lista i szczegóły projektów, przypięcia („Przypięta w:” karty
+    slotu), wyszukiwanie z filtrem projektu, raport magazynu (liczniki
+    obejmują wszystkie projekty, nazwy — tylko widoczne).
+  - `archiwista/api/admin.py` (router dopisany do fabryki z kroku 8):
+    `GET/POST /users`, `PATCH/DELETE /users/{id}`, `GET/POST /groups`,
+    `PUT /groups/{id}/members`, `DELETE /groups/{id}` — tylko `admin`;
+    `GET/PUT /projects/{id}/access` — właściciel albo `admin`; zmiany
+    z CSRF, każda zapisana w `permission_log`.
+  - CLI (`archiwista/cli.py`): `archiwista users list|add|roles|remove`,
+    `archiwista groups list|add|members|remove`, `archiwista share PROJEKT
+    --visibility public|users|group|private [--user ID…] [--group ID…]`,
+    każde z `--json` (model jak w API), oraz `archiwista state export
+    [--output PLIK]` (JSON `archiwista-state/1`: konta, grupy, członkostwa,
+    role, widoczność projektów, dziennik) i `archiwista state import PLIK`
+    (tylko do pustej bazy stanu — odtworzenie z kopii). CLI działa jako
+    `LOCAL_OWNER`.
+  - Ustawienia `store_write_for_all` i `default_project_visibility`
+    w konfiguracji kroku 3 (zmiana — `settings.write`, czyli `admin`).
+  - Poza krokiem: logowanie, hasła, ekrany kont i udostępniania (v0.4),
+    klucze pamięci podglądów danych własnych zależne od widoczności (v0.2).
+- **Interfejs:** `StateStore`, `Authorizer` i zależność `authorizer` dla
+  9a–12; `IndexQueries` i usługi projektów przyjmują `principal` (albo
+  gotowy `ProjectVisibility`) — bez filtrowania w routerach i CLI.
+- **Test/odbiór:** `tests/unit/test_authorize.py::test_visibility_matrix`
+  (parametryzacja `public`/`users`/`group`/`private` × właściciel / osoba
+  z wpisu albo członek grupy z wpisu / inna osoba / `admin`, także `agent`
+  z tokenu wystawionego przez każdą z nich, i `store.write` z rolą, bez roli
+  i z `store_write_for_all`), `tests/integration/test_permissions_api.py`
+  (kilka tożsamości wstrzykniętych przez zależność `current_principal`:
+  `/projects`, `/projects/{id}`, przypięcia i wyszukiwanie zgodne
+  z macierzą; projekt niewidoczny → `404 not_found`; `PUT
+  /projects/{id}/access` przez inną osobę → `403 permission_denied`;
+  trasy kont i grup bez `admin` → `403 permission_denied`, bez CSRF →
+  `403 csrf_rejected`; zmiana w `permission_log`; tryb lokalny widzi
+  wszystko), `tests/integration/test_state.py` (przebudowa indeksu nie
+  zmienia `state.sqlite`; migracja ze starszego `user_version`; eksport →
+  import do pustej bazy daje tę samą macierz; import do niepustej bazy
+  odrzucony) i `tests/integration/test_cli.py::test_admin_cli_json_equals_http`.
+  **Zależności:** 5, 8. **Równolegle:** 6a; przed 9a.
+
 ### 9a. FastAPI: odczyt, modele, błędy, ustawienia
 - **Cel:** `archiwista/api/{models,errors,health,stores,slots,map,projects,settings}.py`
   i ich routery w `app.py`: `GET /health` (wersje, `IndexStatus`, stan
@@ -770,8 +853,10 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 - **Interfejs:** cienkie routery → `IndexQueries` i usługi 3, 7; modele
   z przykładami (kursor, filtry, grupy położenia, karta, problem RFC 9457).
   Każdy router bierze `Principal` z zależności `current_principal` (krok 8)
-  i przekazuje go do usług i zapytań — bez filtrowania w v0.1, punkt
-  zaczepienia uprawnień (A-ADR-029).
+  i przekazuje go do usług i zapytań; lista, szczegóły i status projektów
+  oraz przypięcia na karcie slotu filtruje `visible_projects(principal)`
+  z kroku 8b (tryb lokalny widzi wszystko), `PUT /settings` wymaga
+  `settings.write` (A-ADR-029).
 - **Test/odbiór:** `tests/integration/test_api.py` (każda trasa, filtry,
   limit 200 i kursor, RFC 9457 i OpenAPI z przykładami, `stale` po
   odłączeniu, `test_source_states_map_to_503`, `curl` z cookie-jar po
@@ -781,7 +866,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   migawka drzewa magazynu przed i po identyczna),
   `tests/integration/test_second_adapter.py::test_second_adapter_indexes_and_browses_without_core_changes`
   (wtyczka-fixtura z entry point → skan → `/sources`, `/slots`, karta).
-  **Zależności:** 3, 6a, 7, 8. **Równolegle:** 6b; po 9a kroki 9c, 10a
+  **Zależności:** 3, 6a, 7, 8, 8b. **Równolegle:** 6b; po 9a kroki 9c, 10a
   i 12, po 6b — 9b.
 
 ### 9b. Zadania w tle przez HTTP i SSE
@@ -900,7 +985,11 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   jednostek” (`footprints`, nieaktywne offline z wyjaśnieniem). Stały
   baner odłączonego udziału z czasem ostatniego skanu.
 - **Interfejs:** tylko modele z 9a/9b; odczyt przez identyfikator, nie URL
-  fizycznego pliku; własne moduły i własny plik słownika.
+  fizycznego pliku; własne moduły i własny plik słownika. „Projekty”
+  i „Przypięta w:” pokazują to, co zwraca API przefiltrowane przez 8b (bez
+  własnego filtrowania); raport magazynu podaje nazwy tylko widocznych
+  projektów. Bez ekranu udostępniania przed v0.4 — widoczność ustawia się
+  w v0.1 przez API i CLI (krok 8b).
 - **Test/odbiór:** `tests/e2e/test_file_projects_store.py`
   (`test_human_labels_expose_raw_values`, `test_pinned_old_version_visible`,
   `test_copy_attribution_and_path`, `test_manifest_error_visible`,
@@ -928,8 +1017,10 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   MCP.
 - **Interfejs:** CLI wywołuje te same usługi `IndexQueries` i modele 9a;
   nie parsuje sidecarów i nie omija sprawdzenia stanu indeksu. Do usług
-  przekazuje `Principal` trybu lokalnego (właściciel z rolami `admin`
-  i `store_writer`), jak `current_principal` w HTTP (A-ADR-029).
+  przekazuje `Principal` trybu lokalnego (`LOCAL_OWNER`: role `admin`
+  i `store_writer`), jak `current_principal` w HTTP, więc wyniki `search`
+  i `entry` przechodzą przez ten sam filtr widoczności co trasy (8b,
+  A-ADR-029); polecenia `users`, `groups`, `share` i `state` należą do 8b.
 - **Test/odbiór:** `tests/integration/test_cli.py`
   (`test_search_options_match_slots_parameters` — zbiór opcji = zbiór
   parametrów z OpenAPI, `test_search_cli_equals_http` dla kilku kombinacji
@@ -938,7 +1029,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   i `tests/integration/test_agent_flow.py::test_agent_session_paging_and_errors`
   (klient HTTP bez `Origin`: token z `archiwista token`, sesja,
   stronicowanie, `POST` skanu z CSRF → `202`, `source_unavailable` bez
-  wtyczki). **Zależności:** 8, 9a. **Równolegle:** 9b–11.
+  wtyczki). **Zależności:** 8, 8b, 9a. **Równolegle:** 9b–11.
 
 ### 13. E2E, awarie udziału i pomiary
 - **Cel:** `tests/e2e/test_acceptance.py` (Playwright na **rzeczywistym
@@ -993,6 +1084,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 | 6. Wartość techniczna ↔ nazwa dla człowieka | `tests/e2e/test_file_projects_store.py::test_human_labels_expose_raw_values` (11): nazwa z `describe_segment`, czytelny rok danych, licencja/atrybucja, odsłonięte segment/EPSG/`sha256`/ścieżka; nieznany produkt pokazany jako nieznany. |
 | 7. Wyłącznie interfejs źródła poza adapterem | `tests/contract/test_imports.py` (2), `tests/integration/test_second_adapter.py::test_second_adapter_indexes_and_browses_without_core_changes` (9a) i `tests/e2e/test_catalog.py::test_second_adapter_entries_in_catalog` (10c): drugi adapter przechodzi przez indeks, API i UI bez importu Kartografa poza adapterem. |
 | 8. Entry points, stany źródeł, zgodność wersji/schematów | `tests/contract/test_plugins.py` (2), `tests/integration/test_api.py::test_source_states_map_to_503` (9a) i `tests/unit/test_doctor.py` (3): wtyczka widoczna w `/sources` i „Magazynie”; brak producenta → `503 source_unavailable`, zła wersja/schemat → `503 source_incompatible`, błąd ładowania nie kładzie serwera; `doctor` z polskim opisem naprawy. |
+| 9. Uprawnienia (A-ADR-029) | `tests/unit/test_authorize.py::test_visibility_matrix`, `tests/integration/test_permissions_api.py`, `tests/integration/test_state.py` i `tests/integration/test_cli.py::test_admin_cli_json_equals_http` (8b): macierz `public`/`users`/`group`/`private` × właściciel / osoba lub członek grupy z wpisu / inna osoba / administrator zgodna w usługach, API i CLI; niewidoczny projekt → `404`, działanie bez uprawnienia → `403 permission_denied`; trasy administratora bez `admin` odrzucone; tryb lokalny widzi wszystko; przebudowa indeksu nie zmienia bazy stanu, eksport → import ją odtwarza. |
 
 ## Ryzyka i blokady
 
@@ -1016,6 +1108,10 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `scan_threads` — bez obniżania progów i ukrywania nieudanych pomiarów.
 - **CZ i transformacje.** Operacje CZ wyłącznie przez KA-6, nigdy domyślny,
   przybliżony transformator.
+- **Filtr widoczności pominięty.** Nowa trasa albo zapytanie o projekty
+  bez `visible_projects` ujawnia projekty prywatne; dlatego filtr siedzi
+  w usługach i `IndexQueries` (nie w routerach), a macierz widoczności
+  z 8b obejmuje każdą trasę zwracającą projekty lub przypięcia.
 - **Podkłady online.** `Referrer-Policy: no-referrer` może nie spełniać
   zasad dostawcy kafli wymagającego `Referer` (np. serwery OSM); sprawdzić
   świadomie (`-m live`) w 10b i w razie potrzeby wybrać dostawcę szarego

@@ -121,7 +121,10 @@ zrozumiałe i wygodne dla ludzi.** W praktyce:
   P4).
 - **Nie trzyma niczego na udziale sieciowym.** Indeks, podglądy i historia
   zadań leżą lokalnie i można je w każdej chwili odbudować; źródłem prawdy
-  są sidecary i manifesty (SCOPE 3.3). Wyjątkiem są dane użytkownika,
+  są sidecary i manifesty (SCOPE 3.3). Konta, grupy, role i widoczność
+  projektów nie wynikają z plików, więc leżą w osobnej lokalnej bazie stanu
+  (4.3, A-ADR-029) — też nigdy na udziale; przebudowa indeksu jej nie
+  dotyka. Wyjątkiem są dane użytkownika,
   które Archiwista zapisuje na jego polecenie w katalogu projektu (zestawy,
   pliki obszarów, migawki danych własnych — 4.7.1, A-ADR-027): to nie stan
   Archiwisty, tylko pliki w otwartym formacie, czytelne bez niego.
@@ -154,7 +157,8 @@ Tryby pracy:
 - **Zespołowy (v0.4):** jeden serwer Archiwisty w sieci lokalnej
   z logowaniem i rolami, wspólny magazyn na udziale SMB bez blokad zakresów
   bajtów (A-ADR-013; sekcja 15, P1). Architektura od v0.1 nie zakłada, że
-  przeglądarka i serwer widzą ten sam system plików (sekcja 5.1).
+  przeglądarka i serwer widzą ten sam system plików (sekcja 5.1), a model
+  uprawnień i widoczność projektów działają od v0.1 (10.2, A-ADR-029).
 
 ## 2. Słownik pojęć
 
@@ -361,8 +365,10 @@ nieaktualne wobec archiwów.
 
 Kasia loguje się do Archiwisty zespołu. Widzi historię („Marek pobrał NMT
 2025 dla Raby, wczoraj 14:02”) i wspólną kolejkę zadań, więc nie pobiera
-tego samego drugi raz. Jako „czytelnik” przegląda dane i tworzy zestawy;
-pobierać może „operator” (sekcja 10.2).
+tego samego drugi raz. Jako zwykły „użytkownik” przegląda magazyn, widzi
+projekty publiczne, swoje i udostępnione jej osobie albo działowi, i tworzy
+zestawy; pobierać do magazynu może osoba z uprawnieniem „zapis do magazynu”
+(sekcja 10.2, A-ADR-029).
 
 ### UC-15. Wklejone polecenie Kartografa
 
@@ -501,6 +507,18 @@ lat dla danych hydro i meteo, 6.7) jest w czytelnym pliku TOML w katalogu
 konfiguracji użytkownika i w widoku „Ustawienia”. Indeks można usunąć
 w każdej chwili — „Przebuduj indeks” odtworzy go z magazynów i manifestów;
 tracona jest tylko historia zadań i rozmów asystenta.
+
+**Baza stanu** (A-ADR-029) to osobny plik SQLite
+`<katalog danych użytkownika>/state.sqlite`, także wyłącznie lokalny: konta
+(`users`), grupy i członkostwa (`groups`, `memberships`), role (`admin`,
+`store_writer`), widoczność projektów (`project_acl`: klucz projektu —
+katalog po `realpath`, niezależny od indeksu; właściciel; `public` /
+`users` / `group` / `private`; wpisy osób i grup) i dziennik zmian
+uprawnień. Tego stanu nie da się odtworzyć z dysku, więc „Przebuduj
+indeks” go nie dotyka, schemat zmienia się migracjami (nie przebudową),
+a kopię zapasową daje `archiwista state export` (JSON
+`archiwista-state/1`), odtwarzaną przez `archiwista state import` do pustej
+bazy.
 
 Zawartość (tabele logiczne; schemat ustali plan implementacji):
 
@@ -737,7 +755,7 @@ do projektu, a migawki robi Archiwista w tym folderze.
   plików magazynu (5.7), metadane; w widoku projektu grupa „Dane własne”
   obok zadań producentów, na mapie razem z przypiętymi danymi projektu.
   Bez etykiet dostępności (brak źródła zdalnego).
-- **Migawka** („Zrób migawkę”, rola „operator” w zespole): plan pokazuje
+- **Migawka** („Zrób migawkę”; w zespole właściciel projektu albo administrator, A-ADR-029): plan pokazuje
   plik, rozmiar i miejsce; kopia trafia do
   `<folder danych>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/` razem
   z `migawka.json` (`archiwista-snapshot/1`: ścieżka źródłowa, pliki z sumami
@@ -1088,7 +1106,9 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 |---|---|
 | `archiwista/app.py` | aplikacja FastAPI, rejestracja tras, pliki statyczne interfejsu |
 | `archiwista/config.py` | konfiguracja (TOML): magazyny (katalogi producentów), aliasy ścieżek, katalogi projektów, limity, podkłady, dostawca asystenta |
-| `archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP; później uwierzytelnianie i role |
+| `archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP, `current_principal` (tożsamość żądania); od v0.4 uwierzytelnianie |
+| `archiwista/state/` | baza stanu (4.3): konta, grupy, członkostwa, role, widoczność projektów, dziennik zmian uprawnień; migracje, eksport |
+| `archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — jedno miejsce decyzji o uprawnieniach dla API, CLI i zapytań indeksu (A-ADR-029) |
 | `archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów ładowanych z entry points (grupa `archiwista.sources`), stany źródeł, sprawdzenie wersji i schematów producentów (5.8) |
 | `archiwista/adapter/kartograf/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
 | `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 i konwersje typów |
@@ -1099,7 +1119,7 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 | `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
 | `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
 | `archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
-| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port) |
+| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import` |
 
 Interfejs (`archiwista/web/`, A-ADR-028): trasy
 z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link
@@ -2722,7 +2742,7 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 - **Błędy:** RFC 9457 (`application/problem+json`) z polami `type`,
   `title`, `status`, `detail` (po polsku), `code` (`validation_error`,
   `not_found`, `conflict`, `offline_mode`, `session_required`,
-  `csrf_rejected`, `store_unavailable`, `source_unavailable`,
+  `csrf_rejected`, `permission_denied`, `store_unavailable`, `source_unavailable`,
   `source_incompatible`, `kartograf_error`, `imgwtools_error`,
   `budget_exceeded`…) i — gdy błąd pochodzi od
   producenta — `kartograf` albo `imgwtools` (`exception`, `message` bez
@@ -2798,6 +2818,9 @@ metadanych i wizualne), a KE, KG i KF przychodzą później.
 | `GET /assistant/proposals/{id}` | propozycja |
 | `POST /assistant/proposals/{id}/execute`, `…/reject` | wykonanie albo odrzucenie — tylko z interfejsu, z tokenem CSRF |
 | `GET /settings`, `PUT /settings` | ustawienia (w zespole: administrator) |
+| `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | konta i ich role (`admin`, `store_writer`) — tylko administrator; od v0.4 także hasła i logowanie (10.2) |
+| `GET /groups`, `POST /groups`, `PUT /groups/{id}/members`, `DELETE /groups/{id}` | grupy (np. działy) i członkostwa — tylko administrator |
+| `GET /projects/{id}/access`, `PUT /projects/{id}/access` | właściciel i widoczność projektu (`public`, `users`, `group`, `private`) z listą osób i grup — właściciel albo administrator; każda zmiana trafia do dziennika uprawnień |
 | `GET /preferences`, `PUT /preferences` | preferencje widoku osoby: zapamiętany rodzaj lat dla danych hydro i meteo (6.7); w zespole — przy koncie, bez uprawnień administratora |
 | `GET /health` | wersje Archiwisty, Kartografa i IMGWTools, stan magazynów (katalogów producentów), indeksu i zadań |
 
@@ -3060,20 +3083,50 @@ Decyzja: A-ADR-012.
 - **Zależności:** wersje przypięte; audyt podatności (`pip-audit`,
   `npm audit`) w bramce wydania.
 
-### 10.2 Tryb zespołu (v0.4; rozszerzenia od v1.1 i v1.2)
+### 10.2 Tryb zespołu i uprawnienia (model od v0.1, logowanie v0.4; rozszerzenia od v1.1 i v1.2)
 
-- **Logowanie:** konta lokalne serwera (hasła Argon2id w lokalnej bazie
-  serwera, sesje z wygasaniem) albo uwierzytelnianie przez odwrotne proxy
+- **Granica odpowiedzialności (A-ADR-029):** Archiwista egzekwuje uprawnienia
+  wyłącznie we własnej powierzchni — interfejs, API HTTP, CLI, tokeny agentów,
+  pamięć podglądów. Bezpieczeństwo serwera i udziału oraz dostęp do systemu
+  plików to odpowiedzialność administratora serwera, nie Archiwisty: osoba
+  z dostępem do udziału widzi pliki niezależnie od widoczności projektu.
+- **Model od v0.1:** każda usługa i każde zapytanie dostaje `Principal`
+  (`id`, `kind`, `roles`, `groups`) z `current_principal`; decyzje podejmuje jedno
+  miejsce (`can(principal, action, resource)`, `visible_projects(principal)`).
+  W trybie lokalnym `Principal` to właściciel z rolami `admin`
+  i `store_writer`, więc widzi i może wszystko; konta, grupy i widoczność
+  projektów można zakładać już w v0.1 (API i CLI administratora, baza stanu
+  4.3), a logowanie innych osób działa od v0.4.
+- **Logowanie (v0.4):** konta lokalne serwera (hasła Argon2id w bazie stanu,
+  sesje z wygasaniem) albo uwierzytelnianie przez odwrotne proxy
   (nagłówek ufany wyłącznie od skonfigurowanego adresu proxy — droga do SSO
-  i Active Directory); bezpośrednie LDAP później.
-- **Role:** „czytelnik” (przegląd, podglądy; od v1.1 zestawy, od v1.2 rozmowy z asystentem
-  bez wykonywania propozycji), „operator” (zadania w tle: pobieranie,
-  projekty; od v1.2 wykonanie propozycji; od v1.3 łączenie), „administrator” (ustawienia,
-  magazyny, konta; od v1.2 dostawca asystenta).
+  i Active Directory); opcjonalnie grupy z LDAP/AD; zarządzanie kontami
+  i ekran udostępniania projektu w interfejsie.
+- **Role:** zwykły „użytkownik” (bez ról: przegląd magazynu, podglądy, widoczne
+  dla niego projekty, zmiany i udostępnianie własnych projektów, migawki w nich;
+  od v1.1 zestawy, od v1.2 rozmowy z asystentem; wykonanie propozycji wymaga
+  uprawnień danego działania), „zapis do magazynu” (`store_writer`: działania
+  zapisujące magazyn centralny przez API producentów — pobieranie, pobranie
+  projektu, synchronizacja i szeregi IMGW, od v1.3 łączenie; sprawdzane od v0.3),
+  „administrator” (`admin`; administrator systemu Archiwista, nie serwera:
+  ustawienia, magazyny, konta, grupy, uprawnienia, wszystkie projekty; od v1.2
+  dostawca asystenta). Ustawienie `store_write_for_all` nadaje zapis do
+  magazynu wszystkim.
+- **Widoczność projektu:** `public` (wszyscy), `users` (wybrane osoby),
+  `group` (wybrana grupa, np. dział), `private` (tylko właściciel);
+  administrator widzi wszystkie. Projekt znaleziony skanem bez wpisu ma
+  widoczność z ustawienia `default_project_visibility` (domyślnie `public`).
+  Magazyn centralny widzą wszyscy; widoczność obejmuje projekt, jego dane
+  własne, migawki i przypięcia („Przypięta w:”, wyszukiwanie, podglądy danych
+  własnych). Projekt niewidoczny → `404 not_found`; widoczny, ale bez
+  uprawnienia do działania → `403 permission_denied`. Raporty zbiorcze liczą
+  wszystkie projekty, nazwy podają tylko widocznych.
 - **TLS** obowiązkowe poza `127.0.0.1` (odwrotne proxy z certyfikatem albo
   TLS serwera); HSTS.
 - **Dziennik działań:** kto zlecił i anulował zadanie, zatwierdził
-  propozycję (od v1.2), zmienił ustawienia — w lokalnej bazie serwera, z eksportem.
+  propozycję (od v1.2), zmienił ustawienia — w lokalnej bazie serwera, z eksportem;
+  zmiany kont, ról, grup i widoczności projektów — od v0.1 w dzienniku
+  uprawnień bazy stanu.
 - **Limity per osoba:** liczba zadań w tle naraz; budżet asystenta od v1.2.
 - Zapisy do wspólnego magazynu nadal wyłącznie przez producentów (Kartograf,
   IMGWTools) w procesach roboczych serwera; równoległe użycie CLI przez
@@ -3147,6 +3200,15 @@ Decyzja: A-ADR-012.
   filtr kodu hydrograficznego „dokładnie” i „z dopływami” na przykładach
   z listy IMGW (Raba `2138`, Mszanka `21382`, Stradomka `21388`; P19);
   wykres bez interpolacji braków.
+- **Uprawnienia (od v0.1, A-ADR-029):** macierz widoczności `public` /
+  `users` / `group` / `private` × właściciel / osoba albo członek grupy
+  z wpisu / inna osoba / administrator (także agent z tokenem każdej z nich)
+  na poziomie usług, API i CLI — kilka tożsamości wstrzykniętych w testach,
+  choć tryb lokalny ma jednego właściciela; każda trasa zwracająca projekty
+  albo przypięcia w tej macierzy; `404` dla niewidocznego projektu, `403
+  permission_denied` dla działania bez uprawnienia; od v0.3 działania
+  zapisujące magazyn z `store_writer`, bez niego i z `store_write_for_all`;
+  przebudowa indeksu nie zmienia bazy stanu, eksport → import ją odtwarza.
 - **Zgodność z producentami:** test importów — Kartograf tylko
   w `archiwista/adapter/kartograf/`, IMGWTools tylko
   w `archiwista/adapter/imgw/`, reszta zna wyłącznie `archiwista/sources/`
@@ -3446,10 +3508,10 @@ MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025). Kolejność i zakres wy
 
 | Wersja | Zakres | Wymaga od producentów |
 |---|---|---|
-| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera | KA-1..KA-6 |
+| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera; model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora) | KA-1..KA-6 |
 | v0.2 „Podglądy” | podglądy, Wachlarz i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna; dane własne projektu i migawki | — |
-| v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
-| v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, role, TLS, dziennik działań, wspólna kolejka | — |
+| v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” sprawdzane przy działaniach | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
+| v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik działań, wspólna kolejka | — |
 | v0.5 „Stacje IMGW” | extra `archiwista[imgw]` (adapter IMGW jako wtyczka); katalog IMGW: stacje na mapie i w Katalogu (także bez położenia), Zestawienie i Karta stacji z wykresem, porównanie stacji, etykiety pokrycia szeregów osobno dla każdej zmiennej, w obu rodzajach lat, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW | IMGWTools: IMGW-1..IMGW-14 |
 | v1.0 „Wydanie (MVP)” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty; scenariusze MVP | wydania Kartografa i IMGWTools wymagane do v0.5 |
 | v1.1 „Zestaw” | zestaw do QGIS (w tym warstwa stacji IMGW, CSV i formuły), PL + CZ bez scalania, polecenie z karty pliku | KB-6; IMGW-12 |
@@ -3469,7 +3531,11 @@ oraz stanem magazynu dla obszaru i produktu („lokalnie 83% obszaru”);
 „Katalog” z filtrami, wyszukiwaniem i grupą „bez obrysu” (6.8); „Karta pliku” (wersje, metadane,
 licencja, grupa `parent_request`, kopiowanie ścieżek); „Projekty” (manifesty,
 przypięcia, `get_project_status`, indeks użycia); „Magazyn” (zajętość,
-problemy); ochrona trybu lokalnego (10.1).
+problemy); ochrona trybu lokalnego (10.1); model uprawnień (10.2, A-ADR-029):
+baza stanu (4.3), `Principal` w każdej usłudze i zapytaniu, widoczność
+projektów w zapytaniach indeksu i API, API i CLI administratora kont, grup
+i udostępniania, dziennik zmian uprawnień, `archiwista state export`
+i `state import`.
 
 Kryteria akceptacji:
 
@@ -3492,6 +3558,14 @@ Kryteria akceptacji:
    w warstwach wyżej; brak pakietu producenta daje „źródło niedostępne”
    (nie awarię), a sprawdzenie wersji i schematów przy starcie pokazuje
    czytelny komunikat po polsku (5.8).
+9. Uprawnienia (A-ADR-029): macierz widoczności `public` / `users` / `group` /
+   `private` × właściciel / osoba lub członek grupy z wpisu / inna osoba /
+   administrator zgodna w usługach, API (`/projects`, „Przypięta w:”,
+   wyszukiwanie) i CLI; projekt niewidoczny → `404`, działanie bez
+   uprawnienia → `403 permission_denied`; trasy administratora odrzucają
+   osobę bez `admin`; tryb lokalny widzi wszystko; „Przebuduj indeks” nie
+   zmienia bazy stanu, a eksport → import (`archiwista state export`,
+   `state import`) ją odtwarza.
 
 ### v0.2 „Podglądy”
 
@@ -3518,7 +3592,9 @@ i etykietami pokrycia (6.4); „Okno planu”; pobieranie z formularza
 i z wklejonego polecenia; zadania w tle z postępem i anulowaniem;
 sprawdzanie aktualności i „Pobierz nowsze”; akcje projektów (utworzenie,
 dodanie i usunięcie zadania projektu, pobranie, przepięcie, sprawdzenie,
-weryfikacja); wybór obszaru po nazwie jednostki.
+weryfikacja); wybór obszaru po nazwie jednostki; sprawdzenie uprawnienia
+„zapis do magazynu” (`store_writer`, `store_write_for_all`) przed każdym
+działaniem zapisującym magazyn (10.2).
 
 Kryteria:
 
@@ -3532,12 +3608,16 @@ Kryteria:
 5. Restart serwera w trakcie zadania → „przerwane”; ponowienie nie pobiera
    ponownie gotowych jednostek.
 6. Testy na żywo UC-01 i UC-06 z raportem.
+7. Działanie zapisujące magazyn bez `store_writer` (i bez
+   `store_write_for_all`) → `403 permission_denied`, bez zadania w tle.
 
 ### v0.4 „Zespół”
 
 Zakres: 10.2 i topologia z A-ADR-013 (serwer w sieci lokalnej): logowanie,
-role, TLS, dziennik działań, wspólna kolejka, limity zadań per osoba,
-aliasy ścieżek per klient, pobieranie plików przez HTTP.
+zarządzanie kontami i ekran udostępniania projektu w interfejsie na modelu
+uprawnień z v0.1, opcjonalnie grupy z LDAP/AD, TLS, dziennik działań,
+wspólna kolejka, limity zadań per osoba, aliasy ścieżek per klient,
+pobieranie plików przez HTTP.
 
 Kryteria: scenariusz na żywo z trzema osobami — wspólna kolejka nie pobiera
 tej samej jednostki dwa razy; uprawnienia ról sprawdzone testami; dziennik
@@ -3553,7 +3633,7 @@ osobnymi dla każdej zmiennej (4.8.4, P16) i przełącznikiem rodzaju lat dla hy
 stacji” z wykresem; porównanie stacji; sprawdzenie aktualności archiwów
 (`ETag`, `Last-Modified`), synchronizacja i szeregi jako zadania w tle
 IMGWTools z „Oknem planu” i poleceniem `imgw …`; zadania projektu IMGW
-z przypięciami (`imgw-project.json`, IMGW-14, A-ADR-023); w zespole pobiera „operator”, jak dla Kartografa.
+z przypięciami (`imgw-project.json`, IMGW-14, A-ADR-023); w zespole pobiera osoba z uprawnieniem „zapis do magazynu”, jak dla Kartografa.
 
 Dlaczego v0.5: korzysta z mechanizmów v0.3–v0.4 (zadania w tle, „Okno
 planu”, tryb zespołu), a IMGWTools potrzebuje czasu na
@@ -3693,6 +3773,8 @@ jednego zera w miejscu `nodata`.
 | Przyrost wersji szeregów (pełna migawka zbioru po każdej zmianie archiwów) | zajętość katalogu IMGW (rząd 0,1 GB na migawkę zbioru — szacunek) | średnia | `reused` przy tych samych wejściach, synchronizacja tylko na żądanie, pomiar w v0.5 |
 | Asystent Archiwisty a Retman | dublowanie, niejasny podział | niska | Archiwista tylko przygotowuje dane, obliczenia w Hydrologu i Retmanie (P17, decyzja użytkownika 2026-10-17); wspólnym językiem są polecenia producentów |
 | Dwa manifesty w jednym projekcie (Kartograf i IMGWTools) | niespójny obraz projektu (np. ta sama nazwa zadania u obu producentów, jeden manifest niepoprawny) | niska | widok projektu z kolumną producenta, ostrzeżenie o powtórzonej nazwie, błąd jednego manifestu nie ukrywa drugiego, `zestaw.json` z sumami obu; wspólny manifest producentów — gdy dojdzie trzeci producent (A-ADR-023) |
+| Filtr widoczności pominięty w nowej trasie lub zapytaniu (wyszukiwanie, „Przypięta w:”, podglądy danych własnych) | wyciek nazw i danych projektów prywatnych | średnia | model od v0.1 (A-ADR-029): `Principal` w każdej usłudze, jedno miejsce decyzji (`can`, `visible_projects`) w usługach i zapytaniach, nie w trasach; macierz widoczności w bramce v0.1 (11) |
+| Utrata bazy stanu (konta, grupy, widoczność projektów) — nie da się jej odbudować z dysku | projekty wracają do widoczności domyślnej | niska | baza tylko lokalnie, migracje zamiast przebudowy, `archiwista state export` / `state import` w dokumentacji kopii zapasowych (4.3) |
 
 ## 15. Pytania otwarte (z rekomendacjami)
 

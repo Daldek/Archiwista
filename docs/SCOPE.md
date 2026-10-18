@@ -12,12 +12,13 @@ decyzja o zakresie: A-ADR-025 ([`DECISIONS.md`](DECISIONS.md))
 obszarów:
 
 1. **Przeglądarka** — indeks, mapa, katalog, karta pliku, projekty (podgląd),
-   stan magazynu; tylko odczyt.
+   stan magazynu; tylko odczyt; model uprawnień i widoczność projektów.
 2. **Podglądy i Wachlarz** — podglądy plików, „Wachlarz” i „Oś czasu” lat,
    porównanie metadanych i kurtyna.
 3. **Działania** — dostępność u źródła z etykietami pokrycia, okno planu,
    pobieranie, zadania w tle, aktualność, akcje projektów.
-4. **Tryb zespołu** — serwer w sieci lokalnej z logowaniem i rolami.
+4. **Tryb zespołu** — serwer w sieci lokalnej z logowaniem, rolami
+   i udostępnianiem projektów.
 5. **Dane IMGW** — stacje, pokrycie szeregów, karta stacji, aktualność
    i synchronizacja archiwów, zadania projektu IMGW.
 
@@ -27,6 +28,7 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 
 - Konfiguracja magazynów (katalog Kartografa i/lub katalog IMGW) i katalogów projektów; kreator pierwszego uruchomienia.
 - Lokalny, odtwarzalny indeks: pełny i przyrostowy skan, odświeżanie widoku, widoczny stan indeksu; praca na udziale SMB, także tylko do odczytu.
+- Uprawnienia (A-ADR-029): Archiwista egzekwuje je tylko we własnej powierzchni (interfejs, API, CLI, tokeny agentów, pamięć podglądów); role „administrator” (`admin`), „zapis do magazynu” (`store_writer`, ustawienie `store_write_for_all`) i zwykły „użytkownik”; widoczność projektu `public` / `users` / `group` / `private`; osobna lokalna baza stanu z eksportem. Model i egzekwowanie od v0.1 (jeden lokalny właściciel), zapis do magazynu sprawdzany od v0.3, logowanie i ekrany od v0.4.
 - Źródła danych jako dodatki: Kartograf wymagany, IMGWTools opcjonalny; brak producenta = „źródło niedostępne”, nie awaria.
 - „Mapa” z obrysami, zaznaczaniem obszaru (prostokąt, wielokąt, godło, TERYT, KU, plik, nazwa jednostki) i stanem magazynu dla obszaru.
 - „Katalog” z filtrami, wyszukiwaniem po identyfikatorach i grupą danych bez położenia.
@@ -38,7 +40,7 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 - „Okno planu”, pobieranie z formularza i z wklejonego polecenia, zadania w tle z postępem i anulowaniem, aktualność i „Pobierz nowsze”.
 - Projekty: podgląd, status, weryfikacja, akcje (zadania projektu, pobranie, przepięcie, sprawdzenie aktualizacji).
 - Tryb lokalny z ochroną (tylko `127.0.0.1`, CSRF, DNS rebinding, ścieżki).
-- Tryb zespołu: logowanie, role, TLS, dziennik działań, wspólna kolejka, limity per osoba, pobieranie plików przez HTTP, aliasy ścieżek.
+- Tryb zespołu: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy z LDAP/AD, TLS, dziennik działań, wspólna kolejka, limity per osoba, pobieranie plików przez HTTP, aliasy ścieżek.
 - Dane IMGW: stacje na mapie i w „Katalogu”, „Zestawienie” z pokryciem szeregów osobno dla każdej zmiennej i w obu rodzajach lat, „Karta stacji” z wykresem, porównanie stacji, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW.
 - Instalacja na Linuksie i Windows, dokumentacja użytkownika po polsku, audyt WCAG 2.1 AA, przegląd bezpieczeństwa, pomiar wydajności na prawdziwym udziale SMB.
 
@@ -54,7 +56,7 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 | Usuwanie wersji z magazynu | poza zakresem | tylko raport kandydatów; usuwanie — jeśli kiedyś — w Kartografie (SPEC 15 P4) |
 | Przypinanie dowolnej starszej wersji wskazanej w przeglądarce | nie w v1.0 | model zadań projektu wybiera wersję opcjami (SPEC 15 P9) |
 | Podgląd 3D chmur punktów LAZ | po v1.0 | do rozpoznania wystarcza nagłówek i obraz 2D (SPEC 15 P5) |
-| Bezpośrednie LDAP | później | w MVP konta lokalne albo odwrotne proxy (droga do SSO i AD) |
+| Bezpośrednie logowanie przez LDAP | później | w MVP konta lokalne albo odwrotne proxy (droga do SSO i AD); grupy z LDAP/AD opcjonalnie w v0.4 |
 | macOS | bez gwarancji | priorytet: Linux i Windows (SPEC 15 P10) |
 | Analizy GIS | poza zakresem | analizy w QGIS |
 | Obliczenia hydrologiczne i statystyki szeregów | poza zakresem | Hydrolog i Retman |
@@ -65,7 +67,6 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 | Edycja danych i historia pojedynczych obiektów | poza zakresem | Archiwista nie jest edytorem; migawki całych plików |
 | Dane własne w manifeście projektu (przypięcia, odtworzenie u kolegi, „Weryfikuj”) | poza zakresem | manifest zapisuje tylko producent; migawki leżą w katalogu projektu i przenoszą się z nim |
 | Usuwanie migawek przez Archiwistę | poza zakresem | tylko przyrost; usuwanie ręcznie poza Archiwistą |
-| Udostępnianie projektów: właściciele, grupy, widoczność (publiczny, wybrane osoby, wybrana grupa, prywatny), ekran udostępniania, dziennik zmian uprawnień, podglądy i wyszukiwanie z uwzględnieniem uprawnień, opcjonalnie grupy LDAP/AD | v1.5 „Udostępnianie” (propozycja) | A-ADR-029 (proponowana); w MVP tylko przygotowanie: każda usługa i zapytanie przyjmuje `Principal` od v0.1, uprawnienie „zapis do magazynu” (`store_writer`) sprawdzane w v0.3, nadawane osobom w v0.4 |
 | Prawa do plików na serwerze i udziale | poza zakresem | Archiwista egzekwuje uprawnienia tylko w swoim interfejsie, API, CLI, tokenach agentów i pamięci podglądów; dostęp do systemu plików to odpowiedzialność administratora serwera (A-ADR-029) |
 
 ## Etapy i produkty etapów
@@ -75,19 +76,19 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 
 1. **Etap 0 – Architektura i plan.** Decyzje architektoniczne — **przyjęte 2026-10-18**: Python + FastAPI, interfejs Preact + htm bez kroku budowania, MapLibre GL, procesy robocze, rio-tiler, pakiet Pythona, tryb zespołu jako jeden serwer (A-ADR-004, 006, 007, 008, 013, 015, 028). Pozostaje: komputer odniesienia, plan implementacji v0.1.
    - Bramka: ADR architektury przyjęte (spełnione), plan v0.1 zatwierdzony przez użytkownika.
-2. **v0.1 „Przeglądarka”.** Indeks, „Mapa”, „Katalog”, „Karta pliku”, „Projekty” (podgląd), „Magazyn”, mechanizm źródeł z atrapą drugiego adaptera, ochrona trybu lokalnego.
-   - Bramka: indeks zgodny z API odczytu Kartografa; cele wydajności na magazynie syntetycznym 50 000 slotów; magazyn tylko do odczytu działa; testy bezpieczeństwa zielone.
+2. **v0.1 „Przeglądarka”.** Indeks, „Mapa”, „Katalog”, „Karta pliku”, „Projekty” (podgląd), „Magazyn”, mechanizm źródeł z atrapą drugiego adaptera, ochrona trybu lokalnego, model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora).
+   - Bramka: indeks zgodny z API odczytu Kartografa; cele wydajności na magazynie syntetycznym 50 000 slotów; magazyn tylko do odczytu działa; testy bezpieczeństwa zielone; macierz widoczności projektów zielona.
 3. **v0.2 „Podglądy”.** Podglądy, „Wachlarz”, „Oś czasu”, porównanie metadanych i kurtyna; dane własne projektu i migawki.
    - Bramka: każdy typ pliku ma podgląd albo powód braku; obrysy CZ ≤ 2 m od punktu kontrolnego; mapa z 5 000 obrysów płynna; migawka GeoPackage w użyciu spójna, przerwanie bez częściowej wersji.
-4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów.
-   - Bramka: parytet z CLI; anulowanie bez częściowych wersji; etykiety dla obszaru „Kraków” zgodne z ręcznym wyliczeniem; UC-01 i UC-06 na żywo.
-5. **v0.4 „Zespół”.** Serwer w sieci lokalnej: logowanie, role, TLS, dziennik, wspólna kolejka.
+4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” przy działaniach.
+   - Bramka: parytet z CLI; anulowanie bez częściowych wersji; etykiety dla obszaru „Kraków” zgodne z ręcznym wyliczeniem; UC-01 i UC-06 na żywo; działanie zapisujące magazyn bez uprawnienia odrzucone.
+5. **v0.4 „Zespół”.** Serwer w sieci lokalnej: logowanie, zarządzanie kontami i udostępnianie projektów w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik, wspólna kolejka.
    - Bramka: scenariusz na żywo z trzema osobami bez podwójnych pobrań; uprawnienia ról sprawdzone testami.
 6. **v0.5 „Stacje IMGW”.** Dodatek IMGW, stacje, pokrycie szeregów, karta stacji, aktualność i synchronizacja archiwów, zadania projektu IMGW.
    - Bramka: indeks katalogu IMGW zgodny z API IMGWTools; parytet z CLI `imgw`; etykiety pokrycia zgodne z tabelą przypadków granicznych.
 7. **v1.0 „Wydanie” (MVP).** Stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty, pomiar na prawdziwym SMB.
    - Bramka: kryteria sukcesu MVP z PRD.
-8. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”, v1.4 „PL + CZ”; proponowane v1.5 „Udostępnianie” (A-ADR-029).
+8. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”, v1.4 „PL + CZ”.
 
 ## Zależności
 
@@ -136,3 +137,5 @@ Pełna lista: SPEC 14.
 | Brak zestawu do QGIS w MVP | ręczne wczytywanie danych do QGIS | kopiowanie ścieżek wersji i polecenia CLI w MVP; zestaw w v1.1 |
 | Migawka pliku w trakcie edycji (GeoPackage w QGIS, Shapefile) | niespójna kopia | kopia zapasowa SQLite dla GeoPackage, komplet plików dla formatów wieloplikowych, test w bramce v0.2 |
 | Migawki rosną w katalogu projektu | brak miejsca na dysku | rozmiar w planie migawki, zajętość w widoku projektu |
+| Filtr widoczności pominięty w nowej trasie lub zapytaniu (wyszukiwanie, „Przypięta w:”, podglądy danych własnych) | wyciek nazw i danych projektów prywatnych | model od v0.1: `Principal` w każdej usłudze, jedno miejsce decyzji, macierz widoczności w bramce v0.1 (A-ADR-029) |
+| Utrata bazy stanu (konta, grupy, widoczność projektów) — nie da się jej odbudować z dysku | projekty wracają do widoczności domyślnej | baza tylko lokalnie, migracje zamiast przebudowy, `archiwista state export` / `state import` w dokumentacji kopii zapasowych |
