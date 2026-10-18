@@ -48,6 +48,13 @@ unknown parameters are refused. Answers from the index carry `stale` and
 `stale_stores`: an unavailable store (a disconnected share) is answered as of
 its last complete pass, never as an empty result.
 
+**Background jobs.** `POST /stores/{store}/scan`, `…/footprints` and
+`…/link-check` answer `202` with the job and `Location: /api/v1/jobs/{job}`;
+while another job writes the store's index they answer `409 conflict` naming
+it in `job`. `GET /jobs/{job}/events` streams the job's `progress`, `notice`
+and `state` events as Server-Sent Events (`id` = event number), resumes after
+`Last-Event-ID` and ends after the final state.
+
 **Errors** are RFC 9457 problems (`application/problem+json`) with a stable
 `code` and a Polish `detail`; see the `ProblemDetails` schema.
 """
@@ -56,6 +63,7 @@ _TAGS = [
     {"name": "stores", "description": "Configured stores and their state."},
     {"name": "catalog", "description": "Products, search, file cards, versions."},
     {"name": "map", "description": "Footprints in a map view and sheet grids."},
+    {"name": "jobs", "description": "Background jobs and their events (SSE)."},
     {"name": "projects", "description": "Projects, their pins and status (read)."},
     {"name": "settings", "description": "Settings (changes: administrators)."},
     {"name": "session", "description": "One-time tokens and the session."},

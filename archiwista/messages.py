@@ -661,6 +661,8 @@ MESSAGES = MappingProxyType(
             "Dowiązanie {slot} zawiera wersję {version}, a indeks wskazuje inną —"
             " odśwież magazyn."
         ),
+        # Background jobs over HTTP and their event streams (step 9b).
+        "api_title_offline_mode": "Tryb offline",
         "cli_reindex_help": (
             "Przebudowuje indeks: pełny skan magazynu (bez --store — wszystkich)"
             " jako zadanie, wykonywane na pierwszym planie."

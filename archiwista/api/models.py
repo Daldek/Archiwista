@@ -56,6 +56,7 @@ from archiwista.index import (
     ProjectRef,
     ProjectTaskRef,
     RowStatus,
+    ScanMode,
     SegmentRef,
     SlotDetail,
     SlotPage,
@@ -71,6 +72,7 @@ from archiwista.index import (
     VersionState,
     VersionSummary,
 )
+from archiwista.jobs import JobKind, JobPage, JobRecord, JobState
 from archiwista.messages import MESSAGES
 from archiwista.services import Problem, ProjectDetail, StoreSummary
 from archiwista.sources import LocationKind, SourceState, SourceStatus
@@ -156,6 +158,72 @@ _JOB_EXAMPLE = {
     "started_at": "2026-10-18T12:00:01Z",
     "finished_at": "2026-10-18T12:02:31Z",
     "progress": {"current": 41, "total": 41},
+}
+_JOB_FAILURE_EXAMPLE = {
+    "code": "store_unavailable",
+    "detail": "Nie można odczytać magazynu /mnt/nas/kartograf/data",
+}
+_JOB_DETAIL_EXAMPLE = {
+    "id": "3f9c1a7e5b2d4c60",
+    "kind": "scan",
+    "state": "succeeded",
+    "actor": "local",
+    "store": _STORE,
+    "params": {"mode": "incremental", "segment": None},
+    "created_at": "2026-10-18T12:00:00Z",
+    "started_at": "2026-10-18T12:00:01Z",
+    "finished_at": "2026-10-18T12:00:20Z",
+    "progress": {"current": 41, "total": 41, "segment": _SEGMENT, "entries": 80000},
+    "result": {
+        "store": _STORE,
+        "mode": "incremental",
+        "segment": None,
+        "seconds": 19.2,
+        "entries": 80000,
+        "versions_written": 12,
+        "links_changed": 3,
+        "issues_added": 0,
+        "footprints_written": 12,
+        "footprints_failed": 0,
+        "missing": 0,
+        "reappeared": 0,
+        "removed": 0,
+        "slots_removed": 0,
+        "unlinked": 0,
+        "issues_resolved": 1,
+        "segments": [
+            {
+                "producer": "kartograf",
+                "segment": _SEGMENT,
+                "entries": 52000,
+                "seconds": 11.4,
+            }
+        ],
+        "projects": {
+            "found": 4,
+            "read": 1,
+            "unchanged": 3,
+            "invalid": 0,
+            "unknown_store": 0,
+            "removed": 0,
+            "unreadable_dirs": [],
+        },
+    },
+    "error": None,
+}
+_JOB_FAILED_EXAMPLE = {
+    "id": "9b2e44d01c7f3a85",
+    "kind": "footprints",
+    "state": "failed",
+    "actor": "local",
+    "store": _STORE,
+    "params": {},
+    "created_at": "2026-10-18T13:40:00Z",
+    "started_at": "2026-10-18T13:40:00Z",
+    "finished_at": "2026-10-18T13:40:02Z",
+    "progress": None,
+    "result": None,
+    "error": _JOB_FAILURE_EXAMPLE,
 }
 _STORE_STATE_EXAMPLE = {
     "status": "available",
@@ -349,7 +417,8 @@ class ProblemDetails(BaseModel):
     problems add members: ``source`` (an unavailable producer plugin and the
     pip requirement fixing it), ``kartograf`` or ``imgwtools`` (the
     producer's exception and its unchanged message), ``problems`` (invalid
-    settings, field by field) and ``errors`` (invalid request data).
+    settings, field by field), ``errors`` (invalid request data) and ``job``
+    (``id``, ``kind``, ``state`` of the job in the way of a ``409 conflict``).
     """
 
     model_config = ConfigDict(
@@ -393,8 +462,9 @@ class ProblemDetails(BaseModel):
         description=(
             "Stable machine code: validation_error, not_found, method_not_allowed,"
             " session_required, csrf_rejected, permission_denied,"
-            " path_outside_root, conflict, store_unavailable, source_unavailable,"
-            " source_incompatible, kartograf_error, internal_error…"
+            " path_outside_root, conflict, offline_mode, store_unavailable,"
+            " source_unavailable, source_incompatible, kartograf_error,"
+            " internal_error…"
         )
     )
 
@@ -1499,6 +1569,185 @@ class Job(BaseModel):
             if job.progress is None
             else Progress(current=job.progress[0], total=job.progress[1]),
         )
+
+
+# Background jobs (step 9b) -------------------------------------------------
+
+
+class JobFailure(BaseModel):
+    """Why a job did not succeed: a stable code and a Polish detail."""
+
+    model_config = _examples(_JOB_FAILURE_EXAMPLE)
+
+    code: str = Field(
+        description=(
+            "Stable code: `store_unavailable`, `source_unavailable`,"
+            " `source_incompatible`, `kartograf_error` (`<package>_error`),"
+            " `offline_mode`, `not_found`, `unsupported`, `internal_error`,"
+            " `worker_crashed`, `interrupted` (safe to retry) or `cancelled`."
+        )
+    )
+    detail: str = Field(
+        description="Polish description; for a crashed worker it names the job log."
+    )
+
+
+class JobDetail(BaseModel):
+    """A background job: what it does, who asked, how far it got, how it ended.
+
+    Its events (progress, notices, changes of state) stream from
+    `GET /jobs/{job}/events`.
+    """
+
+    model_config = _examples(_JOB_DETAIL_EXAMPLE, _JOB_FAILED_EXAMPLE)
+
+    id: str = Field(description="Job id.")
+    kind: JobKind = Field(
+        description=(
+            "`scan` (index the store), `footprints` (unit outlines over the"
+            " network) or `link_check` (which version a slot's link holds)."
+        )
+    )
+    state: JobState = Field(
+        description=(
+            "`queued`, `running`, then `succeeded`, `failed`, `interrupted`"
+            " (the server stopped meanwhile; safe to retry) or `cancelled`."
+        )
+    )
+    actor: str = Field(
+        description=(
+            "Who started it: `local` or an account; an agent acts as the"
+            " account that minted its token."
+        )
+    )
+    store: str | None = Field(description="Store id.")
+    params: dict[str, Any] = Field(
+        description=(
+            "`scan`: `mode` and `segment`; `link_check`: `slot`; `footprints`: none."
+        )
+    )
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    progress: dict[str, Any] | None = Field(
+        description=(
+            "The last progress: `current` of `total` (segments of a scan,"
+            " versions of `footprints`); a scan adds `segment` and `entries`,"
+            " `footprints` adds `written` and `failed`."
+        )
+    )
+    result: dict[str, Any] | None = Field(
+        description=(
+            "Summary of a job that succeeded. `scan`: counts (`entries`,"
+            " `versions_written`, `links_changed`, `missing`, `removed`…),"
+            " `segments` and `projects`; `footprints`: `total`, `written`,"
+            " `failed`; `link_check`: `status` (`confirmed`, `index_outdated`,"
+            " `mismatch`, `missing` or `not_a_link`) with the `expected` and"
+            " `confirmed` versions."
+        )
+    )
+    error: JobFailure | None = Field(
+        description="Why a job ended without success (`null` otherwise)."
+    )
+
+    @classmethod
+    def of(cls, job: JobRecord) -> Self:
+        """Return the model of a job."""
+        return cls(
+            id=job.id,
+            kind=job.kind,
+            state=job.state,
+            actor=job.actor,
+            store=job.store,
+            params=job.params,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            finished_at=job.finished_at,
+            progress=job.progress,
+            result=job.result,
+            error=None
+            if job.error is None
+            else JobFailure(code=job.error.code, detail=job.error.detail),
+        )
+
+
+class JobList(BaseModel):
+    """Background jobs, newest first; `next_cursor` continues the list."""
+
+    model_config = _examples(
+        {"items": [_JOB_DETAIL_EXAMPLE, _JOB_FAILED_EXAMPLE], "next_cursor": None}
+    )
+
+    items: list[JobDetail]
+    next_cursor: str | None = Field(
+        description="`cursor` of the next page; `null` on the last page."
+    )
+
+    @classmethod
+    def of(cls, page: JobPage) -> Self:
+        """Return the model of a page of jobs."""
+        return cls(
+            items=[JobDetail.of(job) for job in page.items],
+            next_cursor=page.next_cursor,
+        )
+
+
+class JobFilters(BaseModel):
+    """Filters and page of `GET /jobs`; unknown parameters are refused (`422`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: JobKind | None = Field(default=None, description="Only jobs of this kind.")
+    store: str | None = Field(
+        default=None,
+        description="Only jobs of this store, also one no longer configured.",
+        examples=[_STORE],
+    )
+    state: JobState | None = Field(default=None, description="Only jobs in this state.")
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description="Page size.",
+    )
+    cursor: str | None = Field(
+        default=None,
+        description="`next_cursor` of the previous page of the same filters.",
+    )
+
+
+class ScanRequest(BaseModel):
+    """What `POST /stores/{store}/scan` reads; no body scans incrementally."""
+
+    model_config = _examples(
+        {"mode": "full"}, {"mode": "incremental", "segment": _SEGMENT}, closed=True
+    )
+
+    mode: ScanMode = Field(
+        default="incremental",
+        description=(
+            "`incremental` (versions already indexed are not read again) or"
+            " `full` (every sidecar is read again)."
+        ),
+    )
+    segment: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Only this segment (`<product>/<variant>`, see /products); the"
+            " whole store and its projects when omitted."
+        ),
+    )
+
+
+class LinkCheckRequest(BaseModel):
+    """The slot whose link `POST /stores/{store}/link-check` confirms."""
+
+    model_config = _examples({"slot": _SLOT}, closed=True)
+
+    slot: str = Field(
+        min_length=1, description="Slot path in the store, as `slot` of /slots."
+    )
 
 
 class StoreState(BaseModel):

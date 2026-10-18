@@ -280,7 +280,7 @@ w treści) i kończy się kodem `1`.
 
 ## 8. Zadania w tle i SSE
 
-Długie operacje zwracają `202 Accepted` z zadaniem (`Job`) i nagłówkiem
+Długie operacje zwracają `202 Accepted` z zadaniem (`JobDetail`) i nagłówkiem
 `Location: /api/v1/jobs/{id}`. Wszystkie wymagają `X-Archiwista-CSRF`.
 
 | Żądanie | Treść | Uwagi |
@@ -312,10 +312,11 @@ i `data: <JSON>`:
 - `state` — `state`; ostatnie niesie `result` (sukces) albo `error`.
 
 Strumień kończy się po stanie końcowym; dla zakończonego zadania bez
-nowych zdarzeń odpowiedź to `204`. Co 15 s serwer wysyła komentarz
-`: keepalive`, więc klient nie powinien mieć limitu czasu odczytu (np.
-`httpx` z `timeout=None`). Po zerwaniu połączenia wznów z nagłówkiem
-`Last-Event-ID` równym ostatniemu odebranemu `id`.
+nowych zdarzeń odpowiedź to `204`. Po 15 s ciszy serwer wysyła komentarz
+`: keepalive`, a zadanie w kolejce może czekać dłużej, więc klient nie
+powinien mieć limitu czasu odczytu (np. `httpx` z `timeout=None`). Po
+zerwaniu połączenia wznów z nagłówkiem `Last-Event-ID` równym ostatniemu
+odebranemu `id`.
 
 ```sh
 JOB="$(curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" -X POST \

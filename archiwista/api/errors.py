@@ -8,7 +8,8 @@ command line uses too (``problem_of``, ``service_problem``). Some problems
 add members: ``source`` for an unavailable or incompatible producer plugin
 (with the pip requirement that fixes it), ``kartograf`` or ``imgwtools`` for
 a producer's own error (its exception and unchanged message), ``problems``
-for invalid settings and ``errors`` for invalid request data. Unknown routes
+for invalid settings, ``errors`` for invalid request data and ``job`` for
+the job in the way of a ``409 conflict``. Unknown routes
 answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
 ``Allow``) and unexpected failures ``500 internal_error``.
 """
@@ -29,7 +30,9 @@ from archiwista.errors import (
     ConflictError,
     IndexQueryError,
     InvalidChangeError,
+    JobConflictError,
     NotFoundError,
+    OfflineModeError,
     PathOutsideRootError,
     PermissionDeniedError,
     ProducerError,
@@ -50,6 +53,7 @@ PROBLEMS: Mapping[type[ArchiwistaError], tuple[int, str]] = MappingProxyType(
         PathOutsideRootError: (403, "path_outside_root"),
         NotFoundError: (404, "not_found"),
         ConflictError: (409, "conflict"),
+        OfflineModeError: (409, "offline_mode"),
         InvalidChangeError: (422, "validation_error"),
         IndexQueryError: (422, "validation_error"),
         SettingsValidationError: (422, "validation_error"),
@@ -82,7 +86,13 @@ _DOCUMENTED: Mapping[int, tuple[str, str, str]] = MappingProxyType(
             "api_route_not_found",
             "Unknown, or not visible to the session's principal.",
         ),
-        409: ("conflict", "api_title_conflict", "Conflicts with the current state."),
+        409: (
+            "conflict",
+            "api_title_conflict",
+            "Conflicts with the current state: `conflict` (e.g. another job"
+            " already writes the store's index; `job` names it) or"
+            " `offline_mode` (the job needs the network).",
+        ),
         422: (
             "validation_error",
             "api_validation_error",
@@ -246,6 +256,8 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
             {"code": problem.code, "field": problem.field, "message": problem.message}
             for problem in error.problems
         ]
+    elif isinstance(error, JobConflictError):
+        members["job"] = {"id": error.job_id, "kind": error.kind, "state": error.state}
     return problem_body(status, code, detail, members)
 
 

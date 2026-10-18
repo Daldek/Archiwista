@@ -284,6 +284,7 @@ tests/
 │   ├── test_cli.py          # CLI --json równe odpowiedziom API (status, search, karty, token)
 │   ├── test_agent_flow.py   # Agent przez HTTP: token, sesja, kursory, CSRF, SSE, problemy
 │   ├── test_api.py          # Endpointy /api/v1: trasy, filtry, kursor, problemy, OpenAPI
+│   ├── test_jobs_api.py     # Zadania przez HTTP: 202, 409 z job, offline, actor, SSE i Last-Event-ID
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
@@ -301,6 +302,7 @@ tests/
 │   ├── api_store.py         # Magazyn testowy zeskanowany i podany przez API
 │   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
 │   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
+│   ├── jobs_api.py          # Aplikacja z nadzorcą zadań testowych procesów roboczych
 │   └── job_owner.py         # Osobny proces-nadzorca do testu zabitego serwera
 ├── perf/
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)

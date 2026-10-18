@@ -580,6 +580,29 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     store_unavailable` (błąd źródła bez stanu wtyczki), `500
     internal_error`. `create_app` i `serve_main` biorą `registry`
     (`PluginRegistry`).
+  Stan po kroku 9b:
+  - *Trasy* (`archiwista/api/jobs.py`, tag `jobs`; tylko gdy `create_app`
+    dostaje `jobs`): `POST /stores/{store}/scan` (treść opcjonalna
+    `ScanRequest`: `mode`, `segment`), `…/footprints` (bez treści),
+    `…/link-check` (`LinkCheckRequest`: `slot` znany indeksowi, inaczej
+    `404`) → `202` z `JobDetail` i `Location: /api/v1/jobs/{job}`; każdy
+    z CSRF, `actor` = `Principal.id`; `409 conflict` z `job` (`id`, `kind`,
+    `state`), `409 offline_mode`. `GET /jobs` (`JobFilters`: `kind`,
+    `store`, `state`, `limit`, `cursor`; nieznany parametr albo obcy kursor
+    → `422`) → `JobList`; `GET /jobs/{job}` → `JobDetail` (`actor`,
+    `params`, `progress`, `result`, `error` jako `JobFailure`).
+  - *SSE* (`GET /jobs/{job}/events`): komunikat `id: <seq>`, `event:
+    progress|notice|state`, `data:` — JSON w jednej linii; wznowienie po
+    `Last-Event-ID` ze zdarzeń w indeksie; strumień kończy się po końcowym
+    `state` (zadanie zakończone bez nowych zdarzeń → `204`, więc
+    EventSource przestaje się łączyć); komentarz `: keepalive` po 15 s
+    ciszy. Źródłem jest indeks: słuchacz nadzorcy tylko budzi strumień,
+    a po każdej sekundzie ciszy strumień sam czyta indeks (zadania innych
+    procesów, np. `archiwista reindex`).
+  - *Zatrzymanie serwera*: `app.state.job_streams` (`JobStreams`);
+    `LocalServer(..., on_stop=)` kończy otwarte strumienie, zanim Uvicorn
+    zacznie czekać na połączenia (inaczej Ctrl+C czekałoby na koniec
+    zadania).
 - **Uprawnienia — `archiwista/state/`, `archiwista/auth/` (krok 8b,
   A-ADR-029, SPEC 4.3 i 10.2):** `StateStore` — baza stanu
   `<user_data_dir>/state.sqlite`, osobna od indeksu, migracje zamiast

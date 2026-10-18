@@ -6,7 +6,8 @@ the one-time startup token, prints ``http://127.0.0.1:<port>/#token=…``,
 optionally opens it in the browser and serves until Ctrl+C. Uvicorn's access
 log is off unless asked for; when on, ``token=`` values are redacted. While
 it serves, background jobs run under its ``JobSupervisor`` and the
-``ScanScheduler`` scans the stores; stopping interrupts running jobs.
+``ScanScheduler`` scans the stores; stopping ends the open job event streams
+first (they would hold it until their jobs end), then interrupts running jobs.
 ``token`` prints the one-time address of a next session, e.g. for an agent.
 """
 
@@ -85,6 +86,19 @@ def bind_loopback(port: int) -> socket.socket:
     return sock
 
 
+class _Uvicorn(uvicorn.Server):
+    """Uvicorn calling ``on_stop`` before it waits for open connections."""
+
+    def __init__(self, config: uvicorn.Config, on_stop: Callable[[], None]) -> None:
+        super().__init__(config)
+        self._on_stop = on_stop
+
+    async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        """Call ``on_stop``, then shut down as Uvicorn does."""
+        self._on_stop()
+        await super().shutdown(sockets=sockets)
+
+
 class LocalServer:
     """The application on a listening loopback socket, ready to serve.
 
@@ -98,10 +112,20 @@ class LocalServer:
         One-time address of the first session.
     access_log : bool
         Write Uvicorn's access log, with ``token=`` values redacted.
+    on_stop : Callable[[], None]
+        Called as the server starts to stop, before it waits for open
+        connections; ends the application's long-lived responses (event
+        streams).
     """
 
     def __init__(
-        self, sock: socket.socket, app: ASGIApp, *, url: str, access_log: bool
+        self,
+        sock: socket.socket,
+        app: ASGIApp,
+        *,
+        url: str,
+        access_log: bool,
+        on_stop: Callable[[], None],
     ) -> None:
         self.url = url
         self.port: int = sock.getsockname()[1]
@@ -115,7 +139,7 @@ class LocalServer:
             proxy_headers=False,
             server_header=False,
         )
-        self._server = uvicorn.Server(config)
+        self._server = _Uvicorn(config, on_stop)
 
     def run(self) -> None:
         """Serve until ``stop`` or, in the main thread, Ctrl+C."""
@@ -223,6 +247,7 @@ def serve_main(
                 app,
                 url=fragment_url(bound_port, issued.token),
                 access_log=access_log,
+                on_stop=app.state.job_streams.close,
             )
             out.write(
                 MESSAGES["serve_started"].format(

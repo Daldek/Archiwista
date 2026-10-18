@@ -10,8 +10,9 @@ through ``request.app.state``: ``settings`` (``SettingsService``),
 ``sessions`` (``SessionStore``), ``index_path``, ``port``, ``authorizer``
 (``Authorizer`` over the state database), ``queries`` (``IndexQueries``),
 ``registry`` (the producer plugins), the last three also as dependencies of
-``archiwista.api.dependencies``, and ``jobs`` (``JobSupervisor``, ``None``
-without background jobs).
+``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
+without background jobs, which leaves out their routes) and ``job_streams``
+(open job event streams, which the server ends as it stops).
 """
 
 from collections.abc import AsyncIterator
@@ -32,6 +33,7 @@ from archiwista.api import (
     slots,
     stores,
 )
+from archiwista.api import jobs as job_routes
 from archiwista.api import map as map_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api.docs import install_docs, operation_id
@@ -80,7 +82,8 @@ def create_app(
         Interface files: ``index.html`` at ``/`` and every file under
         ``/static/``.
     jobs : JobSupervisor or None, optional
-        The started supervisor of background jobs (``app.state.jobs``).
+        The started supervisor of background jobs (``app.state.jobs``);
+        without it the routes of jobs are left out.
 
     Returns
     -------
@@ -112,6 +115,7 @@ def create_app(
     app.state.authorizer = Authorizer(state, settings.get)
     app.state.queries = queries
     app.state.jobs = jobs
+    app.state.job_streams = job_routes.JobStreams()
     app.state.registry = registry
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
@@ -122,6 +126,8 @@ def create_app(
     app.include_router(map_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
+    if jobs is not None:
+        app.include_router(job_routes.router, prefix=API_PREFIX)
     install_docs(app)
 
     index_page = web_dir / "index.html"
