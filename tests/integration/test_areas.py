@@ -5,7 +5,10 @@ operations and countries) and the real reader process, except where a slow
 stand-in shows the time limit.
 """
 
+import json
 import os
+import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import replace
@@ -23,7 +26,9 @@ from shapely.geometry import mapping, shape
 from archiwista.area_reader import MAX_VERTICES, UNPACKED_LIMIT_BYTES
 from archiwista.areas import AREA_BODY_LIMIT_BYTES, AreaFiles
 from archiwista.auth import LOCAL_OWNER
+from archiwista.messages import MESSAGES
 from archiwista.sources.registry import load_registry
+from tests.fixtures import fetching_area_reader
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.area_files import (
     SLOW_READER_COMMAND,
@@ -40,6 +45,7 @@ from tests.fixtures.area_files import (
     upload,
     zip_bomb,
 )
+from tests.fixtures.http_listener import listening
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.slow_area_reader import PID_FILE_ENV
 
@@ -49,6 +55,7 @@ _RECTANGLE: dict[str, object] = {
         [[19.0, 50.0], [19.1, 50.0], [19.1, 50.1], [19.0, 50.1], [19.0, 50.0]]
     ],
 }
+_FETCHING_READER = (sys.executable, str(Path(fetching_area_reader.__file__)))
 
 
 @pytest.fixture
@@ -84,6 +91,30 @@ def _copies(api: Api) -> list[str]:
 def _geodesic_km2(geometry: dict[str, Any]) -> float:
     area, _ = Geod(ellps="GRS80").geometry_area_perimeter(shape(geometry))
     return abs(area) / 1e6
+
+
+def _square_with_crs(where: str, crs: object, *, wgs84: bool = True) -> bytes:
+    """Return the square as GeoJSON with ``crs`` on one of its objects."""
+    polygon = square_wgs84() if wgs84 else square()
+    geometry: dict[str, object] = dict(mapping(polygon))
+    feature: dict[str, object] = {"type": "Feature", "properties": {}}
+    if where == "collection_member":
+        feature["geometry"] = {"type": "GeometryCollection", "geometries": [geometry]}
+    else:
+        feature["geometry"] = geometry
+    document: dict[str, object] = {"type": "FeatureCollection", "features": [feature]}
+    holders = {"document": document, "feature": feature}
+    holder = holders.get(where, geometry)
+    holder["crs"] = crs
+    return json.dumps(document).encode("utf-8")
+
+
+def _point_proxies(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    """Send every proxied request to ``url`` and let 127.0.0.1 skip proxies."""
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(name, "127.0.0.1,localhost")
+    for name in ("http_proxy", "HTTPS_PROXY", "ALL_PROXY", "GDAL_HTTP_PROXY"):
+        monkeypatch.setenv(name, url)
 
 
 def test_areas_geojson_body_kept_with_planar_area_and_countries(
@@ -252,6 +283,92 @@ def test_areas_slow_reader_killed_at_time_limit(
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
     assert _copies(api) == []
+
+
+@pytest.mark.parametrize(
+    ("where", "kind"),
+    [
+        ("document", "link"),
+        ("document", "url"),
+        ("feature", "link"),
+        ("geometry", "url"),
+        ("collection_member", "link"),
+    ],
+)
+def test_areas_geojson_crs_link_refused_without_fetching(
+    api: Api, owner: Caller, monkeypatch: pytest.MonkeyPatch, where: str, kind: str
+) -> None:
+    """A CRS given as a link anywhere in GeoJSON is refused; nothing is fetched."""
+    # Arrange
+    with listening() as listener:
+        _point_proxies(monkeypatch, listener.url)
+        key = "href" if kind == "link" else "url"
+        crs = {"type": kind, "properties": {key: f"{listener.url}/crs"}}
+
+        # Act
+        response = upload(owner, _square_with_crs(where, crs))
+
+    # Assert
+    assert_problem(response, 422, "area_unreadable")
+    assert response.json()["detail"] == MESSAGES["area_crs_not_named"]
+    assert listener.received == []
+    assert _copies(api) == []
+
+
+def test_areas_geojson_crs_named_read_with_crs_attributes(
+    owner: Caller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A CRS by name still reads; attributes named ``crs`` are no CRS to GDAL."""
+    # Arrange
+    with listening() as listener:
+        _point_proxies(monkeypatch, listener.url)
+        named = {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::2180"}}
+        document = json.loads(_square_with_crs("document", named, wgs84=False))
+        link = {"type": "link", "properties": {"href": f"{listener.url}/crs"}}
+        document["features"][0]["properties"] = {
+            "crs": "EPSG:2180",
+            "meta": {"crs": link},
+        }
+
+        # Act
+        response = upload(owner, json.dumps(document).encode("utf-8"))
+
+    # Assert
+    assert response.status_code == 201, response.text
+    assert response.json()["area_km2"] == pytest.approx(SQUARE_KM2, rel=1e-4)
+    assert listener.received == []
+
+
+def test_areas_reader_environment_keeps_gdal_offline(
+    api: Api, owner: Caller, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GDAL fetching a link CRS in the reader reaches nothing, whatever the proxies.
+
+    The stand-in reader lets GDAL open the file unchecked: started with the
+    server's own environment (NO_PROXY naming 127.0.0.1), it does fetch.
+    """
+    # Arrange
+    app = cast(FastAPI, api.client.app)
+    app.state.area_files = replace(_files(api), command=_FETCHING_READER)
+    unchecked_dir = tmp_path / "unchecked"
+    unchecked_dir.mkdir()
+
+    # Act
+    with listening() as unchecked:
+        _point_proxies(monkeypatch, unchecked.url)
+        crs = {"type": "link", "properties": {"href": f"{unchecked.url}/crs"}}
+        (unchecked_dir / "upload").write_bytes(_square_with_crs("document", crs))
+        subprocess.run([*_FETCHING_READER, str(unchecked_dir)], check=True, timeout=60)
+    with listening() as listener:
+        _point_proxies(monkeypatch, listener.url)
+        crs = {"type": "link", "properties": {"href": f"{listener.url}/crs"}}
+        response = upload(owner, _square_with_crs("document", crs))
+
+    # Assert
+    assert unchecked.received, "GDAL no longer fetches a link CRS: probe is moot"
+    assert_problem(response, 422, "area_unreadable")
+    assert response.json()["detail"] == "crs: EPSG:4326"  # GDAL ran, gave up
+    assert listener.received == []
 
 
 @pytest.mark.parametrize("sent", ["json", "file"])

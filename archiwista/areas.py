@@ -13,7 +13,8 @@ before and while it is read (decision 9, SPEC 10.1): a body of at most
 ``AREA_BODY_LIMIT_BYTES`` (50 MB); an archive declaring at most
 ``UNPACKED_LIMIT_BYTES`` (200 MB) unpacked, with no member leaving its
 directory, refused before unpacking; reading in ``archiwista.area_reader``,
-a separate process killed after ``AREA_READ_TIMEOUT_S`` (30 s); at most
+a separate process killed after ``AREA_READ_TIMEOUT_S`` (30 s), started
+with a minimal environment that keeps GDAL and PROJ offline; at most
 ``MAX_VERTICES`` (100 000) vertices. The file's CRS is converted to WGS84
 with the producer's pinned operation (``GeoAdapter.transformer``, KA-6)
 after densifying the edges. A path from the client is never opened: the
@@ -75,6 +76,52 @@ AREA_READER_COMMAND: tuple[str, ...] = (
     "-m",
     "archiwista.area_reader",
 )
+# Inherited by the reader: what Python and its libraries need to start on
+# Linux and Windows, ARCHIWISTA_* (the application's own) and COVERAGE_*
+# (measuring the reader in tests). Nothing about proxies, credentials, GDAL
+# or the network: libcurl honours NO_PROXY even with GDAL_HTTP_PROXY set.
+_READER_INHERITED = frozenset(
+    {
+        "APPDATA",
+        "COMSPEC",
+        "HOME",
+        "LANG",
+        "LANGUAGE",
+        "LD_LIBRARY_PATH",
+        "LOCALAPPDATA",
+        "NUMBER_OF_PROCESSORS",
+        "PATH",
+        "PATHEXT",
+        "PROCESSOR_ARCHITECTURE",
+        "PROJ_DATA",
+        "PROJ_LIB",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONUTF8",
+        "SYSTEMDRIVE",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "TZ",
+        "USERPROFILE",
+        "VIRTUAL_ENV",
+        "WINDIR",
+        "XDG_DATA_HOME",
+    }
+)
+_READER_INHERITED_PREFIXES = ("ARCHIWISTA_", "COVERAGE_", "LC_")
+# GDAL and PROJ kept offline even if they try to fetch something: every
+# request goes to a closed local port, gives up within a second, untried again.
+_READER_FORCED = {
+    "PROJ_NETWORK": "OFF",
+    "GDAL_HTTP_PROXY": "127.0.0.1:9",
+    "GDAL_HTTPS_PROXY": "127.0.0.1:9",
+    "GDAL_HTTP_TIMEOUT": "1",
+    "GDAL_HTTP_CONNECTTIMEOUT": "1",
+    "GDAL_HTTP_MAX_RETRY": "0",
+    "GDAL_HTTP_NETRC": "NO",
+}
 # Uploads being read; what a crash leaves is pruned like the copies.
 INCOMING_DIR = ".incoming"
 AREA_ID_CHARS = 16
@@ -412,7 +459,7 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         cwd=directory,
-        env={**os.environ, "PROJ_NETWORK": "OFF"},
+        env=_reader_environment(),
         **_own_group(),
     )
     try:
@@ -450,6 +497,17 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
         raise AreaTooComplexError(detail)
     layers = tuple(str(item) for item in answer.get("layers") or ())
     raise AreaUnreadableError(detail, layers=layers)
+
+
+def _reader_environment() -> dict[str, str]:
+    """Return the reader's environment: allowed inherited variables, forced ones."""
+    kept = {
+        name: value
+        for name, value in os.environ.items()
+        if name.upper() in _READER_INHERITED
+        or name.upper().startswith(_READER_INHERITED_PREFIXES)
+    }
+    return {**kept, **_READER_FORCED}
 
 
 def _own_group() -> dict[str, Any]:

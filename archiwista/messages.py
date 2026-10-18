@@ -167,6 +167,12 @@ MESSAGES = MappingProxyType(
             "Plik nie podaje układu współrzędnych (np. brak pliku .prj), więc nie"
             " wiadomo, gdzie leży obszar."
         ),
+        "area_crs_not_named": (
+            "Plik GeoJSON podaje układ współrzędnych inaczej niż nazwą (np. jako"
+            " odnośnik „link” lub „url”), a Archiwista nie pobiera definicji"
+            " układów z sieci. Podaj układ nazwą (człon crs typu „name”, np."
+            " EPSG:2180) albo zapisz plik w WGS84 (bez członu crs)."
+        ),
         "area_no_polygon": (
             "Plik nie zawiera wielokątów, a obszar musi mieć powierzchnię."
         ),

@@ -12,7 +12,10 @@ The upload becomes the area's local copy in the same directory
 is checked before anything is unpacked: at most ``MAX_MEMBERS`` members,
 together at most ``UNPACKED_LIMIT_BYTES`` as their headers declare, none
 leaving the directory, no link and nothing encrypted; only the chosen
-Shapefile's parts are unpacked.
+Shapefile's parts are unpacked. A GeoJSON file is decoded with the standard
+library before GDAL opens it: its every ``crs`` member must name the CRS
+(``"type": "name"``), because GDAL fetches a ``link`` or ``url`` CRS over
+HTTP and an upload must never make the machine send a request.
 
 The answer is one JSON line on stdout. Either the union of the file's
 polygons in the file's CRS — ``geometry``, ``crs``, ``geographic``,
@@ -34,7 +37,7 @@ import shutil
 import stat
 import sys
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -129,6 +132,7 @@ def read_area(directory: Path, *, layer: str | None = None) -> dict[str, Any]:
         read_layer = shown = _gpkg_layer(path, layer)
         kind = "gpkg"
     elif head.removeprefix(_UTF8_BOM).lstrip()[:1] == b"{":
+        _check_geojson_crs(upload)
         path = upload.rename(directory / f"{COPY_STEM}.geojson")
         kind = "geojson"
     else:
@@ -149,6 +153,70 @@ def read_area(directory: Path, *, layer: str | None = None) -> dict[str, Any]:
         "features": features,
         "vertices": vertices,
     }
+
+
+def _check_geojson_crs(path: Path) -> None:
+    """Refuse a GeoJSON file giving a CRS other than by name, before GDAL reads it.
+
+    GDAL fetches the legacy ``"crs": {"type": "link" | "url", ...}`` over HTTP
+    wherever it is: on the document, a feature or a geometry. Every ``crs``
+    member must be an object of type ``name`` (GDAL never fetches a name);
+    the attributes of a feature (``properties``) are no CRS to GDAL and may
+    hold anything.
+
+    Raises
+    ------
+    AreaFileError
+        Not JSON, nested too deep, or a ``crs`` member that is not a name.
+    """
+    check = _CrsCheck()
+    try:
+        # GDAL reads UTF-8; a broken byte in a text value must not refuse it.
+        text = path.read_bytes().removeprefix(_UTF8_BOM).decode("utf-8", "replace")
+        json.loads(text, object_pairs_hook=check)
+    except (ValueError, RecursionError) as error:
+        raise _unreadable("area_read_failed", detail=_describe(error)) from None
+    if check.refused:
+        raise _unreadable("area_crs_not_named")
+
+
+class _CrsCheck:
+    """``object_pairs_hook`` noting the objects whose ``crs`` is not a name.
+
+    It sees every object as it is decoded, innermost first, with all its
+    members: a repeated ``crs`` or ``type`` cannot hide a link. Objects are
+    kept, not only their ids, so no id is reused while decoding.
+    """
+
+    def __init__(self) -> None:
+        self.named: dict[int, dict[str, Any]] = {}
+        self.refused: dict[int, dict[str, Any]] = {}
+
+    def __call__(self, pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        found = dict(pairs)
+        kinds = [value for key, value in pairs if key == "type"]
+        if kinds and all(
+            isinstance(kind, str) and kind.lower() == "name" for kind in kinds
+        ):
+            self.named[id(found)] = found
+        if any(key == "crs" and id(value) not in self.named for key, value in pairs):
+            self.refused[id(found)] = found
+        if self.refused and found.get("type") == "Feature":
+            for inner in _objects(found.get("properties")):
+                self.refused.pop(id(inner), None)
+        return found
+
+
+def _objects(value: Any) -> Iterator[dict[str, Any]]:
+    """Yield the objects of a decoded JSON value, the value itself included."""
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, dict):
+            yield item
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
 
 
 def _union(geometries: Any) -> tuple[Any, int, int]:
