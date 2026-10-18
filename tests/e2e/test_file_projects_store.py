@@ -38,7 +38,10 @@ INDEX_TIMEOUT_S = 60.0
 # first full scan, or a scan started by a test).
 INDEXED = """
 async () => {
-  const answer = await fetch("/api/v1/health");
+  const csrf = sessionStorage.getItem("archiwista_csrf") ?? "";
+  const answer = await fetch("/api/v1/health", {
+    headers: { "X-Archiwista-CSRF": csrf },
+  });
   if (!answer.ok) return false;
   const health = await answer.json();
   return health.stores.every(
