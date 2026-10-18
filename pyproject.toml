@@ -18,6 +18,8 @@ dependencies = [
     "platformdirs>=4,<5",
     "shapely>=2,<3",
     "pyproj>=3.6,<4",
+    # Version comparison of producer plugins; packaging versions are year-based.
+    "packaging>=24",
 ]
 
 [project.optional-dependencies]
@@ -33,9 +35,9 @@ dev = [
 [project.scripts]
 archiwista = "archiwista.cli:main"
 
-# The archiwista.sources entry-point group is reserved for producer adapters.
-# The Kartograf entry point is added with the adapter in plan step 2.
+# Producer adapters (plugins): factories load(context) -> SourceAdapter.
 [project.entry-points."archiwista.sources"]
+kartograf = "archiwista.adapter.kartograf:load"
 
 [tool.setuptools.packages.find]
 include = ["archiwista*"]

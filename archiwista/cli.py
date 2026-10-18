@@ -1,15 +1,12 @@
 """Command-line entry point for Archiwista."""
 
 import argparse
-import importlib
 import sys
-from typing import cast
 
 from archiwista.config import AppPaths, SourceRegistryView
 from archiwista.doctor import doctor_main
 from archiwista.messages import MESSAGES
-
-REGISTRY_MODULE = "archiwista.sources.registry"
+from archiwista.sources.registry import load_registry
 
 
 def main(
@@ -49,21 +46,7 @@ def main(
     if args.command is None:
         parser.print_help()
         return 0
+    paths = paths or AppPaths.default()
     if registry is None:
-        loaded = _load_registry()
-        if loaded is None:
-            print(MESSAGES["cli_registry_missing"], file=sys.stderr)
-            return 2
-        registry = loaded
-    return doctor_main(paths or AppPaths.default(), registry, sys.stdout)
-
-
-def _load_registry() -> SourceRegistryView | None:
-    """Load the plugin registry, or ``None`` when this installation lacks it."""
-    try:
-        module = importlib.import_module(REGISTRY_MODULE)
-    except ModuleNotFoundError as error:
-        if error.name != REGISTRY_MODULE:
-            raise
-        return None
-    return cast(SourceRegistryView, module.load_registry())
+        registry = load_registry(cache_dir=paths.cache_dir)
+    return doctor_main(paths, registry, sys.stdout)

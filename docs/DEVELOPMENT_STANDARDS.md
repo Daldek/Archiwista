@@ -421,13 +421,21 @@ class ArchiwistaError(Exception):
     """Base exception for Archiwista."""
     pass
 
-class SourceUnavailableError(ArchiwistaError):
+class SourceStateError(ArchiwistaError):
+    """A producer source cannot serve a request in its current state."""
+    def __init__(self, message: str, *, state: SourceState | None = None): ...
+
+class SourceUnavailableError(SourceStateError):
     """Producer package not installed or store directory unreachable."""
     pass
 
-class SourceIncompatibleError(ArchiwistaError):
+class SourceIncompatibleError(SourceStateError):
     """Producer version or store schema outside the supported range."""
     pass
+
+class ProducerError(ArchiwistaError):
+    """A producer library rejected an operation; its own message is kept."""
+    def __init__(self, package: str, exception: str, message: str): ...
 
 class PathOutsideRootError(ArchiwistaError):
     """Path not inside a configured store or project root."""
@@ -438,10 +446,13 @@ class SnapshotError(ArchiwistaError):
     pass
 ```
 
-Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter;
-ich tekst trafia do użytkownika bez zmian (PRD N1.3). API HTTP zamienia
-wyjątek na kod (`source_unavailable`, `source_incompatible`, `not_found`,
-`conflict`…) i polski komunikat (SPEC 9.1).
+Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter
+i zamienia na `ProducerError` (pakiet, nazwa wyjątku, komunikat); tekst
+producenta trafia do użytkownika bez zmian (PRD N1.3). Rejestr wtyczek
+zgłasza `SourceUnavailableError`/`SourceIncompatibleError` ze stanem
+źródła (`state`). API HTTP zamienia wyjątek na kod (`source_unavailable`,
+`source_incompatible`, `kartograf_error`, `not_found`, `conflict`…)
+i polski komunikat (SPEC 9.1).
 
 ### 8.2 Walidacja na wejściu
 

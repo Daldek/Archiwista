@@ -5,13 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
-pytest.importorskip(
-    "archiwista.sources.registry",
-    reason="plugin registry is delivered by plan v0.1 step 2",
-)
-
 
 def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
     """A fresh installation finds the Kartograf entry point and passes."""

@@ -1,0 +1,2 @@
+[archiwista.sources]
+external = external_source_plugin:load

@@ -1,8 +1,15 @@
-"""Read-only, producer-neutral source adapter interfaces."""
+"""Read-only, producer-neutral source adapter interfaces.
 
-from collections.abc import Iterator
+A plugin is an entry point of the ``archiwista.sources`` group naming a
+factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
+``SourceAdapter``. Segments, coordinate operations, link confirmation and
+sheet grids are optional capabilities: a producer without them still
+satisfies ``SourceAdapter``.
+"""
+
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
     EntryMeta,
@@ -10,9 +17,17 @@ from archiwista.sources.types import (
     ProjectInfo,
     ScanScope,
     SheetGrid,
+    SourceContext,
     SourceEntry,
+    SourceSegment,
     SourceState,
 )
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
+type FloatArray = NDArray[np.float64]
 
 
 @runtime_checkable
@@ -38,8 +53,12 @@ class SourceAdapter(Protocol):
         """Read metadata for one entry using only the producer's API."""
         ...
 
-    def footprint(self, entry: SourceEntry) -> Footprint:
-        """Return a WGS84 geometry or an explicit missing-location reason."""
+    def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
+        """Return a WGS84 geometry or an explicit missing-location reason.
+
+        Without ``network`` no request leaves the process; unit outlines
+        then come only from the adapter's local cache.
+        """
         ...
 
     def read_project(self, path: Path) -> ProjectInfo:
@@ -51,6 +70,9 @@ class SourceAdapter(Protocol):
         ...
 
 
+type SourceFactory = Callable[[SourceContext], SourceAdapter]
+
+
 @runtime_checkable
 class SheetGridAdapter(Protocol):
     """Optional capability for producers with named geographic sheets."""
@@ -59,4 +81,61 @@ class SheetGridAdapter(Protocol):
         self, area: tuple[float, float, float, float], system: str, scale: str
     ) -> SheetGrid:
         """Find sheets or report that sheet grids are unsupported."""
+        ...
+
+
+@runtime_checkable
+class SegmentedAdapter(Protocol):
+    """Optional capability: a store split into independently scanned segments."""
+
+    def segments(self, root: Path) -> tuple[str, ...]:
+        """List the segments; their scans together equal one unscoped scan."""
+        ...
+
+    def describe_segment(self, segment: str) -> SourceSegment:
+        """Describe a segment: product, country, and a human-readable name."""
+        ...
+
+
+class CoordinateTransformer(Protocol):
+    """A pinned coordinate operation, safe to share between threads."""
+
+    @property
+    def description(self) -> str:
+        """Name of the operation, e.g. for the provenance of a result."""
+        ...
+
+    @property
+    def accuracy_m(self) -> float:
+        """Declared accuracy of the operation in metres."""
+        ...
+
+    def transform(
+        self, xs: FloatArray, ys: FloatArray
+    ) -> tuple[FloatArray, FloatArray]:
+        """Transform coordinates given and returned in x (east), y (north) order."""
+        ...
+
+
+@runtime_checkable
+class GeoAdapter(Protocol):
+    """Optional capability: the producer's coordinate operations and countries."""
+
+    def transformer(self, src_crs: str, dst_crs: str) -> CoordinateTransformer:
+        """Return the producer's pinned operation between two CRSs."""
+        ...
+
+    def countries(
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> tuple[str, ...]:
+        """Return codes of the producer's countries intersecting a WGS84 box."""
+        ...
+
+
+@runtime_checkable
+class LinkCheckAdapter(Protocol):
+    """Optional capability: confirm on demand which version a link holds."""
+
+    def confirm_link(self, entry: SourceEntry) -> Path | None:
+        """Return the confirmed version path relative to the store, or ``None``."""
         ...

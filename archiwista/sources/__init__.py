@@ -1,28 +1,55 @@
 """Public source interface for store producer plugins."""
 
-from archiwista.sources.protocol import SheetGridAdapter, SourceAdapter
+from archiwista.sources.protocol import (
+    CoordinateTransformer,
+    FloatArray,
+    GeoAdapter,
+    LinkCheckAdapter,
+    SegmentedAdapter,
+    SheetGridAdapter,
+    SourceAdapter,
+    SourceFactory,
+)
 from archiwista.sources.types import (
+    EntryKind,
     EntryMeta,
     Footprint,
+    GeoJSONGeometry,
+    LocationKind,
     ProjectInfo,
     ProjectPin,
     ProjectTask,
     ScanScope,
     SheetGrid,
+    SourceContext,
     SourceEntry,
+    SourceSegment,
     SourceState,
+    SourceStatus,
 )
 
 __all__ = [
+    "CoordinateTransformer",
+    "EntryKind",
     "EntryMeta",
+    "FloatArray",
     "Footprint",
+    "GeoAdapter",
+    "GeoJSONGeometry",
+    "LinkCheckAdapter",
+    "LocationKind",
     "ProjectInfo",
     "ProjectPin",
     "ProjectTask",
     "ScanScope",
+    "SegmentedAdapter",
     "SheetGrid",
     "SheetGridAdapter",
     "SourceAdapter",
+    "SourceContext",
     "SourceEntry",
+    "SourceFactory",
+    "SourceSegment",
     "SourceState",
+    "SourceStatus",
 ]

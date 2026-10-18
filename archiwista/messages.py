@@ -6,12 +6,29 @@ MESSAGES = MappingProxyType(
     {
         "cli_description": "Archiwista — przeglądarka lokalnego magazynu danych.",
         "cli_doctor_help": "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
-        "cli_registry_missing": (
-            "Rejestr wtyczek źródeł nie jest dostępny w tej instalacji Archiwisty."
-        ),
         "source_unavailable": "Źródło danych jest niedostępne.",
         "source_incompatible": "Wersja źródła danych jest niezgodna.",
         "store_unavailable": "Magazyn danych jest niedostępny.",
+        # Producer plugins and their adapters.
+        "source_unavailable_producer": "Źródło danych {producer} jest niedostępne",
+        "source_incompatible_producer": (
+            "Źródło danych {producer} jest niezgodne: zainstalowana wersja"
+            " {version}, wspierane {supported}"
+        ),
+        "plugin_unregistered": "brak wtyczki tego producenta",
+        "plugin_duplicate": "wtyczka zarejestrowana więcej niż raz: {values}",
+        "plugin_module_missing": "brak modułu {module}",
+        "plugin_package_missing": "brak pakietu {package}",
+        "plugin_not_adapter": "fabryka wtyczki nie zwróciła adaptera źródła",
+        "plugin_wrong_producer": "adapter wtyczki deklaruje producenta „{declared}”",
+        "plugin_range_missing": (
+            "Archiwista nie deklaruje wspieranych wersji pakietu {package}"
+        ),
+        "store_unreadable": "Nie można odczytać magazynu {path}",
+        "kartograf_not_store": (
+            "żaden katalog nie jest segmentem Kartografa — wskaż katalog --output"
+            " (data/)"
+        ),
         # Settings validation (code-specific messages).
         "settings_invalid_toml": (
             "Plik konfiguracji {path} nie jest poprawnym TOML: {detail}"

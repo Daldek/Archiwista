@@ -271,12 +271,43 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   5. Opcjonalne zdolności (wzór `SheetGridAdapter`):
      `SegmentedAdapter.segments(root) -> tuple[str, ...]` (podział do
      równoległego skanu; suma przejść po segmentach = przejście bez
-     segmentu; producent bez podziału skanuje się jednym przejściem);
+     segmentu; producent bez podziału skanuje się jednym przejściem)
+     i `SegmentedAdapter.describe_segment(segment) -> SourceSegment`
+     (`segment`, `product`, `country`, `dataset_key`, `name`, `known` —
+     tabela `segments` i kraj produktu z decyzji 5);
      `GeoAdapter.transformer(src_crs, dst_crs) -> CoordinateTransformer`
-     (`transform(xs, ys)`, `description`, `accuracy_m`) i
+     (`transform(xs, ys)`, `description`, `accuracy_m`; obiekt można
+     współdzielić między wątkami) i
      `GeoAdapter.countries(bbox_wgs84) -> tuple[str, ...]`;
      `LinkCheckAdapter.confirm_link(entry) -> Path | None` (tylko na
      żądanie).
+  6. Pola dodatkowe, wszystkie z wartością domyślną (decyzja koordynatora
+     2026-10-18; kształt kroku 1 nadal działa): `EntryMeta` — `country`,
+     `unit`, `survey_work_id`, `campaign` (identyfikator kampanii),
+     `edition`, `full_sheet`, `coverage`, `parent_request` (stały klucz
+     tekstowy plików jednego zadania), `horizontal_crs`, `vertical_crs`,
+     `resolution`, `nodata`; `Footprint.native_crs` (układ obrysu
+     `native`); `SheetGrid.outlines` (wielokąt WGS84 każdego arkusza
+     w kolejności `sheets`); `SourceEntry.handle` (własny rekord
+     producenta, nieprzezroczysty dla Archiwisty i pomijany w porównaniu:
+     `footprint` wpisu ze skanu nie czyta sidecara drugi raz; wpis
+     odtworzony z indeksu działa bez niego kosztem 1 odczytu).
+
+  Pole `store` (`SourceEntry`, `EntryMeta`, `SourceState`, `ProjectInfo`,
+  `ProjectPin`) to katalog producenta magazynu jako tekst: `root` podany
+  adapterowi albo magazyn wskazany przez manifest projektu. Adapter
+  rozwiązuje względem niego ścieżki względne, więc `read_meta`, `footprint`
+  i `confirm_link` znajdują plik z samego wpisu; indeks kluczuje wiersze
+  identyfikatorem magazynu z konfiguracji i mapuje go na ten katalog przez
+  `StoreConfig`. `known_versions` to ścieżki plików wersji, a adapter
+  Kartografa pomija całe ich katalogi. Rejestr
+  (`archiwista/sources/registry.py`): `load_registry(*, cache_dir=None) ->
+  SourceRegistry` z `producers()`, `states()`, `state(producer)`,
+  `adapter(producer)` i `probe(producer, root)`; `adapter` zgłasza
+  `SourceUnavailableError` albo `SourceIncompatibleError` z polem `state`.
+  Błąd biblioteki producenta wychodzi z adaptera jako
+  `ProducerError(package, exception, message)` z niezmienionym
+  komunikatem, a nieczytelny magazyn jako `SourceUnavailableError`.
 
   Adapter Kartografa jest jedynym importerem `kartograf`; reszta zna
   wyłącznie `archiwista.sources`, a interfejs nie narzuca drugiemu

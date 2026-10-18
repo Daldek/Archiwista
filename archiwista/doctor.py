@@ -1,8 +1,6 @@
 """Installation diagnostics shown by ``archiwista doctor``."""
 
-import importlib.metadata
 import os
-import re
 import socket
 import sys
 from collections.abc import Callable
@@ -21,10 +19,10 @@ from archiwista.config import (
 )
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.sources import SourceState
+from archiwista.sources.registry import APP_DISTRIBUTION, app_requirement
 
 type CheckLevel = Literal["ok", "warning", "error"]
 
-DISTRIBUTION = "archiwista"
 REQUIRED_PRODUCERS = frozenset({"kartograf"})
 LOOPBACK_HOST = "127.0.0.1"
 
@@ -102,22 +100,10 @@ def install_requirement(producer: str) -> str:
         ``"kartograf<0.9,>=0.8.0"``; otherwise the Archiwista extra named
         after the producer, e.g. ``"archiwista[imgw]"``.
     """
-    try:
-        requirements = importlib.metadata.requires(DISTRIBUTION) or []
-    except importlib.metadata.PackageNotFoundError:
-        requirements = []
-    for requirement in requirements:
-        spec, _, marker = requirement.partition(";")
-        name = re.match(r"[A-Za-z0-9._-]+", spec.strip())
-        if marker.strip() or name is None:
-            continue
-        if _normalize(name[0]) == _normalize(producer):
-            return spec.strip()
-    return f"{DISTRIBUTION}[{producer}]"
-
-
-def _normalize(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
+    requirement = app_requirement(producer)
+    if requirement is not None:
+        return str(requirement)
+    return f"{APP_DISTRIBUTION}[{producer}]"
 
 
 def run_doctor(

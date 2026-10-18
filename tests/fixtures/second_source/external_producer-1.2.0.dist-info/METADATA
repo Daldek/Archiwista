@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: external-producer
+Version: 1.2.0
+Summary: Fake producer library of the second-source plugin fixture.
