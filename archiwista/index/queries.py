@@ -110,9 +110,11 @@ _PINNED = (
     " AND p.version_path = v.path)"
 )
 # Pinned by a project the principal sees: the ``pinned`` filter (``_where``).
+# Driven by the few pins, not tested for each of the store's versions.
 _PINNED_VISIBLE = (
-    "EXISTS (SELECT 1 FROM pins p JOIN projects pr ON pr.id = p.project_id"
-    " WHERE p.store_id = v.store_id AND p.version_path = v.path AND {visible})"
+    "v.id IN (SELECT pv.id FROM pins p JOIN projects pr ON pr.id = p.project_id"
+    " JOIN versions pv ON pv.store_id = p.store_id AND pv.path = p.version_path"
+    " WHERE {visible})"
 )
 _SOURCES: Mapping[VersionsMode, tuple[str, tuple[str, ...]]] = {
     "current": (

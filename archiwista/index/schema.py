@@ -300,8 +300,10 @@ def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
         The index file; ``initialize`` must have created it.
     readonly : bool, default False
         Refuse changes to the index (``query_only``); used by queries. A
-        reader keeps a small private page cache: pages come from the shared
-        memory map, and a server holds one reader per thread.
+        reader keeps a small private page cache and maps nothing: a server
+        holds one reader per thread, and each memory map would count the
+        same index pages again in its resident memory (SPEC 4.5: ≤ 500 MB);
+        pages come from the operating system's file cache instead.
 
     Returns
     -------
@@ -322,7 +324,7 @@ def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
     connection.execute("PRAGMA temp_store = MEMORY")
     cache_kib = _READER_CACHE_KIB if readonly else _CACHE_KIB
     connection.execute(f"PRAGMA cache_size = -{cache_kib}")
-    connection.execute(f"PRAGMA mmap_size = {_MMAP_BYTES}")
+    connection.execute(f"PRAGMA mmap_size = {0 if readonly else _MMAP_BYTES}")
     if readonly:
         connection.execute("PRAGMA query_only = ON")
     return connection
