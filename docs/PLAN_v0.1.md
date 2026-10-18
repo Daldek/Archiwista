@@ -555,6 +555,31 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `/api/v1/openapi.json` wymaga sesji, domyślnych `/docs` brak.
     `archiwista serve [--host] [--port] [--no-browser] [--access-log]`
     i `archiwista token [--port] [--json]` (`archiwista/server.py`).
+  Stan po kroku 9a:
+  - *Trasy* (`archiwista/api/{health,stores,slots,map,projects,settings,docs}.py`,
+    wszystkie z sesją, `Principal` i — gdy dotyczą projektów —
+    `visible_projects`): `GET /health`, `/sources`, `/stores`,
+    `/stores/{store}`, `/products`, `/slots`, `/stores/{store}/slots/{slot}`,
+    `/stores/{store}/versions/{version}` (z surowym sidecarem i „kopiuj
+    ścieżkę” z aliasami), `…/sidecar`, `/groups/{parent_request}`,
+    `/map/footprints`, `/map/sheets`, `/projects`, `/projects/{id}`,
+    `/projects/{id}/status`, `GET/PUT /settings` (`settings.write`, CSRF);
+    `operationId` = nazwa funkcji trasy; lokalne `/api/docs` (Swagger UI
+    5.33.3 z pakietu, bez CDN i skryptów inline).
+  - *Modele i usługi dla CLI 12* (`archiwista/api/models.py`): filtry
+    `CatalogFilters` (parametry `/slots`, nieznany parametr → `422`),
+    `MapFilters`, `SheetFilters`; odpowiedzi z przykładami; listy i karty
+    z indeksu mają `stale` i `stale_stores` (`IndexQueries.freshness`).
+    Funkcje bez HTTP: `read_health`, `read_stores`, `read_store`,
+    `search_slots`, `read_products`, `slot_card`, `version_card`,
+    `map_view`, `sheet_list`, `read_projects`, `project_card`,
+    `check_project`, `save_settings`.
+  - *Błędy*: `PROBLEMS` i `service_problem` (`source` z `requirement`,
+    `kartograf`/`imgwtools`, `problems`, `errors`), `404 not_found`,
+    `405 method_not_allowed`, `403 path_outside_root`, `503
+    store_unavailable` (błąd źródła bez stanu wtyczki), `500
+    internal_error`. `create_app` i `serve_main` biorą `registry`
+    (`PluginRegistry`).
 - **Uprawnienia — `archiwista/state/`, `archiwista/auth/` (krok 8b,
   A-ADR-029, SPEC 4.3 i 10.2):** `StateStore` — baza stanu
   `<user_data_dir>/state.sqlite`, osobna od indeksu, migracje zamiast

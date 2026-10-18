@@ -10,7 +10,8 @@ from pathlib import Path
 
 from archiwista.config import AppPaths
 from archiwista.server import LocalServer, serve_main
-from archiwista.sources import SourceState
+from archiwista.sources import SourceAdapter, SourceState
+from archiwista.sources.registry import source_error
 
 START_TIMEOUT_S = 10.0
 
@@ -18,13 +19,25 @@ START_TIMEOUT_S = 10.0
 class NoSources:
     """Plugin registry without producers, enough for a server without stores."""
 
+    def producers(self) -> tuple[str, ...]:
+        """Return no producer ids."""
+        return ()
+
     def states(self) -> tuple[SourceState, ...]:
         """Return no plugin states."""
         return ()
 
-    def probe(self, producer: str, root: Path) -> SourceState:
+    def state(self, producer: str) -> SourceState:
         """Report every producer as not installed."""
         return SourceState(producer=producer, status="not_installed")
+
+    def adapter(self, producer: str) -> SourceAdapter:
+        """Refuse every producer as not installed (``source_unavailable``)."""
+        raise source_error(self.state(producer))
+
+    def probe(self, producer: str, root: Path) -> SourceState:
+        """Report every producer as not installed."""
+        return self.state(producer)
 
 
 def local_paths(tmp_path: Path) -> AppPaths:

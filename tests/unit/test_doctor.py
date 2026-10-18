@@ -9,7 +9,8 @@ import pytest
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.doctor import is_port_available, run_doctor
-from archiwista.sources import SourceState
+from archiwista.sources import SourceAdapter, SourceState
+from archiwista.sources.registry import source_error
 
 KARTOGRAF = SourceState(
     producer="kartograf",
@@ -27,15 +28,26 @@ class FakeRegistry:
     source_states: tuple[SourceState, ...] = (KARTOGRAF,)
     failing: dict[Path, SourceState] = field(default_factory=dict)
 
+    def producers(self) -> tuple[str, ...]:
+        """Return the producers of the configured states."""
+        return tuple(state.producer for state in self.source_states)
+
     def states(self) -> tuple[SourceState, ...]:
         """Return the configured plugin states."""
         return self.source_states
 
+    def state(self, producer: str) -> SourceState:
+        """Return a producer's configured state (``not_installed`` if none)."""
+        found = (s for s in self.source_states if s.producer == producer)
+        return next(found, SourceState(producer=producer, status="not_installed"))
+
+    def adapter(self, producer: str) -> SourceAdapter:
+        """Refuse every producer: the doctor never reads a store."""
+        raise source_error(self.state(producer))
+
     def probe(self, producer: str, root: Path) -> SourceState:
         """Return the plugin state, or a listed root's own failure."""
-        state = next((s for s in self.source_states if s.producer == producer), None)
-        if state is None:
-            return SourceState(producer=producer, status="not_installed")
+        state = self.state(producer)
         if state.status != "available":
             return state
         return self.failing.get(root, replace(state, store=str(root)))

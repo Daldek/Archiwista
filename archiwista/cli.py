@@ -5,19 +5,19 @@ import sys
 from collections.abc import Callable
 
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
-from archiwista.config import AppPaths, SourceRegistryView
+from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
 from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import MESSAGES
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
-from archiwista.sources.registry import load_registry
+from archiwista.sources.registry import PluginRegistry, load_registry
 
 
 def main(
     argv: list[str] | None = None,
     *,
-    registry: SourceRegistryView | None = None,
+    registry: PluginRegistry | None = None,
     paths: AppPaths | None = None,
 ) -> int:
     """Run an Archiwista command.
@@ -26,7 +26,7 @@ def main(
     ----------
     argv : list[str] or None, optional
         Arguments to parse, or process arguments when omitted.
-    registry : SourceRegistryView or None, optional
+    registry : PluginRegistry or None, optional
         Producer plugins; loaded from the ``archiwista.sources`` entry
         points when omitted.
     paths : AppPaths or None, optional

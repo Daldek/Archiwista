@@ -18,6 +18,7 @@ from archiwista.security import (
     SESSION_COOKIE,
     issue_one_time_token,
 )
+from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources
 
@@ -79,13 +80,23 @@ class Api:
 
 
 @contextmanager
-def running_api(paths: AppPaths) -> Iterator[Api]:
-    """Serve the application over ``paths`` (index and state database)."""
+def running_api(
+    paths: AppPaths, registry: PluginRegistry | None = None
+) -> Iterator[Api]:
+    """Serve the application over ``paths`` (index and state database).
+
+    ``registry`` holds the producer plugins; none when omitted.
+    """
     initialize(paths.index_file)
     state = StateStore(paths.state_file)
-    settings = SettingsService(ConfigStore(paths.config_file), NoSources())
+    plugins = registry or NoSources()
+    settings = SettingsService(ConfigStore(paths.config_file), plugins)
     app = create_app(
-        port=PORT, settings=settings, index_path=paths.index_file, state=state
+        port=PORT,
+        settings=settings,
+        index_path=paths.index_file,
+        state=state,
+        registry=plugins,
     )
     with TestClient(app, base_url=BASE_URL) as client:
         yield Api(client, paths, state)

@@ -74,6 +74,54 @@ MESSAGES = MappingProxyType(
         "source_unavailable": "Źródło danych jest niedostępne.",
         "source_incompatible": "Wersja źródła danych jest niezgodna.",
         "store_unavailable": "Magazyn danych jest niedostępny.",
+        # Read API: errors, catalog, map and projects (step 9a).
+        "api_title_method_not_allowed": "Niedozwolona metoda",
+        "api_title_path_outside_root": "Ścieżka poza magazynem",
+        "api_title_store_unavailable": "Magazyn niedostępny",
+        "api_title_source_unavailable": "Źródło danych niedostępne",
+        "api_title_source_incompatible": "Niezgodne źródło danych",
+        "api_title_kartograf_error": "Błąd Kartografa",
+        "api_title_imgwtools_error": "Błąd IMGWTools",
+        "api_title_producer_error": "Błąd biblioteki producenta",
+        "api_title_http_error": "Błąd żądania",
+        "api_title_internal_error": "Błąd serwera",
+        "api_route_not_found": "Nie ma takiego zasobu.",
+        "api_method_not_allowed": "Metoda {method} nie jest dostępna dla {path}.",
+        "api_internal_error": (
+            "Wewnętrzny błąd serwera; szczegóły są w dzienniku „archiwista serve”."
+        ),
+        "api_source_problem": "{message}. Naprawa: {fix}",
+        "api_store_not_configured": "Nie ma magazynu „{store}” w ustawieniach.",
+        "api_store_unknown": "Nie ma magazynu „{store}” w ustawieniach ani w indeksie.",
+        "api_slot_unknown": "Indeks nie zna pliku „{slot}” w magazynie „{store}”.",
+        "api_version_unknown": (
+            "Indeks nie zna wersji „{version}” w magazynie „{store}”."
+        ),
+        "api_sidecar_missing": (
+            "Wersja „{version}” w magazynie „{store}” nie ma czytelnego sidecara."
+        ),
+        "api_request_unknown": (
+            "Indeks nie zna plików zadania producenta „{parent_request}”."
+        ),
+        "api_area_unknown": "Nie ma obszaru „{area}”.",
+        "api_area_and_bbox": (
+            "Podaj obszar (area_id) albo prostokąt (bbox), nie oba naraz."
+        ),
+        "api_bbox_invalid": "bbox to cztery liczby: min_x,min_y,max_x,max_y.",
+        "api_years_invalid": (
+            "years to rok albo zakres lat: 2023, 2020-2023, 2020- albo -2023."
+        ),
+        "api_no_geo_source": (
+            "Żadne dostępne źródło danych nie przelicza współrzędnych obszaru."
+        ),
+        "api_too_many_sheets": (
+            "Widok obejmuje około {count} arkuszy w skali {scale}, a najwyżej"
+            " {limit} — przybliż mapę albo wybierz mniej szczegółową skalę."
+        ),
+        "api_project_store_unavailable": (
+            "Magazyn „{store}” projektu „{project}” jest niedostępny, a żaden skan"
+            " nie sprawdził jeszcze projektu."
+        ),
         # Producer plugins and their adapters.
         "source_unavailable_producer": "Źródło danych {producer} jest niedostępne",
         "source_incompatible_producer": (

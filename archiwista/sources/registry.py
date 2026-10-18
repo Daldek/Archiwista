@@ -14,6 +14,7 @@ import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
 from packaging.requirements import Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -32,6 +33,35 @@ from archiwista.sources.types import SourceContext, SourceState, SourceStatus
 
 ENTRY_POINT_GROUP = "archiwista.sources"
 APP_DISTRIBUTION = "archiwista"
+
+
+class PluginRegistry(Protocol):
+    """Producer plugins as the application reads them: states and adapters.
+
+    ``SourceRegistry`` implements it; tests stand in small fakes. It extends
+    the settings' ``SourceRegistryView`` (``states``, ``probe``) with the
+    adapters that answer requests needing a producer.
+    """
+
+    def producers(self) -> tuple[str, ...]:
+        """Return the registered producer ids."""
+        ...
+
+    def states(self) -> tuple[SourceState, ...]:
+        """Return the state of every registered plugin, ordered by producer."""
+        ...
+
+    def state(self, producer: str) -> SourceState:
+        """Return one plugin's state (``not_installed`` when unregistered)."""
+        ...
+
+    def adapter(self, producer: str) -> SourceAdapter:
+        """Return an available plugin's adapter or raise ``SourceStateError``."""
+        ...
+
+    def probe(self, producer: str, root: Path) -> SourceState:
+        """Probe a producer directory, or return the plugin's unavailable state."""
+        ...
 
 
 def app_requirement(package: str) -> Requirement | None:
@@ -59,6 +89,48 @@ def app_requirement(package: str) -> Requirement | None:
         if requirement.marker is None and canonicalize_name(requirement.name) == wanted:
             return requirement
     return None
+
+
+def install_requirement(producer: str) -> str:
+    """Return the pip requirement that installs a supported producer package.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id, e.g. ``"kartograf"``.
+
+    Returns
+    -------
+    str
+        Archiwista's own dependency pin for a core producer, e.g.
+        ``"kartograf<0.9,>=0.8.0"``; otherwise the Archiwista extra named
+        after the producer, e.g. ``"archiwista[imgw]"``.
+    """
+    requirement = app_requirement(producer)
+    if requirement is not None:
+        return str(requirement)
+    return f"{APP_DISTRIBUTION}[{producer}]"
+
+
+def source_fix(state: SourceState) -> str:
+    """Return the Polish instruction that makes an unavailable source work.
+
+    Parameters
+    ----------
+    state : SourceState
+        A state other than ``available``.
+
+    Returns
+    -------
+    str
+        Reinstalling the plugin for ``error``, otherwise installing a
+        supported version of the producer package (``install_requirement``).
+    """
+    if state.status == "error":
+        return MESSAGES["fix_plugin_error"].format(producer=state.producer)
+    return MESSAGES["fix_install"].format(
+        requirement=install_requirement(state.producer)
+    )
 
 
 def check_package(

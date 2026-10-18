@@ -20,7 +20,7 @@ from archiwista.config import (
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.security import LOOPBACK_HOST
 from archiwista.sources import SourceState
-from archiwista.sources.registry import APP_DISTRIBUTION, app_requirement
+from archiwista.sources.registry import install_requirement, source_fix
 
 type CheckLevel = Literal["ok", "warning", "error"]
 
@@ -85,27 +85,6 @@ def is_port_available(port: int) -> bool:
     return True
 
 
-def install_requirement(producer: str) -> str:
-    """Return the pip requirement that installs a supported producer package.
-
-    Parameters
-    ----------
-    producer : str
-        Producer id, e.g. ``"kartograf"``.
-
-    Returns
-    -------
-    str
-        Archiwista's own dependency pin for a core producer, e.g.
-        ``"kartograf<0.9,>=0.8.0"``; otherwise the Archiwista extra named
-        after the producer, e.g. ``"archiwista[imgw]"``.
-    """
-    requirement = app_requirement(producer)
-    if requirement is not None:
-        return str(requirement)
-    return f"{APP_DISTRIBUTION}[{producer}]"
-
-
 def run_doctor(
     paths: AppPaths,
     registry: SourceRegistryView,
@@ -137,7 +116,7 @@ def run_doctor(
     }
     for producer in sorted(states):
         required = producer in REQUIRED_PRODUCERS or producer in used
-        checks.append(_source_check(states[producer], required=required))
+        checks.append(source_check(states[producer], required=required))
     for producer, store_id in sorted(used.items()):
         if producer not in states:
             checks.append(
@@ -174,7 +153,22 @@ def _load_settings(paths: AppPaths, checks: list[DoctorCheck]) -> AppSettings:
     return settings
 
 
-def _source_check(state: SourceState, *, required: bool) -> DoctorCheck:
+def source_check(state: SourceState, *, required: bool) -> DoctorCheck:
+    """Describe a producer plugin's state in Polish, with a fix when needed.
+
+    Parameters
+    ----------
+    state : SourceState
+        The plugin's state.
+    required : bool
+        Whether a store or Archiwista itself needs the producer: then an
+        unavailable plugin is an error, otherwise a warning.
+
+    Returns
+    -------
+    DoctorCheck
+        ``ok`` with the versions and schemas, or the problem and its fix.
+    """
     unknown = MESSAGES["doctor_unknown"]
     values = {
         "producer": state.producer,
@@ -188,11 +182,7 @@ def _source_check(state: SourceState, *, required: bool) -> DoctorCheck:
     message = with_detail(
         MESSAGES[f"doctor_source_{state.status}"].format(**values), state.detail
     )
-    if state.status == "error":
-        fix = MESSAGES["fix_plugin_error"].format(producer=state.producer)
-    else:
-        fix = _install_fix(state.producer)
-    return DoctorCheck(level, message, fix)
+    return DoctorCheck(level, message, source_fix(state))
 
 
 def _install_fix(producer: str) -> str:

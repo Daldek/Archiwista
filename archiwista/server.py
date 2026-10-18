@@ -31,7 +31,6 @@ from archiwista.config import (
     ConfigStore,
     SettingsService,
     SettingsValidationError,
-    SourceRegistryView,
 )
 from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
@@ -46,6 +45,7 @@ from archiwista.security import (
     fragment_url,
     issue_one_time_token,
 )
+from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
 _REDACT_FILTER = "archiwista_redact_tokens"
@@ -135,7 +135,7 @@ def open_in_browser(server: LocalServer) -> None:
 
 def serve_main(
     paths: AppPaths,
-    registry: SourceRegistryView,
+    registry: PluginRegistry,
     out: TextIO,
     err: TextIO,
     *,
@@ -150,8 +150,9 @@ def serve_main(
     ----------
     paths : AppPaths
         Configuration file and local data.
-    registry : SourceRegistryView
-        Producer plugins, for validating settings changes.
+    registry : PluginRegistry
+        Producer plugins: settings validation, the scan scheduler and the
+        API's requests needing a producer.
     out, err : TextIO
         Streams for the address and for errors.
     host : str, optional
@@ -210,6 +211,7 @@ def serve_main(
                 settings=settings,
                 index_path=paths.index_file,
                 state=state,
+                registry=registry,
                 sessions=SessionStore(),
                 jobs=jobs,
             )

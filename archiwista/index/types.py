@@ -477,6 +477,22 @@ class StoreIndexState:
 
 
 @dataclass(frozen=True, slots=True)
+class StoreFreshness:
+    """How current the index is for one store, without its counts.
+
+    ``stale`` is true while the store is unavailable: answers about it come
+    from the index as it was at ``indexed_at``.
+    """
+
+    store: str
+    status: StoreStatus
+    status_at: datetime | None
+    detail: str | None
+    indexed_at: datetime | None
+    stale: bool
+
+
+@dataclass(frozen=True, slots=True)
 class IndexStatus:
     """The local index and its stores."""
 

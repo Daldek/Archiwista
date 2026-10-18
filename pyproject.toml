@@ -45,6 +45,8 @@ include = ["archiwista*"]
 
 [tool.setuptools.package-data]
 "archiwista.web" = ["**/*"]
+# Local Swagger UI of /api/docs (swagger-ui-dist 5.33.3, Apache-2.0).
+"archiwista.api" = ["swagger/*"]
 
 [tool.ruff]
 line-length = 88

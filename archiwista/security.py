@@ -634,6 +634,46 @@ def csp_header(settings: AppSettings) -> str:
 # Files ---------------------------------------------------------------------
 
 
+def indexed_path(root: Path, relative: str) -> Path:
+    """Return where an indexed path lies below its root, without touching the disk.
+
+    The file card's "copy path": a store's directory on this computer joined
+    with a path the index holds. Symbolic links are not followed; a file is
+    opened only through ``resolve_indexed_path``.
+
+    Parameters
+    ----------
+    root : Path
+        Configured producer directory of a store, or a project directory.
+    relative : str
+        Slot, version or project path relative to ``root`` as stored in the
+        local index (``/`` separators).
+
+    Returns
+    -------
+    Path
+        ``root`` joined with the parts of ``relative``.
+
+    Raises
+    ------
+    PathOutsideRootError
+        If the path is empty, absolute, names a drive, contains ``..`` or a
+        NUL character.
+    """
+    posix = PurePosixPath(relative)
+    windows = PureWindowsPath(relative)
+    if (
+        not relative
+        or "\x00" in relative
+        or posix.is_absolute()
+        or windows.anchor
+        or ".." in posix.parts
+        or ".." in windows.parts
+    ):
+        raise PathOutsideRootError(MESSAGES["path_outside_root"].format(path=relative))
+    return root.joinpath(*posix.parts)
+
+
 def resolve_indexed_path(root: Path, relative: str) -> Path:
     """Resolve an indexed path inside its store or project root.
 
@@ -659,21 +699,11 @@ def resolve_indexed_path(root: Path, relative: str) -> Path:
     FileNotFoundError
         If the root or the file does not exist (e.g. a disconnected share).
     """
-    message = MESSAGES["path_outside_root"].format(path=relative)
-    posix = PurePosixPath(relative)
-    windows = PureWindowsPath(relative)
-    if (
-        not relative
-        or "\x00" in relative
-        or posix.is_absolute()
-        or windows.anchor
-        or ".." in posix.parts
-        or ".." in windows.parts
-    ):
-        raise PathOutsideRootError(message)
+    joined = indexed_path(root, relative)
     real_root = root.resolve(strict=True)
-    real = (real_root / relative).resolve(strict=True)
+    real = joined.resolve(strict=True)
     if not real.is_relative_to(real_root):
+        message = MESSAGES["path_outside_root"].format(path=relative)
         raise PathOutsideRootError(message)
     return real
 

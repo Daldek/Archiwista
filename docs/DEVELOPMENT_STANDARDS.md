@@ -282,7 +282,9 @@ tests/
 │   ├── test_permissions_api.py  # Uprawnienia przez HTTP: 404/403, CSRF, dziennik
 │   ├── test_state.py        # Baza stanu: migracje, przebudowa indeksu, eksport/import
 │   ├── test_cli.py          # CLI --json równe odpowiedziom API
-│   └── test_api.py          # Endpointy /api/v1
+│   ├── test_api.py          # Endpointy /api/v1: trasy, filtry, kursor, problemy, OpenAPI
+│   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
+│   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach
 │   └── test_store_fixture.py  # Magazyn testowy oczami czytników Kartografa
@@ -295,12 +297,14 @@ tests/
 │   ├── store_edits.py       # Zmiany magazynu jak przy pobraniu: nowa wersja, przepięcie
 │   ├── permissions.py       # Cztery tożsamości i grupa do macierzy uprawnień
 │   ├── api_session.py       # Aplikacja w TestClient z sesjami wskazanych osób
+│   ├── api_store.py         # Magazyn testowy zeskanowany i podany przez API
 │   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
 │   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
 │   └── job_owner.py         # Osobny proces-nadzorca do testu zabitego serwera
 ├── perf/
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
-│   └── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
+│   ├── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
+│   └── test_api_perf.py     # API przez HTTP: p95 listy, wyszukiwania, karty i mapy
 └── conftest.py              # Shared fixtures
 
 # Markery: live (sieć i prawdziwe usługi), perf (magazyn syntetyczny

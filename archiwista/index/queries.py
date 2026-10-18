@@ -83,6 +83,7 @@ from archiwista.index.types import (
     SlotQuery,
     SlotRow,
     SlotUnit,
+    StoreFreshness,
     StoreIndexState,
     StoreUsage,
     TransformerFactory,
@@ -1113,6 +1114,29 @@ class IndexQueries:
             created_at=_datetime(info.get("created_at")),
             size_bytes=size,
             stores=states,
+        )
+
+    def freshness(self) -> tuple[StoreFreshness, ...]:
+        """Return each store's availability and last complete pass, by store id.
+
+        A cheap companion of ``status`` (no counts, no jobs) for marking
+        answers of an unavailable store as ``stale``.
+        """
+        with self._read() as connection:
+            rows = connection.execute(
+                "SELECT key, status, status_at, detail, indexed_at FROM stores"
+                " ORDER BY key"
+            ).fetchall()
+        return tuple(
+            StoreFreshness(
+                store=row["key"],
+                status=row["status"],
+                status_at=_datetime(row["status_at"]),
+                detail=row["detail"],
+                indexed_at=_datetime(row["indexed_at"]),
+                stale=row["status"] == "unavailable",
+            )
+            for row in rows
         )
 
     def area(self, area_id: str) -> AreaRecord | None:

@@ -99,6 +99,49 @@ def test_project_access_follows_visibility_matrix(
         }
 
 
+@pytest.mark.parametrize("who", WHO)
+@pytest.mark.parametrize("visibility", VISIBILITY_VALUES)
+def test_project_routes_follow_visibility_matrix(
+    api: Api, visibility: Visibility, who: Who
+) -> None:
+    """/projects lists, and its detail and status show, only visible projects."""
+    # Arrange
+    share(api.state, KEY, visibility)
+    caller = api.session(principal(api.state, who))
+
+    # Act
+    listed = caller.request("GET", "/projects").json()["items"]
+    detail = caller.request("GET", "/projects/raba")
+    status = caller.request("GET", "/projects/raba/status")
+
+    # Assert
+    if who in SEES[visibility]:
+        assert [item["project"] for item in listed] == ["raba"]
+        assert detail.status_code == 200 and detail.json()["name"] == "Raba"
+        # Visible: the producer is asked, and this server has none.
+        assert_problem(status, 503, "source_unavailable")
+    else:
+        assert listed == []
+        assert_problem(detail, 404, "not_found")
+        assert_problem(status, 404, "not_found")
+
+
+def test_settings_change_needs_administrator(api: Api) -> None:
+    """Everyone reads the settings; only an administrator changes them."""
+    # Arrange
+    owner = api.session(principal(api.state, "owner"))
+    admin = api.session(principal(api.state, "admin"))
+    current = owner.request("GET", "/settings").json()
+
+    # Act
+    refused = owner.request("PUT", "/settings", json={**current, "offline": True})
+    accepted = admin.request("PUT", "/settings", json={**current, "offline": True})
+
+    # Assert
+    assert_problem(refused, 403, "permission_denied")
+    assert accepted.status_code == 200 and accepted.json()["offline"] is True
+
+
 def test_unknown_and_hidden_projects_answer_alike(api: Api) -> None:
     """A private project is as unknown to another person as a missing one."""
     # Arrange

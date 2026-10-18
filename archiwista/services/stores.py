@@ -82,7 +82,7 @@ def store_summary(
     usage = queries.usage(store.id) or StoreUsage(store.id, (), 0, 0)
     unused = queries.unused_versions(store.id) or UnusedVersions(store.id, (), 0, 0, 0)
     problems = (
-        *(_issue(issue, producer) for issue in queries.issues(store.id)),
+        *(issue_problem(issue, producer) for issue in queries.issues(store.id)),
         *(_orphan(link, producer) for link in queries.orphan_links(store.id)),
         *(
             _pin(pin, producer)
@@ -101,7 +101,16 @@ def store_summary(
     )
 
 
-def _issue(issue: IssueRef, producer: str) -> Problem:
+def issue_problem(issue: IssueRef, producer: str) -> Problem:
+    """Return a store problem the index holds with its Polish fix instruction.
+
+    Parameters
+    ----------
+    issue : IssueRef
+        A problem a scan or a check job recorded.
+    producer : str
+        Producer of the store directory, named in the instruction.
+    """
     message, instruction = explain(issue.code, path=issue.path, producer=producer)
     return Problem(
         issue.code,

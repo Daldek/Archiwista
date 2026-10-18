@@ -7,13 +7,14 @@ from archiwista.services.projects import (
     project_problems,
     project_status,
 )
-from archiwista.services.stores import StoreSummary, store_summary
+from archiwista.services.stores import StoreSummary, issue_problem, store_summary
 
 __all__ = [
     "Problem",
     "ProjectDetail",
     "StoreSummary",
     "explain",
+    "issue_problem",
     "project_detail",
     "project_problems",
     "project_status",

@@ -20,7 +20,7 @@ from archiwista.index import (
 )
 from archiwista.services.problems import Problem, explain
 from archiwista.sources import ProjectInfo
-from archiwista.sources.registry import SourceRegistry
+from archiwista.sources.registry import PluginRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +117,7 @@ def project_problems(record: ProjectRecord) -> tuple[Problem, ...]:
 
 def project_status(
     queries: IndexQueries,
-    registry: SourceRegistry,
+    registry: PluginRegistry,
     key: str,
     *,
     visible: ProjectVisibility,
@@ -128,7 +128,7 @@ def project_status(
     ----------
     queries : IndexQueries
         Reader of the local index (finds the project's directory).
-    registry : SourceRegistry
+    registry : PluginRegistry
         Producer plugins.
     key : str
         Project key.
