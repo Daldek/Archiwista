@@ -72,7 +72,10 @@ def bind_loopback(port: int) -> socket.socket:
     OSError
         If the port is taken or not allowed.
     """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # asyncio disables Nagle's algorithm only on connections accepted by an
+    # IPPROTO_TCP socket; with it on, a response written in parts waits for
+    # the client's delayed acknowledgement (about 40 ms per kept-alive request).
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
     try:
         if os.name == "posix":
             # Restart at once even with connections of a stopped server in

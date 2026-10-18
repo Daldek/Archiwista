@@ -1,15 +1,18 @@
 """``archiwista serve`` and ``archiwista token`` with a real server in a thread."""
 
+import asyncio
 import json
 import re
 import socket
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
 import pytest
 
 from archiwista.cli import main
+from archiwista.server import bind_loopback
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
@@ -86,6 +89,43 @@ def test_serve_reports_busy_port(
 
     assert status == 1
     assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in capsys.readouterr().err
+
+
+def test_serve_connections_send_without_nagle_delay() -> None:
+    """Connections of the server's socket send at once (``TCP_NODELAY``).
+
+    asyncio disables Nagle's algorithm only on connections accepted by an
+    ``IPPROTO_TCP`` socket. Without it every response written in parts on a
+    kept-alive connection waited for the client's delayed acknowledgement:
+    about 40 ms added to each request of the browser.
+    """
+
+    async def accepted_nodelay() -> int:
+        listening = bind_loopback(0)
+        loop = asyncio.get_running_loop()
+        accepted: asyncio.Future[int] = loop.create_future()
+
+        class Probe(asyncio.Protocol):
+            def connection_made(self, transport: asyncio.BaseTransport) -> None:
+                raw = transport.get_extra_info("socket")
+                accepted.set_result(
+                    raw.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+                )
+                transport.close()
+
+        async with await loop.create_server(Probe, sock=listening):
+            _, writer = await asyncio.open_connection(*listening.getsockname())
+            try:
+                return await asyncio.wait_for(accepted, timeout=10)
+            finally:
+                writer.close()
+                await writer.wait_closed()
+
+    # Its own thread: the session's Playwright may run an event loop here.
+    with ThreadPoolExecutor(1) as pool:
+        nodelay = pool.submit(asyncio.run, accepted_nodelay()).result()
+
+    assert nodelay != 0
 
 
 def test_token_command_issues_one_time_url(
