@@ -31,6 +31,7 @@ from archiwista.config import (
     SettingsValidationError,
     SourceRegistryView,
 )
+from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.security import (
@@ -42,6 +43,7 @@ from archiwista.security import (
     fragment_url,
     issue_one_time_token,
 )
+from archiwista.state import StateStore
 
 _REDACT_FILTER = "archiwista_redact_tokens"
 
@@ -164,7 +166,8 @@ def serve_main(
     -------
     int
         ``0`` after a normal stop, ``2`` for a refused address, ``1`` when
-        the settings, the index or the port cannot be used.
+        the settings, the index, the state database or the port cannot be
+        used.
     """
     if host != LOOPBACK_HOST:
         message = MESSAGES["serve_host_refused"].format(
@@ -175,7 +178,8 @@ def serve_main(
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
         initialize(paths.index_file)
-    except (SettingsValidationError, IndexUnsupportedError) as error:
+        state = StateStore(paths.state_file)
+    except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
         return 1
     if port is None:
@@ -194,6 +198,7 @@ def serve_main(
             port=bound_port,
             settings=settings,
             index_path=paths.index_file,
+            state=state,
             sessions=SessionStore(),
         )
         issued = issue_one_time_token(

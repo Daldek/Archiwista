@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, ProductUsage
 from archiwista.services import store_summary
@@ -53,7 +54,7 @@ def test_store_summary_counts_linked_content_once(
     )
 
     # Act
-    summary = store_summary(queries, CONFIG)
+    summary = store_summary(queries, CONFIG, visible=ALL_PROJECTS)
 
     # Assert
     assert summary.usage.products == (
@@ -100,7 +101,7 @@ def test_store_summary_reports_unused_versions_with_reclaimable_size(
     )
 
     # Act
-    report = store_summary(queries, CONFIG).unused
+    report = store_summary(queries, CONFIG, visible=ALL_PROJECTS).unused
 
     # Assert
     assert report.versions == 3
@@ -149,7 +150,7 @@ def test_store_summary_problems_carry_fix_instructions(
     )
 
     # Act
-    problems = store_summary(queries, CONFIG).problems
+    problems = store_summary(queries, CONFIG, visible=ALL_PROJECTS).problems
 
     # Assert
     found = {(p.code, p.path) for p in problems}

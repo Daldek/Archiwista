@@ -14,6 +14,7 @@ import kartograf
 import pytest
 
 import archiwista.adapter.kartograf.adapter as kartograf_adapter
+from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppSettings, StoreConfig, StoreKind
 from archiwista.errors import SourceUnavailableError
 from archiwista.index import (
@@ -78,7 +79,7 @@ class _Env:
         )
 
     def slot(self, slot: str) -> SlotDetail:
-        detail = self.queries.slot(STORE, slot)
+        detail = self.queries.slot(STORE, slot, visible=ALL_PROJECTS)
         assert detail is not None, slot
         return detail
 
@@ -157,7 +158,9 @@ def _rows(queries: IndexQueries) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = []
     cursor = None
     while True:
-        page = queries.slots(SlotQuery(versions="all", limit=200, cursor=cursor))
+        page = queries.slots(
+            SlotQuery(versions="all", limit=200, cursor=cursor), visible=ALL_PROJECTS
+        )
         for row in page.items:
             version = row.version
             rows.append(
@@ -326,7 +329,7 @@ def test_missing_version_marked_then_removed_after_next_full_scan(
     assert still_missing.state == "missing"
     assert still_missing.missing_since == missing.missing_since
     assert removed.finished.removed == 1
-    assert env.queries.version(STORE, old.path) is None
+    assert env.queries.version(STORE, old.path, visible=ALL_PROJECTS) is None
     assert env.slot(link.path).current == link.version_path
 
 
@@ -341,8 +344,12 @@ def test_pins_survive_rescan(env: _Env) -> None:
         if not pin.current and pin.present
     )
     env.scan("full")
-    key = next(ref.key for ref in env.queries.projects() if ref.name == project.name)
-    record = env.queries.project(key)
+    key = next(
+        ref.key
+        for ref in env.queries.projects(visible=ALL_PROJECTS)
+        if ref.name == project.name
+    )
+    record = env.queries.project(key, visible=ALL_PROJECTS)
     assert record is not None
     slot = next(item.slot for item in record.pins if item.version == pin.version)
     assert slot is not None
@@ -350,13 +357,13 @@ def test_pins_survive_rescan(env: _Env) -> None:
     # Act
     env.scan("incremental")
     env.scan("full")
-    rescanned = env.queries.project(key)
+    rescanned = env.queries.project(key, visible=ALL_PROJECTS)
     pinned_by = env.version(slot, pin.version).pinned_by
     remove_version(env.store.root, pin.version)
     env.scan("incremental")
-    marked = env.queries.project(key)
+    marked = env.queries.project(key, visible=ALL_PROJECTS)
     env.scan("full")
-    dropped = env.queries.project(key)
+    dropped = env.queries.project(key, visible=ALL_PROJECTS)
 
     # Assert
     assert rescanned == record
@@ -367,7 +374,7 @@ def test_pins_survive_rescan(env: _Env) -> None:
         states = {item.version: item.state for item in later.pins}
         assert states.pop(pin.version) == "missing"
         assert set(states.values()) == {"ok"}
-    assert env.queries.version(STORE, pin.version) is None
+    assert env.queries.version(STORE, pin.version, visible=ALL_PROJECTS) is None
 
 
 def test_empty_mount_point_keeps_index(env: _Env) -> None:

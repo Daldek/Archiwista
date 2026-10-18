@@ -27,6 +27,7 @@ from pathlib import Path, PurePosixPath
 from types import TracebackType
 from typing import Self
 
+from archiwista.auth import access_key
 from archiwista.index.geometry import is_box, polygon_bounds
 from archiwista.index.schema import connect, initialize
 from archiwista.index.types import (
@@ -872,10 +873,13 @@ class IndexWriter:
         Returns
         -------
         str
-            The project's key: its slugged name, made unique.
+            The project's key: its slugged name, made unique. The project's
+            access key (its directory after ``realpath``) is recorded with
+            it, so the state database's access entry applies.
         """
         store_id = self._find_store_id(store) if store is not None else None
         path = str(info.path)
+        key_of_access = access_key(info.path)
         with self._transaction() as connection:
             row = connection.execute(
                 "SELECT key FROM projects WHERE producer = ? AND path = ?",
@@ -883,10 +887,12 @@ class IndexWriter:
             ).fetchone()
             key = str(row[0]) if row is not None else _free_key(connection, info.name)
             (project_id,) = connection.execute(
-                "INSERT INTO projects (key, producer, path, name, store_id, store_dir,"
-                " status, problem, manifest_mtime_ns, manifest_size, scanned_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO projects (key, producer, path, access_key, name,"
+                " store_id, store_dir, status, problem, manifest_mtime_ns,"
+                " manifest_size, scanned_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (producer, path) DO UPDATE SET name = excluded.name,"
+                " access_key = excluded.access_key,"
                 " store_id = excluded.store_id, store_dir = excluded.store_dir,"
                 " status = excluded.status, problem = excluded.problem,"
                 " manifest_mtime_ns = excluded.manifest_mtime_ns,"
@@ -896,6 +902,7 @@ class IndexWriter:
                     key,
                     info.producer,
                     path,
+                    key_of_access,
                     info.name,
                     store_id,
                     info.store,

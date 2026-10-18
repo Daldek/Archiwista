@@ -2,10 +2,13 @@
 
 ``store_summary`` answers ``GET /stores/{store}`` from the index alone, so a
 disconnected store still shows its last known state (``state.stale``).
+Counts cover every project (a version any project pins is not unused) but
+only projects the principal sees are named (A-ADR-029).
 """
 
 from dataclasses import dataclass
 
+from archiwista.auth import ProjectVisibility
 from archiwista.config import StoreConfig, StoreKind
 from archiwista.index import (
     IndexQueries,
@@ -38,13 +41,14 @@ class StoreSummary:
     usage : StoreUsage
         Disk usage per product, each content once (links add nothing).
     unused : UnusedVersions
-        Present versions neither current, a full sheet, nor pinned.
+        Present versions neither current, a full sheet, nor pinned by any
+        project (visible or not).
     projects : tuple[ProjectRef, ...]
-        Projects whose manifest names this store.
+        Projects the principal sees whose manifest names this store.
     problems : tuple[Problem, ...]
         Store problems with fix instructions: producer findings, check
         findings (``link_mismatch``), orphan link sidecars and pinned
-        files missing from the store.
+        files missing from the store (of projects the principal sees).
     """
 
     store: str
@@ -57,7 +61,9 @@ class StoreSummary:
     problems: tuple[Problem, ...]
 
 
-def store_summary(queries: IndexQueries, store: StoreConfig) -> StoreSummary:
+def store_summary(
+    queries: IndexQueries, store: StoreConfig, *, visible: ProjectVisibility
+) -> StoreSummary:
     """Return the state of a configured store from the index.
 
     Parameters
@@ -66,6 +72,8 @@ def store_summary(queries: IndexQueries, store: StoreConfig) -> StoreSummary:
         Reader of the local index.
     store : StoreConfig
         The configured store.
+    visible : ProjectVisibility
+        Projects the principal sees (``Authorizer.visible_projects``).
     """
     producer = next(iter(store.roots()))
     state = next(
@@ -76,7 +84,10 @@ def store_summary(queries: IndexQueries, store: StoreConfig) -> StoreSummary:
     problems = (
         *(_issue(issue, producer) for issue in queries.issues(store.id)),
         *(_orphan(link, producer) for link in queries.orphan_links(store.id)),
-        *(_pin(pin, producer) for pin in queries.pin_problems(store.id)),
+        *(
+            _pin(pin, producer)
+            for pin in queries.pin_problems(store.id, visible=visible)
+        ),
     )
     return StoreSummary(
         store=store.id,
@@ -85,7 +96,7 @@ def store_summary(queries: IndexQueries, store: StoreConfig) -> StoreSummary:
         state=state,
         usage=usage,
         unused=unused,
-        projects=queries.projects(store=store.id),
+        projects=queries.projects(store=store.id, visible=visible),
         problems=problems,
     )
 

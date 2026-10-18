@@ -92,6 +92,8 @@ def test_config_store_round_trip_restores_all_settings(
                 attribution="GUGiK",
             ),
         ),
+        store_write_for_all=True,
+        default_project_visibility="private",
     )
     store = ConfigStore(tmp_path / "config" / "config.toml")
 
@@ -133,6 +135,8 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     assert settings.scan_interval_s("share") == 15 * 60
     assert [basemap.grayscale for basemap in settings.basemaps] == [True]
     assert settings.basemaps[0].origin == "https://tile.openstreetmap.org"
+    assert settings.store_write_for_all is False
+    assert settings.default_project_visibility == "public"
 
 
 def test_config_store_invalid_toml_reported_in_polish(tmp_path: Path) -> None:
@@ -155,6 +159,7 @@ def test_config_parse_reports_every_invalid_field() -> None:
                 "port": 80,
                 "colour": "red",
                 "project_dirs": ["projekty"],
+                "default_project_visibility": "users",
                 "stores": [
                     {"id": "a", "name": "A", "kartograf": "/a", "kind": "local"},
                     {"id": "a", "name": "B", "kartograf": "/b", "kind": "local"},
@@ -167,6 +172,7 @@ def test_config_parse_reports_every_invalid_field() -> None:
     assert "nieznane ustawienie" in messages["colour"]
     assert "bezwzględna" in messages["project_dirs[0]"]
     assert "„a” powtarza się" in messages["stores"]
+    assert "public, private" in messages["default_project_visibility"]
 
 
 def test_config_basemap_tile_template_requires_coordinates() -> None:

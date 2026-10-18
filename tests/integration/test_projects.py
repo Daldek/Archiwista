@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.adapter.kartograf.adapter import KartografAdapter
+from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.index import IndexQueries, IndexWriter, scan_projects
 from archiwista.services import project_detail, project_status, store_summary
@@ -106,8 +107,8 @@ def test_scan_projects_links_pins_to_indexed_versions(
         project_dirs=[store.projects_dir],
         stores=[_config(store.root)],
     )
-    detail = project_detail(queries, "projekt-01")
-    card = queries.slot(STORE, older.path)
+    detail = project_detail(queries, "projekt-01", visible=ALL_PROJECTS)
+    card = queries.slot(STORE, older.path, visible=ALL_PROJECTS)
 
     # Assert
     assert summary.found == len(store.projects)
@@ -162,7 +163,7 @@ def test_scan_projects_rereads_only_new_changed_or_unresolved_manifests(
     changed = scan_projects(
         adapter, writer, project_dirs=[store.projects_dir], stores=stores
     )
-    detail = project_detail(queries, "projekt-01")
+    detail = project_detail(queries, "projekt-01", visible=ALL_PROJECTS)
 
     # Assert
     # The invalid manifest and the one naming an unconfigured store stay
@@ -188,8 +189,8 @@ def test_scan_projects_pin_without_version_is_a_visible_problem(
 
     # Act
     scan_projects(adapter, writer, project_dirs=[store.projects_dir], stores=[config])
-    detail = project_detail(queries, "brak-wersji")
-    summary = store_summary(queries, config)
+    detail = project_detail(queries, "brak-wersji", visible=ALL_PROJECTS)
+    summary = store_summary(queries, config, visible=ALL_PROJECTS)
 
     # Assert
     assert detail is not None
@@ -218,8 +219,8 @@ def test_scan_projects_invalid_manifest_stays_visible_until_fixed(
     broken = scan_projects(
         adapter, writer, project_dirs=[store.projects_dir], stores=stores
     )
-    listed = {p.key: p for p in queries.projects()}["zepsuty"]
-    detail = project_detail(queries, "zepsuty")
+    listed = {p.key: p for p in queries.projects(visible=ALL_PROJECTS)}["zepsuty"]
+    detail = project_detail(queries, "zepsuty", visible=ALL_PROJECTS)
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
             "elevation fly", "elevation download"
@@ -227,7 +228,7 @@ def test_scan_projects_invalid_manifest_stays_visible_until_fixed(
         encoding="utf-8",
     )
     scan_projects(adapter, writer, project_dirs=[store.projects_dir], stores=stores)
-    healed = project_detail(queries, "zepsuty")
+    healed = project_detail(queries, "zepsuty", visible=ALL_PROJECTS)
 
     # Assert
     assert broken.invalid == 1
@@ -257,10 +258,10 @@ def test_scan_projects_unknown_store_matches_once_configured(
     first = scan_projects(
         adapter, writer, project_dirs=[store.projects_dir], stores=stores[:1]
     )
-    unknown = project_detail(queries, "inny-magazyn")
+    unknown = project_detail(queries, "inny-magazyn", visible=ALL_PROJECTS)
     writer.sync_stores({s.id: s.roots() for s in stores})
     scan_projects(adapter, writer, project_dirs=[store.projects_dir], stores=stores)
-    known = project_detail(queries, "inny-magazyn")
+    known = project_detail(queries, "inny-magazyn", visible=ALL_PROJECTS)
 
     # Assert
     assert first.unknown_store == 1
@@ -272,7 +273,9 @@ def test_scan_projects_unknown_store_matches_once_configured(
     assert known is not None
     assert known.project.store == "inny"
     assert known.problems == ()
-    assert [p.key for p in queries.projects(store="inny")] == ["inny-magazyn"]
+    assert [p.key for p in queries.projects(store="inny", visible=ALL_PROJECTS)] == [
+        "inny-magazyn"
+    ]
 
 
 def test_scan_projects_discovery_depth_and_skipped_directories(
@@ -293,7 +296,7 @@ def test_scan_projects_discovery_depth_and_skipped_directories(
 
     # Act
     scan_projects(adapter, writer, project_dirs=[top], stores=[_config(store.root)])
-    names = {p.name for p in queries.projects()}
+    names = {p.name for p in queries.projects(visible=ALL_PROJECTS)}
 
     # Assert
     assert "deep4" in names
@@ -326,7 +329,7 @@ def test_scan_projects_removes_gone_manifests_but_keeps_unreachable_dirs(
     assert after_delete.removed == 1
     assert disconnected.removed == 0
     assert disconnected.unreadable_dirs == (str(store.projects_dir),)
-    assert len(queries.projects()) == len(store.projects) - 1
+    assert len(queries.projects(visible=ALL_PROJECTS)) == len(store.projects) - 1
 
 
 def test_scan_projects_matches_store_through_path_alias(
@@ -356,9 +359,13 @@ def test_scan_projects_matches_store_through_path_alias(
 
     # Act
     scan_projects(adapter, writer, project_dirs=[projects], stores=[config])
-    windows_store = {p.name: p.store for p in queries.projects()}["z-windows"]
+    windows_store = {p.name: p.store for p in queries.projects(visible=ALL_PROJECTS)}[
+        "z-windows"
+    ]
     scan_projects(adapter, writer, project_dirs=[projects], stores=[mac])
-    mac_store = {p.name: p.store for p in queries.projects()}["z-maca"]
+    mac_store = {p.name: p.store for p in queries.projects(visible=ALL_PROJECTS)}[
+        "z-maca"
+    ]
 
     # Assert
     assert windows_store == STORE
@@ -385,8 +392,8 @@ def test_project_status_asks_the_producer_now(
     registry = load_registry(cache_dir=tmp_path / "registry")
 
     # Act
-    live = project_status(queries, registry, "projekt-01")
-    unknown = project_status(queries, registry, "nie-ma")
+    live = project_status(queries, registry, "projekt-01", visible=ALL_PROJECTS)
+    unknown = project_status(queries, registry, "nie-ma", visible=ALL_PROJECTS)
 
     # Assert
     assert live is not None

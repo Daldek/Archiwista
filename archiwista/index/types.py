@@ -599,13 +599,16 @@ class ProjectRef:
     ``status`` is the producer's project status when the manifest was last
     read (``None``: not checked); ``problem`` is the producer's message for
     an invalid manifest. ``missing_pins`` counts pins whose version is not
-    present in the index or holds other content.
+    present in the index or holds other content. ``access_key`` is the key
+    of the project's access entry in the state database: its directory after
+    ``realpath`` when it was scanned (``archiwista.auth.access_key``).
     """
 
     key: str
     name: str
     producer: str
     path: str
+    access_key: str
     store: str | None
     store_dir: str
     status: str | None

@@ -34,6 +34,7 @@ from archiwista.security import (
     redeem_one_time_token,
     resolve_indexed_path,
 )
+from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 PORT = 8090
@@ -100,6 +101,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
         port=PORT,
         settings=settings,
         index_path=index_path,
+        state=StateStore(tmp_path / "data" / "state.sqlite"),
         sessions=SessionStore(clock=clock),
         web_dir=web_dir,
     )

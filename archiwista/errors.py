@@ -65,3 +65,36 @@ class IndexQueryError(ArchiwistaError):
     The message is Polish and names the parameter (cursor, limit, years,
     area or view); the HTTP API answers ``422 validation_error``.
     """
+
+
+class PermissionDeniedError(ArchiwistaError):
+    """The principal may not perform an action (A-ADR-029).
+
+    The message is Polish and says what is missing; the HTTP API answers
+    ``403 permission_denied``. A project the principal does not see is
+    ``NotFoundError`` instead, so that its existence stays hidden.
+    """
+
+
+class NotFoundError(ArchiwistaError):
+    """An account, a group or a project is unknown or not visible (``404``)."""
+
+
+class ConflictError(ArchiwistaError):
+    """A change conflicts with the current state, e.g. a taken id (``409``)."""
+
+
+class InvalidChangeError(ArchiwistaError):
+    """A requested change is invalid (``422 validation_error``).
+
+    For example unknown people or groups, entries that do not fit the
+    project's visibility, or a reserved account id; the message is Polish.
+    """
+
+
+class StateError(ArchiwistaError):
+    """The state database cannot be used or restored.
+
+    For example a database written by a newer Archiwista, or a backup
+    imported into a database that is not empty; the message is Polish.
+    """

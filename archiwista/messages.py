@@ -43,6 +43,8 @@ MESSAGES = MappingProxyType(
         "api_title_csrf_rejected": "Żądanie odrzucone",
         "api_title_validation_error": "Niepoprawne dane żądania",
         "api_title_not_found": "Nie znaleziono",
+        "api_title_permission_denied": "Brak uprawnień",
+        "api_title_conflict": "Konflikt",
         "api_invalid_host": (
             "Archiwista przyjmuje tylko żądania na adres 127.0.0.1:{port}"
             " albo localhost:{port}."
@@ -115,6 +117,7 @@ MESSAGES = MappingProxyType(
         "settings_duplicate_basemap": "nazwa podkładu „{value}” powtarza się",
         "settings_basemap_url": "adres podkładu musi zaczynać się od http:// albo https://",
         "settings_basemap_xyz": "adres kafli musi zawierać {z}, {x} i {y}",
+        "settings_default_visibility": "dozwolone wartości: public, private",
         "root_missing": (
             "Katalog {producer} magazynu „{store}” nie istnieje"
             " albo udział nie jest podłączony: {path}"
@@ -312,6 +315,143 @@ MESSAGES = MappingProxyType(
         ),
         "problem_other": "Problem magazynu ({code}): {path}",
         "fix_other": "Sprawdź to miejsce narzędziami pakietu {producer}.",
+        # Permission model: accounts, groups, project access (step 8b).
+        "permission_project_view": "Brak dostępu do tego projektu.",
+        "permission_project_share": (
+            "Udostępnienie projektu zmienia tylko jego właściciel albo administrator."
+        ),
+        "permission_users_manage": "Zarządzanie kontami wymaga roli administratora.",
+        "permission_groups_manage": "Zarządzanie grupami wymaga roli administratora.",
+        "permission_settings_write": "Zmiana ustawień wymaga roli administratora.",
+        "permission_store_write": (
+            "Zapis do magazynu wymaga uprawnienia „zapis do magazynu”"
+            " (rola store_writer)."
+        ),
+        "project_not_found": "Nie ma projektu „{project}”.",
+        "state_newer": (
+            "Baza stanu {path} pochodzi z nowszej wersji Archiwisty (schemat"
+            " {version}, ta wersja zna {supported}); zainstaluj nowszą wersję"
+            " Archiwisty. Baza pozostaje bez zmian."
+        ),
+        "state_migration_broken": (
+            "Migracja bazy stanu {path} zerwałaby powiązania między tabelami;"
+            " baza pozostaje bez zmian."
+        ),
+        "state_id_pattern": (
+            "Niepoprawny identyfikator „{id}”: małe litery, cyfry, „.”, „_” i „-”,"
+            " najwyżej 64 znaki, na początku litera albo cyfra."
+        ),
+        "state_user_id_reserved": (
+            "Identyfikator „{id}” jest zarezerwowany dla właściciela lokalnej"
+            " instalacji."
+        ),
+        "state_name_invalid": (
+            "Nazwa nie może być pusta ani dłuższa niż {limit} znaków."
+        ),
+        "state_roles_unknown": "Nieznane role: {roles}. Dostępne: admin, store_writer.",
+        "state_visibility_unknown": (
+            "Nieznana widoczność „{visibility}”. Dostępne: public, users, group,"
+            " private."
+        ),
+        "state_entries_users": (
+            "Widoczność „users” wymaga listy osób (co najmniej jednej) i nie"
+            " przyjmuje grup."
+        ),
+        "state_entries_group": (
+            "Widoczność „group” wymaga listy grup (co najmniej jednej) i nie"
+            " przyjmuje osób."
+        ),
+        "state_entries_none": (
+            "Widoczność „{visibility}” nie przyjmuje listy osób ani grup."
+        ),
+        "state_user_exists": "Konto „{id}” już istnieje.",
+        "state_group_exists": "Grupa „{id}” już istnieje.",
+        "state_user_not_found": "Nie ma konta „{id}”.",
+        "state_group_not_found": "Nie ma grupy „{id}”.",
+        "state_users_unknown": "Nieznane konta: {ids}.",
+        "state_groups_unknown": "Nieznane grupy: {ids}.",
+        "state_import_not_empty": (
+            "Baza stanu {path} nie jest pusta: kopię można odtworzyć tylko do"
+            " pustej bazy (bez kont, grup, wpisów projektów i dziennika)."
+        ),
+        "state_import_inconsistent": "Kopia bazy stanu jest niespójna: {detail}",
+        "state_import_not_json": "Plik nie jest poprawnym JSON: {detail}",
+        "state_import_schema": (
+            "Plik nie jest kopią bazy stanu {expected} (schemat: {found})."
+        ),
+        "state_import_invalid": "Kopia bazy stanu ma niepoprawne pola: {fields}.",
+        "role_admin": "administrator",
+        "role_store_writer": "zapis do magazynu",
+        "visibility_public": "publiczny (wszyscy)",
+        "visibility_users": "wybrane osoby",
+        "visibility_group": "członkowie wybranych grup",
+        "visibility_private": "prywatny (tylko właściciel)",
+        "cli_users_help": "Konta osób i ich role (tylko administrator).",
+        "cli_users_list_help": "Wypisuje konta z rolami i grupami.",
+        "cli_users_add_help": "Zakłada konto (w v0.1 bez hasła i logowania).",
+        "cli_users_roles_help": "Ustawia role konta (bez ról — zwykły użytkownik).",
+        "cli_users_remove_help": (
+            "Usuwa konto z grup i list udostępnienia, a potem samo konto."
+        ),
+        "cli_user_id_help": "identyfikator konta, np. anna.nowak",
+        "cli_name_help": "nazwa wyświetlana (domyślnie identyfikator)",
+        "cli_role_help": (
+            "rola: admin (administrator) albo store_writer (zapis do magazynu)"
+        ),
+        "cli_groups_help": "Grupy osób, np. działy (tylko administrator).",
+        "cli_groups_list_help": "Wypisuje grupy z członkami.",
+        "cli_groups_add_help": "Zakłada grupę.",
+        "cli_groups_members_help": (
+            "Ustawia członków grupy (zastępuje dotychczasowych)."
+        ),
+        "cli_groups_remove_help": "Usuwa grupę i wpisy projektów, które ją wskazują.",
+        "cli_group_id_help": "identyfikator grupy, np. hydro",
+        "cli_member_help": "identyfikator konta członka",
+        "cli_share_help": (
+            "Pokazuje albo ustawia, kto widzi projekt (właściciel projektu"
+            " albo administrator)."
+        ),
+        "cli_project_help": "identyfikator projektu, jak w /api/v1/projects/{id}",
+        "cli_visibility_help": (
+            "public — wszyscy, users — wybrane osoby (--user), group — członkowie"
+            " grup (--group), private — tylko właściciel; bez tej opcji polecenie"
+            " tylko pokazuje udostępnienie"
+        ),
+        "cli_share_user_help": "osoba, która widzi projekt (z --visibility users)",
+        "cli_share_group_help": (
+            "grupa, której członkowie widzą projekt (z --visibility group)"
+        ),
+        "cli_owner_help": "nowy właściciel projektu (identyfikator konta)",
+        "cli_share_needs_visibility": (
+            "Podaj --visibility, aby zmienić udostępnienie projektu."
+        ),
+        "cli_json_help": "wypisz JSON jak odpowiedź API",
+        "cli_state_help": (
+            "Kopia zapasowa bazy stanu (konta, grupy, udostępnienia, dziennik)."
+        ),
+        "cli_state_export_help": "Zapisuje bazę stanu jako JSON archiwista-state/1.",
+        "cli_state_output_help": "plik kopii (domyślnie standardowe wyjście)",
+        "cli_state_import_help": "Odtwarza bazę stanu z kopii — tylko do pustej bazy.",
+        "cli_state_file_help": "plik zapisany przez „archiwista state export”",
+        "cli_state_exported": "Zapisano kopię bazy stanu: {path}",
+        "cli_state_imported": (
+            "Odtworzono bazę stanu: konta {users}, grupy {groups}, projekty"
+            " {projects}, wpisy dziennika {changes}."
+        ),
+        "cli_state_unreadable": "Nie można odczytać pliku {path}: {detail}",
+        "cli_admin_failed": "Nie można wykonać polecenia",
+        "cli_no_users": "Brak kont.",
+        "cli_no_groups": "Brak grup.",
+        "cli_user_line": "{id} — {name}; role: {roles}; grupy: {groups}",
+        "cli_user_disabled": " (wyłączone)",
+        "cli_group_line": "{id} — {name}; członkowie: {members}",
+        "cli_user_removed": "Usunięto konto „{id}”.",
+        "cli_group_removed": "Usunięto grupę „{id}”.",
+        "cli_access_line": (
+            "Projekt „{project}”: {visibility}{entries}; właściciel: {owner}"
+        ),
+        "cli_access_default": " (widoczność domyślna — projekt nie ma własnego wpisu)",
+        "cli_none": "brak",
     }
 )
 

@@ -2,12 +2,15 @@
 
 ``project_detail`` answers from the index (``GET /projects/{id}``);
 ``project_status`` asks the producer now (``GET /projects/{id}/status``,
-no network, no hashing). Neither runs or changes a project.
+no network, no hashing). Neither runs or changes a project. Both take the
+principal's ``ProjectVisibility`` (A-ADR-029): a project they do not see is
+unknown to them (``None``, ``404``).
 """
 
 from dataclasses import dataclass
 from pathlib import Path
 
+from archiwista.auth import ProjectVisibility
 from archiwista.index import (
     IndexQueries,
     ProjectPinRef,
@@ -42,8 +45,10 @@ class ProjectDetail:
     problems: tuple[Problem, ...]
 
 
-def project_detail(queries: IndexQueries, key: str) -> ProjectDetail | None:
-    """Return a project's detail from the index, or ``None`` for an unknown key.
+def project_detail(
+    queries: IndexQueries, key: str, *, visible: ProjectVisibility
+) -> ProjectDetail | None:
+    """Return a project's detail from the index.
 
     Parameters
     ----------
@@ -51,8 +56,15 @@ def project_detail(queries: IndexQueries, key: str) -> ProjectDetail | None:
         Reader of the local index.
     key : str
         Project key (``ProjectRef.key``).
+    visible : ProjectVisibility
+        Projects the principal sees (``Authorizer.visible_projects``).
+
+    Returns
+    -------
+    ProjectDetail or None
+        ``None`` for an unknown project or one the principal does not see.
     """
-    record = queries.project(key)
+    record = queries.project(key, visible=visible)
     if record is None:
         return None
     return ProjectDetail(
@@ -104,7 +116,11 @@ def project_problems(record: ProjectRecord) -> tuple[Problem, ...]:
 
 
 def project_status(
-    queries: IndexQueries, registry: SourceRegistry, key: str
+    queries: IndexQueries,
+    registry: SourceRegistry,
+    key: str,
+    *,
+    visible: ProjectVisibility,
 ) -> ProjectInfo | None:
     """Ask the project's producer for its current status (no network, no hashing).
 
@@ -116,12 +132,15 @@ def project_status(
         Producer plugins.
     key : str
         Project key.
+    visible : ProjectVisibility
+        Projects the principal sees (``Authorizer.visible_projects``).
 
     Returns
     -------
     ProjectInfo or None
         Tasks with ``ok``, ``not_downloaded``, ``missing`` or ``corrupt``
-        and the project's worst state; ``None`` for an unknown key.
+        and the project's worst state; ``None`` for an unknown project or
+        one the principal does not see.
 
     Raises
     ------
@@ -130,7 +149,7 @@ def project_status(
     ProducerError
         The producer rejected the manifest or cannot reach the store.
     """
-    record = queries.project(key)
+    record = queries.project(key, visible=visible)
     if record is None:
         return None
     adapter = registry.adapter(record.project.producer)

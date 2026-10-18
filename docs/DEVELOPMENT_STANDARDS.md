@@ -268,10 +268,15 @@ tests/
 │   ├── test_coverage.py     # Pokrycie lokalne w układzie płaskim (decyzja 5)
 │   ├── test_store_summary.py  # Stan magazynu: zajętość, raport porządków, problemy
 │   ├── test_snapshots.py    # Migawki danych własnych (A-ADR-027)
-│   └── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
+│   ├── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
+│   ├── test_authorize.py    # Macierz widoczności, role, store.write (A-ADR-029)
+│   └── test_project_visibility.py  # Filtr widoczności w zapytaniach i usługach
 ├── integration/
 │   ├── test_projects.py     # Projekty: odkrywanie, przypięcia, błędny manifest
 │   ├── test_scanner.py      # Skaner i odświeżenie widoku na magazynie testowym
+│   ├── test_permissions_api.py  # Uprawnienia przez HTTP: 404/403, CSRF, dziennik
+│   ├── test_state.py        # Baza stanu: migracje, przebudowa indeksu, eksport/import
+│   ├── test_cli.py          # CLI --json równe odpowiedziom API
 │   └── test_api.py          # Endpointy /api/v1
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach
@@ -282,7 +287,9 @@ tests/
 │   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)
 │   ├── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
 │   ├── index_data.py        # Wpisy źródła budowane ręcznie dla testów indeksu
-│   └── store_edits.py       # Zmiany magazynu jak przy pobraniu: nowa wersja, przepięcie
+│   ├── store_edits.py       # Zmiany magazynu jak przy pobraniu: nowa wersja, przepięcie
+│   ├── permissions.py       # Cztery tożsamości i grupa do macierzy uprawnień
+│   └── api_session.py       # Aplikacja w TestClient z sesjami wskazanych osób
 ├── perf/
 │   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
 │   └── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
@@ -459,6 +466,12 @@ class SnapshotError(ArchiwistaError):
 class IndexQueryError(ArchiwistaError):
     """A query of the local index has invalid parameters (cursor, limit, area)."""
     pass
+
+class PermissionDeniedError(ArchiwistaError):  # 403 permission_denied (A-ADR-029)
+class NotFoundError(ArchiwistaError):          # 404 not_found (też projekt niewidoczny)
+class ConflictError(ArchiwistaError):          # 409 conflict (np. zajęty identyfikator)
+class InvalidChangeError(ArchiwistaError):     # 422 validation_error (błędna zmiana)
+class StateError(ArchiwistaError):             # baza stanu nowsza, import do niepustej
 ```
 
 Wyjątki producentów (`KartografError`, `IMGWError`) łapie tylko adapter
@@ -469,7 +482,9 @@ zgłasza `SourceUnavailableError`/`SourceIncompatibleError` ze stanem
 `source_incompatible`, `kartograf_error`, `not_found`, `conflict`…)
 i polski komunikat (SPEC 9.1); `IndexQueryError` (obcy kursor, limit poza
 zakresem, odwrócone lata, obszar spoza WGS84) to `422 validation_error`
-z komunikatem po polsku ze słownika tekstów.
+z komunikatem po polsku ze słownika tekstów. Kody błędów usług zbiera jedna
+tabela `PROBLEMS` w `archiwista/api/errors.py`, której używa też CLI
+z `--json`.
 
 ### 8.2 Walidacja na wejściu
 

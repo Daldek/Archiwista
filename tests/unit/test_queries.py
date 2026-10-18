@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from archiwista.auth import ALL_PROJECTS
 from archiwista.errors import IndexQueryError
 from archiwista.index import (
     AreaFilter,
@@ -111,10 +112,18 @@ def test_queries_search_finds_identifiers(
     # Arrange
     writer, queries = index
     _write_search_store(writer)
-    everything = [row.name for row in queries.slots(SlotQuery(limit=200)).items]
+    everything = [
+        row.name
+        for row in queries.slots(SlotQuery(limit=200), visible=ALL_PROJECTS).items
+    ]
 
     # Act
-    found = [row.name for row in queries.slots(SlotQuery(q=text, limit=200)).items]
+    found = [
+        row.name
+        for row in queries.slots(
+            SlotQuery(q=text, limit=200), visible=ALL_PROJECTS
+        ).items
+    ]
 
     # Assert
     assert found == (everything if expected is None else expected)
@@ -130,8 +139,10 @@ def test_queries_search_finds_old_versions_by_their_sha256(index: Index) -> None
     write_pass(writer, [link(sheet, current), current, old])
 
     # Act
-    slots = queries.slots(SlotQuery(q=SHA_A[:12]))
-    versions = queries.slots(SlotQuery(q=SHA_A[:12], versions="all"))
+    slots = queries.slots(SlotQuery(q=SHA_A[:12]), visible=ALL_PROJECTS)
+    versions = queries.slots(
+        SlotQuery(q=SHA_A[:12], versions="all"), visible=ALL_PROJECTS
+    )
 
     # Assert
     assert [row.version.label for row in slots.items if row.version] == [
@@ -167,8 +178,10 @@ def test_queries_map_lists_5000_footprints_then_aggregates(index: Index) -> None
     everything = (13.9, 48.9, 19.1, 51.6)
 
     # Act
-    listed = queries.footprints(MapQuery(bbox=five_thousand))
-    gridded = queries.footprints(MapQuery(bbox=everything, grid_columns=10))
+    listed = queries.footprints(MapQuery(bbox=five_thousand), visible=ALL_PROJECTS)
+    gridded = queries.footprints(
+        MapQuery(bbox=everything, grid_columns=10), visible=ALL_PROJECTS
+    )
 
     # Assert
     assert (listed.total, listed.aggregated, len(listed.items)) == (5000, False, 5000)
@@ -207,7 +220,9 @@ def test_queries_map_draws_the_versions_of_the_mode(index: Index) -> None:
     labels = {
         mode: sorted(
             item.label or ""
-            for item in queries.footprints(MapQuery(bbox=view, versions=mode)).items
+            for item in queries.footprints(
+                MapQuery(bbox=view, versions=mode), visible=ALL_PROJECTS
+            ).items
         )
         for mode in modes
     }
@@ -250,7 +265,9 @@ def test_queries_area_of_one_sheet_leaves_out_its_neighbours(index: Index) -> No
     found = {
         name: [
             row.name
-            for row in queries.slots(SlotQuery(area=AreaFilter(area), limit=200)).items
+            for row in queries.slots(
+                SlotQuery(area=AreaFilter(area), limit=200), visible=ALL_PROJECTS
+            ).items
         ]
         for name, area in (("sheet", sheet), ("inner", inner), ("wider", wider))
     }
@@ -305,8 +322,8 @@ def test_queries_card_and_version_detail(index: Index) -> None:
     path = current.relative_path.as_posix()
 
     # Act
-    card = queries.slot(STORE, sheet)
-    detail = queries.version(STORE, path)
+    card = queries.slot(STORE, sheet, visible=ALL_PROJECTS)
+    detail = queries.version(STORE, path, visible=ALL_PROJECTS)
     sidecar = queries.sidecar(STORE, path)
 
     # Assert
@@ -330,8 +347,8 @@ def test_queries_card_and_version_detail(index: Index) -> None:
         ]
     ]
     assert sidecar == {"schema": "kartograf-meta/1", "path": path}
-    assert queries.version(STORE, "nmt/brak.asc") is None
-    assert queries.slot("inny", sheet) is None
+    assert queries.version(STORE, "nmt/brak.asc", visible=ALL_PROJECTS) is None
+    assert queries.slot("inny", sheet, visible=ALL_PROJECTS) is None
 
 
 def test_queries_group_lists_files_of_one_request(index: Index) -> None:
@@ -470,7 +487,7 @@ def test_queries_map_rejects_invalid_views(index: Index, query: MapQuery) -> Non
 
     # Act / Assert
     with pytest.raises(IndexQueryError):
-        queries.footprints(query)
+        queries.footprints(query, visible=ALL_PROJECTS)
 
 
 def test_queries_area_must_be_a_polygon(index: Index) -> None:
@@ -484,4 +501,4 @@ def test_queries_area_must_be_a_polygon(index: Index) -> None:
 
     # Act / Assert
     with pytest.raises(IndexQueryError, match="wielokątem"):
-        queries.slots(SlotQuery(area=AreaFilter(line)))
+        queries.slots(SlotQuery(area=AreaFilter(line)), visible=ALL_PROJECTS)

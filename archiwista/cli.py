@@ -4,6 +4,7 @@ import argparse
 import sys
 from collections.abc import Callable
 
+from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
 from archiwista.config import AppPaths, SourceRegistryView
 from archiwista.doctor import doctor_main
 from archiwista.messages import MESSAGES
@@ -77,11 +78,14 @@ def main(
     token.add_argument(
         "--json", action="store_true", help=MESSAGES["cli_token_json_help"]
     )
+    add_admin_commands(commands)
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return 0
     paths = paths or AppPaths.default()
+    if args.command in ADMIN_COMMANDS:
+        return admin_main(args, paths, sys.stdout, sys.stderr)
     if args.command == "token":
         return token_main(
             paths, sys.stdout, sys.stderr, port=args.port, as_json=args.json

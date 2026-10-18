@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from archiwista.auth import ALL_PROJECTS
 from archiwista.errors import ProducerError
 from archiwista.index import (
     AreaFilter,
@@ -213,83 +214,118 @@ def test_index_perf_writer_share_of_a_scan(built: _Build) -> None:
 def test_index_perf_query_latency_p95(built: _Build) -> None:
     """List, search, map and card answers stay under the SPEC 4.5 p95 limits."""
     with IndexQueries(built.path) as queries:
-        sample = queries.slots(SlotQuery(product="nmt", limit=1)).items[0]
+        sample = queries.slots(
+            SlotQuery(product="nmt", limit=1), visible=ALL_PROJECTS
+        ).items[0]
         assert sample.version is not None and sample.version.sha256 is not None
         sha8 = sample.version.sha256[:8]
         version_path = sample.version.path
-        deep = queries.slots(SlotQuery(limit=50))
+        deep = queries.slots(SlotQuery(limit=50), visible=ALL_PROJECTS)
         for _ in range(100):
             assert deep.next_cursor is not None
-            deep = queries.slots(SlotQuery(limit=50, cursor=deep.next_cursor))
+            deep = queries.slots(
+                SlotQuery(limit=50, cursor=deep.next_cursor), visible=ALL_PROJECTS
+            )
         area = AreaFilter(_box(19.0, 49.5, 19.5, 50.0), ("PL",))
         cases: dict[str, tuple[float, Callable[[], object]]] = {
-            "list: first page": (LIST_MS, lambda: queries.slots(SlotQuery(limit=50))),
+            "list: first page": (
+                LIST_MS,
+                lambda: queries.slots(SlotQuery(limit=50), visible=ALL_PROJECTS),
+            ),
             "list: page 101 (cursor)": (
                 LIST_MS,
-                lambda: queries.slots(SlotQuery(limit=50, cursor=deep.next_cursor)),
+                lambda: queries.slots(
+                    SlotQuery(limit=50, cursor=deep.next_cursor), visible=ALL_PROJECTS
+                ),
             ),
             "list: product + years": (
                 LIST_MS,
                 lambda: queries.slots(
-                    SlotQuery(product="orto", years=(2020, 2022), limit=50)
+                    SlotQuery(product="orto", years=(2020, 2022), limit=50),
+                    visible=ALL_PROJECTS,
                 ),
             ),
             "list: all versions": (
                 LIST_MS,
-                lambda: queries.slots(SlotQuery(versions="all", limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(versions="all", limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "list: not current, not pinned": (
                 LIST_MS,
                 lambda: queries.slots(
-                    SlotQuery(versions="noncurrent_unpinned", limit=50)
+                    SlotQuery(versions="noncurrent_unpinned", limit=50),
+                    visible=ALL_PROJECTS,
                 ),
             ),
             "list: pinned": (
                 LIST_MS,
-                lambda: queries.slots(SlotQuery(versions="pinned", limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(versions="pinned", limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "list: without location": (
                 LIST_MS,
-                lambda: queries.slots(SlotQuery(location="none", limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(location="none", limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "list: area 0.5°": (
                 LIST_MS,
-                lambda: queries.slots(SlotQuery(area=area, limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(area=area, limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "search: sheet code": (
                 SEARCH_MS,
-                lambda: queries.slots(SlotQuery(q=sample.unit, limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(q=sample.unit, limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "search: SHA-256 prefix": (
                 SEARCH_MS,
-                lambda: queries.slots(SlotQuery(q=sha8, limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(q=sha8, limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "search: common word '2023'": (
                 SEARCH_MS,
-                lambda: queries.slots(SlotQuery(q="2023", limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(q="2023", limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "search: product name": (
                 SEARCH_MS,
-                lambda: queries.slots(SlotQuery(q="ortofotomapa", limit=50)),
+                lambda: queries.slots(
+                    SlotQuery(q="ortofotomapa", limit=50), visible=ALL_PROJECTS
+                ),
             ),
             "map: whole Poland (grid)": (
                 MAP_MS,
-                lambda: queries.footprints(MapQuery(bbox=(14.0, 49.0, 24.2, 54.9))),
+                lambda: queries.footprints(
+                    MapQuery(bbox=(14.0, 49.0, 24.2, 54.9)), visible=ALL_PROJECTS
+                ),
             ),
             "map: city view": (
                 MAP_MS,
-                lambda: queries.footprints(MapQuery(bbox=(19.0, 49.5, 19.6, 49.9))),
+                lambda: queries.footprints(
+                    MapQuery(bbox=(19.0, 49.5, 19.6, 49.9)), visible=ALL_PROJECTS
+                ),
             ),
             "map: all versions in a view": (
                 MAP_MS,
                 lambda: queries.footprints(
-                    MapQuery(bbox=(19.0, 49.5, 19.6, 49.9), versions="all")
+                    MapQuery(bbox=(19.0, 49.5, 19.6, 49.9), versions="all"),
+                    visible=ALL_PROJECTS,
                 ),
             ),
-            "card: slot": (CARD_MS, lambda: queries.slot(STORE, sample.slot)),
+            "card: slot": (
+                CARD_MS,
+                lambda: queries.slot(STORE, sample.slot, visible=ALL_PROJECTS),
+            ),
             "card: version": (
                 CARD_MS,
-                lambda: queries.version(STORE, version_path),
+                lambda: queries.version(STORE, version_path, visible=ALL_PROJECTS),
             ),
             "store: usage": (CARD_MS, lambda: queries.usage(STORE)),
             "health: status": (CARD_MS, queries.status),

@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -185,6 +185,8 @@ CREATE TABLE projects (
     key TEXT NOT NULL UNIQUE,
     producer TEXT NOT NULL,
     path TEXT NOT NULL,
+    -- Key of the project's access entry in the state database (realpath).
+    access_key TEXT NOT NULL,
     name TEXT NOT NULL,
     store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
     store_dir TEXT NOT NULL,
@@ -196,6 +198,7 @@ CREATE TABLE projects (
     UNIQUE (producer, path)
 );
 CREATE INDEX projects_store ON projects (store_id);
+CREATE INDEX projects_access ON projects (access_key);
 
 CREATE TABLE project_tasks (
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

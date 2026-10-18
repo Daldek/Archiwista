@@ -8,6 +8,13 @@ The catalog orders rows by file name, then slot path, store and version
 path; ``next_cursor`` continues after the last row of a page (keyset
 pagination), so pages stay cheap however deep the client goes. A cursor
 belongs to its query: one from other filters is rejected.
+
+Every method that names projects or follows their pins takes a required
+``visible`` (``Authorizer.visible_projects``, A-ADR-029): projects the
+principal does not see are left out of lists, pins (``pinned_by``), the
+``pinned`` filter and store problems, and ``project`` answers ``None`` for
+them. Reports counting all projects (``noncurrent_unpinned``,
+``unused_versions``) name none.
 """
 
 import base64
@@ -30,6 +37,7 @@ from typing import Any, Self
 import shapely
 from shapely.geometry import shape
 
+from archiwista.auth import ProjectVisibility
 from archiwista.errors import IndexQueryError
 from archiwista.index.coverage import CoverageShape, measure_coverage, planar_crs
 from archiwista.index.geometry import (
@@ -95,9 +103,15 @@ _STATUS = (
     "CASE WHEN g.known = 0 THEN 'unrecognized' WHEN v.id IS NULL THEN s.status"
     " WHEN v.state = 'missing' THEN 'missing' ELSE 'ok' END"
 )
+# Pinned by any project: what clean-up reports count (names never shown).
 _PINNED = (
     "EXISTS (SELECT 1 FROM pins p WHERE p.store_id = v.store_id"
     " AND p.version_path = v.path)"
+)
+# Pinned by a project the principal sees: the ``pinned`` filter (``_where``).
+_PINNED_VISIBLE = (
+    "EXISTS (SELECT 1 FROM pins p JOIN projects pr ON pr.id = p.project_id"
+    " WHERE p.store_id = v.store_id AND p.version_path = v.path AND {visible})"
 )
 _SOURCES: Mapping[VersionsMode, tuple[str, tuple[str, ...]]] = {
     "current": (
@@ -118,7 +132,7 @@ _SOURCES: Mapping[VersionsMode, tuple[str, tuple[str, ...]]] = {
     "pinned": (
         "slots s JOIN segments g ON g.id = s.segment_id"
         " JOIN versions v ON v.slot_id = s.id",
-        (_PINNED,),
+        (),
     ),
     "noncurrent_unpinned": (
         "slots s JOIN segments g ON g.id = s.segment_id"
@@ -152,8 +166,8 @@ _PIN_STATE = (
     " THEN 'sha256_mismatch' ELSE 'ok' END"
 )
 _PROJECT_SELECT = f"""
-SELECT pr.id, pr.key, pr.name, pr.producer, pr.path, st.key AS store,
-    pr.store_dir, pr.status, pr.problem, pr.scanned_at,
+SELECT pr.id, pr.key, pr.name, pr.producer, pr.path, pr.access_key,
+    st.key AS store, pr.store_dir, pr.status, pr.problem, pr.scanned_at,
     (SELECT count(*) FROM project_tasks t WHERE t.project_id = pr.id) AS tasks,
     (SELECT count(*) FROM pins p WHERE p.project_id = pr.id) AS pins,
     (SELECT count(*) FROM {_PIN_SOURCE}
@@ -264,13 +278,16 @@ class IndexQueries:
 
     # Catalog.
 
-    def slots(self, query: SlotQuery) -> SlotPage:
+    def slots(self, query: SlotQuery, *, visible: ProjectVisibility) -> SlotPage:
         """Return a page of catalog rows with the location group counts.
 
         Parameters
         ----------
         query : SlotQuery
             Filters, area, page size and cursor.
+        visible : ProjectVisibility
+            Projects the principal sees: only their pins are listed
+            (``pinned_by``) and count for ``versions="pinned"``.
 
         Returns
         -------
@@ -288,7 +305,7 @@ class IndexQueries:
         filters = _filters(query)
         with self._read() as connection:
             stores = _stores(connection)
-            where = _where(connection, filters, stores)
+            where = _where(connection, filters, stores, visible)
             area = None if query.area is None else _area(connection, query.area)
             if area is not None:
                 where.add(area.admits, *area.params)
@@ -323,6 +340,7 @@ class IndexQueries:
                     for row in rows
                     if row["version_id"] is not None
                 ],
+                visible,
             )
             items = tuple(_slot_row(row, stores, pins) for row in rows)
         next_cursor = None
@@ -338,7 +356,9 @@ class IndexQueries:
             next_cursor = _encode_cursor(fingerprint, values)
         return SlotPage(items=items, next_cursor=next_cursor, groups=groups)
 
-    def slot(self, store: str, slot: str) -> SlotDetail | None:
+    def slot(
+        self, store: str, slot: str, *, visible: ProjectVisibility
+    ) -> SlotDetail | None:
         """Return the file card of a slot, or ``None`` when it is not indexed.
 
         Parameters
@@ -347,6 +367,9 @@ class IndexQueries:
             Configured store id.
         slot : str
             Slot path relative to the store.
+        visible : ProjectVisibility
+            Projects the principal sees: only their pins are listed
+            (``Przypięta w:``).
         """
         with self._read() as connection:
             stores = _stores(connection)
@@ -367,6 +390,7 @@ class IndexQueries:
             pins = _pins(
                 connection,
                 [(row["store_id"], item["version_path"]) for item in versions],
+                visible,
             )
             issues = _issues(connection, "i.slot_id = ?", (row["slot_id"],))
         summaries = tuple(_summary(item, pins) for item in versions)
@@ -391,7 +415,9 @@ class IndexQueries:
             issues=issues,
         )
 
-    def version(self, store: str, path: str) -> VersionDetail | None:
+    def version(
+        self, store: str, path: str, *, visible: ProjectVisibility
+    ) -> VersionDetail | None:
         """Return every indexed value of a version, or ``None`` if unknown.
 
         Parameters
@@ -400,6 +426,8 @@ class IndexQueries:
             Configured store id.
         path : str
             Version path relative to the store.
+        visible : ProjectVisibility
+            Projects the principal sees: only their pins are listed.
         """
         with self._read() as connection:
             stores = _stores(connection)
@@ -424,7 +452,7 @@ class IndexQueries:
             ).fetchone()
             if row is None:
                 return None
-            pins = _pins(connection, [(row["store_id"], row["version_path"])])
+            pins = _pins(connection, [(row["store_id"], row["version_path"])], visible)
         footprint = None
         if row["location"] == "footprint":
             footprint = _outline(row)
@@ -497,13 +525,18 @@ class IndexQueries:
 
     # Map.
 
-    def footprints(self, query: MapQuery) -> FootprintPage:
+    def footprints(
+        self, query: MapQuery, *, visible: ProjectVisibility
+    ) -> FootprintPage:
         """Return the footprints of a map view, or their grid above the limit.
 
         Parameters
         ----------
         query : MapQuery
             View, filters, limit and grid size.
+        visible : ProjectVisibility
+            Projects the principal sees: only their pins count for
+            ``versions="pinned"``, as in the catalog.
 
         Returns
         -------
@@ -533,7 +566,7 @@ class IndexQueries:
         cell_height = (max_lat - min_lat) / rows_count
         with self._read() as connection:
             stores = _stores(connection)
-            where = _where(connection, filters, stores)
+            where = _where(connection, filters, stores, visible)
             groups = _groups(connection, filters.versions, where)
             view = _Where(list(where.conditions), list(where.params))
             for condition in _MAP_MODES.get(filters.versions, ()):
@@ -903,29 +936,50 @@ class IndexQueries:
 
     # Projects.
 
-    def projects(self, *, store: str | None = None) -> tuple[ProjectRef, ...]:
-        """Return the discovered projects ordered by name.
+    def projects(
+        self, *, visible: ProjectVisibility, store: str | None = None
+    ) -> tuple[ProjectRef, ...]:
+        """Return the discovered projects the principal sees, ordered by name.
 
         Parameters
         ----------
+        visible : ProjectVisibility
+            Projects the principal sees.
         store : str or None, optional
             Only projects of this configured store.
         """
-        condition = "1"
-        params: tuple[str, ...] = ()
+        where = _Where()
         if store is not None:
-            condition, params = "st.key = ?", (store,)
+            where.add("st.key = ?", store)
+        condition, params = _visible(visible)
+        where.add(condition, *params)
         with self._read() as connection:
             rows = connection.execute(
-                f"{_PROJECT_SELECT} WHERE {condition} ORDER BY pr.name, pr.key", params
+                f"{_PROJECT_SELECT} WHERE {where.sql()} ORDER BY pr.name, pr.key",
+                where.params,
             ).fetchall()
         return tuple(_project_ref(row) for row in rows)
 
-    def project(self, key: str) -> ProjectRecord | None:
-        """Return a project with its tasks and pins, or ``None`` if unknown."""
+    def project(self, key: str, *, visible: ProjectVisibility) -> ProjectRecord | None:
+        """Return a project with its tasks and pins.
+
+        Parameters
+        ----------
+        key : str
+            Project key (``ProjectRef.key``).
+        visible : ProjectVisibility
+            Projects the principal sees.
+
+        Returns
+        -------
+        ProjectRecord or None
+            ``None`` for an unknown project and for one the principal does
+            not see, alike (``404``).
+        """
+        condition, params = _visible(visible)
         with self._read() as connection:
             row = connection.execute(
-                f"{_PROJECT_SELECT} WHERE pr.key = ?", (key,)
+                f"{_PROJECT_SELECT} WHERE pr.key = ? AND {condition}", (key, *params)
             ).fetchone()
             if row is None:
                 return None
@@ -968,17 +1022,23 @@ class IndexQueries:
             ),
         )
 
-    def pin_problems(self, store: str) -> tuple[PinRef, ...]:
-        """Return pins of a store's projects whose version is missing or other."""
+    def pin_problems(
+        self, store: str, *, visible: ProjectVisibility
+    ) -> tuple[PinRef, ...]:
+        """Return pins of a store's projects whose version is missing or other.
+
+        Only pins of projects the principal sees (``visible``) are listed.
+        """
+        condition, params = _visible(visible)
         with self._read() as connection:
             stores = _stores(connection)
             rows = connection.execute(
                 "SELECT pr.name, pr.key, p.task_id, p.version_path, p.sha256,"
                 f" {_PIN_STATE} AS state FROM {_PIN_SOURCE}"
                 " JOIN projects pr ON pr.id = p.project_id"
-                f" WHERE p.store_id = ? AND {_PIN_STATE} <> 'ok'"
+                f" WHERE p.store_id = ? AND {_PIN_STATE} <> 'ok' AND {condition}"
                 " ORDER BY pr.key, p.task_id, p.version_path",
-                (_store_id(stores, store),),
+                (_store_id(stores, store), *params),
             ).fetchall()
         return tuple(
             PinRef(
@@ -1234,12 +1294,18 @@ def _store_id(stores: Mapping[int, str], store: str) -> int:
 
 
 def _where(
-    connection: sqlite3.Connection, filters: _Filters, stores: Mapping[int, str]
+    connection: sqlite3.Connection,
+    filters: _Filters,
+    stores: Mapping[int, str],
+    visible: ProjectVisibility,
 ) -> _Where:
     """Conditions of the filters on ``s`` (slot), ``g`` (segment), ``v`` (version)."""
     where = _Where()
     for condition in _SOURCES[filters.versions][1]:
         where.add(condition)
+    if filters.versions == "pinned":
+        seen, params = _visible(visible)
+        where.add(_PINNED_VISIBLE.format(visible=seen), *params)
     if filters.store is not None:
         where.add("s.store_id = ?", _store_id(stores, filters.store))
     if filters.product is not None:
@@ -1509,6 +1575,7 @@ def _project_ref(row: sqlite3.Row) -> ProjectRef:
         name=row["name"],
         producer=row["producer"],
         path=row["path"],
+        access_key=row["access_key"],
         store=row["store"],
         store_dir=row["store_dir"],
         status=row["status"],
@@ -1520,20 +1587,42 @@ def _project_ref(row: sqlite3.Row) -> ProjectRef:
     )
 
 
+def _visible(visible: ProjectVisibility) -> tuple[str, tuple[object, ...]]:
+    """Condition on ``pr`` (projects) admitting exactly what ``visible`` sees.
+
+    Only projects with an access entry are named (``granted``, ``denied``);
+    the others follow ``unlisted``, so the condition stays short however
+    many projects the index holds.
+    """
+    if visible.everything:
+        return "1", ()
+    granted = json.dumps(sorted(visible.granted))
+    if not visible.unlisted:
+        return f"pr.access_key IN ({_IDS})", (granted,)
+    denied = json.dumps(sorted(visible.denied))
+    return (
+        f"(pr.access_key IN ({_IDS}) OR pr.access_key NOT IN ({_IDS}))",
+        (granted, denied),
+    )
+
+
 def _pins(
-    connection: sqlite3.Connection, versions: Iterable[tuple[int, str]]
+    connection: sqlite3.Connection,
+    versions: Iterable[tuple[int, str]],
+    visible: ProjectVisibility,
 ) -> dict[tuple[int, str], tuple[PinRef, ...]]:
-    """Pins of the given ``(store row id, version path)`` with their state."""
+    """Pins of the given ``(store row id, version path)`` by visible projects."""
     wanted = set(versions)
     if not wanted:
         return {}
+    seen, params = _visible(visible)
     rows = connection.execute(
         "SELECT p.store_id, p.version_path, p.task_id, p.sha256, pr.name, pr.key,"
         " v.sha256 AS version_sha256, v.state AS version_state FROM pins p"
         " JOIN projects pr ON pr.id = p.project_id"
         " LEFT JOIN versions v ON v.store_id = p.store_id AND v.path = p.version_path"
-        f" WHERE p.version_path IN ({_IDS}) ORDER BY pr.key, p.task_id",
-        (json.dumps(sorted({path for _, path in wanted})),),
+        f" WHERE p.version_path IN ({_IDS}) AND {seen} ORDER BY pr.key, p.task_id",
+        (json.dumps(sorted({path for _, path in wanted})), *params),
     ).fetchall()
     found: dict[tuple[int, str], list[PinRef]] = {}
     for row in rows:

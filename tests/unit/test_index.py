@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from archiwista.auth import ALL_PROJECTS
 from archiwista.errors import IndexQueryError
 from archiwista.index import (
     SCHEMA_VERSION,
@@ -54,7 +55,7 @@ NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
 
 def _slots(queries: IndexQueries, **filters: object) -> list[str]:
-    page = queries.slots(SlotQuery(limit=200, **filters))  # type: ignore[arg-type]
+    page = queries.slots(SlotQuery(limit=200, **filters), visible=ALL_PROJECTS)  # type: ignore[arg-type]
     return [row.slot for row in page.items]
 
 
@@ -88,10 +89,12 @@ def test_index_rows_without_location_form_their_own_group(
     far = AreaFilter(polygon((15.0, 50.0), (15.1, 50.0), (15.1, 50.1)), ("PL",))
 
     # Act
-    everything = queries.slots(SlotQuery())
-    without = queries.slots(SlotQuery(location="none"))
-    in_far_area = queries.slots(SlotQuery(area=far))
-    abroad = queries.slots(SlotQuery(area=replace(far, countries=("CZ",))))
+    everything = queries.slots(SlotQuery(), visible=ALL_PROJECTS)
+    without = queries.slots(SlotQuery(location="none"), visible=ALL_PROJECTS)
+    in_far_area = queries.slots(SlotQuery(area=far), visible=ALL_PROJECTS)
+    abroad = queries.slots(
+        SlotQuery(area=replace(far, countries=("CZ",))), visible=ALL_PROJECTS
+    )
 
     # Assert
     assert (everything.groups.footprint, everything.groups.country) == (1, 1)
@@ -132,7 +135,7 @@ def test_index_data_year_never_from_download_date(
     )
 
     # Act
-    of_2019 = queries.slots(SlotQuery(years=(2019, 2019)))
+    of_2019 = queries.slots(SlotQuery(years=(2019, 2019)), visible=ALL_PROJECTS)
     of_2025 = _slots(queries, years=(2025, None))
     open_start = _slots(queries, years=(None, 2030))
 
@@ -170,7 +173,7 @@ def test_index_two_links_to_one_version_count_its_size_once(
 
     # Act
     usage = queries.usage(STORE)
-    card = queries.slot(STORE, SHEET_A)
+    card = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
 
     # Assert
     assert usage is not None
@@ -229,9 +232,11 @@ def test_index_pin_to_older_version(index: tuple[IndexWriter, IndexQueries]) -> 
 
     # Act
     key = writer.write_project(project, store=STORE, stamp=STAMP)
-    pinned_rows = queries.slots(SlotQuery(versions="pinned")).items
+    pinned_rows = queries.slots(
+        SlotQuery(versions="pinned"), visible=ALL_PROJECTS
+    ).items
     cleanup = _slots(queries, versions="noncurrent_unpinned")
-    card = queries.slot(STORE, SHEET_A)
+    card = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
 
     # Assert
     assert key == "raba"
@@ -247,9 +252,9 @@ def test_index_pin_to_older_version(index: tuple[IndexWriter, IndexQueries]) -> 
         "ok",
     )
     assert cleanup == [SHEET_A]
-    assert queries.slots(SlotQuery(versions="noncurrent_unpinned")).items[
-        0
-    ].version.path == (loose.relative_path.as_posix())  # type: ignore[union-attr]
+    assert queries.slots(
+        SlotQuery(versions="noncurrent_unpinned"), visible=ALL_PROJECTS
+    ).items[0].version.path == (loose.relative_path.as_posix())  # type: ignore[union-attr]
     assert card is not None
     assert {item.path: bool(item.pinned_by) for item in card.versions} == {
         current.relative_path.as_posix(): False,
@@ -276,7 +281,7 @@ def test_index_pin_states_follow_the_version(
 
     # Act
     write_pass(writer, [link(SHEET_A, current), skipped(current)])
-    card = queries.slot(STORE, SHEET_A)
+    card = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
 
     # Assert
     assert card is not None
@@ -303,7 +308,7 @@ def test_index_cursor_pages_cover_the_result_once(
         older = version(slot, "2019-08-09_86133", 10 * number + 2)
         entries += [link(slot, newer), newer, older]
     write_pass(writer, entries)
-    whole = queries.slots(SlotQuery(versions=versions, limit=200))  # type: ignore[arg-type]
+    whole = queries.slots(SlotQuery(versions=versions, limit=200), visible=ALL_PROJECTS)  # type: ignore[arg-type]
 
     # Act
     seen = []
@@ -311,7 +316,8 @@ def test_index_cursor_pages_cover_the_result_once(
     pages = 0
     while True:
         page = queries.slots(
-            SlotQuery(versions=versions, limit=3, cursor=cursor)  # type: ignore[arg-type]
+            SlotQuery(versions=versions, limit=3, cursor=cursor),  # type: ignore[arg-type]
+            visible=ALL_PROJECTS,
         )
         seen += [
             (row.slot, row.version.path if row.version else None) for row in page.items
@@ -342,17 +348,19 @@ def test_index_cursor_of_another_query_is_rejected(
         item = version(slot, "2023-06-11_93763", number + 1)
         entries += [link(slot, item), item]
     write_pass(writer, entries)
-    cursor = queries.slots(SlotQuery(limit=1)).next_cursor
+    cursor = queries.slots(SlotQuery(limit=1), visible=ALL_PROJECTS).next_cursor
 
     # Act / Assert
     with pytest.raises(IndexQueryError, match="Kursor"):
-        queries.slots(SlotQuery(limit=1, product="nmt", cursor=cursor))
+        queries.slots(
+            SlotQuery(limit=1, product="nmt", cursor=cursor), visible=ALL_PROJECTS
+        )
     with pytest.raises(IndexQueryError, match="Kursor"):
-        queries.slots(SlotQuery(limit=1, cursor="nie-kursor"))
+        queries.slots(SlotQuery(limit=1, cursor="nie-kursor"), visible=ALL_PROJECTS)
     with pytest.raises(IndexQueryError, match="Limit"):
-        queries.slots(SlotQuery(limit=201))
+        queries.slots(SlotQuery(limit=201), visible=ALL_PROJECTS)
     with pytest.raises(IndexQueryError, match="odwrócony"):
-        queries.slots(SlotQuery(years=(2020, 2019)))
+        queries.slots(SlotQuery(years=(2020, 2019)), visible=ALL_PROJECTS)
 
 
 def test_index_filters_by_exact_unit(index: tuple[IndexWriter, IndexQueries]) -> None:
@@ -377,7 +385,9 @@ def test_index_filters_by_exact_unit(index: tuple[IndexWriter, IndexQueries]) ->
     exact = _slots(queries, unit="1465")
     with_product = _slots(queries, unit="1465", product="bdot10k")
     other_product = _slots(queries, unit="1465", product="nmt")
-    every_version = queries.slots(SlotQuery(unit="1465", versions="all"))
+    every_version = queries.slots(
+        SlotQuery(unit="1465", versions="all"), visible=ALL_PROJECTS
+    )
 
     # Assert
     assert exact == with_product == [f"{BDOT}/teryt/1465.gpkg"]
@@ -400,10 +410,12 @@ def test_index_unseen_version_missing_then_removed_after_second_full_pass(
 
     # Act
     marked = write_pass(writer, [link(SHEET_A, current), skipped(current)])
-    card_marked = queries.slot(STORE, SHEET_A)
-    missing_rows = queries.slots(SlotQuery(versions="all", status="missing")).items
+    card_marked = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
+    missing_rows = queries.slots(
+        SlotQuery(versions="all", status="missing"), visible=ALL_PROJECTS
+    ).items
     removed = write_pass(writer, [link(SHEET_A, current), current], full=True)
-    card_removed = queries.slot(STORE, SHEET_A)
+    card_removed = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
 
     # Assert
     assert (marked.missing, marked.removed) == (1, 0)
@@ -428,11 +440,11 @@ def test_index_missing_version_seen_again_is_present(
     current = version(SHEET_A, "2025-04-26_82710", 1)
     write_pass(writer, [link(SHEET_A, current), current])
     write_pass(writer, [])
-    marked = queries.slots(SlotQuery(status="missing"))
+    marked = queries.slots(SlotQuery(status="missing"), visible=ALL_PROJECTS)
 
     # Act
     back = write_pass(writer, [link(SHEET_A, current), skipped(current)])
-    page = queries.slots(SlotQuery())
+    page = queries.slots(SlotQuery(), visible=ALL_PROJECTS)
 
     # Assert
     assert [row.slot for row in marked.items] == [SHEET_A]
@@ -497,7 +509,7 @@ def test_index_asks_footprints_of_new_and_pending_versions(
         ],
     )
     writer.finish_pass()
-    card = queries.slot(STORE, SHEET_A)
+    card = queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS)
     rescans = []
 
     # Act
@@ -536,7 +548,7 @@ def test_index_link_moved_to_new_version_changes_current(
 
     # Act
     write_pass(writer, [link(SHEET_A, new), skipped(old), new])
-    row = queries.slots(SlotQuery()).items[0]
+    row = queries.slots(SlotQuery(), visible=ALL_PROJECTS).items[0]
     found = _slots(queries, q="2025-04-26_82710")
 
     # Assert
@@ -571,10 +583,16 @@ def test_index_slot_states_from_problems(
     )
 
     # Act
-    states = {row.slot: row.status for row in queries.slots(SlotQuery()).items}
+    states = {
+        row.slot: row.status
+        for row in queries.slots(SlotQuery(), visible=ALL_PROJECTS).items
+    }
     fixed = version(plain, "2024-05-21_92288", 6)
     write_pass(writer, [fixed, link(plain, fixed)], segment=NMT)
-    after = {row.slot: row.status for row in queries.slots(SlotQuery()).items}
+    after = {
+        row.slot: row.status
+        for row in queries.slots(SlotQuery(), visible=ALL_PROJECTS).items
+    }
 
     # Assert
     assert states == {
@@ -598,7 +616,7 @@ def test_index_plain_file_without_version_is_its_own_version(
 
     # Act
     write_pass(writer, [plain_link])
-    row = queries.slots(SlotQuery()).items[0]
+    row = queries.slots(SlotQuery(), visible=ALL_PROJECTS).items[0]
     usage = queries.usage(STORE)
 
     # Assert
@@ -627,7 +645,7 @@ def test_index_abandoned_pass_marks_nothing_missing(
     status = queries.status().stores[0]
 
     # Assert
-    assert queries.slots(SlotQuery(status="missing")).items == ()
+    assert queries.slots(SlotQuery(status="missing"), visible=ALL_PROJECTS).items == ()
     assert (status.status, status.stale, status.detail) == (
         "unavailable",
         True,
@@ -653,12 +671,14 @@ def test_index_slot_scoped_pass_marks_only_its_slots(
     summary = write_pass(
         writer, [link(SHEET_A, a_new), skipped(a_new)], segment=NMT, slots=[SHEET_A]
     )
-    missing = queries.slots(SlotQuery(versions="all", status="missing")).items
+    missing = queries.slots(
+        SlotQuery(versions="all", status="missing"), visible=ALL_PROJECTS
+    ).items
 
     # Assert
     assert summary.missing == 1
     assert [row.version.label for row in missing if row.version] == ["2019-08-09_86133"]
-    assert queries.slot(STORE, SHEET_B) is not None
+    assert queries.slot(STORE, SHEET_B, visible=ALL_PROJECTS) is not None
 
 
 def test_index_removed_store_takes_its_rows(
@@ -680,8 +700,8 @@ def test_index_removed_store_takes_its_rows(
 
     # Assert
     assert [state.store for state in status.stores] == ["inny"]
-    assert queries.slots(SlotQuery()).items == ()
-    assert queries.slot(STORE, SHEET_A) is None
+    assert queries.slots(SlotQuery(), visible=ALL_PROJECTS).items == ()
+    assert queries.slot(STORE, SHEET_A, visible=ALL_PROJECTS) is None
 
 
 def test_index_schema_change_rebuilds_an_empty_index(tmp_path: Path) -> None:
@@ -704,7 +724,7 @@ def test_index_schema_change_rebuilds_an_empty_index(tmp_path: Path) -> None:
     assert (state, again) == ("rebuilt", "current")
     with IndexQueries(path) as queries:
         assert queries.status().stores == ()
-        assert queries.slots(SlotQuery()).items == ()
+        assert queries.slots(SlotQuery(), visible=ALL_PROJECTS).items == ()
 
 
 def test_index_producer_without_links_or_segments(
@@ -740,7 +760,7 @@ def test_index_producer_without_links_or_segments(
     writer.finish_pass()
 
     # Act
-    page = queries.slots(SlotQuery(store="pomiary"))
+    page = queries.slots(SlotQuery(store="pomiary"), visible=ALL_PROJECTS)
     known = writer.begin_pass("pomiary", "external")
     paths = writer.known_versions()
     writer.abandon_pass()
@@ -759,7 +779,7 @@ def test_index_producer_without_links_or_segments(
     assert page.groups.none == 2
     assert known.segment is None
     assert paths == {Path("opady.csv"), Path("stany.csv")}
-    assert queries.slots(SlotQuery(store=STORE)).items == ()
+    assert queries.slots(SlotQuery(store=STORE), visible=ALL_PROJECTS).items == ()
 
 
 def test_index_filters_by_store_country_and_location(
@@ -783,7 +803,9 @@ def test_index_filters_by_store_country_and_location(
     # Act
     second = _slots(queries, store="drugi")
     czech = _slots(queries, country="CZ")
-    located = queries.slots(SlotQuery(location="with", store=STORE))
+    located = queries.slots(
+        SlotQuery(location="with", store=STORE), visible=ALL_PROJECTS
+    )
     unknown_store = _slots(queries, store="brak")
 
     # Assert
@@ -836,7 +858,7 @@ def test_index_segment_recognised_later_reaches_its_slots(
     item = version(slot, "2010-04-23_65018", 1, product=None, country=None)
     unknown = SourceSegment(segment, None, None, None, segment, False)
     write_pass(writer, [link(slot, item), item], segments=[unknown])
-    before = queries.slots(SlotQuery()).items[0]
+    before = queries.slots(SlotQuery(), visible=ALL_PROJECTS).items[0]
 
     # Act
     writer.write_segments(
@@ -848,7 +870,7 @@ def test_index_segment_recognised_later_reaches_its_slots(
             )
         ],
     )
-    after = queries.slots(SlotQuery(product="true_orto")).items
+    after = queries.slots(SlotQuery(product="true_orto"), visible=ALL_PROJECTS).items
     found = _slots(queries, q="prawdziwa")
 
     # Assert

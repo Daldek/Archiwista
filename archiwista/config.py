@@ -41,6 +41,14 @@ MOUNTINFO_PATH = Path("/proc/self/mountinfo")
 
 type StoreKind = Literal["local", "share"]
 type BasemapKind = Literal["xyz", "wms"]
+# Visibility of a project without its own access entry (A-ADR-029): everyone
+# sees it, or administrators only until someone shares it.
+type DefaultProjectVisibility = Literal["public", "private"]
+
+DEFAULT_PROJECT_VISIBILITIES: tuple[DefaultProjectVisibility, ...] = (
+    "public",
+    "private",
+)
 
 _STORE_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 
@@ -63,14 +71,18 @@ class SourceRegistryView(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class AppPaths:
-    """Locate the configuration file and local, rebuildable application data.
+    """Locate the configuration file and local application data.
+
+    The data directory holds the rebuildable index, caches, job logs and
+    areas, and the state database, which cannot be rebuilt (A-ADR-029).
 
     Parameters
     ----------
     config_file : Path
         TOML settings file in the user configuration directory.
     data_dir : Path
-        Local user data directory holding the index, caches, jobs, and areas.
+        Local user data directory holding the index, the state database,
+        caches, jobs, and areas.
     """
 
     config_file: Path
@@ -87,6 +99,11 @@ class AppPaths:
     def index_file(self) -> Path:
         """Local SQLite index."""
         return self.data_dir / "index.sqlite"
+
+    @property
+    def state_file(self) -> Path:
+        """Local SQLite state: accounts, groups, project access (not rebuildable)."""
+        return self.data_dir / "state.sqlite"
 
     @property
     def cache_dir(self) -> Path:
@@ -328,6 +345,12 @@ class AppSettings(BaseModel):
         Configured stores with unique ids.
     basemaps : tuple[BasemapConfig, ...]
         Online basemaps, grey OpenStreetMap by default.
+    store_write_for_all : bool
+        Give everyone the store write permission, not only people with the
+        ``store_writer`` role (A-ADR-029; checked from v0.3).
+    default_project_visibility : {"public", "private"}
+        Visibility of a project without its own access entry: everyone, or
+        administrators only.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -344,6 +367,15 @@ class AppSettings(BaseModel):
     project_dirs: tuple[AbsolutePath, ...] = ()
     stores: tuple[StoreConfig, ...] = ()
     basemaps: tuple[BasemapConfig, ...] = (DEFAULT_BASEMAP,)
+    store_write_for_all: bool = False
+    default_project_visibility: DefaultProjectVisibility = "public"
+
+    @field_validator("default_project_visibility", mode="before")
+    @classmethod
+    def _check_default_visibility(cls, value: object) -> object:
+        if value not in DEFAULT_PROJECT_VISIBILITIES:
+            raise ValueError(MESSAGES["settings_default_visibility"])
+        return value
 
     @field_validator("stores")
     @classmethod
@@ -729,22 +761,38 @@ class ConfigStore:
 
     def save(self, settings: AppSettings) -> None:
         """Write settings atomically: a reader sees the old or the new file."""
-        text = dump_settings(settings)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temp_name = tempfile.mkstemp(
-            dir=self.path.parent, prefix=f".{self.path.name}.", suffix=".tmp"
-        )
-        temp_path = Path(temp_name)
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
-                file.write(text)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temp_path, self.path)
-        except BaseException:
-            temp_path.unlink(missing_ok=True)
-            raise
-        _fsync_directory(self.path.parent)
+        write_text_atomic(self.path, dump_settings(settings))
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write a UTF-8 text file so that a reader sees the old or the new file.
+
+    The text goes to a temporary file in the same directory, which is
+    flushed to the disk and then renamed over ``path``; a failure leaves the
+    old file as it was.
+
+    Parameters
+    ----------
+    path : Path
+        File to write; its directory is created when missing.
+    text : str
+        Content, written with LF line endings.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp_path, path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+    _fsync_directory(path.parent)
 
 
 def _fsync_directory(path: Path) -> None:
