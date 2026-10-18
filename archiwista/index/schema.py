@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -263,9 +263,12 @@ CREATE TABLE job_events (
     PRIMARY KEY (job_id, seq)
 ) WITHOUT ROWID;
 
+-- One-time session tokens (SHA-256 only) with the principal that minted each
+-- (JSON: id, kind, roles, groups), for whom the new session acts.
 CREATE TABLE session_tokens (
     hash TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('startup', 'agent')),
+    principal TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     used_at TEXT

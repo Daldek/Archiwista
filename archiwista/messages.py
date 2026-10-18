@@ -6,6 +6,69 @@ MESSAGES = MappingProxyType(
     {
         "cli_description": "Archiwista — przeglądarka lokalnego magazynu danych.",
         "cli_doctor_help": "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
+        # Local server, sessions and access protection (step 8).
+        "cli_serve_help": (
+            "Uruchamia serwer Archiwisty na 127.0.0.1 i otwiera przeglądarkę."
+        ),
+        "cli_serve_host_help": "adres nasłuchu; bez trybu zespołu tylko 127.0.0.1",
+        "cli_serve_port_help": "port (domyślnie z ustawień; 0 — dowolny wolny)",
+        "cli_serve_no_browser_help": "nie otwieraj przeglądarki, tylko wypisz adres",
+        "cli_serve_access_log_help": (
+            "włącz dziennik dostępu (wartości token= są w nim ukryte)"
+        ),
+        "cli_token_help": (
+            "Wystawia jednorazowy adres kolejnej sesji (np. dla agenta), ważny 5 min."
+        ),
+        "cli_token_port_help": "port serwera w adresie (domyślnie z ustawień)",
+        "cli_token_json_help": "wypisz JSON jak odpowiedź POST /api/v1/session/tokens",
+        "cli_port_invalid": "port musi być liczbą od {minimum} do 65535",
+        "serve_host_refused": (
+            "Odmowa uruchomienia na adresie {host}: bez trybu zespołu Archiwista"
+            " nasłuchuje wyłącznie na {loopback}."
+        ),
+        "serve_failed": "Nie można uruchomić Archiwisty",
+        "serve_port_unavailable": "Nie można nasłuchiwać na {host}:{port}",
+        "serve_started": (
+            "Archiwista działa. Otwórz w przeglądarce:\n  {url}\n"
+            "Adres zawiera jednorazowy token ważny {minutes} min; kolejny wystawia"
+            " „archiwista token”. Zatrzymanie: Ctrl+C."
+        ),
+        "token_failed": "Nie można wystawić tokenu",
+        "token_issued": (
+            "Jednorazowy adres sesji, ważny {minutes} min (do {time}). Przekaż go"
+            " agentowi albo otwórz w przeglądarce."
+        ),
+        "api_title_invalid_host": "Niedozwolony adres serwera",
+        "api_title_session_required": "Wymagana sesja",
+        "api_title_csrf_rejected": "Żądanie odrzucone",
+        "api_title_validation_error": "Niepoprawne dane żądania",
+        "api_title_not_found": "Nie znaleziono",
+        "api_invalid_host": (
+            "Archiwista przyjmuje tylko żądania na adres 127.0.0.1:{port}"
+            " albo localhost:{port}."
+        ),
+        "api_session_required": (
+            "Brak ważnej sesji. Otwórz adres wypisany przez „archiwista serve”"
+            " albo wystaw nowy poleceniem „archiwista token”."
+        ),
+        "api_token_rejected": (
+            "Token jest nieznany, wygasł albo został już użyty. Wystaw nowy"
+            " poleceniem „archiwista token”."
+        ),
+        "api_cross_site": "Żądanie wysłane z innej strony zostało odrzucone.",
+        "api_origin_missing": (
+            "Przeglądarka nie podała nagłówka Origin przy żądaniu zmieniającym stan."
+        ),
+        "api_csrf_missing": "Brak nagłówka X-Archiwista-CSRF z tokenem CSRF sesji.",
+        "api_csrf_mismatch": (
+            "Nagłówek X-Archiwista-CSRF albo ciasteczko archiwista_csrf nie pasuje"
+            " do tokenu CSRF sesji."
+        ),
+        "api_validation_error": "Niepoprawne dane żądania: {fields}.",
+        "api_interface_missing": "Pliki interfejsu nie są zainstalowane.",
+        "path_outside_root": (
+            "Ścieżka „{path}” wychodzi poza katalog magazynu albo projektu."
+        ),
         "source_unavailable": "Źródło danych jest niedostępne.",
         "source_incompatible": "Wersja źródła danych jest niezgodna.",
         "store_unavailable": "Magazyn danych jest niedostępny.",
@@ -160,6 +223,18 @@ MESSAGES = MappingProxyType(
             " w WGS84."
         ),
         "index_invalid_grid": "Siatka agregacji musi mieć od 1 do {limit} kolumn.",
+        # Store scans and view refreshes (step 6a).
+        "scan_store_empty": (
+            "Magazyn {path} jest pusty, a indeks zawiera jego pliki — udział może"
+            " być niepodłączony; indeks pozostaje bez zmian"
+        ),
+        "scan_footprints_failed": (
+            "Plików bez wyznaczonego obrysu: {count} — ponowna próba przy"
+            " następnym skanie. Komunikat producenta: {detail}"
+        ),
+        "refresh_view_timeout": (
+            "Odświeżenie widoku przekroczyło {seconds} s — wynik pochodzi z indeksu"
+        ),
         # Store and project problems: what is wrong and how to fix it (step 7).
         # Archiwista deletes nothing; the fix is a person's decision.
         "problem_missing_sidecar": "Plik bez sidecara: {path}",

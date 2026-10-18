@@ -18,13 +18,13 @@ from archiwista.config import (
     validate_settings,
 )
 from archiwista.messages import MESSAGES, with_detail
+from archiwista.security import LOOPBACK_HOST
 from archiwista.sources import SourceState
 from archiwista.sources.registry import APP_DISTRIBUTION, app_requirement
 
 type CheckLevel = Literal["ok", "warning", "error"]
 
 REQUIRED_PRODUCERS = frozenset({"kartograf"})
-LOOPBACK_HOST = "127.0.0.1"
 
 _FIX_BY_CODE = {
     "root_missing": "fix_reconnect",

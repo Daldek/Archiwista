@@ -419,6 +419,34 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `503 source_incompatible`; `code` nie zależy od polskiego `detail`.
   `archiwista/app.py` zakłada krok 8; kroki 9a–9c dopisują po jednej linii
   `include_router` (scala właściciel 9a).
+  Stan po kroku 8:
+  - *Kto działa* (`archiwista/auth/`, rozbudowuje 8b): `Principal(id, kind,
+    roles, groups)`, `kind` `local_owner`/`user`/`agent`; tryb lokalny
+    `LOCAL_OWNER` (`local`, role `admin` i `store_writer`, bez grup). Sesja
+    z tokenu startowego działa jako ten, kto go wystawił, a z tokenu agenta
+    jako `agent` z jego `id`, rolami i grupami; `actor` zadań to
+    `Principal.id`.
+  - *Ochrona* (`archiwista/security.py`): `SecurityMiddleware` dla każdego
+    żądania — `Host` (`400 invalid_host`), `Origin`/`Sec-Fetch-Site`
+    (`403 csrf_rejected`), dla `/api/*` poza `POST /api/v1/session` sesja
+    (`401 session_required`) i przy `POST`/`PUT`/`DELETE` CSRF (`403`);
+    w każdej odpowiedzi CSP z bieżących ustawień, `Referrer-Policy`,
+    `nosniff`, dla `/api/v1/session*` `Cache-Control: no-store`. Zależności
+    tras: `require_session`, `require_csrf`, `current_principal`. Tokeny:
+    `issue_one_time_token(index, kind, *, minted_by)` i
+    `redeem_one_time_token` (w `session_tokens` skrót SHA-256 i principal
+    wystawiający; `SCHEMA_VERSION` 2). Sesje w pamięci serwera
+    (`SessionStore`, koniec po 24 h bez żądań, restart kończy wszystkie).
+    `resolve_indexed_path(root, relative)` → `PathOutsideRootError` albo
+    `FileNotFoundError`; `csp_header(settings)`; `TokenRedactionFilter`.
+  - *Błędy i aplikacja*: `archiwista/api/errors.py` (`ApiError(status,
+    code, detail)`, `problem_response`, `install_error_handlers`, tytuł
+    z `MESSAGES["api_title_<code>"]`); `create_app(*, port, settings,
+    index_path, sessions, web_dir)` z `app.state.settings`, `sessions`,
+    `index_path`, `port`; `/` i `/static/…` z `archiwista/web/`; OpenAPI
+    `/api/v1/openapi.json` wymaga sesji, domyślnych `/docs` brak.
+    `archiwista serve [--host] [--port] [--no-browser] [--access-log]`
+    i `archiwista token [--port] [--json]` (`archiwista/server.py`).
 - **Interfejs WWW — `archiwista/web/`** (10a–11): `src/api.js` konsumuje
   tylko `/api/v1` (nie `mockup/data/` ani ścieżek plików serwera);
   `main.js`, router i `src/routes.js` należą do 10a (widok dopisuje jedną
