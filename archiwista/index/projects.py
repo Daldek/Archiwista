@@ -6,11 +6,14 @@ Discovery goes at most four levels below each project directory and never
 enters ``.git``, hidden directories or a store's producer directory. Only a
 new or changed manifest (other size or modification time) is read again,
 through the producer's adapter; an invalid one stays visible with the
-producer's own message. A project without a configured store or a status
-(invalid manifest, unknown store, store unreachable) is read on every pass
-until it matches and is checked (``IndexWriter.project_stamps``). A project
-directory that cannot be read keeps the projects indexed under it, so a
-disconnected share does not empty the list.
+producer's own message. A manifest that is a symbolic link resolving outside
+the configured project directory (SPEC 10.1) is never read: the project
+stays visible as invalid with ``path_outside_root``'s message. A project
+without a configured store or a status (invalid manifest, unknown store,
+store unreachable) is read on every pass until it matches and is checked
+(``IndexWriter.project_stamps``). A project directory that cannot be read
+keeps the projects indexed under it, so a disconnected share does not empty
+the list.
 """
 
 import os
@@ -19,9 +22,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from archiwista.config import StoreConfig
-from archiwista.errors import ProducerError
+from archiwista.errors import PathOutsideRootError, ProducerError
 from archiwista.index.types import ManifestStamp
 from archiwista.index.writer import IndexWriter
+from archiwista.messages import MESSAGES
+from archiwista.paths import resolve_indexed_path
 from archiwista.sources import ProjectInfo, SourceAdapter
 
 # Manifest file of each producer's projects.
@@ -101,16 +106,25 @@ def scan_projects(
         os.path.normpath(root) for config in stores for root in config.roots().values()
     }
     unreadable: list[str] = []
+    outside: set[str] = set()
     found: dict[str, ManifestStamp] = {}
     for directory in project_dirs:
-        for path, stamp in _discover(Path(directory), manifest, skipped, unreadable):
+        for path, stamp in _discover(
+            Path(directory), manifest, skipped, unreadable, outside
+        ):
             found.setdefault(path, stamp)
     known = writer.project_stamps(adapter.producer)
     read = invalid = unknown_store = 0
     for path, stamp in sorted(found.items()):
         if known.get(path) == stamp:
             continue
-        info = _read(adapter, Path(path))
+        if path in outside:
+            refused = MESSAGES["path_outside_root"].format(
+                path=os.path.join(path, manifest)
+            )
+            info = _invalid(adapter, Path(path), refused)
+        else:
+            info = _read(adapter, Path(path))
         store = _match_store(info, stores, roots) if info.problem is None else None
         writer.write_project(info, store=store, stamp=stamp)
         read += 1
@@ -133,14 +147,22 @@ def scan_projects(
 
 
 def _discover(
-    top: Path, manifest: str, skipped: set[str], unreadable: list[str]
+    top: Path,
+    manifest: str,
+    skipped: set[str],
+    unreadable: list[str],
+    outside: set[str],
 ) -> Iterator[tuple[str, ManifestStamp]]:
     """Yield ``(project directory, manifest stamp)`` below ``top``.
 
     Symbolic links to directories are not followed (no cycles); a directory
-    that cannot be listed is appended to ``unreadable``.
+    that cannot be listed is appended to ``unreadable``. A manifest that is
+    a symbolic link resolving outside ``top`` (SPEC 10.1) is yielded with
+    the link's own stamp and its directory added to ``outside``: it must
+    not be read.
     """
-    pending = [(os.path.abspath(top), 0)]
+    base = os.path.abspath(top)
+    pending = [(base, 0)]
     while pending:
         directory, depth = pending.pop()
         if os.path.normpath(directory) in skipped:
@@ -154,12 +176,16 @@ def _discover(
         for item in items:
             if item.name == manifest:
                 try:
-                    if item.is_file():
-                        status = item.stat()
-                        stamp = ManifestStamp(status.st_mtime_ns, status.st_size)
-                        yield directory, stamp
+                    escapes = item.is_symlink() and not _contained(base, item.path)
+                    if not escapes and not item.is_file():
+                        continue
+                    status = item.stat(follow_symlinks=not escapes)
                 except OSError:
                     unreadable.append(directory)
+                    continue
+                if escapes:
+                    outside.add(directory)
+                yield directory, ManifestStamp(status.st_mtime_ns, status.st_size)
                 continue
             if depth >= MAX_PROJECT_DEPTH or item.name.startswith("."):
                 continue
@@ -170,6 +196,32 @@ def _discover(
                 unreadable.append(item.path)
 
 
+def _contained(base: str, path: str) -> bool:
+    """Whether ``path`` resolves inside ``base``; a dangling link counts as inside.
+
+    A dangling link is not a file, so discovery skips it without reading it.
+    """
+    relative = Path(os.path.relpath(path, base)).as_posix()
+    try:
+        resolve_indexed_path(Path(base), relative)
+    except PathOutsideRootError:
+        return False
+    except FileNotFoundError:
+        return True
+    return True
+
+
+def _invalid(adapter: SourceAdapter, directory: Path, problem: str) -> ProjectInfo:
+    """Return a project whose manifest is not used, visible with ``problem``."""
+    return ProjectInfo(
+        producer=adapter.producer,
+        store="",
+        path=directory,
+        name=directory.name,
+        problem=problem,
+    )
+
+
 def _read(adapter: SourceAdapter, directory: Path) -> ProjectInfo:
     """Read a project with its status; an invalid manifest keeps its message."""
     try:
@@ -178,13 +230,7 @@ def _read(adapter: SourceAdapter, directory: Path) -> ProjectInfo:
         try:
             info = adapter.read_project(directory)
         except ProducerError as error:
-            return ProjectInfo(
-                producer=adapter.producer,
-                store="",
-                path=directory,
-                name=directory.name,
-                problem=error.message,
-            )
+            return _invalid(adapter, directory, error.message)
     return replace(info, path=directory)
 
 

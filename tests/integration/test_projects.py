@@ -18,6 +18,7 @@ from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.errors import PathOutsideRootError
 from archiwista.index import IndexQueries, IndexWriter, scan_projects
+from archiwista.messages import MESSAGES
 from archiwista.services import project_detail, project_status, store_summary
 from archiwista.sources import ProjectInfo, SourceContext
 from archiwista.sources.registry import load_registry
@@ -303,6 +304,41 @@ def test_scan_projects_discovery_depth_and_skipped_directories(
     assert "deep4" in names
     assert names.isdisjoint({"deep5", "w-git", "ukryty", "w-magazynie"})
     assert {p.name for p in store.projects} <= names
+
+
+def test_scan_projects_never_reads_manifest_leaving_project_dir(
+    store: StoreManifest,
+    adapter: _CountingAdapter,
+    index: tuple[IndexWriter, IndexQueries],
+    tmp_path: Path,
+) -> None:
+    """A manifest symlinked outside stays visible as invalid and is never read."""
+    # Arrange
+    writer, queries = index
+    outside = tmp_path / "outside"
+    _write_manifest(outside, "../data")
+    planted = store.projects_dir / "obcy" / MANIFEST_NAME
+    planted.parent.mkdir()
+    planted.symlink_to(outside / MANIFEST_NAME)
+    inner = store.projects_dir / "dowiazany" / MANIFEST_NAME
+    inner.parent.mkdir()
+    inner.symlink_to(store.projects_dir / "projekt-01" / MANIFEST_NAME)
+
+    # Act
+    summary = scan_projects(
+        adapter,
+        writer,
+        project_dirs=[store.projects_dir],
+        stores=[_config(store.root)],
+    )
+    listed = {p.key: p for p in queries.projects(visible=ALL_PROJECTS)}
+
+    # Assert
+    assert "obcy" not in adapter.reads
+    assert listed["obcy"].problem == MESSAGES["path_outside_root"].format(path=planted)
+    assert listed["dowiazany"].problem is None
+    assert "dowiazany" in adapter.reads
+    assert summary.invalid == 1 + sum(not p.valid for p in store.projects)
 
 
 def test_scan_projects_removes_gone_manifests_but_keeps_unreachable_dirs(

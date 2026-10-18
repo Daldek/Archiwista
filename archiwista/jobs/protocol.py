@@ -44,8 +44,9 @@ NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 
 # Codes of a job that did not succeed (its ``error.code``), besides those of
 # the HTTP API (``store_unavailable``, ``source_unavailable``,
-# ``source_incompatible``, ``offline_mode``, ``not_found`` and
-# ``<package>_error`` for a producer's own error, e.g. ``kartograf_error``).
+# ``source_incompatible``, ``offline_mode``, ``not_found``,
+# ``path_outside_root`` and ``<package>_error`` for a producer's own error,
+# e.g. ``kartograf_error``).
 CODE_UNSUPPORTED = "unsupported"
 CODE_INTERNAL_ERROR = "internal_error"
 CODE_PROTOCOL_ERROR = "protocol_error"
