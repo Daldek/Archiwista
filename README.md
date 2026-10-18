@@ -31,17 +31,19 @@ Wymagany jest Python 3.12+ i sąsiednie repozytorium Kartografa z gałęzią
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ../Kartograf
-.venv/bin/python -m pip install -e ".[dev]"
-.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --require-hashes -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e ../Kartograf
+.venv/bin/python -m pip install --no-deps -e ".[dev]"
 .venv/bin/archiwista --help
 ```
 
-Plik `requirements.lock` przypina pakiety środowiska Python 3.13; instalacja
-lokalnego Kartografa pozostaje edytowalna, a ścieżka do niego nie jest
-zależnością pakietu wydania. W kroku 1 komenda udostępnia tylko pomoc — nie
-uruchamia jeszcze serwera ani skanu. Dodatek `archiwista[imgw]` powstanie
-dopiero w v0.5.
+Plik `requirements.lock` przypina pakiety zewnętrzne środowiska Python 3.13
+(Archiwista z `[dev]` i Kartograf 0.8.0) wraz z sumami sha256, więc pip
+instaluje je w trybie `--require-hashes`. Kartograf i Archiwista nie są w nim
+zapisane: instalują się potem edytowalnie z `--no-deps`, a ścieżka do
+Kartografa nie jest zależnością pakietu wydania. W kroku 1 komenda udostępnia
+tylko pomoc — nie uruchamia jeszcze serwera ani skanu. Dodatek
+`archiwista[imgw]` powstanie dopiero w v0.5.
 
 | Dokument | Zawartość |
 |---|---|
