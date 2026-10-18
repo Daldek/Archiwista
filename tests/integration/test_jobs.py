@@ -768,6 +768,17 @@ def test_prune_forgets_routine_scans_after_48_hours_but_newest(env: JobsEnv) -> 
             " VALUES (?, 1000, 'notice', '{}', ?)",
             (noticed.id, now.isoformat()),
         )
+        # Outlines failing again are retried by every scan: no change, no alert.
+        db.execute(
+            "UPDATE jobs SET summary = json_set(summary, '$.footprints_failed', 2)"
+            " WHERE id = ?",
+            (oldest.id,),
+        )
+        db.execute(
+            "INSERT INTO job_events (job_id, seq, type, data, at)"
+            " VALUES (?, 1000, 'notice', ?, ?)",
+            (oldest.id, '{"code": "footprints_failed"}', now.isoformat()),
+        )
     db.close()
     log = env.paths.jobs_dir / f"{oldest.id}.log"
     logged = log.exists()

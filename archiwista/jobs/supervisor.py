@@ -140,7 +140,6 @@ _SCAN_CHANGES = (
     "links_changed",
     "issues_added",
     "footprints_written",
-    "footprints_failed",
     "missing",
     "reappeared",
     "removed",
@@ -395,7 +394,7 @@ class JobSupervisor:
         """Forget old jobs with their events and logs.
 
         Routine scans, incremental scans the scheduler started that
-        succeeded without notices or changes, go after 48 hours, except the
+        succeeded without changing the index, go after 48 hours, except the
         newest of each store. Other finished jobs and logs go after 90 days
         (the last finished job of each store and kind stays), and the oldest
         logs beyond 1 GB. The scheduler calls it every hour.
@@ -1288,9 +1287,10 @@ def _prune_routine_scans(
     """Forget routine scans older than 48 hours with their events and logs.
 
     A routine scan is an incremental scan of a whole store that the
-    scheduler started and that succeeded without a notice and without
-    changing anything (``_UNCHANGED_SQL``; a summary lacking a count is kept).
-    The newest routine scan of each store stays.
+    scheduler started and that succeeded without changing the index
+    (``_UNCHANGED_SQL``; a summary lacking a count is kept) and without a
+    notice but ``footprints_failed`` (outlines every scan tries again). The
+    newest routine scan of each store stays.
 
     Returns
     -------
@@ -1306,7 +1306,8 @@ def _prune_routine_scans(
             " AND json_extract(params, '$.mode') = 'incremental'"
             " AND json_extract(params, '$.segment') IS NULL"
             f" AND {_UNCHANGED_SQL} AND NOT EXISTS (SELECT 1 FROM job_events e"
-            " WHERE e.job_id = jobs.id AND e.type = 'notice'))"
+            " WHERE e.job_id = jobs.id AND e.type = 'notice'"
+            " AND json_extract(e.data, '$.code') IS NOT 'footprints_failed'))"
             " WHERE place > 1 AND finished_at < ?",
             (_iso(now - ROUTINE_SCAN_MAX_AGE),),
         ).fetchall()

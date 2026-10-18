@@ -35,7 +35,9 @@ MANY_SLOTS = 5400
 STILL_S = 0.6
 WORLD = "-180,-85,180,85"
 HEALTH = """async () => {
-  const answer = await fetch("/api/v1/health");
+  const token = sessionStorage.getItem("archiwista_csrf");
+  const headers = { "X-Archiwista-CSRF": token };
+  const answer = await fetch("/api/v1/health", { headers });
   const health = await answer.json();
   return health.stores.length > 0 && health.stores.every(
     (item) => item.state.indexed_at !== null && item.state.running_job === null);
