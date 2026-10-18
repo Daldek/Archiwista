@@ -8,8 +8,8 @@ decyzja o zakresie: A-ADR-025 ([`DECISIONS.md`](DECISIONS.md))
 
 ## MVP
 
-**MVP = wydanie v1.0** (decyzja użytkownika 2026-10-17). Obejmuje pięć
-obszarów:
+**MVP = wydanie v1.0** (decyzja użytkownika 2026-10-17; pogranicze PL + CZ
+w MVP — decyzja użytkownika 2026-10-18). Obejmuje sześć obszarów:
 
 1. **Przeglądarka** — indeks, mapa, katalog, karta pliku, projekty (podgląd),
    stan magazynu; tylko odczyt; model uprawnień i widoczność projektów.
@@ -21,8 +21,12 @@ obszarów:
    i udostępnianiem projektów.
 5. **Dane IMGW** — stacje, pokrycie szeregów, karta stacji, aktualność
    i synchronizacja archiwów, zadania projektu IMGW.
+6. **PL + CZ** — zestawienie danych z pogranicza bez scalania, scalona
+   powierzchnia przygraniczna przez Kartografa i stacje ČHMÚ przez
+   IMGWTools w widokach stacji.
 
-Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
+Zestaw do QGIS, asystent, mozaika i porównanie wersji z modelem różnic są
+**po MVP** (v1.1–v1.3).
 
 ## W zakresie MVP
 
@@ -42,17 +46,17 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 - Tryb lokalny z ochroną (tylko `127.0.0.1`, CSRF, DNS rebinding, ścieżki).
 - Tryb zespołu: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy z LDAP/AD, TLS, dziennik działań, wspólna kolejka, limity per osoba, pobieranie plików przez HTTP, aliasy ścieżek.
 - Dane IMGW: stacje na mapie i w „Katalogu”, „Zestawienie” z pokryciem szeregów osobno dla każdej zmiennej i w obu rodzajach lat, „Karta stacji” z wykresem, porównanie stacji, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW.
+- Pogranicze PL + CZ: pliki obu krajów zgrupowane po zadaniu z kontrolą zgodności (układy, pion, rozdzielczość) i podpowiedzią brakującego pobrania; scalona powierzchnia NMT na wspólnej siatce z raportem styku (Kartograf, KF) jako zadanie w tle i zadanie projektu; stacje ČHMÚ (hydro i meteo dobowe) w tych samych widokach co stacje IMGW (IMGWTools, IMGW-15..IMGW-19).
 - Instalacja na Linuksie i Windows, dokumentacja użytkownika po polsku, audyt WCAG 2.1 AA, przegląd bezpieczeństwa, pomiar wydajności na prawdziwym udziale SMB.
 
 ## Poza zakresem MVP
 
 | Element | Status | Powód |
 | --- | --- | --- |
-| Zestaw do projektu i QGIS (`.qgz`, ścieżki, atrybucje; także z danymi IMGW), PL + CZ bez scalania jako zestaw | v1.1 | decyzja o zakresie MVP |
+| Zestaw do projektu i QGIS (`.qgz`, ścieżki, atrybucje; także z danymi IMGW i ČHMÚ), eksport PL + CZ bez scalania jako zestaw | v1.1 | decyzja o zakresie MVP |
 | „Polecenie Kartografa” i „Dodaj do projektu” z karty pliku (KB-6), „Katalog” jako karty | v1.1 | decyzja użytkownika 2026-10-18: w MVP do projektu dodaje się dane z wyniku dostępności |
 | Asystent (agent LLM), także narzędzia IMGW i budżet asystenta per osoba | v1.2 | decyzja o zakresie MVP |
 | Mozaika arkuszy, model różnic wersji, zestaw z kopią danych | v1.3 | wymaga KE, KG w Kartografie |
-| Scalona powierzchnia PL + CZ | v1.4 | wymaga KF w Kartografie |
 | Usuwanie wersji z magazynu | poza zakresem | tylko raport kandydatów; usuwanie — jeśli kiedyś — w Kartografie (SPEC 15 P4) |
 | Przypinanie dowolnej starszej wersji wskazanej w przeglądarce | nie w v1.0 | model zadań projektu wybiera wersję opcjami (SPEC 15 P9) |
 | Podgląd 3D chmur punktów LAZ | po v1.0 | do rozpoznania wystarcza nagłówek i obraz 2D (SPEC 15 P5) |
@@ -60,7 +64,7 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 | macOS | bez gwarancji | priorytet: Linux i Windows (SPEC 15 P10) |
 | Analizy GIS | poza zakresem | analizy w QGIS |
 | Obliczenia hydrologiczne i statystyki szeregów | poza zakresem | Hydrolog i Retman |
-| Dane bieżące IMGW (stany, ostrzeżenia) | poza zakresem | tylko archiwa i szeregi z magazynu |
+| Dane bieżące IMGW i ČHMÚ (stany, ostrzeżenia) | poza zakresem | tylko archiwa i szeregi z magazynu |
 | Własne pobieranie lub obróbka danych | poza zakresem | wyłącznie API producentów; brak funkcji = wymaganie wobec producenta |
 | Wtyczka QGIS | poza zakresem | podprojekt 4 roadmapy Kartografa |
 | Różnica obiektów między migawkami danych własnych (dodane, usunięte, zmienione) | później | osobna decyzja; w MVP porównanie metadanych i kurtyna |
@@ -86,9 +90,11 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
    - Bramka: scenariusz na żywo z trzema osobami bez podwójnych pobrań; uprawnienia ról sprawdzone testami.
 6. **v0.5 „Stacje IMGW”.** Dodatek IMGW, stacje, pokrycie szeregów, karta stacji, aktualność i synchronizacja archiwów, zadania projektu IMGW.
    - Bramka: indeks katalogu IMGW zgodny z API IMGWTools; parytet z CLI `imgw`; etykiety pokrycia zgodne z tabelą przypadków granicznych.
-7. **v1.0 „Wydanie” (MVP).** Stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty, pomiar na prawdziwym SMB.
+7. **v0.6 „PL + CZ”.** Zestawienie PL + CZ bez scalania, scalona powierzchnia przygraniczna przez Kartografa (KF), stacje ČHMÚ przez IMGWTools w widokach v0.5.
+   - Bramka: powierzchnia przy granicy (Cieszyn) w EPSG:2180 i 5514 z raportem styku, bez zer w miejscu `nodata`, parytet z CLI; indeks danych ČHMÚ zgodny z API IMGWTools, etykiety pokrycia stacji ČHMÚ zgodne z tabelą przypadków granicznych; UC-09 i UC-20 na żywo.
+8. **v1.0 „Wydanie” (MVP).** Stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty, pomiar na prawdziwym SMB.
    - Bramka: kryteria sukcesu MVP z PRD.
-8. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”, v1.4 „PL + CZ”.
+9. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”.
 
 ## Zależności
 
@@ -101,10 +107,10 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 | v0.3 | Kartograf: KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 | — |
 | v0.5 | IMGWTools: IMGW-1..IMGW-14 |
+| v0.6 | Kartograf: KF (scalona powierzchnia PL + CZ); IMGWTools: IMGW-15..IMGW-19 (stacje ČHMÚ) |
 | v1.0 | wydania Kartografa i IMGWTools ze wszystkimi powyższymi |
 | v1.1 | Kartograf: KB-6 |
 | v1.3 | Kartograf: KE, KG |
-| v1.4 | Kartograf: KF |
 
 **Dane w magazynie i ich warunki** (Archiwista pokazuje atrybucje, nie
 zmienia warunków):
@@ -115,6 +121,7 @@ zmienia warunków):
 | DMR, DMP, ortofoto, ZABAGED, RUIAN i inne | ČÚZK (przez Kartografa) | CC BY 4.0 |
 | CORINE, SoilGrids | Copernicus, ISRIC (przez Kartografa) | otwarte, z atrybucją |
 | Archiwa hydro i meteo, katalog stacji | IMGW-PIB (przez IMGWTools) | regulamin IMGW-PIB: formuły źródła (§5 ust. 3–4), cel użycia (§3 ust. 2) |
+| Archiwa hydro i meteo, metadane stacji (od v0.6) | ČHMÚ (przez IMGWTools) | CC BY 4.0, atrybucja ČHMÚ |
 | Podkład mapy | OpenStreetMap | ODbL, atrybucja na mapie |
 
 **Środowisko testowe:** przykładowy magazyn testu na żywo Kartografa
@@ -128,7 +135,8 @@ Pełna lista: SPEC 14.
 | Ryzyko | Skutek | Działanie zaradcze |
 | --- | --- | --- |
 | MVP zależy od wydania IMGWTools z magazynem (dziś Beta, IMGW-1..14) | v1.0 czeka na IMGWTools | wymagania uzgodnione wcześnie; v0.1–v0.4 bez IMGWTools; źródło IMGW jako dodatek |
-| Zależność od wydań Kartografa (KA–KH) | etapy czekają | KA mały i pierwszy; wspólny harmonogram z roadmapą Kartografa |
+| MVP zależy od stacji ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu) | v0.6, a z nim v1.0, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter | wymagania zgłoszone wcześnie (`wymagania-imgwtools.md`); te same kontrakty z dostawcą jako zmiana addytywna; jeden adapter IMGW, decyzja o adapterze przy wydaniu IMGWTools |
+| Zależność od wydań Kartografa (KA–KH); KF (scalona powierzchnia, dziś R6 w backlogu) blokuje MVP | etapy czekają, v0.6 i v1.0 czekają na KF | KA mały i pierwszy; KF zgłoszony jako wymaganie MVP; wspólny harmonogram z roadmapą Kartografa |
 | Tryb zespołu w MVP poszerza zakres bezpieczeństwa | dłuższa droga do v1.0 | v0.4 przed danymi IMGW; przegląd bezpieczeństwa w bramce v1.0 |
 | Interfejs bez kontroli typów (Preact + htm bez budowania, A-ADR-028) | błędy wykrywane późno | testy w przeglądarce (Playwright), JSDoc; Vite i TypeScript można dodać później bez przepisywania |
 | Semantyka SMB | indeks nieaktualny | niezmienne wersje, odświeżanie widoku, widoczny stan indeksu |

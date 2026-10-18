@@ -2,8 +2,8 @@
 
 **Data:** 2026-10-17
 **Status:** propozycja do uzgodnienia z zespołem IMGWTools
-**Źródło:** `docs/SPEC.md` 12.7–12.9 (wymagania IMGW-1..IMGW-14, kontrakt
-formatu, czego nie wymagamy) oraz SPEC 4.6–4.8, 5.6, 6.7, 11, 13 i 14;
+**Źródło:** `docs/SPEC.md` 12.7–12.9 (wymagania IMGW-1..IMGW-19, kontrakt
+formatu, czego nie wymagamy) oraz SPEC 4.6–4.8 (stacje ČHMÚ: 4.8.6), 5.6, 6.7, 11, 13 i 14;
 decyzje `docs/DECISIONS.md`: A-ADR-019 (dwóch producentów), A-ADR-020
 (format danych IMGW), A-ADR-021 (etykiety pokrycia szeregów), A-ADR-022
 (dane bez położenia), A-ADR-023 (dane IMGW w projektach)
@@ -22,8 +22,8 @@ komend, pól i schematów są propozycjami — ostateczne ustali ADR IMGWTools
 (SPEC 12).
 
 **Spis treści:** 1. Wstęp · 2. Stan obecny IMGWTools 2.1.1 · 3. Wspólne
-reguły · 4. Wymagania IMGW-1..IMGW-14 · 5. Proponowana kolejność
-wdrożenia · 6. Pytania otwarte
+reguły · 4. Wymagania IMGW-1..IMGW-19 (stacje ČHMÚ: 4.15–4.19) · 5. Proponowana
+kolejność wdrożenia · 6. Pytania otwarte
 
 ## 1. Wstęp
 
@@ -62,6 +62,17 @@ z warstwą stacji, szeregami w CSV i formułami IMGW korzysta z eksportu
 IMGW-12 od v1.1; narzędzia asystenta IMGW wchodzą od v1.2.
 SPEC 13 wymaga do v0.5 wydania IMGWTools z IMGW-1..IMGW-14.
 
+**Wersja v0.6 „PL + CZ”** (SPEC 13; decyzja użytkownika 2026-10-18) wnosi
+do MVP stacje ČHMÚ (Czechy, https://opendata.chmi.cz) w tych samych
+widokach co stacje IMGW: mapa i „Katalog”, „Zestawienie” z pokryciem
+każdej zmiennej, „Karta stacji” z wykresem, aktualność i synchronizacja
+archiwów, zadania projektu IMGW (SPEC 4.8.6, UC-20). Archiwista czyta je
+tym samym adapterem IMGW, więc ČHMÚ ma być w IMGWTools dostawcą w tych
+samych kontraktach i API (IMGW-15..IMGW-19, sekcje 4.15–4.19). Punktem
+wyjścia jest szkic warstwy dostawców `IMGWTools/docs/OBSERWATOR_SPEC.md`
+(stan 2026-10-18: specyfikacja bez kodu; IMGWTools 3.0.0 ma magazyn
+z `provider` stale `IMGW-PIB`).
+
 **Zakres MVP v1.0** obejmuje dane IMGW (decyzja użytkownika 2026-10-17),
 w tym — od decyzji P18 — dane IMGW jako zadania i przypięcia projektu,
 zapisane w manifeście IMGWTools `imgw-project.json` obok manifestu
@@ -70,6 +81,9 @@ Zbiory IMGW od v0.5 (w MVP v1.0; SPEC 4.8): hydro dobowe (H, Q, T), hydro miesi�
 półroczne i roczne, meteo dobowe — klimat i opad. Poza zakresem MVP v1.0:
 dane bieżące i ostrzeżenia, zjawiska lodowe, meteo terminowe
 i miesięczne, synop, PMAXTP i siatki IMGW.
+Od v0.6 (też w MVP) dochodzą stacje ČHMÚ: hydro dobowe (H, Q, T) i meteo
+dobowe (opad, temperatura powietrza); dane bieżące, godzinowe
+i ostrzeżenia ČHMÚ są poza zakresem (SPEC 4.8.6).
 
 Granice Archiwisty, które dotyczą IMGWTools:
 
@@ -127,6 +141,7 @@ poniżej rozdziela je według tego, co da się wydać wcześniej:
 |---|---|---|
 | **P1** | blokuje część tylko do odczytu v0.5: katalog IMGW w indeksie, stacje na mapie i w „Katalogu”, „Zestawienie”, karta stacji, wykres | IMGW-1..IMGW-10 |
 | **P2** | blokuje pełne v0.5: działania z interfejsu („Okno planu”, polecenie `imgw …`, anulowanie), deklaracja obsługiwanych wersji kontraktu, zadania projektu IMGW; IMGW-12 jest wymagany od IMGWTools już do v0.5, lecz Archiwista używa eksportu CSV w zestawie od v1.1 | IMGW-11..IMGW-14 |
+| **P3** | blokuje v0.6 „PL + CZ”, a więc MVP: stacje ČHMÚ w widokach v0.5 | IMGW-15..IMGW-19 |
 
 Uzasadnienie:
 
@@ -293,7 +308,7 @@ domyślnie i ich nie powtarzają.
 - **R12. Granice z 1.4** — żadnych pól ani plików Archiwisty, żadnej
   zależności od Kartografa, żadnej logiki interfejsu.
 
-## 4. Wymagania IMGW-1..IMGW-14
+## 4. Wymagania IMGW-1..IMGW-19
 
 Podsumowanie (szczegóły w podsekcjach; „Fala” — sekcja 5):
 
@@ -313,6 +328,11 @@ Podsumowanie (szczegóły w podsekcjach; „Fala” — sekcja 5):
 | IMGW-12 | Eksport szeregu | P2 | IMGW-7, IMGW-10 | 8 | — |
 | IMGW-13 | Wersjonowanie schematów | P2 | — (dotyczy schematów z IMGW-1, -3, -7, -14) | 1 (polityka), 6 (testy kontraktu) | — |
 | IMGW-14 | Manifest projektu IMGW | P2 | IMGW-5, IMGW-7, IMGW-9..IMGW-11, IMGW-13 | 9 | — |
+| IMGW-15 | Dostawca w kontrakcie (ČHMÚ) | P3 | IMGW-1, IMGW-3, IMGW-10, IMGW-13 | 10 | — |
+| IMGW-16 | Archiwa ČHMÚ, aktualność i synchronizacja | P3 | IMGW-15, IMGW-2, IMGW-5 | 10 | — |
+| IMGW-17 | Katalog stacji ČHMÚ | P3 | IMGW-15, IMGW-9 | 10 | — |
+| IMGW-18 | Szeregi i pokrycie ČHMÚ | P3 | IMGW-16, IMGW-7, IMGW-8 | 10 | — |
+| IMGW-19 | Komendy, projekt i licencja ČHMÚ | P3 | IMGW-16..IMGW-18, IMGW-11, IMGW-12, IMGW-14 | 10 | — |
 
 SPEC (12.7, 14) wskazuje IMGW-2, IMGW-4 i IMGW-11 jako wymagania, które
 naprawiają też błędy niezależne od Archiwisty; ich część „naprawcza”
@@ -1134,6 +1154,154 @@ projektu”, „Przypięcie”), 3 (UC-16 krok 6, UC-18), 4.6 pkt 7, 4.7, 8.4,
 12.6 (wzór KH), 13 v0.5 (zakres, kryterium 9); A-ADR-019, A-ADR-023;
 P18.
 
+### 4.15 IMGW-15. Dostawca w kontrakcie (ČHMÚ)
+
+**Cel.** Stacje IMGW-PIB i ČHMÚ w jednym katalogu IMGW, jednym indeksie
+Archiwisty i jednym adapterze, bez zderzeń kodów i bez wiedzy Archiwisty
+o formacie ČHMÚ (SPEC 4.8.6, A-ADR-014, A-ADR-024).
+
+**Opis.** Dostawca jest jawną częścią kontraktu: klucze zbiorów
+`cz.chmi.<zbiór>` (np. `cz.chmi.hydro_daily`, `cz.chmi.meteo_daily`),
+w kopercie sidecara `country` = `CZ`, `provider` = `ČHMÚ`; tożsamość
+stacji = dostawca + identyfikator (WIGOS dla ČHMÚ) we wpisach katalogu,
+szeregach, pokryciu i zadaniach projektu. `store_info` podaje obsługiwanych
+dostawców z ich zbiorami, licencją i atrybucją; `iter_store`,
+`read_catalog` i `data_commands` przyjmują filtr `provider`. Slot archiwum
+ČHMÚ = ścieżka pliku na serwerze ČHMÚ (jak IMGW-4). Zmiany w `imgw-store/1`,
+`imgw-meta/1`, `imgw-series/1`, `imgw-project/1` tylko addytywne; zmiana
+niezgodna = `/2` z czytnikiem obu (IMGW-13).
+
+**Kryteria akceptacji.**
+
+1. Katalog z danymi obu dostawców przechodzi `iter_store` bez problemów;
+   każdy wpis ma dostawcę, a stacje o tym samym kodzie u dwóch dostawców
+   są dwoma wpisami.
+2. Katalog zapisany przed dodaniem ČHMÚ czyta się bez zmian (wpisy IMGW
+   z `provider` `IMGW-PIB`).
+3. `store_info` wymienia dostawców ze zbiorami i licencjami; filtr
+   `provider` zwraca tylko wpisy danego dostawcy.
+
+**Priorytet.** P3.
+
+**Zależności.** IMGW-1, IMGW-3, IMGW-10, IMGW-13. Wymagają go:
+IMGW-16..IMGW-19.
+
+**Odwołania.** SPEC 4.8.6, 12.7 (IMGW-15), 12.8, 13 v0.6 (kryterium 4);
+A-ADR-019, A-ADR-020, A-ADR-024, A-ADR-025 errata 3.
+
+### 4.16 IMGW-16. Archiwa ČHMÚ, aktualność i synchronizacja
+
+**Cel.** „Sprawdź aktualność” i „Pobierz nowsze” dla stacji ČHMÚ w zlewni,
+tak jak dla archiwów IMGW (UC-20).
+
+**Opis.** Archiwa ČHMÚ (hydro dobowe: plik JSON na stację i rok, np.
+`hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json`; meteo dobowe:
+pliki na stację) zapisywane 1:1 jako wersje z sidecarem `imgw-meta/1`
+(IMGW-1..IMGW-3), z `ETag` i `Last-Modified` w `request`. `check_store`
+i `sync_store` dla zbiorów `cz.chmi.*` przyjmują `stations` (lista
+identyfikatorów): ČHMÚ nie publikuje archiwum całego kraju, więc plan
+obejmuje tylko wybrane stacje i podaje liczbę zapytań. Statusy jak IMGW-5;
+brak pliku stacji za dany rok u źródła (`404`) to status `missing` w planie,
+nie błąd zadania. Ta sama treść pod nowymi nagłówkami = `relabeled`.
+
+**Kryteria akceptacji.**
+
+1. Na nagranych odpowiedziach ČHMÚ `check_store` daje `current`, `newer`
+   i `missing` zgodnie z nagłówkami i brakami plików; bez pobierania treści.
+2. `sync_store` zapisuje nowe wersje tylko przy innej treści; anulowanie
+   i przerwanie bez częściowych wersji (IMGW-2).
+3. `imgw-plan/1` dla ČHMÚ podaje stacje, pliki, rozmiary i liczbę zapytań.
+
+**Priorytet.** P3.
+
+**Zależności.** IMGW-15, IMGW-2, IMGW-5. Wymagają go: IMGW-18, IMGW-19.
+
+**Odwołania.** SPEC 4.8.6, 12.7 (IMGW-16), 13 v0.6 (kryterium 6), 14
+(archiwa per stacja); UC-20.
+
+### 4.17 IMGW-17. Katalog stacji ČHMÚ
+
+**Cel.** Stacje ČHMÚ na mapie, w „Katalogu” (także bez położenia) i w zlewni.
+
+**Opis.** Wersjonowany wpis katalogu stacji dla ČHMÚ (hydro z metadanych
+`meta1.json`, meteo z listy stacji ČHMÚ) w tym samym `stations.geojson`
+albo w osobnej wersji katalogu dostawcy — wybór IMGWTools, byle
+`read_catalog` zwracał oba. Pola i walidacja jak IMGW-9: położenie WGS84
+ze źródłem i niepewnością; `0,0` i punkty poza CZ = brak położenia
+(`geometry: null` z powodem), wpis zostaje; nazwa, rodzaj, rzeka; kod
+hierarchii zlewni (np. číslo hydrologického pořadí), jeśli źródło go
+podaje, jako tekst; progi SPA jako atrybuty.
+
+**Kryteria akceptacji.**
+
+1. Każda stacja z metadanych ČHMÚ jest w katalogu, także bez położenia.
+2. Współrzędne i kody zachowane bez zaokrągleń i konwersji na liczby.
+3. Ta sama treść metadanych nie tworzy nowej wersji (jak IMGW-9, Q9).
+
+**Priorytet.** P3.
+
+**Zależności.** IMGW-15, IMGW-9. Wymagają go: IMGW-18, IMGW-19.
+
+**Odwołania.** SPEC 4.8.1, 4.8.6, 6.7, 6.8, 12.7 (IMGW-17); A-ADR-022;
+P13, P19.
+
+### 4.18 IMGW-18. Szeregi i pokrycie ČHMÚ
+
+**Cel.** Etykiety pokrycia, wykres, porównanie ze stacjami IMGW i eksport
+dla stacji ČHMÚ bez osobnej logiki w Archiwiście.
+
+**Opis.** `build_series` dla zbiorów `cz.chmi.*` daje `imgw-series/1`
+z tymi samymi kolumnami co IMGW: rekordy z flagą (wartość, brak, brak
+zjawiska, suma zbiorcza; `null` ČHMÚ → brak), kolumna `hydro_year` (XI–X)
+dla hydro i meteo, `source_files[]` = archiwa wejściowe, `reused` przy tych
+samych wejściach. `summarize_coverage` osobno dla każdej zmiennej (IMGW-8)
+w `series.json`. `read_series`, `read_series_index` i `export_series` bez
+zmian sygnatur; jednostki w spisie (H [cm], Q [m³/s], T [°C], opad [mm],
+temperatura powietrza [°C]).
+
+**Kryteria akceptacji.**
+
+1. Na fixturach archiwów ČHMÚ szeregi i listy przerw zgodne z ręcznym
+   wyliczeniem dla przypadków granicznych SPEC 11, w obu rodzajach lat.
+2. Wszystkie stacje zbioru w szeregach, także z lukami (P14).
+3. Ponowne `build_series` przy tych samych wejściach = `reused`.
+
+**Priorytet.** P3.
+
+**Zależności.** IMGW-16, IMGW-7, IMGW-8. Wymaga go: IMGW-19.
+
+**Odwołania.** SPEC 4.8.3, 4.8.4, 4.8.6, 12.7 (IMGW-18), 12.8, 13 v0.6
+(kryterium 5); A-ADR-021; P14, P15, P16.
+
+### 4.19 IMGW-19. Komendy, projekt i licencja ČHMÚ
+
+**Cel.** „Okno planu”, polecenie do skopiowania, zadania projektu
+i atrybucje dla stacji ČHMÚ tak jak dla IMGW.
+
+**Opis.** Komendy synchronizacji i szeregów ČHMÚ w `data_commands()`
+(opisy po polsku, dozwolone wartości), `validate_command`, `format_command`
+→ `imgw …`, `run_command`/`check_command` z `on_progress`, `on_notice`
+i `cancel` (IMGW-11). Zadania `imgw-project/1` mogą zawierać stacje obu
+dostawców (IMGW-14; zmiana addytywna). `license` ČHMÚ: CC BY 4.0
+z atrybucją wymaganą przez ČHMÚ w `license.attribution` sidecarów archiwów,
+katalogu i szeregów oraz w eksporcie CSV (IMGW-12); regulamin IMGW-PIB
+i jego formuły nie dotyczą danych ČHMÚ.
+
+**Kryteria akceptacji.**
+
+1. Polecenie z `format_command` wykonane w terminalu daje te same wersje
+   i `sha256` co wywołanie API (test zgodności CLI i API).
+2. `download_project` odtwarza zadanie ze stacjami IMGW i ČHMÚ na pustym
+   katalogu z identycznymi `sha256`.
+3. Każdy sidecar i eksport danych ČHMÚ ma licencję CC BY 4.0 i atrybucję
+   ČHMÚ.
+
+**Priorytet.** P3.
+
+**Zależności.** IMGW-16..IMGW-18, IMGW-11, IMGW-12, IMGW-14.
+
+**Odwołania.** SPEC 4.8.6, 12.7 (IMGW-19), 13 v0.6 (kryteria 6–7); UC-20.
+
 ## 5. Proponowana kolejność wdrożenia
 
 Kolejność wynika z zależności z sekcji 4. Strzałka A → B: B wymaga A.
@@ -1154,6 +1322,7 @@ flowchart TD
   I11["IMGW-11<br/>komendy, CLI = API"]
   I12["IMGW-12<br/>eksport CSV"]
   I14["IMGW-14<br/>manifest projektu"]
+  I15["IMGW-15..19<br/>stacje ČHMÚ"]
   I13 -.-> I1
   I1 --> I2 --> I3 --> I4 --> I5
   I6 --> I8 --> I7
@@ -1170,6 +1339,8 @@ flowchart TD
   I10 --> I12
   I11 --> I14
   I10 --> I14
+  I14 --> I15
+  I12 --> I15
 ```
 
 | Fala | Wymagania | Wynik | Co odblokowuje |
@@ -1184,6 +1355,7 @@ flowchart TD
 | 7 | IMGW-11 | katalog komend, `run_command`, `check_command`, `cancel` | działania z interfejsu, „Okno planu”, polecenie `imgw …` |
 | 8 | IMGW-12 | eksport CSV (wydanie IMGWTools wymagane do v0.5 Archiwisty) | zestaw z szeregami od v1.1 Archiwisty |
 | 9 | IMGW-14 | manifest `imgw-project/1` | zadania projektu IMGW — **pełne v0.5** (komplet P2) |
+| 10 | IMGW-15..IMGW-19 | dostawca ČHMÚ w tych samych kontraktach | stacje ČHMÚ — **v0.6 „PL + CZ”**, a więc MVP (komplet P3) |
 
 Uwagi:
 
@@ -1219,6 +1391,9 @@ Uwagi:
 | Q13 | Czy fixtury archiwów i budowa katalogu testowego (SPEC 11) będą dostępne konsumentom (np. jako dane testowe pakietu albo funkcja), by Archiwista uruchamiała test kontraktu na katalogu zbudowanym przez IMGWTools | SPEC 11, IMGW-13 |
 | Q14 | Czy ponowne publikacje IMGW zmieniają treść archiwów (porównanie sum przy kolejnych synchronizacjach) — od tego zależy, jak często powstają nowe wersje zamiast `relabeled` | analiza 2026-10-17: nie wiadomo; SPEC 4.8.2, 14 |
 | Q15 | Które archiwa IMGW są „danymi o wysokiej wartości” (rozporządzenie UE 2023/138) — od tego zależy treść komunikatu o celu użycia (IMGW-11) | SPEC 4.8.5; analiza 2026-10-17: do ustalenia |
+| Q16 | Czy ČHMÚ będzie dostawcą w pakiecie `imgwtools` (jeden adapter Archiwisty), osobnym pakietem (osobna wtyczka) albo w pakiecie o nowej nazwie („Obserwator”) — i z jakim terminem wydania przed v0.6 Archiwisty | SPEC 4.8.6, 14; IMGW-15; `OBSERWATOR_SPEC.md` |
+| Q17 | Rok hydrologiczny ČHMÚ (XI–X jak w PL?) i dokładna formuła atrybucji wymagana przez ČHMÚ dla CC BY 4.0 | IMGW-18, IMGW-19 |
+| Q18 | Czy metadane ČHMÚ podają kod hierarchii zlewni (číslo hydrologického pořadí), który pozwoli na filtr „z dopływami” jak kod hydrograficzny IMGW (P19) | IMGW-17; SPEC 4.8.6 |
 
 ### 6.2 Otwarte po stronie Archiwisty
 
@@ -1231,3 +1406,7 @@ Uwagi:
   i filtry pojedynczej zmiennej to sprawa interfejsu Archiwisty.
 - Wzorce widoków stacji (mapa, „Katalog”, karta stacji, wykres) czekają
   na mockup (SPEC 6.7, M11); nie wpływają na kontrakt formatu.
+- **Adapter stacji ČHMÚ** — jeden adapter IMGW, dopóki ČHMÚ jest
+  dostawcą w pakiecie IMGWTools; osobna wtyczka tylko przy osobnym
+  pakiecie, a zmiana nazwy pakietu zmienia import i nazwę extra
+  `archiwista[imgw]` (Q16; PRD „Otwarte decyzje”, SPEC 4.8.6).

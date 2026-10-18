@@ -46,7 +46,7 @@ Kartografa).
 | [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
 | [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18) |
 | [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
-| [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika) |
+| [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika; errata 3: „PL + CZ” jako v0.6 w MVP, ze stacjami ČHMÚ) |
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
 | [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika; errata 1: migawkę w zespole robi właściciel projektu albo administrator, ADR-029) |
 | [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
@@ -1147,6 +1147,21 @@ i pełność arkuszy ortofotomapy, true orto i intensywności) przechodzi do v0.
 niego ortofotomapa w MVP nie ma lat z etykietami pokrycia (PRD F6.4). KB-6 („Polecenie
 Kartografa” i „Dodaj do projektu” z karty pliku) zostaje w v1.1: w MVP do projektu
 dodaje się dane z wyniku dostępności.
+
+**Errata 3 (2026-10-18, decyzja użytkownika):** wydanie „PL + CZ” zmienia numer
+z v1.4 na v0.6 i wchodzi do MVP (między v0.5 „Stacje IMGW” a v1.0). Zakres v0.6:
+zestawienie PL + CZ bez scalania (grupa `parent_request`, kontrola zgodności),
+scalona powierzchnia przygraniczna przez KF Kartografa (SPEC 8.3) oraz stacje ČHMÚ
+przez IMGWTools w widokach v0.5 (SPEC 4.8.6, wymagania IMGW-15..IMGW-19). Eksport
+PL + CZ bez scalania do zestawu QGIS zostaje w v1.1. Po MVP: v1.1 „Zestaw”, v1.2
+„Asystent”, v1.3 „Mozaika i porównanie”. Konsekwencje: KF (dziś R6 w backlogu
+Kartografa, poza publicznym API 0.8.0) i dostawca ČHMÚ w IMGWTools (dziś szkic
+„Obserwator”, bez kodu) blokują MVP — ryzyka w SCOPE i SPEC 14. Stacje ČHMÚ idą
+przez adapter IMGW (wtyczka z ADR-024); osobny adapter tylko wtedy, gdy IMGWTools
+wyda ČHMÚ jako osobny pakiet (pytanie otwarte w PRD). Zmiany: SPEC nagłówek, 2,
+3 (UC-09, UC-20), 4.8.6, 5.3, 6.7, 8.3, 8.6, 10.2, 11, 12.5, 12.7, 13, 14; PRD F12,
+F14, F17, założenia, miary sukcesu, otwarte decyzje; SCOPE; README; plan v0.1
+(granice zakresu); `docs/wymagania-imgwtools.md` (IMGW-15..IMGW-19).
 
 ---
 

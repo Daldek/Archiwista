@@ -8,11 +8,13 @@
 (`kartograf/__init__.py`, `__all__`) i formaty na dysku: sidecar
 `kartograf-meta/1`, układ `data/` z magazynem wersji (`versions/`), manifest
 projektu `kartograf-project/1`, plan aktualizacji `kartograf-plan/1`, raport
-dostępności `kartograf-availability/1`; od v0.5 IMGWTools (dane IMGW) —
+dostępności `kartograf-availability/1`; od v0.6 także KF (scalona
+powierzchnia PL + CZ, 12.5); od v0.5 IMGWTools (dane IMGW) —
 wydanie z wymaganiami IMGW-1..IMGW-14 (sekcja 12.7, dokument
 [`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md); dziś 2.1.1, Beta,
 bez magazynu): katalog `imgw-store/1`, sidecar `imgw-meta/1`, szeregi
-`imgw-series/1` (12.8), manifest projektu `imgw-project/1` (IMGW-14)
+`imgw-series/1` (12.8), manifest projektu `imgw-project/1` (IMGW-14), a od
+v0.6 wydanie ze stacjami ČHMÚ (IMGW-15..IMGW-19)
 **Dokumenty źródłowe (repozytorium Kartografa):** `docs/ARCHITECTURE.md` 1
 i 3.1-3.5, `docs/USAGE.md`, `docs/SCOPE.md` 3.3 (roadmapa, zasady nakładek),
 `docs/DECISIONS.md` ADR-022, ADR-024, ADR-027, ADR-036, ADR-037, ADR-039 do
@@ -23,7 +25,9 @@ ADR-044, spec manifestu `docs/superpowers/specs/2026-10-15-manifest-projektu-des
 repozytorium IMGWTools; regulamin IMGW-PIB
 (https://danepubliczne.imgw.pl/regulations) i opis API
 (https://danepubliczne.imgw.pl/apiinfo); pomiary serwerów IMGW
-z 2026-10-17 (4.8)
+z 2026-10-17 (4.8); dane ČHMÚ: `docs/OBSERWATOR_SPEC.md`
+i `docs/OBSERWATOR_RESEARCH.md` repozytorium IMGWTools
+(https://opendata.chmi.cz, 4.8.6)
 
 Konwencje dokumentu: nazwy z Kartografa (funkcje, pola sidecara, katalogi)
 są zapisane w `kodzie`; teksty interfejsu w cudzysłowie „…”; prawdziwe
@@ -195,7 +199,7 @@ zachowują jego znaczenie.
 | **Produkt pochodny** | (propozycja dla Kartografa) wynik łączenia zapisany w magazynie jako wersja z sidecarem i listą wejść (`extra.source_files[]`, wzór HSG); w katalogu IMGW — szeregi zbioru (IMGWTools) | sekcje 8.1, 4.8 |
 | **Zbiór IMGW** | Rodzaj archiwów IMGW-PIB o wspólnym formacie, np. hydro dobowe, opad dobowy; jednostką publikacji jest okres (rok albo miesiąc) dla całego kraju | sekcja 4.8 |
 | **Archiwum IMGW** | Plik opublikowany przez IMGW-PIB (np. `codz_2024.zip`), zapisany w katalogu IMGW 1:1 jako niezmienna wersja z sidecarem (`sha256`, `ETag`, `Last-Modified`); slot = ścieżka pliku na serwerze IMGW | sekcja 4.8.1, IMGW-4 |
-| **Stacja** | Punkt pomiarowy IMGW-PIB: wodowskaz (hydro) albo stacja meteorologiczna (klimatologiczna, opadowa); identyfikator — 9-cyfrowy kod, np. `149190310` | sekcja 4.8.1 |
+| **Stacja** | Punkt pomiarowy IMGW-PIB: wodowskaz (hydro) albo stacja meteorologiczna (klimatologiczna, opadowa); identyfikator — 9-cyfrowy kod, np. `149190310`. Od v0.6 także stacja ČHMÚ (CZ) z identyfikatorem WIGOS; tożsamość stacji = dostawca + identyfikator | sekcje 4.8.1, 4.8.6 |
 | **Katalog stacji** | Wersjonowana lista stacji z położeniem, jego źródłem i niepewnością (IMGWTools, GeoJSON) | sekcja 4.8.1, IMGW-9 |
 | **Szereg** | Wartości zmiennych jednej stacji z jednego zbioru IMGW w kolejnych dniach (miesiącach, półroczach): plik Parquet stacji w wersji **szeregów zbioru** — migawki wszystkich stacji zbioru zbudowanej przez IMGWTools z określonych wersji archiwów | sekcja 4.8.1, IMGW-7 |
 | **Zmienna** | Wielkość szeregu: H — stan wody [cm], Q — przepływ [m³/s], T — temperatura wody [°C], P — opad [mm], Tmax, Tmin, Tśr — temperatura powietrza [°C] | sekcja 4.8 |
@@ -316,15 +320,17 @@ danych) albo GeoTIFF na wspólnej siatce przycięty do obszaru. Plan pokazuje
 wejścia (konkretne wersje), siatkę i rozmiar wyniku. Wynik trafia do
 magazynu jako produkt pochodny z sidecarem (sekcja 8.2).
 
-### UC-09. Pogranicze PL + CZ (zestaw bez scalania od v1.1, powierzchnia od v1.4)
+### UC-09. Pogranicze PL + CZ (od v0.6; zestaw QGIS od v1.1)
 
 Marek modeluje zlewnię Olzy. Obszar przecina granicę; dostępność pokazuje
 lata PL i bieżące modele CZ. Pobranie idzie jednym zadaniem Kartografa
 (`country="auto"`, `cutout=True`, wspólny `horizontal_crs`, układ wysokości
 `pl=EVRF2007,cz=EVRF2007`); pliki PL i CZ są zgrupowane po
-`extra.parent_request`. „Łączenie › PL + CZ” daje dziś zestaw bez scalania
-(obie warstwy w projekcie QGIS), a po dodaniu funkcji do Kartografa —
-jedną powierzchnię na wspólnej siatce (sekcja 8.3).
+`extra.parent_request`, a kontrola zgodności podpowiada brakujące pobranie.
+„Łączenie › PL + CZ” liczy w Kartografie jedną powierzchnię na wspólnej
+siatce z raportem styku (sekcja 8.3); od v1.1 obie warstwy można też
+wyeksportować bez scalania do zestawu QGIS. Wodowskazy ČHMÚ na czeskiej
+części zlewni widać obok stacji IMGW (UC-20).
 
 ### UC-10. Zestaw do QGIS (od v1.1)
 
@@ -436,6 +442,21 @@ w magazynie: „nowsza publikacja: mies_2024.zip”, „nowy rocznik u źródła
 2025”. „Pobierz nowsze” zapisuje nowe wersje archiwów (stare zostają)
 i nową wersję szeregów zbioru. Zestawy wskazujące starsze szeregi są
 oznaczone „nieaktualny — wygeneruj ponownie”.
+
+### UC-20. Stacje ČHMÚ w zlewni przygranicznej (od v0.6)
+
+Ola liczy przepływy dla zlewni Olzy, której górna część leży w Czechach.
+Po wczytaniu granicy zlewni mapa pokazuje wodowskazy IMGW i ČHMÚ (plakietka
+dostawcy przy punkcie); „Zestawienie” ma etykiety pokrycia H, Q i T obu
+dostawców w tych samych zasadach (4.8.4, 4.8.6). „Sprawdź aktualność”
+i „Pobierz archiwa…” dla stacji ČHMÚ idą przez IMGWTools z „Oknem planu”
+i poleceniem `imgw …`; plan obejmuje tylko stacje obszaru, bo ČHMÚ
+publikuje archiwa per stacja. „Karta stacji” ČHMÚ podaje atrybucję CC BY 4.0
+z sidecara, a „Dodaj do projektu…” zapisuje stacje obu dostawców w jednym
+zadaniu projektu IMGW.
+
+**Sukces:** etykiety zgodne z ręcznym wyliczeniem z archiwów ČHMÚ, a katalog
+IMGW bajtowo taki sam jak po tym samym poleceniu `imgw` z CLI.
 
 ## 4. Model danych i indeks
 
@@ -999,6 +1020,49 @@ Regulamin IMGW-PIB (https://danepubliczne.imgw.pl/regulations):
 Tekst formuł pochodzi z sidecarów, nie z kodu Archiwisty. Archiwista
 informuje o warunkach, ale ich nie egzekwuje — nie zna celu użycia.
 
+#### 4.8.6 Stacje ČHMÚ (CZ, od v0.6)
+
+Od v0.6 IMGWTools zapisuje w tym samym katalogu IMGW także dane ČHMÚ
+(Český hydrometeorologický ústav, https://opendata.chmi.cz; decyzja
+użytkownika 2026-10-18; wymagania IMGW-15..IMGW-19). Archiwista czyta je tym
+samym adapterem IMGW i pokazuje w tych samych widokach co stacje IMGW (6.7):
+stacje na mapie i w „Katalogu”, „Zestawienie” z pokryciem szeregów osobno
+dla każdej zmiennej, „Karta stacji” z wykresem, aktualność i synchronizacja
+archiwów, zadania projektu IMGW. Zakres (klucze — propozycja; ścieżki
+ustali IMGWTools):
+
+| Zbiór | Archiwa ČHMÚ | Zmienne | Interwał, lata |
+|---|---|---|---|
+| Hydro dobowe (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json` — plik na stację i rok | H [cm], Q [m³/s], T [°C] | doba; oba rodzaje lat |
+| Meteo dobowe (`cz.chmi.meteo_daily`) | `meteorology/climate/historical/…` — pliki na stację | opad [mm], temperatura powietrza [°C] | doba; oba rodzaje lat |
+
+Różnice wobec IMGW, które obsługuje IMGWTools, a Archiwista tylko pokazuje:
+
+- **Jednostka publikacji to stacja**, nie kraj: nie ma archiwum całego
+  kraju, więc sprawdzenie aktualności i synchronizacja obejmują wybrane
+  stacje (obszar, lista kodów, zadanie projektu), nie „cały zbiór”; brak
+  archiwum stacji za dany rok u źródła to stan „brak u źródła”, nie błąd.
+- **Identyfikator** stacji to WIGOS (np. `0-203-0-…`); tożsamość w indeksie
+  i w zadaniach projektu = dostawca + identyfikator, więc kody PL i CZ się
+  nie zderzają. Katalog stacji ČHMÚ (z metadanych `meta1.json` i listy stacji
+  meteo) ma te same pola i reguły braku położenia co 4.8.1; kod hierarchii
+  zlewni (np. číslo hydrologického pořadí), jeśli źródło go podaje, jest
+  tekstem jak kod hydrograficzny IMGW (filtr prefiksu P19 — do
+  potwierdzenia).
+- **Format**: JSON w UTF-8, brak wartości jako `null`; normalizacja do
+  rekordów z flagą (4.8.3) i kolumna `hydro_year` (XI–X) są po stronie
+  IMGWTools, więc etykiety 4.8.4 i przełącznik rodzaju lat działają bez
+  zmian.
+- **Licencja** CC BY 4.0: atrybucja ČHMÚ w `license.attribution` sidecarów
+  (IMGW-19), w karcie stacji i w zestawie — tekst z sidecara, nie z kodu
+  Archiwisty; regulamin IMGW (4.8.5) stacji ČHMÚ nie dotyczy.
+
+Poza zakresem v0.6: dane bieżące i godzinowe ČHMÚ, ostrzeżenia CAP, stany
+SPA (pokazywane najwyżej jako atrybuty stacji). Adapter: jeden adapter IMGW,
+dopóki ČHMÚ jest dostawcą w pakiecie IMGWTools; gdyby trafił do osobnego
+pakietu albo pakiet zmienił nazwę (np. „Obserwator”), decyzja o adapterze
+i extra zapadnie przy tym wydaniu (5.8, A-ADR-024; pytanie otwarte w PRD).
+
 ## 5. Architektura
 
 Status: przyjęta (etap 0, decyzja użytkownika 2026-10-18): A-ADR-004, 006, 007, 008, 013, 015 i A-ADR-028 (interfejs w Preact + htm bez kroku budowania, zastępuje A-ADR-005). Wymagania produktowe niezależne od technologii są w `docs/PRD.md`.
@@ -1111,7 +1175,7 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 | `archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — jedno miejsce decyzji o uprawnieniach dla API, CLI i zapytań indeksu (A-ADR-029) |
 | `archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów ładowanych z entry points (grupa `archiwista.sources`), stany źródeł, sprawdzenie wersji i schematów producentów (5.8) |
 | `archiwista/adapter/kartograf/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
-| `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 i konwersje typów |
+| `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 (od v0.6 także IMGW-15..IMGW-19 — stacje ČHMÚ) i konwersje typów |
 | `archiwista/index/` | schemat, skaner, zapytania, obrysy, wyszukiwanie, stacje i pokrycie szeregów |
 | `archiwista/jobs/` | nadzorca, kolejka, proces roboczy (`python -m archiwista.jobs.worker`), protokół zdarzeń |
 | `archiwista/previews/` | kafle i podglądy rastrów, wektorów, LAZ, ZIP; dane wykresów szeregów (agregacja do wyświetlenia); pamięć podglądów |
@@ -2016,7 +2080,13 @@ potwierdzenia na mockupie, M11):
   z atrybucjami obu. Opcjonalnie, po mockupie (M11): wspólna oś czasu lat
   lotów NMT i pokrycia szeregów.
 - **Licencja.** Pod wykresem, w karcie stacji i w porównaniu stoją
-  formuły IMGW (4.8.5).
+  formuły IMGW (4.8.5), a dla stacji ČHMÚ — atrybucja CC BY 4.0 z sidecara.
+- **Stacje ČHMÚ (od v0.6, 4.8.6).** Te same widoki i zasady; punkt, wiersz
+  i karta mają plakietkę dostawcy („IMGW-PIB”, „ČHMÚ”), filtr „Dostawca”
+  działa w mapie, „Zestawieniu” i „Katalogu”, a porównanie łączy stacje
+  obu dostawców na wspólnej osi czasu. „Sprawdź aktualność” i „Pobierz
+  archiwa…” dla stacji ČHMÚ obejmują tylko wybrane stacje (archiwa per
+  stacja).
 
 ### 6.8 Katalog: dane bez położenia
 
@@ -2487,8 +2557,7 @@ Archiwista.
 
 Kartograf świadomie nie scala danych z dwóch krajów (ARCH 1: osobne pliki
 i sidecary per kraj powiązane `extra.parent_request`; scalenie w jedną
-powierzchnię to zadanie bez przypisanego wydania — R6 w backlogu
-Kartografa).
+powierzchnię to R6 w backlogu Kartografa — jako KF blokuje v0.6, 12.5).
 
 **Wejście.** Pliki PL i CZ tego samego rodzaju dla obszaru przygranicznego,
 zwykle z jednego zadania `country="auto"` (wspólne `parent_request`), np.
@@ -2497,15 +2566,15 @@ albo wektory: granice PRG i RUIAN, BDOT10k i ZABAGED.
 
 **Wynik.** Dwa warianty:
 
-- **„Zestaw bez scalania”** (od v1.1, bez zmian w Kartografie): pliki PL
-  i CZ razem na mapie i w katalogu (grupa `parent_request`), sprawdzenie
+- **„Zestawienie bez scalania”** (od v0.6, bez zmian w Kartografie): pliki
+  PL i CZ razem na mapie i w katalogu (grupa `parent_request`), sprawdzenie
   zgodności (układy, rozdzielczości, pion, daty) z podpowiedzią brakującego
-  pobrania (np. CZ w EVRF2007: `--vertical-crs pl=EVRF2007,cz=EVRF2007`)
-  i eksport do zestawu QGIS (8.4) z grupami „PL” i „CZ” oraz atrybucjami
-  obu dostawców. Wektory zawsze w tym wariancie: schematy atrybutów PRG
-  i RUIAN (BDOT10k i ZABAGED) są różne, a ich harmonizacja jest poza
-  zakresem v1.0.
-- **„Scalona powierzchnia”** (Kartograf R6 = KF): jeden raster na wspólnej
+  pobrania (np. CZ w EVRF2007: `--vertical-crs pl=EVRF2007,cz=EVRF2007`);
+  od v1.1 eksport do zestawu QGIS (8.4) z grupami „PL” i „CZ” oraz
+  atrybucjami obu dostawców. Wektory zawsze w tym wariancie: schematy
+  atrybutów PRG i RUIAN (BDOT10k i ZABAGED) są różne, a ich harmonizacja
+  jest poza zakresem v1.0.
+- **„Scalona powierzchnia”** (od v0.6; Kartograf R6 = KF): jeden raster na wspólnej
   siatce w układzie wybranym przez użytkownika (np. EPSG:2180, 5514, 3045),
   wspólna rozdzielczość wybrana jawnie z metodą, wysokości w EVRF2007 po
   obu stronach, reguła styku: dane PL na terytorium PL (maska lądu PRG, jak
@@ -2552,8 +2621,8 @@ wycinki w jednym układzie; maska lądu PRG wycinka PL; pomiar styku na żywo
 kandydaci do API) z regułą styku, kontrolą pionu i raportem.
 
 **Gdzie implementować.** Scalanie — Kartograf. Grupowanie po
-`parent_request`, kontrola zgodności z podpowiedzią i zestaw bez scalania —
-Archiwista.
+`parent_request`, kontrola zgodności z podpowiedzią, plan i zadanie w tle
+(v0.6) oraz zestaw bez scalania (v1.1) — Archiwista.
 
 ### 8.4 Tryb 3: zestaw do projektu i QGIS (od v1.1)
 
@@ -2711,8 +2780,9 @@ dostarcza wybór, plan, uruchomienie, podgląd i opakowanie.** Uzasadnienie:
 
 Rozważony kontrargument — tempo: Archiwista czeka na wydania Kartografa.
 Odpowiedź: kolejność roadmapy (sekcja 13) najpierw daje tryby bez nowych
-funkcji Kartografa (zestaw QGIS, zestaw PL + CZ bez scalania, porównanie
-metadanych i wizualne), a KE, KG i KF przychodzą później.
+funkcji Kartografa (zestawienie PL + CZ bez scalania, porównanie metadanych
+i wizualne); KF blokuje v0.6, więc i MVP (decyzja użytkownika 2026-10-18,
+ryzyko w 14), a KE i KG przychodzą po MVP.
 
 ## 9. API HTTP
 
@@ -3107,7 +3177,7 @@ Decyzja: A-ADR-012.
   od v1.1 zestawy, od v1.2 rozmowy z asystentem; wykonanie propozycji wymaga
   uprawnień danego działania), „zapis do magazynu” (`store_writer`: działania
   zapisujące magazyn centralny przez API producentów — pobieranie, pobranie
-  projektu, synchronizacja i szeregi IMGW, od v1.3 łączenie; sprawdzane od v0.3),
+  projektu, synchronizacja i szeregi IMGW, od v0.6 łączenie; sprawdzane od v0.3),
   „administrator” (`admin`; administrator systemu Archiwista, nie serwera:
   ustawienia, magazyny, konta, grupy, uprawnienia, wszystkie projekty; od v1.2
   dostawca asystenta). Ustawienie `store_write_for_all` nadaje zapis do
@@ -3245,7 +3315,8 @@ Decyzja: A-ADR-012.
 - **Wydajność:** cele z 4.5 na magazynie syntetycznym; pomiar na
   prawdziwym udziale SMB jako scenariusz świadomy (`-m smb`).
 - **Testy na żywo (świadomie, `-m live`):** UC-01 (Kraków, NMT), UC-05,
-  UC-06, od v1.1 UC-09 (pogranicze), UC-10 (otwarcie zestawu w QGIS — ręcznie),
+  UC-06, od v0.6 UC-09 (pogranicze, scalona powierzchnia) i UC-20 (stacje
+  ČHMÚ), od v1.1 UC-10 (otwarcie zestawu w QGIS — ręcznie),
   od v0.5 UC-19 (`HEAD` archiwów hydro 2023–2025, synchronizacja jednego
   roku) i katalog stacji z publicznego API IMGW;
   dane wyłącznie w `<katalog-danych>` poza repo i poza `/tmp`; raport
@@ -3324,7 +3395,7 @@ wątek), tak samo `read_sidecar`, `describe_segment` i `link_target`.
 | ID | API (propozycja) | Po co | Wersja |
 |---|---|---|---|
 | KE | `build_mosaic` / `check_mosaic` (+ `kartograf elevation mosaic`, `kartograf imagery mosaic`; pozycje projektu): wejście jako wybór danych albo lista wersji; VRT albo GeoTIFF na wspólnej siatce; reprojekcja przypięta; produkt pochodny z `extra.derived` i `extra.source_files` | tryb 1 (8.2) | v1.3 |
-| KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 z backlogu: wspólna siatka, EVRF2007 po obu stronach, reguła styku, raport styku | tryb 2, scalona powierzchnia (8.3) | v1.4 |
+| KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 z backlogu: wspólna siatka, EVRF2007 po obu stronach, reguła styku, raport styku | tryb 2, scalona powierzchnia (8.3) | v0.6 |
 | KG | `compare_versions` / `check_compare` (+ `kartograf elevation compare`): model różnic ze statystyką i progiem istotności; później `compare_vector_versions` | tryb 4, poziom 3 (8.5) | v1.3 |
 
 ### 12.6 KH — projekty
@@ -3355,6 +3426,15 @@ niezależne od Archiwisty. Samodzielny dokument wymagań dla zespołu
 IMGWTools (cel, kryteria akceptacji, priorytety, zależności i kolejność
 wdrożenia): [`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md).
 
+Stacje ČHMÚ (CZ) od v0.6 (decyzja użytkownika 2026-10-18; 4.8.6): IMGWTools
+3.0.0 ma magazyn wersjonowany bez warstwy dostawców (`provider` w sidecarze
+stale `IMGW-PIB`), a dostawcę ČHMÚ opisuje szkic `docs/OBSERWATOR_SPEC.md`
+(planowane w IMGWTools 4.0, „Obserwator”; stan 2026-10-18: specyfikacja,
+bez kodu). Archiwista potrzebuje od tego wydania IMGW-15..IMGW-19, w tych
+samych kontraktach (`imgw-store/1`, `imgw-meta/1`, `imgw-series/1`,
+`imgw-project/1` — zmiany addytywne według IMGW-13) i przez to samo API
+odczytu, żeby adapter IMGW obsłużył obu dostawców bez osobnej ścieżki.
+
 | ID | Wymaganie (propozycja) | Po co | Wersja |
 |---|---|---|---|
 | IMGW-1 | **Magazyn wersjonowany** (`imgw-store/1`, 12.8): własny katalog ze znacznikiem `imgw-store.json`, nigdy wewnątrz katalogu Kartografa (ani odwrotnie); niezmienne wersje `<etykieta>_<sha8>` (tożsamość = SHA-256 treści) archiwów, katalogu stacji i szeregów zbiorów; katalog tylko przyrostowy — bez nadpisywania, usuwania, dowiązań twardych i plików zmiennych; wersję bieżącą wylicza API (IMGW-10) z reguły z 4.8.1; ścieżki niezależne od bieżącego katalogu (dziś `data_dir` i `db_path` są względne, `IMGWTools/src/imgwtools/config.py:35-39`); cache SQLite tylko lokalnie, nigdy w katalogu IMGW | wersje, odtwarzalne zestawy i praca zespołowa na SMB bez blokad; prostsza semantyka niż ADR-036 Kartografa to mniej miejsc na rozbieżność dwóch implementacji | v0.5 |
@@ -3371,6 +3451,11 @@ wdrożenia): [`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md).
 | IMGW-12 | **Eksport szeregu**: `export_series(version, station, path, *, variables, year_type=None, format="csv")` — UTF-8, separator `,`, kropka dziesiętna, daty ISO, nagłówek z jednostkami, kolumna roku w wybranej konwencji (`year_type`: `hydrological` albo `calendar`, dla hydro i meteo, P15; `None` = konwencja numeracji archiwów zbioru, czyli `year_type` spisu `series.json`), pusta komórka = brak, kolumna flag; wszystkie dni ciągłego kalendarza stacji, także z brakami (P14) | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`), konsumowany przez Archiwistę od v1.1 | v0.5 (IMGWTools) |
 | IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.5 |
 | IMGW-14 | **Manifest projektu IMGW** (`imgw-project/1`, P18, A-ADR-023): plik `imgw-project.json` w katalogu projektu obok `kartograf-project.json` (każdy plik ma jednego właściciela; projekt może mieć jeden albo oba); pola: `schema`, `store_dir` (katalog IMGW; ścieżki względne i bezwzględne jak w manifeście Kartografa), `tasks[]` — `name` (reguły nazw Kartografa), `command` (komenda IMGW z IMGW-11, np. `series select`), `options` (zbiór, stacje jako jawna lista kodów — wybór obszarem zapisany po rozstrzygnięciu, z `geometry` i `geometry_sha256` jak w Kartografie — zmienne, lata i `year_type`), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — ścieżka wersji względna do `store_dir`; `sha256`; `station` dla plików stacji); API = CLI (`imgw project init/add/remove/download/status/verify`): `init_project`, `open_project` (pełna walidacja, błędy po polsku), `add_project_task` (walidacja jak `validate_command`), `remove_project_task`, `download_project` (synchronizacja potrzebnych archiwów, szeregi z `reused`, przypięcie; odtwarzanie tylko przy identycznych `sha256`), bliźniak `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (bez sieci); zapis atomowy (`os.replace`) pod blokadą `.imgw-project.lock` (`mkdir`, właściciel, bez przejmowania) i scalanie per zadanie | dane IMGW jako zadania i przypięcia projektu w v1.0: „Dodaj do projektu” dla stacji, status, weryfikacja, odtwarzanie u kolegi, zestaw z przypięć (4.7, 8.4) | v0.5 |
+| IMGW-15 | **Dostawca w kontrakcie**: każdy zbiór, sidecar, wpis katalogu stacji i zadanie projektu niesie dostawcę (`dataset` `cz.chmi.<zbiór>`, `country` `CZ`, `provider` `ČHMÚ`); tożsamość stacji = dostawca + identyfikator (WIGOS dla ČHMÚ); `store_info` podaje obsługiwanych dostawców i zbiory z licencją; filtr `provider` w `iter_store`, `read_catalog` i katalogu komend; slot archiwum ČHMÚ = ścieżka pliku na serwerze (jak IMGW-4); zmiana tylko addytywna w `/1` albo `/2` z czytnikiem obu (IMGW-13) | jeden adapter i jeden indeks dla stacji PL i CZ, bez zderzeń kodów | v0.6 |
+| IMGW-16 | **Archiwa ČHMÚ, aktualność i synchronizacja**: zbiory z 4.8.6 jako archiwa 1:1 z sidecarem `imgw-meta/1` (zapis jak IMGW-1..IMGW-3); `check_store`/`sync_store` dla `cz.chmi.*` z argumentem `stations` (jednostką publikacji jest stacja — bez „całego kraju”), `HEAD` z `ETag`/`Last-Modified`, statusy jak IMGW-5, brak pliku u źródła = `missing` bez błędu zadania; plan `imgw-plan/1` z liczbą zapytań | aktualność i „Pobierz nowsze” dla stacji ČHMÚ w zlewni | v0.6 |
+| IMGW-17 | **Katalog stacji ČHMÚ**: wersjonowany wpis katalogu stacji (hydro z `meta1.json`, meteo z listy stacji ČHMÚ) z polami i walidacją 4.8.1 (położenie WGS84 ze źródłem i niepewnością; poza CZ albo `0,0` = brak położenia, wpis zostaje); nazwa, rzeka, kod hierarchii zlewni jako tekst, jeśli źródło go podaje; progi SPA jako atrybuty | stacje ČHMÚ na mapie, w „Katalogu” i w zlewni | v0.6 |
+| IMGW-18 | **Szeregi i pokrycie ČHMÚ**: `build_series` dla `cz.chmi.*` (`imgw-series/1`: te same kolumny, `null` → brak z flagą, `hydro_year` XI–X dla hydro i meteo); `summarize_coverage` osobno dla każdej zmiennej (IMGW-8) zapisane w `series.json`; `read_series`, `read_series_index` i `export_series` bez zmian sygnatur | etykiety pokrycia, wykres i zestaw dla stacji ČHMÚ tak samo jak dla IMGW | v0.6 |
+| IMGW-19 | **Komendy, projekt i licencja ČHMÚ**: komendy synchronizacji i szeregów ČHMÚ w `data_commands()` z `format_command` → `imgw …` (CLI = API, `cancel`); zadania projektu `imgw-project/1` ze stacjami obu dostawców; `license` CC BY 4.0 z atrybucją wymaganą przez ČHMÚ w sidecarach archiwów, katalogu i szeregów oraz w eksporcie CSV; komunikaty `on_notice` po polsku | „Okno planu”, polecenie do skopiowania, zadania projektu i atrybucje bez wiedzy Archiwisty o ČHMÚ | v0.6 |
 
 ### 12.8 Kontrakt formatu IMGW (rekomendacja, A-ADR-020)
 
@@ -3504,7 +3589,7 @@ zgłasza (UC-13).
 
 ## 13. Roadmapa (v0.1 → v1.0 MVP → v1.x)
 
-MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025). Kolejność i zakres wydań określa `docs/SCOPE.md`; ta sekcja zachowuje szczegóły zakresu poszczególnych wersji i kryteria akceptacji. Najpierw powstają funkcje niewymagające nowych funkcji Kartografa, a później tryby zależne od jego wydań. Dane IMGW (v0.5) czekają na wydanie IMGWTools z kontraktem (12.7); interfejs źródła i mechanizm wtyczek powstają w v0.1 (A-ADR-024), więc adapter IMGW (extra `archiwista[imgw]`) nie wymaga przebudowy.
+MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025; v0.6 „PL + CZ” w MVP — errata 3, 2026-10-18). Kolejność i zakres wydań określa `docs/SCOPE.md`; ta sekcja zachowuje szczegóły zakresu poszczególnych wersji i kryteria akceptacji. Najpierw powstają funkcje niewymagające nowych funkcji Kartografa, a później tryby zależne od jego wydań. Dane IMGW (v0.5) czekają na wydanie IMGWTools z kontraktem (12.7), a v0.6 — na KF w Kartografie i stacje ČHMÚ w IMGWTools (IMGW-15..IMGW-19); interfejs źródła i mechanizm wtyczek powstają w v0.1 (A-ADR-024), więc adapter IMGW (extra `archiwista[imgw]`) nie wymaga przebudowy.
 
 | Wersja | Zakres | Wymaga od producentów |
 |---|---|---|
@@ -3513,11 +3598,11 @@ MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025). Kolejność i zakres wy
 | v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” sprawdzane przy działaniach | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik działań, wspólna kolejka | — |
 | v0.5 „Stacje IMGW” | extra `archiwista[imgw]` (adapter IMGW jako wtyczka); katalog IMGW: stacje na mapie i w Katalogu (także bez położenia), Zestawienie i Karta stacji z wykresem, porównanie stacji, etykiety pokrycia szeregów osobno dla każdej zmiennej, w obu rodzajach lat, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW | IMGWTools: IMGW-1..IMGW-14 |
-| v1.0 „Wydanie (MVP)” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty; scenariusze MVP | wydania Kartografa i IMGWTools wymagane do v0.5 |
-| v1.1 „Zestaw” | zestaw do QGIS (w tym warstwa stacji IMGW, CSV i formuły), PL + CZ bez scalania, polecenie z karty pliku | KB-6; IMGW-12 |
+| v0.6 „PL + CZ” | pogranicze: zestawienie PL + CZ bez scalania (grupa `parent_request`, kontrola zgodności) i scalona powierzchnia przygraniczna przez Kartografa (tryb 2, 8.3); stacje ČHMÚ przez IMGWTools w widokach v0.5 (4.8.6) | Kartograf: KF; IMGWTools: IMGW-15..IMGW-19 |
+| v1.0 „Wydanie (MVP)” | stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty; scenariusze MVP | wydania Kartografa i IMGWTools wymagane do v0.6 |
+| v1.1 „Zestaw” | zestaw do QGIS (w tym warstwa stacji IMGW i ČHMÚ, CSV i formuły), eksport PL + CZ bez scalania do zestawu, polecenie z karty pliku | KB-6; IMGW-12 |
 | v1.2 „Asystent” | czat z narzędziami (także IMGW), propozycje i potwierdzenie; budżet asystenta per osoba | — |
 | v1.3 „Mozaika i porównanie” | mozaika VRT/GeoTIFF, model różnic, zestaw z kopią danych | KE, KG |
-| v1.4 „PL + CZ” | scalona powierzchnia przygraniczna | KF |
 
 ### v0.1 „Przeglądarka”
 
@@ -3682,6 +3767,53 @@ Kryteria akceptacji:
 10. Test na żywo (świadomy) z raportem: aktualność roczników 2023–2025
     hydro dobowych i synchronizacja jednego roku z szeregami.
 
+### v0.6 „PL + CZ”
+
+Zakres: tryb 2 (8.3) — zestawienie PL + CZ bez scalania (pliki obu krajów
+razem na mapie i w „Katalogu” z grupą `parent_request`, kontrola zgodności
+układów, rozdzielczości, pionu i dat z podpowiedzią brakującego pobrania)
+i „Łączenie › PL + CZ”: scalona powierzchnia przez KF Kartografa z planem
+`check_cross_border` w „Oknie planu”, zadaniem w tle, poleceniem
+`kartograf elevation cross-border` i wynikiem jako produktem pochodnym
+w magazynie (L1–L8, 8.1), także jako zadanie projektu; stacje ČHMÚ (4.8.6)
+przez adapter IMGW w widokach v0.5: mapa i „Katalog” z plakietką dostawcy,
+„Zestawienie” z etykietami pokrycia każdej zmiennej, „Karta stacji”
+z wykresem, porównanie stacji PL i CZ, aktualność i synchronizacja
+wybranych stacji, zadania projektu IMGW; w zespole łączenie i pobieranie
+wymaga uprawnienia „zapis do magazynu” (10.2).
+
+Dlaczego v0.6, przed v1.0: pogranicze PL + CZ należy do MVP (decyzja
+użytkownika 2026-10-18, A-ADR-025 errata 3); korzysta z działań v0.3,
+trybu zespołu v0.4 i widoków stacji v0.5. Wydanie czeka na KF w publicznym
+API Kartografa (dziś R6 w backlogu; Kartograf 0.8.0 ma już pobieranie CZ:
+wycinki, arkusze SM5 i kafle TM33, LAZ, ortofotomapę, `countries_for_bbox`)
+i na IMGWTools ze stacjami ČHMÚ (IMGW-15..IMGW-19).
+
+Kryteria akceptacji:
+
+1. Powierzchnia dla obszaru przy granicy (np. Cieszyn) w EPSG:2180
+   i EPSG:5514 z raportem styku trafia do magazynu z sidecarem
+   i `source_files`, a ponowne uruchomienie daje `reused`; Bpv z EVRF2007 →
+   błąd z podpowiedzią; ani jednego zera w miejscu `nodata`.
+2. Parytet z CLI: scalenie przez Archiwistę i tym samym poleceniem
+   `kartograf elevation cross-border` daje tę samą wersję i `sha256`.
+3. Pliki PL i CZ jednego zadania są zgrupowane po `parent_request`;
+   niezgodny pion albo układ daje ostrzeżenie z gotowym poleceniem
+   brakującego pobrania.
+4. Indeks katalogu IMGW z danymi ČHMÚ zgodny z `iter_store` IMGWTools; kody
+   stacji PL i CZ się nie zderzają; stacje ČHMÚ bez położenia tylko
+   w „Katalogu”.
+5. Etykiety pokrycia stacji ČHMÚ zgodne z ręcznym wyliczeniem dla tabeli
+   przypadków granicznych (sekcja 11), w obu rodzajach lat.
+6. Parytet z CLI dla synchronizacji i szeregów ČHMÚ (te same wersje
+   i `sha256` na nagranych odpowiedziach); anulowanie bez częściowych
+   wersji.
+7. Atrybucja CC BY 4.0 ČHMÚ w karcie stacji, porównaniu i sidecarach;
+   zadanie projektu IMGW ze stacjami obu dostawców odtwarza się
+   z identycznymi `sha256`.
+8. Testy na żywo z raportem: UC-09 (zlewnia Olzy, scalona powierzchnia)
+   i UC-20 (aktualność i synchronizacja kilku stacji ČHMÚ).
+
 ### v1.0 „Wydanie (MVP)”
 
 Zakres: stabilne `/api/v1`; instalacja `pipx`/`uv tool` na Linuksie
@@ -3689,9 +3821,9 @@ i Windows, obraz Dockera dla serwera zespołu; dokumentacja użytkownika po
 polsku; audyt dostępności cyfrowej (WCAG 2.1 AA) i przegląd bezpieczeństwa;
 pomiar wydajności na prawdziwym udziale SMB.
 
-Kryteria: scenariusze MVP UC-01..UC-07, UC-13..UC-17 i UC-19 przejdą
-na żywo i są opisane w raporcie. Po MVP: UC-08 od v1.3, UC-09 od v1.1
-(bez scalania) i v1.4 (scalenie), UC-10 od v1.1, UC-11 od v1.3
+Kryteria: scenariusze MVP UC-01..UC-07, UC-09, UC-13..UC-17, UC-19 i UC-20
+przejdą na żywo i są opisane w raporcie. Po MVP: UC-08 od v1.3, UC-09
+w wariancie zestawu bez scalania i UC-10 od v1.1, UC-11 od v1.3
 (model różnic; kurtyna jest od v0.2), UC-12 i UC-18 od v1.2.
 Cele z 4.5 spełnione na prawdziwym udziale; brak znanych błędów
 krytycznych; CI zielone w obu konfiguracjach (bez i z `[imgw]`)
@@ -3701,8 +3833,9 @@ z bieżącymi wydaniami Kartografa i IMGWTools.
 
 ### v1.1 „Zestaw”
 
-Zakres: tryb 3 (8.4), tryb 2 bez scalania (8.3), „Polecenie Kartografa”
-i „Dodaj do projektu” z karty pliku (KB-6), „Katalog” jako karty.
+Zakres: tryb 3 (8.4), eksport zestawienia PL + CZ bez scalania do zestawu
+(8.3), „Polecenie Kartografa” i „Dodaj do projektu” z karty pliku (KB-6),
+„Katalog” jako karty.
 
 Kryteria: `.qgz` otwiera się w QGIS 3.34 LTR i 3.40 bez pytań o układ;
 warstwy wskazują pliki wersji; sumy w `pliki.csv` równe przypięciom;
@@ -3736,19 +3869,11 @@ magazynu z sidecarem i `source_files`, a ponowne uruchomienie daje
 różnic ma statystykę i próg istotności; obie operacje działają jako zadania
 projektu z przypięciem wejść i wyniku.
 
-### v1.4 „PL + CZ”
-
-Zakres: tryb 2, scalona powierzchnia (8.3).
-
-Kryteria: powierzchnia dla obszaru przy granicy (np. Cieszyn) w EPSG:2180
-i EPSG:5514 z raportem styku; Bpv z EVRF2007 → błąd z podpowiedzią; ani
-jednego zera w miejscu `nodata`.
-
 ## 14. Ryzyka
 
 | Ryzyko | Skutek | Szansa | Ograniczenie |
 |---|---|---|---|
-| Zależność od wydań Kartografa (KA-KH) | Archiwista czeka | średnia | KA jest mały i pierwszy; roadmapa zaczyna od części bez nowych funkcji; wspólny harmonogram z roadmapą Kartografa |
+| Zależność od wydań Kartografa (KA-KH) | Archiwista czeka; KF (scalona powierzchnia, dziś R6 w backlogu) blokuje v0.6, a więc MVP v1.0 | średnia | KA jest mały i pierwszy; roadmapa zaczyna od części bez nowych funkcji; KF zgłoszony wcześnie jako wymaganie MVP (12.5); wspólny harmonogram z roadmapą Kartografa |
 | Semantyka SMB (pamięć atrybutów, i-węzły, czasy katalogów) | indeks nieaktualny | wysoka | niezmienne wersje, sidecary dowiązań jako prawda, odświeżanie widoku przed odpowiedzią, dobowy skan kontrolny, widoczny stan indeksu; KA-7 po pomiarach |
 | Duże pliki (arkusz ASC ok. 38 MB tekstu, pliki krajowe do 25 GB) | wolne podglądy, miejsce na dysku | wysoka | podglądy na żądanie, lokalne COG, limit pamięci, bez automatycznych podglądów powyżej 2 GB |
 | Przeliczenie do wyświetlania operacją przybliżoną | obrysy CZ ok. 100 m obok | średnia | KA-6, test punktu kontrolnego na styku |
@@ -3762,6 +3887,8 @@ jednego zera w miejscu `nodata`.
 | Interfejs bez kontroli typów (A-ADR-028: Preact + htm bez kroku budowania) | błędy wykrywane dopiero w działaniu | średnia | testy w przeglądarce (Playwright), adnotacje JSDoc, testy kontraktu z OpenAPI; dodanie Vite i TypeScriptu później bez przepisywania komponentów |
 | Warunki licencji danych przy przekazaniu | naruszenie atrybucji | niska | atrybucje w karcie pliku, zestawie i kopii danych |
 | Zależność od IMGWTools (2.1.1, Beta, bez magazynu; IMGW-1..IMGW-14); od A-ADR-024 opcjonalna (extra `[imgw]`) | dane IMGW (v0.5), a z nimi MVP (v1.0, A-ADR-025), czekają na IMGWTools; wydania v0.1–v0.4 i instalacja bez IMGW go nie potrzebują | średnia | IMGWTools jest wtyczką i nie blokuje v0.1–v0.4 (5.8); kontrakt uzgodniony wcześnie (12.7–12.8, `docs/wymagania-imgwtools.md`), interfejs źródła od v0.1, testy kontraktu na katalogu zbudowanym przez IMGWTools; IMGW-2, IMGW-4 i IMGW-11 naprawiają błędy niezależne od Archiwisty |
+| Stacje ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu, możliwa zmiana nazwy pakietu) | v0.6, a z nim MVP, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter i extra | średnia | wymagania zgłoszone przed v0.5 (`docs/wymagania-imgwtools.md`), te same kontrakty z dostawcą jako zmiana addytywna, jeden adapter IMGW; decyzja o adapterze przy wydaniu IMGWTools (4.8.6, A-ADR-024) |
+| Archiwa ČHMÚ per stacja (brak archiwum kraju) | setki zapytań przy synchronizacji, wolne plany | średnia | synchronizacja tylko wybranych stacji (obszar, projekt), plan z liczbą zapytań, 2 zadania sieciowe naraz |
 | Konflikty wersji bibliotek naukowych między Kartografem i IMGWTools (numpy, pandas, GDAL/rasterio, pyarrow) | niemożliwa instalacja albo rozjazd środowiska z `[imgw]` | średnia | jeden plik blokady dla spójnego zestawu, CI w dwóch konfiguracjach (bez i z `[imgw]`), testy kontraktu względem `develop` producentów (5.8, 11, A-ADR-024) |
 | Niezgodna wersja albo schemat zainstalowanego producenta (np. `imgw-meta/2`) | źródło nie działa albo czyta błędnie | średnia | sprawdzenie przy starcie i w `archiwista doctor`, czytelny komunikat po polsku, wyłączone tylko to źródło (5.8) |
 | Dwie implementacje semantyki wersji (ADR-036 Kartografa i katalog IMGW) | rozbieżne gwarancje („nigdy nie nadpisuje”) | średnia | prostszy kontrakt IMGW (tylko przyrost, bez dowiązań i plików zmiennych), testy kontraktu po obu stronach, opis w ADR IMGWTools |

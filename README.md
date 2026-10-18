@@ -18,8 +18,10 @@ indeks i podglądy, które można w każdej chwili odbudować.
 **Status:** wdrażanie v0.1: dostępny jest pakiet, interfejs źródeł i pomoc CLI;
 widoki, indeks i działające komendy pojawią się w kolejnych krokach planu.
 Zakres pierwszego wydania (MVP, v1.0): przeglądanie magazynu, podglądy,
-działania (dostępność, pobieranie, aktualność, projekty), tryb zespołu i dane
-IMGW; zestaw do QGIS, asystent i łączenie danych — po MVP. Architektura
+działania (dostępność, pobieranie, aktualność, projekty), tryb zespołu, dane
+IMGW oraz pogranicze PL + CZ (scalona powierzchnia przez Kartografa, stacje
+ČHMÚ przez IMGWTools); zestaw do QGIS, asystent, mozaiki i porównanie
+wersji — po MVP. Architektura
 przyjęta (2026-10-18): Python + FastAPI, interfejs Preact + htm, MapLibre GL.
 
 ## Instalacja deweloperska (krok 1)

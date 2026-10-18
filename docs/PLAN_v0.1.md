@@ -140,7 +140,8 @@ nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
    obszaru” z geometrii wersji w indeksie, nie dostępność u źródła ani
    etykiety jej pokrycia. Bez podglądów, Wachlarza, Osi czasu i kurtyny
    (v0.2), pobierania, aktualności i edycji manifestu (v0.3), zespołu
-   (v0.4), stacji IMGW (v0.5), wbudowanego asystenta (v1.2) i mozaiki (v1.3).
+   (v0.4), stacji IMGW (v0.5), pogranicza PL + CZ i stacji ČHMÚ (v0.6),
+   wbudowanego asystenta (v1.2) i mozaiki (v1.3).
    W projekcie tylko odczyt `open_project`/`get_project_status`; polecenie
    zadania to **odczyt istniejących** opcji, nie własny formatter
    (`format_command` dopiero KB-4). „Brak podglądu — od v0.2” ma być

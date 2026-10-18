@@ -47,12 +47,14 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
 
 ### Decyzje (stan na 2026-10-18)
 
-- **Zakres MVP = v1.0** (A-ADR-025, erraty 1–2): v0.1 Przeglądarka, v0.2
+- **Zakres MVP = v1.0** (A-ADR-025, erraty 1–3): v0.1 Przeglądarka, v0.2
   Podglądy (+ dane własne i migawki), v0.3 Działania (dostępność z etykietami,
   także obrazy PL — KD-3 i wydania BDOT10k — KD-4), v0.4 Zespół, v0.5 Stacje
-  IMGW, v1.0 Wydanie. Po MVP: v1.1 Zestaw (KB-6), v1.2 Asystent, v1.3 Mozaika
-  i porównanie, v1.4 PL + CZ. ADR-019..024 zachowują starą numerację
-  („v0.8” = v0.4, „v0.9” = v0.5).
+  IMGW, v0.6 PL + CZ (scalona powierzchnia przez KF Kartografa, stacje ČHMÚ
+  przez IMGWTools — IMGW-15..19; errata 3, decyzja 2026-10-18), v1.0 Wydanie.
+  Po MVP: v1.1 Zestaw (KB-6; też eksport PL + CZ bez scalania), v1.2
+  Asystent, v1.3 Mozaika i porównanie. ADR-019..024 zachowują starą
+  numerację („v0.8” = v0.4, „v0.9” = v0.5).
 - **Architektura przyjęta (etap 0):** Python + FastAPI (A-ADR-004), interfejs
   Preact + htm bez kroku budowania, biblioteki w pakiecie, bez Node.js
   (A-ADR-028, zastępuje A-ADR-005), MapLibre GL (006), procesy robocze (007),
@@ -103,7 +105,9 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
 - **Plan v0.1** — kroki 6a, 6b, 8b i 9a–14 do wykonania.
 - PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
   M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
-  łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v1.3).
+  łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v0.6),
+  adapter stacji ČHMÚ (jeden adapter IMGW czy osobna wtyczka, przy wydaniu
+  IMGWTools ze stacjami ČHMÚ).
   Komputer odniesienia dla SSD ustalony w planie v0.1 (decyzja 1); pomiar
   SMB wymaga prawdziwego udziału SMB 3.
 - A-ADR-029: nazwy akcji `can(...)` i schemat bazy stanu ustala krok 8b
@@ -113,9 +117,12 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
   na gałęzi `feat/archiwista-store-api`, blokują kroki 2, 4–7 i 9a–13 do
   instalacji gałęzi, a wydanie v0.1 — do tagu `v0.8.0`; v0.3: KA-4
   (pozycje planu), KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa
-  Kartografa niezaktualizowana (czeka na decyzję użytkownika). IMGWTools —
-  `docs/wymagania-imgwtools.md` (IMGW-1..14) do przekazania; blokuje v0.5,
-  a więc MVP — największe ryzyko harmonogramu.
+  Kartografa niezaktualizowana (czeka na decyzję użytkownika); KF (scalona
+  powierzchnia, dziś R6 w backlogu, poza publicznym API 0.8.0) blokuje v0.6,
+  a więc MVP. IMGWTools — `docs/wymagania-imgwtools.md` (IMGW-1..19) do
+  przekazania; IMGW-1..14 blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś
+  szkic „Obserwator” bez kodu) — v0.6, a więc MVP — największe ryzyko
+  harmonogramu.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
 - Nazwy katalogów i schemat `archiwista-snapshot/1` migawek — w planie v0.2.
 - Nazwy przy A-ADR-024 (`GET /sources`, `source_unavailable` /

@@ -90,7 +90,7 @@ uproszczenie mockupu, nie cecha danych.
 | Rastry z arkuszy (NMT, NMPT, LAZ, ortofotomapa) | arkusz (godło), kafel CZ | arkusze w kolorach pokrycia i kampanii | obrysy + podgląd arkuszy pobranych; ortofotomapa także lata niepobrane z WMS GUGiK z wymiarem czasu (1995–2025) | etykiety roku (6.4); zmiany: porównanie metadanych i kurtyna (v0.2), model różnic (v1.3) |
 | Produkty jednostkowe (BDOT10k, BDOO, modele 3D, CORINE) | jednostka administracyjna (powiat — TERYT), granice z PRG | jednostki obszaru: paczka jest / brak / w magazynie | obrysy jednostek + render wybranych warstw z pobranych paczek, przycięty do obszaru | etykiety wydania (KD-4, v0.3); zmiany: różnica wydań wg klas obiektów (porównanie wektorów u producenta, później) |
 | Pliki krajowe i wyniki obszaru (PRG, ZABAGED, RUIAN…) | kraj albo obszar zadania | zasięg | jeden wpis „bieżące” albo wersje wg daty | wersje wg daty pobrania lub wydania |
-| Stacje IMGW | punkt stacji; bez położenia — „Katalog” | punkty w kolorach pokrycia wybranej zmiennej | — (dane opisują czas, nie obszar): „Oś czasu” stacje × lata | etykiety pokrycia szeregów (A-ADR-021) |
+| Stacje IMGW (od v0.6 także ČHMÚ) | punkt stacji; bez położenia — „Katalog” | punkty w kolorach pokrycia wybranej zmiennej, z plakietką dostawcy | — (dane opisują czas, nie obszar): „Oś czasu” stacje × lata | etykiety pokrycia szeregów (A-ADR-021) |
 | Dane własne projektu (np. sieć kanalizacyjna) i rodzaj ogólny (dowolny plik rastrowy lub wektorowy) | zasięg z pliku | zasięg i podgląd w widoku, razem z danymi projektu | migawki jako warstwy | bez źródła zdalnego: bez etykiet dostępności; „zmieniony od migawki z …”; porównanie metadanych migawek |
 
 ## Wymagania funkcjonalne
@@ -180,11 +180,17 @@ każdego wymagania: wskazana sekcja SPEC.
 - F16.5 Zapis do magazynu centralnego wyłącznie przez API producentów i tylko z uprawnieniem „zapis do magazynu”. (v0.3)
 - F16.6 Logowanie, zarządzanie kontami i ekran udostępniania w interfejsie, opcjonalnie grupy z LDAP/AD (F10.1). (v0.4)
 
+**F17. Pogranicze PL + CZ** (SPEC 4.8.6, 8.3, UC-09, UC-20; A-ADR-025 errata 3)
+
+- F17.1 Pliki PL i CZ jednego zadania zgrupowane (`parent_request`) na mapie i w „Katalogu”; kontrola zgodności układów, pionu, rozdzielczości i dat z podpowiedzią brakującego pobrania. (v0.6)
+- F17.2 „Łączenie › PL + CZ”: scalona powierzchnia NMT na wspólnej siatce z regułą i raportem styku, liczona przez Kartografa (KF) z planem, w tle, z poleceniem `kartograf …`; wynik jako produkt pochodny w magazynie i zadanie projektu. (v0.6)
+- F17.3 Stacje ČHMÚ (hydro i meteo dobowe) przez IMGWTools w widokach F11: mapa, „Katalog”, „Zestawienie” z pokryciem każdej zmiennej, „Karta stacji” z wykresem i atrybucją CC BY 4.0, porównanie ze stacjami IMGW, aktualność i synchronizacja wybranych stacji, zadania projektu IMGW. (v0.6)
+
 **Po MVP** (szczegóły: SCOPE, „Poza zakresem MVP”)
 
-- F12 Zestaw do projektu i QGIS: `.qgz`, lista ścieżek, atrybucje, także dane IMGW (SPEC 8.4). (v1.1)
+- F12 Zestaw do projektu i QGIS: `.qgz`, lista ścieżek, atrybucje, także dane IMGW i ČHMÚ oraz eksport PL + CZ bez scalania (SPEC 8.4). (v1.1)
 - F13 Asystent (agent LLM): planuje przygotowanie danych, wykonuje dopiero po „Zatwierdź i uruchom”; domyślnie wyłączony (SPEC 7). (v1.2)
-- F14 Łączenie: mozaika, porównanie wersji z modelem różnic (v1.3), scalona powierzchnia PL + CZ (v1.4) — obróbka w Kartografie (SPEC 8).
+- F14 Łączenie: mozaika, porównanie wersji z modelem różnic — obróbka w Kartografie (SPEC 8). (v1.3)
 
 ## Wymagania niefunkcjonalne
 
@@ -244,8 +250,9 @@ każdego wymagania: wskazana sekcja SPEC.
 
 | Założenie | Skutek | Jak komunikujemy |
 | --- | --- | --- |
-| Producenci dostarczą wymagane API (Kartograf KA–KH, IMGWTools IMGW-1..14) | wydania Archiwisty czekają na wydania producentów | wymagania w SPEC 12 i `docs/wymagania-imgwtools.md`; kolumna „wymaga” w SCOPE |
+| Producenci dostarczą wymagane API (Kartograf KA–KH, IMGWTools IMGW-1..19) | wydania Archiwisty czekają na wydania producentów | wymagania w SPEC 12 i `docs/wymagania-imgwtools.md`; kolumna „wymaga” w SCOPE |
 | IMGWTools (2.1.1, Beta) nie ma dziś magazynu | dane IMGW (v0.5), a więc i MVP, zależą od IMGWTools | wymagania uzgodnione wcześnie; źródło IMGW jako dodatek |
+| KF (scalona powierzchnia PL + CZ) nie jest jeszcze w publicznym API Kartografa; stacje ČHMÚ w IMGWTools dopiero w przygotowaniu | v0.6, a więc i MVP, zależy od obu wydań | wymagania KF (SPEC 12.5) i IMGW-15..IMGW-19 (SPEC 12.7) zgłoszone wcześnie; ryzyko w SCOPE i SPEC 14 |
 | Opóźnienie publikacji IMGW (10–19 miesięcy), ponowne publikacje archiwów | niepełny ostatni rok, zmiany danych | lata opublikowane i daty publikacji w interfejsie; nowe wersje zamiast nadpisania |
 | Część stacji IMGW bez położenia | stacje poza mapą | „Katalog” z grupą „bez położenia” i licznikiem na mapie; nigdy zgadywanie położenia |
 | Semantyka SMB (pamięć atrybutów, i-węzły) | indeks może być chwilowo nieaktualny | odświeżanie widoku przed odpowiedzią, widoczny stan indeksu |
@@ -258,9 +265,9 @@ każdego wymagania: wskazana sekcja SPEC.
 
 Kryteria sukcesu MVP (v1.0):
 
-- [ ] Scenariusze MVP (SPEC 3: UC-01..UC-07, UC-13..UC-17, UC-19) przechodzą na żywo i są opisane w raporcie.
+- [ ] Scenariusze MVP (SPEC 3: UC-01..UC-07, UC-09, UC-13..UC-17, UC-19, UC-20) przechodzą na żywo i są opisane w raporcie.
 - [ ] Indeks przykładowego magazynu zgodny z API odczytu producentów (te same wersje, dowiązania i problemy).
-- [ ] Parytet z CLI dla pobierania, projektów i synchronizacji IMGW (te same wersje i `sha256`).
+- [ ] Parytet z CLI dla pobierania, projektów, scalenia PL + CZ i synchronizacji IMGW i ČHMÚ (te same wersje i `sha256`).
 - [ ] Cele wydajności N3 spełnione na prawdziwym udziale SMB.
 - [ ] Anulowanie i restart w trakcie zadań nie zostawiają częściowych wersji.
 - [ ] Zespół trzech osób na wspólnym magazynie: żadna jednostka nie jest pobrana dwa razy; role sprawdzone testami.
@@ -273,5 +280,6 @@ Kryteria sukcesu MVP (v1.0):
 | --- | --- | --- |
 | Etykiety pokrycia i ich wygląd | robocze z SPEC 6.4 (A-ADR-010; mockup M2) | przed v0.3 |
 | Format danych IMGW | `imgw-meta/1`, Parquet, GeoJSON (A-ADR-020) | z zespołem IMGWTools, przed v0.5 |
-| Wyniki łączenia jako produkty pochodne Kartografa | tak, wzór HSG (A-ADR-009; SPEC 15 P2, P3) | przed v1.3 |
+| Wyniki łączenia jako produkty pochodne Kartografa | tak, wzór HSG (A-ADR-009; SPEC 15 P2, P3) | przed v0.6 |
 | Komputer odniesienia dla celów wydajności | do ustalenia | przed v0.1 |
+| Adapter stacji ČHMÚ | jeden adapter IMGW, dopóki ČHMÚ jest dostawcą w pakiecie IMGWTools; osobny adapter (wtyczka) tylko gdy IMGWTools wyda ČHMÚ jako osobny pakiet; zmiana nazwy pakietu (np. „Obserwator”) zmienia import i nazwę extra (SPEC 4.8.6, A-ADR-024) | przy wydaniu IMGWTools ze stacjami ČHMÚ, przed v0.6 |
