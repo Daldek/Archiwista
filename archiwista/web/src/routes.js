@@ -37,6 +37,7 @@
 
 /** @type {ViewRoute[]} */
 export const VIEWS = [
+  { id: "map", icon: "map", start: true, load: () => import("./views/map.js") },
   { id: "catalog", icon: "table", load: () => import("./views/catalog.js") },
   { id: "projects", icon: "folder", load: () => import("./views/projects.js") },
   { id: "store", icon: "database", load: () => import("./views/store.js") },

@@ -1,0 +1,142 @@
+/**
+ * Geometry of the map view in WGS84 (longitude, latitude), as the API takes
+ * and returns it: bounding boxes `[min_lon, min_lat, max_lon, max_lat]`,
+ * GeoJSON polygons of drawn areas and the map position kept in the address.
+ */
+
+/** Poland and Czechia: the view of an index without outlines. */
+export const HOME_BOUNDS = [12.0, 48.5, 24.2, 55.0];
+
+/** Every footprint of the index: the view that frames the data at the start. */
+export const WORLD_BOUNDS = [-180, -85, 180, 85];
+
+/** Decimal places of coordinates sent to the API (about 0.1 m). */
+const DIGITS = 6;
+const LAT_LIMIT = 85;
+
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+const round = (value, digits = DIGITS) => Number(value.toFixed(digits));
+
+/**
+ * A bounding box as the API's `bbox` text.
+ *
+ * @param {number[]} bbox - `[min_lon, min_lat, max_lon, max_lat]`.
+ * @returns {string} E.g. `19.5,49.5,20.5,50.2`.
+ */
+export function bboxText(bbox) {
+  return bbox.map((value) => round(value)).join(",");
+}
+
+/**
+ * The bounding box of a GeoJSON geometry of any type.
+ *
+ * @param {import("../types.js").Geometry} geometry
+ * @returns {number[]|null} `null` for a geometry without coordinates.
+ */
+export function geometryBounds(geometry) {
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  const walk = (coordinates) => {
+    if (typeof coordinates[0] === "number") {
+      box[0] = Math.min(box[0], coordinates[0]);
+      box[1] = Math.min(box[1], coordinates[1]);
+      box[2] = Math.max(box[2], coordinates[0]);
+      box[3] = Math.max(box[3], coordinates[1]);
+      return;
+    }
+    for (const part of coordinates) walk(part);
+  };
+  walk(geometry.coordinates ?? []);
+  return Number.isFinite(box[0]) ? box : null;
+}
+
+/**
+ * The bounding box of several boxes.
+ *
+ * @param {Array<number[]|null>} boxes
+ * @returns {number[]|null} `null` when there is none.
+ */
+export function unionBounds(boxes) {
+  const found = boxes.filter(Boolean);
+  if (!found.length) return null;
+  return [
+    Math.min(...found.map((box) => box[0])),
+    Math.min(...found.map((box) => box[1])),
+    Math.max(...found.map((box) => box[2])),
+    Math.max(...found.map((box) => box[3])),
+  ];
+}
+
+/**
+ * The visible part of a map as a box the API accepts (inside WGS84).
+ *
+ * @param {*} map - A MapLibre map.
+ * @returns {number[]}
+ */
+export function viewBounds(map) {
+  const bounds = map.getBounds();
+  return [
+    clamp(bounds.getWest(), -180, 180),
+    clamp(bounds.getSouth(), -LAT_LIMIT, LAT_LIMIT),
+    clamp(bounds.getEast(), -180, 180),
+    clamp(bounds.getNorth(), -LAT_LIMIT, LAT_LIMIT),
+  ];
+}
+
+/**
+ * A closed, counter-clockwise polygon of a box.
+ *
+ * @param {number[]} bbox
+ * @returns {import("../types.js").Geometry}
+ */
+export function bboxPolygon([minLon, minLat, maxLon, maxLat]) {
+  const ring = [
+    [minLon, minLat],
+    [maxLon, minLat],
+    [maxLon, maxLat],
+    [minLon, maxLat],
+  ].map(([lon, lat]) => [round(lon), round(lat)]);
+  return { type: "Polygon", coordinates: [[...ring, ring[0]]] };
+}
+
+/**
+ * A closed polygon of drawn vertices.
+ *
+ * @param {Array<number[]>} points - At least three `[lon, lat]` vertices.
+ * @returns {import("../types.js").Geometry}
+ */
+export function ringPolygon(points) {
+  const ring = points.map(([lon, lat]) => [round(lon), round(lat)]);
+  return { type: "Polygon", coordinates: [[...ring, ring[0]]] };
+}
+
+/**
+ * The map position for the address: `center=lon,lat` and `zoom`.
+ *
+ * @param {*} map - A MapLibre map.
+ * @returns {{center: string, zoom: string}}
+ */
+export function positionParams(map) {
+  const { lng, lat } = map.getCenter();
+  return { center: `${lng.toFixed(5)},${lat.toFixed(5)}`, zoom: map.getZoom().toFixed(2) };
+}
+
+/**
+ * The map position of an address, when both parameters are valid.
+ *
+ * @param {Object<string, string>} params - Route parameters.
+ * @returns {{center: [number, number], zoom: number}|null}
+ */
+export function readPosition(params) {
+  const center = (params.center ?? "").split(",").map(Number);
+  const zoom = Number(params.zoom);
+  const valid =
+    center.length === 2 &&
+    center.every(Number.isFinite) &&
+    Math.abs(center[0]) <= 180 &&
+    Math.abs(center[1]) <= LAT_LIMIT &&
+    params.zoom !== undefined &&
+    Number.isFinite(zoom) &&
+    zoom >= 0 &&
+    zoom <= 24;
+  return valid ? { center: [center[0], center[1]], zoom } : null;
+}

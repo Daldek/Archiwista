@@ -1,0 +1,119 @@
+/* Map view (views/map.js, src/map/): loaded by the view with loadStylesheet. */
+
+.map-view { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ---------- centre bar: panel toggle, area, filter chips, counters ---------- */
+.map-bar { gap: 10px; }
+.panel-toggle { flex: none; }
+.panel-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.area-badge { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; border: 1px solid #c7d2fe; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12.5px; }
+.area-badge > svg { flex: none; }
+.area-badge-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.area-badge .btn { color: var(--accent); }
+.filter-chips { list-style: none; margin: 0; padding: 0; }
+.filter-chip { padding-right: 3px; gap: 4px; }
+.chip-remove { border: 0; background: transparent; width: 18px; height: 18px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; cursor: pointer; color: var(--text-3); }
+.chip-remove:hover { background: var(--panel-2); color: var(--text); }
+.map-counts { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.map-count { font-variant-numeric: tabular-nums; }
+.no-outline { text-decoration: none; border-color: #fcd34d; background: var(--warn-bg); color: var(--warn-ink); }
+.no-outline:hover { background: #fde68a; }
+.stale-chip { border-color: #fcd34d; color: var(--warn-ink); }
+
+/* ---------- the map and its overlays ---------- */
+/* Above maplibre-gl.css, which makes its container `position: relative`. */
+.map-canvas > .map-gl { position: absolute; inset: 0; }
+.map-canvas .maplibregl-canvas-container.pointing { cursor: pointer; }
+.map-canvas .maplibregl-canvas-container.drawing { cursor: crosshair; }
+.map-canvas .map-tooltip { transform: none; max-width: 340px; }
+.map-tooltip b.mono { font-size: 11.5px; overflow-wrap: anywhere; }
+.map-hint-text { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.map-hint-actions { display: flex; gap: 5px; flex: none; }
+.map-notes { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; display: grid; gap: 8px; justify-items: center; width: max-content; max-width: min(620px, calc(100% - 24px)); }
+.map-hint-card { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; font-size: 12.5px; }
+.map-hint-card > svg { flex: none; color: var(--text-2); }
+.map-problem { padding: 3px; max-width: 100%; }
+.map-note, .map-failure { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; margin: 0; padding: 7px 12px; font-size: 12px; color: var(--warn-ink); max-width: calc(100% - 24px); }
+.map-failure { top: 40%; bottom: auto; color: var(--bad-ink); }
+
+.pick-list { position: absolute; z-index: 4; width: 320px; max-width: calc(100% - 16px); padding: 8px; display: grid; gap: 6px; }
+.pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-left: 4px; }
+.pick-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 260px; overflow-y: auto; }
+.pick-item { display: grid; gap: 1px; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
+.pick-item:hover, .pick-item:focus-visible { background: var(--accent-soft); }
+.pick-item .mono { overflow-wrap: anywhere; }
+.pick-list p { margin: 0 4px; font-size: 11.5px; }
+
+/* legend (legend.js) */
+.legend-title { all: unset; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 12px; color: var(--text); }
+.legend-title:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 4px; }
+.legend-rows { display: grid; gap: 5px; margin-top: 4px; }
+.legend-rows[hidden] { display: none; }
+.map-legend.closed { min-width: 0; }
+.legend-row .sw { margin-top: 1px; }
+.sw-footprint { background: rgba(29, 78, 216, 0.14); border: 1.5px solid #1d4ed8; }
+.sw-cells { background: linear-gradient(90deg, rgba(29, 78, 216, 0.12), rgba(29, 78, 216, 0.6)); border: 1px solid #fff; }
+.sw-area { background: rgba(55, 48, 163, 0.08); border: 2px solid #3730a3; }
+.sw-sheet { border: 1px dashed #475467; }
+.legend-basemap { display: grid; gap: 4px; margin-top: 4px; color: var(--text-2); }
+.legend-basemap select { height: 26px; border: 1px solid var(--line-2); border-radius: 7px; background: #fff; padding: 0 6px; font-size: 12px; min-width: 0; }
+.legend-note { margin: 4px 0 0; color: var(--text-2); line-height: 1.4; }
+
+/* ---------- „Wybór” panel (panel.js, coverage.js) ---------- */
+.map-steps h2.step-title { font-size: 13.5px; margin: 0; }
+.step-anchor:focus { outline: none; }
+.step-anchor:focus-visible > .step { box-shadow: 0 0 0 3px #c7d2fe; }
+.sheet-form { margin-top: 10px; }
+.sheet-form .field { margin-bottom: 6px; }
+.sheet-input { display: flex; gap: 6px; }
+.sheet-input input { flex: 1; }
+.sheet-input .btn { height: 34px; flex: none; }
+.grid-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 6px; }
+.grid-row > .btn { grid-column: 1 / -1; justify-self: start; }
+.grid-row select { width: 100%; min-width: 0; }
+.select-sm { height: 26px; border: 1px solid var(--line-2); border-radius: 7px; background: #fff; padding: 0 6px; font-size: 12px; }
+.layer-choice { display: flex; align-items: flex-end; gap: 6px; margin-top: 10px; }
+.layer-choice .field { flex: 1; margin: 0; }
+.layer-choice .btn { margin-bottom: 4px; }
+.map-steps .area-card { margin-top: 10px; }
+.area-tech { margin-top: 4px; }
+.product-search { width: 100%; height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 8px; margin: 0 0 6px; }
+.product-list { display: grid; gap: 4px; }
+.product-item { display: grid; gap: 2px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 7px 10px; cursor: pointer; }
+.product-item:hover { background: var(--panel-2); }
+.product-item.on { border-color: var(--accent-2); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-2) inset; }
+.product-item.static { cursor: default; background: var(--panel-2); }
+.product-item > * { min-width: 0; }
+.product-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.product-meta { color: var(--text-2); font-size: 11.5px; line-height: 1.4; }
+.variants { margin-top: 8px; }
+.variants summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
+.variants ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12px; }
+.variants li { display: grid; gap: 1px; }
+.map-filters { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.map-filters summary { cursor: pointer; font-weight: 600; font-size: 12.5px; }
+.filter-fields { display: grid; margin-top: 8px; }
+.filter-fields .field { margin-bottom: 8px; }
+.filter-actions { display: flex; gap: 6px; }
+.area-files { margin: 0 0 6px; font-size: 12.5px; }
+.coverage-item { border-top: 1px solid var(--line); padding: 8px 0 4px; }
+.coverage-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.coverage-row { display: grid; justify-items: start; gap: 3px; margin-top: 6px; }
+.coverage-details { font-size: 11.5px; }
+.coverage-row .hint { margin: 0; }
+.catalog-link { margin-top: 8px; }
+
+/* ---------- phones ---------- */
+@media (max-width: 860px) {
+  .map-bar { gap: 8px; }
+  .panel-toggle-label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+  /* The bar scrolls sideways instead of squeezing the area badge and counters. */
+  .map-bar > * { flex: none; }
+  .map-counts { margin-left: 0; }
+  .area-badge-text .muted { display: none; }
+  /* The „Wybór” sheet shows the filters; the bar keeps room for the counters. */
+  .filter-chips { display: none; }
+  .map-notes { top: 8px; }
+  .map-hint-card { flex-wrap: wrap; }
+  .pick-list { width: calc(100% - 16px); }
+}

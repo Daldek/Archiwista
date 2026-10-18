@@ -691,6 +691,31 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `archiwista serve` z rejestrem wtyczek, nadzorcą i harmonogramem;
     `tab` — strona Chromium zapisująca naruszenia CSP, błędy, żądania
     i workery) oraz `tests/fixtures/browser.py` (`Served`, `Tab`).
+  Stan po kroku 10b:
+  - *Mapa* (`src/views/map.js`, start bez `view=`; `src/map/`: `canvas.js`
+    — MapLibre z warstwami danych, `draw.js` — prostokąt i wielokąt,
+    `panel.js` — panel „Wybór”, `coverage.js` — stan lokalny, `legend.js`,
+    `style.js` — podkład z ustawień, `sheets.js` — systemy i skale siatek
+    Kartografa, `geo.js`, `products.js`, `map.css`; `labels/map.js`): adres
+    to filtry pod nazwami `/slots` (`store`, `product`, `country`, `years`,
+    `unit`, `versions`, `status`, `q`), `area_id` i położenie
+    `center=lon,lat` + `zoom` (zmiana przez `replace`); bez położenia mapa
+    kadruje to, co pasuje do filtrów (`/map/footprints` całego świata, 512
+    kolumn). Obrysy widoku: `limit=5000`, `grid_columns` ≈ szerokość/56 px,
+    powyżej limitu siatka z licznikami (klik przybliża komórkę); obrysy
+    jako `setData` z samym indeksem cechy, podświetlenie przez feature
+    state. Obszar: prostokąt, wielokąt (Enter, Backspace, Esc), „Widok
+    mapy”, godło wpisane (siatka widoku, potem obrys z indeksu o źródle
+    `sheet`) albo kliknięte w siatce `/map/sheets`, plik (`POST /areas`
+    z wyborem warstwy z problemu `layers`). Stan lokalny: para (magazyn,
+    produkt) po kolei przez `/local-coverage`, „Odśwież” ponawia odczyt
+    slotów i przeładowuje obrysy; liczniki grup obszaru z `/slots?area_id`.
+    Licznik „bez obrysu” → `?view=catalog` z tymi samymi filtrami,
+    `area_id` i `location=none`; klik obrysu → `file=<magazyn>/<slot>`
+    i `file_version`, kilka obrysów w punkcie → lista. Podkład tylko poza
+    trybem offline (wybór w legendzie, `localStorage`), WMS jako GetMap
+    w EPSG:3857.
+  - *Testy*: `tests/e2e/test_map.py`, `tests/fixtures/tile_server.py`.
   Stan po kroku 10c:
   - *Katalog* (`src/views/catalog.js`, `catalog-grid.js`,
     `catalog-filters.js`, `catalog.css`, `labels/catalog.js`): adres to
