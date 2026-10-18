@@ -8,6 +8,19 @@ Neither imports a producer library.
 from archiwista.index.coverage import PLANAR_CRS, planar_crs
 from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
+from archiwista.index.scanner import (
+    REFRESH_VIEW_MAX_UNITS,
+    SCAN_MODES,
+    ScanEvent,
+    ScanListener,
+    ScanMode,
+    ScanNotice,
+    ScanProgress,
+    ScanSummary,
+    SegmentScan,
+    refresh_view,
+    scan_store,
+)
 from archiwista.index.schema import (
     SCHEMA_VERSION,
     IndexUnsupportedError,
@@ -82,7 +95,9 @@ __all__ = [
     "MAX_GRID_COLUMNS",
     "MAX_PAGE_LIMIT",
     "PLANAR_CRS",
+    "REFRESH_VIEW_MAX_UNITS",
     "ROW_STATUSES",
+    "SCAN_MODES",
     "SCHEMA_VERSION",
     "VERSIONS_MODES",
     "AreaFilter",
@@ -119,9 +134,16 @@ __all__ = [
     "ProjectScanSummary",
     "ProjectTaskRef",
     "RowStatus",
+    "ScanEvent",
+    "ScanListener",
+    "ScanMode",
+    "ScanNotice",
     "ScanPass",
+    "ScanProgress",
+    "ScanSummary",
     "SchemaState",
     "SegmentRef",
+    "SegmentScan",
     "SegmentSummary",
     "SlotDetail",
     "SlotPage",
@@ -140,5 +162,7 @@ __all__ = [
     "connect",
     "initialize",
     "planar_crs",
+    "refresh_view",
     "scan_projects",
+    "scan_store",
 ]

@@ -318,7 +318,8 @@ class AppSettings(BaseModel):
     offline : bool
         Disable every external request made by the browser.
     scan_threads : int
-        Segment scan thread pool size (limits I/O latency, not CPU).
+        Threads reading the segments of a store on a share: they hide its
+        I/O latency, not CPU. A local store is read by one thread.
     scan_interval_local_min, scan_interval_share_min : int
         Incremental scan interval for local stores and network shares.
     project_dirs : tuple[Path, ...]

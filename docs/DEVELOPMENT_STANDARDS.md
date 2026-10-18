@@ -271,6 +271,7 @@ tests/
 │   └── test_security.py     # Host, token, CSRF, ścieżki (SPEC 10.1)
 ├── integration/
 │   ├── test_projects.py     # Projekty: odkrywanie, przypięcia, błędny manifest
+│   ├── test_scanner.py      # Skaner i odświeżenie widoku na magazynie testowym
 │   └── test_api.py          # Endpointy /api/v1
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach
@@ -280,9 +281,11 @@ tests/
 ├── fixtures/
 │   ├── make_store.py        # Generator magazynu testowego (+ CLI dla 50 000 slotów)
 │   ├── store_files.py       # Małe, poprawne pliki danych (ASC, GeoTIFF, JPEG, GPKG, ZIP, LAS)
-│   └── index_data.py        # Wpisy źródła budowane ręcznie dla testów indeksu
+│   ├── index_data.py        # Wpisy źródła budowane ręcznie dla testów indeksu
+│   └── store_edits.py       # Zmiany magazynu jak przy pobraniu: nowa wersja, przepięcie
 ├── perf/
-│   └── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
+│   ├── test_index_perf.py   # Indeks na 50 000 slotów: zapis i p95 zapytań (SPEC 4.5)
+│   └── test_scan_perf.py    # Skan pełny, przyrostowy i odświeżenie widoku (SPEC 4.5)
 └── conftest.py              # Shared fixtures
 
 # Markery: live (sieć i prawdziwe usługi), perf (magazyn syntetyczny

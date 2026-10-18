@@ -383,12 +383,12 @@ class KartografAdapter:
         skip: frozenset[str] | None,
     ) -> Iterator[SourceEntry]:
         store = str(root)
-        base = Path(os.path.normpath(root))
+        prefix = os.path.join(os.path.normpath(root), "")
         try:
             for entry in iter_store(
                 root, segment=segment, units=units, skip_versions=skip
             ):
-                yield _source_entry(store, base, entry)
+                yield _source_entry(store, prefix, entry)
         except OSError as error:
             raise _unavailable(root, error) from error
         except KartografError as error:
@@ -420,11 +420,18 @@ class _PinnedTransformer:
         return x, y
 
 
-def _source_entry(store: str, base: Path, entry: Any) -> SourceEntry:
-    """Kartograf's entry as a producer-neutral one, paths relative to the store."""
+def _source_entry(store: str, prefix: str, entry: Any) -> SourceEntry:
+    """Kartograf's entry as a producer-neutral one, paths relative to the store.
+
+    ``prefix`` is the normalised store directory with a trailing separator,
+    the start of every path ``iter_store`` yields.
+    """
     version = entry.version_path
     meta = None
-    relative = Path(entry.path).relative_to(base)
+    relative = _relative(entry.path, prefix)
+    if version is not None:
+        # A version names itself: one path object serves both fields.
+        version = relative if version == entry.path else _relative(version, prefix)
     if entry.sidecar is not None and entry.kind != "problem":
         meta = _entry_meta(store, relative, entry.sidecar, entry.segment, entry.label)
     return SourceEntry(
@@ -434,7 +441,7 @@ def _source_entry(store: str, base: Path, entry: Any) -> SourceEntry:
         kind=entry.kind,
         segment=entry.segment,
         slot_path=_slot_path(entry),
-        version_path=None if version is None else Path(version).relative_to(base),
+        version_path=version,
         problem=entry.problem,
         skipped=bool(entry.skipped),
         meta=meta,
@@ -442,11 +449,24 @@ def _source_entry(store: str, base: Path, entry: Any) -> SourceEntry:
     )
 
 
+def _relative(path: Any, prefix: str) -> Path:
+    """Return a path below the store relative to it.
+
+    The prefix is cut as text: ``Path.relative_to`` walks the parents and
+    cost a scan more than everything else done per entry.
+    """
+    text = os.fspath(path)
+    if not text.startswith(prefix):
+        raise ValueError(f"{text!r} is not inside the store {prefix!r}")
+    return Path(text[len(prefix) :])
+
+
 def _slot_path(entry: Any) -> Path | None:
     """``<segment>/<hierarchy>/<name>``: the file's place in every version."""
     if entry.kind == "problem" and entry.problem in _SEGMENT_PROBLEMS:
         return None
-    return Path(entry.segment, entry.hierarchy, entry.name)
+    parts = (entry.segment, entry.hierarchy, entry.name)
+    return Path("/".join(part for part in parts if part))
 
 
 def _entry_meta(

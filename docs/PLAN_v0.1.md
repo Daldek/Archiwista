@@ -402,6 +402,49 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `usage`, `unused`, `projects`, `problems`: problemy producenta,
     `link_mismatch`, `orphan_sidecar`, `missing_pin`,
     `pin_sha256_mismatch`). Żadna nie usuwa ani nie zmienia projektu.
+  Stan po kroku 6a:
+  - *Skaner* (`scanner.py`, eksport z `archiwista.index`):
+    `scan_store(adapter, writer, settings: AppSettings, store, *,
+    mode="incremental"|"full", segment=None, on_event=None) -> ScanSummary`.
+    Magazyn musi być w indeksie (`sync_stores` robi wywołujący). Segmenty
+    czyta pula wątków (jeden generator `iter_entries` na wątek): na udziale
+    `scan_threads` wątków, na dysku lokalnym jeden — tam skan ogranicza CPU
+    pod GIL (przyrostowy bez zmian na magazynie 50 000 slotów: 1 wątek
+    20 s, 2 — 23 s, 8 — 27 s); obrysy bez sieci liczy osobna pula (4 wątki
+    na udziale, 1 lokalnie), zapis paczkami 1000 wpisów albo 1 s robi
+    wyłącznie wątek wywołujący. Po przejściu całego magazynu (oba tryby)
+    w tym samym wątku `scan_projects`. Zdarzenia w wątku wywołującym:
+    `ScanProgress(segment, current, total, entries)` (pierwsze z
+    `current=0`, potem po każdym segmencie) i `ScanNotice(level, code,
+    message)` (`footprints_failed`, `project_dir_unreadable`).
+    `ScanSummary`: liczniki paczek, `footprints_written`,
+    `footprints_failed` (zostają `pending`), `finished: PassSummary`,
+    `segments: SegmentScan(segment, entries, seconds)`, `projects` (`None`
+    po skanie segmentu). Niedostępny magazyn (probe ≠ `available`, brak
+    segmentów przy wersjach w indeksie, błąd odczytu, a po przejściu
+    ponowny probe — udział odmontowany w trakcie daje puste listingi bez
+    błędu) → `abandon_pass`, `set_store_status("unavailable", detail)`
+    i `SourceUnavailableError`; `ProducerError` też porzuca przebieg.
+  - *Odświeżenie widoku*: `refresh_view(adapter, writer, queries, settings,
+    store, segment, units, *, known_slots=(), timeout_s=None) ->
+    IndexStatus` — najwyżej `REFRESH_VIEW_MAX_UNITS` (500) jednostek
+    (`ScanScope.units`: godła `sheet_grid` albo `SlotUnit.unit`) w
+    rozłącznych paczkach; `known_slots` (`SlotUnit.slot` ze
+    `slots_in_bbox`) daje `known_versions`, bez nich czytane są wszystkie
+    wersje jednostek. Przebieg obejmuje tylko sloty, dla których producent
+    zwrócił wpisy: jednostka, która nie trafia w swój slot (np. kafel LAZ,
+    którego jednostką w sidecarze są współrzędne zgłoszenia), niczego nie
+    oznacza brakiem; zniknięcie całego slotu wykrywa najbliższy skan.
+    Niedostępny magazyn → stan `unavailable` i `IndexStatus` ze `stale`;
+    odczyt dłuższy niż `timeout_s` → `TimeoutError` bez zapisu.
+  - *Pomiary* (`tests/perf/test_scan_perf.py`, `-m perf`, SSD maszyny
+    odniesienia, magazyn jako `local`): pełny skan 58,5 s (cel 120 s),
+    przyrostowy bez zmian 19,1 s (cel 20 s; sam `iter_store` Kartografa to
+    ok. 12,4 s), `refresh_view` 500 slotów p95 301 ms (cel 1 s), indeks
+    205 MiB. Adapter Kartografa liczy ścieżki względne cięciem prefiksu
+    (`Path.relative_to` zajmowało ok. 1/3 skanu przyrostowego).
+    Pomocnicze zmiany magazynu testowego (nowa wersja z przepięciem,
+    usunięcie wersji): `tests/fixtures/store_edits.py`.
 - **Zadania w tle — `archiwista/jobs/`** (krok 6b):
   `JobSupervisor.submit(kind, *, store, params, actor) -> JobRecord`
   (`JobConflictError` z identyfikatorem trwającego zadania), `get`, `list`,
