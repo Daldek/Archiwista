@@ -60,8 +60,14 @@ python_version = "3.12"
 files = ["archiwista", "tests"]
 strict = true
 
+[[tool.mypy.overrides]]
+# Kartograf ships no type information (no py.typed marker).
+module = ["kartograf", "kartograf.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "--strict-markers -m 'not live and not perf and not smb' --cov=archiwista --cov-fail-under=80"
 markers = [
     "live: requires real network services or data",
