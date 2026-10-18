@@ -393,11 +393,11 @@ _STORE_SETTINGS_EXAMPLE = {
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
 _BASEMAP_EXAMPLE = {
-    "name": "OpenStreetMap (szary)",
+    "name": "TopPlusOpen szary (BKG)",
     "kind": "xyz",
-    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    "attribution": "© OpenStreetMap contributors",
-    "grayscale": True,
+    "url": "https://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web_grau/default/WEBMERCATOR/{z}/{y}/{x}.png",
+    "attribution": "© BKG (2026), dl-de/by-2-0",
+    "grayscale": False,
 }
 
 
@@ -2295,7 +2295,7 @@ class Settings(BaseModel):
     )
     stores: list[StoreSettings] = Field(default_factory=list)
     basemaps: list[BasemapSettings] = Field(
-        default_factory=list, description="Grey OpenStreetMap when omitted."
+        default_factory=list, description="Grey BKG TopPlusOpen when omitted."
     )
     store_write_for_all: bool = Field(
         default=False,

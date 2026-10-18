@@ -313,8 +313,8 @@ def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
     assert refused.json()["problems"][0]["field"] == "stores[0].kartograf"
     assert unchanged == before
     assert saved.status_code == 200 and saved.json()["offline"] is True
-    assert "tile.openstreetmap.org" in online["content-security-policy"]
-    assert "tile.openstreetmap.org" not in offline["content-security-policy"]
+    assert "sgx.geodatenzentrum.de" in online["content-security-policy"]
+    assert "sgx.geodatenzentrum.de" not in offline["content-security-policy"]
     assert_problem(no_csrf, 403, "csrf_rejected")
 
 

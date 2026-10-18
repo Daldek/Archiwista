@@ -647,6 +647,16 @@ pomocnicza); szkice ekranów w SPEC używają `RRRR.MM.DD`. Szary styl podkładu
 własnego stylu kafli lub filtra przeglądarki; w trybie offline zostaje „bez podkładu”
 albo podkład lokalny.
 
+**Errata 1 (2026-10-18, decyzja użytkownika — etap 10b planu v0.1):** podkład domyślny
+to szary BKG TopPlusOpen („web_grau”, licencja dl-de/by-2-0, atrybucja
+„© BKG (2026), dl-de/by-2-0”) zamiast szarej wersji OSM. Archiwista wysyła
+`Referrer-Policy: no-referrer`, a tile.openstreetmap.org bez nagłówka `Referer` zwraca
+zamiast kafla obraz „Access blocked” (sprawdzone na żywo); zasady korzystania z jego
+kafli nie pasują też do pracy zespołu. Polityka `Referer` zostaje bez zmian. Kafle BKG
+są szare z natury, więc filtr przeglądarki nie jest potrzebny; OSM zostaje podkładem,
+który użytkownik może dodać w ustawieniach. Test `-m live`:
+`tests/integration/test_basemap_live.py`.
+
 ---
 
 ## ADR-017: Warianty grupowane bez formatu plików

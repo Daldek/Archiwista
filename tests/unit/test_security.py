@@ -39,7 +39,7 @@ from tests.fixtures.local_server import NoSources, local_paths, serving
 
 PORT = 8090
 BASE_URL = f"http://127.0.0.1:{PORT}"
-OSM = "https://tile.openstreetmap.org"
+BKG = "https://sgx.geodatenzentrum.de"
 START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
 
@@ -515,8 +515,8 @@ def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> N
 def test_security_csp_lists_basemaps_only_online() -> None:
     """Basemap origins are allowed for images and fetches, and only online."""
     basemaps = (
-        BasemapConfig(name="OSM", url=f"{OSM}/{{z}}/{{x}}/{{y}}.png"),
-        BasemapConfig(name="OSM 2", url=f"{OSM}/a/{{z}}/{{x}}/{{y}}.png"),
+        BasemapConfig(name="BKG", url=f"{BKG}/{{z}}/{{x}}/{{y}}.png"),
+        BasemapConfig(name="BKG 2", url=f"{BKG}/a/{{z}}/{{x}}/{{y}}.png"),
         BasemapConfig(
             name="Orto", kind="wms", url="https://mapy.geoportal.gov.pl:443/wms"
         ),
@@ -526,7 +526,7 @@ def test_security_csp_lists_basemaps_only_online() -> None:
     directives = dict(item.split(" ", 1) for item in csp_header(online).split("; "))
     offline = csp_header(online.model_copy(update={"offline": True}))
 
-    sources = f"{OSM} https://mapy.geoportal.gov.pl:443"
+    sources = f"{BKG} https://mapy.geoportal.gov.pl:443"
     assert directives["img-src"] == f"'self' data: blob: {sources}"
     assert directives["connect-src"] == f"'self' {sources}"
     for name in ("default-src", "script-src", "style-src", "worker-src", "font-src"):
@@ -543,8 +543,8 @@ def test_security_csp_follows_settings_changes(api: Api) -> None:
     api.settings.update(AppSettings(offline=True))
     after = api.client.get("/")
 
-    assert OSM in before.headers["content-security-policy"]
-    assert OSM not in after.headers["content-security-policy"]
+    assert BKG in before.headers["content-security-policy"]
+    assert BKG not in after.headers["content-security-policy"]
 
 
 # Paths ---------------------------------------------------------------------

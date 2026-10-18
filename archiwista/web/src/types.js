@@ -760,7 +760,7 @@
  * @property {number} [scan_interval_share_min]
  * @property {string[]} [project_dirs] - Absolute directories searched for projects.
  * @property {StoreSettings[]} [stores]
- * @property {BasemapSettings[]} [basemaps] - Grey OpenStreetMap when omitted.
+ * @property {BasemapSettings[]} [basemaps] - Grey BKG TopPlusOpen when omitted.
  * @property {boolean} [store_write_for_all] - Everyone may write to stores, not only
  *   `store_writer` (v0.3).
  * @property {"public"|"private"} [default_project_visibility] - Visibility of a project

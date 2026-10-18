@@ -288,6 +288,7 @@ tests/
 │   ├── test_areas.py        # Obszary: GeoJSON, GPKG, SHP w ZIP, 50/200 MB, zabicie odczytu, 100 000 wierzchołków, porządki
 │   ├── test_local_coverage.py  # Pokrycie lokalne: odświeżenie przed odpowiedzią, układ płaski, stale
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
+│   ├── test_basemap_live.py  # Domyślny podkład daje te same kafle bez nagłówka Referer (live)
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
 │   ├── test_imports.py      # Producenci tylko w adapterach

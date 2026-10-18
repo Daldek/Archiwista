@@ -125,7 +125,7 @@ def test_config_store_reads_hand_written_spec_toml(tmp_path: Path) -> None:
 
 
 def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> None:
-    """Without a file Archiwista starts with the grey OSM basemap and v0.1 limits."""
+    """Without a file Archiwista starts with the grey BKG basemap and v0.1 limits."""
     settings = ConfigStore(tmp_path / "absent.toml").load()
 
     assert settings.stores == ()
@@ -133,8 +133,8 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     assert settings.scan_threads == 8
     assert settings.scan_interval_s("local") == 5 * 60
     assert settings.scan_interval_s("share") == 15 * 60
-    assert [basemap.grayscale for basemap in settings.basemaps] == [True]
-    assert settings.basemaps[0].origin == "https://tile.openstreetmap.org"
+    assert [basemap.grayscale for basemap in settings.basemaps] == [False]
+    assert settings.basemaps[0].origin == "https://sgx.geodatenzentrum.de"
     assert settings.store_write_for_all is False
     assert settings.default_project_visibility == "public"
 

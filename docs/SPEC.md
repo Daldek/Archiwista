@@ -1268,9 +1268,14 @@ pilnuje, że warstwy wyżej nie zależą od Kartografa (sekcje 11 i 13).
 - Wyświetlanie w EPSG:3857; obrysy w WGS84 z indeksu; dane w swoich
   układach są przeliczane wyłącznie do wyświetlania (przypięta
   transformacja Kartografa, KA-6).
-- Podkłady: OpenStreetMap w wersji monochromatycznej (szarej) — domyślny, online, żeby dane i obrysy były czytelne na neutralnym tle (A-ADR-016), ortofotomapa i mapa topograficzna GUGiK (WMS),
-  ortofoto CUZK (WMS), „bez podkładu”. „Tryb offline” w ustawieniach
-  wyłącza wszystkie zewnętrzne zapytania przeglądarki (sekcja 15, P6).
+- Podkłady: BKG TopPlusOpen „web_grau” (szary z natury, licencja dl-de/by-2-0,
+  atrybucja „© BKG (2026), dl-de/by-2-0”) — domyślny, online, żeby dane i obrysy
+  były czytelne na neutralnym tle (A-ADR-016, errata 1), ortofotomapa i mapa
+  topograficzna GUGiK (WMS), ortofoto CUZK (WMS), „bez podkładu”. OpenStreetMap
+  tylko jako podkład skonfigurowany przez użytkownika: tile.openstreetmap.org wymaga
+  nagłówka `Referer`, którego Archiwista nie wysyła (`Referrer-Policy: no-referrer`),
+  a jego zasady korzystania z kafli nie pasują do pracy zespołu. „Tryb offline”
+  w ustawieniach wyłącza wszystkie zewnętrzne zapytania przeglądarki (sekcja 15, P6).
 - Warstwy danych: obrysy (kolor wg stanu i pokrycia), podglądy rastrów
   (kafle `/api/v1/…/tiles/{z}/{x}/{y}.png`), obiekty wektorowe (GeoJSON).
 - Warstwa stacji IMGW: punkty z indeksu (`station_points`), symbol wg

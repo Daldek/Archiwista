@@ -1353,6 +1353,10 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   zasad dostawcy kafli wymagającego `Referer` (np. serwery OSM); sprawdzić
   świadomie (`-m live`) w 10b i w razie potrzeby wybrać dostawcę szarego
   podkładu zgodnego z tą polityką, zamiast luzować politykę `Referer`.
+  Wynik 10b: tile.openstreetmap.org bez `Referer` zwraca obraz „Access
+  blocked”, więc domyślnym podkładem jest szary BKG TopPlusOpen, a polityka
+  zostaje (A-ADR-016, errata 1; test
+  `tests/integration/test_basemap_live.py::test_default_basemap_serves_tiles_without_referer`).
 - **Frontend bez typów.** Ryzyko łagodzą JSDoc, Playwright i kontrakt
   OpenAPI; dołączone biblioteki zweryfikować pod CSP, offline i licencją
   zgodną z MIT.

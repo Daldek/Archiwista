@@ -316,12 +316,15 @@ class BasemapConfig(BaseModel):
         return f"{parts.scheme}://{parts.netloc}"
 
 
+# BKG TopPlusOpen "web_grau" is grey by design, so the client does not
+# desaturate it; unlike tile.openstreetmap.org it serves real tiles to
+# requests without a Referer (the app sends Referrer-Policy: no-referrer).
 DEFAULT_BASEMAP = BasemapConfig(
-    name="OpenStreetMap (szary)",
+    name="TopPlusOpen szary (BKG)",
     kind="xyz",
-    url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution="© OpenStreetMap contributors",
-    grayscale=True,
+    url="https://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web_grau/default/WEBMERCATOR/{z}/{y}/{x}.png",
+    attribution="© BKG (2026), dl-de/by-2-0",
+    grayscale=False,
 )
 
 
@@ -344,7 +347,7 @@ class AppSettings(BaseModel):
     stores : tuple[StoreConfig, ...]
         Configured stores with unique ids.
     basemaps : tuple[BasemapConfig, ...]
-        Online basemaps, grey OpenStreetMap by default.
+        Online basemaps, grey BKG TopPlusOpen by default.
     store_write_for_all : bool
         Give everyone the store write permission, not only people with the
         ``store_writer`` role (A-ADR-029; checked from v0.3).
