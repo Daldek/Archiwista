@@ -32,7 +32,7 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
 | `docs/PLAN_v0.1.md` | plan implementacji v0.1: kontrakty, kolejność kroków, zależności i weryfikacja kryteriów akceptacji |
 | `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
-| `docs/DECISIONS.md` | A-ADR-001..028 (erraty na końcu wpisów) |
+| `docs/DECISIONS.md` | A-ADR-001..029 (erraty na końcu wpisów) |
 | `mockup/README.md` | mockup: przepływ, co prawdziwe, co symulowane, zrzuty |
 
 ### Stan repozytorium
@@ -75,6 +75,15 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
 - Interfejs i słownictwo: A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`, szary
   podkład OSM, asystent jako panel boczny); etykiety pokrycia A-ADR-010, 017;
   dane IMGW A-ADR-019..023.
+- **Uprawnienia i udostępnianie** (A-ADR-029, proponowana, 2026-10-18):
+  Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (UI, API,
+  CLI, tokeny agentów, pamięć podglądów); bezpieczeństwo serwera i udziału
+  to odpowiedzialność administratora serwera. Zapis do magazynu centralnego
+  tylko przez API Kartografa, z uprawnieniem `store_writer` (administrator
+  Archiwisty i wybrane osoby albo wszyscy; v0.3/v0.4). Udostępnianie
+  projektów (publiczny, osoby, grupa, prywatny) — v1.5 „Udostępnianie”.
+  Od v0.1 usługi i zapytania przyjmują `Principal` (krok 8:
+  `current_principal`; kroki 9a–12 przekazują go dalej).
 - **Plan v0.1 po przeglądzie (2026-10-18):** KA w Kartografie 0.8.0
   (A-ADR-024 errata 1, A-ADR-001 errata 2); skan przyrostowy przez
   `skip_versions`, skan równoległy po segmentach (`list_segments`), bez
@@ -93,6 +102,9 @@ KA-1..KA-6 (z `list_segments` i `skip_versions`) z gałęzi Kartografa
   łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v1.3).
   Komputer odniesienia dla SSD ustalony w planie v0.1 (decyzja 1); pomiar
   SMB wymaga prawdziwego udziału SMB 3.
+- A-ADR-029 (rola zapisu do magazynu, udostępnianie projektów) — proponowana;
+  zatwierdzenie i szczegóły `store_writer` przed planem v0.4, udostępnianie
+  przed v1.5.
 - Mockup: pytania M3, M5–M8, M10, M11 (SPEC 16).
 - Producenci: Kartograf — KA-1..KA-6 (z `list_segments` i `skip_versions`)
   na gałęzi `feat/archiwista-store-api`, blokują kroki 2, 4–7 i 9a–13 do

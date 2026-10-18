@@ -741,6 +741,9 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   i rozmów; nie zwracać pozornych sukcesów.
 - **Interfejs:** cienkie routery → `IndexQueries` i usługi 3, 7; modele
   z przykładami (kursor, filtry, grupy położenia, karta, problem RFC 9457).
+  Każdy router bierze `Principal` z zależności `current_principal` (krok 8)
+  i przekazuje go do usług i zapytań — bez filtrowania w v0.1, punkt
+  zaczepienia uprawnień (A-ADR-029).
 - **Test/odbiór:** `tests/integration/test_api.py` (każda trasa, filtry,
   limit 200 i kursor, RFC 9457 i OpenAPI z przykładami, `stale` po
   odłączeniu, `test_source_states_map_to_503`, `curl` z cookie-jar po
@@ -896,7 +899,9 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   i dziennikach; agent używa zwykłego `/api/v1`, nie narzędzi czatu ani
   MCP.
 - **Interfejs:** CLI wywołuje te same usługi `IndexQueries` i modele 9a;
-  nie parsuje sidecarów i nie omija sprawdzenia stanu indeksu.
+  nie parsuje sidecarów i nie omija sprawdzenia stanu indeksu. Do usług
+  przekazuje `Principal` trybu lokalnego (właściciel z rolami `admin`
+  i `store_writer`), jak `current_principal` w HTTP (A-ADR-029).
 - **Test/odbiór:** `tests/integration/test_cli.py`
   (`test_search_options_match_slots_parameters` — zbiór opcji = zbiór
   parametrów z OpenAPI, `test_search_cli_equals_http` dla kilku kombinacji

@@ -65,6 +65,8 @@ Zestaw do QGIS, asystent i łączenie danych są **po MVP** (v1.1–v1.4).
 | Edycja danych i historia pojedynczych obiektów | poza zakresem | Archiwista nie jest edytorem; migawki całych plików |
 | Dane własne w manifeście projektu (przypięcia, odtworzenie u kolegi, „Weryfikuj”) | poza zakresem | manifest zapisuje tylko producent; migawki leżą w katalogu projektu i przenoszą się z nim |
 | Usuwanie migawek przez Archiwistę | poza zakresem | tylko przyrost; usuwanie ręcznie poza Archiwistą |
+| Udostępnianie projektów: właściciele, grupy, widoczność (publiczny, wybrane osoby, wybrana grupa, prywatny), ekran udostępniania, dziennik zmian uprawnień, podglądy i wyszukiwanie z uwzględnieniem uprawnień, opcjonalnie grupy LDAP/AD | v1.5 „Udostępnianie” (propozycja) | A-ADR-029 (proponowana); w MVP tylko przygotowanie: każda usługa i zapytanie przyjmuje `Principal` od v0.1, uprawnienie „zapis do magazynu” (`store_writer`) sprawdzane w v0.3, nadawane osobom w v0.4 |
+| Prawa do plików na serwerze i udziale | poza zakresem | Archiwista egzekwuje uprawnienia tylko w swoim interfejsie, API, CLI, tokenach agentów i pamięci podglądów; dostęp do systemu plików to odpowiedzialność administratora serwera (A-ADR-029) |
 
 ## Etapy i produkty etapów
 
@@ -85,7 +87,7 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
    - Bramka: indeks katalogu IMGW zgodny z API IMGWTools; parytet z CLI `imgw`; etykiety pokrycia zgodne z tabelą przypadków granicznych.
 7. **v1.0 „Wydanie” (MVP).** Stabilne API, instalacja Linux i Windows, dokumentacja użytkownika, audyty, pomiar na prawdziwym SMB.
    - Bramka: kryteria sukcesu MVP z PRD.
-8. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”, v1.4 „PL + CZ”.
+8. **Po MVP:** v1.1 „Zestaw”, v1.2 „Asystent”, v1.3 „Mozaika i porównanie”, v1.4 „PL + CZ”; proponowane v1.5 „Udostępnianie” (A-ADR-029).
 
 ## Zależności
 

@@ -176,6 +176,7 @@ każdego wymagania: wskazana sekcja SPEC.
 - F12 Zestaw do projektu i QGIS: `.qgz`, lista ścieżek, atrybucje, także dane IMGW (SPEC 8.4). (v1.1)
 - F13 Asystent (agent LLM): planuje przygotowanie danych, wykonuje dopiero po „Zatwierdź i uruchom”; domyślnie wyłączony (SPEC 7). (v1.2)
 - F14 Łączenie: mozaika, porównanie wersji z modelem różnic (v1.3), scalona powierzchnia PL + CZ (v1.4) — obróbka w Kartografie (SPEC 8).
+- F16 Udostępnianie projektów (A-ADR-029, proponowana): właściciel projektu, grupy osób, widoczność publiczny / wybrane osoby / wybrana grupa / prywatny, ekran udostępniania, dziennik zmian uprawnień, podglądy i wyszukiwanie uwzględniające uprawnienia, opcjonalnie grupy LDAP/AD. Zapis do magazynu centralnego tylko przez API Kartografa i tylko z uprawnieniem „zapis do magazynu” (administrator Archiwisty i wybrane osoby albo wszyscy — ustawienie; v0.3/v0.4). (v1.5, propozycja)
 
 ## Wymagania niefunkcjonalne
 
@@ -266,3 +267,4 @@ Kryteria sukcesu MVP (v1.0):
 | Format danych IMGW | `imgw-meta/1`, Parquet, GeoJSON (A-ADR-020) | z zespołem IMGWTools, przed v0.5 |
 | Wyniki łączenia jako produkty pochodne Kartografa | tak, wzór HSG (A-ADR-009; SPEC 15 P2, P3) | przed v1.3 |
 | Komputer odniesienia dla celów wydajności | do ustalenia | przed v0.1 |
+| Rola zapisu do magazynu i udostępnianie projektów | kierunek użytkownika (A-ADR-029, proponowana): Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (UI, API, CLI, tokeny agentów, pamięć podglądów), dostęp do plików na serwerze to sprawa administratora serwera; `store_writer` w v0.3/v0.4; udostępnianie w v1.5; `Principal` w usługach od v0.1 | uprawnienie zapisu — przed planem v0.4; udostępnianie — przed v1.5 |

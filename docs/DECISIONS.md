@@ -50,6 +50,7 @@ Kartografa).
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
 | [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika) |
 | [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
+| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Proponowana (kierunek od użytkownika; szczegóły w planach v0.4 i v1.5) |
 
 ---
 
@@ -1260,6 +1261,66 @@ i ręczny JS.
 (Playwright) i adnotacje JSDoc. Odwracalność: dodanie Vite i TypeScriptu później nie
 wymaga przepisania komponentów. Zmiany w SPEC: 5.1, 5.2, 14 (ryzyko „dwa ekosystemy”),
 15 (P11).
+
+---
+
+## ADR-029: Rola zapisu do magazynu i udostępnianie projektów
+
+**Data:** 2026-10-18
+**Status:** Proponowana (kierunek od użytkownika 2026-10-18; szczegóły do planów v0.4 i v1.5)
+
+**Kontekst:** Firma wdraża Archiwistę z jednym centralnym magazynem Kartografa.
+Użytkownicy mają też własne projekty z wersjonowanymi danymi własnymi (ADR-027) i chcą
+decydować, kto je widzi: projekt publiczny (cała firma), wybrane osoby, wybrana grupa
+(np. dział) albo prywatny (tylko właściciel). Tryb zespołu (ADR-013, v0.4) przewiduje
+logowanie i role „czytelnik”, „operator”, „administrator” (SPEC 10.2), ale nie mówi,
+kto może zapisywać w magazynie centralnym ani jak dzielić projekty. Trzeba też ustalić,
+gdzie kończy się odpowiedzialność Archiwisty za bezpieczeństwo.
+
+**Opcje:**
+- Granica uprawnień: A) Archiwista egzekwuje uprawnienia tylko we własnej powierzchni;
+  B) Archiwista zarządza też prawami do plików na serwerze i udziale.
+- Zapis do magazynu: A) każdy operator; B) osobne uprawnienie dla administratora
+  Archiwisty i wybranych osób, z ustawieniem „wszyscy”.
+- Udostępnianie projektów: A) w MVP; B) osobne wydanie po MVP, z przygotowaniem w kodzie
+  od v0.1.
+
+**Decyzja (proponowana):** granica A, zapis B, udostępnianie B:
+1. **Granica odpowiedzialności.** Archiwista egzekwuje uprawnienia wyłącznie we własnej
+   powierzchni: interfejs, API HTTP, CLI, tokeny agentów i pamięć podglądów.
+   Bezpieczeństwo serwera i udziału oraz to, kto ma dostęp do systemu plików, należą do
+   administratora serwera, nie do Archiwisty. Osoba z dostępem do udziału widzi pliki
+   niezależnie od ustawień projektu w Archiwiście — dokumentacja wdrożenia mówi to
+   wprost.
+2. **Zapis do magazynu centralnego** wyłącznie przez API Kartografa (jak działania v0.3)
+   i tylko z uprawnieniem „zapis do magazynu” (`store_writer`). Ma je administrator
+   Archiwisty (rola w aplikacji, nie administrator serwera) i wybrane osoby; ustawienie
+   może je nadać wszystkim. W trybie lokalnym ma je jedyny właściciel.
+3. **Udostępnianie projektów:** właściciel projektu, grupy osób, widoczność projektu
+   (publiczny, wybrane osoby, wybrana grupa, prywatny), ekran udostępniania, dziennik
+   zmian uprawnień, pamięć podglądów i zapytania wyszukiwania oraz indeksu
+   uwzględniające uprawnienia, opcjonalnie grupy z LDAP/AD.
+4. **Kolejność:** podstawa ról i logowania — v0.4 „Zespół” (ADR-013); uprawnienie
+   `store_writer` — sprawdzane przy działaniach v0.3, nadawane osobom w v0.4;
+   udostępnianie projektów — nowe wydanie po MVP, np. v1.5 „Udostępnianie”.
+5. **Przygotowanie od v0.1:** każda usługa i każde zapytanie przyjmuje `Principal`
+   (tożsamość, role, grupy). W trybie lokalnym `Principal` to właściciel z rolami
+   `admin` i `store_writer`. Punkt zaczepienia: zależność `current_principal` z kroku 8
+   planu v0.1; kroki 9a–12 przekazują ją do usług.
+
+Odrzucone: zarządzanie prawami plików na serwerze — wymaga uprawnień systemowych, dubluje
+administrację serwera i daje fałszywe poczucie ochrony; zapis dla każdego operatora —
+w firmie magazyn centralny jest wspólny i jego rozrost ma kontrolować wskazana osoba;
+udostępnianie w MVP — wydłuża drogę do v1.0, a tryb zespołu działa bez niego.
+
+**Konsekwencje:** Koszt udostępniania szacowany jako średni; jest niski, jeśli od v0.1
+usługi i zapytania przyjmują `Principal` — wtedy v1.5 dodaje filtry uprawnień zamiast
+przepisywać warstwy. Tryb lokalny zachowuje się jak dotąd (jeden właściciel ze
+wszystkimi uprawnieniami). Pamięć podglądów i wyniki indeksu nie mogą ujawniać projektów
+prywatnych — w v1.5 klucze pamięci i zapytania uwzględniają widoczność. Relację
+`store_writer` do roli „operator” (SPEC 10.2) rozstrzyga plan v0.4. Zmiany teraz: SCOPE
+(poza MVP), PRD (otwarte decyzje), plan v0.1 (kroki 9a i 12); przy przyjęciu: SPEC 10.2
+i 13 (v0.4, v1.5).
 
 ---
 
