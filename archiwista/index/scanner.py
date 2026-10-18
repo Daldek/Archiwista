@@ -184,10 +184,11 @@ def scan_store(
 ) -> ScanSummary:
     """Scan the adapter's directory of a configured store into the index.
 
-    Segments are read in parallel (``AppSettings.scan_threads``), batches
-    are written by the calling thread and footprints computed without
-    network. After a pass over the whole store, the producer's projects
-    are scanned too (``scan_projects``).
+    Segments of a store on a share are read in parallel
+    (``AppSettings.scan_threads``), those of a local store by one thread;
+    batches are written by the calling thread and footprints computed
+    without network. After a pass over the whole store, the producer's
+    projects are scanned too (``scan_projects``).
 
     Parameters
     ----------
@@ -341,7 +342,7 @@ def refresh_view(
 ) -> IndexStatus:
     """Rescan the units of a map view so the answer about it is current.
 
-    The units are read in disjoint batches in parallel
+    The units are read in disjoint batches, in parallel on a share
     (``AppSettings.scan_threads``), then written in one pass limited to the
     slots the producer returned entries for: their new versions and links
     are added and their unseen versions marked missing. A slot that
