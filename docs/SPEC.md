@@ -199,7 +199,8 @@ zachowują jego znaczenie.
 | **Produkt pochodny** | (propozycja dla Kartografa) wynik łączenia zapisany w magazynie jako wersja z sidecarem i listą wejść (`extra.source_files[]`, wzór HSG); w katalogu IMGW — szeregi zbioru (IMGWTools) | sekcje 8.1, 4.8 |
 | **Zbiór IMGW** | Rodzaj archiwów IMGW-PIB o wspólnym formacie, np. hydro dobowe, opad dobowy; jednostką publikacji jest okres (rok albo miesiąc) dla całego kraju | sekcja 4.8 |
 | **Archiwum IMGW** | Plik opublikowany przez IMGW-PIB (np. `codz_2024.zip`), zapisany w katalogu IMGW 1:1 jako niezmienna wersja z sidecarem (`sha256`, `ETag`, `Last-Modified`); slot = ścieżka pliku na serwerze IMGW | sekcja 4.8.1, IMGW-4 |
-| **Stacja** | Punkt pomiarowy IMGW-PIB: wodowskaz (hydro) albo stacja meteorologiczna (klimatologiczna, opadowa); identyfikator — 9-cyfrowy kod, np. `149190310`. Od v0.6 także stacja ČHMÚ (CZ) z identyfikatorem WIGOS; tożsamość stacji = dostawca + identyfikator | sekcje 4.8.1, 4.8.6 |
+| **Stacja** | Punkt pomiarowy IMGW-PIB: wodowskaz (hydro) albo stacja meteorologiczna (klimatologiczna, opadowa); identyfikator — 9-cyfrowy kod, np. `149190310`. Od v0.6 także stacja ČHMÚ (CZ; identyfikator dostawcy `CHMI`, nazwa wyświetlana „ČHMÚ”) z identyfikatorem WIGOS; tożsamość stacji = dostawca + identyfikator | sekcje 4.8.1, 4.8.6 |
+| **Nieopublikowany** | (stacje ČHMÚ) plik stacji za dany rok albo element, którego źródło nie publikuje; w planie IMGWTools `unverifiable` z `error` `"nieopublikowany"`, w pobieraniu płaskim `not_published`. Informacja, nie problem: inaczej niż `missing` (plik opublikowany, brak lokalnie) | sekcja 4.8.6, IMGW-16 |
 | **Katalog stacji** | Wersjonowana lista stacji z położeniem, jego źródłem i niepewnością (IMGWTools, GeoJSON) | sekcja 4.8.1, IMGW-9 |
 | **Szereg** | Wartości zmiennych jednej stacji z jednego zbioru IMGW w kolejnych dniach (miesiącach, półroczach): plik Parquet stacji w wersji **szeregów zbioru** — migawki wszystkich stacji zbioru zbudowanej przez IMGWTools z określonych wersji archiwów | sekcja 4.8.1, IMGW-7 |
 | **Zmienna** | Wielkość szeregu: H — stan wody [cm], Q — przepływ [m³/s], T — temperatura wody [°C], P — opad [mm], Tmax, Tmin, Tśr — temperatura powietrza [°C] | sekcja 4.8 |
@@ -1038,10 +1039,18 @@ ustali IMGWTools):
 
 Różnice wobec IMGW, które obsługuje IMGWTools, a Archiwista tylko pokazuje:
 
+- **Dostawca**: identyfikator `CHMI` (wartość maszynowa w `provider`
+  sidecarów, wpisów i filtrów), nazwa wyświetlana „ČHMÚ” z deskryptora
+  dostawcy IMGWTools; przedrostek kluczy zbiorów `cz.chmi.` nie jest
+  identyfikatorem dostawcy (IMGW-15).
 - **Jednostka publikacji to stacja**, nie kraj: nie ma archiwum całego
   kraju, więc sprawdzenie aktualności i synchronizacja obejmują wybrane
-  stacje (obszar, lista kodów, zadanie projektu), nie „cały zbiór”; brak
-  archiwum stacji za dany rok u źródła to stan „brak u źródła”, nie błąd.
+  stacje (obszar, lista kodów, zadanie projektu), nie „cały zbiór”. Plik
+  stacji za rok, którego ČHMÚ nie publikuje, ma stan „nieopublikowany”
+  (IMGWTools: `unverifiable` z `error` `"nieopublikowany"`): neutralna
+  informacja, nie błąd ani problem, i nie to samo co `missing`
+  („nowy plik u źródła” — opublikowany, niepobrany). W pokryciu taki rok
+  jest nieznany, nie luką (IMGW-16).
 - **Identyfikator** stacji to WIGOS (np. `0-203-0-…`); tożsamość w indeksie
   i w zadaniach projektu = dostawca + identyfikator, więc kody PL i CZ się
   nie zderzają. Katalog stacji ČHMÚ (z metadanych `meta1.json` i listy stacji
@@ -2082,11 +2091,15 @@ potwierdzenia na mockupie, M11):
 - **Licencja.** Pod wykresem, w karcie stacji i w porównaniu stoją
   formuły IMGW (4.8.5), a dla stacji ČHMÚ — atrybucja CC BY 4.0 z sidecara.
 - **Stacje ČHMÚ (od v0.6, 4.8.6).** Te same widoki i zasady; punkt, wiersz
-  i karta mają plakietkę dostawcy („IMGW-PIB”, „ČHMÚ”), filtr „Dostawca”
-  działa w mapie, „Zestawieniu” i „Katalogu”, a porównanie łączy stacje
-  obu dostawców na wspólnej osi czasu. „Sprawdź aktualność” i „Pobierz
-  archiwa…” dla stacji ČHMÚ obejmują tylko wybrane stacje (archiwa per
-  stacja).
+  i karta mają plakietkę dostawcy („IMGW-PIB”, „ČHMÚ” — nazwa wyświetlana
+  dla identyfikatora `CHMI`), filtr „Dostawca” działa w mapie,
+  „Zestawieniu” i „Katalogu”, a porównanie łączy stacje obu dostawców na
+  wspólnej osi czasu. „Sprawdź aktualność” i „Pobierz archiwa…” dla stacji
+  ČHMÚ obejmują tylko wybrane stacje (archiwa per stacja). Wynik
+  sprawdzenia rozróżnia „nowy plik u źródła” (`missing`, do pobrania)
+  i „nieopublikowany” (szary, neutralny tekst bez ikony ostrzeżenia,
+  nie liczy się do problemów ani błędów zadania; licznik osobno, np.
+  „12 plików nieopublikowanych przez ČHMÚ”).
 
 ### 6.8 Katalog: dane bez położenia
 
@@ -3434,6 +3447,10 @@ bez kodu). Archiwista potrzebuje od tego wydania IMGW-15..IMGW-19, w tych
 samych kontraktach (`imgw-store/1`, `imgw-meta/1`, `imgw-series/1`,
 `imgw-project/1` — zmiany addytywne według IMGW-13) i przez to samo API
 odczytu, żeby adapter IMGW obsłużył obu dostawców bez osobnej ścieżki.
+Uwagi IMGWTools (2026-10-18, ADR-003 IMGWTools — propozycja; spec
+`docs/superpowers/specs/2026-10-18-chmi-provider-design.md`): identyfikator
+dostawcy `CHMI` (nazwa wyświetlana „ČHMÚ”), plik nieopublikowany przez
+źródło = `unverifiable` z `error` `"nieopublikowany"`, nie `missing`.
 
 | ID | Wymaganie (propozycja) | Po co | Wersja |
 |---|---|---|---|
@@ -3451,8 +3468,8 @@ odczytu, żeby adapter IMGW obsłużył obu dostawców bez osobnej ścieżki.
 | IMGW-12 | **Eksport szeregu**: `export_series(version, station, path, *, variables, year_type=None, format="csv")` — UTF-8, separator `,`, kropka dziesiętna, daty ISO, nagłówek z jednostkami, kolumna roku w wybranej konwencji (`year_type`: `hydrological` albo `calendar`, dla hydro i meteo, P15; `None` = konwencja numeracji archiwów zbioru, czyli `year_type` spisu `series.json`), pusta komórka = brak, kolumna flag; wszystkie dni ciągłego kalendarza stacji, także z brakami (P14) | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`), konsumowany przez Archiwistę od v1.1 | v0.5 (IMGWTools) |
 | IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.5 |
 | IMGW-14 | **Manifest projektu IMGW** (`imgw-project/1`, P18, A-ADR-023): plik `imgw-project.json` w katalogu projektu obok `kartograf-project.json` (każdy plik ma jednego właściciela; projekt może mieć jeden albo oba); pola: `schema`, `store_dir` (katalog IMGW; ścieżki względne i bezwzględne jak w manifeście Kartografa), `tasks[]` — `name` (reguły nazw Kartografa), `command` (komenda IMGW z IMGW-11, np. `series select`), `options` (zbiór, stacje jako jawna lista kodów — wybór obszarem zapisany po rozstrzygnięciu, z `geometry` i `geometry_sha256` jak w Kartografie — zmienne, lata i `year_type`), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — ścieżka wersji względna do `store_dir`; `sha256`; `station` dla plików stacji); API = CLI (`imgw project init/add/remove/download/status/verify`): `init_project`, `open_project` (pełna walidacja, błędy po polsku), `add_project_task` (walidacja jak `validate_command`), `remove_project_task`, `download_project` (synchronizacja potrzebnych archiwów, szeregi z `reused`, przypięcie; odtwarzanie tylko przy identycznych `sha256`), bliźniak `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (bez sieci); zapis atomowy (`os.replace`) pod blokadą `.imgw-project.lock` (`mkdir`, właściciel, bez przejmowania) i scalanie per zadanie | dane IMGW jako zadania i przypięcia projektu w v1.0: „Dodaj do projektu” dla stacji, status, weryfikacja, odtwarzanie u kolegi, zestaw z przypięć (4.7, 8.4) | v0.5 |
-| IMGW-15 | **Dostawca w kontrakcie**: każdy zbiór, sidecar, wpis katalogu stacji i zadanie projektu niesie dostawcę (`dataset` `cz.chmi.<zbiór>`, `country` `CZ`, `provider` `ČHMÚ`); tożsamość stacji = dostawca + identyfikator (WIGOS dla ČHMÚ); `store_info` podaje obsługiwanych dostawców i zbiory z licencją; filtr `provider` w `iter_store`, `read_catalog` i katalogu komend; slot archiwum ČHMÚ = ścieżka pliku na serwerze (jak IMGW-4); zmiana tylko addytywna w `/1` albo `/2` z czytnikiem obu (IMGW-13) | jeden adapter i jeden indeks dla stacji PL i CZ, bez zderzeń kodów | v0.6 |
-| IMGW-16 | **Archiwa ČHMÚ, aktualność i synchronizacja**: zbiory z 4.8.6 jako archiwa 1:1 z sidecarem `imgw-meta/1` (zapis jak IMGW-1..IMGW-3); `check_store`/`sync_store` dla `cz.chmi.*` z argumentem `stations` (jednostką publikacji jest stacja — bez „całego kraju”), `HEAD` z `ETag`/`Last-Modified`, statusy jak IMGW-5, brak pliku u źródła = `missing` bez błędu zadania; plan `imgw-plan/1` z liczbą zapytań | aktualność i „Pobierz nowsze” dla stacji ČHMÚ w zlewni | v0.6 |
+| IMGW-15 | **Dostawca w kontrakcie**: każdy zbiór, sidecar, wpis katalogu stacji i zadanie projektu niesie dostawcę (`dataset` `cz.chmi.<zbiór>`, `country` `CZ`, `provider` `CHMI` — identyfikator maszynowy; nazwa wyświetlana „ČHMÚ” z deskryptora dostawcy); tożsamość stacji = dostawca + identyfikator (WIGOS dla ČHMÚ); `store_info` podaje obsługiwanych dostawców (identyfikator, nazwa wyświetlana, zbiory, licencja); filtr `provider` (`IMGW-PIB` \| `CHMI`) w `iter_store`, `read_catalog` i katalogu komend; slot archiwum ČHMÚ = ścieżka pliku na serwerze (jak IMGW-4); zmiana tylko addytywna w `/1` albo `/2` z czytnikiem obu (IMGW-13) | jeden adapter i jeden indeks dla stacji PL i CZ, bez zderzeń kodów; plakietka „ČHMÚ” bez tłumaczenia w kodzie Archiwisty | v0.6 |
+| IMGW-16 | **Archiwa ČHMÚ, aktualność i synchronizacja**: zbiory z 4.8.6 jako archiwa 1:1 z sidecarem `imgw-meta/1` (zapis jak IMGW-1..IMGW-3); `check_store`/`sync_store` dla `cz.chmi.*` z argumentem `stations` (jednostką publikacji jest stacja — bez „całego kraju”), sygnał z listingu katalogu serwera, statusy jak IMGW-5; plik nieopublikowany przez źródło = `unverifiable` z `error` `"nieopublikowany"` (synchronizacja: `unchanged` bez wersji; pobieranie płaskie: `not_published`), odrębny od `missing` (plik opublikowany, brak lokalnie), bez błędu zadania; plan `imgw-plan/1` z liczbą zapytań | aktualność i „Pobierz nowsze” dla stacji ČHMÚ w zlewni; „nieopublikowany” jako informacja, nie problem | v0.6 |
 | IMGW-17 | **Katalog stacji ČHMÚ**: wersjonowany wpis katalogu stacji (hydro z `meta1.json`, meteo z listy stacji ČHMÚ) z polami i walidacją 4.8.1 (położenie WGS84 ze źródłem i niepewnością; poza CZ albo `0,0` = brak położenia, wpis zostaje); nazwa, rzeka, kod hierarchii zlewni jako tekst, jeśli źródło go podaje; progi SPA jako atrybuty | stacje ČHMÚ na mapie, w „Katalogu” i w zlewni | v0.6 |
 | IMGW-18 | **Szeregi i pokrycie ČHMÚ**: `build_series` dla `cz.chmi.*` (`imgw-series/1`: te same kolumny, `null` → brak z flagą, `hydro_year` XI–X dla hydro i meteo); `summarize_coverage` osobno dla każdej zmiennej (IMGW-8) zapisane w `series.json`; `read_series`, `read_series_index` i `export_series` bez zmian sygnatur | etykiety pokrycia, wykres i zestaw dla stacji ČHMÚ tak samo jak dla IMGW | v0.6 |
 | IMGW-19 | **Komendy, projekt i licencja ČHMÚ**: komendy synchronizacji i szeregów ČHMÚ w `data_commands()` z `format_command` → `imgw …` (CLI = API, `cancel`); zadania projektu `imgw-project/1` ze stacjami obu dostawców; `license` CC BY 4.0 z atrybucją wymaganą przez ČHMÚ w sidecarach archiwów, katalogu i szeregów oraz w eksporcie CSV; komunikaty `on_notice` po polsku | „Okno planu”, polecenie do skopiowania, zadania projektu i atrybucje bez wiedzy Archiwisty o ČHMÚ | v0.6 |
@@ -3801,10 +3818,15 @@ Kryteria akceptacji:
    niezgodny pion albo układ daje ostrzeżenie z gotowym poleceniem
    brakującego pobrania.
 4. Indeks katalogu IMGW z danymi ČHMÚ zgodny z `iter_store` IMGWTools; kody
-   stacji PL i CZ się nie zderzają; stacje ČHMÚ bez położenia tylko
+   stacji PL i CZ się nie zderzają; wpisy ČHMÚ mają `provider` `CHMI`,
+   a interfejs pokazuje plakietkę „ČHMÚ”; stacje ČHMÚ bez położenia tylko
    w „Katalogu”.
 5. Etykiety pokrycia stacji ČHMÚ zgodne z ręcznym wyliczeniem dla tabeli
-   przypadków granicznych (sekcja 11), w obu rodzajach lat.
+   przypadków granicznych (sekcja 11), w obu rodzajach lat; rok
+   nieopublikowany przez ČHMÚ jest nieznany, nie luką. Sprawdzenie
+   aktualności pokazuje plik nieopublikowany (`unverifiable` z `error`
+   `"nieopublikowany"`) jako neutralne „nieopublikowany”, osobno od „nowy
+   plik u źródła” (`missing`), bez problemu i bez błędu zadania.
 6. Parytet z CLI dla synchronizacji i szeregów ČHMÚ (te same wersje
    i `sha256` na nagranych odpowiedziach); anulowanie bez częściowych
    wersji.

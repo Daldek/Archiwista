@@ -1160,26 +1160,34 @@ P18.
 Archiwisty i jednym adapterze, bez zderzeń kodów i bez wiedzy Archiwisty
 o formacie ČHMÚ (SPEC 4.8.6, A-ADR-014, A-ADR-024).
 
-**Opis.** Dostawca jest jawną częścią kontraktu: klucze zbiorów
-`cz.chmi.<zbiór>` (np. `cz.chmi.hydro_daily`, `cz.chmi.meteo_daily`),
-w kopercie sidecara `country` = `CZ`, `provider` = `ČHMÚ`; tożsamość
-stacji = dostawca + identyfikator (WIGOS dla ČHMÚ) we wpisach katalogu,
-szeregach, pokryciu i zadaniach projektu. `store_info` podaje obsługiwanych
-dostawców z ich zbiorami, licencją i atrybucją; `iter_store`,
-`read_catalog` i `data_commands` przyjmują filtr `provider`. Slot archiwum
-ČHMÚ = ścieżka pliku na serwerze ČHMÚ (jak IMGW-4). Zmiany w `imgw-store/1`,
-`imgw-meta/1`, `imgw-series/1`, `imgw-project/1` tylko addytywne; zmiana
-niezgodna = `/2` z czytnikiem obu (IMGW-13).
+**Opis.** Dostawca jest jawną częścią kontraktu. Identyfikator dostawcy
+(wartość maszynowa w `provider`, filtrach i kluczach JSON) to `CHMI`;
+użytkownik widzi nazwę wyświetlaną „ČHMÚ” (`short_name` deskryptora
+dostawcy; Archiwista nie tłumaczy identyfikatora na nazwę we własnym
+kodzie). Dla IMGW-PIB identyfikator i nazwa wyświetlana to `IMGW-PIB`.
+Klucze zbiorów mają przedrostek dostawcy `cz.chmi.<zbiór>` (np.
+`cz.chmi.hydro_daily`, `cz.chmi.meteo_daily`); przedrostek klucza
+(`key_prefix`) nie jest identyfikatorem dostawcy. W kopercie sidecara
+`country` = `CZ`, `provider` = `CHMI`; tożsamość stacji = dostawca +
+identyfikator (WIGOS dla ČHMÚ) we wpisach katalogu, szeregach, pokryciu
+i zadaniach projektu. `store_info` podaje obsługiwanych dostawców (z
+identyfikatorem, nazwą wyświetlaną, zbiorami, licencją i atrybucją);
+`iter_store`, `read_catalog` i `data_commands` przyjmują filtr `provider`
+(`IMGW-PIB` \| `CHMI`). Slot archiwum ČHMÚ = ścieżka pliku na serwerze
+ČHMÚ (jak IMGW-4). Zmiany w `imgw-store/1`, `imgw-meta/1`,
+`imgw-series/1`, `imgw-project/1` tylko addytywne; zmiana niezgodna = `/2`
+z czytnikiem obu (IMGW-13).
 
 **Kryteria akceptacji.**
 
 1. Katalog z danymi obu dostawców przechodzi `iter_store` bez problemów;
-   każdy wpis ma dostawcę, a stacje o tym samym kodzie u dwóch dostawców
-   są dwoma wpisami.
+   każdy wpis ma dostawcę (`IMGW-PIB` albo `CHMI`), a stacje o tym samym
+   kodzie u dwóch dostawców są dwoma wpisami.
 2. Katalog zapisany przed dodaniem ČHMÚ czyta się bez zmian (wpisy IMGW
    z `provider` `IMGW-PIB`).
-3. `store_info` wymienia dostawców ze zbiorami i licencjami; filtr
-   `provider` zwraca tylko wpisy danego dostawcy.
+3. `store_info` wymienia dostawców z identyfikatorem, nazwą wyświetlaną
+   („ČHMÚ” dla `CHMI`), zbiorami i licencjami; filtr `provider="CHMI"`
+   zwraca tylko wpisy ČHMÚ.
 
 **Priorytet.** P3.
 
@@ -1196,19 +1204,33 @@ tak jak dla archiwów IMGW (UC-20).
 
 **Opis.** Archiwa ČHMÚ (hydro dobowe: plik JSON na stację i rok, np.
 `hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json`; meteo dobowe:
-pliki na stację) zapisywane 1:1 jako wersje z sidecarem `imgw-meta/1`
-(IMGW-1..IMGW-3), z `ETag` i `Last-Modified` w `request`. `check_store`
-i `sync_store` dla zbiorów `cz.chmi.*` przyjmują `stations` (lista
-identyfikatorów): ČHMÚ nie publikuje archiwum całego kraju, więc plan
-obejmuje tylko wybrane stacje i podaje liczbę zapytań. Statusy jak IMGW-5;
-brak pliku stacji za dany rok u źródła (`404`) to status `missing` w planie,
-nie błąd zadania. Ta sama treść pod nowymi nagłówkami = `relabeled`.
+pliki na stację i element) zapisywane 1:1 jako wersje z sidecarem
+`imgw-meta/1` (IMGW-1..IMGW-3). `check_store` i `sync_store` dla zbiorów
+`cz.chmi.*` przyjmują `stations` (lista identyfikatorów): ČHMÚ nie
+publikuje archiwum całego kraju, więc plan obejmuje tylko wybrane stacje
+i podaje liczbę zapytań. Sygnałem aktualności jest listing katalogu
+serwera (data modyfikacji i rozmiar; rozwiązanie IMGWTools). Statusy jak
+IMGW-5, z rozróżnieniem dwóch rodzajów braku:
+
+- `missing` — plik **opublikowany** u źródła, bez wersji lokalnej
+  (do pobrania);
+- **nieopublikowany** — źródło nie publikuje pliku stacji za dany rok
+  (albo elementu): pozycja planu `unverifiable` z `error` =
+  `"nieopublikowany"`; `sync_store` daje dla niej `unchanged` bez wersji,
+  a pobieranie płaskie (`download_archives`) — status `not_published`.
+  To informacja, nie błąd zadania: nie blokuje synchronizacji ani
+  szeregów, a w pokryciu rok nieopublikowany jest „nieznany”, nie luką.
+
+Ta sama treść pod nowym sygnałem = `relabeled`.
 
 **Kryteria akceptacji.**
 
-1. Na nagranych odpowiedziach ČHMÚ `check_store` daje `current`, `newer`
-   i `missing` zgodnie z nagłówkami i brakami plików; bez pobierania treści.
-2. `sync_store` zapisuje nowe wersje tylko przy innej treści; anulowanie
+1. Na nagranych odpowiedziach ČHMÚ `check_store` daje `current`, `newer`,
+   `missing` (plik opublikowany, brak lokalnie) i `unverifiable`
+   z `error="nieopublikowany"` (pliku nie ma u źródła) zgodnie z listingiem;
+   bez pobierania treści.
+2. `sync_store` zapisuje nowe wersje tylko przy innej treści; pozycje
+   nieopublikowane kończą się `unchanged` bez błędu zadania; anulowanie
    i przerwanie bez częściowych wersji (IMGW-2).
 3. `imgw-plan/1` dla ČHMÚ podaje stacje, pliki, rozmiary i liczbę zapytań.
 
