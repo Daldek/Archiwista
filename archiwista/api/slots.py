@@ -49,7 +49,8 @@ from archiwista.errors import (
 from archiwista.index import AreaFilter, BBox, IndexQueries, StoreFreshness
 from archiwista.index.geometry import box_geometry, require_wgs84_bbox
 from archiwista.messages import MESSAGES
-from archiwista.security import current_principal, indexed_path
+from archiwista.paths import indexed_path
+from archiwista.security import current_principal
 from archiwista.services import issue_problem
 from archiwista.sources import GeoAdapter, SourceState
 from archiwista.sources.registry import PluginRegistry
