@@ -18,6 +18,10 @@
           "from_sha256": "a6ee626f2d01570592dd569a792e3f050154aa02890eead8c223fa3ed5aa3d5a",
           "sha256": "ffff498c3006fea511e5a523c9494199bf6d80d3c5d3fe5161bb745203e98932",
           "modified": "import{options as n}from\"preact\"; rewritten to import { options as n } from \"./preact.mjs\"; (the CSP script-src 'self' blocks inline import maps, so modules use relative paths)"
+        },
+        "preact/LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "1fe6958409c8c257a70c587a18b6f7f412b179b456630790d30b2ec9a8e4b7d4"
         }
       }
     },
@@ -32,6 +36,10 @@
         "htm/htm.mjs": {
           "from": "package/dist/htm.module.js",
           "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+        },
+        "htm/LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "740725f7252e750af735d0028cc534970772f513331e9f68150fede8fb3ce00f"
         }
       }
     },
@@ -54,6 +62,10 @@
         "maplibre-gl/maplibre-gl.css": {
           "from": "package/dist/maplibre-gl.css",
           "sha256": "bacba6a85a867fcf602f2ff88331b8acf7edf3fbd063a519888cfbff39970193"
+        },
+        "maplibre-gl/LICENSE.txt": {
+          "from": "package/LICENSE.txt",
+          "sha256": "ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2"
         }
       }
     },
@@ -76,6 +88,10 @@
         "glyphs/noto-sans-regular/8192-8447.pbf": {
           "from": "Noto Sans Regular/8192-8447.pbf",
           "sha256": "f061e5b4e42e5925228534d8822b423a029569263db09f5ce44573600d45295f"
+        },
+        "glyphs/noto-sans-regular/LICENSE": {
+          "source": "https://raw.githubusercontent.com/openmaptiles/fonts/v2.0/noto-sans/LICENSE",
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
         }
       },
       "note": "Only the Latin ranges of Polish and Czech texts and general punctuation (U+0000-U+01FF, U+2000-U+20FF); the license file is noto-sans/LICENSE of the openmaptiles/fonts repository at tag v2.0."
