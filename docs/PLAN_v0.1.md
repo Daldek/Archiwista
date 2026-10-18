@@ -438,11 +438,13 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     Niedostępny magazyn → stan `unavailable` i `IndexStatus` ze `stale`;
     odczyt dłuższy niż `timeout_s` → `TimeoutError` bez zapisu.
   - *Pomiary* (`tests/perf/test_scan_perf.py`, `-m perf`, SSD maszyny
-    odniesienia, magazyn jako `local`): pełny skan 58,5 s (cel 120 s),
-    przyrostowy bez zmian 19,1 s (cel 20 s; sam `iter_store` Kartografa to
-    ok. 12,4 s), `refresh_view` 500 slotów p95 301 ms (cel 1 s), indeks
-    205 MiB. Adapter Kartografa liczy ścieżki względne cięciem prefiksu
-    (`Path.relative_to` zajmowało ok. 1/3 skanu przyrostowego).
+    odniesienia, magazyn jako `local`, trzy przebiegi): pełny skan
+    58,5–59,4 s (cel 120 s), przyrostowy bez zmian 19,1–19,4 s (cel 20 s,
+    zapas mały: sam `iter_store` Kartografa to ok. 12,4 s, zapis ok. 2 s),
+    `refresh_view` 500 slotów p95 280–301 ms (cel 1 s), indeks 205 MiB,
+    szczyt sterty skanu (RssAnon) 266 MiB, a z odwzorowanym indeksem
+    (VmHWM) 517 MiB. Adapter Kartografa liczy ścieżki względne cięciem
+    prefiksu (`Path.relative_to` zajmowało ok. 1/3 skanu przyrostowego).
     Pomocnicze zmiany magazynu testowego (nowa wersja z przepięciem,
     usunięcie wersji): `tests/fixtures/store_edits.py`.
 - **Zadania w tle — `archiwista/jobs/`** (krok 6b):
