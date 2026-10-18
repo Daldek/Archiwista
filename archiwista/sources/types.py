@@ -8,6 +8,7 @@ an entry from the entry alone. The index keys rows by the configured store id
 instead and maps the id to this directory through the store configuration.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ class SourceContext:
 
 @dataclass(frozen=True, slots=True)
 class ScanScope:
-    """Restrict a scan to a segment, its units, and versions not yet indexed.
+    """Restrict a scan to a segment, its units or one part of it.
 
     Parameters
     ----------
@@ -45,14 +46,37 @@ class ScanScope:
     units : tuple[str, ...] or None
         Unit identifiers of ``segment`` (sheet codes, TERYT...) whose slots
         alone are read; ``None`` reads the whole segment.
-    known_versions : frozenset[Path]
-        Relative paths of versions the index already knows. Their metadata
-        is not read again: they come back with ``skipped=True``.
+    partition : str or None
+        One part of ``segment`` (``PartitionedAdapter.partitions``); the
+        parts of a segment together read all of it. Not with ``units``.
+    known_versions : Mapping[str, tuple[str, ...]]
+        Versions the index knows, by directory: a directory's path relative
+        to the store (with ``/``) maps to the names of its files. Only
+        directories whose every file was a valid version at the last read
+        are named. These versions come back with ``skipped=True`` and
+        without their metadata being read again; a producer whose version
+        directories never change reports them without listing their
+        directory, so only a scan without ``known_versions`` (a full scan)
+        notices a file removed from or added to such a directory.
     """
 
     segment: str | None = None
     units: tuple[str, ...] | None = None
-    known_versions: frozenset[Path] = frozenset()
+    partition: str | None = None
+    known_versions: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class SourcePartition:
+    """A part of a segment read on its own (``ScanScope.partition``).
+
+    ``weight`` estimates the cost of reading it from what the index knows
+    (e.g. its known versions), 0 when nothing is known; a scan reads the
+    heaviest parts first.
+    """
+
+    key: str
+    weight: int = 0
 
 
 @dataclass(frozen=True, slots=True)

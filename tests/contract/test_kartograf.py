@@ -48,15 +48,21 @@ EMPTY = inspect.Parameter.empty
 POSITIONAL = inspect.Parameter.POSITIONAL_OR_KEYWORD
 KEYWORD = inspect.Parameter.KEYWORD_ONLY
 
-# KA-1..KA-6 and list_segments (Kartograf ADR-045, ARCH 3.3.1): parameter
-# name, kind and default.
+# KA-1..KA-6, list_segments and list_partitions (Kartograf ADR-045, ARCH
+# 3.3.1): parameter name, kind and default.
 STORE_API: dict[str, list[tuple[str, inspect._ParameterKind, object]]] = {
     "list_segments": [("output_dir", POSITIONAL, EMPTY)],
+    "list_partitions": [
+        ("output_dir", POSITIONAL, EMPTY),
+        ("segment", POSITIONAL, EMPTY),
+        ("target", KEYWORD, 32),
+    ],
     "iter_store": [
         ("output_dir", POSITIONAL, EMPTY),
         ("segment", KEYWORD, None),
         ("units", KEYWORD, None),
         ("skip_versions", KEYWORD, None),
+        ("partition", KEYWORD, None),
     ],
     "read_sidecar": [("path", POSITIONAL, EMPTY)],
     "describe_segment": [("segment", POSITIONAL, EMPTY)],
@@ -194,6 +200,40 @@ def _recorded_opens(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return opened
 
 
+def _recorded_listings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    listed: list[str] = []
+    real_scandir = os.scandir
+
+    def recording(path: Any = ".") -> Any:
+        listed.append(os.path.normpath(os.fspath(path)))
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", recording)
+    return listed
+
+
+def _settled(entries: Iterable[SourceEntry]) -> dict[str, tuple[str, ...]]:
+    """Version directories of a scan whose every file was a valid version."""
+    found: dict[str, list[str]] = {}
+    unsettled: set[str] = set()
+    for entry in entries:
+        directory = entry.relative_path.parent.as_posix()
+        if entry.kind == "version":
+            found.setdefault(directory, []).append(entry.relative_path.name)
+        elif entry.kind == "problem":
+            unsettled.add(directory)
+    return {
+        directory: tuple(names)
+        for directory, names in found.items()
+        if directory not in unsettled
+    }
+
+
+def _unflagged(entry: SourceEntry) -> tuple[object, ...]:
+    """Return an entry's identity whether or not its metadata was read again."""
+    return _key(entry)[:-1]
+
+
 def _forbidden(message: str) -> Callable[..., Any]:
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError(message)
@@ -291,25 +331,33 @@ def test_adapter_link_and_its_version_share_the_slot(
         assert link.slot_path == link.relative_path
 
 
-def test_known_versions_are_not_reread(
+def test_known_versions_are_neither_reread_nor_listed(
     store: StoreManifest, adapter: KartografAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Known versions come back skipped, without metadata and unopened."""
+    """Known version directories come back skipped, unopened and unlisted.
+
+    An unchanged store gives the same entries; problems inside unsettled
+    directories are found again.
+    """
     root = store.root
     first = list(adapter.iter_entries(root))
-    known = frozenset(e.relative_path for e in first if e.kind == "version")
+    known = _settled(first)
     opened = _recorded_opens(monkeypatch)
+    listed = _recorded_listings(monkeypatch)
 
     second = list(adapter.iter_entries(root, scope=ScanScope(known_versions=known)))
 
-    versions = [e for e in second if e.kind == "version"]
-    assert {e.relative_path for e in versions} == known
-    assert all(e.skipped and e.meta is None for e in versions)
-    assert not {str(root / f"{path}.meta.json") for path in known} & set(opened)
+    files = {
+        f"{directory}/{name}" for directory, names in known.items() for name in names
+    }
+    skipped = [e for e in second if e.skipped]
+    assert {e.relative_path.as_posix() for e in skipped} == files
+    assert all(e.kind == "version" and e.meta is None for e in skipped)
+    assert not {str(root / f"{path}.meta.json") for path in files} & set(opened)
+    assert not {os.path.normpath(root / directory) for directory in known} & set(listed)
     links = [e for e in second if e.kind in ("link", "full_sheet")]
     assert all(link.meta is not None for link in links)
-    problems = Counter(_key(e) for e in second if e.kind == "problem")
-    assert problems == Counter(_key(e) for e in first if e.kind == "problem")
+    assert Counter(map(_unflagged, second)) == Counter(map(_unflagged, first))
 
 
 def test_scan_never_calls_link_target(
@@ -326,7 +374,7 @@ def test_scan_never_calls_link_target(
     }
 
     full = list(adapter.iter_entries(store.root))
-    known = frozenset(e.relative_path for e in full if e.kind == "version")
+    known = _settled(full)
     incremental = list(
         adapter.iter_entries(store.root, scope=ScanScope(known_versions=known))
     )
@@ -352,6 +400,49 @@ def test_segments_cover_full_scan(
         map(_key, adapter.iter_entries(root))
     )
     assert set(adapter.segments(root)) == set(store.segments())
+
+
+def test_partitions_cover_each_segment_once(
+    store: StoreManifest, adapter: KartografAdapter
+) -> None:
+    """The parts of a segment read one by one give the segment's scan exactly.
+
+    Their weights count the known version files of the segment.
+    """
+    root = store.root
+    known = _settled(adapter.iter_entries(root))
+
+    for segment in adapter.segments(root):
+        mine = {
+            directory: names
+            for directory, names in known.items()
+            if directory.startswith(f"{segment}/versions/")
+        }
+        parts = adapter.partitions(root, segment, mine)
+        joined = [
+            entry
+            for part in parts
+            for entry in adapter.iter_entries(
+                root,
+                scope=ScanScope(
+                    segment=segment, partition=part.key, known_versions=mine
+                ),
+            )
+        ]
+        whole = adapter.iter_entries(
+            root, scope=ScanScope(segment=segment, known_versions=mine)
+        )
+
+        assert Counter(map(_key, joined)) == Counter(map(_key, whole)), segment
+        assert sum(part.weight for part in parts) == sum(map(len, mine.values()))
+        assert len({part.key for part in parts}) == len(parts)
+
+
+def test_partitions_of_a_missing_segment_are_none(
+    store: StoreManifest, adapter: KartografAdapter
+) -> None:
+    """A segment gone from the store has no parts to read."""
+    assert adapter.partitions(store.root, "nmt/brak_wariantu", {}) == ()
 
 
 def test_unit_scope_reads_only_the_unit_slots(

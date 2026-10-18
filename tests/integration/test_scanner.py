@@ -50,7 +50,12 @@ from tests.fixtures.make_store import (
     StoreManifest,
     make_store,
 )
-from tests.fixtures.store_edits import META_SUFFIX, add_version, remove_version
+from tests.fixtures.store_edits import (
+    META_SUFFIX,
+    add_version,
+    remove_version,
+    sidecar_path,
+)
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -269,7 +274,7 @@ def test_full_then_incremental_detects_new_version_and_relinked_current(
 def test_incremental_does_not_reread_known_versions(
     env: _Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Known versions cost a listing only; link sidecars are always read."""
+    """Known versions are neither read again nor listed; link sidecars always are."""
     # Arrange
     root = env.store.root
     version_sidecars = {
@@ -331,6 +336,42 @@ def test_missing_version_marked_then_removed_after_next_full_scan(
     assert removed.finished.removed == 1
     assert env.queries.version(STORE, old.path, visible=ALL_PROJECTS) is None
     assert env.slot(link.path).current == link.version_path
+
+
+def test_file_removed_inside_known_version_dir_found_by_full_scan(
+    env: _Env,
+) -> None:
+    """Incremental scans trust known version directories; a full scan checks them.
+
+    A file deleted by hand from a version directory that stays is not seen
+    by an incremental scan, which does not list the directory again; the
+    next full scan marks it missing, and once back it is listed again.
+    """
+    # Arrange
+    link, old = next(iter(_removable(env.store).values()))
+    env.scan("full")
+    data = env.store.root / old.path
+    sidecar = sidecar_path(env.store.root, old.path)
+    content, described = data.read_bytes(), sidecar.read_bytes()
+    data.unlink()
+    sidecar.unlink()
+
+    # Act
+    incremental = env.scan("incremental")
+    trusted = env.version(link.path, old.path)
+    full = env.scan("full")
+    checked = env.version(link.path, old.path)
+    data.write_bytes(content)
+    sidecar.write_bytes(described)
+    back = env.scan("incremental")
+
+    # Assert
+    assert data.parent.is_dir()
+    assert (incremental.finished.missing, trusted.state) == (0, "present")
+    assert (full.finished.missing, checked.state) == (1, "missing")
+    assert checked.missing_since is not None
+    assert back.finished.reappeared == 1
+    assert env.version(link.path, old.path).state == "present"
 
 
 def test_pins_survive_rescan(env: _Env) -> None:

@@ -482,11 +482,87 @@ def test_index_unchanged_incremental_pass_writes_nothing(
     summary = writer.finish_pass()
 
     # Assert
-    assert known == {newer.relative_path, older.relative_path}
+    assert known == {
+        newer.relative_path.parent.as_posix(): (newer.relative_path.name,),
+        older.relative_path.parent.as_posix(): (older.relative_path.name,),
+    }
     assert (result.versions_written, result.links_changed) == (0, 0)
     assert result.needs_footprint == ()
     assert summary.missing == summary.unlinked == 0
     assert _changes(tmp_path / "index.sqlite")["versions"] == before["versions"]
+
+
+def test_index_known_versions_name_only_settled_directories(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A version directory with a problem, a missing or an unread version is listed.
+
+    Only directories whose every file was a valid version at the last read
+    are named, so a scan lists the others again and keeps their problems.
+    """
+    # Arrange
+    writer, _ = index
+    current = version(SHEET_A, "2025-04-26_82710", 1)
+    gone = version(SHEET_A, "2019-08-09_86133", 2)
+    flawed = version(SHEET_B, "2023-06-11_93763", 3)
+    unread = skipped(version(SHEET_B, "2021-05-05_11111", 4))
+    beside = f"{flawed.relative_path.parent.as_posix()}/M-34-100-C-c-4-2.xyz"
+    write_pass(
+        writer, [link(SHEET_A, current), current, gone, link(SHEET_B, flawed), flawed]
+    )
+    write_pass(
+        writer,
+        [
+            link(SHEET_A, current),
+            skipped(current),
+            link(SHEET_B, flawed),
+            skipped(flawed),
+            problem(beside, "missing_sidecar", segment=NMT, slot=SHEET_B),
+            unread,
+        ],
+    )
+
+    # Act
+    writer.begin_pass(STORE, "kartograf")
+    known = writer.known_versions(NMT)
+    everything = writer.known_versions()
+    writer.abandon_pass()
+
+    # Assert
+    assert (
+        known
+        == everything
+        == {current.relative_path.parent.as_posix(): (current.relative_path.name,)}
+    )
+
+
+def test_index_slots_beside_share_exactly_the_directory(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """Neighbours of a slot lie in its directory: not deeper, not in a longer name."""
+    # Arrange
+    writer, _ = index
+    wanted = f"{NMT}/bbox/601000_242000.asc"
+    beside = f"{NMT}/bbox/601000_243000.asc"
+    deeper = f"{NMT}/bbox/old/601000_244000.asc"
+    longer = f"{NMT}/bbox2/601000_245000.asc"
+    write_pass(
+        writer,
+        [
+            entry
+            for seed, slot in enumerate((wanted, beside, deeper, longer), start=1)
+            for found in [version(slot, "2024-01-01_10000", seed)]
+            for entry in (found, link(slot, found))
+        ],
+    )
+
+    # Act
+    near = writer.slots_beside(STORE, [wanted])
+    alone = writer.slots_beside(STORE, [f"{NMT}/bbox/nowy.asc"])
+
+    # Assert
+    assert near == {wanted, beside}
+    assert alone == {f"{NMT}/bbox/nowy.asc", wanted, beside}
 
 
 def test_index_asks_footprints_of_new_and_pending_versions(
@@ -778,7 +854,8 @@ def test_index_producer_without_links_or_segments(
     assert page.items[0].version.label == "2024"
     assert page.groups.none == 2
     assert known.segment is None
-    assert paths == {Path("opady.csv"), Path("stany.csv")}
+    # Each file is its own slot: no version directory to trust.
+    assert paths == {}
     assert queries.slots(SlotQuery(store=STORE), visible=ALL_PROJECTS).items == ()
 
 

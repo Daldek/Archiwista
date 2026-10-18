@@ -112,6 +112,26 @@ nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
      z `segment`, `units` i `known_versions`, z jednostkami podzielonymi na
      rozłączne paczki w tej samej puli; jednostki z siatki godeł
      (`sheet_grid`) albo z obrysów w indeksie.
+   - *Errata 1 (2026-10-19, pomiary kroku 13, `docs/raporty/v0.1-pomiary.md`).*
+     Równoległość wyłącznie po segmentach nie wystarczyła na udziale: 43%
+     wpisów (`nmt/pl_1992`) czytał jeden wątek (skan przyrostowy 342 s).
+     Teraz na udziale (`scan_threads` > 1) każdy segment adaptera
+     `PartitionedAdapter` dzieli się na części (`partitions` →
+     `list_partitions`, KA-1), a pula czyta jednostki (segment, część)
+     najcięższe najpierw (waga: znane wersje części); zapis dalej w jednym
+     wątku, zdarzenie postępu i czas segmentu (suma części) po ostatniej
+     części. Dysk lokalny czyta nadal jeden wątek, całymi segmentami.
+     `ScanScope.known_versions` to mapowanie katalog wersji → nazwy plików
+     (`IndexWriter.known_versions`) tylko dla katalogów, których wszystkie
+     pliki były przy ostatnim odczycie poprawnymi wersjami; adapter podaje
+     je jako mapowanie `skip_versions`, więc znany katalog nie jest już
+     listowany (koszt 0 zamiast listingu). Plik usunięty albo dopisany
+     wewnątrz takiego katalogu widzi tylko pełny skan kontrolny
+     (`full_scan_interval_h`, domyślnie 24 h; czas ostatniego w „Magazynie”,
+     `/health`, `archiwista status`) — decyzja koordynatora 2026-10-19.
+     `refresh_view` bierze znane katalogi slotów widoku i ich sąsiadów
+     z tego samego katalogu (`IndexWriter.slots_beside`): jednostki `bbox/`
+     nie listują już kilku tysięcy katalogów wersji.
 4. **Obrysy jednostek wymagające sieci: zadanie `footprints`.** Skan nigdy
    nie używa sieci. Adapter przekazuje KA-4 lokalną pamięć obrysów jednostek
    (SQLite `<user_data_dir>/cache/kartograf/unit_bboxes.sqlite`; zasada
@@ -230,7 +250,8 @@ nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
 | lista segmentów | 1 × `scandir` katalogu `--output` + 1 na katalog produktu |
 | `link`, `full_sheet` | 1 odczyt sidecara (open+read+close), bez `stat` i bez otwarcia pliku danych |
 | `version` nowa | 1 odczyt sidecara |
-| `version` znana (`skipped`) | 0 otwarć — tylko listing jej katalogu |
+| `version` znana (`skipped`) | 0 operacji, gdy jej katalog jest w mapowaniu `skip_versions` (katalog „ustalony”, errata 1 decyzji 3); w pozostałych katalogach listing katalogu i odczyt sidecara jak nowej |
+| części segmentu (`list_partitions`, tylko udział) | 3 × `scandir` (segment, `full_sheet/`, `versions/`) + do 3 na dzielony katalog; na część `stat`/`lstat` korzenia, segmentu i składowych klucza |
 | `missing_sidecar` | 0 otwarć (widać w listingu) |
 | `invalid_sidecar` | 1 odczyt |
 | `stale_incoming` | `scandir` `versions/.incoming` + `lstat` katalogów roboczych |

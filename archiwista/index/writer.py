@@ -230,6 +230,9 @@ class _PassState:
     seen_full_sheets: set[str] = field(default_factory=set)
     seen_issues: set[tuple[str, str]] = field(default_factory=set)
     reappeared: int = 0
+    # Settled version directories by segment id (``known_versions``), taken
+    # once per pass before anything is written.
+    settled: dict[int, dict[str, tuple[str, ...]]] | None = None
 
 
 @dataclass(slots=True)
@@ -526,18 +529,23 @@ class IndexWriter:
         self._pass = _PassState(info, store_id, segments, versions, known_slots, issues)
         return info
 
-    def known_versions(self, segment: str | None = None) -> frozenset[Path]:
-        """Return the active pass's known versions (``ScanScope.known_versions``).
+    def known_versions(
+        self, segment: str | None = None
+    ) -> Mapping[str, tuple[str, ...]]:
+        """Return the active pass's settled version directories.
 
-        Missing versions are included: one that comes back is listed only.
-        The set is a snapshot taken in the writer's thread; take every
-        segment's set before reading threads start, as written batches
-        change the pass state.
+        The value of ``ScanScope.known_versions``: each directory (relative
+        path with ``/``) maps to the names of its versions. A directory is
+        settled when every version the index knows in it is present with
+        its metadata read and no problem the index keeps lies in it; a
+        version that is its own slot (no version directory) is never named.
+        The mapping is computed once per pass, at the first call: take every
+        segment's before writing anything.
 
         Parameters
         ----------
         segment : str or None, optional
-            Only the versions of this segment.
+            Only the directories of this segment.
 
         Raises
         ------
@@ -545,16 +553,50 @@ class IndexWriter:
             No pass is active.
         """
         state = self._active()
+        if state.settled is None:
+            state.settled = _settled_directories(state)
         if segment is None:
-            return frozenset(Path(path) for path in state.versions)
+            merged: dict[str, tuple[str, ...]] = {}
+            for directories in state.settled.values():
+                merged.update(directories)
+            return merged
         found = state.segments.get(segment)
         if found is None:
-            return frozenset()
-        return frozenset(
-            Path(path)
-            for path, version in state.versions.items()
-            if version.segment_id == found.id
-        )
+            return {}
+        return state.settled.get(found.id, {})
+
+    def holds_entries(self) -> bool:
+        """Whether the index holds versions or slots in the active pass's scope.
+
+        Raises
+        ------
+        RuntimeError
+            No pass is active.
+        """
+        state = self._active()
+        return bool(state.versions or state.slots)
+
+    def slots_beside(self, store: str, slots: Collection[str]) -> frozenset[str]:
+        """Return the slots and every indexed slot in the same directories.
+
+        A view refresh takes the settled version directories of these
+        neighbours too: a producer keeping a directory's versions together
+        would otherwise list each neighbour's version directory again.
+
+        Raises
+        ------
+        ValueError
+            The store is not in the index.
+        """
+        directories = sorted({slot.rpartition("/")[0] for slot in slots})
+        rows = self._connection.execute(
+            "SELECT s.path FROM json_each(?) d JOIN slots s"
+            " ON s.store_id = ? AND s.path > d.value || '/'"
+            " AND s.path < d.value || '0'"
+            " WHERE instr(substr(s.path, length(d.value) + 2), '/') = 0",
+            (json.dumps(directories), self._store_id(store)),
+        ).fetchall()
+        return frozenset({*slots, *(str(path) for (path,) in rows)})
 
     def write_entries(self, entries: Iterable[SourceEntry]) -> BatchResult:
         """Write a batch of the active pass's entries in one transaction.
@@ -1370,6 +1412,33 @@ class IndexWriter:
         connection.execute(_SLOT_STATUS, (ids,))
         connection.execute(f"DELETE FROM search WHERE rowid IN ({_IDS})", (ids,))
         connection.execute(_INSERT_SEARCH, (ids,))
+
+
+def _settled_directories(state: _PassState) -> dict[int, dict[str, tuple[str, ...]]]:
+    """Version directories of a pass whose files were all valid versions.
+
+    A directory is left out when it holds a missing version, a version
+    without metadata or a problem the pass knows; a version that is its own
+    slot has no version directory.
+    """
+    unsettled = {path.rpartition("/")[0] for path, _ in state.issues}
+    found: dict[int, dict[str, list[str]]] = {}
+    for path, version in state.versions.items():
+        if path in state.slots:
+            continue
+        directory, _, name = path.rpartition("/")
+        if version.state != "present" or version.digest is None:
+            unsettled.add(directory)
+            continue
+        found.setdefault(version.segment_id, {}).setdefault(directory, []).append(name)
+    return {
+        segment_id: {
+            directory: tuple(names)
+            for directory, names in directories.items()
+            if directory not in unsettled
+        }
+        for segment_id, directories in found.items()
+    }
 
 
 def _now() -> str:

@@ -19,6 +19,7 @@ from archiwista.messages import MESSAGES
 from archiwista.sources import (
     GeoAdapter,
     LinkCheckAdapter,
+    PartitionedAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceState,
@@ -78,6 +79,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
         isinstance(adapter, capability)
         for capability in (
             SegmentedAdapter,
+            PartitionedAdapter,
             GeoAdapter,
             LinkCheckAdapter,
             SheetGridAdapter,

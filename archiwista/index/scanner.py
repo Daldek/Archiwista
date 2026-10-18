@@ -1,19 +1,23 @@
 """Scan a producer's store into the local index (decision 3 of the v0.1 plan).
 
 A scan lists the store's segments (``SegmentedAdapter.segments``) and reads
-each one with ``SourceAdapter.iter_entries`` in a bounded thread pool, one
+them with ``SourceAdapter.iter_entries`` in a bounded thread pool, one
 iterator per thread. Threads hide the latency of a share
-(``AppSettings.scan_threads``); on a local disk the work is CPU under the
-GIL, where more threads only contend, so one thread reads a local store.
-Entries go through a bounded queue to the calling thread, the only one
-using the ``IndexWriter``: it writes them in batches (``BATCH_ENTRIES``
-entries or ``BATCH_SECONDS``, one transaction each) and hands the versions
-still without a location to a small pool computing
-``SourceAdapter.footprint`` without network. An incremental scan passes the
-versions the index knows (``ScanScope.known_versions``), so their metadata
-is not read again; a full scan reads everything. A link names its version
-itself (``SourceEntry.version_path``); the scanner never confirms links,
-which is an on-demand job.
+(``AppSettings.scan_threads``): there each segment of a
+``PartitionedAdapter`` is read in parts, the heaviest first, so the largest
+segment does not keep one thread busy long after the others. On a local
+disk the work is CPU under the GIL, where more threads only contend, so one
+thread reads a local store, whole segments. Entries go through a bounded
+queue to the calling thread, the only one using the ``IndexWriter``: it
+writes them in batches (``BATCH_ENTRIES`` entries or ``BATCH_SECONDS``, one
+transaction each) and hands the versions still without a location to a
+small pool computing ``SourceAdapter.footprint`` without network. An
+incremental scan passes the settled version directories the index knows
+(``ScanScope.known_versions``): their metadata is not read again and they
+are not listed again, so only the full scan (scheduled daily by default)
+notices a file removed from or added to one of them. A link names its
+version itself (``SourceEntry.version_path``); the scanner never confirms
+links, which is an on-demand job.
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -29,8 +33,8 @@ import gc
 import queue
 import threading
 import time
-from collections import deque
-from collections.abc import Callable, Collection, Iterator, Sequence
+from collections import Counter, deque
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -47,10 +51,12 @@ from archiwista.index.writer import IndexWriter
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.sources import (
     Footprint,
+    PartitionedAdapter,
     ScanScope,
     SegmentedAdapter,
     SourceAdapter,
     SourceEntry,
+    SourcePartition,
 )
 
 type ScanMode = Literal["incremental", "full"]
@@ -114,7 +120,10 @@ type ScanListener = Callable[[ScanEvent], None]
 
 @dataclass(frozen=True, slots=True)
 class SegmentScan:
-    """Entries one segment gave and the seconds its reading took."""
+    """Entries one segment gave and the seconds its reading took.
+
+    A segment read in parts in parallel counts the seconds of every part.
+    """
 
     segment: str | None
     entries: int
@@ -184,11 +193,11 @@ def scan_store(
 ) -> ScanSummary:
     """Scan the adapter's directory of a configured store into the index.
 
-    Segments of a store on a share are read in parallel
-    (``AppSettings.scan_threads``), those of a local store by one thread;
-    batches are written by the calling thread and footprints computed
-    without network. After a pass over the whole store, the producer's
-    projects are scanned too (``scan_projects``).
+    Segments of a store on a share are read in parallel, in parts where the
+    producer splits them (``AppSettings.scan_threads``), those of a local
+    store by one thread; batches are written by the calling thread and
+    footprints computed without network. After a pass over the whole store,
+    the producer's projects are scanned too (``scan_projects``).
 
     Parameters
     ----------
@@ -203,9 +212,11 @@ def scan_store(
     store : str
         Configured store id.
     mode : {"incremental", "full"}, default "incremental"
-        ``incremental`` does not read the metadata of versions the index
-        knows; ``full`` reads everything again and removes versions an
-        earlier pass marked missing that are still not there.
+        ``incremental`` neither reads the metadata of the versions in the
+        index's settled version directories nor lists those directories
+        (``IndexWriter.known_versions``); ``full`` reads everything again
+        and removes versions an earlier pass marked missing that are still
+        not there.
     segment : str or None, optional
         Scan only this segment of a ``SegmentedAdapter``; nothing outside it
         is marked and no project is scanned.
@@ -258,28 +269,23 @@ def scan_store(
     with _rare_collections():
         writer.begin_pass(store, adapter.producer, segment=segment, full=full)
         try:
-            if listed == () and writer.known_versions():
+            if listed == () and writer.holds_entries():
                 raise _empty_store(root)
-            known = {
-                name: frozenset() if full else writer.known_versions(name)
-                for name in segments
-            }
-            # The largest segments first, so none is left alone at the end.
-            order = sorted(segments, key=lambda name: -len(known[name]))
-            scopes = [
-                ScanScope(segment=name, known_versions=known[name]) for name in order
-            ]
-            emit(ScanProgress(segment=None, current=0, total=len(scopes), entries=0))
+            known = {name: writer.known_versions(name) for name in segments}
+            scopes = _scopes(
+                adapter, root, known, full=full, threads=target.reading_threads
+            )
+            emit(ScanProgress(segment=None, current=0, total=len(segments), entries=0))
             readers = _Readers(adapter, root, scopes, target.reading_threads)
             try:
-                _stream(writer, readers, footprints, totals, emit, len(scopes))
+                _stream(writer, readers, footprints, totals, emit, scopes)
             finally:
                 readers.close()
             footprints.finish()
             # Listings of a share unmounted mid-scan end empty without an error.
-            if segment is None and totals.entries == 0 and writer.known_versions():
+            if segment is None and totals.entries == 0 and writer.holds_entries():
                 raise _empty_store(root)
-            if _reachable_segments(adapter, root) == () and writer.known_versions():
+            if _reachable_segments(adapter, root) == () and writer.holds_entries():
                 raise _empty_store(root)
             finished = writer.finish_pass()
         except SourceUnavailableError as error:
@@ -370,8 +376,10 @@ def refresh_view(
         (``SlotUnit.unit``); at most ``REFRESH_VIEW_MAX_UNITS``.
     known_slots : Collection[str], optional
         Indexed slots of these units (``SlotUnit.slot`` of
-        ``IndexQueries.slots_in_bbox``): their known versions are not read
-        again. Without them every version of the units is read.
+        ``IndexQueries.slots_in_bbox``): the settled version directories of
+        these slots and of the slots beside them
+        (``IndexWriter.slots_beside``) are neither read nor listed again.
+        Without them every version of the units is read.
     timeout_s : float or None, optional
         Longest time for reading the store; when it runs out nothing is
         written and ``TimeoutError`` is raised.
@@ -644,9 +652,15 @@ def _stream(
     footprints: _Footprints,
     totals: _Totals,
     emit: ScanListener,
-    total: int,
+    scopes: Sequence[ScanScope],
 ) -> None:
-    """Write what the reading threads give, in batches, until they finish."""
+    """Write what the reading threads give, in batches, until they finish.
+
+    A segment read in parts is read when its last part is.
+    """
+    remaining = Counter(scope.segment for scope in scopes)
+    entries: Counter[str | None] = Counter()
+    seconds: dict[str | None, float] = dict.fromkeys(remaining, 0.0)
     batch: list[SourceEntry] = []
     deadline = 0.0
     while readers.pending:
@@ -655,17 +669,22 @@ def _stream(
             wait = min(wait, max(0.0, deadline - time.monotonic()))
         item = readers.get(wait)
         if isinstance(item, _ReadDone):
-            totals.segments.append(
-                SegmentScan(item.segment, item.entries, item.seconds)
-            )
-            emit(
-                ScanProgress(
-                    segment=item.segment,
-                    current=len(totals.segments),
-                    total=total,
-                    entries=totals.entries,
+            segment = item.segment
+            entries[segment] += item.entries
+            seconds[segment] += item.seconds
+            remaining[segment] -= 1
+            if remaining[segment] == 0:
+                totals.segments.append(
+                    SegmentScan(segment, entries[segment], seconds[segment])
                 )
-            )
+                emit(
+                    ScanProgress(
+                        segment=segment,
+                        current=len(totals.segments),
+                        total=len(remaining),
+                        entries=totals.entries,
+                    )
+                )
         elif item is not None:
             if not batch:
                 deadline = time.monotonic() + BATCH_SECONDS
@@ -755,15 +774,67 @@ def _slot_versions(
     producer: str,
     segment: str | None,
     slots: Collection[str],
-) -> frozenset[Path]:
-    """Versions the index knows in some slots (none without slots)."""
+) -> Mapping[str, tuple[str, ...]]:
+    """Settled version directories of some slots and of the slots beside them.
+
+    None without slots.
+    """
     if not slots:
-        return frozenset()
-    writer.begin_pass(store, producer, segment=segment, slots=slots)
+        return {}
+    near = writer.slots_beside(store, slots)
+    writer.begin_pass(store, producer, segment=segment, slots=near)
     try:
         return writer.known_versions(segment)
     finally:
         writer.abandon_pass()
+
+
+def _scopes(
+    adapter: SourceAdapter,
+    root: Path,
+    known: Mapping[str | None, Mapping[str, tuple[str, ...]]],
+    *,
+    full: bool,
+    threads: int,
+) -> list[ScanScope]:
+    """Return the ``iter_entries`` calls of a scan, the heaviest first.
+
+    With several threads (a share) each segment of a ``PartitionedAdapter``
+    is read in parts, split in parallel; one thread reads whole segments.
+    Weights come from the index's settled versions (``known``) also for a
+    full scan, which passes none to the producer.
+    """
+    parts: dict[str | None, tuple[SourcePartition, ...]] = {}
+    named = [name for name in known if name is not None]
+    if threads > 1 and named and isinstance(adapter, PartitionedAdapter):
+        partitioned: PartitionedAdapter = adapter
+
+        def split(name: str) -> tuple[SourcePartition, ...]:
+            return partitioned.partitions(root, name, known[name])
+
+        with ThreadPoolExecutor(
+            max_workers=min(threads, len(named)),
+            thread_name_prefix="archiwista-split",
+        ) as pool:
+            parts.update(zip(named, pool.map(split, named), strict=True))
+    work: list[tuple[int, ScanScope]] = []
+    for name, versions in known.items():
+        skip: Mapping[str, tuple[str, ...]] = {} if full else versions
+        found = parts.get(name)
+        if found:
+            work.extend(
+                (
+                    part.weight,
+                    ScanScope(segment=name, partition=part.key, known_versions=skip),
+                )
+                for part in found
+            )
+        else:
+            weight = sum(map(len, versions.values()))
+            work.append((weight, ScanScope(segment=name, known_versions=skip)))
+    # Stable: parts of equal weight keep the producer's order.
+    work.sort(key=lambda item: -item[0])
+    return [scope for _, scope in work]
 
 
 def _unit_batches(units: Sequence[str], threads: int) -> list[tuple[str, ...]]:

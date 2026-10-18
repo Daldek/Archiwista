@@ -650,26 +650,38 @@ Zasady wspólne dla wszystkich producentów i produktów:
 
 - **Pełny skan** (pierwsze uruchomienie, „Przebuduj indeks”): przejście
   `iter_store` osobno dla każdego segmentu z `list_segments` (KA-1)
-  w ograniczonej puli wątków (opóźnienia SMB, nie procesor); sidecar każdego
-  wpisu czyta raz sam `iter_store`, a zapis do indeksu idzie paczkami
-  w transakcjach; zadanie w tle z postępem.
+  w ograniczonej puli wątków (opóźnienia SMB, nie procesor); na udziale
+  segment czyta się w rozłącznych częściach (`list_partitions`, KA-1),
+  najcięższe najpierw (waga: znane wersje części), więc największy segment
+  nie zostaje na końcu jednemu wątkowi; dysk lokalny czyta jeden wątek
+  (GIL). Sidecar każdego wpisu czyta raz sam `iter_store`, a zapis do
+  indeksu idzie paczkami w transakcjach; zadanie w tle z postępem
+  (zdarzenie po każdym segmencie, gdy skończą się wszystkie jego części).
 - **Skan przyrostowy:** katalogi wersji `<etykieta>_<sha8>` są niezmienne,
-  więc znanych wersji nie czytamy ponownie (`skip_versions`, KA-1: znana
-  wersja kosztuje tylko listing swojego katalogu) — sprawdzamy pojawienie
-  się nowych katalogów wersji, zniknięcie znanych i zmianę sidecarów
-  dowiązań. Bieżącą wersję wyznacza sidecar dowiązania
-  (`StoreEntry.version_path`); skan nie woła `link_target` (KA-5), które na
-  udziale bez stabilnych i-węzłów potwierdza cel treścią — to działanie na
-  żądanie. Czas modyfikacji katalogu jest tylko wskazówką (na udziale
-  z pamięcią atrybutów bywa opóźniony), dlatego okresowo wykonujemy pełny
-  skan kontrolny (domyślnie raz na dobę, w tle).
+  więc znanych wersji nie czytamy ani nie listujemy ponownie: indeks podaje
+  `iter_store` mapowanie katalog wersji → nazwy plików (`skip_versions`,
+  KA-1; znany katalog kosztuje 0 operacji). Mapowanie obejmuje tylko
+  katalogi, których wszystkie pliki były przy ostatnim odczycie poprawnymi
+  wersjami; katalog z problemem, z wersją oznaczoną „brak pliku” albo bez
+  metadanych jest listowany i czytany jak nowy. Sprawdzamy pojawienie się
+  nowych katalogów wersji, zniknięcie znanych (listing katalogu slotu
+  w `versions/`) i zmianę sidecarów dowiązań; plik usunięty albo dopisany
+  ręcznie wewnątrz znanego katalogu wersji widzi dopiero pełny skan
+  kontrolny (niżej, „Wyzwalacze”). Bieżącą wersję wyznacza sidecar
+  dowiązania (`StoreEntry.version_path`); skan nie woła `link_target`
+  (KA-5), które na udziale bez stabilnych i-węzłów potwierdza cel treścią
+  — to działanie na żądanie. Czas modyfikacji katalogu jest tylko
+  wskazówką (na udziale z pamięcią atrybutów bywa opóźniony) i nie
+  zastępuje pełnego skanu kontrolnego.
 - **Odświeżenie na żądanie dla widoku:** gdy użytkownik pyta o obszar
   i produkt, Archiwista najpierw odświeża dokładnie sloty jednostek tego
   obszaru (`iter_store(segment=…, units=…)`, KA-1; jednostki z raportu
   dostępności, z siatki godeł `find_sheets_for_bbox` albo z obrysów
   w indeksie), a dopiero potem pokazuje stan magazynu — odpowiedź na
   bieżące pytanie jest aktualna w sekundach także na SMB, niezależnie od
-  pełnych skanów.
+  pełnych skanów. Znane katalogi wersji slotów obszaru i ich sąsiadów
+  z tego samego katalogu (np. wszystkich jednostek `bbox/` segmentu) idą
+  w mapowaniu `skip_versions`, więc nie są listowane.
 - **Po własnych zadaniach:** wynik Kartografa (`files[].file.version_path`,
   przypięcia projektu) trafia do indeksu od razu, bez skanu.
 - **Katalog IMGW** jest tylko przyrostowy (IMGW-1): skan przyrostowy to
@@ -1252,7 +1264,7 @@ który producent zapisał plik:
 | Operacja | Po co | Adapter Kartografa | Adapter IMGW |
 |---|---|---|---|
 | `probe(root)` | rozpoznanie katalogu producenta i wersji kontraktu | układ `data/` (KA-1) | `store_info` (`imgw-store/1`; IMGW-10, IMGW-13) |
-| `iter_entries(root, *, scope)` | skan: wersje, wersje bieżące, problemy (4.4) | `list_segments`, `iter_store` (KA-1; bieżąca wersja z sidecara dowiązania, bez `link_target`) | `iter_store`, `current_version` (IMGW-10) |
+| `iter_entries(root, *, scope)` | skan: wersje, wersje bieżące, problemy (4.4) | `list_segments`, `list_partitions`, `iter_store` (KA-1; na udziale części segmentu równolegle; bieżąca wersja z sidecara dowiązania, bez `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadane we wspólnej kopercie: zbiór, etykieta i jej źródło, daty, `sha256`, rozmiar, licencja, wejścia (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `imgw-meta/1` (IMGW-3) |
 | `footprint(entry)` | geometria na mapie albo brak położenia z powodem (4.3, A-ADR-022) | obrys `file_footprint` (KA-4; sieć tylko w zadaniu `footprints`); bez źródła — `no_source` | kraj dla archiwów i szeregów; punkty stacji z katalogu albo powód braku (IMGW-9) |
 | `commands()`, `validate(…)`, `format_command(…)` | formularze i polecenie do skopiowania | KB-1, KB-3, KB-4 | IMGW-11 |
@@ -3410,13 +3422,18 @@ Stan (2026-10-18): KA-1..KA-6 przyjęte w Kartografie 0.8.0 (ADR-045, ARCH
 3.3.1; gałąź `feat/archiwista-store-api` do scalenia) — nazwy w tabeli są
 ostateczne, a kolumna „API” opisuje kontrakt, na którym opiera się plan
 v0.1. Wszystkie funkcje są tylko do odczytu; dowolnie wiele wywołań
-`iter_store` może biec naraz w osobnych wątkach (różne segmenty albo
-rozłączne paczki `units` jednego segmentu; każdy generator konsumuje jeden
-wątek), tak samo `read_sidecar`, `describe_segment` i `link_target`.
+`iter_store` może biec naraz w osobnych wątkach (różne segmenty, części
+jednego segmentu z `list_partitions` albo rozłączne paczki `units` jednego
+segmentu; każdy generator konsumuje jeden wątek), tak samo `read_sidecar`,
+`describe_segment` i `link_target`. Uzupełnienie 2026-10-19 (pomiary v0.1,
+`docs/raporty/v0.1-pomiary.md`): `list_partitions`, argument `partition`
+i mapowanie w `skip_versions` w tym samym wydaniu 0.8.0 — skan na udziale
+dzieli największy segment między wątki, a skan przyrostowy i odświeżenie
+widoku nie listują znanych katalogów wersji (4.4).
 
 | ID | API (propozycja) | Po co | Wersja |
 |---|---|---|---|
-| KA-1 | `list_segments(output_dir) -> list[str]` — posortowane `<produkt>/<wariant>` wszystkich rzeczywistych katalogów drugiego poziomu (bez dowiązań symbolicznych i katalogów z kropką), także nierozpoznanych (1 listing katalogu `--output` + 1 na produkt); `iter_store(output_dir, *, segment=None, units=None, skip_versions=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `units` zawęża przejście do katalogów hierarchii podanych jednostek segmentu (godła, TERYT, `<coords>`), bez listowania całego segmentu; `skip_versions` — ścieżki względne katalogów wersji znanych wywołującemu (`<segment>/versions/<hierarchia>/<etykieta>_<sha8>`): ich pliki wracają bez otwierania sidecara (`sidecar=None`, `skipped=True`; koszt: listing katalogu); `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem, `skipped`. Koszt na wpis: katalog — 1 listing; dowiązanie, `full_sheet/`, nowa wersja, sidecar nieczytelny — 1 odczyt sidecara; wersja pominięta i brak sidecara — 0 otwarć; plik danych nigdy nie jest otwierany ani `stat`-owany | indeks bez własnej kopii reguł `data/` (4.2), skan równoległy po segmentach i przyrostowy bez ponownego czytania wersji, szybkie odświeżenie widoku (4.4) | v0.1 |
+| KA-1 | `list_segments(output_dir) -> list[str]` — posortowane `<produkt>/<wariant>` wszystkich rzeczywistych katalogów drugiego poziomu (bez dowiązań symbolicznych i katalogów z kropką), także nierozpoznanych (1 listing katalogu `--output` + 1 na produkt); `list_partitions(output_dir, segment, *, target=32) -> list[str]` — rozłączne części segmentu do równoległych wywołań `iter_store`: `.` (poziom segmentu), `<katalog>[/<katalog>…]` (katalog hierarchii z poddrzewem pod ścieżką standardową, `full_sheet/` i `versions/`) albo `<katalog>/.` (sam katalog, gdy jego podkatalogi są osobnymi częściami), dzielone poziomami, dopóki części jest mniej niż `target` (koszt: 3 listingi + do 3 na dzielony katalog); `iter_store(output_dir, *, segment=None, units=None, skip_versions=None, partition=None) -> Iterator[StoreEntry]` — wersje, dowiązania (ścieżka standardowa, `full_sheet/`), pozostałości (`kampanie/`, `.incoming` starsze niż 24 h, segmenty spoza rejestru, pliki bez sidecara, sidecary nieczytelne); `units` zawęża przejście do katalogów hierarchii podanych jednostek segmentu (godła, TERYT, `<coords>`), bez listowania całego segmentu; `partition` (wymaga `segment`, bez `units`) czyta jedną część `list_partitions` — suma części daje cały segment, każdy wpis raz; `skip_versions` — katalogi wersji znane wywołującemu, ścieżki względne `<segment>/versions/<hierarchia>/<etykieta>_<sha8>`: zbiór — ich pliki wracają bez otwierania sidecara (`sidecar=None`, `skipped=True`; koszt: listing katalogu); mapowanie katalog → nazwy plików danych — katalog obecny w listingu rodzica nie jest listowany, a podane nazwy (zawężone przez `units`) wracają jak pominięte (koszt: 0; plik usunięty albo dopisany w takim katalogu widzi dopiero przejście bez mapowania); `StoreEntry`: rodzaj, segment, hierarchia, nazwa, ścieżka, ścieżka wersji, etykieta, `sha8`, sidecar, problem, `skipped`. Koszt na wpis: katalog — 1 listing; dowiązanie, `full_sheet/`, nowa wersja, sidecar nieczytelny — 1 odczyt sidecara; wersja pominięta i brak sidecara — 0 otwarć; plik danych nigdy nie jest otwierany ani `stat`-owany | indeks bez własnej kopii reguł `data/` (4.2), skan równoległy po segmentach i ich częściach, przyrostowy bez ponownego czytania i listowania znanych wersji, szybkie odświeżenie widoku (4.4) | v0.1 |
 | KA-2 | `read_sidecar(path) -> Sidecar` — typowany, tolerancyjny odczyt `kartograf-meta/1` (także sprzed ADR-031 i klucze deweloperskie 0.8.0-dev): pola z ARCH 3.2, surowy `dataset` i rozpoznany klucz deskryptora, znormalizowane: rok i data danych, kampania, numer zgłoszenia, wydanie, pełny arkusz, pokrycie, jednostka | filtry, karta pliku, rok danych ≠ data pobrania (4.3) | v0.1 |
 | KA-3 | `describe_segment(segment) -> SegmentInfo` — odwrotność `resolve_subdir`/`content_segment`: produkt, kraj, klucz deskryptora, nazwa dla ludzi (nazwa deskryptora + wariant: rozdzielczość, układ wysokości, format, rocznik, poziom), `known` | ludzkie nazwy („NMT 1 m · PL-1992 · EVRF2007”) | v0.1 |
 | KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — zasięg w WGS84 i natywny z układem i źródłem (`request`, `sheet`, `header`, `unit`); offline dla godeł PL i TM33, bboxów zadań i nagłówków; dla TERYT (PRG), KU (RUIAN), SM5 (indeks CUZK) — z `cache` należącym do wywołującego (`MutableMapping[tuple[str, str], BBox]`, klucz `("teryt" \| "ku" \| "sm5", kod)`), czytanym także bez sieci, a uzupełnianym tylko przy `network=True`; przyjmuje także pozycję planu (`PlanItem`) | mapa, filtr obszaru, podświetlanie planowanych jednostek (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |

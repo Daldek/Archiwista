@@ -1,16 +1,19 @@
 """Kartograf store reads behind Archiwista's producer-neutral source interface.
 
 Only names of ``kartograf.__all__`` are used. A scan maps ``iter_store``
-entries to ``SourceEntry`` values carrying the metadata of the same pass;
-versions the index knows are skipped by directory (``skip_versions``), and a
-scan never calls ``link_target``: that is the on-demand ``confirm_link``.
-Kartograf's exceptions surface as ``ProducerError`` with the message
-unchanged.
+entries to ``SourceEntry`` values carrying the metadata of the same pass. The
+index's known version directories go to ``iter_store`` as a ``skip_versions``
+mapping (directory → file names), so Kartograf neither reads their sidecars
+nor lists them again; a segment splits into ``list_partitions`` parts read
+in parallel. A scan never calls ``link_target``: that is the on-demand
+``confirm_link``. Kartograf's exceptions surface as ``ProducerError`` with
+the message unchanged.
 """
 
 import json
 import os
-from collections.abc import Iterable, Iterator, Mapping
+from collections import Counter
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -30,6 +33,7 @@ from kartograf import (
     get_project_status,
     iter_store,
     link_target,
+    list_partitions,
     list_segments,
     open_project,
     pinned_transform,
@@ -53,6 +57,7 @@ from archiwista.sources import (
     SheetGrid,
     SourceContext,
     SourceEntry,
+    SourcePartition,
     SourceSegment,
     SourceState,
     SourceStatus,
@@ -81,9 +86,10 @@ class KartografAdapter:
     Notes
     -----
     Besides ``SourceAdapter`` it implements every optional capability:
-    ``SegmentedAdapter``, ``GeoAdapter``, ``LinkCheckAdapter`` and
-    ``SheetGridAdapter``. All methods may run in several threads at once;
-    one iterator of ``iter_entries`` belongs to one thread.
+    ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
+    ``LinkCheckAdapter`` and ``SheetGridAdapter``. All methods may run in
+    several threads at once; one iterator of ``iter_entries`` belongs to one
+    thread.
     """
 
     producer = PRODUCER
@@ -129,9 +135,10 @@ class KartografAdapter:
         root : Path
             Kartograf's ``--output`` directory.
         scope : ScanScope or None, optional
-            ``segment`` and ``units`` narrow the scan; ``known_versions``
-            (version files) become ``skip_versions`` (their directories), so
-            their files come back ``skipped`` without ``meta``.
+            ``segment`` and ``units`` or ``partition`` narrow the scan;
+            ``known_versions`` becomes the ``skip_versions`` mapping: the
+            named files of those version directories come back ``skipped``
+            without ``meta`` and the directories are not listed.
 
         Yields
         ------
@@ -145,11 +152,46 @@ class KartografAdapter:
             The store cannot be listed or becomes unreadable during the scan
             (e.g. a disconnected share).
         ProducerError
-            Kartograf rejected the scope (a malformed segment or unit).
+            Kartograf rejected the scope (a malformed segment, unit or part).
         """
-        scope = scope or ScanScope()
-        skip = frozenset(path.parent.as_posix() for path in scope.known_versions)
-        return self._entries(root, scope.segment, scope.units, skip or None)
+        return self._entries(root, scope or ScanScope())
+
+    def partitions(
+        self, root: Path, segment: str, known_versions: Mapping[str, tuple[str, ...]]
+    ) -> tuple[SourcePartition, ...]:
+        """Split a segment into the parts of ``list_partitions``.
+
+        Parameters
+        ----------
+        root : Path
+            Kartograf's ``--output`` directory.
+        segment : str
+            ``<product>/<variant>`` of ``segments``.
+        known_versions : Mapping[str, tuple[str, ...]]
+            Known version directories (``ScanScope.known_versions``): a
+            part's weight is the number of their files below it.
+
+        Returns
+        -------
+        tuple[SourcePartition, ...]
+            Disjoint parts whose ``iter_entries`` together give the
+            segment's entries once; none for a segment that is gone.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The store cannot be listed.
+        ProducerError
+            Kartograf rejected the segment.
+        """
+        try:
+            keys = list_partitions(root, segment)
+        except OSError as error:
+            raise _unavailable(root, error) from error
+        except KartografError as error:
+            raise _producer_error(error) from error
+        weights = _partition_weights(segment, keys, known_versions)
+        return tuple(SourcePartition(key, weights[key]) for key in keys)
 
     def read_meta(self, entry: SourceEntry) -> EntryMeta:
         """Read the metadata of one entry again, on demand.
@@ -375,18 +417,16 @@ class KartografAdapter:
             detail=detail,
         )
 
-    def _entries(
-        self,
-        root: Path,
-        segment: str | None,
-        units: Iterable[str] | None,
-        skip: frozenset[str] | None,
-    ) -> Iterator[SourceEntry]:
+    def _entries(self, root: Path, scope: ScanScope) -> Iterator[SourceEntry]:
         store = str(root)
         prefix = os.path.join(os.path.normpath(root), "")
         try:
             for entry in iter_store(
-                root, segment=segment, units=units, skip_versions=skip
+                root,
+                segment=scope.segment,
+                units=scope.units,
+                partition=scope.partition,
+                skip_versions=scope.known_versions or None,
             ):
                 yield _source_entry(store, prefix, entry)
         except OSError as error:
@@ -429,9 +469,11 @@ def _source_entry(store: str, prefix: str, entry: Any) -> SourceEntry:
     version = entry.version_path
     meta = None
     relative = _relative(entry.path, prefix)
-    if version is not None:
+    if version is entry.path:
         # A version names itself: one path object serves both fields.
-        version = relative if version == entry.path else _relative(version, prefix)
+        version = relative
+    elif version is not None:
+        version = _relative(version, prefix)
     if entry.sidecar is not None and entry.kind != "problem":
         meta = _entry_meta(store, relative, entry.sidecar, entry.segment, entry.label)
     return SourceEntry(
@@ -467,6 +509,41 @@ def _slot_path(entry: Any) -> Path | None:
         return None
     parts = (entry.segment, entry.hierarchy, entry.name)
     return Path("/".join(part for part in parts if part))
+
+
+def _partition_weights(
+    segment: str, keys: list[str], known: Mapping[str, tuple[str, ...]]
+) -> Counter[str]:
+    """Known version files of a segment's ``list_partitions`` parts.
+
+    A part covers a hierarchy: ``"."`` the segment's own level, ``"A/."``
+    exactly the directory ``A``, any other key every directory below it.
+    A known version directory is ``<segment>/versions/<hierarchy>/<name>``.
+    """
+    exact: dict[tuple[str, ...], str] = {}
+    below: dict[tuple[str, ...], str] = {}
+    for key in keys:
+        if key == ".":
+            exact[()] = key
+        elif key.endswith("/."):
+            exact[tuple(key[:-2].split("/"))] = key
+        else:
+            below[tuple(key.split("/"))] = key
+    depth = max(map(len, below), default=0)
+    versions = f"{segment}/versions/"
+    weights: Counter[str] = Counter(dict.fromkeys(keys, 0))
+    for directory, names in known.items():
+        if not directory.startswith(versions):
+            continue
+        hierarchy = tuple(directory[len(versions) :].split("/")[:-1])
+        found = exact.get(hierarchy)
+        size = min(depth, len(hierarchy))
+        while found is None and size > 0:
+            found = below.get(hierarchy[:size])
+            size -= 1
+        if found is not None:
+            weights[found] += len(names)
+    return weights
 
 
 def _entry_meta(

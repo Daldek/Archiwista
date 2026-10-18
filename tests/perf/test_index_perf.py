@@ -18,7 +18,7 @@ import shutil
 import statistics
 import time
 import warnings
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -136,7 +136,7 @@ def _pass(
     times = _PassTimes()
     writer.begin_pass(STORE, "kartograf", full=full)
     for segment in segments:
-        known: frozenset[Path] = frozenset()
+        known: Mapping[str, tuple[str, ...]] = {}
         if not full:
             known = writer.known_versions(segment)
         batch: list[SourceEntry] = []
