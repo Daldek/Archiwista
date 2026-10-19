@@ -1081,7 +1081,7 @@ działa.
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | zrobione |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
-| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | do zrobienia |
+| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | kod zrobiony (`a5ae7f3`); bez prób `test_local_layers.py`, `test_layers_cli_equals_http`, `test_cz_preview_tile_within_2_m` i pomiaru 200 arkuszy; warstwy pliku własnego po 9 |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
@@ -2822,6 +2822,62 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `--thumbnail`).
 - **Zależności:** 3, 5a1, 5b, 6; odbiór miniatur i kafli warstw po 5a3;
   warstwy migawek po 9. **Równolegle:** 5a2, 5a3, 10, 12a.
+- **Stan po kroku 11 (kod, commit `a5ae7f3`; próby niedokończone):**
+  - *Usługa* (`services/layers.py`): `read_local_layers` (odświeżenie
+    widoku → `IndexQueries.product_versions` → wersje, których obrys ma
+    wspólne wnętrze z obszarem → warstwy), `layer_images`,
+    `layer_thumbnail`, `layer_tile`, `LayerMemo` (60 s, 256 warstw: kafle
+    widoku bez ponownego czytania indeksu), `LayerImages`/`LayerItem`
+    (źródło z indeksu, zasięg WGS84, `resolve` na dysk — punkt
+    rozszerzenia dla warstw pliku własnego i migawek z kroku 9; trasa
+    `/projects/{project}/files/{file_id}/layers` i
+    `test_own_file_layers_current_first` czekają na krok 9). Wariant:
+    12 znaków SHA-256 z `product\nhorizontal_crs\nresolution\nvertical_crs`,
+    bez któregoś pola — segment; okres: `data_year`, inaczej `edition`,
+    inaczej `label` (pusty: „bez roku i wydania”); `group=campaign`
+    dokleja `:<kampania>`. Formaty-plakietki: `FileFormat.name` z
+    rozszerzenia (np. `ASCII Grid`, `ZIP`); `units_count` po jednostce
+    (arkusz w dwóch formatach liczy się raz); `subtitle` — nazwa
+    najczęstszego segmentu warstwy. Stan wersji tylko z pamięci podglądów
+    (bez rozpoznania w żądaniu): rodzaje `document`/`archive`/`auxiliary`/
+    `unknown` i powód w `info.json` → `unavailable`, brak `info.json` albo
+    COG → `needs_build`; brakujące w granicach budowy automatycznej idą
+    jednym zadaniem `preview` na warstwę (serwer zleca, kolejne odpowiedzi
+    dołączają; bez zlecania przy odłączonym magazynie i w CLI). `v` = 16
+    znaków SHA-256 posortowanych gotowych treści; obraz z dokładnie tymi
+    treściami ma `immutable`, inny `private, no-cache`; przy braku
+    w pamięci wersje są rozwiązywane na dysku (odłączony magazyn → `503
+    store_unavailable`, plik usunięty albo dowiązanie poza korzeń —
+    pominięty). `minzoom` = ⌈log2(32 / mediana krótszego boku arkusza
+    w px kafla z = 0)⌉; poniżej i poza zasięgiem → `404`.
+  - *Odświeżenie* (`api/areas.py`): `refresh_area` (pomocnik obu tras)
+    i `AreaRefreshes` w `app.state.area_refreshes`. Odstępstwo od opisu:
+    `/local-coverage` zawsze skanuje (przycisk „Odśwież” i
+    `test_local_coverage_after_refresh`, pomiar `test_store_50k_view_refresh_of_500_slots`
+    wymagają skanu przy każdym żądaniu) i tylko zapisuje skan w pamięci;
+    `/local-layers` pomija segment obszaru zeskanowany w ciągu 60 s, o ile
+    katalog magazynu jest na miejscu i niepusty.
+  - *Inne zmiany:* `IndexQueries.product_versions` + `ProductVersion`,
+    `ObjectResolver.version_source` (wspólne `_version_source` z
+    `_version`), `PlanarMover`/`measure_planar` w `index/coverage.py`
+    (`measure_coverage` bez zmian w wyniku), publiczne `while_connected`,
+    `ClientGone`, `preview_problems`, `image_responses` w
+    `api/previews.py`; `app.state.layer_memo`; `archiwista layers`
+    (`--thumbnail KLUCZ --output PLIK.png [--size N] [--style STYL]`,
+    `--thumbnail` bez `--output` → kod 2).
+  - *Sprawdzone:* próba dymna na magazynie `make_store` z prawdziwą pulą
+    i zadaniami (warstwy lat, zadania `preview` na warstwę, miniatura
+    i kafel z pamięci 3–15 ms, poniżej `minzoom` → `404`, CLI z
+    `--thumbnail`); `test_local_coverage.py`, `test_coverage.py`,
+    `test_previews_api.py`, `test_compare.py`, `test_imports.py` — 44
+    zielone; ruff, format i mypy na zmienionych plikach czyste.
+  - *Do dopisania:* `tests/integration/test_local_layers.py` (lista
+    z „Test/odbiór”; magazyn ręczny przez `FileStorage` i sidecary
+    z `extra.campaign.id`/`extra.edition`, bo `make_store` nie daje
+    kampanii ani dwóch formatów z tym samym rokiem),
+    `test_cli.py::test_layers_cli_equals_http`,
+    `test_cz_control_point.py::test_cz_preview_tile_within_2_m` (z kroku
+    5a) oraz pomiar roku z 200 arkuszy z pamięci (cel ≤ 2 s).
 
 ### 12a. Interfejs: podgląd w Karcie pliku i ustawienia pamięci
 - **Cel:** zakładka „Podgląd” Karty pliku dla wersji (miniatura przez
