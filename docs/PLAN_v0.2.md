@@ -2251,10 +2251,10 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   - *Próby* (prawdziwe procesy renderujące i robotnik zadań;
     `tests/fixtures/preview_api.py`: `preview_api`, `scanned_store`,
     `serve_previews`): `tests/integration/test_previews_api.py` (18, ok.
-    11 s), `test_preview_coverage.py` (1, ok. 18 s: 46 wersji magazynu
+    11 s), `test_preview_coverage.py` (1, ok. 35 s: 46 wersji magazynu
     z rodzinami kroku 2, każda `ready`, `needs_build` albo `unavailable`
-    ze znanym powodem; budowa po jednej na segment, rodzinę i rodzaj
-    klucza treści, potem `ready` z kaflem; dwie wersje bez `sha256` pod
+    ze znanym powodem; każda z 22 `needs_build` po `POST` (22 zadania
+    `preview` po kolei) `ready` z kaflem; dwie wersje bez `sha256` pod
     kluczem ścieżki), `test_preview_cache.py::test_same_content_rendered_once`
     (3 żądania renderowania: rozpoznanie, miniatura, kafel; druga wersja
     tych samych bajtów, powtórzenia i nowy serwer — 0),

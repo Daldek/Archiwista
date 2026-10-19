@@ -34,17 +34,12 @@ def test_every_store_file_type_has_preview_or_reason(tmp_path: Path) -> None:
     Every version of the catalog has a ``PreviewInfo``: ``ready`` with a
     thumbnail that decodes or an archive's members, ``unavailable`` with a
     known reason, or ``needs_build`` within the auto-build limits, which
-    ``POST …/preview`` turns ``ready`` with map tiles (one build per segment,
-    family and kind of content key). A version without a ``sha256`` is
-    previewed under the key of its path, size and modification time.
+    ``POST …/preview`` turns ``ready`` with map tiles. A version without a
+    ``sha256`` is previewed under the key of its path, size and modification
+    time.
     """
     with preview_api(tmp_path) as served:
         # Arrange
-        families = {
-            entry.path: entry.family
-            for entry in served.store.entries
-            if entry.kind in ("version", "link")
-        }
         versions = {version["path"]: version for version in served.versions()}
 
         # Act
@@ -59,15 +54,10 @@ def test_every_store_file_type_has_preview_or_reason(tmp_path: Path) -> None:
             for path, info in infos.items()
             if info["members_url"]
         }
-        chosen: dict[tuple[str, str | None, bool], str] = {}
-        for path, info in infos.items():
-            if info["state"] == "needs_build":
-                segment = "/".join(path.split("/")[:2])
-                key = (segment, families.get(path), versions[path]["sha256"] is None)
-                chosen.setdefault(key, path)
         posted = {
             path: served.post(version_url(path), {"force": False})
-            for path in chosen.values()
+            for path, info in infos.items()
+            if info["state"] == "needs_build"
         }
         records = {
             path: served.wait(response.json()["id"])
@@ -109,7 +99,7 @@ def test_every_store_file_type_has_preview_or_reason(tmp_path: Path) -> None:
     for path, response in members.items():
         assert response.status_code == 200, (path, response.text)
         assert response.json()["total"] > 0
-    assert chosen and {key[2] for key in chosen} == {False, True}
+    assert posted and any(versions[path]["sha256"] is None for path in posted)
     for path, response in posted.items():
         assert response.status_code == 202, (path, response.text)
         record = records[path]
