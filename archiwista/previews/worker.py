@@ -341,12 +341,14 @@ def _thumbnail(
     source, renderer, probe = _prepared(renderers, request)
     params = request.params
     frame = params.get("frame")
+    layer = params.get("layer")
     image = renderer.thumbnail(
         source,
         probe,
         str(params["style"]),
         int(params["size"]),
         None if frame is None else Extent(_bbox(frame["bbox"]), str(frame["crs"])),
+        **({} if layer is None else {"layer": str(layer)}),
     )
     return {IMAGE_NAME: image}
 
@@ -424,10 +426,14 @@ def _thumbnail_target(
     if source is None:
         return None
     frame = params.get("frame")
+    layer = params.get("layer")
+    # A vector's chosen layer joins the frame in the name's digest; a
+    # thumbnail of no chosen layer keeps the name of the frame alone.
+    variant = frame if layer is None else {"frame": frame, "layer": str(layer)}
     name = thumbnail_name(
         str(params["style"]),
         int(params["size"]),
-        None if frame is None else _canonical(frame),
+        None if variant is None else _canonical(variant),
     )
     return cache_key(source), name
 

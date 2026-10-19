@@ -13,10 +13,12 @@ from archiwista.previews.renderers.archive import ArchiveRenderer
 from archiwista.previews.renderers.document import DocumentRenderer
 from archiwista.previews.renderers.points import PointsRenderer
 from archiwista.previews.renderers.raster import RasterRenderer
+from archiwista.previews.renderers.vector import VectorRenderer
 from archiwista.previews.types import Renderer
 
 RENDERERS: tuple[Renderer, ...] = (
     RasterRenderer(),
+    VectorRenderer(),
     PointsRenderer(),
     ArchiveRenderer(),
     DocumentRenderer(),

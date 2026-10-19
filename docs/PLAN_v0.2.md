@@ -1073,7 +1073,7 @@ działa.
 | 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
 | 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
 | 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
-| 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | do zrobienia |
+| 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | zrobione |
 | 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | zrobione |
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
@@ -1900,6 +1900,93 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   (punkt GeoPackage EPSG:5514 w `features` ≤ 2 m).
 - **Zależności:** 1, 2, 4, 7a (`consistent_sqlite_read`). **Równolegle:**
   5a1–5a3, 5c, 6, 7b, 8.
+- **Stan po kroku 5b:**
+  - *Rejestr.* `RENDERERS` dostał `VectorRenderer()` (jedna linia;
+    `RENDERER_VERSIONS["vector"]` bez zmian — 1). `VectorRenderer(*,
+    work_dir=None)` — katalog kopii SQLite; bez niego
+    `worker.work_dir()` procesu.
+  - *Otwarcie* (`renderers/vector.py`): wyłącznie przez `vector_source`
+    (`GPKG:` — odstępstwo: najpierw nagłówek SQLite, inna treść pod
+    `.gpkg` → `unsupported_format` przed GDAL; `GeoJSON:`; sygnatura
+    `.shp`, `.fgb`, natywny `.tab`); komplet z członem będącym
+    dowiązaniem symbolicznym → `unsupported_format` (jak czytnik 7a); brak
+    pliku → `missing_file`. GeoPackage magazynu i migawki (`mutable`
+    fałszywe) — w miejscu z `IMMUTABLE=YES`. Plik roboczy: `source.gpkg`
+    z pamięci podglądów (`worker.cached_file`, krok 5a), jeśli jest — bez
+    otwierania samego pliku; inaczej `consistent_sqlite_read` w katalogu
+    roboczym procesu: (a) w miejscu, (b) i (c) z kopii; zmiana w trakcie
+    odczytu → `changed_since_scan`.
+  - *Rozpoznanie*: warstwy po indeksie (`read_info(layer=i,
+    force_feature_count, force_total_bounds)`, ≤ `MAX_LAYERS` 1000);
+    obiekt warstwy w `PreviewProbe.layers`: `name`, `geometry_type`,
+    `feature_count`, `fields` (`name`, `type` jak w czytniku 7a), `crs`
+    (pliku, inaczej `source.crs`), `bbox`, `bbox_wgs84`, `sample` (≤ 20
+    wierszy; `null` dla NULL, wartości binarnych i nieskończonych, tekst
+    ponad 500 znaków skrócony z „…”). Odstępstwo: warstwa nazwana po
+    pliku (Shapefile, TAB, GeoJSON i FlatGeobuf bez własnej nazwy) ma
+    `name: null` — `info.json` jest wspólny dla tych samych bajtów pod
+    różnymi nazwami, więc nie niesie nazw plików (decyzja 3); żądanie bez
+    `layer` bierze pierwszą warstwę z geometrią. Plik: `crs` (wspólny
+    układ warstw z geometrią), `bbox_native`, `bbox_wgs84` (suma warstw),
+    `styles` = `("features",)`, powód `no_crs` (żadna warstwa z geometrią
+    nie ma układu — także plik bez geometrii) albo `transform_unavailable`
+    (żaden układ bez przypiętej operacji do WGS84 — np. TAB z kroku 2:
+    MapInfo zapisuje PL-1992 jako WKT bez kodu EPSG na WGS84); `minzoom`
+    i `maxzoom` puste — wektor trafia na mapę przez `features` (krok 6 nie
+    daje mu `tiles_url`). Nowe pole `PreviewProbe.needs_copy`: stan (b)
+    albo (c) w chwili rozpoznania (rozpoznanie zawsze czyta plik, nie
+    kopię); `build_product` → `SOURCE_GPKG_NAME` (stała przeniesiona do
+    `types.py`, `cache.py` ją re-eksportuje), a `build` zapisuje kopię
+    spójną (jeden plik bez dziennika, tylko zatwierdzone wiersze), którą
+    zadanie `preview` kładzie jako `source.gpkg`; plik > 2 GB czeka na
+    „Zbuduj podgląd” przez `auto_build`.
+  - *Miniatura i kafel*: do `DRAWN_LAYERS` 3 największych warstw
+    liniowych i powierzchniowych (punktowe tylko w pliku bez nich) albo
+    wskazana `layer`, ≤ `DRAWN_FEATURES_MAX` 50 000 obiektów każda,
+    uproszczone do pół piksela; bez kadru — w układzie największej z nich
+    wokół zasięgu (także plik bez układu), z kadrem — obraz
+    `tiles.frame_shape` w układzie kadru: prostokąt kadru (z marginesem
+    `REACH_PX`) przeliczony do układu warstwy po zagęszczeniu, obiekty
+    z powrotem przypiętą operacją. `tile` to samo na siatce kafla
+    EPSG:3857 (`params["layer"]` opcjonalnie). RGBA przezroczyste poza
+    obiektami (`compose.py`). Rysowanie w `previews/rasterize.py`
+    (`Grid`, `Canvas`, `draw_png`): wypełnienie z alfa 0,35 i obrys,
+    linie po każdym dotkniętym pikselu, punkty jako koła r = 3 px, część
+    mniejsza od piksela jako piksel z numpy (`rasterize` GDAL-a przez
+    `__geo_interface__` kosztuje ok. 2 s na 50 000 wielokątów), kolory
+    `LAYER_COLORS`, PNG przez `tiles.encode_png`. Operacja `thumbnail`
+    przekazuje `layer` tylko, gdy żądanie go ma, a `_thumbnail_target`
+    wlicza go wtedy do skrótu kadru (nazwy bez `layer` bez zmian); trasa
+    kroku 6 jeszcze go nie wystawia.
+  - *Obiekty* (`features`): `limit` 1–5000 i `zoom` 0–22 (inaczej
+    `ValueError`), widok przycięty do świata, jego prostokąt zagęszczony
+    (`EDGE_POSITIONS` 64 punkty na krawędź) i przeliczony do układu
+    warstwy → `bbox` OGR; `max_features = limit + 1`; tolerancja = pół
+    piksela mapy zoomu w jednostkach warstwy (z obu osi widoku), geometria,
+    która by znikła, upraszczana z `preserve_topology=True`; do WGS84
+    przypiętą operacją, 7 miejsc po przecinku; ≤ `FEATURES_MAX_VERTICES`
+    500 000 — pierwsze obiekty, które się mieszczą. Wynik:
+    `FeatureCollection` z `id` (FID), `layer`, `number_matched` (`null`
+    ponad `limit`), `number_returned`, `truncated`, `simplified`.
+  - *Próby*: `tests/unit/test_vector_renderer.py` (17 testów, ok. 8 s:
+    GeoPackage z dwiema warstwami, miniatura i kafel RGBA, Shapefile —
+    warstwa bez nazwy, bez `.prj` → `no_crs`, GeoJSON i FlatGeobuf
+    w pozycjach przypiętej operacji, 5041 punktów i `limit` 5000 →
+    `truncated`, `test_features_simplified_to_zoom` — 12 wielokątów
+    zębatych po 50 000 wierzchołków przy z = 12: 10 obiektów ≤ 500 000
+    wierzchołków i `truncated`, gładki przy z = 12 i z = 19 ≤ 1 piksel
+    mapy, widok w EPSG:2180 i EPSG:5514, OGR VRT pod `.gpkg`, `.geojson`,
+    `.shp`, `.fgb` → `unsupported_format`/`unreadable` bez treści celu,
+    `.dbf` jako dowiązanie, trzy stany GeoPackage — folder bez zmian,
+    `build` → kopia z wierszami zatwierdzonymi);
+    `tests/integration/test_vector_previews.py::test_open_gpkg_read_from_kept_copy`
+    (prawdziwa pula: po zbudowaniu kopii plik w edytorze dostaje `chmod
+    000`, a obiekty dalej przychodzą — z `source.gpkg`);
+    `test_cz_control_point.py::test_cz_features_within_2_m` (prawdziwa
+    pula z rendererami aplikacji: punkt 3722 z GeoPackage EPSG:5514 0,66 m
+    od φ, λ ETRS89). Dym: `archiwista serve` z magazynem testowym —
+    GeoPackage `ready` ze stylem `features`, `preview.png` 200,
+    `features?bbox&zoom` 200.
 
 ### 5c. Chmury punktów, archiwa, dokumenty, pliki pomocnicze
 - **Cel:** renderery `points.py` (LAZ/LAS: nagłówek, układ z VLR albo

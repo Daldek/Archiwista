@@ -5,7 +5,8 @@ A raster in EPSG:5514 whose top-left corner is trigonometric point 3722
 its outline that ``/map/footprints`` serves lies within 2 m of the point's
 ETRS89 coordinates measured by GNSS, never computed by the transformation
 under test. The WGS84 bounding box of 0.1.0 misses that corner by about
-200 m.
+200 m. A GeoPackage point at 3722 comes back from a render process's
+``features`` (step 5b) within the same 2 m.
 """
 
 import hashlib
@@ -19,12 +20,16 @@ import pyproj
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppSettings, ConfigStore, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
+from archiwista.previews.cache import PreviewCache
+from archiwista.previews.pool import RenderPool
+from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
 from tests.fixtures import store_files
 from tests.fixtures.api_session import running_api
 from tests.fixtures.control_points import POINT_3722
 from tests.fixtures.index_data import CZ_NMT
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.own_data import make_own_folder
 
 STORE = "cz"
 # An SM5-sized raster: 2.5 km east and 2 km south of its top-left corner.
@@ -115,3 +120,33 @@ def test_cz_outline_vertex_within_2_m(tmp_path: Path) -> None:
     assert nearest <= TOLERANCE_M
     assert card.status_code == 200, card.text
     assert card.json()["footprint"] == item["geometry"]
+
+
+def test_cz_features_within_2_m(tmp_path: Path) -> None:
+    """A GeoPackage point at 3722 comes back from ``features`` within 2 m.
+
+    A real render process (the application's renderers in the sandbox)
+    reads the own-data GeoPackage in EPSG:5514 and moves its point to WGS84
+    with the pinned operation.
+    """
+    # Arrange
+    folder = make_own_folder(tmp_path / "dane", families=("gpkg_5514_control",))
+    path = folder.path("gpkg_5514_control")
+    content = hashlib.sha256(path.read_bytes()).hexdigest()
+    source = PreviewSource(f"file:cz:{path.name}", content, (path,), mutable=True)
+    lon, lat = POINT_3722.etrs89
+    view = [lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01]
+    params = {"layer": None, "bbox": view, "zoom": 19, "limit": 100}
+
+    # Act
+    with (
+        PreviewCache(tmp_path / "previews", limit_bytes=100 * 1024**2) as cache,
+        RenderPool(workers=1, cache=cache, work_dir=tmp_path / "work") as pool,
+    ):
+        found = pool.request("features", source, params).json()
+
+    # Assert
+    (item,) = found["features"]
+    point_lon, point_lat = item["geometry"]["coordinates"]
+    assert item["properties"]["numer"] == POINT_3722.number
+    assert float(GEOD.inv(lon, lat, point_lon, point_lat)[2]) <= TOLERANCE_M

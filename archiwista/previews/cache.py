@@ -64,6 +64,7 @@ from archiwista.previews.types import (
     PreviewSource,
     RendererName,
 )
+from archiwista.previews.types import SOURCE_GPKG_NAME as SOURCE_GPKG_NAME
 from archiwista.sandbox import (
     owner_alive,
     process_dir,
@@ -74,11 +75,11 @@ from archiwista.sandbox import (
 CACHE_FILE = "cache.sqlite"
 OBJECTS_DIR = "objects"
 INCOMING_DIR = ".incoming"
-# Files of an object besides its local COG (``COG_NAME``), thumbnails and
-# tiles (``thumbnail_name``, ``tile_name``): the probe, and the consistent
-# copy of an own-data SQLite file in state (b) or (c) (decision 8).
+# Files of an object besides its local COG (``COG_NAME``), the consistent
+# copy of an own-data SQLite file in state (b) or (c) (``SOURCE_GPKG_NAME``,
+# decision 8), thumbnails and tiles (``thumbnail_name``, ``tile_name``): the
+# probe.
 INFO_NAME = "info.json"
-SOURCE_GPKG_NAME = "source.gpkg"
 # A hit writes its object's use at most this often per process.
 TOUCH_INTERVAL_S = 300.0
 # A put over the limit evicts down to this part of it.

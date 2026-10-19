@@ -95,6 +95,9 @@ AUTO_BUILD_MAX_PIXELS = 1_000_000_000
 AUTO_BUILD_MAX_UNPACKED_BYTES = 8 * 1024**3
 # Name of the local COG of a file in its preview cache object.
 COG_NAME = "cog.tif"
+# Name of the consistent copy of an own-data SQLite file in state (b) or (c)
+# (decision 8) in its preview cache object.
+SOURCE_GPKG_NAME = "source.gpkg"
 
 _FORMAT_BY_NAME = {found.name: found for found in FORMATS}
 
@@ -324,6 +327,10 @@ class PreviewProbe:
         Number of members of an archive.
     needs_cog : bool
         Map tiles need a local COG first (decision 6).
+    needs_copy : bool
+        A working SQLite file (GeoPackage) an editor has open or left with
+        its ``-wal`` or ``-journal`` (state (b) or (c) of decision 8): read
+        only from its consistent copy, kept as ``source.gpkg``.
     pixels, unpacked_bytes : int or None
         Pixels of a raster and its bytes once unpacked (auto-build limits).
     reason : PreviewReason or None
@@ -361,6 +368,7 @@ class PreviewProbe:
     points: JsonObject | None = None
     members: int | None = None
     needs_cog: bool = False
+    needs_copy: bool = False
     pixels: int | None = None
     unpacked_bytes: int | None = None
     reason: PreviewReason | None = None
@@ -456,9 +464,12 @@ class Renderer(Protocol):
     Besides these members a renderer may have ``features(source, probe,
     layer, bbox_wgs84, zoom, limit) -> dict`` (vectors), ``members(source)
     -> dict`` (archives) and ``build(source, probe, out_path) -> None``
-    (writes the local COG of a file whose probe ``needs_cog``). A renderer
-    raises ``PreviewUnavailableError`` with the reason a file has no such
-    preview; any other error makes the file ``unreadable``.
+    (writes what ``build_product`` names: the local COG of a file whose
+    probe ``needs_cog``, the copy of one that ``needs_copy``). A vector
+    renderer's ``thumbnail`` also takes ``layer`` (one layer drawn; the
+    ``thumbnail`` operation passes it only when the request has one). A
+    renderer raises ``PreviewUnavailableError`` with the reason a file has
+    no such preview; any other error makes the file ``unreadable``.
     """
 
     @property
@@ -496,7 +507,14 @@ class Renderer(Protocol):
 
 
 def build_product(probe: PreviewProbe) -> str | None:
-    """Return the name of what the ``preview`` job builds for a file, if anything."""
+    """Return the name of what the ``preview`` job builds for a file, if anything.
+
+    The consistent copy of a working SQLite file in state (b) or (c), which
+    its thumbnails read too (a file without a CRS has one), else the local
+    COG of a raster whose map tiles need it.
+    """
+    if probe.needs_copy:
+        return SOURCE_GPKG_NAME
     return COG_NAME if probe.needs_cog and probe.reason is None else None
 
 
