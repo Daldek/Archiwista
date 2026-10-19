@@ -45,6 +45,8 @@ COMPARE_MESSAGES = MappingProxyType(
             " version:zespol:nmt/…/plik.asc."
         ),
         "cli_compare_failed": "Nie można porównać obiektów",
+        "cli_compare_true": "tak",
+        "cli_compare_false": "nie",
         "cli_compare_side": "{side}: {title} ({ref})",
         "cli_compare_same_content": "Ta sama treść pliku (SHA-256).",
         "cli_compare_row": "{mark} {label}: {a} | {b}",

@@ -472,3 +472,38 @@ def test_token_is_one_time_and_expires(
     assert second.json()["code"] == "session_required"
     assert expired is None and in_time is not None
     assert in_time.principal_id == "local"
+
+
+def test_compare_cli_equals_http(
+    served: ServedStore, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``compare --json`` is ``GET /compare``, refusals too; text marks differences."""
+    # Arrange
+    run = _Reader(served, capsys)
+    slots: dict[str, list[str]] = {}
+    for item in run.http("/slots?versions=all&limit=200")["items"]:
+        slots.setdefault(item["slot"], []).append(item["version"]["ref"])
+    a, b = next(refs for refs in slots.values() if len(refs) > 1)[:2]
+    missing = f"version:{api_store.STORE}:nie/ma.tif"
+
+    # Act
+    compared = run.cli("compare", a, b)
+    unknown = run.cli("compare", a, missing, status=1)
+    malformed = run.cli("compare", "plik.tif", b, status=1)
+    capsys.readouterr()
+    code = main(["compare", a, b], registry=served.registry, paths=served.api.paths)
+    text = capsys.readouterr().out
+
+    # Assert
+    assert compared == run.http("/compare?" + urlencode({"a": a, "b": b}))
+    assert unknown == run.http(
+        "/compare?" + urlencode({"a": a, "b": missing}), status=404
+    )
+    assert malformed == run.http(
+        "/compare?" + urlencode({"a": "plik.tif", "b": b}), status=422
+    )
+    assert malformed["code"] == "invalid_ref"
+    differs = [row for row in compared["rows"] if row["differs"]]
+    assert code == 0 and differs
+    assert f"* {differs[0]['label']}: " in text
+    assert f"A: {compared['a']['title']} ({a})" in text

@@ -1080,7 +1080,7 @@ działa.
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
-| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | do zrobienia |
+| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
 | 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | do zrobienia |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | do zrobienia |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
@@ -2544,6 +2544,50 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   niewidoczny projekt → `404`), `tests/integration/test_cli.py::test_compare_cli_equals_http`.
 - **Zależności:** 6; strony danych własnych po 9. **Równolegle:** 5a2,
   5a3, 8, 11, 12a, 12b.
+- **Stan po kroku 10 (strony: wersje magazynu; strony danych własnych po
+  kroku 9):**
+  - *Usługa* (`services/compare.py`): `compare(queries, a, b, *, visible)
+    -> Comparison` — tylko indeks lokalny, żaden plik danych nie jest
+    otwierany. Najpierw grupa `metadata` w kolejności `VERSION_FIELDS`
+    (data i rok danych, pobranie, etykieta, kampania, zgłoszenie prac,
+    wydanie, pełny arkusz wg producenta, pokrycie, rozdzielczość, układ
+    poziomy i wysokości, `nodata`, `sha256`, rozmiar, licencja,
+    atrybucja; nazwy `compare_field_<pole>`), potem grupa `sidecar`: liście
+    surowego sidecara jako ścieżki JSON (`extra.campaign.id`,
+    `request.bbox[0]`; pusty obiekt albo tablica — jej tekst JSON), nazwą
+    wiersza jest sama ścieżka; najpierw pola A, potem tylko z B.
+    `differs` uwzględnia typ (`1` ≠ `true`). `same_content` — oba `sha256`
+    znane i równe (wersja bez `sha256` → `false`).
+  - *Model* (`api/models_compare.py`): `CompareQuery` (`a`, `b`,
+    `extra=forbid`), `ComparisonSide` (`ref`, `kind`, `title` „<nazwa
+    pliku> — <etykieta>”, `preview` — adres opisu podglądu `…/preview`
+    z `object_url`, `outline` — obrys WGS84 z indeksu), `ComparisonRow`
+    (wartości: tekst, liczba, wartość logiczna, data albo czas jak w karcie
+    wersji, `null`), `Comparison`.
+  - *Trasa i CLI.* `GET /compare` (`api/compare.py`; sesja i CSRF jak
+    wszędzie): zły `ref` i rodzaj jeszcze nieporównywany → `422
+    invalid_ref` (tekst `compare_kind_unsupported`), nieznana wersja →
+    `404 not_found`, brak `a`/`b` albo nadmiarowy parametr → `422
+    validation_error`. `archiwista compare REF REF [--json]`
+    (`commands/compare.py`, jedna linia w `COMMAND_MODULES`); bez `--json`
+    strony, wiersz na pole z `*` przy różnicy i podsumowanie.
+  - *Punkt rozszerzenia dla kroku 9.* `services/compare.py::_compared`
+    rozstrzyga rodzaj `ref`: krok 9 dopisuje tam `FileRef`
+    i `SnapshotRef` (projekt niewidoczny w `visible` → `404`; wiersze
+    z decyzji 10: liczby obiektów per warstwa, zasięg, układ, rozmiar,
+    tożsamość treści, autor, opis, daty; `same_content` z tożsamości
+    treści), nowe grupy w `RowGroup`, model `schema_diff` zamiast `None`
+    w `Comparison` i `object_url` danych własnych (`preview`). Odbiór
+    kroku 10 dla migawki z plikiem roboczym i niewidocznego projektu
+    przechodzi na krok 9.
+  - *Testy.* `tests/integration/test_compare.py` (dwie wersje jednego
+    arkusza NMT z kampanią i różnym rozmiarem dopisanymi do sidecarów
+    przed skanem: daty, kampania, `sha256`, rozmiar różne, reszta zgodna
+    z kartą wersji; spłaszczone pola sidecara; wersje dwóch slotów;
+    `same_content` dla dwóch wersji tych samych bajtów i wersji z samą
+    sobą; `422 invalid_ref`, `404`, `422 validation_error`, `403
+    csrf_rejected`, OpenAPI) i
+    `tests/integration/test_cli.py::test_compare_cli_equals_http`.
 
 ### 11. Warstwy lokalne, miniatury i kafle warstw
 - **Cel:** `services/layers.py` i `GET /local-layers` (decyzja 7):
