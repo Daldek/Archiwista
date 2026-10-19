@@ -224,9 +224,9 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
     task.get_by_role("link", name=pin.label).click()
     opened = page.get_by_role("dialog", name=PurePosixPath(pin.path).name)
 
-    expect(opened.get_by_role("button", name=pin.label)).to_have_attribute(
-        "aria-pressed", "true"
-    )
+    # The axis only: the version's copy button names its path, which holds the label.
+    picked = opened.locator(".fc-axis").get_by_role("button", name=pin.label)
+    expect(picked).to_have_attribute("aria-pressed", "true")
     expect(opened.get_by_role("heading", name=f"Wersja {pin.label}")).to_be_visible()
     assert query(page) == {
         "view": "projects",
