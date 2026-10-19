@@ -1,8 +1,13 @@
 # Plan implementacji v0.2 „Podglądy”
 
-**Status:** projekt do przeglądu (2026-10-19). Kod v0.2 powstaje dopiero po
-przeglądzie i zatwierdzeniu tego planu (kolejność jak przy v0.1: spec → plan
-→ przegląd planu → implementacja; `CLAUDE.md`). Wzór i umowy v0.1:
+**Status:** projekt po przeglądzie (2026-10-19): uwzględnia wszystkie
+ustalenia przeglądu planu (m.in. sandbox GDAL z jawnymi sterownikami
+i `EMPTY_DIR`, widoczność zadań z danymi projektu, trzy stany plików
+SQLite, folder domyślny poza magazynem, kafle warstw, podział kroków 5a
+i 13); erraty, których wymagały, są w `docs/DECISIONS.md` (A-ADR-008
+errata 3, A-ADR-029 errata 1). Kod v0.2 powstaje dopiero po zatwierdzeniu
+tego planu (kolejność jak przy v0.1: spec → plan → przegląd planu →
+implementacja; `CLAUDE.md`). Wzór i umowy v0.1:
 `docs/PLAN_v0.1.md`; stan kodu 0.1.0: `docs/ARCHITECTURE.md`; pomiary
 wyjściowe: `docs/reports/v0.1-measurements.md`. Jak w v0.1, po każdym
 kroku dopisuje się tu „Stan po kroku N” (commit, odstępstwa od umowy,
@@ -71,41 +76,94 @@ działa.
 3. **Podglądy: procesy renderujące, pamięć po treści, dostarczanie przez
    API.**
    - *Gdzie liczone.* Serwer nie otwiera plików danych bibliotekami GDAL,
-     OGR, laspy ani `zipfile`. Miniatury, kafle, obiekty wektorowe i listy
-     członów ZIP liczy pula długowiecznych procesów renderujących
-     (`python -P -m archiwista.previews.worker`, domyślnie `min(4, cpu)`),
-     zabijanych i uruchamianych od nowa po przekroczeniu czasu (kafel 15 s,
-     obiekty 15 s, miniatura 30 s, miniatura warstwy 60 s) albo limitu
-     pamięci (`RLIMIT_AS` 2 GiB, `GDAL_CACHEMAX` 256 MB; na Linuksie —
-     Windows w v1.0). Kolejka żądań ma ≤ 64 miejsca (potem
+     OGR, laspy ani `zipfile`. Miniatury, kafle, obiekty wektorowe, listy
+     członów ZIP oraz miniatury i kafle warstw liczy pula długowiecznych
+     procesów renderujących (`python -P -m archiwista.previews.worker`,
+     domyślnie `min(4, cpu)`), zabijanych i uruchamianych od nowa po
+     przekroczeniu czasu (rozpoznanie 20 s, kafel i kafel warstwy 15 s,
+     obiekty 15 s, człony ZIP 10 s, miniatura 30 s, miniatura warstwy
+     60 s) albo limitu pamięci (`RLIMIT_AS` 2 GiB, `GDAL_CACHEMAX` 256 MB;
+     na Linuksie — Windows w v1.0). Kolejka żądań ma ≤ 64 miejsca (potem
      `503 preview_busy` z `Retry-After`), identyczne żądania liczą się raz
      (jedno renderowanie na klucz), a żądanie porzucone przez przeglądarkę
      (przesunięta mapa) wypada z kolejki przed renderowaniem. Budowa
      lokalnego COG (decyzja 6) to zadanie w tle `preview` (A-ADR-007), każdy
-     plik w osobnym procesie potomnym z limitem 10 min i 4 GiB. Ten sam
-     moduł `archiwista/sandbox.py` daje środowisko wszystkim procesom
-     czytającym pliki (także czytnikowi obszarów v0.1 — jedna
+     plik w osobnym procesie potomnym z limitem 10 min i 4 GiB; zadanie
+     buduje najwyżej `n = max(1, cpu // 2)` plików naraz (2 na komputerze
+     odniesienia — cele decyzji 12 liczą się z tym `n`), a trwa najwyżej
+     jedno zadanie `preview` (kolejne czekają jak zadania sieciowe v0.1).
+     Samo zadanie zajmuje jedno miejsce `default_max_jobs()`, a procesy
+     budowy nie zajmują kolejnych, żeby migawka i skan nie czekały na
+     podglądy (na 4 CPU zostają 2 rdzenie na serwer, procesy renderujące
+     i drugie zadanie).
+   - *Sandbox.* Moduł `archiwista/sandbox.py` daje środowisko wszystkim
+     procesom czytającym pliki (także czytnikowi obszarów v0.1 — jedna
      implementacja zamiast kodu w `areas.py`): minimalne zmienne bez
      pośredników i poświadczeń, `PROJ_NETWORK=OFF`, `GDAL_HTTP_PROXY` na
-     zamknięty port, `GDAL_DISABLE_READDIR_ON_OPEN=TRUE` (pliki obok
-     sprawdzane po nazwie, jak w Kartografie), `umask 077` i `GDAL_SKIP`
-     sterowników odsyłających do innych plików albo sieci (m.in. VRT, WMS,
-     WMTS, WCS, WFS, OAPIF) — plik użytkownika nie wskaże innego pliku
-     serwera ani adresu.
+     zamknięty port, `GDAL_PAM_ENABLED=NO` (bez `GDAL_PAM_PROXY_DIR`:
+     statystyki GDAL zapisują `<plik>.aux.xml` obok danych — sprawdzone
+     2026-10-19 na `statistics()` rasterio — co w magazynie łamie „tylko do
+     odczytu”, a w folderze danych daje nowy plik dla następnego skanu),
+     `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` (GDAL nie widzi plików obok:
+     `.ovr`, `.msk`, `.aux.xml`, plików świata), `umask 077` i `GDAL_SKIP`
+     sterowników odsyłających do innych plików albo sieci (`VRT`,
+     `OGR_VRT`, `GTI`, `WMS`, `WMTS`, `WCS`, `WFS`, `OAPIF`, `OGCAPI`,
+     `STACIT`, `STACTA`, `PDS`, `PDS4`, `ISIS3`, `ERS`, `ENVI`, `EHdr`,
+     `GML`; lista w `sandbox.py` i w teście). `GDAL_SKIP` jest tylko drugą
+     linią obrony: pierwszy `WarpedVRT` w procesie (rio-tiler) rejestruje
+     sterownik VRT ponownie, a wtedy plik z treścią VRT czyta
+     `<SourceFilename>` dowolnego pliku serwera — także jako nakładka
+     `a.tif.ovr` przy `rasterio.open("a.tif", driver="GTiff")` (sprawdzone
+     2026-10-19 w `.venv`: rasterio 1.5.2, GDAL 3.12). Dlatego: (a) plik
+     główny otwiera się zawsze jawnym sterownikiem z tabeli formatów
+     (`archiwista/formats.py`; rozszerzenia z decyzji 5): rastry
+     `rasterio.open(path, driver=…)` (`GTiff`, `AAIGrid`, `XYZ`, `JPEG`,
+     `PNG`), a rio-tiler dostaje otwarty zbiór (`Reader(path,
+     dataset=src)`), nigdy samą ścieżkę; wektory z prefiksem sterownika
+     tam, gdzie GDAL go ma (`GPKG:`, `GeoJSON:`), a Shapefile i FlatGeobuf
+     (bez prefiksu w GDAL 3.12 — sprawdzone) po sprawdzeniu sygnatury
+     pliku (`.shp`: kod 9994, `.fgb`: `fgb\x03fgb`); MapInfo `.tab` tylko
+     jako tabela natywna — widok i tabela łączona (`\IsSeamless`) odsyłają
+     do innych plików, więc → `unsupported_format`; (b) `EMPTY_DIR` zamyka
+     nakładki i maski z plików obok (sprawdzone: po `WarpedVRT`
+     `a.tif.ovr` nie jest czytany, a Shapefile dalej czyta `.dbf`
+     i `.prj`). Skutek: georeferencja rastra tylko z samego pliku
+     (GeoTIFF, nagłówek ASC z `EntryMeta.horizontal_crs`, JPEG z obrysu
+     nagłówkowego — decyzja 2); raster danych własnych z samym plikiem
+     świata → `no_georeference` z zaleceniem zapisu jako GeoTIFF. Plik
+     użytkownika nie wskaże innego pliku serwera ani adresu.
    - *Pamięć podglądów.* `<katalog danych>/previews/` (prawa `0700`, nigdy
      na udziale ani w magazynie): obiekty po treści
-     (`objects/<sha256[:2]>/<sha256>/r<wersja renderera>/`: `info.json`,
-     `cog.tif`, miniatury, kafle) i rozliczenie LRU
-     w `previews/cache.sqlite` (pamięć podręczna: usunięcie katalogu daje
-     pustą pamięć). Limit z ustawienia `preview_cache_limit_gb` (domyślnie
-     20, SPEC 5.7); po zapisie ponad limit znikają najdawniej używane
-     obiekty do 90% limitu, z wyjątkiem obiektów w budowie i w trakcie
-     odczytu. Klucz: treść (`sha256` wersji magazynu; dla danych własnych —
-     tożsamość treści z decyzji 8), wersja renderera, styl i parametry
-     (rozmiar, kadr, `rescale`). Wersje magazynu są niezmienne, a każda
-     zmiana kodu renderera podnosi jego wersję, więc pamięć nigdy nie jest
+     (`objects/<klucz[:2]>/<klucz>/<renderer>-r<wersja>/`: `info.json`,
+     `cog.tif`, miniatury, kafle; wersja osobno dla każdego renderera —
+     `raster`, `vector`, `points`, `archive`, `document`, `composite` —
+     więc poprawka renderera wektorów nie unieważnia COG rastrów)
+     i rozliczenie LRU w `previews/cache.sqlite` (pamięć podręczna:
+     usunięcie katalogu daje pustą pamięć). Limit z ustawienia
+     `preview_cache_limit_gb` (domyślnie 20, SPEC 5.7); po zapisie ponad
+     limit znikają najdawniej używane obiekty do 90% limitu, z wyjątkiem
+     obiektów w budowie (mechanika: umowa „Pamięć”). Klucz: treść, wersja
+     renderera, styl i parametry (rozmiar, kadr, `rescale`). Treść to
+     `sha256` wersji magazynu; wersja bez `sha256` w sidecarze (starsze
+     sidecary, wersja bez sidecara) ma klucz `sha256("path:" + magazyn +
+     ":" + ścieżka wersji + ":" + rozmiar + ":" + czas modyfikacji)` —
+     wersje są niezmienne, więc klucz jest poprawny, tylko bez
+     współdzielenia z kopiami tych bajtów (A-ADR-008 errata 3); dane
+     własne — tożsamość treści z decyzji 8 (skrót logiczny SQLite bez
+     R*Tree: plik o tej samej treści logicznej z innym albo uszkodzonym
+     indeksem przestrzennym dostaje te same podglądy — spójność pliku to
+     sprawa właściciela folderu, A-ADR-029 pkt 1). Obiekty złożone
+     (miniatura i kafel warstwy) mają klucz `sha256("composite:" +
+     operacja + posortowane treści gotowych wersji + kadr albo kafel +
+     styl + rozmiar)`. Wersje magazynu są niezmienne, a każda zmiana kodu
+     renderera podnosi jego wersję, więc pamięć nigdy nie jest
      nieaktualna; te same bajty w dwóch wersjach, dwóch magazynach albo
-     w migawce i pliku roboczym liczą się raz.
+     w migawce i pliku roboczym liczą się raz. Rozpoznanie zakończone
+     błędem: `unreadable` trafia do `info.json` jako sam kod (komunikat
+     biblioteki dostaje tylko żądanie, które go wywołało, bez ścieżek —
+     niżej); `timeout` i `memory_limit` zależą od obciążenia, więc nie
+     trafiają do pamięci — serwer pamięta je 10 min w pamięci procesu,
+     żeby powtórne żądanie nie zabijało procesu renderującego od nowa.
    - *Uprawnienia przed pamięcią.* Każde żądanie najpierw rozstrzyga obiekt
      (`ref`, decyzja 10) i dostęp do niego: magazyn centralny widzą
      wszyscy, dane własne i migawki — wyłącznie przez projekt widoczny dla
@@ -113,9 +171,15 @@ działa.
      potem sięga do pamięci. Pamięć współdzieli bajty równych treści
      między projektami, ale nic nie ujawnia: aby trafić w obiekt, trzeba
      już wskazać widoczny plik o tej samej treści. Obiekty pamięci nie
-     niosą nazw ani ścieżek, a `/health` podaje tylko liczby. Tak plan
-     realizuje „klucze pamięci podglądów danych własnych zależne od
-     widoczności” (plan v0.1, krok 8b) i A-ADR-029 pkt 3.
+     niosą nazw ani ścieżek (`PreviewProbe` bez nazw plików, `unreadable`
+     jako sam kod), komunikaty błędów wychodzą z procesu renderującego bez
+     ścieżek (`worker.py` zamienia ścieżki źródła i ich katalogi na nazwę
+     pliku — inaczej komunikat GDAL z `/home/ola/projekty/…` trafiłby do
+     osoby z innego projektu z tymi samymi bajtami), a `/health` podaje
+     tylko liczby. Zadania z danymi projektu widać tylko przez widoczny
+     projekt (umowa „Zadania”). Tak plan realizuje „klucze pamięci
+     podglądów danych własnych zależne od widoczności” (plan v0.1, krok 8b)
+     i A-ADR-029 pkt 3.
    - *Dostarczanie.* Obrazy i kafle idą przez `/api/v1/…` z tego samego
      pochodzenia, z sesją i nagłówkiem `X-Archiwista-CSRF` jak każde
      żądanie API (SPEC 10.1): MapLibre dodaje nagłówek w `transformRequest`
@@ -153,8 +217,10 @@ działa.
      `reproject` z najbliższej nakładki przeglądowej (`OVERVIEW_LEVEL`) na
      siatkę kafla (morecantile) z wymuszoną operacją
      `transformer(układ pliku, "EPSG:3857").gdal_operation()`, a rio-tiler
-     (A-ADR-008) służy do statystyk, miniatur w układzie pliku, kolorowania
-     i kodowania PNG (`ImageData`). Próba techniczna kroku 1 potwierdza obie
+     (A-ADR-008) służy do miniatur w układzie pliku (z otwartego zbioru —
+     decyzja 3), kolorowania i kodowania PNG (`ImageData`); statystyki
+     (p2, p98, min, max) liczy numpy z odczytu zdziesiątkowanego, nie GDAL
+     (decyzja 3: `.aux.xml`). Próba techniczna kroku 1 potwierdza obie
      obserwacje na punkcie kontrolnym, zanim powstanie renderer. Wyjątek:
      plik w układzie na elipsoidzie WGS84 bez zmiany układu odniesienia
      (EPSG:4326, EPSG:3857 — SoilGrids, HSG) przelicza się zwykłą
@@ -165,10 +231,22 @@ działa.
      2177, 3045 i 5514 → 3857 operacja przypięta istnieje (dokładność 1 m).
    - *Wektory.* Obiekty w widoku (`features`) przelicza do WGS84 przypięty
      transformator (pyproj, jak obszary v0.1); prostokąt widoku do układu
-     pliku — ta sama operacja odwrotnie, po zagęszczeniu krawędzi.
+     pliku — ta sama operacja odwrotnie, po zagęszczeniu krawędzi. Przed
+     przeliczeniem geometrie upraszcza się do ok. 1 piksela przy zoomie
+     żądania (parametr `zoom`; `shapely.simplify(tolerance = rozmiar
+     piksela / 2, preserve_topology=False)` w jednostkach układu pliku) —
+     przepróbkowanie tylko do wyświetlenia (SPEC 5.7) — a odpowiedź ma
+     najwyżej 5000 obiektów i 500 000 wierzchołków razem (więcej →
+     `truncated: true` i „Przybliż albo otwórz w QGIS”); bez tego
+     GeoPackage BDOT10k albo PRG przy małym zoomie to setki MB, wbrew
+     A-ADR-018 („podglądy lekkie”).
    - *Miniatury warstw* (Wachlarz) proces renderujący składa w układzie
      płaskim obszaru (PL → EPSG:2180, CZ → EPSG:5514, jak pokrycie lokalne)
-     z wymuszoną operacją.
+     z wymuszoną operacją. *Kafle warstw* (podgląd roku na mapie, decyzja
+     7) składa ten sam proces: kafel EPSG:3857 warstwy to nałożenie (alfa,
+     od najstarszej do najnowszej) kafli wersji, które go przecinają —
+     z pamięci po treści wersji (A-ADR-008 errata 2), a brakujące liczy
+     tym samym kodem co kafel wersji.
    - *Punkt kontrolny na styku PL/CZ* (kryterium 2): punkt trygonometryczny
      3722, k.ú. Mosty u Českého Těšína (ČÚZK, usługa `BodovaPole`,
      warstwa 2 „Bod ZPBP určený v ETRS89”): S-JTSK Y = 449 334,63 m,
@@ -205,47 +283,64 @@ działa.
    | JPEG + JGW (ortofoto CZ SM5) | RGB | kafle z lokalnego COG; georeferencja z obrysu nagłówkowego KA-4 (`location_source = header`: natywny prostokąt i układ) | obrys z innego źródła → miniatura bez mapy, `no_georeference` |
    | JGW (plik świata jako osobny slot) | — | — | `auxiliary_file`: podgląd przy obrazie |
    | PNG/JPEG bez georeferencji (podgląd WMS `landcover/eu_corine_2018_preview`) | miniatura obrazu | — | `no_georeference` |
-   | GeoPackage (BDOT10k, PRG, EGiB, PRNG, HYNET, osnowa) | warstwy z typem geometrii, liczba obiektów, schemat, próbka 20 wierszy, miniatura do 3 największych warstw (≤ 50 000 obiektów każda) | obiekty w widoku jako GeoJSON WGS84, ≤ 5000, powyżej „Przybliż albo otwórz w QGIS” | magazyn: otwarcie niezmienne (`immutable=1`, SPEC 4.6 pkt 4) |
-   | Shapefile, GeoJSON, FlatGeobuf (dane własne) | jak GeoPackage | jak GeoPackage | brak układu (np. bez `.prj`) → miniatura w układzie pliku bez mapy, `no_crs` |
-   | LAZ/LAS (chmury GUGiK) | nagłówek (zasięg, liczba punktów, format, gęstość), histogram klas ASPRS z próbki ≤ 2 mln punktów, obraz 2D (maks. Z w siatce) | kafle z lokalnego COG obrazu 2D | plik bez tablicy kawałków: próbka z początku pliku, z dopiskiem |
-   | ZIP (BDOT10k SHP, modele 3D LOD2, EGiB, PRG kraju) | lista członów z rozmiarami i rozpoznanym formatem (≤ 10 000, bez rozpakowania) | — | `archive_members_only` (podgląd SHP i GML przez `/vsizip/` — później, SPEC 5.7) |
+   | GeoPackage (BDOT10k, PRG, EGiB, PRNG, HYNET, osnowa) | warstwy z typem geometrii, liczba obiektów, schemat, próbka 20 wierszy, miniatura do 3 największych warstw (≤ 50 000 obiektów każda) | obiekty w widoku jako GeoJSON WGS84 uproszczone do zoomu, ≤ 5000 obiektów i ≤ 500 000 wierzchołków, powyżej „Przybliż albo otwórz w QGIS” | magazyn: otwarcie niezmienne (`immutable=1`, SPEC 4.6 pkt 4); dane własne: trzy stany pliku SQLite (decyzja 8) |
+   | Shapefile, GeoJSON, FlatGeobuf, MapInfo TAB (dane własne) | jak GeoPackage | jak GeoPackage | brak układu (np. bez `.prj`) → miniatura w układzie pliku bez mapy, `no_crs`; TAB jako widok albo tabela łączona → `unsupported_format` |
+   | LAZ/LAS (chmury GUGiK) | nagłówek (zasięg, liczba punktów, format, gęstość), histogram klas ASPRS z próbki ≤ 2 mln punktów i ≤ 256 MiB rozpakowanych rekordów, obraz 2D (maks. Z w siatce) | kafle z lokalnego COG obrazu 2D | plik bez tablicy kawałków: próbka z początku pliku, z dopiskiem |
+   | ZIP (BDOT10k SHP, modele 3D LOD2, EGiB, PRG kraju) | lista członów z rozmiarami i rozpoznanym formatem (≤ 10 000, bez rozpakowania) | — | `archive_members_only` (podgląd SHP i GML przez `/vsizip/` — później, SPEC 5.7); katalog centralny > 100 000 wpisów albo > 64 MiB → `too_large` przed `ZipFile` |
    | PDF, TXT | metadane (rozmiar, typ) | — | `document_no_preview`: PDF w przeglądarce wymaga dostarczania plików (`/file`, tryb zespołu v0.4); ścieżka do skopiowania |
    | inne, nierozpoznane | metadane | — | `unsupported_format` |
 
-   Dla każdej rodziny: plik > 2 GB → stan `needs_build` („Zbuduj podgląd”,
-   SPEC 5.7); wersja „brak pliku” → `missing_file`; magazyn odłączony →
-   podgląd z pamięci, a bez niej `store_unavailable`; układ bez przypiętej
-   operacji → `transform_unavailable` (miniatura bez mapy); błąd odczytu →
-   `unreadable` (z komunikatem biblioteki); przekroczony czas → `timeout`;
-   limit pamięci → `memory_limit`.
+   Dla każdej rodziny: plik > 2 GB, a raster także > 1 Gpx albo > 8 GiB po
+   rozpakowaniu → stan `needs_build` bez budowy automatycznej („Zbuduj
+   podgląd”, SPEC 5.7; decyzja 6); wersja „brak pliku” → `missing_file`;
+   wersja bez `sha256` — podgląd pod kluczem ścieżki (decyzja 3); magazyn
+   odłączony → podgląd z pamięci, a bez niej `store_unavailable`; układ
+   bez przypiętej operacji → `transform_unavailable` (miniatura bez mapy);
+   raster danych własnych z samym plikiem świata → `no_georeference`
+   (decyzja 3); błąd odczytu → `unreadable` (z komunikatem biblioteki bez
+   ścieżek); przekroczony czas → `timeout`; limit pamięci → `memory_limit`.
 6. **Lokalny COG i duże pliki.** COG w pamięci podglądów powstaje dla ASC,
    XYZ, JPEG z georeferencją z obrysu, GeoTIFF paskowego albo bez nakładek
    z bokiem > 4096 px i dla obrazu 2D LAZ: najdłuższy bok ≤ 8192 px
    (A-ADR-018: podgląd lekki), uśrednianie dla wartości ciągłych,
    `nearest` dla klas, nakładki wewnętrzne, kompresja DEFLATE (wartości
-   ciągłe z predyktorem) albo JPEG (RGB). Plik ≤ 2 GB interfejs zleca do
-   budowy sam przy pierwszym podglądzie; większy czeka na „Zbuduj podgląd”
-   (`POST …/preview` z `force: true`). Budowa jest idempotentna: zlecenie
+   ciągłe z predyktorem) albo JPEG (RGB), odczyt zdziesiątkowany. Plik
+   ≤ 2 GB — a raster tylko ≤ 1 Gpx i ≤ 8 GiB po rozpakowaniu (szerokość ×
+   wysokość × kanały × bajty typu; kilka MB DEFLATE może deklarować
+   100 000 × 100 000 px) — interfejs zleca do budowy sam przy pierwszym
+   podglądzie; większy czeka na „Zbuduj podgląd” (`POST …/preview`
+   z `force: true`). Budowa jest idempotentna: zlecenie
    treści już budowanej dołącza do trwającego zadania (`202` z tym
    zadaniem), zbudowanej — odpowiada `200` z opisem podglądu. COG nigdy nie
    jest produktem danych: leży tylko w pamięci podglądów i nie ma ścieżki
    „do skopiowania”.
 7. **Warstwy lat i kampanii z danych lokalnych (Wachlarz, Oś czasu,
-   mapa).** Warstwa = segment (wariant Kartografa) × rok danych
-   (`data_year`, nigdy rok pobrania); wersja bez roku trafia do warstwy
-   swojego wydania albo etykiety. Parametr `group=campaign` dzieli rok na
-   kampanie (`campaign`). Wariant w v0.2 to segment: łączenie formatów
-   jednego zestawu (A-ADR-017) wymaga kombinacji z raportu dostępności
-   i przychodzi w v0.3, a Archiwista nie rozbiera nazw segmentów. Warstwa
-   niesie wersje slotów obszaru (≤ 500, po odświeżeniu widoku jak
+   mapa).** Warstwa = wariant × rok danych (`data_year`, nigdy rok
+   pobrania); wersja bez roku trafia do warstwy swojego wydania albo
+   etykiety. Wariant jest bez formatu plików (A-ADR-017, SPEC 6.4): klucz
+   (`product`, `horizontal_crs`, `resolution`, `vertical_crs`) z pól
+   `EntryMeta` w indeksie, więc segmenty jednego zestawu w dwóch
+   formatach (np. `nmt/pl_1992_1m_evrf2007` z ASC
+   i `nmt/pl_1992_ascii-nmt_1m_evrf2007`) dają jedną warstwę z formatami
+   jako plakietkami (`formats`), a nie dwa wiersze Osi czasu, dwie
+   miniatury Wachlarza i podwójne liczniki; gdy któregoś pola brak,
+   kluczem jest segment (Archiwista nie rozbiera nazw segmentów). Parametr
+   `group=campaign` dzieli rok na kampanie (`campaign`). Warstwa niesie
+   wersje slotów obszaru (≤ 500, po odświeżeniu widoku jak
    `/local-coverage`), stan lokalny („lokalnie 83% obszaru”, w układzie
    płaskim), obrysy w układzie płaskim obszaru (do SVG) i miniaturę
    złożoną z podglądów arkuszy (A-ADR-008 errata 2: kafel na wersję,
    pamięć po `sha256`; brakujące zostają obrysami, a ich budowa idzie
    jednym zadaniem `preview` na warstwę z postępem). Bez obszaru Oś czasu
-   pokazuje liczby wersji per rok i wariant. Na mapie podgląd roku to kafle
-   wersji tej warstwy (osobne źródło rastrowe na wersję, z `bounds`) — do
-   200 wersji w widoku, powyżej same obrysy i „Przybliż, aby zobaczyć
+   pokazuje liczby wersji per rok i wariant. Na mapie podgląd roku to
+   jedno źródło rastrowe warstwy: `GET /local-layers/tiles/{z}/{x}/{y}.png`
+   składa kafel z kafli wersji w procesie renderującym (decyzja 4), więc
+   przesunięcie mapy to jedno żądanie na kafel widoku — osobne źródło na
+   wersję dawałoby przy 200 arkuszach 200–800 żądań na przesunięcie wobec
+   kolejki 64 miejsc (`503` bez ponowienia w MapLibre) i 6 połączeń
+   przeglądarki na pochodzenie. Źródło warstwy ma `minzoom`, od którego
+   typowy arkusz warstwy ma ≥ 32 px (kafel obejmuje wtedy najwyżej ok.
+   9 × 9 arkuszy); niżej — same obrysy i „Przybliż, aby zobaczyć
    podgląd”. Etykiety pokrycia u źródła, plakietki „pobrane”, lata
    niepobrane z archiwalnego WMS GUGiK i powiaty z PRG (PRD, „Widoki według
    rodzaju danych”) przychodzą z dostępnością w v0.3.
@@ -259,37 +354,80 @@ działa.
      w manifeście producenta. Walidacja: ścieżka bezwzględna, istniejący
      i czytelny katalog, poza każdym katalogiem producenta magazynów
      (migawka nigdy nie trafi do magazynu), rozłączny z folderami innych
-     projektów (plik należy do jednego projektu, więc do jednej widoczności)
-     i z katalogami Archiwisty. Tylko administrator, bo folder jest miejscem
-     zapisu migawek; ustawianie przez właściciela projektu — decyzja w v0.4.
-   - *Odczyt bez zapisu.* Zadanie `own_scan` (wszystkie projekty;
-     z harmonogramu co `scan_interval_local_min` i na żądanie z widoku
-     projektu) przechodzi folder z pominięciem katalogów i plików
-     ukrytych (w tym `.wersje/` jako dane) i dowiązań symbolicznych
-     wychodzących poza
-     folder, najwyżej 10 000 plików (więcej → problem
-     `own_folder_too_large`). Plik nowy albo zmieniony (rozmiar, czas
-     modyfikacji, także pliku `-wal`) czyta proces czytnika
-     (`python -P -m archiwista.owndata.reader`, sandbox z decyzji 3, 30 s
-     na plik, po przekroczeniu restart dla kolejnych): sterownik GDAL/OGR,
-     warstwy z typem geometrii, liczba obiektów, schemat, układ, zasięg,
-     parametry rastra. Shapefile i MapInfo TAB są kompletem plików o tym
-     samym rdzeniu nazwy; inne pliki — „nierozpoznane”. Folder po każdym
-     odczycie jest bajtowo taki sam (nazwy, rozmiary, czasy, żadnych nowych
-     `-wal`/`-shm`): GeoPackage czyta SQLite w trybie `mode=ro`, a bez
-     pliku `-wal` — `immutable=1`.
+     projektów (plik należy do jednego projektu, więc do jednej
+     widoczności) i z katalogami Archiwisty; porównanie po `realpath`.
+     Tylko administrator, bo folder jest miejscem zapisu migawek;
+     ustawianie przez właściciela projektu — decyzja w v0.4 (odstępstwo od
+     A-ADR-029 pkt 2, zapisane jako jego errata 1). Te same reguły (bez
+     wymogu istnienia) obowiązują folder domyślny: projekt z manifestem
+     w katalogu producenta (SPEC 4.6 pkt 7: `output_dir` względny wobec
+     manifestu) miałby `dane/` w magazynie. Skan i migawka sprawdzają
+     folder przed każdym użyciem; folder poza regułami ma stan `invalid`
+     z problemem `own_folder_invalid` (powód `inside_store`,
+     `inside_app_data` albo `overlaps_project`), nie jest czytany,
+     a migawka kończy się `snapshot_blocked` z powodem `folder_invalid`.
+     Folder zawierający folder innego projektu albo w nim leżący jest
+     `invalid` dla obu projektów.
+   - *Odczyt bez zapisu.* Zadanie `own_scan` (z harmonogramu co
+     `scan_interval_local_min` — wszystkie projekty; na żądanie z widoku
+     projektu albo z CLI — folder tego projektu) przechodzi folder
+     z pominięciem katalogów i plików ukrytych (w tym `.wersje/` jako dane)
+     i dowiązań symbolicznych wychodzących poza folder, najwyżej 10 000
+     plików: z większego indeksuje pierwsze 10 000 w porządku ścieżki
+     (ścieżka względna w NFC) i zgłasza problem `own_folder_too_large`.
+     Plik nowy albo zmieniony (rozmiar, czas modyfikacji, także pliku
+     `-wal`) czyta proces czytnika
+     (`python -P -m archiwista.owndata.reader`, sandbox i tabela formatów
+     z decyzji 3, 30 s na plik, po przekroczeniu restart dla kolejnych):
+     sterownik GDAL/OGR, warstwy z typem geometrii, liczba obiektów,
+     schemat, układ, zasięg, parametry rastra. Shapefile i MapInfo TAB
+     (tylko tabela natywna) są kompletem plików o tym samym rdzeniu nazwy;
+     inne pliki — „nierozpoznane”. Folder po każdym odczycie jest bajtowo
+     taki sam: nazwy, rozmiary i czasy plików danych i `-wal`, żadnych
+     nowych plików (istniejący `-shm` to pamięć wspólna edytora — SQLite
+     może zmienić jego treść). Plik SQLite (GeoPackage) czyta się według
+     stanu (sprawdzone 2026-10-19: SQLite 3.46.1, GDAL 3.12): (a) bez
+     `-wal` — w miejscu, niezmiennie (`immutable=1`, w GDAL
+     `IMMUTABLE=YES`) ze stanem pliku przed i po; `mode=ro` odpada, bo
+     przy bazie w trybie WAL (po edycji w QGIS) tworzy obok `-wal`
+     i `-shm`; (b) `-wal` i `-shm` (plik otwarty w edytorze) — `sqlite3`
+     w `mode=ro` (bez nowych plików) i `Connection.backup` (tylko
+     zatwierdzone wiersze) do kopii w katalogu roboczym procesu; (c) `-wal`
+     bez `-shm` (awaria edytora, skopiowany folder; bez `-shm` nie ma
+     połączenia, które by pisało) — nigdy w miejscu: `mode=ro` tworzy
+     `-shm` w folderze, `immutable=1` nie widzi wierszy z WAL, a GDAL
+     w trybie odczytu przepisał WAL do pliku głównego; kopia bajtów pliku
+     i `-wal` (stan przed i po, najwyżej 3 próby) do katalogu roboczego
+     procesu i odczyt kopii. W stanach (b) i (c) GDAL czyta wyłącznie
+     kopię — tak samo czytnik, renderer wektorów (kopia spójna jako
+     `source.gpkg` obiektu tej treści w pamięci podglądów; plik > 2 GB →
+     `needs_build`) i migawka.
    - *Tożsamość treści* (`content`: metoda i `sha256`; duplikaty migawek
      i wykrywanie zmian): `bytes` — SHA-256 pliku; `fileset` — SHA-256
      posortowanych wierszy `<nazwa członu małymi literami>\t<sha256>`
      kompletu; `sqlite` (GeoPackage i inne bazy SQLite) — skrót logiczny
-     niezależny od układu stron, WAL i liczników nagłówka: `application_id`,
-     `user_version`, posortowane wpisy schematu (bez tabel wewnętrznych
-     `sqlite_%`, wirtualnych i ich tabel cieni — R*Tree to indeks pochodny)
-     oraz wiersze każdej tabeli z wartościami z typem (tabela z `INTEGER
-     PRIMARY KEY` w porządku klucza, `WITHOUT ROWID` — klucza głównego,
-     pozostałe jako posortowany multizbiór wierszy). VACUUM, punkt
-     kontrolny WAL i zapis bez zmian nie zmieniają skrótu; zmiana wiersza,
-     schematu albo `gpkg_contents` — zmienia.
+     niezależny od układu stron, WAL i liczników nagłówka:
+     `application_id`, `user_version`, posortowane wpisy schematu (bez
+     tabel wewnętrznych `sqlite_%`, wirtualnych i ich tabel cieni — R*Tree
+     to indeks pochodny) oraz wiersze każdej tabeli z wartościami z typem
+     (tabela z `INTEGER PRIMARY KEY` w porządku klucza, `WITHOUT ROWID` —
+     klucza głównego, pozostałe jako posortowany multizbiór wierszy).
+     Tabele wirtualne i cienie rozpoznaje się z `sqlite_master`, nie
+     z `PRAGMA table_list` (ta wymaga SQLite 3.37, a indeks dopuszcza
+     3.35 — `MIN_SQLITE_VERSION`): wirtualna to wpis z `sql` od `CREATE
+     VIRTUAL TABLE`, cienie — tabele `<wirtualna>_<przyrostek>`
+     z przyrostkami jej modułu (`rtree`, `geopoly`: `_node`, `_parent`,
+     `_rowid`; `fts3`, `fts4`: `_content`, `_segments`, `_segdir`,
+     `_docsize`, `_stat`; `fts5`: `_data`, `_idx`, `_content`, `_docsize`,
+     `_config`); tabele modułu nieznanego wchodzą do skrótu (zmiana ich
+     treści to zmiana, nigdy przeoczenie). Poza skrótem są też dane
+     pochodne, które OGR i QGIS przepisują przy otwarciu do zapisu bez
+     zmiany danych: tabela `gpkg_ogr_contents` (licznik obiektów OGR)
+     i znaczniki czasu zapisu `gpkg_contents.last_change` oraz
+     `gpkg_metadata_reference.timestamp`. VACUUM, punkt kontrolny WAL,
+     zapis bez zmian i otwarcie w QGIS bez edycji nie zmieniają skrótu;
+     zmiana wiersza, schematu albo innej kolumny `gpkg_contents` —
+     zmienia.
    - *Zmiany.* Skan porównuje tożsamość treści pliku z ostatnią migawką:
      `unsnapshotted`, `unchanged` („bez zmian od migawki z RRRR.MM.DD”),
      `changed` („zmieniony od migawki z RRRR.MM.DD” i podpowiedź „Zrób
@@ -318,14 +456,19 @@ działa.
      Etykieta `<RRRR-MM-DD>_<sha8>` (data
      lokalna utworzenia, `sha8` = pierwsze 8 znaków `content.sha256`), a gdy
      taki katalog już istnieje (ta sama treść tego samego dnia po zmianie
-     A → B → A) — `<RRRR-MM-DD>_<sha8>_<n>`, n = 2, 3, …; kolejność serii
-     wynika z `created_at`, nie z nazw. Katalog roboczy:
+     A → B → A) — `<RRRR-MM-DD>_<sha8>_<n>`, n = 2, 3, …, pierwsze wolne
+     według listingu `.wersje/<plik>/` tuż przed publikacją; kolejność
+     serii wynika z `created_at`, nie z nazw. Katalog roboczy:
      `.wersje/.incoming/<host>_<pid>_<token>/` (ten sam system plików co
      cel, SPEC 4.7.1).
    - *Schemat `archiwista-snapshot/1`* (JSON w UTF-8, klucze po angielsku,
      daty ISO 8601 z przesunięciem, rozmiary w bajtach; model Pydantic
-     `SnapshotDocument` z `extra="forbid"`; inny `schema` → problem
-     `unknown_snapshot_schema`):
+     `SnapshotDocument`: zapis dokładnie pól z tabeli, odczyt
+     z `extra="ignore"` — pole dopisane przez nowszą Archiwistę nie czyni
+     migawki `invalid_snapshot`, a pełny `migawka.json` zostaje w indeksie;
+     nowe pole opcjonalne — ten sam `archiwista-snapshot/1`, nowe pole
+     wymagane albo zmiana znaczenia pola — `archiwista-snapshot/2`; inny
+     `schema` → problem `unknown_snapshot_schema`):
 
      | Pole | Typ | Znaczenie |
      |---|---|---|
@@ -371,26 +514,40 @@ działa.
      ```
    - *Procedura* (`make_snapshot` w procesie roboczym zadania `snapshot`):
      (1) plan `check_snapshot` (bliźniak bez zapisu, DEVELOPMENT_STANDARDS
-     1.2): plik, prawo zapisu do folderu, wolne miejsce ≥ 1,1 × rozmiar,
-     tożsamość treści z ostatniego skanu wobec ostatniej migawki;
-     (2) spójna kopia — SQLite: `Connection.backup` z połączenia `mode=ro`
-     (bez pliku `-wal`: `immutable=1` i porównanie stanu pliku przed i po)
-     do pliku roboczego w lokalnym katalogu danych Archiwisty (SQLite nie
-     pisze na udziale), potem kopia bajtów do `.incoming`; formaty
-     wieloplikowe i pozostałe — kopia kompletu ze stanem (rozmiar, czas
-     modyfikacji) każdego członu przed i po, najwyżej 3 próby, inaczej błąd
-     `inconsistent_copy` („plik zmieniał się w trakcie kopiowania — zakończ
-     edycję i spróbuj ponownie”); (3) tożsamość treści kopii (`sqlite`
-     liczona na kopii) i dla SQLite `PRAGMA integrity_check` = `ok`; ta sama
-     treść co ostatnia migawka → wynik `unchanged` z jej etykietą, katalog
-     roboczy usunięty, nic nowego w `.wersje/`; (4) `migawka.json`, ponowne
-     policzenie sum zapisanych plików, `fsync` plików i katalogu;
-     (5) publikacja jednym `os.rename` katalogu roboczego na etykietę —
-     istniejący cel to błąd `target_exists`, nigdy nadpisanie; (6) pliki
-     migawki tylko do odczytu (`0444`, katalog `0555`); (7) wpis w indeksie.
-     Przerwanie w dowolnym miejscu (SIGINT, zabicie procesu, awaria)
-     zostawia najwyżej katalog w `.incoming/`: skan nie czyta go jako
-     migawki, a pozostałość starszą niż 24 h zgłasza problem
+     1.2): folder ważny (decyzja 8, inaczej `folder_invalid`), plik, prawo
+     zapisu do folderu, wolne miejsce ≥ 1,1 × rozmiar, tożsamość treści
+     z ostatniego skanu wobec ostatniej migawki; (2) spójna kopia — SQLite
+     według stanu z decyzji 8: (a) `Connection.backup` z połączenia
+     `immutable=1` i porównanie stanu pliku przed i po, (b)
+     `Connection.backup` z połączenia `mode=ro`, (c) kopia bajtów pliku
+     i `-wal` do katalogu roboczego i `Connection.backup` z tej kopii (to
+     wciąż kopia zapasowa SQLite, nie kopia bajtów przy otwartym WAL —
+     SPEC 4.7.1 pkt 3) — zawsze do pliku roboczego w lokalnym katalogu
+     roboczym procesu (SQLite nie pisze na udziale), potem kopia bajtów do
+     `.incoming`; formaty wieloplikowe i pozostałe — kopia kompletu ze
+     stanem (rozmiar, czas modyfikacji) każdego członu przed i po, najwyżej
+     3 próby, inaczej błąd `inconsistent_copy` („plik zmieniał się
+     w trakcie kopiowania — zakończ edycję i spróbuj ponownie”);
+     (3) tożsamość treści kopii (`sqlite` liczona na kopii) i dla SQLite
+     `PRAGMA integrity_check` = `ok`; ta sama treść co ostatnia migawka →
+     wynik `unchanged` z jej etykietą, katalog roboczy usunięty, nic nowego
+     w `.wersje/`; (4) `migawka.json`, ponowne policzenie sum zapisanych
+     plików, pliki migawki tylko do odczytu (`0444`), `fsync` plików
+     i katalogu; (5) etykieta z listingu i publikacja jednym `os.rename`
+     katalogu roboczego na nią — istniejący cel (tylko wyścig dwóch
+     procesów, np. CLI i serwer albo dwa serwery na jednym udziale) to błąd
+     `target_exists`, nigdy nadpisanie; (6) katalog migawki `0555` — dopiero
+     po `rename`, bo przeniesienie katalogu do innego rodzica wymaga prawa
+     zapisu do niego (zmienia się `..`; sprawdzone 2026-10-19: `EACCES`);
+     (7) wpis w indeksie. `chmod` i `fsync` katalogu odrzucone przez system
+     plików (CIFS, ACL: `EPERM`, `EINVAL`) dają ostrzeżenie (`notice`)
+     w zadaniu, nie błąd. Wpis (7) jest najlepszym wysiłkiem: źródłem
+     prawdy jest katalog migawki, a `own_scan` dopisuje brakujące wpisy
+     z `.wersje/**/migawka.json` (A-ADR-002). Przerwanie (SIGINT, zabicie
+     procesu, awaria) przed (5) zostawia najwyżej katalog w `.incoming/`,
+     a po (5) — kompletną migawkę z plikami tylko do odczytu, którą
+     znajdzie najbliższy skan. Skan nie czyta `.incoming/` jako migawki,
+     a pozostałość starszą niż 24 h zgłasza problem
      `stale_snapshot_incoming` w grupie „Dane własne” projektu (SPEC 4.7.1
      mówi „Magazyn”, ale dane własne należą do projektu — poprawka SPEC
      w kroku 18). Archiwista nie usuwa ani nie nadpisuje migawek ani
@@ -449,7 +606,9 @@ działa.
       obraz bez przeglądarki), `--build` buduje COG na pierwszym planie;
     - `archiwista compare REF REF` → `Comparison`;
     - `archiwista layers --store S --product P [--area-id A] [--segment G]
-      [--group year|campaign]` → `LayerSet`;
+      [--group year|campaign]` → `LayerSet`; z `--thumbnail KLUCZ
+      [--size N] --output PLIK.png` zapisuje miniaturę warstwy przez ten sam
+      proces renderujący (agent multimodalny obejrzy rok bez HTTP);
     - `archiwista files PROJEKT [--q TEKST] [--state STAN]` →
       `OwnFileList`;
     - `archiwista file PROJEKT PLIK` → `OwnFileCard` z migawkami i historią
@@ -457,6 +616,10 @@ działa.
     - `archiwista snapshot PROJEKT PLIK [--note TEKST] [--plan]` — z
       `--plan` `SnapshotPlan` bez zapisu, bez niego zadanie na pierwszym
       planie jak `reindex` → `JobDetail` z wynikiem.
+    - `archiwista own-scan [--project PROJEKT]` — skan danych własnych na
+      pierwszym planie (jak „Odśwież”; bez `--project` — wszystkie
+      projekty) → `JobDetail` z wynikiem; agent, który zmienił plik, widzi
+      po nim aktualny stan `change`.
 
     Kafle nie mają odpowiednika w CLI (agent bierze miniatury albo HTTP).
     Zasady AGENT_API bez zmian: token jednorazowy, sesja, CSRF w każdym
@@ -470,35 +633,47 @@ działa.
     |---|---|---|---|
     | przesuwanie mapy z 4500–5000 obrysów (wielokąty z decyzji 4) | ≥ 30 klatek/s | — | kryterium SPEC 13; WebGL sprzętowy (decyzja 1) |
     | opis podglądu `…/preview`, p95 | ≤ 200 ms | ≤ 200 ms | jak karta pliku |
-    | miniatura i kafel z pamięci, p95 | ≤ 100 ms | ≤ 100 ms | pamięć lokalna, niezależna od udziału |
+    | miniatura i kafel z pamięci (także kafel warstwy), p95 | ≤ 100 ms | ≤ 100 ms | pamięć lokalna, niezależna od udziału |
     | pierwszy kafel GeoTIFF kafelkowanego (ortofotomapa 22 528 × 24 326 px), p95 | ≤ 1 s | ≤ 2 s | rozgrzany proces renderujący |
     | pierwsza miniatura tego pliku | ≤ 2 s | ≤ 4 s | z nakładek |
-    | lokalny COG arkusza ASC 1 m (ok. 38 MB) | ≤ 10 s | ≤ 20 s | zadanie `preview` |
+    | lokalny COG arkusza ASC 1 m (ok. 38 MB) | ≤ 10 s | ≤ 20 s | zadanie `preview`, jeden proces budowy |
+    | lokalny COG arkusza SM5 JPEG (ok. 125 Mpx) | ≤ 15 s | ≤ 30 s | jw.; ortofoto CZ zawsze przez COG |
     | `/local-layers` obszaru ≤ 500 slotów, p95 | ≤ 1 s | ≤ 5 s | z odświeżeniem widoku (SPEC 4.5) |
     | miniatura warstwy (≤ 50 arkuszy z gotowymi podglądami): pierwsza / z pamięci | ≤ 2 s / ≤ 100 ms | jw. | — |
-    | Wachlarz roku z 35 arkuszy ASC od zera (z budową COG) | ≤ 2 min | ≤ 4 min | postęp widoczny |
+    | widok roku z 200 arkuszy na mapie, kafle warstwy z pamięci (od przesunięcia do ostatniego kafla widoku 1440 × 900 px) | ≤ 2 s | ≤ 2 s | jedno źródło warstwy (decyzja 7) |
+    | Wachlarz roku z 35 arkuszy ASC od zera (z budową COG) | ≤ ⌈35/n⌉ × 10 s = 3 min | ≤ ⌈35/n⌉ × 20 s = 6 min | n = 2 procesy budowy (decyzja 3); postęp widoczny |
+    | rok ortofoto CZ z 50 arkuszy SM5 od zera | ≤ ⌈50/n⌉ × 15 s = 6 min 15 s | ≤ ⌈50/n⌉ × 30 s = 12 min 30 s | jw. |
     | `own_scan` folderu 1000 plików bez zmian | ≤ 2 s | ≤ 10 s | tylko `stat` |
     | migawka GeoPackage 100 MB | ≤ 15 s | ≤ 60 s | kopia, dwie sumy, `integrity_check` |
     | pełny skan 50 000 slotów z obrysami-wielokątami | ≤ 2 min | ≤ 10 min | regresja SPEC 4.5 |
     | pamięć serwera (bez procesów renderujących) | ≤ 500 MB | ≤ 500 MB | SPEC 4.5: „bez podglądów” |
     | proces renderujący, szczyt RSS | ≤ 1 GiB | ≤ 1 GiB | informacyjnie; limit `RLIMIT_AS` 2 GiB |
 
-    Nieosiągnięty cel planu: najpierw pomiar składowych, potem poprawka;
+    Cele roku wynikają z celu arkusza i `n` procesów budowy (decyzja 3):
+    ⌈arkusze / n⌉ × cel arkusza. Nieosiągnięty cel planu: najpierw pomiar
+    składowych, potem poprawka;
     obniżenie celu wyłącznie decyzją użytkownika zapisaną w raporcie.
 13. **Bezpieczeństwo nowych ścieżek (SPEC 10.1, 10.3).** Klient nigdy nie
     podaje ścieżki pliku: wersję wskazuje indeks (`resolve_indexed_path`
     w korzeniu magazynu), plik własny — `file_id` z indeksu w folderze
     danych, migawkę — etykieta z indeksu w `.wersje/`; każde otwarcie po
     `realpath` w korzeniu, dowiązanie wychodzące → `403 path_outside_root`.
-    GDAL, OGR i laspy pracują tylko w procesach z sandboxem (decyzja 3);
-    ZIP jest tylko listowany (katalog centralny, ≤ 10 000 członów, bez
-    rozpakowania). Parametry kafli i miniatur są walidowane (z ≤ 24,
-    `size` ∈ {128, 256, 512, 1024}, `style` z listy rodzaju, `rescale` —
-    dwie liczby, kadr — cztery liczby w znanym układzie). Limit treści
-    żądań bez zmian (1 MiB; `note` migawki ≤ 2000 znaków). Pamięć podglądów
-    i pliki robocze kopii SQLite leżą w katalogu danych `0700`. Migawki
+    GDAL, OGR i laspy pracują tylko w procesach z sandboxem, a plik główny
+    otwierają jawnym sterownikiem (decyzja 3); ZIP jest tylko listowany
+    (najpierw rekord końca katalogu centralnego, także zip64: > 100 000
+    wpisów albo katalog > 64 MiB → `too_large` bez `ZipFile`; potem
+    ≤ 10 000 członów, bez rozpakowania). Parametry kafli i miniatur są
+    walidowane (0 ≤ z ≤ 22 i 0 ≤ x, y < 2^z, inaczej `422`; kafel z zoomem
+    powyżej `maxzoom` pliku albo poza jego zasięgiem → `404 not_found`,
+    o który MapLibre nie prosi dzięki `maxzoom` i `bounds` źródła; kafel
+    warstwy poniżej jej `minzoom` → `404`; `size` ∈ {128, 256, 512, 1024},
+    `style` z listy rodzaju, `rescale` — dwie liczby, kadr — cztery liczby
+    w znanym układzie, `zoom` obiektów 0–22). Limit treści żądań bez zmian
+    (1 MiB; `note` migawki ≤ 2000 znaków). Pamięć podglądów i katalogi
+    robocze procesów (kopie SQLite) leżą w katalogu danych `0700`. Migawki
     zapisuje wyłącznie proces roboczy zadania `snapshot` po sprawdzeniu
-    `project.write`.
+    `project.write`; zadania z danymi projektu widać tylko przez widoczny
+    projekt (umowa „Zadania”).
 14. **Rozdzielenie zakresu.** Poza v0.2: dostępność u źródła, etykiety
     pokrycia i plakietki magazynu, lata niepobrane z WMS GUGiK, jednostki
     z PRG (v0.3); widok „Zadania”, anulowanie z interfejsu i pozycja
@@ -536,66 +711,106 @@ działa.
   widoczny, inaczej `NotFoundError`), rozwiązuje ścieżki w korzeniu
   i zwraca opis źródła. Jedyny punkt przejścia od `ref` do pliku.
 - **Podglądy — `archiwista/previews/` (kroki 4–6).**
-  - *Typy* (`types.py`, krok 4): `PreviewSource(ref, content_sha256,
+  - *Typy* (`types.py`, krok 4): `PreviewSource(ref, content_key,
     paths, format_hint, size_bytes, crs, georeference, product,
-    dataset_key, nodata, mutable, stat)` — `paths` to rozwiązane ścieżki
-    (główny plik pierwszy, potem komplet), `crs` — układ dla pliku bez
-    własnego (`EntryMeta.horizontal_crs`), `georeference` — natywny
-    prostokąt i układ z obrysu nagłówkowego (JPEG), `mutable` i `stat`
-    (rozmiar, czas modyfikacji) — plik roboczy danych własnych,
-    sprawdzany przed i po renderowaniu. `PreviewKind`: `raster`, `image`,
-    `vector`, `points`, `archive`, `document`, `auxiliary`, `unknown`.
+    dataset_key, nodata, mutable, stat)` — `content_key` to `sha256`
+    treści, a dla wersji bez sumy w sidecarze klucz ścieżki (decyzja 3);
+    `paths` to rozwiązane ścieżki (główny plik pierwszy, potem komplet),
+    `crs` — układ dla pliku bez własnego (`EntryMeta.horizontal_crs`),
+    `georeference` — natywny prostokąt i układ z obrysu nagłówkowego
+    (JPEG), `mutable` i `stat` (rozmiar, czas modyfikacji, także pliku
+    `-wal`) — plik roboczy danych własnych, sprawdzany przed i po
+    renderowaniu. `PreviewKind`: `raster`, `image`, `vector`, `points`,
+    `archive`, `document`, `auxiliary`, `unknown`.
     `PreviewState`: `ready`, `needs_build`, `building`, `unavailable`,
     `failed`. Kody powodów (`PreviewReason`): `no_georeference`, `no_crs`,
     `auxiliary_file`, `archive_members_only`, `document_no_preview`,
     `unsupported_format`, `too_large`, `missing_file`, `store_unavailable`,
     `transform_unavailable`, `unreadable`, `timeout`, `memory_limit`,
     `changed_since_scan`; teksty `preview_reason_<kod>`
-    i `preview_fix_<kod>` w `messages.py`. Style: `hillshade`,
+    i `preview_fix_<kod>` w `texts/previews.py`. Style: `hillshade`,
     `hypsometry` (wartości ciągłe), `rgb`, `gray` (obrazy), `classes`
     (klasy), `features` (wektor), `elevation`, `classes` (punkty).
-    `PreviewProbe` (treść `info.json`): rodzaj, sterownik, wymiary, kanały,
+    `PreviewProbe` (treść `info.json`; bez nazw plików i ścieżek — żadnych
+    `name` ani `files` zbioru GDAL): rodzaj, sterownik, wymiary, kanały,
     typ, układ, prostokąt natywny i WGS84, zakres zoomu (maks. = zoom
     rozdzielczości natywnej + 2, ≤ 22), nakładki, kafelkowanie, `nodata`,
-    statystyki (p2, p98, min, max na kanał, z najmniejszej nakładki),
-    paleta, warstwy wektora, nagłówek i klasy LAZ, liczba członów ZIP,
-    `needs_cog`, powód.
+    statystyki (p2, p98, min, max na kanał — numpy z odczytu
+    zdziesiątkowanego: najmniejsza nakładka, a bez nakładek `out_shape`
+    ≤ 1024 px; nigdy `statistics()` GDAL), paleta, warstwy wektora,
+    nagłówek i klasy LAZ, liczba członów ZIP, `needs_cog`, piksele i bajty
+    po rozpakowaniu (progi `auto_build`), powód (sam kod).
   - *Pamięć* (`cache.py`, krok 4): `PreviewCache(root, *, limit_bytes)` —
-    `get(key, name) -> Path | None` (dotyka czasu użycia), `put(key, name,
-    data | path)` (atomowo: plik roboczy w `.incoming/`, `os.replace`),
-    `pin(key)`/`unpin(key)`, `usage() -> CacheUsage(used_bytes,
-    limit_bytes, objects)`, `evict()`; `CacheKey(content_sha256,
-    renderer_version)`; nazwy: `info.json`, `cog.tif`,
-    `thumb-<styl>-<rozmiar>[-<skrót kadru>].png`,
-    `tiles/<styl>[-<skrót parametrów>]/<z>/<x>/<y>.png`. Bezpieczna dla
-    wielu procesów (serwer, procesy zadań, CLI): SQLite WAL
+    `get(key, name) -> bytes | None` dla małych obiektów (`info.json`,
+    miniatury, kafle ≤ 1 MiB): bajty czytane od razu, więc usunięcie przez
+    LRU w innym procesie po trafieniu nie psuje odpowiedzi (`FileResponse`
+    otwiera plik dopiero przy wysyłce); `open(key, name) -> BinaryIO |
+    None` dla `cog.tif` i `source.gpkg` — proces renderujący trzyma
+    deskryptor, a usunięcie po otwarciu nie przerywa odczytu (POSIX; brak
+    pliku przy otwarciu to chybienie pamięci); `put(key, name, data |
+    path)` (atomowo: plik roboczy w `.incoming/<host>_<pid>_<token>/`,
+    `os.replace`), `pin(key)`/`unpin(key)` (obiekty w budowie; przypięcie
+    martwego procesu wygasa), `usage() -> CacheUsage(used_bytes,
+    limit_bytes, objects)`, `evict()`, `reconcile()` (przy starcie `serve`
+    i przy braku `cache.sqlite`: obiekty bez wpisu dopisane z rozmiarem
+    i czasem pliku, wpisy bez plików i pozostałości `.incoming/` martwych
+    procesów usunięte). Czas użycia zapisuje się najwyżej raz na 5 min na
+    obiekt i proces, więc trafienie w kafel nie jest zapisem SQLite.
+    `CacheKey(content_key, renderer, renderer_version)`;
+    `RENDERER_VERSIONS` per rodzaj (`raster`, `vector`, `points`,
+    `archive`, `document`, `composite`); `composite_key(op, contents,
+    frame_or_tile, style, size)` (decyzja 3). Nazwy: `info.json`,
+    `cog.tif`, `source.gpkg` (kopia spójna pliku SQLite danych własnych
+    w stanie (b) albo (c), decyzja 8), `thumb-<styl>-<rozmiar>[-<skrót
+    kadru>].png`, `tiles/<styl>[-<skrót parametrów>]/<z>/<x>/<y>.png`.
+    Bezpieczna dla wielu procesów (serwer, procesy zadań, CLI): SQLite WAL
     i `os.replace`.
-  - *Sandbox* (`archiwista/sandbox.py`, krok 1): `untrusted_env()`,
+  - *Sandbox* (`archiwista/sandbox.py`, krok 1): `untrusted_env()`
+    (zmienne z decyzji 3, w tym `GDAL_PAM_ENABLED=NO`,
+    `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` i `GDAL_SKIP`),
     `child_limits(memory_bytes)` (POSIX: `RLIMIT_AS`, `umask 077`),
-    `run_untrusted(argv, *, timeout_s, memory_bytes, input)`; używają go
-    czytnik obszarów (refaktoryzacja `areas.py`, zachowanie bez zmian),
-    procesy renderujące, procesy budowy i czytnik danych własnych.
+    `run_untrusted(argv, *, timeout_s, memory_bytes, input)`,
+    `process_work_dir(paths) -> Path`
+    (`<katalog danych>/work/<host>_<pid>_<token>/`; przy starcie usuwane
+    są tylko katalogi martwych procesów tego komputera, więc równoległe
+    CLI i serwer nie kasują sobie plików); używają go czytnik obszarów
+    (refaktoryzacja `areas.py`, zachowanie bez zmian), procesy renderujące,
+    procesy budowy i czytnik danych własnych. Tabela formatów
+    (`archiwista/formats.py`, krok 1): rozszerzenie → rodzaj i sterownik,
+    `open_raster(path, fmt)` (`rasterio.open` z `driver=`),
+    `vector_source(path, fmt) -> str` (prefiks `GPKG:`/`GeoJSON:` albo
+    ścieżka po sprawdzeniu sygnatury: `.shp`, `.fgb`, `.tab` natywny),
+    `FormatRefusedError` → `unsupported_format`; jedyna droga, którą
+    procesy renderujące i czytnik danych własnych otwierają pliki GDAL-em.
   - *Pula* (`pool.py`, `worker.py`, `protocol.py`, krok 4):
     `RenderPool(*, workers, cache, timeouts)` z `request(op, source,
     params, *, timeout_s) -> RenderResult` (pliki w pamięci albo JSON),
     `start()`/`close()` (w `serve` obok `JobSupervisor`), proces bez pracy
     kończy się po 5 min. Protokół JSON Lines: żądanie `{"id", "op",
     "source", "params"}`, odpowiedź `{"id", "status": "ok", "files"}` albo
-    `{"id", "status": "error", "code", "detail"}`; operacje `probe`,
-    `thumbnail`, `tile`, `features`, `members`, `layer_thumbnail`. Błędy:
-    `PreviewBusyError` (`503 preview_busy`), `PreviewTimeoutError`
-    (`504 preview_timeout`), `PreviewUnavailableError` (`409
-    preview_unavailable` z `reason`).
-  - *Renderery* (`renderers/`, kroki 5a–5c; rejestr `RENDERERS` w kroku 4,
+    `{"id", "status": "error", "code", "detail"}`; operacje i limity
+    czasu: `probe` 20 s, `thumbnail` 30 s, `tile` 15 s, `features` 15 s,
+    `members` 10 s, `layer_thumbnail` 60 s, `layer_tile` 15 s (składanie
+    warstw — krok 5a3, jedna linia rejestracji na operację). `worker.py`
+    zamienia w `detail` każde wystąpienie ścieżek `source.paths` (także po
+    `realpath`) i ich katalogów nadrzędnych na nazwę pliku, zanim
+    odpowiedź opuści proces. Błędy: `PreviewBusyError` (`503
+    preview_busy`), `PreviewTimeoutError` (`504 preview_timeout`),
+    `PreviewUnavailableError` (`409 preview_unavailable` z `reason`).
+  - *Renderery* (`renderers/`, kroki 5a1–5c; rejestr `RENDERERS` w kroku 4,
     jedna linia na moduł): protokół `Renderer` — `kinds`, `probe(source)
     -> PreviewProbe`, `thumbnail(source, probe, style, size, frame) ->
     bytes`, `tile(source, probe, style, z, x, y, params) -> bytes`,
-    opcjonalnie `features(source, probe, layer, bbox_wgs84, limit) ->
-    dict`, `members(source) -> dict`, `build(source, probe, out_path) ->
-    None` (COG), `layer_thumbnail(items, frame, style, size) -> bytes`.
-    Moduły: `raster.py` (5a), `vector.py` (5b), `points.py`, `archive.py`,
-    `document.py` (5c). Transformacje bierze proces renderujący
-    z rejestru wtyczek (`GeoAdapter` Kartografa — wymaganej zależności).
+    opcjonalnie `features(source, probe, layer, bbox_wgs84, zoom, limit)
+    -> dict`, `members(source) -> dict`, `build(source, probe, out_path)
+    -> None` (COG). Składanie warstw (`compose.py`, 5a3:
+    `layer_thumbnail(items, frame, style, size)`, `layer_tile(items, style,
+    z, x, y)`) używa `thumbnail` z kadrem i `tile` rendererów, więc działa
+    dla rastrów i wektorów. Moduły: `raster.py` (5a1; `build` z `cog.py` —
+    5a2), `vector.py` (5b), `points.py`, `archive.py`, `document.py` (5c);
+    style w rejestrze `STYLES` (`styles.py`, 5a1 i 5a3), legendy
+    `legends.py` (5a3). Transformacje bierze proces renderujący z rejestru
+    wtyczek (`GeoAdapter` Kartografa — wymaganej zależności).
   - *Usługa* (`service.py`, krok 6): `PreviewService(pool, cache, jobs,
     settings, resolver)` — `info(source) -> PreviewInfo`,
     `thumbnail(...)`, `tile(...)`, `features(...)`, `members(...)`,
@@ -603,31 +818,45 @@ działa.
   - *Zadanie `preview`* (krok 4): parametry `{"refs": [≤ 500], "force":
     false}`, postęp `current`/`total`, wynik `{"built", "cached", "failed":
     [{"ref", "code", "detail"}], "seconds"}`; bez konfliktów — zlecenie
-    treści z trwającego zadania dołącza do niego, a zadanie pomija treść
-    już zbudowaną.
-  - *Model `PreviewInfo`* (krok 6): `ref`, `state`, `kind`, `reason`
-    (`code`, `message`, `fix`) albo `null`, `styles`, `default_style`,
-    `thumbnail_url`, `tiles_url` (szablon `{z}/{x}/{y}`) albo `null`,
-    `features_url`, `members_url`, `bounds` (WGS84), `minzoom`, `maxzoom`,
+    treści z trwającego albo czekającego zadania dołącza do niego
+    i dopisuje swoje `ref` do `params.refs` (praca bez zmian — treść już
+    jest w zadaniu; dopisane `ref` decydują o widoczności, umowa
+    „Zadania”), a zadanie pomija treść już zbudowaną. Budowa: najwyżej
+    `n = max(1, cpu // 2)` procesów potomnych naraz (decyzja 3), jedno
+    zadanie `preview` trwa naraz. Zdarzenia `notice` i `failed[].detail`
+    bez ścieżek (decyzja 3).
+  - *Model `PreviewInfo`* (krok 6, `api/models_previews.py`): `ref`,
+    `state`, `kind`, `reason` (`code`, `message`, `fix`) albo `null`,
+    `styles`, `default_style`, `thumbnail_url`, `tiles_url` (szablon
+    `{z}/{x}/{y}`) albo `null`, `features_url` (szablon z `{bbox}`
+    i `{zoom}`), `members_url`, `bounds` (WGS84), `minzoom`, `maxzoom`,
     `legend` (`kind`: `gradient` z `min`, `max`, `unit` albo `classes`
     z `items`: `value`, `color`, `label`), `layers` (wektor), `points`
     (LAZ: nagłówek, klasy, `sample_points`, `sampled_from`), `size_bytes`,
-    `auto_build` (plik ≤ 2 GB), `job` (`id`, `state`) albo `null`. Adresy
+    `auto_build` (plik ≤ 2 GB, a raster ≤ 1 Gpx i ≤ 8 GiB po rozpakowaniu
+    — decyzja 6), `job` (`id`, `state`) albo `null`. Adresy
     w modelu buduje serwer; klient ich nie składa.
 - **Dane własne — `archiwista/owndata/` (kroki 7a, 7b, 9).**
   - *Czytnik* (`reader.py`, krok 7a): proces z sandboxem; wejście — linie
     JSON `{"path": "…"}`, wyjście — `OwnFileInfo(kind, driver, members,
     layers, raster, native_crs, native_bbox, feature_count, error)`; 30 s
-    na plik.
+    na plik; pliki otwiera przez tabelę formatów, a kopie SQLite stanów
+    (b) i (c) robi w katalogu roboczym procesu (umowa „Sandbox”).
   - *Treść* (`content.py`, `formats.py`, krok 7a):
     `content_identity(paths, *, method) -> ContentIdentity(method,
-    sha256)`, `sqlite_content_sha256(connection)`,
-    `fileset_members(path) -> tuple[Path, ...]` (Shapefile, TAB),
-    `consistent_sqlite_read(path)` (`mode=ro` albo `immutable=1` ze
-    sprawdzeniem stanu).
+    sha256)`, `sqlite_content_sha256(connection)` (tabele wirtualne
+    i cienie z `sqlite_master`, bez danych pochodnych — decyzja 8),
+    `fileset_members(path) -> tuple[Path, ...]` (Shapefile, TAB natywny),
+    `consistent_sqlite_read(path, *, work_dir) -> ContextManager[SqliteRead]`
+    — trzy stany z decyzji 8: (a) w miejscu z `immutable=1`
+    (`IMMUTABLE=YES` dla GDAL) i stanem przed i po, (b) `Connection.backup`
+    z `mode=ro` do kopii w `work_dir`, (c) kopia bajtów pliku i `-wal` do
+    `work_dir`; `SqliteRead` daje ścieżkę i opcje otwarcia dla `sqlite3`
+    i GDAL oraz stan pliku. Używają go czytnik, renderer wektorów (5b)
+    i migawka (8) — nikt nie otwiera pliku SQLite danych własnych inaczej.
   - *Indeks* (krok 7b): tabele `own_folders` (klucz dostępu projektu,
     ścieżka, źródło: `default`/`setting`, stan `ok`/`missing`/
-    `unreadable`, `scanned_at`, liczniki i bajty, bajty migawek),
+    `unreadable`/`invalid`, `scanned_at`, liczniki i bajty, bajty migawek),
     `own_files` (folder, ścieżka względna, `file_id`, rodzaj, sterownik,
     członkowie, rozmiar, czas modyfikacji, `content_method`,
     `content_sha256`, stan odczytu, warstwy i raster w JSON, układ, prostokąt
@@ -644,17 +873,22 @@ działa.
   - *Ustawienia* (krok 7b): `AppSettings.own_data_dirs: dict[str, str]`
     (katalog projektu → folder; walidacja w `validate_settings`, decyzja 8)
     i `AppSettings.preview_cache_limit_gb: int = 20` (1–10 000; krok 4).
-  - *Zadanie `own_scan`* (krok 7b): obejmuje wszystkie projekty (przebieg
-    plików bez zmian to tylko `stat`), bez parametrów; najwyżej jeden
-    przebieg trwa i jeden czeka — zlecenie przy trwającym dołącza do
-    czekającego (`202` z tym zadaniem), więc zmiana sprzed zlecenia
-    zawsze trafi do wyniku; wynik `{"projects", "files", "new", "changed",
-    "missing", "unreadable", "snapshots", "problems", "seconds"}`;
-    harmonogram — przy starcie, gdy ostatni starszy niż 15 min, potem co
-    `scan_interval_local_min`; rutynowe przebiegi bez zmian przycinane po
-    48 h jak rutynowe skany v0.1.
-  - *Modele* (kroki 7b i 9): `OwnFolder` (`path` jako `CopyPath` z aliasami,
-    `source`, `state`, `files`, `size_bytes`, `snapshots_bytes`,
+  - *Zadanie `own_scan`* (krok 7b): parametry `{}` — wszystkie projekty
+    (harmonogram) — albo `{"project": klucz}` — jeden folder (zlecenie
+    z widoku projektu, `archiwista own-scan --project`); przebieg plików
+    bez zmian to tylko `stat`. Najwyżej jeden przebieg trwa naraz;
+    zlecenie dołącza do czekającego przebiegu globalnego albo do
+    czekającego przebiegu tego samego projektu (`202` z tym zadaniem),
+    a inaczej czeka jako nowe — więc zmiana sprzed zlecenia zawsze trafi
+    do wyniku; wynik `{"projects", "files", "new", "changed", "missing",
+    "unreadable", "snapshots", "problems", "seconds"}` (same liczby;
+    problemy folderów są w indeksie, filtrowane widocznością); harmonogram
+    — przy starcie, gdy ostatni przebieg globalny jest starszy niż 15 min,
+    potem co `scan_interval_local_min`; rutynowe przebiegi bez zmian
+    przycinane po 48 h jak rutynowe skany v0.1.
+  - *Modele* (kroki 7b i 9, `api/models_owndata.py`): `OwnFolder` (`path`
+    jako `CopyPath` z aliasami, `source`, `state` — `ok`, `missing`,
+    `unreadable`, `invalid` — `files`, `size_bytes`, `snapshots_bytes`,
     `scanned_at`, `problems`), `OwnFileItem` (`file_id`, `path`, `ref`,
     `kind`, `format`, `size_bytes`, `modified_at`, `state`: `ok`,
     `unrecognized`, `unreadable`, `missing`; `change`: `unsnapshotted`,
@@ -669,30 +903,53 @@ działa.
     `content_method`, `unchanged_since` albo `null`, `blocked` (`code`,
     `message`) albo `null`, `free_bytes`, `warnings`, np.
     `editing_detected` przy pliku `-wal`). Problemy:
-    `own_folder_unreadable`, `own_folder_too_large`, `own_file_unreadable`,
-    `invalid_snapshot`, `unknown_snapshot_schema`, `snapshot_modified`,
-    `stale_snapshot_incoming`, `path_outside_root`.
+    `own_folder_unreadable`, `own_folder_invalid` (powód `inside_store`,
+    `inside_app_data`, `overlaps_project`), `own_folder_too_large`
+    (zaindeksowane pierwsze 10 000 plików w porządku ścieżki),
+    `own_file_unreadable`, `invalid_snapshot`, `unknown_snapshot_schema`,
+    `snapshot_modified`, `stale_snapshot_incoming`, `path_outside_root`.
 - **Migawki — `archiwista/owndata/{snapshots,document}.py` (krok 8).**
   `check_snapshot(folder, file, *, last, work_dir) -> SnapshotPlan`;
   `make_snapshot(folder, file, *, author, note, work_dir, cancel=None,
   fault=None) -> SnapshotResult(status: "created" | "unchanged", label,
-  document)` (`fault` — punkt przerwania tylko dla testów);
-  `SnapshotDocument` (decyzja 9). Zadanie `snapshot`: parametry
-  `{"project", "file_id", "note"}`, klucz konfliktu (projekt, plik), wynik
-  `{"status", "label", "content_sha256", "size_bytes", "seconds"}`, kody
-  błędów: `snapshot_blocked` (z powodem: `read_only_folder`,
+  document, warnings)` (`work_dir` — katalog roboczy procesu; `fault` —
+  punkt przerwania tylko dla testów; `warnings` — odrzucone `chmod`
+  i `fsync` katalogu); `SnapshotDocument` (decyzja 9). Zadanie `snapshot`:
+  parametry `{"project", "file_id", "note"}`, klucz konfliktu (projekt,
+  plik), wynik `{"status", "label", "content_sha256", "size_bytes",
+  "seconds"}`, ostrzeżenia jako zdarzenia `notice`, kody błędów:
+  `snapshot_blocked` (z powodem: `folder_invalid`, `read_only_folder`,
   `insufficient_space`, `file_missing`), `inconsistent_copy`,
-  `checksum_mismatch`, `integrity_failed`, `target_exists`.
-- **Zadania — `archiwista/jobs/` (kroki 4, 6, 7b, 8).** `JOB_KINDS` dostaje
-  `preview`, `own_scan`, `snapshot`; `JobSpec.store: str | None`, projekt
-  w `params`; `JobSupervisor.submit(kind, *, store=None, params, actor)`
-  z regułą per rodzaj: `scan`/`footprints` — konflikt na magazyn (v0.1),
-  `snapshot` — konflikt na (projekt, plik), `preview` — dołączenie do
-  trwającej budowy tej samej treści, `own_scan` — jeden trwający i jeden
-  czekający (dołączenie do czekającego); `JobFilters.project` (krok 9).
+  `checksum_mismatch`, `integrity_failed`, `target_exists` (tylko wyścig
+  dwóch procesów).
+- **Zadania — `archiwista/jobs/` (kroki 4, 6, 7b, 8, 9).** `JOB_KINDS`
+  dostaje `preview`, `own_scan`, `snapshot`; `JobSpec.store: str | None`,
+  projekt w `params`; `JobSupervisor.submit(kind, *, store=None, params,
+  actor)` z regułą per rodzaj: `scan`/`footprints` — konflikt na magazyn
+  (v0.1), `snapshot` — konflikt na (projekt, plik), `preview` —
+  dołączenie do trwającej budowy tej samej treści z dopisaniem `ref`,
+  najwyżej jedno trwające (kolejne `queued`, jak limit zadań sieciowych),
+  `own_scan` — jeden trwający, czekające łączone według zakresu (globalny
+  albo projekt); `JobFilters.project` (krok 9).
+  *Widoczność* (krok 9; zastępuje regułę v0.1 „zadania dotyczą magazynów,
+  które widzą wszyscy”): zakres zadania wynika ze `store` i `params` (bez
+  nowej kolumny) — `store` albo `version:` w `refs` to część magazynowa
+  (widzą wszyscy), a `params.project` i `file:`/`snapshot:` w `refs` —
+  projekty. `JobSupervisor.list/get/events` przyjmują `visible`
+  (zależność `visible_projects` w `api/jobs.py`; filtr w zapytaniu, więc
+  strony listy mają pełny rozmiar): zadanie bez części magazynowej, którego
+  wszystkie projekty są niewidoczne, nie występuje na liście, a
+  `/jobs/{id}` i `/jobs/{id}/events` dają `404 not_found`; zadanie
+  mieszane (`preview` z `version:` i `file:`) pokazuje tylko widoczne
+  `refs` i wpisy `failed[]`, a liczby (`built`, `cached`, postęp) —
+  pełne (A-ADR-029: zbiorczo liczby, nazwy tylko widocznych). Globalny
+  `own_scan` widzą wszyscy (wynik i zdarzenia to same liczby). Dzienniki
+  w `AppPaths.jobs_dir` to pliki lokalne serwera, nie trasa API.
   Wspólne uruchamianie zadania na pierwszym planie
   (`jobs/foreground.py`, krok 6) zastępuje kod `jobs/reindex.py`
-  i obsługuje `reindex`, `preview --build` i `snapshot`.
+  i obsługuje `reindex`, `preview --build`, `snapshot` i `own-scan`
+  (przebieg tego samego zakresu trwający w innym procesie: CLI czeka na
+  jego koniec i robi własny — ta sama gwarancja co łączenie czekających).
 - **Uprawnienia — `archiwista/auth/` (krok 9).** `project.write` w `Action`
   i `ACTIONS` (reguła jak `project.share`: właściciel albo `admin`),
   komunikat `permission_project_write`; trasy wołają
@@ -706,10 +963,10 @@ działa.
   | `POST /stores/{store}/versions/{version}/preview` (`{"force": false}`) | `200 PreviewInfo` albo `202 JobDetail` | sesja | 6 |
   | `GET …/preview.png?style&size&bbox&bbox_crs` | `image/png` | sesja | 6 |
   | `GET …/tiles/{z}/{x}/{y}.png?style&rescale` | `image/png` | sesja | 6 |
-  | `GET …/features?layer&bbox&limit` | GeoJSON `FeatureCollection` (+ `number_matched`, `truncated`) | sesja | 6 |
+  | `GET …/features?layer&bbox&zoom&limit` | GeoJSON `FeatureCollection` (+ `number_matched`, `truncated`, `simplified`) | sesja | 6 |
   | `GET …/members` | `ArchiveMembers` | sesja | 6 |
   | `GET /projects/{project}/files?q&state&limit&cursor` | `OwnFileList` | widoczność | 9 |
-  | `POST /projects/{project}/scan` | `202 JobDetail` (`own_scan`) | widoczność | 9 |
+  | `POST /projects/{project}/scan` | `202 JobDetail` (`own_scan` tego projektu) | widoczność | 9 |
   | `PUT /projects/{project}/data-dir` (`{"path": … \| null}`) | `OwnFolder` | `settings.write` | 9 |
   | `GET /projects/{project}/files/{file_id}` | `OwnFileCard` | widoczność | 9 |
   | `GET\|POST /projects/{project}/files/{file_id}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features` | jak dla wersji | widoczność | 9 |
@@ -719,13 +976,15 @@ działa.
   | `GET /compare?a&b` | `Comparison` | wg obu `ref` | 10 |
   | `GET /local-layers?store&product&area_id&segment&group` | `LayerSet` | sesja | 11 |
   | `GET /local-layers/thumbnail.png?…&layer&size&v` | `image/png` | sesja | 11 |
+  | `GET /local-layers/tiles/{z}/{x}/{y}.png?store&product&area_id&layer&style&v` | `image/png` (kafel warstwy, decyzja 7) | sesja | 11 |
   | `GET /projects/{project}/files/{file_id}/layers` | `LayerSet` (plik roboczy i migawki) | widoczność | 11 |
 
   Do istniejących: pole `ref` w modelach wersji (`Version`, `VersionCard`;
   krok 6); filtr `project` w `/slots` i `/map/footprints` (wersje przypięte
   w projekcie; krok 9); `previews` (`used_bytes`, `limit_bytes`,
   `objects`, `workers`) i `own_data` (ostatni `own_scan`) w `/health`
-  (kroki 6 i 9); `project` w `GET /jobs` (krok 9). Nowe kody problemów:
+  (kroki 6 i 9); `project` w `GET /jobs` i widoczność w trasach zadań
+  (krok 9, umowa „Zadania”). Nowe kody problemów:
   `422 invalid_ref`, `409 preview_unavailable` (z `reason`),
   `409 preview_not_ready` (z `job` albo `build_required`),
   `503 preview_busy` (z `Retry-After`), `504 preview_timeout`,
@@ -733,12 +992,15 @@ działa.
   /projects/{project}/scan`), `409 snapshot_blocked` (z `reason`).
   `LayerSet`: `area` (albo `null`), `store`, `product`, `group`, `frame`
   (`crs`, `bbox` w układzie płaskim; `null` bez obszaru), `layers`
-  (od najnowszej): `key` (`<segment>:<rok|wydanie|etykieta>[:<kampania>]`),
-  `segment`, `kind` (`year`, `edition`, `label`, `campaign`), `year`,
-  `title`, `subtitle`, `versions_count`, `units_count`, `campaigns`,
-  `data_dates`, `coverage` (`ratio`, `percent`, `label`) albo `null`,
-  `outlines` (GeoJSON w `frame.crs`; tylko z obszarem), `preview`
-  (`state`, `ready`, `total`, `job`, `thumbnail_url`), `versions` (≤ 500,
+  (od najnowszej): `key` (`<wariant>:<rok|wydanie|etykieta>[:<kampania>]`;
+  wariant = 12 znaków SHA-256 klucza wariantu albo segment — decyzja 7),
+  `variant` (`product`, `horizontal_crs`, `resolution`, `vertical_crs`,
+  `segments`, `formats`), `kind` (`year`, `edition`, `label`,
+  `campaign`), `year`, `title`, `subtitle`, `versions_count`,
+  `units_count`, `campaigns`, `data_dates`, `coverage` (`ratio`,
+  `percent`, `label`) albo `null`, `outlines` (GeoJSON w `frame.crs`;
+  tylko z obszarem), `preview` (`state`, `ready`, `total`, `job`,
+  `thumbnail_url`, `tiles_url` warstwy, `minzoom`), `versions` (≤ 500,
   tylko z obszarem: `ref`, `slot`, `unit`, podgląd: stan, `tiles_url`,
   `bounds`); dalej `stale`, `stale_stores`, `stale_reason` jak
   `/local-coverage`. `Comparison`: `a`, `b` (`ref`, rodzaj, tytuł,
@@ -751,7 +1013,8 @@ działa.
   - `src/previews.js` — `usePreviewImage(url)` (adres `blob:` z `fetch`
     z nagłówkiem CSRF, zwalniany przy odmontowaniu) i `PreviewPane`
     (legenda, powód, przycisk budowy, postęp przez `useJob`);
-  - `src/map/previews.js` — źródła rastrowe wersji i warstwy roku;
+  - `src/map/previews.js` — źródło rastrowe wersji i jedno źródło warstwy
+    roku (`/local-layers/tiles`, `minzoom` warstwy);
     `transformRequest` w `src/map/canvas.js` dodaje nagłówek CSRF tylko
     adresom `/api/v1/`;
   - `src/fan/layout.js` i `src/fan/fan.js` — Wachlarz jako tryb mapy;
@@ -765,18 +1028,37 @@ działa.
   Stan w adresie: `mode=fan`, `layer`, `group`, `layout=timeline`,
   `project` (mapa), `view=compare` z `a`/`b` (ref) albo
   `a_layer`/`b_layer`, `own=`.
-- **CLI (kroki 6, 9–11).** Polecenia odczytu w `archiwista/reader.py`
-  (`preview`, `compare`, `layers`, `files`, `file`) na funkcjach bez HTTP
-  z `api/` i tych samych modelach; `snapshot` w `archiwista/jobs/`
-  na `foreground.py`. Wszystkie jako `LOCAL_OWNER` przez ten sam
-  `Authorizer`.
+- **CLI (kroki 6, 9–11).** Nowe polecenia w modułach per funkcja
+  `archiwista/commands/{previews,owndata,compare,layers}.py` (każdy:
+  `COMMANDS`, `add_commands`, `main`), rejestrowane jedną linią w krotce
+  `COMMAND_MODULES` w `cli.py` (wprowadza ją krok 6; `reader.py`
+  i `admin.py` z v0.1 bez zmian): `preview`, `compare`, `layers`, `files`,
+  `file` na funkcjach bez HTTP z `api/` i tych samych modelach;
+  `snapshot` i `own-scan` na `jobs/foreground.py`. Wszystkie jako
+  `LOCAL_OWNER` przez ten sam `Authorizer`.
+- **Modele i teksty (kroki 4–11).** Nowe modele API w modułach per
+  funkcja: `api/models_previews.py` (6), `api/models_owndata.py` (7b, 9),
+  `api/models_compare.py` (10), `api/models_layers.py` (11), importowane
+  wprost przez swoje trasy i polecenia; `api/models.py` (ok. 2600 linii)
+  dostaje tylko pola istniejących modeli (`ref` w wersjach, `Health`,
+  `JobFilters.project`). Teksty: słowniki per funkcja
+  `archiwista/texts/{previews,owndata,compare,layers}.py` scalane
+  w `MESSAGES` jedną linią na słownik (`messages.py` przy imporcie odrzuca
+  powtórzony klucz).
 - **Fixtury (krok 2, punkt kontrolny — krok 3).**
   `tests/fixtures/make_store.py` (nowe rodziny w zestawie przypadków,
-  nie w części masowej), `tests/fixtures/own_data.py`
-  (`make_own_folder(path, *, families)`, `GpkgEditor` — edycja GeoPackage
-  jak w QGIS: WAL, zmiany zatwierdzone w WAL i otwarta transakcja,
-  `write_snapshot_fixture(...)` — katalog migawki zgodny z
-  `archiwista-snapshot/1` dla testów skanu przed krokiem 8),
+  nie w części masowej; także wersja bez `sha256` w sidecarze i dwa
+  segmenty jednego zestawu w dwóch formatach), `tests/fixtures/own_data.py`
+  (`make_own_folder(path, *, families)`, `project_inside_store(...)`,
+  `GpkgEditor` — edycja GeoPackage jak w QGIS: WAL, zmiany zatwierdzone
+  w WAL i otwarta transakcja, awaria zostawiająca `-wal` bez `-shm`,
+  otwarcie do zapisu bez zmian danych (przepisany `gpkg_ogr_contents`),
+  `write_snapshot_fixture(...)` — katalog migawki zgodny
+  z `archiwista-snapshot/1` dla testów skanu przed krokiem 8),
+  `tests/fixtures/hostile_files.py` (treść VRT i OGR VRT pod nazwami
+  danych, `a.tif.ovr` z treścią VRT, widok i tabela łączona MapInfo,
+  raster deklarujący 100 000 × 100 000 px w kilku MB, ZIP z katalogiem
+  centralnym deklarującym 200 000 wpisów),
   `tests/fixtures/control_points.py` (punkt 3722 ze źródłem).
 
 ## Kolejność prac
@@ -788,32 +1070,40 @@ działa.
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | do zrobienia |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | do zrobienia |
 | 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | do zrobienia |
-| 5a | Podglądy rastrów | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
-| 5b | Podglądy wektorów | 1, 2, 4 | 5a, 5c, 6, 7b, 8 | do zrobienia |
-| 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a, 5b, 6, 7b, 8 | do zrobienia |
-| 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a–5c | 5a–5c, 7b, 8 | do zrobienia |
-| 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, próba SQLite) | 2, 3, 4 | do zrobienia |
-| 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a–5c, 6 | do zrobienia |
-| 8 | Migawki | 7a, 7b | 5a–5c, 6, 10, 11, 12a | do zrobienia |
-| 9 | Dane własne i migawki przez HTTP i CLI; `project.write` | 6, 7b, 8 | 10, 11, 12a | do zrobienia |
-| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 11, 12a, 12b | do zrobienia |
-| 11 | Warstwy lokalne i miniatury warstw | 3, 5a, 5b, 6; warstwy migawek po 9 | 10, 12a | do zrobienia |
+| 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
+| 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
+| 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
+| 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | do zrobienia |
+| 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | do zrobienia |
+| 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
+| 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | do zrobienia |
+| 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | do zrobienia |
+| 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
+| 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
+| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | do zrobienia |
+| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | do zrobienia |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | do zrobienia |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
-| 13 | Interfejs: Wachlarz, Oś czasu, Szczegóły zestawu | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
-| 14 | Interfejs: Porównanie i kurtyna | 10, 12b | 13, 15, 16 | do zrobienia |
-| 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13, „Porównaj” po 14 | 13, 14, 16 | do zrobienia |
-| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13–15, 17 | do zrobienia |
+| 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
+| 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | do zrobienia |
+| 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | do zrobienia |
+| 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | do zrobienia |
+| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | do zrobienia |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
 | 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
 
-Fale równoległości: **A** — 0, 1, 2, 3; **B** — 4, 7a; **C** — 5a, 5b, 5c,
-6 (umowa API na rejestrze rendererów), 7b; **D** — 8, 10 (wersje
-magazynu), 11, 12a; **E** — 9, 12b; **F** — 13, 14, 15; **G** — 16, 17;
-**H** — 18. Kroki jednej fali nie
-edytują tych samych plików poza jedną linią rejestracji (rejestr
-rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
-`SCHEMA_VERSION` przy scaleniu (kroki 3 i 7b).
+Fale równoległości: **A** — 0, 1, 2, 3; **B** — 4, 7a; **C** — 5a1, 5b,
+5c, 6 (umowa API na rejestrze rendererów), 7b; **D** — 5a2, 5a3, 8, 10
+(wersje magazynu), 11 (odbiór miniatur i kafli warstw po 5a3), 12a;
+**E** — 9, 12b; **F** — 13a, 14, 15, 16; **G** — 13b; **H** — 17;
+**I** — 18. Kroki jednej fali nie edytują tych samych plików poza jedną
+linią rejestracji (rejestr rendererów, operacje puli, `STYLES`,
+`RUNNERS`, `include_router`, `COMMAND_MODULES`, scalenie słowników
+tekstów w `MESSAGES`, `VIEWS`/`OVERLAYS`, warstwa mapy) i podniesieniem
+`SCHEMA_VERSION` przy scaleniu (kroki 3 i 7b). Nowe modele API,
+polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
+„Modele i teksty”), więc kroki jednej fali (np. 10 i 11) nie dzielą
+`api/models.py`, `reader.py` ani `messages.py` poza linią scalenia.
 
 ### 0. Porządki po v0.1: `ResourceWarning`
 - **Cel:** usunąć źródło ostrzeżenia `ResourceWarning` niezamkniętego
@@ -838,11 +1128,17 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
 - **Cel:** dołączyć zależności, dać wspólny sandbox procesów czytających
   pliki i sprawdzić założenia, na których stoją kroki 4–8, zanim powstanie
   reszta kodu produkcyjnego:
-  - `archiwista/sandbox.py` (decyzja 3): środowisko, limity i uruchamianie
-    procesów czytających niezaufane pliki — kod środowiska czytnika
-    obszarów przeniesiony z `areas.py` bez zmiany zachowania (jedna
-    implementacja dla czytnika obszarów, procesów renderujących, budowy
-    COG i czytnika danych własnych);
+  - `archiwista/sandbox.py` (decyzja 3): środowisko (z
+    `GDAL_PAM_ENABLED=NO`, `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`
+    i `GDAL_SKIP`), limity, uruchamianie procesów czytających niezaufane
+    pliki i katalogi robocze procesów — kod środowiska czytnika obszarów
+    przeniesiony z `areas.py` bez zmiany zachowania dla obsługiwanych
+    plików (jedna implementacja dla czytnika obszarów, procesów
+    renderujących, budowy COG i czytnika danych własnych);
+    `archiwista/formats.py` — tabela formatów i otwarcie jawnym
+    sterownikiem (decyzja 3; czytnik obszarów nie tworzy `WarpedVRT`,
+    więc zostaje przy swoim otwieraniu, chronionym przez `GDAL_SKIP`);
+    `AppPaths.work_dir`;
   - `rio-tiler` (9.x; z nim morecantile, numexpr, color-operations)
     i `laspy[lazrs]` (2.7 / 0.8) w `pyproject.toml` i `requirements.lock`
     z sumami (`--require-hashes`); licencje zgodne z MIT (zapis
@@ -856,31 +1152,51 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
     (decyzja 4: Kartograf jej nie przypina);
   - próba LAZ: `laspy` z `lazrs` — nagłówek, układ z VLR, przeskok do
     kawałków (`seek`) dla próbki rozłożonej w pliku;
-  - próba SQLite: `Connection.backup` z połączenia `mode=ro` do GeoPackage
-    w WAL z innym połączeniem piszącym (zatwierdzone ramki w WAL, otwarta
-    transakcja), otwarcie `mode=ro` bez `-shm` i `immutable=1` bez `-wal`
-    — bez tworzenia plików obok; `PRAGMA table_list` (SQLite ≥ 3.37) do
-    odróżnienia tabel wirtualnych i cieni;
+  - próba SQLite (decyzja 8) — macierz trzech stanów: (a) baza w trybie
+    WAL bez `-wal`: `immutable=1` (w GDAL `IMMUTABLE=YES`) bez nowych
+    plików, a `mode=ro` tworzy `-wal` i `-shm`; (b) `-wal` i `-shm` przy
+    piszącym połączeniu (zatwierdzone ramki w WAL, otwarta transakcja):
+    `Connection.backup` z `mode=ro` kopiuje tylko zatwierdzone wiersze,
+    bez nowych plików; (c) `-wal` bez `-shm`: `mode=ro` tworzy `-shm`,
+    `immutable=1` nie widzi wierszy z WAL, GDAL w odczycie przepisuje WAL
+    do pliku głównego, a kopia pliku i `-wal` w katalogu roboczym daje
+    pełną treść i `integrity_check` = `ok` (wstępnie sprawdzone
+    2026-10-19: SQLite 3.46.1, GDAL 3.12); tabele wirtualne i cienie
+    rozpoznane z `sqlite_master` zgodnie z `PRAGMA table_list`;
+  - próba otwierania GDAL (decyzja 3): w procesie z sandboxem po
+    `WarpedVRT` treść VRT pod nazwą `.tif` i `.asc` (`driver=`),
+    `a.tif.ovr` z treścią VRT obok GeoTIFF (`EMPTY_DIR`) i treść OGR VRT
+    pod nazwą `.gpkg`, `.geojson`, `.shp`, `.fgb` (prefiks albo
+    sygnatura) nie czytają pliku docelowego; przy `EMPTY_DIR` Shapefile
+    czyta `.shx .dbf .prj .cpg`, a MapInfo TAB — `.dat .map .id`;
+    `statistics()` przy `GDAL_PAM_ENABLED=NO` nie zapisuje `.aux.xml`
+    (wstępnie sprawdzone 2026-10-19 dla `.ovr`, `.dbf`, `.prj`, prefiksów
+    i `.aux.xml`);
   - próba dostarczania: MapLibre 6 z `transformRequest` dodającym
     `X-Archiwista-CSRF` do kafli rastrowych i `<img src="blob:…">` pod CSP
     z SPEC 10.1, w Chromium z Playwright.
 - **Pliki:** `pyproject.toml`, `requirements.lock`, `archiwista/sandbox.py`,
+  `archiwista/formats.py`, `archiwista/config.py` (`AppPaths.work_dir`),
   `archiwista/areas.py` (użycie sandboxa), `tests/unit/test_sandbox.py`,
   `tests/contract/test_preview_stack.py` (próby jako testy kontraktu
-  bibliotek: wymuszona operacja trafia ≤ 2 m, `seek` LAZ, odczyt
-  SQLite bez nowych plików), `tests/e2e/test_tile_headers.py`
+  bibliotek: wymuszona operacja trafia ≤ 2 m, `seek` LAZ, trzy stany
+  SQLite, `test_vrt_refused_after_warpedvrt_in_same_process`,
+  `test_sibling_ovr_ignored`, `test_statistics_write_no_aux_xml`),
+  `tests/e2e/test_tile_headers.py`
   (`test_maplibre_raster_tiles_carry_csrf_header` na serwerze testowym
   z CSP v0.1); notatka „Stan po kroku 1” w tym planie z wynikami prób
   (także sprzecznymi z decyzjami — wtedy przegląd decyzji przed krokiem 4).
-- **Interfejs:** umowa „Sandbox” z sekcji „Umowy”; poza nią brak kodu
-  produkcyjnego.
+- **Interfejs:** umowa „Sandbox” z sekcji „Umowy” (z tabelą formatów
+  i katalogami roboczymi procesów); poza nią brak kodu produkcyjnego.
 - **Test/odbiór:** `.venv/bin/python -m pytest tests/contract/test_preview_stack.py
   tests/e2e/test_tile_headers.py` zielone; `pip install --require-hashes
   -r requirements.lock` w czystym `.venv`; `tests/contract/test_imports.py`
   zielony (nowe biblioteki nie są importowane przez serwer przy starcie —
   tylko przez procesy renderujące); `tests/unit/test_sandbox.py`
   (środowisko bez pośredników i poświadczeń, `PROJ_NETWORK=OFF`,
-  `GDAL_SKIP`, limit pamięci i czasu procesu potomnego)
+  `GDAL_PAM_ENABLED=NO`, `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`,
+  `GDAL_SKIP` z `VRT` i `OGR_VRT`, limit pamięci i czasu procesu
+  potomnego, `test_process_work_dir_cleanup_keeps_live_processes`)
   i `tests/integration/test_areas.py` bez regresji.
 - **Zależności:** —. **Równolegle:** 0, 2, 3.
 
@@ -894,25 +1210,37 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   GeoTIFF EPSG:2177 kafelkowany z nakładkami, GeoTIFF EPSG:4326
   (SoilGrids), ZIP z członami CityGML/GML i PDF, prawdziwy skompresowany
   LAZ z klasami 2, 3, 6 (laspy + lazrs), GeoPackage z dwiema warstwami
-  (linie, wielokąty). Każdy przypadek regularny generator sprawdza
-  czytnikiem Kartografa jak w v0.1 (`iter_store` bez problemu). Fixtury
-  danych własnych: `make_own_folder` (GeoPackage z dwiema warstwami
-  EPSG:2180, Shapefile z `.shp .shx .dbf .prj .cpg`, Shapefile bez `.prj`,
-  GeoTIFF EPSG:2180, GeoJSON WGS84, FlatGeobuf, CSV i TXT jako
+  (linie, wielokąty), wersję ze starszym sidecarem bez `sha256` i dwa
+  segmenty jednego zestawu w dwóch formatach (NMT ASC i ASCII-NMT: ten sam
+  produkt, układy i rozdzielczość). Każdy przypadek regularny generator
+  sprawdza czytnikiem Kartografa jak w v0.1 (`iter_store` bez problemu).
+  Fixtury danych własnych: `make_own_folder` (GeoPackage z dwiema
+  warstwami EPSG:2180, Shapefile z `.shp .shx .dbf .prj .cpg`, Shapefile
+  bez `.prj`, GeoTIFF EPSG:2180, GeoTIFF bez georeferencji z plikiem
+  świata, GeoJSON WGS84, FlatGeobuf, MapInfo TAB natywny, CSV i TXT jako
   nierozpoznane, plik ukryty, podkatalog, dowiązanie symboliczne poza
   folder, GeoPackage EPSG:5514 z punktem w punkcie kontrolnym),
-  `GpkgEditor` (edytor jak QGIS) i `write_snapshot_fixture`.
+  `project_inside_store(store_root)` (projekt z manifestem w katalogu
+  producenta), `GpkgEditor` (edytor jak QGIS, także awaria zostawiająca
+  `-wal` bez `-shm` i otwarcie do zapisu bez zmian danych),
+  `write_snapshot_fixture` i pliki podstawione (`hostile_files`: treść
+  VRT i OGR VRT pod nazwami danych, `a.tif.ovr` z treścią VRT, widok
+  i tabela łączona MapInfo, raster deklarujący 100 000 × 100 000 px
+  w kilku MB, ZIP z katalogiem centralnym deklarującym 200 000 wpisów).
 - **Pliki:** `tests/fixtures/make_store.py`, `tests/fixtures/store_files.py`,
-  `tests/fixtures/own_data.py`; `tests/contract/test_store_fixture.py`
-  (nowe przypadki widziane przez Kartografa).
+  `tests/fixtures/own_data.py`, `tests/fixtures/hostile_files.py`;
+  `tests/contract/test_store_fixture.py` (nowe przypadki widziane przez
+  Kartografa).
 - **Interfejs:** `make_store` jak w v0.1 z nowymi przypadkami w manifeście
   oczekiwań (`ExpectedEntry` z rodziną pliku); `make_own_folder(path, *,
   families) -> OwnFolderManifest`; `GpkgEditor(path)` z `insert`, `commit`,
-  `begin`, `close`.
+  `begin`, `close`, `crash_without_shm`, `reopen_for_update_unchanged`;
+  `hostile_files(path) -> HostileFiles`.
 - **Test/odbiór:** `tests/contract/test_store_fixture.py` zielony z nowymi
   rodzinami; `tests/unit/test_own_data_fixture.py` (komplet Shapefile,
-  edytor zostawia zatwierdzone ramki w `-wal` i otwartą transakcję);
-  czas generatora 50 000 slotów zapisany w notatce kroku.
+  edytor zostawia zatwierdzone ramki w `-wal` i otwartą transakcję, a po
+  awarii — `-wal` bez `-shm`); czas generatora 50 000 slotów zapisany
+  w notatce kroku.
 - **Zależności:** — (prawdziwy LAZ wymaga laspy z kroku 1 — ten przypadek
   dochodzi po nim). **Równolegle:** 0, 1, 3, 4, 7a.
 
@@ -950,152 +1278,245 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
 
 ### 4. Infrastruktura podglądów: pamięć, pula, zadanie `preview`
 - **Cel:** wszystko, czego potrzebują renderery, bez samych rendererów:
-  `PreviewCache` z LRU i limitem
-  (`AppSettings.preview_cache_limit_gb`, `AppPaths.previews_dir`),
-  `RenderPool` z procesami renderującymi i protokołem JSON Lines,
-  rejestr `RENDERERS` (z rendererem testowym w testach), rodzaj zadania
-  `preview` w `JOB_KINDS`/`RUNNERS` z budową każdego pliku w osobnym
-  procesie potomnym, uogólnienie nadzorcy (`store` opcjonalny, reguła
-  konfliktu per rodzaj, dołączanie do trwającego `preview`), włączenie
-  puli w `serve` (start, zatrzymanie, `app.state.previews`).
+  `PreviewCache` z LRU i limitem (`AppSettings.preview_cache_limit_gb`,
+  `AppPaths.previews_dir`; wersje rendererów per rodzaj, małe obiekty
+  jako bajty, zapis czasu użycia najwyżej raz na 5 min, uzgadnianie przy
+  starcie, klucze ścieżki i obiektów złożonych — decyzja 3), `RenderPool`
+  z procesami renderującymi i protokołem JSON Lines (limity czasu per
+  operacja, komunikaty błędów bez ścieżek, wyniki błędów w pamięci według
+  decyzji 3), rejestr `RENDERERS` (z rendererem testowym w testach),
+  rodzaj zadania `preview` w `JOB_KINDS`/`RUNNERS` z budową każdego
+  pliku w osobnym procesie potomnym (najwyżej `n = max(1, cpu // 2)`
+  naraz, jedno zadanie `preview` naraz), uogólnienie nadzorcy (`store`
+  opcjonalny, reguła konfliktu per rodzaj, dołączanie do trwającego
+  `preview` z dopisaniem `ref`), włączenie puli w `serve` (start,
+  zatrzymanie, `app.state.previews`), typy błędów podglądów, teksty
+  powodów i stylów.
 - **Pliki:** `archiwista/previews/{__init__,types,cache,pool,worker,protocol,build}.py`,
   `archiwista/previews/renderers/__init__.py`, `archiwista/config.py`,
-  `archiwista/jobs/{protocol,supervisor,worker}.py`, `archiwista/server.py`,
-  `archiwista/app.py`, `archiwista/messages.py`.
+  `archiwista/errors.py` (`PreviewBusyError`, `PreviewTimeoutError`,
+  `PreviewUnavailableError`), `archiwista/jobs/{protocol,supervisor,worker}.py`,
+  `archiwista/server.py`, `archiwista/app.py`, `archiwista/texts/previews.py`,
+  `archiwista/messages.py` (scalanie słowników — umowa „Modele i teksty”).
 - **Interfejs:** umowy „Podglądy” (typy, pamięć, pula, zadanie)
   i „Zadania”; procesy uruchamia sandbox z kroku 1.
 - **Test/odbiór:** `tests/integration/test_preview_cache.py`
   (`test_cache_limit_evicts_least_recently_used`,
   `test_cache_limit_holds_with_builds` — limit 1 MB, suma ≤ limit po
   każdym zapisie, obiekty w budowie chronione,
-  `test_cache_survives_restart`, `test_cache_safe_across_processes`),
+  `test_cache_survives_restart`, `test_cache_safe_across_processes`,
+  `test_hit_survives_eviction_by_other_process` — trafienie, potem
+  usunięcie obiektu przez inny proces: odpowiedź kompletna,
+  `test_reconcile_after_crash` — pliki bez wpisu i wpisy bez plików
+  uzgodnione przy starcie, `test_renderer_version_bump_keeps_other_kinds`),
   `tests/integration/test_render_pool.py` (`test_single_flight_same_key`,
   `test_timeout_kills_and_respawns_worker`,
   `test_memory_limit_kills_worker`, `test_abandoned_request_never_rendered`,
   `test_queue_full_is_preview_busy`, `test_worker_env_has_no_network` —
   próba połączenia z GDAL w procesie renderującym kończy się bez ruchu
-  sieciowego, `test_vrt_driver_refused`),
-  `tests/integration/test_jobs.py::test_preview_build_joins_running_job`
-  i `::test_preview_build_item_timeout_fails_item_only`.
+  sieciowego, `test_vrt_refused_after_warpedvrt_in_same_worker` — proces
+  po `WarpedVRT` czyta przez tabelę formatów: treść VRT jako `.tif`,
+  `a.tif.ovr` z treścią VRT i treść OGR VRT jako `.gpkg`, `.geojson`,
+  `.shp` nie oddają bajtów pliku docelowego,
+  `test_failure_detail_has_no_paths`,
+  `test_unreadable_cached_as_code_and_timeout_not_cached`),
+  `tests/integration/test_jobs.py::test_preview_build_joins_running_job`,
+  `::test_preview_build_item_timeout_fails_item_only`
+  i `::test_preview_builds_at_most_n_children`.
 - **Zależności:** 1. **Równolegle:** 2, 3, 7a, 7b.
 
-### 5a. Podglądy rastrów
+### 5a1. Podglądy rastrów: rozpoznanie, miniatura, kafel
 - **Cel:** renderer `raster.py` dla rodzin rastrowych z decyzji 5:
-  rozpoznanie (sterownik, wymiary, typ, układ pliku albo `source.crs`,
-  georeferencja z obrysu dla JPEG, nakładki, kafelkowanie, `nodata`,
-  statystyki z najmniejszej nakładki, paleta, reguła `needs_cog`),
-  miniatura (rio-tiler w układzie pliku; z kadrem — przeliczona
+  otwarcie jawnym sterownikiem (decyzja 3), rozpoznanie (sterownik,
+  wymiary, typ, układ pliku albo `source.crs`, georeferencja z obrysu dla
+  JPEG, nakładki, kafelkowanie, `nodata`, statystyki w numpy z odczytu
+  zdziesiątkowanego, paleta, reguła `needs_cog`, progi pikseli z decyzji
+  6), miniatura (rio-tiler z otwartego zbioru w układzie pliku; bez
+  nakładek z odczytu `out_shape` ≤ 1024 px; z kadrem — przeliczona
   z wymuszoną operacją), kafel (decyzja 4: `reproject` z nakładki na
   siatkę kafla z `COORDINATE_OPERATION`, potem `ImageData` i PNG; margines
-  1 piksela dla cieniowania, bez szwów między kaflami), style
-  (cieniowanie: azymut 315°, wysokość 45°, przewyższenie z rozmiaru
-  piksela w metrach; hipsometria z legendą p2–p98 albo `rescale`;
-  RGB/skala szarości; klasy z paletą pliku albo tablicą CLC i HSG A–D),
-  budowa COG (decyzja 6), miniatura warstwy (`layer_thumbnail`:
-  składanie podglądów wersji w kadrze układu płaskiego).
+  pikseli na życzenie stylu, żeby style sąsiedztwa nie dawały szwów),
+  style `rgb` i `gray` (rozciągnięcie 2–98%) w rejestrze `STYLES`.
 - **Pliki:** `archiwista/previews/renderers/raster.py`,
-  `archiwista/previews/styles.py`, `archiwista/previews/legends.py`,
-  `archiwista/previews/tiles.py` (siatka kafla, wybór nakładki).
-- **Interfejs:** `Renderer` z umowy; style i legendy w `PreviewProbe`.
-- **Test/odbiór:** `tests/unit/test_raster_renderer.py` (każda rodzina
-  rastrowa z kroku 2: miniatura dekodowalna, kafel 256 × 256 z alfa,
-  `nodata` przezroczyste, ASC → COG ≤ 8192 px, paskowy > 4096 px → COG,
-  JPEG z obrysem `header` → georeferencja, PNG → `no_georeference`,
-  EPSG:4326 (konwersja bez wymuszonej operacji) i EPSG:2177 na mapie,
-  klasy z legendą, cieniowanie bez szwu na granicy sąsiednich kafli,
+  `archiwista/previews/tiles.py` (siatka kafla, wybór nakładki, margines),
+  `archiwista/previews/styles.py` (rejestr i style obrazów).
+- **Interfejs:** `Renderer` z umowy; `Style` (`apply`, `margin_px`,
+  legenda).
+- **Test/odbiór:** `tests/unit/test_raster_renderer.py` (rodziny rastrowe
+  z kroku 2 czytane w miejscu: miniatura dekodowalna, kafel 256 × 256
+  z alfa, `nodata` przezroczyste, PNG → `no_georeference`, EPSG:4326
+  (konwersja bez wymuszonej operacji) i EPSG:2177 na mapie; raster bez
+  nakładek — miniatura i statystyki z odczytu zdziesiątkowanego; raster
+  deklarujący 100 000 × 100 000 px w kilku MB → `needs_build` bez
+  `auto_build`; treść VRT pod nazwą `.tif` i `.asc` → bez odczytu pliku
+  docelowego; po rozpoznaniu folder bez `.aux.xml`;
   `test_tile_forces_pinned_operation` — `reproject` dostaje
   `COORDINATE_OPERATION` z `gdal_operation()` dla układów innych niż
   WGS84);
   `tests/integration/test_cz_control_point.py::test_cz_preview_tile_within_2_m`
-  (jasny piksel w punkcie 3722 w kaflu z = 19, środek plamy ≤ 2 m
-  od φ, λ).
+  (GeoTIFF: jasny piksel w punkcie 3722 w kaflu z = 19, środek plamy
+  ≤ 2 m od φ, λ).
 - **Zależności:** 1, 2, 3, 4. **Równolegle:** 5b, 5c, 6, 7b, 8.
 
+### 5a2. Podglądy rastrów: lokalny COG
+- **Cel:** budowa COG (decyzja 6) w `previews/cog.py` dla ASC, XYZ, JPEG
+  z georeferencją z obrysu nagłówkowego i GeoTIFF paskowego albo bez
+  nakładek z bokiem > 4096 px: odczyt zdziesiątkowany do ≤ 8192 px,
+  uśrednianie dla wartości ciągłych, `nearest` dla klas, nakładki
+  wewnętrzne, DEFLATE z predyktorem albo JPEG; w `raster.py` tylko
+  przypisanie `build`; kafle i miniatury z COG idą drogą z kroku 5a1.
+- **Pliki:** `archiwista/previews/cog.py`,
+  `archiwista/previews/renderers/raster.py` (jedna linia).
+- **Interfejs:** `Renderer.build` z umowy; COG w pamięci podglądów.
+- **Test/odbiór:** `tests/unit/test_raster_cog.py` (ASC → COG ≤ 8192 px
+  z układem z `EntryMeta.horizontal_crs`, XYZ → COG, siatka nieregularna →
+  `unsupported_format`, paskowy > 4096 px → COG, JPEG z obrysem `header`
+  → georeferencja, obrys z innego źródła → `no_georeference`, klasy
+  `nearest`); `tests/integration/test_cz_control_point.py::test_cz_preview_tile_within_2_m`
+  rozszerzony o JPEG SM5 z obrysem nagłówkowym w S-JTSK (kafel z COG
+  ≤ 2 m).
+- **Zależności:** 5a1. **Równolegle:** 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a.
+
+### 5a3. Podglądy rastrów: style, legendy, składanie warstw
+- **Cel:** style `hillshade` (azymut 315°, wysokość 45°, przewyższenie
+  z rozmiaru piksela w metrach; margines 1 piksela, bez szwów między
+  kaflami), `hypsometry` (legenda p2–p98 albo `rescale`), `classes`
+  (paleta pliku albo tablica CLC i HSG A–D); legendy (`legends.py`:
+  gradient z zakresem i jednostką, klasy z kolorem i polską nazwą);
+  składanie warstw w `compose.py` dla rastrów i wektorów:
+  `layer_thumbnail` (miniatury wersji w kadrze układu płaskiego)
+  i `layer_tile` (kafel warstwy = nałożenie kafli wersji z pamięci po ich
+  treści; brakujący kafel wersji liczy renderer jej rodzaju i zapisuje pod
+  jej treścią — decyzje 4 i 7), obie jako operacje puli.
+- **Pliki:** `archiwista/previews/styles.py`, `archiwista/previews/legends.py`,
+  `archiwista/previews/classes.py` (tablice CLC i HSG),
+  `archiwista/previews/compose.py`, `archiwista/previews/worker.py` (jedna
+  linia na operację).
+- **Interfejs:** style i legendy w `PreviewProbe`/`PreviewInfo`; operacje
+  `layer_thumbnail` i `layer_tile` z umowy „Pula”.
+- **Test/odbiór:** `tests/unit/test_raster_styles.py` (cieniowanie bez
+  szwu na granicy sąsiednich kafli, hipsometria z legendą p2–p98
+  i z `rescale`, klasy CORINE i HSG z legendą), `tests/unit/test_compose.py`
+  (`test_layer_thumbnail_in_planar_frame`,
+  `test_layer_tile_composes_version_tiles` — kafel na styku dwóch arkuszy
+  ma piksele obu, kafle wersji zostają w pamięci pod ich treścią, nowa
+  gotowa wersja zmienia klucz obiektu złożonego tylko w kaflach, które
+  przecina).
+- **Zależności:** 5a1. **Równolegle:** 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a.
+
 ### 5b. Podglądy wektorów
-- **Cel:** renderer `vector.py`: rozpoznanie przez pyogrio (warstwy, typ
-  geometrii, liczba obiektów, pola, układ, zasięg, próbka 20 wierszy),
-  miniatura (rasteryzacja próbki ≤ 50 000 obiektów do 3 największych
-  warstw liniowych i powierzchniowych albo wskazanej `layer`; punkty jako
-  znaczniki; w układzie pliku albo w kadrze), `features` (prostokąt
-  widoku WGS84 → układ pliku przypiętą operacją po zagęszczeniu;
-  `max_features = limit + 1` → `truncated`; obiekty do WGS84 przypiętym
-  transformatorem; atrybuty bez zmian, długie teksty skrócone),
-  otwarcie GeoPackage magazynu jako niezmiennego, a plików roboczych bez
-  tworzenia plików obok (`mode=ro`/`immutable=1` jak w decyzji 8).
+- **Cel:** renderer `vector.py`: rozpoznanie przez pyogrio z jawnym
+  sterownikiem (prefiks `GPKG:`/`GeoJSON:` albo sygnatura pliku — decyzja
+  3; warstwy, typ geometrii, liczba obiektów, pola, układ, zasięg, próbka
+  20 wierszy), miniatura (rasteryzacja próbki ≤ 50 000 obiektów do 3
+  największych warstw liniowych i powierzchniowych albo wskazanej
+  `layer`; punkty jako znaczniki; w układzie pliku albo w kadrze),
+  `features` (prostokąt widoku WGS84 → układ pliku przypiętą operacją po
+  zagęszczeniu; `max_features = limit + 1` → `truncated`; geometrie
+  uproszczone do zoomu żądania, razem ≤ 500 000 wierzchołków — decyzja 4;
+  obiekty do WGS84 przypiętym transformatorem; atrybuty bez zmian, długie
+  teksty skrócone), otwarcie GeoPackage magazynu jako niezmiennego
+  (`IMMUTABLE=YES`), a plików roboczych według trzech stanów z decyzji 8
+  (`consistent_sqlite_read` z kroku 7a; w stanach (b) i (c) z kopii
+  spójnej `source.gpkg` w pamięci podglądów).
 - **Pliki:** `archiwista/previews/renderers/vector.py`,
   `archiwista/previews/rasterize.py`.
-- **Interfejs:** `Renderer` z `features` i `layer_thumbnail` dla
-  wektorów.
+- **Interfejs:** `Renderer` z `features`; miniatura w kadrze dla
+  `compose.py` (5a3).
 - **Test/odbiór:** `tests/unit/test_vector_renderer.py` (GeoPackage
   z dwiema warstwami, Shapefile, Shapefile bez `.prj` → `no_crs`,
-  GeoJSON, FlatGeobuf; `limit` 5000 i `truncated`; prostokąt widoku
-  w EPSG:2180 i EPSG:5514; folder bez nowych plików po odczycie
-  GeoPackage w edycji);
+  GeoJSON, FlatGeobuf; `limit` 5000 i `truncated`;
+  `test_features_simplified_to_zoom` — wielokąty po 50 000 wierzchołków
+  przy małym zoomie: odpowiedź ≤ 500 000 wierzchołków i `truncated`, przy
+  dużym zoomie odchyłka ≤ 1 piksel; prostokąt widoku w EPSG:2180
+  i EPSG:5514; treść OGR VRT pod nazwą `.gpkg`, `.geojson`, `.shp`,
+  `.fgb` → bez odczytu pliku docelowego; folder bez nowych plików po
+  odczycie GeoPackage w każdym z trzech stanów);
   `tests/integration/test_cz_control_point.py::test_cz_features_within_2_m`
   (punkt GeoPackage EPSG:5514 w `features` ≤ 2 m).
-- **Zależności:** 1, 2, 4. **Równolegle:** 5a, 5c, 6, 7b, 8.
+- **Zależności:** 1, 2, 4, 7a (`consistent_sqlite_read`). **Równolegle:**
+  5a1–5a3, 5c, 6, 7b, 8.
 
 ### 5c. Chmury punktów, archiwa, dokumenty, pliki pomocnicze
 - **Cel:** renderery `points.py` (LAZ/LAS: nagłówek, układ z VLR albo
   `source.crs`, gęstość, histogram klas ASPRS z próbki ≤ 2 mln punktów
-  rozłożonej po kawałkach — bez tablicy kawałków próbka z początku
-  z dopiskiem `sampled_from: "start"`, obraz 2D maks. Z w siatce o boku
-  ≥ 1 m jako COG przez zadanie `preview`, potem kafle jak raster),
-  `archive.py` (ZIP: katalog centralny bez rozpakowania, ≤ 10 000 członów
-  z `truncated`, rozmiar, rozmiar spakowany, format z rozszerzenia; nazwy
-  członów tylko wypisywane), `document.py` (PDF, TXT, pliki pomocnicze
-  `.jgw .tfw .pgw .wld .prj .aux.xml` i nieznane — powody z decyzji 5).
-- **Pliki:** `archiwista/previews/renderers/{points,archive,document}.py`,
-  `archiwista/previews/legends.py` (klasy ASPRS po polsku).
+  i ≤ 256 MiB rozpakowanych rekordów, rozłożonej po kawałkach — bez
+  tablicy kawałków próbka z początku z dopiskiem `sampled_from: "start"`,
+  obraz 2D maks. Z w siatce o boku ≥ 1 m jako COG przez zadanie
+  `preview`, potem kafle jak raster; tablica klas ASPRS po polsku
+  w module), `archive.py` (ZIP: najpierw rekord końca katalogu
+  centralnego, także zip64 — > 100 000 wpisów albo katalog > 64 MiB →
+  `too_large` bez `ZipFile`; potem katalog centralny bez rozpakowania,
+  ≤ 10 000 członów z `truncated`, rozmiar, rozmiar spakowany, format
+  z rozszerzenia; nazwy członów tylko wypisywane), `document.py` (PDF,
+  TXT, pliki pomocnicze `.jgw .tfw .pgw .wld .prj .aux.xml` i nieznane —
+  powody z decyzji 5).
+- **Pliki:** `archiwista/previews/renderers/{points,archive,document}.py`.
 - **Interfejs:** `Renderer` z `members` (archiwum) i `build` (LAZ).
 - **Test/odbiór:** `tests/unit/test_points_renderer.py` (LAZ z kroku 2:
   klasy 2, 3, 6 z liczbami, obraz 2D, LAS nieskompresowany pod nazwą
-  `.laz` z v0.1, plik bez tablicy kawałków), `tests/unit/test_archive_renderer.py`
+  `.laz` z v0.1, plik bez tablicy kawałków, rekord z dużymi bajtami
+  dodatkowymi — próbka ograniczona bajtami), `tests/unit/test_archive_renderer.py`
   (10 001 członów → `truncated`, człon `../x` tylko wypisany, nic nie
-  rozpakowane), `tests/unit/test_document_renderer.py` (PDF, TXT, JGW,
+  rozpakowane, katalog centralny deklarujący 200 000 wpisów → `too_large`
+  przed `ZipFile`), `tests/unit/test_document_renderer.py` (PDF, TXT, JGW,
   nieznany → właściwy kod i polski opis).
-- **Zależności:** 1, 2, 4. **Równolegle:** 5a, 5b, 6, 7b, 8.
+- **Zależności:** 1, 2, 4. **Równolegle:** 5a1–5a3, 5b, 6, 7b, 8.
 
 ### 6. Podglądy magazynu przez HTTP i CLI; odwołania `ref`
 - **Cel:** trasy podglądów wersji magazynu z umowy API (opis, budowa,
-  miniatura, kafle, obiekty, człony), `refs.py` i `ObjectResolver` dla
-  wersji (ścieżka z `resolve_indexed_path`, `sha256`, `horizontal_crs`,
-  produkt i klucz zbioru z indeksu, a dla obrysu o źródle `header` —
-  natywny prostokąt i układ jako `georeference`), `PreviewService`, pole
-  `ref` w modelach wersji, `previews` w `/health`, nagłówki
-  `Cache-Control`/`ETag`/`304` (decyzja 3), nowe kody problemów,
-  polecenie `archiwista preview` (`--build` przez `jobs/foreground.py`,
-  który przejmuje kod `jobs/reindex.py`).
+  miniatura, kafle, obiekty z `zoom`, człony), `refs.py` i `ObjectResolver`
+  dla wersji (ścieżka z `resolve_indexed_path`, `sha256` albo — gdy go
+  brak — klucz ścieżki z decyzji 3, `horizontal_crs`, produkt i klucz
+  zbioru z indeksu, a dla obrysu o źródle `header` — natywny prostokąt
+  i układ jako `georeference`), `PreviewService`, pole `ref` w modelach
+  wersji, `previews` w `/health`, nagłówki `Cache-Control`/`ETag`/`304`
+  (decyzja 3), walidacja `z`, `x`, `y` i `404` poza zakresem zoomu
+  i zasięgiem pliku (decyzja 13), nowe kody problemów, polecenie
+  `archiwista preview` (`--build` przez `jobs/foreground.py`, który
+  przejmuje kod `jobs/reindex.py`) i krotka `COMMAND_MODULES` w `cli.py`
+  (umowa „CLI”).
 - **Pliki:** `archiwista/refs.py`, `archiwista/previews/service.py`,
-  `archiwista/api/previews.py`, `archiwista/api/models.py`,
-  `archiwista/api/errors.py`, `archiwista/api/health.py`,
+  `archiwista/api/previews.py`, `archiwista/api/models_previews.py`,
+  `archiwista/api/models.py` (`ref` w `Version` i `VersionCard`,
+  `Health.previews`), `archiwista/api/errors.py`, `archiwista/api/health.py`,
   `archiwista/app.py` (jedna linia `include_router`),
   `archiwista/jobs/foreground.py`, `archiwista/jobs/reindex.py`,
-  `archiwista/reader.py`, `archiwista/cli.py`, `archiwista/messages.py`.
+  `archiwista/commands/{__init__,previews}.py`, `archiwista/cli.py`,
+  `archiwista/texts/previews.py`.
 - **Interfejs:** umowa API (wiersze kroku 6), `PreviewInfo`, CLI
   z decyzji 11.
 - **Test/odbiór:** `tests/integration/test_previews_api.py` (każda trasa,
-  walidacja parametrów → `422`, `409 preview_not_ready` przed budową,
-  `POST` → `202` → `ready`, `304` po `ETag`, `preview_unavailable`
-  z powodem, odłączony magazyn → z pamięci albo `503 store_unavailable`,
-  bez CSRF → `403`), `tests/integration/test_preview_coverage.py::test_every_store_file_type_has_preview_or_reason`
-  (kryterium 1), `tests/integration/test_preview_cache.py::test_same_content_rendered_once`
+  walidacja parametrów → `422`, `z` powyżej `maxzoom` pliku → `404`,
+  `409 preview_not_ready` przed budową, `POST` → `202` → `ready`, `304` po
+  `ETag`, `preview_unavailable` z powodem, odłączony magazyn → z pamięci
+  albo `503 store_unavailable`, bez CSRF → `403`),
+  `tests/integration/test_preview_coverage.py::test_every_store_file_type_has_preview_or_reason`
+  (kryterium 1; także wersja bez `sha256` — podgląd pod kluczem ścieżki),
+  `tests/integration/test_preview_cache.py::test_same_content_rendered_once`
   (kryterium 3: dwie wersje o tym samym `sha256`, powtórzenia i restart —
   licznik żądań procesów renderujących bez zmian),
   `tests/integration/test_preview_security.py`
   (`test_server_process_never_opens_data_files` — w procesie serwera
   `rasterio.open`, `pyogrio`, `laspy.open` i `zipfile.ZipFile` zgłaszają
   błąd, a trasy działają; ścieżka spoza korzenia → `403
-  path_outside_root`), `tests/integration/test_cli.py::test_preview_cli_equals_http`
+  path_outside_root`; `test_store_and_own_folder_unchanged_after_previews`
+  — magazyn testowy z prawem zapisu: po rozpoznaniu, miniaturze, kaflu
+  i obiektach każdej rodziny nazwy, rozmiary i czasy plików bez zmian,
+  żadnego `.aux.xml`; folder danych własnych dochodzi w kroku 9),
+  `tests/integration/test_cli.py::test_preview_cli_equals_http`
   i `::test_preview_output_writes_png`,
   `tests/integration/test_jobs.py::test_reindex_on_foreground_helper`
   (bez regresji `reindex`).
-- **Zależności:** 3, 4; odbiór po 5a–5c. **Równolegle:** 5a–5c, 7b, 8.
+- **Zależności:** 3, 4; odbiór po 5a1–5c. **Równolegle:** 5a1–5c, 7b, 8.
 
 ### 7a. Czytnik danych własnych i tożsamość treści
-- **Cel:** proces czytnika (decyzja 8; sandbox z kroku 1), rozpoznanie
-  formatów i kompletów plików, tożsamość treści `bytes`/`fileset`/`sqlite`
-  i spójny odczyt SQLite bez tworzenia plików.
+- **Cel:** proces czytnika (decyzja 8; sandbox i tabela formatów z kroku
+  1), rozpoznanie formatów i kompletów plików (MapInfo TAB tylko jako
+  tabela natywna), tożsamość treści `bytes`/`fileset`/`sqlite` (tabele
+  wirtualne i cienie z `sqlite_master`, bez `gpkg_ogr_contents`
+  i znaczników czasu zapisu) i spójny odczyt SQLite według trzech stanów
+  (`consistent_sqlite_read`; kopie w katalogu roboczym procesu).
 - **Pliki:** `archiwista/owndata/{__init__,reader,formats,content}.py`.
 - **Interfejs:** umowa „Dane własne” (czytnik i treść).
 - **Test/odbiór:** `tests/unit/test_own_content.py`
@@ -1104,28 +1525,44 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   `test_sqlite_hash_excludes_uncommitted_transaction`,
   `test_sqlite_hash_changes_with_row_or_schema`,
   `test_sqlite_hash_ignores_rtree_shadow_tables`,
+  `test_sqlite_hash_ignores_ogr_contents_cache` — otwarcie do zapisu bez
+  zmian danych (przepisany `gpkg_ogr_contents` i `last_change`) nie
+  zmienia skrótu, `test_shadow_tables_from_sqlite_master_match_table_list`
+  (wyrocznia: `PRAGMA table_list` na SQLite ≥ 3.37),
   `test_fileset_independent_of_listing_order`),
   `tests/integration/test_own_reader.py` (wszystkie rodziny
-  z `make_own_folder`, Shapefile jako komplet, brak układu, plik wiszący
-  zabity po 30 s i kolejne pliki czytane dalej,
+  z `make_own_folder`, Shapefile jako komplet, brak układu, raster
+  z samym plikiem świata → bez georeferencji, widok i tabela łączona
+  MapInfo → `unsupported_format`, treść VRT pod nazwą `.tif`, `.gpkg`,
+  `.shp` → bez odczytu pliku docelowego, plik wiszący zabity po 30 s
+  i kolejne pliki czytane dalej,
   `test_data_folder_unchanged_after_reads` — nazwy, rozmiary, czasy,
-  brak `-wal`/`-shm` także przy GeoPackage w edycji).
-- **Zależności:** 1 (sandbox, próba SQLite). **Równolegle:** 2, 3, 4.
+  żadnych nowych plików w każdym z trzech stanów SQLite,
+  `test_wal_without_shm_read_from_local_copy` — wiersze tylko z `-wal`
+  w wyniku).
+- **Zależności:** 1 (sandbox, tabela formatów, próba SQLite).
+  **Równolegle:** 2, 3, 4.
 
 ### 7b. Folder danych, indeks i skan danych własnych
 - **Cel:** ustawienie `own_data_dirs` z walidacją i funkcją usługi do
-  zmiany folderu (trasę daje krok 9), tabele indeksu danych własnych
-  (`SCHEMA_VERSION` + 1), zapis i odczyt z wymaganym `visible`, skan
-  `scan_own_data` (decyzja 8: przejście folderu, odczyt nowych i zmienionych
-  plików czytnikiem 7a, wielokąty zasięgu `outline_wgs84`, migawki
-  z `.wersje/**/migawka.json` z walidacją `SnapshotDocument`, stan zmiany,
-  historia stanów, problemy), zadanie `own_scan` z harmonogramem
-  i przycinaniem rutynowych przebiegów.
+  zmiany folderu (trasę daje krok 9), te same reguły dla folderu
+  domyślnego (stan `invalid`, problem `own_folder_invalid` — decyzja 8),
+  tabele indeksu danych własnych (`SCHEMA_VERSION` + 1), zapis i odczyt
+  z wymaganym `visible`, skan `scan_own_data` (decyzja 8: przejście
+  folderu — z większego niż 10 000 plików pierwsze 10 000 w porządku
+  ścieżki, odczyt nowych i zmienionych plików czytnikiem 7a, wielokąty
+  zasięgu `outline_wgs84`, migawki z `.wersje/**/migawka.json`
+  z walidacją `SnapshotDocument` (odczyt z `extra="ignore"`), także
+  opublikowane bez wpisu w indeksie, stan zmiany, historia stanów,
+  problemy), zadanie `own_scan` — globalne z harmonogramu albo dla
+  jednego projektu — z łączeniem czekających i przycinaniem rutynowych
+  przebiegów.
 - **Pliki:** `archiwista/config.py`, `archiwista/owndata/scan.py`,
   `archiwista/owndata/document.py` (model — wspólny z krokiem 8),
   `archiwista/index/{schema,writer,queries,types}.py`,
-  `archiwista/services/owndata.py`, `archiwista/jobs/{worker,supervisor,scheduler}.py`,
-  `archiwista/messages.py`.
+  `archiwista/services/owndata.py`, `archiwista/api/models_owndata.py`,
+  `archiwista/jobs/{worker,supervisor,scheduler}.py`,
+  `archiwista/texts/owndata.py`, `archiwista/messages.py` (jedna linia).
 - **Interfejs:** umowa „Dane własne” (indeks, ustawienia, zadanie,
   modele `OwnFolder`, `OwnFileItem`, `OwnFileCard`, `SnapshotItem`).
 - **Test/odbiór:** `tests/integration/test_own_scan.py`
@@ -1133,65 +1570,91 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   natywny i WGS84, warstwy, liczba obiektów, schemat;
   `test_change_after_snapshot_detected` — z `write_snapshot_fixture`:
   zmiana obiektu GeoPackage, dopisanie do Shapefile, nadpisanie GeoTIFF →
-  `changed` z datą migawki, powrót treści → `unchanged`, historia stanów;
+  `changed` z datą migawki, powrót treści → `unchanged`, otwarcie
+  GeoPackage do zapisu bez zmian danych → `unchanged`, historia stanów;
   `test_unchanged_files_cost_only_stat`; `test_hidden_and_versions_skipped`;
   `test_symlink_outside_folder_skipped`; `test_invalid_snapshot_problem`;
-  `test_stale_incoming_problem_after_24h`; `test_missing_file_keeps_snapshots`),
+  `test_snapshot_with_unknown_optional_field_is_valid`;
+  `test_stale_incoming_problem_after_24h`; `test_missing_file_keeps_snapshots`;
+  `test_default_folder_inside_store_is_refused` — projekt z manifestem
+  w katalogu producenta: folder `invalid`, nic nie przeczytane, magazyn
+  bez zmian; `test_overlapping_folders_invalid_for_both`;
+  `test_too_large_folder_indexes_first_10000_by_path`),
   `tests/unit/test_config.py::test_own_data_dir_validation` (w magazynie,
   zagnieżdżony z folderem innego projektu, nieistniejący → odrzucone),
   `tests/unit/test_scheduler.py::test_own_scan_planned_and_pruned`,
   `tests/integration/test_jobs.py::test_own_scan_request_joins_waiting_run`
-  (przy trwającym przebiegu najwyżej jeden czekający, zmiana sprzed
-  zlecenia w wyniku),
+  (przy trwającym przebiegu zlecenie projektu dołącza do czekającego
+  przebiegu globalnego albo do czekającego przebiegu tego projektu,
+  zmiana sprzed zlecenia w wyniku),
   `tests/integration/test_state.py` bez zmian (baza stanu nietknięta).
-- **Zależności:** 2, 3, 7a. **Równolegle:** 4, 5a–5c, 6.
+- **Zależności:** 2, 3, 7a. **Równolegle:** 4, 5a1–5c, 6.
 
 ### 8. Migawki
-- **Cel:** `check_snapshot` i `make_snapshot` (decyzja 9), dokument
-  `archiwista-snapshot/1`, zadanie `snapshot` (proces roboczy, klucz
-  konfliktu, wynik i kody błędów), zapis migawki w indeksie po
-  publikacji, katalog roboczy kopii SQLite w lokalnym katalogu danych
-  (`AppPaths.snapshot_work_dir`, czyszczony przy starcie).
+- **Cel:** `check_snapshot` i `make_snapshot` (decyzja 9: folder ważny,
+  kopia SQLite według trzech stanów, pliki `0444` przed publikacją,
+  katalog `0555` po niej, `chmod` i `fsync` katalogu odrzucone przez
+  system plików jako ostrzeżenia), dokument `archiwista-snapshot/1`,
+  zadanie `snapshot` (proces roboczy, klucz konfliktu, wynik, ostrzeżenia
+  i kody błędów), zapis migawki w indeksie po publikacji (najlepszym
+  wysiłkiem — brakujący wpis dopisuje skan), pliki robocze kopii SQLite
+  w katalogu roboczym procesu z kroku 1.
 - **Pliki:** `archiwista/owndata/{snapshots,document}.py`,
-  `archiwista/jobs/{protocol,worker,supervisor}.py`, `archiwista/config.py`,
-  `archiwista/index/writer.py`, `archiwista/messages.py`.
+  `archiwista/jobs/{protocol,worker,supervisor}.py`,
+  `archiwista/index/writer.py`, `archiwista/texts/owndata.py`.
 - **Interfejs:** umowa „Migawki”.
 - **Test/odbiór:** `tests/integration/test_snapshots.py`:
   `test_gpkg_open_for_editing_snapshot_is_consistent` (kryterium 7:
   `GpkgEditor` w WAL — zatwierdzone ramki w `-wal` i otwarta transakcja;
   kopia `PRAGMA integrity_check` = `ok`, wiersze zatwierdzone są,
   niezatwierdzone nie, pyogrio czyta kopię, poza `.wersje/` folder bez
-  zmian), `test_interrupted_snapshot_leaves_no_partial_version`
+  zmian), `test_wal_without_shm_snapshot_has_committed_rows` (stan (c):
+  wiersze tylko z `-wal` są w kopii, w folderze nie powstaje `-shm`),
+  `test_interrupted_snapshot_leaves_no_partial_version`
   (kryterium 8: przerwanie w każdej fazie — kopia, sumy, `migawka.json`,
   przed `rename` — przez `fault`, SIGINT i SIGKILL procesu roboczego;
   brak nowej etykiety w `.wersje/`, indeks bez nowej migawki,
-  pozostałość tylko w `.incoming/`),
+  pozostałość tylko w `.incoming/`; SIGKILL tuż po `rename` → kompletna
+  migawka z plikami tylko do odczytu, którą dopisuje następny `own_scan`),
   `test_same_content_makes_no_second_snapshot` (kryterium 9: drugi raz
   bez zmian → `unchanged` z etykietą pierwszej; GeoPackage po VACUUM
   i punkcie kontrolnym → `unchanged`; A → B → A → `_2`),
   `test_fileset_changing_during_copy_retries_then_fails`,
   `test_read_only_folder_blocked`, `test_insufficient_space_blocked`,
-  `test_second_snapshot_of_file_conflicts`, `test_published_files_read_only`,
+  `test_default_folder_inside_store_is_refused` (`snapshot_blocked`
+  z powodem `folder_invalid`, magazyn bez zmian),
+  `test_second_snapshot_of_file_conflicts`, `test_published_files_read_only`
+  (pliki `0444` już w chwili `rename`, katalog `0555` po nim),
+  `test_chmod_and_directory_fsync_errors_are_notices` (`EPERM` z `chmod`
+  i `EINVAL` z `fsync` katalogu → migawka `created` z ostrzeżeniami),
   `test_document_validates_and_sums_match`.
-- **Zależności:** 7a, 7b. **Równolegle:** 5a–5c, 6, 10, 11, 12a.
+- **Zależności:** 7a, 7b. **Równolegle:** 5a1–5c, 6, 10, 11, 12a.
 
-### 9. Dane własne i migawki przez HTTP i CLI; `project.write`
-- **Cel:** trasy danych własnych z umowy API (lista, skan, folder danych,
-  karta, podglądy pliku roboczego i migawek, plan migawki, migawka),
-  rozstrzyganie `file:`/`snapshot:` w `ObjectResolver` (plik roboczy:
-  stan sprzed i po renderowaniu, zmiana od skanu → `409
-  own_file_changed`), akcja `project.write`, filtr `project` w `/slots`
-  i `/map/footprints`, `project` w `GET /jobs`, `own_data` w `/health`,
-  polecenia `files`, `file`, `snapshot`.
-- **Pliki:** `archiwista/api/owndata.py`, `archiwista/api/models.py`,
-  `archiwista/api/{slots,map,jobs,health}.py`, `archiwista/app.py`,
-  `archiwista/auth/authorize.py`, `archiwista/refs.py`,
+### 9. Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań
+- **Cel:** trasy danych własnych z umowy API (lista, skan folderu
+  projektu, folder danych, karta, podglądy pliku roboczego i migawek, plan
+  migawki, migawka), rozstrzyganie `file:`/`snapshot:` w `ObjectResolver`
+  (plik roboczy: stan sprzed i po renderowaniu, zmiana od skanu → `409
+  own_file_changed`; plik SQLite w stanie (b) albo (c) — podgląd z kopii
+  spójnej `source.gpkg`, decyzja 8), akcja `project.write`, widoczność
+  zadań z danymi projektu w `/jobs`, `/jobs/{id}` i `/jobs/{id}/events`
+  (umowa „Zadania”), filtr `project` w `/slots`, `/map/footprints`
+  i `GET /jobs`, `own_data` w `/health`, polecenia `files`, `file`,
+  `snapshot` i `own-scan`.
+- **Pliki:** `archiwista/api/owndata.py`, `archiwista/api/models_owndata.py`,
+  `archiwista/api/models.py` (`JobFilters.project`, `Health.own_data`),
+  `archiwista/api/{slots,map,jobs,health}.py`, `archiwista/app.py`
+  (jedna linia), `archiwista/auth/authorize.py`, `archiwista/refs.py`,
   `archiwista/services/owndata.py`, `archiwista/index/queries.py`,
-  `archiwista/reader.py`, `archiwista/jobs/foreground.py`,
-  `archiwista/cli.py`, `archiwista/messages.py`.
+  `archiwista/jobs/supervisor.py` (zakres widoczności zadań),
+  `archiwista/errors.py` (`OwnFileChangedError`, `SnapshotBlockedError`),
+  `archiwista/api/errors.py` (ich `409 own_file_changed`
+  i `409 snapshot_blocked`), `archiwista/commands/owndata.py`,
+  `archiwista/jobs/foreground.py`, `archiwista/cli.py` (jedna linia),
+  `archiwista/texts/owndata.py`.
 - **Interfejs:** umowa API (wiersze kroku 9), `SnapshotPlan`, CLI
   z decyzji 11; trasy nie filtrują same — `visible_projects` i `Authorizer`
-  jak w v0.1.
+  jak w v0.1, także w trasach zadań.
 - **Test/odbiór:** `tests/integration/test_own_data_api.py`
   (`test_folder_with_gpkg_shp_geotiff_indexed_with_extent_and_preview` —
   kryterium 6 przez HTTP: karta, miniatura, kafle GeoTIFF, obiekty
@@ -1200,19 +1663,28 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   data-dir` przez nie-admina → `403`), `tests/unit/test_authorize.py::test_project_write_matrix`,
   `tests/integration/test_permissions_api.py::test_own_data_visibility_matrix`
   (każda nowa trasa z projektem, `file:`/`snapshot:` w podglądach
-  i `/compare`, filtr `project`: niewidoczny → `404`, migawka bez
-  `project.write` → `403`, bez CSRF → `403 csrf_rejected`, tryb lokalny
-  może wszystko), `tests/integration/test_cli.py::test_own_data_cli_equals_http`,
-  `tests/integration/test_agent_flow.py::test_agent_snapshot_flow` (token →
-  sesja → plan → migawka → SSE zadania → karta).
-- **Zależności:** 6, 7b, 8. **Równolegle:** 10, 11, 12a.
+  i `/compare`, filtr `project`; zadania: `GET /jobs` z `project=` i bez,
+  `/jobs/{id}` i `/jobs/{id}/events` zadania `snapshot` (z `note`),
+  zadania `preview` z `file:` i mieszanego (`version:` i `file:` — tylko
+  widoczne `refs` i `failed[]`) oraz `own_scan` projektu: niewidoczny →
+  brak na liście albo `404`; migawka bez `project.write` → `403`, bez
+  CSRF → `403 csrf_rejected`, tryb lokalny może wszystko),
+  `tests/integration/test_preview_security.py::test_failure_message_carries_no_other_projects_path`
+  (dwa projekty z tymi samymi uszkodzonymi bajtami: powód i komunikat bez
+  ścieżki pierwszego projektu) i `::test_store_and_own_folder_unchanged_after_previews`
+  rozszerzony o folder danych własnych (pliki SQLite w trzech stanach),
+  `tests/integration/test_cli.py::test_own_data_cli_equals_http` (także
+  `own-scan`), `tests/integration/test_agent_flow.py::test_agent_snapshot_flow`
+  (token → sesja → plan → migawka → SSE zadania → karta).
+- **Zależności:** 6, 7b, 8. **Równolegle:** 10, 11, 12a, 12b.
 
 ### 10. Porównanie metadanych
 - **Cel:** `services/compare.py` i `GET /compare` (decyzja 10, poziom 1),
   `archiwista compare REF REF`.
 - **Pliki:** `archiwista/services/compare.py`, `archiwista/api/compare.py`,
-  `archiwista/api/models.py`, `archiwista/app.py`, `archiwista/reader.py`,
-  `archiwista/messages.py`.
+  `archiwista/api/models_compare.py`, `archiwista/app.py` (jedna linia),
+  `archiwista/commands/compare.py`, `archiwista/cli.py` (jedna linia),
+  `archiwista/texts/compare.py`, `archiwista/messages.py` (jedna linia).
 - **Interfejs:** model `Comparison` z umowy API.
 - **Test/odbiór:** `tests/integration/test_compare.py` (dwie wersje
   jednego slotu: daty, kampania, `sha256`, rozmiar różne, pola surowego
@@ -1220,36 +1692,51 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   plikiem roboczym: liczby obiektów, pola dodane i usunięte, zasięg;
   ta sama treść → `same_content`; zły `ref` → `422 invalid_ref`;
   niewidoczny projekt → `404`), `tests/integration/test_cli.py::test_compare_cli_equals_http`.
-- **Zależności:** 6; strony danych własnych po 9. **Równolegle:** 11, 12a,
-  12b.
+- **Zależności:** 6; strony danych własnych po 9. **Równolegle:** 5a2,
+  5a3, 8, 11, 12a, 12b.
 
-### 11. Warstwy lokalne i miniatury warstw
+### 11. Warstwy lokalne, miniatury i kafle warstw
 - **Cel:** `services/layers.py` i `GET /local-layers` (decyzja 7):
-  grupowanie wersji slotów obszaru po segmencie i roku danych, wydaniu
-  albo etykiecie (`group=campaign` — po kampanii), odświeżenie widoku
-  wspólnym pomocnikiem z `/local-coverage` (pamięć 60 s dla tej samej
-  pary obszaru i segmentu), pokrycie lokalne warstwy w układzie płaskim,
+  grupowanie wersji slotów obszaru po wariancie bez formatu plików
+  (A-ADR-017: `product`, `horizontal_crs`, `resolution`, `vertical_crs`;
+  segment, gdy któregoś pola brak; formaty jako plakietki) i po roku
+  danych, wydaniu albo etykiecie (`group=campaign` — po kampanii),
+  odświeżenie widoku wspólnym pomocnikiem z `/local-coverage` (pamięć
+  60 s dla tej samej pary obszaru i segmentu; warstwa wariantu odświeża
+  każdy swój segment), pokrycie lokalne warstwy w układzie płaskim,
   obrysy w kadrze, stan podglądów warstwy z jednym zadaniem `preview`
   na brakujące, `GET /local-layers/thumbnail.png` (parametr `v` = skrót
-  gotowych treści, więc adres zmienia się, gdy dojdą podglądy), warstwy
-  pliku własnego (`GET /projects/{project}/files/{file_id}/layers`: plik
-  roboczy na górze, migawki od najnowszej, kadr = suma zasięgów),
-  `archiwista layers`.
+  gotowych treści, więc adres zmienia się, gdy dojdą podglądy),
+  `GET /local-layers/tiles/{z}/{x}/{y}.png` (kafel warstwy z operacji
+  `layer_tile`, `minzoom` warstwy — decyzja 7), warstwy pliku własnego
+  (`GET /projects/{project}/files/{file_id}/layers`: plik roboczy na górze,
+  migawki od najnowszej, kadr = suma zasięgów), `archiwista layers`
+  z `--thumbnail KLUCZ [--size N] --output PLIK.png`.
 - **Pliki:** `archiwista/services/layers.py`, `archiwista/api/layers.py`,
-  `archiwista/api/models.py`, `archiwista/api/areas.py` (wspólny pomocnik
-  odświeżenia), `archiwista/app.py`, `archiwista/reader.py`.
-- **Interfejs:** `LayerSet` z umowy API; operacja `layer_thumbnail`
-  rendererów 5a/5b.
+  `archiwista/api/models_layers.py`, `archiwista/api/areas.py` (wspólny
+  pomocnik odświeżenia), `archiwista/app.py` (jedna linia),
+  `archiwista/commands/layers.py`, `archiwista/cli.py` (jedna linia),
+  `archiwista/texts/layers.py`, `archiwista/messages.py` (jedna linia).
+- **Interfejs:** `LayerSet` z umowy API; operacje `layer_thumbnail`
+  i `layer_tile` z kroku 5a3.
 - **Test/odbiór:** `tests/integration/test_local_layers.py`
   (`test_layers_by_data_year_never_download_year`,
   `test_layers_by_edition_without_year`, `test_group_by_campaign`,
+  `test_two_formats_of_one_variant_make_one_layer` — segmenty ASC
+  i ASCII-NMT tego samego produktu, układów i rozdzielczości: jedna
+  warstwa z `formats`, liczniki bez podwojenia,
+  `test_variant_falls_back_to_segment_without_metadata`,
   `test_layer_coverage_planar`, `test_outlines_in_frame_crs`,
   `test_refresh_before_answer_and_stale_when_disconnected`,
   `test_layer_thumbnail_partial_then_full_after_build`,
-  `test_without_area_counts_only`, `test_own_file_layers_current_first`),
-  `tests/integration/test_cli.py::test_layers_cli_equals_http`.
-- **Zależności:** 3, 5a, 5b, 6; warstwy migawek po 9. **Równolegle:** 10,
-  12a.
+  `test_layer_tile_composes_version_tiles` — kafel na styku dwóch
+  arkuszy ma piksele obu, wersje bez podglądu są przezroczyste, poniżej
+  `minzoom` → `404`, `test_without_area_counts_only`,
+  `test_own_file_layers_current_first`),
+  `tests/integration/test_cli.py::test_layers_cli_equals_http` (także
+  `--thumbnail`).
+- **Zależności:** 3, 5a1, 5b, 6; odbiór miniatur i kafli warstw po 5a3;
+  warstwy migawek po 9. **Równolegle:** 5a2, 5a3, 10, 12a.
 
 ### 12a. Interfejs: podgląd w Karcie pliku i ustawienia pamięci
 - **Cel:** zakładka „Podgląd” Karty pliku dla wersji (miniatura przez
@@ -1276,9 +1763,11 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
 - **Cel:** `transformRequest` w `map/canvas.js`; podgląd wersji na mapie
   (przycisk „Pokaż podgląd na mapie” w Karcie pliku: kafle wersji w jej
   granicach i obrys); warstwy lat z `/local-layers` jako przyciski lat na
-  mapie (SPEC 6.1), wybrana warstwa = obrysy jej wersji i ich kafle
-  (≤ 200 w widoku, powyżej obrysy i „Przybliż, aby zobaczyć podgląd”);
-  legenda podglądu w legendzie mapy; wybór warstwy w adresie (`layer`).
+  mapie (SPEC 6.1), wybrana warstwa = obrysy jej wersji i jedno źródło
+  rastrowe z kafli warstwy (`/local-layers/tiles`, decyzja 7; poniżej
+  `minzoom` warstwy same obrysy i „Przybliż, aby zobaczyć podgląd”);
+  obiekty wektora w widoku z `zoom` mapy (decyzja 4); legenda podglądu
+  w legendzie mapy; wybór warstwy w adresie (`layer`).
 - **Pliki:** `archiwista/web/src/map/{canvas,previews,legend,panel}.js`,
   `archiwista/web/src/views/{map,file}.js`, `archiwista/web/src/api.js`,
   `archiwista/web/src/labels/{map,file}.js`, `archiwista/web/src/map/map.css`.
@@ -1286,42 +1775,59 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
 - **Test/odbiór:** `tests/e2e/test_map_previews.py`
   (`test_version_tiles_on_map_with_csrf_header`,
   `test_year_buttons_select_layer_and_tiles`,
-  `test_more_than_200_versions_show_outlines_and_hint`,
+  `test_year_layer_is_one_raster_source`,
+  `test_below_layer_minzoom_outlines_and_hint`,
   `test_layer_in_url_restores_view`, `test_no_csp_violations_map_previews`);
   `tests/e2e/test_map.py` bez regresji.
 - **Zależności:** 11, 12a. **Równolegle:** 9, 10.
 
-### 13. Interfejs: Wachlarz, Oś czasu, Szczegóły zestawu
+### 13a. Interfejs: przełącznik widoków i Wachlarz
 - **Cel:** przełącznik „Mapa / Wachlarz / Katalog” nad środkiem (Katalog =
   ten sam stan co `view=catalog`); Wachlarz (`mode=fan`) jako komponent
   SVG z układem z mockupu (`mockup/src/fan.js`): miniatury warstw na łuku,
   najnowsza na górze, każda w całości we własnym miejscu, wybrana
   powiększona w łuku i duża obok, podpis: rok, „lokalnie N% obszaru”,
-  wariant, liczba kampanii, stan podglądu (A-ADR-018 z erratą 1, SPEC
-  5.4, 6.5 c), obrysy arkuszy z `outlines` na miniaturze; Oś czasu
-  w Katalogu (`layout=timeline`): lata na osi poziomej z latami bez danych,
-  wiersz = wariant (segment), słupek = pokrycie lokalne obszaru albo —
-  bez obszaru — liczba wersji (SPEC 6.5 b w wersji lokalnej); panel
-  „Szczegóły zestawu” (SPEC 6.1: tylko wybrana warstwa — wersje, kampanie
-  z datami, pokrycie lokalne, „Pokaż na mapie”, arkusze → Karta pliku;
-  „Porównaj z…” dodaje krok 14; bez działań pobierania przed v0.3); jeden
-  wybór zsynchronizowany w mapie, Wachlarzu, Osi czasu, panelu i adresie;
-  klawiatura (`Enter`, `Spacja`, strzałki) i ARIA; szerokie ekrany (≥ 2000
-  px środka — Wachlarz albo Katalog obok mapy) i telefon.
+  wariant z plakietkami formatów, liczba kampanii, stan podglądu (A-ADR-018
+  z erratą 1, SPEC 5.4, 6.5 c), obrysy arkuszy z `outlines` na miniaturze;
+  wybór warstwy zsynchronizowany z mapą i adresem (`layer`); klawiatura
+  (`Enter`, `Spacja`, strzałki) i ARIA Wachlarza; szerokie ekrany (≥ 2000
+  px środka — Wachlarz obok mapy) i telefon.
 - **Pliki:** `archiwista/web/src/fan/{layout,fan}.js`,
-  `archiwista/web/src/views/{map,catalog,catalog-timeline,set-details}.js`,
-  `archiwista/web/src/labels/{fan,timeline,map,catalog}.js`, style
-  `fan.css`, `timeline.css`.
+  `archiwista/web/src/views/map.js`, `archiwista/web/src/labels/{fan,map}.js`,
+  `fan.css`.
 - **Interfejs:** umowa WWW; `LayerSet` z kroku 11.
-- **Test/odbiór:** `tests/e2e/test_fan_timeline.py`
+- **Test/odbiór:** `tests/e2e/test_fan.py`
   (`test_fan_newest_on_top_and_no_overlap`,
   `test_selected_layer_fully_visible_and_enlarged`,
-  `test_selection_syncs_map_fan_timeline_panel_and_url`,
-  `test_fan_keyboard_selection`, `test_timeline_shows_years_without_data`,
-  `test_timeline_bar_height_is_local_coverage`,
-  `test_wide_3440_fan_beside_map`, `test_phone_390_layout`), zrzuty
-  1440, 3440 i 390 px w raporcie.
+  `test_fan_selection_syncs_map_and_url`, `test_fan_keyboard_selection`,
+  `test_wide_3440_fan_beside_map`, `test_phone_390_fan`), zrzuty 1440,
+  3440 i 390 px w raporcie.
 - **Zależności:** 11, 12a, 12b. **Równolegle:** 14, 15, 16.
+
+### 13b. Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór
+- **Cel:** Oś czasu w Katalogu (`layout=timeline`): lata na osi poziomej
+  z latami bez danych, wiersz = wariant (bez formatu plików, z plakietkami
+  formatów — A-ADR-017), słupek = pokrycie lokalne obszaru albo — bez
+  obszaru — liczba wersji (SPEC 6.5 b w wersji lokalnej); panel
+  „Szczegóły zestawu” (SPEC 6.1: tylko wybrana warstwa — wersje, kampanie
+  z datami, formaty, pokrycie lokalne, „Pokaż na mapie”, arkusze → Karta
+  pliku; „Porównaj z…” dodaje krok 14; bez działań pobierania przed v0.3);
+  jeden wybór zsynchronizowany w mapie, Wachlarzu (13a), Osi czasu, panelu
+  i adresie; klawiatura i ARIA Osi czasu; szerokie ekrany (Katalog obok
+  mapy) i telefon.
+- **Pliki:** `archiwista/web/src/views/{catalog,catalog-timeline,set-details}.js`,
+  `archiwista/web/src/labels/{timeline,catalog}.js`, `timeline.css`;
+  w `views/map.js` i `fan/fan.js` tylko podłączenie panelu do wspólnego
+  wyboru.
+- **Interfejs:** umowa WWW; `LayerSet` z kroku 11; wybór z kroku 13a.
+- **Test/odbiór:** `tests/e2e/test_timeline.py`
+  (`test_timeline_shows_years_without_data`,
+  `test_timeline_bar_height_is_local_coverage`,
+  `test_two_formats_one_timeline_row`,
+  `test_selection_syncs_map_fan_timeline_panel_and_url`,
+  `test_timeline_keyboard_selection`, `test_wide_3440_catalog_beside_map`,
+  `test_phone_390_timeline_and_panel`), zrzuty w raporcie.
+- **Zależności:** 13a. **Równolegle:** 14, 15, 16.
 
 ### 14. Interfejs: Porównanie i kurtyna
 - **Cel:** widok `compare` (decyzja 10): tabela różnic z przełącznikiem
@@ -1330,11 +1836,11 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   i strzałkami), przenikanie (suwak), dwa widoki obok siebie
   zsynchronizowane; strony: `ref` (wersja, plik roboczy, migawka) albo
   warstwa lat (`a_layer`, `b_layer` z `/local-layers`); wejścia: „Porównaj
-  z…” w Karcie pliku (wybór innej wersji slotu) i — po kroku 13 —
+  z…” w Karcie pliku (wybór innej wersji slotu) i — po kroku 13b —
   w panelu „Szczegóły zestawu” (druga warstwa lat).
 - **Pliki:** `archiwista/web/src/views/compare.js`,
   `archiwista/web/src/map/compare.js`, `archiwista/web/src/views/file.js`,
-  `archiwista/web/src/views/set-details.js` (po kroku 13),
+  `archiwista/web/src/views/set-details.js` (po kroku 13b),
   `archiwista/web/src/routes.js` (jedna linia),
   `archiwista/web/src/labels/compare.js`, `compare.css`.
 - **Interfejs:** umowa WWW; `Comparison` (10), `PreviewInfo` (6),
@@ -1344,16 +1850,16 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   `test_curtain_drag_reveals_b`, `test_fade_slider_changes_opacity`,
   `test_side_by_side_maps_stay_in_sync`, `test_two_year_layers_compared`,
   `test_csv_export_matches_table`, `test_no_csp_violations_compare`).
-- **Zależności:** 10, 12b. **Równolegle:** 13, 15, 16.
+- **Zależności:** 10, 12b. **Równolegle:** 13a, 13b, 15, 16.
 
 ### 15. Interfejs: dane własne i migawki
 - **Cel:** w widoku projektu grupa „Dane własne” obok zadań producentów
   (folder i jego stan, liczba plików, zajętość, zajętość migawek, lista
-  plików ze stanem zmiany, „Odśwież” → `own_scan` z postępem, dla
+  plików ze stanem zmiany, „Odśwież” → `own_scan` projektu z postępem, dla
   administratora „Zmień folder danych…”); nakładka `own=` (karta pliku
   własnego: metadane, warstwy i schemat, zasięg, oś wersji — plik roboczy
   i migawki, „zmieniony od migawki z …”, historia stanów, podgląd,
-  „Pokaż na mapie”, „Porównaj z migawką…”, „Wachlarz migawek” z kroku 13
+  „Pokaż na mapie”, „Porównaj z migawką…”, „Wachlarz migawek” z kroku 13a
   na `LayerSet` pliku); „Zrób migawkę…” jako „Okno planu” (SPEC 6.1: plik,
   rozmiar, miejsce, metoda kopii, „tylko przyrost”, informacja „bez zmian
   od migawki z …”, pole opisu, „Anuluj” / „Zrób migawkę”) → zadanie
@@ -1361,7 +1867,8 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   (`project=`): warstwa „Dane własne” (zasięgi plików, obiekty albo kafle
   wybranego) i obrysy wersji przypiętych w projekcie.
 - **Pliki:** `archiwista/web/src/views/{projects,own}.js`,
-  `archiwista/web/src/map/{own,canvas}.js`, `archiwista/web/src/views/map.js`,
+  `archiwista/web/src/map/{own,canvas}.js`, `archiwista/web/src/views/map.js`
+  (jedna linia rejestracji warstwy — w tej fali `map.js` zmienia krok 13a),
   `archiwista/web/src/routes.js` (jedna linia), `archiwista/web/src/api.js`,
   `archiwista/web/src/labels/{own,projects}.js`, `own.css`.
 - **Interfejs:** umowa WWW; trasy kroków 9 i 11.
@@ -1373,8 +1880,8 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   `test_snapshot_fan_current_on_top`,
   `test_compare_snapshot_with_current`,
   `test_data_dir_change_admin_only`, `test_no_csp_violations_own_data`).
-- **Zależności:** 9, 12a; Wachlarz migawek po 13, „Porównaj” po 14.
-  **Równolegle:** 13, 14, 16.
+- **Zależności:** 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14.
+  **Równolegle:** 13a, 13b, 14, 16.
 
 ### 16. Wydajność i pomiary (z płynnością mapy na GPU)
 - **Cel:** zmierzyć cele SPEC 4.5 (regresja z obrysami-wielokątami) i cele
@@ -1384,8 +1891,10 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   tryb bramki `ARCHIWISTA_REQUIRE_GPU=1` (WebGL programowy → błąd zamiast
   pominięcia), przesuwanie jak w v0.1 (rysowanie ramek przez
   `requestAnimationFrame`) przy 4500–5000 obrysach — także z podglądem
-  roku włączonym (informacyjnie); pomiar SMB dla pierwszego kafla
-  i COG z magazynu na udziale; pamięć serwera i procesów renderujących.
+  roku włączonym (informacyjnie); widok roku z 200 arkuszy z kafli warstwy
+  w pamięci; budowa COG z `n` procesami (arkusz SM5 JPEG, rok ASC, rok
+  ortofoto CZ); pomiar SMB dla pierwszego kafla i COG z magazynu na
+  udziale; pamięć serwera i procesów renderujących.
   Jeśli cel nie jest spełniony: pomiar składowych (czas JS, liczba
   wierzchołków, styl warstw), poprawka i ponowny pomiar — bez obniżania
   progów.
@@ -1401,7 +1910,7 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   z dostępem do GPU; raport: sprzęt, sterownik i renderer WebGL, wersje,
   warunki, p95, klatki/s i p95 klatki, RSS, rozmiar indeksu i pamięci
   podglądów, każdy cel z decyzji 12 z oceną.
-- **Zależności:** 3, 6, 7b, 8, 11, 12b. **Równolegle:** 13–15, 17.
+- **Zależności:** 3, 6, 7b, 8, 11, 12b. **Równolegle:** 13a–15, 17.
 
 ### 17. E2E i odbiór v0.2
 - **Cel:** przejście odbiorcze na prawdziwym `archiwista serve`
@@ -1433,16 +1942,22 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
   indeksu po aktualizacji przez nową wersję schematu i pełny skan przy
   starcie), `docs/USAGE.md` (Wachlarz, Oś czasu, Porównanie, dane własne
   i migawki ze zrzutami), `docs/AGENT_API.md` (`ref`, podglądy z CSRF,
-  `preview --output`, porównanie, warstwy, dane własne, plan i migawka,
-  kody błędów), `docs/ARCHITECTURE.md` (nowe moduły, procesy, dane
-  lokalne, przepływy, bezpieczeństwo, punkty rozszerzeń), SPEC (4.5 —
-  wiersze v0.2; 4.7.1 — nazwy, schemat, problem w projekcie zamiast
-  „Magazynu”; 5.1 — renderowanie poza serwerem; 5.7 — tabela z decyzji 5;
-  9.2 — nowe trasy; 10.1 — sandbox i dostarczanie podglądów; 13 —
-  bramka v0.2), `docs/DECISIONS.md` (erraty: A-ADR-008 — procesy
-  renderujące, wymuszona operacja w kaflach, dostarczanie przez API;
-  A-ADR-027 — nazwy i `archiwista-snapshot/1`; A-ADR-029 —
-  `project.write`), `docs/SCOPE.md` (bramka etapu 3), `docs/PROGRESS.md`;
+  `preview --output`, porównanie, warstwy z `--thumbnail`, dane własne,
+  `own-scan`, plan i migawka, kody błędów), `docs/ARCHITECTURE.md` (nowe
+  moduły, procesy, dane lokalne, przepływy, bezpieczeństwo, punkty
+  rozszerzeń; sekcja 7 — widoczność zadań z danymi projektu zamiast „trasy
+  zadań nie filtrują projektów”), SPEC (4.5 — wiersze v0.2; 4.7.1 — nazwy,
+  schemat, problem w projekcie zamiast „Magazynu”, folder danych
+  ustawiany przez administratora, sprawdzanie folderu domyślnego, trzy
+  stany SQLite; 5.1 — renderowanie poza serwerem; 5.7 — tabela z decyzji
+  5; 9.2 — nowe trasy; 10.1 — sandbox (jawne sterowniki, `EMPTY_DIR`,
+  `GDAL_PAM_ENABLED=NO`) i dostarczanie podglądów; 13 — bramka v0.2),
+  `docs/DECISIONS.md` (erraty: A-ADR-008 — procesy renderujące, wymuszona
+  operacja w kaflach, kafel warstwy składany z kafli wersji, dostarczanie
+  przez API; A-ADR-027 — nazwy i `archiwista-snapshot/1`; A-ADR-029 —
+  `project.write`; erraty zapisane przy przeglądzie planu — A-ADR-008
+  errata 3 i A-ADR-029 errata 1 — poprawiane tylko wtedy, gdy wykonanie od
+  nich odeszło), `docs/SCOPE.md` (bramka etapu 3), `docs/PROGRESS.md`;
   wersja pakietu 0.2.0; raport bramki w
   `docs/reports/v0.2-measurements.md`.
 - **Interfejs:** dokumentacja wyników kroków 3–17; bez opisu
@@ -1459,8 +1974,8 @@ rendererów, `RUNNERS`, `include_router`, `VIEWS`/`OVERLAYS`) i podniesieniem
 
 | Kryterium SPEC 13 v0.2 | Dowód wymagany przed zamknięciem v0.2 (krok-właściciel) |
 |---|---|
-| 1. Każdy typ pliku przykładowego magazynu ma podgląd albo podany powód braku | `tests/integration/test_preview_coverage.py::test_every_store_file_type_has_preview_or_reason` (6; magazyn testowy z rodzinami kroku 2: każda wersja ma `PreviewInfo` w stanie `ready` z dekodowalną miniaturą albo `unavailable`/`needs_build` ze znanym kodem `reason` i polskim opisem; po `POST …/preview` każde `needs_build` ≤ 2 GB kończy się `ready`), `tests/integration/test_live_previews.py::test_live_store_file_types_have_preview_or_reason` (17; `-m live` na magazynach testu na żywo Kartografa 0.8.0; tabela rozszerzenie → wynik w raporcie: `tif`, `gpkg`, `jgw`, `asc`, `zip`, `png`, `laz`, `jpg`) i `tests/integration/test_own_data_api.py::test_own_file_types_have_preview_or_reason` (9; dane własne). |
-| 2. Obrysy CZ zgodne z rzeczywistością (punkt kontrolny na styku PL/CZ, odchyłka ≤ 2 m) | `tests/integration/test_cz_control_point.py` z punktem 3722 (decyzja 4): `::test_cz_outline_vertex_within_2_m` (3; wierzchołek obrysu w `/map/footprints`), `::test_cz_preview_tile_within_2_m` (5a; kafel z = 19), `::test_cz_features_within_2_m` (5b; obiekt w `features`); odchyłki zapisane w raporcie. |
+| 1. Każdy typ pliku przykładowego magazynu ma podgląd albo podany powód braku | `tests/integration/test_preview_coverage.py::test_every_store_file_type_has_preview_or_reason` (6; magazyn testowy z rodzinami kroku 2, także z wersją bez `sha256` w sidecarze: każda wersja ma `PreviewInfo` w stanie `ready` z dekodowalną miniaturą albo `unavailable`/`needs_build` ze znanym kodem `reason` i polskim opisem; po `POST …/preview` każde `needs_build` ≤ 2 GB kończy się `ready`), `tests/integration/test_live_previews.py::test_live_store_file_types_have_preview_or_reason` (17; `-m live` na magazynach testu na żywo Kartografa 0.8.0; tabela rozszerzenie → wynik w raporcie: `tif`, `gpkg`, `jgw`, `asc`, `zip`, `png`, `laz`, `jpg`) i `tests/integration/test_own_data_api.py::test_own_file_types_have_preview_or_reason` (9; dane własne). |
+| 2. Obrysy CZ zgodne z rzeczywistością (punkt kontrolny na styku PL/CZ, odchyłka ≤ 2 m) | `tests/integration/test_cz_control_point.py` z punktem 3722 (decyzja 4): `::test_cz_outline_vertex_within_2_m` (3; wierzchołek obrysu w `/map/footprints`), `::test_cz_preview_tile_within_2_m` (5a1 — GeoTIFF, 5a2 — JPEG z georeferencją z obrysu nagłówkowego przez lokalny COG; kafel z = 19), `::test_cz_features_within_2_m` (5b; obiekt w `features`); odchyłki zapisane w raporcie. |
 | 3. Ten sam plik nie jest przeliczany drugi raz | `tests/integration/test_preview_cache.py::test_same_content_rendered_once` (6; dwie wersje o tym samym `sha256`, powtórzenia, restart serwera — liczba żądań procesów renderujących bez zmian) i `tests/integration/test_jobs.py::test_preview_build_joins_running_job` (4; druga budowa tej samej treści dołącza do zadania, zbudowany COG nie powstaje ponownie). |
 | 4. Limit pamięci podglądów przestrzegany | `tests/integration/test_preview_cache.py::test_cache_limit_evicts_least_recently_used` i `::test_cache_limit_holds_with_builds` (4; limit 1 MB, suma ≤ limit po każdym zapisie, usuwane najdawniej używane, chronione w budowie) i zajętość pamięci w pomiarach kroku 16. |
 | 5. Mapa z 5000 obrysów płynna (≥ 30 klatek/s na komputerze odniesienia) | `tests/perf/test_store_50k.py::test_store_50k_map_5000_outlines_frame_rate` (16; `-m perf`, `ARCHIWISTA_REQUIRE_GPU=1`, renderer WebGL sprzętowy; obrysy-wielokąty z kroku 3; średnio ≥ 30 klatek/s przy 4500–5000 obrysach; p95 klatki i renderer w raporcie). Bez dostępu do GPU (decyzja 1) — kryterium niezamknięte. |
@@ -1474,11 +1989,11 @@ Zakres v0.2 i warunki ogólne (SPEC 11, 13 „Zakres”; A-ADR-029):
 
 | Obszar | Dowód (krok-właściciel) |
 |---|---|
-| Wachlarz i Oś czasu dla danych lokalnych | `tests/integration/test_local_layers.py` (11) i `tests/e2e/test_fan_timeline.py` (13: najnowsza na górze, miniatury bez nakładania, wybrana w całości i powiększona, wybór zsynchronizowany, lata bez danych, 1440, 3440 i 390 px). |
+| Wachlarz i Oś czasu dla danych lokalnych | `tests/integration/test_local_layers.py` (11: warianty bez formatu plików, kafle warstw) i `tests/e2e/test_fan.py` (13a: najnowsza na górze, miniatury bez nakładania, wybrana w całości i powiększona, 1440, 3440 i 390 px) oraz `tests/e2e/test_timeline.py` (13b: lata bez danych, słupek = pokrycie lokalne, wybór zsynchronizowany w mapie, Wachlarzu, Osi czasu, panelu i adresie). |
 | Porównanie metadanych i kurtyna (8.5, poziomy 1 i 2) | `tests/integration/test_compare.py` (10) i `tests/e2e/test_compare.py` (14: tabela różnic, kurtyna, przenikanie, widoki obok siebie, dwie warstwy lat). |
-| Uprawnienia danych własnych i migawek | `tests/unit/test_authorize.py::test_project_write_matrix` i `tests/integration/test_permissions_api.py::test_own_data_visibility_matrix` (9). |
-| Agent: HTTP = CLI | `tests/integration/test_cli.py::test_preview_cli_equals_http`, `::test_own_data_cli_equals_http`, `::test_compare_cli_equals_http`, `::test_layers_cli_equals_http` (6, 9–11) i `tests/integration/test_agent_flow.py::test_agent_snapshot_flow` (9). |
-| Bezpieczeństwo podglądów i odczytu danych własnych | `tests/integration/test_preview_security.py` (6), `tests/integration/test_render_pool.py::test_worker_env_has_no_network`, `::test_vrt_driver_refused`, `::test_timeout_kills_and_respawns_worker`, `::test_memory_limit_kills_worker` (4), `tests/unit/test_sandbox.py` (1) i `tests/integration/test_own_reader.py::test_data_folder_unchanged_after_reads` (7a). |
+| Uprawnienia danych własnych i migawek | `tests/unit/test_authorize.py::test_project_write_matrix` i `tests/integration/test_permissions_api.py::test_own_data_visibility_matrix` (9; także trasy zadań `/jobs`, `/jobs/{id}`, `/jobs/{id}/events` dla zadań `snapshot`, `preview` z `file:` i `own_scan` projektu). |
+| Agent: HTTP = CLI | `tests/integration/test_cli.py::test_preview_cli_equals_http`, `::test_own_data_cli_equals_http` (z `own-scan`), `::test_compare_cli_equals_http`, `::test_layers_cli_equals_http` (z `--thumbnail`) (6, 9–11) i `tests/integration/test_agent_flow.py::test_agent_snapshot_flow` (9). |
+| Bezpieczeństwo podglądów i odczytu danych własnych | `tests/contract/test_preview_stack.py` (1: VRT po `WarpedVRT`, nakładka `.ovr` z treścią VRT, `.aux.xml`, trzy stany SQLite), `tests/unit/test_sandbox.py` (1), `tests/integration/test_render_pool.py::test_worker_env_has_no_network`, `::test_vrt_refused_after_warpedvrt_in_same_worker`, `::test_timeout_kills_and_respawns_worker`, `::test_memory_limit_kills_worker` (4), `tests/integration/test_preview_security.py` (6 i 9: m.in. `::test_server_process_never_opens_data_files`, `::test_store_and_own_folder_unchanged_after_previews`, `::test_failure_message_carries_no_other_projects_path`) i `tests/integration/test_own_reader.py::test_data_folder_unchanged_after_reads` (7a: trzy stany SQLite). |
 | Regresja v0.1 (kryteria 1–9 v0.1, SPEC 4.5) | bramka `pytest` z testami v0.1, `tests/perf/test_store_50k.py` (16: skany, odświeżenie widoku, p95, RSS i indeks z obrysami-wielokątami) i `tests/integration/test_live_store.py` (`-m live`). |
 | Cele planu (decyzja 12) | `tests/perf/test_previews_perf.py` i `tests/perf/test_own_data_perf.py` (16); liczby z warunkami w `docs/reports/v0.2-measurements.md`. |
 | Dowód działania w przeglądarce (SPEC 11) | `tests/e2e/test_acceptance_v02.py::test_acceptance_v02_walkthrough` (17) na prawdziwym `archiwista serve`; zrzuty w `docs/reports/v0.2-screenshots/`. |
@@ -1498,27 +2013,40 @@ Zakres v0.2 i warunki ogólne (SPEC 11, 13 „Zakres”; A-ADR-029):
   wolniejszych kafli dla plików bez nakładek — dlatego COG z nakładkami
   (decyzja 6) i pomiary w kroku 16; próba kroku 1 rozstrzyga, zanim
   powstanie renderer.
-- **Spójny odczyt SQLite.** Otwarcie `mode=ro` bazy w WAL bez `-shm`,
-  blokady SQLite na udziale SMB i różnice zachowania QGIS. Ograniczenia:
-  kopia zapasowa do pliku lokalnego, `immutable=1` tylko bez `-wal` ze
-  stanem przed i po, `PRAGMA integrity_check`, próba w kroku 1. QGIS nie
-  jest zainstalowany na komputerze odniesienia: test odtwarza zapis QGIS
-  (WAL, otwarta transakcja); ręczna próba w QGIS — zalecana przy
-  odbiorze u użytkownika.
+- **Spójny odczyt SQLite.** `mode=ro` tworzy `-wal` i `-shm` obok bazy
+  w trybie WAL bez `-wal` oraz `-shm` przy `-wal` bez `-shm`, `immutable=1`
+  gubi wiersze z WAL, a GDAL w trybie odczytu przepisał WAL do pliku
+  głównego (sprawdzone 2026-10-19); do tego blokady SQLite na udziale SMB
+  i różnice zachowania QGIS. Ograniczenia: macierz trzech stanów
+  (decyzja 8) w jednym miejscu (`consistent_sqlite_read`), GDAL nigdy
+  w miejscu przy pliku `-wal`, kopia zapasowa do pliku lokalnego, stan
+  przed i po, `PRAGMA integrity_check`, próba w kroku 1. QGIS nie jest
+  zainstalowany na komputerze odniesienia: test odtwarza zapis QGIS (WAL,
+  otwarta transakcja, awaria bez `-shm`); ręczna próba w QGIS — zalecana
+  przy odbiorze u użytkownika.
 - **Koszt skrótu logicznego.** Odczyt wszystkich wierszy dużego
   GeoPackage przy każdej zmianie (skan, migawka). Ograniczenia: tylko pliki
   zmienione (stan pliku i `-wal`), skrót migawki liczony na jej kopii,
   pomiar w kroku 16 (cel: migawka 100 MB ≤ 15 s).
 - **Wyciek przez nowe powierzchnie.** Dane własne w podglądach,
-  porównaniu, warstwach, filtrze `project` i CLI. Ograniczenia: jeden
-  punkt przejścia `ref` → plik (`ObjectResolver`), zapytania z wymaganym
-  `visible`, dane własne poza `/slots` i `/map/footprints`, pamięć
-  podglądów bez nazw, macierz widoczności rozszerzona o każdą nową trasę
-  (krok 9).
+  porównaniu, warstwach, zadaniach (`snapshot` z opisem, `preview`
+  z `file:`), komunikatach bibliotek ze ścieżkami, filtrze `project` i CLI.
+  Ograniczenia: jeden punkt przejścia `ref` → plik (`ObjectResolver`),
+  zapytania z wymaganym `visible`, trasy zadań z widocznością (umowa
+  „Zadania”), dane własne poza `/slots` i `/map/footprints`, pamięć
+  podglądów bez nazw i ścieżek (komunikaty bez ścieżek, `unreadable`
+  w pamięci jako sam kod), macierz widoczności rozszerzona o każdą nową
+  trasę i o trasy zadań (krok 9).
 - **GDAL na niezaufanym wejściu.** Pliki użytkownika mogą zawieszać albo
-  wywracać biblioteki natywne i odsyłać do innych plików (VRT). Ograniczenia:
-  procesy z sandboxem, limity czasu i pamięci, `GDAL_SKIP`, brak sieci,
-  testy z uszkodzonymi plikami; serwer nie otwiera plików danych.
+  wywracać biblioteki natywne, odsyłać do innych plików (VRT, nakładka
+  `.ovr` z treścią VRT, tabela MapInfo łączona), zapisywać obok siebie
+  (`.aux.xml`) i być małe na dysku, a ogromne po rozpakowaniu. `GDAL_SKIP`
+  sam nie wystarcza — `WarpedVRT` przywraca sterownik VRT (sprawdzone).
+  Ograniczenia: jawny sterownik pliku głównego i
+  `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` (decyzja 3), `GDAL_PAM_ENABLED=NO`,
+  `GDAL_SKIP` jako druga linia, procesy z sandboxem, limity czasu
+  i pamięci, progi pikseli i wpisów ZIP przed odczytem, brak sieci, testy
+  z uszkodzonymi i podstawionymi plikami; serwer nie otwiera plików danych.
 - **Zależności natywne.** rio-tiler (numexpr, color-operations) i lazrs
   (Rust) to koła binarne; lock z sumami, `pip-audit` w bramce, licencje
   w kroku 1; Windows — v1.0.
@@ -1530,10 +2058,12 @@ Zakres v0.2 i warunki ogólne (SPEC 11, 13 „Zakres”; A-ADR-029):
 - **Przebudowa indeksu po aktualizacji.** Nowa wersja schematu (kroki 3
   i 7b) to pełny skan przy pierwszym starcie (SSD ok. 50 s, SMB ok. 4 min;
   pomiary v0.1); baza stanu bez zmian. Opis w CHANGELOG i README.
-- **Rozmiar pamięci podglądów i czas budowy.** Wachlarz wielu lat z
-  arkuszami ASC to setki budów COG. Ograniczenia: limit 20 GB z LRU, COG
-  ≤ 8192 px, jedna budowa na warstwę (≤ 500 wersji) z postępem, budowy
-  tylko dla warstw oglądanych, pliki > 2 GB tylko na żądanie.
+- **Rozmiar pamięci podglądów i czas budowy.** Wachlarz wielu lat
+  z arkuszami ASC to setki budów COG. Ograniczenia: limit 20 GB z LRU, COG
+  ≤ 8192 px, jedno zadanie budowy na warstwę (≤ 500 wersji) z postępem,
+  `n = max(1, cpu // 2)` procesów budowy i jedno zadanie `preview` naraz
+  (decyzja 3), budowy tylko dla warstw oglądanych, pliki > 2 GB i rastry
+  ponad progi pikseli tylko na żądanie.
 - **Georeferencja JPEG z obrysu.** Działa dla plików świata bez obrotu
   (ortofoto CZ); obrót albo obrys spoza nagłówka → miniatura bez mapy
   (`no_georeference`), a ewentualne wymaganie dokładnej georeferencji —
@@ -1545,6 +2075,14 @@ Zakres v0.2 i warunki ogólne (SPEC 11, 13 „Zakres”; A-ADR-029):
 - **Przyrost migawek w katalogu projektu (PRD).** Rozmiar w planie
   migawki, zajętość migawek w widoku projektu; usuwanie tylko ręcznie
   poza Archiwistą.
+- **Odstępstwa od A-ADR-029 do v0.4.** Folder danych inny niż domyślny
+  ustawia tylko administrator (A-ADR-029 errata 1); ustawianie przez
+  właściciela projektu wraca w v0.4 razem z ekranem udostępniania. Skan
+  folderu z widoku projektu zleca każdy, kto widzi projekt — tylko folder
+  tego projektu i tylko odczyt; przebieg przez foldery wszystkich projektów
+  (na udziale SMB do kilkudziesięciu folderów po ≤ 10 s) zleca wyłącznie
+  harmonogram. Do ponownej oceny w v0.4 razem z logowaniem i limitami
+  żądań.
 - **Środowiska pomiarowe.** Udział SMB, magazyny testu na żywo i GPU
   wymagają jawnych `<katalog-danych>` i decyzji właściciela; brak
   środowiska oznacza niezamknięte kryterium, nie automatyczny sukces.

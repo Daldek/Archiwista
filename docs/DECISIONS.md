@@ -29,7 +29,7 @@ Kartografa).
 | [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Zastąpiona przez ADR-028 (Preact + htm bez budowania; zasada „API najpierw” zostaje) |
 | [ADR-006](#adr-006-mapa-w-maplibre-gl-js) | Mapa w MapLibre GL JS | 2026-10-17 | Przyjęta (errata 3: potwierdzona 2026-10-18; errata 1: „Stos” zastąpiony „Wachlarzem”, bez 3D) |
 | [ADR-007](#adr-007-zadania-w-tle-w-osobnych-procesach) | Zadania w tle w osobnych procesach | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18) |
-| [ADR-008](#adr-008-podglądy-przez-rio-tiler-z-pamięcią-po-sumie-wersji) | Podglądy przez rio-tiler z pamięcią po sumie wersji | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, podgląd roku z kafli arkuszy) |
+| [ADR-008](#adr-008-podglądy-przez-rio-tiler-z-pamięcią-po-sumie-wersji) | Podglądy przez rio-tiler z pamięcią po sumie wersji | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, podgląd roku z kafli arkuszy; errata 3: klucz pamięci wersji bez `sha256`) |
 | [ADR-009](#adr-009-łączenie-danych-obróbka-w-kartografie-opakowanie-w-archiwiście) | Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście | 2026-10-17 | Proponowana (SPEC 15: P2, P3) |
 | [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
 | [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
@@ -50,7 +50,7 @@ Kartografa).
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
 | [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika; errata 1: migawkę w zespole robi właściciel projektu albo administrator, ADR-029) |
 | [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
-| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Przyjęta (decyzja użytkownika; uzupełnia ADR-013; model uprawnień od v0.1) |
+| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Przyjęta (decyzja użytkownika; uzupełnia ADR-013; model uprawnień od v0.1; errata 1: folder danych własnych ustawia administrator do v0.4) |
 
 ---
 
@@ -328,7 +328,7 @@ robocze obsługują też migawki danych własnych (A-ADR-027). Zachowanie na Win
 ## ADR-008: Podglądy przez rio-tiler z pamięcią po sumie wersji
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
+**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18; errata 3: klucz pamięci wersji bez `sha256`)
 
 **Kontekst:** Podglądy mają objąć rastry (ASC, GeoTIFF, JPEG z JGW), GeoPackage, paczki
 ZIP i chmury LAZ, bez ciężkich serwerów map. Pliki ASC nie mają
@@ -358,6 +358,13 @@ Podgląd roku produktu z arkuszy (NMT, NMPT, LAZ) składa się z podglądów
 poszczególnych arkuszy w magazynie — kafel na wersję pliku, pamięć po `sha256`;
 arkusze niepobrane zostają obrysami (PRD, „Widoki według rodzaju danych”; mockup:
 kafle z prawdziwych plików).
+
+**Errata 3 (2026-10-19, plan v0.2 po przeglądzie — SPEC 5.7):** wersja magazynu bez
+`sha256` w sidecarze (starsze sidecary, wersja bez sidecara) ma klucz pamięci podglądów
+`sha256("path:" + magazyn + ":" + ścieżka wersji + ":" + rozmiar + ":" + czas
+modyfikacji)` w osobnej przestrzeni kluczy. Wersje są niezmienne, więc pamięć dalej nigdy
+nie jest nieaktualna, ale takie wersje nie dzielą podglądów z kopiami tej samej treści.
+Wersje z `sha256` — bez zmian.
 
 ---
 
@@ -1329,7 +1336,7 @@ wymaga przepisania komponentów. Zmiany w SPEC: 5.1, 5.2, 14 (ryzyko „dwa ekos
 ## ADR-029: Rola zapisu do magazynu i udostępnianie projektów
 
 **Data:** 2026-10-18
-**Status:** Przyjęta (decyzja użytkownika 2026-10-18); uzupełnia ADR-013
+**Status:** Przyjęta (decyzja użytkownika 2026-10-18); uzupełnia ADR-013; errata 1: folder danych własnych ustawia administrator do v0.4
 
 **Kontekst:** Firma wdraża Archiwistę z jednym centralnym magazynem Kartografa.
 Użytkownicy mają też własne projekty z wersjonowanymi danymi własnymi (ADR-027) i chcą
@@ -1405,6 +1412,17 @@ tworzone w v0.1 nie mogą się logować przed v0.4. Raporty zbiorcze (np. „nie
 SPEC 1.3, 1.4, 3 (UC-14), 4.3, 4.7.1, 5.3, 9.1, 9.2, 10.2, 11, 13 (v0.1, v0.3, v0.4,
 v0.5), 14; PRD F10, F16, N2.3, N5.2; SCOPE; plan v0.1 (krok 8b, kroki 9a, 11, 12,
 bramka).
+
+**Errata 1 (2026-10-19, plan v0.2 po przeglądzie — SPEC 4.7.1):** pkt 2 („zmiany
+projektu — właściciel i administrator”) w v0.2 i v0.3 nie obejmuje folderu danych
+własnych: folder inny niż domyślny (`<katalog projektu>/dane/`) ustawia tylko
+administrator (`settings.write`, `PUT /projects/{project}/data-dir`), bo folder jest
+miejscem zapisu migawek i musi leżeć poza magazynami, katalogami Archiwisty i folderami
+innych projektów; ustawianie przez właściciela projektu — decyzja w v0.4 razem z ekranem
+udostępniania. Migawki (`project.write`: właściciel albo administrator) — zgodnie
+z pkt 2. Skan folderu danych to odczyt, nie zmiana projektu: zleca go każdy, kto widzi
+projekt (tylko folder tego projektu), a przebieg przez foldery wszystkich projektów —
+wyłącznie harmonogram; wyniki filtruje widoczność (pkt 3).
 
 ---
 
