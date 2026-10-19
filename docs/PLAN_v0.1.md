@@ -456,8 +456,9 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     rozłącznych paczkach; `known_slots` (`SlotUnit.slot` ze
     `slots_in_bbox`) daje `known_versions`, bez nich czytane są wszystkie
     wersje jednostek. Przebieg obejmuje tylko sloty, dla których producent
-    zwrócił wpisy: jednostka, która nie trafia w swój slot (np. kafel LAZ,
-    którego jednostką w sidecarze są współrzędne zgłoszenia), niczego nie
+    zwrócił wpisy: jednostka, która nie trafia w swój slot (np. kafel LAZ
+    w Kartografie 0.8.0-dev, którego jednostką były współrzędne zgłoszenia;
+    od 8e9bcbb jest nią godło kafla z `extra.tile_sheet`), niczego nie
     oznacza brakiem; zniknięcie całego slotu wykrywa najbliższy skan.
     Niedostępny magazyn → stan `unavailable` i `IndexStatus` ze `stale`;
     odczyt dłuższy niż `timeout_s` → `TimeoutError` bez zapisu.

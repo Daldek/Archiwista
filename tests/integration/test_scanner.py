@@ -610,11 +610,17 @@ def test_refresh_view_updates_only_requested_units(env: _Env) -> None:
 
 
 def test_refresh_view_unit_missing_its_slot_marks_nothing(env: _Env) -> None:
-    """A unit that does not name its slot leaves the slot as it was."""
+    """A unit that does not name its slot leaves the slot as it was.
+
+    The unit is the tile's requested area, which Kartograf 0.8.0-dev gave
+    as a LAZ tile's unit: the tile is not under it.
+    """
     # Arrange
     tile = next(entry for entry in env.store.by_kind("link") if entry.segment == LAZ)
     env.scan("full")
     before = env.slot(tile.path)
+    area = kartograf.read_sidecar(env.store.root / tile.path).request["bbox"]
+    unit = "_".join(format(value, ".10g") for value in area)
 
     # Act
     refresh_view(
@@ -624,12 +630,12 @@ def test_refresh_view_unit_missing_its_slot_marks_nothing(env: _Env) -> None:
         env.settings,
         STORE,
         LAZ,
-        [tile.unit or ""],
+        [unit],
         known_slots=[tile.path],
     )
 
     # Assert
-    assert tile.unit and "_" in tile.unit
+    assert unit != tile.unit
     assert env.slot(tile.path) == before
     assert env.state().missing_versions == 0
 

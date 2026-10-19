@@ -1107,7 +1107,7 @@ class _StoreWriter:
                 else (lambda nonce: store_files.las_points(bounds, nonce))
             ),
             request={"bbox": area, "bbox_crs": "EPSG:2180"},
-            unit="_".join(format(value, ".10g") for value in area),
+            unit=tile,
             case=case,
         )
 
