@@ -21,12 +21,14 @@ to copy (A-ADR-018: a light preview).
 Render processes only (rasterio).
 """
 
+import warnings
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import rasterio.shutil
 from rasterio.enums import ColorInterp, Resampling
+from rasterio.errors import NotGeoreferencedWarning
 from rasterio.io import MemoryFile
 from rasterio.transform import Affine, from_bounds
 
@@ -58,7 +60,10 @@ def build_cog(source: PreviewSource, probe: PreviewProbe, out_path: Path) -> Non
     PreviewUnavailableError
         ``no_georeference`` / ``no_crs``: nothing to put on the map.
     """
-    with open_raster(source.paths[0], source.format) as dataset:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", NotGeoreferencedWarning)  # an image
+        dataset = open_raster(source.paths[0], source.format)
+    with dataset:
         transform = (
             None
             if probe.bbox_native is None

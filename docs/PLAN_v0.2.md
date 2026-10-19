@@ -1070,9 +1070,9 @@ działa.
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | zrobione |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
 | 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | zrobione |
-| 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
-| 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
-| 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
+| 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | zrobione (bez próby punktu kontrolnego) |
+| 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | zrobione (bez próby punktu kontrolnego) |
+| 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | zrobione |
 | 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | zrobione |
 | 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | zrobione |
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
@@ -1867,6 +1867,65 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   gotowa wersja zmienia klucz obiektu złożonego tylko w kaflach, które
   przecina).
 - **Zależności:** 5a1. **Równolegle:** 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a.
+- **Stan po kroku 5a (5a1–5a3; commity `6be84a2` i następny):**
+  - *Renderer* (`renderers/raster.py`, `RasterRenderer`, pierwszy
+    w `RENDERERS`; `RENDERER_VERSIONS["raster"]` = 1): otwarcie przez
+    `open_raster` ze sterownikiem formatu; georeferencja pliku, a bez niej
+    indeksu (`PreviewSource.crs`, `georeference`) — w `PreviewProbe`
+    (`bbox_native`, `crs`). Statystyki: numpy z odczytu `out_shape`
+    ≤ 1024 px (GDAL bierze nakładkę), a plik bez nakładek > 64 Mpx — 64
+    okna 128 px rozłożone po pliku (raster 100 000 × 100 000 px w ok.
+    0,1 s). `needs_cog`: sterownik `AAIGrid`/`XYZ`, georeferencja albo
+    układ z indeksu (COG je niesie), bok > 4096 px przy pasach albo bez
+    nakładek. Style i styl domyślny (pola `styles`, `default_style`,
+    `unit`, `class_table` dodał krok 6): `nmt`/`nmpt` → `hillshade`
+    (`unit` = `m`), `corine`/`hsg` albo paleta → `classes`, ≥ 3 kanały →
+    `rgb`, pozostałe ciągłe → `hypsometry`; obraz z paletą → `rgb`.
+    Odstępstwo: `rgb` nie rozciąga 8-bitowego obrazu barwnego (ortofoto,
+    mapy, podgląd WMS — barwy już do oglądania); rozciąga `gray`, dane
+    > 8 bitów i `rescale`. Miniatura bez kadru — odczyt zdziesiątkowany
+    w układzie pliku (rio-tiler tylko koduje PNG); z kadrem i kafel —
+    `tiles.warp`: okno pliku potrzebne części siatki, odczyt
+    zdziesiątkowany (najbliższa nakładka), `reproject` z
+    `COORDINATE_OPERATION` = `transformer(układ, 3857).gdal_operation()`
+    (EPSG:4326/OGC:CRS84/3857 bez niej); tylko część siatki pokryta
+    rastrem. Dla `needs_cog` czyta COG z pamięci, bez niego plik
+    (`too_large` dla pliku ponad progi bez nakładek).
+  - *Dla innych kroków* (`tiles.py`): `transformer(src, dst)`,
+    `operation(src, dst)`, `wgs84_bounds`, `map_placement(bbox, crs, w, h)
+    -> MapPlacement(bbox_wgs84, minzoom, maxzoom)` (maks. = zoom natywny
+    + 2 ≤ 22, min. = cały plik w jednym kaflu), `tile_bounds`, `tile_grid`,
+    `frame_shape`, `pixel_metres`, `RasterView`/`raster_view`, `warp`,
+    `read_values`, `encode_png`; `raster.open_cog/view_of/render_tile/
+    render_thumbnail`; `cog.write_cog` (krok 5c). Proces renderujący:
+    `--previews-dir` (pula), `worker.cached_file(source, name)`
+    (dowiązanie pliku pamięci na czas odczytu), `cached_bytes`,
+    `object_file`/`parse_object_file` — pula zapisuje pliki innych obiektów
+    z odpowiedzi (kafle wersji z `layer_tile`); `main()` działa w module
+    importowanym (przy `python -m` renderery widziały katalogi `None`).
+  - *COG* (`cog.py`): ≤ 8192 px, `average`/`nearest` (klasy, paleta),
+    bloki 512, nakładki COG, DEFLATE z predyktorem (2 całkowite, 3
+    zmiennoprzecinkowe) albo JPEG 90 dla 8-bitowego RGB z maską; nodata
+    pliku, NaN albo wolna wartość; paleta zachowana. Statystyki z próbki
+    sprzed budowy (build nie zmienia `info.json`).
+  - *Style i warstwy:* `styles.STYLES` (`rgb`, `gray`, `hypsometry`,
+    `elevation`, `hillshade` z marginesem 1 px i przewyższeniem √(piksel
+    w m) w 1–25, `classes`), `legends.legend(probe, style, *, rescale)`
+    (gradient z `colors`, klasy z polskimi nazwami z `classes.py`: CLC po
+    `GRID_CODE` 1–44 i kodzie, HSG 1–4 = A–D), `compose.py`:
+    `layer_thumbnail` (60 s) i `layer_tile` (15 s) w `OPERATIONS`;
+    parametry `versions: [{source, bounds}]` (od najstarszej; `bounds`
+    WGS84 wymagane dla kafli — klucz obiektu złożonego tylko z wersji
+    przecinających kafel), `frame`, `style`, `size` albo `z`, `x`, `y`.
+    Wersja z COG wyrzuconym z pamięci jest rysowana z pliku.
+  - *Próby:* `tests/unit/test_raster_renderer.py` (12),
+    `test_raster_cog.py` (8), `test_raster_styles.py` (5),
+    `test_compose.py` (2, prawdziwa pula) — razem z `test_render_pool.py`
+    i `test_imports.py` 50 zielonych. Szew cieniowania: mozaika 2 × 2
+    kafli = jedno renderowanie kadru (bez marginesu różnica ok. 24 na
+    styku). Próba warp jak w kroku 1: 0,665 m (z = 19). Niezrobione:
+    `test_cz_preview_tile_within_2_m` (GeoTIFF i JPEG SM5 z COG) w
+    `tests/integration/test_cz_control_point.py` — do dopisania.
 
 ### 5b. Podglądy wektorów
 - **Cel:** renderer `vector.py`: rozpoznanie przez pyogrio z jawnym

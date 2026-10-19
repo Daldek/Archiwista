@@ -15,9 +15,11 @@ newest on top. A version's own thumbnail or tile comes from the preview
 cache under its content; one not there yet is rendered by the renderer of
 its kind (rasters, vectors) and the answer carries it back
 (``worker.object_file``), so the pool keeps it under the version's content
-for every other layer and view. A version whose preview cannot be drawn
-(no map place, a COG not built yet, a working file changed since its scan)
-stays out; its outline remains on the map.
+for every other layer and view. Callers give the layer's ready versions
+(their local COG built); one evicted meanwhile is drawn from its file, so
+a composite never lacks a version its key names. A version that cannot be
+drawn at all (no map place, too large without its COG, a working file
+changed since its scan) stays out; its outline remains on the map.
 
 Each composite is a cache object of its own (renderer ``composite``) whose
 content key names the operation, the contents of the versions drawn, the
@@ -61,7 +63,6 @@ from archiwista.previews.types import (
     PreviewProbe,
     PreviewSource,
     Renderer,
-    build_product,
 )
 
 if TYPE_CHECKING:
@@ -221,9 +222,8 @@ def _version_image(
     cached = worker.cached_bytes(key, name(use))
     if cached is not None:
         return cached
-    product = build_product(probe)
-    if product is not None and not worker.cached_exists(key, product):
-        return None  # its local COG is not built yet: it stays an outline
+    # A COG evicted since the caller saw the version ready: the renderer draws
+    # from the file itself, so the composite under this key is complete.
     try:
         image = draw(worker.renderer_for(renderers, source), source, probe, use)
     except (PreviewUnavailableError, FileNotFoundError):
@@ -280,11 +280,16 @@ def _over(images: Sequence[bytes], rows: int, columns: int) -> "npt.NDArray[np.u
 
 def _decoded(image: bytes) -> "npt.NDArray[np.uint8]":
     """Return a PNG as RGBA (4, rows, columns)."""
+    import warnings
+
     import numpy as np
+    from rasterio.errors import NotGeoreferencedWarning
     from rasterio.io import MemoryFile
 
-    with MemoryFile(image) as memory, memory.open(driver="PNG") as found:
-        data = found.read()
+    with warnings.catch_warnings(), MemoryFile(image) as memory:
+        warnings.simplefilter("ignore", NotGeoreferencedWarning)  # a PNG has none
+        with memory.open(driver="PNG") as found:
+            data = found.read()
     if data.dtype != np.uint8:
         data = np.clip(data, 0, 255).astype(np.uint8)
     bands = data.shape[0]

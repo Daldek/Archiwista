@@ -236,13 +236,6 @@ def cached_bytes(key: CacheKey, name: str) -> bytes | None:
         return None
 
 
-def cached_exists(key: CacheKey, name: str) -> bool:
-    """Whether a preview cache object has a file (``False`` without the cache)."""
-    if _previews_root is None:
-        return False
-    return _previews_root.joinpath(*key.directory.parts, *name.split("/")).is_file()
-
-
 def object_file(key: CacheKey, name: str) -> str:
     """Return the name in an answer's ``files`` of a file of another object.
 
