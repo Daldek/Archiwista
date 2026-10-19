@@ -147,6 +147,7 @@ i wymaga 80% pokrycia. Pomiary i ich metoda:
 | [`docs/PRD.md`](docs/PRD.md) | wymagania produktu: problem, odbiorcy, wymagania funkcjonalne i niefunkcjonalne, miary sukcesu, otwarte decyzje |
 | [`docs/SCOPE.md`](docs/SCOPE.md) | zakres: MVP, poza zakresem, etapy z bramkami, zależności od producentów, ryzyka |
 | [`docs/SPEC.md`](docs/SPEC.md) | specyfikacja szczegółowa: przypadki użycia, model danych i indeks (także dane IMGW), architektura, interfejs, łączenie danych, API HTTP, bezpieczeństwo, wymagania wobec Kartografa i IMGWTools, roadmapa z kryteriami akceptacji, ryzyka, pytania otwarte |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | architektura kodu Archiwisty (stan 0.1.0): moduły, przepływy danych, granice; kontrakt formatu magazynu opisuje `docs/ARCHITECTURE.md` Kartografa |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | decyzje (ADR) |
 | [`docs/PLAN_v0.1.md`](docs/PLAN_v0.1.md) | plan implementacji v0.1: umowy między krokami, kroki z odbiorem, bramka |
 | [`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |

@@ -45,6 +45,7 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
 |Plan wdrozenia v0.1: kroki, zaleznosci, bramka akceptacji|`docs/PLAN_v0.1.md`|
 |Stan prac, sprawy otwarte, nastepny krok|`docs/PROGRESS.md`|
+|Architektura kodu Archiwisty (moduly, przeplywy, stan wydania)|`docs/ARCHITECTURE.md`|
 |Zmiany w wydaniach|`docs/CHANGELOG.md`|
 |Widoki dla uzytkownika; API i CLI dla skryptow i agentow|`docs/USAGE.md`, `docs/AGENT_API.md`|
 |Pomiary, odbior i bramka wydania v0.1|`docs/reports/v0.1-measurements.md`|
@@ -62,4 +63,4 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Decyzje (ADR)|`docs/DECISIONS.md`|
 |Standardy kodowania, jezyk, testy, git|`docs/DEVELOPMENT_STANDARDS.md`|
 |Licencja, kontrybucje, CLA|`LICENSE`, `CONTRIBUTING.md`, `docs/CLA.md`|
-|Kontrakty formatu na dysku (sidecar, `data/`, manifest, plan)|Kartograf: `docs/ARCHITECTURE.md` 3.1-3.5|
+|Kontrakty formatu na dysku (sidecar, `data/`, manifest, plan)|Kartograf (nie Archiwista): `docs/ARCHITECTURE.md` 3.1-3.5|

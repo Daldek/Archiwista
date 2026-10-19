@@ -22,6 +22,7 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
 | `docs/PLAN_v0.1.md` | plan v0.1 z umowami między krokami — wzór dla planu v0.2 |
+| `docs/ARCHITECTURE.md` | architektura kodu 0.1.0: moduły, przepływy, granice — opis kodu, nie planu |
 | `docs/reports/v0.1-measurements.md` | pomiary SPEC 4.5, odbiór v0.1, bramka wydania, zrzuty |
 | `docs/USAGE.md`, `docs/AGENT_API.md` | dokumentacja użytkownika i agentów (stan 0.1.0) |
 | `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
