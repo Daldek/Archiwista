@@ -459,6 +459,24 @@ class _PinnedTransformer:
             raise _producer_error(error) from error
         return x, y
 
+    def gdal_operation(self) -> str:
+        """Return the operation as a PROJ pipeline for GDAL.
+
+        Kartograf's ``PinnedTransform.gdal_operation``: the pipeline of the
+        same pinned operation for ``COORDINATE_OPERATION``, with
+        ``axisswap`` for a northing-first CRS.
+
+        Raises
+        ------
+        ProducerError
+            Kartograf cannot express the operation for GDAL.
+        """
+        try:
+            pinned = pinned_transform(self._src_crs, self._dst_crs)
+            return str(pinned.gdal_operation())
+        except KartografError as error:
+            raise _producer_error(error) from error
+
 
 def _source_entry(store: str, prefix: str, entry: Any) -> SourceEntry:
     """Kartograf's entry as a producer-neutral one, paths relative to the store.

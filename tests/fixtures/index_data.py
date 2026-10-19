@@ -3,7 +3,8 @@
 The index knows producers only through ``archiwista.sources``, so its unit
 tests build entries directly: a store directory that never touches the disk,
 versions under ``<segment>/versions/…``, links at the standard path and in
-``full_sheet/``, problems, and box footprints in WGS84.
+``full_sheet/``, problems, and box footprints in WGS84. Coordinate
+operations come from pyproj (``PyprojOperation``), not from a producer.
 """
 
 from collections.abc import Iterable, Sequence
@@ -11,10 +12,13 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path, PurePosixPath
 
+import pyproj
+
 from archiwista.index import IndexWriter, PassSummary
 from archiwista.sources import (
     EntryKind,
     EntryMeta,
+    FloatArray,
     Footprint,
     SourceEntry,
     SourceSegment,
@@ -202,6 +206,29 @@ def polygon(*corners: tuple[float, float]) -> dict[str, object]:
     """Return a closed GeoJSON polygon through ``corners``."""
     ring = [list(corner) for corner in (*corners, corners[0])]
     return {"type": "Polygon", "coordinates": [ring]}
+
+
+class PyprojOperation:
+    """pyproj's operation between two CRSs, a ``CoordinateTransformer``.
+
+    Coordinates in x (east), y (north) order, as the producers' operations.
+    """
+
+    def __init__(self, source: str, target: str) -> None:
+        self._transformer = pyproj.Transformer.from_crs(source, target, always_xy=True)
+        self.description = str(self._transformer.description)
+        self.accuracy_m = float(self._transformer.accuracy or 0.0)
+
+    def transform(
+        self, xs: FloatArray, ys: FloatArray
+    ) -> tuple[FloatArray, FloatArray]:
+        """Transform coordinates."""
+        x, y = self._transformer.transform(xs, ys)
+        return x, y
+
+    def gdal_operation(self) -> str:
+        """Return the operation as a PROJ pipeline."""
+        return str(self._transformer.definition)
 
 
 def write_pass(

@@ -759,7 +759,9 @@ class IndexWriter:
             Configured store id.
         items : Iterable[tuple[SourceEntry, Footprint]]
             Entries (``BatchResult.needs_footprint`` or rebuilt from the
-            index) with ``SourceAdapter.footprint``'s result.
+            index) with ``SourceAdapter.footprint``'s result, its WGS84
+            outline from ``outline_footprints``; the R*Tree gets the
+            outline's bounding box.
 
         Returns
         -------

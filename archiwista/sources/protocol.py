@@ -132,6 +132,17 @@ class CoordinateTransformer(Protocol):
         """Transform coordinates given and returned in x (east), y (north) order."""
         ...
 
+    def gdal_operation(self) -> str:
+        """Return the same operation as a PROJ pipeline for GDAL.
+
+        Passed as ``COORDINATE_OPERATION`` (e.g. to
+        ``rasterio.warp.reproject``), it makes GDAL move pixels with exactly
+        this operation instead of one GDAL would choose itself. GDAL hands
+        coordinates over in the authoritative axis order of both CRSs, so
+        the pipeline swaps the axes of a northing-first CRS.
+        """
+        ...
+
 
 @runtime_checkable
 class GeoAdapter(Protocol):

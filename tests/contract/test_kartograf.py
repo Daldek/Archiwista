@@ -537,6 +537,36 @@ def test_cz_transformation_uses_pinned_operation(adapter: KartografAdapter) -> N
         assert (float(lon[0]), float(lat[0])) == pytest.approx(PRAGUE_WGS84, abs=1e-5)
 
 
+@pytest.mark.parametrize(
+    ("src_crs", "dst_crs", "northing_first"),
+    [
+        ("EPSG:5514", "EPSG:3857", False),
+        ("EPSG:2180", "EPSG:3857", True),
+        ("EPSG:2180", "EPSG:5514", True),
+    ],
+)
+def test_gdal_operation_matches_pinned_transform(
+    adapter: KartografAdapter, src_crs: str, dst_crs: str, northing_first: bool
+) -> None:
+    """GDAL gets Kartograf's pinned operation, in any thread that uses it.
+
+    The pipeline swaps the axes of a northing-first source CRS (EPSG:2180)
+    first: GDAL hands coordinates over in the CRS's own axis order.
+    """
+    # Arrange
+    transformer = adapter.transformer(src_crs, dst_crs)
+    expected = kartograf.pinned_transform(src_crs, dst_crs).gdal_operation()
+
+    # Act
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pipelines = list(pool.map(lambda _: transformer.gdal_operation(), range(4)))
+
+    # Assert
+    assert pipelines == [expected] * 4
+    assert expected.startswith("proj=pipeline step ")
+    assert expected.startswith("proj=pipeline step proj=axisswap") is northing_first
+
+
 def test_read_meta_matches_metadata_of_the_scan(
     store: StoreManifest, adapter: KartografAdapter
 ) -> None:

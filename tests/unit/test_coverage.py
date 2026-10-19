@@ -9,32 +9,24 @@ import shapely
 from shapely.geometry import mapping, shape
 
 from archiwista.index import IndexQueries, IndexWriter
-from archiwista.sources import CoordinateTransformer, FloatArray, SourceSegment
-from tests.fixtures.index_data import STORE, box, link, polygon, slot_path, version
+from archiwista.sources import CoordinateTransformer, SourceSegment
+from tests.fixtures.index_data import (
+    STORE,
+    PyprojOperation,
+    box,
+    link,
+    polygon,
+    slot_path,
+    version,
+)
 from tests.fixtures.index_data import write_pass as run_pass
 
 Index = tuple[IndexWriter, IndexQueries]
 TOLERANCE = 0.005  # 0.5 percentage point
 
 
-class _Operation:
-    """A coordinate operation of pyproj in x (east), y (north) order."""
-
-    def __init__(self, source: str, target: str) -> None:
-        self._transformer = pyproj.Transformer.from_crs(source, target, always_xy=True)
-        self.description = str(self._transformer.description)
-        self.accuracy_m = float(self._transformer.accuracy or 0.0)
-
-    def transform(
-        self, xs: FloatArray, ys: FloatArray
-    ) -> tuple[FloatArray, FloatArray]:
-        """Transform coordinates."""
-        x, y = self._transformer.transform(xs, ys)
-        return x, y
-
-
 def _operation(source: str, target: str) -> CoordinateTransformer:
-    return _Operation(source, target)
+    return PyprojOperation(source, target)
 
 
 def _rectangle(west: float, south: float, east: float, north: float) -> dict[str, Any]:

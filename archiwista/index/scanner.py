@@ -11,7 +11,8 @@ thread reads a local store, whole segments. Entries go through a bounded
 queue to the calling thread, the only one using the ``IndexWriter``: it
 writes them in batches (``BATCH_ENTRIES`` entries or ``BATCH_SECONDS``, one
 transaction each) and hands the versions still without a location to a
-small pool computing ``SourceAdapter.footprint`` without network. An
+small pool computing ``SourceAdapter.footprint`` without network, with the
+WGS84 polygon of each native rectangle (``outline_footprints``). An
 incremental scan passes the settled version directories the index knows
 (``ScanScope.known_versions``): their metadata is not read again and they
 are not listed again, so only the full scan (scheduled daily by default)
@@ -37,13 +38,23 @@ from collections import Counter, deque
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 from archiwista.config import AppSettings
 from archiwista.errors import ProducerError, SourceUnavailableError
+from archiwista.index.geometry import (
+    WGS84,
+    BBox,
+    box_within,
+    is_box,
+    is_wgs84,
+    outline_wgs84,
+    outlines_wgs84,
+    polygon_bounds,
+)
 from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
 from archiwista.index.types import BatchResult, IndexStatus, PassSummary
@@ -51,6 +62,8 @@ from archiwista.index.writer import IndexWriter
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.sources import (
     Footprint,
+    GeoAdapter,
+    GeoJSONGeometry,
     PartitionedAdapter,
     ScanScope,
     SegmentedAdapter,
@@ -434,6 +447,58 @@ def refresh_view(
     return queries.status()
 
 
+def outline_footprints(
+    adapter: SourceAdapter, items: Sequence[tuple[SourceEntry, Footprint]]
+) -> tuple[list[tuple[SourceEntry, Footprint]], list[str]]:
+    """Give new footprints the WGS84 polygon of their native rectangle.
+
+    For a producer with coordinate operations (``GeoAdapter``), a footprint
+    whose native outline is a rectangle gets that rectangle with its edges
+    densified and moved by the producer's pinned operation
+    (``outline_wgs84``; one ``transform`` call per CRS) as its WGS84
+    outline (decision 4 of the v0.2 plan). The producer's own WGS84 outline
+    stays when it is not a box, or when it lies within the polygon: then it
+    is the tighter one (a PL-1992 sheet is a longitude/latitude rectangle
+    whose native outline is its envelope). A producer without coordinate
+    operations keeps its own outlines.
+
+    Parameters
+    ----------
+    adapter : SourceAdapter
+        The producer that computed the footprints.
+    items : Sequence[tuple[SourceEntry, Footprint]]
+        Entries with their ``SourceAdapter.footprint``.
+
+    Returns
+    -------
+    tuple[list[tuple[SourceEntry, Footprint]], list[str]]
+        The entries with their outlines, in order, without those whose
+        polygon failed; and the messages of those failures (no pinned
+        operation, a position the operation cannot move).
+    """
+    if not isinstance(adapter, GeoAdapter):
+        return list(items), []
+    groups: dict[str, list[tuple[int, BBox]]] = {}
+    for index, (_, found) in enumerate(items):
+        native = _native_rectangle(found)
+        if native is not None and found.native_crs is not None:
+            groups.setdefault(found.native_crs, []).append((index, native))
+    outlined: list[tuple[SourceEntry, Footprint] | None] = list(items)
+    failures: list[str] = []
+    for crs, members in groups.items():
+        polygons = _outline_group(adapter, crs, [native for _, native in members])
+        for (index, _), polygon in zip(members, polygons, strict=True):
+            entry, found = items[index]
+            if isinstance(polygon, str):
+                outlined[index] = None
+                failures.append(polygon)
+                continue
+            own = None if found.wgs84 is None else polygon_bounds(found.wgs84)
+            if own is None or not box_within(own, polygon):
+                outlined[index] = (entry, replace(found, wgs84=polygon))
+    return [item for item in outlined if item is not None], failures
+
+
 @dataclass(frozen=True, slots=True)
 class _Target:
     """The scanned directory of a store and the threads that read it."""
@@ -634,7 +699,7 @@ class _Footprints:
 
 
 def _locate(adapter: SourceAdapter, entries: Sequence[SourceEntry]) -> _Located:
-    """Footprints without network; a failing entry stays pending."""
+    """Footprints without network, with their outlines; a failure stays pending."""
     items: list[tuple[SourceEntry, Footprint]] = []
     failures: list[str] = []
     for entry in entries:
@@ -643,7 +708,48 @@ def _locate(adapter: SourceAdapter, entries: Sequence[SourceEntry]) -> _Located:
         except (ProducerError, OSError) as error:
             # No pinned operation, or a file gone since the listing (SPEC 4.6).
             failures.append(str(error))
-    return _Located(tuple(items), tuple(failures))
+    outlined, failed = outline_footprints(adapter, items)
+    return _Located(tuple(outlined), (*failures, *failed))
+
+
+def _native_rectangle(found: Footprint) -> BBox | None:
+    """Return the native rectangle to outline a footprint with, if any.
+
+    ``None`` also when the producer's own WGS84 outline is a polygon other
+    than a box: it stays as it is.
+    """
+    if found.location != "footprint" or found.native is None:
+        return None
+    own = None if found.wgs84 is None else polygon_bounds(found.wgs84)
+    if found.wgs84 is not None and own is not None and not is_box(found.wgs84, own):
+        return None
+    native = polygon_bounds(found.native)
+    return native if native is not None and is_box(found.native, native) else None
+
+
+def _outline_group(
+    adapter: GeoAdapter, crs: str, natives: Sequence[BBox]
+) -> list[GeoJSONGeometry | str]:
+    """WGS84 polygons of rectangles in one CRS; a failure is its message.
+
+    One ``transform`` call for all; when it fails, each rectangle is moved
+    alone, so one that cannot be does not fail the others.
+    """
+    try:
+        transformer = None if is_wgs84(crs) else adapter.transformer(crs, WGS84)
+    except ProducerError as error:
+        return [str(error)] * len(natives)
+    try:
+        return list(outlines_wgs84(natives, crs, transformer))
+    except (ProducerError, ValueError):
+        pass
+    polygons: list[GeoJSONGeometry | str] = []
+    for native in natives:
+        try:
+            polygons.append(outline_wgs84(native, crs, transformer))
+        except (ProducerError, ValueError) as error:
+            polygons.append(str(error))
+    return polygons
 
 
 def _stream(

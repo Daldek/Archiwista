@@ -1068,7 +1068,7 @@ działa.
 | 0 | Porządki po v0.1: `ResourceWarning` | — | 1, 2, 3, 7a | do zrobienia |
 | 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | do zrobienia |
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | do zrobienia |
-| 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | do zrobienia |
+| 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
 | 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | do zrobienia |
 | 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
 | 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
@@ -1275,6 +1275,61 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `tests/integration/test_scanner.py` i `tests/unit/test_coverage.py` bez
   regresji.
 - **Zależności:** —. **Równolegle:** 0, 1, 2, 4, 7a.
+- **Stan po kroku 3:**
+  - *Umowa źródła.* `CoordinateTransformer.gdal_operation() -> str`
+    w `sources/protocol.py`; adapter Kartografa woła
+    `pinned_transform(src, dst).gdal_operation()` w wątku wywołującym
+    (błąd Kartografa → `ProducerError`). Testowa operacja pyproj
+    z tą metodą: `tests/fixtures/index_data.py::PyprojOperation` (wspólna
+    dla `test_coverage.py` i `test_geometry.py`).
+  - *Obrys WGS84* (`index/geometry.py`): `outline_wgs84(native: BBox,
+    native_crs: str, transformer: CoordinateTransformer | None, *,
+    max_segment_m: float = MAX_SEGMENT_M) -> GeoJSONGeometry` (`Polygon`;
+    `MAX_SEGMENT_M = 5000.0`). Odstępstwo od umowy: `transformer` może
+    być `None` — tylko dla układu WGS84 (`is_wgs84(crs)`: `EPSG:4326`,
+    `OGC:CRS84`, wielkość liter bez znaczenia), który nie jest
+    przeliczany; dla innego układu `None` to `ValueError`. Pierścień
+    przeciwnie do ruchu wskazówek zegara od narożnika SW, każdy narożnik
+    jest wierzchołkiem, krawędzie dzielone na równe części ≤
+    `max_segment_m` (w układzie geograficznym `max_segment_m / 111 320`
+    stopnia). `outlines_wgs84(natives, native_crs, transformer, *,
+    max_segment_m)` — prostokąty jednego układu jednym wywołaniem
+    `transform`. Pozycja nieskończona po przeliczeniu → `ValueError`
+    (tekst `index_outline_not_finite`). Także `box_within(bounds,
+    polygon)` (tolerancja ok. 1 m) i stała `WGS84`.
+  - *Skaner.* `outline_footprints(adapter, items) -> (items, failures)`
+    (`archiwista.index.scanner`) w puli obrysów (`_locate`) i w zadaniu
+    `footprints` (`jobs/worker.py`): grupy po `native_crs`, jedno
+    `transform` na grupę; gdy paczka zawiedzie, każdy prostokąt osobno —
+    wersja, której obrysu nie da się przeliczyć, zostaje bez położenia
+    (`pending`) z komunikatem w `footprints_failed`, pozostałe dostają
+    obrysy. Producent bez `GeoAdapter` zostaje przy swoim `wgs84`.
+  - *Doprecyzowanie decyzji 4.* Własny obrys WGS84 producenta zostaje,
+    gdy nie jest prostokątem albo gdy leży w wielokącie z obrysu
+    natywnego (z tolerancją ok. 1 m), bo jest wtedy ciaśniejszy. To
+    przypadek arkuszy PL-1992 z godła: Kartograf daje dokładny prostokąt
+    w długości i szerokości geograficznej, a obrys natywny jest jego
+    obwiednią w EPSG:2180; wielokąt z obwiedni poszerzyłby arkusz (przy
+    15,5° E o ok. 115 m dla 1:10 000 i 230 m dla 1:25 000), więc te
+    obrysy zostają prostokątami (`is_box`, jak w 0.1.0, z obszarem
+    w SQL). Wielokąty dostają obrysy z nagłówka, `request.bbox`,
+    jednostek oraz arkusze PL-2000, TM33 i SM5.
+  - *Indeks.* `SCHEMA_VERSION` 4 → 5 przy niezmienionych tabelach: inna
+    wersja oznacza przebudowę indeksu i pełny skan przy starcie (opis
+    w CHANGELOG — krok 18). R*Tree i `versions.min_*/max_*` z obwiedni
+    wielokąta; `/map/footprints`, karta wersji i filtr obszaru czytają
+    wielokąt z `version_shapes.wgs84` bez zmian w zapytaniach.
+  - *Fixtura* `tests/fixtures/control_points.py`: `POINT_3722`
+    (`ControlPoint`: `number`, `cadastral_area`, `sjtsk_y`, `sjtsk_x`,
+    `lat`, `lon`, `method`, `service`, `layer`, `object_id`, `recorded`,
+    `recording`; `epsg5514 -> (x, y)`, `etrs89 -> (lon, lat)`).
+  - *Próby.* `test_cz_outline_vertex_within_2_m`: wierzchołek obrysu
+    0,67 m od φ, λ ETRS89; obwiednia 0.1.0 (podmiana `outline_footprints`
+    na funkcję bez zmian) — 202,5 m, test nie przechodzi.
+    `test_outline_wgs84_pl_west_sheet_is_rotated`: narożniki obwiedni
+    arkusza 5 × 5 km przy 14,2° E ok. 330 m od narożników arkusza. Pełny
+    skan 3000 slotów (4821 obrysów) na dysku lokalnym: 3,1–3,4 s
+    z obwiedniami, 3,45–3,47 s z wielokątami.
 
 ### 4. Infrastruktura podglądów: pamięć, pula, zadanie `preview`
 - **Cel:** wszystko, czego potrzebują renderery, bez samych rendererów:

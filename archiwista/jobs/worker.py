@@ -47,6 +47,7 @@ from archiwista.index.scanner import (
     ScanMode,
     ScanProgress,
     ScanSummary,
+    outline_footprints,
     scan_store,
 )
 from archiwista.jobs.availability import unreachable_detail
@@ -218,7 +219,8 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
 
     A version keeps no outline (``no_source``) when no source gives one; one
     whose sidecar cannot be read now keeps its earlier reason, since a share
-    may have gone meanwhile.
+    may have gone meanwhile. Outlines get the WGS84 polygon of their native
+    rectangle, as in a scan (``outline_footprints``).
     """
     if spec.settings.offline:
         raise JobFailure("offline_mode", MESSAGES["job_offline_mode"])
@@ -251,6 +253,9 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
                         continue
                     if found.location != "none" or found.reason != "unreadable":
                         items.append((entry, found))
+                items, failures = outline_footprints(adapter, items)
+                failed += len(failures)
+                failure = failure or next(iter(failures), None)
                 written += writer.write_footprints(config.id, items)
                 done += len(batch)
                 emit.progress(done, len(entries), written=written, failed=failed)

@@ -15,6 +15,9 @@ slot), ``issues``, ``projects``, ``project_tasks``, ``pins``, ``areas``,
 ``jobs`` with ``job_events``, ``session_tokens`` and ``index_info``.
 Public keys are a store's configured id (``stores.key``) and paths relative
 to the store's producer directory; integer ids never leave the index.
+
+Version 5 (v0.2): a WGS84 outline is the polygon of the native rectangle
+(``outline_footprints``), so an index of bounding boxes is rebuilt.
 """
 
 import sqlite3
@@ -24,7 +27,7 @@ from typing import Literal
 
 from archiwista.paths import private_directory
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 

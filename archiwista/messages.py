@@ -394,6 +394,10 @@ MESSAGES = MappingProxyType(
             "Plików bez wyznaczonego obrysu: {count} — ponowna próba przy"
             " następnym skanie. Komunikat producenta: {detail}"
         ),
+        "index_outline_not_finite": (
+            "Przeliczenie obrysu z układu {crs} do WGS84 nie dało skończonych"
+            " współrzędnych"
+        ),
         "refresh_view_timeout": (
             "Odświeżenie widoku przekroczyło {seconds} s — wynik pochodzi z indeksu"
         ),
