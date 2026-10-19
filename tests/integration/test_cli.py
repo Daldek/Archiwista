@@ -27,6 +27,13 @@ from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.api_store import ServedStore, served_store
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.preview_api import (
+    PreviewApi,
+    decoded_png,
+    entry_of,
+    preview_api,
+    version_url,
+)
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 KRAKOW = "19.9,50.0,20.0,50.05"
@@ -507,3 +514,113 @@ def test_compare_cli_equals_http(
     assert code == 0 and differs
     assert f"* {differs[0]['label']}: " in text
     assert f"A: {compared['a']['title']} ({a})" in text
+
+
+# Previews (plan v0.2, step 6).
+
+
+@pytest.fixture(scope="module")
+def previews(tmp_path_factory: pytest.TempPathFactory) -> Iterator[PreviewApi]:
+    """Serve a generated store with render processes and jobs for ``preview``."""
+    with preview_api(tmp_path_factory.mktemp("cli-previews")) as found:
+        yield found
+
+
+def _preview(
+    previews: PreviewApi,
+    capsys: pytest.CaptureFixture[str],
+    *argv: str,
+    status: int = 0,
+) -> Any:
+    """Run ``archiwista preview … --json`` over the served store's data."""
+    capsys.readouterr()
+    code = main(["preview", *argv, "--json"], paths=previews.api.paths)
+    captured = capsys.readouterr()
+    assert code == status, captured.err
+    return json.loads(captured.out)
+
+
+def _ref(path: str) -> str:
+    return f"version:{api_store.STORE}:{path}"
+
+
+def test_preview_cli_equals_http(
+    previews: PreviewApi, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """``preview --json`` is ``GET …/preview``, after ``--build`` and refusals too."""
+    # Arrange
+    store = previews.store
+    paths = [
+        entry_of(store, family).path
+        for family in ("tif_sheet", "gpkg_teryt", "zip_ku", "pdf_map", "laz_tile")
+    ]
+    raster, document = paths[0], paths[3]
+    sheet = entry_of(store, "asc_sheet", "regular").path
+    before = previews.get(version_url(sheet)).json()
+    output = tmp_path / "miniatura.png"
+
+    # Act
+    described = [_preview(previews, capsys, _ref(path)) for path in paths]
+    built = _preview(previews, capsys, _ref(sheet), "--build")
+    unknown = _preview(previews, capsys, _ref("nie/ma.tif"), status=1)
+    malformed = _preview(previews, capsys, "version:Zespol:plik.tif", status=1)
+    small = _preview(previews, capsys, _ref(raster), "--size", "77", status=1)
+    unstyled = _preview(
+        previews,
+        capsys,
+        _ref(raster),
+        "--style",
+        "nieznany",
+        "--output",
+        str(output),
+        status=1,
+    )
+    refused = _preview(
+        previews, capsys, _ref(document), "--output", str(output), status=1
+    )
+
+    # Assert
+    for path, printed in zip(paths, described, strict=True):
+        assert printed == previews.get(version_url(path)).json()
+    assert before["state"] == "needs_build"
+    assert built == previews.get(version_url(sheet)).json()
+    assert built["state"] == "ready"
+    assert unknown == previews.get(version_url("nie/ma.tif")).json()
+    assert unknown["code"] == "not_found"
+    assert (
+        malformed
+        == previews.get("/api/v1/stores/Zespol/versions/plik.tif/preview").json()
+    )
+    assert malformed["code"] == "invalid_ref"
+    assert small == previews.get(version_url(raster, "preview.png?size=77")).json()
+    assert (
+        unstyled
+        == previews.get(version_url(raster, "preview.png?style=nieznany")).json()
+    )
+    assert refused == previews.get(version_url(document, "preview.png")).json()
+    assert refused["code"] == "preview_unavailable"
+    assert not output.exists()
+
+
+def test_preview_output_writes_png(
+    previews: PreviewApi, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """``--output`` writes the thumbnail into the cache the server answers from."""
+    # Arrange
+    path = entry_of(previews.store, "tif_oblique").path
+    output = tmp_path / "miniatura.png"
+
+    # Act
+    printed = _preview(
+        previews, capsys, _ref(path), "--output", str(output), "--size", "256"
+    )
+    rendered = previews.pool.stats().rendered
+    answered = previews.get(version_url(path, "preview.png?size=256"))
+    described = previews.get(version_url(path))
+
+    # Assert
+    assert printed == described.json()
+    assert answered.status_code == 200
+    assert output.read_bytes() == answered.content
+    assert 0 < max(decoded_png(answered.content).shape[1:]) <= 256
+    assert previews.pool.stats().rendered == rendered

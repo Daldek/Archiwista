@@ -1075,7 +1075,7 @@ działa.
 | 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | zrobione |
 | 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | zrobione |
 | 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | zrobione |
-| 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
+| 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | zrobione |
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
@@ -2182,6 +2182,88 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `tests/integration/test_jobs.py::test_reindex_on_foreground_helper`
   (bez regresji `reindex`).
 - **Zależności:** 3, 4; odbiór po 5a1–5c. **Równolegle:** 5a1–5c, 7b, 8.
+- **Stan po kroku 6 (commity `a8693c5`, `9de22fe` i następny):**
+  - *Odwołania* (`refs.py`): `VersionRef`, `FileRef`, `SnapshotRef`,
+    `parse_ref`/`format_ref` (wzajemnie odwrotne; zły tekst →
+    `InvalidRefError`, `422 invalid_ref`), `version_ref(store, path)`.
+    `ObjectResolver(queries, settings)`: `resolve(ref, *, principal)` —
+    plik w korzeniu przez `resolve_indexed_path` (dowiązanie poza korzeń →
+    `403 path_outside_root`, korzeń nieosiągalny → `503 store_unavailable`,
+    brak pliku → powód `missing_file`); `locate(ref, *, principal)` —
+    z samego indeksu dla wersji z `sha256` (pamięć podglądów odpowiada przy
+    odłączonym magazynie), bez `sha256` jak `resolve` z kluczem
+    `path_key(store, path, st_size, st_mtime_ns)`. `georeference` = prostokąt
+    obrysu natywnego (`IndexQueries.native_outline`) i `native_crs` dla
+    obrysu o źródle `header`. `file:`/`snapshot:` → `invalid_ref` do kroku 9.
+    `job_resolver(spec)` w `build.RESOLVERS["version"]`.
+  - *Usługa* (`previews/service.py`): `PreviewService(pool, resolver,
+    jobs=None)`, metody asynchroniczne `info`, `thumbnail`, `tile`,
+    `features`, `members`, `plan_build`, `build` — każda: indeks, pamięć
+    podglądów, dopiero potem dysk i proces renderujący. Obraz i dane jako
+    `Payload(data, etag)`; `ETag` z klucza obiektu i nazwy (ta sama treść =
+    ten sam znacznik), `If-None-Match` → `304` przed odczytem. Styl spoza
+    `probe.styles` → `422`; kafel poza `minzoom`–`maxzoom` albo zasięgiem →
+    `404`; kafle przed budową COG albo kopii → `409 preview_not_ready`
+    (`job` albo `build_required`); ponad progi bez `force` → `409 too_large`.
+    Stany `ready`, `needs_build`, `building` (zadanie z `jobs.list`),
+    `unavailable`, `failed`.
+  - *Trasy* (`api/previews.py`, router przed `slots` w `app.py`): `GET`
+    i `POST …/preview`, `preview.png`, `tiles/{z}/{x}/{y}.png`, `features`,
+    `members`; `Cache-Control: private, max-age=86400, immutable` i `ETag`;
+    rozłączony klient porzuca żądanie renderowania (odpowiedź `499`).
+    `POST` → `202 JobDetail` z `Location` albo `200 PreviewInfo`. Modele
+    w `api/models_previews.py`; `ref` w `Version` i `VersionCard`,
+    `Health.previews` (`null` w `archiwista status`); kody problemów jak
+    w umowie, `preview_unavailable` z `reason` (`code`, `message`, `fix`,
+    `detail`), `preview_busy` z `Retry-After`.
+  - *CLI* (`archiwista/commands/`): moduł = `COMMANDS`,
+    `add_commands(commands)`, `main(args, paths, registry, out, err)`;
+    wspólne `add_parser` (z `--json`) i `refuse` (problem na stdout, kod 1)
+    w `commands/__init__.py`; krotka `COMMAND_MODULES` w `cli.py`.
+    `archiwista preview REF [--style STYL] [--size BOK] [--output PLIK.png]
+    [--build] [--json]` (`--size` domyślnie 512, walidacja modelem
+    `ThumbnailQuery` jak trasa): `local_previews(paths, settings, *,
+    jobs=None)` otwiera indeks, pamięć podglądów serwera i `RenderPool`
+    z jednym procesem; `--build` — `PreviewService.build(force=True)` na
+    pierwszym planie, potem `--output`, na końcu `PreviewInfo`; nieudana
+    budowa → komunikat i kod 1 (opis wypisany). Bez `--build` CLI nie
+    uruchamia `JobSupervisor`.
+  - *Zadania na pierwszym planie* (`jobs/foreground.py`):
+    `run_foreground(jobs, submit, err, *, started, event, cancelling,
+    poll_s=0.5)` — zlecenie, zdarzenia na stderr, Ctrl+C → `cancel`
+    i czekanie na koniec. Zlecenie dołączone do zadania innego procesu
+    (`JobSupervisor.supervises(job_id)` fałszywe): komunikat
+    `job_foreground_waiting`, śledzenie jego zdarzeń z indeksu (`get`,
+    `events`, co `poll_s` `recover` — zadanie zmarłego procesu kończy się
+    `interrupted`), po jego końcu ponowne `submit`; Ctrl+C przerywa wtedy
+    tylko czekanie. Konflikt (`JobConflictError`) idzie do polecenia:
+    `reindex` na `run_foreground` nadal kończy się kodem 1 („kod
+    conflict”).
+  - *Odstępstwa od umowy.* `PreviewService(pool, resolver, jobs)` zamiast
+    `(pool, cache, jobs, settings, resolver)` — pamięć to `pool.cache`,
+    ustawienia czyta `ObjectResolver`; metody przyjmują `ref` i `principal`,
+    nie źródła: pamięć podglądów odpowiada przed sięgnięciem do dysku,
+    a źródło rozwiązuje usługa (`locate`, potem `resolve`). Dodane
+    `ObjectResolver.locate`, `PreviewService.plan_build` i błąd
+    `PreviewParameterError` (`422 validation_error` z `errors`). Bez
+    `JobSupervisor` (CLI bez `--build`) pole `job` jest `null`, a plik,
+    który buduje serwer, ma stan `needs_build`.
+  - *Próby* (prawdziwe procesy renderujące i robotnik zadań;
+    `tests/fixtures/preview_api.py`: `preview_api`, `scanned_store`,
+    `serve_previews`): `tests/integration/test_previews_api.py` (18, ok.
+    11 s), `test_preview_coverage.py` (1, ok. 18 s: 46 wersji magazynu
+    z rodzinami kroku 2, każda `ready`, `needs_build` albo `unavailable`
+    ze znanym powodem; budowa po jednej na segment, rodzinę i rodzaj
+    klucza treści, potem `ready` z kaflem; dwie wersje bez `sha256` pod
+    kluczem ścieżki), `test_preview_cache.py::test_same_content_rendered_once`
+    (3 żądania renderowania: rozpoznanie, miniatura, kafel; druga wersja
+    tych samych bajtów, powtórzenia i nowy serwer — 0),
+    `test_preview_security.py` (3, ok. 14 s; folder danych własnych
+    dochodzi w kroku 9), `test_cli.py::test_preview_cli_equals_http`
+    i `::test_preview_output_writes_png` (ok. 10 s),
+    `test_jobs.py::test_reindex_on_foreground_helper` (Ctrl+C w `wait`
+    anuluje skan, przebieg porzucony) i
+    `::test_foreground_follows_joined_job_then_runs_own`.
 
 ### 7a. Czytnik danych własnych i tożsamość treści
 - **Cel:** proces czytnika (decyzja 8; sandbox i tabela formatów z kroku

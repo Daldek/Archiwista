@@ -4,7 +4,9 @@ Objects are real files under ``tmp_path``. A test that orders uses injects
 its clock and moves it past ``TOUCH_INTERVAL_S``, so that hits are written.
 Other processes are real ones (``python -c`` with the repository on
 ``PYTHONPATH``): they put and read at the same time, evict right after this
-process's hit, or end while holding a pin.
+process's hit, or end while holding a pin. ``test_same_content_rendered_once``
+serves a generated store with real render processes
+(``tests.fixtures.preview_api``).
 """
 
 import hashlib
@@ -37,6 +39,15 @@ from archiwista.previews.cache import (
 )
 from archiwista.previews.types import PreviewSource, RendererName
 from archiwista.sandbox import process_owner
+from tests.fixtures.make_store import StoreManifest
+from tests.fixtures.preview_api import (
+    PreviewApi,
+    center_tile_url,
+    entry_of,
+    scanned_store,
+    serve_previews,
+    version_url,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHILD_TIMEOUT_S = 60.0
@@ -549,3 +560,74 @@ def test_cache_composite_key_ignores_order_keeps_fields_apart() -> None:
     assert len(others) == 4
     with pytest.raises(ValueError):
         composite_key("layer_tile", [first], f"{tile}\ngray", "", None)
+
+
+def _twin(root: Path, version: str, label: str) -> str:
+    """Write the same bytes as another version of the slot, labelled ``label``.
+
+    A second download of unchanged data: its own ``<label>_<sha8>`` directory
+    with the file and a sidecar of the same ``sha256``.
+    """
+    source = root / version
+    sha8 = source.parent.name.rpartition("_")[2]
+    directory = source.parent.parent / f"{label}_{sha8}"
+    directory.mkdir()
+    target = directory / source.name
+    target.write_bytes(source.read_bytes())
+    sidecar = source.with_name(source.name + ".meta.json")
+    meta = json.loads(sidecar.read_text(encoding="utf-8"))
+    meta["extra"]["version"]["label"] = label
+    target.with_name(target.name + ".meta.json").write_text(
+        json.dumps(meta), encoding="utf-8"
+    )
+    return target.relative_to(root).as_posix()
+
+
+def _views(served: PreviewApi, path: str) -> tuple[bytes, bytes]:
+    """Return the thumbnail and the central tile of a version, as the map asks."""
+    info = served.get(version_url(path)).json()
+    thumbnail = served.get(info["thumbnail_url"])
+    tile = served.get(center_tile_url(info))
+    assert (thumbnail.status_code, tile.status_code) == (200, 200)
+    return thumbnail.content, tile.content
+
+
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+def test_same_content_rendered_once(tmp_path: Path) -> None:
+    """Two versions of one ``sha256`` render once; repeats and a restart do not.
+
+    SPEC 13 v0.2, criterion 3: the first version's probe, thumbnail and tile
+    are rendered; the second version of the same bytes (another label of
+    the slot), repeated requests and a server started again over the same
+    cache answer from it, so the render processes get no more requests.
+    """
+    # Arrange
+    twins: list[str] = []
+
+    def download_again(store: StoreManifest) -> None:
+        version = entry_of(store, "tif_sheet", "regular").path
+        twins.append(_twin(store.root, version, "2026-10-18_49291"))
+
+    store, paths = scanned_store(tmp_path, before_scan=download_again)
+    original, twin = entry_of(store, "tif_sheet", "regular").path, twins[0]
+
+    # Act
+    with serve_previews(store, paths) as served:
+        first = _views(served, original)
+        rendered = served.pool.stats().rendered
+        second = _views(served, twin)
+        repeated = [_views(served, path) for path in (original, twin, original)]
+        before_restart = served.pool.stats().rendered
+        refs = {
+            served.get(version_url(path)).json()["ref"] for path in (original, twin)
+        }
+    with serve_previews(store, paths) as restarted:
+        after = [_views(restarted, path) for path in (original, twin)]
+        after_restart = restarted.pool.stats().rendered
+
+    # Assert
+    assert len(refs) == 2
+    assert rendered == 3  # the probe, the thumbnail and the tile
+    assert second == first and repeated == [first] * 3 and after == [first] * 2
+    assert before_restart == rendered
+    assert after_restart == 0
