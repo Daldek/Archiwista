@@ -231,8 +231,15 @@ def test_preview_unavailable_carries_reason(served: PreviewApi) -> None:
     assert tile.json()["reason"]["code"] == "no_georeference"
 
 
-def test_disconnected_store_answers_from_cache_or_503(tmp_path: Path) -> None:
-    """With the store gone, what was rendered comes from the cache; nothing else."""
+@pytest.mark.parametrize("mount_point", [False, True], ids=["gone", "empty_mount"])
+def test_disconnected_store_answers_from_cache_or_503(
+    tmp_path: Path, mount_point: bool
+) -> None:
+    """With the store gone, what was rendered comes from the cache; nothing else.
+
+    A share that is not mounted may leave its empty mount point: the store is
+    indexed, so an empty directory is unavailable too, not a missing file.
+    """
     with preview_api(tmp_path) as served:
         # Arrange
         seen = entry_of(served.store, "tif_sheet", "regular").path
@@ -242,6 +249,8 @@ def test_disconnected_store_answers_from_cache_or_503(tmp_path: Path) -> None:
         known = _info(served, seen)
         root = served.store.root
         root.rename(root.with_name("odlaczony"))
+        if mount_point:
+            root.mkdir()
         try:
             # Act
             cached = served.get(thumbnail)
@@ -249,6 +258,8 @@ def test_disconnected_store_answers_from_cache_or_503(tmp_path: Path) -> None:
             unknown = _info(served, unseen)
             refused = served.get(version_url(unseen, "preview.png"))
         finally:
+            if mount_point:
+                root.rmdir()
             root.with_name("odlaczony").rename(root)
 
     # Assert

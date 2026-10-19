@@ -576,7 +576,9 @@ def _on_disk(root: Path, relative: str) -> tuple[Path, os.stat_result]:
     PathOutsideRootError
         The file resolves outside the root.
     SourceUnavailableError
-        The root cannot be reached (a disconnected share).
+        The root cannot be reached (a disconnected share), or it is empty:
+        the version is indexed, so its store has entries and an empty
+        directory is the mount point of a share that is gone (SPEC 4.4).
     PreviewUnavailableError
         ``missing_file``: the root is there, the file is not.
     """
@@ -584,17 +586,26 @@ def _on_disk(root: Path, relative: str) -> tuple[Path, os.stat_result]:
         real = resolve_indexed_path(root, relative)
         return real, real.stat()
     except FileNotFoundError:
-        if _reachable(root):
+        if _present(root):
             raise PreviewUnavailableError("missing_file") from None
         raise SourceUnavailableError(
             MESSAGES["preview_reason_store_unavailable"]
         ) from None
     except OSError as error:  # an unreadable root, a stale share
-        if isinstance(error, PermissionError) and _reachable(root):
+        if isinstance(error, PermissionError) and _present(root):
             raise PreviewUnavailableError("unreadable") from None
         raise SourceUnavailableError(
             MESSAGES["preview_reason_store_unavailable"]
         ) from None
+
+
+def _present(root: Path) -> bool:
+    """Whether a store's directory is there with entries (not an empty mount)."""
+    try:
+        with os.scandir(root) as entries:
+            return next(entries, None) is not None
+    except OSError:
+        return False
 
 
 def _reachable(root: Path) -> bool:
