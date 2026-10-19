@@ -16,6 +16,8 @@ Under ``/projects/{project}`` (decisions 8–10):
   ``…/tiles/{z}/{x}/{y}.png``, ``…/features``, ``…/members``: the previews of
   the working file, as of a version;
 - ``GET …/files/{file_id}/snapshot-plan``: ``SnapshotPlan``, nothing written;
+- ``GET …/files/{file_id}/layers``: ``LayerSet`` of the Wachlarz, the working
+  file and then its snapshots newest first, in the frame of their extents;
 - ``POST …/files/{file_id}/snapshots`` (``{"note": …}``): ``202 JobDetail`` of
   the ``snapshot`` job, for the project's owner or an administrator
   (``project.write``); ``409 snapshot_blocked`` (``reason``) when the plan
@@ -47,12 +49,14 @@ from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import (
     authorizer,
     index_queries,
+    plugin_registry,
     settings_service,
     visible_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
 from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import JobDetail
+from archiwista.api.models_layers import LayerSet
 from archiwista.api.models_owndata import (
     DataDirRequest,
     OwnFileCard,
@@ -72,8 +76,10 @@ from archiwista.api.models_previews import (
     TileQuery,
 )
 from archiwista.api.previews import (
+    CLIENT_GONE,
     GEOJSON,
     PNG,
+    ClientGone,
     build_answer,
     image_responses,
     info_answer,
@@ -83,6 +89,7 @@ from archiwista.api.previews import (
     preview_service,
     require_tile,
     respond,
+    while_connected,
 )
 from archiwista.auth import ALL_PROJECTS, Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
@@ -101,6 +108,7 @@ from archiwista.previews.service import PreviewService
 from archiwista.refs import FileRef, ObjectRef, SnapshotRef, format_ref
 from archiwista.sandbox import process_work_dir
 from archiwista.security import current_principal
+from archiwista.services.layers import read_own_file_layers
 from archiwista.services.owndata import (
     file_problems,
     folder_check,
@@ -108,6 +116,7 @@ from archiwista.services.owndata import (
     own_problems,
     set_data_dir,
 )
+from archiwista.sources.registry import PluginRegistry
 
 router = APIRouter(prefix="/projects/{project}", tags=["own data"])
 job_router = APIRouter(prefix="/projects/{project}", tags=["own data"])
@@ -145,6 +154,7 @@ _Paths = Annotated[AppPaths, Depends(app_paths)]
 _OptionalJobs = Annotated[JobSupervisor | None, Depends(optional_jobs)]
 _Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Service = Annotated[PreviewService, Depends(preview_service)]
+_Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Project = Annotated[
     str, Path(description="Project id (`project` of /projects).", examples=["raba"])
 ]
@@ -597,6 +607,41 @@ def get_snapshot_plan(
     return snapshot_plan(
         queries, settings.get(), paths, project, file_id, visible=visible
     )
+
+
+@router.get(
+    f"{_FILE}/layers",
+    response_model=LayerSet,
+    responses={**problem_responses(404, 422), **preview_problems("preview_busy")},
+)
+async def get_own_file_layers(
+    project: _Project,
+    file_id: _FileId,
+    request: Request,
+    principal: _Principal,
+    visible: _Visible,
+    queries: _Queries,
+    registry: _Registry,
+    service: _Service,
+) -> LayerSet | Response:
+    """Return the layers of an own file for the Wachlarz: its versions.
+
+    The working file (`key` `file`, „plik roboczy”) on top, then its
+    snapshots newest first (`snapshot:<label>`), one object each with the
+    state and addresses of its own `…/preview`: a file changed since its
+    scan is `unavailable`. `frame` holds all their extents (their union with
+    room for markers on its edges) in the planar CRS of their country (PL:
+    EPSG:2180, CZ: EPSG:5514); each `thumbnail_url` draws its object in it,
+    `tiles_url` are its map tiles.
+    """
+    detail = await asyncio.to_thread(
+        own_file, queries, project, file_id, visible=visible
+    )
+    work = read_own_file_layers(detail, registry, service, principal=principal)
+    try:
+        return await while_connected(request, work)
+    except ClientGone:
+        return Response(status_code=CLIENT_GONE)
 
 
 @job_router.post(

@@ -7,7 +7,10 @@ an area each layer has its local coverage in the area's planar CRS, its
 outlines in that CRS, its versions with the state of their previews and the
 addresses of its thumbnail and map tiles, which the server builds and the
 client never composes (it only adds ``size`` and ``style``). Without an area
-only the counts. The query models refuse unknown parameters (``422``).
+only the counts. ``GET /projects/{project}/files/{file_id}/layers`` answers
+a ``LayerSet`` too: an own file's working file, then its snapshots newest
+first, each a layer of one object in the frame of their extents. The query
+models refuse unknown parameters (``422``).
 """
 
 from datetime import date
@@ -24,7 +27,7 @@ from archiwista.api.models_previews import (
 from archiwista.messages import MESSAGES
 from archiwista.previews.types import PreviewState
 
-type LayerKind = Literal["year", "edition", "label", "campaign"]
+type LayerKind = Literal["year", "edition", "label", "campaign", "file", "snapshot"]
 type LayerGroup = Literal["year", "campaign"]
 
 _STORE = "zespol"
@@ -112,6 +115,85 @@ _EXAMPLE: dict[str, Any] = {
     "stale_stores": [],
     "stale_reason": None,
 }
+_OWN_PATH = "sieci/kanalizacja.gpkg"
+_OWN_URL = "/api/v1/projects/raba/files/9c1e04b3f27a5d68"
+_OWN_SNAPSHOT = "2026-10-18_471d37c0"
+_IN_FRAME = "bbox=566470.0%2C241565.0%2C569430.0%2C245685.0&bbox_crs=EPSG%3A2180"
+
+
+def _own_layer(key: str, title: str, subtitle: str, ref: str, url: str) -> Any:
+    """Return an example layer of an own file: its working file or a snapshot."""
+    tiles = f"{url}/tiles/{{z}}/{{x}}/{{y}}.png"
+    return {
+        "key": key,
+        "variant": {
+            "product": None,
+            "horizontal_crs": "EPSG:2180",
+            "resolution": None,
+            "vertical_crs": None,
+            "segments": [],
+            "formats": ["GeoPackage"],
+        },
+        "kind": "file" if key == "file" else "snapshot",
+        "year": None,
+        "title": title,
+        "subtitle": subtitle,
+        "versions_count": 1,
+        "units_count": 1,
+        "campaigns": [],
+        "data_dates": [],
+        "coverage": None,
+        "outlines": {"type": "FeatureCollection", "features": []},
+        "preview": {
+            "state": "ready",
+            "ready": 1,
+            "total": 1,
+            "job": None,
+            "thumbnail_url": f"{url}/preview.png?{_IN_FRAME}",
+            "tiles_url": tiles,
+            "minzoom": 12,
+        },
+        "versions": [
+            {
+                "ref": ref,
+                "slot": _OWN_PATH,
+                "unit": None,
+                "preview": {"state": "ready", "tiles_url": tiles},
+                "bounds": [19.9302, 50.0436, 19.9718, 50.0807],
+            }
+        ],
+    }
+
+
+_OWN_EXAMPLE: dict[str, Any] = {
+    "area": None,
+    "store": None,
+    "product": None,
+    "segment": None,
+    "group": None,
+    "frame": {"crs": "EPSG:2180", "bbox": [566_470.0, 241_565.0, 569_430.0, 245_685.0]},
+    "layers": [
+        _own_layer(
+            "file",
+            MESSAGES["layer_title_working"],
+            _OWN_PATH,
+            f"file:raba:{_OWN_PATH}",
+            _OWN_URL,
+        ),
+        _own_layer(
+            f"snapshot:{_OWN_SNAPSHOT}",
+            MESSAGES["layer_title_snapshot"].format(label=_OWN_SNAPSHOT),
+            MESSAGES["layer_subtitle_note"].format(
+                path=_OWN_PATH, note="po odbiorze przyłączy"
+            ),
+            f"snapshot:raba:{_OWN_SNAPSHOT}:{_OWN_PATH}",
+            f"{_OWN_URL}/snapshots/{_OWN_SNAPSHOT}",
+        ),
+    ],
+    "stale": False,
+    "stale_stores": [],
+    "stale_reason": None,
+}
 
 
 class LayersQuery(BaseModel):
@@ -184,14 +266,22 @@ class LayerTileQuery(LayerImageQuery):
 
 
 class LayerFrame(BaseModel):
-    """The area's box in its planar CRS: where outlines and thumbnails are drawn."""
+    """The box where outlines and thumbnails are drawn, in a planar CRS.
+
+    An area's box in its CRS, or the union of an own file's extents in the
+    CRS of their country, each side at least a tenth of the longer one, with
+    room for markers on its edges.
+    """
 
     crs: str = Field(description="Planar CRS, e.g. `EPSG:2180` (PL), `EPSG:5514` (CZ).")
     bbox: list[float] = Field(description="`[min_x, min_y, max_x, max_y]` in `crs`.")
 
 
 class LayerVariant(BaseModel):
-    """The variant of a layer: no file format in it (A-ADR-017, SPEC 6.4)."""
+    """The variant of a layer: no file format in it (A-ADR-017, SPEC 6.4).
+
+    An own file's layer has only its CRS and its format.
+    """
 
     product: str | None
     horizontal_crs: str | None
@@ -227,7 +317,9 @@ class LayerPreview(BaseModel):
         description=(
             "`ready` when every version that can be shown is, `building` while a"
             " `preview` job builds the missing ones, `needs_build` without one,"
-            " `unavailable` when no version can be shown on a map."
+            " `unavailable` when no version can be shown on a map. An own file's"
+            " layer has its object's state (`GET …/preview`: a working file"
+            " changed since its scan is `unavailable`)."
         )
     )
     ready: int = Field(description="Versions with a ready preview.")
@@ -237,16 +329,21 @@ class LayerPreview(BaseModel):
     )
     thumbnail_url: str | None = Field(
         description=(
-            "The layer's image in `frame` (add `size`, `style`); null without a frame."
+            "The layer's image in `frame` (add `size`, `style`); null without a"
+            " frame. An own file's layer: its object's `preview.png` in the frame."
         )
     )
     tiles_url: str | None = Field(
-        description="Map tiles of the layer, one raster source (add `style`)."
+        description=(
+            "Map tiles of the layer, one raster source (add `style`); an own"
+            " file's layer: its object's tiles, once `ready`."
+        )
     )
     minzoom: int | None = Field(
         description=(
             "Zoom from which a typical sheet of the layer has at least 32 pixels;"
-            " below it the tiles are `404` (show the outlines)."
+            " below it the tiles are `404` (show the outlines). An own file's"
+            " layer: its object's `minzoom`."
         )
     )
 
@@ -259,10 +356,12 @@ class LayerVersionPreview(BaseModel):
 
 
 class LayerVersion(BaseModel):
-    """A version of a layer in the area."""
+    """A version of a layer: in the area, or an own file's working file or snapshot."""
 
     ref: str = Field(description="The version's `ref` (decision 10).")
-    slot: str = Field(description="Its slot path.")
+    slot: str = Field(
+        description="Its slot path; an own file's: the file's path in its data folder."
+    )
     unit: str | None = Field(description="Its sheet or unit, e.g. `N-34-130-D-d-2-4`.")
     preview: LayerVersionPreview
     bounds: list[float] | None = Field(
@@ -271,19 +370,32 @@ class LayerVersion(BaseModel):
 
 
 class Layer(BaseModel):
-    """A layer: a variant's data year, edition, label or campaign."""
+    """A layer: a variant's data year, edition, label or campaign.
+
+    Or one object of an own file: its working file (`file`) or a snapshot.
+    """
 
     key: str = Field(
         description=(
             "`<variant>:<year|edition|label>[:<campaign>]`; the variant is 12"
-            " characters of the SHA-256 of its key, or the segment."
+            " characters of the SHA-256 of its key, or the segment. An own"
+            " file's layers: `file` and `snapshot:<label>`."
         )
     )
     variant: LayerVariant
     kind: LayerKind
     year: int | None = Field(description="Data year, never the download's.")
-    title: str = Field(description="Polish, e.g. `2023` or `wydanie 2021`.")
-    subtitle: str = Field(description="The variant's name.")
+    title: str = Field(
+        description=(
+            "Polish, e.g. `2023`, `wydanie 2021`, `plik roboczy` or"
+            " `migawka 2026-10-18_471d37c0`."
+        )
+    )
+    subtitle: str = Field(
+        description=(
+            "The variant's name; an own file's: its path, with a snapshot's note."
+        )
+    )
     versions_count: int
     units_count: int = Field(
         description="Sheets or units: one in two formats counts once."
@@ -294,12 +406,18 @@ class Layer(BaseModel):
     outlines: dict[str, Any] | None = Field(
         description=(
             "GeoJSON `FeatureCollection` of `versions` in `frame.crs` (`ref` in"
-            " `properties`); with an area in a planar CRS only."
+            " `properties`); only with a frame: an area in a planar CRS, or an"
+            " own file's extents."
         )
     )
-    preview: LayerPreview | None = Field(description="With an area only.")
+    preview: LayerPreview | None = Field(
+        description="With an area, and for an own file's layers."
+    )
     versions: list[LayerVersion] | None = Field(
-        description="At most 500, newest first; with an area only."
+        description=(
+            "At most 500, newest first; with an area only. An own file's layer"
+            " has its one object."
+        )
     )
 
 
@@ -309,17 +427,28 @@ class LayerSet(IndexAnswer):
     With an area, its slots are rescanned first (at most 500), unless they
     were in the last minute; an unavailable store, a rescan out of time or
     too many slots answer from the index, with `stale` and `stale_reason`.
+    An own file's layers (`GET /projects/{project}/files/{file_id}/layers`)
+    are its working file, then its snapshots newest first, without a store,
+    product or group.
     """
 
-    model_config = ConfigDict(json_schema_extra={"examples": [_EXAMPLE]})
+    model_config = ConfigDict(json_schema_extra={"examples": [_EXAMPLE, _OWN_EXAMPLE]})
 
     area: AreaRef | None
-    store: str = Field(description="Store id.")
-    product: str = Field(description="Product, e.g. `nmt`.")
+    store: str | None = Field(description="Store id; null for an own file's layers.")
+    product: str | None = Field(
+        description="Product, e.g. `nmt`; null for an own file's layers."
+    )
     segment: str | None = Field(description="The only segment, if asked for.")
-    group: LayerGroup
+    group: LayerGroup | None = Field(
+        description="The grouping asked for; null for an own file's layers."
+    )
     frame: LayerFrame | None = Field(
-        description="Null without an area, or for one outside PL and CZ."
+        description=(
+            "Null without an area, or for one outside PL and CZ. An own file's:"
+            " the union of its working file's and snapshots' extents, null"
+            " without one in PL or CZ."
+        )
     )
     layers: list[Layer]
     stale_reason: str | None = Field(

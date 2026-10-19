@@ -1,8 +1,8 @@
 """Polish texts of the local layers (plan v0.2, decision 7, step 11).
 
 Titles of the layers of a product (a data year, an edition, a label, a
-campaign), the refusals of their thumbnails and map tiles, and the texts of
-``archiwista layers``.
+campaign) and of an own file (its working file and snapshots), the refusals
+of their thumbnails and map tiles, and the texts of ``archiwista layers``.
 """
 
 from types import MappingProxyType
@@ -15,6 +15,11 @@ LAYER_MESSAGES = MappingProxyType(
         "layer_title_label": "{label}",
         "layer_title_undated": "bez roku i wydania",
         "layer_title_campaign": "{title} · kampania {campaign}",
+        # Titles of an own file's layers: the working file and its snapshots;
+        # the subtitle is the file's path, with a snapshot's note.
+        "layer_title_working": "plik roboczy",
+        "layer_title_snapshot": "migawka {label}",
+        "layer_subtitle_note": "{path} · {note}",
         # Images of a layer over HTTP.
         "layer_unknown": (
             "Produkt „{product}” nie ma w tym miejscu warstwy „{layer}”; pobierz"

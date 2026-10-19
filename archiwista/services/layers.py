@@ -33,10 +33,17 @@ store still shows what was drawn; only a miss resolves the files inside
 their root. ``LayerMemo`` keeps the layers of the last answers for a
 minute, so the tiles of a map view do not read the index again.
 
-Own-data layers (a working file and its snapshots,
-``GET /projects/{project}/files/{file_id}/layers``) come with step 9: their
-``LayerImages`` hold ``LayerItem`` of their own sources, and the same
-``layer_thumbnail`` and ``layer_tile`` draw them.
+``read_own_file_layers`` answers ``GET
+/projects/{project}/files/{file_id}/layers``: an own file's working file,
+then its snapshots newest first (SPEC 4.7.1: a file's snapshots are its
+versions), each a layer of that one object. Their frame is the union of the
+objects' extents in the planar CRS of their country, as an area's (an
+extent already in that CRS is taken as it is), so the Wachlarz draws every
+``LayerSet`` alike. A layer's state and images are its object's, as the
+file routes answer them (``PreviewService.info``; the thumbnail is the
+object's ``preview.png`` in the frame, the tiles are the object's): those
+routes check the project's visibility and a working file's change since its
+scan for every image, and one object needs no composite (``LayerImages``).
 """
 
 import asyncio
@@ -57,6 +64,7 @@ from typing import Any, cast
 from urllib.parse import urlencode
 
 import shapely
+from pydantic import ValidationError
 from shapely.geometry import mapping, shape
 
 from archiwista.api import API_PREFIX
@@ -78,7 +86,7 @@ from archiwista.api.models_layers import (
     LayerVersion,
     LayerVersionPreview,
 )
-from archiwista.api.models_previews import PreviewJob
+from archiwista.api.models_previews import THUMBNAIL_SIZES, PreviewInfo, PreviewJob
 from archiwista.api.slots import geo_adapter
 from archiwista.areas import area_crs
 from archiwista.auth import Principal
@@ -89,6 +97,7 @@ from archiwista.errors import (
     PathOutsideRootError,
     PreviewParameterError,
     PreviewUnavailableError,
+    ProducerError,
     SourceUnavailableError,
 )
 from archiwista.formats import UNKNOWN_FORMAT, file_format
@@ -97,7 +106,9 @@ from archiwista.index import (
     AreaRecord,
     IndexQueries,
     LocalCoverage,
+    OwnFileDetail,
     ProductVersion,
+    SnapshotRecord,
 )
 from archiwista.index.coverage import (
     WGS84,
@@ -105,13 +116,14 @@ from archiwista.index.coverage import (
     PlanarMover,
     measure_planar,
 )
-from archiwista.index.geometry import polygon_bounds
+from archiwista.index.geometry import box_geometry, polygon_bounds
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import MESSAGES
+from archiwista.owndata.document import SnapshotDocument
 from archiwista.previews.cache import INFO_NAME, CacheKey, PreviewCache, cache_key
 from archiwista.previews.compose import LAYER_THUMBNAIL, LAYER_TILE, tile_wgs84_bounds
 from archiwista.previews.pool import RenderPool
-from archiwista.previews.service import object_url
+from archiwista.previews.service import PreviewService, object_url
 from archiwista.previews.types import (
     BBox,
     Extent,
@@ -123,7 +135,15 @@ from archiwista.previews.types import (
     build_product,
 )
 from archiwista.previews.worker import OPERATIONS
-from archiwista.refs import ObjectResolver, VersionRef, version_ref
+from archiwista.refs import (
+    FileRef,
+    ObjectResolver,
+    SnapshotRef,
+    VersionRef,
+    format_ref,
+    version_ref,
+)
+from archiwista.sources import GeoJSONGeometry
 from archiwista.sources.registry import PluginRegistry
 
 # Versions a layer lists, and draws, at most (the newest).
@@ -137,8 +157,14 @@ LAYER_MEMORY_SIZE = 256
 _DRAWN_KINDS = frozenset({"raster", "image", "vector", "points"})
 _VARIANT_CHARS = 12
 _DIGEST_CHARS = 16
-# Planar coordinates of the outlines: centimetres.
+# Planar coordinates of the outlines and of an own file's frame: centimetres.
 _OUTLINE_DECIMALS = 2
+# The shortest side of an own file's frame (a file of one point), in metres.
+_FRAME_MIN_M = 1.0
+# Pixels a marker on an extent's edge reaches out of it in a thumbnail
+# (``archiwista.previews.rasterize.REACH_PX``, a module of the render
+# processes only).
+_EDGE_REACH_PX = 4
 # The style of a layer none of whose versions is ready: nothing is drawn.
 _NO_STYLE = "rgb"
 _TILE_PX = 256
@@ -551,6 +577,65 @@ async def layer_tile(
     )
 
 
+async def read_own_file_layers(
+    detail: OwnFileDetail,
+    registry: PluginRegistry,
+    previews: PreviewService,
+    *,
+    principal: Principal,
+) -> LayerSet:
+    """Return the layers of an own file: its working file, then its snapshots.
+
+    The snapshots come newest first, as the index lists them. Each layer is
+    one object, keyed ``file`` or ``snapshot:<label>``, with the state and
+    addresses of its own ``PreviewInfo``; its thumbnail is drawn in the
+    frame of all the objects' extents (``_own_frame``).
+
+    Parameters
+    ----------
+    detail : OwnFileDetail
+        The file, as the principal sees it (``archiwista.api.owndata.own_file``).
+    registry : PluginRegistry
+        Producer plugins: the countries and pinned operations of the frame.
+    previews : PreviewService
+        The previews the file routes answer with.
+    principal : Principal
+        Who asks.
+
+    Raises
+    ------
+    NotFoundError
+        The file or a snapshot left the index meanwhile (``404``).
+    PreviewBusyError
+        The render queue is full (``503 preview_busy``).
+    SourceStateError
+        No producer with coordinate operations is available.
+    """
+    objects = _own_objects(detail)
+    frame, footprints = await asyncio.to_thread(_own_frame, registry, objects)
+    # One object after another: a first view probes each in the render pool.
+    infos = [await _own_info(previews, item.ref, principal) for item in objects]
+    path = detail.file.path
+    badge = _format(path)
+    return LayerSet(
+        area=None,
+        store=None,
+        product=None,
+        segment=None,
+        group=None,
+        frame=None
+        if frame is None
+        else LayerFrame(crs=frame.crs, bbox=list(frame.bbox)),
+        layers=[
+            _own_layer(item, info, frame, footprint, path=path, badge=badge)
+            for item, info, footprint in zip(objects, infos, footprints, strict=True)
+        ],
+        stale=False,
+        stale_stores=[],
+        stale_reason=None,
+    )
+
+
 # Layers from the index.
 
 
@@ -722,7 +807,8 @@ def _model(
     if mover is not None and region is not None:
         footprints = [mover.footprint(_shape(item)) for item in items]
         coverage = _coverage(region, footprints, mover.crs)
-        outlines = _outlines(footprints[: len(listed)], listed)
+        refs = [version.ref for version in listed]
+        outlines = _outlines(footprints[: len(listed)], refs)
     preview = None
     versions_out = None
     if record is not None and images is not None:
@@ -810,6 +896,224 @@ def _version_model(version: _Version) -> LayerVersion:
             ),
         ),
         bounds=None if item.bounds is None else list(item.bounds),
+    )
+
+
+# Own-data layers.
+
+
+@dataclass(frozen=True, slots=True)
+class _OwnObject:
+    """A working file or one of its snapshots, with its extent from the index.
+
+    ``native`` is its extent in ``crs`` (the scan's, or the snapshot
+    document's), ``wgs84`` its WGS84 outline; ``note`` a snapshot's.
+    """
+
+    ref: FileRef | SnapshotRef
+    crs: str | None
+    native: BBox | None
+    wgs84: GeoJSONGeometry | None
+    note: str = ""
+
+
+def _own_objects(detail: OwnFileDetail) -> list[_OwnObject]:
+    """Return the working file, then its snapshots newest first (the index's)."""
+    project, path = detail.folder.project, detail.file.path
+    found = [
+        _OwnObject(
+            FileRef(project, path), detail.native_crs, detail.native_bbox, detail.wgs84
+        )
+    ]
+    for record in detail.snapshots:
+        document = _snapshot_document(record)
+        extent = None if document is None else document.extent
+        wgs84 = None if extent is None else extent.wgs84
+        found.append(
+            _OwnObject(
+                SnapshotRef(project, record.label, path),
+                None if extent is None else extent.crs,
+                None if extent is None else extent.bbox,
+                None if wgs84 is None else box_geometry(wgs84),
+                "" if document is None else document.note,
+            )
+        )
+    return found
+
+
+def _snapshot_document(record: SnapshotRecord) -> SnapshotDocument | None:
+    """Return a snapshot's ``migawka.json`` as indexed; ``None`` if not valid."""
+    if record.document is None:
+        return None
+    try:
+        return SnapshotDocument.model_validate(record.document)
+    except ValidationError:
+        return None
+
+
+def _own_frame(
+    registry: PluginRegistry, objects: Sequence[_OwnObject]
+) -> tuple[Extent | None, list[Any]]:
+    """Return the frame of an own file's layers and each object's extent in it.
+
+    The CRS is the planar one of the objects' country, as an area's (PL:
+    EPSG:2180, CZ: EPSG:5514); the frame holds every extent moved there
+    (``_framed``). An object whose extent cannot be moved there has none
+    (``None``) and no thumbnail: its render could not be framed either.
+    """
+    outlines = [polygon_bounds(item.wgs84) for item in objects if item.wgs84]
+    bounds = _union([box for box in outlines if box is not None])
+    if bounds is None:
+        return None, [None] * len(objects)
+    adapter = geo_adapter(registry)
+    try:
+        crs = area_crs(adapter.countries(bounds))
+    except ProducerError as error:
+        logger.info("No country of the own data at %s: %s", bounds, error)
+        crs = None
+    if crs is None:
+        return None, [None] * len(objects)
+    mover = PlanarMover(crs, adapter.transformer)
+    footprints = [_own_footprint(mover, item) for item in objects]
+    placed = _union([found.bounds for found in footprints if found is not None])
+    if placed is None:
+        return None, footprints
+    return Extent(_framed(placed), crs), footprints
+
+
+def _own_footprint(mover: PlanarMover, item: _OwnObject) -> Any:
+    """Return an object's extent in the frame's CRS, from its native one if known."""
+    try:
+        if item.native is not None and item.crs is not None:
+            return mover.move(box_geometry(item.native), item.crs)
+        if item.wgs84 is not None:
+            return mover.move(item.wgs84, WGS84)
+    except (ProducerError, ValueError) as error:
+        logger.info("No extent of %s in %s: %s", format_ref(item.ref), mover.crs, error)
+    return None
+
+
+def _framed(bounds: BBox) -> BBox:
+    """Return the frame around extents, rounded outward to centimetres.
+
+    Each side is at least a tenth of the longer one and ``_FRAME_MIN_M`` (no
+    ribbon of one pixel for a straight pipe, a square for one point), with
+    room for a marker on an extent's edge (``_EDGE_REACH_PX``) in the
+    smallest thumbnail.
+    """
+    min_x, min_y, max_x, max_y = bounds
+    side = max(max(max_x - min_x, max_y - min_y) / 10.0, _FRAME_MIN_M)
+    width, height = max(max_x - min_x, side), max(max_y - min_y, side)
+    pad = max(width, height) * _EDGE_REACH_PX / min(THUMBNAIL_SIZES)
+    half_width, half_height = width / 2.0 + pad, height / 2.0 + pad
+    centre_x, centre_y = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
+    scale = 10**_OUTLINE_DECIMALS
+    # Float noise (``…0000001``) is no centimetre more.
+    return (
+        math.floor(round((centre_x - half_width) * scale, 6)) / scale,
+        math.floor(round((centre_y - half_height) * scale, 6)) / scale,
+        math.ceil(round((centre_x + half_width) * scale, 6)) / scale,
+        math.ceil(round((centre_y + half_height) * scale, 6)) / scale,
+    )
+
+
+async def _own_info(
+    previews: PreviewService, ref: FileRef | SnapshotRef, principal: Principal
+) -> PreviewInfo | None:
+    """Return an object's preview as its route does; ``None``: linked out of root."""
+    try:
+        return await previews.info(format_ref(ref), principal=principal)
+    except PathOutsideRootError:  # its own routes answer ``403``
+        return None
+
+
+def _own_layer(
+    item: _OwnObject,
+    info: PreviewInfo | None,
+    frame: Extent | None,
+    footprint: Any,
+    *,
+    path: str,
+    badge: str,
+) -> Layer:
+    """Return the layer of one object of an own file."""
+    ref = format_ref(item.ref)
+    kind: LayerKind = "file"
+    key, title = "file", MESSAGES["layer_title_working"]
+    if isinstance(item.ref, SnapshotRef):
+        kind, key = "snapshot", f"snapshot:{item.ref.label}"
+        title = MESSAGES["layer_title_snapshot"].format(label=item.ref.label)
+    subtitle = path
+    if item.note:
+        subtitle = MESSAGES["layer_subtitle_note"].format(path=path, note=item.note)
+    preview = _own_preview(info, None if footprint is None else frame)
+    placed = [] if footprint is None else [footprint]
+    bounds = None if item.wgs84 is None else polygon_bounds(item.wgs84)
+    return Layer(
+        key=key,
+        variant=LayerVariant(
+            product=None,
+            horizontal_crs=item.crs,
+            resolution=None,
+            vertical_crs=None,
+            segments=[],
+            formats=[badge],
+        ),
+        kind=kind,
+        year=None,
+        title=title,
+        subtitle=subtitle,
+        versions_count=1,
+        units_count=1,
+        campaigns=[],
+        data_dates=[],
+        coverage=None,
+        outlines=None if frame is None else _outlines(placed, [ref] * len(placed)),
+        preview=preview,
+        versions=[
+            LayerVersion(
+                ref=ref,
+                slot=path,
+                unit=None,
+                preview=LayerVersionPreview(
+                    state=preview.state, tiles_url=preview.tiles_url
+                ),
+                bounds=None if bounds is None else list(bounds),
+            )
+        ],
+    )
+
+
+def _own_preview(info: PreviewInfo | None, frame: Extent | None) -> LayerPreview:
+    """Return an object's preview as a layer's: its thumbnail in ``frame``.
+
+    Its tiles only once ready: before its build they would be ``409``.
+    """
+    if info is None:
+        return LayerPreview(
+            state="unavailable",
+            ready=0,
+            total=0,
+            job=None,
+            thumbnail_url=None,
+            tiles_url=None,
+            minzoom=None,
+        )
+    thumbnail = None
+    if frame is not None and info.thumbnail_url is not None:
+        box = ",".join(str(value) for value in frame.bbox)
+        thumbnail = (
+            f"{info.thumbnail_url}?{urlencode({'bbox': box, 'bbox_crs': frame.crs})}"
+        )
+    tiles = info.tiles_url if info.state == "ready" else None
+    return LayerPreview(
+        state=info.state,
+        ready=int(info.state == "ready"),
+        total=int(info.state != "unavailable"),
+        job=info.job,
+        thumbnail_url=thumbnail,
+        tiles_url=tiles,
+        minzoom=None if tiles is None else info.minzoom,
     )
 
 
@@ -1001,12 +1305,10 @@ def _coverage(region: Any, footprints: Sequence[Any], crs: str) -> LayerCoverage
     return LayerCoverage.of(CountryCoverage.of(item))
 
 
-def _outlines(
-    footprints: Sequence[Any], versions: Sequence[_Version]
-) -> dict[str, Any]:
-    """Return the versions' outlines in the frame's CRS as a GeoJSON collection."""
+def _outlines(footprints: Sequence[Any], refs: Sequence[str]) -> dict[str, Any]:
+    """Return outlines in the frame's CRS as a GeoJSON collection, by ``ref``."""
     features = []
-    for footprint, version in zip(footprints, versions, strict=True):
+    for footprint, ref in zip(footprints, refs, strict=True):
         rounded = shapely.transform(
             footprint, lambda points: points.round(_OUTLINE_DECIMALS)
         )
@@ -1014,7 +1316,7 @@ def _outlines(
             {
                 "type": "Feature",
                 "geometry": mapping(rounded),
-                "properties": {"ref": version.ref},
+                "properties": {"ref": ref},
             }
         )
     return {"type": "FeatureCollection", "features": features}

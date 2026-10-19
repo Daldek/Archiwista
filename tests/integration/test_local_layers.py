@@ -10,12 +10,17 @@ measures each layer's share of the area in the area's planar CRS and draws
 its thumbnail and map tiles from the ready previews of its versions. The
 tests that only read share one server; the ones that build previews or
 disconnect the store have their own.
+
+The last test serves a project's data folder instead (``own_data_api``): the
+layers of an own file, its working file and then its snapshots.
 """
 
+import os
 import re
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -24,12 +29,15 @@ import httpx
 import morecantile
 import numpy as np
 import numpy.typing as npt
+import pyogrio
 import pytest
 import shapely
 from pyproj import Transformer
 from shapely.geometry import box, mapping, shape
 
+from archiwista.api.owndata import OWN_CACHE_CONTROL
 from archiwista.api.previews import VERSION_CACHE_CONTROL
+from archiwista.owndata.content import content_identity
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
 from tests.fixtures.layer_store import (
@@ -51,6 +59,9 @@ from tests.fixtures.layer_store import (
     sheet_polygon,
 )
 from tests.fixtures.make_store import NMT, NMT_ASCII
+from tests.fixtures.own_data import SnapshotFixture, write_snapshot_fixture
+from tests.fixtures.own_data_api import own_data_api
+from tests.fixtures.permissions import share
 from tests.fixtures.preview_api import PreviewApi, decoded_png, version_url
 from tests.fixtures.store_files import Bounds
 
@@ -608,3 +619,123 @@ def test_without_area_counts_only(served: ServedLayers, area: str) -> None:
     assert _layer(inside, "2019")["versions_count"] == 1
     assert counts[_layer(inside, "2023")["key"]] == (4, 2)
     assert _preview_jobs(served.api) == jobs
+
+
+def _bounds(values: list[float]) -> Bounds:
+    return values[0], values[1], values[2], values[3]
+
+
+def _rewrite(
+    path: Path, work: Path, start: tuple[float, float], end: tuple[float, float]
+) -> Bounds:
+    """Save another version of a GeoPackage, one pipe; return its extent."""
+    pipe = shapely.LineString([start, end])
+    fresh = work / path.name
+    pyogrio.raw.write(
+        fresh,
+        np.array([shapely.to_wkb(pipe)], dtype=object),
+        [np.array([110], dtype=np.int32)],
+        ["srednica_mm"],
+        layer="przewody",
+        driver="GPKG",
+        geometry_type="LineString",
+        crs="EPSG:2180",
+    )
+    os.replace(fresh, path)
+    return _bounds(list(pipe.bounds))
+
+
+def _snapshot(
+    folder: Path, path: str, work: Path, created_at: datetime, extent: Bounds
+) -> SnapshotFixture:
+    """Snapshot a GeoPackage as published: its content identity and extent."""
+    identity = content_identity([folder / path], method="sqlite", work_dir=work)
+    return write_snapshot_fixture(
+        folder,
+        path,
+        created_at=created_at,
+        content=(identity.method, identity.sha256),
+        extent={"crs": "EPSG:2180", "bbox": list(extent), "wgs84": None},
+    )
+
+
+def test_own_file_layers_current_first(tmp_path: Path) -> None:
+    """An own file's layers: the working file on top, then its snapshots, newest first.
+
+    Each layer is one object with its ``ref``. The frame holds every
+    object's extent (none holds the others) in EPSG:2180, and each
+    thumbnail draws its object there, revalidated as own data; a project
+    the caller does not see is ``404``.
+    """
+    with own_data_api(tmp_path, first=("gpkg_layers",), second=()) as served:
+        # Arrange
+        project, owner = served.first, served.owner
+        path = project.folder.file("gpkg_layers").path
+        working, work = project.root / path, tmp_path / "edycje"
+        work.mkdir()
+        first = _bounds(
+            owner.request("GET", project.url(path)).json()["extent"]["bbox"]
+        )
+        older = _snapshot(
+            project.root, path, work, datetime(2026, 9, 1, 9, tzinfo=UTC), first
+        )
+        east = _rewrite(working, work, (569_000.0, 243_000.0), (571_500.0, 243_500.0))
+        newer = _snapshot(
+            project.root, path, work, datetime(2026, 10, 1, 9, tzinfo=UTC), east
+        )
+        north = _rewrite(working, work, (567_000.0, 246_000.0), (568_000.0, 247_800.0))
+        served.scan()
+
+        # Act
+        answer = owner.request("GET", project.url(path, "layers"))
+        thumbnails = [
+            served.get(owner, layer["preview"]["thumbnail_url"])
+            for layer in answer.json()["layers"]
+        ]
+        share(served.api.state, project.access_key, "private")
+        hidden = served.caller("other").request("GET", project.url(path, "layers"))
+
+    # Assert
+    assert answer.status_code == 200, answer.text
+    body = answer.json()
+    layers = body["layers"]
+    assert [(layer["key"], layer["kind"], layer["title"]) for layer in layers] == [
+        ("file", "file", "plik roboczy"),
+        (f"snapshot:{newer.label}", "snapshot", f"migawka {newer.label}"),
+        (f"snapshot:{older.label}", "snapshot", f"migawka {older.label}"),
+    ]
+    assert [[version["ref"] for version in layer["versions"]] for layer in layers] == [
+        [project.ref(path)],
+        [f"snapshot:{project.key}:{newer.label}:{path}"],
+        [f"snapshot:{project.key}:{older.label}:{path}"],
+    ]
+    assert (body["area"], body["store"], body["product"], body["group"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    extents = (north, east, first)
+    union = (
+        min(extent[0] for extent in extents),
+        min(extent[1] for extent in extents),
+        max(extent[2] for extent in extents),
+        max(extent[3] for extent in extents),
+    )
+    frame = body["frame"]["bbox"]
+    longer = max(union[2] - union[0], union[3] - union[1])
+    assert body["frame"]["crs"] == "EPSG:2180"
+    assert frame[0] <= union[0] and frame[1] <= union[1]
+    assert frame[2] >= union[2] and frame[3] >= union[3]
+    assert all(abs(frame[i] - union[i]) <= longer / 20 for i in range(4))
+    for layer, extent, response in zip(layers, extents, thumbnails, strict=True):
+        assert layer["preview"]["state"] == "ready"
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == OWN_CACHE_CONTROL
+        image = decoded_png(response.content)
+        x, y = _frame_pixels(frame, *image.shape[1:])
+        pixel = (frame[2] - frame[0]) / image.shape[2]
+        drawn = image[3] > 0
+        assert drawn.any()
+        assert not (drawn & ~_within(x, y, extent, 2 * pixel)).any()
+    assert_problem(hidden, 404, "not_found")
