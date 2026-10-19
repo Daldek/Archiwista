@@ -300,8 +300,11 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
         members["reason"] = error.reason
     elif isinstance(error, PreviewUnavailableError):
         reason = preview_reason(error.reason, error.detail)
-        text = MESSAGES["preview_unavailable_detail"].format_map(reason)
-        detail = with_detail(text, error.detail)
+        # The library's detail explains the reason; the fix closes the text.
+        detail = MESSAGES["preview_unavailable_detail"].format(
+            message=with_detail(str(reason["message"]), error.detail),
+            fix=reason["fix"],
+        )
         members["reason"] = reason
     elif isinstance(error, PreviewNotReadyError):
         if error.job_id is None:

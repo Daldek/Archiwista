@@ -840,8 +840,19 @@ MESSAGES = merge_messages(
 )
 
 
+_SENTENCE_ENDS = (".", "!", "?", "…")
+
+
 def with_detail(message: str, detail: str | None) -> str:
-    """Append a producer's or system's own detail text to a Polish message."""
+    """Append a producer's or system's own detail text to a Polish message.
+
+    The detail follows a colon. A message that is a whole sentence (a
+    preview's reason) stays one: its full stop moves after the detail —
+    ``Nie można odczytać pliku: <detail>.``, never ``….: …``.
+    """
     if not detail:
         return message
-    return MESSAGES["with_detail"].format(message=message, detail=detail)
+    if not message.endswith("."):
+        return MESSAGES["with_detail"].format(message=message, detail=detail)
+    sentence = MESSAGES["with_detail"].format(message=message[:-1], detail=detail)
+    return sentence if sentence.endswith(_SENTENCE_ENDS) else f"{sentence}."
