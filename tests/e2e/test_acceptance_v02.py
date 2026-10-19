@@ -20,7 +20,7 @@ import os
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -58,6 +58,14 @@ WAIT_S = 60.0
 BUILD_TIMEOUT_S = 240.0
 WORLD = "-180,-85,180,85"
 SCREENSHOTS = "ARCHIWISTA_SCREENSHOTS"
+# Covers the text of local paths for a screenshot and uncovers it after.
+# Through the CSSOM: the page's CSP allows no injected stylesheet.
+COVER_PATHS = """(cover) => {
+  for (const path of document.querySelectorAll("code.path")) {
+    path.style.color = cover ? "transparent" : "";
+    path.style.background = cover ? "#d0d5dd" : "";
+  }
+}"""
 CURTAIN = "Kurtyna między A i B"
 BLOB = re.compile(r"^blob:")
 TILE = re.compile(r"/tiles/(\d+)/(\d+)/(\d+)\.png")
@@ -74,10 +82,11 @@ CLIP_B = "() => getComputedStyle(document.querySelector('.cmp-pane.b')).clipPath
 
 @dataclass(frozen=True)
 class Seen:
-    """A request of the page: its address and CSRF header."""
+    """A request of the page: its address, CSRF header and its answer to wait for."""
 
     url: str
     csrf: str | None
+    request: Request = field(compare=False, repr=False)
 
 
 # --- store, session and API ---------------------------------------------------
@@ -145,7 +154,8 @@ def watch(page: Page) -> list[Seen]:
     seen: list[Seen] = []
 
     def record(request: Request) -> None:
-        seen.append(Seen(request.url, request.headers.get(CSRF_HEADER.lower())))
+        csrf = request.headers.get(CSRF_HEADER.lower())
+        seen.append(Seen(request.url, csrf, request))
 
     page.on("request", record)
     return seen
@@ -162,11 +172,17 @@ def query_of(page: Page) -> dict[str, str]:
 
 
 def shot(page: Page, name: str) -> None:
-    """Keep a screenshot for the report when ``ARCHIWISTA_SCREENSHOTS`` is set."""
+    """Keep a screenshot for the report when ``ARCHIWISTA_SCREENSHOTS`` is set.
+
+    Local paths (``code.path``: the test's directory) are covered, so the
+    report has no private path.
+    """
     directory = os.environ.get(SCREENSHOTS)
     if directory:
         Path(directory).mkdir(parents=True, exist_ok=True)
+        page.evaluate(COVER_PATHS, True)
         page.screenshot(path=str(Path(directory) / f"{name}.png"))
+        page.evaluate(COVER_PATHS, False)
 
 
 # --- file cards and their previews --------------------------------------------
@@ -263,13 +279,17 @@ def cards_with_previews_and_reasons(
 ) -> None:
     """Show a raster's thumbnail in two styles; a world file's and a ZIP's reasons."""
     raster = open_preview(page, base, store, "tif_bbox")
-    assert_blob_image(thumbnail(raster))
+    image = thumbnail(raster)
+    assert_blob_image(image)
+    shaded = image.get_attribute("src")
+    assert shaded is not None
     expect(fact(raster, "Stan podglądu")).to_contain_text("gotowy")
     raster.get_by_role("group", name="Styl podglądu").get_by_role(
         "button", name="hipsometria"
     ).click()
     expect(raster.locator(".pv-ramp")).to_be_visible()
-    assert_blob_image(thumbnail(raster))
+    expect(image).not_to_have_attribute("src", shaded)
+    assert_blob_image(image)
     shot(page, "01-karta-pliku-podglad")
 
     world = open_preview(page, base, store, "jgw_sheet")
@@ -359,6 +379,14 @@ def layer_tiles(seen: list[Seen], base: str, key: str) -> list[Seen]:
         and TILE.search(request.url) is not None
         and dict(parse_qsl(urlsplit(request.url).query)).get("layer") == key
     ]
+
+
+def drawn(page: Page, tiles: list[Seen]) -> None:
+    """Wait until the map got the tiles' answers and faded them in."""
+    for tile in tiles:
+        tile.request.response()
+    # A raster layer fades its tiles in over 150 ms (map/canvas.js).
+    page.wait_for_timeout(500)
 
 
 def switch(page: Page, name: str) -> Locator:
@@ -478,6 +506,7 @@ def test_acceptance_v02_walkthrough(serve: Serve, tab: Tab, tmp_path: Path) -> N
         f"gotowe podglądy: {count} z {count}", timeout=BUILD_TIMEOUT_S * 1000
     )
     on_map = wait_for(page, lambda: layer_tiles(seen, base, chosen["key"]), "tiles")
+    drawn(page, on_map)
     shot(page, "03-mapa-podglad-roku")
     chosen_at = query_of(page)
 
@@ -548,6 +577,7 @@ def test_acceptance_v02_walkthrough(serve: Serve, tab: Tab, tmp_path: Path) -> N
         expect(
             own_files(page).locator(".own-file").filter(has_text=entry.path)
         ).to_contain_text("bez migawki")
+    page.locator(".own-group").evaluate("(group) => group.scrollIntoView()")
     shot(page, "07-projekt-dane-wlasne")
 
     gpkg = folder.file("gpkg_layers")

@@ -20,9 +20,14 @@ from tests.fixtures.browser import VIEWPORT, Served, Tab
 from tests.fixtures.local_server import local_paths, serving
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def chromium() -> Iterator[Browser]:
-    """Yield one headless Chromium for the whole run."""
+    """Yield one headless Chromium for the interface tests.
+
+    Playwright's sync API keeps its event loop running in the main thread,
+    so the browser closes with the last test of this package: later tests of
+    the run call ``asyncio.run`` (the CLI's commands) in that thread.
+    """
     with sync_playwright() as playwright:
         try:
             browser = playwright.chromium.launch()
