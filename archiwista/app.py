@@ -146,6 +146,8 @@ def create_app(
     app.state.index_path = index_path
     app.state.port = port
     app.state.authorizer = Authorizer(state, settings.get)
+    # Who sessions act as now: the middleware's check and the session routes.
+    app.state.principals = session_principals(state, index_path)
     app.state.queries = queries
     app.state.jobs = jobs
     app.state.previews = previews
@@ -188,6 +190,6 @@ def create_app(
         port=port,
         sessions=sessions,
         settings=settings.get,
-        principals=session_principals(state, index_path),
+        principals=app.state.principals,
     )
     return app

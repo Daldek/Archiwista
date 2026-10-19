@@ -2958,7 +2958,7 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 | Metoda i ścieżka | Co robi |
 |---|---|
 | `POST /session` | wymiana jednorazowego tokenu na sesję (ciasteczko `HttpOnly`) i token CSRF wysyłany w każdym żądaniu (10.1); tylko tu odpowiedź zawiera token |
-| `GET /session` | stan sesji: wykonawca (`actor`), rodzaj (`kind`), etykieta (`label`), wygaśnięcie — bez tokenu CSRF |
+| `GET /session` | stan sesji: wykonawca (`actor`), rodzaj (`kind`), role wykonawcy czytane przy każdym żądaniu (`roles`; interfejs pokazuje po nich działania administratora), etykieta (`label`), wygaśnięcie — bez tokenu CSRF |
 | `DELETE /session` | wylogowanie: koniec sesji i usunięcie ciasteczka |
 | `POST /session/tokens` | jednorazowy token sesji agenta, ważny 5 min (10.1); sesja agenta dostaje `403 permission_denied` |
 | `GET /stores` | magazyny, dostępność, statystyki |

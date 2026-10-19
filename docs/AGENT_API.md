@@ -57,8 +57,10 @@ Serwer słucha tylko na `127.0.0.1` (domyślnie port `8090`, ustawienie
    to etykieta sesji, którą token otworzy.
 3. Agent wymienia token na sesję: `POST /api/v1/session` z treścią
    `{"token": "…"}`. Odpowiedź `200` ustawia ciasteczko `archiwista_session`
-   (`HttpOnly`) i zwraca `{"actor": "local", "kind": "agent", "label": "…",
-   "csrf_token": "…", "expires_at": "…"}` — `csrf_token` tylko tutaj.
+   (`HttpOnly`) i zwraca `{"actor": "local", "kind": "agent", "roles":
+   ["admin", "store_writer"], "label": "…", "csrf_token": "…", "expires_at":
+   "…"}` — `csrf_token` tylko tutaj, `roles` to role wykonawcy (agent ma role
+   tego, kto wystawił token).
 4. **Każde** żądanie `/api` — także `GET` — niesie ciasteczko sesji
    i nagłówek `X-Archiwista-CSRF` równy `csrf_token`; bez nagłówka albo
    z innym tokenem odpowiedź to `403 csrf_rejected`.
@@ -97,10 +99,10 @@ Zasady sesji:
   działającym serwerze — i unieważnia tym niewykorzystane tokeny agentów.
   Wyłączenie albo usunięcie konta kończy jego sesje, a odebrana rola
   przestaje działać przy następnym żądaniu.
-- `GET /session` zwraca stan sesji (bez `csrf_token`); `DELETE /session`
-  kończy sesję. Agent nie wystawia tokenów kolejnych sesji
-  (`POST /session/tokens` → `403 permission_denied`) — nowy token daje
-  właściciel (`archiwista token`).
+- `GET /session` zwraca stan sesji (bez `csrf_token`) z rolami czytanymi
+  przy tym żądaniu; `DELETE /session` kończy sesję. Agent nie wystawia
+  tokenów kolejnych sesji (`POST /session/tokens` → `403 permission_denied`)
+  — nowy token daje właściciel (`archiwista token`).
 - Treść żądania: najwyżej 1 MiB (wymiana tokenu: 4 KiB; pliki obszarów:
   50 MB), inaczej `413 request_too_large`.
 

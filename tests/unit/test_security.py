@@ -170,7 +170,10 @@ def test_security_loopback_host_served(api: Api, host: str) -> None:
 
 
 def test_security_token_exchange_starts_session(api: Api) -> None:
-    """The exchange sets only an HttpOnly session cookie and answers the token."""
+    """The exchange sets only an HttpOnly session cookie and answers the token.
+
+    Both answers name the principal's roles; ``GET`` repeats all but the token.
+    """
     issued = issue_one_time_token(api.index_path, "startup", minted_by=LOCAL_OWNER)
 
     response = api.client.post("/api/v1/session", json={"token": issued.token})
@@ -182,9 +185,10 @@ def test_security_token_exchange_starts_session(api: Api) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["actor"], body["kind"], body["label"]) == (
+    assert (body["actor"], body["kind"], body["roles"], body["label"]) == (
         "local",
         "local_owner",
+        sorted(LOCAL_ROLES),
         issued.label,
     )
     assert response.headers["cache-control"] == "no-store"

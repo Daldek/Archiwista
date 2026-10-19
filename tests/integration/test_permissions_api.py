@@ -25,6 +25,7 @@ from rasterio.transform import from_bounds
 from archiwista.auth import LOCAL_OWNER, access_key
 from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
 from archiwista.refs import version_ref
+from archiwista.security import issue_one_time_token
 from archiwista.sources import ProjectInfo
 from archiwista.state import Visibility
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
@@ -394,11 +395,16 @@ def test_local_owner_sees_and_manages_everything(api: Api) -> None:
 def test_revoked_admin_role_holds_for_live_session(
     api: Api, token: Literal["startup", "agent"]
 ) -> None:
-    """A session opened as administrator loses admin routes once the role goes."""
+    """A session opened as administrator loses admin routes once the role goes.
+
+    ``GET /session`` names the roles of each request, so the interface stops
+    offering administrators' actions at its next start.
+    """
     # Arrange
     admin = api.session(principal(api.state, "admin"), token=token)
     local = api.session(LOCAL_OWNER)
     before = admin.request("GET", "/users")
+    signed_in = admin.request("GET", "/session")
 
     # Act
     revoked = local.request("PATCH", f"/users/{ADMIN}", json={"roles": []})
@@ -407,9 +413,11 @@ def test_revoked_admin_role_holds_for_live_session(
 
     # Assert
     assert before.status_code == 200
+    assert signed_in.json()["roles"] == ["admin"]
     assert revoked.status_code == 200 and revoked.json()["roles"] == []
     assert_problem(after, 403, "permission_denied")
     assert still_signed_in.status_code == 200
+    assert still_signed_in.json()["roles"] == []
 
 
 @pytest.mark.parametrize("change", ["disable", "remove"])
@@ -436,6 +444,27 @@ def test_disabled_or_removed_account_ends_its_sessions(
     assert done.status_code in (200, 204)
     assert_problem(ended, 401, "session_required")
     assert_problem(again, 401, "session_required")
+
+
+@pytest.mark.parametrize("token", ["startup", "agent"])
+def test_token_of_disabled_account_starts_no_session(
+    api: Api, token: Literal["startup", "agent"]
+) -> None:
+    """A token minted before its account was disabled opens no session (401)."""
+    # Arrange
+    issued = issue_one_time_token(
+        api.paths.index_file, token, minted_by=principal(api.state, "owner")
+    )
+    local = api.session(LOCAL_OWNER)
+    disabled = local.request("PATCH", f"/users/{OWNER}", json={"disabled": True})
+
+    # Act
+    exchanged = api.client.post("/api/v1/session", json={"token": issued.token})
+
+    # Assert
+    assert disabled.status_code == 200
+    assert_problem(exchanged, 401, "session_required")
+    assert "set-cookie" not in exchanged.headers
 
 
 def test_permission_log_records_how_and_in_which_session(api: Api) -> None:

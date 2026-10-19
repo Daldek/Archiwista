@@ -63,10 +63,9 @@ await loadCardStyles();
 const ALL = "";
 // Own files of one page of the group (the API's largest).
 const OWN_PAGE = 200;
-// The computer's owner is an administrator (A-ADR-029). A session names no
-// roles, so only its sessions offer another data folder; the server refuses
-// anyone else (`settings.write`).
-const LOCAL_ACTOR = "local";
+// Another data folder is the administrators' (`settings.write`, A-ADR-029):
+// only their sessions offer it; the server refuses anyone else.
+const ADMIN_ROLE = "admin";
 const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
 
 /**
@@ -362,7 +361,7 @@ function OwnData({ project }) {
     ${list.error ? html`<${ProblemView} problem=${list.error.problem} compact />` : null}
     ${!page && !list.error ? html`<${Spinner} />` : null}
     ${folder ? html`<${OwnFolder} folder=${folder} />` : null}
-    ${folder && session?.actor === LOCAL_ACTOR
+    ${folder && session?.roles.includes(ADMIN_ROLE)
       ? html`<${DataDir} project=${project} folder=${folder} onChanged=${() => {
           list.reload();
           // The server scans the new folder at once: follow that scan.

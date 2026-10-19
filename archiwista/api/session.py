@@ -3,11 +3,13 @@
 ``POST /api/v1/session`` needs no session but passes the ``Host`` and
 ``Origin`` rules; it answers the session's CSRF token, which every other
 ``/api`` request carries in ``X-Archiwista-CSRF`` next to the session cookie
-(SPEC 10.1). ``GET`` shows the session without that token, ``DELETE`` ends
-it, and ``POST /api/v1/session/tokens`` issues a one-time token for an agent,
-which an agent's own session may not do.
+(SPEC 10.1). ``GET`` shows the session without that token, with the roles
+its principal has now (the interface offers administrators' actions by
+them), ``DELETE`` ends it, and ``POST /api/v1/session/tokens`` issues a
+one-time token for an agent, which an agent's own session may not do.
 """
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/session", tags=["session"])
 _STATE_EXAMPLE: dict[str, Any] = {
     "actor": "local",
     "kind": "local_owner",
+    "roles": ["admin", "store_writer"],
     "label": "3f9c1a7e",
     "expires_at": "2026-10-19T12:00:00Z",
 }
@@ -73,6 +76,14 @@ class SessionState(BaseModel):
         description=(
             "How: `local_owner` (the owner), `user` (a signed-in person, team"
             " mode) or `agent` (for `actor`, with a token they issued)."
+        )
+    )
+    roles: list[str] = Field(
+        description=(
+            "Roles `actor` has now, read again for each request: `admin`"
+            " (accounts, settings, every project's data folder), `store_writer`;"
+            " an agent has those of `actor`. The owner of a local installation"
+            " has both."
         )
     )
     label: str = Field(
@@ -129,10 +140,11 @@ class OneTimeToken(BaseModel):
     expires_at: datetime = Field(description="End of validity (5 minutes).")
 
 
-def _state(session: Session) -> SessionState:
+def _state(session: Session, principal: Principal) -> SessionState:
     return SessionState(
         actor=session.principal_id,
         kind=session.kind,
+        roles=sorted(principal.roles),
         label=session.label,
         expires_at=session.expires_at,
     )
@@ -157,8 +169,8 @@ def exchange_token(
 
     Sets the `HttpOnly` cookie `archiwista_session`; every later request also
     sends `csrf_token` as `X-Archiwista-CSRF`, since the cookie alone never
-    acts. An unknown, used, expired or revoked token answers `401
-    session_required`.
+    acts. An unknown, used, expired or revoked token, or one of an account
+    disabled since, answers `401 session_required`.
     """
     index_path: Path = request.app.state.index_path
     grant = redeem_one_time_token(index_path, body.token)
@@ -166,20 +178,30 @@ def exchange_token(
         raise ApiError(401, "session_required", MESSAGES["api_token_rejected"])
     sessions: SessionStore = request.app.state.sessions
     session_id, session = sessions.create(grant)
+    principals: Callable[[Session], Principal | None] = request.app.state.principals
+    principal = principals(session)
+    if principal is None:
+        sessions.end(session_id)
+        raise ApiError(401, "session_required", MESSAGES["api_token_rejected"])
     set_session_cookie(response, session_id)
     on_redeem(request, grant.token_kind)
-    return NewSession(**_state(session).model_dump(), csrf_token=session.csrf_token)
+    return NewSession(
+        **_state(session, principal).model_dump(), csrf_token=session.csrf_token
+    )
 
 
 @router.get("", response_model=SessionState)
 async def read_session(
     session: Annotated[Session, Depends(require_session)],
+    principal: Annotated[Principal, Depends(current_principal)],
 ) -> SessionState:
-    """Return who acts in the session, how, its label and its end.
+    """Return who acts in the session, how, with which roles, its label and end.
 
-    The CSRF token is not repeated: the request already carries it.
+    The roles are those of this request: a role granted or taken away since
+    the session started shows at once. The CSRF token is not repeated: the
+    request already carries it.
     """
-    return _state(session)
+    return _state(session, principal)
 
 
 @router.delete("", status_code=204, response_class=Response)

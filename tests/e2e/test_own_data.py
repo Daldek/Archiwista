@@ -32,7 +32,7 @@ from tests.fixtures.browser import Served, Tab
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import StoreManifest, make_store
 from tests.fixtures.own_data import OwnFolderManifest, make_own_folder
-from tests.fixtures.permissions import add_people, principal
+from tests.fixtures.permissions import Who, add_people, principal
 
 STORE = "zespol"
 PROJECT = "projekt-01"
@@ -374,7 +374,12 @@ def test_compare_snapshot_with_current(own_server: OwnServer, tab: Tab) -> None:
 def test_data_dir_change_admin_only(
     own_server: OwnServer, tab: Tab, chromium: Any
 ) -> None:
-    """The owner (an administrator) gives another folder; another account cannot."""
+    """The owner gives another folder; an administrator's account may, another not.
+
+    The interface offers the change by the session's roles: the owner of the
+    computer and a signed-in administrator see it, anyone else neither sees it
+    nor gets it from the API.
+    """
     page = open_session(tab, own_server)
     other_dir = own_server.store.output_dir.parent / "inne-dane"
     (other_dir / "warstwy").mkdir(parents=True, exist_ok=True)
@@ -390,32 +395,42 @@ def test_data_dir_change_admin_only(
 
     state = StateStore(own_server.served.paths.state_file)
     add_people(state)
-    issued = issue_one_time_token(
-        own_server.served.paths.index_file,
-        "startup",
-        minted_by=principal(state, "other"),
-    )
-    context = chromium.new_context(locale="pl-PL", timezone_id="Europe/Warsaw")
-    try:
-        other = context.new_page()
-        other.goto(fragment_url(own_server.served.server.port, issued.token))
-        other.goto(f"{own_server.served.base}/?view=projects&project={OTHER_PROJECT}")
-        expect(other.locator(".own-group .own-folder")).to_be_visible(
-            timeout=WAIT_S * 1000
+    accounts: tuple[tuple[Who, int], ...] = (("admin", 1), ("other", 0))
+    for who, offered in accounts:
+        issued = issue_one_time_token(
+            own_server.served.paths.index_file,
+            "startup",
+            minted_by=principal(state, who),
         )
-        expect(other.get_by_role("button", name="Zmień folder danych…")).to_have_count(
-            0
-        )
-        refused = other.evaluate(
-            API,
-            ["PUT", f"/projects/{OTHER_PROJECT}/data-dir", json.dumps({"path": None})],
-        )
-        assert (refused["status"], refused["body"]["code"]) == (
-            403,
-            "permission_denied",
-        )
-    finally:
-        context.close()
+        context = chromium.new_context(locale="pl-PL", timezone_id="Europe/Warsaw")
+        try:
+            person = context.new_page()
+            person.goto(fragment_url(own_server.served.server.port, issued.token))
+            expect(person.get_by_role("navigation", name="Widoki")).to_be_visible()
+            person.goto(
+                f"{own_server.served.base}/?view=projects&project={OTHER_PROJECT}"
+            )
+            expect(person.locator(".own-group .own-folder")).to_be_visible(
+                timeout=WAIT_S * 1000
+            )
+            expect(
+                person.get_by_role("button", name="Zmień folder danych…")
+            ).to_have_count(offered)
+            if not offered:
+                refused = person.evaluate(
+                    API,
+                    [
+                        "PUT",
+                        f"/projects/{OTHER_PROJECT}/data-dir",
+                        json.dumps({"path": None}),
+                    ],
+                )
+                assert (refused["status"], refused["body"]["code"]) == (
+                    403,
+                    "permission_denied",
+                )
+        finally:
+            context.close()
 
     group.get_by_role("button", name="Zmień folder danych…").click()
     group.get_by_role("button", name="Przywróć domyślny folder dane/").click()

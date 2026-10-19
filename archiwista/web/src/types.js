@@ -17,6 +17,9 @@
  * @property {string} actor - Who acts: the principal's id (`local` for the computer's owner).
  * @property {"local_owner"|"user"|"agent"} kind - How: the owner, a signed-in person
  *   (team mode) or an agent for `actor`.
+ * @property {string[]} roles - Roles `actor` has now, read again for each request:
+ *   `admin` (accounts, settings, every project's data folder), `store_writer`; an
+ *   agent has those of `actor`. The owner of a local installation has both.
  * @property {string} label - Label of the session, recorded with its jobs and permission
  *   changes.
  * @property {string} expires_at - End of the session unless used again: each request
