@@ -127,7 +127,7 @@ def test_config_store_reads_hand_written_spec_toml(tmp_path: Path) -> None:
 
 
 def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> None:
-    """Without a file Archiwista starts with the grey BKG basemap and v0.1 limits."""
+    """Without a file Archiwista starts with the grey basemaps and v0.1 limits."""
     settings = ConfigStore(tmp_path / "absent.toml").load()
 
     assert settings.stores == ()
@@ -136,8 +136,10 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     assert settings.scan_interval_s("local") == 5 * 60
     assert settings.scan_interval_s("share") == 15 * 60
     assert settings.full_scan_interval_h == 24
-    assert [basemap.grayscale for basemap in settings.basemaps] == [False]
-    assert settings.basemaps[0].origin == "https://sgx.geodatenzentrum.de"
+    assert [(item.kind, item.origin, item.grayscale) for item in settings.basemaps] == [
+        ("vector", "https://tiles.openfreemap.org", False),
+        ("xyz", "https://mapy.geoportal.gov.pl", True),
+    ]
     assert settings.store_write_for_all is False
     assert settings.default_project_visibility == "public"
 
@@ -195,14 +197,19 @@ def test_config_full_scan_interval_rejects_out_of_range(hours: int) -> None:
     ]
 
 
-def test_config_basemap_tile_template_requires_coordinates() -> None:
-    """A tile URL without {z}/{x}/{y} cannot be saved as an XYZ basemap."""
+@pytest.mark.parametrize(
+    ("kind", "url", "reason"),
+    [
+        ("xyz", "https://tiles.example/tile.png", "{z}, {x} i {y}"),
+        ("vector", "https://tiles.example/{z}/{x}/{y}.pbf", "adres TileJSON"),
+    ],
+)
+def test_config_basemap_url_fits_its_kind(kind: str, url: str, reason: str) -> None:
+    """XYZ needs a tile template; a vector basemap its TileJSON, not a template."""
     with pytest.raises(SettingsValidationError) as error:
-        parse_settings(
-            {"basemaps": [{"name": "X", "url": "https://tiles.example/tile.png"}]}
-        )
+        parse_settings({"basemaps": [{"name": "X", "kind": kind, "url": url}]})
 
-    assert "{z}, {x} i {y}" in error.value.problems[0].message
+    assert reason in error.value.problems[0].message
 
 
 def test_config_store_failed_save_keeps_previous_file(

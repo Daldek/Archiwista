@@ -177,7 +177,7 @@ sekcja 9.
 
 | Moduł | Rola | Kluczowe symbole |
 |---|---|---|
-| `config.py` | ścieżki lokalne, ustawienia TOML, walidacja, zapis atomowy, powiadamianie o zmianach | `AppPaths`, `AppSettings`, `StoreConfig`, `BasemapConfig`, `ConfigStore`, `SettingsService`, `parse_settings`, `validate_settings`, `detect_store_kind`, `write_text_atomic`, `DEFAULT_BASEMAP` |
+| `config.py` | ścieżki lokalne, ustawienia TOML, walidacja, zapis atomowy, powiadamianie o zmianach | `AppPaths`, `AppSettings`, `StoreConfig`, `BasemapConfig`, `ConfigStore`, `SettingsService`, `parse_settings`, `validate_settings`, `detect_store_kind`, `write_text_atomic`, `DEFAULT_BASEMAPS` |
 | `paths.py` | prywatne katalogi i ścieżki z indeksu wewnątrz korzenia | `private_directory`, `indexed_path`, `resolve_indexed_path`, `PRIVATE_DIRECTORY_MODE` |
 | `errors.py` | wyjątki aplikacji | `ArchiwistaError`, `SourceUnavailableError`, `SourceIncompatibleError`, `ProducerError`, `PathOutsideRootError`, `IndexQueryError`, `PermissionDeniedError`, `NotFoundError`, `ConflictError`, `JobConflictError`, `OfflineModeError`, `AreaTooLargeError`, `AreaUnreadableError`, `AreaTooComplexError`, `StateError`, `SnapshotError` |
 | `messages.py` | wszystkie polskie teksty serwera i CLI | `MESSAGES`, `with_detail` |
@@ -947,10 +947,11 @@ ale za kontrolą `Host` i `Origin`.
 `styles.css` (tokeny, powłoka, wspólne komponenty), `favicon.svg`,
 `vendor/` z przypiętymi bibliotekami: Preact 10.29.8 (MIT), htm 3.1.1
 (Apache-2.0), MapLibre GL JS 6.14.0 (BSD-3-Clause, wydanie ESM), glify Noto
-Sans Regular z openmaptiles/fonts 2.0 (OFL-1.1; zakresy U+0000–U+01FF
-i U+2000–U+20FF). `vendor/vendor.json` wymienia każdy plik z sumą SHA-256,
-źródłem i licencją; `tests/unit/test_vendor_integrity.py` odrzuca plik
-zmieniony, brakujący albo niewymieniony (to samo dla `api/swagger/`).
+Sans Regular z openmaptiles/fonts 2.0 (OFL-1.1; zakresy U+0000–U+02FF,
+U+0400–U+04FF i U+2000–U+20FF). `vendor/vendor.json` wymienia każdy plik
+z sumą SHA-256, źródłem i licencją; `tests/unit/test_vendor_integrity.py`
+odrzuca plik zmieniony, brakujący albo niewymieniony (to samo dla
+`api/swagger/`).
 Jedyna zmiana w plikach z npm: w `vendor/preact/hooks.mjs` import
 `"preact"` zamieniony na `"./preact.mjs"` (pole `modified` w manifeście).
 
@@ -972,7 +973,7 @@ Jedyna zmiana w plikach z npm: w `vendor/preact/hooks.mjs` import
 | `search.js` | `SearchButton`, skróty `Ctrl+K` i `/`, `SLOT_PARAMS` (parametry `/slots` w adresie) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
 | `views/` | `map.js` (start), `catalog.js` z `catalog-grid.js` (rysuje tylko wiersze blisko widoku) i `catalog-filters.js`, `file.js` (karta pliku — nakładka), `projects.js`, `store.js`, wspólne `cards.js` (`IssueList`, `useJob` i `JobStatus` dla SSE, `FileLink`, `CopyAction`) |
-| `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (podkład), `sheets.js` (siatki godeł), `geo.js`, `products.js` |
+| `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (podkład: rastrowy albo wektorowy we własnym szarym stylu), `sheets.js` (siatki godeł), `geo.js`, `products.js` |
 | `labels/` | słownik tekstów (niżej) |
 
 **Rejestracja widoku.** Widok to jedna linia w `VIEWS` (`id` = parametr
@@ -1003,8 +1004,9 @@ leżą osobno w `messages.py` (`MESSAGES`).
 - `worker-src 'self'` bez `blob:`: MapLibre 6 uruchamia
   `maplibre-gl-worker.mjs` jako moduł roboczy z tego samego pochodzenia;
 - `font-src 'self'`: etykiety mapy z glifów w pakiecie (`GLYPHS`);
-- podkłady w `img-src` i `connect-src` (MapLibre pobiera kafle przez
-  `fetch`) tylko poza trybem offline; CSP należy do dokumentu, więc zmiana
+- podkłady w `img-src` i `connect-src` (MapLibre pobiera kafle i TileJSON
+  przez `fetch`) tylko poza trybem offline; kafle podkładu wektorowego muszą
+  leżeć w pochodzeniu jego TileJSON; CSP należy do dokumentu, więc zmiana
   trybu offline albo listy podkładów przeładowuje stronę (`setup.js`).
 
 Testy przeglądarkowe (`tests/e2e/`, Playwright na prawdziwym

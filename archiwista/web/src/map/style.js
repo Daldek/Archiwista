@@ -4,11 +4,16 @@
  *
  * Offline mode shows no basemap at all, so the browser asks nothing outside
  * Archiwista; online, the basemap's origin is already in the page's CSP
- * (`img-src`, `connect-src`). A basemap is a raster: `xyz` tiles, or a WMS
- * address turned into GetMap requests of 256 px Web Mercator tiles.
+ * (`img-src`, `connect-src`). A raster basemap is `xyz` tiles, or a WMS
+ * address turned into GetMap requests of 256 px Web Mercator tiles. A
+ * `vector` basemap is the TileJSON of OpenMapTiles vector tiles, its tiles
+ * on the same origin, drawn in Archiwista's own light grey style: land use,
+ * water, boundaries, roads, and the names of places and waters — Polish
+ * where the tiles have one (`name:pl`), else Latin, else local — in the
+ * packaged glyphs, without the provider's sprites or fonts.
  */
 
-import { GLYPHS } from "../maplibre.js";
+import { GLYPH_FONT, GLYPHS } from "../maplibre.js";
 
 /** Neutral background under the data (and the whole map without a basemap). */
 export const BACKGROUND = "#eef0f3";
@@ -28,6 +33,24 @@ const WMS_DEFAULTS = {
   FORMAT: "image/png",
   TRANSPARENT: "TRUE",
 };
+// The vector style: greys a shade off the background, so the data's
+// colours stay the only strong ones.
+const BUILT_UP = ["residential", "suburb", "quarter", "neighbourhood", "commercial", "industrial", "retail"];
+const ROADS = ["motorway", "trunk", "primary", "secondary", "tertiary", "minor"];
+const LOCALITIES = ["suburb", "quarter", "neighbourhood", "hamlet", "isolated_dwelling", "locality"];
+const LANDUSE = "#e4e7eb";
+const WATER = "#d3d9e1";
+const ROAD = "#ffffff";
+const ROAD_FAR = "#d3d8df";
+const CASING = "#cfd5dd";
+const STATE_LINE = "#bcc3cd";
+const COUNTRY_LINE = "#98a2b3";
+const WATER_TEXT = "#5f6f82";
+const HALO = "rgba(255, 255, 255, 0.85)";
+/** Label of a place or water: Polish name, else the Latin one, else the local one. */
+const NAME = ["coalesce", ["get", "name:pl"], ["get", "name:latin"], ["get", "name"]];
+const POINTS = ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false];
+const LINES = ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false];
 
 /**
  * The style a map view starts with.
@@ -44,7 +67,7 @@ export function mapStyle(basemap) {
   };
   if (basemap) {
     style.sources[SOURCE] = basemapSource(basemap);
-    style.layers.push(basemapLayer(basemap));
+    style.layers.push(...basemapLayers(basemap));
   }
   return style;
 }
@@ -56,11 +79,14 @@ export function mapStyle(basemap) {
  * @param {import("../types.js").BasemapSettings|null} basemap
  */
 export function setBasemap(map, basemap) {
-  if (map.getLayer(SOURCE)) map.removeLayer(SOURCE);
+  for (const id of map.getLayersOrder()) {
+    if (map.getLayer(id).source === SOURCE) map.removeLayer(id);
+  }
   if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   if (!basemap) return;
   map.addSource(SOURCE, basemapSource(basemap));
-  map.addLayer(basemapLayer(basemap), map.getLayer(FIRST_DATA_LAYER) ? FIRST_DATA_LAYER : undefined);
+  const before = map.getLayer(FIRST_DATA_LAYER) ? FIRST_DATA_LAYER : undefined;
+  for (const layer of basemapLayers(basemap)) map.addLayer(layer, before);
 }
 
 /**
@@ -113,22 +139,121 @@ export function keepBasemap(name) {
 }
 
 function basemapSource(basemap) {
-  return {
-    type: "raster",
-    tiles: [tileUrl(basemap)],
-    tileSize: TILE_PX,
-    maxzoom: 19,
-    attribution: escapeHtml(basemap.attribution ?? ""),
-  };
+  const attribution = escapeHtml(basemap.attribution ?? "");
+  // A source's own attribution wins over the TileJSON's (HTML from another
+  // origin), even when empty.
+  if (basemap.kind === "vector") return { type: "vector", url: basemap.url, attribution };
+  return { type: "raster", tiles: [tileUrl(basemap)], tileSize: TILE_PX, maxzoom: 19, attribution };
 }
 
-function basemapLayer(basemap) {
-  return {
-    id: SOURCE,
-    type: "raster",
+function basemapLayers(basemap) {
+  if (basemap.kind === "vector") return vectorLayers();
+  return [
+    {
+      id: SOURCE,
+      type: "raster",
+      source: SOURCE,
+      paint: basemap.grayscale ? { "raster-saturation": -1 } : {},
+    },
+  ];
+}
+
+/**
+ * Layers of the grey style over the OpenMapTiles schema, bottom to top: the
+ * labels of the highest layers win where they collide. Only places and
+ * waters are named: names of parks, peaks or roads abroad would need more
+ * scripts than the packaged glyphs.
+ */
+function vectorLayers() {
+  const zoom = (...stops) => ["interpolate", ["linear"], ["zoom"], ...stops];
+  const layer = (id, type, sourceLayer, filter, rest) => ({
+    id: `${SOURCE}-${id}`,
+    type,
     source: SOURCE,
-    paint: basemap.grayscale ? { "raster-saturation": -1 } : {},
+    "source-layer": sourceLayer,
+    ...(filter ? { filter } : {}),
+    ...rest,
+  });
+  const boundary = (level, disputed) => [
+    "all",
+    ["==", ["get", "admin_level"], level],
+    ["!=", ["get", "maritime"], 1],
+    [disputed ? "==" : "!=", ["get", "disputed"], 1],
+  ];
+  const roads = ["all", ["match", ["get", "class"], ROADS, true, false], ["!=", ["get", "brunnel"], "tunnel"]];
+  const roadWidth = (extra) => {
+    const of = (motorway, primary, other) => [
+      "match", ["get", "class"], ["motorway", "trunk"], motorway + extra, "primary", primary + extra, other + extra,
+    ];
+    return ["interpolate", ["exponential", 1.5], ["zoom"], 5, of(0.6, 0.4, 0.3), 10, of(1.6, 1.2, 0.6), 16, of(9, 7, 4)];
   };
+  const label = (id, sourceLayer, filter, { size, color, minzoom = 0, maxzoom = 24, line = false, layout = {} }) =>
+    layer(id, "symbol", sourceLayer, filter, {
+      minzoom,
+      maxzoom,
+      layout: {
+        "text-field": NAME,
+        "text-font": [GLYPH_FONT],
+        "text-size": size,
+        "text-max-width": 8,
+        ...(line ? { "symbol-placement": "line" } : {}),
+        ...layout,
+      },
+      paint: { "text-color": color, "text-halo-color": HALO, "text-halo-width": 1.2 },
+    });
+  const place = (id, classes, options) =>
+    label(id, "place", ["match", ["get", "class"], classes, true, false], {
+      ...options,
+      // OpenMapTiles ranks places by importance, 1 first.
+      layout: { "symbol-sort-key": ["coalesce", ["get", "rank"], 99], ...options.layout },
+    });
+  return [
+    layer("landuse", "fill", "landuse", ["match", ["get", "class"], BUILT_UP, true, false], {
+      paint: { "fill-color": LANDUSE },
+    }),
+    layer("water", "fill", "water", null, { paint: { "fill-color": WATER } }),
+    layer("waterway", "line", "waterway", ["match", ["get", "class"], ["river", "canal"], true, false], {
+      paint: { "line-color": WATER, "line-width": zoom(8, 0.6, 14, 3) },
+    }),
+    layer("state", "line", "boundary", boundary(4, false), {
+      minzoom: 5,
+      paint: { "line-color": STATE_LINE, "line-width": zoom(5, 0.6, 12, 1.2), "line-dasharray": [3, 2] },
+    }),
+    layer("road-casing", "line", "transportation", roads, {
+      minzoom: 11,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": CASING, "line-width": roadWidth(1.5) },
+    }),
+    layer("road", "line", "transportation", roads, {
+      layout: { "line-cap": "round", "line-join": "round" },
+      // Grey lines while far; white between their casings from zoom 11.
+      paint: { "line-color": ["step", ["zoom"], ROAD_FAR, 11, ROAD], "line-width": roadWidth(0) },
+    }),
+    layer("country", "line", "boundary", boundary(2, false), {
+      paint: { "line-color": COUNTRY_LINE, "line-width": zoom(3, 0.8, 10, 1.6) },
+    }),
+    layer("country-disputed", "line", "boundary", boundary(2, true), {
+      paint: { "line-color": COUNTRY_LINE, "line-width": zoom(3, 0.8, 10, 1.6), "line-dasharray": [2, 2] },
+    }),
+    label("water-line-name", "water_name", LINES, { minzoom: 8, line: true, size: 11, color: WATER_TEXT }),
+    label("waterway-name", "waterway", ["==", ["get", "class"], "river"], {
+      minzoom: 9,
+      line: true,
+      size: zoom(9, 10, 14, 12),
+      color: WATER_TEXT,
+    }),
+    label("water-name", "water_name", POINTS, { size: zoom(3, 10, 8, 13), color: WATER_TEXT }),
+    place("locality", LOCALITIES, { minzoom: 12, size: zoom(12, 10, 16, 12), color: "#667085" }),
+    place("village", ["village"], { minzoom: 10, size: zoom(10, 10, 15, 13), color: "#5d6878" }),
+    place("town", ["town"], { minzoom: 7, size: zoom(7, 10, 13, 14), color: "#475467" }),
+    place("city", ["city"], { minzoom: 4, size: zoom(4, 10.5, 8, 13, 13, 17), color: "#344054" }),
+    place("country-name", ["country"], {
+      maxzoom: 7,
+      size: zoom(3, 10, 6, 13),
+      color: "#667085",
+      layout: { "text-transform": "uppercase", "text-letter-spacing": 0.08 },
+    }),
+  ];
 }
 
 /**

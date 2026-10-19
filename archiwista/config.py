@@ -45,7 +45,7 @@ MOUNTINFO_PATH = Path("/proc/self/mountinfo")
 OWN_DATA_DIR_NAME = "dane"
 
 type StoreKind = Literal["local", "share"]
-type BasemapKind = Literal["xyz", "wms"]
+type BasemapKind = Literal["xyz", "wms", "vector"]
 type OwnFolderSource = Literal["default", "setting"]
 type OwnFolderReason = Literal["inside_store", "inside_app_data", "overlaps_project"]
 # Visibility of a project without its own access entry (A-ADR-029): everyone
@@ -292,14 +292,19 @@ class BasemapConfig(BaseModel):
     ----------
     name : str
         Name shown in the interface.
-    kind : {"xyz", "wms"}
-        Tile template with ``{z}/{x}/{y}`` or a WMS endpoint.
+    kind : {"xyz", "wms", "vector"}
+        Raster tile template with ``{z}/{x}/{y}``, a WMS endpoint, or the
+        TileJSON of vector tiles in the OpenMapTiles schema, drawn with
+        Archiwista's own grey style.
     url : str
-        Tile template or WMS address (http or https).
+        Tile template, WMS address or TileJSON address (http or https). The
+        tiles of a TileJSON must come from its origin: the page's CSP allows
+        only the origin of this address.
     attribution : str
         Attribution text required by the provider.
     grayscale : bool
-        Render the tiles in grey so data outlines stay readable.
+        Render raster tiles in grey so data outlines stay readable (the
+        vector style is grey already).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -320,10 +325,11 @@ class BasemapConfig(BaseModel):
         parts = urlsplit(self.url)
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise ValueError(MESSAGES["settings_basemap_url"])
-        if self.kind == "xyz" and not all(
-            token in self.url for token in ("{z}", "{x}", "{y}")
-        ):
+        tokens = [token in self.url for token in ("{z}", "{x}", "{y}")]
+        if self.kind == "xyz" and not all(tokens):
             raise ValueError(MESSAGES["settings_basemap_xyz"])
+        if self.kind == "vector" and any(tokens):
+            raise ValueError(MESSAGES["settings_basemap_vector"])
         return self
 
     @property
@@ -333,15 +339,25 @@ class BasemapConfig(BaseModel):
         return f"{parts.scheme}://{parts.netloc}"
 
 
-# BKG TopPlusOpen "web_grau" is grey by design, so the client does not
-# desaturate it; unlike tile.openstreetmap.org it serves real tiles to
-# requests without a Referer (the app sends Referrer-Policy: no-referrer).
-DEFAULT_BASEMAP = BasemapConfig(
-    name="TopPlusOpen szary (BKG)",
-    kind="xyz",
-    url="https://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web_grau/default/WEBMERCATOR/{z}/{y}/{x}.png",
-    attribution="© BKG (2026), dl-de/by-2-0",
-    grayscale=False,
+# Both serve tiles to requests without a Referer (the app sends
+# Referrer-Policy: no-referrer) and print Polish names, unlike BKG
+# TopPlusOpen ("Gdańsk / Danzig"). OpenFreeMap's vector tiles carry
+# `name:pl` for the whole planet and need no key; GUGiK's OSM raster covers
+# Poland only and is coloured, so the client desaturates it.
+DEFAULT_BASEMAPS: tuple[BasemapConfig, ...] = (
+    BasemapConfig(
+        name="OpenFreeMap szary",
+        kind="vector",
+        url="https://tiles.openfreemap.org/planet",
+        attribution="OpenFreeMap © OpenMapTiles Data from OpenStreetMap",
+    ),
+    BasemapConfig(
+        name="OSM GUGiK szary (tylko Polska)",
+        kind="xyz",
+        url="https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png",
+        attribution="© OpenStreetMap contributors, GUGiK",
+        grayscale=True,
+    ),
 )
 
 
@@ -368,7 +384,8 @@ class AppSettings(BaseModel):
     stores : tuple[StoreConfig, ...]
         Configured stores with unique ids.
     basemaps : tuple[BasemapConfig, ...]
-        Online basemaps, grey BKG TopPlusOpen by default.
+        Online basemaps: grey OpenFreeMap vector tiles and GUGiK's OSM
+        raster (Poland only) by default.
     store_write_for_all : bool
         Give everyone the store write permission, not only people with the
         ``store_writer`` role (A-ADR-029; checked from v0.3).
@@ -400,7 +417,7 @@ class AppSettings(BaseModel):
     )
     project_dirs: tuple[AbsolutePath, ...] = ()
     stores: tuple[StoreConfig, ...] = ()
-    basemaps: tuple[BasemapConfig, ...] = (DEFAULT_BASEMAP,)
+    basemaps: tuple[BasemapConfig, ...] = DEFAULT_BASEMAPS
     store_write_for_all: bool = False
     default_project_visibility: DefaultProjectVisibility = "public"
     preview_cache_limit_gb: int = Field(

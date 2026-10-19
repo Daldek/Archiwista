@@ -37,7 +37,7 @@ Kartografa).
 | [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1; decyzja użytkownika 2026-10-18; SPEC 15: P1) |
 | [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 (errata 2: KA w Kartografie 0.8.0, `skip_versions`, `list_segments`, KA-5 na żądanie) |
 | [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
-| [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9) |
+| [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9; errata 2: podkład wektorowy OpenFreeMap zamiast BKG TopPlusOpen) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
 | [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (errata 1: „Wachlarz” zastępuje „Stos”, M4/P12 rozstrzygnięte) |
 | [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024) |
@@ -685,6 +685,27 @@ kafli nie pasują też do pracy zespołu. Polityka `Referer` zostaje bez zmian. 
 są szare z natury, więc filtr przeglądarki nie jest potrzebny; OSM zostaje podkładem,
 który użytkownik może dodać w ustawieniach. Test `-m live`:
 `tests/integration/test_basemap_live.py`.
+
+**Errata 2 (2026-10-19, decyzja użytkownika — uwagi przed wydaniem v0.2):** podkład
+domyślny to kafle wektorowe OpenFreeMap (`kind = "vector"`, TileJSON
+`https://tiles.openfreemap.org/planet`, schemat OpenMapTiles z danych OpenStreetMap,
+atrybucja „OpenFreeMap © OpenMapTiles Data from OpenStreetMap”) we własnym jasnoszarym
+stylu Archiwisty zamiast BKG TopPlusOpen. TopPlusOpen to produkt niemiecki: obok
+polskich nazw drukuje niemieckie egzonimy („Gdańsk / Danzig”, „Wrocław / Breslau”,
+„Rixhöft” przy Rozewiu — sprawdzone na żywo) i żaden jego wariant ich nie pomija.
+OpenFreeMap działa bez klucza i rejestracji, pozwala na użycie komercyjne, odpowiada bez
+nagłówka `Referer` i z CORS `*`, a jego kafle mają `name:pl` na całym świecie (Praga,
+Drezno, Wilno, Lwów, Królewiec). Styl podpisuje tylko miejscowości i wody (`name:pl`,
+potem `name:latin`, potem `name`) glifami z pakietu, do których doszły zakresy
+U+0200–U+02FF i cyrylica U+0400–U+04FF; nie używa zewnętrznych sprite'ów ani fontów.
+Drugi wbudowany podkład to rastrowa OSM BaseMap GUGiK (`grayscale = true`, atrybucja
+„© OpenStreetMap contributors, GUGiK”) — polskie nazwy, ale tylko na obszarze Polski.
+Odrzucone: VersaTiles (ten sam kod, ale inny schemat i nazwy bez wersji łacińskiej, więc
+więcej glifów), EOX (nazwy angielskie bez polskich znaków), CARTO (wymaga klucza),
+Wikimedia (tylko dla projektów Wikimedia), mapy GUGiK TOPO i G2 (bez EPSG:3857).
+Konfiguracja zapisana wcześniej (kreator zapisuje też listę podkładów) zachowuje swoje
+podkłady; nowe wbudowane daje usunięcie tabel `[[basemaps]]` z `config.toml`. Test
+`-m live`: `tests/integration/test_basemap_live.py`.
 
 ---
 

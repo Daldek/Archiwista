@@ -1336,14 +1336,31 @@ pilnuje, że warstwy wyżej nie zależą od Kartografa (sekcje 11 i 13).
 - Wyświetlanie w EPSG:3857; obrysy w WGS84 z indeksu; dane w swoich
   układach są przeliczane wyłącznie do wyświetlania (przypięta
   transformacja Kartografa, KA-6).
-- Podkłady: BKG TopPlusOpen „web_grau” (szary z natury, licencja dl-de/by-2-0,
-  atrybucja „© BKG (2026), dl-de/by-2-0”) — domyślny, online, żeby dane i obrysy
-  były czytelne na neutralnym tle (A-ADR-016, errata 1), ortofotomapa i mapa
-  topograficzna GUGiK (WMS), ortofoto CUZK (WMS), „bez podkładu”. OpenStreetMap
-  tylko jako podkład skonfigurowany przez użytkownika: tile.openstreetmap.org wymaga
-  nagłówka `Referer`, którego Archiwista nie wysyła (`Referrer-Policy: no-referrer`),
-  a jego zasady korzystania z kafli nie pasują do pracy zespołu. „Tryb offline”
-  w ustawieniach wyłącza wszystkie zewnętrzne zapytania przeglądarki (sekcja 15, P6).
+- Podkłady (A-ADR-016, errata 2): domyślny „OpenFreeMap szary” — kafle
+  wektorowe OpenFreeMap (schemat OpenMapTiles z danych OpenStreetMap, bez
+  klucza i bez nagłówka `Referer`; atrybucja „OpenFreeMap © OpenMapTiles
+  Data from OpenStreetMap”) we własnym jasnoszarym stylu Archiwisty: tło,
+  woda, zabudowa, granice, drogi i nazwy miejscowości oraz wód w kolejności
+  `name:pl`, `name:latin`, `name` — polskie nazwy w Polsce i polskie
+  egzonimy za granicą (Praga, Drezno, Lwów), bez niemieckich nazw polskich
+  miast. Etykiety tylko z glifów w pakiecie (Noto Sans: łacinka
+  z rozszerzeniami, cyrylica, interpunkcja), bez zewnętrznych sprite'ów
+  i fontów; nazw parków, szczytów i ulic, które wymagałyby innych pism,
+  styl nie pokazuje, a znak spoza glifów MapLibre rysuje lokalnie (to nie
+  awaria mapy). Drugi wbudowany: „OSM GUGiK szary (tylko Polska)” — rastrowa
+  OSM BaseMap z serwera GUGiK w odcieniach szarości, z polskimi nazwami, ale
+  **tylko na obszarze Polski** (atrybucja „© OpenStreetMap contributors,
+  GUGiK”). Dalej do dodania w ustawieniach: ortofotomapa i mapa
+  topograficzna GUGiK (WMS), ortofoto CUZK (WMS); w legendzie zawsze jest
+  „bez podkładu”. Rodzaje podkładu (`kind`): `xyz` (szablon `{z}/{x}/{y}`),
+  `wms` (GetMap w EPSG:3857), `vector` (adres TileJSON kafli w schemacie
+  OpenMapTiles; kafle w pochodzeniu TileJSON, bo CSP zna tylko adres
+  z ustawień). OpenStreetMap (tile.openstreetmap.org) tylko jako podkład
+  skonfigurowany przez użytkownika: wymaga nagłówka `Referer`, którego
+  Archiwista nie wysyła (`Referrer-Policy: no-referrer`), a jego zasady
+  korzystania z kafli nie pasują do pracy zespołu. „Tryb offline”
+  w ustawieniach wyłącza wszystkie zewnętrzne zapytania przeglądarki
+  (sekcja 15, P6).
 - Warstwy danych: obrysy (kolor wg stanu i pokrycia), podglądy rastrów
   (kafle `/api/v1/…/tiles/{z}/{x}/{y}.png`), obiekty wektorowe (GeoJSON).
 - Warstwa stacji IMGW: punkty z indeksu (`station_points`), symbol wg
@@ -3294,7 +3311,8 @@ Decyzja: A-ADR-012.
   'self' <podkłady>; font-src 'self'; object-src 'none'; base-uri 'none';
   form-action 'self'; frame-ancestors 'none'` — `<podkłady>` to źródła
   skonfigurowanych podkładów, tylko w trybie online (MapLibre pobiera kafle
-  przez `fetch`, więc potrzebują ich także `connect-src`); worker MapLibre
+  i TileJSON przez `fetch`, więc potrzebują ich także `connect-src`; kafle
+  podkładu wektorowego leżą w pochodzeniu jego TileJSON); worker MapLibre
   z pakietu jako moduł z tego samego pochodzenia, bez `blob:`. Zmiana trybu
   offline albo podkładów przeładowuje stronę. Dodatkowo `Referrer-Policy: no-referrer`
   i `X-Content-Type-Options: nosniff`. Biblioteki interfejsu są w pakiecie

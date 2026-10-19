@@ -85,6 +85,14 @@
           "from": "Noto Sans Regular/256-511.pbf",
           "sha256": "992557f9e2574cfb9a75e16c7b52832578849772b7c9a6e480d6213fb008fe5d"
         },
+        "glyphs/noto-sans-regular/512-767.pbf": {
+          "from": "Noto Sans Regular/512-767.pbf",
+          "sha256": "a4c5cdf9623cb0bf7e9c6b0e8be4bf38b524bc29819dd2276c8ca63d5e43dd21"
+        },
+        "glyphs/noto-sans-regular/1024-1279.pbf": {
+          "from": "Noto Sans Regular/1024-1279.pbf",
+          "sha256": "834adb7f3ea9944ea530214841ee098e5482e85180f14df85036939261e0ffbb"
+        },
         "glyphs/noto-sans-regular/8192-8447.pbf": {
           "from": "Noto Sans Regular/8192-8447.pbf",
           "sha256": "f061e5b4e42e5925228534d8822b423a029569263db09f5ce44573600d45295f"
@@ -94,7 +102,7 @@
           "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
         }
       },
-      "note": "Only the Latin ranges of Polish and Czech texts and general punctuation (U+0000-U+01FF, U+2000-U+20FF); the license file is noto-sans/LICENSE of the openmaptiles/fonts repository at tag v2.0."
+      "note": "Only the ranges of the map's labels: Latin with Latin Extended-A, -B and the IPA and spacing modifier letters (U+0000-U+02FF), Cyrillic (U+0400-U+04FF) for local names of the basemap without a Polish or Latin one, and general punctuation (U+2000-U+20FF); the license file is noto-sans/LICENSE of the openmaptiles/fonts repository at tag v2.0."
     }
   ]
 }

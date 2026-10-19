@@ -306,7 +306,7 @@ tests/
 │   ├── test_areas.py        # Obszary: GeoJSON, GPKG, SHP w ZIP, 50/200 MB, zabicie odczytu, 100 000 wierzchołków, porządki
 │   ├── test_local_coverage.py  # Pokrycie lokalne: odświeżenie przed odpowiedzią, układ płaski, stale
 │   ├── test_read_only_store.py  # Skan i odczyt magazynu tylko do odczytu bez zmian
-│   ├── test_basemap_live.py  # Domyślny podkład daje te same kafle bez nagłówka Referer (live)
+│   ├── test_basemap_live.py  # Wbudowane podkłady bez nagłówka Referer: TileJSON i kafel wektorowy OpenFreeMap, kafel GUGiK (live)
 │   ├── test_live_store.py   # Indeks żywego magazynu Kartografa 0.8.0 = iter_store, klucze, segmenty (live)
 │   └── test_second_adapter.py  # Druga wtyczka: skan, /sources, /slots, karta
 ├── contract/
@@ -315,6 +315,7 @@ tests/
 ├── e2e/
 │   ├── conftest.py          # Prawdziwy archiwista serve (serve) i strona Chromium (tab)
 │   ├── test_acceptance.py   # Odbiór v0.1: kreator → wyszukiwanie → mapa → karta → projekty → magazyn, read-only (chmod i montowanie ro), odłączony udział, API z sesją, druga wtyczka
+│   ├── test_basemap.py      # Podkład wektorowy z innego pochodzenia: CSP, bez Referer, polskie nazwy, atrybucja z ustawień, brak zakresu glifów to nie awaria mapy
 │   ├── test_catalog.py      # Katalog: filtry /slots w adresie, kursor, dokładna jednostka, bez obrysu, Ctrl+K, druga wtyczka
 │   ├── test_file_projects_store.py  # Karta pliku, Projekty, Magazyn: nazwy i wartości techniczne, przypięcia, kopiowanie, baner, dowiązanie, wykonawca skanu
 │   ├── test_map.py          # Mapa: narzędzia obszaru, stan lokalny po odświeżeniu, siatka >5000, „bez obrysu”, podkład z CSP, offline, klawiatura, 1440/390 px
@@ -329,7 +330,7 @@ tests/
 │   ├── api_store.py         # Magazyn testowy zeskanowany i podany przez API
 │   ├── browser.py           # Serwer testu i karta Chromium: naruszenia CSP, błędy, żądania, workery
 │   ├── local_server.py      # archiwista serve w wątku na wolnym porcie (rejestr do wyboru)
-│   ├── tile_server.py       # Lokalny serwer kafli XYZ na innym porcie (podkład online w testach CSP)
+│   ├── tile_server.py       # Lokalny serwer kafli na innym porcie: XYZ (PNG), TileJSON i kafle wektorowe OpenMapTiles (podkład online w testach CSP)
 │   ├── jobs.py              # Magazyn, ustawienia i nadzorca z testowymi procesami roboczymi
 │   ├── job_worker.py        # Proces roboczy z hakami: wolny skan, awaria, brak sieci
 │   ├── jobs_api.py          # Aplikacja z nadzorcą zadań testowych procesów roboczych

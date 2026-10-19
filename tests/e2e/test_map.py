@@ -433,21 +433,15 @@ def test_online_basemap_from_local_tile_server_without_csp_violations(
 def test_offline_makes_no_external_requests(
     serve: Serve, tab: Tab, tmp_path: Path
 ) -> None:
-    """Offline, the whole flow asks nothing outside Archiwista."""
+    """Offline, the whole flow asks nothing outside Archiwista.
+
+    The built-in basemaps stay configured: neither the vector one's TileJSON
+    nor any tile is asked for, and the CSP names no other origin.
+    """
     store = make_store(tmp_path / "store", slots=24, seed=7)
     sheet = nmt_sheets(store)[0].unit
     assert sheet is not None
-    external = BasemapConfig(
-        name="Zewnętrzny", url="https://tiles.example.com/{z}/{x}/{y}.png"
-    )
-    served = serve(
-        AppSettings(
-            offline=True,
-            basemaps=(external,),
-            stores=(zespol(store.root),),
-            project_dirs=(store.projects_dir,),
-        )
-    )
+    served = serve(offline_settings(store))
     page = open_map(tab, served, "&product=nmt")
     document = page.goto(page.url)
     expect(counter(page)).to_have_text(LOADED)
@@ -459,7 +453,9 @@ def test_offline_makes_no_external_requests(
     wait_still(page)
 
     assert document is not None
-    assert "example.com" not in document.headers["content-security-policy"]
+    policy = document.headers["content-security-policy"]
+    assert "img-src 'self' data: blob:;" in policy
+    assert "connect-src 'self';" in policy
     assert tab.foreign_requests(served.base) == []
     expect(page.get_by_text("Tryb offline: bez podkładu")).to_be_visible()
     expect(page.get_by_label("Podkład")).to_have_count(0)

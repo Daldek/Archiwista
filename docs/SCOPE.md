@@ -122,7 +122,7 @@ zmienia warunków):
 | CORINE, SoilGrids | Copernicus, ISRIC (przez Kartografa) | otwarte, z atrybucją |
 | Archiwa hydro i meteo, katalog stacji | IMGW-PIB (przez IMGWTools) | regulamin IMGW-PIB: formuły źródła (§5 ust. 3–4), cel użycia (§3 ust. 2) |
 | Archiwa hydro i meteo, metadane stacji (od v0.6) | ČHMÚ (przez IMGWTools) | CC BY 4.0, atrybucja ČHMÚ |
-| Podkład mapy | BKG TopPlusOpen (szary) | dl-de/by-2-0, atrybucja „© BKG (2026), dl-de/by-2-0” na mapie; OSM (ODbL) tylko gdy użytkownik go doda |
+| Podkład mapy | OpenFreeMap (kafle wektorowe OpenMapTiles z danych OSM, szary styl Archiwisty); OSM BaseMap GUGiK (raster, tylko Polska) | ODbL; atrybucje na mapie: „OpenFreeMap © OpenMapTiles Data from OpenStreetMap”, „© OpenStreetMap contributors, GUGiK” |
 
 **Środowisko testowe:** przykładowy magazyn testu na żywo Kartografa
 i katalog IMGW testowy w `<katalog-danych>`; magazyn syntetyczny 50 000

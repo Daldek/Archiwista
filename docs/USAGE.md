@@ -70,8 +70,13 @@ pokazuje siatkę zagęszczenia, a kliknięcie komórki przybliża. Kliknięcie
 obrysu otwiera kartę pliku (gdy w jednym miejscu jest kilka plików —
 najpierw ich listę). Pliki bez obrysu nie trafiają na mapę: licznik
 „… bez obrysu” prowadzi do nich w Katalogu. W legendzie zmienia się
-podkład (domyślnie szary BKG TopPlusOpen). Bez myszy: strzałki przesuwają
-mapę, plus i minus przybliżają.
+podkład: domyślnie szary „OpenFreeMap szary” (kafle wektorowe z danych
+OpenStreetMap, nazwy po polsku także za granicą: Praga, Drezno, Lwów),
+do wyboru „OSM GUGiK szary (tylko Polska)” — poza Polską jest pusty —
+albo „bez podkładu”. Ustawienia zapisane przed v0.2 zachowują swoją listę
+podkładów; nowe wbudowane daje usunięcie tabel `[[basemaps]]`
+z `config.toml`. Bez myszy: strzałki przesuwają mapę, plus i minus
+przybliżają.
 
 ## Katalog
 

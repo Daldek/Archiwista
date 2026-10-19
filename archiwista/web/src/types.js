@@ -773,10 +773,13 @@
  *
  * @typedef {object} BasemapSettings
  * @property {string} name
- * @property {"xyz"|"wms"} [kind] - `xyz` tiles or `wms`.
- * @property {string} url - Tile template with {z}/{x}/{y}, or a WMS address.
+ * @property {"xyz"|"wms"|"vector"} [kind] - `xyz` raster tiles, `wms`, or `vector`: the
+ *   TileJSON of OpenMapTiles vector tiles, drawn in Archiwista's grey style with
+ *   Polish names.
+ * @property {string} url - Tile template with {z}/{x}/{y}, a WMS address, or a TileJSON
+ *   address (its tiles on the same origin).
  * @property {string} [attribution]
- * @property {boolean} [grayscale]
+ * @property {boolean} [grayscale] - Raster tiles in grey.
  */
 
 /**
@@ -794,7 +797,8 @@
  *   directories.
  * @property {string[]} [project_dirs] - Absolute directories searched for projects.
  * @property {StoreSettings[]} [stores]
- * @property {BasemapSettings[]} [basemaps] - Grey BKG TopPlusOpen when omitted.
+ * @property {BasemapSettings[]} [basemaps] - Grey OpenFreeMap (vector) and OSM GUGiK
+ *   (raster, Poland only) when omitted.
  * @property {boolean} [store_write_for_all] - Everyone may write to stores, not only
  *   `store_writer` (v0.3).
  * @property {"public"|"private"} [default_project_visibility] - Visibility of a project

@@ -92,9 +92,12 @@ SCOPE etap 3.
   GUGiK z wymiarem czasu; NMT/NMPT/LAZ — rok z kafli pobranych arkuszy;
   BDOT10k — powiaty z PRG; dane własne — linie i migawki; N8 Rozszerzalność.
 - **Interfejs i słownictwo:** A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`,
-  asystent jako panel boczny); domyślny podkład to szary BKG TopPlusOpen
-  (A-ADR-016 errata 1 — kafle OSM bez nagłówka `Referer` są blokowane);
-  etykiety pokrycia A-ADR-010, 017; dane IMGW A-ADR-019..023.
+  asystent jako panel boczny); domyślny podkład to kafle wektorowe
+  OpenFreeMap we własnym szarym stylu z polskimi nazwami (A-ADR-016
+  errata 2 — BKG TopPlusOpen drukował niemieckie egzonimy; errata 1 — kafle
+  OSM bez nagłówka `Referer` są blokowane), drugi wbudowany to OSM GUGiK
+  (tylko Polska); etykiety pokrycia A-ADR-010, 017; dane IMGW
+  A-ADR-019..023.
 - **Uprawnienia** (A-ADR-029): egzekwowane tylko we własnej powierzchni
   Archiwisty (UI, API, CLI, tokeny agentów, pamięć podglądów); role `admin`
   i `store_writer`, ustawienie `store_write_for_all`, widoczność projektu

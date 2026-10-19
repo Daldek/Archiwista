@@ -16,6 +16,15 @@ wiersza poleceń mogą się zmieniać.
   `wymagania-imgwtools.md`), `docs/reports/v0.1-measurements.md` ze zrzutami
   w `docs/reports/v0.1-screenshots/` (dawniej `docs/raporty/`), a dziennik
   zmian przeszedł do `docs/CHANGELOG.md`.
+- **Podkład mapy:** domyślnie kafle wektorowe OpenFreeMap we własnym
+  jasnoszarym stylu Archiwisty, z polskimi nazwami miejscowości i wód
+  (także egzonimy: Praga, Drezno, Lwów), zamiast BKG TopPlusOpen, który obok
+  polskich nazw drukował niemieckie („Gdańsk / Danzig”); drugi wbudowany
+  podkład to szara OSM BaseMap GUGiK (tylko Polska). Nowy rodzaj podkładu
+  `vector` (adres TileJSON kafli w schemacie OpenMapTiles); glify
+  U+0200–U+02FF i cyrylicy w pakiecie. Ustawienia zapisane wcześniej
+  zachowują swoją listę podkładów — nowe wbudowane daje usunięcie tabel
+  `[[basemaps]]` z `config.toml`.
 
 ## [0.1.0] — 2026-10-19 — „Przeglądarka”
 

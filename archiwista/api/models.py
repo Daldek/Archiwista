@@ -403,10 +403,10 @@ _STORE_SETTINGS_EXAMPLE = {
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
 _BASEMAP_EXAMPLE = {
-    "name": "TopPlusOpen szary (BKG)",
-    "kind": "xyz",
-    "url": "https://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web_grau/default/WEBMERCATOR/{z}/{y}/{x}.png",
-    "attribution": "© BKG (2026), dl-de/by-2-0",
+    "name": "OpenFreeMap szary",
+    "kind": "vector",
+    "url": "https://tiles.openfreemap.org/planet",
+    "attribution": "OpenFreeMap © OpenMapTiles Data from OpenStreetMap",
     "grayscale": False,
 }
 
@@ -2427,10 +2427,21 @@ class BasemapSettings(BaseModel):
     model_config = _examples(_BASEMAP_EXAMPLE)
 
     name: str
-    kind: BasemapKind = Field(default="xyz", description="`xyz` tiles or `wms`.")
-    url: str = Field(description="Tile template with {z}/{x}/{y}, or a WMS address.")
+    kind: BasemapKind = Field(
+        default="xyz",
+        description=(
+            "`xyz` raster tiles, `wms`, or `vector`: the TileJSON of OpenMapTiles"
+            " vector tiles, drawn in Archiwista's grey style with Polish names."
+        ),
+    )
+    url: str = Field(
+        description=(
+            "Tile template with {z}/{x}/{y}, a WMS address, or a TileJSON address"
+            " (its tiles on the same origin)."
+        )
+    )
     attribution: str = ""
-    grayscale: bool = False
+    grayscale: bool = Field(default=False, description="Raster tiles in grey.")
 
     @classmethod
     def of(cls, basemap: BasemapConfig) -> Self:
@@ -2489,7 +2500,11 @@ class Settings(BaseModel):
     )
     stores: list[StoreSettings] = Field(default_factory=list)
     basemaps: list[BasemapSettings] = Field(
-        default_factory=list, description="Grey BKG TopPlusOpen when omitted."
+        default_factory=list,
+        description=(
+            "Grey OpenFreeMap (vector) and OSM GUGiK (raster, Poland only) when"
+            " omitted."
+        ),
     )
     store_write_for_all: bool = Field(
         default=False,

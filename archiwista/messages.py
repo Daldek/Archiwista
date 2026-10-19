@@ -297,6 +297,9 @@ MESSAGES = merge_messages(
         "settings_duplicate_basemap": "nazwa podkładu „{value}” powtarza się",
         "settings_basemap_url": "adres podkładu musi zaczynać się od http:// albo https://",
         "settings_basemap_xyz": "adres kafli musi zawierać {z}, {x} i {y}",
+        "settings_basemap_vector": (
+            "podkład wektorowy wskazuje adres TileJSON, bez {z}, {x} i {y}"
+        ),
         "settings_default_visibility": "dozwolone wartości: public, private",
         "root_missing": (
             "Katalog {producer} magazynu „{store}” nie istnieje"

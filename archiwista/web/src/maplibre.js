@@ -5,7 +5,7 @@
  * The CSP allows only `worker-src 'self'` (no `blob:`): the module starts its
  * worker `maplibre-gl-worker.mjs` as a same-origin module worker, found next
  * to the module by its own URL. Map labels use `GLYPHS` with the font
- * `GLYPH_FONT` (Latin ranges of Polish and Czech texts and punctuation), so a
+ * `GLYPH_FONT` (Latin with its extensions, Cyrillic and punctuation), so a
  * map needs no external request — offline mode adds only the basemap rule.
  */
 
