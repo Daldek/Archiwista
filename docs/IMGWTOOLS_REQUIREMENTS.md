@@ -911,16 +911,20 @@ odtwarzalny wybór stacji, nawet gdy źródła IMGW się zmienią.
   czynna albo historyczna, rok założenia, rzędna zera wodowskazu,
   kilometr biegu rzeki, wysokość stacji meteo. W 3.0.0: `id` obiektu =
   kod, właściwości `station_code`, `kind`, `meteo_kind` (`climate` \|
-  `precipitation`), `name`, `river`, `hydrographic_code`, `river_order`,
-  `location_source` (`api_hydro`, `api_meteo`, `static`, `user`; ČHMÚ —
-  `chmi_*`; `null` bez położenia), `location_uncertainty_m`,
+  `precipitation` \| `null`), `name`, `river`, `hydrographic_code`,
+  `river_order`, `location_source` (`api_hydro`, `api_meteo`, `static`,
+  `user`; ČHMÚ — `chmi_*`; `null` bez położenia), `location_uncertainty_m`,
   `location_missing_reason` (`none`, `zero`, `outside_country`; `null`
   przy położeniu), `active`, `established_year`, `gauge_zero_m`,
   `river_km`, `elevation_m` (ČHMÚ hydro także obiekt `thresholds`);
   „data katalogu” to etykieta wersji i `downloaded_at` sidecara, nie
-  właściwość stacji. Kandydat `31e96fa` zapisuje `meteo_kind` zawsze jako
-  `null`; wartości `climate` i `precipitation` — w 3.0.0 (poprawka na
-  gałęzi fix/archiwista-compat).
+  właściwość stacji. `meteo_kind` stacji meteo IMGW-PIB w 3.0.0 (poprawka
+  na gałęzi fix/archiwista-compat): `climate`, gdy stacja jest w bieżących
+  szeregach `pl.imgw.meteo_climate_daily` (także gdy jest i w opadowych),
+  inaczej `precipitation`, gdy jest w bieżących szeregach
+  `pl.imgw.meteo_precip_daily`, inaczej `null` (stacja bez bieżącego
+  szeregu); ČHMÚ — zawsze `null`; kandydat `31e96fa` zapisuje zawsze
+  `null`. Archiwista pokazuje `null` jako „rodzaj nieznany”, nie błąd.
 - Źródła w kolejności (SPEC 4.8.1): publiczne API IMGW
   (`danepubliczne.imgw.pl/api/data/hydro` i `…/meteo`) → lokalny plik
   położeń `hydro_stations_locations.csv` (3.0.0: poza pakietem,
@@ -1437,7 +1441,8 @@ i archiwum `cz.chmi.hydro_stations`; meteo — najnowszy
 (tekst, np. `1-05-03-0110`; meteo go nie ma), progi SPA — obiekt
 `thresholds`, `location_source` — `chmi_hydro_now`, `chmi_hydro_meta3`,
 `chmi_hydro_stations`, `chmi_meteo_now`, `chmi_meteo_stations` albo
-`user`; `meteo_kind`, `river_order`, `gauge_zero_m` i `river_km` są puste.
+`user`; `meteo_kind` (zawsze `null` — „rodzaj nieznany”), `river_order`,
+`gauge_zero_m` i `river_km` są puste.
 
 **Kryteria akceptacji.**
 
