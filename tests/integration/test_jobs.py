@@ -251,7 +251,7 @@ def test_restart_marks_running_job_interrupted(
     store = make_store(tmp_path / "store", slots=24, seed=7)
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
     ConfigStore(paths.config_file).save(store_settings(store))
-    owner = subprocess.Popen(
+    with subprocess.Popen(
         [
             sys.executable,
             "-m",
@@ -263,21 +263,21 @@ def test_restart_marks_running_job_interrupted(
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
-    )
-    assert owner.stdout is not None
-    job_id = owner.stdout.readline().strip()
-    settings = SettingsService(ConfigStore(paths.config_file), NoSources())
-    with JobSupervisor(paths, settings) as jobs:
-        _await(lambda: _progressed(jobs, job_id))
-        alive = jobs.get(job_id)
-        worker = _worker_pid(paths, job_id)
+    ) as owner:
+        assert owner.stdout is not None
+        job_id = owner.stdout.readline().strip()
+        settings = SettingsService(ConfigStore(paths.config_file), NoSources())
+        with JobSupervisor(paths, settings) as jobs:
+            _await(lambda: _progressed(jobs, job_id))
+            alive = jobs.get(job_id)
+            worker = _worker_pid(paths, job_id)
 
-        # Act
-        owner.kill()
-        owner.wait()
-        _await(lambda: not _running(worker))
-        recovered = jobs.recover()
-        record = jobs.get(job_id)
+            # Act
+            owner.kill()
+            owner.wait()
+            _await(lambda: not _running(worker))
+            recovered = jobs.recover()
+            record = jobs.get(job_id)
 
     # Assert
     assert alive is not None and alive.state == "running"

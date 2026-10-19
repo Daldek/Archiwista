@@ -1065,7 +1065,7 @@ działa.
 
 | Krok | Tytuł | Zależności | Równolegle z | Stan |
 |---|---|---|---|---|
-| 0 | Porządki po v0.1: `ResourceWarning` | — | 1, 2, 3, 7a | do zrobienia |
+| 0 | Porządki po v0.1: `ResourceWarning` | — | 1, 2, 3, 7a | zrobione |
 | 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | zrobione |
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | do zrobienia |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
@@ -1123,6 +1123,37 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   ostrzeżeń — zielony, bez ostrzeżeń `ResourceWarning` w podsumowaniu;
   w opisie commitu źródło i ścieżka utworzenia połączenia.
 - **Zależności:** —. **Równolegle:** 1, 2, 3, 7a.
+- **Stan po kroku 0:**
+  - *Źródło.* Nie kod aplikacji, lecz test
+    `tests/unit/test_security.py::test_security_tokens_carry_minter_id_and_kind_only`:
+    `with sqlite3.connect(index_path) as connection:` — menedżer kontekstu
+    `sqlite3.Connection` kończy transakcję, ale nie zamyka połączenia;
+    sprzątacz pamięci zbierał je dopiero w następnym teście
+    (`…_owner_then_agent`), stąd mylące miejsce zgłoszenia. Ustalone
+    z `PYTHONTRACEMALLOC=25 python -X dev -m pytest tests/unit`
+    (ślad przydziału: `test_security.py:247`). Poprawka: `try`/`finally`
+    z `close()`, jak w pozostałych odczytach testów.
+  - *Drugie źródło ujawnione filtrami.*
+    `tests/integration/test_jobs.py::test_restart_marks_running_job_interrupted`
+    nie zamykał potoków `stdin`/`stdout` procesu `job_owner`
+    (`ResourceWarning: unclosed file <_io.TextIOWrapper>`); proces jest
+    teraz menedżerem kontekstu `subprocess.Popen`.
+  - *Filtry.* `pyproject.toml`: `filterwarnings = ["error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning"]` — wyciek kończy test
+    błędem. Bez poprawki test z `security` kończy się błędem
+    (`PytestUnraisableExceptionWarning … sqlite3.Connection`), z poprawką
+    47/47 zaliczonych.
+  - *Osobno* (commit `test(e2e)`):
+    `test_pinned_old_version_visible` szukał przycisku wersji po etykiecie
+    w całej karcie; przycisk „Kopiuj: …” ścieżki wersji zawiera tę etykietę
+    w nazwie katalogu, więc zależnie od chwili renderowania lokator łapał
+    dwa elementy (DOM identyczny z Kartografem z wydania v0.1 i z bieżącym
+    `develop`). Lokator zawężony do osi wersji (`.fc-axis`).
+  - *Bramka* (HEAD + krok 0, bieżący Kartograf `develop`): ruff check
+    i format — bez uwag (149 plików), mypy strict — bez błędów (144 pliki),
+    pytest — 649 zaliczonych, 21 odznaczonych, pokrycie 95,26%, jedno
+    ostrzeżenie (przestarzały `httpx` w `starlette.testclient`), bez
+    `ResourceWarning`.
 
 ### 1. Zależności podglądów, sandbox i próby techniczne
 - **Cel:** dołączyć zależności, dać wspólny sandbox procesów czytających

@@ -244,10 +244,13 @@ def test_security_tokens_carry_minter_id_and_kind_only(tmp_path: Path) -> None:
     )
     startup = issue_one_time_token(index_path, "startup", minted_by=minter)
     agent = issue_one_time_token(index_path, "agent", minted_by=minter)
-    with sqlite3.connect(index_path) as connection:
+    connection = sqlite3.connect(index_path)
+    try:
         kept = [
             row[0] for row in connection.execute("SELECT principal FROM session_tokens")
         ]
+    finally:
+        connection.close()
 
     own = redeem_one_time_token(index_path, startup.token)
     delegated = redeem_one_time_token(index_path, agent.token)

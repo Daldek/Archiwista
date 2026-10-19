@@ -103,6 +103,11 @@ markers = [
     "perf: requires the explicit large synthetic store",
     "smb: requires a real mounted SMB share",
 ]
+# A leaked file or connection fails the test that leaked it (no silencing).
+filterwarnings = [
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
 
 [tool.coverage.run]
 source = ["archiwista"]
