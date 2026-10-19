@@ -1,21 +1,24 @@
 /**
  * „Porównanie” — two objects side by side (docs/SPEC.md 8.5 and UC-11; plan
- * v0.2 decision 10, step 14). Not in the navigation: „Porównaj z…” opens it
- * from the file card (another version of the slot) and from „Szczegóły
- * zestawu” (another year layer, step 13b).
+ * v0.2 decision 10, steps 14 and 15). Not in the navigation: „Porównaj z…”
+ * opens it from the file card (another version of the slot), from the card
+ * of an own file (the working file and its snapshots, views/own.js) and from
+ * „Szczegóły zestawu” (another year layer, step 13b).
  *
- * The sides are two `ref`s (`a`, `b`: store versions; own files and
- * snapshots once the server compares them, step 9) or two year layers of
- * `/local-layers` (`a_layer`, `b_layer` with the set's `store`, `product`,
- * `area_id` and `group`). The centre is the comparison map (map/compare.js):
- * the curtain, the fade or two maps side by side (`mode`), at the address's
- * position (`center`, `zoom`) or framing both sides; raster sides in one
- * style (`style`) and, for a colour ramp, on one range of values. The right
- * panel names both sides with the state and build of their previews, then
- * the table: the rows of `GET /compare` (level 1) or — for two year layers —
- * their summaries side by side. Differences are marked, „tylko różnice”
+ * The sides are two `ref`s (`a`, `b`: store versions, own files and
+ * snapshots) or two year layers of `/local-layers` (`a_layer`, `b_layer`
+ * with the set's `store`, `product`, `area_id` and `group`). The centre is
+ * the comparison map (map/compare.js): the curtain, the fade or two maps
+ * side by side (`mode`), at the address's position (`center`, `zoom`) or
+ * framing both sides; raster sides in one style (`style`) and, for a colour
+ * ramp, on one range of values. The right panel names both sides with the
+ * state and build of their previews and their cards, then the table: the
+ * rows of `GET /compare` (level 1) or — for two year layers — their
+ * summaries side by side. Differences are marked, „tylko różnice”
  * (`only_diff`) hides the rest and „Eksportuj CSV” saves the rows shown,
- * made in the browser: the server writes nothing.
+ * made in the browser: the server writes nothing. Two sides with vector
+ * layers (own data) also show the differences of their schema: layers only
+ * in A or B, objects per layer, fields added, removed and changed.
  */
 
 import { buildLinked, getComparison, getLinked, getLocalLayers, getVersion } from "../api.js";
@@ -37,6 +40,7 @@ import {
   useLayerLegend,
   ZoomHint,
 } from "../map/previews.js";
+import { OwnCardLink, useOwnFile } from "../map/own.js";
 import { availableBasemaps, chosenBasemap, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { BuildSection, PreviewLegend, PreviewReason, styleName, useBuild } from "../previews.js";
@@ -192,7 +196,8 @@ function RefCompare({ params }) {
             )}
           </section>
           <${CompareTable} title=${L.table.title} rows=${comparison.rows} same=${comparison.same_content}
-            titles=${sides.map((side) => side.title)} only=${params[ONLY_PARAM] === "1"} />`
+            titles=${sides.map((side) => side.title)} only=${params[ONLY_PARAM] === "1"} />
+          ${comparison.schema_diff ? html`<${SchemaDiff} diff=${comparison.schema_diff} />` : null}`
       : null}
   </div>`;
   const toolbar = html`<${Toolbar} stage=${stage} styles=${styles} style=${style}
@@ -467,7 +472,69 @@ function RefSide({ letter, side, preview, card }) {
           </${FileLink}>
         </div>`
       : null}
+    ${side.kind === "file" || side.kind === "snapshot" ? html`<${OwnSideCard} letter=${letter} side=${side} />` : null}
   </article>`;
+}
+
+/**
+ * „Karta pliku” of an own file's or snapshot's side: the card of the file
+ * (views/own.js), on that version, over the comparison. A ref names the
+ * file by its path: its `file_id` comes from the project's file list.
+ */
+function OwnSideCard({ letter, side }) {
+  const { parts, file } = useOwnFile(side.ref);
+  if (!parts || !file) return null;
+  return html`<div class="cmp-side-actions">
+    <${OwnCardLink} class="btn sm" project=${parts.project} fileId=${file.file_id} label=${parts.label}
+      title=${t(L.own_card_title, { side: L.side[letter] })}>
+      <${Icon} name="file" size=${14} />${L.side.card}
+    </${OwnCardLink}>
+  </div>`;
+}
+
+/**
+ * The differences of two sides' vector layers (`schema_diff`): layers only
+ * in A or in B, then each layer of both with its objects and its fields
+ * added, removed and of another type — A changed into B.
+ *
+ * @param {{diff: import("../types.js").SchemaDiff}} props
+ */
+function SchemaDiff({ diff }) {
+  const S = L.schema;
+  const changed = diff.layers.filter(
+    (layer) => layer.fields_added.length || layer.fields_removed.length || layer.fields_changed.length,
+  );
+  const same = !diff.layers_only_a.length && !diff.layers_only_b.length && !changed.length;
+  const fields = (items) => items.map((field) => `${field.name} (${field.type})`).join(", ");
+  return html`<section class="cmp-table-sec cmp-schema" aria-labelledby="cmp-schema-title">
+    <div class="cmp-table-head"><h3 class="section-title" id="cmp-schema-title">${S.title}</h3></div>
+    <p class="hint">${S.hint}</p>
+    ${diff.layers_only_a.length
+      ? html`<p class="cmp-schema-row differs"><b>${S.only_a}:</b> <span class="mono">${diff.layers_only_a.join(", ")}</span></p>`
+      : null}
+    ${diff.layers_only_b.length
+      ? html`<p class="cmp-schema-row differs"><b>${S.only_b}:</b> <span class="mono">${diff.layers_only_b.join(", ")}</span></p>`
+      : null}
+    <ul class="cmp-schema-layers">
+      ${diff.layers.map((layer) => {
+        const counts =
+          layer.feature_count_a === layer.feature_count_b
+            ? t(S.same_objects, { count: int(layer.feature_count_a) })
+            : t(S.objects, { a: int(layer.feature_count_a), b: int(layer.feature_count_b) });
+        const differs = layer.fields_added.length || layer.fields_removed.length || layer.fields_changed.length;
+        return html`<li key=${layer.name} class=${differs ? "cmp-schema-layer differs" : "cmp-schema-layer"}>
+          <p><b>${S.layer}</b> <span class="mono">${layer.name}</span> · <span class="tabular">${counts}</span></p>
+          ${layer.fields_added.length ? html`<p><b>${S.added}:</b> <span class="mono">${fields(layer.fields_added)}</span></p>` : null}
+          ${layer.fields_removed.length ? html`<p><b>${S.removed}:</b> <span class="mono">${fields(layer.fields_removed)}</span></p>` : null}
+          ${layer.fields_changed.length
+            ? html`<p><b>${S.changed}:</b> <span class="mono">${layer.fields_changed.map((field) => t(S.change, field)).join(", ")}</span></p>`
+            : null}
+          ${differs ? null : html`<p class="faint">${S.unchanged}</p>`}
+        </li>`;
+      })}
+    </ul>
+    ${same ? html`<p class="faint">${S.none}</p>` : null}
+  </section>`;
 }
 
 function LayerSide({ letter, param, wanted, layer, set, job }) {

@@ -1,12 +1,18 @@
 /**
  * Previews on the map (docs/SPEC.md 5.4 and 6.1; plan v0.2 decisions 4 and
- * 7, step 12b): the preview of one version and the year layers of an area.
+ * 7, steps 12b and 15): the preview of one object and the year layers of an
+ * area.
  *
- * A version: „Pokaż podgląd na mapie” in the file card opens the map with
+ * An object: „Pokaż podgląd na mapie” in the file card — or „Pokaż na
+ * mapie” in the card of an own file (views/own.js) — opens the map with
  * `preview=<ref>` (and its style in `preview_style`): a raster's tiles within
  * its bounds and zooms (`tiles_url`), a vector's features of the view
  * simplified to the map's zoom (`features_url`, decision 4), and the
- * version's outline. Year layers: with an area and a product chosen, the
+ * object's outline. A store version (`version:`) comes with its card; an own
+ * file or snapshot (`file:`, `snapshot:`) with its project's file card, its
+ * `file_id` found by its path (map/own.js). A view without area (a single
+ * point framed, a map not laid out) is widened before `…/features`, which
+ * refuses an empty box. Year layers: with an area and a product chosen, the
  * store's layers of the product (`GET /local-layers`) are buttons of years
  * on the map; the chosen one (`layer=<key>`) shows the outlines of its
  * versions and one raster source of the layer's tiles (`/local-layers/
@@ -24,18 +30,29 @@
  * canvas.js through `apiHeaders`).
  */
 
-import { apiTemplate, getLinked, getLocalLayers, getPreview, getVersion } from "../api.js";
-import { int } from "../format.js";
+import {
+  ApiError,
+  apiTemplate,
+  getLinked,
+  getLocalLayers,
+  getOwnFile,
+  getOwnPreview,
+  getPreview,
+  getVersion,
+} from "../api.js";
+import { day, int, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
+import { own as O } from "../labels/own.js";
 import { previews as P } from "../labels/previews.js";
 import { PreviewLegend, PreviewReason, styleName } from "../previews.js";
 import { Link, useRoute } from "../router.js";
 import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect, useState } from "../ui.js";
 import { crsName, JobStatus, loadCardStyles, useJob } from "../views/cards.js";
 import { slotName } from "./canvas.js";
-import { bboxText, unionBounds } from "./geo.js";
+import { bboxText, unionBounds, widenBounds } from "./geo.js";
+import { findOwnFile, OwnCardLink, ownName, readOwnRef, snapshotOutline } from "./own.js";
 
 // The build of a layer's previews is shown as every job is (cards.css).
 await loadCardStyles();
@@ -60,6 +77,9 @@ const VERSION_REF = /^version:([^:]+):([^\0]+)$/;
 // Parts of a variant telling apart two layers of one year (A-ADR-017).
 const VARIANT_FIELDS = ["resolution", "horizontal_crs", "vertical_crs"];
 const NO_FEATURES = { data: null, problem: null, loading: false };
+// Least width and height of a view asked for features: the API refuses a
+// box without area, which rounding to 6 places must not produce.
+const MIN_VIEW_DEGREES = 0.00002;
 
 /**
  * The store and path of a version's `ref` (`version:<store>:<path>`): store
@@ -210,27 +230,43 @@ export function useLayerLegend(layer) {
 }
 
 /**
- * The version shown on the map (`preview` of the address): its preview and
- * its card (outline, slot, label). A build in progress is followed and the
- * preview read again when it ends.
+ * The object shown on the map (`preview` of the address): its preview, its
+ * card and its outline — a store version's (`version:`) or an own file's or
+ * snapshot's (`file:`, `snapshot:`; the file's `file_id` found by its path).
+ * A build in progress is followed and the preview read again when it ends.
  *
  * @param {string|null} ref
  * @param {string} dataKey - Changes when the index does.
  * @returns {{info: import("../types.js").PreviewInfo|null, card:
- *   import("../types.js").VersionCard|null, invalid: boolean, loading: boolean,
- *   error: import("../api.js").ApiError|undefined}} `invalid`: the ref names no
- *   store version.
+ *   import("../types.js").VersionCard|import("../types.js").OwnFileCard|null,
+ *   own: {project: string, fileId: string, label: string|null, path: string,
+ *   snapshot: import("../types.js").SnapshotItem|null}|null, outline:
+ *   import("../types.js").Geometry|null, invalid: boolean, loading: boolean,
+ *   error: import("../api.js").ApiError|undefined}} `own`: an own object;
+ *   `invalid`: the ref names no object of either kind.
  */
 export function useVersionPreview(ref, dataKey) {
   const target = ref ? readVersionRef(ref) : null;
+  const owned = ref && !target ? readOwnRef(ref) : null;
   const answer = useResource(
     async (signal) => {
-      if (!target) return null;
+      if (target) {
+        const [info, card] = await Promise.all([
+          getPreview(target.store, target.path, { signal }),
+          getVersion(target.store, target.path, { signal }),
+        ]);
+        return { ref, info, card, own: null, outline: card.footprint ?? null };
+      }
+      if (!owned) return null;
+      const file = await findOwnFile(owned.project, owned.path, { signal });
+      if (!file) throw new ApiError(ownMissing(ref));
       const [info, card] = await Promise.all([
-        getPreview(target.store, target.path, { signal }),
-        getVersion(target.store, target.path, { signal }),
+        getOwnPreview(owned.project, file.file_id, owned.label, { signal }),
+        getOwnFile(owned.project, file.file_id, { signal }),
       ]);
-      return { ref, info, card };
+      const snapshot = owned.label ? (card.snapshots.find((item) => item.label === owned.label) ?? null) : null;
+      const outline = owned.label ? (snapshot ? snapshotOutline(snapshot) : null) : (card.extent?.wgs84 ?? null);
+      return { ref, info, card, own: { ...owned, fileId: file.file_id, snapshot }, outline };
     },
     [ref ?? "", dataKey],
   );
@@ -240,13 +276,21 @@ export function useVersionPreview(ref, dataKey) {
   useEffect(() => {
     if (building) job.follow(building, "preview");
   }, [building]);
+  const known = Boolean(target || owned);
   return {
     info: shown?.info ?? null,
     card: shown?.card ?? null,
-    invalid: Boolean(ref) && !target,
-    loading: Boolean(target) && answer.loading,
-    error: target ? answer.error : undefined,
+    own: shown?.own ?? null,
+    outline: shown?.outline ?? null,
+    invalid: Boolean(ref) && !known,
+    loading: known && answer.loading,
+    error: known ? answer.error : undefined,
   };
+}
+
+/** The problem of an own ref whose file the folder's index does not list. */
+function ownMissing(ref) {
+  return { type: "about:blank", title: O.map.title, status: 404, detail: t(O.map.not_found, { ref }), code: "not_found" };
 }
 
 /**
@@ -262,7 +306,7 @@ export function useFeatures(info, move) {
   const [state, setState] = useState(NO_FEATURES);
   const template = info?.state === "ready" ? info.features_url : null;
   const wanted = template && move && meets(move.bbox, info.bounds);
-  const bbox = wanted ? bboxText(move.bbox) : "";
+  const bbox = wanted ? bboxText(widenBounds(move.bbox, MIN_VIEW_DEGREES)) : "";
   const zoom = wanted ? Math.min(MAX_ZOOM, Math.ceil(tileZoom(move.zoom))) : 0;
   const key = wanted ? `${template}\n${bbox}\n${zoom}` : "";
   useEffect(() => {
@@ -373,7 +417,8 @@ export function VersionLegend({ reference, shown, style, onStyle, features, onCl
       ? html`<${ProblemView} problem=${shown.error.problem} compact />`
       : html`<${Spinner} label=${L.previews.loading} />`;
   } else {
-    body = html`<${VersionDetails} info=${info} card=${card} style=${style} onStyle=${onStyle} features=${features} />`;
+    body = html`<${VersionDetails} info=${info} card=${card} own=${shown.own} outline=${Boolean(shown.outline)}
+      style=${style} onStyle=${onStyle} features=${features} />`;
   }
   return html`<section class="legend-section" aria-label=${L.previews.file_title}>
     <div class="legend-section-head">
@@ -385,24 +430,13 @@ export function VersionLegend({ reference, shown, style, onStyle, features, onCl
   </section>`;
 }
 
-function VersionDetails({ info, card, style, onStyle, features }) {
-  const route = useRoute();
+function VersionDetails({ info, card, own, outline, style, onStyle, features }) {
   const legend = style ? info.legends[style] : null;
   const vector = Boolean(info.features_url);
   const shows = info.state === "ready" && (vector || Boolean(info.tiles_url));
-  const cardParams = {
-    ...route.params,
-    file: `${card.store}/${card.slot}`,
-    file_version: card.version.path,
-    file_tab: "preview",
-    file_style: style,
-  };
   return html`
-    <div class="legend-file">
-      <${Tech} value=${[["ref", info.ref]]}><b class="mono">${slotName(card.version.path)}</b></${Tech}>
-      <span class="legend-sub">${[...new Set([card.version.data_year, card.version.label].filter(Boolean).map(String))].join(" · ")}</span>
-    </div>
-    ${card.footprint
+    ${own ? html`<${OwnName} info=${info} card=${card} own=${own} />` : html`<${VersionName} info=${info} card=${card} />`}
+    ${outline
       ? html`<div class="legend-row"><span class="sw sw-preview-outline" aria-hidden="true"></span>${L.previews.outline}</div>`
       : null}
     ${shows && !vector && info.styles.length > 1
@@ -420,10 +454,43 @@ function VersionDetails({ info, card, style, onStyle, features }) {
       ? html`<${PreviewReason} reason=${info.reason} shown=${info.state !== "unavailable" && info.state !== "failed"} />`
       : null}
     ${!shows && !info.reason ? html`<p class="legend-note">${L.previews.state[info.state] ?? L.previews.no_map}</p>` : null}
-    <${Link} class="btn sm legend-card-link" view=${route.view} params=${cardParams}>
-      <${Icon} name="file" size=${14} />${L.previews.open_card}
-    </${Link}>
+    ${own
+      ? html`<${OwnCardLink} class="btn sm legend-card-link" project=${own.project} fileId=${own.fileId} label=${own.label}
+          tab="preview" style=${style}><${Icon} name="file" size=${14} />${L.previews.open_card}</${OwnCardLink}>`
+      : html`<${VersionCardLink} card=${card} style=${style} />`}
   `;
+}
+
+function VersionName({ info, card }) {
+  return html`<div class="legend-file">
+    <${Tech} value=${[["ref", info.ref]]}><b class="mono">${slotName(card.version.path)}</b></${Tech}>
+    <span class="legend-sub">${[...new Set([card.version.data_year, card.version.label].filter(Boolean).map(String))].join(" · ")}</span>
+  </div>`;
+}
+
+/** An own file on the map: its name, then the working file's change or the snapshot's date. */
+function OwnName({ info, card, own }) {
+  const sub = own.snapshot
+    ? [t(O.map.snapshot_title, { label: own.snapshot.label }), own.snapshot.created_at ? day(own.snapshot.created_at) : null]
+    : [O.map.working_title, stamp(card.modified_at)];
+  return html`<div class="legend-file">
+    <${Tech} value=${[["ref", info.ref]]}><b class="mono">${ownName(card.path)}</b></${Tech}>
+    <span class="legend-sub">${sub.filter(Boolean).join(" · ")}</span>
+  </div>`;
+}
+
+function VersionCardLink({ card, style }) {
+  const route = useRoute();
+  const params = {
+    ...route.params,
+    file: `${card.store}/${card.slot}`,
+    file_version: card.version.path,
+    file_tab: "preview",
+    file_style: style,
+  };
+  return html`<${Link} class="btn sm legend-card-link" view=${route.view} params=${params}>
+    <${Icon} name="file" size=${14} />${L.previews.open_card}
+  </${Link}>`;
 }
 
 /**

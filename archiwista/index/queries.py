@@ -2213,6 +2213,7 @@ def _own_file_row(row: sqlite3.Row) -> OwnFileRow:
         else OwnSnapshotRef(last, datetime.fromisoformat(row["last_snapshot_at"])),
         snapshots=row["snapshots"],
         location=location,
+        outline=None if row["wgs84"] is None else json.loads(row["wgs84"]),
     )
 
 

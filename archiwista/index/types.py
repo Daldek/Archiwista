@@ -915,6 +915,9 @@ class OwnFileRow:
         ``footprint`` with a WGS84 outline, or ``none`` with its reason
         (``no_crs``, ``no_georeference``, ``no_extent``,
         ``transform_unavailable``, ``unreadable``, ``unrecognized``).
+    outline : GeoJSONGeometry or None
+        The WGS84 polygon of its extent (``outline_wgs84``) with
+        ``footprint``; ``None`` without one.
     """
 
     file_id: str
@@ -928,6 +931,7 @@ class OwnFileRow:
     last_snapshot: OwnSnapshotRef | None
     snapshots: int
     location: LocationRef
+    outline: GeoJSONGeometry | None
 
 
 @dataclass(frozen=True, slots=True)

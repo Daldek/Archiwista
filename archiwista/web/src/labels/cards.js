@@ -29,6 +29,18 @@ export const cards = {
     scan_done:
       "Zakończono w {seconds} s: wpisy {entries}, zapisane wersje {versions}, zmienione dowiązania {links}, nowe braki {missing}, usunięte {removed}, nowe problemy {issues}.",
     footprints_done: "Zakończono w {seconds} s: zapisane obrysy {written} z {total}, nieudane {failed}.",
+    own_scan_progress: "{current} z {total} {folders} · plików {files}, odczytanych {read}",
+    own_scan_done:
+      "Zakończono w {seconds} s: plików {files}, nowe {new}, zmienione {changed}, brakujące {missing}, nieczytelne {unreadable}, migawki {snapshots}, problemy {problems}.",
+    snapshot_progress: "etap {current} z {total}: {phase}",
+    phases: {
+      copy: "kopiowanie",
+      checksums: "sumy kontrolne",
+      document: "opis migawka.json",
+      rename: "przeniesienie na miejsce",
+      published: "opublikowana",
+    },
+    folders: ["folder", "foldery", "folderów"],
     failed: "Zadanie zakończone stanem „{state}”: {detail}",
     notices: "Komunikaty zadania",
     entries: ["wpis", "wpisy", "wpisów"],

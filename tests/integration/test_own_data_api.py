@@ -127,11 +127,14 @@ def test_folder_with_gpkg_shp_geotiff_indexed_with_extent_and_preview(
         entry.path: ("ok", "footprint", project.ref(entry.path))
         for entry in (gpkg, shp, tif)
     }
+    outlines = {item["path"]: item["outline"] for item in page["items"]}
     for entry in (gpkg, shp, tif):
         card = cards[entry.path]
         assert (card["format"], card["crs"]) == (entry.driver, entry.crs)
         assert len(card["extent"]["bbox"]) == 4
         assert card["extent"]["wgs84"]["type"] == "Polygon"
+        # The project's map draws the extent the card shows.
+        assert outlines[entry.path] == card["extent"]["wgs84"]
         assert card["preview"]["state"] in ("ready", "needs_build")
         assert card["paths"]["local"] == str(project.root / entry.path)
     assert [layer["name"] for layer in cards[gpkg.path]["layers"]] == [

@@ -81,6 +81,15 @@
  *   job.
  * @property {PreviewsState|null} [previews] - Preview cache and render processes of the
  *   server (v0.2).
+ * @property {OwnDataState|null} [own_data] - The scans of the projects' own data (v0.2).
+ */
+
+/**
+ * The scans of every project's own data (`own_scan` of all projects).
+ *
+ * @typedef {object} OwnDataState
+ * @property {string|null} finished_at - End of the last one, whatever its outcome.
+ * @property {boolean} busy - Whether such a scan waits or runs.
  */
 
 /**
@@ -798,30 +807,41 @@
  *
  * @typedef {object} JobFailure
  * @property {string} code - store_unavailable, source_unavailable, kartograf_error,
- *   offline_mode, worker_crashed, interrupted, cancelled…
+ *   offline_mode, worker_crashed, interrupted, cancelled…; of a snapshot also
+ *   snapshot_blocked, inconsistent_copy, checksum_mismatch, integrity_failed,
+ *   target_exists, path_outside_root, own_reader_failed.
  * @property {string} detail - Polish description.
+ * @property {"folder_invalid"|"read_only_folder"|"insufficient_space"|"file_missing"|null}
+ *   reason - Why a snapshot was blocked (`snapshot_blocked`); null for other codes.
  */
 
 /**
- * A background job: `202` of POST …/scan, …/footprints, …/link-check, `GET
- * /jobs/{job}` and the items of `GET /jobs`.
+ * A background job: `202` of POST …/scan, …/footprints, …/link-check, …/preview,
+ * `/projects/{project}/scan` and …/snapshots, `GET /jobs/{job}` and the items of
+ * `GET /jobs`.
  *
  * @typedef {object} JobDetail
  * @property {string} id
- * @property {"scan"|"footprints"|"link_check"|"preview"} kind
+ * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"} kind
  * @property {"queued"|"running"|"succeeded"|"failed"|"interrupted"|"cancelled"} state
  * @property {string} actor - Who started it.
  * @property {"local_owner"|"user"|"agent"|"scheduler"} actor_kind - How: the owner, an
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
- * @property {string} store
+ * @property {string|null} store - Null for `preview`, `own_scan` and `snapshot`.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
- *   check.
+ *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
+ *   `project`, `file_id` and `note` of a snapshot.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
- * @property {Object<string, *>|null} progress - Data of the last progress event.
- * @property {Object<string, *>|null} result - Summary of a succeeded job.
+ * @property {Object<string, *>|null} progress - Data of the last progress event:
+ *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
+ *   (`copy`, `checksums`, `document`, `rename`, `published`).
+ * @property {Object<string, *>|null} result - Summary of a succeeded job; of an
+ *   `own_scan` the counts `projects`, `files`, `new`, `changed`, `missing`,
+ *   `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot `status`
+ *   (`created` or `unchanged`), `label`, `content_sha256`, `size_bytes`, `seconds`.
  * @property {JobFailure|null} error
  */
 
@@ -840,6 +860,8 @@
  * @property {string} [kind]
  * @property {string} [store]
  * @property {string} [state]
+ * @property {string} [project] - Only jobs with this project's data (its own-data
+ *   scans, snapshots, previews of its files).
  * @property {number} [limit] - 1–200, default 50.
  * @property {string} [cursor]
  */
@@ -1235,7 +1257,189 @@
  * @property {ComparisonSide} b
  * @property {boolean} same_content - Both known to hold the same content.
  * @property {ComparisonRow[]} rows
- * @property {Object<string, *>|null} schema_diff - Layers and fields of own data.
+ * @property {SchemaDiff|null} schema_diff - Differences of the vector layers and
+ *   their fields when both sides have them (own files and snapshots).
+ */
+
+/**
+ * Differences of the vector layers of two sides, A changed into B.
+ *
+ * @typedef {object} SchemaDiff
+ * @property {string[]} layers_only_a - Layers only A has, in A's order.
+ * @property {string[]} layers_only_b - Layers only B has, in B's order.
+ * @property {LayerDiff[]} layers - Layers of both sides, in A's order, also unchanged.
+ */
+
+/**
+ * A vector layer of both sides: object counts and field differences.
+ *
+ * @typedef {object} LayerDiff
+ * @property {string} name
+ * @property {number|null} feature_count_a
+ * @property {number|null} feature_count_b
+ * @property {Array<{name: string, type: string}>} fields_added - Only in B.
+ * @property {Array<{name: string, type: string}>} fields_removed - Only in A.
+ * @property {Array<{name: string, type_a: string, type_b: string}>} fields_changed
+ */
+
+// Own data and snapshots (v0.2, step 9) --------------------------------------
+
+/**
+ * Parameters of `GET /projects/{project}/files`.
+ *
+ * @typedef {object} OwnFilesQuery
+ * @property {string} [q] - Words that must all occur in the path.
+ * @property {string} [state] - A file state (`ok`, `unrecognized`, `unreadable`,
+ *   `missing`) or a change (`unsnapshotted`, `unchanged`, `changed`).
+ * @property {number} [limit] - 1–200, default 50.
+ * @property {string} [cursor] - `next_cursor` of the previous page.
+ */
+
+/**
+ * A project's data folder as its last scan found it.
+ *
+ * @typedef {object} OwnFolder
+ * @property {CopyPath} path - The folder (setting or `<project>/dane`).
+ * @property {"default"|"setting"} source
+ * @property {"ok"|"missing"|"unreadable"|"invalid"} state - `invalid`: refused by the
+ *   rules (problem `own_folder_invalid`).
+ * @property {number} files - Files present.
+ * @property {number} size_bytes
+ * @property {number} snapshots_bytes - Bytes of the snapshots in `.wersje/`.
+ * @property {string|null} scanned_at - Null: not scanned yet (its state is now's).
+ * @property {Issue[]} problems
+ */
+
+/**
+ * The snapshot a file's change is measured against.
+ *
+ * @typedef {object} LastSnapshot
+ * @property {string} label - E.g. `2026-10-18_471d37c0`.
+ * @property {string} created_at
+ */
+
+/**
+ * A file of a data folder, with its change since its last snapshot.
+ *
+ * @typedef {object} OwnFileItem
+ * @property {string} file_id - 16 hex characters: the file in addresses (`own=`).
+ * @property {string} path - Relative to the folder, `/` separated.
+ * @property {string} ref - `file:<project>:<path>`; copy it, never compose it.
+ * @property {string} kind - Kind of its format, as `PreviewKind`.
+ * @property {string|null} format - GDAL driver; null: not read by GDAL.
+ * @property {number} size_bytes
+ * @property {string} modified_at
+ * @property {"ok"|"unrecognized"|"unreadable"|"missing"} state
+ * @property {"unsnapshotted"|"unchanged"|"changed"} change
+ * @property {LastSnapshot|null} last_snapshot
+ * @property {Location} location
+ * @property {number} snapshots - Its snapshots in `.wersje/`.
+ * @property {Geometry|null} outline - WGS84 polygon of its extent (with `footprint`).
+ */
+
+/**
+ * Files of a data folder by path.
+ *
+ * @typedef {object} OwnFileList
+ * @property {OwnFolder} folder
+ * @property {OwnFileItem[]} items
+ * @property {string|null} next_cursor
+ */
+
+/**
+ * Content identity (decision 8): how it was computed and its SHA-256.
+ *
+ * @typedef {object} Content
+ * @property {"bytes"|"fileset"|"sqlite"} method
+ * @property {string} sha256
+ */
+
+/**
+ * An observed state of a file (its history, without content).
+ *
+ * @typedef {object} Observation
+ * @property {string} observed_at
+ * @property {number} size_bytes
+ * @property {string} modified_at
+ * @property {string|null} content_sha256
+ * @property {number|null} feature_count
+ */
+
+/**
+ * A snapshot of a file in `.wersje/` (`archiwista-snapshot/1`).
+ *
+ * @typedef {object} SnapshotItem
+ * @property {string} label - Its directory, `<RRRR-MM-DD>_<sha8>`.
+ * @property {string} ref - `snapshot:<project>:<label>:<path>`.
+ * @property {string|null} created_at
+ * @property {{id: string, kind: string, name: string|null, session: string|null}|null}
+ *   author
+ * @property {string|null} note - The person's note.
+ * @property {number} size_bytes
+ * @property {Content|null} content
+ * @property {number|null} feature_count
+ * @property {{crs: string|null, bbox: number[], wgs84: number[]|null}|null} extent -
+ *   Of the copy: in its CRS and as a WGS84 box (west, south, east, north).
+ * @property {"ok"|"invalid"|"modified"} state - `invalid`: no valid `migawka.json`;
+ *   `modified`: its files differ from the document.
+ * @property {CopyPath} paths - The snapshot directory.
+ */
+
+/**
+ * A vector layer of an own file as GDAL read it.
+ *
+ * @typedef {object} OwnLayer
+ * @property {string} name
+ * @property {string|null} geometry_type - OGR's name; null: a table without geometry.
+ * @property {number|null} feature_count
+ * @property {Array<{name: string, type: string}>} fields
+ * @property {string|null} crs
+ * @property {number[]|null} bbox - In `crs`.
+ */
+
+/**
+ * Everything known of an own file (`GET /projects/{project}/files/{file_id}`).
+ *
+ * @typedef {object} OwnFileCard
+ * @property {string} file_id
+ * @property {string} path
+ * @property {string} ref
+ * @property {string} kind
+ * @property {string|null} format
+ * @property {number} size_bytes
+ * @property {string} modified_at
+ * @property {"ok"|"unrecognized"|"unreadable"|"missing"} state
+ * @property {"unsnapshotted"|"unchanged"|"changed"} change
+ * @property {LastSnapshot|null} last_snapshot
+ * @property {Location} location
+ * @property {OwnLayer[]} layers
+ * @property {{width: number, height: number, bands: number, dtype: string,
+ *   nodata: number|null, pixel_size: number[]|null, georeferenced: boolean}|null} raster
+ * @property {string|null} crs - `EPSG:<code>` or WKT.
+ * @property {{bbox: number[], wgs84: Geometry|null}|null} extent - `bbox` in `crs`.
+ * @property {Content|null} content
+ * @property {Observation[]} history - Observed states, newest first (≤ 200).
+ * @property {SnapshotItem[]} snapshots - Newest first.
+ * @property {PreviewInfo|null} preview - Null without render processes.
+ * @property {CopyPath} paths - The main file.
+ * @property {Issue[]} problems
+ */
+
+/**
+ * What a snapshot of a file would do now (`GET …/snapshot-plan`); nothing is written.
+ *
+ * @typedef {object} SnapshotPlan
+ * @property {string} file - The working file, relative to the data folder.
+ * @property {number} size_bytes - Bytes to copy (the set, a SQLite `-wal` too).
+ * @property {CopyPath} destination - `.wersje/<file>/`.
+ * @property {"sqlite_backup"|"files"} copy_method
+ * @property {"sqlite"|"fileset"|"bytes"} content_method
+ * @property {LastSnapshot|null} unchanged_since - The last snapshot holds the content.
+ * @property {{code: "folder_invalid"|"read_only_folder"|"insufficient_space"
+ *   |"file_missing", message: string}|null} blocked - Why it would be refused now.
+ * @property {number|null} free_bytes - Free bytes where it goes; null: out of reach.
+ * @property {Array<{code: string, message: string}>} warnings - E.g.
+ *   `editing_detected`.
  */
 
 export {};

@@ -219,11 +219,19 @@ class OwnFileItem(_OwnFileFields):
     """A file of a data folder, with its change since its last snapshot."""
 
     snapshots: int = Field(description="Its snapshots in `.wersje/`.")
+    outline: dict[str, Any] | None = Field(
+        description=(
+            "WGS84 polygon of its extent (GeoJSON) when `location.kind` is"
+            " `footprint`, for the project's map; `null` otherwise."
+        )
+    )
 
     @classmethod
     def of(cls, project: str, row: OwnFileRow) -> Self:
         """Return the model of a listed file."""
-        return cls(**cls.fields(project, row), snapshots=row.snapshots)
+        return cls(
+            **cls.fields(project, row), snapshots=row.snapshots, outline=row.outline
+        )
 
 
 class OwnFileList(BaseModel):

@@ -1,38 +1,73 @@
 /**
- * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11): the
- * projects found in the project directories that the session sees — as the
- * API filters them (step 8b), nothing filtered here — with their producer's
- * status when the manifest was read and their missing pins; the chosen
- * project (`?view=projects&project=<id>`) in the side panel with its tasks
- * and their existing commands, the producer's status now, the pinned
- * versions (older ones too) leading to their file cards, and its problems.
- * Nothing here starts or changes a project.
+ * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11, v0.2
+ * step 15): the projects found in the project directories that the session
+ * sees — as the API filters them (step 8b), nothing filtered here — with
+ * their producer's status when the manifest was read and their missing
+ * pins; the chosen project (`?view=projects&project=<id>`) in the side panel
+ * with its tasks and their existing commands, the producer's status now, the
+ * pinned versions (older ones too) leading to their file cards, and its
+ * problems. Nothing here starts or changes a project. Beside the producer's
+ * tasks, the group „Dane własne” (SPEC 4.7.1): the project's data folder
+ * with its state, files, sizes and problems, each file with its change
+ * since its last snapshot leading to its card (views/own.js), „Odśwież”
+ * (an `own_scan` of the folder, followed to its end), „Pokaż na mapie” (the
+ * project's map: its own data and pinned versions) and, for an
+ * administrator, „Zmień folder danych…”.
  */
 
-import { getProject, getProjectStatus, listProjects } from "../api.js";
+import {
+  getProject,
+  getProjectStatus,
+  listOwnFiles,
+  listProjects,
+  putDataDir,
+  startProjectScan,
+} from "../api.js";
 import { useApp } from "../context.js";
 import { count, int, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { projects as L } from "../labels/projects.js";
+import { previews as P } from "../labels/previews.js";
 import { T, t } from "../labels/index.js";
+import { ChangeBadge, OwnCardLink, ownName, PROJECT_PARAM, StateBadge } from "../map/own.js";
 import { ViewLayout } from "../panels.js";
 import { Link, setParams } from "../router.js";
-import { CopyButton, html, Icon, ProblemView, Seg, Spinner, Tech } from "../ui.js";
+import {
+  CopyButton,
+  html,
+  Icon,
+  ProblemView,
+  Seg,
+  Spinner,
+  Tech,
+  useEffect,
+  useId,
+  useState,
+} from "../ui.js";
 import {
   Badge,
   FileLink,
   IssueList,
+  JobStatus,
   loadCardStyles,
   pinStateName,
   StaleNote,
   statusLevel,
   statusName,
   storeName,
+  useJob,
 } from "./cards.js";
 
 await loadCardStyles();
 
 const ALL = "";
+// Own files of one page of the group (the API's largest).
+const OWN_PAGE = 200;
+// The computer's owner is an administrator (A-ADR-029). A session names no
+// roles, so only its sessions offer another data folder; the server refuses
+// anyone else (`settings.write`).
+const LOCAL_ACTOR = "local";
+const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
 
 /**
  * The Projects view (route `projects`).
@@ -178,6 +213,7 @@ function ProjectCard({ id }) {
       : null}
     <${Tasks} card=${card} />
     <p class="hint">${L.card.readonly}</p>
+    <${OwnData} key=${card.project} project=${card.project} />
   </article>`;
 }
 
@@ -285,4 +321,157 @@ function PinList({ store, pins }) {
       </li>`,
     )}
   </ul>`;
+}
+
+/**
+ * „Dane własne” of a project: its data folder and files, „Odśwież” with the
+ * scan's progress, the project's map and, for an administrator, another
+ * data folder.
+ */
+function OwnData({ project }) {
+  const { session } = useApp();
+  const list = useResource((signal) => listOwnFiles(project, { limit: OWN_PAGE }, { signal }), [project]);
+  const [extra, setExtra] = useState({ items: [], cursor: null, loading: false, problem: null });
+  const job = useJob({ onEnd: list.reload });
+  const busy = job.starting || job.running;
+  const page = list.data;
+  useEffect(() => setExtra({ items: [], cursor: page?.next_cursor ?? null, loading: false, problem: null }), [page]);
+  const refresh = () => job.run(() => startProjectScan(project), "own_scan");
+  const more = async () => {
+    setExtra((current) => ({ ...current, loading: true, problem: null }));
+    try {
+      const next = await listOwnFiles(project, { limit: OWN_PAGE, cursor: extra.cursor });
+      setExtra((current) => ({ items: [...current.items, ...next.items], cursor: next.next_cursor, loading: false, problem: null }));
+    } catch (error) {
+      if (!error.problem) throw error;
+      setExtra((current) => ({ ...current, loading: false, problem: error.problem }));
+    }
+  };
+  const folder = page?.folder ?? null;
+  const items = page ? [...page.items, ...extra.items] : [];
+  return html`<section class="det-sec own-group" aria-labelledby="own-group-title">
+    <div class="own-group-head">
+      <h3 class="section-title" id="own-group-title">${L.own.title}</h3>
+      <button type="button" class="btn sm" disabled=${busy} title=${L.own.refresh_title} onClick=${refresh}>
+        ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="rotate" size=${14} />`}
+        ${L.own.refresh}
+      </button>
+      <${Link} class="btn sm" view="map" params=${{ [PROJECT_PARAM]: project, versions: "pinned" }}
+        title=${L.own.on_map_title}><${Icon} name="map" size=${14} />${L.own.on_map}</${Link}>
+    </div>
+    ${list.error ? html`<${ProblemView} problem=${list.error.problem} compact />` : null}
+    ${!page && !list.error ? html`<${Spinner} />` : null}
+    ${folder ? html`<${OwnFolder} folder=${folder} />` : null}
+    ${folder && session?.actor === LOCAL_ACTOR
+      ? html`<${DataDir} project=${project} folder=${folder} onChanged=${() => {
+          list.reload();
+          // The server scans the new folder at once: follow that scan.
+          refresh();
+        }} />`
+      : null}
+    ${folder?.problems.length
+      ? html`<${IssueList} issues=${folder.problems} currentProject=${project} empty=${false} />`
+      : null}
+    <${JobStatus} job=${job} />
+    ${folder && folder.scanned_at === null ? html`<p class="hint">${L.own.not_scanned_hint}</p>` : null}
+    ${folder && folder.scanned_at !== null && !items.length ? html`<p class="faint">${L.own.empty}</p>` : null}
+    ${items.length
+      ? html`<ul class="own-files" aria-label=${L.own.list}>
+          ${items.map((item) => html`<${OwnFileRow} key=${item.file_id} project=${project} item=${item} />`)}
+        </ul>`
+      : null}
+    ${extra.cursor
+      ? html`<p class="faint">${t(L.own.shown, { shown: int(items.length), total: int(folder?.files ?? items.length) })}</p>
+          <button type="button" class="btn sm" disabled=${extra.loading} onClick=${more}>${L.own.more}</button>`
+      : null}
+    ${extra.problem ? html`<${ProblemView} problem=${extra.problem} compact />` : null}
+  </section>`;
+}
+
+function OwnFolder({ folder }) {
+  return html`<dl class="kv own-folder">
+    <dt>${L.own.folder}</dt>
+    <dd class="own-folder-path">
+      <code class="path">${folder.path.local}</code>
+      <${CopyButton} text=${folder.path.local} label=${L.own.copy_folder} />
+      <span class="faint">${L.own.source[folder.source] ?? folder.source}</span>
+    </dd>
+    <dt>${L.own.state}</dt>
+    <dd><${Badge} level=${FOLDER_LEVEL[folder.state] ?? "plain"}>
+      <${Tech} value=${[["state", folder.state]]}>${L.own.states[folder.state] ?? folder.state}</${Tech}>
+    </${Badge}></dd>
+    <dt>${L.own.files}</dt>
+    <dd class="tabular">${t(L.own.files_value, { count: count(folder.files, T.common.units.files), size: size(folder.size_bytes) })}</dd>
+    <dt>${L.own.snapshots}</dt>
+    <dd class="tabular">${size(folder.snapshots_bytes)}</dd>
+    <dt>${L.own.scanned_at}</dt>
+    <dd>${folder.scanned_at ? stamp(folder.scanned_at) : html`<span class="warn-text">${L.own.not_scanned}</span>`}</dd>
+  </dl>`;
+}
+
+function OwnFileRow({ project, item }) {
+  const slash = item.path.lastIndexOf("/");
+  const meta = [
+    slash > 0 ? `${item.path.slice(0, slash)}/` : null,
+    item.format ?? P.kind[item.kind] ?? item.kind,
+    size(item.size_bytes),
+    item.snapshots ? count(item.snapshots, L.own.file_snapshots) : null,
+  ].filter(Boolean);
+  return html`<li class="own-file">
+    <${OwnCardLink} project=${project} fileId=${item.file_id} class="own-file-name" title=${item.path}>
+      <${Icon} name="file" size=${13} /><span>${ownName(item.path)}</span>
+    </${OwnCardLink}>
+    <span class="own-file-marks"><${StateBadge} file=${item} /><${ChangeBadge} file=${item} /></span>
+    <span class="own-file-meta">${meta.join(" · ")}</span>
+  </li>`;
+}
+
+/** „Zmień folder danych…”: another folder, or the default `dane/` again. */
+function DataDir({ project, folder, onChanged }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [path, setPath] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const save = async (value) => {
+    setSaving(true);
+    setProblem(null);
+    try {
+      await putDataDir(project, value);
+      setOpen(false);
+      onChanged();
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!open) {
+    return html`<button type="button" class="btn sm own-data-dir-open" title=${L.own.change_dir_title}
+      onClick=${() => {
+        setPath(folder.path.local);
+        setProblem(null);
+        setOpen(true);
+      }}><${Icon} name="folder" size=${14} />${L.own.change_dir}</button>`;
+  }
+  return html`<form class="own-data-dir" onSubmit=${(event) => {
+    event.preventDefault();
+    save(path.trim());
+  }}>
+    <div class="field">
+      <label for=${id}>${L.own.dir_label}</label>
+      <input id=${id} class="mono" value=${path} autocomplete="off" spellcheck="false"
+        onInput=${(event) => setPath(event.currentTarget.value)} />
+      <span class="field-hint">${L.own.dir_hint}</span>
+    </div>
+    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+    <div class="own-data-dir-actions">
+      <button type="submit" class="btn sm primary" disabled=${saving || !path.trim()}>${L.own.dir_save}</button>
+      ${folder.source === "setting"
+        ? html`<button type="button" class="btn sm" disabled=${saving} onClick=${() => save(null)}>${L.own.dir_default}</button>`
+        : null}
+      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${() => setOpen(false)}>${L.own.dir_cancel}</button>
+    </div>
+  </form>`;
 }

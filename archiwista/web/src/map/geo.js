@@ -67,6 +67,27 @@ export function unionBounds(boxes) {
 }
 
 /**
+ * A box at least `span` degrees wide and high around its centre, inside
+ * WGS84: a single point's bounds have no area, which the API refuses as a
+ * `bbox` (`422`) and which frames the map at its deepest zoom.
+ *
+ * @param {number[]} bbox - `[min_lon, min_lat, max_lon, max_lat]`.
+ * @param {number} span - Least width and height in degrees.
+ * @returns {number[]} The box itself when it is large enough.
+ */
+export function widenBounds(bbox, span) {
+  const [west, south, east, north] = bbox;
+  const grow = (low, high, limit) => {
+    if (high - low >= span) return [low, high];
+    const middle = (low + high) / 2;
+    return [clamp(middle - span / 2, -limit, limit), clamp(middle + span / 2, -limit, limit)];
+  };
+  const [minLon, maxLon] = grow(west, east, 180);
+  const [minLat, maxLat] = grow(south, north, LAT_LIMIT);
+  return [minLon, minLat, maxLon, maxLat];
+}
+
+/**
  * The visible part of a map as a box the API accepts (inside WGS84).
  *
  * @param {*} map - A MapLibre map.

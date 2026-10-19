@@ -393,6 +393,22 @@ function progressText(progress) {
       failed: int(progress.failed ?? 0),
     });
   }
+  if ("phase" in progress) {
+    return t(L.job.snapshot_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      phase: L.job.phases[progress.phase] ?? progress.phase,
+    });
+  }
+  if ("files" in progress && "read" in progress) {
+    return t(L.job.own_scan_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      folders: plural(progress.total, L.job.folders),
+      files: int(progress.files),
+      read: int(progress.read),
+    });
+  }
   return t(L.job.progress, { current: int(progress.current), total: int(progress.total) });
 }
 
@@ -416,6 +432,18 @@ function defaultSummary(events) {
       written: int(result.written),
       total: int(result.total),
       failed: int(result.failed),
+    })}</p>`;
+  }
+  if ("unreadable" in result && "projects" in result) {
+    return html`<p class="job-summary">${t(L.job.own_scan_done, {
+      seconds: seconds(result.seconds ?? 0),
+      files: int(result.files),
+      new: int(result.new),
+      changed: int(result.changed),
+      missing: int(result.missing),
+      unreadable: int(result.unreadable),
+      snapshots: int(result.snapshots),
+      problems: int(result.problems),
     })}</p>`;
   }
   return null;

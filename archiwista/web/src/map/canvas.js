@@ -3,7 +3,9 @@
  * basemap, the store's outlines in the view — or, above the limit, their
  * grid — the sheet grid, the area, the drawing tools and the previews
  * (plan v0.2 step 12b): one raster source of the chosen year layer's tiles,
- * a version's tiles or its features, and its outline.
+ * a version's tiles or its features, and its outline. In a project's
+ * context (step 15) the extents of the project's own files lie over the
+ * outlines in a colour of their own; a click opens a file's card.
  *
  * The view owns the data and passes it in; the map reports moves, drawn
  * shapes and choices. Layers change through `setData` and hover through
@@ -17,13 +19,16 @@ import { apiHeaders } from "../api.js";
 import { count, int } from "../format.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
+import { own as O } from "../labels/own.js";
 import { GLYPH_FONT, loadMapLibre } from "../maplibre.js";
 import { html, Icon, useEffect, useLayoutEffect, useRef, useState } from "../ui.js";
 import { startDrawing } from "./draw.js";
 import { HOME_BOUNDS, positionParams, viewBounds } from "./geo.js";
+import { changeText } from "./own.js";
 import { mapStyle, setBasemap } from "./style.js";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
+const NO_OWN = [];
 /** Colours of the neutral theme: store data in the local blue, the area in indigo. */
 export const COLORS = {
   footprint: "#1d4ed8",
@@ -33,6 +38,7 @@ export const COLORS = {
   draw: "#4f46e5",
   preview: "#ea580c",
   features: "#0d9488",
+  own: "#7c3aed",
 };
 // Raster sources of preview tiles: the chosen year layer, a version.
 const LAYER_TILES = "layer-preview";
@@ -74,7 +80,7 @@ function cellGeometry(cell) {
 }
 
 function addDataLayers(map) {
-  for (const id of ["cells", "footprints", "preview-features", "preview-outline", "sheets", "area", "draw"]) {
+  for (const id of ["cells", "footprints", "own", "preview-features", "preview-outline", "sheets", "area", "draw"]) {
     map.addSource(id, { type: "geojson", data: EMPTY });
   }
   const text = (field, size, color) => ({
@@ -125,6 +131,19 @@ function addDataLayers(map) {
         "fill-color": "rgba(0, 0, 0, 0)",
         "fill-outline-color": ["case", HOVER, "#0b1f5c", COLORS.footprint],
       },
+    },
+    {
+      // The extents of a project's own files, over the store's outlines.
+      id: "own-fill",
+      type: "fill",
+      source: "own",
+      paint: { "fill-color": COLORS.own, "fill-opacity": ["case", HOVER, 0.3, 0.08] },
+    },
+    {
+      id: "own-line",
+      type: "line",
+      source: "own",
+      paint: { "line-color": COLORS.own, "line-width": ["case", HOVER, 2.6, 1.6] },
     },
     {
       id: "preview-features-fill",
@@ -263,6 +282,10 @@ function addDataLayers(map) {
  *   the version shown.
  * @param {import("../types.js").PreviewFeatures|null} [props.previewFeatures] -
  *   Features of the vector shown in the view.
+ * @param {import("../types.js").OwnFileItem[]} [props.own] - Own files of the
+ *   project in context, with their `outline` (map/own.js `useOwnLayer`).
+ * @param {(item: import("../types.js").OwnFileItem) => void} [props.onOwn] - An
+ *   own file's extent chosen: open its card.
  * @param {*} [props.children] - Overlays of the view over the map.
  */
 export function MapCanvas({
@@ -283,6 +306,8 @@ export function MapCanvas({
   versionTiles = null,
   previewOutline = null,
   previewFeatures = null,
+  own = NO_OWN,
+  onOwn = null,
   children,
 }) {
   const box = useRef(null);
@@ -294,12 +319,12 @@ export function MapCanvas({
   const [pick, setPick] = useState(null);
   const [vertices, setVertices] = useState(0);
   const drawing = useRef(null);
-  const data = useRef({ items: [], cells: [], sheets: [] });
+  const data = useRef({ items: [], cells: [], sheets: [], own: [] });
   const pointer = useRef(null);
   const tipBox = useRef(null);
   const tipAt = useRef({ x: 0, y: 0 });
   const props = useRef({});
-  props.current = { onMove, onDrawn, onCancel, onSheet, onOpen, describe, tool, gridOn: sheets.length > 0 };
+  props.current = { onMove, onDrawn, onCancel, onSheet, onOpen, onOwn, describe, tool, gridOn: sheets.length > 0 };
   const basemapKey = basemap ? JSON.stringify(basemap) : "";
   const shownBasemap = useRef(basemapKey);
   const layerKey = layerTiles ? JSON.stringify(layerTiles) : "";
@@ -441,6 +466,18 @@ export function MapCanvas({
     map.getSource("preview-features").setData(previewFeatures ?? EMPTY);
   }, [map, previewFeatures]);
 
+  useEffect(() => {
+    if (!map) return;
+    data.current.own = own;
+    map.getSource("own").setData(
+      features(
+        own.map((item) => ({ geometry: item.outline, change: item.change })),
+        (item) => ({ change: item.change }),
+      ),
+    );
+    pointer.current?.reset();
+  }, [map, own]);
+
   // Before paint: the drawing hint is never shown without its keys working.
   useLayoutEffect(() => {
     if (!map || !tool) return undefined;
@@ -470,7 +507,7 @@ export function MapCanvas({
       ? html`<${PickList} pick=${pick} describe=${describe} onClose=${() => setPick(null)}
           onOpen=${(item) => {
             setPick(null);
-            onOpen(item);
+            choose(props, item);
           }} />`
       : null}
     ${children}
@@ -567,7 +604,8 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       setTip(null);
     }
   };
-  const layers = () => (props.current.gridOn ? ["sheets-fill"] : ["footprints-fill", "cells-fill"]);
+  const layers = () => (props.current.gridOn ? ["sheets-fill"] : ["own-fill", "footprints-fill", "cells-fill"]);
+  const lists = { footprints: "items", cells: "cells", own: "own", sheets: "sheets" };
   map.on("mousemove", (event) => {
     // Dragging the map or drawing: no hover work on every frame of the move.
     if (props.current.tool || event.originalEvent.buttons || map.isMoving()) {
@@ -583,7 +621,7 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       }
       if (hover({ source: feature.source, id: feature.id })) {
         const kind = feature.source;
-        const list = kind === "footprints" ? data.current.items : kind === "cells" ? data.current.cells : data.current.sheets;
+        const list = data.current[lists[kind]] ?? [];
         const item = list[feature.properties.i];
         setTip(item ? { kind, item } : null);
       }
@@ -607,19 +645,25 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       fit(map, [found.min_lon, found.min_lat, found.max_lon, found.max_lat], true);
       return;
     }
-    const indices = [
-      ...new Set(
-        map
-          .queryRenderedFeatures(event.point, { layers: ["footprints-fill"] })
-          .map((feature) => feature.properties.i),
-      ),
-    ];
-    const items = indices.map((i) => data.current.items[i]).filter(Boolean);
-    if (items.length === 1) props.current.onOpen(items[0]);
+    const under = (layer, list) => [
+      ...new Set(map.queryRenderedFeatures(event.point, { layers: [layer] }).map((feature) => feature.properties.i)),
+    ]
+      .map((i) => list[i])
+      .filter(Boolean);
+    // An own file's extent lies over the outlines: it is listed first.
+    const own = under("own-fill", data.current.own).map((item) => ({ own: item }));
+    const items = [...own, ...under("footprints-fill", data.current.items)];
+    if (items.length === 1) choose(props, items[0]);
     else if (items.length > 1) setPick({ x: event.point.x, y: event.point.y, items });
     else setPick(null);
   });
   return { reset: clear };
+}
+
+/** Open what a click chose: an own file's card, else a file's card. */
+function choose(props, item) {
+  if (item.own) props.current.onOwn?.(item.own);
+  else props.current.onOpen(item);
 }
 
 function DrawHint({ tool, vertices, drawing, onCancel }) {
@@ -655,6 +699,10 @@ function Tooltip({ tip, describe, box, at }) {
       <div class="muted">${L.tooltip.cell_zoom}</div>`;
   } else if (kind === "sheets") {
     content = html`<b class="mono">${item.sheet}</b><div class="muted">${L.tooltip.sheet_pick}</div>`;
+  } else if (kind === "own") {
+    content = html`<b class="mono">${slotName(item.path)}</b>
+      <div>${t(O.map.tooltip, { change: changeText(item) })}</div>
+      <div class="faint">${O.map.tooltip_open}</div>`;
   } else {
     content = html`<b class="mono">${slotName(item.slot)}</b>
       <div>${describe(item)}</div>
@@ -693,13 +741,20 @@ function PickList({ pick, describe, onClose, onOpen }) {
         onClick=${onClose}><${Icon} name="x" /></button>
     </div>
     <ul>
-      ${shown.map(
-        (item) => html`<li key=${`${item.store}/${item.version}`}>
-          <button type="button" class="pick-item" onClick=${() => onOpen(item)}>
-            <span class="mono">${slotName(item.slot)}</span>
-            <span class="muted">${[describe(item), item.data_year, item.label].filter(Boolean).join(" · ")}</span>
-          </button>
-        </li>`,
+      ${shown.map((item) =>
+        item.own
+          ? html`<li key=${`own/${item.own.file_id}`}>
+              <button type="button" class="pick-item" onClick=${() => onOpen(item)}>
+                <span class="mono">${slotName(item.own.path)}</span>
+                <span class="muted">${t(O.map.tooltip, { change: changeText(item.own) })}</span>
+              </button>
+            </li>`
+          : html`<li key=${`${item.store}/${item.version}`}>
+              <button type="button" class="pick-item" onClick=${() => onOpen(item)}>
+                <span class="mono">${slotName(item.slot)}</span>
+                <span class="muted">${[describe(item), item.data_year, item.label].filter(Boolean).join(" · ")}</span>
+              </button>
+            </li>`,
       )}
     </ul>
     ${pick.items.length > shown.length

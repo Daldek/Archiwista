@@ -1,8 +1,10 @@
 /**
  * Texts of the Projects view (views/projects.js, docs/SPEC.md UC-06 and
  * 6.5 g): the projects found in the project directories, their tasks with
- * the producer's commands, pins, statuses and problems. Nothing here starts
- * or changes a project.
+ * the producer's commands, pins, statuses and problems — nothing there
+ * starts or changes a project — and the group „Dane własne” (SPEC 4.7.1):
+ * the project's data folder with its files, „Odśwież” and, for an
+ * administrator, another data folder.
  */
 
 export const projects = {
@@ -51,5 +53,43 @@ export const projects = {
     missing_pins: "Brakujące przypięcia",
     other_pins: "Przypięcia bez zadania",
     readonly: "Archiwista tylko pokazuje projekt — pobieranie, przepinanie i zmiany robi się poleceniami producenta.",
+  },
+  own: {
+    title: "Dane własne",
+    refresh: "Odśwież",
+    refresh_title: "Przeskanuj folder danych projektu: nowe, zmienione i usunięte pliki oraz migawki",
+    on_map: "Pokaż na mapie",
+    on_map_title: "Mapa projektu: zasięgi danych własnych i obrysy przypiętych wersji",
+    folder: "Folder",
+    source: {
+      default: "domyślny folder dane/ projektu",
+      setting: "folder z ustawień Archiwisty",
+    },
+    copy_folder: "ścieżka folderu danych",
+    state: "Stan",
+    states: {
+      ok: "w porządku",
+      missing: "nie istnieje",
+      unreadable: "nieczytelny",
+      invalid: "odrzucony przez reguły",
+    },
+    files: "Pliki",
+    files_value: "{count} · {size}",
+    snapshots: "Migawki",
+    scanned_at: "Odczytano",
+    not_scanned: "jeszcze nie skanowany",
+    not_scanned_hint: "Folder nie był jeszcze skanowany — „Odśwież” odczyta jego pliki.",
+    empty: "Folder danych nie ma plików.",
+    list: "Pliki danych własnych",
+    more: "Pokaż więcej plików",
+    shown: "Pokazano {shown} z {total}",
+    file_snapshots: ["migawka", "migawki", "migawek"],
+    change_dir: "Zmień folder danych…",
+    change_dir_title: "Wskaż inny folder danych własnych projektu (tylko administrator)",
+    dir_label: "Folder danych projektu",
+    dir_hint: "Ścieżka bezwzględna na komputerze serwera Archiwisty; folder nie może leżeć w magazynie, w danych Archiwisty ani w folderze innego projektu. Migawki trafią do jego .wersje/.",
+    dir_save: "Zapisz i odśwież",
+    dir_default: "Przywróć domyślny folder dane/",
+    dir_cancel: "Anuluj",
   },
 };

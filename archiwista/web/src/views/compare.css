@@ -80,6 +80,14 @@
 .cmp-table tr.diff th[scope="row"] { color: var(--warn-ink); font-weight: 600; }
 .cmp-mark { display: inline-block; margin-right: 4px; font-weight: 700; }
 .cmp-empty h2 { font-size: 18px; }
+/* differences of the schema of two own-data sides (step 15) */
+.cmp-schema .hint { margin: 4px 0 6px; }
+.cmp-schema-row { margin: 0 0 6px; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.cmp-schema-layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cmp-schema-layer { border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; display: grid; gap: 2px; }
+.cmp-schema-layer p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.cmp-schema-layer.differs, .cmp-schema-row.differs { background: var(--warn-bg); border-color: #fde68a; }
+.cmp-schema-row.differs { border-radius: 8px; padding: 6px 9px; }
 
 /* ---------- phones: maps one above the other, the fade's slider under the badges ---------- */
 @media (max-width: 860px) {

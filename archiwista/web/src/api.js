@@ -62,6 +62,11 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").LayersQuery} LayersQuery */
 /** @typedef {import("./types.js").LayerSet} LayerSet */
 /** @typedef {import("./types.js").Comparison} Comparison */
+/** @typedef {import("./types.js").OwnFilesQuery} OwnFilesQuery */
+/** @typedef {import("./types.js").OwnFileList} OwnFileList */
+/** @typedef {import("./types.js").OwnFolder} OwnFolder */
+/** @typedef {import("./types.js").OwnFileCard} OwnFileCard */
+/** @typedef {import("./types.js").SnapshotPlan} SnapshotPlan */
 
 /**
  * Abort a read: every function takes these options last.
@@ -791,6 +796,141 @@ export function buildPreview(store, version, { force = false } = {}) {
   return request("POST", `/stores/${one(store)}/versions/${segments(version)}/preview`, {
     json: { force },
   });
+}
+
+// Own data and snapshots (v0.2, step 9) ---------------------------------------
+
+/**
+ * A project's data folder and its files by path (`list_own_files`): the
+ * folder's state, counts and problems, each file with its change since its
+ * last snapshot and its WGS84 outline. A folder never scanned has
+ * `scanned_at: null` and no files.
+ *
+ * @param {string} project - Project id (`project` of /projects).
+ * @param {OwnFilesQuery} [query] - `q`, `state`, `limit` (1–200), `cursor`.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<OwnFileList>}
+ * @throws {ApiError} `404 not_found` (unknown, or not visible), `422`.
+ */
+export function listOwnFiles(project, query = {}, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/files`, { query, signal });
+}
+
+/**
+ * Scan the project's data folder in the background (`start_project_scan`,
+ * „Odśwież”): an `own_scan` job, or the waiting one covering the folder.
+ *
+ * @param {string} project
+ * @returns {Promise<JobDetail>}
+ */
+export function startProjectScan(project) {
+  return request("POST", `/projects/${one(project)}/scan`);
+}
+
+/**
+ * Give a project another data folder, or its default `dane/` again
+ * (`put_data_dir`, administrators); its scan starts at once.
+ *
+ * @param {string} project
+ * @param {string|null} path - Absolute folder on the server's computer;
+ *   `null` brings back the default.
+ * @returns {Promise<OwnFolder>}
+ * @throws {ApiError} `403 permission_denied`, `422 validation_error` with
+ *   `problems` (the folder breaks a rule).
+ */
+export function putDataDir(project, path) {
+  return request("PUT", `/projects/${one(project)}/data-dir`, { json: { path } });
+}
+
+/**
+ * Everything known of an own file (`get_own_file`): layers, extent, history,
+ * snapshots newest first and the working file's preview.
+ *
+ * @param {string} project
+ * @param {string} fileId - `file_id` of the file list (16 hex characters).
+ * @param {RequestOptions} [options]
+ * @returns {Promise<OwnFileCard>}
+ */
+export function getOwnFile(project, fileId, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/files/${one(fileId)}`, { signal });
+}
+
+/**
+ * The layers of an own file for the Wachlarz (`get_own_file_layers`): the
+ * working file on top, then its snapshots newest first.
+ *
+ * @param {string} project
+ * @param {string} fileId
+ * @param {RequestOptions} [options]
+ * @returns {Promise<LayerSet>}
+ */
+export function getOwnFileLayers(project, fileId, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/files/${one(fileId)}/layers`, { signal });
+}
+
+/**
+ * What a snapshot of a file would do now (`get_snapshot_plan`): nothing is
+ * written.
+ *
+ * @param {string} project
+ * @param {string} fileId
+ * @param {RequestOptions} [options]
+ * @returns {Promise<SnapshotPlan>}
+ */
+export function getSnapshotPlan(project, fileId, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/files/${one(fileId)}/snapshot-plan`, { signal });
+}
+
+/**
+ * Snapshot a file into `.wersje/` (`start_file_snapshot`): the `snapshot`
+ * job, for the project's owner or an administrator.
+ *
+ * @param {string} project
+ * @param {string} fileId
+ * @param {string} note - The person's note kept in `migawka.json` (≤ 2000).
+ * @returns {Promise<JobDetail>}
+ * @throws {ApiError} `403 permission_denied`, `409 snapshot_blocked`
+ *   (`reason`), `409 conflict` (a snapshot of the file runs: `job`).
+ */
+export function startFileSnapshot(project, fileId, note) {
+  return request("POST", `/projects/${one(project)}/files/${one(fileId)}/snapshots`, {
+    json: { note },
+  });
+}
+
+/**
+ * The preview of an own file (`get_own_preview`) or of one of its snapshots
+ * (`get_snapshot_preview`), as of a version.
+ *
+ * @param {string} project
+ * @param {string} fileId
+ * @param {string|null} label - A snapshot's label; `null`: the working file.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<PreviewInfo>}
+ */
+export function getOwnPreview(project, fileId, label, { signal } = {}) {
+  return request("GET", ownPreviewPath(project, fileId, label), { signal });
+}
+
+/**
+ * Build the local preview of an own file or snapshot (`build_own_preview`,
+ * `build_snapshot_preview`), as `buildPreview` does for a version.
+ *
+ * @param {string} project
+ * @param {string} fileId
+ * @param {string|null} label - A snapshot's label; `null`: the working file.
+ * @param {{force?: boolean}} [options]
+ * @returns {Promise<JobDetail|PreviewInfo>}
+ * @throws {ApiError} `409 own_file_changed` (scan the folder again),
+ *   `409 preview_unavailable`, `503 preview_busy`.
+ */
+export function buildOwnPreview(project, fileId, label, { force = false } = {}) {
+  return request("POST", ownPreviewPath(project, fileId, label), { json: { force } });
+}
+
+function ownPreviewPath(project, fileId, label) {
+  const file = `/projects/${one(project)}/files/${one(fileId)}`;
+  return label === null ? `${file}/preview` : `${file}/snapshots/${one(label)}/preview`;
 }
 
 // Helpers ---------------------------------------------------------------------

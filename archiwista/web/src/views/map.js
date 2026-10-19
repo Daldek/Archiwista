@@ -48,6 +48,7 @@ import {
   geometryBounds,
   readPosition,
   unionBounds,
+  widenBounds,
   WORLD_BOUNDS,
 } from "../map/geo.js";
 import { Legend } from "../map/legend.js";
@@ -73,6 +74,8 @@ import {
   versionTiles,
   ZoomHint,
 } from "../map/previews.js";
+import { OwnLegend, ownCardPatch, useOwnLayer } from "../map/own.js";
+import { own as O } from "../labels/own.js";
 import { productNames, productStores } from "../map/products.js";
 import { DEFAULT_GRID, GRID_PRODUCER, scaleLabel } from "../map/sheets.js";
 import { availableBasemaps, chosenBasemap, keepBasemap, pickBasemap } from "../map/style.js";
@@ -94,8 +97,10 @@ import { FAN_MODE, MODE_PARAM, SPLIT_MIN, ViewSwitch } from "./switch.js";
 
 await loadStylesheet(new URL("../map/map.css", import.meta.url));
 
-/** Address parameters that filter the map: the `/slots` names. */
-export const FILTERS = ["store", "product", "country", "years", "unit", "versions", "status", "q"];
+/** Address parameters that filter the map: the `/slots` names (`project`: its pinned versions). */
+export const FILTERS = ["store", "product", "country", "years", "unit", "versions", "status", "q", "project"];
+// Least span of a framed object: a single point is shown with its surroundings.
+const FRAME_MIN_DEGREES = 0.003;
 /** Most outlines drawn one by one; above it the view is a grid (`/map/footprints`). */
 const FOOTPRINT_LIMIT = 5000;
 /** Width of a grid cell on the screen, px. */
@@ -166,6 +171,8 @@ export default function MapScreen({ route, embedded = false }) {
   );
   const currentArea = areaId && area.data?.id === areaId ? area.data : null;
   const dataKey = `${indexKey}|${round}`;
+  // The project in context: its own files' extents (map/own.js), also after a scan of them.
+  const own = useOwnLayer(filters.project ?? null, `${dataKey}|${health?.own_data?.finished_at ?? ""}`);
 
   // Year layers of the chosen product in the area: of the chosen store, else
   // of the first store holding the product.
@@ -217,32 +224,33 @@ export default function MapScreen({ route, embedded = false }) {
     if (!previewRef) framedPreview.current = null;
     if (!mapApi || !preview.info || framedPreview.current === previewRef) return;
     framedPreview.current = previewRef;
-    const extent = preview.info.bounds ?? (preview.card?.footprint ? geometryBounds(preview.card.footprint) : null);
-    if (extent) mapApi.fit(extent);
+    const extent = preview.info.bounds ?? (preview.outline ? geometryBounds(preview.outline) : null);
+    if (extent) mapApi.fit(widenBounds(extent, FRAME_MIN_DEGREES));
   }, [mapApi, preview.info, previewRef]);
 
   // Without a position, an area or a preview, frame what the filters match;
   // an index still being built is framed once its first scan ends.
   const framedData = useRef(Boolean(start || areaId || previewRef));
   useEffect(() => {
-    if (!mapApi || framedData.current || userMoved.current) return undefined;
+    if (!mapApi || framedData.current || userMoved.current || own.loading) return undefined;
     const controller = new AbortController();
     listFootprints(
       { ...filters, bbox: bboxText(WORLD_BOUNDS), limit: FOOTPRINT_LIMIT, grid_columns: FRAME_COLUMNS },
       { signal: controller.signal },
     ).then(
       (answer) => {
-        const extent = dataExtent(answer);
+        // A project's own data is framed with the outlines of its pins.
+        const extent = unionBounds([dataExtent(answer), own.extent]);
         if (!extent || userMoved.current) return;
         framedData.current = true;
-        mapApi.fit(extent, { animate: false });
+        mapApi.fit(widenBounds(extent, FRAME_MIN_DEGREES), { animate: false });
       },
       () => {
         // The view's own query shows the problem.
       },
     );
     return () => controller.abort();
-  }, [mapApi, indexKey]);
+  }, [mapApi, indexKey, own.loading]);
 
   const onMove = (next) => {
     if (next.byUser) userMoved.current = true;
@@ -367,6 +375,9 @@ export default function MapScreen({ route, embedded = false }) {
       onClose=${() => setParams({ [PREVIEW_PARAM]: null, [PREVIEW_STYLE_PARAM]: null })} />`);
   }
   if (layer) sections.push(html`<${LayerLegend} key="layer" layer=${layer} legend=${layerLegend} job=${layers.job} />`);
+  if (own.project) {
+    sections.push(html`<${OwnLegend} key="own" own=${own} onFrame=${(bbox) => mapApi?.fit(widenBounds(bbox, FRAME_MIN_DEGREES))} />`);
+  }
 
   const centreView = html`<div class="map-view" ref=${setCentre}>
     <div class="center-bar map-bar">
@@ -397,7 +408,12 @@ export default function MapScreen({ route, embedded = false }) {
       <div class="map-pane">
         <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
           layerTiles=${layerSource} versionTiles=${versionSource}
-          previewOutline=${previewRef ? (preview.card?.footprint ?? null) : null} previewFeatures=${features.data}
+          previewOutline=${previewRef ? preview.outline : null} previewFeatures=${features.data}
+          own=${own.items} onOwn=${(item) => setParams({
+            ...ownCardPatch(own.project, item.file_id),
+            [PREVIEW_PARAM]: item.ref,
+            [PREVIEW_STYLE_PARAM]: null,
+          })}
           sheets=${grid.on ? sheets.items : []} tool=${tool} describe=${describe}
           onReady=${setMapApi} onMove=${onMove}
           onDrawn=${(geometry, kind) => {
@@ -459,6 +475,7 @@ function FilterChips({ filters, names, stores }) {
     chips.push(["status", t(L.chips.status, { value: L.filters.status_options[filters.status] ?? filters.status })]);
   }
   if (filters.q) chips.push(["q", t(L.chips.q, { value: filters.q })]);
+  if (filters.project) chips.push(["project", t(O.map.chip, { name: filters.project })]);
   if (!chips.length) return null;
   return html`<ul class="chip-row filter-chips" aria-label=${L.filters.title}>
     ${chips.map(
