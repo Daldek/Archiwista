@@ -119,6 +119,10 @@ OWN_DATA_MESSAGES = MappingProxyType(
             "Skopiuj dane do folderu danych zamiast dowiązania — Archiwista nie"
             " czyta plików spoza folderu."
         ),
+        # Permissions (``project.write``).
+        "permission_project_write": (
+            "Migawkę i zmiany projektu robi tylko jego właściciel albo administrator."
+        ),
         # The ``own_scan`` job.
         "job_kind_own_scan": "skan danych własnych",
         "own_scan_reader_failed": (

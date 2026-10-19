@@ -688,6 +688,9 @@ MESSAGES = merge_messages(
         "cli_search_status_help": (
             "stan wiersza: ok, missing, no_sidecar, unreadable albo unrecognized"
         ),
+        "cli_search_project_help": (
+            "tylko wersje przypięte w tym projekcie (klucz z archiwista projects)"
+        ),
         "cli_search_location_help": (
             "położenie: any (domyślnie), with (obrys albo cały kraj) albo none"
             " (bez położenia)"

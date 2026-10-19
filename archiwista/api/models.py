@@ -625,6 +625,16 @@ class CommonFilters(BaseModel):
             "Row state: `ok`, `missing`, `no_sidecar`, `unreadable` or `unrecognized`."
         ),
     )
+    project: str | None = Field(
+        default=None,
+        description=(
+            "Only versions pinned in this project (`project` of /projects), on"
+            " top of `versions` (`pinned` or `all` lists every pinned version,"
+            " non-current ones too); a project not visible to the session's"
+            " principal is `404`."
+        ),
+        examples=["raba"],
+    )
 
     @field_validator("years")
     @classmethod
@@ -698,6 +708,7 @@ class CatalogFilters(CommonFilters):
             location=self.location,
             versions=self.versions,
             status=self.status,
+            project=self.project,
             area=area,
             limit=self.limit,
             cursor=self.cursor,
@@ -742,6 +753,7 @@ class MapFilters(CommonFilters):
             unit=self.unit,
             versions=self.versions,
             status=self.status,
+            project=self.project,
             limit=self.limit,
             grid_columns=self.grid_columns,
         )

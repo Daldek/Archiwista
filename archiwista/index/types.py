@@ -147,6 +147,13 @@ class SlotQuery:
         by no link and pinned by no project.
     status : {"ok", "missing", "no_sidecar", "unreadable", "unrecognized"} or None
         Row state.
+    project : str or None
+        Project key (``ProjectRef.key``): only rows of versions pinned in
+        this project, on top of what ``versions`` picks (``current`` keeps
+        the pinned current versions; ``pinned`` or ``all`` lists every
+        pinned version, non-current ones too). A project the principal does
+        not see, or an unknown one, matches nothing (the API answers 404
+        first).
     area : AreaFilter or None
         Rows whose footprint shares interior with the area, files of the
         area's countries and rows without location (never dropped).
@@ -165,6 +172,7 @@ class SlotQuery:
     location: LocationFilter = "any"
     versions: VersionsMode = "current"
     status: RowStatus | None = None
+    project: str | None = None
     area: AreaFilter | None = None
     limit: int = DEFAULT_PAGE_LIMIT
     cursor: str | None = None
@@ -188,6 +196,7 @@ class MapQuery:
     unit: str | None = None
     versions: VersionsMode = "current"
     status: RowStatus | None = None
+    project: str | None = None
     limit: int = MAP_FOOTPRINT_LIMIT
     grid_columns: int = DEFAULT_GRID_COLUMNS
 

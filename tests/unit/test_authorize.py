@@ -9,6 +9,7 @@ from archiwista.auth.authorize import Action, Authorizer, principal_for
 from archiwista.config import AppSettings
 from archiwista.errors import PermissionDeniedError
 from archiwista.index.schema import initialize
+from archiwista.messages import MESSAGES
 from archiwista.state import StateStore, Visibility
 from tests.fixtures.permissions import (
     ADMIN,
@@ -68,6 +69,45 @@ def test_visibility_matrix(
     assert acting.kind == kind
     assert can_view is listed is (who in SEES[visibility])
     assert can_share is (who in MANAGES)
+
+
+@pytest.mark.parametrize("kind", ["user", "agent"])
+@pytest.mark.parametrize("who", WHO)
+@pytest.mark.parametrize("visibility", [*VISIBILITY_VALUES, None])
+def test_project_write_matrix(
+    tmp_path: Path,
+    state: StateStore,
+    visibility: Visibility | None,
+    who: Who,
+    kind: str,
+) -> None:
+    """Only the owner and administrators change a project, whoever else sees it.
+
+    ``None`` is a project without an access entry (seen by everyone under the
+    default ``public``): it has no owner, so only administrators change it.
+    """
+    # Arrange
+    if visibility is not None:
+        share(state, PROJECT, visibility)
+    authorizer = _authorizer(state, default_project_visibility="public")
+    acting = principal(state, who)
+    if kind == "agent":
+        index = tmp_path / "index.sqlite"
+        initialize(index)
+        acting = as_agent(index, state, acting)
+    allowed = who in (MANAGES if visibility is not None else {"admin"})
+
+    # Act
+    can_write = authorizer.can(acting, "project.write", PROJECT)
+
+    # Assert
+    assert acting.kind == kind
+    assert can_write is allowed
+    assert authorizer.can(LOCAL_OWNER, "project.write", PROJECT)
+    if not allowed:
+        with pytest.raises(PermissionDeniedError) as refused:
+            authorizer.require(acting, "project.write", PROJECT)
+        assert str(refused.value) == MESSAGES["permission_project_write"]
 
 
 @pytest.mark.parametrize(

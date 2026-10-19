@@ -29,7 +29,7 @@ from archiwista.api.models import (
     SheetList,
     staleness,
 )
-from archiwista.api.slots import checked_store
+from archiwista.api.slots import checked_project, checked_store
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import AppSettings, SettingsService
 from archiwista.index import MAP_FOOTPRINT_LIMIT, BBox, IndexQueries
@@ -64,9 +64,12 @@ def map_view(
     IndexQueryError
         An unknown store, a view outside WGS84, a reversed range or a limit
         out of range.
+    NotFoundError
+        ``project`` is unknown or not visible to the principal.
     """
     freshness = queries.freshness()
     stores = checked_store(filters.store, settings, freshness)
+    checked_project(queries, filters.project, visible)
     page = queries.footprints(filters.map_query(), visible=visible)
     return MapView.of(page, staleness(freshness, stores))
 
@@ -145,7 +148,9 @@ def _too_many(count: int, scale: str) -> ApiError:
     return ApiError(422, "validation_error", message)
 
 
-@router.get("/footprints", response_model=MapView, responses=problem_responses(422))
+@router.get(
+    "/footprints", response_model=MapView, responses=problem_responses(404, 422)
+)
 def list_footprints(
     filters: Annotated[MapFilters, Query()],
     visible: _Visible,
@@ -155,7 +160,9 @@ def list_footprints(
     """List outlines in a map view (WGS84) with the catalog filters, or a grid.
 
     Above `limit` the answer is `aggregated`: `cells` count outline centres.
-    Files without outline are never drawn: `groups.none` counts them.
+    Files without outline are never drawn: `groups.none` counts them. With
+    `project`, only versions pinned in that project; a project not visible
+    is `404`.
     """
     return map_view(queries, settings.get(), filters, visible=visible)
 

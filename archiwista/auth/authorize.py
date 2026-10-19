@@ -7,12 +7,16 @@ queries and services filter projects and pins with. Routers and the command
 line never decide on their own: they pass the principal to the services,
 which ask here.
 
-Rules (v0.1):
+Rules (v0.1, ``project.write`` since v0.2):
 
 - ``admin`` manages accounts, groups and settings, sees every project and
-  manages the access of each (``users.manage``, ``groups.manage``,
-  ``settings.write``, ``project.view``, ``project.share``);
-- a project's owner sees it and manages its access;
+  manages the access and the content of each (``users.manage``,
+  ``groups.manage``, ``settings.write``, ``project.view``, ``project.share``,
+  ``project.write``);
+- a project's owner sees it, manages its access and changes it
+  (``project.write``: snapshots of own files, ``POST …/snapshots``, later
+  manifest changes); a project without an access entry has no owner, so
+  only administrators share or change it;
 - ``public`` projects are seen by everyone, ``users`` by the listed people,
   ``group`` by members of the listed groups, ``private`` by the owner only;
   a project without an access entry follows ``default_project_visibility``
@@ -43,6 +47,7 @@ from archiwista.state import ProjectAccessRecord, StateStore
 type Action = Literal[
     "project.view",
     "project.share",
+    "project.write",
     "users.manage",
     "groups.manage",
     "settings.write",
@@ -52,6 +57,7 @@ type Action = Literal[
 ACTIONS: tuple[Action, ...] = (
     "project.view",
     "project.share",
+    "project.write",
     "users.manage",
     "groups.manage",
     "settings.write",
@@ -163,8 +169,9 @@ class Authorizer:
         principal : Principal
             Who acts.
         action : Action
-            ``project.view``, ``project.share``, ``users.manage``,
-            ``groups.manage``, ``settings.write`` or ``store.write``.
+            ``project.view``, ``project.share``, ``project.write``,
+            ``users.manage``, ``groups.manage``, ``settings.write`` or
+            ``store.write``.
         resource : str or None, optional
             For ``project.*``: the project's access key (``access_key`` of
             its directory, ``ProjectRef.access_key``); unused otherwise.
@@ -185,7 +192,7 @@ class Authorizer:
         if ADMIN in principal.roles:
             return True
         access = self.state.project_access(resource)
-        if action == "project.share":
+        if action in ("project.share", "project.write"):
             return _owns(principal, access)
         if access is None:
             return self.default_project_visibility == "public"

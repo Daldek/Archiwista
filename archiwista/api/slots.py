@@ -91,7 +91,7 @@ def search_slots(
     filters : CatalogFilters
         Query of ``GET /slots``.
     visible : ProjectVisibility
-        Projects the principal sees (pins, ``versions=pinned``).
+        Projects the principal sees (pins, ``versions=pinned``, ``project``).
 
     Raises
     ------
@@ -100,9 +100,12 @@ def search_slots(
         range, a limit out of range or a cursor of another query.
     SourceStateError
         A ``bbox`` needs a producer plugin that is not available.
+    NotFoundError
+        ``project`` is unknown or not visible to the principal.
     """
     freshness = queries.freshness()
     stores = checked_store(filters.store, settings, freshness)
+    checked_project(queries, filters.project, visible)
     area = None
     if filters.area_id is not None and filters.bbox is not None:
         raise IndexQueryError(MESSAGES["api_area_and_bbox"])
@@ -307,10 +310,25 @@ def checked_store(
     return {store}
 
 
+def checked_project(
+    queries: IndexQueries, project: str | None, visible: ProjectVisibility
+) -> None:
+    """Refuse a ``project`` filter the principal cannot use.
+
+    Raises
+    ------
+    NotFoundError
+        The project is unknown or not visible: both answer the same, so an
+        invisible project's existence is not revealed.
+    """
+    if project is not None and queries.project(project, visible=visible) is None:
+        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
+
+
 @router.get(
     "/slots",
     response_model=CatalogPage,
-    responses=problem_responses(422, 503),
+    responses=problem_responses(404, 422, 503),
 )
 def list_slots(
     filters: Annotated[CatalogFilters, Query()],
@@ -324,7 +342,8 @@ def list_slots(
     Rows sort by file name, slot path and store (and version path); follow
     `next_cursor` for the next page of the same query. `groups` counts the
     location groups over the whole result. Rows of an unavailable store
-    stay in the answer, marked by `stale`.
+    stay in the answer, marked by `stale`. With `project`, only versions
+    pinned in that project; a project not visible is `404`.
     """
     return search_slots(queries, settings.get(), registry, filters, visible=visible)
 

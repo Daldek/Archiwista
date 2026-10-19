@@ -123,8 +123,9 @@ _PINNED = (
     "EXISTS (SELECT 1 FROM pins p WHERE p.store_id = v.store_id"
     " AND p.version_path = v.path)"
 )
-# Pinned by a project the principal sees: the ``pinned`` filter (``_where``).
-# Driven by the few pins, not tested for each of the store's versions.
+# Pinned by a project the principal sees: the ``pinned`` filter (``_where``);
+# with ``pr.key = ?`` prepended, the ``project`` filter. Driven by the few
+# pins, not tested for each of the store's versions.
 _PINNED_VISIBLE = (
     "v.id IN (SELECT pv.id FROM pins p JOIN projects pr ON pr.id = p.project_id"
     " JOIN versions pv ON pv.store_id = p.store_id AND pv.path = p.version_path"
@@ -227,6 +228,7 @@ class _Filters:
     unit: str | None
     versions: VersionsMode
     status: RowStatus | None
+    project: str | None
 
 
 @dataclass(slots=True)
@@ -304,7 +306,8 @@ class IndexQueries:
             Filters, area, page size and cursor.
         visible : ProjectVisibility
             Projects the principal sees: only their pins are listed
-            (``pinned_by``) and count for ``versions="pinned"``.
+            (``pinned_by``) and count for ``versions="pinned"`` and for
+            ``query.project`` (an invisible project matches nothing).
 
         Returns
         -------
@@ -574,7 +577,7 @@ class IndexQueries:
             View, filters, limit and grid size.
         visible : ProjectVisibility
             Projects the principal sees: only their pins count for
-            ``versions="pinned"``, as in the catalog.
+            ``versions="pinned"`` and ``query.project``, as in the catalog.
 
         Returns
         -------
@@ -1600,6 +1603,7 @@ def _filters(query: SlotQuery | MapQuery) -> _Filters:
         unit=query.unit,
         versions=query.versions,
         status=query.status,
+        project=query.project,
     )
 
 
@@ -1628,6 +1632,13 @@ def _where(
     if filters.versions == "pinned":
         seen, params = _visible(visible)
         where.add(_PINNED_VISIBLE.format(visible=seen), *params)
+    if filters.project is not None:
+        seen, params = _visible(visible)
+        where.add(
+            _PINNED_VISIBLE.format(visible=f"pr.key = ? AND {seen}"),
+            filters.project,
+            *params,
+        )
     if filters.store is not None:
         where.add("s.store_id = ?", _store_id(stores, filters.store))
     if filters.product is not None:
@@ -1776,6 +1787,7 @@ def _fingerprint(query: SlotQuery) -> str:
         query.location,
         query.versions,
         query.status,
+        query.project,
         area,
     ]
     data = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()

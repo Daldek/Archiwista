@@ -359,7 +359,8 @@ def test_api_openapi_documents_routes_examples_and_problems(
     }
     assert names == {
         "q", "store", "product", "country", "years", "unit", "location",
-        "versions", "status", "area_id", "bbox", "bbox_crs", "limit", "cursor",
+        "versions", "status", "project", "area_id", "bbox", "bbox_crs", "limit",
+        "cursor",
     }  # fmt: skip
     assert docs.status_code == 200
     assert re.findall(r'src="([^"]+)"', docs.text) == [
