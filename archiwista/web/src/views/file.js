@@ -12,7 +12,8 @@
  * (this version and the standard path, also as mounted on other computers),
  * the files of the same producer request and the raw sidecar — and
  * „Podgląd” (`file_tab=preview`, style `file_style`): the version's preview
- * (previews.js `PreviewPane`). Then the slot's problems.
+ * (previews.js `PreviewPane`) with „Pokaż podgląd na mapie” when it has
+ * tiles or features (the map with `preview=<ref>`). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
  * /stores/{store}/link-check`) and shows its result from the job's events.
  * Everything is read by store and path from the index, never from a file URL.
@@ -31,8 +32,10 @@ import { count, day, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { file as L } from "../labels/file.js";
 import { T, t } from "../labels/index.js";
+import { PREVIEW_PARAM, PREVIEW_STYLE_PARAM } from "../map/previews.js";
 import { PreviewPane } from "../previews.js";
-import { Link, readRoute, setParams } from "../router.js";
+import { Link, readRoute, setParams, useRoute } from "../router.js";
+import { startView } from "../routes.js";
 import {
   CopyButton,
   html,
@@ -347,7 +350,27 @@ function VersionPreview({ store, version, style }) {
     [store, version.path, version.ref],
   );
   return html`<${PreviewPane} preview=${preview} name=${fileName(version.path)} style=${style}
-    onStyle=${(value) => setParams({ [STYLE_PARAM]: value }, { replace: true })} />`;
+    onStyle=${(value) => setParams({ [STYLE_PARAM]: value }, { replace: true })}>
+    ${(info, shown) =>
+      info.state === "ready" && (info.tiles_url || info.features_url)
+        ? html`<${ShowOnMap} version=${version} style=${info.features_url ? null : shown} />`
+        : null}
+  </${PreviewPane}>`;
+}
+
+/**
+ * „Pokaż podgląd na mapie”: the map with the version's tiles or features and
+ * its outline, in the style shown; the card closes, the map keeps its state.
+ */
+function ShowOnMap({ version, style }) {
+  const route = useRoute();
+  const kept =
+    (route.view ?? startView().id) === "map"
+      ? Object.fromEntries(Object.entries(route.params).filter(([name]) => name !== "file" && !CARD_PARAMS.includes(name)))
+      : {};
+  const params = { ...kept, [PREVIEW_PARAM]: version.ref, [PREVIEW_STYLE_PARAM]: style };
+  return html`<${Link} class="btn" view="map" params=${params} title=${L.preview_on_map_title}>
+    <${Icon} name="map" />${L.preview_on_map}</${Link}>`;
 }
 
 function Metadata({ details }) {

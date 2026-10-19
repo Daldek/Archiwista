@@ -5,7 +5,9 @@
  * `listSlots`); answers are typed in `types.js`. Addresses the API gives in
  * its answers (`thumbnail_url`, `members_url` of `PreviewInfo`) are never
  * composed here: `apiAddress` adds their documented parameters, `getImage`
- * and `getLinked` fetch them with the same session header.
+ * and `getLinked` fetch them with the same session header; `apiTemplate`
+ * does the same for the templates a map fills (`tiles_url`), and
+ * `apiHeaders` gives the map the session header for API addresses only.
  *
  * Session (A-ADR-012 errata 1 and 2, SPEC 10.1): `archiwista serve` opens
  * `/#token=…`. `startSession` first removes the token from the address
@@ -57,6 +59,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").LocalCoverageQuery} LocalCoverageQuery */
 /** @typedef {import("./types.js").AreaCoverage} AreaCoverage */
 /** @typedef {import("./types.js").PreviewInfo} PreviewInfo */
+/** @typedef {import("./types.js").LayersQuery} LayersQuery */
+/** @typedef {import("./types.js").LayerSet} LayerSet */
 
 /**
  * Abort a read: every function takes these options last.
@@ -206,14 +210,48 @@ export async function request(method, path, { query, json, body, type, signal } 
  *   token goes nowhere else.
  */
 export function apiAddress(address, query = {}) {
-  const url = new URL(address, location.origin);
-  if (url.origin !== location.origin || !url.pathname.startsWith(`${API_PREFIX}/`)) {
-    throw new Error(`Not an address of the Archiwista API: ${address}`);
-  }
+  const url = apiUrl(address);
   for (const [name, value] of Object.entries(query)) {
     if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, String(value));
   }
   return url.pathname + url.search;
+}
+
+/**
+ * A template the API gave in an answer (`tiles_url` with `{z}/{x}/{y}`,
+ * `features_url` with `{bbox}` and `{zoom}`) with documented query
+ * parameters added; its placeholders stay as they are for the map to fill.
+ *
+ * @param {string} template - From the answer, under `/api/v1/` of this server.
+ * @param {Object<string, string|number|null|undefined>} [query] - E.g.
+ *   `{style: "hypsometry"}`; `null`, `undefined` and `""` are left out.
+ * @returns {string} The absolute address, e.g.
+ *   `http://127.0.0.1:8765/api/v1/stores/…/tiles/{z}/{x}/{y}.png?style=hypsometry`.
+ * @throws {Error} Not an address of this server's API.
+ */
+export function apiTemplate(template, query = {}) {
+  apiUrl(template);
+  const added = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined && value !== "") added.set(name, String(value));
+  }
+  // A URL object would encode the braces of the placeholders: the text is kept.
+  const absolute = template.startsWith("/") ? location.origin + template : template;
+  const text = added.toString();
+  return text ? `${absolute}${absolute.includes("?") ? "&" : "?"}${text}` : absolute;
+}
+
+/**
+ * The session's CSRF header for a request the page does not send itself
+ * (MapLibre's tiles, `transformRequest`): only for an address of this
+ * server's API, never for a basemap or any other origin.
+ *
+ * @param {string} address - The address about to be requested.
+ * @returns {Object<string, string>|null} The header, or `null` to send none.
+ */
+export function apiHeaders(address) {
+  const token = storedToken();
+  return token !== null && isApiUrl(new URL(address, location.origin)) ? { [CSRF_HEADER]: token } : null;
 }
 
 /**
@@ -666,6 +704,21 @@ export function getLocalCoverage(query, { signal } = {}) {
   return request("GET", "/local-coverage", { query, signal });
 }
 
+// Local layers (v0.2, step 11) ------------------------------------------------
+
+/**
+ * The layers of a store's product (`get_local_layers`): its data years,
+ * editions or labels, newest first; with an area their local coverage,
+ * versions, outlines and the addresses of their thumbnail and map tiles.
+ *
+ * @param {LayersQuery} query
+ * @param {RequestOptions} [options]
+ * @returns {Promise<LayerSet>}
+ */
+export function getLocalLayers(query, { signal } = {}) {
+  return request("GET", "/local-layers", { query, signal });
+}
+
 // Previews (v0.2, step 6) -----------------------------------------------------
 
 /**
@@ -707,6 +760,18 @@ export function buildPreview(store, version, { force = false } = {}) {
 /** The CSRF token this tab keeps, or `null`. */
 function storedToken() {
   return sessionStorage.getItem(TOKEN_KEY);
+}
+
+/** Whether a parsed address is under `/api/v1/` of this origin. */
+function isApiUrl(url) {
+  return url.origin === location.origin && url.pathname.startsWith(`${API_PREFIX}/`);
+}
+
+/** An address of this server's API as a URL; any other address throws. */
+function apiUrl(address) {
+  const url = new URL(address, location.origin);
+  if (!isApiUrl(url)) throw new Error(`Not an address of the Archiwista API: ${address}`);
+  return url;
 }
 
 /**

@@ -1,7 +1,8 @@
 /**
  * Texts of the map view (views/map.js and src/map/): the „Wybór” panel, the
- * map, its legend and counters. Coverage labels such as „lokalnie 83%
- * obszaru” come from the server's dictionary, not from here.
+ * map, its legend and counters, the year buttons and the previews on the
+ * map. Coverage labels such as „lokalnie 83% obszaru” and layer titles come
+ * from the server's dictionary, not from here.
  */
 
 export const map = {
@@ -20,6 +21,7 @@ export const map = {
     attribution: "Pokaż albo ukryj atrybucję",
     failed: "Mapa nie działa w tej przeglądarce: {message}",
     basemap_failed: "Podkład nie odpowiada — sprawdź połączenie albo adres podkładu w ustawieniach.",
+    preview_failed: "Część kafli podglądu się nie wczytała — przesuń albo przybliż mapę, aby spróbować ponownie.",
   },
   draw: {
     rect: "Przeciągnij po mapie, aby zaznaczyć prostokąt",
@@ -167,6 +169,7 @@ export const map = {
     show: "Pokaż legendę",
     hide: "Zwiń legendę",
     footprints: "Obrysy plików w magazynie (wersje: {versions})",
+    layer_outlines: "Obrysy plików warstwy {title} w obszarze",
     cells: "Siatka zagęszczenia: liczba obrysów w komórce (ponad 5000 obrysów w widoku)",
     area: "Obszar",
     sheets: "Siatka godeł {system} · {scale}",
@@ -198,6 +201,36 @@ export const map = {
       store_unavailable: "Magazyn jest niedostępny — wynik z indeksu z {indexed_at}, bez ponownego odczytu.",
       refresh_timeout: "Odczyt slotów obszaru nie zmieścił się w 10 s — wynik z indeksu.",
       too_many_slots: "Obszar ma ponad 500 slotów — wynik z indeksu, bez ponownego odczytu.",
+    },
+  },
+  layers: {
+    label: "Lata na mapie",
+    loading: "Wczytywanie lat z magazynu…",
+    units: "arkusze lub jednostki: {count}",
+    no_meta: "bez metadanych",
+  },
+  previews: {
+    layer_title: "Warstwa {title}",
+    layer_ready: "gotowe podglądy: {ready} z {total}",
+    layer_building: "Budowa brakujących podglądów…",
+    layer_needs_build:
+      "Część plików nie ma jeszcze podglądu na mapie — zbuduj go w Karcie pliku (zakładka „Podgląd”).",
+    layer_unavailable: "Pliki tej warstwy nie mają podglądu na mapie.",
+    zoom_in: "Przybliż, aby zobaczyć podgląd",
+    zoom_action: "Przybliż",
+    file_title: "Podgląd pliku",
+    outline: "Obrys pliku",
+    features: "Obiekty pliku w widoku",
+    features_loading: "Wczytywanie obiektów…",
+    features_truncated: "Widać część obiektów — przybliż mapę albo otwórz plik w QGIS.",
+    open_card: "Karta pliku",
+    close: "Zamknij podgląd pliku",
+    loading: "Wczytywanie podglądu…",
+    bad_ref: "Adres podglądu „{ref}” nie wskazuje wersji pliku w magazynie.",
+    no_map: "Ten plik nie ma podglądu na mapie.",
+    state: {
+      needs_build: "Kafle tego pliku wymagają zbudowania podglądu — zbuduj go w Karcie pliku.",
+      building: "Podgląd tego pliku jest w budowie — kafle pojawią się po jej zakończeniu.",
     },
   },
 };

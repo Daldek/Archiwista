@@ -111,7 +111,9 @@ export function usePreviewImage(address) {
  *   onStyle?: (style: string) => void, children?: *}} props - `name`: the
  *   file's name (image description, a layer named after its file); `style`
  *   and `onStyle` keep the chosen style outside (e.g. in the address), else
- *   the pane keeps it; `children`: actions of the object.
+ *   the pane keeps it; `children`: actions of the object, or a function of
+ *   the loaded `PreviewInfo` and the style shown returning them (an action
+ *   only some previews offer, e.g. „Pokaż podgląd na mapie”).
  */
 export function PreviewPane({ preview, name, style = null, onStyle, children }) {
   const { data: info, error, loading, reload } = useResource((signal) => preview.load(signal), [preview.key]);
@@ -130,6 +132,7 @@ export function PreviewPane({ preview, name, style = null, onStyle, children }) 
   const legend = chosen ? info.legends[chosen] : null;
   const state = build.busy ? "building" : info.state;
   const retry = info.state === "failed" || TRANSIENT.has(info.reason?.code);
+  const actions = typeof children === "function" ? children(info, chosen) : children;
   // Past the auto-build limits the thumbnail too waits for the local copy.
   const awaited = info.state === "needs_build" && !info.auto_build;
   return html`<div class="pv-pane">
@@ -155,7 +158,7 @@ export function PreviewPane({ preview, name, style = null, onStyle, children }) 
     ${info.layers.length ? html`<${Layers} layers=${info.layers} name=${name} />` : null}
     ${info.points ? html`<${Points} points=${info.points} unit=${info.legends.elevation?.unit ?? null} />` : null}
     ${info.members_url ? html`<${Members} address=${info.members_url} />` : null}
-    ${children ? html`<div class="pv-actions">${children}</div>` : null}
+    ${actions ? html`<div class="pv-actions">${actions}</div>` : null}
   </div>`;
 }
 

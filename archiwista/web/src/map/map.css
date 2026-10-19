@@ -16,6 +16,9 @@
 .chip-remove:hover { background: var(--panel-2); color: var(--text); }
 .map-counts { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
 .map-count { font-variant-numeric: tabular-nums; }
+/* The spinner's place is kept: a bar wrapping while outlines load would
+   resize the map, move it and ask for the outlines again, without end. */
+.map-count-busy { display: inline-flex; width: 14px; flex: none; }
 .no-outline { text-decoration: none; border-color: #fcd34d; background: var(--warn-bg); color: var(--warn-ink); }
 .no-outline:hover { background: #fde68a; }
 .stale-chip { border-color: #fcd34d; color: var(--warn-ink); }
@@ -35,6 +38,21 @@
 .map-problem { padding: 3px; max-width: 100%; }
 .map-note, .map-failure { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; margin: 0; padding: 7px 12px; font-size: 12px; color: var(--warn-ink); max-width: calc(100% - 24px); }
 .map-failure { top: 40%; bottom: auto; color: var(--bad-ink); }
+.map-note > span { display: block; }
+
+/* year buttons on the map (previews.js LayerButtons; SPEC 6.1) */
+.layer-strip { position: absolute; left: 12px; top: 12px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-height: calc(50% - 24px); overflow-y: auto; padding: 2px; }
+.layer-strip-note { display: inline-flex; padding: 6px 10px; font-size: 12px; }
+.layer-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 11px 3px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.96); color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-sm); cursor: pointer; text-align: left; }
+.layer-btn:hover { border-color: var(--accent-2); }
+.layer-btn .ring { width: 11px; height: 11px; }
+.layer-btn.no .ring { background: transparent; border: 1.5px dashed var(--text-3); }
+.layer-btn-hint { font-weight: 500; font-size: 11px; color: var(--text-2); }
+.layer-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.layer-btn.on .layer-btn-hint { color: #e0e7ff; }
+.layer-btn.on .ring { background: conic-gradient(#fff var(--p), rgba(255, 255, 255, 0.35) 0); }
+.layer-btn.on.no .ring { background: transparent; border-color: #fff; }
+.zoom-hint .btn { flex: none; }
 
 .pick-list { position: absolute; z-index: 4; width: 320px; max-width: calc(100% - 16px); padding: 8px; display: grid; gap: 6px; }
 .pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-left: 4px; }
@@ -58,6 +76,23 @@
 .legend-basemap { display: grid; gap: 4px; margin-top: 4px; color: var(--text-2); }
 .legend-basemap select { height: 26px; border: 1px solid var(--line-2); border-radius: 7px; background: #fff; padding: 0 6px; font-size: 12px; min-width: 0; }
 .legend-note { margin: 4px 0 0; color: var(--text-2); line-height: 1.4; }
+.legend-note.warn { color: var(--warn-ink); }
+.map-legend { max-height: calc(50% - 46px); overflow-y: auto; }
+/* previews in the legend (previews.js VersionLegend, LayerLegend) */
+.legend-section { display: grid; gap: 6px; padding-bottom: 8px; margin-bottom: 2px; border-bottom: 1px solid var(--line); }
+.legend-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text); }
+.legend-close { width: 24px; height: 24px; }
+.legend-file { display: grid; gap: 1px; min-width: 0; }
+.legend-file b.mono { overflow-wrap: anywhere; font-size: 11.5px; }
+.legend-sub { display: block; color: var(--text-3); font-size: 11px; }
+.legend-section .seg { justify-self: start; flex-wrap: wrap; }
+.legend-section .seg button { white-space: nowrap; }
+.legend-section .pv-reason { font-size: 11.5px; padding: 6px 8px; }
+.legend-section .job-status { font-size: 11.5px; }
+.legend-card-link { justify-self: start; text-decoration: none; }
+.sw-preview { background: linear-gradient(135deg, #9ca3af, #e5e7eb 55%, #6b7280); border: 1px solid #d0d5dd; }
+.sw-preview-outline { border: 2px solid #ea580c; }
+.sw-features { background: rgba(13, 148, 136, 0.22); border: 1.5px solid #0d9488; }
 
 /* ---------- „Wybór” panel (panel.js, coverage.js) ---------- */
 .map-steps h2.step-title { font-size: 13.5px; margin: 0; }
@@ -114,6 +149,10 @@
   /* The „Wybór” sheet shows the filters; the bar keeps room for the counters. */
   .filter-chips { display: none; }
   .map-notes { top: 8px; }
+  /* Years run sideways above the map; the notes go below them. */
+  .layer-strip { left: 8px; right: 8px; top: 8px; flex-direction: row; max-height: none; overflow-x: auto; overflow-y: visible; }
+  .map-canvas:has(.layer-strip) .map-notes { top: 50px; }
+  .map-legend { max-height: calc(100% - 120px); }
   .map-hint-card { flex-wrap: wrap; }
   .pick-list { width: calc(100% - 16px); }
 }

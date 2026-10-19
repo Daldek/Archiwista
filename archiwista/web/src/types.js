@@ -1091,4 +1091,109 @@
  * @property {number} workers - Render processes at most.
  */
 
+/**
+ * The features of a map view (`features_url`): GeoJSON in WGS84, simplified to
+ * the view's zoom.
+ *
+ * @typedef {object} PreviewFeatures
+ * @property {"FeatureCollection"} type
+ * @property {Array<{type: "Feature", geometry: Geometry|null,
+ *   properties: Object<string, *>}>} features
+ * @property {string|null} layer - The layer read.
+ * @property {number|null} number_matched - Null past `limit`.
+ * @property {number} number_returned
+ * @property {boolean} truncated - More than `limit` features or 500 000 vertices:
+ *   zoom in or open the file in QGIS.
+ * @property {boolean} simplified - Some geometry lost vertices.
+ */
+
+// Local layers (v0.2, step 11) -----------------------------------------------
+
+/**
+ * Parameters of `GET /local-layers`.
+ *
+ * @typedef {object} LayersQuery
+ * @property {string} store
+ * @property {string} product
+ * @property {string} [area_id] - Without one, only the counts of every layer.
+ * @property {string} [segment]
+ * @property {"year"|"campaign"} [group]
+ */
+
+/**
+ * The variant of a layer: no file format in it (A-ADR-017).
+ *
+ * @typedef {object} LayerVariant
+ * @property {string|null} product
+ * @property {string|null} horizontal_crs
+ * @property {string|null} resolution
+ * @property {string|null} vertical_crs
+ * @property {string[]} segments
+ * @property {string[]} formats - Badges, e.g. `ASCII Grid`.
+ */
+
+/**
+ * The previews of a layer's versions and the addresses of its images.
+ *
+ * @typedef {object} LayerPreview
+ * @property {PreviewState} state - `ready`, `building` (`job` builds the missing
+ *   ones), `needs_build` without a job, `unavailable` (nothing to show on a map).
+ * @property {number} ready - Versions with a ready preview.
+ * @property {number} total - Versions that can have one.
+ * @property {{id: string, state: string}|null} job
+ * @property {string|null} thumbnail_url - The layer's image in the frame.
+ * @property {string|null} tiles_url - One raster source of map tiles (`{z}/{x}/{y}`).
+ * @property {number|null} minzoom - Below it the tiles are `404`: show the outlines.
+ */
+
+/**
+ * A version of a layer in the area.
+ *
+ * @typedef {object} LayerVersion
+ * @property {string} ref - `version:<store>:<path>`.
+ * @property {string} slot
+ * @property {string|null} unit
+ * @property {{state: PreviewState, tiles_url: string|null}} preview
+ * @property {number[]|null} bounds - WGS84: west, south, east, north.
+ */
+
+/**
+ * A layer: a variant's data year, edition, label or campaign.
+ *
+ * @typedef {object} Layer
+ * @property {string} key - `<variant>:<year|edition|label>[:<campaign>]` (`layer` of
+ *   the address).
+ * @property {LayerVariant} variant
+ * @property {"year"|"edition"|"label"|"campaign"} kind
+ * @property {number|null} year - Data year, never the download's.
+ * @property {string} title - Polish, e.g. `2023` or `wydanie 2021`.
+ * @property {string} subtitle - The variant's name.
+ * @property {number} versions_count
+ * @property {number} units_count
+ * @property {string[]} campaigns
+ * @property {string[]} data_dates
+ * @property {{ratio: number|null, percent: number|null, label: string}|null} coverage
+ * @property {Object<string, *>|null} outlines - GeoJSON in `frame.crs` (planar).
+ * @property {LayerPreview|null} preview - With an area only.
+ * @property {LayerVersion[]|null} versions - At most 500, with an area only.
+ */
+
+/**
+ * Layers of a store's product, newest first (`GET /local-layers`).
+ *
+ * @typedef {object} LayerSet
+ * @property {{id: string, name: string|null, area_km2: number|null, countries:
+ *   string[]}|null} area
+ * @property {string} store
+ * @property {string} product
+ * @property {string|null} segment
+ * @property {"year"|"campaign"} group
+ * @property {{crs: string, bbox: number[]}|null} frame - The area's box in its planar
+ *   CRS.
+ * @property {Layer[]} layers
+ * @property {boolean} stale
+ * @property {"store_unavailable"|"refresh_timeout"|"too_many_slots"|null} stale_reason
+ * @property {StaleStore[]} stale_stores
+ */
+
 export {};

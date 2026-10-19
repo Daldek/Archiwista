@@ -39,6 +39,8 @@ export const file = {
     meta: "Metadane",
     preview: "Podgląd",
   },
+  preview_on_map: "Pokaż podgląd na mapie",
+  preview_on_map_title: "Otwórz mapę z podglądem tej wersji i jej obrysem",
   version: {
     title: "Wersja {label}",
     title_plain: "Plik bez wersji",

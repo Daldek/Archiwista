@@ -1,14 +1,19 @@
 /**
  * The map of the map view (docs/SPEC.md 5.4, 6.3): MapLibre with the
  * basemap, the store's outlines in the view — or, above the limit, their
- * grid — the sheet grid, the area and the drawing tools.
+ * grid — the sheet grid, the area, the drawing tools and the previews
+ * (plan v0.2 step 12b): one raster source of the chosen year layer's tiles,
+ * a version's tiles or its features, and its outline.
  *
  * The view owns the data and passes it in; the map reports moves, drawn
  * shapes and choices. Layers change through `setData` and hover through
  * feature state, so thousands of outlines never pass through Preact; a
- * feature carries only its index into the answer the view gave.
+ * feature carries only its index into the answer the view gave. Requests of
+ * MapLibre to this server's API (preview tiles) carry the session's CSRF
+ * header (`transformRequest`); no other address gets it.
  */
 
+import { apiHeaders } from "../api.js";
 import { count, int } from "../format.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
@@ -26,7 +31,18 @@ export const COLORS = {
   sheet: "#475467",
   area: "#3730a3",
   draw: "#4f46e5",
+  preview: "#ea580c",
+  features: "#0d9488",
 };
+// Raster sources of preview tiles: the chosen year layer, a version.
+const LAYER_TILES = "layer-preview";
+const VERSION_TILES = "version-preview";
+const PREVIEW_TILES = new Set([LAYER_TILES, VERSION_TILES]);
+// Preview rasters lie on the outlines' fill, under their lines.
+const PREVIEW_ABOVE = "footprints-line";
+const POLYGONS = ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]];
+const LINES = ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]];
+const POINTS = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
 const HOVER = ["boolean", ["feature-state", "hover"], false];
 const FIT_MAX_ZOOM = 15;
 const PICK_LIMIT = 12;
@@ -58,7 +74,7 @@ function cellGeometry(cell) {
 }
 
 function addDataLayers(map) {
-  for (const id of ["cells", "footprints", "sheets", "area", "draw"]) {
+  for (const id of ["cells", "footprints", "preview-features", "preview-outline", "sheets", "area", "draw"]) {
     map.addSource(id, { type: "geojson", data: EMPTY });
   }
   const text = (field, size, color) => ({
@@ -109,6 +125,38 @@ function addDataLayers(map) {
         "fill-color": "rgba(0, 0, 0, 0)",
         "fill-outline-color": ["case", HOVER, "#0b1f5c", COLORS.footprint],
       },
+    },
+    {
+      id: "preview-features-fill",
+      type: "fill",
+      source: "preview-features",
+      filter: POLYGONS,
+      paint: { "fill-color": COLORS.features, "fill-opacity": 0.22 },
+    },
+    {
+      id: "preview-features-line",
+      type: "line",
+      source: "preview-features",
+      filter: ["any", POLYGONS, LINES],
+      paint: { "line-color": COLORS.features, "line-width": 1.4 },
+    },
+    {
+      id: "preview-features-points",
+      type: "circle",
+      source: "preview-features",
+      filter: POINTS,
+      paint: {
+        "circle-radius": 3.5,
+        "circle-color": COLORS.features,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1,
+      },
+    },
+    {
+      id: "preview-outline",
+      type: "line",
+      source: "preview-outline",
+      paint: { "line-color": COLORS.preview, "line-width": 2.4 },
     },
     {
       id: "sheets-fill",
@@ -169,6 +217,8 @@ function addDataLayers(map) {
  *
  * @typedef {object} MapApi
  * @property {(bbox: number[], options?: {animate?: boolean}) => void} fit - Frame a box.
+ * @property {(zoom: number, bounds?: number[]|null) => void} zoomTo - Zoom in or
+ *   out; outside `bounds` (WGS84) also move to their centre.
  * @property {() => number[]} bounds - The visible box (WGS84).
  * @property {() => number} width - Width of the map in px.
  */
@@ -179,6 +229,7 @@ function addDataLayers(map) {
  * @typedef {object} MapMove
  * @property {number[]} bbox - The visible box (WGS84).
  * @property {number} width - Width of the map in px.
+ * @property {number} zoom - MapLibre's zoom (512 px tiles).
  * @property {{center: string, zoom: string}} position - For the address.
  * @property {boolean} byUser - Moved by a person, not by framing.
  */
@@ -204,6 +255,14 @@ function addDataLayers(map) {
  *   of the grid clicked.
  * @param {(item: import("../types.js").Footprint) => void} props.onOpen - An
  *   outline chosen: open its file card.
+ * @param {object|null} [props.layerTiles] - Raster source of the chosen year
+ *   layer (map/previews.js `layerTiles`).
+ * @param {object|null} [props.versionTiles] - Raster source of the version
+ *   shown (`versionTiles`).
+ * @param {import("../types.js").Geometry|null} [props.previewOutline] - Outline of
+ *   the version shown.
+ * @param {import("../types.js").PreviewFeatures|null} [props.previewFeatures] -
+ *   Features of the vector shown in the view.
  * @param {*} [props.children] - Overlays of the view over the map.
  */
 export function MapCanvas({
@@ -220,12 +279,17 @@ export function MapCanvas({
   onCancel,
   onSheet,
   onOpen,
+  layerTiles = null,
+  versionTiles = null,
+  previewOutline = null,
+  previewFeatures = null,
   children,
 }) {
   const box = useRef(null);
   const [map, setMap] = useState(null);
   const [failure, setFailure] = useState(null);
   const [basemapFailed, setBasemapFailed] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [tip, setTip] = useState(null);
   const [pick, setPick] = useState(null);
   const [vertices, setVertices] = useState(0);
@@ -238,6 +302,8 @@ export function MapCanvas({
   props.current = { onMove, onDrawn, onCancel, onSheet, onOpen, describe, tool, gridOn: sheets.length > 0 };
   const basemapKey = basemap ? JSON.stringify(basemap) : "";
   const shownBasemap = useRef(basemapKey);
+  const layerKey = layerTiles ? JSON.stringify(layerTiles) : "";
+  const versionKey = versionTiles ? JSON.stringify(versionTiles) : "";
 
   useEffect(() => {
     let live = true;
@@ -258,6 +324,11 @@ export function MapCanvas({
           touchPitch: false,
           maxPitch: 0,
           renderWorldCopies: false,
+          // Preview tiles of the API need the session's header; nothing else gets it.
+          transformRequest: (url) => {
+            const headers = apiHeaders(url);
+            return headers ? { url, headers } : undefined;
+          },
           locale: {
             "Map.Title": L.canvas.title,
             "NavigationControl.ZoomIn": L.canvas.zoom_in,
@@ -272,9 +343,10 @@ export function MapCanvas({
         created.addControl(new maplibre.NavigationControl({ showCompass: false }), "bottom-right");
         created.addControl(new maplibre.ScaleControl({ unit: "metric" }), "bottom-right");
         created.on("error", (event) => {
-          // Without a listener MapLibre logs to the console; a basemap that does
-          // not answer is said in the legend instead.
+          // Without a listener MapLibre logs to the console; a basemap or a
+          // preview tile that does not answer is said in a note instead.
           if (event.sourceId === "basemap") setBasemapFailed(true);
+          else if (PREVIEW_TILES.has(event.sourceId)) setPreviewFailed(true);
           else setFailure(event.error ?? event);
         });
         created.once("load", () => {
@@ -292,6 +364,7 @@ export function MapCanvas({
           setMap(created);
           onReady?.({
             fit: (bbox, { animate = true } = {}) => fit(created, bbox, animate),
+            zoomTo: (zoom, bounds = null) => zoomTo(created, zoom, bounds),
             bounds: () => viewBounds(created),
             width: () => created.getContainer().clientWidth,
           });
@@ -343,6 +416,31 @@ export function MapCanvas({
     );
   }, [map, area]);
 
+  useEffect(() => {
+    if (!map) return;
+    setPreviewFailed(false);
+    // The version's tiles lie above the layer's.
+    setRaster(map, LAYER_TILES, layerTiles, map.getLayer(VERSION_TILES) ? VERSION_TILES : PREVIEW_ABOVE);
+  }, [map, layerKey]);
+
+  useEffect(() => {
+    if (!map) return;
+    setPreviewFailed(false);
+    setRaster(map, VERSION_TILES, versionTiles, PREVIEW_ABOVE);
+  }, [map, versionKey]);
+
+  useEffect(() => {
+    if (!map) return;
+    map.getSource("preview-outline").setData(
+      previewOutline ? { type: "Feature", properties: {}, geometry: previewOutline } : EMPTY,
+    );
+  }, [map, previewOutline]);
+
+  useEffect(() => {
+    if (!map) return;
+    map.getSource("preview-features").setData(previewFeatures ?? EMPTY);
+  }, [map, previewFeatures]);
+
   // Before paint: the drawing hint is never shown without its keys working.
   useLayoutEffect(() => {
     if (!map || !tool) return undefined;
@@ -376,7 +474,12 @@ export function MapCanvas({
           }} />`
       : null}
     ${children}
-    ${basemapFailed ? html`<p class="map-note float-card" role="status">${L.canvas.basemap_failed}</p>` : null}
+    ${basemapFailed || previewFailed
+      ? html`<p class="map-note float-card" role="status">
+          ${basemapFailed ? html`<span>${L.canvas.basemap_failed}</span>` : null}
+          ${previewFailed ? html`<span>${L.canvas.preview_failed}</span>` : null}
+        </p>`
+      : null}
   </div>`;
 }
 
@@ -384,9 +487,34 @@ function move(map, byUser) {
   return {
     bbox: viewBounds(map),
     width: map.getContainer().clientWidth,
+    zoom: map.getZoom(),
     position: positionParams(map),
     byUser,
   };
+}
+
+/**
+ * Show a raster source of preview tiles in the place of the previous one
+ * (its tiles' address changes with every preview that gets ready), or none.
+ *
+ * @param {*} map
+ * @param {string} id - The source and its layer.
+ * @param {object|null} source - MapLibre raster source.
+ * @param {string} before - The layer it lies under.
+ */
+function setRaster(map, id, source, before) {
+  if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource(id)) map.removeSource(id);
+  if (!source) return;
+  map.addSource(id, source);
+  map.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 150 } }, before);
+}
+
+function zoomTo(map, zoom, bounds) {
+  const { lng, lat } = map.getCenter();
+  const inside = !bounds || (lng >= bounds[0] && lng <= bounds[2] && lat >= bounds[1] && lat <= bounds[3]);
+  const center = inside ? undefined : [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2];
+  map.easeTo({ zoom, ...(center ? { center } : {}), duration: 600 });
 }
 
 function bindMoves(map, props) {

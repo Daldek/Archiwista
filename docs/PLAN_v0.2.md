@@ -1083,7 +1083,7 @@ działa.
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
 | 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | zrobione (kod `a5ae7f3`, próby `02228f4`); warstwy pliku własnego po 9 |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
-| 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
+| 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | zrobione |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | do zrobienia |
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | do zrobienia |
@@ -3030,6 +3030,60 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_layer_in_url_restores_view`, `test_no_csp_violations_map_previews`);
   `tests/e2e/test_map.py` bez regresji.
 - **Zależności:** 11, 12a. **Równolegle:** 9, 10.
+- **Stan po kroku 12b:**
+  - *Nagłówek CSRF* (`map/canvas.js`): `transformRequest` mapy dokłada
+    `X-Archiwista-CSRF` przez `apiHeaders(url)` z `api.js` — tylko adresom
+    `/api/v1/` tego pochodzenia (podkład i każde inne pochodzenie bez
+    nagłówka; ta sama reguła co `apiAddress`). `apiTemplate(template,
+    query)` dokłada udokumentowane parametry do szablonów z odpowiedzi
+    (`tiles_url`, `features_url`) bez psucia `{z}/{x}/{y}`, `{bbox}`,
+    `{zoom}`; `getLocalLayers` i typy `LayerSet`/`Layer`/`PreviewFeatures`.
+  - *Moduł* `src/map/previews.js`: `PREVIEW_PARAM` (`preview=<ref>`),
+    `PREVIEW_STYLE_PARAM` (`preview_style`), `LAYER_PARAM` (`layer=<key>`),
+    `readVersionRef`, `useLayers` (warstwy produktu w obszarze: magazyn
+    z filtra, inaczej pierwszy z produktem; śledzi zadanie `preview`
+    wybranej warstwy i czyta warstwy od nowa po jego końcu — nowy `v`
+    w adresach), `useLayerLegend` (legenda pierwszej gotowej wersji: klasy
+    zawsze, rampa tylko przy warstwie jednej wersji), `layerTiles` (jedno
+    źródło rastrowe warstwy, jej `minzoom`, `bounds` = suma granic wersji,
+    bez źródła, gdy nic nie jest gotowe), `versionTiles`,
+    `useVersionPreview` (`PreviewInfo` i karta wersji: obrys, slot),
+    `useFeatures` (obiekty wektora w widoku po zatrzymaniu mapy, `zoom` =
+    zoom kafli 256 px = zoom MapLibre + 1), `tilesShown`/`shownFrom`
+    (MapLibre prosi o kafle zoomu `round(zoom + 1)`), komponenty
+    `LayerButtons`, `LayerLegend`, `VersionLegend`, `ZoomHint`.
+  - *Mapa* (`views/map.js`): przyciski lat w lewym górnym rogu (telefon:
+    rząd nad mapą), najnowsze na górze, z pierścieniem pokrycia lokalnego;
+    dwa warianty jednego roku z różnicą wariantu („1m · PL-EVRF2007-NH”,
+    „bez metadanych”); drugie kliknięcie zdejmuje wybór. Wybrana warstwa:
+    obrysy z `/map/footprints` (`versions=all`, rok warstwy) zawężone do
+    `ref` jej wersji — wielokąty WGS84, bo `outlines` warstwy są w układzie
+    płaskim; licznik i legenda mówią o warstwie; poniżej zoomu kafli
+    „Przybliż, aby zobaczyć podgląd” z przyciskiem „Przybliż” (zoom mapy
+    `minzoom − 1`). Nieznany `layer` znika z adresu; zmiana produktu
+    i „Wyczyść” obszar zdejmują go. Podgląd wersji: kadr na granice (nie
+    przy linku z położeniem), kafle w `bounds`/`minzoom`/`maxzoom`, obrys,
+    wektor jako obiekty; w legendzie mapy sekcja „Podgląd pliku” (styl,
+    `PreviewLegend`, powód, „Karta pliku”, „Zamknij podgląd pliku”).
+    Rastry podglądów leżą nad wypełnieniem obrysów, pod ich liniami; błąd
+    kafla podglądu daje notkę, a nie „Mapa nie działa”.
+  - *Karta pliku*: „Pokaż podgląd na mapie” (link do mapy z `preview`,
+    stylem i stanem mapy; karta się zamyka) przy `ready` z kaflami albo
+    obiektami; `PreviewPane` przyjmuje `children` także jako funkcję
+    `(info, styl) => akcje`.
+  - *Poprawka v0.1*: miejsce kółka ładowania w licznikach jest stałe —
+    pasek łamany przez kółko zmieniał wysokość mapy, ta ruch i zapytanie
+    obrysów, bez końca (wykryte próbą e2e).
+  - *Próby*: `tests/e2e/test_map_previews.py` (6 testów, jeden serwer na
+    moduł z podkładem z drugiego pochodzenia, ok. 55 s, dwa przebiegi
+    zielone): kafle wersji z nagłówkiem CSRF tylko w granicach i zoomach,
+    styl i rampa, powrót do karty; przyciski lat, obrysy i kafle warstw;
+    jedno źródło warstwy (jeden szablon, zero kafli wersji); poniżej
+    `minzoom` brak kafli i podpowiedź, po „Przybliż” kafle `z = minzoom`;
+    `layer` w adresie odtwarza widok, nieznany znika; bez naruszeń CSP,
+    obiekty wektora z `zoom` mapy, nagłówek tylko do API, nigdy do
+    podkładu. `test_map.py` nie uruchamiany (zasady szybkości). Zrzuty:
+    `<katalog-danych>/v02-12b/smoke/`.
 
 ### 13a. Interfejs: przełącznik widoków i Wachlarz
 - **Cel:** przełącznik „Mapa / Wachlarz / Katalog” nad środkiem (Katalog =

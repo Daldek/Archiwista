@@ -1,14 +1,21 @@
 /**
- * „Mapa” — the start view (docs/SPEC.md 6.1–6.3, plan v0.1 step 10b).
+ * „Mapa” — the start view (docs/SPEC.md 6.1–6.3, plan v0.1 step 10b, v0.2
+ * step 12b).
  *
  * The left panel „Wybór” holds the area, the product of the index with the
  * filters and the area's local state; the centre is the map of the store's
  * outlines in the view (`/map/footprints`: up to 5000, above that their
  * grid) with the sheet grid (`/map/sheets`) and the drawing tools. Files
  * without an outline never go on the map: their counter opens the catalog
- * with the same filters. The address holds the state — filters under the
- * `/slots` names, `area_id`, and the position as `center=lon,lat` and
- * `zoom`; without a position the map frames what the filters match.
+ * with the same filters. With an area and a product, the product's year
+ * layers in the area are buttons on the map: the chosen one shows the
+ * outlines of its versions and its preview tiles (map/previews.js); a
+ * version's preview from its file card goes on the map with its outline.
+ * The address holds the state — filters under the `/slots` names,
+ * `area_id`, the chosen layer (`layer`), the version previewed (`preview`
+ * and `preview_style`) and the position as `center=lon,lat` and `zoom`;
+ * without a position the map frames the preview, else what the filters
+ * match.
  */
 
 import {
@@ -38,7 +45,26 @@ import {
 } from "../map/geo.js";
 import { Legend } from "../map/legend.js";
 import { areaName, areaSummary, SelectionPanel } from "../map/panel.js";
-import { productNames } from "../map/products.js";
+import {
+  chosenStyle,
+  LAYER_PARAM,
+  LayerButtons,
+  LayerLegend,
+  layerTiles,
+  PREVIEW_PARAM,
+  PREVIEW_STYLE_PARAM,
+  readVersionRef,
+  shownFrom,
+  tilesShown,
+  useFeatures,
+  useLayerLegend,
+  useLayers,
+  useVersionPreview,
+  VersionLegend,
+  versionTiles,
+  ZoomHint,
+} from "../map/previews.js";
+import { productNames, productStores } from "../map/products.js";
 import { DEFAULT_GRID, GRID_PRODUCER, scaleLabel } from "../map/sheets.js";
 import { availableBasemaps, chosenBasemap, keepBasemap, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
@@ -115,11 +141,43 @@ export default function MapScreen({ route }) {
     [areaId],
   );
   const currentArea = areaId && area.data?.id === areaId ? area.data : null;
+  const dataKey = `${indexKey}|${round}`;
 
-  const view = useFootprints(move, filters, filtersKey, `${indexKey}|${round}`);
+  // Year layers of the chosen product in the area: of the chosen store, else
+  // of the first store holding the product.
+  const product = products.data?.items.find((item) => item.product === filters.product) ?? null;
+  const layerStore =
+    filters.store ?? (product ? (productStores(product, stores.map((item) => item.id))[0] ?? null) : null);
+  const layers = useLayers(
+    { store: layerStore, product: filters.product ?? null, areaId },
+    params[LAYER_PARAM] || null,
+    dataKey,
+  );
+  const layer = layers.layer;
+  const layerLegend = useLayerLegend(layer);
+  const layerSource = useMemo(() => layerTiles(layer), [layer]);
+  // A layer the answer does not hold any more leaves the address.
+  useEffect(() => {
+    if (layers.set && !layers.loading && params[LAYER_PARAM] && !layer) {
+      setParams({ [LAYER_PARAM]: null }, { replace: true });
+    }
+  }, [layers.set, layers.loading, params[LAYER_PARAM]]);
+
+  // With a layer chosen, the outlines are those of its versions.
+  const viewKey = layer ? `${filtersKey}\n${layers.set.store}\n${layer.key}` : filtersKey;
+  const viewFilters = useMemo(() => (layer ? layerFilters(filters, layers.set, layer) : filters), [viewKey]);
+  const view = useFootprints(move, viewFilters, viewKey, dataKey);
+  const footprints = useMemo(() => layerView(view.data, layer), [view.data, layer]);
   const sheets = useSheets(grid, move);
   const sheetItems = useRef([]);
   sheetItems.current = sheets.items;
+
+  // The version previewed on the map.
+  const previewRef = params[PREVIEW_PARAM] || null;
+  const preview = useVersionPreview(previewRef, dataKey);
+  const previewStyle = chosenStyle(preview.info, params[PREVIEW_STYLE_PARAM]);
+  const versionSource = useMemo(() => versionTiles(preview.info, previewStyle), [preview.info, previewStyle]);
+  const features = useFeatures(preview.info, move);
 
   // Frame the chosen area — not the one of a shared link with a position.
   const framedArea = useRef(start ? areaId : null);
@@ -129,9 +187,19 @@ export default function MapScreen({ route }) {
     mapApi.fit(currentArea.bbox);
   }, [mapApi, currentArea?.id]);
 
-  // Without a position or an area, frame what the filters match; an index
-  // still being built is framed once its first scan ends.
-  const framedData = useRef(Boolean(start || areaId));
+  // Frame the version previewed — not the one of a shared link with a position.
+  const framedPreview = useRef(start ? previewRef : null);
+  useEffect(() => {
+    if (!previewRef) framedPreview.current = null;
+    if (!mapApi || !preview.info || framedPreview.current === previewRef) return;
+    framedPreview.current = previewRef;
+    const extent = preview.info.bounds ?? (preview.card?.footprint ? geometryBounds(preview.card.footprint) : null);
+    if (extent) mapApi.fit(extent);
+  }, [mapApi, preview.info, previewRef]);
+
+  // Without a position, an area or a preview, frame what the filters match;
+  // an index still being built is framed once its first scan ends.
+  const framedData = useRef(Boolean(start || areaId || previewRef));
   useEffect(() => {
     if (!mapApi || framedData.current || userMoved.current) return undefined;
     const controller = new AbortController();
@@ -226,11 +294,11 @@ export default function MapScreen({ route }) {
       setGrid((previous) => ({ ...previous, ...patch }));
       if (patch.on) closeOnPhone();
     },
-    onClear: () => setParams({ area_id: null }),
+    onClear: () => setParams({ area_id: null, [LAYER_PARAM]: null }),
     products: products.data,
     productsError: products.error,
     filters,
-    onFilters: (patch) => setParams(patch),
+    onFilters: (patch) => setParams(filterPatch(patch, filters)),
     stores,
     names,
     indexKey,
@@ -245,6 +313,20 @@ export default function MapScreen({ route }) {
   if (!tool && grid.on) notes.push(html`<${GridNote} key="grid" grid=${grid} sheets=${sheets}
     onOff=${() => setGrid((previous) => ({ ...previous, on: false }))} />`);
   if (!tool && view.error) notes.push(html`<div key="error" class="float-card map-problem"><${ProblemView} problem=${view.error.problem} compact /></div>`);
+  if (!tool && layers.error) notes.push(html`<div key="layers" class="float-card map-problem"><${ProblemView} problem=${layers.error.problem} compact /></div>`);
+  // Below the zoom of a preview's tiles: its outlines only, and a way closer.
+  const hidden = move ? [layerSource, versionSource].filter((source) => source && !tilesShown(source, move.zoom)) : [];
+  if (!tool && hidden.length) {
+    notes.push(html`<${ZoomHint} key="zoom" onZoom=${() =>
+      mapApi?.zoomTo(Math.max(...hidden.map(shownFrom)), unionBounds(hidden.map((source) => source.bounds ?? null)))} />`);
+  }
+  const sections = [];
+  if (previewRef) {
+    sections.push(html`<${VersionLegend} key="version" reference=${previewRef} shown=${preview} style=${previewStyle}
+      features=${features} onStyle=${(value) => setParams({ [PREVIEW_STYLE_PARAM]: value }, { replace: true })}
+      onClose=${() => setParams({ [PREVIEW_PARAM]: null, [PREVIEW_STYLE_PARAM]: null })} />`);
+  }
+  if (layer) sections.push(html`<${LayerLegend} key="layer" layer=${layer} legend=${layerLegend} job=${layers.job} />`);
 
   return html`<${ViewLayout} id="map"
     left=${{ label: L.panel, open: leftOpen, onClose: () => setLeftOpen(false), content: html`<${SelectionPanel} ...${panel} />` }}>
@@ -264,10 +346,12 @@ export default function MapScreen({ route }) {
             </span>`
           : null}
         <${FilterChips} filters=${filters} names=${names} stores=${stores} />
-        <${Counters} view=${view} filters=${filters} area=${currentArea} />
+        <${Counters} view=${{ ...view, data: footprints }} filters=${viewFilters} area=${currentArea} />
       </div>
       <div class="center-body">
-        <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${view.data}
+        <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
+          layerTiles=${layerSource} versionTiles=${versionSource}
+          previewOutline=${previewRef ? (preview.card?.footprint ?? null) : null} previewFeatures=${features.data}
           sheets=${grid.on ? sheets.items : []} tool=${tool} describe=${describe}
           onReady=${setMapApi} onMove=${onMove}
           onDrawn=${(geometry, kind) => {
@@ -278,12 +362,14 @@ export default function MapScreen({ route }) {
           onSheet=${(sheet) => save(() => createArea({ geometry: sheet.geometry, name: sheet.sheet, source: "sheet" }))}
           onOpen=${(item) => setParams({ file: `${item.store}/${item.slot}`, file_version: item.version })}>
           ${notes.length ? html`<div class="map-notes">${notes}</div>` : null}
-          <${Legend} view=${view.data} versions=${filters.versions ?? "current"} grid=${grid}
+          <${LayerButtons} set=${layers.set} chosen=${layer?.key ?? null} loading=${layers.loading}
+            onChoose=${(key) => setParams({ [LAYER_PARAM]: key })} />
+          <${Legend} view=${footprints} versions=${filters.versions ?? "current"} grid=${grid}
             area=${Boolean(currentArea)} offline=${Boolean(settings?.offline)} basemaps=${basemaps}
-            basemap=${basemap} onBasemap=${(name) => {
+            basemap=${basemap} layer=${layer?.title ?? null} onBasemap=${(name) => {
               keepBasemap(name);
               setBasemapName(name);
-            }} />
+            }}>${sections}</${Legend}>
         </${MapCanvas}>
       </div>
     </div>
@@ -312,7 +398,7 @@ function FilterChips({ filters, names, stores }) {
       ([name, text]) => html`<li key=${name} class="chip static filter-chip">
         <span>${text}</span>
         <button type="button" class="chip-remove" aria-label=${t(L.filters.chip_remove, { name: text })}
-          title=${t(L.filters.chip_remove, { name: text })} onClick=${() => setParams({ [name]: null })}>
+          title=${t(L.filters.chip_remove, { name: text })} onClick=${() => setParams(filterPatch({ [name]: null }, filters))}>
           <${Icon} name="x" size=${12} />
         </button>
       </li>`,
@@ -331,7 +417,7 @@ function Counters({ view, filters, area }) {
   const none = answer?.groups.none ?? 0;
   const stale = answer?.stale_stores ?? [];
   return html`<div class="map-counts">
-    ${view.loading ? html`<${Spinner} quiet label=${L.counts.loading} />` : null}
+    <span class="map-count-busy">${view.loading ? html`<${Spinner} quiet label=${L.counts.loading} />` : null}</span>
     <span class="map-count" role="status">${text ?? (view.loading ? L.counts.loading : "")}</span>
     ${answer?.stale
       ? html`<span class="chip static stale-chip" title=${t(L.counts.stale_title, {
@@ -347,6 +433,54 @@ function Counters({ view, filters, area }) {
         </${Link}>`
       : null}
   </div>`;
+}
+
+/**
+ * A change of the filters: a year layer belongs to its product, so another
+ * product leaves no layer chosen.
+ *
+ * @param {Object<string, string|null>} patch
+ * @param {import("../map/panel.js").MapFilters} filters - Before the change.
+ * @returns {Object<string, string|null>}
+ */
+function filterPatch(patch, filters) {
+  const other = "product" in patch && (patch.product || null) !== (filters.product ?? null);
+  return other ? { ...patch, [LAYER_PARAM]: null } : patch;
+}
+
+/**
+ * The filters of the outlines while a year layer is chosen: every version of
+ * the layer's store and product from its data year (`layerView` keeps the
+ * layer's own).
+ */
+function layerFilters(filters, set, layer) {
+  return {
+    ...filters,
+    store: set.store,
+    product: set.product,
+    versions: "all",
+    years: layer.year === null ? null : String(layer.year),
+  };
+}
+
+/**
+ * The outlines of a year layer's versions in a view of `layerFilters`; a
+ * grid stays the grid of their filters.
+ *
+ * @param {import("../types.js").MapView|undefined} view
+ * @param {import("../types.js").Layer|null} layer
+ * @returns {import("../types.js").MapView|undefined}
+ */
+function layerView(view, layer) {
+  if (!view || !layer || view.aggregated) return view;
+  const wanted = new Set(
+    (layer.versions ?? [])
+      .map((version) => readVersionRef(version.ref))
+      .filter(Boolean)
+      .map(({ store, path }) => `${store}\n${path}`),
+  );
+  const items = view.items.filter((item) => wanted.has(`${item.store}\n${item.version}`));
+  return { ...view, items, total: items.length };
 }
 
 function GridNote({ grid, sheets, onOff }) {

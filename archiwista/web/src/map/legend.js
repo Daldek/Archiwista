@@ -1,7 +1,9 @@
 /**
  * Legend of the map view: what the colours mean — never colour alone, each
  * swatch has its text (docs/SPEC.md 6.1, WCAG) — and the basemap choice.
- * Offline mode says that there is no basemap and why.
+ * Offline mode says that there is no basemap and why. The previews on the
+ * map (map/previews.js: a version, the chosen year layer) put their own
+ * sections, with their legends, at its top.
  */
 
 import { t } from "../labels/index.js";
@@ -23,8 +25,11 @@ import { NO_BASEMAP } from "./style.js";
  * @param {import("../types.js").BasemapSettings[]} props.basemaps
  * @param {import("../types.js").BasemapSettings|null} props.basemap - Shown one.
  * @param {(name: string) => void} props.onBasemap - A basemap name or `NO_BASEMAP`.
+ * @param {string|null} [props.layer] - Title of the chosen year layer: the
+ *   outlines are its versions'.
+ * @param {*} [props.children] - Sections of the previews on the map.
  */
-export function Legend({ view, versions, grid, area, offline, basemaps, basemap, onBasemap }) {
+export function Legend({ view, versions, grid, area, offline, basemaps, basemap, onBasemap, layer = null, children }) {
   const id = useId();
   const [open, setOpen] = useState(() => !window.matchMedia(NARROW).matches);
   const action = open ? L.legend.hide : L.legend.show;
@@ -34,10 +39,13 @@ export function Legend({ view, versions, grid, area, offline, basemaps, basemap,
       <span id=${`${id}-title`}>${L.legend.title}</span><${Icon} name=${open ? "down" : "chevron"} size=${14} />
     </button>
     <div id=${`${id}-rows`} class="legend-rows" hidden=${!open}>
+      ${children}
       ${view?.aggregated
         ? html`<div class="legend-row"><span class="sw sw-cells" aria-hidden="true"></span>${L.legend.cells}</div>`
         : html`<div class="legend-row"><span class="sw sw-footprint" aria-hidden="true"></span>
-            ${t(L.legend.footprints, { versions: L.filters.versions_options[versions] ?? versions })}</div>`}
+            ${layer === null
+              ? t(L.legend.footprints, { versions: L.filters.versions_options[versions] ?? versions })
+              : t(L.legend.layer_outlines, { title: layer })}</div>`}
       ${area ? html`<div class="legend-row"><span class="sw sw-area" aria-hidden="true"></span>${L.legend.area}</div>` : null}
       ${grid.on
         ? html`<div class="legend-row"><span class="sw sw-sheet" aria-hidden="true"></span>
