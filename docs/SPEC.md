@@ -1443,7 +1443,8 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
   (IMGW-2) nie daje połowy wersji: przerwanie albo zabicie procesu w trakcie
   publikacji może zostawić najwyżej katalog wersji bez sidecara (problem
   `missing_sidecar`, 4.4), który nie jest wersją, a ponowienie tego samego
-  zadania go uzupełnia (katalog stacji — tylko tego samego dnia UTC,
+  zadania go uzupełnia (katalog stacji i archiwum bez `Last-Modified` —
+  tylko tego samego dnia UTC, bo etykieta to data budowy albo pobrania;
   inaczej problem zostaje do ręcznego usunięcia). Pozostawioną blokadę
   `.imgw-project.lock` (IMGW-14) rozpoznajemy jak blokadę Kartografa.
 - **Restart serwera:** zadania „trwa” bez żywego procesu dostają stan

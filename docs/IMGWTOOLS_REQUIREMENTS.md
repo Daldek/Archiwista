@@ -530,10 +530,12 @@ nich zapis kończy się `IMGWStoreConflictError`
 daje nowej wersji, ale może zostawić w `versions/` katalog bez sidecara
 z częścią plików danych. `current_version` i zapisy go pomijają,
 `iter_store` zgłasza go jako problem `missing_sidecar` (także pusty
-katalog), a następny zapis tej samej treści go uzupełnia; wyjątek:
-katalog stacji ma etykietę z daty budowy (UTC), więc przerwany katalog
-ponowiony innego dnia trafia do nowego katalogu wersji, a stary zostaje
-problemem do ręcznego usunięcia (Archiwista go nie usuwa). Kryt. 2:
+katalog), a następny zapis tej samej treści pod tą samą etykietą go
+uzupełnia; wyjątek: katalog stacji ma etykietę z daty budowy, a PMAXTP
+i archiwum bez `Last-Modified` — z daty pobrania (UTC), więc przerwaną
+publikację, której nie dokończy ponowienie innego dnia ani zapis innej
+treści, usuwa się ręcznie (cały katalog `<etykieta>_<sha8>/` bez
+sidecara, gdy nie trwa żaden zapis; Archiwista go nie usuwa). Kryt. 2:
 współbieżny zapis tej samej treści przejmuje już dowiązane pliki;
 wycofanie publikacji zostawia pliki danych na miejscu i usuwa tylko
 puste katalogi, które samo założyło, więc nie psuje wersji zatwierdzonej
@@ -1074,8 +1076,9 @@ Oczekiwania adaptera wobec 3.0.0 (audyt zgodności 2026-10-19):
   przejściowy: nie oczekuje dla takiego slotu `IMGWDataError`, pokazuje
   wersję bieżącą z `current_version` i problem obok niej, a przy
   następnym skanie problem może zniknąć (następny zapis tej samej treści
-  uzupełnia katalog). Przerwany katalog stacji ponowiony innego dnia
-  zostaje problemem do ręcznego usunięcia (IMGW-2, stan). Wersja z
+  pod tą samą etykietą uzupełnia katalog). Przerwany katalog stacji,
+  PMAXTP albo archiwum bez `Last-Modified` ponowiony innego dnia zostaje
+  problemem do ręcznego usunięcia (IMGW-2, stan). Wersja z
   sidecarem bez pliku głównego (`missing_file`) nadal daje `IMGWDataError`.
 - Wpisy `observation` to historia publikacji pliku, nie wersje ani
   problemy (6.3, odpowiedź 15); wpisy `pmaxtp` nie są problemami —
