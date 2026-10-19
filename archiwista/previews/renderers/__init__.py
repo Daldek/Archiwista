@@ -9,6 +9,13 @@ render process uses the first whose ``kinds`` include the file's kind
 their own (``archiwista.previews.worker.main(renderers=…)``).
 """
 
+from archiwista.previews.renderers.archive import ArchiveRenderer
+from archiwista.previews.renderers.document import DocumentRenderer
+from archiwista.previews.renderers.points import PointsRenderer
 from archiwista.previews.types import Renderer
 
-RENDERERS: tuple[Renderer, ...] = ()
+RENDERERS: tuple[Renderer, ...] = (
+    PointsRenderer(),
+    ArchiveRenderer(),
+    DocumentRenderer(),
+)

@@ -1074,7 +1074,7 @@ działa.
 | 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
 | 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
 | 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | do zrobienia |
-| 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | do zrobienia |
+| 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | zrobione |
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
@@ -1926,6 +1926,69 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   przed `ZipFile`), `tests/unit/test_document_renderer.py` (PDF, TXT, JGW,
   nieznany → właściwy kod i polski opis).
 - **Zależności:** 1, 2, 4. **Równolegle:** 5a1–5a3, 5b, 6, 7b, 8.
+- **Stan po kroku 5c:**
+  - *Rejestr.* `RENDERERS` dostał `PointsRenderer()`, `ArchiveRenderer()`
+    i `DocumentRenderer()` (po linii; `RENDERER_VERSIONS` bez zmian — 1).
+  - *Chmury punktów* (`renderers/points.py`). Bez czytnika laspy: nagłówek
+    i VLR przez `laspy.LasHeader.read_from`, tablica kawałków przez
+    `lazrs.read_chunk_table`, a każdy kawałek próbki rozpakowuje osobno
+    `lazrs.decompress_points_with_chunk_table` (warstwy XY, Z, klasy).
+    Powód: `LasReader` z lazrs czyta tablicę kawałków już przy otwarciu
+    i plik bez niej (przesunięcie −1, zapis strumieniowy) odrzuca błędem
+    `failed to fill whole buffer` — sprawdzone 2026-10-19 na LAZ z kroku 2.
+    Próba: `SAMPLE_MAX_POINTS` 2 mln, `SAMPLE_MAX_BYTES` 256 MiB rekordów
+    (z bajtami dodatkowymi), LAS nieskompresowany w `SAMPLE_WINDOWS` = 64
+    oknach wzdłuż pliku, LAZ — początki wybranych kawałków równo po tablicy,
+    bez tablicy — pierwszy kawałek. `PreviewProbe.points`: `version`,
+    `point_format`, `point_count`, `compressed`, `record_bytes`,
+    `chunk_table`, `min`, `max`, `scales`, `density_per_m2` (tylko układ
+    płaski), `creation_date`, `generating_software`, `classes` (`value`,
+    `label` po polsku z `ASPRS_CLASSES` — LAS 1.4 R15, 23–63 „Klasa
+    zarezerwowana”, 64–255 „Klasa użytkownika”, `count` z próby),
+    `sample_points`, `sampled_from` (`all` — cała chmura, `spread` — próba
+    rozłożona, `start` — bez tablicy kawałków). Pola rastra opisują obraz 2D:
+    `width`/`height` siatki (komórka ≥ 1 m, w układzie geograficznym
+    1/111 320°; najdłuższy bok ≤ 8192 px), `bands` 1, `float32`, `nodata`
+    −9999, `stats` (p2, p98, min, max Z próby), `pixels`; `crs` — poziomy
+    z VLR (część pozioma układu złożonego; `EPSG:<kod>` albo WKT), inaczej
+    `source.crs`; `bbox_wgs84`, `minzoom`, `maxzoom` z
+    `tiles.map_placement`; `styles` = `("elevation",)`, `unit` `m`.
+    `needs_cog` tylko z układem i przypiętą operacją; bez układu `no_crs`,
+    bez operacji `transform_unavailable`. Miniatura bez budowy: siatka
+    maks. Z próby jako GeoTIFF w pamięci → `raster.render_thumbnail`.
+    `build`: wszystkie punkty (kawałek po kawałku, LAS po 1 mln) →
+    `cog.write_cog(..., classes=False, nodata=-9999)`; LAZ bez tablicy
+    kawałków daje obraz pierwszego kawałka (ma `sampled_from: "start"`).
+    Kafel: `raster.open_cog` + `raster.render_tile`; przed budową
+    `unsupported_format` („2D image … not built”) — krok 6 sprawdza
+    `cache.has(COG)` wcześniej (`preview_not_ready`).
+  - *Archiwa* (`renderers/archive.py`). `zipfile` nieużywany:
+    `read_central_directory(stream) -> CentralDirectory(entries,
+    size_bytes, offset)` z ostatnich 64 KiB + 22 B (rekord ZIP64 przez
+    lokalizator; przesunięcie danych doklejonych przed archiwum liczone),
+    `MAX_ENTRIES` 100 000, `MAX_DIRECTORY_BYTES` 64 MiB, `MAX_LISTED`
+    10 000. Rozpoznanie: `driver` `ZIP`, `members` (zadeklarowane wpisy),
+    powód `archive_members_only` albo `too_large`; `members(source)` →
+    `{"total", "truncated", "members": [{"name", "size_bytes",
+    "compressed_bytes", "directory", "format", "kind"}]}` (rozmiary z
+    pola ZIP64, nazwa UTF-8 z flagą 11, inaczej cp437; format z tabeli
+    formatów po rozszerzeniu) albo `PreviewUnavailableError("too_large")`.
+    Plik bez rekordu końca → `ValueError` → `unreadable`.
+  - *Dokumenty i pliki pomocnicze* (`renderers/document.py`): rodzaje
+    `document`, `auxiliary`, `unknown`; czyta tylko pierwszy 1 KiB
+    (sygnatura `%PDF-` — inaczej `driver` `None`). Powody
+    (`document_reason`): `auxiliary` oraz `.prj` i `.aux.xml`
+    (`AUXILIARY_SUFFIXES`; w tabeli formatów to `unknown`) →
+    `auxiliary_file`, `document` → `document_no_preview`, reszta →
+    `unsupported_format`. Miniatura i kafel zawsze
+    `PreviewUnavailableError` z powodem rozpoznania.
+  - *Próby*: `tests/unit/test_points_renderer.py` (7),
+    `test_archive_renderer.py` (9, `zipfile.ZipFile` podmieniony na
+    pułapkę), `test_document_renderer.py` (9); razem ok. 2 s. Przez
+    prawdziwą pulę (`RenderPool`, proces z sandboxem): rozpoznanie LAZ
+    z `bbox_wgs84` i zoomami 15–19, miniatura, kafel z = 17 z COG po
+    `build` i `put`, ZIP z 200 000 wpisów → `too_large`, PDF →
+    `document_no_preview`.
 
 ### 6. Podglądy magazynu przez HTTP i CLI; odwołania `ref`
 - **Cel:** trasy podglądów wersji magazynu z umowy API (opis, budowa,
