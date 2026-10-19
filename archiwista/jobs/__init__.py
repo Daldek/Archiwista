@@ -8,7 +8,12 @@ the configured stores (SPEC 4.4, 5.6; A-ADR-007).
 """
 
 from archiwista.jobs.protocol import JOB_KINDS, JobKind, JobSpec, WorkerMessage
-from archiwista.jobs.scheduler import PlannedScan, ScanScheduler, plan_scans
+from archiwista.jobs.scheduler import (
+    PlannedScan,
+    ScanScheduler,
+    plan_own_scan,
+    plan_scans,
+)
 from archiwista.jobs.supervisor import (
     ACTIVE_STATES,
     FINISHED_STATES,
@@ -55,5 +60,6 @@ __all__ = [
     "ScanScheduler",
     "WorkerMessage",
     "label",
+    "plan_own_scan",
     "plan_scans",
 ]

@@ -2358,6 +2358,13 @@ class Settings(BaseModel):
         le=10_000,
         description="Preview cache limit in GB; the least recently used go first.",
     )
+    own_data_dirs: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Data folder of a project by its directory (after realpath); set with"
+            " `PUT /projects/{project}/data-dir`. Without one: `<project>/dane`."
+        ),
+    )
 
     @classmethod
     def of(cls, settings: AppSettings) -> Self:
@@ -2375,6 +2382,7 @@ class Settings(BaseModel):
             store_write_for_all=settings.store_write_for_all,
             default_project_visibility=settings.default_project_visibility,
             preview_cache_limit_gb=settings.preview_cache_limit_gb,
+            own_data_dirs=dict(settings.own_data_dirs),
         )
 
 

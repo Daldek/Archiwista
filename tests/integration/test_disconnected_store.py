@@ -22,8 +22,10 @@ pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 
 
 def _one(jobs: tuple[JobRecord, ...]) -> JobRecord:
-    assert len(jobs) == 1, jobs
-    return jobs[0]
+    """Return the one store scan a tick submitted (besides ``own_scan``)."""
+    scans = [job for job in jobs if job.kind == "scan"]
+    assert len(scans) == 1, jobs
+    return scans[0]
 
 
 def test_disconnect_preserves_index_then_incremental_refresh(
@@ -70,7 +72,7 @@ def test_disconnect_preserves_index_then_incremental_refresh(
     assert str(root) in lost.error.detail
     assert (gone.status, gone.stale, gone.missing_versions) == ("unavailable", True, 0)
     assert kept == rows
-    assert probed == ()
+    assert [job for job in probed if job.kind == "scan"] == []
     assert (back.params["mode"], back.state) == ("incremental", "succeeded")
     assert back.result is not None
     assert (back.result["versions_written"], back.result["missing"]) == (1, 0)

@@ -18,6 +18,13 @@ to the store's producer directory; integer ids never leave the index.
 
 Version 5 (v0.2): a WGS84 outline is the polygon of the native rectangle
 (``outline_footprints``), so an index of bounding boxes is rebuilt.
+
+Version 6 (v0.2): own data of projects (decision 8). ``own_folders`` (one
+per project, keyed by the project directory after ``realpath``: the access
+key), ``own_files`` (a folder's files by path, with what the reader found
+and the content identity), ``own_file_states`` (observed states, at most
+200 per file), ``snapshots`` (``.wersje/`` of a folder, with the full
+``migawka.json``) and ``own_problems``.
 """
 
 import sqlite3
@@ -27,7 +34,7 @@ from typing import Literal
 
 from archiwista.paths import private_directory
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -288,6 +295,98 @@ CREATE TABLE session_tokens (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     used_at TEXT
+) WITHOUT ROWID;
+
+CREATE TABLE own_folders (
+    id INTEGER PRIMARY KEY,
+    -- The project directory after realpath (projects.access_key).
+    project TEXT NOT NULL UNIQUE,
+    path TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('default', 'setting')),
+    state TEXT NOT NULL CHECK (state IN ('ok', 'missing', 'unreadable', 'invalid')),
+    reason TEXT,
+    scanned_at TEXT NOT NULL,
+    files INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    snapshots INTEGER NOT NULL DEFAULT 0,
+    snapshots_bytes INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE own_files (
+    id INTEGER PRIMARY KEY,
+    folder_id INTEGER NOT NULL REFERENCES own_folders(id) ON DELETE CASCADE,
+    -- Relative to the folder, '/' separated, NFC; disk_path as named on disk.
+    path TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    disk_path TEXT NOT NULL,
+    -- Sizes and times of the file's files when it was read (JSON).
+    stamp TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    driver TEXT,
+    members TEXT NOT NULL DEFAULT '[]',
+    size_bytes INTEGER NOT NULL,
+    modified_ns INTEGER NOT NULL,
+    read_state TEXT NOT NULL
+        CHECK (read_state IN ('ok', 'unrecognized', 'unreadable')),
+    read_error TEXT,
+    read_detail TEXT,
+    retry INTEGER NOT NULL DEFAULT 0,
+    content_method TEXT,
+    content_sha256 TEXT,
+    layers TEXT NOT NULL DEFAULT '[]',
+    raster TEXT,
+    feature_count INTEGER,
+    native_crs TEXT,
+    native_bbox TEXT,
+    wgs84 TEXT,
+    location_reason TEXT,
+    change TEXT NOT NULL DEFAULT 'unsnapshotted'
+        CHECK (change IN ('unsnapshotted', 'unchanged', 'changed')),
+    last_snapshot TEXT,
+    first_seen_at TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    missing_since TEXT,
+    UNIQUE (folder_id, path)
+);
+CREATE UNIQUE INDEX own_files_id ON own_files (folder_id, file_id);
+
+CREATE TABLE own_file_states (
+    own_file_id INTEGER NOT NULL REFERENCES own_files(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    observed_at TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    modified_ns INTEGER NOT NULL,
+    content_sha256 TEXT,
+    feature_count INTEGER,
+    PRIMARY KEY (own_file_id, seq)
+) WITHOUT ROWID;
+
+CREATE TABLE snapshots (
+    id INTEGER PRIMARY KEY,
+    folder_id INTEGER NOT NULL REFERENCES own_folders(id) ON DELETE CASCADE,
+    -- The working file it copies (own_files.path; the file may be gone).
+    path TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('ok', 'invalid', 'modified')),
+    created_at TEXT,
+    content_method TEXT,
+    content_sha256 TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    stamp TEXT NOT NULL,
+    document TEXT,
+    UNIQUE (folder_id, path, label)
+);
+CREATE INDEX snapshots_file ON snapshots (folder_id, file_id, created_at);
+
+-- Problems of a folder ('' path), its files and snapshots.
+CREATE TABLE own_problems (
+    folder_id INTEGER NOT NULL REFERENCES own_folders(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    reason TEXT,
+    first_seen_at TEXT NOT NULL,
+    PRIMARY KEY (folder_id, code, path)
 ) WITHOUT ROWID;
 
 CREATE TRIGGER versions_footprint_delete AFTER DELETE ON versions BEGIN

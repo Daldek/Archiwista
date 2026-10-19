@@ -12,9 +12,13 @@ so only a full scan notices files deleted or added inside them. An
 unavailable store is only probed, at every tick: it is scanned as soon as
 the probe finds it again and its directory is not an empty mount point. A
 store added to the settings, or moved, gets a full scan right away. A store
-with a job writing its index is left alone. Scheduled jobs act as the
-``scheduler`` for the owner; once an hour a tick also prunes old jobs
-(``JobSupervisor.prune``: routine scans after 48 hours).
+with a job writing its index is left alone. The data folders of every
+project get an ``own_scan`` the same way (``plan_own_scan``): at the start
+when the last one ended more than 15 minutes ago, then every
+``scan_interval_local_min``. Scheduled jobs act as the ``scheduler`` for
+the owner; once an hour a tick also prunes old jobs
+(``JobSupervisor.prune``: routine scans and routine ``own_scan`` runs after
+48 hours).
 """
 
 import logging
@@ -105,6 +109,43 @@ def plan_scans(
         if now >= due:
             planned.append(PlannedScan(store.id, mode))
     return tuple(planned)
+
+
+def plan_own_scan(
+    settings: AppSettings,
+    history: ScanHistory,
+    *,
+    now: datetime,
+    started_at: datetime,
+) -> bool:
+    """Decide whether the data folders of every project are due a scan now.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        ``scan_interval_local_min``: the interval of the scans.
+    history : ScanHistory
+        Runs of every project (``JobSupervisor.own_scan_history``); one
+        waiting or running (``busy``) is not doubled.
+    now : datetime
+        The time of the planning (UTC).
+    started_at : datetime
+        When the server started.
+
+    Returns
+    -------
+    bool
+        Whether to submit an ``own_scan`` of every project.
+    """
+    if history.busy:
+        return False
+    last = history.finished_at
+    if last is None or last < started_at - STARTUP_STALE:
+        due = started_at
+    else:
+        interval = timedelta(seconds=settings.scan_interval_s("local"))
+        due = max(last, started_at) + interval
+    return now >= due
 
 
 class ScanScheduler:
@@ -210,6 +251,14 @@ class ScanScheduler:
             job = self._submit(planned.store, planned.mode)
             if job is not None:
                 submitted.append(job)
+        if plan_own_scan(
+            settings,
+            self._jobs.own_scan_history(),
+            now=moment,
+            started_at=self._started_at,
+        ):
+            own = self._jobs.submit("own_scan", actor=SCHEDULER)
+            submitted.append(own)
         return tuple(submitted)
 
     def _run(self) -> None:

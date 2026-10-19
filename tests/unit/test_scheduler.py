@@ -1,13 +1,29 @@
 """When the scheduler scans a store, and how (plan step 6b, SPEC 4.4)."""
 
+import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from archiwista.config import AppSettings, StoreConfig, StoreKind
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    SettingsService,
+    StoreConfig,
+    StoreKind,
+)
 from archiwista.index import ScanMode
-from archiwista.jobs import PlannedScan, ScanHistory, plan_scans
+from archiwista.jobs import (
+    JobSupervisor,
+    PlannedScan,
+    ScanHistory,
+    plan_own_scan,
+    plan_scans,
+)
+from archiwista.sources import SourceState
 
 START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 STORE = "zespol"
@@ -112,3 +128,75 @@ def test_plan_scans_only_probes_unavailable_store() -> None:
     )
 
     assert planned == (PlannedScan(STORE, "full", probe=True),)
+
+
+def test_own_scan_planned_and_pruned(tmp_path: Path) -> None:
+    """Data folders: at start when stale, then every local interval; routine runs go.
+
+    A run of every project that the scheduler started and that changed
+    nothing goes after 48 hours, but the newest one; a run that changed
+    something, a project's run and a recent one stay.
+    """
+    # Arrange
+    settings = AppSettings(scan_interval_local_min=5)
+    recent = ScanHistory(finished_at=START - timedelta(minutes=10))
+    stale = ScanHistory(finished_at=START - timedelta(minutes=20))
+    paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
+    service = SettingsService(ConfigStore(paths.config_file), _NoSources())
+    now = START + timedelta(days=3)
+    unchanged = {"new": 0, "changed": 0, "missing": 0, "snapshots": 0, "problems": 0}
+    rows = [
+        ("old", "scheduler", {}, unchanged, timedelta(days=2, hours=1)),
+        ("older", "scheduler", {}, unchanged, timedelta(days=2, hours=2)),
+        ("newest", "scheduler", {}, unchanged, timedelta(days=2)),
+        ("changed", "scheduler", {}, {**unchanged, "new": 1}, timedelta(days=3)),
+        ("project", "scheduler", {"project": "raba"}, unchanged, timedelta(days=3)),
+        ("asked", "local_owner", {}, unchanged, timedelta(days=3)),
+    ]
+
+    # Act
+    def due(history: ScanHistory, minutes: float) -> bool:
+        return plan_own_scan(
+            settings, history, now=START + timedelta(minutes=minutes), started_at=START
+        )
+
+    with JobSupervisor(paths, service) as jobs:
+        with sqlite3.connect(paths.index_file) as db:
+            db.executemany(
+                "INSERT INTO jobs (id, kind, actor, actor_kind, params, state,"
+                " created_at, finished_at, summary)"
+                " VALUES (?, 'own_scan', 'local', ?, ?, 'succeeded', ?, ?, ?)",
+                [
+                    (
+                        job,
+                        kind,
+                        json.dumps(params),
+                        (now - age).isoformat(),
+                        (now - age).isoformat(),
+                        json.dumps({**summary, "projects": 1, "files": 3}),
+                    )
+                    for job, kind, params, summary, age in rows
+                ],
+            )
+        db.close()
+        pruned = jobs.prune(now=now)
+        left = {job.id for job in jobs.list(kind="own_scan").items}
+
+    # Assert
+    assert [due(ScanHistory(), 0), due(stale, 0), due(recent, 0)] == [True, True, False]
+    assert [due(recent, 4.9), due(recent, 5)] == [False, True]
+    assert due(ScanHistory(finished_at=START, busy=True), 60) is False
+    assert pruned == 2
+    assert left == {"newest", "changed", "project", "asked"}
+
+
+class _NoSources:
+    """A plugin registry without producers (settings are never validated here)."""
+
+    def states(self) -> tuple[SourceState, ...]:
+        """Report no plugin."""
+        return ()
+
+    def probe(self, producer: str, root: Path) -> SourceState:
+        """Report the producer missing."""
+        return SourceState(producer=producer, status="not_installed")

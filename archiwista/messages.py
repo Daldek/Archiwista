@@ -7,6 +7,7 @@ single features (``archiwista.texts``); a key defined twice stops the import.
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from archiwista.texts.owndata import OWN_DATA_MESSAGES
 from archiwista.texts.previews import PREVIEW_MESSAGES
 
 
@@ -828,6 +829,7 @@ MESSAGES = merge_messages(
         "reindex_error": "{message} (kod {code})",
     },
     PREVIEW_MESSAGES,
+    OWN_DATA_MESSAGES,
 )
 
 

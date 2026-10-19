@@ -5,11 +5,15 @@ the store's producer directory (``slot``, ``path``) — never integer row ids
 or absolute paths. Times are timezone-aware UTC ``datetime`` values.
 """
 
-from collections.abc import Callable
+import hashlib
+import unicodedata
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
+from archiwista.config import OwnFolderReason, OwnFolderSource
+from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
     CoordinateTransformer,
     GeoJSONGeometry,
@@ -28,6 +32,23 @@ type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
+# Own data of projects (plan v0.2, decision 8).
+type OwnFolderState = Literal["ok", "missing", "unreadable", "invalid"]
+type OwnReadState = Literal["ok", "unrecognized", "unreadable"]
+type OwnFileState = Literal["ok", "unrecognized", "unreadable", "missing"]
+type OwnChange = Literal["unsnapshotted", "unchanged", "changed"]
+type SnapshotState = Literal["ok", "invalid", "modified"]
+type OwnProblemCode = Literal[
+    "own_folder_unreadable",
+    "own_folder_invalid",
+    "own_folder_too_large",
+    "own_file_unreadable",
+    "invalid_snapshot",
+    "unknown_snapshot_schema",
+    "snapshot_modified",
+    "stale_snapshot_incoming",
+    "path_outside_root",
+]
 
 VERSIONS_MODES: tuple[VersionsMode, ...] = (
     "current",
@@ -49,6 +70,35 @@ MAX_PAGE_LIMIT = 200
 MAP_FOOTPRINT_LIMIT = 5000
 DEFAULT_GRID_COLUMNS = 64
 MAX_GRID_COLUMNS = 512
+OWN_FOLDER_STATES: tuple[OwnFolderState, ...] = (
+    "ok",
+    "missing",
+    "unreadable",
+    "invalid",
+)
+OWN_FILE_STATES: tuple[OwnFileState, ...] = (
+    "ok",
+    "unrecognized",
+    "unreadable",
+    "missing",
+)
+OWN_CHANGES: tuple[OwnChange, ...] = ("unsnapshotted", "unchanged", "changed")
+OWN_PROBLEM_CODES: tuple[OwnProblemCode, ...] = (
+    "own_folder_unreadable",
+    "own_folder_invalid",
+    "own_folder_too_large",
+    "own_file_unreadable",
+    "invalid_snapshot",
+    "unknown_snapshot_schema",
+    "snapshot_modified",
+    "stale_snapshot_incoming",
+    "path_outside_root",
+)
+# Files of a data folder in the index: of a larger folder the first ones in
+# the order of their paths.
+MAX_OWN_FILES = 10_000
+# Observed states kept per file, newest first.
+MAX_OWN_FILE_STATES = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,3 +752,406 @@ class OrphanLink:
     segment: str | None
     kind: Literal["link", "full_sheet"]
     version: str
+
+
+# Own data of projects (plan v0.2, decision 8).
+
+
+@dataclass(frozen=True, slots=True)
+class OwnProblem:
+    """A problem of a project's data folder, one of its files or snapshots.
+
+    Attributes
+    ----------
+    code : OwnProblemCode
+        ``own_folder_unreadable``, ``own_folder_invalid``,
+        ``own_folder_too_large``, ``own_file_unreadable``,
+        ``invalid_snapshot``, ``unknown_snapshot_schema``,
+        ``snapshot_modified``, ``stale_snapshot_incoming`` or
+        ``path_outside_root``.
+    path : str or None
+        Place in the folder (``/`` separated, e.g. ``.wersje/a.gpkg/<label>``
+        for a snapshot); ``None`` for the folder itself.
+    reason : str or None
+        What exactly: the reason of ``own_folder_invalid``
+        (``OwnFolderReason``), the read error of ``own_file_unreadable``, the
+        schema of ``unknown_snapshot_schema``.
+    first_seen_at : datetime or None
+        When a scan first found it; ``None`` before it is recorded.
+    """
+
+    code: OwnProblemCode
+    path: str | None = None
+    reason: str | None = None
+    first_seen_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFolderRecord:
+    """A project's data folder as its last ``own_scan`` found it.
+
+    Attributes
+    ----------
+    project : str
+        Project key (``ProjectRef.key``).
+    path : str
+        The folder: the setting (``AppSettings.own_data_dirs``) or the
+        project directory's ``dane/``.
+    source : {"default", "setting"}
+        Where ``path`` comes from.
+    state : {"ok", "missing", "unreadable", "invalid"}
+        ``invalid``: refused by the rules of decision 8 (``reason``) and not
+        read; ``missing`` and ``unreadable`` keep the files found before.
+    reason : OwnFolderReason or None
+        Why an ``invalid`` folder is refused.
+    scanned_at : datetime
+        When the folder was last scanned.
+    files, size_bytes : int
+        Files present in the index and their bytes.
+    snapshots, snapshots_bytes : int
+        Snapshots in ``.wersje/`` and their bytes.
+    problems : tuple[OwnProblem, ...]
+        Problems of the folder, its files and snapshots, by path.
+    """
+
+    project: str
+    path: str
+    source: OwnFolderSource
+    state: OwnFolderState
+    reason: OwnFolderReason | None
+    scanned_at: datetime
+    files: int
+    size_bytes: int
+    snapshots: int
+    snapshots_bytes: int
+    problems: tuple[OwnProblem, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OwnSnapshotRef:
+    """The snapshot a file's change is measured against."""
+
+    label: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFileRow:
+    """A file of a data folder as listed (``IndexQueries.own_files``).
+
+    Attributes
+    ----------
+    file_id : str
+        16 characters of the SHA-256 of ``path`` (``own_file_id``).
+    path : str
+        Main file relative to the folder, ``/`` separated, in NFC.
+    kind : str
+        Kind of its format by extension (``archiwista.formats.FormatKind``).
+    driver : str or None
+        GDAL driver that read it; ``None``: not read by GDAL.
+    size_bytes : int
+        Bytes of the file with every member of its set.
+    modified_at : datetime
+        Modification time of the main file.
+    state : {"ok", "unrecognized", "unreadable", "missing"}
+        ``unrecognized``: no GDAL format; ``missing``: gone since
+        ``missing_since``.
+    change : {"unsnapshotted", "unchanged", "changed"}
+        Its content against its last valid snapshot (``last_snapshot``).
+    last_snapshot : OwnSnapshotRef or None
+        The newest valid snapshot of the file.
+    snapshots : int
+        Its snapshots in ``.wersje/`` (valid or not).
+    location : LocationRef
+        ``footprint`` with a WGS84 outline, or ``none`` with its reason
+        (``no_crs``, ``no_georeference``, ``no_extent``,
+        ``transform_unavailable``, ``unreadable``, ``unrecognized``).
+    """
+
+    file_id: str
+    path: str
+    kind: str
+    driver: str | None
+    size_bytes: int
+    modified_at: datetime
+    state: OwnFileState
+    change: OwnChange
+    last_snapshot: OwnSnapshotRef | None
+    snapshots: int
+    location: LocationRef
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFilePage:
+    """Files of a data folder by path; ``next_cursor`` continues the list."""
+
+    folder: OwnFolderRecord
+    items: tuple[OwnFileRow, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFileObservation:
+    """One observed state of a file (its history, without content)."""
+
+    observed_at: datetime
+    size_bytes: int
+    modified_at: datetime
+    content_sha256: str | None
+    feature_count: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotRecord:
+    """A snapshot of a file in ``<folder>/.wersje/<path>/<label>/``.
+
+    Attributes
+    ----------
+    path : str
+        The working file it copies, relative to the folder.
+    label : str
+        Its directory's name.
+    state : {"ok", "invalid", "modified"}
+        ``invalid``: no valid ``migawka.json`` (or an unknown schema);
+        ``modified``: its files differ from the document.
+    created_at : datetime or None
+        When it was published (from the document).
+    content_method, content_sha256 : str or None
+        Content identity of the copy (decision 8).
+    size_bytes : int
+        Bytes of its files.
+    document : dict or None
+        ``migawka.json`` as read, with fields of newer versions; ``None``
+        when it cannot be read.
+    """
+
+    path: str
+    label: str
+    state: SnapshotState
+    created_at: datetime | None
+    content_method: str | None
+    content_sha256: str | None
+    size_bytes: int
+    document: dict[str, object] | None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFileDetail:
+    """Everything the index knows of one file of a data folder (its card).
+
+    Attributes
+    ----------
+    file : OwnFileRow
+        The file as listed.
+    folder : OwnFolderRecord
+        Its data folder.
+    disk_path : str
+        The main file's path below the folder as named on the disk
+        (``path`` in NFC may differ).
+    members : tuple[str, ...]
+        Every file of its set, the main file first, relative to the folder.
+    read_error : str or None
+        Why it was not read (``unsupported_format``, ``unreadable``,
+        ``timeout``, ``memory_limit``, ``inconsistent``,
+        ``path_outside_root``).
+    read_detail : str or None
+        The library's English message behind ``read_error``.
+    content_method, content_sha256 : str or None
+        Content identity of the working file (decision 8).
+    layers : tuple[LayerInfo, ...]
+        Vector layers.
+    raster : RasterInfo or None
+        Raster parameters.
+    feature_count : int or None
+        Features of all layers.
+    native_crs : str or None
+        ``EPSG:<code>`` or WKT.
+    native_bbox : BBox or None
+        Extent in ``native_crs``.
+    wgs84 : GeoJSONGeometry or None
+        WGS84 polygon of the extent (``outline_wgs84``).
+    first_seen_at, changed_at : datetime
+        When the file was first seen and its content last changed.
+    missing_since : datetime or None
+        When a scan found it gone.
+    history : tuple[OwnFileObservation, ...]
+        Observed states, newest first (at most ``MAX_OWN_FILE_STATES``).
+    snapshots : tuple[SnapshotRecord, ...]
+        Its snapshots, newest first.
+    problems : tuple[OwnProblem, ...]
+        Problems of the file and of its snapshots.
+    """
+
+    file: OwnFileRow
+    folder: OwnFolderRecord
+    disk_path: str
+    members: tuple[str, ...]
+    read_error: str | None
+    read_detail: str | None
+    content_method: str | None
+    content_sha256: str | None
+    layers: tuple[LayerInfo, ...]
+    raster: RasterInfo | None
+    feature_count: int | None
+    native_crs: str | None
+    native_bbox: BBox | None
+    wgs84: GeoJSONGeometry | None
+    first_seen_at: datetime
+    changed_at: datetime
+    missing_since: datetime | None
+    history: tuple[OwnFileObservation, ...]
+    snapshots: tuple[SnapshotRecord, ...]
+    problems: tuple[OwnProblem, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class KnownOwnFile:
+    """What a scan needs of an indexed file to skip it (``stat`` only).
+
+    ``stamp`` is the sizes and times of its files when it was read;
+    ``retry``: it changed while it was read, so the next scan reads it again;
+    ``read_error``: why it was not read, a problem reported at every scan.
+    """
+
+    stamp: str
+    missing: bool
+    retry: bool
+    read_error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFileWrite:
+    """A file of a data folder as a scan read it (``IndexWriter.write_own_files``).
+
+    Attributes
+    ----------
+    path : str
+        Main file relative to the folder, ``/`` separated, in NFC.
+    disk_path : str
+        The same path as named on the disk.
+    stamp : str
+        Sizes and modification times of its files (and of a SQLite
+        ``-wal`` or ``-journal``) before it was read.
+    size_bytes : int
+        Bytes of all its files.
+    modified_ns : int
+        Modification time of the main file, ns since the epoch.
+    kind : str
+        ``archiwista.formats.FormatKind`` by extension.
+    driver : str or None
+        GDAL driver that read it.
+    members : tuple[str, ...]
+        Its files relative to the folder, the main file first.
+    state : {"ok", "unrecognized", "unreadable"}
+        How the read went.
+    read_error, read_detail : str or None
+        Why it was not read, and the library's message.
+    content_method, content_sha256 : str or None
+        Content identity (decision 8); ``None`` when it was not computed.
+    layers : tuple[LayerInfo, ...]
+        Vector layers.
+    raster : RasterInfo or None
+        Raster parameters.
+    feature_count : int or None
+        Features of all layers.
+    native_crs : str or None
+        CRS of the file.
+    native_bbox : BBox or None
+        Extent in ``native_crs``.
+    wgs84 : GeoJSONGeometry or None
+        WGS84 polygon of the extent; ``None`` with ``location_reason``.
+    location_reason : str or None
+        Why the file has no WGS84 outline.
+    retry : bool
+        It changed while read: the next scan reads it again.
+    """
+
+    path: str
+    disk_path: str
+    stamp: str
+    size_bytes: int
+    modified_ns: int
+    kind: str
+    driver: str | None
+    members: tuple[str, ...]
+    state: OwnReadState
+    read_error: str | None = None
+    read_detail: str | None = None
+    content_method: str | None = None
+    content_sha256: str | None = None
+    layers: tuple[LayerInfo, ...] = ()
+    raster: RasterInfo | None = None
+    feature_count: int | None = None
+    native_crs: str | None = None
+    native_bbox: BBox | None = None
+    wgs84: GeoJSONGeometry | None = None
+    location_reason: str | None = None
+    retry: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFilesWritten:
+    """What ``IndexWriter.write_own_files`` changed: files new and rewritten."""
+
+    new: int = 0
+    changed: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OwnMissingResult:
+    """What ``IndexWriter.mark_own_missing`` changed.
+
+    ``missing``: files newly gone; ``reappeared``: missing files seen again;
+    ``dropped``: files beyond ``MAX_OWN_FILES`` taken out of the index.
+    """
+
+    missing: int = 0
+    reappeared: int = 0
+    dropped: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotWrite:
+    """A snapshot as a scan or the ``snapshot`` job found it.
+
+    Attributes
+    ----------
+    path : str
+        The working file, relative to the folder (``/``, NFC).
+    label : str
+        The snapshot directory's name.
+    state : {"ok", "invalid", "modified"}
+        Validity of the snapshot.
+    stamp : str
+        Sizes and times of the snapshot directory's files: a scan checks
+        them again only after a change.
+    size_bytes : int
+        Bytes of its files.
+    document : Mapping or None
+        ``migawka.json`` as read; ``None`` when it cannot be read.
+    created_at : datetime or None
+        The document's publication time.
+    content_method, content_sha256 : str or None
+        The document's content identity.
+    """
+
+    path: str
+    label: str
+    state: SnapshotState
+    stamp: str
+    size_bytes: int
+    document: Mapping[str, object] | None = None
+    created_at: datetime | None = None
+    content_method: str | None = None
+    content_sha256: str | None = None
+
+
+def own_file_id(path: str) -> str:
+    """Return a file's id in its data folder (``file_id`` of the API).
+
+    16 characters of the SHA-256 of the path relative to the folder, ``/``
+    separated, in NFC (plan v0.2, decision 10): one URL segment, the same
+    after an index rebuild.
+    """
+    text = unicodedata.normalize("NFC", path)
+    return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()[:16]

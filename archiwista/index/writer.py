@@ -21,22 +21,32 @@ import sqlite3
 import unicodedata
 from collections.abc import Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from types import TracebackType
 from typing import Self
 
 from archiwista.auth import access_key
+from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.index.geometry import is_box, polygon_bounds
 from archiwista.index.schema import connect, initialize
 from archiwista.index.types import (
+    MAX_OWN_FILE_STATES,
     AreaRecord,
     BatchResult,
+    KnownOwnFile,
     ManifestStamp,
+    OwnFilesWritten,
+    OwnFileWrite,
+    OwnFolderState,
+    OwnMissingResult,
+    OwnProblem,
     PassSummary,
     ScanPass,
+    SnapshotWrite,
     StoreStatus,
+    own_file_id,
 )
 from archiwista.sources import (
     EntryMeta,
@@ -187,6 +197,82 @@ WHERE id IN ({_IDS})
     AND NOT EXISTS (SELECT 1 FROM issues i WHERE i.slot_id = slots.id)
 """
 _PROJECT_KEY_FALLBACK = "projekt"
+_UPSERT_OWN_FILE = """
+INSERT INTO own_files (
+    folder_id, path, file_id, disk_path, stamp, kind, driver, members, size_bytes,
+    modified_ns, read_state, read_error, read_detail, retry, content_method,
+    content_sha256, layers, raster, feature_count, native_crs, native_bbox, wgs84,
+    location_reason, first_seen_at, changed_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (folder_id, path) DO UPDATE SET
+    disk_path = excluded.disk_path, stamp = excluded.stamp, kind = excluded.kind,
+    driver = excluded.driver, members = excluded.members,
+    size_bytes = excluded.size_bytes, modified_ns = excluded.modified_ns,
+    read_state = excluded.read_state, read_error = excluded.read_error,
+    read_detail = excluded.read_detail, retry = excluded.retry,
+    content_method = excluded.content_method,
+    content_sha256 = excluded.content_sha256, layers = excluded.layers,
+    raster = excluded.raster, feature_count = excluded.feature_count,
+    native_crs = excluded.native_crs, native_bbox = excluded.native_bbox,
+    wgs84 = excluded.wgs84, location_reason = excluded.location_reason,
+    changed_at = excluded.changed_at, missing_since = NULL
+RETURNING id
+"""
+_UPSERT_SNAPSHOT = """
+INSERT INTO snapshots (
+    folder_id, path, file_id, label, state, created_at, content_method,
+    content_sha256, size_bytes, stamp, document
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (folder_id, path, label) DO UPDATE SET
+    state = excluded.state, created_at = excluded.created_at,
+    content_method = excluded.content_method,
+    content_sha256 = excluded.content_sha256, size_bytes = excluded.size_bytes,
+    stamp = excluded.stamp, document = excluded.document
+"""
+# A file's change is measured against its newest valid snapshot.
+_OWN_LAST_SNAPSHOT = """
+UPDATE own_files SET last_snapshot = (
+    SELECT s.label FROM snapshots s
+    WHERE s.folder_id = own_files.folder_id AND s.path = own_files.path
+        AND s.state = 'ok' AND s.created_at IS NOT NULL
+    ORDER BY s.created_at DESC, s.label DESC LIMIT 1
+)
+WHERE folder_id = ?
+"""
+_OWN_CHANGE = """
+UPDATE own_files SET change = CASE
+    WHEN last_snapshot IS NULL THEN 'unsnapshotted'
+    WHEN content_sha256 IS NOT NULL AND EXISTS (
+        SELECT 1 FROM snapshots s
+        WHERE s.folder_id = own_files.folder_id AND s.path = own_files.path
+            AND s.label = own_files.last_snapshot
+            AND s.content_method = own_files.content_method
+            AND s.content_sha256 = own_files.content_sha256
+    ) THEN 'unchanged'
+    ELSE 'changed'
+END
+WHERE folder_id = ?
+"""
+_OWN_TOTALS = """
+UPDATE own_folders SET
+    scanned_at = ?,
+    files = (
+        SELECT count(*) FROM own_files f
+        WHERE f.folder_id = own_folders.id AND f.missing_since IS NULL
+    ),
+    size_bytes = (
+        SELECT coalesce(sum(f.size_bytes), 0) FROM own_files f
+        WHERE f.folder_id = own_folders.id AND f.missing_since IS NULL
+    ),
+    snapshots = (SELECT count(*) FROM snapshots s WHERE s.folder_id = own_folders.id),
+    snapshots_bytes = (
+        SELECT coalesce(sum(s.size_bytes), 0) FROM snapshots s
+        WHERE s.folder_id = own_folders.id
+    )
+WHERE id = ?
+"""
 
 
 @dataclass(slots=True)
@@ -1046,7 +1132,371 @@ class IndexWriter:
                 ),
             )
 
+    # Own data of projects (decision 8).
+
+    def write_own_folder(
+        self,
+        project: str,
+        *,
+        path: str,
+        source: OwnFolderSource,
+        state: OwnFolderState,
+        reason: OwnFolderReason | None = None,
+        now: datetime,
+    ) -> bool:
+        """Record a project's data folder and the state a scan finds it in.
+
+        The files, snapshots and problems of the folder go when it moved
+        (another path holds other files) or is ``invalid`` (it is not read,
+        and its files may belong to another project's visibility).
+        ``missing`` and ``unreadable`` keep them: a share may come back.
+
+        Parameters
+        ----------
+        project : str
+            The project directory after ``realpath`` (``access_key``).
+        path : str
+            The folder (the setting or ``<project>/dane``).
+        source : {"default", "setting"}
+            Where ``path`` comes from.
+        state : {"ok", "missing", "unreadable", "invalid"}
+            What the scan found.
+        reason : OwnFolderReason or None, optional
+            Why an ``invalid`` folder is refused.
+        now : datetime
+            The scan's time.
+
+        Returns
+        -------
+        bool
+            Whether the folder's files were dropped.
+        """
+        moment = _utc(now)
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT id, path FROM own_folders WHERE project = ?", (project,)
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    "INSERT INTO own_folders (project, path, source, state, reason,"
+                    " scanned_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (project, path, source, state, reason, moment),
+                )
+                return False
+            folder_id = int(row[0])
+            dropped = row[1] != path or state == "invalid"
+            if dropped:
+                for table in ("own_files", "snapshots", "own_problems"):
+                    connection.execute(
+                        f"DELETE FROM {table} WHERE folder_id = ?", (folder_id,)
+                    )
+            connection.execute(
+                "UPDATE own_folders SET path = ?, source = ?, state = ?, reason = ?,"
+                " scanned_at = ? WHERE id = ?",
+                (path, source, state, reason, moment, folder_id),
+            )
+        return dropped
+
+    def known_own_files(self, project: str) -> dict[str, KnownOwnFile]:
+        """Return the indexed files of a project's folder by path.
+
+        A file whose ``stamp`` equals what is on the disk now (and that is
+        not to be read again, ``retry``) needs nothing but its ``stat``.
+        """
+        rows = self._connection.execute(
+            "SELECT f.path, f.stamp, f.missing_since IS NOT NULL, f.retry,"
+            " f.read_error FROM own_files f JOIN own_folders o ON o.id = f.folder_id"
+            " WHERE o.project = ?",
+            (project,),
+        ).fetchall()
+        return {
+            str(path): KnownOwnFile(str(stamp), bool(missing), bool(retry), error)
+            for path, stamp, missing, retry, error in rows
+        }
+
+    def write_own_files(
+        self, project: str, files: Iterable[OwnFileWrite], *, now: datetime
+    ) -> OwnFilesWritten:
+        """Record files a scan read, in one transaction.
+
+        A file seen again is present (no longer missing). Its observed state
+        (size, modification time, content, features) joins its history when
+        it differs from the last one; the newest ``MAX_OWN_FILE_STATES``
+        stay. ``changed_at`` moves when the content identity changes, and
+        the change against the last snapshot is computed again.
+
+        Raises
+        ------
+        ValueError
+            The project has no folder in the index (``write_own_folder``).
+        """
+        moment = _utc(now)
+        new = changed = 0
+        with self._transaction() as connection:
+            folder_id = self._own_folder_id(connection, project)
+            for item in files:
+                row = connection.execute(
+                    "SELECT content_method, content_sha256, changed_at FROM own_files"
+                    " WHERE folder_id = ? AND path = ?",
+                    (folder_id, item.path),
+                ).fetchone()
+                content = (item.content_method, item.content_sha256)
+                if row is None:
+                    new += 1
+                    changed_at = moment
+                else:
+                    changed += 1
+                    changed_at = moment if tuple(row[:2]) != content else row[2]
+                file_row = connection.execute(
+                    _UPSERT_OWN_FILE,
+                    (
+                        folder_id,
+                        item.path,
+                        own_file_id(item.path),
+                        item.disk_path,
+                        item.stamp,
+                        item.kind,
+                        item.driver,
+                        json.dumps(list(item.members), ensure_ascii=False),
+                        item.size_bytes,
+                        item.modified_ns,
+                        item.state,
+                        item.read_error,
+                        item.read_detail,
+                        int(item.retry),
+                        *content,
+                        _json([asdict(layer) for layer in item.layers]),
+                        None if item.raster is None else _json(asdict(item.raster)),
+                        item.feature_count,
+                        item.native_crs,
+                        None if item.native_bbox is None else _json(item.native_bbox),
+                        None if item.wgs84 is None else _geojson(item.wgs84),
+                        item.location_reason,
+                        moment,
+                        changed_at,
+                    ),
+                ).fetchone()[0]
+                _observe(connection, int(file_row), item, moment)
+            connection.execute(_OWN_LAST_SNAPSHOT, (folder_id,))
+            connection.execute(_OWN_CHANGE, (folder_id,))
+        return OwnFilesWritten(new=new, changed=changed)
+
+    def mark_own_missing(
+        self,
+        project: str,
+        *,
+        present: Collection[str],
+        drop: Collection[str] = (),
+        now: datetime,
+    ) -> OwnMissingResult:
+        """Act on the files of a project's folder a scan did not list.
+
+        Parameters
+        ----------
+        project : str
+            The project directory after ``realpath``.
+        present : Collection[str]
+            Paths the scan listed, and those it keeps without listing (in a
+            directory it could not list): missing ones among them are back.
+        drop : Collection[str], optional
+            Paths beyond the first ``MAX_OWN_FILES`` of a folder too large:
+            they leave the index (they are not missing).
+        now : datetime
+            The scan's time, ``missing_since`` of the files gone.
+
+        Returns
+        -------
+        OwnMissingResult
+            Files newly missing, back, and dropped.
+        """
+        listed = json.dumps(sorted(present), ensure_ascii=False)
+        with self._transaction() as connection:
+            folder_id = self._own_folder_id(connection, project)
+            dropped = connection.execute(
+                f"DELETE FROM own_files WHERE folder_id = ? AND path IN ({_IDS})",
+                (folder_id, json.dumps(sorted(drop), ensure_ascii=False)),
+            ).rowcount
+            reappeared = connection.execute(
+                "UPDATE own_files SET missing_since = NULL WHERE folder_id = ?"
+                f" AND missing_since IS NOT NULL AND path IN ({_IDS})",
+                (folder_id, listed),
+            ).rowcount
+            missing = connection.execute(
+                "UPDATE own_files SET missing_since = ? WHERE folder_id = ?"
+                f" AND missing_since IS NULL AND path NOT IN ({_IDS})",
+                (_utc(now), folder_id, listed),
+            ).rowcount
+        return OwnMissingResult(
+            missing=int(missing), reappeared=int(reappeared), dropped=int(dropped)
+        )
+
+    def known_own_snapshots(
+        self, project: str
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        """Return ``(stamp, state)`` of each indexed snapshot by ``(path, label)``."""
+        rows = self._connection.execute(
+            "SELECT s.path, s.label, s.stamp, s.state FROM snapshots s"
+            " JOIN own_folders o ON o.id = s.folder_id WHERE o.project = ?",
+            (project,),
+        ).fetchall()
+        return {
+            (str(path), str(label)): (str(stamp), str(state))
+            for path, label, stamp, state in rows
+        }
+
+    def record_snapshot(self, project: str, snapshot: SnapshotWrite) -> None:
+        """Record one snapshot, e.g. right after the ``snapshot`` job published it.
+
+        The file's change against its last snapshot follows. The snapshot
+        directory stays the source of truth: a scan adds what is missing.
+
+        Raises
+        ------
+        ValueError
+            The project has no folder in the index.
+        """
+        self.write_own_snapshots(project, (snapshot,), keep=None)
+
+    def write_own_snapshots(
+        self,
+        project: str,
+        snapshots: Iterable[SnapshotWrite],
+        *,
+        keep: Collection[tuple[str, str]] | None,
+    ) -> int:
+        """Record the snapshots a scan found in ``.wersje/``.
+
+        Parameters
+        ----------
+        project : str
+            The project directory after ``realpath``.
+        snapshots : Iterable[SnapshotWrite]
+            Snapshots new or changed since the index recorded them.
+        keep : Collection[tuple[str, str]] or None
+            ``(path, label)`` of every snapshot found: others leave the
+            index (their directory is gone); ``None`` removes none.
+
+        Returns
+        -------
+        int
+            Snapshots added or whose state changed.
+        """
+        changed = 0
+        with self._transaction() as connection:
+            folder_id = self._own_folder_id(connection, project)
+            for item in snapshots:
+                before = connection.execute(
+                    "SELECT state FROM snapshots WHERE folder_id = ? AND path = ?"
+                    " AND label = ?",
+                    (folder_id, item.path, item.label),
+                ).fetchone()
+                changed += before is None or before[0] != item.state
+                connection.execute(
+                    _UPSERT_SNAPSHOT,
+                    (
+                        folder_id,
+                        item.path,
+                        own_file_id(item.path),
+                        item.label,
+                        item.state,
+                        None if item.created_at is None else _utc(item.created_at),
+                        item.content_method,
+                        item.content_sha256,
+                        item.size_bytes,
+                        item.stamp,
+                        None if item.document is None else _json(item.document),
+                    ),
+                )
+            if keep is not None:
+                found = json.dumps(
+                    [list(pair) for pair in sorted(keep)], ensure_ascii=False
+                )
+                connection.execute(
+                    "DELETE FROM snapshots WHERE folder_id = ? AND NOT EXISTS ("
+                    " SELECT 1 FROM json_each(?) k"
+                    " WHERE json_extract(k.value, '$[0]') = snapshots.path"
+                    " AND json_extract(k.value, '$[1]') = snapshots.label)",
+                    (folder_id, found),
+                )
+            connection.execute(_OWN_LAST_SNAPSHOT, (folder_id,))
+            connection.execute(_OWN_CHANGE, (folder_id,))
+        return changed
+
+    def finish_own_folder(
+        self, project: str, *, problems: Iterable[OwnProblem], now: datetime
+    ) -> int:
+        """End a scan of a project's folder: its problems and totals.
+
+        Problems not found again are resolved; one found again keeps its
+        ``first_seen_at``. Totals count present files and every snapshot.
+
+        Returns
+        -------
+        int
+            Problems found for the first time.
+        """
+        moment = _utc(now)
+        rows = {
+            (problem.code, problem.path or ""): problem.reason for problem in problems
+        }
+        with self._transaction() as connection:
+            folder_id = self._own_folder_id(connection, project)
+            known = {
+                (str(code), str(path))
+                for code, path in connection.execute(
+                    "SELECT code, path FROM own_problems WHERE folder_id = ?",
+                    (folder_id,),
+                ).fetchall()
+            }
+            connection.executemany(
+                "INSERT INTO own_problems (folder_id, code, path, reason,"
+                " first_seen_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT"
+                " (folder_id, code, path) DO UPDATE SET reason = excluded.reason",
+                [
+                    (folder_id, code, path, reason, moment)
+                    for (code, path), reason in rows.items()
+                ],
+            )
+            for code, path in known - rows.keys():
+                connection.execute(
+                    "DELETE FROM own_problems WHERE folder_id = ? AND code = ?"
+                    " AND path = ?",
+                    (folder_id, code, path),
+                )
+            connection.execute(_OWN_TOTALS, (moment, folder_id))
+        return len(rows.keys() - known)
+
+    def remove_own_folders(self, *, keep: Collection[str]) -> int:
+        """Forget the folders of projects no longer in the index.
+
+        Parameters
+        ----------
+        keep : Collection[str]
+            Access keys of the projects whose folders stay.
+
+        Returns
+        -------
+        int
+            Folders removed with their files, snapshots and problems.
+        """
+        with self._transaction() as connection:
+            return int(
+                connection.execute(
+                    f"DELETE FROM own_folders WHERE project NOT IN ({_IDS})",
+                    (json.dumps(sorted(keep), ensure_ascii=False),),
+                ).rowcount
+            )
+
     # Internals.
+
+    @staticmethod
+    def _own_folder_id(connection: sqlite3.Connection, project: str) -> int:
+        row = connection.execute(
+            "SELECT id FROM own_folders WHERE project = ?", (project,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"no data folder of project {project!r} in the index")
+        return int(row[0])
 
     def _active(self) -> _PassState:
         if self._pass is None:
@@ -1449,6 +1899,44 @@ def _now() -> str:
 
 def _iso(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat()
+
+
+def _utc(value: datetime) -> str:
+    """Return a time as UTC ISO 8601 text: such texts sort in time order."""
+    return value.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _observe(
+    connection: sqlite3.Connection, file_row: int, item: OwnFileWrite, moment: str
+) -> None:
+    """Add a file's observed state to its history unless it is the last one."""
+    observed = (
+        item.size_bytes,
+        item.modified_ns,
+        item.content_sha256,
+        item.feature_count,
+    )
+    last = connection.execute(
+        "SELECT seq, size_bytes, modified_ns, content_sha256, feature_count"
+        " FROM own_file_states WHERE own_file_id = ? ORDER BY seq DESC LIMIT 1",
+        (file_row,),
+    ).fetchone()
+    if last is not None and tuple(last[1:]) == observed:
+        return
+    seq = 1 if last is None else int(last[0]) + 1
+    connection.execute(
+        "INSERT INTO own_file_states (own_file_id, seq, observed_at, size_bytes,"
+        " modified_ns, content_sha256, feature_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (file_row, seq, moment, *observed),
+    )
+    connection.execute(
+        "DELETE FROM own_file_states WHERE own_file_id = ? AND seq <= ?",
+        (file_row, seq - MAX_OWN_FILE_STATES),
+    )
 
 
 def _meta_row(meta: EntryMeta) -> tuple[object, ...]:

@@ -1,0 +1,1000 @@
+"""Scan the data folders of projects: files, content, snapshots (decision 8).
+
+``scan_own_data`` takes each project's data folder (``AppSettings.own_data_dir``)
+and first checks it against the rules of decision 8
+(``own_folder_conflict``): a folder in a store, overlapping Archiwista's data
+or another project's folder is ``invalid`` and never read. A valid folder is
+walked in the order of its paths (relative, in NFC), skipping hidden files
+and directories (``.wersje/`` too), SQLite companions (``-wal``, ``-shm``,
+``-journal``), the members of a file set and symbolic links leading out of
+the folder (``path_outside_root``); of more than ``MAX_OWN_FILES`` files the
+first ones are indexed (``own_folder_too_large``).
+
+A file whose sizes and modification times (with its set's members and a
+SQLite ``-wal`` or ``-journal``) equal the index costs one ``stat``. A new
+or changed one is read by the reader process (``OwnReader``: driver,
+layers, CRS, extent) and its content identity is computed here
+(``content_identity``); its extent gets a WGS84 polygon (``outline_wgs84``)
+with the producer's pinned operation. A file that changed while it was read
+is unreadable until the next scan reads it again. Snapshots come from
+``.wersje/**/migawka.json`` (``SnapshotDocument``), also those published
+without an index entry; leftovers of interrupted snapshots older than 24
+hours in ``.wersje/.incoming/`` are problems. Nothing in a folder is ever
+written.
+"""
+
+import json
+import logging
+import os
+import sqlite3
+import stat
+import time
+import unicodedata
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    OwnFolderReason,
+    OwnFolderSource,
+    own_folder_conflict,
+)
+from archiwista.errors import InconsistentReadError, ProducerError
+from archiwista.formats import file_format
+from archiwista.index import (
+    MAX_OWN_FILES,
+    BBox,
+    IndexWriter,
+    KnownOwnFile,
+    OwnFileWrite,
+    OwnFolderState,
+    OwnProblem,
+    OwnReadState,
+    ProjectRef,
+    SnapshotState,
+    SnapshotWrite,
+    TransformerFactory,
+)
+from archiwista.index.geometry import WGS84, is_wgs84, outline_wgs84
+from archiwista.owndata.content import (
+    ContentIdentity,
+    content_identity,
+    content_method,
+    file_sha256,
+)
+from archiwista.owndata.document import (
+    INCOMING_DIR,
+    SNAPSHOT_FILE,
+    SNAPSHOTS_DIR,
+    InvalidSnapshotError,
+    SnapshotFile,
+    UnknownSnapshotSchemaError,
+    parse_snapshot_document,
+)
+from archiwista.owndata.formats import (
+    FILESET_SUFFIXES,
+    SQLITE_COMPANION_SUFFIXES,
+    fileset_members,
+)
+from archiwista.owndata.reader import OwnFileInfo, OwnReader
+from archiwista.sandbox import process_work_dir
+from archiwista.sources import CoordinateTransformer, GeoJSONGeometry
+
+logger = logging.getLogger(__name__)
+
+# Leftovers of interrupted snapshots older than this are a problem.
+STALE_INCOMING = timedelta(hours=24)
+# Files written to the index in one transaction (and one progress event).
+WRITE_BATCH = 50
+# A ``migawka.json`` larger than this is not a snapshot document.
+MAX_DOCUMENT_BYTES = 1024**2
+# The companions that change while a SQLite file is edited (``-shm`` is the
+# editor's shared memory: SQLite may change its content, never its data).
+_STAMPED_COMPANIONS = ("-wal", "-journal")
+# Half a metre (or about as much of a degree) around an extent without
+# area, e.g. of a single point, so the file still has a place on the map.
+_POINT_PAD = 0.5
+_POINT_PAD_DEGREES = 0.5 / 111_320
+
+type _Entry = tuple[str, os.DirEntry[str] | None, "_Found | None"]
+
+
+@dataclass(frozen=True, slots=True)
+class OwnScanProgress:
+    """How far a scan got: folders done of all, files listed and read so far."""
+
+    current: int
+    total: int
+    files: int
+    read: int
+
+
+type OwnScanListener = Callable[[OwnScanProgress], None]
+
+
+@dataclass(slots=True)
+class OwnScanSummary:
+    """What one ``own_scan`` found and changed (the job's result).
+
+    Attributes
+    ----------
+    projects : int
+        Data folders scanned (also those ``invalid`` or missing).
+    files : int
+        Files listed in the folders.
+    new, changed : int
+        Files read for the first time, and files read again after a change.
+    missing : int
+        Files newly gone.
+    unreadable : int
+        Files read in this scan that could not be read.
+    snapshots : int
+        Snapshots newly recorded, or whose state changed.
+    problems : int
+        Problems found for the first time.
+    seconds : float
+        Duration of the scan.
+    """
+
+    projects: int = 0
+    files: int = 0
+    new: int = 0
+    changed: int = 0
+    missing: int = 0
+    unreadable: int = 0
+    snapshots: int = 0
+    problems: int = 0
+    seconds: float = 0.0
+
+    def result(self) -> dict[str, int | float]:
+        """Return the summary as the ``own_scan`` job's result (numbers only)."""
+        return {
+            "projects": self.projects,
+            "files": self.files,
+            "new": self.new,
+            "changed": self.changed,
+            "missing": self.missing,
+            "unreadable": self.unreadable,
+            "snapshots": self.snapshots,
+            "problems": self.problems,
+            "seconds": round(self.seconds, 3),
+        }
+
+
+def scan_own_data(
+    writer: IndexWriter,
+    projects: Sequence[ProjectRef],
+    *,
+    known_projects: Sequence[ProjectRef],
+    settings: AppSettings,
+    paths: AppPaths,
+    transformer: TransformerFactory | None,
+    prune: bool = False,
+    now: datetime | None = None,
+    on_progress: OwnScanListener | None = None,
+    reader: OwnReader | None = None,
+) -> OwnScanSummary:
+    """Scan the data folders of ``projects`` into the index.
+
+    Parameters
+    ----------
+    writer : IndexWriter
+        Writer of the local index.
+    projects : Sequence[ProjectRef]
+        Projects whose folders to scan: all of them, or one.
+    known_projects : Sequence[ProjectRef]
+        Every indexed project: their folders and stores take part in the
+        rules of each folder, and with ``prune`` the folders of other
+        projects leave the index.
+    settings : AppSettings
+        Stores (their producer directories) and ``own_data_dirs``.
+    paths : AppPaths
+        Archiwista's data directory (no folder may overlap it) and the work
+        directory of the reader and of SQLite copies.
+    transformer : TransformerFactory or None
+        The producer's pinned operations to WGS84 (``GeoAdapter.transformer``);
+        ``None``: only files in WGS84 get an outline.
+    prune : bool, default False
+        Forget the folders of projects that are no longer indexed.
+    now : datetime or None, optional
+        Time of the scan; the current time when omitted.
+    on_progress : OwnScanListener or None, optional
+        Called after each folder and each batch of files.
+    reader : OwnReader or None, optional
+        The reader process to use; one is started (and ended) when omitted.
+
+    Returns
+    -------
+    OwnScanSummary
+        Counts for the job's result.
+
+    Raises
+    ------
+    OwnReaderError
+        The reader process cannot be started.
+    """
+    started = time.perf_counter()
+    moment = now or datetime.now(UTC)
+    summary = OwnScanSummary()
+    stores, folders = folder_rules(settings, known_projects)
+    transformers = _Transformers(transformer)
+    active = reader or OwnReader(paths)
+    try:
+        for position, project in enumerate(projects):
+            others = [
+                folder for key, folder in folders.items() if key != project.access_key
+            ]
+            _FolderScan(
+                writer=writer,
+                project=project,
+                settings=settings,
+                paths=paths,
+                transformers=transformers,
+                reader=active,
+                now=moment,
+                summary=summary,
+                progress=(on_progress, position, len(projects)),
+            ).run(stores=stores, others=others)
+            summary.projects += 1
+            _report(on_progress, position + 1, len(projects), summary)
+    finally:
+        if reader is None:
+            active.close()
+    if prune:
+        writer.remove_own_folders(
+            keep={project.access_key for project in known_projects}
+        )
+    summary.seconds = time.perf_counter() - started
+    return summary
+
+
+def snapshot_stamp(directory: Path) -> tuple[str, int]:
+    """Return the stamp of a snapshot directory and the bytes of its copy.
+
+    The stamp (names, sizes and modification times of its files) tells a
+    scan whether to check a snapshot again; the ``snapshot`` job records it
+    with a snapshot it published (``IndexWriter.record_snapshot``). The
+    bytes leave ``migawka.json`` out, like the document's ``size_bytes``.
+
+    Raises
+    ------
+    OSError
+        The directory cannot be listed.
+    """
+    rows: list[tuple[str, int, int]] = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if entry.is_file(follow_symlinks=False):
+                found = entry.stat(follow_symlinks=False)
+                rows.append((entry.name, found.st_size, found.st_mtime_ns))
+    rows.sort()
+    size = sum(size for name, size, _ in rows if name != SNAPSHOT_FILE)
+    return _dump(rows), size
+
+
+@dataclass(slots=True)
+class _Found:
+    """A file of a folder as listed: where it is and its stamp."""
+
+    path: str
+    disk_path: str
+    absolute: Path
+    stamped: tuple[Path, ...]
+    stamp: str
+    size_bytes: int
+    modified_ns: int
+
+
+@dataclass(slots=True)
+class _Listing:
+    """What a walk over a folder found."""
+
+    files: list[_Found] = field(default_factory=list)
+    outside: list[str] = field(default_factory=list)
+    unreadable: list[str] = field(default_factory=list)
+    invalid_names: list[str] = field(default_factory=list)
+    too_large: bool = False
+
+
+class _FolderUnreadableError(OSError):
+    """The folder itself cannot be listed."""
+
+
+class _Transformers:
+    """The producer's operations to WGS84, made once per CRS in a scan."""
+
+    def __init__(self, factory: TransformerFactory | None) -> None:
+        self._factory = factory
+        self._made: dict[str, CoordinateTransformer | Exception] = {}
+
+    def outline(self, bbox: BBox, crs: str) -> GeoJSONGeometry:
+        """Return the WGS84 polygon of a rectangle in ``crs``.
+
+        Raises
+        ------
+        ValueError, ProducerError
+            No operation for ``crs``, or one that failed.
+        """
+        if is_wgs84(crs):
+            return outline_wgs84(bbox, crs, None)
+        if self._factory is None:
+            raise ValueError("no producer with coordinate operations")
+        made = self._made.get(crs)
+        if made is None:
+            try:
+                made = self._factory(crs, WGS84)
+            except (ProducerError, ValueError) as error:
+                made = error
+            self._made[crs] = made
+        if isinstance(made, Exception):
+            raise made
+        return outline_wgs84(bbox, crs, made)
+
+
+@dataclass(frozen=True, slots=True)
+class OwnFolderCheck:
+    """A project's data folder and its state now, before any file is read."""
+
+    path: Path
+    source: OwnFolderSource
+    state: OwnFolderState
+    reason: OwnFolderReason | None = None
+
+
+def check_own_folder(
+    settings: AppSettings,
+    project: str,
+    *,
+    stores: Sequence[Path],
+    app_data: Path,
+    others: Sequence[Path],
+) -> OwnFolderCheck:
+    """Check a project's data folder against decision 8, then on the disk.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        ``own_data_dirs`` (the folder, or ``<project>/dane``).
+    project : str
+        The project directory after ``realpath`` (``access_key``).
+    stores : Sequence[Path]
+        Producer directories of the stores (also of projects' own stores).
+    app_data : Path
+        Archiwista's data directory.
+    others : Sequence[Path]
+        Data folders of the other projects.
+
+    Returns
+    -------
+    OwnFolderCheck
+        ``invalid`` with its reason, else ``missing``, ``unreadable`` or
+        ``ok`` as the folder is on the disk.
+    """
+    folder, source = settings.own_data_dir(project)
+    conflict = own_folder_conflict(
+        folder, stores=stores, app_data=app_data, others=others
+    )
+    if conflict is not None:
+        return OwnFolderCheck(folder, source, "invalid", conflict[0])
+    return OwnFolderCheck(folder, source, _folder_state(folder))
+
+
+def folder_rules(
+    settings: AppSettings, known_projects: Sequence[ProjectRef]
+) -> tuple[list[Path], dict[str, Path]]:
+    """Return the stores' directories and every project's folder, by access key.
+
+    The stores are the configured producer directories and the absolute
+    store directories the projects' manifests name.
+    """
+    folders = {
+        project.access_key: settings.own_data_dir(project.access_key)[0]
+        for project in known_projects
+    }
+    stores = [root for store in settings.stores for root in store.roots().values()]
+    stores += [
+        Path(project.store_dir)
+        for project in known_projects
+        if os.path.isabs(project.store_dir)
+    ]
+    return stores, folders
+
+
+@dataclass(slots=True)
+class _FolderScan:
+    """One project's folder in one scan."""
+
+    writer: IndexWriter
+    project: ProjectRef
+    settings: AppSettings
+    paths: AppPaths
+    transformers: _Transformers
+    reader: OwnReader
+    now: datetime
+    summary: OwnScanSummary
+    progress: tuple[OwnScanListener | None, int, int]
+    problems: list[OwnProblem] = field(default_factory=list)
+
+    def run(self, *, stores: Sequence[Path], others: Sequence[Path]) -> None:
+        """Check the folder, then scan its files and snapshots when it is valid."""
+        key = self.project.access_key
+        check = check_own_folder(
+            self.settings,
+            key,
+            stores=stores,
+            app_data=self.paths.data_dir,
+            others=others,
+        )
+        folder, source, state = check.path, check.source, check.state
+        self.writer.write_own_folder(
+            key,
+            path=str(folder),
+            source=source,
+            state=state,
+            reason=check.reason,
+            now=self.now,
+        )
+        if state == "invalid":
+            self.problems.append(OwnProblem("own_folder_invalid", reason=check.reason))
+        if state == "unreadable":
+            self.problems.append(OwnProblem("own_folder_unreadable"))
+        if state == "ok":
+            root = Path(os.path.realpath(folder))
+            try:
+                self._scan_files(root)
+                self._scan_snapshots(root)
+            except _FolderUnreadableError:
+                self.writer.write_own_folder(
+                    key,
+                    path=str(folder),
+                    source=source,
+                    state="unreadable",
+                    now=self.now,
+                )
+                self.problems = [OwnProblem("own_folder_unreadable")]
+        self._finish()
+
+    def _finish(self) -> None:
+        self.summary.problems += self.writer.finish_own_folder(
+            self.project.access_key, problems=self.problems, now=self.now
+        )
+
+    def _scan_files(self, root: Path) -> None:
+        key = self.project.access_key
+        known = self.writer.known_own_files(key)
+        listing = _walk(root, MAX_OWN_FILES)
+        if listing.too_large:
+            self.problems.append(OwnProblem("own_folder_too_large"))
+        self.problems.extend(
+            OwnProblem("path_outside_root", path=path) for path in listing.outside
+        )
+        self.problems.extend(
+            OwnProblem("own_folder_unreadable", path=path)
+            for path in listing.unreadable
+        )
+        self.problems.extend(
+            OwnProblem("own_file_unreadable", path=path, reason="invalid_name")
+            for path in listing.invalid_names
+        )
+        present = {found.path for found in listing.files}
+        # Files below a directory that could not be listed stay as they were.
+        kept = {
+            path
+            for path in known
+            if any(path.startswith(f"{folder}/") for folder in listing.unreadable)
+        }
+        drop: set[str] = set()
+        if listing.too_large and listing.files:
+            last = listing.files[-1].path
+            drop = {path for path in known if path > last and path not in kept}
+        batch: list[OwnFileWrite] = []
+        for found in listing.files:
+            item = known.get(found.path)
+            if item is not None and item.stamp == found.stamp and not item.retry:
+                self._known_problem(found.path, item)
+                continue
+            written = self._read(root, found)
+            if written.state == "unreadable":
+                self.summary.unreadable += 1
+                self.problems.append(_file_problem(found.path, written.read_error))
+            batch.append(written)
+            if len(batch) >= WRITE_BATCH:
+                self._write(batch)
+                batch = []
+        self._write(batch)
+        for path in kept:
+            self._known_problem(path, known[path])
+        result = self.writer.mark_own_missing(
+            key, present=present | kept, drop=drop, now=self.now
+        )
+        self.summary.missing += result.missing
+        self.summary.files += len(listing.files)
+
+    def _known_problem(self, path: str, item: KnownOwnFile) -> None:
+        """Report again the problem of a file that was not read again."""
+        if item.read_error is not None and not item.missing:
+            self.problems.append(_file_problem(path, item.read_error))
+
+    def _write(self, batch: list[OwnFileWrite]) -> None:
+        if not batch:
+            return
+        written = self.writer.write_own_files(
+            self.project.access_key, batch, now=self.now
+        )
+        self.summary.new += written.new
+        self.summary.changed += written.changed
+        listener, position, total = self.progress
+        _report(listener, position, total, self.summary)
+
+    def _read(self, root: Path, found: _Found) -> OwnFileWrite:
+        """Read a new or changed file: the reader, its content and its outline.
+
+        A file without a GDAL driver in the format table goes to no reader:
+        the reader would answer it unrecognised without opening it.
+        """
+        real = Path(os.path.realpath(found.absolute))
+        listed = _members(real)
+        reals = tuple(Path(os.path.realpath(member)) for member in listed)
+        path = found.path
+        stamp = found.stamp
+        size_bytes, modified_ns = found.size_bytes, found.modified_ns
+        fmt = file_format(real)
+        if not all(member.is_relative_to(root) for member in reals):
+            return OwnFileWrite(
+                path=path,
+                disk_path=found.disk_path,
+                stamp=stamp,
+                size_bytes=size_bytes,
+                modified_ns=modified_ns,
+                kind=fmt.kind,
+                driver=None,
+                members=tuple(member.name for member in listed),
+                state="unreadable",
+                read_error="path_outside_root",
+                location_reason="unreadable",
+            )
+        names = tuple(_nfc(member.relative_to(root).as_posix()) for member in reals)
+        if fmt.driver is None:
+            info = OwnFileInfo(fmt.kind, None, (real.name,))
+        else:
+            info = self.reader.read(real)
+        content: ContentIdentity | None = None
+        error: str | None = info.error
+        retry = False
+        try:
+            method = content_method(real)
+            content = content_identity(
+                listed if method == "fileset" else (real,),
+                method=method,
+                work_dir=process_work_dir(self.paths),
+            )
+        except InconsistentReadError:
+            error, retry = "inconsistent", True
+        except (OSError, sqlite3.Error, ValueError) as failure:
+            logger.warning("Content of %s not read: %s", path, failure)
+            error = error or "unreadable"
+        if _stamp(found.stamped) != stamp:
+            error, retry, content = "inconsistent", True, None
+        state: OwnReadState = "ok" if info.driver else "unrecognized"
+        if error is not None:
+            state = "unreadable"
+        wgs84, reason = self._outline(info, state)
+        return OwnFileWrite(
+            path=path,
+            disk_path=found.disk_path,
+            stamp=stamp,
+            size_bytes=size_bytes,
+            modified_ns=modified_ns,
+            kind=info.kind,
+            driver=info.driver,
+            members=names,
+            state=state,
+            read_error=error,
+            read_detail=info.detail if error == info.error else None,
+            content_method=None if content is None else content.method,
+            content_sha256=None if content is None else content.sha256,
+            layers=info.layers,
+            raster=info.raster,
+            feature_count=info.feature_count,
+            native_crs=info.native_crs,
+            native_bbox=info.native_bbox,
+            wgs84=wgs84,
+            location_reason=reason,
+            retry=retry,
+        )
+
+    def _outline(
+        self, info: OwnFileInfo, state: OwnReadState
+    ) -> tuple[GeoJSONGeometry | None, str | None]:
+        """Return the WGS84 polygon of a file's extent, or why it has none."""
+        if state != "ok":
+            return None, state
+        if info.raster is not None and not info.raster.georeferenced:
+            return None, "no_georeference"
+        if info.native_crs is None:
+            return None, "no_crs"
+        if info.native_bbox is None:
+            return None, "no_extent"
+        bbox = _padded(info.native_bbox, info.native_crs)
+        try:
+            return self.transformers.outline(bbox, info.native_crs), None
+        except (ProducerError, ValueError) as error:
+            logger.info("No WGS84 outline for %s: %s", info.native_crs[:80], error)
+            return None, "transform_unavailable"
+
+    def _scan_snapshots(self, root: Path) -> None:
+        key = self.project.access_key
+        known = self.writer.known_own_snapshots(key)
+        versions = root / SNAPSHOTS_DIR
+        found: list[SnapshotWrite] = []
+        keep: set[tuple[str, str]] = set()
+        try:
+            listed = versions.is_dir() and not versions.is_symlink()
+        except OSError:
+            listed = False
+        if listed:
+            try:
+                for directory, path, label in _snapshot_dirs(versions):
+                    keep.add((path, label))
+                    snapshot = self._snapshot(
+                        directory, path, label, known.get((path, label))
+                    )
+                    if snapshot is not None:
+                        found.append(snapshot)
+            except OSError as error:
+                logger.warning("Snapshots of %s not listed: %s", root, error)
+                keep.update(known)
+            self._stale_incoming(versions / INCOMING_DIR)
+        self.summary.snapshots += self.writer.write_own_snapshots(key, found, keep=keep)
+
+    def _snapshot(
+        self,
+        directory: Path,
+        path: str,
+        label: str,
+        known: tuple[str, str] | None,
+    ) -> SnapshotWrite | None:
+        """Check a snapshot directory; ``None``: indexed, valid and unchanged.
+
+        A snapshot is checked once, and again after its files change: its
+        document (``SnapshotDocument``, also its label and file path) and
+        the size and SHA-256 of each file it names. One that is not valid
+        is checked at every scan (and reported again).
+        """
+        place = f"{SNAPSHOTS_DIR}/{path}/{label}"
+        stamp, size = snapshot_stamp(directory)
+        if known == (stamp, "ok"):
+            return None
+        try:
+            raw, document = parse_snapshot_document(
+                _read_document(directory / SNAPSHOT_FILE)
+            )
+        except UnknownSnapshotSchemaError as error:
+            self.problems.append(
+                OwnProblem("unknown_snapshot_schema", path=place, reason=error.schema)
+            )
+            return SnapshotWrite(path, label, "invalid", stamp, size)
+        except (InvalidSnapshotError, OSError):
+            self.problems.append(OwnProblem("invalid_snapshot", path=place))
+            return SnapshotWrite(path, label, "invalid", stamp, size)
+        if document.label != label or _nfc(document.source.path) != path:
+            self.problems.append(OwnProblem("invalid_snapshot", path=place))
+            return SnapshotWrite(path, label, "invalid", stamp, size, document=raw)
+        state: SnapshotState = "ok"
+        if not _files_match(directory, document.files):
+            state = "modified"
+            self.problems.append(OwnProblem("snapshot_modified", path=place))
+        return SnapshotWrite(
+            path,
+            label,
+            state,
+            stamp,
+            size,
+            document=raw,
+            created_at=document.created_at,
+            content_method=document.content.method,
+            content_sha256=document.content.sha256,
+        )
+
+    def _stale_incoming(self, incoming: Path) -> None:
+        """Report working directories of snapshots left for more than 24 hours."""
+        oldest = (self.now - STALE_INCOMING).timestamp()
+        try:
+            with os.scandir(incoming) as entries:
+                stale = [
+                    entry.name
+                    for entry in entries
+                    if entry.is_dir(follow_symlinks=False)
+                    and entry.stat(follow_symlinks=False).st_mtime < oldest
+                ]
+        except OSError:
+            return
+        self.problems.extend(
+            OwnProblem(
+                "stale_snapshot_incoming",
+                path=f"{SNAPSHOTS_DIR}/{INCOMING_DIR}/{name}",
+            )
+            for name in sorted(stale)
+        )
+
+
+def _folder_state(folder: Path) -> OwnFolderState:
+    """``missing`` without the folder, ``unreadable`` unless a readable directory."""
+    try:
+        found = folder.stat()
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "unreadable"
+    if not stat.S_ISDIR(found.st_mode) or not os.access(folder, os.R_OK | os.X_OK):
+        return "unreadable"
+    return "ok"
+
+
+def _walk(root: Path, limit: int) -> _Listing:
+    """List a folder's files in the order of their paths, at most ``limit``.
+
+    Directories are entered depth-first with their entries sorted by name in
+    NFC (a directory's name followed by ``/``), which is the order of the
+    relative paths. A symbolic link counts by its target when it stays in
+    the folder; a directory reached twice is listed once.
+
+    Raises
+    ------
+    _FolderUnreadableError
+        ``root`` itself cannot be listed.
+    """
+    listing = _Listing()
+    visited = {str(root)}
+    try:
+        stack = [iter(_directory(root, root, "", "", listing))]
+    except OSError as error:
+        raise _FolderUnreadableError(str(error)) from error
+    while stack:
+        item = next(stack[-1], None)
+        if item is None:
+            stack.pop()
+            continue
+        relative, entry, found = item
+        if found is not None:
+            if len(listing.files) == limit:
+                listing.too_large = True
+                return listing
+            listing.files.append(found)
+            continue
+        assert entry is not None
+        real = os.path.realpath(entry.path)
+        if real in visited:
+            continue
+        visited.add(real)
+        directory = Path(entry.path)
+        disk = directory.relative_to(root).as_posix()
+        try:
+            stack.append(iter(_directory(directory, root, relative, disk, listing)))
+        except OSError:
+            listing.unreadable.append(relative)
+    return listing
+
+
+def _directory(
+    directory: Path, root: Path, prefix: str, disk_prefix: str, listing: _Listing
+) -> list[_Entry]:
+    """List one directory in path order: files found, directories to enter.
+
+    Raises
+    ------
+    OSError
+        The directory cannot be listed.
+    """
+    with os.scandir(directory) as scanned:
+        entries = list(scanned)
+    names = {entry.name.lower(): entry for entry in entries}
+    members_of: dict[str, list[os.DirEntry[str]]] = {}
+    member_names: set[str] = set()
+    for entry in entries:
+        suffixes = FILESET_SUFFIXES.get(Path(entry.name).suffix.lower())
+        if suffixes is None or entry.name.startswith("."):
+            continue
+        stem = Path(entry.name).stem.lower()
+        found = [
+            names[f"{stem}{suffix}"]
+            for suffix in suffixes[1:]
+            if f"{stem}{suffix}" in names
+        ]
+        members_of[entry.name] = found
+        member_names.update(member.name for member in found)
+    items: list[tuple[str, _Entry]] = []
+    for entry in entries:
+        name = entry.name
+        if name.startswith(".") or name in member_names:
+            continue
+        if name.endswith(SQLITE_COMPANION_SUFFIXES):
+            continue
+        try:
+            name.encode("utf-8")
+        except UnicodeEncodeError:
+            shown = name.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+            listing.invalid_names.append(_join(prefix, shown))
+            continue
+        nfc = _nfc(name)
+        relative = _join(prefix, nfc)
+        try:
+            if entry.is_symlink() and not Path(
+                os.path.realpath(entry.path)
+            ).is_relative_to(root):
+                listing.outside.append(relative)
+                continue
+            if entry.is_dir():
+                items.append((f"{nfc}/", (relative, entry, None)))
+                continue
+            if not entry.is_file():
+                continue
+            companions = [
+                names[f"{name.lower()}{suffix}"]
+                for suffix in _STAMPED_COMPANIONS
+                if f"{name.lower()}{suffix}" in names
+            ]
+            found_file = _found(
+                relative,
+                _join(disk_prefix, name),
+                (entry, *members_of.get(name, ())),
+                companions,
+            )
+        except OSError:  # gone since the listing
+            continue
+        items.append((nfc, (relative, None, found_file)))
+    items.sort(key=lambda item: item[0])
+    return [item for _, item in items]
+
+
+def _found(
+    relative: str,
+    disk: str,
+    members: Sequence[os.DirEntry[str]],
+    companions: Sequence[os.DirEntry[str]],
+) -> _Found:
+    """Return a listed file with the stamp of its members and companions."""
+    stats = [(entry, entry.stat()) for entry in (*members, *companions)]
+    return _Found(
+        path=relative,
+        disk_path=disk,
+        absolute=Path(members[0].path),
+        stamped=tuple(Path(entry.path) for entry, _ in stats),
+        stamp=_dump(
+            sorted(
+                (entry.name, found.st_size, found.st_mtime_ns) for entry, found in stats
+            )
+        ),
+        size_bytes=sum(found.st_size for _, found in stats[: len(members)]),
+        modified_ns=stats[0][1].st_mtime_ns,
+    )
+
+
+def _stamp(stamped: Sequence[Path]) -> str:
+    """Return the stamp of a file again, after it was read (as ``_found``)."""
+    rows = []
+    for path in stamped:
+        try:
+            found = path.stat()
+        except OSError:
+            return ""
+        rows.append((path.name, found.st_size, found.st_mtime_ns))
+    return _dump(sorted(rows))
+
+
+def _snapshot_dirs(versions: Path) -> Iterator[tuple[Path, str, str]]:
+    """Yield ``(directory, file path, label)`` of each snapshot in ``.wersje/``.
+
+    A snapshot is a directory holding ``migawka.json``; its parent below
+    ``.wersje/`` is the working file's path. Hidden directories
+    (``.incoming/``) and symbolic links are not entered.
+
+    Raises
+    ------
+    OSError
+        A directory cannot be listed.
+    """
+    pending = [versions]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as scanned:
+            entries = sorted(scanned, key=lambda entry: entry.name)
+        if directory != versions and any(
+            entry.name == SNAPSHOT_FILE and entry.is_file(follow_symlinks=False)
+            for entry in entries
+        ):
+            parts = directory.relative_to(versions).parts
+            if len(parts) >= 2:
+                yield directory, _nfc("/".join(parts[:-1])), parts[-1]
+            continue
+        pending.extend(
+            Path(entry.path)
+            for entry in reversed(entries)
+            if not entry.name.startswith(".") and entry.is_dir(follow_symlinks=False)
+        )
+
+
+def _files_match(directory: Path, files: Sequence[SnapshotFile]) -> bool:
+    """Whether the snapshot directory holds exactly its document's files."""
+    expected = {item.name: item for item in files}
+    with os.scandir(directory) as entries:
+        present = {
+            entry.name: entry for entry in entries if entry.name != SNAPSHOT_FILE
+        }
+    if present.keys() != expected.keys():
+        return False
+    for name, item in expected.items():
+        entry = present[name]
+        if not entry.is_file(follow_symlinks=False):
+            return False
+        if entry.stat(follow_symlinks=False).st_size != item.size_bytes:
+            return False
+        if file_sha256(Path(entry.path)) != item.sha256:
+            return False
+    return True
+
+
+def _read_document(path: Path) -> bytes:
+    """``migawka.json`` of a snapshot; a link or more than 1 MiB is refused.
+
+    Raises
+    ------
+    InvalidSnapshotError
+        Not a regular file, or too large.
+    OSError
+        The file cannot be read.
+    """
+    found = path.lstat()
+    if not stat.S_ISREG(found.st_mode) or found.st_size > MAX_DOCUMENT_BYTES:
+        raise InvalidSnapshotError("not a snapshot document")
+    with path.open("rb") as stream:
+        return stream.read(MAX_DOCUMENT_BYTES + 1)
+
+
+def _members(real: Path) -> tuple[Path, ...]:
+    """Return the files of a set at its real place, or the file alone."""
+    try:
+        return fileset_members(real)
+    except OSError:
+        return (real,)
+
+
+def _file_problem(path: str, error: str | None) -> OwnProblem:
+    """Return the problem of a file not read: a link out of the folder or other."""
+    if error == "path_outside_root":
+        return OwnProblem("path_outside_root", path=path, reason=error)
+    return OwnProblem("own_file_unreadable", path=path, reason=error)
+
+
+def _padded(bbox: BBox, crs: str) -> BBox:
+    """Give an extent an area: a point or an axis-parallel line gets a margin."""
+    min_x, min_y, max_x, max_y = bbox
+    pad = _POINT_PAD_DEGREES if is_wgs84(crs) else _POINT_PAD
+    if min_x == max_x:
+        min_x, max_x = min_x - pad, max_x + pad
+    if min_y == max_y:
+        min_y, max_y = min_y - pad, max_y + pad
+    return (min_x, min_y, max_x, max_y)
+
+
+def _report(
+    listener: OwnScanListener | None, current: int, total: int, summary: OwnScanSummary
+) -> None:
+    if listener is not None:
+        read = summary.new + summary.changed
+        listener(OwnScanProgress(current, total, summary.files, read))
+
+
+def _join(prefix: str, name: str) -> str:
+    return f"{prefix}/{name}" if prefix else name
+
+
+def _nfc(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+def _dump(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

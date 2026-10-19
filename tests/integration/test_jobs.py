@@ -30,7 +30,7 @@ from archiwista.errors import (
     NotFoundError,
     OfflineModeError,
 )
-from archiwista.index import IndexQueries
+from archiwista.index import IndexQueries, own_file_id
 from archiwista.jobs import JobEvent, JobSupervisor, ScanScheduler
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
@@ -1065,3 +1065,53 @@ def _preview_params(
     refs = [f"test:{name}" for name in names]
     contents = [sources[name.removesuffix("-copy")].content_key for name in names]
     return {"refs": refs, "contents": contents, "force": False}
+
+
+def test_own_scan_request_joins_waiting_run(env: JobsEnv) -> None:
+    """While an ``own_scan`` runs, requests join a waiting run that covers them.
+
+    A project's request joins the waiting run of that project, or of every
+    project; another project's request does not join a project's run. The
+    run a request joined starts after it, so a change made before the
+    request is in the index when that run ends.
+    """
+    # Arrange
+    env.scan("full")
+    projects = env.queries.projects(visible=ALL_PROJECTS)
+    first, second = projects[0], projects[1]
+    folder = Path(first.access_key) / "dane"
+    folder.mkdir()
+    for number in range(4_000):
+        (folder / f"plik_{number:05d}.txt").write_bytes(b"")
+    running = env.jobs.submit("own_scan", actor=SCHEDULER)
+
+    # Act
+    (folder / "nowy.txt").write_text("zmiana przed zleceniem", encoding="utf-8")
+    asked = env.jobs.submit(
+        "own_scan", params={"project": first.key}, actor=LOCAL_OWNER
+    )
+    again = env.jobs.submit(
+        "own_scan", params={"project": first.key}, actor=LOCAL_OWNER
+    )
+    everyone = env.jobs.submit("own_scan", actor=SCHEDULER)
+    other = env.jobs.submit(
+        "own_scan", params={"project": second.key}, actor=LOCAL_OWNER
+    )
+    ended = {job.id: env.wait(job.id) for job in (running, asked, everyone)}
+    card = env.queries.own_file(
+        first.key, own_file_id("nowy.txt"), visible=ALL_PROJECTS
+    )
+
+    # Assert
+    assert running.state == "running"
+    assert (asked.state, again.id, other.id) == ("queued", asked.id, everyone.id)
+    assert len({running.id, asked.id, everyone.id}) == 3
+    assert all(job.state == "succeeded" for job in ended.values()), ended
+    first_run, joined = ended[running.id], ended[asked.id]
+    assert joined.params == {"project": first.key}
+    assert first_run.finished_at is not None and joined.started_at is not None
+    assert joined.started_at >= first_run.finished_at
+    assert joined.result is not None and joined.result["projects"] == 1
+    every = ended[everyone.id].result
+    assert every is not None and every["projects"] == len(projects)
+    assert card is not None and card.file.state == "unrecognized"

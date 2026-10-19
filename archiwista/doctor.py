@@ -35,6 +35,12 @@ _FIX_BY_CODE = {
     "project_dir_missing": "fix_project_dir",
     "project_dir_not_directory": "fix_not_directory",
     "project_dir_unreadable": "fix_permissions",
+    "own_data_dir_missing": "fix_own_data_dir",
+    "own_data_dir_not_directory": "fix_not_directory",
+    "own_data_dir_unreadable": "fix_permissions",
+    "own_data_dir_inside_store": "fix_own_data_dir",
+    "own_data_dir_inside_app_data": "fix_own_data_dir",
+    "own_data_dir_overlaps_project": "fix_own_data_dir",
 }
 
 

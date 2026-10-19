@@ -29,7 +29,7 @@ import threading
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -48,9 +48,12 @@ from archiwista.index.geometry import (
 )
 from archiwista.index.schema import SCHEMA_VERSION, connect, initialize
 from archiwista.index.types import (
+    DEFAULT_PAGE_LIMIT,
     MAP_FOOTPRINT_LIMIT,
     MAX_GRID_COLUMNS,
     MAX_PAGE_LIMIT,
+    OWN_CHANGES,
+    OWN_FILE_STATES,
     AreaFilter,
     AreaRecord,
     BBox,
@@ -67,6 +70,13 @@ from archiwista.index.types import (
     MapFootprint,
     MapQuery,
     OrphanLink,
+    OwnFileDetail,
+    OwnFileObservation,
+    OwnFilePage,
+    OwnFileRow,
+    OwnFolderRecord,
+    OwnProblem,
+    OwnSnapshotRef,
     PinRef,
     PinState,
     ProductSummary,
@@ -83,6 +93,7 @@ from archiwista.index.types import (
     SlotQuery,
     SlotRow,
     SlotUnit,
+    SnapshotRecord,
     StoreFreshness,
     StoreIndexState,
     StoreUsage,
@@ -93,6 +104,8 @@ from archiwista.index.types import (
     VersionSummary,
 )
 from archiwista.messages import MESSAGES
+from archiwista.owndata.document import SNAPSHOTS_DIR
+from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
 from archiwista.sources import GeoJSONGeometry, SourceEntry
 
 _IDS = "SELECT value FROM json_each(?)"
@@ -498,6 +511,27 @@ class IndexQueries:
             return None
         raw = json.loads(row["raw"])
         return raw if isinstance(raw, dict) else None
+
+    def native_outline(self, store: str, path: str) -> GeoJSONGeometry | None:
+        """Return a version's outline in its native CRS, or ``None`` without one.
+
+        The rectangle of the producer's footprint in ``native_crs`` (e.g. a
+        JPEG sheet's from its header, ``location.source`` ``header``): the
+        georeference of a file that carries none itself (plan v0.2,
+        decision 5).
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            row = connection.execute(
+                "SELECT sh.native FROM versions v"
+                " JOIN version_shapes sh ON sh.version_id = v.id"
+                " WHERE v.store_id = ? AND v.path = ?",
+                (_store_id(stores, store), path),
+            ).fetchone()
+        if row is None or row["native"] is None:
+            return None
+        outline: GeoJSONGeometry = json.loads(row["native"])
+        return outline
 
     def group(self, parent_request: str) -> tuple[GroupMember, ...]:
         """Return the files of one producer request (``parent_request``)."""
@@ -1261,6 +1295,187 @@ class IndexQueries:
             )
         return LocalCoverageReport(store=store, product=product, results=tuple(results))
 
+    # Own data of projects (decision 8).
+
+    def own_folder(
+        self, project: str, *, visible: ProjectVisibility
+    ) -> OwnFolderRecord | None:
+        """Return a project's data folder as its last ``own_scan`` found it.
+
+        Parameters
+        ----------
+        project : str
+            Project key (``ProjectRef.key``).
+        visible : ProjectVisibility
+            Projects the principal sees.
+
+        Returns
+        -------
+        OwnFolderRecord or None
+            ``None`` for an unknown project, one the principal does not see,
+            and one whose folder was never scanned.
+        """
+        with self._read() as connection:
+            row = _own_folder_row(connection, project, visible)
+            return None if row is None else _own_folder(connection, row)
+
+    def own_files(
+        self,
+        project: str,
+        *,
+        visible: ProjectVisibility,
+        q: str | None = None,
+        state: str | None = None,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+    ) -> OwnFilePage | None:
+        """Return a page of a project's own files, ordered by path.
+
+        Parameters
+        ----------
+        project : str
+            Project key.
+        visible : ProjectVisibility
+            Projects the principal sees.
+        q : str or None, optional
+            Words that must all occur in the path (letter case of ASCII
+            ignored).
+        state : str or None, optional
+            Only files in this state (``ok``, ``unrecognized``,
+            ``unreadable``, ``missing``) or present files of this change
+            (``unsnapshotted``, ``unchanged``, ``changed``).
+        limit : int, default 50
+            Page size, 1 to 200.
+        cursor : str or None, optional
+            ``next_cursor`` of the previous page of the same filters.
+
+        Returns
+        -------
+        OwnFilePage or None
+            ``None`` as for ``own_folder``.
+
+        Raises
+        ------
+        IndexQueryError
+            An unknown state, a limit out of range or a cursor of other
+            filters.
+        """
+        _require_limit(limit, MAX_PAGE_LIMIT)
+        where = _Where()
+        if state is not None:
+            condition, values = _own_state(state)
+            where.add(condition, *values)
+        words = (q or "").split()
+        for word in words:
+            escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where.add("f.path LIKE ? ESCAPE '\\'", f"%{escaped}%")
+        fingerprint = hashlib.sha256(
+            json.dumps([project, state, words]).encode()
+        ).hexdigest()[:16]
+        after = _decode_own_cursor(cursor, fingerprint)
+        if after is not None:
+            where.add("f.path > ?", after)
+        with self._read() as connection:
+            row = _own_folder_row(connection, project, visible)
+            if row is None:
+                return None
+            folder = _own_folder(connection, row)
+            rows = connection.execute(
+                f"SELECT {_OWN_FILE_COLUMNS} FROM own_files f"
+                f" WHERE f.folder_id = ? AND {where.sql()} ORDER BY f.path LIMIT ?",
+                (row["id"], *where.params, limit + 1),
+            ).fetchall()
+        items = tuple(_own_file_row(item) for item in rows[:limit])
+        next_cursor = None
+        if len(rows) > limit:
+            next_cursor = _encode_own_cursor(fingerprint, rows[limit - 1]["path"])
+        return OwnFilePage(folder=folder, items=items, next_cursor=next_cursor)
+
+    def own_file(
+        self, project: str, file_id: str, *, visible: ProjectVisibility
+    ) -> OwnFileDetail | None:
+        """Return the card of one own file: what was read, history, snapshots.
+
+        Parameters
+        ----------
+        project : str
+            Project key.
+        file_id : str
+            The file's id (``own_file_id`` of its path).
+        visible : ProjectVisibility
+            Projects the principal sees.
+
+        Returns
+        -------
+        OwnFileDetail or None
+            ``None`` as for ``own_folder``, and for an unknown file.
+        """
+        with self._read() as connection:
+            row = _own_folder_row(connection, project, visible)
+            if row is None:
+                return None
+            found = connection.execute(
+                f"SELECT {_OWN_FILE_COLUMNS}, f.disk_path, f.members, f.read_error,"
+                " f.read_detail, f.content_method, f.content_sha256, f.layers,"
+                " f.raster, f.feature_count, f.native_crs, f.native_bbox,"
+                " f.first_seen_at, f.changed_at"
+                " FROM own_files f WHERE f.folder_id = ? AND f.file_id = ?",
+                (row["id"], file_id),
+            ).fetchone()
+            if found is None:
+                return None
+            folder = _own_folder(connection, row)
+            history = connection.execute(
+                "SELECT observed_at, size_bytes, modified_ns, content_sha256,"
+                " feature_count FROM own_file_states WHERE own_file_id = ?"
+                " ORDER BY seq DESC",
+                (found["id"],),
+            ).fetchall()
+            snapshots = connection.execute(
+                "SELECT path, label, state, created_at, content_method,"
+                " content_sha256, size_bytes, document FROM snapshots"
+                " WHERE folder_id = ? AND path = ?"
+                " ORDER BY created_at IS NULL, created_at DESC, label DESC",
+                (row["id"], found["path"]),
+            ).fetchall()
+        prefix = f"{SNAPSHOTS_DIR}/{found['path']}/"
+        return OwnFileDetail(
+            file=_own_file_row(found),
+            folder=folder,
+            disk_path=found["disk_path"],
+            members=tuple(json.loads(found["members"])),
+            read_error=found["read_error"],
+            read_detail=found["read_detail"],
+            content_method=found["content_method"],
+            content_sha256=found["content_sha256"],
+            layers=tuple(_layer(layer) for layer in json.loads(found["layers"])),
+            raster=_raster(found["raster"]),
+            feature_count=found["feature_count"],
+            native_crs=found["native_crs"],
+            native_bbox=_own_bbox(found["native_bbox"]),
+            wgs84=None if found["wgs84"] is None else json.loads(found["wgs84"]),
+            first_seen_at=datetime.fromisoformat(found["first_seen_at"]),
+            changed_at=datetime.fromisoformat(found["changed_at"]),
+            missing_since=_datetime(found["missing_since"]),
+            history=tuple(
+                OwnFileObservation(
+                    observed_at=datetime.fromisoformat(state["observed_at"]),
+                    size_bytes=state["size_bytes"],
+                    modified_at=_from_ns(state["modified_ns"]),
+                    content_sha256=state["content_sha256"],
+                    feature_count=state["feature_count"],
+                )
+                for state in history
+            ),
+            snapshots=tuple(_snapshot(item) for item in snapshots),
+            problems=tuple(
+                problem
+                for problem in folder.problems
+                if problem.path == found["path"]
+                or (problem.path or "").startswith(prefix)
+            ),
+        )
+
     # Connections.
 
     def _connection(self) -> sqlite3.Connection:
@@ -1788,3 +2003,175 @@ def _datetime(value: object) -> datetime | None:
 
 def _date(value: object) -> date | None:
     return None if value is None else date.fromisoformat(str(value))
+
+
+# Own data of projects (decision 8).
+
+_OWN_FOLDER_COLUMNS = (
+    "o.id, pr.key AS project, o.path, o.source, o.state, o.reason, o.scanned_at,"
+    " o.files, o.size_bytes, o.snapshots, o.snapshots_bytes"
+)
+_OWN_FILE_COLUMNS = (
+    "f.id, f.file_id, f.path, f.kind, f.driver, f.size_bytes, f.modified_ns,"
+    " f.read_state, f.missing_since, f.change, f.last_snapshot, f.wgs84,"
+    " f.location_reason, (SELECT s.created_at FROM snapshots s"
+    " WHERE s.folder_id = f.folder_id AND s.path = f.path"
+    " AND s.label = f.last_snapshot) AS last_snapshot_at,"
+    " (SELECT count(*) FROM snapshots s WHERE s.folder_id = f.folder_id"
+    " AND s.path = f.path) AS snapshots"
+)
+
+
+def _own_folder_row(
+    connection: sqlite3.Connection, project: str, visible: ProjectVisibility
+) -> sqlite3.Row | None:
+    """Find the folder of a project the principal sees, by its access key."""
+    condition, params = _visible(visible)
+    row: sqlite3.Row | None = connection.execute(
+        f"SELECT {_OWN_FOLDER_COLUMNS} FROM own_folders o"
+        " JOIN projects pr ON pr.access_key = o.project"
+        f" WHERE pr.key = ? AND {condition}",
+        (project, *params),
+    ).fetchone()
+    return row
+
+
+def _own_folder(connection: sqlite3.Connection, row: sqlite3.Row) -> OwnFolderRecord:
+    problems = connection.execute(
+        "SELECT code, path, reason, first_seen_at FROM own_problems"
+        " WHERE folder_id = ? ORDER BY path, code",
+        (row["id"],),
+    ).fetchall()
+    return OwnFolderRecord(
+        project=row["project"],
+        path=row["path"],
+        source=row["source"],
+        state=row["state"],
+        reason=row["reason"],
+        scanned_at=datetime.fromisoformat(row["scanned_at"]),
+        files=row["files"],
+        size_bytes=row["size_bytes"],
+        snapshots=row["snapshots"],
+        snapshots_bytes=row["snapshots_bytes"],
+        problems=tuple(
+            OwnProblem(
+                code=problem["code"],
+                path=problem["path"] or None,
+                reason=problem["reason"],
+                first_seen_at=datetime.fromisoformat(problem["first_seen_at"]),
+            )
+            for problem in problems
+        ),
+    )
+
+
+def _own_file_row(row: sqlite3.Row) -> OwnFileRow:
+    missing = row["missing_since"] is not None
+    if row["wgs84"] is not None:
+        location = LocationRef("footprint")
+    else:
+        location = LocationRef("none", row["location_reason"])
+    last = row["last_snapshot"]
+    return OwnFileRow(
+        file_id=row["file_id"],
+        path=row["path"],
+        kind=row["kind"],
+        driver=row["driver"],
+        size_bytes=row["size_bytes"],
+        modified_at=_from_ns(row["modified_ns"]),
+        state="missing" if missing else row["read_state"],
+        change=row["change"],
+        last_snapshot=None
+        if last is None or row["last_snapshot_at"] is None
+        else OwnSnapshotRef(last, datetime.fromisoformat(row["last_snapshot_at"])),
+        snapshots=row["snapshots"],
+        location=location,
+    )
+
+
+def _own_state(state: str) -> tuple[str, tuple[object, ...]]:
+    """Return the SQL condition on ``f`` (own_files) of a state or change filter."""
+    if state == "missing":
+        return "f.missing_since IS NOT NULL", ()
+    if state in OWN_FILE_STATES:
+        return "f.missing_since IS NULL AND f.read_state = ?", (state,)
+    if state in OWN_CHANGES:
+        return "f.missing_since IS NULL AND f.change = ?", (state,)
+    allowed = ", ".join((*OWN_FILE_STATES, *OWN_CHANGES))
+    raise IndexQueryError(
+        MESSAGES["index_invalid_own_state"].format(state=state, allowed=allowed)
+    )
+
+
+def _encode_own_cursor(fingerprint: str, path: str) -> str:
+    data = json.dumps([_CURSOR_VERSION, fingerprint, path], ensure_ascii=False)
+    return base64.urlsafe_b64encode(data.encode()).decode().rstrip("=")
+
+
+def _decode_own_cursor(cursor: str | None, fingerprint: str) -> str | None:
+    if cursor is None:
+        return None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise IndexQueryError(MESSAGES["index_invalid_cursor"]) from None
+    if (
+        not isinstance(data, list)
+        or len(data) != 3
+        or data[:2] != [_CURSOR_VERSION, fingerprint]
+        or not isinstance(data[2], str)
+    ):
+        raise IndexQueryError(MESSAGES["index_invalid_cursor"])
+    return data[2]
+
+
+def _layer(data: dict[str, Any]) -> LayerInfo:
+    return LayerInfo(
+        name=data["name"],
+        geometry_type=data["geometry_type"],
+        feature_count=data["feature_count"],
+        fields=tuple(FieldInfo(**field) for field in data["fields"]),
+        crs=data["crs"],
+        bbox=_own_bbox(data["bbox"]),
+    )
+
+
+def _raster(text: str | None) -> RasterInfo | None:
+    if text is None:
+        return None
+    data = json.loads(text)
+    pixel = data["pixel_size"]
+    return RasterInfo(
+        width=data["width"],
+        height=data["height"],
+        bands=data["bands"],
+        dtype=data["dtype"],
+        nodata=data["nodata"],
+        pixel_size=None if pixel is None else (pixel[0], pixel[1]),
+        georeferenced=data["georeferenced"],
+    )
+
+
+def _own_bbox(value: str | list[float] | None) -> BBox | None:
+    if value is None:
+        return None
+    values = json.loads(value) if isinstance(value, str) else value
+    return (values[0], values[1], values[2], values[3])
+
+
+def _from_ns(value: int) -> datetime:
+    return datetime.fromtimestamp(value / 1e9, UTC)
+
+
+def _snapshot(row: sqlite3.Row) -> SnapshotRecord:
+    return SnapshotRecord(
+        path=row["path"],
+        label=row["label"],
+        state=row["state"],
+        created_at=_datetime(row["created_at"]),
+        content_method=row["content_method"],
+        content_sha256=row["content_sha256"],
+        size_bytes=row["size_bytes"],
+        document=None if row["document"] is None else json.loads(row["document"]),
+    )

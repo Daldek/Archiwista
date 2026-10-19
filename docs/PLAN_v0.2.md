@@ -1077,7 +1077,7 @@ działa.
 | 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | do zrobienia |
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
-| 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | do zrobienia |
+| 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | do zrobienia |
@@ -2148,6 +2148,88 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   zmiana sprzed zlecenia w wyniku),
   `tests/integration/test_state.py` bez zmian (baza stanu nietknięta).
 - **Zależności:** 2, 3, 7a. **Równolegle:** 4, 5a1–5c, 6.
+- **Stan po kroku 7b:**
+  - *Ustawienia* (`config.py`): `AppSettings.own_data_dirs: dict[str, str]`
+    (klucz: katalog projektu po `realpath` = `access_key`; wartość: folder;
+    obie ścieżki bezwzględne), `own_data_dir(project) -> (Path, source)`
+    (`setting` albo `<projekt>/dane` — `default`), `OWN_DATA_DIR_NAME`,
+    typy `OwnFolderSource`, `OwnFolderReason`; reguła
+    `own_folder_conflict(folder, *, stores, app_data, others) -> (powód,
+    katalog) | None` (po `realpath`: w katalogu producenta →
+    `inside_store`; nakładanie z `AppPaths.data_dir` w obie strony →
+    `inside_app_data`; z folderem innego projektu w obie strony →
+    `overlaps_project`); `validate_settings` → `check_own_data_dirs`
+    (nowy albo zmieniony folder: istnieje i czytelny — `own_data_dir_missing`,
+    `_not_directory`, `_unreadable`; każdy: magazyny i pozostałe wpisy,
+    problem `own_data_dir_<powód>`, pole `own_data_dirs.<klucz>`).
+    Odstępstwo: `validate_settings` nie zna katalogu danych ani folderów
+    domyślnych projektów z indeksu — sprawdza je usługa i każdy skan. Model
+    API `Settings` dostał `own_data_dirs` (inaczej `PUT /settings`
+    z interfejsu kasowałby wpisy); `doctor` ma dla nich wskazówki naprawy.
+  - *Indeks* (`SCHEMA_VERSION` 6): `own_folders` (`project` = klucz dostępu,
+    `path`, `source`, `state`, `reason`, `scanned_at`, `files`, `size_bytes`,
+    `snapshots`, `snapshots_bytes`), `own_files` (`path` w NFC, `file_id` =
+    `own_file_id(path)` — 16 znaków SHA-256 ścieżki w NFC, `disk_path`,
+    `stamp` — JSON rozmiarów i czasów członów oraz `-wal`/`-journal`,
+    `read_state` `ok`/`unrecognized`/`unreadable`, `read_error`
+    (`unsupported_format`, `unreadable`, `timeout`, `memory_limit`,
+    `inconsistent`, `path_outside_root`), `retry`, treść, warstwy i raster
+    w JSON, układ, prostokąt, `wgs84`, `location_reason`, `change`,
+    `last_snapshot`, `first_seen_at`, `changed_at`, `missing_since`),
+    `own_file_states` (≤ 200 na plik), `snapshots` (`path`, `file_id`,
+    `label`, `state`, `created_at` w UTC, treść, `size_bytes`, `stamp`,
+    pełny `document`), `own_problems` (kod, ścieżka w folderze — `''` dla
+    folderu, `reason`, `first_seen_at`). `IndexWriter`: `write_own_folder`
+    (inna ścieżka albo `invalid` → pliki, migawki i problemy folderu
+    usunięte), `known_own_files`, `write_own_files`, `mark_own_missing`
+    (`present`, `drop` — poza limitem 10 000), `known_own_snapshots`,
+    `record_snapshot(project, SnapshotWrite)` (dla kroku 8; stan zmiany
+    liczony od razu), `write_own_snapshots`, `finish_own_folder` (problemy
+    i sumy), `remove_own_folders`; `project` to zawsze klucz dostępu.
+    `IndexQueries` (wymagany `visible`, `project` = klucz projektu):
+    `own_folder` → `OwnFolderRecord | None`, `own_files(…, q, state, limit,
+    cursor)` → `OwnFilePage(folder, items, next_cursor) | None` (`state`:
+    stan pliku albo zmiany; `q`: słowa w ścieżce), `own_file(project,
+    file_id)` → `OwnFileDetail` (historia, migawki od najnowszej, problemy
+    pliku i jego migawek) `| None`. Zmiana: `unsnapshotted` bez ważnej
+    migawki, `unchanged` przy tej samej metodzie i skrócie co najnowsza
+    migawka `ok`, inaczej `changed`.
+  - *Dokument migawki* (`owndata/document.py`): `SnapshotDocument` (pola
+    decyzji 9; `schema` i `copy` jako aliasy pól `format` i `copied`,
+    zapis `model_dump(by_alias=True)`, odczyt `extra="ignore"`),
+    `parse_snapshot_document(bytes) -> (surowy dict, model)`,
+    `UnknownSnapshotSchemaError`, `InvalidSnapshotError`, stałe
+    `SNAPSHOTS_DIR`, `INCOMING_DIR`, `SNAPSHOT_FILE`, `SNAPSHOT_SCHEMA`,
+    `LABEL_PATTERN`, `MAX_NOTE_CHARS`.
+  - *Skan* (`owndata/scan.py`): `scan_own_data(writer, projects, *,
+    known_projects, settings, paths, transformer, prune, now, on_progress,
+    reader) -> OwnScanSummary` (`result()` — wynik zadania);
+    `check_own_folder(settings, project, *, stores, app_data, others) ->
+    OwnFolderCheck(path, source, state, reason)` i `folder_rules(settings,
+    known_projects)` — te same reguły dla skanu, usługi i kroku 8 (magazyny
+    to też bezwzględne `store_dir` projektów); `snapshot_stamp(katalog) ->
+    (stamp, bajty)` — krok 8 zapisuje go w `SnapshotWrite`, więc skan nie
+    liczy sum migawki ponownie. Plik bez sterownika w tabeli formatów nie
+    idzie do czytnika (odpowiedź byłaby ta sama). Pomiar: 2000 plików —
+    pierwszy skan 1,8 s, bez zmian 0,055 s.
+  - *Zadanie `own_scan`*: reguła `JobRule(store=False, exclusive=True,
+    join=JobJoin(_join_own_scan, ("queued",)))` — dołączenie tylko do
+    czekającego przebiegu wszystkich projektów albo tego samego projektu;
+    parametry `{}` albo `{"project": klucz}`; błąd `own_reader_failed`,
+    nieznany projekt → `not_found`; postęp `current`/`total` (foldery),
+    `files`, `read`; `JobSupervisor.own_scan_history()`; przycinanie
+    rutynowych przebiegów (harmonogram, wszystkie projekty, zero `new`,
+    `changed`, `missing`, `snapshots`, `problems`) liczone w `prune()`.
+    Harmonogram: `plan_own_scan(settings, history, *, now, started_at)`,
+    `tick()` zwraca też zlecony `own_scan`.
+  - *Usługa i modele* (dla 9): `services/owndata.py::set_data_dir(authorizer,
+    principal, settings, queries, paths, project, path | None) ->
+    OwnFolderCheck` (`settings.write`, projekt widoczny, reguły,
+    `SettingsValidationError`), `own_problems(record)` (teksty polskie,
+    powody `own_folder_reason_*`, `own_read_error_*`);
+    `api/models_owndata.py`: `OwnFolder.of`, `OwnFileItem.of`,
+    `OwnFileList.of`, `OwnFileCard.of` (bez `preview` — dodaje krok 9),
+    `SnapshotItem.of`, `file_ref`, `snapshot_ref`, `copy_path`.
 
 ### 8. Migawki
 - **Cel:** `check_snapshot` i `make_snapshot` (decyzja 9: folder ważny,

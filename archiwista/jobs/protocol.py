@@ -39,6 +39,7 @@ type JobKind = Literal[
     "footprints",
     "link_check",
     "preview",
+    "own_scan",
 ]
 type MessageType = Literal["progress", "notice", "result", "error"]
 type NoticeLevel = Literal["info", "warning"]

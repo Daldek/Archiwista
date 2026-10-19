@@ -13,7 +13,9 @@ input, runs it and reports in JSON Lines on standard output
   that does not hold the version its sidecar names is a ``link_mismatch``
   problem until a later check confirms it;
 - ``preview``: local previews of files, each built in a render process of
-  its own (``archiwista.previews.build.run_preview``, plan v0.2 decision 3).
+  its own (``archiwista.previews.build.run_preview``, plan v0.2 decision 3);
+- ``own_scan``: the data folders of every project, or of one
+  (``archiwista.owndata.scan.scan_own_data``, plan v0.2 decision 8).
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -34,15 +36,16 @@ from pathlib import Path
 from typing import IO, cast
 
 from archiwista.auth import ALL_PROJECTS
-from archiwista.config import StoreConfig
+from archiwista.config import AppPaths, StoreConfig
 from archiwista.errors import (
+    OwnReaderError,
     PathOutsideRootError,
     ProducerError,
     SourceIncompatibleError,
     SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, IndexWriter
+from archiwista.index import IndexQueries, IndexWriter, TransformerFactory
 from archiwista.index.scanner import (
     ScanEvent,
     ScanMode,
@@ -67,10 +70,12 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.messages import MESSAGES
+from archiwista.owndata.scan import OwnScanProgress, scan_own_data
 from archiwista.paths import resolve_indexed_path
 from archiwista.previews.build import run_preview
 from archiwista.services.problems import explain
 from archiwista.sources import (
+    GeoAdapter,
     LinkCheckAdapter,
     SourceAdapter,
     SourceEntry,
@@ -355,12 +360,72 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     return {**result, "confirmed": holds, "status": "confirmed"}
 
 
+def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
+    """Scan the data folders of every project, or of ``project`` (decision 8).
+
+    A run of every project also forgets the folders of projects no longer
+    indexed. Outlines take the pinned operations of the first producer that
+    has them; without one only files in WGS84 get an outline.
+    """
+    project = spec.params.get("project")
+    # The reader process reads no settings: only its work directory, below
+    # the data directory (the index's).
+    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
+    registry = load_registry(cache_dir=spec.cache_dir)
+    with (
+        IndexWriter(spec.index_path) as writer,
+        IndexQueries(spec.index_path) as queries,
+    ):
+        known = queries.projects(visible=ALL_PROJECTS)
+        chosen = [item for item in known if project in (None, item.key)]
+        if project is not None and not chosen:
+            message = MESSAGES["project_not_found"].format(project=project)
+            raise JobFailure("not_found", message)
+        emit.progress(0, len(chosen), files=0, read=0)
+
+        def progress(found: OwnScanProgress) -> None:
+            emit.progress(
+                found.current, found.total, files=found.files, read=found.read
+            )
+
+        try:
+            summary = scan_own_data(
+                writer,
+                chosen,
+                known_projects=known,
+                settings=spec.settings,
+                paths=paths,
+                transformer=_transformer(registry),
+                prune=project is None,
+                on_progress=progress,
+            )
+        except OwnReaderError as error:
+            message = MESSAGES["own_scan_reader_failed"].format(detail=error)
+            raise JobFailure(
+                "own_reader_failed", message, type(error).__name__
+            ) from error
+    return summary.result()
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
     "link_check": run_link_check,
     "preview": run_preview,
+    "own_scan": run_own_scan,
 }
+
+
+def _transformer(registry: SourceRegistry) -> TransformerFactory | None:
+    """Return the pinned operations of the first producer that has them."""
+    for producer in sorted(registry.producers()):
+        try:
+            adapter = registry.adapter(producer)
+        except SourceStateError:
+            continue
+        if isinstance(adapter, GeoAdapter):
+            return adapter.transformer
+    return None
 
 
 def _store(spec: JobSpec) -> StoreConfig:

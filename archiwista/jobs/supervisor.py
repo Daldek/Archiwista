@@ -362,15 +362,30 @@ def _join_preview(active: JsonObject, new: JsonObject) -> JsonObject | None:
     }
 
 
+def _join_own_scan(active: JsonObject, new: JsonObject) -> JsonObject | None:
+    """Join an ``own_scan`` request to a waiting run that covers its folder.
+
+    A waiting run of every project (no ``project``) takes any request; a
+    waiting run of one project takes a request of the same project. The
+    run starts after the request, so a change made before it is found.
+    """
+    if "project" not in active or active == new:
+        return active
+    return None
+
+
 # Jobs writing a store's index: one of them per store at a time.
 _INDEX_CONFLICT = JobConflict("index", _store_key, "job_conflict")
 _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
+# Only a waiting run takes a request: a running one may have passed the change.
+_OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
 # The rule of each kind, one line per kind of ``JobKind``.
 JOB_RULES: Mapping[JobKind, JobRule] = {
     "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
     "footprints": JobRule(store=True, network=True, conflict=_INDEX_CONFLICT),
     "link_check": JobRule(store=True),
     "preview": JobRule(store=False, exclusive=True, join=_PREVIEW_JOIN),
+    "own_scan": JobRule(store=False, exclusive=True, join=_OWN_SCAN_JOIN),
 }
 
 
@@ -544,6 +559,7 @@ class JobSupervisor:
         with self._lock:
             db = self._open_db()
             routine = _prune_routine_scans(db, self._paths.jobs_dir, now=moment)
+            routine += _prune_routine_own_scans(db, self._paths.jobs_dir, now=moment)
             _prune_logs(self._paths.jobs_dir, now=moment)
             _prune_jobs(db, now=moment)
         return routine
@@ -838,6 +854,25 @@ class JobSupervisor:
             full_at=_datetime(full),
             busy=busy is not None,
         )
+
+    def own_scan_history(self) -> ScanHistory:
+        """Return when an ``own_scan`` of every project last ended and if one is on.
+
+        ``finished_at`` is the end of the last run of every project, whatever
+        its outcome; ``busy``: such a run waits or runs (the scheduler then
+        submits none).
+        """
+        with self._reading() as connection:
+            finished = connection.execute(
+                "SELECT max(coalesce(finished_at, created_at)) FROM jobs"
+                f" WHERE kind = 'own_scan' AND state IN {_FINISHED_SQL}"
+                " AND json_extract(params, '$.project') IS NULL"
+            ).fetchone()[0]
+            busy = connection.execute(
+                f"SELECT 1 FROM jobs WHERE kind = 'own_scan' AND state IN {_ACTIVE_SQL}"
+                " AND json_extract(params, '$.project') IS NULL LIMIT 1"
+            ).fetchone()
+        return ScanHistory(finished_at=_datetime(finished), busy=busy is not None)
 
     def list(
         self,
@@ -1315,6 +1350,13 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return {"mode": mode, "segment": segment or None}
     if kind == "preview":
         return _preview_params(params)
+    if kind == "own_scan":
+        project = params.get("project")
+        if set(params) - {"project"} or not (
+            project is None or (isinstance(project, str) and project)
+        ):
+            raise ValueError(f"invalid own scan parameters {dict(params)!r}")
+        return {} if project is None else {"project": project}
     if kind == "link_check":
         slot = params.get("slot")
         if not isinstance(slot, str) or not slot or set(params) != {"slot"}:
@@ -1585,6 +1627,36 @@ def _prune_routine_scans(
             " WHERE e.job_id = jobs.id AND e.type = 'notice'"
             " AND json_extract(e.data, '$.code') IS NOT 'footprints_failed'))"
             " WHERE place > 1 AND finished_at < ?",
+            (_iso(now - ROUTINE_SCAN_MAX_AGE),),
+        ).fetchall()
+        db.executemany("DELETE FROM jobs WHERE id = ?", [(row["id"],) for row in rows])
+    for row in rows:
+        _log_path(jobs_dir, row["id"]).unlink(missing_ok=True)
+    return len(rows)
+
+
+# An ``own_scan`` result that changed nothing (``OwnScanSummary.result``).
+_OWN_SCAN_UNCHANGED = " AND ".join(
+    f"json_extract(summary, '$.{name}') = 0"
+    for name in ("new", "changed", "missing", "snapshots", "problems")
+)
+
+
+def _prune_routine_own_scans(
+    db: sqlite3.Connection, jobs_dir: Path, *, now: datetime
+) -> int:
+    """Forget routine ``own_scan`` runs older than 48 hours, like routine scans.
+
+    A routine run is one of every project that the scheduler started and
+    that succeeded without changing anything; the newest one stays.
+    """
+    with _transaction(db):
+        rows = db.execute(
+            "SELECT id FROM (SELECT id, finished_at, row_number() OVER ("
+            " ORDER BY finished_at DESC, id DESC) AS place FROM jobs"
+            " WHERE kind = 'own_scan' AND actor_kind = 'scheduler'"
+            " AND state = 'succeeded' AND json_extract(params, '$.project') IS NULL"
+            f" AND {_OWN_SCAN_UNCHANGED}) WHERE place > 1 AND finished_at < ?",
             (_iso(now - ROUTINE_SCAN_MAX_AGE),),
         ).fetchall()
         db.executemany("DELETE FROM jobs WHERE id = ?", [(row["id"],) for row in rows])

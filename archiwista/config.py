@@ -7,7 +7,7 @@ import sys
 import tempfile
 import threading
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Annotated, Literal, Protocol, Self
@@ -41,9 +41,13 @@ DEFAULT_FULL_SCAN_INTERVAL_H = 24
 DEFAULT_PREVIEW_CACHE_LIMIT_GB = 20
 SHARE_FILESYSTEMS = frozenset({"cifs", "smb3", "smbfs", "nfs", "nfs4"})
 MOUNTINFO_PATH = Path("/proc/self/mountinfo")
+# A project's data folder unless the settings name another (decision 8).
+OWN_DATA_DIR_NAME = "dane"
 
 type StoreKind = Literal["local", "share"]
 type BasemapKind = Literal["xyz", "wms"]
+type OwnFolderSource = Literal["default", "setting"]
+type OwnFolderReason = Literal["inside_store", "inside_app_data", "overlaps_project"]
 # Visibility of a project without its own access entry (A-ADR-029): everyone
 # sees it, or administrators only until someone shares it.
 type DefaultProjectVisibility = Literal["public", "private"]
@@ -374,6 +378,10 @@ class AppSettings(BaseModel):
     preview_cache_limit_gb : int
         Size limit of the preview cache in GB (1024**3 bytes); past it the
         least recently used previews go (SPEC 5.7).
+    own_data_dirs : dict[str, str]
+        Data folder of a project by the project directory after ``realpath``
+        (its access key): absolute directories, set by an administrator.
+        Without an entry a project's folder is ``<project directory>/dane``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -398,6 +406,7 @@ class AppSettings(BaseModel):
     preview_cache_limit_gb: int = Field(
         default=DEFAULT_PREVIEW_CACHE_LIMIT_GB, ge=1, le=10_000
     )
+    own_data_dirs: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("default_project_visibility", mode="before")
     @classmethod
@@ -424,6 +433,14 @@ class AppSettings(BaseModel):
         )
         return value
 
+    @field_validator("own_data_dirs")
+    @classmethod
+    def _check_own_data_dirs(cls, value: dict[str, str]) -> dict[str, str]:
+        for project, folder in value.items():
+            _require_absolute(Path(project))
+            _require_absolute(Path(folder))
+        return value
+
     def store(self, store_id: str) -> StoreConfig | None:
         """Return the store with ``store_id`` or ``None``."""
         return next((store for store in self.stores if store.id == store_id), None)
@@ -441,6 +458,24 @@ class AppSettings(BaseModel):
     def preview_cache_limit_bytes(self) -> int:
         """Return the preview cache limit in bytes."""
         return self.preview_cache_limit_gb * 1024**3
+
+    def own_data_dir(self, project: str) -> tuple[Path, OwnFolderSource]:
+        """Return a project's data folder and where it comes from.
+
+        Parameters
+        ----------
+        project : str
+            The project directory after ``realpath`` (``access_key``).
+
+        Returns
+        -------
+        tuple[Path, {"default", "setting"}]
+            The folder of ``own_data_dirs``, or ``<project>/dane``.
+        """
+        folder = self.own_data_dirs.get(project)
+        if folder is not None:
+            return Path(folder), "setting"
+        return Path(project) / OWN_DATA_DIR_NAME, "default"
 
 
 def _require_unique(values: Sequence[str], message_key: str) -> None:
@@ -657,7 +692,112 @@ def validate_settings(
     for index, path in enumerate(settings.project_dirs):
         if path not in old_project_dirs:
             problems.extend(check_project_dir(path, f"project_dirs[{index}]"))
+    problems.extend(check_own_data_dirs(settings, previous=previous))
     return tuple(problems)
+
+
+def check_own_data_dirs(
+    settings: AppSettings, *, previous: AppSettings | None = None
+) -> tuple[SettingsProblem, ...]:
+    """Check the data folders of ``own_data_dirs`` (decision 8).
+
+    A new or changed folder must be an existing, readable directory. Every
+    folder must lie outside the stores' producer directories and apart from
+    the other folders of the settings (``own_folder_conflict``). The
+    folders of projects without an entry and Archiwista's data directory
+    are not known here: the service setting a folder and every scan check
+    them too.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Candidate settings.
+    previous : AppSettings or None, optional
+        Settings in effect; their folders are not checked on the disk again.
+
+    Returns
+    -------
+    tuple[SettingsProblem, ...]
+        At most one problem per folder.
+    """
+    old = previous.own_data_dirs if previous is not None else {}
+    stores = [root for store in settings.stores for root in store.roots().values()]
+    problems: list[SettingsProblem] = []
+    for project, folder in settings.own_data_dirs.items():
+        field = f"own_data_dirs.{project}"
+        values = {"project": project, "path": folder}
+        if old.get(project) != folder:
+            code = _directory_problem(Path(folder), prefix="own_data_dir")
+            if code is not None:
+                message = MESSAGES[code].format(**values)
+                problems.append(SettingsProblem(code, field, message))
+                continue
+        others = [
+            Path(other)
+            for key, other in settings.own_data_dirs.items()
+            if key != project
+        ]
+        conflict = own_folder_conflict(
+            Path(folder), stores=stores, app_data=None, others=others
+        )
+        if conflict is not None:
+            reason, directory = conflict
+            code = f"own_data_dir_{reason}"
+            message = MESSAGES[code].format(**values, other=directory)
+            problems.append(SettingsProblem(code, field, message))
+    return tuple(problems)
+
+
+def own_folder_conflict(
+    folder: Path,
+    *,
+    stores: Iterable[Path],
+    app_data: Path | None,
+    others: Iterable[Path],
+) -> tuple[OwnFolderReason, Path] | None:
+    """Return why a data folder may not be used, or ``None`` (decision 8).
+
+    Paths are compared after ``realpath`` (a folder that does not exist is
+    resolved as far as it does), so a symbolic link does not hide a store.
+    A snapshot must never land in a store, a file belongs to one project
+    (so to one visibility), and Archiwista's own data is never read as a
+    project's.
+
+    Parameters
+    ----------
+    folder : Path
+        The data folder.
+    stores : Iterable[Path]
+        Producer directories of the stores: the folder must not be one of
+        them or lie inside one.
+    app_data : Path or None
+        Archiwista's data directory (``AppPaths.data_dir``): the folder must
+        neither contain it nor lie in it.
+    others : Iterable[Path]
+        Data folders of the other projects: the folder must neither contain
+        one of them nor lie in one.
+
+    Returns
+    -------
+    tuple[OwnFolderReason, Path] or None
+        ``inside_store``, ``inside_app_data`` or ``overlaps_project`` with
+        the directory in the way, checked in this order.
+    """
+    real = Path(os.path.realpath(folder))
+    for store in stores:
+        if real.is_relative_to(os.path.realpath(store)):
+            return "inside_store", store
+    if app_data is not None and _overlap(real, Path(os.path.realpath(app_data))):
+        return "inside_app_data", app_data
+    for other in others:
+        if _overlap(real, Path(os.path.realpath(other))):
+            return "overlaps_project", other
+    return None
+
+
+def _overlap(first: Path, second: Path) -> bool:
+    """Whether two real directories are one, or one lies inside the other."""
+    return first.is_relative_to(second) or second.is_relative_to(first)
 
 
 def check_store_root(

@@ -95,6 +95,7 @@ def test_config_store_round_trip_restores_all_settings(
         ),
         store_write_for_all=True,
         default_project_visibility="private",
+        own_data_dirs={str(tmp_path / "projekty" / "raba"): '/mnt/nas/dane "raba"'},
     )
     store = ConfigStore(tmp_path / "config" / "config.toml")
 
@@ -391,3 +392,43 @@ def test_settings_service_rejected_change_keeps_file_and_state(tmp_path: Path) -
     assert not config.exists()
     assert service.get() == AppSettings()
     assert calls == []
+
+
+def test_own_data_dir_validation(tmp_path: Path, roots: tuple[Path, Path]) -> None:
+    """A data folder in a store, nested with another project's or absent is refused.
+
+    A valid folder passes; one refused already (unchanged since the
+    settings in effect) is not checked on the disk again, only its rules.
+    """
+    # Arrange
+    store = make_store("zespol", roots[0])
+    valid = tmp_path / "dane" / "raba"
+    nested = valid / "wisla"
+    inside = roots[0] / "projekty" / "dane"
+    for folder in (nested, inside):
+        folder.mkdir(parents=True)
+    projects = {name: str(tmp_path / "projekty" / name) for name in "abcd"}
+
+    def check(**folders: Path) -> list[tuple[str, str]]:
+        settings = AppSettings(
+            stores=(store,),
+            own_data_dirs={projects[key]: str(path) for key, path in folders.items()},
+        )
+        return [(p.code, p.field) for p in validate_settings(settings, ProbeRegistry())]
+
+    # Act
+    alone = check(a=valid)
+    refused = check(a=valid, b=nested, c=inside, d=tmp_path / "brak")
+    with pytest.raises(SettingsValidationError) as relative:
+        parse_settings({"own_data_dirs": {projects["a"]: "dane/raba"}})
+
+    # Assert
+    assert alone == []
+    field = "own_data_dirs.{}".format
+    assert refused == [
+        ("own_data_dir_overlaps_project", field(projects["a"])),
+        ("own_data_dir_overlaps_project", field(projects["b"])),
+        ("own_data_dir_inside_store", field(projects["c"])),
+        ("own_data_dir_missing", field(projects["d"])),
+    ]
+    assert "bezwzględna" in relative.value.problems[0].message

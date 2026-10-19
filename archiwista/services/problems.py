@@ -7,7 +7,7 @@ the instruction tells a person what to do (SPEC 4.6, UC-13).
 from dataclasses import dataclass
 from datetime import datetime
 
-from archiwista.index import IssueOrigin
+from archiwista.index import OWN_PROBLEM_CODES, IssueOrigin
 from archiwista.messages import MESSAGES
 
 # Codes with their own message and instruction; others use ``problem_other``.
@@ -24,6 +24,7 @@ KNOWN_PROBLEMS = frozenset(
         "pin_sha256_mismatch",
         "invalid_manifest",
         "unknown_store",
+        *OWN_PROBLEM_CODES,
     }
 )
 
