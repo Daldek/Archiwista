@@ -346,6 +346,7 @@ def test_api_openapi_documents_routes_examples_and_problems(
     for key in ROUTES:
         responses = operations[key]["responses"]
         assert "application/problem+json" in responses["401"]["content"]
+        assert "application/problem+json" in responses["403"]["content"]
         for status, response in responses.items():
             if int(status) >= 400:
                 assert list(response["content"]) == ["application/problem+json"]

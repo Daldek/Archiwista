@@ -83,10 +83,11 @@ _DOCUMENTED: Mapping[int, tuple[str, str, str]] = MappingProxyType(
             "No valid session: exchange a one-time token (POST /api/v1/session).",
         ),
         403: (
-            "permission_denied",
-            "permission_settings_write",
-            "Refused: `permission_denied` (A-ADR-029), `csrf_rejected` (no"
-            " X-Archiwista-CSRF on a change) or `path_outside_root`.",
+            "csrf_rejected",
+            "api_csrf_missing",
+            "Refused: `csrf_rejected` (no or another X-Archiwista-CSRF, a"
+            " foreign `Origin` or a cross-site request), `permission_denied`"
+            " (A-ADR-029) or `path_outside_root`.",
         ),
         404: (
             "not_found",

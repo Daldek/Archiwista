@@ -1,10 +1,10 @@
 # API Archiwisty dla agentów i skryptów
 
 Przewodnik dla agentów AI (np. Claude Code) i skryptów, które korzystają
-z Archiwisty bez przeglądarki. Opisuje stan v0.1: odczyt indeksu
-magazynu, karty plików i projektów, stan serwera oraz zadania skanu. Agent
-używa zwykłego API HTTP `/api/v1` albo poleceń `archiwista … --json` —
-nie narzędzi czatu ani MCP (tych v0.1 nie ma).
+z Archiwisty bez przeglądarki. Opisuje stan wydania 0.1.0: odczyt indeksu
+magazynu, karty plików i projektów, obszary i stan lokalny, stan serwera
+oraz zadania w tle. Agent używa zwykłego API HTTP `/api/v1` albo poleceń
+`archiwista … --json` — nie narzędzi czatu ani MCP (tych v0.1 nie ma).
 
 Do v1.0 API może się zmieniać. Pełny schemat z przykładami jest zawsze pod
 `/api/v1/openapi.json` (wymaga sesji), a dokumentacja interaktywna pod
@@ -23,6 +23,7 @@ ludzi (`detail`, `title`, `message`) — po polsku.
 | projekty | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | karta projektu | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | token sesji dla agenta | `archiwista token --json` | `POST /session/tokens` |
+| obszar i stan lokalny produktu | — (obszar zakłada HTTP; jego wiersze: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | skan magazynu, zadania, SSE | — (tylko HTTP) | `POST /stores/{store}/scan`, `/jobs` |
 
 CLI czyta lokalny indeks bez działającego serwera i wywołuje te same usługi
@@ -50,9 +51,10 @@ Serwer słucha tylko na `127.0.0.1` (domyślnie port `8090`, ustawienie
 
 1. Właściciel uruchamia serwer: `archiwista serve --no-browser`.
 2. Agent bierze jednorazowy token: `archiwista token --json` →
-   `{"token": "…", "url": "http://127.0.0.1:8090/#token=…", "expires_at": "…"}`.
+   `{"token": "…", "url": "http://127.0.0.1:8090/#token=…", "label": "…", "expires_at": "…"}`.
    Token jest ważny 5 minut i tylko raz; indeks przechowuje wyłącznie jego
-   skrót. Port w `url` pochodzi z ustawień (`--port N` go zmienia).
+   skrót. Port w `url` pochodzi z ustawień (`--port N` go zmienia), a `label`
+   to etykieta sesji, którą token otworzy.
 3. Agent wymienia token na sesję: `POST /api/v1/session` z treścią
    `{"token": "…"}`. Odpowiedź `200` ustawia ciasteczko `archiwista_session`
    (`HttpOnly`) i zwraca `{"actor": "local", "kind": "agent", "label": "…",
@@ -91,7 +93,10 @@ Zasady sesji:
 - Sesje żyją w pamięci serwera: wygasają po 24 h bezczynności, sesja agenta
   najpóźniej 12 h po starcie, a restart serwera kończy wszystkie
   (`401 session_required` → nowy token). Właściciel kończy wszystkie sesje
-  agentów poleceniem `archiwista token --revoke-all`.
+  agentów poleceniem `archiwista token --revoke-all` — od razu, także na
+  działającym serwerze — i unieważnia tym niewykorzystane tokeny agentów.
+  Wyłączenie albo usunięcie konta kończy jego sesje, a odebrana rola
+  przestaje działać przy następnym żądaniu.
 - `GET /session` zwraca stan sesji (bez `csrf_token`); `DELETE /session`
   kończy sesję. Agent nie wystawia tokenów kolejnych sesji
   (`POST /session/tokens` → `403 permission_denied`) — nowy token daje
@@ -226,6 +231,29 @@ jako aktualnego stanu dysku.
 co wymaga sieci; odczyt indeksu, karty i skany lokalne działają dalej,
 a zadanie obrysów jednostek dostaje `409 offline_mode`.
 
+**Obszar i stan lokalny.** `POST /areas` zapisuje obszar: GeoJSON
+`Polygon` albo `MultiPolygon` w WGS84 jako `application/json`
+(`{"geometry": {…}, "name": "…"}`) albo plik GeoJSON, GeoPackage lub ZIP
+z jednym Shapefile jako surową treść (np. `Content-Type:
+application/octet-stream`; `?name=` i — dla pliku z kilkoma warstwami —
+`?layer=`). Odpowiedź `201` ma `id` (ta sama geometria zawsze dostaje to
+samo), pole w km² (`area_km2`, `area_crs`) i kraje. `id` jest parametrem
+`area_id` w `/slots` (`archiwista search --area-id`) i w
+`GET /local-coverage?area_id=…&product=…&store=…` — ile obszaru pokrywają
+bieżące wersje produktu w magazynie: `results` z krajem, `percent`
+(zaokrąglony w dół) i `label` („lokalnie 83% obszaru”). Przed policzeniem
+serwer czyta sloty obszaru z magazynu (najwyżej 500, do 10 s); w przeciwnym
+razie odpowiada z indeksu i podaje powód w `stale_reason`.
+
+```sh
+AREA="$(curl -sf -b "$JAR" -H "$H" -H 'Content-Type: application/json' \
+  -d '{"geometry": {"type": "Polygon", "coordinates": [[[19.9, 50.0],
+       [20.0, 50.0], [20.0, 50.05], [19.9, 50.05], [19.9, 50.0]]]}}' \
+  "$BASE/areas" | jq -r .id)"
+curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store=zespol"
+archiwista search --area-id="$AREA" --product=nmt --json
+```
+
 ## 6. Błędy
 
 Każdy błąd HTTP to `application/problem+json` (RFC 9457), np. dla
@@ -254,10 +282,12 @@ Decyzje opieraj na `status` i `code` — nigdy na tekście `detail`.
 | 403 | `path_outside_root` | ścieżka wychodzi poza magazyn |
 | 404 | `not_found` | nieznany zasób albo projekt niewidoczny dla wykonawcy |
 | 405 | `method_not_allowed` | inna metoda; dozwolone w nagłówku `Allow` |
-| 413 | `request_too_large` | treść żądania ponad limit (4 KiB wymiana tokenu, 1 MiB pozostałe) |
 | 409 | `conflict` | trwa już zadanie zapisujące indeks tego magazynu (pole `job`) — śledź je zamiast ponawiać |
 | 409 | `offline_mode` | operacja wymaga sieci, a włączony jest tryb offline |
+| 413 | `request_too_large` | treść żądania ponad limit (4 KiB wymiana tokenu, 1 MiB pozostałe) |
+| 413 | `area_too_large` | plik obszaru ponad 50 MB albo archiwum ponad 200 MB po rozpakowaniu |
 | 422 | `validation_error` | niepoprawne parametry lub treść: `errors` (`field`, `type`, `message`) albo `problems` (ustawienia) |
+| 422 | `area_unreadable`, `area_too_complex` | pliku obszaru nie da się odczytać (przy kilku warstwach pole `layers` — wybierz `?layer=`) albo obszar ma ponad 100 000 wierzchołków |
 | 422 | `kartograf_error`, `imgwtools_error`, `producer_error` | producent odrzucił wywołanie; pole `kartograf`/`imgwtools` ma `exception` i niezmieniony `message` |
 | 500 | `internal_error` | błąd Archiwisty — szczegóły w dzienniku serwera |
 | 503 | `source_unavailable` | brak wtyczki producenta; pole `source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), naprawa na końcu `detail` |
@@ -329,6 +359,12 @@ nowych zdarzeń odpowiedź to `204`. Po 15 s ciszy serwer wysyła komentarz
 powinien mieć limitu czasu odczytu (np. `httpx` z `timeout=None`). Po
 zerwaniu połączenia wznów z nagłówkiem `Last-Event-ID` równym ostatniemu
 odebranemu `id`.
+
+Strumień, jak każde żądanie `/api`, wymaga nagłówka `X-Archiwista-CSRF`.
+Przeglądarkowy `EventSource` nie wysyła własnych nagłówków, więc się tu nie
+nadaje: strumień czyta się zwykłym klientem HTTP z odczytem treści na
+bieżąco — `curl -N`, `httpx.stream(…)`, w przeglądarce `fetch`
+i `response.body` (tak czyta go interfejs Archiwisty).
 
 ```sh
 JOB="$(curl -sf -b "$JAR" -H "$H" -X POST \

@@ -1,51 +1,62 @@
 # PROGRESS — Archiwista
 
-## Start następnej sesji (stan 2026-10-18)
+## Start następnej sesji (stan 2026-10-19)
 
-**Status:** dokumentacja produktu i architektura przyjęte; plan v0.1
-(`docs/PLAN_v0.1.md`) poprawiony po przeglądzie i uzupełniony o krok 8b
-„Model uprawnień” (A-ADR-029); kroki 0–5, 7 i 8 planu ukończone (ostatni:
-`1347bb8`), krok 6a w toku.
-**Następny krok:** 6a i 8b (równolegle), potem 6b i 9a. Kroki wymagające
-KA-1..KA-6 (z `list_segments` i `skip_versions`) korzystają z gałęzi
-Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
-
-### Na samym początku implementacji (pierwsze zadania planu v0.1)
-
-1. ✓ Przetłumaczono na angielski `CONTRIBUTING.md`, `CONTRIBUTORS.md`
-   i `.github/pull_request_template.md` (wzór: Hydraulik i IMGWTools,
-   A-ADR-026 errata 2). Szablon PR ma też punkty o testach i lintach
-   jak w IMGWTools.
-2. Stosować `docs/DEVELOPMENT_STANDARDS.md` od pierwszego pliku: cały kod,
-   docstringi, komentarze i logi po angielsku; polski tylko w tekstach
-   interfejsu (słownik), dokumentacji projektu i opisach commitów.
-3. ✓ Krok 1 planu (`c74f8d4`): `pyproject.toml` z `kartograf>=0.8.0,<0.9`,
-   `requirements.lock`, Ruff/mypy/pytest z bramką pokrycia 80%, CLI
-   `archiwista --help`, interfejs źródła (`archiwista/sources/`). Umowę
-   źródła rozszerza wyłącznie krok 2 (plan, sekcja „Umowy”).
+**Status:** wydanie **0.1.0 „Przeglądarka”** gotowe na `develop`
+(`chore(release): wydanie 0.1.0`): kroki 0–14 planu v0.1
+(`docs/PLAN_v0.1.md`) ukończone, wszystkie kryteria SPEC 13 v0.1
+zaliczone, bramka zielona (`docs/raporty/v0.1-pomiary.md`, sekcja 10).
+Bez tagu `v0.1.0` i bez scalenia do `main` — czeka na decyzję
+użytkownika.
+**Następny krok:** plan v0.2 „Podglądy” — nowy `docs/PLAN_v0.2.md`
+w kolejności jak przy v0.1: spec → plan → przegląd planu → implementacja.
+Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 
 ### Czytaj najpierw
 
 | Dokument | Rola |
 |---|---|
+| `README.md` | instalacja, uruchomienie, CLI, położenie danych, bramka |
+| `CHANGELOG.md` | co weszło do 0.1.0, znane ograniczenia |
 | `docs/PRD.md` | wymagania F1–F16, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
-| `docs/PLAN_v0.1.md` | plan implementacji v0.1: kontrakty, kolejność kroków, zależności i weryfikacja kryteriów akceptacji |
+| `docs/PLAN_v0.1.md` | plan v0.1 z umowami między krokami — wzór dla planu v0.2 |
+| `docs/raporty/v0.1-pomiary.md` | pomiary SPEC 4.5, odbiór v0.1, bramka wydania, zrzuty |
+| `docs/Przewodnik_uzytkownika.md`, `docs/API_dla_agentow.md` | dokumentacja użytkownika i agentów (stan 0.1.0) |
 | `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
 | `docs/DECISIONS.md` | A-ADR-001..029 (erraty na końcu wpisów) |
 | `mockup/README.md` | mockup: przepływ, co prawdziwe, co symulowane, zrzuty |
 
 ### Stan repozytorium
 
-- Gałęzie: `main`, `develop` (plan v0.1 i kod kroków 0–5, 7 i 8),
+- Gałęzie: `main` (tylko commit inicjalizujący), `develop` (wydanie 0.1.0),
   `feat/mockup` (historia pierwszych wersji mockupu, `e25e833`). Bez
-  remote.
-- Kartograf: gałąź `feat/archiwista-store-api` (KA-1..KA-6 w wydaniu 0.8.0,
-  ADR-045) — scalenie do `develop` i tag `v0.8.0` dopiero po zgodzie
-  użytkownika.
+  remote, bez tagów.
+- Kartograf: gałąź `feat/archiwista-store-api` — KA-1..KA-6 w wydaniu 0.8.0
+  (ADR-045) oraz `list_partitions`, `iter_store(partition=…)` i mapowanie
+  w `skip_versions` (ADR-045 errata 1). Archiwista 0.1.0 wymaga tej gałęzi
+  zainstalowanej edytowalnie w `.venv`.
+- Dane robocze poza repo: `<katalog-danych>` (magazyny syntetyczne,
+  przebiegi pomiarów, środowiska smoke).
 
-### Decyzje (stan na 2026-10-18)
+### Wydanie 0.1.0 w skrócie
+
+- Widoki Mapa, Katalog, Karta pliku, Projekty, Magazyn, kreator
+  i Ustawienia; API `/api/v1` z OpenAPI i `/api/docs`; CLI z `--json`;
+  uprawnienia (A-ADR-029) z bazą stanu; wtyczki źródeł (A-ADR-024).
+- SPEC 4.5 na 50 000 slotów przez `archiwista serve`: SSD (kod wydania) —
+  pełny skan 48,3 s, przyrostowy 12,4 s, odświeżenie widoku p95 408 ms;
+  SMB 3 (przebieg 3) — 225,6 s, 74,7 s, 1,83 s; RSS serwera ≤ 179 MiB,
+  indeks 256 MB.
+- Po przeglądach kodu i bezpieczeństwa: token CSRF w każdym żądaniu `/api`
+  (także odczycie), sesje bez kopii ról, sesje agentów do 12 h
+  i `archiwista token --revoke-all`, limity treści żądań, prywatne dane
+  lokalne (`0700`, `umask 077`), trasa plików zgłoszenia przeniesiona
+  z `/groups/{…}` na `/requests/{parent_request}`, przycinanie rutynowych
+  skanów po 48 h.
+
+### Decyzje (stan na 2026-10-19)
 
 - **Zakres MVP = v1.0** (A-ADR-025, erraty 1–3): v0.1 Przeglądarka, v0.2
   Podglądy (+ dane własne i migawki), v0.3 Działania (dostępność z etykietami,
@@ -55,17 +66,17 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
   Po MVP: v1.1 Zestaw (KB-6; też eksport PL + CZ bez scalania), v1.2
   Asystent, v1.3 Mozaika i porównanie. ADR-019..024 zachowują starą
   numerację („v0.8” = v0.4, „v0.9” = v0.5).
-- **Architektura przyjęta (etap 0):** Python + FastAPI (A-ADR-004), interfejs
+- **Architektura** (etap 0): Python + FastAPI (A-ADR-004), interfejs
   Preact + htm bez kroku budowania, biblioteki w pakiecie, bez Node.js
-  (A-ADR-028, zastępuje A-ADR-005), MapLibre GL (006), procesy robocze (007),
-  rio-tiler, podgląd roku z kafli arkuszy (008), pakiet Pythona
-  `archiwista serve` (015), tryb zespołu jako jeden serwer (013, P1). Indeks
-  SQLite lokalnie (002).
+  (A-ADR-028), MapLibre GL (006), procesy robocze (007), rio-tiler, podgląd
+  roku z kafli arkuszy (008, od v0.2), pakiet Pythona `archiwista serve`
+  (015), tryb zespołu jako jeden serwer (013, P1). Indeks SQLite lokalnie
+  (002).
 - **Granice:** magazyn producentów tylko do odczytu; Archiwista zleca
   pobieranie i obróbkę, nie ma własnego mechanizmu (zapis przez API
   Kartografa i IMGWTools); IMGWTools opcjonalny (`archiwista[imgw]`,
   A-ADR-024).
-- **Dane własne** (A-ADR-027): folder projektu (domyślnie
+- **Dane własne** (A-ADR-027, od v0.2): folder projektu (domyślnie
   `<katalog projektu>/dane/`), indeks tylko do odczytu; migawki całych plików
   robi Archiwista w `<folder danych>/.wersje/` (tylko przyrost, zapis atomowy,
   spójna kopia GeoPackage); jedyny wyjątek od zasady „Archiwista nie
@@ -73,59 +84,58 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
 - **Widoki wg rodzaju danych** (PRD): ortofotomapa — rok z archiwalnego WMS
   GUGiK z wymiarem czasu; NMT/NMPT/LAZ — rok z kafli pobranych arkuszy;
   BDOT10k — powiaty z PRG; dane własne — linie i migawki; N8 Rozszerzalność.
+- **Interfejs i słownictwo:** A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`,
+  asystent jako panel boczny); domyślny podkład to szary BKG TopPlusOpen
+  (A-ADR-016 errata 1 — kafle OSM bez nagłówka `Referer` są blokowane);
+  etykiety pokrycia A-ADR-010, 017; dane IMGW A-ADR-019..023.
+- **Uprawnienia** (A-ADR-029): egzekwowane tylko we własnej powierzchni
+  Archiwisty (UI, API, CLI, tokeny agentów, pamięć podglądów); role `admin`
+  i `store_writer`, ustawienie `store_write_for_all`, widoczność projektu
+  `public`/`users`/`group`/`private`. v0.1 — model, egzekwowanie i baza
+  stanu `state.sqlite` (nieodtwarzalna; `archiwista state export`/`import`);
+  v0.3 — `store_writer` przy działaniach; v0.4 — logowanie, konta i ekran
+  udostępniania, opcjonalnie grupy LDAP/AD.
+- **Klucze zbiorów** (SPEC 4.2.1): `<kraj>.<dostawca>.<zbiór>[_<wariant>]`,
+  niezmienne, zmiany nazw tylko przez tabelę aliasów producenta, dostawca
+  z pola `provider`; Archiwista nie rozbiera kluczy; wymagania KA-8
+  i IMGW-20.
 - **Licencja i kontrybucje:** MIT, CLA jak w Hydrauliku i IMGWTools
   (A-ADR-026, errata 1).
-- Interfejs i słownictwo: A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`, szary
-  podkład OSM, asystent jako panel boczny); etykiety pokrycia A-ADR-010, 017;
-  dane IMGW A-ADR-019..023.
-- **Uprawnienia** (A-ADR-029, przyjęta 2026-10-18): Archiwista egzekwuje
-  uprawnienia tylko we własnej powierzchni (UI, API, CLI, tokeny agentów,
-  pamięć podglądów); bezpieczeństwo serwera i udziału to odpowiedzialność
-  administratora serwera. Role `admin` (administrator systemu Archiwista),
-  `store_writer` i zwykły użytkownik (zastępują „czytelnik/operator/
-  administrator”), ustawienie `store_write_for_all`; widoczność projektu
-  `public`/`users`/`group`/`private`. v0.1 — model i egzekwowanie dla
-  jednego lokalnego właściciela, testy z wieloma tożsamościami, osobna
-  lokalna baza stanu `state.sqlite` (nieodtwarzalna; `archiwista state
-  export`/`import`), API i CLI administratora (plan: krok 8b); v0.3 —
-  `store_writer` przy działaniach; v0.4 — logowanie, konta i ekran
-  udostępniania w interfejsie, opcjonalnie grupy LDAP/AD.
-- **Plan v0.1 po przeglądzie (2026-10-18):** KA w Kartografie 0.8.0
-  (A-ADR-024 errata 1, A-ADR-001 errata 2); skan przyrostowy przez
-  `skip_versions`, skan równoległy po segmentach (`list_segments`), bez
-  `link_target` w skanie — KA-5 tylko na żądanie (A-ADR-014 errata 2);
-  zadanie `footprints` z siecią dla obrysów jednostek; pokrycie lokalne
-  w EPSG:2180/5514; sesja z tokenem we fragmencie adresu, osobny token
-  CSRF, reguła `Origin`, CSP z podkładami i workerem MapLibre (A-ADR-012
-  errata 1); jedna tabela `jobs` z `actor`; TERYT/KU w v0.1 tylko jako
-  filtr; kroki 6, 9 i 10 podzielone (6a/6b, 9a–9c, 10a–10c).
-- **Klucze zbiorów** (2026-10-18, SPEC 4.2.1): `<kraj>.<dostawca>.<zbiór>[_<wariant>]`, niezmienne, zmiany nazw tylko przez tabelę aliasów producenta, dostawca z pola `provider`; Archiwista nie rozbiera kluczy; wymagania KA-8 i IMGW-20.
 
 ### Otwarte
 
-- **Plan v0.1** — kroki 6a, 6b, 8b i 9a–14 do wykonania.
+- **Kartograf:** scalenie gałęzi `feat/archiwista-store-api` do `develop`
+  i tag `v0.8.0` — decyzja użytkownika. Do tego czasu Archiwista 0.1.0
+  działa tylko z gałęzią zainstalowaną edytowalnie (plan v0.1, „Ryzyka”:
+  wydanie miało wymagać otagowanego Kartografa — świadomie odłożone).
+- **Tag `v0.1.0` i scalenie `develop` → `main`** — na prośbę użytkownika.
+- **KA-8 w SCOPE:** wiersz v0.1 tabeli „Zależności” w `docs/SCOPE.md`
+  (i SPEC 13) wymienia tylko KA-1..KA-6, a SPEC 12.1 przypisuje do v0.1
+  także KA-8 (konwencja kluczy zbiorów: Kartograf 0.8.0 spełnia ją
+  w kodzie, ale reguły nie zapisano w jego ARCH).
+- **Płynność mapy** z 5000 obrysów (≥ 30 klatek/s, kryterium v0.2) wymaga
+  pomiaru w przeglądarce z GPU; bez GPU (WebGL programowy) 8–9 klatek/s.
+- Plan v0.2: nazwy katalogów i schemat `archiwista-snapshot/1` migawek.
+- Drobne sprawy techniczne po pomiarach v0.1: pola ścieżek `SourceEntry`
+  jako `Path` kosztują 2–3 s skanu przyrostowego na SSD (zmiana interfejsu
+  wtyczek, cel spełniony bez niej); `ResourceWarning` niezamkniętego
+  połączenia SQLite w pełnym przebiegu testów (zgłaszany przy
+  `tests/unit/test_security.py::test_security_current_principal_owner_then_agent`,
+  źródło nieustalone — kod `security.py` zamyka swoje połączenia).
 - PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
   M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
   łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v0.6),
   adapter stacji ČHMÚ (jeden adapter IMGW czy osobna wtyczka, przy wydaniu
   IMGWTools ze stacjami ČHMÚ).
-  Komputer odniesienia dla SSD ustalony w planie v0.1 (decyzja 1); pomiar
-  SMB wymaga prawdziwego udziału SMB 3.
-- A-ADR-029: nazwy akcji `can(...)` i schemat bazy stanu ustala krok 8b
-  planu v0.1.
 - Mockup: pytania M3, M5–M8, M10, M11 (SPEC 16).
-- Producenci: Kartograf — KA-1..KA-6 (z `list_segments` i `skip_versions`)
-  na gałęzi `feat/archiwista-store-api`, blokują kroki 2, 4–7 i 9a–13 do
-  instalacji gałęzi, a wydanie v0.1 — do tagu `v0.8.0`; v0.3: KA-4
-  (pozycje planu), KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa
-  Kartografa niezaktualizowana (czeka na decyzję użytkownika); KF (scalona
-  powierzchnia, dziś R6 w backlogu, poza publicznym API 0.8.0) blokuje v0.6,
-  a więc MVP. IMGWTools — `docs/wymagania-imgwtools.md` (IMGW-1..20) do
-  przekazania; IMGW-1..14 blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś
-  szkic „Obserwator” bez kodu) — v0.6, a więc MVP — największe ryzyko
-  harmonogramu.
+- Producenci: Kartograf — v0.3: KA-4 (pozycje planu), KB-1..KB-5, KB-7,
+  KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa Kartografa niezaktualizowana (czeka
+  na decyzję użytkownika); KF (scalona powierzchnia, dziś R6 w backlogu,
+  poza publicznym API 0.8.0) blokuje v0.6, a więc MVP. IMGWTools —
+  `docs/wymagania-imgwtools.md` (IMGW-1..20) do przekazania; IMGW-1..14
+  blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś szkic „Obserwator” bez
+  kodu) — v0.6, a więc MVP — największe ryzyko harmonogramu.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
-- Nazwy katalogów i schemat `archiwista-snapshot/1` migawek — w planie v0.2.
 - Nazwy przy A-ADR-024 (`GET /sources`, `source_unavailable` /
   `source_incompatible`, fabryki `moduł:load`) — do ewentualnej zmiany.
 - Drobne rozbieżności SPEC 12.7 / 4.8 z kodem IMGWTools — świadomie
@@ -137,7 +147,7 @@ Kartografa `feat/archiwista-store-api`, zainstalowanej edytowalnie w `.venv`.
   (z korzenia repo); użytkownik ogląda przez tunel SSH
   (`ssh -L 8090:localhost:8090 …`), bo `ufw` blokuje port w LAN. Potrzebny
   internet (CDN bibliotek, kafle OpenFreeMap).
-- Mockup jest punktem wyjścia interfejsu (A-ADR-028), ale nie kodem
+- Mockup był punktem wyjścia interfejsu (A-ADR-028), ale nie jest kodem
   produkcyjnym: pobieranie idzie w nim przez asystenta (w MVP — „Okno planu”
   bez asystenta), sprawdzanie, magazyn, zadania, migawki i mozaika są
   symulowane.

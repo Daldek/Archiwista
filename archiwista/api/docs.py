@@ -3,8 +3,8 @@
 ``/api/v1/openapi.json`` documents every route under ``/api/v1`` with the
 models' examples. Error responses are RFC 9457 problems
 (``application/problem+json``, schema ``ProblemDetails``): each route lists
-the statuses it answers, every route of a session also ``401`` and every
-change ``403`` (CSRF). ``/api/docs`` is Swagger UI served from the package
+the statuses it answers, every route of a session also ``401`` and ``403``
+(CSRF). ``/api/docs`` is Swagger UI served from the package
 (``archiwista/api/swagger``: swagger-ui-dist 5.33.3, Apache-2.0, see its
 ``LICENSE`` and ``NOTICE``), without a CDN and without inline scripts, so the
 server's CSP holds; both need a session, like the rest of ``/api``.
@@ -26,17 +26,18 @@ from archiwista.api.models import ProblemDetails
 SWAGGER_DIR = Path(__file__).resolve().parent / "swagger"
 DOCS_PATH = "/api/docs"
 SESSION_EXCHANGE = (f"{API_PREFIX}/session", "post")
-_CHANGES = frozenset({"post", "put", "patch", "delete"})
 _DESCRIPTION = """\
 HTTP API of Archiwista, a local browser of Kartograf data stores (read only
 in v0.1). The browser interface uses the same API.
 
 **Session.** Exchange a one-time token (`archiwista serve` prints it in the
 address fragment; `archiwista token` issues one for an agent) with
-`POST /api/v1/session`; keep the `archiwista_session` and `archiwista_csrf`
-cookies. Requests that change state (`POST`, `PUT`, `DELETE`) also send the
-header `X-Archiwista-CSRF` equal to `csrf_token`. Without a session every
-route answers `401 session_required`.
+`POST /api/v1/session`; keep the `archiwista_session` cookie and the
+answer's `csrf_token`, which only this answer holds. Every other request,
+reads included, sends the header `X-Archiwista-CSRF` equal to `csrf_token`.
+Without a session every route answers `401 session_required`, without the
+header (or with another token) `403 csrf_rejected`. `DELETE /api/v1/session`
+ends the session.
 
 **Identifiers.** Stores are named by their configured id, slots and versions
 by their path in the store, projects by their id; only the file card's
@@ -53,7 +54,8 @@ its last complete pass, never as an empty result.
 while another job writes the store's index they answer `409 conflict` naming
 it in `job`. `GET /jobs/{job}/events` streams the job's `progress`, `notice`
 and `state` events as Server-Sent Events (`id` = event number), resumes after
-`Last-Event-ID` and ends after the final state.
+`Last-Event-ID` and ends after the final state. The stream needs the CSRF
+header too, so read it with an HTTP client or `fetch`, not `EventSource`.
 
 **Areas.** `POST /areas` keeps an area: GeoJSON in WGS84 as
 `application/json`, or a GeoJSON, GeoPackage or zipped Shapefile as the raw
@@ -117,7 +119,7 @@ def openapi_document(app: FastAPI) -> dict[str, Any]:
 
     Responses of ``4xx`` and ``5xx`` are ``application/problem+json``
     (``ProblemDetails``) instead of FastAPI's validation schema; each route
-    of a session documents ``401`` and each change ``403``.
+    of a session documents ``401`` and ``403``.
     """
     document = get_openapi(
         title=app.title,
@@ -145,9 +147,7 @@ def openapi_document(app: FastAPI) -> dict[str, Any]:
                 and PROBLEM_MEDIA_TYPE not in response.get("content", {})
             ]
             if (path, method) != SESSION_EXCHANGE:
-                wanted.append(401)
-                if method in _CHANGES:
-                    wanted.append(403)
+                wanted.extend((401, 403))
             documented = problem_responses(*wanted)
             for status, response in documented.items():
                 key = str(status)

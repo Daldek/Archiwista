@@ -2907,10 +2907,10 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 - **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
   w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo
   identyfikator obszaru.
-- **Bezpieczeństwo:** bez CORS; żądania zmieniające stan wymagają sesji
-  i nagłówka `X-Archiwista-CSRF` z tokenem CSRF sesji (10.1); klienci bez
-  przeglądarki (skrypty, agent) używają tej samej sesji i nagłówka;
-  w trybie zespołu — sesja zalogowanej osoby i rola (10.2).
+- **Bezpieczeństwo:** bez CORS; każde żądanie `/api` (poza wymianą tokenu),
+  także odczyt, wymaga sesji i nagłówka `X-Archiwista-CSRF` z tokenem CSRF
+  sesji (10.1); klienci bez przeglądarki (skrypty, agent) używają tej samej
+  sesji i nagłówka; w trybie zespołu — sesja zalogowanej osoby i rola (10.2).
 
 ### 9.2 Zasoby
 
@@ -3201,8 +3201,8 @@ Decyzja: A-ADR-012.
   mieć `Sec-Fetch-Site: same-origin` i `Origin`; odczyt z `cross-site` jest
   odrzucany, a `none` (adres wpisany albo otwarty z terminala)
   i `same-origin` przechodzą. Klient bez `Origin` i `Sec-Fetch-*` (curl,
-  skrypt agenta) przechodzi wyłącznie z sesją i — przy zmianie stanu —
-  z nagłówkiem CSRF. Pliki interfejsu nie wymagają sesji, `/api/*` (poza
+  skrypt agenta) przechodzi wyłącznie z sesją i nagłówkiem CSRF — także
+  przy odczycie. Pliki interfejsu nie wymagają sesji, `/api/*` (poza
   wymianą tokenu) — tak.
 - **Kolejne sesje (agent zewnętrzny):** jednorazowy token ważny 5 min
   wystawia sesja przeglądarki właściciela (`POST /api/v1/session/tokens`)

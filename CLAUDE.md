@@ -8,7 +8,8 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 
 ## Zasady pracy (krytyczne)
 
-- Stan: specyfikacja. Kod powstaje dopiero po zatwierdzeniu specu i planu
+- Stan: wydane v0.1.0 (stan prac i sprawy otwarte: `docs/PROGRESS.md`).
+  Kod kolejnej wersji powstaje dopiero po zatwierdzeniu specu i planu
   (kolejnosc jak w Kartografie: spec -> plan -> implementacja).
 - Kartograf jest zaleznoscia: wylacznie publiczne API
   (`kartograf/__init__.py`, `__all__`). Archiwista nie ma wlasnej logiki
@@ -24,7 +25,7 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
   i wygodne dla ludzi.
 - Dane pobierane w trakcie pracy: poza repo i poza `/tmp`, zawsze jawny
   katalog; w dokumentach sciezki danych zapisuj jako `<katalog-danych>`.
-- Python wylacznie z `.venv` (gdy powstanie kod).
+- Python wylacznie z `.venv`.
 - Git: praca na `develop` albo na krotkotrwalej galezi z `develop`;
   Conventional Commits z opisem po polsku; autor `Daldek <git@debever.pl>`,
   bez stopki `Co-Authored-By`; repozytorium bez remote (bez push).
@@ -43,6 +44,10 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Wymagania produktu (F/N), miary sukcesu, otwarte decyzje|`docs/PRD.md`|
 |Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
 |Plan wdrozenia v0.1: kroki, zaleznosci, bramka akceptacji|`docs/PLAN_v0.1.md`|
+|Stan prac, sprawy otwarte, nastepny krok|`docs/PROGRESS.md`|
+|Zmiany w wydaniach|`CHANGELOG.md`|
+|Widoki dla uzytkownika; API i CLI dla skryptow i agentow|`docs/Przewodnik_uzytkownika.md`, `docs/API_dla_agentow.md`|
+|Pomiary, odbior i bramka wydania v0.1|`docs/raporty/v0.1-pomiary.md`|
 |Cel, uzytkownicy, slownik pojec|`docs/SPEC.md` 1-2|
 |Przypadki uzycia i scenariusze|`docs/SPEC.md` 3|
 |Model danych, indeks, odswiezanie, SMB|`docs/SPEC.md` 4|

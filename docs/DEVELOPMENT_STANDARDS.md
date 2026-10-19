@@ -369,7 +369,7 @@ def test_snapshot_interrupted_leaves_no_partial_version(tmp_path):
 
 ### 5.4 Pokrycie
 
-Stan faktyczny: brak kodu (stan na 2026-10-18).
+Stan faktyczny: **95,3%** przy wydaniu 0.1.0 (2026-10-19).
 Cel: **80%**, bramka `--cov-fail-under=80` włączona od pierwszego kodu (v0.1).
 
 ```bash
@@ -583,4 +583,4 @@ def resolve_store_path(path: Path, *, roots: list[Path]) -> Path:
 ---
 
 **Wersja dokumentu:** 1.0
-**Data ostatniej aktualizacji:** 2026-10-18
+**Data ostatniej aktualizacji:** 2026-10-19

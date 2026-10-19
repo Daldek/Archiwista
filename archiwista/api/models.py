@@ -1186,7 +1186,9 @@ class VersionCard(IndexAnswer):
     edition: str | None
     coverage: float | None = Field(description="Share of the sheet with data, 0–1.")
     parent_request: str | None = Field(
-        description="Key of the producer request; files of one request: /groups/{key}."
+        description=(
+            "Key of the producer request; files of one request: /requests/{key}."
+        )
     )
     license: str | None
     attribution: str | None

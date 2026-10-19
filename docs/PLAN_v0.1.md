@@ -1,8 +1,9 @@
 # Plan implementacji v0.1 „Przeglądarka”
 
-**Status:** wersja po przeglądzie planu (2026-10-18): uwzględnia wszystkie
-uwagi przeglądu oraz decyzje kontraktowe z Kartografem (decyzje 2–5 i 8
-poniżej). Kroki 0 i 1 ukończone; pozostałe według tego planu.
+**Status:** wykonany — kroki 0–14 ukończone, wydanie 0.1.0 (2026-10-19;
+bramka i wyniki: `docs/raporty/v0.1-pomiary.md`, sekcje 4 i 10). Wersja
+planu po przeglądzie (2026-10-18): uwzględnia wszystkie uwagi przeglądu
+oraz decyzje kontraktowe z Kartografem (decyzje 2–5 i 8 poniżej).
 **Zakres:** wyłącznie lokalny, tylko odczyt magazynu Kartografa; zapisy
 Archiwisty to konfiguracja, odtwarzalny indeks i baza stanu uprawnień
 (konta, grupy, widoczność projektów; krok 8b) na dysku lokalnym.
@@ -584,7 +585,8 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
     `visible_projects`): `GET /health`, `/sources`, `/stores`,
     `/stores/{store}`, `/products`, `/slots`, `/stores/{store}/slots/{slot}`,
     `/stores/{store}/versions/{version}` (z surowym sidecarem i „kopiuj
-    ścieżkę” z aliasami), `…/sidecar`, `/groups/{parent_request}`,
+    ścieżkę” z aliasami), `…/sidecar`, `/requests/{parent_request}` (do
+    wydania `/groups/{…}` — przeniesione, bo zasłaniało grupy uprawnień),
     `/map/footprints`, `/map/sheets`, `/projects`, `/projects/{id}`,
     `/projects/{id}/status`, `GET/PUT /settings` (`settings.write`, CSRF);
     `operationId` = nazwa funkcji trasy; lokalne `/api/docs` (Swagger UI
@@ -773,25 +775,25 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 |---|---|---|---|---|
 | 0 | Angielskie pliki kontrybutorów | — | — | ukończony (`de157c3`) |
 | 1 | Pakiet, wspólny kontrakt i narzędzia | 0 | — | ukończony (`c74f8d4`) |
-| 2 | Wtyczki, rozszerzenie kontraktu i adapter Kartografa | 1; KA w `../Kartograf` | 3, 4 | |
-| 3 | Konfiguracja i diagnostyka | 1; rejestr z 2 przed odbiorem | 2, 4 | |
-| 4 | Magazyn testowy | 1; KA w `../Kartograf` | 2, 3 | |
-| 5 | Lokalny indeks, zapytania i pokrycie lokalne | 2 | 3, 4 | |
-| 6a | Skaner i odświeżenie widoku | 2, 4, 5 | 7, 8 | |
-| 6b | Zadania w tle: skan, obrysy, potwierdzenie dowiązania | 3, 6a, 7 | 8, 9a | |
-| 7 | Projekty i stan magazynu | 2, 4, 5 | 6a, 8 | |
-| 8 | Ochrona dostępu lokalnego, sesja i `serve` | 3, 5 | 6a, 7 | |
-| 8b | Model uprawnień | 5, 8 | 6a | |
-| 9a | FastAPI: odczyt, modele, błędy, ustawienia | 3, 6a, 7, 8, 8b | 6b | |
-| 9b | Zadania w tle przez HTTP i SSE | 6b, 9a | 9c, 10a, 12 | |
-| 9c | Obszary i pokrycie lokalne przez HTTP | 6a, 9a | 9b, 10a, 12 | |
-| 10a | Powłoka interfejsu, sesja w przeglądarce, kreator | 6b, 8, 9a | 9b, 9c, 12 | |
-| 10b | Mapa | 9c, 10a | 10c, 11, 12 | |
-| 10c | Katalog | 9a, 10a | 10b, 11, 12 | |
-| 11 | Karta pliku, Projekty i Magazyn | 7, 9b, 10a | 10b, 10c, 12 | |
-| 12 | CLI i przewodnik dla agentów | 8, 8b, 9a | 9b–11 | |
-| 13 | E2E, awarie udziału i pomiary | 4, 6b, 9a–9c, 10a–10c, 11, 12 (perf od 6b i 9a) | perf z 10–12 | |
-| 14 | Dokumentacja, bramka i wydanie | 0–13 (z 8b); Kartograf 0.8.0 z KA | — | |
+| 2 | Wtyczki, rozszerzenie kontraktu i adapter Kartografa | 1; KA w `../Kartograf` | 3, 4 | ukończony (`335eee5`) |
+| 3 | Konfiguracja i diagnostyka | 1; rejestr z 2 przed odbiorem | 2, 4 | ukończony (`a1f1773`) |
+| 4 | Magazyn testowy | 1; KA w `../Kartograf` | 2, 3 | ukończony (`f8ba7f4`) |
+| 5 | Lokalny indeks, zapytania i pokrycie lokalne | 2 | 3, 4 | ukończony (`9bf0e3c`) |
+| 6a | Skaner i odświeżenie widoku | 2, 4, 5 | 7, 8 | ukończony (`b17d8e9`) |
+| 6b | Zadania w tle: skan, obrysy, potwierdzenie dowiązania | 3, 6a, 7 | 8, 9a | ukończony (`f6238e6`) |
+| 7 | Projekty i stan magazynu | 2, 4, 5 | 6a, 8 | ukończony (`ab1c074`) |
+| 8 | Ochrona dostępu lokalnego, sesja i `serve` | 3, 5 | 6a, 7 | ukończony (`1347bb8`) |
+| 8b | Model uprawnień | 5, 8 | 6a | ukończony (`bb711e5`) |
+| 9a | FastAPI: odczyt, modele, błędy, ustawienia | 3, 6a, 7, 8, 8b | 6b | ukończony (`df82e5b`) |
+| 9b | Zadania w tle przez HTTP i SSE | 6b, 9a | 9c, 10a, 12 | ukończony (`c787a4e`) |
+| 9c | Obszary i pokrycie lokalne przez HTTP | 6a, 9a | 9b, 10a, 12 | ukończony (`fcffa5e`) |
+| 10a | Powłoka interfejsu, sesja w przeglądarce, kreator | 6b, 8, 9a | 9b, 9c, 12 | ukończony (`6e8dd0a`) |
+| 10b | Mapa | 9c, 10a | 10c, 11, 12 | ukończony (`9d9da71`) |
+| 10c | Katalog | 9a, 10a | 10b, 11, 12 | ukończony (`f878baf`) |
+| 11 | Karta pliku, Projekty i Magazyn | 7, 9b, 10a | 10b, 10c, 12 | ukończony (`1354d33`) |
+| 12 | CLI i przewodnik dla agentów | 8, 8b, 9a | 9b–11 | ukończony (`baa6704`) |
+| 13 | E2E, awarie udziału i pomiary | 4, 6b, 9a–9c, 10a–10c, 11, 12 (perf od 6b i 9a) | perf z 10–12 | ukończony (`3870b34`–`3d00356`; przebieg 3 `d5cf48f`, `1f9805e`) |
+| 14 | Dokumentacja, bramka i wydanie | 0–13 (z 8b); Kartograf 0.8.0 z KA | — | ukończony (`chore(release): wydanie 0.1.0`) |
 
 ### 0. Angielskie pliki kontrybutorów — ukończony
 - **Stan:** `de157c3` — `CONTRIBUTING.md`, `CONTRIBUTORS.md`
@@ -1140,7 +1142,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `/products` (tylko zaindeksowane, nazwy z `describe_segment`), `/slots`
   (filtry z kroku 5, `limit ≤ 200`, `cursor`),
   `/stores/{store}/slots/{slot}`, `/stores/{store}/versions/{version}`,
-  `.../sidecar`, `/groups/{parent_request}`, `/map/footprints`,
+  `.../sidecar`, `/requests/{parent_request}`, `/map/footprints`,
   `/map/sheets`, `/projects`, `/projects/{id}`, `/projects/{id}/status`,
   `GET/PUT /settings` (walidacja kroku 3; zmiana offline/podkładów zmienia
   CSP kolejnych odpowiedzi). Prefiks `/api/v1`; OpenAPI
@@ -1381,12 +1383,15 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `--store`); pomiary z `--no-cov`. Wyniki, metoda i poprawki (brak
   `TCP_NODELAY` — +40 ms na żądanie, czytelnicy indeksu bez `mmap` — RSS
   serwera 638 → 179 MiB, filtr „przypięte” z przypięć — 228 → 12 ms p95):
-  `docs/raporty/v0.1-pomiary.md`. Otwarte: skan przyrostowy na SSD na
-  granicy 20 s (19,3 i 20,3 s); na prawdziwym SMB 3 (1 Gb/s) pełny skan
-  477 s w progu, ale przyrostowy 342 s (cel 180 s) i odświeżenie widoku
-  10,6 s (cel 5 s) poza progami — największy segment czyta jeden wątek
-  (równoległość tylko po segmentach); płynność mapy v0.2 bez GPU
-  niezweryfikowana.
+  `docs/raporty/v0.1-pomiary.md`. Otwarte po przebiegach 1–2: skan
+  przyrostowy na SSD na granicy 20 s (19,3 i 20,3 s); na prawdziwym SMB 3
+  (1 Gb/s) pełny skan 477 s w progu, ale przyrostowy 342 s (cel 180 s)
+  i odświeżenie widoku 10,6 s (cel 5 s) poza progami — największy segment
+  czyta jeden wątek (równoległość tylko po segmentach). Rozwiązane
+  w przebiegu 3 (`d5cf48f`, errata 1 decyzji 3: części segmentów na
+  udziale, nielistowane znane katalogi wersji): SSD 51,3 / 13,0 s / 426 ms,
+  SMB 225,6 / 74,7 s / 1,83 s (pełny / przyrostowy / odświeżenie p95).
+  Płynność mapy v0.2 bez GPU niezweryfikowana.
 
 ### 14. Dokumentacja, bramka i wydanie
 - **Cel:** `README.md`, `CHANGELOG.md`, `docs/API_dla_agentow.md` (nowy
@@ -1406,6 +1411,22 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   Wydanie tylko po odnotowaniu wyników *każdego* kryterium poniżej.
   **Zależności:** 0–13, Kartograf 0.8.0 z publicznym KA-1..KA-6.
   **Równolegle:** teksty API po 9a–9c i 12, raport końcowy po 13.
+- **Stan po kroku 14:** `README.md` (instalacja z `requirements.lock`
+  i edytowalnym Kartografem z gałęzi `feat/archiwista-store-api`,
+  `archiwista serve`, `doctor`, CLI z `--json`, położenie danych, bramka),
+  `CHANGELOG.md` (`[0.1.0]`), `docs/Przewodnik_uzytkownika.md` (widoki
+  v0.1 ze zrzutami), `docs/API_dla_agentow.md` sprawdzony z kodem
+  (`/requests/{parent_request}`, CSRF w każdym żądaniu, SSE przez `fetch`
+  albo klienta HTTP zamiast `EventSource`, `--revoke-all`, `DELETE
+  /session`, obszary i stan lokalny), opis OpenAPI (sesja z CSRF w każdym
+  żądaniu, `403` przy każdej trasie sesji, `/requests/{key}`), SPEC 9.1
+  i 10.1 (CSRF także przy odczycie), `docs/PROGRESS.md`, bramki etapu 0
+  i v0.1 w `docs/SCOPE.md`; wersja pakietu 0.1.0. Bramka, pomiar SSD
+  i test na żywo na kodzie wydania, przejście `archiwista serve`
+  w przeglądarce na magazynie zamontowanym `ro` i przewodnik agenta przez
+  `curl`: `docs/raporty/v0.1-pomiary.md`, sekcja 10; zrzuty
+  `docs/raporty/v0.1-zrzuty/`. Bez tagu `v0.1.0` i scalenia do `main`
+  (decyzja użytkownika).
 
 ## Bramka SPEC 13 v0.1: dowód dla każdego kryterium
 
@@ -1429,7 +1450,11 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   gałęzi zainstalowanej edytowalnie albo scalenia; starsza kopia 0.8.0 nie
   dowodzi obecności KA. Wydanie v0.1 wymaga otagowanego Kartografa 0.8.0
   z publicznym KA i zielonego testu kontraktu; do tego czasu nie symulować
-  funkcji prywatnymi importami ani kopią parsera.
+  funkcji prywatnymi importami ani kopią parsera. Stan przy wydaniu 0.1.0:
+  KA (z `list_partitions` i mapowaniem `skip_versions`) jest publiczne
+  w `kartograf.__all__` na gałęzi, test kontraktu zielony; scalenie gałęzi
+  i tag `v0.8.0` czekają na decyzję użytkownika, więc 0.1.0 instaluje się
+  z gałęzią Kartografa (`README.md`).
 - **Magazyn testowy bez publicznego zapisu.** Generator zapisuje wersje,
   sidecary i dowiązania sam (krok 4); rozjazd z formatem wychwytuje od
   razu czytnik Kartografa. Gdyby utrzymanie generatora okazało się
