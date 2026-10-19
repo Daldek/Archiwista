@@ -1078,7 +1078,7 @@ działa.
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | zrobione |
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
-| 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
+| 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | zrobione |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
 | 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | do zrobienia |
@@ -2561,6 +2561,115 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   i `EINVAL` z `fsync` katalogu → migawka `created` z ostrzeżeniami),
   `test_document_validates_and_sums_match`.
 - **Zależności:** 7a, 7b. **Równolegle:** 5a1–5c, 6, 10, 11, 12a.
+- **Stan po kroku 8:**
+  - *Plan* (`owndata/snapshots.py`): `check_snapshot(folder, file, *,
+    work_dir) -> SnapshotPlan` — `folder`: `OwnFolderCheck` sprawdzony teraz
+    (`check_own_folder` z `folder_rules`), `file`: karta `OwnFileDetail`.
+    Odstępstwo: bez `last` — ostatnia migawka i zmiana są w karcie
+    (`unchanged_since` = `file.last_snapshot`, gdy `change == "unchanged"`;
+    tożsamość z ostatniego skanu, jak w decyzji 9). `SnapshotPlan(path,
+    size_bytes, destination, copy_method, content_method, unchanged_since,
+    blocked: SnapshotBlock(reason, message) | None, free_bytes, warnings:
+    tuple[SnapshotWarning(code, message)])`; `size_bytes` to pliki kompletu
+    (SQLite z `-wal`), bez dostępu do pliku — rozmiar z indeksu.
+    Kolejność sprawdzeń: folder (`folder_block(folder)`: `invalid` →
+    `folder_invalid`, `missing`/`unreadable` → `file_missing`), plik
+    (`file_missing`), prawo zapisu najbliższego istniejącego katalogu na
+    drodze do `.wersje/<plik>/` i `.wersje/.incoming/` (`read_only_folder`,
+    komunikat podaje katalog), miejsce: folder ≥ 1,1 × rozmiar, dla SQLite
+    także lokalny katalog roboczy (× 2 przy `-wal`/gorącym `-journal`: kopia
+    widoku i kopia zapasowa) — `insufficient_space`. Plik, człon kompletu
+    albo składnik `.wersje/` jako dowiązanie wychodzące →
+    `PathOutsideRootError` (dla 9: `403 path_outside_root`). Ostrzeżenie
+    `editing_detected` przy `-wal` albo gorącym `-journal`.
+  - *Migawka*: `make_snapshot(folder, file, *, author: SnapshotAuthor, note,
+    work_dir, reader: OwnReader, transformer, on_phase=None) ->
+    SnapshotResult(status, label, directory, document, warnings)`.
+    Odstępstwa: (1) `fault` to `on_phase(faza)` — `SNAPSHOT_PHASES`:
+    `copy` (kopia w katalogu roboczym), `checksums` (pliki przeczytane
+    ponownie), `document` (`migawka.json` zapisany), `rename` (pliki
+    `0444` i zsynchronizowane, zaraz `rename`), `published`; zadanie
+    raportuje nimi postęp, testy przerywają w nich; (2) bez `cancel` —
+    zadanie przerywa SIGINT jak każde (`KeyboardInterrupt` usuwa katalog
+    roboczy); (3) `reader` i `transformer`: warstwy, raster, liczba
+    obiektów i zasięg (WGS84 przez `Wgs84Outlines` z przypiętej operacji)
+    czyta proces czytnika z kopii, nie z indeksu — plik mógł się zmienić od
+    skanu; (4) ostatnia migawka z dysku (najnowsza po `created_at`
+    z poprawnym dokumentem w `.wersje/<plik>/`), a `unchanged` tylko, gdy
+    jej pliki zgadzają się z sumami — uszkodzona nie zastępuje nowej kopii.
+    SQLite: `read_sqlite` (trzy stany 7a) i `Connection.backup` z widoku do
+    pliku w podkatalogu `snapshot-<token>` katalogu roboczego, potem
+    `journal_mode=DELETE` (kopia zapasowa bazy w WAL zachowuje nagłówek WAL
+    i migawka `0555` nie otworzyłaby się tylko do odczytu bez `-wal`
+    i `-shm`), `integrity_check` (`integrity_failed`, także plik „not
+    a database”), tożsamość `content_identity` kopii; `unchanged` nie
+    dotyka folderu. Pozostałe: kopia prosto do
+    `.wersje/.incoming/<host>_<pid>_<token>/` z SHA-256 liczonym w trakcie
+    kopiowania, stan (rozmiar, czas) członów przed i po, 3 próby
+    (`inconsistent_copy`); wzór `fileset` wspólny (`content.fileset_sha256`).
+    Etykieta z listingu `.wersje/<plik>/` przy zapisie `migawka.json`
+    (etykieta jest w dokumencie); publikacja `renameat2(RENAME_NOREPLACE)`
+    (Linux; system plików bez niego — sprawdzenie celu i `rename`, który
+    nie zastępuje niepustego katalogu), więc także pusty katalog pod
+    etykietą to `target_exists`. Pliki `0444` przed `rename`, katalog
+    `0555` po nim, `fsync` plików, katalogu roboczego i po publikacji
+    rodzica. Nowe katalogi `.wersje/` dostają uprawnienia folderu danych
+    (`umask 077` procesu roboczego dałby `0700` i inne konta wspólnego
+    folderu nie widziałyby migawek). Odrzucone `chmod` i `fsync` katalogu
+    (`EPERM`, `EACCES`, `EINVAL`, `ENOTSUP`) → ostrzeżenia `chmod_refused`,
+    `directory_sync_refused`; po publikacji każdy ich błąd to ostrzeżenie.
+    `ENOSPC`/`EDQUOT` w trakcie zapisu → `insufficient_space`, `EROFS` →
+    `read_only_folder`. Błąd albo przerwanie przed `rename` usuwa katalog
+    roboczy; zostaje tylko po zabiciu procesu.
+  - *Dokument i skan*: `document.py` dostał `read_snapshot_document(katalog)`,
+    `snapshot_files_match(katalog, files)` i `MAX_DOCUMENT_BYTES`
+    (przeniesione ze skanu); `scan.py` — `Wgs84Outlines` (dawne
+    `_Transformers` z marginesem zasięgu bez powierzchni), wspólne ze
+    snapshotami. Zapis dokumentu: `model_dump(mode="json", by_alias=True)`,
+    JSON z wcięciem, daty z przesunięciem i co do sekundy.
+  - *Błędy* (`errors.py`): `SnapshotBlockedError(reason, message)` (już
+    w kroku 8 — dla 9 `409 snapshot_blocked` z `reason`),
+    `SnapshotFailedError(code, message)`.
+  - *Zadanie `snapshot`*: `JobRule(store=False, conflict=JobConflict(
+    "snapshot", (projekt, file_id), "job_conflict_snapshot"))` — migawki
+    różnych plików idą równolegle; parametry `{"project", "file_id",
+    "note"}` (`file_id` — 16 znaków szesnastkowych, `note` ≤ 2000,
+    domyślnie `""`; inaczej `ValueError`). Proces roboczy: projekt (brak →
+    `not_found`), folder (`check_own_folder`, przed szukaniem pliku, więc
+    folder poza regułami to `snapshot_blocked`/`folder_invalid` także dla
+    pliku nieznanego indeksowi), karta pliku (brak → `not_found`,
+    `own_file_not_found`), `OwnReader` i operacje producenta, postęp
+    `current`/`total` faz z `phase`, ostrzeżenia jako `notice` (`warning`),
+    po `created` `record_snapshot` ze `snapshot_stamp` (najlepszym
+    wysiłkiem: błąd → `notice` `snapshot_not_indexed`). Wynik `{"status",
+    "label", "content_sha256", "size_bytes", "seconds"}`; kody
+    `snapshot_blocked` (z `reason`), `inconsistent_copy`,
+    `checksum_mismatch`, `integrity_failed`, `target_exists`,
+    `path_outside_root`, `own_reader_failed`, `not_found`.
+  - *Protokół zadań 3*: `JobSpec.actor_kind` i `JobSpec.session` (autor
+    migawki: `id` — aktor, `kind` — rodzaj aktora, harmonogram jako
+    `local_owner`, `name` — `null`: proces roboczy nie zna nazw kont,
+    `session`); `JobError.reason` i `JobError.to_json()` (w `jobs.error`
+    i zdarzeniu `state` tylko, gdy jest), `JobFailure(..., reason=)`
+    w procesie roboczym. `index/writer.py` bez zmian (`record_snapshot`
+    z 7b wystarcza).
+  - *Testy*: `tests/integration/test_snapshots.py` — wszystkie testy planu
+    i `test_label_taken_before_rename_is_target_exists` (pusty i kompletny
+    katalog pod etykietą); przerwania przez proces roboczy z haczykiem
+    `ARCHIWISTA_TEST_SNAPSHOT_FAULT=<faza>:<sygnał>`
+    (`tests/fixtures/job_worker.py`). Mutacje (bez sprzątania, bez
+    ponowienia kopii, bez `0444`, zwykły `rename`) wywracają odpowiednie
+    testy.
+  - *Pomiar* (2026-10-19, komputer odniesienia, SSD): GeoPackage 101,2 MB
+    (460 000 wielokątów, 3 pola) — migawka 4,7 s (cel ≤ 15 s), ponowna bez
+    zmian 4,0 s; skan tego pliku 2,7 s.
+  - *Dla 9*: trasa planu — `check_snapshot(check_own_folder(…), karta,
+    work_dir=process_work_dir(paths))`, `blocked` → `409 snapshot_blocked`
+    z `reason` (`SnapshotBlockedError`), `PathOutsideRootError` → `403`;
+    trasa migawki — `jobs.submit("snapshot", params={"project",
+    "file_id", "note"}, actor=principal)` po `project.write` (konflikt →
+    `409 conflict` z `job`); model API `JobFailure` powinien dostać
+    `reason`, a opisy `JobDetail` — rodzaje `own_scan` i `snapshot`.
 
 ### 9. Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań
 - **Cel:** trasy danych własnych z umowy API (lista, skan folderu
