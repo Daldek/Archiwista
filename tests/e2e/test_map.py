@@ -22,7 +22,14 @@ from playwright.sync_api import FloatRect, Locator, Page, expect
 
 from archiwista.config import AppSettings, BasemapConfig, StoreConfig
 from tests.fixtures.browser import Served, Tab
-from tests.fixtures.make_store import NMT, ExpectedEntry, StoreManifest, make_store
+from tests.fixtures.make_store import (
+    BUILDINGS,
+    BUILDINGS_LOD2,
+    NMT,
+    ExpectedEntry,
+    StoreManifest,
+    make_store,
+)
 from tests.fixtures.store_edits import sidecar_path
 from tests.fixtures.tile_server import tile_server
 
@@ -332,9 +339,15 @@ def test_no_outline_counter_opens_catalog(
 ) -> None:
     """Files without outline are counted on the map and open in the catalog."""
     store = make_store(tmp_path / "store", slots=24, seed=7)
+    # Buildings come as ZIP packages per TERYT unit: none has an outline.
+    buildings = [
+        entry
+        for entry in store.by_kind("link")
+        if entry.segment in (BUILDINGS, BUILDINGS_LOD2)
+    ]
     unit = next(
         entry.unit
-        for entry in store.by_kind("link")
+        for entry in buildings
         if entry.family == "zip_teryt" and entry.case == "regular"
     )
     assert unit is not None
@@ -364,7 +377,11 @@ def test_no_outline_counter_opens_catalog(
         "unit": unit,
         "location": "none",
     }
-    assert (unlocated, in_unit) == (2, 1)
+    assert (unlocated, in_unit) == (
+        len(buildings),
+        sum(entry.unit == unit for entry in buildings),
+    )
+    assert in_unit < unlocated
     tab.assert_clean()
 
 

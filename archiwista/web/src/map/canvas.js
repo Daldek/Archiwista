@@ -726,7 +726,9 @@ function PickList({ pick, describe, onClose, onOpen }) {
     const frame = requestAnimationFrame(() => ref.current?.querySelector("button")?.focus());
     return () => cancelAnimationFrame(frame);
   }, [pick]);
-  useEffect(() => {
+  // Before paint, like the drawing hint: the list is never shown without Esc
+  // closing it (an effect runs only after the next frame of the map).
+  useLayoutEffect(() => {
     const key = (event) => {
       if (event.key === "Escape") onClose();
     };
