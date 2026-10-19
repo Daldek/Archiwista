@@ -1091,7 +1091,7 @@ działa.
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | zrobione |
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | zrobione |
-| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | do zrobienia |
+| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | zrobione dla SSD (raport `docs/reports/v0.2-measurements.md`); SMB i kryterium 5 (GPU) — niezweryfikowane |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
 | 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
 
@@ -3607,6 +3607,31 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   warunki, p95, klatki/s i p95 klatki, RSS, rozmiar indeksu i pamięci
   podglądów, każdy cel z decyzji 12 z oceną.
 - **Zależności:** 3, 6, 7b, 8, 11, 12b. **Równolegle:** 13a–15, 17.
+- **Stan po kroku 16:**
+  - *Harness:* `tests/fixtures/perf_server.py` (wspólny `archiwista serve`
+    jako proces, sesja agenta, próbki pamięci — wydzielone z
+    `test_store_50k.py`), `tests/fixtures/browser.py` (`gpu_browser` z flagami
+    GPU albo CDP, `webgl_renderer`, `require_hardware_gl` z
+    `ARCHIWISTA_REQUIRE_GPU=1`, `pan_frames`), `tests/fixtures/preview_store.py`
+    (odstępstwo: nowy generator fixtur podglądów z prawdziwych plików żywego
+    magazynu Kartografa, `python -m tests.fixtures.preview_store`; katalog
+    `previews-perf/` obok magazynu 50k — bez nowej zmiennej),
+    `tests/perf/test_previews_perf.py`, `tests/perf/test_own_data_perf.py`,
+    w `test_store_50k.py` `/local-layers` obszaru 492 slotów, bramka GPU,
+    podgląd roku przy przesuwaniu, pamięć procesów renderujących i budowy.
+  - *Wyniki SSD* (raport, sekcje 2–3): wszystkie cele decyzji 12 spełnione
+    poza płynnością mapy (tylko WebGL programowy: 8,4 klatek/s przy 4532
+    obrysach — kryterium 5 niezweryfikowane); `/local-layers` na granicy
+    (902–1052 ms); regresja SPEC 4.5 w progach (pełny skan 64,8 s).
+  - *Poprawka:* `renderers/raster.py` `_paint_within` — miniatura w kadrze
+    warstwy malowana tylko w oknie z wartościami (te same piksele); miniatura
+    warstwy 35 arkuszy ASC p95 2,61 → 1,31 s.
+  - *Otwarte:* przebiegi `-m smb` (kopia magazynu 50k na udziale uzupełniona;
+    `previews-perf/` i `own-data-perf/` do skopiowania), pomiar z GPU,
+    test płynności z przeglądarką z flagami GPU (llvmpipe) bez żądania
+    obrysów mapy 50k — do diagnozy przy pomiarze z GPU; arkusz SM5 125 Mpx
+    decyzji 12 wobec 320 Mpx prawdziwych arkuszy (6,9 s) — do opisu w SPEC 4.5
+    w kroku 18.
 
 ### 17. E2E i odbiór v0.2
 - **Cel:** przejście odbiorcze na prawdziwym `archiwista serve`

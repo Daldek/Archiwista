@@ -1,4 +1,4 @@
-r"""SPEC 4.5 on the 50 000-slot store through ``archiwista serve`` (step 13).
+r"""SPEC 4.5 on the 50 000-slot store through ``archiwista serve`` (v0.1 and v0.2).
 
 Run explicitly on the reference machine: the local disk targets on the
 generated store, the SMB 3 targets on the same store copied to a real share
@@ -16,53 +16,73 @@ configuration and index in ``<katalog-danych>/perf-50k-<ssd|smb>/`` (rebuilt
 on each run, offline, scheduled rescans pushed out of the measurement). Its
 scheduler fully scans the never-indexed store at start; the tests then ask
 for an unchanged incremental scan, view refreshes of an area of at most 500
-slots (``/local-coverage``), list, search, card and map answers over HTTP
-(p95 of 40 after a warm-up), sample the memory of the server and its job
-workers, pan the map with up to 5000 outlines in Chromium, and count the
-sidecars a full and an incremental scan open against the cost table of the
-plan (decision 3). Coverage must be off (``--no-cov``): its tracing would be
-measured too. ``test_store_50k_generator_reproduces_store`` regenerates the
-store next to it and times the generator.
+slots (``/local-coverage``) and that area's layers (``/local-layers``, plan
+v0.2 decision 12), list, search, card and map answers over HTTP (p95 of 40
+after a warm-up), sample the memory of the server, its job workers and its
+render processes, pan the map with up to 5000 outlines in Chromium, and count
+the sidecars a full and an incremental scan open against the cost table of
+the plan (decision 3). Since v0.2 the index has schema 6 with outlines as
+polygons (decision 4).
+
+The frame rate counts only with WebGL drawn on the GPU (plan v0.2, decision
+1): ``ARCHIWISTA_BROWSER_CDP=http://127.0.0.1:<port>`` names a Chrome started
+with ``--remote-debugging-port`` in a graphical session, otherwise
+Playwright's Chromium starts with the GPU flags; WebGL in software skips the
+assertion, or fails it with ``ARCHIWISTA_REQUIRE_GPU=1`` (the gate). Coverage
+must be off (``--no-cov``): its tracing would be measured too.
+``test_store_50k_generator_reproduces_store`` regenerates the store next to it
+and times the generator.
 """
 
-import math
 import os
 import re
 import shutil
-import signal
 import statistics
-import subprocess
 import sys
 import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Iterator
 from concurrent.futures import ProcessPoolExecutor
-from contextlib import closing
 from dataclasses import dataclass, field
-from datetime import datetime
 from multiprocessing import get_context
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
 
-import httpx
 import pytest
 from playwright.sync_api import Page, Response, sync_playwright
 
 from archiwista.config import (
-    AppPaths,
     AppSettings,
-    ConfigStore,
     StoreConfig,
     StoreKind,
     detect_store_kind,
 )
 from archiwista.index import BBox, IndexQueries, IndexWriter, initialize, scan_store
-from archiwista.security import CSRF_HEADER
 from archiwista.sources import ScanScope, SourceEntry
 from archiwista.sources.registry import load_registry
-from tests.fixtures.browser import VIEWPORT
+from tests.fixtures.browser import (
+    VIEWPORT,
+    gpu_browser,
+    pan_frames,
+    require_hardware_gl,
+    webgl_renderer,
+)
 from tests.fixtures.make_store import make_store
+from tests.fixtures.perf_server import (
+    JOB_WORKER,
+    POOL_FLAG,
+    RENDER_WORKER,
+    Medium,
+    ServerProcess,
+    frame_rate,
+    job_seconds,
+    load,
+    memory_status,
+    p95,
+    refuse_coverage,
+    serve_process,
+)
 
 STORE = "perf"
 SLOTS = 50_000
@@ -77,13 +97,14 @@ MAP_LIMIT = 5000
 # Grid columns the map view asks for at 1440 px (``src/views/map.js``).
 GRID_COLUMNS = 25
 POLAND = (14.0, 49.0, 24.2, 54.9)
-START_TIMEOUT_S = 60.0
-FINAL_STATES = frozenset({"succeeded", "failed", "interrupted", "cancelled"})
 SIDECAR = ".meta.json"
 MANIFEST = "kartograf-project.json"
 FRAME_SECONDS = 4.0
 FRAMES_PER_S = 30.0
-_SERVE_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=(\S+)")
+# Every sample of ``/local-layers`` is another area of the same slots: one
+# rescanned within a minute is not rescanned again (plan v0.2, step 11).
+AREA_SHIFT_DEG = 1e-6
+PREVIEW_JOBS_S = 1800.0
 
 
 @dataclass(frozen=True)
@@ -102,55 +123,6 @@ SSD = Target("ssd", "ARCHIWISTA_PERF_STORE", "local", 120.0, 20.0, 1.0)
 SMB = Target("smb", "ARCHIWISTA_SMB_STORE", "share", 600.0, 180.0, 5.0)
 
 
-@dataclass(frozen=True)
-class Medium:
-    """The mount holding the store, as ``/proc/self/mountinfo`` names it."""
-
-    mount_point: str
-    filesystem: str
-    source: str
-    options: str
-    rotational: bool | None
-
-    @classmethod
-    def of(cls, path: Path) -> Self:
-        """Return the deepest mount containing ``path``."""
-        target = Path(os.path.realpath(path))
-        best: tuple[int, Self] | None = None
-        with open("/proc/self/mountinfo", encoding="utf-8") as table:
-            for line in table:
-                fields, _, rest = line.rstrip("\n").partition(" - ")
-                parts = fields.split(" ")
-                mount_point = Path(parts[4].replace("\\040", " "))
-                if not target.is_relative_to(mount_point):
-                    continue
-                filesystem, source, options = (rest.split(" ") + ["", "", ""])[:3]
-                depth = len(mount_point.parts)
-                if best is None or depth >= best[0]:
-                    found = cls(
-                        str(mount_point),
-                        filesystem,
-                        source,
-                        f"{parts[5]} {options}",
-                        _rotational(source),
-                    )
-                    best = (depth, found)
-        assert best is not None, path
-        return best[1]
-
-
-def _rotational(source: str) -> bool | None:
-    """Whether a block device (or the disk of a partition) spins."""
-    device = Path("/sys/class/block") / Path(source).name
-    if not source.startswith("/dev/") or not device.exists():
-        return None
-    for queue in (device / "queue", device.resolve().parent / "queue"):
-        flag = queue / "rotational"
-        if flag.exists():
-            return flag.read_text(encoding="ascii").strip() == "1"
-    return None
-
-
 def _store_dir(target: Target) -> Path:
     variable = os.environ.get(target.variable)
     if not variable:
@@ -158,35 +130,11 @@ def _store_dir(target: Target) -> Path:
     store = Path(variable)
     medium = Medium.of(store)
     if target is SMB:
-        assert medium.filesystem in ("cifs", "smb3"), medium
+        assert medium.share, medium
     else:
         assert detect_store_kind(store) == "local", medium
         assert medium.rotational is False, f"not an SSD: {medium}"
     return store
-
-
-def _seconds(job: dict[str, Any]) -> float:
-    started = datetime.fromisoformat(job["started_at"])
-    finished = datetime.fromisoformat(job["finished_at"])
-    return (finished - started).total_seconds()
-
-
-def _p95(samples: list[float]) -> float:
-    ordered = sorted(samples)
-    return ordered[int(0.95 * (len(ordered) - 1))]
-
-
-def _status(pid: int) -> dict[str, int] | None:
-    """Memory lines of ``/proc/<pid>/status`` in KiB; ``None`` once it is gone."""
-    try:
-        with open(f"/proc/{pid}/status", encoding="ascii") as status:
-            fields = dict(line.split(":", 1) for line in status)
-    except (OSError, ValueError):
-        return None
-    names = ("VmHWM", "VmRSS", "RssAnon", "RssFile")
-    if not all(name in fields for name in names):
-        return None
-    return {name: int(fields[name].split()[0]) for name in names}
 
 
 def _index_mappings(pid: int) -> dict[str, int]:
@@ -207,171 +155,19 @@ def _index_mappings(pid: int) -> dict[str, int]:
     return found
 
 
-def _children(pid: int) -> list[int]:
-    found: list[int] = []
-    try:
-        tasks = os.listdir(f"/proc/{pid}/task")
-    except OSError:
-        return found
-    for task in tasks:
-        try:
-            with open(f"/proc/{pid}/task/{task}/children", encoding="ascii") as text:
-                children = [int(item) for item in text.read().split()]
-        except OSError:
-            continue
-        for child in children:
-            found += [child, *_children(child)]
-    return found
-
-
-def _command(pid: int) -> str:
-    try:
-        with open(f"/proc/{pid}/cmdline", "rb") as text:
-            return text.read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
-    except OSError:
-        return ""
-
-
 @dataclass
-class _Peak:
-    command: str
-    hwm_kib: int = 0
-    anon_kib: int = 0
-
-
-class _Memory:
-    """Peak memory of the server and of each process it starts, sampled."""
-
-    def __init__(self, pid: int) -> None:
-        self.pid = pid
-        self.peaks: dict[int, _Peak] = {}
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._sample, daemon=True)
-
-    def __enter__(self) -> Self:
-        self._thread.start()
-        return self
-
-    def __exit__(self, *details: object) -> None:
-        self._stop.set()
-        self._thread.join()
-
-    def workers(self) -> list[_Peak]:
-        """Peaks of the job workers seen so far."""
-        return [
-            peak
-            for peak in self.peaks.values()
-            if "archiwista.jobs.worker" in peak.command
-        ]
-
-    def _sample(self) -> None:
-        while not self._stop.wait(0.05):
-            for pid in [self.pid, *_children(self.pid)]:
-                status = _status(pid)
-                if status is None:
-                    continue
-                peak = self.peaks.get(pid)
-                if peak is None:
-                    peak = self.peaks[pid] = _Peak(_command(pid))
-                peak.hwm_kib = max(peak.hwm_kib, status["VmHWM"])
-                peak.anon_kib = max(peak.anon_kib, status["RssAnon"])
-
-
-@dataclass
-class _Run:
+class _Run(ServerProcess):
     """A server over the 50k store after its full and incremental scans."""
 
-    target: Target
-    store: Path
-    medium: Medium
-    paths: AppPaths
-    process: subprocess.Popen[bytes]
-    client: httpx.Client
-    memory: _Memory
+    target: Target = SSD
+    store: Path = Path()
+    medium: Medium | None = None
     full: dict[str, Any] = field(default_factory=dict)
     incremental: dict[str, Any] = field(default_factory=dict)
     incremental_seen_s: float = 0.0
-    jobs_before: int = 0
-
-    @property
-    def base(self) -> str:
-        """The server's address."""
-        return str(self.client.base_url).rstrip("/")
-
-    def get(self, path: str, **params: str | int | float) -> Any:
-        """Read ``/api/v1`` with the session; require 200."""
-        response = self.client.get(f"/api/v1{path}", params=params or None)
-        assert response.status_code == 200, (path, response.text)
-        return response.json()
-
-    def post(self, path: str, body: object) -> Any:
-        """Change something with the session's CSRF token."""
-        response = self.client.post(f"/api/v1{path}", json=body)
-        assert response.status_code in (200, 201, 202), (path, response.text)
-        return response.json()
-
-    def wait(self, job_id: str, timeout_s: float) -> dict[str, Any]:
-        """Wait for a job to end and return it."""
-        deadline = time.monotonic() + timeout_s
-        while True:
-            job: dict[str, Any] = self.get(f"/jobs/{job_id}")
-            if job["state"] in FINAL_STATES:
-                return job
-            assert time.monotonic() < deadline, job
-            time.sleep(0.5)
-
-    def index_bytes(self) -> int:
-        """Size of the index with its write-ahead log."""
-        return sum(
-            item.stat().st_size
-            for item in self.paths.data_dir.glob("index.sqlite*")
-            if item.is_file()
-        )
-
-
-def _serve(
-    target: Target, store: Path, work: Path
-) -> tuple[subprocess.Popen[bytes], str]:
-    """Start ``archiwista serve`` over ``work``; return it and its token."""
-    paths = _paths(work)
-    config = StoreConfig(
-        id=STORE, name="Magazyn 50 000", kartograf=store / "data", kind=target.kind
-    )
-    ConfigStore(paths.config_file).save(
-        AppSettings(
-            offline=True,
-            stores=(config,),
-            project_dirs=(store / "projects",),
-            # Scheduled rescans come after the measurements, not during them.
-            scan_interval_local_min=1440,
-            scan_interval_share_min=1440,
-        )
-    )
-    env = {
-        **os.environ,
-        "XDG_CONFIG_HOME": str(work / "config"),
-        "XDG_DATA_HOME": str(work / "data"),
-    }
-    out = work / "serve.out"
-    with out.open("wb") as stdout, (work / "serve.err").open("wb") as stderr:
-        process = subprocess.Popen(
-            [
-                str(Path(sys.executable).with_name("archiwista")),
-                "serve",
-                "--no-browser",
-                "--port",
-                "0",
-            ],
-            env=env,
-            stdout=stdout,
-            stderr=stderr,
-        )
-    deadline = time.monotonic() + START_TIMEOUT_S
-    while (found := _SERVE_URL.search(out.read_text(encoding="utf-8"))) is None:
-        assert process.poll() is None, (work / "serve.err").read_text("utf-8")
-        assert time.monotonic() < deadline, "the server did not start"
-        time.sleep(0.1)
-    return process, found[0]
+    scans_before: int = 0
+    # The area of at most 500 NMT slots: its box, slots and the area itself.
+    area_500: tuple[BBox, int, dict[str, Any]] | None = None
 
 
 def _work_dir(target: Target, store: Path) -> Path:
@@ -390,35 +186,6 @@ def _work_dir(target: Target, store: Path) -> Path:
     return work
 
 
-def _paths(work: Path) -> AppPaths:
-    """Where ``archiwista serve`` with ``XDG_*_HOME`` in ``work`` keeps its data."""
-    return AppPaths(
-        config_file=work / "config" / "archiwista" / "config.toml",
-        data_dir=work / "data" / "archiwista",
-    )
-
-
-def _session(url: str) -> httpx.Client:
-    """Exchange the one-time token of an address for a session (as an agent)."""
-    found = _SERVE_URL.search(url)
-    assert found is not None, url
-    client = httpx.Client(base_url=f"http://127.0.0.1:{found[1]}", timeout=120.0)
-    answer = client.post("/api/v1/session", json={"token": found[2]})
-    assert answer.status_code == 200, answer.text
-    # Every request of the session carries its CSRF token (SPEC 10.1).
-    client.headers[CSRF_HEADER] = answer.json()["csrf_token"]
-    return client
-
-
-def _stop(process: subprocess.Popen[bytes]) -> int:
-    process.send_signal(signal.SIGINT)
-    try:
-        return process.wait(timeout=60)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        return process.wait()
-
-
 @pytest.fixture(
     scope="module",
     params=[
@@ -430,45 +197,55 @@ def run(request: pytest.FixtureRequest) -> Iterator[_Run]:
     """Serve the store: the scheduler's full scan, then an incremental one."""
     target: Target = request.param
     store = _store_dir(target)
-    coverage = sys.modules.get("coverage")
-    if coverage is not None and coverage.Coverage.current() is not None:
-        pytest.fail("run with --no-cov: coverage tracing would be measured too")
+    refuse_coverage()
     work = _work_dir(target, store) / f"perf-50k-{target.name}"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    process, url = _serve(target, store, work)
-    try:
-        with closing(_session(url)) as client, _Memory(process.pid) as memory:
-            run = _Run(
-                target, store, Medium.of(store), _paths(work), process, client, memory
-            )
-            deadline = time.monotonic() + 3 * target.full_s
-            while not (jobs := run.get("/jobs", store=STORE, kind="scan")["items"]):
-                assert time.monotonic() < deadline, "no scan at start"
-                time.sleep(0.5)
-            run.full = run.wait(jobs[0]["id"], 3 * target.full_s)
-            started = time.perf_counter()
-            job = run.post(f"/stores/{STORE}/scan", {"mode": "incremental"})
-            run.incremental = run.wait(job["id"], 3 * target.incremental_s)
-            run.incremental_seen_s = time.perf_counter() - started
-            run.jobs_before = len(run.get("/jobs", store=STORE)["items"])
-            yield run
-    finally:
-        assert _stop(process) == 0, (work / "serve.err").read_text("utf-8")
+    config = StoreConfig(
+        id=STORE, name="Magazyn 50 000", kartograf=store / "data", kind=target.kind
+    )
+    settings = AppSettings(
+        offline=True,
+        stores=(config,),
+        project_dirs=(store / "projects",),
+        # Scheduled rescans come after the measurements, not during them.
+        scan_interval_local_min=1440,
+        scan_interval_share_min=1440,
+    )
+    with serve_process(work, settings) as server:
+        run = _Run(
+            server.process,
+            server.client,
+            server.memory,
+            server.paths,
+            target=target,
+            store=store,
+            medium=Medium.of(store),
+        )
+        print(f"\n[{target.name}] start: {load()}")
+        deadline = time.monotonic() + 3 * target.full_s
+        while not (jobs := run.get("/jobs", store=STORE, kind="scan")["items"]):
+            assert time.monotonic() < deadline, "no scan at start"
+            time.sleep(0.5)
+        run.full = run.wait(jobs[0]["id"], 3 * target.full_s)
+        started = time.perf_counter()
+        job = run.post(f"/stores/{STORE}/scan", {"mode": "incremental"})
+        run.incremental = run.wait(job["id"], 3 * target.incremental_s)
+        run.incremental_seen_s = time.perf_counter() - started
+        run.scans_before = len(run.jobs(store=STORE, kind="scan"))
+        yield run
+        print(f"\n[{target.name}] end: {load()}")
 
 
 def test_store_50k_full_and_unchanged_incremental_scan(run: _Run) -> None:
     """The scheduler's full scan and an unchanged incremental one meet SPEC 4.5."""
     full, incremental = run.full, run.incremental
-    medium = run.medium
-    print(
-        f"\n[{run.target.name}] store on {medium.filesystem} {medium.source}"
-        f" at {medium.mount_point} ({medium.options}; rotational {medium.rotational})"
-    )
+    assert run.medium is not None
+    print(f"\n[{run.target.name}] store on {run.medium.describe()}")
     for job in (full, incremental):
         result = job["result"]
         print(
-            f"{job['params']['mode']} scan (job {job['id']}): {_seconds(job):.1f} s"
+            f"{job['params']['mode']} scan (job {job['id']}): {job_seconds(job):.1f} s"
             f" in the worker process, scan itself {result['seconds']:.1f} s;"
             f" {result['entries']} entries, {result['versions_written']} versions"
             f" written, {result['footprints_written']} footprints"
@@ -496,8 +273,8 @@ def test_store_50k_full_and_unchanged_incremental_scan(run: _Run) -> None:
     # (an invalid manifest, one naming no configured store).
     projects = result["projects"]
     assert projects["read"] == projects["invalid"] + projects["unknown_store"]
-    assert _seconds(full) <= run.target.full_s
-    assert _seconds(incremental) <= run.target.incremental_s
+    assert job_seconds(full) <= run.target.full_s
+    assert job_seconds(incremental) <= run.target.incremental_s
 
 
 def _densest_cell(run: _Run, **filters: str) -> tuple[float, float]:
@@ -540,26 +317,40 @@ def _fit(
     raise AssertionError(f"no box with {low_count}–{high_count} items")
 
 
-def test_store_50k_view_refresh_of_500_slots(run: _Run) -> None:
-    """``/local-coverage`` rescans an area of up to 500 slots within SPEC 4.5."""
-    centre = _densest_cell(run, product="nmt")
-    with IndexQueries(run.paths.index_file) as queries:
-
-        def slots(half: float) -> int:
-            found = queries.slots_in_bbox(STORE, _box(centre, half), product="nmt")
-            return sum(1 for item in found if item.unit is not None)
-
-        half, count = _fit(slots, 450, 500)
-    lon0, lat0, lon1, lat1 = _box(centre, half)
+def _post_area(run: _Run, box: BBox, name: str) -> dict[str, Any]:
+    """Keep a drawn area of a box (WGS84)."""
+    lon0, lat0, lon1, lat1 = box
     ring = [[lon0, lat0], [lon1, lat0], [lon1, lat1], [lon0, lat1], [lon0, lat0]]
-    area = run.post(
+    area: dict[str, Any] = run.post(
         "/areas",
         {
             "geometry": {"type": "Polygon", "coordinates": [ring]},
-            "name": "500 slotów",
+            "name": name,
             "source": "drawn",
         },
     )
+    return area
+
+
+def _area_500(run: _Run) -> tuple[BBox, int, dict[str, Any]]:
+    """Return the area of 450–500 NMT slots in the densest cell (made once)."""
+    if run.area_500 is None:
+        centre = _densest_cell(run, product="nmt")
+        with IndexQueries(run.paths.index_file) as queries:
+
+            def slots(half: float) -> int:
+                found = queries.slots_in_bbox(STORE, _box(centre, half), product="nmt")
+                return sum(1 for item in found if item.unit is not None)
+
+            half, count = _fit(slots, 450, 500)
+        box = _box(centre, half)
+        run.area_500 = (box, count, _post_area(run, box, "500 slotów"))
+    return run.area_500
+
+
+def test_store_50k_view_refresh_of_500_slots(run: _Run) -> None:
+    """``/local-coverage`` rescans an area of up to 500 slots within SPEC 4.5."""
+    _, count, area = _area_500(run)
     params = {"area_id": area["id"], "product": "nmt", "store": STORE}
     run.get("/local-coverage", **params)
     samples = []
@@ -568,10 +359,10 @@ def test_store_50k_view_refresh_of_500_slots(run: _Run) -> None:
         started = time.perf_counter()
         answers.append(run.get("/local-coverage", **params))
         samples.append(time.perf_counter() - started)
-    p95 = _p95(samples)
+    found = p95(samples)
     print(
         f"\n[{run.target.name}] view refresh of {count} slots"
-        f" ({area['area_km2']:.0f} km²): p95 {p95 * 1000:.0f} ms,"
+        f" ({area['area_km2']:.0f} km²): p95 {found * 1000:.0f} ms,"
         f" median {statistics.median(samples) * 1000:.0f} ms,"
         f" max {max(samples) * 1000:.0f} ms"
     )
@@ -579,7 +370,67 @@ def test_store_50k_view_refresh_of_500_slots(run: _Run) -> None:
     assert {(item["stale"], item["stale_reason"]) for item in answers} == {
         (False, None)
     }
-    assert p95 <= run.target.refresh_s
+    assert found <= run.target.refresh_s
+
+
+def _layers_round(
+    run: _Run, box: BBox, first: int
+) -> tuple[list[float], list[dict[str, Any]]]:
+    """Ask ``/local-layers`` of ``RUNS`` new areas of the same slots once each.
+
+    The area ``first + n`` is the box moved by ``n`` × ``AREA_SHIFT_DEG``
+    (11 cm), so each answer comes after a view refresh of its own.
+    """
+    samples = []
+    answers = []
+    for number in range(first, first + RUNS):
+        shift = number * AREA_SHIFT_DEG
+        moved = (box[0] + shift, box[1] + shift, box[2] + shift, box[3] + shift)
+        area = _post_area(run, moved, f"warstwy {number}")
+        started = time.perf_counter()
+        answers.append(
+            run.get("/local-layers", store=STORE, product="nmt", area_id=area["id"])
+        )
+        samples.append(time.perf_counter() - started)
+    return samples, answers
+
+
+def test_store_50k_local_layers_of_500_slots(run: _Run) -> None:
+    """``/local-layers`` of an area of up to 500 slots, refreshed first (v0.2)."""
+    box, count, area = _area_500(run)
+    run.get("/local-layers", store=STORE, product="nmt", area_id=area["id"])
+    building, answers = _layers_round(run, box, 1)
+    started = time.perf_counter()
+    jobs = run.wait_previews(PREVIEW_JOBS_S)
+    waited = time.perf_counter() - started
+    built, after = _layers_round(run, box, 1 + RUNS)
+    layers = answers[0]["layers"]
+    versions = sum(len(layer["versions"] or []) for layer in layers)
+    summary = {
+        name: sum(job["result"][name] for job in jobs if job["result"])
+        for name in ("built", "cached")
+    }
+    print(
+        f"\n[{run.target.name}] /local-layers of {count} NMT slots"
+        f" ({area['area_km2']:.0f} km², {len(layers)} layers, {versions} versions),"
+        f" {RUNS} new areas each:"
+        f" while the layers' previews were built p95 {p95(building) * 1000:.0f} ms"
+        f" (median {statistics.median(building) * 1000:.0f} ms, max"
+        f" {max(building) * 1000:.0f} ms); after p95 {p95(built) * 1000:.0f} ms"
+        f" (median {statistics.median(built) * 1000:.0f} ms, max"
+        f" {max(built) * 1000:.0f} ms)"
+    )
+    print(
+        f"preview jobs: {len(jobs)} ({Counter(job['state'] for job in jobs)}),"
+        f" {summary['built']} built, {summary['cached']} cached; the last ended"
+        f" {waited:.0f} s after the first round"
+    )
+
+    assert {item["stale_reason"] for item in answers + after} == {None}
+    assert layers and versions
+    assert {job["state"] for job in jobs} == {"succeeded"}
+    assert p95(building) <= run.target.refresh_s
+    assert p95(built) <= run.target.refresh_s
 
 
 def test_store_50k_list_search_card_map_p95(run: _Run) -> None:
@@ -638,10 +489,10 @@ def test_store_50k_list_search_card_map_p95(run: _Run) -> None:
             response = run.client.get(f"/api/v1{path}")
             samples.append((time.perf_counter() - started) * 1000)
             assert response.status_code == 200, path
-        measured[name] = (_p95(samples), statistics.median(samples))
+        measured[name] = (p95(samples), statistics.median(samples))
     print(f"\n[{run.target.name}] over HTTP, {RUNS} requests each:")
-    for name, (p95, median) in measured.items():
-        print(f"{name:32} p95 {p95:7.1f} ms   median {median:7.1f} ms")
+    for name, (found, median) in measured.items():
+        print(f"{name:32} p95 {found:7.1f} ms   median {median:7.1f} ms")
 
     assert run.get("/map/footprints", bbox=view, limit=MAP_LIMIT)["aggregated"] is False
     over = {
@@ -652,101 +503,116 @@ def test_store_50k_list_search_card_map_p95(run: _Run) -> None:
     assert over == {}
 
 
-# Collects the times of animation frames for ``duration`` ms; the page reads
-# ``window.__frames`` when they are over.
-_COUNT_FRAMES = """
-(duration) => {
-  window.__frames = new Promise((resolve) => {
-    const times = [];
-    const step = (now) => {
-      times.push(now);
-      if (now - times[0] < duration) requestAnimationFrame(step);
-      else resolve(times);
-    };
-    requestAnimationFrame(step);
-  });
-}
-"""
-_RENDERER = """
-() => {
-  const gl = document.createElement("canvas").getContext("webgl2");
-  const info = gl.getExtension("WEBGL_debug_renderer_info");
-  return gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER);
-}
-"""
-# WebGL drawn by the processor: frame rates say nothing of a computer's GPU.
-_SOFTWARE_GL = ("SwiftShader", "llvmpipe", "softpipe")
+def _vertices(view: dict[str, Any]) -> int:
+    """Count the outline vertices of a map view's footprints."""
+
+    def count(coordinates: Any) -> int:
+        if coordinates and isinstance(coordinates[0], int | float):
+            return 1
+        return sum(count(item) for item in coordinates)
+
+    return sum(count(item["geometry"]["coordinates"]) for item in view["items"])
 
 
-def _frames_while_panning(page: Page) -> tuple[float, float]:
-    """Drag the map in a slow circle; return frames per second and frame p95 (ms)."""
-    page.wait_for_timeout(2000)
-    box = page.locator(".maplibregl-canvas").bounding_box()
-    assert box is not None
-    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-    page.mouse.move(x, y)
-    page.mouse.down()
-    page.evaluate(_COUNT_FRAMES, FRAME_SECONDS * 1000)
-    started = time.monotonic()
-    while (moving := time.monotonic() - started) < FRAME_SECONDS + 0.2:
-        # The map follows the pointer at every frame.
-        page.mouse.move(x + 150 * math.sin(moving * 2), y + 90 * math.cos(moving * 2))
-        time.sleep(1 / 120)
-    times: list[float] = page.evaluate("() => window.__frames")
-    page.mouse.up()
-    intervals = [
-        later - earlier for earlier, later in zip(times, times[1:], strict=False)
-    ]
-    return 1000 * len(intervals) / (times[-1] - times[0]), _p95(intervals)
+def _open_map(
+    page: Page, url: str, answers: list[Response], *, required: bool = True
+) -> dict[str, Any]:
+    """Open a map address; return the last ``/map/footprints`` answer it asked.
+
+    ``required`` false: an address that asked for none gives an empty view.
+    """
+    answers.clear()
+    if required:
+        # The map asks once WebGL and the view are set up, maybe after a
+        # moment without requests: wait for the answer itself.
+        with page.expect_response(
+            lambda answer: "/api/v1/map/footprints" in answer.url, timeout=120_000
+        ):
+            page.goto(url)
+    else:
+        page.goto(url)
+    page.wait_for_load_state("networkidle")
+    views = [item for item in answers if "/api/v1/map/footprints" in item.url]
+    if not views and not required:
+        return {"total": 0, "items": []}
+    assert views, "the map asked for no footprints"
+    view: dict[str, Any] = views[-1].json()
+    return view
 
 
 def test_store_50k_map_5000_outlines_frame_rate(run: _Run) -> None:
-    """Panning a map of 4500–5000 outlines keeps ≥ 30 frames per second (v0.2)."""
+    """Panning a map of 4500–5000 outlines keeps ≥ 30 frames per second (v0.2).
+
+    The same view without outlines, and with the year layer of most versions
+    of the 500-slot area chosen (its outlines and raster tiles), are panned
+    too, for information.
+    """
     lon, lat = _densest_cell(run)
+    _, _, area = _area_500(run)
+    layers = run.get("/local-layers", store=STORE, product="nmt", area_id=area["id"])
+    layer = max(layers["layers"], key=lambda item: item["versions_count"])
     token = run.post("/session/tokens", None)["token"]
     answers: list[Response] = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        page = browser.new_context(viewport=VIEWPORT, locale="pl-PL").new_page()
+        browser = gpu_browser(playwright)
+        context = browser.new_context(viewport=VIEWPORT, locale="pl-PL")
+        page = context.new_page()
         page.on("response", lambda response: answers.append(response))
         page.goto(f"{run.base}/#token={token}")
-        renderer: str = page.evaluate(_RENDERER)
+        renderer = webgl_renderer(page)
         zoom, view = 9.0, dict[str, Any]()
         for _ in range(16):
-            answers.clear()
-            page.goto(
-                f"{run.base}/?view=map&center={lon:.5f},{lat:.5f}&zoom={zoom:.2f}"
-            )
-            page.wait_for_load_state("networkidle")
-            views = [item for item in answers if "/api/v1/map/footprints" in item.url]
-            assert views, "the map asked for no footprints"
-            view = views[-1].json()
+            position = f"center={lon:.5f},{lat:.5f}&zoom={zoom:.2f}"
+            view = _open_map(page, f"{run.base}/?view=map&{position}", answers)
             if view["aggregated"]:
                 zoom += 0.25
             elif view["total"] < MAP_LIMIT - 500:
                 zoom -= 0.25
             else:
                 break
-        loaded, loaded_p95 = _frames_while_panning(page)
+        loaded, loaded_p95 = frame_rate(pan_frames(page, FRAME_SECONDS))
         # The same view and basemap without outlines: a product nobody has.
-        page.goto(
-            f"{run.base}/?view=map&center={lon:.5f},{lat:.5f}&zoom={zoom:.2f}"
-            "&product=brak"
+        _open_map(page, f"{run.base}/?view=map&{position}&product=brak", answers)
+        empty, empty_p95 = frame_rate(pan_frames(page, FRAME_SECONDS))
+        chosen = f"product=nmt&area_id={area['id']}&layer={layer['key']}"
+        year = _open_map(
+            page, f"{run.base}/?view=map&{position}&{chosen}", answers, required=False
         )
-        page.wait_for_load_state("networkidle")
-        empty, empty_p95 = _frames_while_panning(page)
+        year_tiles = sum("/local-layers/tiles/" in item.url for item in answers)
+        with_year, with_year_p95 = frame_rate(pan_frames(page, FRAME_SECONDS))
+        minzoom = layer["preview"]["minzoom"] if layer["preview"] else None
+        zoomed = ""
+        if minzoom is not None:
+            box = area["bbox"]
+            centre = f"center={(box[0] + box[2]) / 2:.5f},{(box[1] + box[3]) / 2:.5f}"
+            # MapLibre's zoom asks for tiles one zoom higher (256 px tiles).
+            at = f"{centre}&zoom={minzoom - 1:.2f}&{chosen}"
+            _open_map(page, f"{run.base}/?view=map&{at}", answers, required=False)
+            shown = sum("/local-layers/tiles/" in item.url for item in answers)
+            tiles, tiles_p95 = frame_rate(pan_frames(page, FRAME_SECONDS))
+            zoomed = (
+                f"; at the layer's zoom {minzoom - 1}: {tiles:.1f} frames/s"
+                f" (p95 {tiles_p95:.0f} ms), {shown} layer tiles"
+            )
+        context.close()
         browser.close()
     summary = (
         f"{loaded:.1f} frames/s (frame p95 {loaded_p95:.0f} ms) with"
-        f" {view['total']} outlines at zoom {zoom:.2f}, {empty:.1f} frames/s"
-        f" (p95 {empty_p95:.0f} ms) without outlines; WebGL: {renderer}"
+        f" {view['total']} outlines ({_vertices(view)} vertices) at zoom"
+        f" {zoom:.2f}, {empty:.1f} frames/s (p95 {empty_p95:.0f} ms) without"
+        f" outlines; WebGL: {renderer}"
     )
-    print(f"\n[{run.target.name}] panning the map: {summary}")
+    year_summary = (
+        f"year layer {layer['title']} ({layer['versions_count']} versions, minzoom"
+        f" {minzoom}) chosen: {with_year:.1f} frames/s (p95 {with_year_p95:.0f} ms)"
+        f" with {year['total']} outlines of its year asked for, {year_tiles} layer"
+        f" tiles{zoomed}"
+    )
+    print(f"\n[{run.target.name}] panning the map: {summary}; {year_summary}")
 
     assert view["aggregated"] is False
     assert MAP_LIMIT - 500 <= view["total"] <= MAP_LIMIT
-    if any(name in renderer for name in _SOFTWARE_GL):
-        pytest.skip(f"no GPU for the browser, WebGL in software: {summary}")
+    require_hardware_gl(renderer, summary)
     assert loaded >= FRAMES_PER_S
 
 
@@ -855,12 +721,11 @@ def test_store_50k_sidecar_opens_match_cost_table(run: _Run) -> None:
 
 def test_store_50k_server_memory_and_index_size(run: _Run) -> None:
     """The server stays ≤ 500 MB resident; the index ≤ 500 MB."""
-    status = _status(run.process.pid)
+    status = memory_status(run.process.pid)
     assert status is not None
     server = run.memory.peaks[run.process.pid]
-    workers = run.memory.workers()
     size = run.index_bytes()
-    jobs = run.get("/jobs", store=STORE)["items"]
+    scans = run.jobs(store=STORE, kind="scan")
     mapped = _index_mappings(run.process.pid)
     print(
         f"\n[{run.target.name}] server: peak resident {status['VmHWM'] / 1024:.0f} MiB"
@@ -869,14 +734,25 @@ def test_store_50k_server_memory_and_index_size(run: _Run) -> None:
         f" {mapped['pss_kib'] / 1024:.0f} MiB, {mapped['maps']} maps of the index"
         f" holding {mapped['rss_kib'] / 1024:.0f} MiB"
     )
-    for peak in workers:
-        print(
-            f"job worker: peak resident {peak.hwm_kib / 1024:.0f} MiB,"
-            f" heap {peak.anon_kib / 1024:.0f} MiB"
-        )
-    print(f"index {size / 10**6:.0f} MB ({size / 2**20:.0f} MiB); jobs {len(jobs)}")
+    groups = {
+        "job worker": run.memory.matching(JOB_WORKER),
+        "render process": run.memory.matching(RENDER_WORKER, POOL_FLAG),
+        "build process": run.memory.matching(RENDER_WORKER, without=POOL_FLAG),
+    }
+    for name, peaks in groups.items():
+        if peaks:
+            highest = max(peaks, key=lambda peak: peak.hwm_kib)
+            print(
+                f"{name}: {len(peaks)}, peak resident at most"
+                f" {highest.hwm_kib / 1024:.0f} MiB (heap {highest.anon_kib / 1024:.0f}"
+                " MiB)"
+            )
+    print(
+        f"index {size / 10**6:.0f} MB ({size / 2**20:.0f} MiB); preview cache"
+        f" {run.previews_bytes() / 10**6:.1f} MB; scans {len(scans)}"
+    )
 
-    assert len(jobs) == run.jobs_before == 2
+    assert len(scans) == run.scans_before == 2
     assert status["VmHWM"] * 1024 <= MEMORY_BYTES
     assert size <= INDEX_BYTES
 
