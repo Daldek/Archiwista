@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable
 
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
+from archiwista.commands import CommandModule, previews
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
 from archiwista.jobs.reindex import reindex_main
@@ -14,6 +15,9 @@ from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
 from archiwista.sources.registry import PluginRegistry, load_registry
+
+# Modules of commands per function (contract "CLI"): one line each.
+COMMAND_MODULES: tuple[CommandModule, ...] = (previews,)
 
 
 def main(
@@ -98,6 +102,8 @@ def main(
     reindex.add_argument("--store", help=MESSAGES["cli_reindex_store_help"])
     add_admin_commands(commands)
     add_read_commands(commands)
+    for module in COMMAND_MODULES:
+        module.add_commands(commands)
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
@@ -131,6 +137,9 @@ def main(
         return read_main(args, paths, registry, sys.stdout, sys.stderr)
     if args.command == "reindex":
         return reindex_main(paths, registry, sys.stdout, sys.stderr, store=args.store)
+    for module in COMMAND_MODULES:
+        if args.command in module.COMMANDS:
+            return module.main(args, paths, registry, sys.stdout, sys.stderr)
     return doctor_main(paths, registry, sys.stdout)
 
 

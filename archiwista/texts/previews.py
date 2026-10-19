@@ -213,5 +213,8 @@ PREVIEW_MESSAGES = MappingProxyType(
             "Czekam na zakończenie zadania {job} ({kind}) innego procesu"
             " Archiwisty; potem uruchomię własne."
         ),
+        "job_foreground_stopped": (
+            "Przestaję czekać; zadanie {job} trwa dalej w innym procesie Archiwisty."
+        ),
     }
 )

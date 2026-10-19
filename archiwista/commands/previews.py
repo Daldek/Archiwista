@@ -1,0 +1,326 @@
+"""``archiwista preview``: the preview of an object for people and AI agents.
+
+``archiwista preview REF [--style STYL] [--size BOK] [--output PLIK.png]
+[--build] [--json]`` (plan v0.2, decision 11) prints the ``PreviewInfo`` of
+the object ``REF`` (the ``ref`` of an API answer) as ``GET …/preview``
+answers it. ``--output`` also writes its PNG thumbnail (``GET
+…/preview.png``), rendered by a render process of the command into the
+preview cache the server uses, so an agent that sees images looks at it
+without a browser; ``--build`` first builds what the file needs (its local
+COG, past the auto-build limits too) in a ``preview`` job run in the
+foreground (``archiwista.jobs.foreground``; ``POST …/preview`` with
+``force``). Everything goes through ``PreviewService`` with one render
+process, as the owner of the installation (``LOCAL_OWNER``). Without
+``--build`` no job supervisor runs, so the answer names no ``job``: a file a
+server is building shows ``needs_build``.
+"""
+
+import argparse
+import asyncio
+import sqlite3
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TextIO
+
+from pydantic import ValidationError
+
+from archiwista.api.errors import service_problem, validation_problem
+from archiwista.api.models_previews import PreviewInfo, ThumbnailQuery
+from archiwista.auth import LOCAL_OWNER
+from archiwista.commands import Commands, add_parser, refuse
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    SettingsService,
+    SettingsValidationError,
+)
+from archiwista.errors import ArchiwistaError
+from archiwista.index import IndexQueries, IndexUnsupportedError
+from archiwista.jobs import ACTIVE_STATES, JobEvent, JobRecord, JobSupervisor, label
+from archiwista.jobs.foreground import run_foreground
+from archiwista.messages import MESSAGES, with_detail
+from archiwista.previews.cache import PreviewCache
+from archiwista.previews.pool import RenderPool
+from archiwista.previews.service import PreviewService
+from archiwista.refs import ObjectResolver, format_ref, parse_ref
+from archiwista.sources.registry import PluginRegistry
+
+COMMANDS = frozenset({"preview"})
+# Side of the thumbnail ``--output`` writes.
+DEFAULT_SIZE = 512
+
+
+@dataclass(frozen=True, slots=True)
+class LocalPreviews:
+    """What a command previews with: the index, a render pool, the service."""
+
+    queries: IndexQueries
+    pool: RenderPool
+    service: PreviewService
+
+
+@contextmanager
+def local_previews(
+    paths: AppPaths, settings: AppSettings, *, jobs: JobSupervisor | None = None
+) -> Iterator[LocalPreviews]:
+    """Open the index, the server's preview cache and one render process.
+
+    Parameters
+    ----------
+    paths : AppPaths
+        The local index and the preview cache (``previews_dir``): what the
+        command renders, the server finds, and the other way round.
+    settings : AppSettings
+        The stores' directories and the preview cache limit.
+    jobs : JobSupervisor or None, optional
+        The started supervisor of ``PreviewService.build``, if any.
+
+    Raises
+    ------
+    IndexUnsupportedError
+        The index has a schema this version does not read.
+    OSError, sqlite3.Error
+        The preview cache cannot be opened.
+    """
+    with ExitStack() as stack:
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        cache = stack.enter_context(
+            PreviewCache(
+                paths.previews_dir, limit_bytes=settings.preview_cache_limit_bytes
+            )
+        )
+        pool = stack.enter_context(
+            RenderPool(workers=1, cache=cache, work_dir=paths.work_dir)
+        )
+        resolver = ObjectResolver(queries, lambda: settings)
+        yield LocalPreviews(queries, pool, PreviewService(pool, resolver, jobs))
+
+
+def add_commands(commands: Commands) -> None:
+    """Add ``archiwista preview`` (see the module).
+
+    Parameters
+    ----------
+    commands : argparse._SubParsersAction
+        Subcommands of the ``archiwista`` parser.
+    """
+    preview = add_parser(commands, "preview", "cli_preview_help")
+    preview.add_argument("ref", metavar="REF", help=MESSAGES["cli_preview_ref_help"])
+    preview.add_argument(
+        "--style", metavar="STYL", help=MESSAGES["cli_preview_style_help"]
+    )
+    preview.add_argument(
+        "--size",
+        type=int,
+        default=DEFAULT_SIZE,
+        metavar="BOK",
+        help=MESSAGES["cli_preview_size_help"],
+    )
+    preview.add_argument(
+        "--output",
+        type=Path,
+        metavar="PLIK.png",
+        help=MESSAGES["cli_preview_output_help"],
+    )
+    preview.add_argument(
+        "--build", action="store_true", help=MESSAGES["cli_preview_build_help"]
+    )
+
+
+def main(
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Run ``archiwista preview``; return the exit status.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments of ``preview``.
+    paths : AppPaths
+        Configuration file, local index, preview cache and jobs.
+    registry : PluginRegistry
+        Producer plugins, for the settings.
+    out, err : TextIO
+        The ``PreviewInfo`` (as JSON with ``--json``) or the problem;
+        Polish messages, progress of the build.
+
+    Returns
+    -------
+    int
+        ``0`` on success; ``1`` when the object is refused (its problem),
+        its build fails, the thumbnail cannot be written, or the settings,
+        the index or the preview cache cannot be used.
+    """
+    try:
+        query = ThumbnailQuery(style=args.style, size=args.size)
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        return refuse(validation_problem(located), out, err, as_json=args.json)
+    with ExitStack() as stack:
+        try:
+            settings = SettingsService(ConfigStore(paths.config_file), registry)
+            jobs = None
+            if args.build:
+                jobs = stack.enter_context(JobSupervisor(paths, settings))
+            previews = stack.enter_context(
+                local_previews(paths, settings.get(), jobs=jobs)
+            )
+        except (
+            SettingsValidationError,
+            IndexUnsupportedError,
+            OSError,
+            sqlite3.Error,
+        ) as error:
+            err.write(with_detail(MESSAGES["cli_preview_failed"], str(error)) + "\n")
+            return 1
+        try:
+            return _preview(args, query, previews.service, jobs, out, err)
+        except ArchiwistaError as error:
+            problem = service_problem(error)
+            if problem is None:
+                raise
+            return refuse(problem, out, err, as_json=args.json)
+
+
+def _preview(
+    args: argparse.Namespace,
+    query: ThumbnailQuery,
+    service: PreviewService,
+    jobs: JobSupervisor | None,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Build, write the thumbnail, then print the preview of the object."""
+    ref = format_ref(parse_ref(args.ref))
+    status = 0
+    if jobs is not None:
+        failure = _build(ref, service, jobs, err)
+        status = 0 if failure is None else 1
+        if failure:
+            err.write(failure + "\n")
+    written = None
+    if status == 0 and args.output is not None:
+        thumbnail = asyncio.run(
+            service.thumbnail(
+                ref, principal=LOCAL_OWNER, style=query.style, size=query.size
+            )
+        )
+        assert thumbnail.data is not None  # asked without If-None-Match
+        try:
+            args.output.write_bytes(thumbnail.data)
+        except OSError as error:
+            err.write(with_detail(MESSAGES["cli_preview_failed"], str(error)) + "\n")
+            return 1
+        written = args.output
+    info = asyncio.run(service.info(ref, principal=LOCAL_OWNER))
+    if written is not None:
+        style = query.style or info.default_style
+        message = MESSAGES["cli_preview_written"].format(
+            path=written, size=query.size, style=style
+        )
+        err.write(message + "\n")
+    out.write((info.model_dump_json() if args.json else _info_text(info)) + "\n")
+    return status
+
+
+def _build(
+    ref: str, service: PreviewService, jobs: JobSupervisor, err: TextIO
+) -> str | None:
+    """Build what the file needs in the foreground; why it failed, if it did.
+
+    ``""``: Ctrl+C stopped the waiting for another process's job, which
+    said so already.
+    """
+    record = run_foreground(
+        jobs,
+        lambda: asyncio.run(service.build([ref], principal=LOCAL_OWNER, force=True)),
+        err,
+        started=lambda job: MESSAGES["cli_preview_build_started"].format(job=job.id),
+        event=_build_event,
+        cancelling=lambda job: MESSAGES["cli_preview_build_cancelling"].format(
+            job=job.id
+        ),
+    )
+    if record is None:
+        return None
+    return _build_failure(record, ref)
+
+
+def _build_event(event: JobEvent) -> str | None:
+    data = event.data
+    if event.type == "progress":
+        return MESSAGES["cli_preview_build_progress"].format(
+            current=data["current"],
+            total=data["total"],
+            built=data.get("built", 0),
+            cached=data.get("cached", 0),
+            failed=data.get("failed", 0),
+        )
+    if event.type == "notice":
+        return MESSAGES["cli_preview_build_notice"].format(message=data["message"])
+    return None
+
+
+def _build_failure(record: JobRecord, ref: str) -> str | None:
+    """Return why a ``preview`` job did not build ``ref``, or ``None``."""
+    if record.state in ACTIVE_STATES:
+        return ""
+    if record.state == "succeeded":
+        result = record.result or {}
+        failed = [item for item in result.get("failed", ()) if item["ref"] == ref]
+        if not failed:
+            return None
+        state, detail = "failed", failed[0]["detail"] or failed[0]["code"]
+    else:
+        state = record.state
+        detail = "" if record.error is None else record.error.detail
+    return MESSAGES["cli_preview_build_failed"].format(
+        job=record.id, state=label("job_state", state), detail=detail
+    )
+
+
+def _info_text(info: PreviewInfo) -> str:
+    lines = [
+        MESSAGES["cli_preview_title"].format(
+            ref=info.ref,
+            kind=MESSAGES[f"preview_kind_{info.kind}"],
+            state=MESSAGES[f"preview_state_{info.state}"],
+        )
+    ]
+    if info.reason is not None:
+        lines.append(
+            MESSAGES["cli_preview_reason"]
+            .format(message=info.reason.message, fix=info.reason.fix)
+            .rstrip()
+        )
+    if info.styles:
+        styles = ", ".join(
+            f"{style} ({MESSAGES[f'preview_style_{style}']})" for style in info.styles
+        )
+        lines.append(
+            MESSAGES["cli_preview_styles"].format(
+                styles=styles, default=info.default_style
+            )
+        )
+    if info.bounds is not None and info.minzoom is not None:
+        lines.append(
+            MESSAGES["cli_preview_map"].format(
+                minzoom=info.minzoom,
+                maxzoom=info.maxzoom,
+                bounds=" ".join(f"{value:.5f}" for value in info.bounds),
+            )
+        )
+    if info.job is not None:
+        lines.append(
+            MESSAGES["cli_preview_job"].format(
+                job=info.job.id, state=label("job_state", info.job.state)
+            )
+        )
+    return "\n".join(lines)

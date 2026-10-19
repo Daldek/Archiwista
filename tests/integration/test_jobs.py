@@ -31,7 +31,8 @@ from archiwista.errors import (
     OfflineModeError,
 )
 from archiwista.index import IndexQueries, own_file_id
-from archiwista.jobs import JobEvent, JobSupervisor, ScanScheduler
+from archiwista.jobs import JobEvent, JobRecord, JobSupervisor, ScanScheduler, label
+from archiwista.jobs.foreground import run_foreground
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import MESSAGES
@@ -482,6 +483,120 @@ def test_reindex_unknown_store(env: JobsEnv) -> None:
     assert status == 2
     assert err.getvalue() == MESSAGES["job_store_unknown"].format(store="brak") + "\n"
     assert env.jobs.list().items == ()
+
+
+def test_reindex_on_foreground_helper(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl+C in ``reindex`` cancels its scan, which abandons its pass.
+
+    The scan runs on ``jobs/foreground.py``: its progress reaches standard
+    error, Ctrl+C (pressed here while ``wait`` follows the scan) cancels it
+    and waits for its end, and ``reindex`` exits 1 with the job's state; a
+    version gone since the last scan is not marked missing.
+    """
+    # Arrange
+    env.scan("full")
+    gone = next(
+        entry
+        for entry in env.store.by_kind("version")
+        if not entry.current and entry.case == "regular"
+    )
+    remove_version(env.store.root, gone.path)
+    before = env.rows()
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+    wait = JobSupervisor.wait
+    pressed: list[str] = []
+
+    def ctrl_c(
+        self: JobSupervisor, job_id: str, timeout: float | None = None
+    ) -> JobRecord:
+        if pressed:
+            return wait(self, job_id, timeout)
+        pressed.append(job_id)
+        env.follow(job_id, _after_first_segment)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(JobSupervisor, "wait", ctrl_c)
+    out = io.StringIO()
+    err = io.StringIO()
+
+    # Act
+    status = reindex_main(
+        env.paths, NoSources(), out, err, store=STORE, worker_command=TEST_WORKER
+    )
+    monkeypatch.setattr(JobSupervisor, "wait", wait)
+    record = env.jobs.get(pressed[0])
+
+    # Assert
+    assert status == 1 and out.getvalue() == ""
+    assert record is not None and record.state == "cancelled"
+    lines = err.getvalue().splitlines()
+    assert lines[0] == MESSAGES["reindex_started"].format(store=STORE, job=record.id)
+    assert any(line.startswith(f"Magazyn „{STORE}”: segmenty ") for line in lines)
+    assert MESSAGES["reindex_cancelling"].format(job=record.id) in lines
+    assert lines[-1].endswith("(kod cancelled)")
+    assert env.rows() == before
+
+
+def test_foreground_follows_joined_job_then_runs_own(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A request joining another process's running build waits, then runs its own.
+
+    The command's supervisor hands its request to the server's running build
+    of the same content; the command follows that job to its end and submits
+    again, so its own job runs after it and finds the content built.
+    """
+    # Arrange
+    sources = _preview_sources(
+        tmp_path,
+        monkeypatch,
+        {"a": {"needs_cog": True, "sleep_s": {"build": 1}}},
+        copies={"test:a-copy": "a"},
+    )
+    server = env.jobs.submit(
+        "preview", params=_preview_params(sources, "a"), actor=LOCAL_OWNER
+    )
+    _await(lambda: _state(env.jobs, server.id) == "running")
+    submitted: list[JobRecord] = []
+    err = io.StringIO()
+
+    # Act
+    with JobSupervisor(env.paths, env.settings, worker_command=TEST_WORKER) as jobs:
+
+        def submit() -> JobRecord:
+            job = jobs.submit(
+                "preview", params=_preview_params(sources, "a-copy"), actor=LOCAL_OWNER
+            )
+            submitted.append(job)
+            return job
+
+        record = run_foreground(
+            jobs,
+            submit,
+            err,
+            started=lambda job: f"started {job.id}",
+            event=lambda event: None,
+            cancelling=lambda job: f"cancelling {job.id}",
+            poll_s=0.05,
+        )
+    first = env.jobs.get(server.id)
+
+    # Assert
+    assert [job.id for job in submitted] == [server.id, record.id]
+    assert first is not None and first.state == "succeeded"
+    assert first.params["refs"] == ["test:a", "test:a-copy"]
+    assert record.state == "succeeded" and record.result is not None
+    assert (record.result["built"], record.result["cached"]) == (0, 1)
+    assert record.started_at is not None and first.finished_at is not None
+    assert record.started_at >= first.finished_at
+    assert err.getvalue().splitlines() == [
+        MESSAGES["job_foreground_waiting"].format(
+            job=server.id, kind=label("job_kind", "preview")
+        ),
+        f"started {record.id}",
+    ]
 
 
 def test_job_list_pages_with_cursor_of_its_filters(env: JobsEnv) -> None:

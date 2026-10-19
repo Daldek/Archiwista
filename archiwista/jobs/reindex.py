@@ -1,11 +1,12 @@
 """``archiwista reindex``: full scans of stores, run in the foreground.
 
 Each scan is a job like any other (``JobSupervisor``, table ``jobs``, actor
-``local`` of kind ``local_owner``, without a session), so a running server
-shows it, and a job already writing the
-store's index makes it a conflict (code ``conflict``). Progress and notices
-go to standard error, the summary of each store to standard output. Ctrl+C
-cancels the scan: its pass is abandoned and nothing is marked missing.
+``local`` of kind ``local_owner``, without a session), run on
+``archiwista.jobs.foreground``, so a running server shows it, and a job
+already writing the store's index makes it a conflict (code ``conflict``).
+Progress and notices go to standard error, the summary of each store to
+standard output. Ctrl+C cancels the scan: its pass is abandoned and nothing
+is marked missing.
 """
 
 from collections.abc import Sequence
@@ -22,6 +23,7 @@ from archiwista.config import (
 )
 from archiwista.errors import JobConflictError
 from archiwista.index.schema import IndexUnsupportedError, initialize
+from archiwista.jobs.foreground import run_foreground
 from archiwista.jobs.supervisor import (
     WORKER_COMMAND,
     JobEvent,
@@ -86,44 +88,39 @@ def reindex_main(
 
 def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
     """Fully scan one store and report it."""
+
+    def event(heard: JobEvent) -> str | None:
+        if heard.type == "progress":
+            return MESSAGES["reindex_progress"].format(
+                store=store,
+                current=heard.data["current"],
+                total=heard.data["total"],
+                entries=heard.data.get("entries", 0),
+            )
+        if heard.type == "notice":
+            return MESSAGES["reindex_notice"].format(
+                store=store, message=heard.data["message"]
+            )
+        return None
+
     try:
-        job = jobs.submit(
-            "scan", store=store, params={"mode": "full"}, actor=LOCAL_OWNER
+        record = run_foreground(
+            jobs,
+            lambda: jobs.submit(
+                "scan", store=store, params={"mode": "full"}, actor=LOCAL_OWNER
+            ),
+            err,
+            started=lambda job: MESSAGES["reindex_started"].format(
+                store=store, job=job.id
+            ),
+            event=event,
+            cancelling=lambda job: MESSAGES["reindex_cancelling"].format(job=job.id),
         )
     except JobConflictError as error:
         problem = problem_of(error)
         code = "conflict" if problem is None else problem[1]
         err.write(MESSAGES["reindex_error"].format(message=error, code=code) + "\n")
         return 1
-    err.write(MESSAGES["reindex_started"].format(store=store, job=job.id) + "\n")
-
-    def follow(event: JobEvent) -> None:
-        if event.type == "progress":
-            message = MESSAGES["reindex_progress"].format(
-                store=store,
-                current=event.data["current"],
-                total=event.data["total"],
-                entries=event.data.get("entries", 0),
-            )
-        elif event.type == "notice":
-            message = MESSAGES["reindex_notice"].format(
-                store=store, message=event.data["message"]
-            )
-        else:
-            return
-        err.write(message + "\n")
-        err.flush()
-
-    unsubscribe = jobs.subscribe(follow, job_id=job.id)
-    try:
-        try:
-            record = jobs.wait(job.id)
-        except KeyboardInterrupt:
-            err.write(MESSAGES["reindex_cancelling"].format(job=job.id) + "\n")
-            jobs.cancel(job.id)
-            record = jobs.wait(job.id)
-    finally:
-        unsubscribe()
     return _report(record, store, out, err)
 
 

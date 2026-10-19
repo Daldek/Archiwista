@@ -1,9 +1,10 @@
 """Run background jobs in worker processes and keep them in the local index.
 
-``JobSupervisor`` lives in the server and in ``archiwista reindex``. It
-records every job in the index (``jobs``, with its ``actor``: the
-principal's id, kind and session label), starts one
-worker process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
+``JobSupervisor`` lives in the server and in the commands running a job in
+the foreground (``archiwista.jobs.foreground``: ``reindex``, ``preview
+--build``). It records every job in the index (``jobs``, with its
+``actor``: the principal's id, kind and session label), starts one worker
+process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
 reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
 (SSE, SPEC 9.2): ``progress``, ``notice`` and ``state``. A job is
@@ -756,6 +757,16 @@ class JobSupervisor:
                     break
                 self._changed.wait(remaining)
         return self._record(job_id)
+
+    def supervises(self, job_id: str) -> bool:
+        """Whether a job waits or runs under this supervisor (``wait`` follows it).
+
+        ``False`` for a finished job and for one another supervisor runs,
+        e.g. a server's job a ``preview`` request joined: such a job is
+        followed through ``get`` and ``events``.
+        """
+        with self._lock:
+            return self._owns(job_id)
 
     def recover(self) -> int:
         """Mark jobs whose supervising process is gone as ``interrupted``.
