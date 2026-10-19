@@ -2,8 +2,7 @@
 
 The worker reads its job (``JobSpec``) from the first line of standard
 input, runs it and reports in JSON Lines on standard output
-(``archiwista.jobs.protocol``); its log goes to standard error. Kinds of
-v0.1:
+(``archiwista.jobs.protocol``); its log goes to standard error. Kinds:
 
 - ``scan``: ``scan_store`` of each producer directory of the store (6a; the
   projects follow a pass over the whole store);
@@ -12,7 +11,9 @@ v0.1:
   producer's local memory of unit outlines (decision 4);
 - ``link_check``: ``confirm_link`` of a slot's standard path (KA-5); a link
   that does not hold the version its sidecar names is a ``link_mismatch``
-  problem until a later check confirms it.
+  problem until a later check confirms it;
+- ``preview``: local previews of files, each built in a render process of
+  its own (``archiwista.previews.build.run_preview``, plan v0.2 decision 3).
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -67,6 +68,7 @@ from archiwista.jobs.protocol import (
 )
 from archiwista.messages import MESSAGES
 from archiwista.paths import resolve_indexed_path
+from archiwista.previews.build import run_preview
 from archiwista.services.problems import explain
 from archiwista.sources import (
     LinkCheckAdapter,
@@ -357,11 +359,12 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
     "link_check": run_link_check,
+    "preview": run_preview,
 }
 
 
 def _store(spec: JobSpec) -> StoreConfig:
-    config = spec.settings.store(spec.store)
+    config = None if spec.store is None else spec.settings.store(spec.store)
     if config is None:
         raise JobFailure(
             "not_found", MESSAGES["job_store_unknown"].format(store=spec.store)

@@ -16,8 +16,13 @@ is started through this module:
   ``umask 077`` and, on POSIX, ``RLIMIT_AS``;
 - ``run_untrusted()``: one such process run to its end, its group killed
   after a time limit;
-- ``process_work_dir()``: the calling process's own scratch directory
-  ``<data_dir>/work/<host>_<pid>_<token>/``.
+- ``process_dir()``: the calling process's own scratch directory
+  ``<root>/<host>_<pid>_<token>/``: ``process_work_dir()`` in
+  ``<data_dir>/work/`` and the incoming files of the preview cache in
+  ``<data_dir>/previews/.incoming/``. Creating one removes those of this
+  host's dead processes (``prune_dead_process_dirs()``); ``process_owner()``
+  and ``owner_alive()`` tell a dead process's leftovers (its directories, its
+  preview cache pins) from a live one's.
 
 ``GDAL_SKIP`` is only a second line of defence: the first ``WarpedVRT`` in
 a process registers the VRT driver again. Files are therefore opened with
@@ -125,13 +130,13 @@ UNTRUSTED_FORCED = {
 # Files are the user's alone, also what a child writes.
 UNTRUSTED_UMASK = 0o077
 
-# <host>_<pid>_<token>; the host part has no "_" (see ``_host``).
-_WORK_NAME = re.compile(
-    r"(?P<host>[^_]+)_(?P<pid>[1-9][0-9]{0,9})_(?P<token>[0-9a-f]+)"
-)
+# <host>_<pid>: a process of a computer; the host part has no "_" (``_host``).
+_OWNER = re.compile(r"(?P<host>[^_]+)_(?P<pid>[1-9][0-9]{0,9})")
+# <host>_<pid>_<token>: a process's own directory.
+_PROCESS_DIR = re.compile(r"(?P<owner>[^_]+_[1-9][0-9]{0,9})_[0-9a-f]+")
 _HOST_UNSAFE = re.compile(r"[^A-Za-z0-9.-]")
-_work_dirs: dict[tuple[Path, int], Path] = {}
-_work_lock = threading.Lock()
+_process_dirs: dict[tuple[Path, int], Path] = {}
+_process_lock = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
@@ -254,10 +259,10 @@ def kill_untrusted(process: subprocess.Popen[Any]) -> None:
 def process_work_dir(paths: AppPaths) -> Path:
     """Return this process's scratch directory, created on the first call.
 
-    ``<data_dir>/work/<host>_<pid>_<token>/`` (mode ``0700``) is the
-    process's own: consistent copies of SQLite files and other temporary
-    files of one read. Creating it removes the directories of this host's
-    dead processes (a crashed or killed reader), never those of a live
+    ``<data_dir>/work/<host>_<pid>_<token>/`` (mode ``0700``, ``process_dir``)
+    is the process's own: consistent copies of SQLite files and other
+    temporary files of one read. Creating it removes the directories of this
+    host's dead processes (a crashed or killed reader), never those of a live
     process or of another host, so a command line and the server running
     side by side keep their files.
 
@@ -271,32 +276,66 @@ def process_work_dir(paths: AppPaths) -> Path:
     Path
         The directory; the same one on every call of this process.
     """
-    root = paths.work_dir
+    return process_dir(paths.work_dir)
+
+
+def process_dir(root: Path) -> Path:
+    """Return this process's own directory in ``root``, created on the first call.
+
+    ``<root>/<host>_<pid>_<token>/`` (mode ``0700``; ``root`` created ``0700``
+    when missing) belongs to the calling process alone. Creating it removes
+    the directories of this host's dead processes in ``root``
+    (``prune_dead_process_dirs``). A child forked later gets its own.
+
+    Parameters
+    ----------
+    root : Path
+        Directory of such directories, one per process (``AppPaths.work_dir``,
+        the preview cache's ``.incoming``).
+
+    Returns
+    -------
+    Path
+        The directory; the same one on every call of this process, again
+        created when something removed it.
+    """
     key = (root, os.getpid())
-    with _work_lock:
-        found = _work_dirs.get(key)
+    with _process_lock:
+        found = _process_dirs.get(key)
         if found is not None and found.is_dir():
             return found
         private_directory(root)
-        _prune_dead(root)
-        directory = root / f"{_host()}_{os.getpid()}_{secrets.token_hex(8)}"
+        prune_dead_process_dirs(root)
+        directory = root / f"{process_owner()}_{secrets.token_hex(8)}"
         directory.mkdir(mode=0o700)
-        _work_dirs[key] = directory
+        _process_dirs[key] = directory
         return directory
 
 
-def _prune_dead(root: Path) -> None:
-    """Remove the work directories of this host's processes no longer running."""
-    host = _host()
+def prune_dead_process_dirs(root: Path) -> None:
+    """Remove the directories in ``root`` of this host's processes no longer running.
+
+    Only entries named ``<host>_<pid>_<token>`` of this computer whose process
+    has ended go: those of live processes and of other hosts, and entries of
+    any other name, stay. A missing ``root`` has nothing to remove; an entry
+    that cannot be removed is logged and left.
+
+    Parameters
+    ----------
+    root : Path
+        Directory of per-process directories (``process_dir``).
+    """
     try:
         with os.scandir(root) as entries:
             found = [(entry.name, entry.path) for entry in entries]
+    except FileNotFoundError:
+        return
     except OSError as error:
-        logger.warning("cannot list the work directories in %s: %s", root, error)
+        logger.warning("cannot list the process directories in %s: %s", root, error)
         return
     for name, path in found:
-        match = _WORK_NAME.fullmatch(name)
-        if match is None or match["host"] != host or _alive(int(match["pid"])):
+        match = _PROCESS_DIR.fullmatch(name)
+        if match is None or owner_alive(match["owner"]):
             continue
         try:
             if os.path.isdir(path) and not os.path.islink(path):
@@ -306,7 +345,41 @@ def _prune_dead(root: Path) -> None:
         except FileNotFoundError:  # another process pruned it first
             continue
         except OSError as error:
-            logger.warning("cannot remove the work directory %s: %s", path, error)
+            logger.warning("cannot remove the process directory %s: %s", path, error)
+
+
+def process_owner() -> str:
+    """Return this process as ``<host>_<pid>``, the owner its leftovers name.
+
+    Returns
+    -------
+    str
+        The computer's name (characters other than letters, digits, ``.``
+        and ``-`` as ``-``) and the process id.
+    """
+    return f"{_host()}_{os.getpid()}"
+
+
+def owner_alive(owner: str) -> bool:
+    """Whether the process ``<host>_<pid>`` may still run; ``True`` when unsure.
+
+    Only a process of this computer can be checked: an owner of another
+    host, or a name of another form, counts as running.
+
+    Parameters
+    ----------
+    owner : str
+        A process as ``process_owner`` names it.
+
+    Returns
+    -------
+    bool
+        ``False`` only for a process of this host that has ended.
+    """
+    match = _OWNER.fullmatch(owner)
+    if match is None or match["host"] != _host():
+        return True
+    return _alive(int(match["pid"]))
 
 
 def _alive(pid: int) -> bool:
@@ -323,7 +396,7 @@ def _alive(pid: int) -> bool:
 
 
 def _host() -> str:
-    """Return this computer's name as written in work directory names."""
+    """Return this computer's name as written in process directory names."""
     return _HOST_UNSAFE.sub("-", socket.gethostname()) or "host"
 
 

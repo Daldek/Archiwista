@@ -1069,7 +1069,7 @@ działa.
 | 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | zrobione |
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | zrobione |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
-| 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | do zrobienia |
+| 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | zrobione |
 | 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
 | 5a2 | Podglądy rastrów: lokalny COG | 5a1 | 5a3, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
 | 5a3 | Podglądy rastrów: style, legendy, składanie warstw | 5a1 | 5a2, 5b, 5c, 6, 7b, 8, 10, 11, 12a | do zrobienia |
@@ -1625,6 +1625,169 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `::test_preview_build_item_timeout_fails_item_only`
   i `::test_preview_builds_at_most_n_children`.
 - **Zależności:** 1. **Równolegle:** 2, 3, 7a, 7b.
+- **Stan po kroku 4:**
+  - *Typy* (`previews/types.py`, tylko biblioteka standardowa i tabela
+    formatów): `PreviewSource(ref, content_key, paths, format_hint=None,
+    size_bytes=None, crs=None, georeference=None, product=None,
+    dataset_key=None, nodata=None, mutable=False, stat=None)` z `format`,
+    `kind`, `renderer` i `to_json`/`from_json`; `format_hint` to
+    `FileFormat.name` z tabeli formatów (bez niego — rozszerzenie pliku
+    głównego); `georeference` i kadr miniatury to `Extent(bbox, crs)`;
+    `stat` to `SourceStat(main, wal)` z `FileStat(size_bytes, modified_ns)`.
+    `PreviewKind` = `FormatKind` (`PREVIEW_KINDS`), `PREVIEW_STATES`,
+    `PREVIEW_REASONS`, `STYLE_NAMES`, `RENDERER_NAMES`, `RENDERER_OF_KIND`
+    (`raster`/`image` → `raster`, `auxiliary`/`unknown`/`document` →
+    `document`), `TRANSIENT_REASONS` (`timeout`, `memory_limit`,
+    `missing_file`, `store_unavailable`, `changed_since_scan` — nigdy
+    w pamięci podglądów), `UNRENDERABLE_REASONS` (`unreadable`,
+    `unsupported_format` — pula odpowiada nimi od razu, zadanie nie buduje),
+    `CONTENT_KEY`, `COG_NAME`. `PreviewProbe` (pola z umowy: `kind`, `driver`,
+    `width`, `height`, `bands`, `dtype`, `crs`, `bbox_native`, `bbox_wgs84`,
+    `minzoom`, `maxzoom`, `overviews`, `tiled`, `nodata`, `stats`
+    — `BandStats(p2, p98, min, max)`, `palette` — `PaletteEntry(value,
+    color)`, `layers` — obiekty JSON kroku 5b, `points` — obiekt JSON kroku
+    5c, `members`, `needs_cog`, `pixels`, `unpacked_bytes`, `reason`)
+    z `to_json`/`from_json` i `to_bytes`/`from_bytes` (`info.json`).
+    `build_product(probe)` — nazwa tego, co buduje zadanie (`cog.tif` przy
+    `needs_cog` bez powodu; `source.gpkg` dopisze krok 5b),
+    `auto_build(source, probe)` — progi decyzji 6 (2 GiB pliku, 10⁹ px,
+    8 GiB po rozpakowaniu). Protokół `Renderer`: `kinds`, `probe(source)`,
+    `thumbnail(source, probe, style, size, frame)`, `tile(source, probe,
+    style, z, x, y, params)`, opcjonalnie `features(source, probe, layer,
+    bbox_wgs84, zoom, limit) -> dict`, `members(source) -> dict`,
+    `build(source, probe, out_path)`. Renderer zgłasza
+    `PreviewUnavailableError(reason, detail)`; `FormatRefusedError` →
+    `unsupported_format`, `FileNotFoundError` → `missing_file`,
+    `MemoryError` → `memory_limit`, każdy inny wyjątek → `unreadable`
+    (komunikat jako `detail`). Rozpoznanie z powodem trafia do renderera
+    (miniatura pliku `no_crs` jest możliwa) — ocenia go renderer.
+  - *Pamięć* (`previews/cache.py`): API z umowy oraz `has(key, name)` (bez
+    zapisu użycia), `incoming_dir()` (katalog roboczy procesu w
+    `.incoming/`, w nim zadanie pisze COG), `set_limit(limit_bytes)`,
+    `clock=` (testy), `CacheKey.directory`; nazwy `INFO_NAME`, `COG_NAME`,
+    `SOURCE_GPKG_NAME`, `thumbnail_name(style, size, frame)`,
+    `tile_name(style, z, x, y, params)` (styl `[A-Za-z0-9_-]+`; kadr
+    i parametry kafla jako skrót `params_digest` 12 znaków);
+    `composite_key(op, contents, frame_or_tile, style, size)` =
+    `sha256("composite:" + "\n".join([op, *sorted(contents), frame_or_tile,
+    style, size]))`; `path_key(store, path, size_bytes, modified_ns)` =
+    `sha256(f"path:{store}:{path}:{size_bytes}:{modified_ns}")` (czas
+    `st_mtime_ns`). `RENDERER_VERSIONS` — wszystkie 1; każda zmiana kodu
+    renderera podnosi jego wersję jedną linią, a `reconcile` usuwa obiekty
+    innych wersji. `cache.sqlite` (`user_version` 1): `objects`, `files`,
+    `pins` (właściciel `<host>_<pid>`), `totals` utrzymywane wyzwalaczami;
+    zmiana nazwy pliku przy `put` i usuwanie przy eksmisji dzieją się
+    w tej samej transakcji `BEGIN IMMEDIATE` co wiersze. `put(key, name,
+    Path)` przenosi plik; `unpin` bez `pin` → `ValueError`. Sandbox:
+    `process_dir(root)`, `prune_dead_process_dirs(root)`, `process_owner()`,
+    `owner_alive(owner)` — jedna implementacja katalogów
+    `<host>_<pid>_<token>` (`process_work_dir(paths)` =
+    `process_dir(paths.work_dir)`, zachowanie bez zmian).
+  - *Protokół i proces renderujący* (`previews/protocol.py`, `worker.py`):
+    `RENDER_WORKER_COMMAND` = `python -P -m archiwista.previews.worker
+    [--work-dir DIR]`; `RenderRequest(id, op, source, params)`,
+    `RenderAnswer(id, files, code, detail)`, `encode_*`/`decode_*`,
+    `scrub_paths(text, paths, *, directories)` (ścieżki źródła i po
+    `realpath` → nazwa pliku, ścieżka w ich katalogu → nazwa w nim, katalog
+    → jego nazwa; także katalog roboczy). Rejestr `OPERATIONS` w `worker.py`:
+    `Operation(timeout_s, handler, result, target)` — `probe` 20 s
+    (`info.json`), `thumbnail` 30 s (parametry `style`, `size`, `frame`
+    `{bbox, crs}` albo brak; `image.png` pod `thumbnail_name`), `tile` 15 s
+    (`style`, `z`, `x`, `y`, reszta — np. `rescale` — w skrócie nazwy;
+    `image.png` pod `tile_name`), `features` 15 s (`layer`, `bbox` WGS84,
+    `zoom`, `limit`; `features.json`), `members` 10 s (`members.json`);
+    dwie ostatnie poza pamięcią. Krok 5a3 dopisuje `layer_thumbnail` (60 s)
+    i `layer_tile` (15 s) po jednej linii: `handler(renderers, request) ->
+    dict[str, bytes]`, `target(source, params) -> (CacheKey, nazwa) | None`,
+    `source` może być `None`, gdy parametry niosą wersje. `BUILD` (600 s)
+    tylko dla zadania. `main(argv, *, renderers=None)` (testy podają własne
+    renderery), `work_dir()` — katalog roboczy procesu dla rendererów (np.
+    kopie SQLite kroku 5b), `renderer_for(renderers, source)`. Plik roboczy
+    (`mutable`) sprawdzany przed i po operacji (`changed_since_scan`); po
+    `MemoryError` proces odpowiada `memory_limit` i kończy się (kod 3).
+    Rejestr `RENDERERS` (`renderers/__init__.py`) jest pusty — kroki 5a1–5c
+    dopisują po linii; bez renderera rodzaju → `unsupported_format`.
+  - *Pula* (`previews/pool.py`): `RenderPool(*, workers, cache,
+    timeouts=None, command=RENDER_WORKER_COMMAND, work_dir=None,
+    queue_size=64, idle_s=300, memory_bytes=2 GiB, failure_s=600)`,
+    `start()`/`close()` (albo `with`), `request(op, source, params=None, *,
+    timeout_s=None) -> RenderResult` (blokujące; CLI), `arequest(...)`
+    (asynchroniczne; anulowanie zadania asyncio porzuca żądanie — krok 6
+    anuluje je po rozłączeniu klienta), `stats() -> PoolStats(workers, alive,
+    queued, rendering, rendered, abandoned)` (`rendered` — licznik żądań
+    procesów renderujących, np. dla `test_same_content_rendered_once`),
+    `.cache`, `.workers`; `default_render_workers()` = `min(4, cpu)`.
+    `RenderResult(data, cached, detail)` z `json()` i `probe()`. `probe`
+    z trwałym powodem to wynik (`info.json` z `reason`; `detail` tylko dla
+    żądania, które go wywołało), nie wyjątek; pozostałe:
+    `PreviewUnavailableError(reason, detail)`, `PreviewTimeoutError` (także
+    przez 10 min po przekroczeniu), `PreviewBusyError(retry_after_s=2)`
+    (pełna kolejka i zamykanie). Pula dokłada do żądań rozpoznanie z pamięci
+    (`params["probe"]`), więc proces nie rozpoznaje pliku drugi raz. Proces
+    zakończony bez odpowiedzi: `SIGKILL` (zabójca OOM systemu) →
+    `memory_limit`, inaczej → `unreadable`.
+  - *Zadanie `preview`* (`previews/build.py`, `RUNNERS["preview"]`):
+    parametry `{"refs", "contents", "force"}` — odstępstwo od umowy:
+    `contents` (klucz treści każdego `ref`, w tym samym porządku) pozwala
+    nadzorcy dołączać po treści bez rozstrzygania `ref`; krok 9 filtruje
+    `refs` i `contents` razem. `force` = budowa ponad progi `auto_build` (bez
+    niego taki plik → `too_large`). `ref` → źródło przez `RESOLVERS` (rodzaj =
+    tekst przed pierwszym `:`; fabryka `(JobSpec) -> (ref) -> PreviewSource`,
+    w głównym wątku zadania): w kroku 4 pusty — krok 6 dopisuje `"version"`,
+    krok 9 `"file"` i `"snapshot"`; błędy `NotFoundError`,
+    `PathOutsideRootError`, `PreviewUnavailableError`, nieznany rodzaj →
+    `invalid_ref`. `BUILD_COMMAND`, `BUILD_TIMEOUT_S` (600),
+    `BUILD_MEMORY_BYTES` (4 GiB), `build_processes()` = `max(1, cpu // 2)`.
+    Wynik `{"built", "cached", "failed": [{"ref", "code", "detail"}],
+    "seconds"}`, `detail` po polsku (tekst powodu i komunikat biblioteki,
+    bez ścieżek); postęp `current`/`total` treści z `built`, `cached`,
+    `failed`. Przerwanie zabija procesy budowy.
+  - *Nadzorca* (`jobs/`): `JobSpec.store: str | None`, nowe `previews_dir`
+    i `work_dir`, `PROTOCOL_VERSION` 2; `JobRule(store, network=False,
+    exclusive=False, conflict=None, join=None)` w `JOB_RULES`,
+    `JobConflict(domain, key(store, params), message)`, `JobJoin(merge(active,
+    new) -> params | None, states)`, `MAX_PREVIEW_REFS` = 500 (także po
+    dołączeniu); `INDEX_JOB_KINDS` i `NETWORK_JOB_KINDS` usunięte.
+    `submit(kind, *, store=None, params, actor)`: rodzaj z magazynem bez
+    niego albo `preview` z magazynem → `ValueError`. `preview` dołącza do
+    najstarszego aktywnego zadania, które ma wszystkie jego treści (`force`
+    zadania ≥ `force` zlecenia) — `params` zadania dostają nowe `ref`,
+    `submit` zwraca to zadanie; trwa najwyżej jedno `preview` na nadzorcę
+    (`exclusive`), zajmuje jedno miejsce `max_jobs`. Nowy rodzaj (7b
+    `own_scan`, 8 `snapshot`): linia w `JobKind`, linia w `JOB_RULES` (z
+    `JobJoin(…, ("queued",))` albo `JobConflict`), gałąź `_job_params`,
+    linia `RUNNERS`.
+  - *Serwer i ustawienia*: `serve` otwiera `PreviewCache(paths.previews_dir,
+    limit_bytes=settings.preview_cache_limit_bytes)`, uzgadnia ją
+    (`reconcile`) i uruchamia `RenderPool(workers=default_render_workers(),
+    cache, work_dir=paths.work_dir)`; zmiana `preview_cache_limit_gb` →
+    `cache.set_limit`; `create_app(…, previews=pool)` → `app.state.previews`
+    (pamięć: `pool.cache`); przy zatrzymaniu najpierw pula, potem pamięć.
+    `AppSettings.preview_cache_limit_gb` (1–10 000, GB po 1024³ bajtów,
+    właściwość `preview_cache_limit_bytes`) jest też w modelu API `Settings`
+    — bez tego `PUT /settings` z interfejsu przywracałby 20.
+  - *Teksty i błędy*: `texts/previews.py` (`PREVIEW_MESSAGES`:
+    `preview_reason_<kod>`, `preview_fix_<kod>`, `preview_style_<styl>`,
+    `preview_busy`, `preview_closed`, `preview_timeout`,
+    `preview_timeout_recent`, `job_kind_preview`, `preview_build_*`);
+    `messages.py`: `MESSAGES = merge_messages({…}, PREVIEW_MESSAGES,)` —
+    jedna linia na słownik, powtórzony klucz → `ValueError` przy imporcie.
+    `errors.py`: `PreviewBusyError(message, *, retry_after_s)`,
+    `PreviewTimeoutError(message)`, `PreviewUnavailableError(reason,
+    detail=None)` (`reason`, `detail`; tekst polski dla API — z
+    `preview_reason_<kod>` i `preview_fix_<kod>`, krok 6).
+  - *Próby*: `tests/integration/test_preview_cache.py` (16 testów, ok.
+    1,5 s; limit 1 000 000 B), `tests/integration/test_render_pool.py`
+    (9 testów, ok. 10 s; prawdziwe procesy renderujące z rendererem
+    testowym `tests/fixtures/render_worker.py`, sterowanym treścią pliku),
+    trzy testy `preview` w `tests/integration/test_jobs.py` (ok. 15 s; haki
+    `ARCHIWISTA_TEST_PREVIEW_SOURCES`, `…_BUILD_TIMEOUT_S`,
+    `…_BUILD_PROCESSES` w `tests/fixtures/job_worker.py`). W procesie
+    renderującym po `WarpedVRT` treść VRT jako `.tif`/`.asc` i treść OGR VRT
+    jako `.gpkg`, `.geojson`, `.shp`, `.fgb` są odrzucane, `a.tif` nie ma
+    nakładek z `a.tif.ovr`; `/vsicurl/` i GeoJSON z adresu — żadnego
+    połączenia z nasłuchującym portem. `archiwista serve` z pustym katalogiem
+    danych tworzy `previews/cache.sqlite` i kończy się czysto.
 
 ### 5a1. Podglądy rastrów: rozpoznanie, miniatura, kafel
 - **Cel:** renderer `raster.py` dla rodzin rastrowych z decyzji 5:

@@ -5,6 +5,7 @@ real worker with hooks for slow scans, crashes and a refused network) on a
 generated Kartograf store, offline.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -34,7 +35,14 @@ from archiwista.jobs import JobEvent, JobSupervisor, ScanScheduler
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import MESSAGES
+from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
+from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
+from tests.fixtures.job_worker import (
+    BUILD_PROCESSES_ENV,
+    BUILD_TIMEOUT_ENV,
+    PREVIEW_SOURCES_ENV,
+)
 from tests.fixtures.jobs import (
     CRASH_ENV,
     DELAY_ENV,
@@ -799,6 +807,133 @@ def test_prune_forgets_routine_scans_after_48_hours_but_newest(env: JobsEnv) -> 
     assert logged and not log.exists()
 
 
+def test_preview_build_joins_running_job(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A build of content a running job has joins it; other content waits after it."""
+    # Arrange
+    sources = _preview_sources(
+        tmp_path,
+        monkeypatch,
+        {
+            "a": {"needs_cog": True, "sleep_s": {"build": 2}},
+            "b": {"needs_cog": True},
+            "c": {"needs_cog": True},
+        },
+        copies={"test:a-copy": "a"},
+    )
+    first = env.jobs.submit(
+        "preview", params=_preview_params(sources, "a", "b"), actor=LOCAL_OWNER
+    )
+    _await(lambda: _state(env.jobs, first.id) == "running")
+
+    # Act
+    joined = env.jobs.submit(
+        "preview", params=_preview_params(sources, "a-copy"), actor=LOCAL_OWNER
+    )
+    later = env.jobs.submit(
+        "preview", params=_preview_params(sources, "c"), actor=LOCAL_OWNER
+    )
+    waiting = _state(env.jobs, later.id)
+    done = env.wait(first.id)
+    after = env.wait(later.id)
+
+    # Assert
+    assert joined.id == first.id and joined.state == "running"
+    assert joined.params["refs"] == ["test:a", "test:b", "test:a-copy"]
+    assert waiting == "queued"
+    assert done.result is not None and after.result is not None
+    assert (done.result["built"], done.result["cached"], done.result["failed"]) == (
+        2,
+        0,
+        [],
+    )
+    assert after.result["built"] == 1
+    assert done.finished_at is not None and after.started_at is not None
+    assert after.started_at >= done.finished_at
+    with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
+        assert all(
+            cache.has(cache_key(source), COG_NAME) for source in sources.values()
+        )
+
+
+def test_preview_build_item_timeout_fails_item_only(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A build past its time limit fails that file alone; the others are built."""
+    # Arrange
+    monkeypatch.setenv(BUILD_TIMEOUT_ENV, "1")
+    sources = _preview_sources(
+        tmp_path,
+        monkeypatch,
+        {
+            "slow": {"needs_cog": True, "sleep_s": {"build": 60}},
+            "ok1": {"needs_cog": True},
+            "ok2": {"needs_cog": True},
+        },
+    )
+    started = time.monotonic()
+
+    # Act
+    job = env.jobs.submit(
+        "preview",
+        params=_preview_params(sources, "slow", "ok1", "ok2"),
+        actor=LOCAL_OWNER,
+    )
+    record = env.wait(job.id)
+    elapsed_s = time.monotonic() - started
+
+    # Assert
+    assert record.state == "succeeded", record
+    assert record.result is not None and record.result["built"] == 2
+    assert [(item["ref"], item["code"]) for item in record.result["failed"]] == [
+        ("test:slow", "timeout")
+    ]
+    detail = record.result["failed"][0]["detail"]
+    assert detail and "/" not in detail
+    assert elapsed_s < 30
+    with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
+        assert not cache.has(cache_key(sources["slow"]), COG_NAME)
+        assert cache.has(cache_key(sources["ok1"]), COG_NAME)
+
+
+def test_preview_builds_at_most_n_children(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each file builds in a process of its own, at most ``n`` of them at once."""
+    # Arrange
+    monkeypatch.setenv(BUILD_PROCESSES_ENV, "2")
+    log = tmp_path / "builds.log"
+    names = [f"sheet{index}" for index in range(5)]
+    steps = {"needs_cog": True, "sleep_s": {"build": 1.0}, "log": str(log)}
+    sources = _preview_sources(
+        tmp_path, monkeypatch, {name: dict(steps) for name in names}
+    )
+
+    # Act
+    job = env.jobs.submit(
+        "preview", params=_preview_params(sources, *names), actor=LOCAL_OWNER
+    )
+    record = env.wait(job.id)
+
+    # Assert
+    assert record.result is not None and record.result["built"] == 5
+    builds = [
+        (int(pid), float(start), float(end))
+        for pid, op, start, end in (
+            line.split() for line in log.read_text(encoding="utf-8").splitlines()
+        )
+        if op == "build"
+    ]
+    assert len({pid for pid, _, _ in builds}) == 5
+    overlap = max(
+        sum(start <= moment < end for _, start, end in builds)
+        for _, moment, _ in builds
+    )
+    assert overlap == 2
+    assert record.progress is not None and record.progress["current"] == 5
+
+
 @pytest.mark.live
 def test_footprints_job_fetches_teryt_unit_live(env: JobsEnv) -> None:
     """With the network, a TERYT unit outline comes from PRG and is kept."""
@@ -884,3 +1019,49 @@ def _await(condition: Callable[[], bool]) -> None:
             return
         time.sleep(0.05)
     raise AssertionError("condition not met in time")
+
+
+def _state(jobs: JobSupervisor, job_id: str) -> str | None:
+    record = jobs.get(job_id)
+    return None if record is None else record.state
+
+
+def _preview_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    files: dict[str, dict[str, object]],
+    *,
+    copies: dict[str, str] | None = None,
+) -> dict[str, PreviewSource]:
+    """Write data files for the test renderer and let the job resolve them.
+
+    Each file ``<name>.tif`` holds its instructions and its name (so no two
+    share a content) and is the source of ``test:<name>``; ``copies`` adds
+    refs to the same sources, as two versions of the same bytes.
+    """
+    directory = tmp_path / "preview-data"
+    directory.mkdir()
+    sources: dict[str, PreviewSource] = {}
+    for name, steps in files.items():
+        path = directory / f"{name}.tif"
+        path.write_text(json.dumps({"name": name, **steps}), encoding="utf-8")
+        content = hashlib.sha256(path.read_bytes()).hexdigest()
+        sources[name] = PreviewSource(
+            ref=f"test:{name}", content_key=content, paths=(path,)
+        )
+    table = {source.ref: source.to_json() for source in sources.values()}
+    for ref, name in (copies or {}).items():
+        table[ref] = {**sources[name].to_json(), "ref": ref}
+    resolved = tmp_path / "preview-sources.json"
+    resolved.write_text(json.dumps(table), encoding="utf-8")
+    monkeypatch.setenv(PREVIEW_SOURCES_ENV, str(resolved))
+    return sources
+
+
+def _preview_params(
+    sources: dict[str, PreviewSource], *names: str
+) -> dict[str, object]:
+    """Return the parameters of a preview job for ``test:<name>`` refs."""
+    refs = [f"test:{name}" for name in names]
+    contents = [sources[name.removesuffix("-copy")].content_key for name in names]
+    return {"refs": refs, "contents": contents, "force": False}

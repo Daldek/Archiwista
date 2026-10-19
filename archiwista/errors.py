@@ -185,3 +185,48 @@ class FormatRefusedError(ArchiwistaError):
     than a native one, a path GDAL would split. The message is English and
     never contains the path.
     """
+
+
+class PreviewBusyError(ArchiwistaError):
+    """The render queue is full (``503 preview_busy`` with ``Retry-After``).
+
+    Parameters
+    ----------
+    message : str
+        Polish description.
+    retry_after_s : int
+        Seconds after which asking again is likely to succeed.
+    """
+
+    def __init__(self, message: str, *, retry_after_s: int) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
+
+
+class PreviewTimeoutError(ArchiwistaError):
+    """A render process ran past the time limit of its operation.
+
+    ``504 preview_timeout``; the message is Polish. The process was killed,
+    and the same request fails at once for 10 minutes (decision 3).
+    """
+
+
+class PreviewUnavailableError(ArchiwistaError):
+    """A file has no preview of the kind asked for (``409 preview_unavailable``).
+
+    Raised by renderers and by the render pool, never with a path in it.
+
+    Parameters
+    ----------
+    reason : str
+        Reason code (``PreviewReason``, e.g. ``no_crs``, ``unreadable``);
+        its Polish description and fix are ``preview_reason_<code>`` and
+        ``preview_fix_<code>`` of ``MESSAGES``.
+    detail : str or None, optional
+        English message of the library behind it, without paths.
+    """
+
+    def __init__(self, reason: str, detail: str | None = None) -> None:
+        super().__init__(f"{reason}: {detail}" if detail else reason)
+        self.reason = reason
+        self.detail = detail

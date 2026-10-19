@@ -11,12 +11,16 @@ numbered job events (``job_events``), which it also hands to subscribers
 or ``cancelled``; one that did not succeed has an ``error`` (``code``,
 ``detail``).
 
-Rules of SPEC 5.6: one job writing a store's index at a time (``scan``,
-``footprints``; another one is a ``JobConflictError``), at most two network
-jobs and at most half the processors' worth of workers, the rest waiting in
-the queue; ``footprints`` needs the network and is refused in offline mode.
-Cancelling interrupts the worker as Ctrl+C would (SIGINT; CTRL_BREAK_EVENT
-to its process group on Windows) and kills it after 30 s.
+Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
+whether it works on a configured store, needs the network (refused in
+offline mode, at most two network jobs run), runs alone (one ``preview``
+at a time, the next ones wait in the queue), conflicts with active jobs (one
+job writing a store's index at a time, ``scan`` or ``footprints``; another
+one is a ``JobConflictError``) or joins one (a ``preview`` of contents an
+active build already has adds its refs to that job). At most half the
+processors' worth of workers run, the rest wait in the queue. Cancelling
+interrupts the worker as Ctrl+C would (SIGINT; CTRL_BREAK_EVENT to its
+process group on Windows) and kills it after 30 s.
 
 A job whose supervising process is gone (a server stopped or crashed) becomes
 ``interrupted`` as soon as a supervisor meets it: every supervising process
@@ -79,6 +83,7 @@ from archiwista.jobs.protocol import (
 )
 from archiwista.messages import MESSAGES
 from archiwista.paths import private_directory
+from archiwista.previews.types import CONTENT_KEY
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -107,11 +112,10 @@ FINISHED_STATES: tuple[JobState, ...] = (
     "interrupted",
     "cancelled",
 )
-# Kinds writing a store's index: one job of them per store at a time.
-INDEX_JOB_KINDS: frozenset[JobKind] = frozenset({"scan", "footprints"})
-# Kinds using the network.
-NETWORK_JOB_KINDS: frozenset[JobKind] = frozenset({"footprints"})
+# Network jobs (``JobRule.network``) running at once.
 MAX_NETWORK_JOBS = 2
+# Refs of one ``preview`` job, also once others joined it.
+MAX_PREVIEW_REFS = 500
 # Seconds an interrupted worker has to stop before it is killed.
 STOP_TIMEOUT_S = 30.0
 LOG_MAX_AGE = timedelta(days=90)
@@ -129,7 +133,6 @@ SCAN_MODES: tuple[str, ...] = ("incremental", "full")
 
 _ACTIVE_SQL = "('queued', 'running')"
 _FINISHED_SQL = "('succeeded', 'failed', 'interrupted', 'cancelled')"
-_INDEX_KINDS_SQL = "('scan', 'footprints')"
 _JOB_COLUMNS = (
     "id, kind, state, actor, actor_kind, session, store, params, created_at,"
     " started_at, finished_at, summary, error"
@@ -172,7 +175,7 @@ class JobRecord:
     ----------
     id : str
         Opaque job id.
-    kind : {"scan", "footprints", "link_check"}
+    kind : {"scan", "footprints", "link_check", "preview"}
         What the job does.
     state : {"queued", "running", "succeeded", "failed", "interrupted", "cancelled"}
         Where the job is in its life.
@@ -185,10 +188,12 @@ class JobRecord:
         Label of the session it was asked in; ``None`` at the terminal and
         for the scheduler.
     store : str or None
-        Configured id of the store it works on.
+        Configured id of the store it works on; ``None`` for a kind working
+        on no store (``preview``).
     params : dict
         Its parameters (``scan``: ``mode``, ``segment``; ``link_check``:
-        ``slot``).
+        ``slot``; ``preview``: ``refs``, their ``contents`` and ``force``,
+        with the refs of the requests that joined it).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
@@ -257,11 +262,136 @@ class ScanHistory:
 type JobListener = Callable[[JobEvent], None]
 
 
+@dataclass(frozen=True, slots=True)
+class JobConflict:
+    """Active jobs in the way of a new one: the same ``domain`` and key.
+
+    Attributes
+    ----------
+    domain : str
+        Kinds whose rules name the same domain refuse each other's jobs
+        (``index``: ``scan`` and ``footprints`` write a store's index).
+    key : Callable[[str or None, dict], object]
+        Key of a job in the domain from its store and parameters (``index``:
+        the store); the kinds of a domain share it.
+    message : str
+        Key of the ``JobConflictError`` message in ``MESSAGES``, formatted
+        with the new job's parameters and ``store`` and the active job's
+        ``job`` (id), ``kind`` and ``state`` (Polish names).
+    """
+
+    domain: str
+    key: Callable[[str | None, JsonObject], object]
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class JobJoin:
+    """How a new job joins an active job of its kind and store.
+
+    Attributes
+    ----------
+    merge : Callable[[dict, dict], dict or None]
+        ``merge(active, new)`` returns the active job's parameters with the
+        new job's added, or ``None`` when the new job cannot join it.
+    states : tuple of {"queued", "running"}
+        States of the jobs it may join; a running worker keeps the
+        parameters it started with.
+    """
+
+    merge: Callable[[JsonObject, JsonObject], JsonObject | None]
+    states: tuple[JobState, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class JobRule:
+    """How the supervisor treats the jobs of one kind (``JOB_RULES``).
+
+    Attributes
+    ----------
+    store : bool
+        Whether a job works on a configured store (``submit`` requires
+        ``store``) or on none (``submit`` refuses one).
+    network : bool, default False
+        Whether it needs the network: refused in offline mode, and at most
+        ``max_network_jobs`` such jobs run at once.
+    exclusive : bool, default False
+        Whether at most one job of the kind runs at once in a supervisor;
+        the next ones wait in the queue, oldest first (each takes one of
+        ``max_jobs`` when it runs).
+    conflict : JobConflict or None, default None
+        Active jobs that refuse a new one (``JobConflictError``).
+    join : JobJoin or None, default None
+        Active jobs a new one joins instead of being recorded.
+    """
+
+    store: bool
+    network: bool = False
+    exclusive: bool = False
+    conflict: JobConflict | None = None
+    join: JobJoin | None = None
+
+
+def _store_key(store: str | None, params: JsonObject) -> object:
+    """Return the key of a job writing a store's index: the store."""
+    return store
+
+
+def _join_preview(active: JsonObject, new: JsonObject) -> JsonObject | None:
+    """Add a ``preview`` request's refs to an active build of all its contents.
+
+    The build must hold every content of the request, and build past the
+    auto-build limits (``force``) when the request does. A ref it holds with
+    another content, or more than ``MAX_PREVIEW_REFS`` refs together, keep
+    the request apart.
+    """
+    if new["force"] and not active["force"]:
+        return None
+    if not set(new["contents"]) <= set(active["contents"]):
+        return None
+    contents = dict(zip(active["refs"], active["contents"], strict=True))
+    for ref, content in zip(new["refs"], new["contents"], strict=True):
+        if contents.setdefault(ref, content) != content:
+            return None
+    if len(contents) > MAX_PREVIEW_REFS:
+        return None
+    return {
+        "refs": list(contents),
+        "contents": list(contents.values()),
+        "force": active["force"],
+    }
+
+
+# Jobs writing a store's index: one of them per store at a time.
+_INDEX_CONFLICT = JobConflict("index", _store_key, "job_conflict")
+_PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
+# The rule of each kind, one line per kind of ``JobKind``.
+JOB_RULES: Mapping[JobKind, JobRule] = {
+    "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
+    "footprints": JobRule(store=True, network=True, conflict=_INDEX_CONFLICT),
+    "link_check": JobRule(store=True),
+    "preview": JobRule(store=False, exclusive=True, join=_PREVIEW_JOIN),
+}
+
+
+def _domain_kinds(domain: str) -> tuple[JobKind, ...]:
+    """Return the kinds whose jobs conflict in ``domain``."""
+    return tuple(
+        kind
+        for kind, rule in JOB_RULES.items()
+        if rule.conflict is not None and rule.conflict.domain == domain
+    )
+
+
+# Kinds writing a store's index: the scheduler leaves a store with one alone.
+_INDEX_KINDS = _domain_kinds(_INDEX_CONFLICT.domain)
+
+
 @dataclass(slots=True)
 class _Waiting:
     job_id: str
     kind: JobKind
-    store: str
+    store: str | None
 
 
 @dataclass(slots=True)
@@ -270,7 +400,7 @@ class _Run:
 
     job_id: str
     kind: JobKind
-    store: str
+    store: str | None
     process: subprocess.Popen[bytes]
     log: IO[bytes]
     seq: int
@@ -298,7 +428,8 @@ class JobSupervisor:
     Parameters
     ----------
     paths : AppPaths
-        The local index and the jobs directory (logs, owner locks).
+        The local index and the jobs directory (logs, owner locks); workers
+        get the index and the cache, preview and scratch directories.
     settings : SettingsService
         Settings in effect: stores, offline mode. The index's stores follow
         them (``IndexWriter.sync_stores``) before every job starts and after
@@ -456,29 +587,39 @@ class JobSupervisor:
         self,
         kind: str,
         *,
-        store: str,
+        store: str | None = None,
         params: Mapping[str, object] | None = None,
         actor: Principal,
     ) -> JobRecord:
-        """Record a job and start it when there is room.
+        """Record a job and start it when there is room, or join an active one.
 
         Parameters
         ----------
-        kind : {"scan", "footprints", "link_check"}
+        kind : {"scan", "footprints", "link_check", "preview"}
             What to run.
-        store : str
-            Configured store id.
+        store : str or None, optional
+            Configured store id: required by a kind working on a store
+            (``scan``, ``footprints``, ``link_check``), refused by one
+            working on none (``preview``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
-            ``footprints``: none.
+            ``footprints``: none; ``preview``: ``refs`` (1 to 500 non-empty
+            strings), ``contents`` (the content key of each ref, SHA-256 in
+            lower-case hex) and ``force`` (build past the auto-build limits,
+            ``False`` by default); a ref given twice with the same content
+            counts once.
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
         Returns
         -------
         JobRecord
-            The job, ``queued`` or already ``running``.
+            The job, ``queued`` or already ``running``. A kind that joins
+            (``preview``) returns the oldest active job of the kind that
+            takes the request instead: that job's ``params`` gain the
+            request's (a running worker keeps those it started with), and no
+            job is recorded.
 
         Raises
         ------
@@ -490,38 +631,37 @@ class JobSupervisor:
             Another job writes the store's index (``scan``, ``footprints``);
             it names that job.
         ValueError
-            An unknown kind or invalid parameters.
+            An unknown kind, a store missing or given against the kind's
+            rule, or invalid parameters.
         """
         job_kind = _job_kind(kind)
+        rule = JOB_RULES[job_kind]
+        if rule.store and store is None:
+            raise ValueError(f"a {job_kind} job needs a store")
+        if not rule.store and store is not None:
+            raise ValueError(f"a {job_kind} job takes no store, got {store!r}")
         settings = self._settings.get()
-        if settings.store(store) is None:
+        if store is not None and settings.store(store) is None:
             raise NotFoundError(MESSAGES["job_store_unknown"].format(store=store))
         values = _job_params(job_kind, params or {})
-        if job_kind in NETWORK_JOB_KINDS and settings.offline:
+        if rule.network and settings.offline:
             raise OfflineModeError(MESSAGES["job_offline_mode"])
         job_id = secrets.token_hex(8)
         now = _now()
         with self._lock:
             db = self._open_db()
-            busy = None
+            joined: str | None = None
             events: list[JobEvent] = []
             # Claimed first: a recovery meeting the new row sees a live owner.
             _set_active(job_id, active=True)
             try:
                 with _transaction(db):
-                    if job_kind in INDEX_JOB_KINDS:
-                        rows = db.execute(
-                            "SELECT id, kind, state, pid FROM jobs WHERE store = ?"
-                            f" AND kind IN {_INDEX_KINDS_SQL}"
-                            f" AND state IN {_ACTIVE_SQL} ORDER BY created_at",
-                            (store,),
-                        ).fetchall()
-                        for row in rows:
-                            if self._owner_alive(row["id"], row["pid"]):
-                                busy = busy or row
-                            else:
-                                events.append(self._mark_stale(db, row["id"], now))
-                    if busy is None:
+                    conflict, stale = self._conflict(db, job_kind, store, values, now)
+                    events.extend(stale)
+                    if conflict is None:
+                        joined, stale = self._join(db, job_kind, store, values, now)
+                        events.extend(stale)
+                    if conflict is None and joined is None:
                         db.execute(
                             "INSERT INTO jobs (id, kind, actor, actor_kind, session,"
                             " store, params, state, created_at, pid)"
@@ -548,20 +688,14 @@ class JobSupervisor:
                 raise
             for event in events:
                 self._publish(event)
-            if busy is not None:
+            if conflict is not None or joined is not None:
                 _set_active(job_id, active=False)
-                message = MESSAGES["job_conflict"].format(
-                    store=store,
-                    kind=label("job_kind", busy["kind"]),
-                    job=busy["id"],
-                    state=label("job_state", busy["state"]),
-                )
-                raise JobConflictError(
-                    message, job_id=busy["id"], kind=busy["kind"], state=busy["state"]
-                )
-            self._queue.append(_Waiting(job_id, job_kind, store))
-            self._dispatch()
-        return self._record(job_id)
+            if conflict is not None:
+                raise conflict
+            if joined is None:
+                self._queue.append(_Waiting(job_id, job_kind, store))
+                self._dispatch()
+        return self._record(joined or job_id)
 
     def cancel(self, job_id: str) -> JobRecord:
         """Cancel a job of this supervisor.
@@ -694,9 +828,10 @@ class JobSupervisor:
                 (store,),
             ).fetchone()[0]
             busy = connection.execute(
-                f"SELECT 1 FROM jobs WHERE store = ? AND kind IN {_INDEX_KINDS_SQL}"
+                "SELECT 1 FROM jobs WHERE store = ?"
+                f" AND kind IN ({_placeholders(_INDEX_KINDS)})"
                 f" AND state IN {_ACTIVE_SQL} LIMIT 1",
-                (store,),
+                (store, *_INDEX_KINDS),
             ).fetchone()
         return ScanHistory(
             finished_at=_datetime(finished),
@@ -795,24 +930,26 @@ class JobSupervisor:
     def _room(self, kind: JobKind) -> bool:
         if len(self._running) >= self._max_jobs:
             return False
-        if kind in NETWORK_JOB_KINDS:
-            network = sum(
-                run.kind in NETWORK_JOB_KINDS for run in self._running.values()
-            )
+        rule = JOB_RULES[kind]
+        running = [run.kind for run in self._running.values()]
+        if rule.exclusive and kind in running:
+            return False
+        if rule.network:
+            network = sum(JOB_RULES[other].network for other in running)
             return network < self._max_network_jobs
         return True
 
     def _start(self, waiting: _Waiting) -> None:
         """Mark a job running and start its worker with the current settings."""
         settings = self._settings.get()
-        if settings.store(waiting.store) is None:
+        if waiting.store is not None and settings.store(waiting.store) is None:
             error = JobError(
                 CODE_CANCELLED,
                 MESSAGES["job_store_unknown"].format(store=waiting.store),
             )
             self._end_waiting(waiting, "cancelled", error)
             return
-        if waiting.kind in NETWORK_JOB_KINDS and settings.offline:
+        if JOB_RULES[waiting.kind].network and settings.offline:
             error = JobError("offline_mode", MESSAGES["job_offline_mode"])
             self._end_waiting(waiting, "failed", error)
             return
@@ -842,6 +979,8 @@ class JobSupervisor:
             actor=row["actor"],
             index_path=self._paths.index_file,
             cache_dir=self._paths.cache_dir,
+            previews_dir=self._paths.previews_dir,
+            work_dir=self._paths.work_dir,
             settings=settings,
         )
         log = _log_path(self._paths.jobs_dir, waiting.job_id).open("ab")
@@ -973,6 +1112,107 @@ class JobSupervisor:
         self._publish(event)
         self._changed.notify_all()
 
+    def _conflict(
+        self,
+        db: sqlite3.Connection,
+        kind: JobKind,
+        store: str | None,
+        params: JsonObject,
+        now: datetime,
+    ) -> tuple[JobConflictError | None, tuple[JobEvent, ...]]:
+        """Find the oldest live active job in the way of a new one.
+
+        Looks at the active jobs of the kind's conflict domain with the new
+        job's key; those whose supervisor is gone become ``interrupted``.
+
+        Returns
+        -------
+        tuple
+            The error naming the job in the way, or ``None``, and the state
+            events of the jobs interrupted.
+        """
+        rule = JOB_RULES[kind].conflict
+        if rule is None:
+            return None, ()
+        key = rule.key(store, params)
+        kinds = _domain_kinds(rule.domain)
+        rows = db.execute(
+            "SELECT id, kind, state, pid, store, params FROM jobs"
+            f" WHERE kind IN ({_placeholders(kinds)}) AND state IN {_ACTIVE_SQL}"
+            " ORDER BY created_at",
+            kinds,
+        ).fetchall()
+        busy: sqlite3.Row | None = None
+        events: list[JobEvent] = []
+        for row in rows:
+            if rule.key(row["store"], json.loads(row["params"])) != key:
+                continue
+            if not self._owner_alive(row["id"], row["pid"]):
+                events.append(self._mark_stale(db, row["id"], now))
+            elif busy is None:
+                busy = row
+        if busy is None:
+            return None, tuple(events)
+        fields = {
+            **params,
+            "store": store,
+            "job": busy["id"],
+            "kind": label("job_kind", busy["kind"]),
+            "state": label("job_state", busy["state"]),
+        }
+        error = JobConflictError(
+            MESSAGES[rule.message].format_map(fields),
+            job_id=busy["id"],
+            kind=busy["kind"],
+            state=busy["state"],
+        )
+        return error, tuple(events)
+
+    def _join(
+        self,
+        db: sqlite3.Connection,
+        kind: JobKind,
+        store: str | None,
+        params: JsonObject,
+        now: datetime,
+    ) -> tuple[str | None, tuple[JobEvent, ...]]:
+        """Add a new job to the oldest live job of its kind and store taking it.
+
+        Looks at the jobs of the kind and store in the states its rule may
+        join, oldest first; those whose supervisor is gone become
+        ``interrupted``. The job joined keeps the merged parameters.
+
+        Returns
+        -------
+        tuple
+            The id of the job joined, or ``None``, and the state events of
+            the jobs interrupted.
+        """
+        rule = JOB_RULES[kind].join
+        if rule is None:
+            return None, ()
+        rows = db.execute(
+            "SELECT id, pid, params FROM jobs WHERE kind = ? AND store IS ?"
+            f" AND state IN ({_placeholders(rule.states)}) ORDER BY created_at, id",
+            (kind, store, *rule.states),
+        ).fetchall()
+        joined: str | None = None
+        events: list[JobEvent] = []
+        for row in rows:
+            if not self._owner_alive(row["id"], row["pid"]):
+                events.append(self._mark_stale(db, row["id"], now))
+            elif joined is None:
+                active = json.loads(row["params"])
+                merged = rule.merge(active, params)
+                if merged is not None:
+                    joined = row["id"]
+                    if merged != active:
+                        db.execute(
+                            "UPDATE jobs SET params = ? WHERE id = ?",
+                            (_json(merged), joined),
+                        )
+        return joined, tuple(events)
+
     def _mark_stale(
         self, db: sqlite3.Connection, job_id: str, now: datetime
     ) -> JobEvent:
@@ -1073,6 +1313,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         if unknown:
             raise ValueError(f"unknown scan parameters {sorted(unknown)}")
         return {"mode": mode, "segment": segment or None}
+    if kind == "preview":
+        return _preview_params(params)
     if kind == "link_check":
         slot = params.get("slot")
         if not isinstance(slot, str) or not slot or set(params) != {"slot"}:
@@ -1081,6 +1323,35 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
+
+
+def _preview_params(params: Mapping[str, object]) -> JsonObject:
+    """Check a ``preview`` job's refs, the content of each and ``force``.
+
+    A ref given twice with the same content is kept once; with two contents
+    it is refused.
+    """
+    unknown = set(params) - {"refs", "contents", "force"}
+    if unknown:
+        raise ValueError(f"unknown preview parameters {sorted(unknown)}")
+    refs = params.get("refs")
+    contents = params.get("contents")
+    force = params.get("force", False)
+    if not isinstance(refs, list | tuple) or not 1 <= len(refs) <= MAX_PREVIEW_REFS:
+        raise ValueError(f"a preview job takes 1 to {MAX_PREVIEW_REFS} refs")
+    if not isinstance(contents, list | tuple) or len(contents) != len(refs):
+        raise ValueError("a preview job takes the content key of each ref")
+    if not isinstance(force, bool):
+        raise ValueError(f"invalid preview force {force!r}")
+    known: dict[str, str] = {}
+    for ref, content in zip(refs, contents, strict=True):
+        if not isinstance(ref, str) or not ref:
+            raise ValueError(f"invalid preview ref {ref!r}")
+        if not isinstance(content, str) or CONTENT_KEY.fullmatch(content) is None:
+            raise ValueError(f"invalid content key {content!r} of ref {ref!r}")
+        if known.setdefault(ref, content) != content:
+            raise ValueError(f"ref {ref!r} given with two contents")
+    return {"refs": list(known), "contents": list(known.values()), "force": force}
 
 
 def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | None]:
@@ -1201,6 +1472,11 @@ def _datetime(value: object) -> datetime | None:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _placeholders(values: Sequence[object]) -> str:
+    """Return one SQL parameter mark per value: ``?, ?, ?``."""
+    return ", ".join("?" * len(values))
 
 
 def _encode_cursor(fingerprint: str, values: Sequence[object]) -> str:

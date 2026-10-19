@@ -13,7 +13,8 @@ through ``request.app.state``: ``settings`` (``SettingsService``),
 ``registry`` (the producer plugins), the last three also as dependencies of
 ``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
 without background jobs, which leaves out their routes), ``job_streams``
-(open job event streams, which the server ends as it stops),
+(open job event streams, which the server ends as it stops), ``previews``
+(``RenderPool`` with its preview cache, ``None`` without one),
 ``area_files`` (``AreaFiles``: copies of area files and their reader) and
 ``on_redeem`` (told when a one-time token starts a session).
 """
@@ -48,6 +49,7 @@ from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import MESSAGES
+from archiwista.previews.pool import RenderPool
 from archiwista.security import (
     SecurityMiddleware,
     SessionStore,
@@ -71,6 +73,7 @@ def create_app(
     sessions: SessionStore | None = None,
     web_dir: Path = WEB_DIR,
     jobs: JobSupervisor | None = None,
+    previews: RenderPool | None = None,
     on_redeem: Callable[[TokenKind], None] | None = None,
 ) -> FastAPI:
     """Build the Archiwista application for one server.
@@ -99,6 +102,9 @@ def create_app(
     jobs : JobSupervisor or None, optional
         The started supervisor of background jobs (``app.state.jobs``);
         without it the routes of jobs are left out.
+    previews : RenderPool or None, optional
+        The started render pool with its preview cache
+        (``app.state.previews``); the server closes both.
     on_redeem : Callable[[TokenKind], None] or None, optional
         Called with the token's kind after a one-time token starts a session,
         e.g. ``archiwista serve`` deleting the browser's launch file.
@@ -134,6 +140,7 @@ def create_app(
     app.state.authorizer = Authorizer(state, settings.get)
     app.state.queries = queries
     app.state.jobs = jobs
+    app.state.previews = previews
     app.state.job_streams = job_routes.JobStreams()
     app.state.registry = registry
     app.state.area_files = AreaFiles(areas_dir)

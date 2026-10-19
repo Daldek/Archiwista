@@ -11,8 +11,15 @@ environment the test sets, which the worker inherits:
     The worker kills itself (SIGKILL) after this many scanned entries.
 ``ARCHIWISTA_TEST_NO_NETWORK``
     Every connection attempt fails and is appended to this file.
+``ARCHIWISTA_TEST_PREVIEW_SOURCES``
+    JSON file of ``PreviewSource`` objects by ref: the ``preview`` job
+    resolves refs ``test:…`` from it and builds with the test renderer
+    (``tests.fixtures.render_worker``).
+``ARCHIWISTA_TEST_BUILD_TIMEOUT_S``, ``ARCHIWISTA_TEST_BUILD_PROCESSES``
+    Time limit of one build and build processes at once of that job.
 """
 
+import json
 import os
 import signal
 import socket
@@ -24,12 +31,20 @@ from pathlib import Path
 from typing import Any
 
 from archiwista.adapter.kartograf.adapter import KartografAdapter
+from archiwista.errors import NotFoundError
 from archiwista.jobs import worker
+from archiwista.jobs.protocol import JobSpec
+from archiwista.previews import build
+from archiwista.previews.types import PreviewSource
 from archiwista.sources import ScanScope, SourceEntry
+from tests.fixtures.render_worker import TEST_RENDER_WORKER
 
 DELAY_ENV = "ARCHIWISTA_TEST_ENTRY_DELAY_S"
 CRASH_ENV = "ARCHIWISTA_TEST_CRASH_AFTER"
 NO_NETWORK_ENV = "ARCHIWISTA_TEST_NO_NETWORK"
+PREVIEW_SOURCES_ENV = "ARCHIWISTA_TEST_PREVIEW_SOURCES"
+BUILD_TIMEOUT_ENV = "ARCHIWISTA_TEST_BUILD_TIMEOUT_S"
+BUILD_PROCESSES_ENV = "ARCHIWISTA_TEST_BUILD_PROCESSES"
 
 
 def _hook_entries(delay_s: float, crash_after: int | None) -> None:
@@ -68,6 +83,28 @@ def _refuse_network(record: Path) -> None:
     socket.getaddrinfo = refuse
 
 
+def _hook_previews(sources: Path) -> None:
+    """Resolve ``test:`` refs from ``sources``; build with the test renderer."""
+    table = json.loads(sources.read_text(encoding="utf-8"))
+
+    def resolver(spec: JobSpec) -> build.SourceResolver:
+        def resolve(ref: str) -> PreviewSource:
+            if ref not in table:
+                raise NotFoundError(f"no test source {ref}")
+            return PreviewSource.from_json(table[ref])
+
+        return resolve
+
+    build.RESOLVERS = {**build.RESOLVERS, "test": resolver}
+    build.BUILD_COMMAND = TEST_RENDER_WORKER
+    timeout = os.environ.get(BUILD_TIMEOUT_ENV)
+    if timeout:
+        build.BUILD_TIMEOUT_S = float(timeout)
+    processes = os.environ.get(BUILD_PROCESSES_ENV)
+    if processes:
+        build.build_processes = lambda: int(processes)
+
+
 def main() -> int:
     """Arm the hooks named in the environment and run the real worker."""
     delay = float(os.environ.get(DELAY_ENV, "0"))
@@ -77,6 +114,9 @@ def main() -> int:
     record = os.environ.get(NO_NETWORK_ENV)
     if record:
         _refuse_network(Path(record))
+    sources = os.environ.get(PREVIEW_SOURCES_ENV)
+    if sources:
+        _hook_previews(Path(sources))
     return worker.main()
 
 

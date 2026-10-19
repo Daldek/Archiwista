@@ -8,9 +8,11 @@ the address through a private file (``LaunchFile``), never on its command
 line, which other accounts of the computer can read. Uvicorn's access log is
 off unless asked for; when on, ``token=`` values are redacted; it serves at
 most ``LIMIT_CONCURRENCY`` connections at once. While it serves, background
-jobs run under its ``JobSupervisor`` and the ``ScanScheduler`` scans the
-stores; stopping ends the open job event streams first (they would hold it
-until their jobs end), then interrupts running jobs. ``token`` prints the
+jobs run under its ``JobSupervisor``, the ``ScanScheduler`` scans the stores
+and the ``RenderPool`` renders previews into the preview cache (reconciled
+at the start); stopping ends the open job event streams first (they would
+hold it until their jobs end), then interrupts running jobs and ends the
+render processes. ``token`` prints the
 one-time address of an agent's session, or ends every agent session
 (``--revoke-all``).
 """
@@ -21,6 +23,7 @@ import html
 import os
 import secrets
 import socket
+import sqlite3
 import threading
 import webbrowser
 from collections.abc import Callable
@@ -45,6 +48,8 @@ from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.paths import private_directory
+from archiwista.previews.cache import PreviewCache
+from archiwista.previews.pool import RenderPool, default_render_workers
 from archiwista.security import (
     AGENT_SESSION_MAX_AGE,
     LOOPBACK_HOST,
@@ -278,8 +283,8 @@ def serve_main(
     -------
     int
         ``0`` after a normal stop, ``2`` for a refused address, ``1`` when
-        the settings, the index, the state database, the jobs directory or
-        the port cannot be used.
+        the settings, the index, the state database, the jobs directory, the
+        preview cache or the port cannot be used.
     """
     if host != LOOPBACK_HOST:
         message = MESSAGES["serve_host_refused"].format(
@@ -312,6 +317,17 @@ def serve_main(
         except OSError as error:
             err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
             return 1
+        try:
+            previews = _start_previews(paths, settings.get().preview_cache_limit_bytes)
+        except (OSError, sqlite3.Error) as error:
+            jobs.close()
+            err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
+            return 1
+        unsubscribe = settings.subscribe(
+            lambda previous, current: previews.cache.set_limit(
+                current.preview_cache_limit_bytes
+            )
+        )
         scheduler = ScanScheduler(jobs, settings, registry, index_path=paths.index_file)
         launch = LaunchFile(paths.data_dir)
         expiry = threading.Timer(TOKEN_TTL["startup"].total_seconds(), launch.remove)
@@ -331,6 +347,7 @@ def serve_main(
                 areas_dir=paths.areas_dir,
                 sessions=SessionStore(),
                 jobs=jobs,
+                previews=previews,
                 on_redeem=redeemed,
             )
             issued = issue_one_time_token(
@@ -361,6 +378,9 @@ def serve_main(
             launch.remove()
             scheduler.stop()
             jobs.close()
+            unsubscribe()
+            previews.close()
+            previews.cache.close()
     return 0
 
 
@@ -429,3 +449,18 @@ def token_main(
 
 def _minutes(kind: TokenKind) -> int:
     return int(TOKEN_TTL[kind].total_seconds()) // 60
+
+
+def _start_previews(paths: AppPaths, limit_bytes: int) -> RenderPool:
+    """Open and reconcile the preview cache, then start the render pool."""
+    cache = PreviewCache(paths.previews_dir, limit_bytes=limit_bytes)
+    try:
+        cache.reconcile()
+        pool = RenderPool(
+            workers=default_render_workers(), cache=cache, work_dir=paths.work_dir
+        )
+        pool.start()
+    except BaseException:
+        cache.close()
+        raise
+    return pool

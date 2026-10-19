@@ -1618,7 +1618,8 @@ class JobDetail(BaseModel):
     kind: JobKind = Field(
         description=(
             "`scan` (index the store), `footprints` (unit outlines over the"
-            " network) or `link_check` (which version a slot's link holds)."
+            " network), `link_check` (which version a slot's link holds) or"
+            " `preview` (build local previews of files)."
         )
     )
     state: JobState = Field(
@@ -1646,10 +1647,11 @@ class JobDetail(BaseModel):
             " /api/v1/session); `null` at the terminal and for the scheduler."
         )
     )
-    store: str | None = Field(description="Store id.")
+    store: str | None = Field(description="Store id; `null` for `preview`.")
     params: dict[str, Any] = Field(
         description=(
-            "`scan`: `mode` and `segment`; `link_check`: `slot`; `footprints`: none."
+            "`scan`: `mode` and `segment`; `link_check`: `slot`; `footprints`:"
+            " none; `preview`: `refs`, their `contents` and `force`."
         )
     )
     created_at: datetime
@@ -1658,8 +1660,9 @@ class JobDetail(BaseModel):
     progress: dict[str, Any] | None = Field(
         description=(
             "The last progress: `current` of `total` (segments of a scan,"
-            " versions of `footprints`); a scan adds `segment` and `entries`,"
-            " `footprints` adds `written` and `failed`."
+            " versions of `footprints`, contents of `preview`); a scan adds"
+            " `segment` and `entries`, `footprints` adds `written` and `failed`,"
+            " `preview` adds `built`, `cached` and `failed`."
         )
     )
     result: dict[str, Any] | None = Field(
@@ -1669,7 +1672,8 @@ class JobDetail(BaseModel):
             " `segments` and `projects`; `footprints`: `total`, `written`,"
             " `failed`; `link_check`: `status` (`confirmed`, `index_outdated`,"
             " `mismatch`, `missing` or `not_a_link`) with the `expected` and"
-            " `confirmed` versions."
+            " `confirmed` versions; `preview`: `built`, `cached`, `failed`"
+            " (`ref`, `code`, `detail`) and `seconds`."
         )
     )
     error: JobFailure | None = Field(
@@ -2309,6 +2313,7 @@ class Settings(BaseModel):
             "basemaps": [_BASEMAP_EXAMPLE],
             "store_write_for_all": False,
             "default_project_visibility": "public",
+            "preview_cache_limit_gb": 20,
         },
         closed=True,
     )
@@ -2347,6 +2352,12 @@ class Settings(BaseModel):
         default="public",
         description="Visibility of a project without its own access entry.",
     )
+    preview_cache_limit_gb: int = Field(
+        default=20,
+        ge=1,
+        le=10_000,
+        description="Preview cache limit in GB; the least recently used go first.",
+    )
 
     @classmethod
     def of(cls, settings: AppSettings) -> Self:
@@ -2363,6 +2374,7 @@ class Settings(BaseModel):
             basemaps=[BasemapSettings.of(basemap) for basemap in settings.basemaps],
             store_write_for_all=settings.store_write_for_all,
             default_project_visibility=settings.default_project_visibility,
+            preview_cache_limit_gb=settings.preview_cache_limit_gb,
         )
 
 

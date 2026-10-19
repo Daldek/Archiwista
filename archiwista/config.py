@@ -37,6 +37,8 @@ DEFAULT_SCAN_THREADS = 8
 DEFAULT_SCAN_INTERVAL_LOCAL_MIN = 5
 DEFAULT_SCAN_INTERVAL_SHARE_MIN = 15
 DEFAULT_FULL_SCAN_INTERVAL_H = 24
+# Preview cache limit in GB of 1024**3 bytes (SPEC 5.7: 20 GB, LRU).
+DEFAULT_PREVIEW_CACHE_LIMIT_GB = 20
 SHARE_FILESYSTEMS = frozenset({"cifs", "smb3", "smbfs", "nfs", "nfs4"})
 MOUNTINFO_PATH = Path("/proc/self/mountinfo")
 
@@ -125,6 +127,11 @@ class AppPaths:
     def work_dir(self) -> Path:
         """Scratch directories of processes reading files, one per process."""
         return self.data_dir / "work"
+
+    @property
+    def previews_dir(self) -> Path:
+        """Preview cache: objects by content and their LRU accounting."""
+        return self.data_dir / "previews"
 
     def source_cache_dir(self, producer: str) -> Path:
         """Return the local cache directory owned by one producer plugin."""
@@ -364,6 +371,9 @@ class AppSettings(BaseModel):
     default_project_visibility : {"public", "private"}
         Visibility of a project without its own access entry: everyone, or
         administrators only.
+    preview_cache_limit_gb : int
+        Size limit of the preview cache in GB (1024**3 bytes); past it the
+        least recently used previews go (SPEC 5.7).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -385,6 +395,9 @@ class AppSettings(BaseModel):
     basemaps: tuple[BasemapConfig, ...] = (DEFAULT_BASEMAP,)
     store_write_for_all: bool = False
     default_project_visibility: DefaultProjectVisibility = "public"
+    preview_cache_limit_gb: int = Field(
+        default=DEFAULT_PREVIEW_CACHE_LIMIT_GB, ge=1, le=10_000
+    )
 
     @field_validator("default_project_visibility", mode="before")
     @classmethod
@@ -423,6 +436,11 @@ class AppSettings(BaseModel):
             else self.scan_interval_local_min
         )
         return minutes * 60
+
+    @property
+    def preview_cache_limit_bytes(self) -> int:
+        """Return the preview cache limit in bytes."""
+        return self.preview_cache_limit_gb * 1024**3
 
 
 def _require_unique(values: Sequence[str], message_key: str) -> None:

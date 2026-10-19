@@ -6,7 +6,9 @@ import pytest
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.jobs.protocol import (
+    JobKind,
     JobSpec,
+    JsonObject,
     ProtocolError,
     WorkerMessage,
     decode_message,
@@ -56,24 +58,44 @@ def test_decode_message_rejects_what_is_not_a_message(line: str) -> None:
         decode_message(line)
 
 
-def test_job_spec_keeps_settings_and_paths() -> None:
-    """A job reaches its worker with the settings in effect, aliases included."""
-    store = StoreConfig(
+@pytest.mark.parametrize(
+    ("kind", "store", "params"),
+    [
+        ("link_check", "zespol", {"slot": "nmt/a/N-34/x.asc"}),
+        (
+            "preview",
+            None,
+            {
+                "refs": ["version:zespol:nmt/a/N-34/2026-10-01_x.asc"],
+                "contents": ["0f" * 32],
+                "force": False,
+            },
+        ),
+    ],
+)
+def test_job_spec_keeps_settings_and_paths(
+    kind: JobKind, store: str | None, params: JsonObject
+) -> None:
+    """A job, also one on no store, reaches its worker with paths and settings."""
+    config = StoreConfig(
         id="zespol",
         name="Zespół",
         kartograf=Path("/mnt/nas/kartograf/data"),
         kind="share",
         path_aliases={"/mnt/nas/kartograf": "Z:\\kartograf"},
     )
+    data = Path("/home/u/.local/share/archiwista")
     spec = JobSpec(
         job_id="0123456789abcdef",
-        kind="link_check",
-        store="zespol",
-        params={"slot": "nmt/a/N-34/x.asc"},
+        kind=kind,
+        store=store,
+        params=params,
         actor="agent-7",
-        index_path=Path("/home/u/.local/share/archiwista/index.sqlite"),
-        cache_dir=Path("/home/u/.local/share/archiwista/cache"),
-        settings=AppSettings(stores=(store,), offline=True, scan_threads=3),
+        index_path=data / "index.sqlite",
+        cache_dir=data / "cache",
+        previews_dir=data / "previews",
+        work_dir=data / "work",
+        settings=AppSettings(stores=(config,), offline=True, scan_threads=3),
     )
 
     assert decode_spec(encode_spec(spec)) == spec
@@ -82,11 +104,13 @@ def test_job_spec_keeps_settings_and_paths() -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        '{"protocol": 2, "job": {}}',
-        '{"protocol": 1, "job": {"id": "a", "kind": "download"}}',
         '{"protocol": 1, "job": {"id": "a", "kind": "scan", "store": "s",'
         ' "params": {}, "actor": "local"}, "index_path": "/i", "cache_dir": "/c",'
-        ' "settings": {"port": 1}}',
+        ' "previews_dir": "/p", "work_dir": "/w", "settings": {}}',
+        '{"protocol": 2, "job": {"id": "a", "kind": "download"}}',
+        '{"protocol": 2, "job": {"id": "a", "kind": "scan", "store": "s",'
+        ' "params": {}, "actor": "local"}, "index_path": "/i", "cache_dir": "/c",'
+        ' "previews_dir": "/p", "work_dir": "/w", "settings": {"port": 1}}',
     ],
 )
 def test_decode_spec_rejects_unknown_jobs(line: str) -> None:

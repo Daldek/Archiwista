@@ -1,8 +1,33 @@
-"""Polish user-facing messages shared across the command line and server."""
+"""Polish user-facing messages shared across the command line and server.
 
+``MESSAGES`` holds the general texts and, one line each, the dictionaries of
+single features (``archiwista.texts``); a key defined twice stops the import.
+"""
+
+from collections.abc import Mapping
 from types import MappingProxyType
 
-MESSAGES = MappingProxyType(
+from archiwista.texts.previews import PREVIEW_MESSAGES
+
+
+def merge_messages(*dictionaries: Mapping[str, str]) -> MappingProxyType[str, str]:
+    """Return the texts of all dictionaries as one read-only mapping.
+
+    Raises
+    ------
+    ValueError
+        A key appears in two dictionaries.
+    """
+    merged: dict[str, str] = {}
+    for dictionary in dictionaries:
+        twice = merged.keys() & dictionary.keys()
+        if twice:
+            raise ValueError(f"message keys defined twice: {sorted(twice)}")
+        merged.update(dictionary)
+    return MappingProxyType(merged)
+
+
+MESSAGES = merge_messages(
     {
         "cli_description": "Archiwista — przeglądarka lokalnego magazynu danych.",
         "cli_doctor_help": "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
@@ -801,7 +826,8 @@ MESSAGES = MappingProxyType(
         ),
         "reindex_job_failed": "Magazyn „{store}”: zadanie {job} — {state}: {detail}",
         "reindex_error": "{message} (kod {code})",
-    }
+    },
+    PREVIEW_MESSAGES,
 )
 
 

@@ -23,22 +23,28 @@ and turns ``result`` and ``error`` into the job's final state.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_args
 
 from pydantic import ValidationError
 
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 
-type JobKind = Literal["scan", "footprints", "link_check"]
+# One line per kind; its rule is in ``archiwista.jobs.supervisor.JOB_RULES``.
+type JobKind = Literal[
+    "scan",
+    "footprints",
+    "link_check",
+    "preview",
+]
 type MessageType = Literal["progress", "notice", "result", "error"]
 type NoticeLevel = Literal["info", "warning"]
 type JsonObject = dict[str, Any]
 
-JOB_KINDS: tuple[JobKind, ...] = ("scan", "footprints", "link_check")
+JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
 MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error")
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 
@@ -75,30 +81,39 @@ class JobSpec:
     ----------
     job_id : str
         The job's id in the index.
-    kind : {"scan", "footprints", "link_check"}
+    kind : {"scan", "footprints", "link_check", "preview"}
         What to run.
-    store : str
-        Configured id of the store the job works on.
+    store : str or None
+        Configured id of the store the job works on; ``None`` for a kind
+        working on no store (``preview``).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
-        ``mode`` and ``segment``; ``link_check``: ``slot``).
+        ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
+        ``refs``, their ``contents`` and ``force``).
     actor : str
         Who asked for the job (``Principal.id``).
     index_path : Path
         The local index.
     cache_dir : Path
         Root of the local caches, one directory per producer.
+    previews_dir : Path
+        The preview cache (``AppPaths.previews_dir``).
+    work_dir : Path
+        Root of the scratch directories of processes reading files
+        (``AppPaths.work_dir``).
     settings : AppSettings
         Settings in effect when the job started.
     """
 
     job_id: str
     kind: JobKind
-    store: str
+    store: str | None
     params: JsonObject
     actor: str
     index_path: Path
     cache_dir: Path
+    previews_dir: Path
+    work_dir: Path
     settings: AppSettings
 
 
@@ -149,6 +164,8 @@ def encode_spec(spec: JobSpec) -> str:
             },
             "index_path": str(spec.index_path),
             "cache_dir": str(spec.cache_dir),
+            "previews_dir": str(spec.previews_dir),
+            "work_dir": str(spec.work_dir),
             "settings": spec.settings.model_dump(mode="json"),
         }
     )
@@ -175,14 +192,19 @@ def decode_spec(line: str) -> JobSpec:
         params = job["params"]
         if not isinstance(params, dict):
             raise TypeError("params")
+        store = job["store"]
+        if store is not None and not isinstance(store, str):
+            raise TypeError("store")
         return JobSpec(
             job_id=str(job["id"]),
             kind=kind,
-            store=str(job["store"]),
+            store=store,
             params=params,
             actor=str(job["actor"]),
             index_path=Path(value["index_path"]),
             cache_dir=Path(value["cache_dir"]),
+            previews_dir=Path(value["previews_dir"]),
+            work_dir=Path(value["work_dir"]),
             settings=AppSettings.model_validate(value["settings"]),
         )
     except (KeyError, TypeError, ValueError, ValidationError) as error:
