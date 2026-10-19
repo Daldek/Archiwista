@@ -1,8 +1,9 @@
 /**
  * Texts of the map view (views/map.js and src/map/): the „Wybór” panel, the
- * map, its legend and counters, the year buttons and the previews on the
- * map. Coverage labels such as „lokalnie 83% obszaru” and layer titles come
- * from the server's dictionary, not from here.
+ * map, its legend and counters, the year buttons, the previews on the map
+ * and the switch of the centre „Mapa / Wachlarz / Katalog”. Coverage labels
+ * such as „lokalnie 83% obszaru” and layer titles come from the server's
+ * dictionary, not from here.
  */
 
 export const map = {
@@ -232,5 +233,15 @@ export const map = {
       needs_build: "Kafle tego pliku wymagają zbudowania podglądu — zbuduj go w Karcie pliku.",
       building: "Podgląd tego pliku jest w budowie — kafle pojawią się po jej zakończeniu.",
     },
+  },
+  /** The switch of the centre (views/switch.js), shared with the catalog. */
+  modes: {
+    label: "Widok środka",
+    map: "Mapa",
+    fan: "Wachlarz",
+    catalog: "Katalog",
+    map_title: "Mapa magazynu z warstwami lat obszaru",
+    fan_title: "Warstwy lat obszaru na łuku: każda w całości, wybrana powiększona",
+    catalog_title: "Katalog z tymi samymi filtrami: lista plików albo oś czasu",
   },
 };

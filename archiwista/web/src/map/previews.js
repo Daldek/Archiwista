@@ -12,9 +12,12 @@
  * versions and one raster source of the layer's tiles (`/local-layers/
  * tiles`, decision 7) from the layer's `minzoom` — below it only the
  * outlines and „Przybliż, aby zobaczyć podgląd”. The build of the chosen
- * layer's missing previews is followed, and the layers are read again when
- * it ends: their addresses change with every preview that gets ready. The
- * legends and states of both go into the map legend.
+ * layer's missing previews (else of the first layer being built) is
+ * followed, and the layers are read again when it ends: their addresses
+ * change with every preview that gets ready. The legends and states of both
+ * go into the map legend. The same layers (`useLayers`, with `group=campaign`
+ * split by campaign) feed the Wachlarz, the catalog's timeline and the
+ * details panel (step 13): one choice, `layer` of the address.
  *
  * Every address comes from an answer (`apiTemplate` adds `style`); MapLibre
  * sends the session's CSRF header with them (`transformRequest` in
@@ -43,6 +46,10 @@ export const PREVIEW_PARAM = "preview";
 export const PREVIEW_STYLE_PARAM = "preview_style";
 /** Address parameter of the chosen year layer: its `key`. */
 export const LAYER_PARAM = "layer";
+/** Address parameter of the layers' grouping: `campaign` splits a year by campaign. */
+export const GROUP_PARAM = "group";
+/** The value of `GROUP_PARAM` asking for campaigns (`group` of `GET /local-layers`). */
+export const CAMPAIGN_GROUP = "campaign";
 
 const TILE_PX = 256;
 // Zoom levels of the API: tiles of 256 px (`MAX_ZOOM` of the server).
@@ -145,30 +152,37 @@ export function chosenStyle(info, wanted) {
 }
 
 /**
- * The year layers of the chosen product in the area, and the chosen one.
+ * The layers of the chosen product, and the chosen one.
  *
- * @param {{store: string|null, product: string|null, areaId: string|null}} choice
- *   - Without all three there are no layers.
+ * @param {{store: string|null, product: string|null, areaId: string|null,
+ *   group?: string|null, needsArea?: boolean}} choice - Without a store and a
+ *   product there are no layers; without an area neither, unless `needsArea`
+ *   is false (the timeline: the counts of the whole store). `group`:
+ *   `CAMPAIGN_GROUP` or none (years).
  * @param {string|null} chosen - `layer` of the address.
  * @param {string} dataKey - Changes when the index does.
  * @returns {{set: import("../types.js").LayerSet|null, layer:
  *   import("../types.js").Layer|null, job: ReturnType<typeof useJob>,
  *   loading: boolean, error: import("../api.js").ApiError|undefined}} `job`
- *   follows the build of the chosen layer's missing previews.
+ *   follows the build of the chosen layer's missing previews, else of the
+ *   first layer being built: the layers are read again when it ends, so the
+ *   addresses of their images follow the previews that got ready.
  */
-export function useLayers({ store, product, areaId }, chosen, dataKey) {
-  const key = store && product && areaId ? [store, product, areaId].join("\n") : "";
+export function useLayers({ store, product, areaId, group = null, needsArea = true }, chosen, dataKey) {
+  const wanted = Boolean(store && product && (areaId || !needsArea));
+  const key = wanted ? [store, product, areaId ?? "", group ?? ""].join("\n") : "";
   const answer = useResource(
     (signal) =>
       key
-        ? getLocalLayers({ store, product, area_id: areaId }, { signal }).then((set) => ({ key, set }))
+        ? getLocalLayers({ store, product, area_id: areaId, group }, { signal }).then((set) => ({ key, set }))
         : Promise.resolve(null),
     [key, dataKey],
   );
   const set = key && answer.data?.key === key ? answer.data.set : null;
   const layer = set?.layers.find((item) => item.key === chosen) ?? null;
   const job = useJob({ onEnd: answer.reload });
-  const building = layer?.preview?.state === "building" ? (layer.preview.job?.id ?? null) : null;
+  const built = [layer, ...(set?.layers ?? [])].find((item) => item?.preview?.state === "building" && item.preview.job);
+  const building = built?.preview.job.id ?? null;
   useEffect(() => {
     if (building) job.follow(building, "preview");
   }, [building]);
@@ -440,6 +454,24 @@ function describeLayer(layer) {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/**
+ * A layer's variant for people, without the file format (A-ADR-017): its
+ * resolution and systems, e.g. „1m · PL-1992 · PL-EVRF2007-NH”; a variant
+ * keyed by its segment (a field missing in the metadata) adds the segment.
+ *
+ * @param {import("../types.js").LayerVariant} variant
+ * @returns {string}
+ */
+export function variantName(variant) {
+  const parts = [
+    variant.resolution,
+    variant.horizontal_crs ? crsName(variant.horizontal_crs) : null,
+    variant.vertical_crs ? crsName(variant.vertical_crs) : null,
+  ].filter(Boolean);
+  if (parts.length === 3) return parts.join(" · ");
+  return [...parts, ...variant.segments].join(" · ") || L.layers.no_meta;
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * „Mapa” — the start view (docs/SPEC.md 6.1–6.3, plan v0.1 step 10b, v0.2
- * step 12b).
+ * steps 12b and 13).
  *
  * The left panel „Wybór” holds the area, the product of the index with the
  * filters and the area's local state; the centre is the map of the store's
@@ -11,11 +11,16 @@
  * layers in the area are buttons on the map: the chosen one shows the
  * outlines of its versions and its preview tiles (map/previews.js); a
  * version's preview from its file card goes on the map with its outline.
+ * The switch over the centre (views/switch.js) puts the Wachlarz of the
+ * same layers in place of the map (`mode=fan`) — beside it where the centre
+ * is wide enough — or opens the catalog; the chosen layer's details stand
+ * in the right panel (views/set-details.js). The catalog shows this centre
+ * beside itself on wide screens (`embedded`: the map alone, no panels).
  * The address holds the state — filters under the `/slots` names,
- * `area_id`, the chosen layer (`layer`), the version previewed (`preview`
- * and `preview_style`) and the position as `center=lon,lat` and `zoom`;
- * without a position the map frames the preview, else what the filters
- * match.
+ * `area_id`, the chosen layer (`layer`, `group`), the version previewed
+ * (`preview` and `preview_style`), the centre (`mode`) and the position as
+ * `center=lon,lat` and `zoom`; without a position the map frames the
+ * preview, else what the filters match.
  */
 
 import {
@@ -30,10 +35,12 @@ import {
   uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
+import { Fan } from "../fan/fan.js";
 import { count, stamp } from "../format.js";
-import { NARROW, useMedia, useResource } from "../hooks.js";
+import { NARROW, useMedia, useResource, useSize } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
+import { setDetails as D } from "../labels/set-details.js";
 import { MapCanvas } from "../map/canvas.js";
 import {
   bboxPolygon,
@@ -46,7 +53,9 @@ import {
 import { Legend } from "../map/legend.js";
 import { areaName, areaSummary, SelectionPanel } from "../map/panel.js";
 import {
+  CAMPAIGN_GROUP,
   chosenStyle,
+  GROUP_PARAM,
   LAYER_PARAM,
   LayerButtons,
   LayerLegend,
@@ -80,6 +89,8 @@ import {
   useRef,
   useState,
 } from "../ui.js";
+import { DetailsToggle, SetDetails } from "./set-details.js";
+import { FAN_MODE, MODE_PARAM, SPLIT_MIN, ViewSwitch } from "./switch.js";
 
 await loadStylesheet(new URL("../map/map.css", import.meta.url));
 
@@ -100,9 +111,11 @@ const areas = new Map();
 /**
  * The map view.
  *
- * @param {{route: import("../router.js").Route}} props
+ * @param {{route: import("../router.js").Route, embedded?: boolean}} props -
+ *   `embedded`: the centre alone (the map, its bar without the panels and the
+ *   switch), beside the catalog on a wide screen.
  */
-export default function MapScreen({ route }) {
+export default function MapScreen({ route, embedded = false }) {
   const { settings, health } = useApp();
   const narrow = useMedia(NARROW);
   const params = route.params;
@@ -123,6 +136,17 @@ export default function MapScreen({ route }) {
   const [basemapName, setBasemapName] = useState(chosenBasemap);
   const areaStep = useRef(null);
   const userMoved = useRef(false);
+  const [centre, setCentre] = useState(null);
+  const centreWidth = useSize(centre).width;
+  // The Wachlarz in place of the map, or beside it on a wide centre.
+  const fanMode = !embedded && params[MODE_PARAM] === FAN_MODE;
+  const split = fanMode && !narrow && centreWidth >= SPLIT_MIN;
+  // The details stand beside the Wachlarz by themselves; over the map they open
+  // on demand, so choosing a year never narrows the map under the pointer. A
+  // choice of the user (`Szczegóły`, the panel's close) holds in both.
+  const [detailsWanted, setDetailsWanted] = useState(null);
+  const detailsOpen = detailsWanted ?? (fanMode && !narrow);
+  const group = params[GROUP_PARAM] === CAMPAIGN_GROUP ? CAMPAIGN_GROUP : null;
 
   const stores = settings?.stores ?? [];
   const indexKey = (health?.stores ?? []).map((item) => `${item.store}:${item.state.indexed_at ?? ""}`).join(",");
@@ -149,7 +173,7 @@ export default function MapScreen({ route }) {
   const layerStore =
     filters.store ?? (product ? (productStores(product, stores.map((item) => item.id))[0] ?? null) : null);
   const layers = useLayers(
-    { store: layerStore, product: filters.product ?? null, areaId },
+    { store: layerStore, product: filters.product ?? null, areaId, group },
     params[LAYER_PARAM] || null,
     dataKey,
   );
@@ -307,7 +331,23 @@ export default function MapScreen({ route }) {
 
   const change = () => {
     setLeftOpen(true);
+    if (narrow) setDetailsWanted(false);
     requestAnimationFrame(() => areaStep.current?.focus());
+  };
+  const choose = (key) => setParams({ [LAYER_PARAM]: key });
+  // Another grouping has other layers: none stays chosen.
+  const chooseGroup = (value) => setParams({ [GROUP_PARAM]: value, [LAYER_PARAM]: null });
+  // „Pokaż na mapie” of the details beside the Wachlarz alone: the map, on the
+  // layer, the details kept open.
+  const showOnMap = () => {
+    if (detailsOpen) setDetailsWanted(true);
+    setParams({ [MODE_PARAM]: null });
+    const bounds = unionBounds((layer?.versions ?? []).map((version) => version.bounds));
+    if (bounds) mapApi?.fit(bounds);
+  };
+  const toggleDetails = () => {
+    setDetailsWanted(!detailsOpen);
+    if (!detailsOpen) closeOnPhone();
   };
   const notes = [];
   if (!tool && grid.on) notes.push(html`<${GridNote} key="grid" grid=${grid} sheets=${sheets}
@@ -328,27 +368,33 @@ export default function MapScreen({ route }) {
   }
   if (layer) sections.push(html`<${LayerLegend} key="layer" layer=${layer} legend=${layerLegend} job=${layers.job} />`);
 
-  return html`<${ViewLayout} id="map"
-    left=${{ label: L.panel, open: leftOpen, onClose: () => setLeftOpen(false), content: html`<${SelectionPanel} ...${panel} />` }}>
-    <div class="map-view">
-      <div class="center-bar map-bar">
-        <button type="button" class=${`btn ${leftOpen ? "ghost" : "active"} panel-toggle`} aria-controls="map-left"
-          aria-expanded=${leftOpen ? "true" : "false"} title=${L.panel_toggle} onClick=${() => setLeftOpen(!leftOpen)}>
-          <${Icon} name="sidebar" size=${17} /><span class="panel-toggle-label">${L.panel}</span>
-        </button>
-        ${currentArea
-          ? html`<span class="area-badge" title=${areaSummary(currentArea)}>
-              <${Icon} name="pin" size=${14} />
-              <span class="area-badge-text">${t(L.area.badge, { name: areaName(currentArea) })}
-                <span class="muted"> · ${areaSummary(currentArea)}</span></span>
-              <button type="button" class="btn ghost sm" onClick=${change}>${L.area.change}</button>
-              <button type="button" class="btn ghost sm" onClick=${panel.onClear}>${L.area.clear}</button>
-            </span>`
-          : null}
-        <${FilterChips} filters=${filters} names=${names} stores=${stores} />
-        <${Counters} view=${{ ...view, data: footprints }} filters=${viewFilters} area=${currentArea} />
-      </div>
-      <div class="center-body">
+  const centreView = html`<div class="map-view" ref=${setCentre}>
+    <div class="center-bar map-bar">
+      ${embedded
+        ? null
+        : html`<button type="button" class=${`btn ${leftOpen ? "ghost" : "active"} panel-toggle`} aria-controls="map-left"
+            aria-expanded=${leftOpen ? "true" : "false"} title=${L.panel_toggle} onClick=${() => {
+              setLeftOpen(!leftOpen);
+              if (!leftOpen && narrow) setDetailsWanted(false);
+            }}>
+            <${Icon} name="sidebar" size=${17} /><span class="panel-toggle-label">${L.panel}</span>
+          </button>
+          <${ViewSwitch} current=${fanMode ? "fan" : "map"} params=${params} />`}
+      ${currentArea
+        ? html`<span class="area-badge" title=${areaSummary(currentArea)}>
+            <${Icon} name="pin" size=${14} />
+            <span class="area-badge-text">${t(L.area.badge, { name: areaName(currentArea) })}
+              <span class="muted"> · ${areaSummary(currentArea)}</span></span>
+            ${embedded ? null : html`<button type="button" class="btn ghost sm" onClick=${change}>${L.area.change}</button>`}
+            <button type="button" class="btn ghost sm" onClick=${panel.onClear}>${L.area.clear}</button>
+          </span>`
+        : null}
+      <${FilterChips} filters=${filters} names=${names} stores=${stores} />
+      ${fanMode && !split ? null : html`<${Counters} view=${{ ...view, data: footprints }} filters=${viewFilters} area=${currentArea} />`}
+      ${!embedded && layer ? html`<${DetailsToggle} open=${detailsOpen} controls="map-right" onToggle=${toggleDetails} />` : null}
+    </div>
+    <div class=${`center-body map-body${fanMode ? (split ? " split" : " fan-only") : ""}`}>
+      <div class="map-pane">
         <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
           layerTiles=${layerSource} versionTiles=${versionSource}
           previewOutline=${previewRef ? (preview.card?.footprint ?? null) : null} previewFeatures=${features.data}
@@ -362,8 +408,8 @@ export default function MapScreen({ route }) {
           onSheet=${(sheet) => save(() => createArea({ geometry: sheet.geometry, name: sheet.sheet, source: "sheet" }))}
           onOpen=${(item) => setParams({ file: `${item.store}/${item.slot}`, file_version: item.version })}>
           ${notes.length ? html`<div class="map-notes">${notes}</div>` : null}
-          <${LayerButtons} set=${layers.set} chosen=${layer?.key ?? null} loading=${layers.loading}
-            onChoose=${(key) => setParams({ [LAYER_PARAM]: key })} />
+          <${LayerButtons} set=${layers.set} chosen=${layer?.key ?? null} loading=${layers.loading} onChoose=${(key) =>
+            setParams({ [LAYER_PARAM]: key })} />
           <${Legend} view=${footprints} versions=${filters.versions ?? "current"} grid=${grid}
             area=${Boolean(currentArea)} offline=${Boolean(settings?.offline)} basemaps=${basemaps}
             basemap=${basemap} layer=${layer?.title ?? null} onBasemap=${(name) => {
@@ -372,7 +418,28 @@ export default function MapScreen({ route }) {
             }}>${sections}</${Legend}>
         </${MapCanvas}>
       </div>
+      ${fanMode
+        ? html`<div class="fan-pane">
+            <${Fan} set=${layers.set} chosen=${layer?.key ?? null} onChoose=${choose} loading=${layers.loading}
+              error=${layers.error} job=${layers.job} group=${group} onGroup=${chooseGroup}
+              missing=${!filters.product ? "product" : !areaId ? "area" : null} onPanel=${change} />
+          </div>`
+        : null}
     </div>
+  </div>`;
+  if (embedded) return centreView;
+  const details = layer
+    ? {
+        label: D.title,
+        open: detailsOpen,
+        onClose: () => setDetailsWanted(false),
+        content: html`<${SetDetails} set=${layers.set} layer=${layer} job=${layers.job}
+          onMap=${fanMode && !split ? showOnMap : null} onChoose=${choose} />`,
+      }
+    : undefined;
+  return html`<${ViewLayout} id="map" right=${details}
+    left=${{ label: L.panel, open: leftOpen, onClose: () => setLeftOpen(false), content: html`<${SelectionPanel} ...${panel} />` }}>
+    ${centreView}
   </${ViewLayout}>`;
 }
 

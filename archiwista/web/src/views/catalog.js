@@ -1,22 +1,31 @@
 /**
- * „Katalog” (docs/SPEC.md 6.8; plan v0.1 step 10c): every indexed file of
- * the filters — also the files without an outline, which the map never
- * shows — as a list paged by the cursor of `GET /slots` and drawn only near
- * the view, so the 50 000-slot store stays fast.
+ * „Katalog” (docs/SPEC.md 6.8; plan v0.1 step 10c, v0.2 step 13b): every
+ * indexed file of the filters — also the files without an outline, which
+ * the map never shows — as a list paged by the cursor of `GET /slots` and
+ * drawn only near the view, so the 50 000-slot store stays fast; or, as
+ * `layout=timeline`, the product's layers as variants × years
+ * (views/catalog-timeline.js), the chosen one in the right panel
+ * „Szczegóły zestawu” (views/set-details.js).
  *
  * The address is the query: its parameters are those of `GET /slots`
  * (`search.js` `SLOT_PARAMS`), so a shared link, the map's „bez obrysu”
  * counter (`location=none`) and Back/Forward open the same list. Location
  * groups come with their counts over the whole answer; the search field is
- * the one of `Ctrl+K`. A row opens the file card overlay (`file=`).
+ * the one of `Ctrl+K`. A row opens the file card overlay (`file=`). The
+ * switch over the centre (views/switch.js) leads to the map and the
+ * Wachlarz with the same address; where the centre is wide enough, the map
+ * stands beside the catalog (views/map.js `embedded`).
  */
 
 import { listSlots } from "../api.js";
 import { useApp } from "../context.js";
 import { count, int } from "../format.js";
-import { NARROW, useMedia } from "../hooks.js";
+import { NARROW, useMedia, useSize } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
+import { setDetails as D } from "../labels/set-details.js";
+import { timeline as TL } from "../labels/timeline.js";
+import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
 import { ViewLayout } from "../panels.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
@@ -26,6 +35,7 @@ import {
   Icon,
   loadStylesheet,
   ProblemView,
+  Seg,
   Spinner,
   Tech,
   useEffect,
@@ -35,6 +45,9 @@ import {
 } from "../ui.js";
 import { CatalogFilters, FILTERS } from "./catalog-filters.js";
 import { CatalogGrid, onMapOf } from "./catalog-grid.js";
+import { CatalogTimeline, useTimelineLayers } from "./catalog-timeline.js";
+import { DetailsToggle, SetDetails } from "./set-details.js";
+import { LAYOUT_PARAM, MODE_PARAM, SPLIT_MIN, TIMELINE_LAYOUT, ViewSwitch } from "./switch.js";
 
 const STYLES = new URL("./catalog.css", import.meta.url);
 /** Location groups of `location`, the first one the API's default. */
@@ -86,10 +99,18 @@ export default function Catalog({ route }) {
   const narrow = useMedia(NARROW);
   const [styled, setStyled] = useState(false);
   const [panel, setPanel] = useState(() => !window.matchMedia(NARROW).matches);
+  const [details, setDetails] = useState(() => !window.matchMedia(NARROW).matches);
+  const timeline = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
   const key = JSON.stringify(slotQuery(params));
   const query = useMemo(() => JSON.parse(key), [key]);
-  const pages = usePages(query, key);
+  const pages = usePages(query, key, !timeline);
+  const shared = useTimelineLayers(params, timeline);
+  const [centre, setCentre] = useState(null);
+  const centreWidth = useSize(centre).width;
+  const split = !narrow && centreWidth >= SPLIT_MIN;
+  const MapView = useMapView(split);
   const search = useRef(null);
+  const searchWanted = useRef(false);
   const grid = useRef(null);
   const indexStamp = (app.health?.stores ?? [])
     .map((item) => `${item.store}:${item.state.indexed_at}`)
@@ -100,8 +121,14 @@ export default function Catalog({ route }) {
       () => setStyled(true),
       () => setStyled(true),
     );
+    // The timeline has no search field: `Ctrl+K` goes back to the list first.
     const focus = () => {
-      if (takeSearchFocus()) search.current?.focus();
+      if (!takeSearchFocus()) return;
+      if (search.current) search.current.focus();
+      else {
+        searchWanted.current = true;
+        setParams({ [LAYOUT_PARAM]: null });
+      }
     };
     window.addEventListener(FOCUS_SEARCH, focus);
     return () => window.removeEventListener(FOCUS_SEARCH, focus);
@@ -109,6 +136,18 @@ export default function Catalog({ route }) {
   useEffect(() => {
     if (styled && takeSearchFocus()) search.current?.focus();
   }, [styled]);
+  useEffect(() => {
+    if (timeline || !searchWanted.current || !search.current) return;
+    searchWanted.current = false;
+    search.current.focus();
+  }, [timeline]);
+  // A layer the timeline does not hold any more leaves the address.
+  const layers = shared.layers;
+  useEffect(() => {
+    if (timeline && layers.set && !layers.loading && params[LAYER_PARAM] && !layers.layer) {
+      setParams({ [LAYER_PARAM]: null }, { replace: true });
+    }
+  }, [timeline, layers.set, layers.loading, params[LAYER_PARAM]]);
   useIndexRefresh(indexStamp, pages);
 
   if (!styled) return html`<div class="page"><${Spinner} /></div>`;
@@ -126,70 +165,132 @@ export default function Catalog({ route }) {
   const indexing = (app.health?.stores ?? []).some(
     (item) => item.state.status === "unknown" || item.state.running_job?.kind === "scan",
   );
+  const layer = timeline ? layers.layer : null;
+  const togglePanel = () => {
+    setPanel(!panel);
+    if (!panel && narrow) setDetails(false);
+  };
+  const toggleDetails = () => {
+    setDetails(!details);
+    if (!details && narrow) setPanel(false);
+  };
 
   const filters = html`<${CatalogFilters} query=${query} stores=${stores} errors=${errors}
     indexStamp=${indexStamp} onChange=${(patch) => setParams(patch)}
     onClear=${() => setParams(Object.fromEntries(FILTERS.map((name) => [name, null])))} />`;
+  // The map of the chosen layer: framed on the area, so no position of before.
+  const showOnMap = () => navigate("map", { ...params, [MODE_PARAM]: null, center: null, zoom: null });
+  const right = layer
+    ? {
+        label: D.title,
+        open: details,
+        onClose: () => setDetails(false),
+        content: html`<${SetDetails} set=${layers.set} layer=${layer} job=${layers.job}
+          onMap=${split || !layers.set.area ? null : showOnMap} />`,
+      }
+    : undefined;
 
-  return html`<${ViewLayout} id="catalog"
+  return html`<${ViewLayout} id="catalog" right=${right}
     left=${{ label: L.filters.label, open: panel, onClose: () => setPanel(false), content: filters }}>
+    <div class=${`cat-split${split ? " split" : ""}`} ref=${setCentre}>
+    ${split && MapView ? html`<div class="cat-beside"><${MapView} route=${route} embedded /></div>` : null}
     <section class="cat" aria-label=${L.title}>
       <div class="cat-toolbar">
         <div class="cat-toolbar-row">
+          <${ViewSwitch} current="catalog" params=${params} />
+          <${Seg} small label=${L.layouts.label} value=${timeline ? "timeline" : "list"}
+            onChange=${(value) => setParams({ [LAYOUT_PARAM]: value === "timeline" ? TIMELINE_LAYOUT : null })}
+            options=${[
+              { value: "list", label: L.layouts.list, icon: "table", title: L.layouts.list_title },
+              { value: "timeline", label: L.layouts.timeline, icon: "chart", title: L.layouts.timeline_title },
+            ]} />
+          <span class="cat-spacer"></span>
+          ${layer ? html`<${DetailsToggle} open=${details} controls="catalog-right" onToggle=${toggleDetails} />` : null}
+        </div>
+        <div class="cat-toolbar-row">
           <button type="button" class=${`btn sm${panel ? " active" : ""}`} aria-expanded=${panel ? "true" : "false"}
-            aria-controls="catalog-left" title=${L.filters.toggle_title} onClick=${() => setPanel(!panel)}>
+            aria-controls="catalog-left" title=${L.filters.toggle_title} onClick=${togglePanel}>
             <${Icon} name="sidebar" size=${15} />${L.filters.toggle}
             ${activeFilters.length ? html`<span class="badge-count">${activeFilters.length}</span>` : null}
           </button>
-          <${SearchField} value=${query.q ?? ""} inputRef=${search}
-            onLeave=${() => grid.current?.focusRow(0)} />
+          ${timeline
+            ? null
+            : html`<${SearchField} value=${query.q ?? ""} inputRef=${search}
+                onLeave=${() => grid.current?.focusRow(0)} />`}
         </div>
-        <div class="cat-toolbar-row">
-          <${Groups} groups=${pages.groups} location=${location} area=${Boolean(query.area_id || query.bbox)} />
-          <span class="cat-spacer"></span>
-          <${Summary} total=${total} loaded=${pages.items.length} versions=${query.versions} />
-          ${map && location !== "none"
-            ? html`<${Link} view="map" params=${pick(query, MAP_PARAMS)} class="btn sm"
-                title=${L.result.show_on_map_title}><${Icon} name="map" size=${14} />${L.result.show_on_map}</${Link}>`
-            : null}
-          <span class="cat-api"><${Tech} value=${[[L.result.api_title, apiAddress(query)]]}>
-            <span class="faint">${L.result.api}</span></${Tech}></span>
-        </div>
+        ${timeline
+          ? null
+          : html`<div class="cat-toolbar-row">
+              <${Groups} groups=${pages.groups} location=${location} area=${Boolean(query.area_id || query.bbox)} />
+              <span class="cat-spacer"></span>
+              <${Summary} total=${total} loaded=${pages.items.length} versions=${query.versions} />
+              ${map && location !== "none"
+                ? html`<${Link} view="map" params=${pick(query, MAP_PARAMS)} class="btn sm"
+                    title=${L.result.show_on_map_title}><${Icon} name="map" size=${14} />${L.result.show_on_map}</${Link}>`
+                : null}
+              <span class="cat-api"><${Tech} value=${[[L.result.api_title, apiAddress(query)]]}>
+                <span class="faint">${L.result.api}</span></${Tech}></span>
+            </div>`}
         ${!panel && activeFilters.length
           ? html`<${ActiveFilters} names=${activeFilters} query=${query} stores=${stores} />`
           : null}
-        <${Notes} query=${query} location=${location} pages=${pages} />
+        ${timeline ? null : html`<${Notes} query=${query} location=${location} pages=${pages} />`}
       </div>
       <div class="cat-body">
-        ${pages.error
-          ? html`<div class="cat-problem"><${ProblemView} problem=${pages.error.problem} /></div>`
-          : html`<${CatalogGrid} items=${pages.items} total=${total} hasMore=${Boolean(pages.next)}
-              loading=${pages.loading} loadingMore=${pages.loadingMore} moreError=${pages.moreError}
-              onMore=${pages.more} resetKey=${key} narrow=${narrow} handle=${grid}
-              isSelected=${(item) => isSelected(item, params)} cardOpen=${Boolean(selected)}
-              versions=${query.versions ?? "current"} storeNames=${storeNames}
-              cardHref=${cardHref} onOpen=${open} onMap=${map}
-              empty=${html`<${Empty} query=${query} indexing=${indexing} activeFilters=${activeFilters}
-                location=${location} groups=${pages.groups} />`} />`}
+        ${timeline
+          ? html`<${CatalogTimeline} shared=${shared} onChoose=${(value) => setParams({ [LAYER_PARAM]: value })}
+              onGroup=${(value) => setParams({ [GROUP_PARAM]: value, [LAYER_PARAM]: null })} />`
+          : pages.error
+            ? html`<div class="cat-problem"><${ProblemView} problem=${pages.error.problem} /></div>`
+            : html`<${CatalogGrid} items=${pages.items} total=${total} hasMore=${Boolean(pages.next)}
+                loading=${pages.loading} loadingMore=${pages.loadingMore} moreError=${pages.moreError}
+                onMore=${pages.more} resetKey=${key} narrow=${narrow} handle=${grid}
+                isSelected=${(item) => isSelected(item, params)} cardOpen=${Boolean(selected)}
+                versions=${query.versions ?? "current"} storeNames=${storeNames}
+                cardHref=${cardHref} onOpen=${open} onMap=${map}
+                empty=${html`<${Empty} query=${query} indexing=${indexing} activeFilters=${activeFilters}
+                  location=${location} groups=${pages.groups} />`} />`}
       </div>
       <footer class="cat-foot">
-        ${pages.moreError
+        ${!timeline && pages.moreError
           ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}
               <button type="button" class="btn sm" onClick=${pages.more}>${T.common.actions.retry}</button></span>`
           : null}
-        <span class="cat-keys" id="cat-keys">
-          ${L.grid.keys}
-          <span class="kbd">↑</span><span class="kbd">↓</span> ${L.grid.key_move} ·
-          <span class="kbd">Enter</span> ${L.grid.key_open} ·
-          ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}
-          <span class="kbd">Ctrl K</span> ${L.grid.key_search}
-        </span>
+        ${timeline
+          ? html`<span class="cat-keys">${TL.keys}</span>`
+          : html`<span class="cat-keys" id="cat-keys">
+              ${L.grid.keys}
+              <span class="kbd">↑</span><span class="kbd">↓</span> ${L.grid.key_move} ·
+              <span class="kbd">Enter</span> ${L.grid.key_open} ·
+              ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}
+              <span class="kbd">Ctrl K</span> ${L.grid.key_search}
+            </span>`}
       </footer>
       <div class="visually-hidden" role="status" aria-live="polite">
-        ${pages.loading || total === null ? "" : t(L.result.announce, { count: countRows(total, query.versions) })}
+        ${timeline || pages.loading || total === null ? "" : t(L.result.announce, { count: countRows(total, query.versions) })}
       </div>
     </section>
+    </div>
   </${ViewLayout}>`;
+}
+
+/**
+ * The map view's module, imported once the map stands beside the catalog.
+ *
+ * @param {boolean} wanted
+ * @returns {Function|null} Its component (`embedded`), null until loaded.
+ */
+function useMapView(wanted) {
+  const [view, setView] = useState(null);
+  useEffect(() => {
+    if (!wanted || view) return undefined;
+    let live = true;
+    import("./map.js").then((module) => live && setView(() => module.default));
+    return () => {
+      live = false;
+    };
+  }, [wanted]);
+  return view;
 }
 
 /**
@@ -344,8 +445,9 @@ function Empty({ query, indexing, activeFilters, location, groups }) {
  * Pages of the query: the first one when the query changes, the next ones on
  * demand (`more`), all again on `reload`. Until the first page of a new
  * query arrives, the rows of the previous one stay, marked `loading`.
+ * Nothing is asked while `enabled` is false (the timeline layout).
  */
-function usePages(query, key) {
+function usePages(query, key, enabled) {
   const [state, setState] = useState({
     key: null,
     items: [],
@@ -412,10 +514,11 @@ function usePages(query, key) {
   };
 
   useEffect(() => {
+    if (!enabled) return undefined;
     run.current.next = null;
     fetchPage(null);
     return () => run.current.controller?.abort();
-  }, [key]);
+  }, [key, enabled]);
 
   return {
     ...state,
@@ -424,8 +527,8 @@ function usePages(query, key) {
       const live = run.current;
       if (!live.busy && live.next && live.loaded === live.key) fetchPage(live.next);
     },
-    reload: () => fetchPage(null),
-    quietReload: () => fetchPage(null, { quiet: true }),
+    reload: () => enabled && fetchPage(null),
+    quietReload: () => enabled && fetchPage(null, { quiet: true }),
     markIndexChanged: () => setState((previous) => ({ ...previous, indexChanged: true })),
   };
 }

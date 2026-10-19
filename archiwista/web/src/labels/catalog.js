@@ -1,6 +1,7 @@
 /**
- * Texts of the „Katalog” view (docs/SPEC.md 6.6, 6.8) and of the search
- * shortcut in the top bar (`Ctrl+K`, `/`). Filter names follow the
+ * Texts of the „Katalog” view (docs/SPEC.md 6.6, 6.8), its layouts (the
+ * list, the timeline of labels/timeline.js) and of the search shortcut in
+ * the top bar (`Ctrl+K`, `/`). Filter names follow the
  * parameters of `GET /slots`; the values shown next to them are the API's.
  */
 
@@ -150,5 +151,13 @@ export const catalog = {
       pending: "obrys jeszcze nie obliczony",
       no_current: "brak bieżącej wersji",
     },
+  },
+  /** The catalog's layouts (plan v0.2 step 13b): the list of files and the timeline. */
+  layouts: {
+    label: "Układ katalogu",
+    list: "Lista",
+    timeline: "Oś czasu",
+    list_title: "Pliki pasujące do filtrów jako lista",
+    timeline_title: "Warstwy produktu: warianty w wierszach, lata w kolumnach",
   },
 };

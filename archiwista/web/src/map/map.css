@@ -22,6 +22,16 @@
 .no-outline { text-decoration: none; border-color: #fcd34d; background: var(--warn-bg); color: var(--warn-ink); }
 .no-outline:hover { background: #fde68a; }
 .stale-chip { border-color: #fcd34d; color: var(--warn-ink); }
+.map-bar > .details-toggle { margin-left: auto; }
+.map-bar > .map-counts + .details-toggle { margin-left: 0; }
+
+/* ---------- the centre: the map, the Wachlarz in its place or beside it (views/switch.js) ---------- */
+.map-body { display: flex; }
+.map-pane { position: relative; flex: 1 1 0; min-width: 0; }
+.fan-pane { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+/* The Wachlarz alone: the map stays loaded underneath, out of sight and of the keyboard. */
+.map-body.fan-only .map-pane { position: absolute; inset: 0; visibility: hidden; }
+.map-body.split .fan-pane { border-left: 1px solid var(--line); }
 
 /* ---------- the map and its overlays ---------- */
 /* Above maplibre-gl.css, which makes its container `position: relative`. */

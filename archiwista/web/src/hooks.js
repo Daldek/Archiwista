@@ -1,8 +1,8 @@
 /**
- * Hooks shared by views: data from the API and media queries.
+ * Hooks shared by views: data from the API, media queries and element sizes.
  */
 
-import { useEffect, useState } from "../vendor/preact/hooks.mjs";
+import { useEffect, useLayoutEffect, useState } from "../vendor/preact/hooks.mjs";
 
 /** Phone layout below this width: panels as bottom sheets, navigation at the bottom. */
 export const NARROW = "(max-width: 860px)";
@@ -55,4 +55,29 @@ export function useMedia(query) {
     return () => list.removeEventListener("change", change);
   }, [query]);
   return matches;
+}
+
+/**
+ * The size of an element, following its changes (`ResizeObserver`).
+ *
+ * @param {Element|null} element - Given by a callback ref, e.g.
+ *   `const [box, setBox] = useState(null)` and `ref=${setBox}`.
+ * @returns {{width: number, height: number}} Its client size in px; zero
+ *   until the element is laid out.
+ */
+export function useSize(element) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!element) return undefined;
+    const measure = () => {
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      setSize((previous) => (previous.width === width && previous.height === height ? previous : { width, height }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return size;
 }

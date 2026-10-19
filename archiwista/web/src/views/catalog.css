@@ -2,6 +2,12 @@
    (row heights match ROW / ROW_NARROW / HEAD of catalog-grid.js) and the filter panel. */
 
 .cat { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel); }
+/* the map beside the catalog on a wide centre (views/switch.js SPLIT_MIN) */
+.cat-split { flex: 1; min-height: 0; display: flex; }
+.cat-split > .cat { flex: 1 1 0; min-width: 0; }
+.cat-beside { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+/* the timeline layout (views/catalog-timeline.js) scrolls in the body */
+.cat-body > .tl { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* ---------- toolbar ---------- */
 .cat-toolbar { flex: none; display: grid; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }

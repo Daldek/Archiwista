@@ -1,0 +1,45 @@
+/* „Oś czasu” of the catalog (views/catalog-timeline.js): variants × years as an
+   ARIA grid; a cell's bar height is its share (--h, through the style property). */
+
+.tl { display: grid; align-content: start; gap: 10px; padding: 14px 16px 20px; min-width: 0; --tl-head: 210px; }
+.tl-message { margin: 0; color: var(--text-2); line-height: 1.5; max-width: 64ch; }
+.tl-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.tl-title { font-size: 15px; }
+.tl-head .filter-group { align-self: center; }
+.tl .hint { margin: 0; }
+
+.tl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.tl-grid { outline: none; }
+.tl-row { display: grid; grid-template-columns: var(--tl-head) var(--tl-columns); border-bottom: 1px solid var(--line); }
+.tl-row:last-child { border-bottom: 0; }
+.tl-rowhead { position: sticky; left: 0; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; min-width: 0; padding: 6px 10px; background: var(--panel); border-right: 1px solid var(--line); font-size: 12px; }
+.tl-variant { overflow-wrap: anywhere; line-height: 1.3; }
+.tl-header .tl-rowhead, .tl-header .tl-col { background: var(--panel-2); }
+.tl-header .tl-rowhead { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.tl-col { display: grid; justify-items: center; align-content: end; gap: 1px; padding: 7px 2px 5px; min-width: 0; text-align: center; }
+.tl-year { font-size: 11.5px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tl-col.empty .tl-year { font-weight: 400; color: var(--text-3); }
+.tl-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 9.5px; color: var(--text-3); }
+
+.tl-cell { display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: end; gap: 3px; min-width: 0; min-height: 68px; padding: 7px 3px 5px; }
+.tl-cell.has { cursor: pointer; outline: none; }
+.tl-cell.has:hover { background: var(--panel-2); }
+.tl-cell.on { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-2); }
+.tl-cell.has:focus-visible { box-shadow: inset 0 0 0 3px var(--accent-2); }
+.tl-track { position: relative; display: block; width: min(30px, 72%); height: 42px; overflow: hidden; border: 1px solid var(--line-2); border-radius: 4px; background: #eef1f6; }
+.tl-bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h); min-height: 2px; background: linear-gradient(0deg, var(--local), #3b82f6); }
+.tl-bar.zero { min-height: 0; }
+.tl-cell.on .tl-bar { background: linear-gradient(0deg, var(--accent), var(--accent-2)); }
+.tl-value { font-size: 10.5px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-cell.none { align-items: center; }
+.tl-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--line-2); }
+
+.tl-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11.5px; color: var(--text-2); }
+.tl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tl-sw { display: inline-block; width: 10px; height: 14px; border-radius: 2px; border: 1px solid var(--line-2); background: linear-gradient(0deg, var(--local) 60%, #eef1f6 60%); }
+.tl-note { margin: 0; font-size: 11.5px; line-height: 1.45; max-width: 80ch; }
+
+@media (max-width: 860px) {
+  .tl { padding: 10px 10px 16px; --tl-head: 128px; }
+  .tl-rowhead { padding: 6px 7px; font-size: 11.5px; }
+}

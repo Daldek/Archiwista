@@ -1087,8 +1087,8 @@ działa.
 | 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | zrobione (kod `a5ae7f3`, próby `02228f4`; warstwy pliku własnego w kroku 9, `003be5f`) |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | zrobione |
-| 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
-| 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | do zrobienia |
+| 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | zrobione (Wachlarz migawek: komponent gotowy, podłączenie w 15) |
+| 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | zrobione |
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | do zrobienia |
 | 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | do zrobienia |
@@ -3261,6 +3261,52 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_wide_3440_fan_beside_map`, `test_phone_390_fan`), zrzuty 1440,
   3440 i 390 px w raporcie.
 - **Zależności:** 11, 12a, 12b. **Równolegle:** 14, 15, 16.
+- **Stan po kroku 13a:**
+  - *Przełącznik* (`views/switch.js`, nowy moduł — odstępstwo od listy
+    plików: używają go mapa i Katalog): `Seg` „Mapa / Wachlarz / Katalog”
+    (grupa „Widok środka”) w pasku mapy i Katalogu; Mapa ↔ Wachlarz to
+    `mode=fan` w `view=map`, Katalog to `view=catalog` z całym adresem
+    (filtry, obszar, `layer`, `group`, `layout`, położenie mapy), więc powrót
+    odtwarza każdy widok. `SPLIT_MIN = 2000` px środka: Wachlarz obok mapy
+    (dwie połowy), węższy — w miejscu mapy (mapa zostaje wczytana pod spodem,
+    `visibility: hidden`). `hooks.js` dostał `useSize(element)`.
+  - *Wachlarz* (`fan/layout.js`, `fan/fan.js`, `fan.css`, `labels/fan.js`):
+    układ z mockupu jako czysta funkcja `fanLayout` (łuk o promieniu
+    1,15 wysokości, slot każdej miniatury z obrotem ±0,09 rad, wybrana
+    ×1,9, podpis w obrębie slotu, duży widok wybranej obok, gdy ma ≥ 220 px;
+    przy wielu warstwach łuk rośnie i scena się przewija, wychylenie łuku
+    zostaje z wysokości sceny; na wąskiej scenie podpisy 150–230 px
+    i pokrycie jako procent). Miniatura to SVG: obraz warstwy z
+    `thumbnail_url` (+`size` 128–1024 wg rozmiaru i `devicePixelRatio`,
+    `blob:` przez `usePreviewImage`) pod obrysami arkuszy z `outlines`
+    (gotowy podgląd — linia ciągła, brak — przerywana z wypełnieniem).
+    Podpis: tytuł, „lokalnie N% obszaru”, wariant bez formatu
+    (`variantName` w `map/previews.js`) z plakietkami formatów, liczba
+    kampanii, stan podglądów; duży widok — notka stanu i postęp budowy.
+    ARIA: `listbox` (pionowy) z `option` na podpisach, roving tabindex,
+    strzałki/Home/End przenoszą fokus, Enter i Spacja wybierają; miniatury
+    `aria-hidden`, ale klikalne. Przełącznik „Warstwy według lat/kampanii”
+    (`group=campaign`, pokazywany, gdy warstwa ma ≥ 2 kampanie) zdejmuje
+    `layer`.
+  - *Wspólny hook* (`map/previews.js`): `useLayers` przyjmuje `group`
+    i `needsArea: false` (Oś czasu bez obszaru) i śledzi zadanie wybranej
+    warstwy, a bez niego — pierwszej budowanej (miniatury i lata odświeżają
+    się po każdej budowie); `GROUP_PARAM`, `CAMPAIGN_GROUP`, `variantName`.
+  - *Punkt rozszerzenia dla 15*: `Fan` przyjmuje dowolny `LayerSet` (także
+    pliku własnego z `GET /projects/{p}/files/{id}/layers`, krok 9) i
+    `heading` („Wachlarz migawek”); bez `group`/`missing`/`onPanel`.
+    Podłączenie w karcie pliku własnego robi krok 15 (uzgodnione
+    z V02Step15).
+  - *Próby*: `tests/e2e/test_fan.py` (6 testów, jeden serwer offline na
+    moduł nad magazynem `tests/fixtures/layer_store.py` przez nowy
+    `tests/fixtures/layer_browser.py`, ok. 25 s): kolejność od najnowszej,
+    brak nakładania (prostokąty miniatur po obrocie i podpisów) i całość na
+    scenie, miniatury `blob:` z obrysami; wybrana ×1,9, cała, podpis z
+    pięcioma faktami, duży widok; wybór = `layer` = przycisk lat mapy
+    i z powrotem, Wstecz; klawiatura; 3440 px — mapa i Wachlarz obok
+    siebie; 390 px — Wachlarz zamiast mapy, szczegóły jako arkusz; bez
+    naruszeń CSP. Zrzuty: `<katalog-danych>/v02-13/shots/` (01, 02, 06, 08,
+    11).
 
 ### 13b. Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór
 - **Cel:** Oś czasu w Katalogu (`layout=timeline`): lata na osi poziomej
@@ -3286,6 +3332,48 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_timeline_keyboard_selection`, `test_wide_3440_catalog_beside_map`,
   `test_phone_390_timeline_and_panel`), zrzuty w raporcie.
 - **Zależności:** 13a. **Równolegle:** 14, 15, 16.
+- **Stan po kroku 13b:**
+  - *Oś czasu* (`views/catalog-timeline.js`, `timeline.css`,
+    `labels/timeline.js`): siatka ARIA (`grid`, nagłówki kolumn i wierszy)
+    w HTML/CSS, nie SVG — dostępność i przewijanie w poziomie z przyklejonym
+    nagłówkiem wiersza; kolumny: lata od najstarszego do najnowszego z latami
+    bez danych (kropka, „brak danych”), przy `group=campaign` kolumna na
+    kampanię roku, na końcu wydania i etykiety bez roku; wiersz = część
+    wariantu klucza warstwy, plakietki = suma formatów wiersza; słupek =
+    `coverage.ratio` (z obszarem) albo `versions_count` / największa liczba
+    (bez obszaru), wartość pod słupkiem. Magazyn: z adresu, inaczej pierwszy
+    z produktem (`productStores`). Klawiatura: roving tabindex, strzałki
+    między komórkami z danymi (góra/dół — najbliższa kolumna), Home/End,
+    Ctrl+Home/End, Enter i Spacja wybierają. Nieznany `layer` znika
+    z adresu.
+  - *Katalog* (`views/catalog.js`, `labels/catalog.js`, `catalog.css`):
+    wiersz przełącznika i układu „Lista / Oś czasu” (`layout=timeline`);
+    w Osi czasu bez pola wyszukiwania (Ctrl+K wraca do listy), `/slots` nie
+    jest pytane (`usePages` z `enabled`); przy ≥ 2000 px środka mapa obok
+    Katalogu — `views/map.js` w trybie `embedded` (sam środek mapy, bez
+    paneli i przełącznika), ładowany dynamicznie.
+  - *Szczegóły zestawu* (`views/set-details.js`, `set-details.css`,
+    `labels/set-details.js`; style i teksty poza listą planu): prawy panel
+    `ViewLayout` tylko z wybraną warstwą — tytuł, wariant (`Tech`: klucz,
+    segmenty), pokrycie, formaty, wersje i jednostki, kampanie, daty danych
+    (powiązanie kampania → daty daje `group=campaign`; API nie łączy ich per
+    wersja), podglądy z postępem budowy, magazyn; „Pokaż na mapie”, gdy mapy
+    nie widać; „Porównaj z…” — lista pozostałych warstw obszaru jako link
+    `view=compare` (`store`, `product`, `area_id`, `group`, `a_layer`,
+    `b_layer`; uzgodnione z krokiem 14); poza Katalogiem „Inne warianty”
+    roku; arkusze → Karta pliku (`FileLink`). Przycisk „Szczegóły” w pasku.
+    Panel otwiera się sam obok Wachlarza i Osi czasu (komputer), nad mapą —
+    na żądanie (wybór roku nie zwęża mapy pod kursorem), wybór użytkownika
+    się utrzymuje; na telefonie arkusz od dołu, zamyka panel „Wybór”.
+  - *Próby*: `tests/e2e/test_timeline.py` (7 testów, ok. 22 s): lata
+    2019–2023 z trzema bez danych i etykieta wycinka, każda warstwa jedną
+    komórką; wysokość słupka = `coverage.ratio` (±1 px), bez obszaru =
+    wersje / największa; dwa formaty — jeden wiersz, jedna komórka, panel
+    liczy arkusz raz; jeden wybór: Oś czasu → panel → Wachlarz → mapa →
+    Katalog (`layout` wraca), arkusz otwiera Kartę pliku, „Pokaż na mapie”;
+    klawiatura; 3440 px — mapa obok Katalogu; 390 px — przewijanie w ramce,
+    panel jako arkusz; bez naruszeń CSP. Zrzuty: `<katalog-danych>/v02-13/
+    shots/` (03–05, 07, 09, 10, 12).
 
 ### 14. Interfejs: Porównanie i kurtyna
 - **Cel:** widok `compare` (decyzja 10): tabela różnic z przełącznikiem
