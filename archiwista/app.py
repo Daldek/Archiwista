@@ -15,8 +15,11 @@ through ``request.app.state``: ``settings`` (``SettingsService``),
 without background jobs, which leaves out their routes), ``job_streams``
 (open job event streams, which the server ends as it stops), ``previews``
 (``RenderPool`` with its preview cache, ``None`` without one),
-``area_files`` (``AreaFiles``: copies of area files and their reader) and
-``on_redeem`` (told when a one-time token starts a session).
+``area_files`` (``AreaFiles``: copies of area files and their reader),
+``area_refreshes`` (``AreaRefreshes``: the areas' slots rescanned in the
+last minute), ``layer_memo`` (``LayerMemo``: the local layers of the last
+answers, for their images) and ``on_redeem`` (told when a one-time token
+starts a session).
 """
 
 from collections.abc import AsyncIterator, Callable
@@ -40,6 +43,7 @@ from archiwista.api import (
 from archiwista.api import areas as area_routes
 from archiwista.api import compare as compare_routes
 from archiwista.api import jobs as job_routes
+from archiwista.api import layers as layer_routes
 from archiwista.api import map as map_routes
 from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
@@ -58,6 +62,7 @@ from archiwista.security import (
     TokenKind,
     session_principals,
 )
+from archiwista.services.layers import LayerMemo
 from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
 from archiwista.state import StateStore
 
@@ -147,6 +152,8 @@ def create_app(
     app.state.registry = registry
     app.state.area_files = AreaFiles(areas_dir)
     app.state.on_redeem = on_redeem
+    app.state.area_refreshes = area_routes.AreaRefreshes()
+    app.state.layer_memo = LayerMemo()
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
@@ -159,6 +166,7 @@ def create_app(
     app.include_router(settings_routes.router, prefix=API_PREFIX)
     app.include_router(area_routes.router, prefix=API_PREFIX)
     app.include_router(compare_routes.router, prefix=API_PREFIX)
+    app.include_router(layer_routes.router, prefix=API_PREFIX)
     if jobs is not None:
         app.include_router(job_routes.router, prefix=API_PREFIX)
     install_docs(app)

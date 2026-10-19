@@ -601,6 +601,46 @@ class SlotUnit:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductVersion:
+    """A present version of a store's product, as its layer needs it.
+
+    What ``IndexQueries.product_versions`` gives the local layers (plan
+    v0.2, decision 7): the variant fields (``product``, ``horizontal_crs``,
+    ``resolution``, ``vertical_crs``; ``segment`` without one of them), the
+    data year, edition, label and campaign, the content and the georeference
+    of its preview. ``bounds`` (WGS84) is ``None`` for a version without a
+    footprint; ``outline`` (WGS84) and ``native`` (its rectangle in
+    ``native_crs``) are read only for the versions of a view.
+    """
+
+    path: str
+    slot: str
+    unit: str | None
+    segment: str | None
+    segment_name: str
+    producer: str
+    data_year: int | None
+    data_date: date | None
+    downloaded_at: datetime | None
+    edition: str | None
+    label: str | None
+    campaign: str | None
+    sha256: str | None
+    size_bytes: int | None
+    product: str | None
+    dataset_key: str | None
+    horizontal_crs: str | None
+    vertical_crs: str | None
+    resolution: str | None
+    nodata: float | None
+    location_source: str | None
+    native_crs: str | None
+    bounds: BBox | None
+    outline: GeoJSONGeometry | None = None
+    native: GeoJSONGeometry | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ScanPass:
     """One pass of a scan over a store, a segment or chosen slots.
 

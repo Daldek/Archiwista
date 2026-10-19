@@ -1,0 +1,276 @@
+"""``archiwista layers``: the layers of a product for people and AI agents.
+
+``archiwista layers --store S --product P [--area-id A] [--segment G]
+[--group year|campaign] [--json]`` (plan v0.2, decision 11) prints the
+``LayerSet`` that ``GET /local-layers`` answers, after the same view refresh
+of the area's slots. ``--thumbnail KLUCZ --output PLIK.png [--size N]
+[--style STYL]`` also writes the layer's thumbnail (``GET
+/local-layers/thumbnail.png``), drawn by a render process of the command
+into the preview cache the server uses, so an agent that sees images looks
+at a year without HTTP. Everything runs as the owner of the installation
+(``LOCAL_OWNER``) through ``archiwista.services.layers``. No job supervisor
+runs, so no ``preview`` job is submitted or named: a layer whose previews a
+server is building shows ``needs_build``, and its thumbnail what is ready.
+"""
+
+import argparse
+import asyncio
+import sqlite3
+from contextlib import ExitStack
+from pathlib import Path
+from typing import TextIO
+
+from pydantic import ValidationError
+
+from archiwista.api.errors import service_problem, validation_problem
+from archiwista.api.models_layers import LayerSet, LayersQuery, LayerThumbnailQuery
+from archiwista.auth import LOCAL_OWNER
+from archiwista.commands import Commands, add_parser, refuse
+from archiwista.commands.previews import LocalPreviews, local_previews
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    SettingsService,
+    SettingsValidationError,
+)
+from archiwista.errors import ArchiwistaError
+from archiwista.index import IndexUnsupportedError
+from archiwista.messages import MESSAGES, with_detail
+from archiwista.services.layers import layer_images, layer_thumbnail, read_local_layers
+from archiwista.sources.registry import PluginRegistry
+
+COMMANDS = frozenset({"layers"})
+# Side of the thumbnail ``--output`` writes, as ``archiwista preview``.
+DEFAULT_SIZE = 512
+# Exit status of a wrong use of the command line (``argparse``).
+_USAGE = 2
+
+
+def add_commands(commands: Commands) -> None:
+    """Add ``archiwista layers`` (see the module).
+
+    Parameters
+    ----------
+    commands : argparse._SubParsersAction
+        Subcommands of the ``archiwista`` parser.
+    """
+    layers = add_parser(commands, "layers", "cli_layers_help")
+    layers.add_argument(
+        "--store",
+        required=True,
+        metavar="MAGAZYN",
+        help=MESSAGES["cli_layers_store_help"],
+    )
+    layers.add_argument(
+        "--product",
+        required=True,
+        metavar="PRODUKT",
+        help=MESSAGES["cli_layers_product_help"],
+    )
+    layers.add_argument(
+        "--area-id", metavar="OBSZAR", help=MESSAGES["cli_layers_area_help"]
+    )
+    layers.add_argument(
+        "--segment", metavar="SEGMENT", help=MESSAGES["cli_layers_segment_help"]
+    )
+    layers.add_argument(
+        "--group",
+        choices=("year", "campaign"),
+        default="year",
+        help=MESSAGES["cli_layers_group_help"],
+    )
+    layers.add_argument(
+        "--thumbnail", metavar="KLUCZ", help=MESSAGES["cli_layers_thumbnail_help"]
+    )
+    layers.add_argument(
+        "--size",
+        type=int,
+        default=DEFAULT_SIZE,
+        metavar="BOK",
+        help=MESSAGES["cli_layers_size_help"],
+    )
+    layers.add_argument(
+        "--style", metavar="STYL", help=MESSAGES["cli_preview_style_help"]
+    )
+    layers.add_argument(
+        "--output",
+        type=Path,
+        metavar="PLIK.png",
+        help=MESSAGES["cli_layers_output_help"],
+    )
+
+
+def main(
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Run ``archiwista layers``; return the exit status.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments of ``layers``.
+    paths : AppPaths
+        Configuration file, local index and preview cache.
+    registry : PluginRegistry
+        Producer plugins: the store's producer and the pinned operations.
+    out, err : TextIO
+        The ``LayerSet`` (as JSON with ``--json``) or the problem; Polish
+        messages.
+
+    Returns
+    -------
+    int
+        ``0`` on success; ``1`` when the query is refused (its problem), the
+        thumbnail cannot be written, or the settings, the index or the
+        preview cache cannot be used; ``2`` for ``--thumbnail`` without
+        ``--output``.
+    """
+    if (args.thumbnail is None) != (args.output is None):
+        err.write(MESSAGES["cli_layers_output_required"] + "\n")
+        return _USAGE
+    try:
+        query = LayersQuery(
+            store=args.store,
+            product=args.product,
+            area_id=args.area_id,
+            segment=args.segment,
+            group=args.group,
+        )
+        image = None
+        if args.thumbnail is not None:
+            image = LayerThumbnailQuery(
+                **query.model_dump(),
+                layer=args.thumbnail,
+                size=args.size,
+                style=args.style,
+            )
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        return refuse(validation_problem(located), out, err, as_json=args.json)
+    with ExitStack() as stack:
+        try:
+            settings = SettingsService(ConfigStore(paths.config_file), registry).get()
+            previews = stack.enter_context(local_previews(paths, settings))
+        except (
+            SettingsValidationError,
+            IndexUnsupportedError,
+            OSError,
+            sqlite3.Error,
+        ) as error:
+            err.write(with_detail(MESSAGES["cli_layers_failed"], str(error)) + "\n")
+            return 1
+        try:
+            return _layers(
+                args, query, image, previews, settings, paths, registry, out, err
+            )
+        except ArchiwistaError as error:
+            problem = service_problem(error)
+            if problem is None:
+                raise
+            return refuse(problem, out, err, as_json=args.json)
+
+
+def _layers(
+    args: argparse.Namespace,
+    query: LayersQuery,
+    image: LayerThumbnailQuery | None,
+    previews: LocalPreviews,
+    settings: AppSettings,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Print the layers, after writing a layer's thumbnail when asked to."""
+    cache = previews.pool.cache
+    found = read_local_layers(
+        previews.queries,
+        settings,
+        registry,
+        paths.index_file,
+        query,
+        principal=LOCAL_OWNER,
+        cache=cache,
+    )
+    if image is not None:
+        images = layer_images(
+            previews.queries, settings, registry, image, image.layer, cache=cache
+        )
+        drawn = asyncio.run(
+            layer_thumbnail(
+                previews.pool, images, style=image.style, size=image.size, v=None
+            )
+        )
+        assert drawn.data is not None  # asked without If-None-Match
+        try:
+            args.output.write_bytes(drawn.data)
+        except OSError as error:
+            err.write(with_detail(MESSAGES["cli_layers_failed"], str(error)) + "\n")
+            return 1
+        message = MESSAGES["cli_layers_written"].format(
+            layer=image.layer,
+            path=args.output,
+            size=image.size,
+            style=image.style or images.default_style or "–",
+        )
+        err.write(message + "\n")
+    out.write((found.model_dump_json() if args.json else _text(found)) + "\n")
+    return 0
+
+
+def _text(found: LayerSet) -> str:
+    area = (
+        MESSAGES["cli_layers_whole_store"]
+        if found.area is None
+        else (found.area.name or found.area.id)
+    )
+    lines = [
+        MESSAGES["cli_layers_heading"].format(
+            store=found.store,
+            product=found.product,
+            count=len(found.layers),
+            area=area,
+        )
+    ]
+    if found.stale_reason is not None:
+        lines.append(MESSAGES["cli_layers_stale"].format(reason=found.stale_reason))
+    for layer in found.layers:
+        lines.append(
+            MESSAGES["cli_layers_layer"].format(
+                key=layer.key,
+                title=layer.title,
+                subtitle=layer.subtitle,
+                versions=layer.versions_count,
+                units=layer.units_count,
+            )
+        )
+        lines.append(
+            MESSAGES["cli_layers_formats"].format(
+                formats=", ".join(layer.variant.formats)
+            )
+        )
+        if layer.coverage is not None:
+            lines.append(
+                MESSAGES["cli_layers_coverage"].format(label=layer.coverage.label)
+            )
+        preview = layer.preview
+        if preview is not None:
+            job = (
+                ""
+                if preview.job is None
+                else MESSAGES["cli_layers_preview_job"].format(job=preview.job.id)
+            )
+            lines.append(
+                MESSAGES["cli_layers_preview"].format(
+                    ready=preview.ready,
+                    total=preview.total,
+                    state=MESSAGES[f"preview_state_{preview.state}"],
+                    job=job,
+                )
+            )
+    return "\n".join(lines)

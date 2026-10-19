@@ -67,6 +67,53 @@ def planar_crs(country: str | None) -> str | None:
     return None if country is None else PLANAR_CRS.get(country.upper())
 
 
+class PlanarMover:
+    """Moves outlines into one planar CRS with the producer's pinned operations.
+
+    The area and footprints of ``measure_coverage``, and the outlines of the
+    local layers in their frame (plan v0.2, decision 7): densified first
+    (``shapely.segmentize``), each pair of CRSs' operation taken once.
+
+    Parameters
+    ----------
+    crs : str
+        The planar CRS (``planar_crs``).
+    transformer : TransformerFactory
+        The producer's pinned operations (``GeoAdapter.transformer``).
+    """
+
+    def __init__(self, crs: str, transformer: TransformerFactory) -> None:
+        self.crs = crs
+        self._transformer = transformer
+        self._operations: dict[tuple[str, str], CoordinateTransformer] = {}
+
+    def move(self, geometry: GeoJSONGeometry, source: str) -> Any:
+        """Return a GeoJSON geometry in ``source`` as a shapely one in ``crs``.
+
+        Raises
+        ------
+        ProducerError
+            The producer has no pinned operation from ``source`` to ``crs``.
+        """
+        geom = shape(geometry)
+        if source == self.crs:
+            return geom
+        operation = self._operations.get((source, self.crs))
+        if operation is None:
+            operation = self._transformer(source, self.crs)
+            self._operations[(source, self.crs)] = operation
+        step = SEGMENT_DEGREES if source in _GEOGRAPHIC else SEGMENT_METRES
+        return shapely.transform(
+            shapely.segmentize(geom, step), operation.transform, interleaved=False
+        )
+
+    def footprint(self, item: CoverageShape) -> Any:
+        """Return a footprint in ``crs``, from its native outline when it has one."""
+        if item.native is not None and item.native_crs is not None:
+            return shapely.make_valid(self.move(item.native, item.native_crs))
+        return shapely.make_valid(self.move(item.wgs84, WGS84))
+
+
 def measure_coverage(
     area: GeoJSONGeometry,
     shapes: Sequence[CoverageShape],
@@ -97,33 +144,29 @@ def measure_coverage(
     ProducerError
         The producer has no pinned operation for a needed pair of CRSs.
     """
-    operations: dict[tuple[str, str], CoordinateTransformer] = {}
+    mover = PlanarMover(crs, transformer)
+    region = shapely.make_valid(mover.move(area, WGS84))
+    return measure_planar(region, [mover.footprint(item) for item in shapes])
 
-    def planar(geometry: GeoJSONGeometry, source: str) -> Any:
-        geom = shape(geometry)
-        if source == crs:
-            return geom
-        operation = operations.get((source, crs))
-        if operation is None:
-            operation = operations[(source, crs)] = transformer(source, crs)
-        step = SEGMENT_DEGREES if source in _GEOGRAPHIC else SEGMENT_METRES
-        return shapely.transform(
-            shapely.segmentize(geom, step), operation.transform, interleaved=False
-        )
 
-    region = shapely.make_valid(planar(area, WGS84))
+def measure_planar(region: Any, footprints: Sequence[Any]) -> CoverageMeasure:
+    """Measure a planar area and its part covered by planar footprints.
+
+    Parameters
+    ----------
+    region : shapely geometry
+        The area, valid, in a planar CRS (``PlanarMover.move``).
+    footprints : Sequence of shapely geometries
+        Valid footprints in the same CRS (``PlanarMover.footprint``); ones
+        only touching the area add nothing, overlaps count once.
+    """
     shapely.prepare(region)
-    inside = []
-    for item in shapes:
-        if item.native is not None and item.native_crs is not None:
-            footprint = planar(item.native, item.native_crs)
-        else:
-            footprint = planar(item.wgs84, WGS84)
-        footprint = shapely.make_valid(footprint)
-        if shapely.intersects(region, footprint) and not shapely.touches(
-            region, footprint
-        ):
-            inside.append(footprint)
+    inside = [
+        footprint
+        for footprint in footprints
+        if shapely.intersects(region, footprint)
+        and not shapely.touches(region, footprint)
+    ]
     covered = 0.0
     if inside:
         covered = float(shapely.union_all(inside).intersection(region).area)

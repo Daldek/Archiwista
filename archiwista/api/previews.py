@@ -64,7 +64,7 @@ CLIENT_GONE = 499
 _VERSION_PREFIX = "/stores/{store}/versions/{version:path}"
 
 
-class _ClientGone(Exception):
+class ClientGone(Exception):
     """The client disconnected before its answer was ready."""
 
 
@@ -104,7 +104,7 @@ _IfNoneMatch = Annotated[
 ]
 
 
-def _problems(*codes: str) -> dict[int | str, dict[str, Any]]:
+def preview_problems(*codes: str) -> dict[int | str, dict[str, Any]]:
     """Return the OpenAPI problems of the preview routes, by code."""
     examples: dict[str, tuple[int, dict[str, object]]] = {
         "preview_unavailable": (
@@ -192,7 +192,8 @@ def _problems(*codes: str) -> dict[int | str, dict[str, Any]]:
     return responses
 
 
-def _image_responses(media_type: str, *codes: str) -> dict[int | str, dict[str, Any]]:
+def image_responses(media_type: str, *codes: str) -> dict[int | str, dict[str, Any]]:
+    """Return the OpenAPI responses of an image route with its problems by code."""
     return {
         200: {
             "description": "The image or data; `ETag` and `Cache-Control` set.",
@@ -200,7 +201,7 @@ def _image_responses(media_type: str, *codes: str) -> dict[int | str, dict[str, 
         },
         304: {"description": "Not modified: the client holds this `ETag`."},
         **problem_responses(403, 404, 422),
-        **_problems(*codes),
+        **preview_problems(*codes),
     }
 
 
@@ -212,7 +213,7 @@ _RENDERED = ("preview_unavailable", "preview_busy", "store_unavailable")
     response_model=PreviewInfo,
     responses={
         **problem_responses(403, 404, 422),
-        **_problems("preview_busy"),
+        **preview_problems("preview_busy"),
     },
 )
 async def get_preview(
@@ -231,8 +232,8 @@ async def get_preview(
     """
     ref = version_ref(store, version)
     try:
-        return await _while_connected(request, service.info(ref, principal=principal))
-    except _ClientGone:
+        return await while_connected(request, service.info(ref, principal=principal))
+    except ClientGone:
         return Response(status_code=CLIENT_GONE)
 
 
@@ -246,7 +247,7 @@ async def get_preview(
             "description": "The `preview` job building it (`Location`).",
         },
         **problem_responses(403, 404, 422),
-        **_problems("preview_unavailable", "preview_busy", "store_unavailable"),
+        **preview_problems("preview_unavailable", "preview_busy", "store_unavailable"),
     },
 )
 async def build_preview(
@@ -280,7 +281,7 @@ async def build_preview(
 @router.get(
     f"{_VERSION_PREFIX}/preview.png",
     response_class=Response,
-    responses=_image_responses(PNG, *_RENDERED, "preview_timeout"),
+    responses=image_responses(PNG, *_RENDERED, "preview_timeout"),
 )
 async def get_thumbnail(
     store: _Store,
@@ -309,7 +310,7 @@ async def get_thumbnail(
 @router.get(
     f"{_VERSION_PREFIX}/tiles/{{z}}/{{x}}/{{y}}.png",
     response_class=Response,
-    responses=_image_responses(PNG, *_RENDERED, "preview_not_ready", "preview_timeout"),
+    responses=image_responses(PNG, *_RENDERED, "preview_not_ready", "preview_timeout"),
 )
 async def get_tile(
     store: _Store,
@@ -357,7 +358,7 @@ async def get_tile(
 @router.get(
     f"{_VERSION_PREFIX}/features",
     response_class=Response,
-    responses=_image_responses(
+    responses=image_responses(
         GEOJSON, *_RENDERED, "preview_not_ready", "preview_timeout"
     ),
 )
@@ -394,7 +395,7 @@ async def get_features(
     responses={
         304: {"description": "Not modified: the client holds this `ETag`."},
         **problem_responses(403, 404, 422),
-        **_problems(*_RENDERED, "preview_timeout"),
+        **preview_problems(*_RENDERED, "preview_timeout"),
     },
 )
 async def get_members(
@@ -413,8 +414,8 @@ async def get_members(
     ref = version_ref(store, version)
     work = service.members(ref, principal=principal, if_none_match=if_none_match)
     try:
-        payload = await _while_connected(request, work)
-    except _ClientGone:
+        payload = await while_connected(request, work)
+    except ClientGone:
         return Response(status_code=CLIENT_GONE)
     if payload.data is None:
         return _not_modified(payload)
@@ -431,8 +432,8 @@ async def _respond(
 ) -> Response:
     """Answer an image or data, ``304`` when the client holds it."""
     try:
-        payload = await _while_connected(request, work)
-    except _ClientGone:
+        payload = await while_connected(request, work)
+    except ClientGone:
         return Response(status_code=CLIENT_GONE)
     if payload.data is None:
         return _not_modified(payload)
@@ -449,14 +450,14 @@ def _not_modified(payload: Payload) -> Response:
     return Response(status_code=304, headers=_cache_headers(payload))
 
 
-async def _while_connected[T](request: Request, work: Coroutine[Any, Any, T]) -> T:
+async def while_connected[T](request: Request, work: Coroutine[Any, Any, T]) -> T:
     """Await ``work``; cancel it when the client disconnects first.
 
     Cancelling gives a waiting render request up (``RenderPool.arequest``).
 
     Raises
     ------
-    _ClientGone
+    ClientGone
         The client went away; ``work`` was cancelled.
     """
     task = asyncio.ensure_future(work)
@@ -470,7 +471,7 @@ async def _while_connected[T](request: Request, work: Coroutine[Any, Any, T]) ->
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
     if task.cancelled():
-        raise _ClientGone
+        raise ClientGone
     return task.result()
 
 

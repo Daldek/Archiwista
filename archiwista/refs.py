@@ -41,7 +41,7 @@ from archiwista.errors import (
     PreviewUnavailableError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries
+from archiwista.index import IndexQueries, ProductVersion
 from archiwista.jobs.protocol import JobSpec
 from archiwista.messages import MESSAGES
 from archiwista.paths import indexed_path, resolve_indexed_path
@@ -207,6 +207,39 @@ class ObjectResolver:
         """
         return self._source(_parsed(ref), on_disk=False)
 
+    def version_source(
+        self, store: str, version: ProductVersion, *, on_disk: bool
+    ) -> PreviewSource:
+        """Return the source of a version the index listed, without reading it again.
+
+        As ``locate`` (``on_disk`` false) or ``resolve`` (``on_disk`` true) of
+        the version's ``ref``, for many versions of one answer (the local
+        layers, plan v0.2 decision 7). Its ``native`` rectangle gives the
+        georeference of a header outline, so it comes from a query of a view
+        (``IndexQueries.product_versions`` with ``bbox``).
+
+        Raises
+        ------
+        PathOutsideRootError, SourceUnavailableError, PreviewUnavailableError
+            As ``resolve``; without ``on_disk`` only for a version without a
+            ``sha256``, or one of a store no longer configured.
+        """
+        return _version_source(
+            store,
+            version.path,
+            self._root(store, version.producer),
+            sha256=version.sha256,
+            size_bytes=version.size_bytes,
+            crs=version.horizontal_crs,
+            georeference=_georeference(
+                version.location_source, version.native_crs, version.native
+            ),
+            product=version.product,
+            dataset_key=version.dataset_key,
+            nodata=version.nodata,
+            on_disk=on_disk,
+        )
+
     def _source(self, ref: ObjectRef, *, on_disk: bool) -> PreviewSource:
         if isinstance(ref, VersionRef):
             return self._version(ref, on_disk=on_disk)
@@ -221,39 +254,33 @@ class ObjectResolver:
             )
             raise NotFoundError(message)
         summary = detail.summary
-        config = self._settings().store(ref.store)
-        root = None if config is None else config.roots().get(detail.segment.producer)
-        if root is None:
-            raise SourceUnavailableError(MESSAGES["preview_reason_store_unavailable"])
-        sha256 = summary.sha256.lower() if summary.sha256 else None
-        if sha256 is not None and CONTENT_KEY.fullmatch(sha256) is None:
-            sha256 = None
-        path = indexed_path(root, ref.path)
-        size_bytes = summary.size_bytes
-        if on_disk or sha256 is None:
-            path, status = _on_disk(root, ref.path)
-            size_bytes = status.st_size
-            if sha256 is None:
-                sha256 = path_key(
-                    ref.store, ref.path, status.st_size, status.st_mtime_ns
-                )
-        georeference = None
+        root = self._root(ref.store, detail.segment.producer)
+        native = None
         if summary.location.source == "header" and detail.native_crs is not None:
-            outline = self._queries.native_outline(ref.store, ref.path)
-            bounds = None if outline is None else _bounds(outline)
-            if bounds is not None:
-                georeference = Extent(bounds, detail.native_crs)
-        return PreviewSource(
-            ref=format_ref(ref),
-            content_key=sha256,
-            paths=(path,),
-            size_bytes=size_bytes,
+            native = self._queries.native_outline(ref.store, ref.path)
+        return _version_source(
+            ref.store,
+            ref.path,
+            root,
+            sha256=summary.sha256,
+            size_bytes=summary.size_bytes,
             crs=summary.horizontal_crs,
-            georeference=georeference,
+            georeference=_georeference(
+                summary.location.source, detail.native_crs, native
+            ),
             product=detail.product,
             dataset_key=detail.dataset_key,
             nodata=detail.nodata,
+            on_disk=on_disk,
         )
+
+    def _root(self, store: str, producer: str) -> Path:
+        """Return the directory of a store's producer; refuse an unknown one."""
+        config = self._settings().store(store)
+        root = None if config is None else config.roots().get(producer)
+        if root is None:
+            raise SourceUnavailableError(MESSAGES["preview_reason_store_unavailable"])
+        return root
 
 
 def job_resolver(spec: JobSpec) -> Callable[[str], PreviewSource]:
@@ -279,6 +306,57 @@ def _parsed(ref: str | ObjectRef) -> ObjectRef:
 
 def _path(path: str) -> bool:
     return bool(path) and "\x00" not in path
+
+
+def _version_source(
+    store: str,
+    path: str,
+    root: Path,
+    *,
+    sha256: str | None,
+    size_bytes: int | None,
+    crs: str | None,
+    georeference: Extent | None,
+    product: str | None,
+    dataset_key: str | None,
+    nodata: float | None,
+    on_disk: bool,
+) -> PreviewSource:
+    """Return a version's source: on disk, or located by its ``sha256``.
+
+    The content key is the ``sha256``, else the path key of the file's size
+    and modification time, which only the file gives.
+    """
+    content_key = sha256.lower() if sha256 else None
+    if content_key is not None and CONTENT_KEY.fullmatch(content_key) is None:
+        content_key = None
+    found = indexed_path(root, path)
+    if on_disk or content_key is None:
+        found, status = _on_disk(root, path)
+        size_bytes = status.st_size
+        if content_key is None:
+            content_key = path_key(store, path, status.st_size, status.st_mtime_ns)
+    return PreviewSource(
+        ref=format_ref(VersionRef(store, path)),
+        content_key=content_key,
+        paths=(found,),
+        size_bytes=size_bytes,
+        crs=crs,
+        georeference=georeference,
+        product=product,
+        dataset_key=dataset_key,
+        nodata=nodata,
+    )
+
+
+def _georeference(
+    location_source: str | None, native_crs: str | None, native: GeoJSONGeometry | None
+) -> Extent | None:
+    """Return the georeference of a header outline (a JPEG sheet), if any."""
+    if location_source != "header" or native_crs is None or native is None:
+        return None
+    bounds = _bounds(native)
+    return None if bounds is None else Extent(bounds, native_crs)
 
 
 def _on_disk(root: Path, relative: str) -> tuple[Path, os.stat_result]:

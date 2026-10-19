@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
-from archiwista.commands import CommandModule, compare, previews
+from archiwista.commands import CommandModule, compare, layers, previews
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
 from archiwista.jobs.reindex import reindex_main
@@ -17,7 +17,7 @@ from archiwista.server import open_in_browser, serve_main, token_main
 from archiwista.sources.registry import PluginRegistry, load_registry
 
 # Modules of commands per function (contract "CLI"): one line each.
-COMMAND_MODULES: tuple[CommandModule, ...] = (previews, compare)
+COMMAND_MODULES: tuple[CommandModule, ...] = (previews, compare, layers)
 
 
 def main(

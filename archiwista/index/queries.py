@@ -81,6 +81,7 @@ from archiwista.index.types import (
     PinState,
     ProductSummary,
     ProductUsage,
+    ProductVersion,
     ProjectPinRef,
     ProjectRecord,
     ProjectRef,
@@ -723,6 +724,80 @@ class IndexQueries:
                 where.params,
             ).fetchall()
         return tuple(SlotUnit(row[0], row[1] or None, row[2]) for row in rows)
+
+    def product_versions(
+        self,
+        store: str,
+        product: str,
+        *,
+        segment: str | None = None,
+        bbox: BBox | None = None,
+    ) -> tuple[ProductVersion, ...]:
+        """Return the present versions of a store's product, for its layers.
+
+        What the local layers group (plan v0.2, decision 7). With ``bbox``
+        only the versions whose footprint's box meets it, each with its WGS84
+        outline and native rectangle; without it every present version of
+        the product, without outlines. Ordered by version path.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        product : str
+            Product of the slots (e.g. ``"nmt"``), all its segments.
+        segment : str or None, optional
+            Only this segment of the product.
+        bbox : BBox or None, optional
+            ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _Where()
+            where.add("s.store_id = ?", _store_id(stores, store))
+            where.add("s.product = ?", product)
+            where.add("v.state = 'present'")
+            if segment is not None:
+                where.add("g.segment = ?", segment)
+            source = "versions v"
+            shapes = ", NULL AS wgs84, NULL AS native"
+            if bbox is not None:
+                min_lon, min_lat, max_lon, max_lat = require_wgs84_bbox(bbox)
+                source = "footprints f JOIN versions v ON v.id = f.id"
+                where.add(
+                    "f.max_lon > ? AND f.min_lon < ?"
+                    " AND f.max_lat > ? AND f.min_lat < ?",
+                    min_lon,
+                    max_lon,
+                    min_lat,
+                    max_lat,
+                )
+                shapes = (
+                    ", (SELECT sh.wgs84 FROM version_shapes sh"
+                    " WHERE sh.version_id = v.id) AS wgs84,"
+                    " (SELECT sh.native FROM version_shapes sh"
+                    " WHERE sh.version_id = v.id) AS native"
+                )
+            rows = connection.execute(
+                "SELECT v.path AS path, s.path AS slot,"
+                " coalesce(v.unit, s.unit) AS unit, g.segment AS segment,"
+                " g.name AS segment_name, g.producer AS producer,"
+                " v.data_year AS data_year, v.data_date AS data_date,"
+                " v.downloaded_at AS downloaded_at, v.edition AS edition,"
+                " v.label AS label, v.campaign AS campaign, v.sha256 AS sha256,"
+                " v.size_bytes AS size_bytes, v.product AS product,"
+                " v.dataset_key AS dataset_key, v.horizontal_crs AS horizontal_crs,"
+                " v.vertical_crs AS vertical_crs, v.resolution AS resolution,"
+                " v.nodata AS nodata, v.location AS location,"
+                " v.location_source AS location_source, v.native_crs AS native_crs,"
+                " v.is_box AS is_box, v.min_lon AS min_lon, v.min_lat AS min_lat,"
+                f" v.max_lon AS max_lon, v.max_lat AS max_lat{shapes}"
+                f" FROM {source} JOIN slots s ON s.id = v.slot_id"
+                " JOIN segments g ON g.id = s.segment_id"
+                f" WHERE {where.sql()} ORDER BY v.path",
+                where.params,
+            ).fetchall()
+        return tuple(_product_version(row, shapes=bbox is not None) for row in rows)
 
     def entries_without_footprint(
         self, store: str, *, segment: str | None = None
@@ -1956,6 +2031,44 @@ def _outline(row: sqlite3.Row) -> GeoJSONGeometry:
         return geometry
     return box_geometry(
         (row["min_lon"], row["min_lat"], row["max_lon"], row["max_lat"])
+    )
+
+
+def _product_version(row: sqlite3.Row, *, shapes: bool) -> ProductVersion:
+    located = row["location"] == "footprint" and row["min_lon"] is not None
+    bounds = (
+        (row["min_lon"], row["min_lat"], row["max_lon"], row["max_lat"])
+        if located
+        else None
+    )
+    outline = _outline(row) if shapes and located else None
+    native = json.loads(row["native"]) if shapes and row["native"] is not None else None
+    return ProductVersion(
+        path=row["path"],
+        slot=row["slot"],
+        unit=row["unit"],
+        segment=row["segment"] or None,
+        segment_name=row["segment_name"],
+        producer=row["producer"],
+        data_year=row["data_year"],
+        data_date=_date(row["data_date"]),
+        downloaded_at=_datetime(row["downloaded_at"]),
+        edition=row["edition"],
+        label=row["label"],
+        campaign=row["campaign"],
+        sha256=row["sha256"],
+        size_bytes=row["size_bytes"],
+        product=row["product"],
+        dataset_key=row["dataset_key"],
+        horizontal_crs=row["horizontal_crs"],
+        vertical_crs=row["vertical_crs"],
+        resolution=row["resolution"],
+        nodata=row["nodata"],
+        location_source=row["location_source"],
+        native_crs=row["native_crs"],
+        bounds=bounds,
+        outline=outline,
+        native=native,
     )
 
 
