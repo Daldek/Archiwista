@@ -1,7 +1,8 @@
 /**
  * Texts of the file card (views/file.js, docs/SPEC.md UC-04 and 6.5 e):
  * every version of a slot, its metadata for people next to the raw values,
- * the licence, paths to copy, pins and the link check.
+ * the licence, paths to copy, pins, the link check and the tabs of a version
+ * (its preview's own texts: labels/previews.js).
  */
 
 export const file = {
@@ -32,6 +33,11 @@ export const file = {
     pin: "{name} ({task})",
     pin_no_task: "{name}",
     pin_state: "{name} ({task}) — {state}",
+  },
+  tabs: {
+    label: "Widok wersji",
+    meta: "Metadane",
+    preview: "Podgląd",
   },
   version: {
     title: "Wersja {label}",

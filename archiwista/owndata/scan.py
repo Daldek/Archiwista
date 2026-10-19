@@ -63,16 +63,15 @@ from archiwista.owndata.content import (
     ContentIdentity,
     content_identity,
     content_method,
-    file_sha256,
 )
 from archiwista.owndata.document import (
     INCOMING_DIR,
     SNAPSHOT_FILE,
     SNAPSHOTS_DIR,
     InvalidSnapshotError,
-    SnapshotFile,
     UnknownSnapshotSchemaError,
-    parse_snapshot_document,
+    read_snapshot_document,
+    snapshot_files_match,
 )
 from archiwista.owndata.formats import (
     FILESET_SUFFIXES,
@@ -89,8 +88,6 @@ logger = logging.getLogger(__name__)
 STALE_INCOMING = timedelta(hours=24)
 # Files written to the index in one transaction (and one progress event).
 WRITE_BATCH = 50
-# A ``migawka.json`` larger than this is not a snapshot document.
-MAX_DOCUMENT_BYTES = 1024**2
 # The companions that change while a SQLite file is edited (``-shm`` is the
 # editor's shared memory: SQLite may change its content, never its data).
 _STAMPED_COMPANIONS = ("-wal", "-journal")
@@ -220,7 +217,7 @@ def scan_own_data(
     moment = now or datetime.now(UTC)
     summary = OwnScanSummary()
     stores, folders = folder_rules(settings, known_projects)
-    transformers = _Transformers(transformer)
+    transformers = Wgs84Outlines(transformer)
     active = reader or OwnReader(paths)
     try:
         for position, project in enumerate(projects):
@@ -303,21 +300,35 @@ class _FolderUnreadableError(OSError):
     """The folder itself cannot be listed."""
 
 
-class _Transformers:
-    """The producer's operations to WGS84, made once per CRS in a scan."""
+class Wgs84Outlines:
+    """WGS84 outlines of extents with the producer's operations, one per CRS.
+
+    An operation is made once per CRS and kept, also one that failed. An
+    extent without area (a single point, an axis-parallel line) gets a
+    margin of half a metre (or about as much of a degree) first, so the
+    file still has a place on the map. Used by the scan and by snapshots
+    (``migawka.json``).
+
+    Parameters
+    ----------
+    factory : TransformerFactory or None
+        The producer's pinned operations to WGS84 (``GeoAdapter.transformer``);
+        ``None``: only extents in WGS84 get an outline.
+    """
 
     def __init__(self, factory: TransformerFactory | None) -> None:
         self._factory = factory
         self._made: dict[str, CoordinateTransformer | Exception] = {}
 
     def outline(self, bbox: BBox, crs: str) -> GeoJSONGeometry:
-        """Return the WGS84 polygon of a rectangle in ``crs``.
+        """Return the WGS84 polygon of a rectangle in ``crs``, with its margin.
 
         Raises
         ------
         ValueError, ProducerError
             No operation for ``crs``, or one that failed.
         """
+        bbox = _padded(bbox, crs)
         if is_wgs84(crs):
             return outline_wgs84(bbox, crs, None)
         if self._factory is None:
@@ -411,7 +422,7 @@ class _FolderScan:
     project: ProjectRef
     settings: AppSettings
     paths: AppPaths
-    transformers: _Transformers
+    transformers: Wgs84Outlines
     reader: OwnReader
     now: datetime
     summary: OwnScanSummary
@@ -618,9 +629,8 @@ class _FolderScan:
             return None, "no_crs"
         if info.native_bbox is None:
             return None, "no_extent"
-        bbox = _padded(info.native_bbox, info.native_crs)
         try:
-            return self.transformers.outline(bbox, info.native_crs), None
+            return self.transformers.outline(info.native_bbox, info.native_crs), None
         except (ProducerError, ValueError) as error:
             logger.info("No WGS84 outline for %s: %s", info.native_crs[:80], error)
             return None, "transform_unavailable"
@@ -669,9 +679,7 @@ class _FolderScan:
         if known == (stamp, "ok"):
             return None
         try:
-            raw, document = parse_snapshot_document(
-                _read_document(directory / SNAPSHOT_FILE)
-            )
+            raw, document = read_snapshot_document(directory)
         except UnknownSnapshotSchemaError as error:
             self.problems.append(
                 OwnProblem("unknown_snapshot_schema", path=place, reason=error.schema)
@@ -684,7 +692,7 @@ class _FolderScan:
             self.problems.append(OwnProblem("invalid_snapshot", path=place))
             return SnapshotWrite(path, label, "invalid", stamp, size, document=raw)
         state: SnapshotState = "ok"
-        if not _files_match(directory, document.files):
+        if not snapshot_files_match(directory, document.files):
             state = "modified"
             self.problems.append(OwnProblem("snapshot_modified", path=place))
         return SnapshotWrite(
@@ -915,43 +923,6 @@ def _snapshot_dirs(versions: Path) -> Iterator[tuple[Path, str, str]]:
             for entry in reversed(entries)
             if not entry.name.startswith(".") and entry.is_dir(follow_symlinks=False)
         )
-
-
-def _files_match(directory: Path, files: Sequence[SnapshotFile]) -> bool:
-    """Whether the snapshot directory holds exactly its document's files."""
-    expected = {item.name: item for item in files}
-    with os.scandir(directory) as entries:
-        present = {
-            entry.name: entry for entry in entries if entry.name != SNAPSHOT_FILE
-        }
-    if present.keys() != expected.keys():
-        return False
-    for name, item in expected.items():
-        entry = present[name]
-        if not entry.is_file(follow_symlinks=False):
-            return False
-        if entry.stat(follow_symlinks=False).st_size != item.size_bytes:
-            return False
-        if file_sha256(Path(entry.path)) != item.sha256:
-            return False
-    return True
-
-
-def _read_document(path: Path) -> bytes:
-    """``migawka.json`` of a snapshot; a link or more than 1 MiB is refused.
-
-    Raises
-    ------
-    InvalidSnapshotError
-        Not a regular file, or too large.
-    OSError
-        The file cannot be read.
-    """
-    found = path.lstat()
-    if not stat.S_ISREG(found.st_mode) or found.st_size > MAX_DOCUMENT_BYTES:
-        raise InvalidSnapshotError("not a snapshot document")
-    with path.open("rb") as stream:
-        return stream.read(MAX_DOCUMENT_BYTES + 1)
 
 
 def _members(real: Path) -> tuple[Path, ...]:

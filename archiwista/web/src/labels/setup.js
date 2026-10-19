@@ -9,7 +9,7 @@ export const setup = {
   intro_first:
     "Wskaż magazyn Kartografa i — jeśli chcesz — katalogi projektów. Archiwista tylko czyta te katalogi: nie zapisuje w nich żadnych plików, a indeks i pamięć podręczną trzyma lokalnie na tym komputerze.",
   intro_edit:
-    "Zmiana magazynów, katalogów projektów i trybu pracy. Zapis zastępuje wszystkie ustawienia naraz; nowy albo przeniesiony magazyn jest od razu skanowany od nowa.",
+    "Zmiana magazynów, katalogów projektów, trybu pracy i pamięci podglądów. Zapis zastępuje wszystkie ustawienia naraz; nowy albo przeniesiony magazyn jest od razu skanowany od nowa.",
   steps_label: "Kroki kreatora",
   step: {
     stores: "Magazyny",
@@ -53,12 +53,24 @@ export const setup = {
     basemaps: "Podkłady mapy (tylko poza trybem offline):",
     basemaps_none: "brak",
   },
+  previews: {
+    legend: "Pamięć podglądów",
+    hint: "Miniatury, kafle map i lokalne kopie plików (COG) Archiwista trzyma na tym komputerze, nigdy w magazynie ani na udziale. Ponad limit znikają najdawniej używane — każdy podgląd da się odtworzyć z pliku.",
+    limit: "Limit pamięci podglądów (GB)",
+    limit_hint: "Liczba całkowita od 1 do 10 000 (1 GB = 1024³ bajtów); domyślnie 20.",
+    limit_invalid: "Limit pamięci podglądów to liczba całkowita od 1 do 10 000 GB.",
+    usage: "Zajęte teraz: {used} z {limit} ({percent}) · {objects} {files} z podglądami",
+    usage_label: "Zajętość pamięci podglądów",
+    usage_none: "Serwer nie podał zajętości pamięci podglądów.",
+  },
   summary: {
     legend: "Podsumowanie",
     stores: "Magazyny:",
     projects: "Katalogi projektów:",
     mode: "Tryb pracy:",
     online: "z podkładami online",
+    previews: "Pamięć podglądów:",
+    previews_value: "limit {limit} GB",
     offline: "offline",
     kind_auto: "rodzaj wykrywany automatycznie",
   },

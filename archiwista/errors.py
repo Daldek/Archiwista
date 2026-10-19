@@ -59,6 +59,34 @@ class SnapshotError(ArchiwistaError):
     """An own-data snapshot could not be made consistently."""
 
 
+class SnapshotBlockedError(SnapshotError):
+    """A snapshot may not be made now (``409 snapshot_blocked`` with ``reason``).
+
+    ``reason`` is ``folder_invalid`` (the data folder breaks the rules of
+    plan v0.2 decision 8), ``read_only_folder``, ``insufficient_space`` or
+    ``file_missing``; the message is Polish and says what to do.
+    """
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+class SnapshotFailedError(SnapshotError):
+    """A snapshot was not published; ``code`` is the ``snapshot`` job's error.
+
+    ``inconsistent_copy`` (the file kept changing while it was copied),
+    ``checksum_mismatch`` (written bytes differ from those read),
+    ``integrity_failed`` (the SQLite copy fails ``PRAGMA integrity_check``) or
+    ``target_exists`` (another process published the label first). The
+    message is Polish.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class InconsistentReadError(ArchiwistaError):
     """An own-data file changed while it was read or copied (decision 8).
 

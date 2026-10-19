@@ -2,7 +2,10 @@
  * Client of the Archiwista HTTP API (`/api/v1`): the only way the interface
  * talks to the server (docs/PLAN_v0.1.md, WWW contract). One function per
  * route, named after its OpenAPI `operationId` in camelCase (`list_slots` →
- * `listSlots`); answers are typed in `types.js`.
+ * `listSlots`); answers are typed in `types.js`. Addresses the API gives in
+ * its answers (`thumbnail_url`, `members_url` of `PreviewInfo`) are never
+ * composed here: `apiAddress` adds their documented parameters, `getImage`
+ * and `getLinked` fetch them with the same session header.
  *
  * Session (A-ADR-012 errata 1 and 2, SPEC 10.1): `archiwista serve` opens
  * `/#token=…`. `startSession` first removes the token from the address
@@ -53,6 +56,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").Area} Area */
 /** @typedef {import("./types.js").LocalCoverageQuery} LocalCoverageQuery */
 /** @typedef {import("./types.js").AreaCoverage} AreaCoverage */
+/** @typedef {import("./types.js").PreviewInfo} PreviewInfo */
 
 /**
  * Abort a read: every function takes these options last.
@@ -70,6 +74,8 @@ const HANDOFF_MS = 300;
 // Pause before an event stream that broke off resumes.
 const RESUME_MS = 1000;
 const FINAL_JOB_STATES = new Set(["succeeded", "failed", "interrupted", "cancelled"]);
+const JSON_ANSWERS = "application/json, application/problem+json";
+const IMAGE_ANSWERS = "image/png, application/problem+json";
 
 /** @type {SessionState|null} */
 let current = null;
@@ -175,36 +181,71 @@ export function csrfToken() {
  * @throws {ApiError} The server's problem; aborting rejects with `AbortError`.
  */
 export async function request(method, path, { query, json, body, type, signal } = {}) {
-  const headers = { Accept: "application/json, application/problem+json" };
+  const headers = { Accept: JSON_ANSWERS };
   if (json !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(json);
   } else if (body !== undefined) {
     headers["Content-Type"] = type ?? "application/octet-stream";
   }
-  const token = storedToken();
-  if (token !== null) headers[CSRF_HEADER] = token;
-  let response;
-  try {
-    response = await fetch(API_PREFIX + path + search(query), {
-      method,
-      headers,
-      body,
-      signal,
-      credentials: "same-origin",
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw error;
-    throw new ApiError(networkProblem());
+  const response = await send(method, API_PREFIX + path + search(query), { headers, body, signal });
+  return response.status === 204 ? null : response.json();
+}
+
+/**
+ * An address the API gave in an answer (`thumbnail_url`, `members_url`…)
+ * with documented query parameters added: the client never composes the
+ * addresses of objects itself (plan v0.2, `PreviewInfo`).
+ *
+ * @param {string} address - The address from the answer, under `/api/v1/` of
+ *   this server.
+ * @param {Object<string, string|number|null|undefined>} [query] - E.g.
+ *   `{style: "hillshade", size: 512}`; `null`, `undefined` and `""` are left out.
+ * @returns {string} Path and query, e.g. `/api/v1/stores/…/preview.png?size=512`.
+ * @throws {Error} Not an address of this server's API: the session's CSRF
+ *   token goes nowhere else.
+ */
+export function apiAddress(address, query = {}) {
+  const url = new URL(address, location.origin);
+  if (url.origin !== location.origin || !url.pathname.startsWith(`${API_PREFIX}/`)) {
+    throw new Error(`Not an address of the Archiwista API: ${address}`);
   }
-  if (response.ok) return response.status === 204 ? null : response.json();
-  const problem = await readProblem(response);
-  if ((problem.status === 401 || problem.code === "csrf_rejected") && current !== null) {
-    current = null;
-    sessionStorage.removeItem(TOKEN_KEY);
-    for (const listener of [...sessionLost]) listener(problem);
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, String(value));
   }
-  throw new ApiError(problem);
+  return url.pathname + url.search;
+}
+
+/**
+ * An image of an address the API gave (`thumbnail_url` of `get_thumbnail`),
+ * fetched with the session's CSRF header — which an `<img src>` cannot send;
+ * show it through `URL.createObjectURL` (the CSP allows `blob:` images).
+ *
+ * @param {string} address - E.g. `apiAddress(info.thumbnail_url, {size: 512})`.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<Blob>} The PNG; the browser's cache answers a repeated
+ *   address (`Cache-Control: immutable`, `ETag`).
+ * @throws {ApiError} E.g. `409 preview_unavailable` with `reason`, `503
+ *   preview_busy`; aborting rejects with `AbortError`.
+ */
+export async function getImage(address, { signal } = {}) {
+  const headers = { Accept: IMAGE_ANSWERS };
+  const response = await send("GET", apiAddress(address), { headers, signal });
+  return response.blob();
+}
+
+/**
+ * The JSON answer of an address the API gave (`members_url` of `get_members`).
+ *
+ * @param {string} address
+ * @param {RequestOptions} [options]
+ * @returns {Promise<*>}
+ * @throws {ApiError} The server's problem; aborting rejects with `AbortError`.
+ */
+export async function getLinked(address, { signal } = {}) {
+  const headers = { Accept: JSON_ANSWERS };
+  const response = await send("GET", apiAddress(address), { headers, signal });
+  return response.json();
 }
 
 // Session (step 8) ------------------------------------------------------------
@@ -625,11 +666,71 @@ export function getLocalCoverage(query, { signal } = {}) {
   return request("GET", "/local-coverage", { query, signal });
 }
 
+// Previews (v0.2, step 6) -----------------------------------------------------
+
+/**
+ * The preview of a version: its state, why something is missing, styles,
+ * legends and the addresses of its images (`get_preview`).
+ *
+ * @param {string} store - Store id.
+ * @param {string} version - Version path in the store.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<PreviewInfo>}
+ */
+export function getPreview(store, version, { signal } = {}) {
+  return request("GET", `/stores/${one(store)}/versions/${segments(version)}/preview`, {
+    signal,
+  });
+}
+
+/**
+ * Build the local preview of a version (`build_preview`): the `preview` job
+ * building it (a new one, or the one building the same content already).
+ *
+ * @param {string} store - Store id.
+ * @param {string} version - Version path in the store.
+ * @param {{force?: boolean}} [options] - `force`: also past the auto-build
+ *   limits (the „Zbuduj podgląd” button).
+ * @returns {Promise<JobDetail|PreviewInfo>} `202` the job, `200` the
+ *   `PreviewInfo` when nothing needs building (no `id`).
+ * @throws {ApiError} `409 preview_unavailable` (`too_large` without `force`),
+ *   `503 preview_busy`, `store_unavailable`.
+ */
+export function buildPreview(store, version, { force = false } = {}) {
+  return request("POST", `/stores/${one(store)}/versions/${segments(version)}/preview`, {
+    json: { force },
+  });
+}
+
 // Helpers ---------------------------------------------------------------------
 
 /** The CSRF token this tab keeps, or `null`. */
 function storedToken() {
   return sessionStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Send a request with the session's CSRF token; answer the response, or
+ * throw the server's problem (a lost session told to the listeners first).
+ */
+async function send(method, address, { headers, body, signal }) {
+  const token = storedToken();
+  if (token !== null) headers[CSRF_HEADER] = token;
+  let response;
+  try {
+    response = await fetch(address, { method, headers, body, signal, credentials: "same-origin" });
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    throw new ApiError(networkProblem());
+  }
+  if (response.ok) return response;
+  const problem = await readProblem(response);
+  if ((problem.status === 401 || problem.code === "csrf_rejected") && current !== null) {
+    current = null;
+    sessionStorage.removeItem(TOKEN_KEY);
+    for (const listener of [...sessionLost]) listener(problem);
+  }
+  throw new ApiError(problem);
 }
 
 /** Ask the open tabs of this origin for the session's token (or `null`). */

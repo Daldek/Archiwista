@@ -15,7 +15,10 @@ input, runs it and reports in JSON Lines on standard output
 - ``preview``: local previews of files, each built in a render process of
   its own (``archiwista.previews.build.run_preview``, plan v0.2 decision 3);
 - ``own_scan``: the data folders of every project, or of one
-  (``archiwista.owndata.scan.scan_own_data``, plan v0.2 decision 8).
+  (``archiwista.owndata.scan.scan_own_data``, plan v0.2 decision 8);
+- ``snapshot``: a snapshot of an own-data file in its folder's ``.wersje/``
+  (``archiwista.owndata.snapshots.make_snapshot``, plan v0.2 decision 9),
+  then recorded in the index.
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -27,6 +30,7 @@ import _thread
 import logging
 import os
 import signal
+import sqlite3
 import sys
 import threading
 import time
@@ -41,11 +45,18 @@ from archiwista.errors import (
     OwnReaderError,
     PathOutsideRootError,
     ProducerError,
+    SnapshotBlockedError,
+    SnapshotFailedError,
     SourceIncompatibleError,
     SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, IndexWriter, TransformerFactory
+from archiwista.index import (
+    IndexQueries,
+    IndexWriter,
+    SnapshotWrite,
+    TransformerFactory,
+)
 from archiwista.index.scanner import (
     ScanEvent,
     ScanMode,
@@ -70,9 +81,25 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.messages import MESSAGES
-from archiwista.owndata.scan import OwnScanProgress, scan_own_data
+from archiwista.owndata.document import SnapshotAuthor
+from archiwista.owndata.reader import OwnReader
+from archiwista.owndata.scan import (
+    OwnScanProgress,
+    check_own_folder,
+    folder_rules,
+    scan_own_data,
+    snapshot_stamp,
+)
+from archiwista.owndata.snapshots import (
+    SNAPSHOT_PHASES,
+    SnapshotPhase,
+    SnapshotResult,
+    folder_block,
+    make_snapshot,
+)
 from archiwista.paths import resolve_indexed_path
 from archiwista.previews.build import run_preview
+from archiwista.sandbox import process_work_dir
 from archiwista.services.problems import explain
 from archiwista.sources import (
     GeoAdapter,
@@ -92,13 +119,24 @@ logger = logging.getLogger("archiwista.jobs.worker")
 
 
 class JobFailure(Exception):
-    """The job cannot be done; ``code`` and the Polish ``detail`` explain why."""
+    """The job cannot be done; ``code`` and the Polish ``detail`` explain why.
 
-    def __init__(self, code: str, detail: str, exception: str | None = None) -> None:
+    ``reason`` tells some codes apart (``snapshot_blocked``: why).
+    """
+
+    def __init__(
+        self,
+        code: str,
+        detail: str,
+        exception: str | None = None,
+        *,
+        reason: str | None = None,
+    ) -> None:
         super().__init__(detail)
         self.code = code
         self.detail = detail
         self.exception = exception or type(self).__name__
+        self.reason = reason
 
 
 class Emitter:
@@ -185,11 +223,12 @@ def main() -> int:
         return INTERRUPTED_EXIT
     except Exception as error:
         code, detail, exception = _failure(error)
+        reason = error.reason if isinstance(error, JobFailure) else None
         if code == CODE_INTERNAL_ERROR:
             logger.exception("Job %s failed", spec.job_id)
         else:
             logger.error("Job %s failed (%s): %s", spec.job_id, code, detail)
-        return _report(emit, code, detail, exception, status=1)
+        return _report(emit, code, detail, exception, status=1, reason=reason)
     try:
         emit.send(WorkerMessage("result", summary))
     except OSError:  # the supervisor is gone
@@ -407,12 +446,103 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
     return summary.result()
 
 
+def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
+    """Make a snapshot of an own-data file (``make_snapshot``, decision 9).
+
+    The project's data folder is checked before the file is looked up, so a
+    folder breaking the rules is ``snapshot_blocked`` also for a file the
+    index forgot with it. Progress counts the phases of the snapshot; its
+    warnings are notices. A published snapshot goes into the index at once,
+    as best it can: the index is a cache, and the next ``own_scan`` adds a
+    snapshot missing there. The author is the job's actor (the scheduler
+    acts for the owner); no account names are known to a worker.
+    """
+    started = time.perf_counter()
+    key = str(spec.params["project"])
+    file_id = str(spec.params["file_id"])
+    # The reader process reads no settings: only its work directory, below
+    # the data directory (the index's), like the snapshot's local copy.
+    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
+    with IndexQueries(spec.index_path) as queries:
+        known = queries.projects(visible=ALL_PROJECTS)
+        project = next((item for item in known if item.key == key), None)
+        if project is None:
+            message = MESSAGES["project_not_found"].format(project=key)
+            raise JobFailure("not_found", message)
+        stores, folders = folder_rules(spec.settings, known)
+        folder = check_own_folder(
+            spec.settings,
+            project.access_key,
+            stores=stores,
+            app_data=paths.data_dir,
+            others=[
+                path for name, path in folders.items() if name != project.access_key
+            ],
+        )
+        block = folder_block(folder)
+        if block is not None:
+            raise JobFailure(
+                "snapshot_blocked",
+                block.message,
+                "SnapshotBlockedError",
+                reason=block.reason,
+            )
+        file = queries.own_file(key, file_id, visible=ALL_PROJECTS)
+    if file is None:
+        message = MESSAGES["own_file_not_found"].format(project=key, file_id=file_id)
+        raise JobFailure("not_found", message)
+    total = len(SNAPSHOT_PHASES)
+    emit.progress(0, total, phase=None)
+
+    def reached(phase: SnapshotPhase) -> None:
+        emit.progress(SNAPSHOT_PHASES.index(phase) + 1, total, phase=phase)
+
+    registry = load_registry(cache_dir=spec.cache_dir)
+    try:
+        with OwnReader(paths) as reader:
+            result = make_snapshot(
+                folder,
+                file,
+                author=_author(spec),
+                note=str(spec.params.get("note", "")),
+                work_dir=process_work_dir(paths),
+                reader=reader,
+                transformer=_transformer(registry),
+                on_phase=reached,
+            )
+    except SnapshotBlockedError as error:
+        raise JobFailure(
+            "snapshot_blocked", str(error), type(error).__name__, reason=error.reason
+        ) from error
+    except SnapshotFailedError as error:
+        raise JobFailure(error.code, str(error), type(error).__name__) from error
+    except PathOutsideRootError as error:
+        raise JobFailure(
+            "path_outside_root", str(error), type(error).__name__
+        ) from error
+    except OwnReaderError as error:
+        message = MESSAGES["own_scan_reader_failed"].format(detail=error)
+        raise JobFailure("own_reader_failed", message, type(error).__name__) from error
+    for warning in result.warnings:
+        emit.notice("warning", warning.code, warning.message)
+    if result.status == "created":
+        _record_snapshot(spec, project.access_key, file.file.path, result, emit)
+    return {
+        "status": result.status,
+        "label": result.label,
+        "content_sha256": result.document.content.sha256,
+        "size_bytes": result.document.size_bytes,
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
     "link_check": run_link_check,
     "preview": run_preview,
     "own_scan": run_own_scan,
+    "snapshot": run_snapshot,
 }
 
 
@@ -426,6 +556,45 @@ def _transformer(registry: SourceRegistry) -> TransformerFactory | None:
         if isinstance(adapter, GeoAdapter):
             return adapter.transformer
     return None
+
+
+def _author(spec: JobSpec) -> SnapshotAuthor:
+    """Return the job's actor as the author; the scheduler acts for the owner."""
+    kind = spec.actor_kind
+    return SnapshotAuthor(
+        id=spec.actor,
+        kind="local_owner" if kind == "scheduler" else kind,
+        name=None,
+        session=spec.session,
+    )
+
+
+def _record_snapshot(
+    spec: JobSpec, project: str, path: str, result: SnapshotResult, emit: Emitter
+) -> None:
+    """Record a published snapshot in the index; a failure is only a notice."""
+    document = result.document
+    try:
+        stamp, size = snapshot_stamp(result.directory)
+        with IndexWriter(spec.index_path) as writer:
+            writer.record_snapshot(
+                project,
+                SnapshotWrite(
+                    path,
+                    result.label,
+                    "ok",
+                    stamp,
+                    size,
+                    document=document.model_dump(mode="json", by_alias=True),
+                    created_at=document.created_at,
+                    content_method=document.content.method,
+                    content_sha256=document.content.sha256,
+                ),
+            )
+    except (OSError, sqlite3.Error, ValueError) as error:
+        logger.warning("Snapshot %s not in the index: %s", result.label, error)
+        message = MESSAGES["snapshot_not_indexed"].format(label=result.label)
+        emit.notice("warning", "snapshot_not_indexed", message)
 
 
 def _store(spec: JobSpec) -> StoreConfig:
@@ -542,14 +711,19 @@ def _failure(error: Exception) -> tuple[str, str, str]:
 
 
 def _report(
-    emit: Emitter, code: str, detail: str, exception: str, *, status: int
+    emit: Emitter,
+    code: str,
+    detail: str,
+    exception: str,
+    *,
+    status: int,
+    reason: str | None = None,
 ) -> int:
+    data: JsonObject = {"code": code, "detail": detail, "exception": exception}
+    if reason is not None:
+        data["reason"] = reason
     with suppress(OSError):  # the supervisor is gone
-        emit.send(
-            WorkerMessage(
-                "error", {"code": code, "detail": detail, "exception": exception}
-            )
-        )
+        emit.send(WorkerMessage("error", data))
     return status
 
 

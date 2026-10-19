@@ -57,6 +57,15 @@ _INFO_EXAMPLE: dict[str, Any] = {
     "minzoom": 10,
     "maxzoom": 19,
     "legend": None,
+    "legends": {
+        "hypsometry": {
+            "kind": "gradient",
+            "min": 212.4,
+            "max": 455.1,
+            "unit": "m",
+            "colors": ["#2e7d48", "#96c46b", "#f2e28c", "#c48a52", "#f6f1eb"],
+        }
+    },
     "layers": [],
     "points": None,
     "size_bytes": 37798349,
@@ -129,6 +138,9 @@ class GradientLegend(BaseModel):
     min: float
     max: float
     unit: str | None = Field(description="Unit of the values, e.g. `m`.")
+    colors: list[str] = Field(
+        description="Colours of the ramp from `min` to `max`, evenly spaced, `#rrggbb`."
+    )
 
 
 class LegendClass(BaseModel):
@@ -199,6 +211,12 @@ class PreviewInfo(BaseModel):
     maxzoom: int | None
     legend: GradientLegend | ClassesLegend | None = Field(
         description="Legend of the default style; null without one."
+    )
+    legends: dict[StyleName, GradientLegend | ClassesLegend] = Field(
+        description=(
+            "Legend of every style that has one (`hypsometry`, `elevation`,"
+            " `classes`), by style; the thumbnail and tiles of that style."
+        )
     )
     layers: list[dict[str, Any]] = Field(
         description=(

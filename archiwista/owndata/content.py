@@ -40,7 +40,7 @@ import re
 import secrets
 import shutil
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -222,9 +222,8 @@ def content_identity(
     if method == "fileset":
         if not paths:
             raise ValueError("a file set needs its members")
-        lines = sorted(f"{path.name.lower()}\t{file_sha256(path)}\n" for path in paths)
-        text = "".join(lines).encode("utf-8", "surrogateescape")
-        return ContentIdentity("fileset", hashlib.sha256(text).hexdigest())
+        sha256 = fileset_sha256((path.name, file_sha256(path)) for path in paths)
+        return ContentIdentity("fileset", sha256)
     if len(paths) != 1:
         raise ValueError(f"the {method} method takes one file")
     if method == "bytes":
@@ -243,6 +242,25 @@ def file_sha256(path: Path) -> str:
         while chunk := stream.read(_CHUNK_BYTES):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def fileset_sha256(members: Iterable[tuple[str, str]]) -> str:
+    r"""Return the ``fileset`` identity of a set from its members' SHA-256.
+
+    Parameters
+    ----------
+    members : Iterable[tuple[str, str]]
+        ``(name, sha256)`` of every member, in any order: the SHA-256 of
+        the sorted lines ``<name in lower case>\t<sha256>\n``.
+
+    Returns
+    -------
+    str
+        Lower-case hexadecimal SHA-256.
+    """
+    lines = sorted(f"{name.lower()}\t{sha256}\n" for name, sha256 in members)
+    text = "".join(lines).encode("utf-8", "surrogateescape")
+    return hashlib.sha256(text).hexdigest()
 
 
 def sqlite_content_sha256(connection: sqlite3.Connection) -> str:

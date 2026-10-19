@@ -1,28 +1,50 @@
 /**
- * The file card (docs/SPEC.md UC-04 and 6.5 e; plan v0.1 step 11): an
- * overlay over the current view with its own address, `file=<store>/<slot
- * path>` and, for one version, `file_version=<version path>`.
+ * The file card (docs/SPEC.md UC-04 and 6.5 e; plan v0.1 step 11, v0.2 step
+ * 12a): an overlay over the current view with its own address,
+ * `file=<store>/<slot path>` and, for one version, `file_version=<version
+ * path>`.
  *
  * It shows every version of the slot on an axis, newest first, marking the
  * current one (the standard path) and the `full_sheet/` one, with the pins
- * of the projects the session sees — older versions too; the chosen
- * version's metadata for people next to the raw values (criterion 6), its
- * licence with the attribution to copy, the paths to copy (this version and
- * the standard path, also as mounted on other computers), the files of the
- * same producer request, the raw sidecar and the slot's problems.
+ * of the projects the session sees — older versions too. The chosen version
+ * has two tabs: „Metadane” — its metadata for people next to the raw values
+ * (criterion 6), its licence with the attribution to copy, the paths to copy
+ * (this version and the standard path, also as mounted on other computers),
+ * the files of the same producer request and the raw sidecar — and
+ * „Podgląd” (`file_tab=preview`, style `file_style`): the version's preview
+ * (previews.js `PreviewPane`). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
  * /stores/{store}/link-check`) and shows its result from the job's events.
  * Everything is read by store and path from the index, never from a file URL.
  */
 
-import { getSlot, getVersion, listRequestFiles, startLinkCheck } from "../api.js";
+import {
+  buildPreview,
+  getPreview,
+  getSlot,
+  getVersion,
+  listRequestFiles,
+  startLinkCheck,
+} from "../api.js";
 import { useApp } from "../context.js";
 import { count, day, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { file as L } from "../labels/file.js";
 import { T, t } from "../labels/index.js";
+import { PreviewPane } from "../previews.js";
 import { Link, readRoute, setParams } from "../router.js";
-import { CopyButton, html, Icon, ProblemView, Spinner, Tech, useEffect, useId, useRef } from "../ui.js";
+import {
+  CopyButton,
+  html,
+  Icon,
+  ProblemView,
+  Spinner,
+  Tech,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+} from "../ui.js";
 import {
   Badge,
   CopyAction,
@@ -41,6 +63,13 @@ await loadCardStyles();
 
 /** Address parameter of the chosen version. */
 export const VERSION_PARAM = "file_version";
+/** Address parameter of the version's tab: `preview`; the metadata without it. */
+export const TAB_PARAM = "file_tab";
+/** Address parameter of the preview's style (`PreviewInfo.styles`). */
+export const STYLE_PARAM = "file_style";
+const TABS = ["meta", "preview"];
+// The card's own parameters, gone with it.
+const CARD_PARAMS = [VERSION_PARAM, TAB_PARAM, STYLE_PARAM];
 const PERCENT = new Intl.NumberFormat("pl-PL", { style: "percent", maximumFractionDigits: 1 });
 
 /**
@@ -58,9 +87,11 @@ export default function FileCard({ route, value, onClose }) {
   useEffect(() => heading.current?.focus(), [value]);
   useEffect(
     () => () => {
-      // Closed by Esc, the button or another view: the version goes too.
+      // Closed by Esc, the button or another view: the version and tab go too.
       const { params } = readRoute();
-      if (!params.file && params[VERSION_PARAM]) setParams({ [VERSION_PARAM]: null }, { replace: true });
+      if (!params.file && CARD_PARAMS.some((name) => params[name])) {
+        setParams(Object.fromEntries(CARD_PARAMS.map((name) => [name, null])), { replace: true });
+      }
       if (opener.current?.isConnected) opener.current.focus();
     },
     [],
@@ -79,7 +110,9 @@ export default function FileCard({ route, value, onClose }) {
     <div class="drawer-body">
       ${address
         ? html`<${SlotCard} key=${value} store=${address.store} slot=${address.slot}
-            wanted=${route.params[VERSION_PARAM] ?? null} />`
+            wanted=${route.params[VERSION_PARAM] ?? null}
+            tab=${TABS.includes(route.params[TAB_PARAM]) ? route.params[TAB_PARAM] : TABS[0]}
+            style=${route.params[STYLE_PARAM] ?? null} />`
         : html`<p class="hint warn">${t(L.bad_address, { value })}</p>`}
     </div>
   </section>`;
@@ -101,7 +134,7 @@ function fileName(path) {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-function SlotCard({ store, slot, wanted }) {
+function SlotCard({ store, slot, wanted, tab, style }) {
   const { data: card, error, loading, reload } = useResource(
     (signal) => getSlot(store, slot, { signal }),
     [store, slot],
@@ -127,7 +160,8 @@ function SlotCard({ store, slot, wanted }) {
       : null}
     <${VersionAxis} versions=${versions} chosen=${chosen} />
     ${chosen
-      ? html`<${VersionDetails} key=${chosen.path} store=${store} card=${card} version=${chosen} />`
+      ? html`<${VersionDetails} key=${chosen.path} store=${store} card=${card} version=${chosen}
+          tab=${tab} style=${style} />`
       : html`<section class="det-sec"><${StandardPathRows} card=${card} /></section>`}
     <${LinkCheck} store=${store} card=${card} versions=${versions} onDone=${reload} />
     ${loading ? html`<${Spinner} quiet />` : null}
@@ -242,30 +276,78 @@ function Pins({ pins }) {
   </p>`;
 }
 
-function VersionDetails({ store, card, version }) {
-  const { data, error } = useResource(
-    (signal) => getVersion(store, version.path, { signal }),
-    [store, version.path],
-  );
+function VersionDetails({ store, card, version, tab, style }) {
+  const panel = useId();
   const title = version.label
     ? t(L.version.title, { label: version.label })
     : L.version.title_plain;
   return html`<section class="det-sec fc-details" aria-label=${title}>
     <h3 class="fc-version-title">
-      <${Tech} value=${[["path", version.path]]}>${title}</${Tech}>
+      <${Tech} value=${[["path", version.path], ["ref", version.ref]]}>${title}</${Tech}>
     </h3>
-    ${data
-      ? html`
-          <${Metadata} details=${data} />
-          <${License} details=${data} />
-          <${Paths} details=${data} card=${card} />
-          ${data.parent_request ? html`<${RequestFiles} details=${data} />` : null}
-          <${Sidecar} sidecar=${data.sidecar} />
-        `
-      : error
-        ? html`<${ProblemView} problem=${error.problem} compact />`
-        : html`<${Spinner} label=${L.version.loading} />`}
+    <${VersionTabs} tab=${tab} panel=${panel} />
+    <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
+      ${tab === "preview"
+        ? html`<${VersionPreview} store=${store} version=${version} style=${style} />`
+        : html`<${VersionMetadata} store=${store} card=${card} version=${version} />`}
+    </div>
   </section>`;
+}
+
+/**
+ * The tabs of a version (ARIA tabs: arrows, Home and End move between them);
+ * the chosen one lives in the address.
+ */
+function VersionTabs({ tab, panel }) {
+  const select = (name) => setParams({ [TAB_PARAM]: name === TABS[0] ? null : name }, { replace: true });
+  const key = (event) => {
+    const index = TABS.indexOf(tab);
+    const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    const name = TABS[(next + TABS.length) % TABS.length];
+    select(name);
+    event.currentTarget.querySelector(`[data-tab="${name}"]`)?.focus();
+  };
+  return html`<div class="fc-tabs" role="tablist" aria-label=${L.tabs.label} onKeyDown=${key}>
+    ${TABS.map(
+      (name) => html`<button type="button" role="tab" class="fc-tab" id=${`${panel}-${name}`} key=${name}
+        data-tab=${name} aria-selected=${name === tab ? "true" : "false"} aria-controls=${panel}
+        tabindex=${name === tab ? 0 : -1} onClick=${() => select(name)}>
+        <${Icon} name=${name === "preview" ? "eye" : "info"} size=${14} />${L.tabs[name]}
+      </button>`,
+    )}
+  </div>`;
+}
+
+function VersionMetadata({ store, card, version }) {
+  const { data, error } = useResource(
+    (signal) => getVersion(store, version.path, { signal }),
+    [store, version.path],
+  );
+  if (error && !data) return html`<${ProblemView} problem=${error.problem} compact />`;
+  if (!data) return html`<${Spinner} label=${L.version.loading} />`;
+  return html`
+    <${Metadata} details=${data} />
+    <${License} details=${data} />
+    <${Paths} details=${data} card=${card} />
+    ${data.parent_request ? html`<${RequestFiles} details=${data} />` : null}
+    <${Sidecar} sidecar=${data.sidecar} />
+  `;
+}
+
+/** The version's preview; its style lives in the address. */
+function VersionPreview({ store, version, style }) {
+  const preview = useMemo(
+    () => ({
+      key: version.ref,
+      load: (signal) => getPreview(store, version.path, { signal }),
+      build: (force) => buildPreview(store, version.path, { force }),
+    }),
+    [store, version.path, version.ref],
+  );
+  return html`<${PreviewPane} preview=${preview} name=${fileName(version.path)} style=${style}
+    onStyle=${(value) => setParams({ [STYLE_PARAM]: value }, { replace: true })} />`;
 }
 
 function Metadata({ details }) {

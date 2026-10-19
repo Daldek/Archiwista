@@ -82,6 +82,12 @@
 
 .fc-details { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }
 .fc-version-title { font-size: 13.5px; }
+/* tabs of a version: „Metadane”, „Podgląd” */
+.fc-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.fc-tab { display: inline-flex; align-items: center; gap: 6px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; padding: 6px 12px 7px; font-weight: 500; color: var(--text-2); cursor: pointer; border-radius: 6px 6px 0 0; }
+.fc-tab:hover { color: var(--text); background: var(--panel-2); }
+.fc-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.fc-panel { display: grid; gap: 10px; min-width: 0; }
 .fc-meta { margin: 0; grid-template-columns: 136px minmax(0, 1fr); }
 .fc-meta dd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .fc-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }

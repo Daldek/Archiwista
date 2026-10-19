@@ -1,13 +1,15 @@
 /**
  * The first-run wizard, and later the settings it edits (docs/SPEC.md 5.5,
- * docs/PLAN_v0.1.md 10a): stores (Kartograf's `--output` directory),
- * project directories and offline mode, saved at once with `PUT /settings`.
- * The server checks the directories and asks the producer about each new or
- * moved one; anything wrong keeps the settings in effect and comes back as
- * Polish problems per field, shown at the field. A new store's full scan is
- * started by the server's scheduler (step 6b) and its progress shows in the
- * index banner. The step lives in the address (`?view=setup&step=projects`,
- * `&saved=1` after a save), so Back walks the steps and a reload keeps them.
+ * docs/PLAN_v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's `--output`
+ * directory), project directories, offline mode and the preview cache
+ * limit (with the cache's usage from `/health`), saved at once with `PUT
+ * /settings`. The server checks the directories and asks the producer about
+ * each new or moved one; anything wrong keeps the settings in effect and
+ * comes back as Polish problems per field, shown at the field. A new store's
+ * full scan is started by the server's scheduler (step 6b) and its progress
+ * shows in the index banner. The step lives in the address
+ * (`?view=setup&step=projects`, `&saved=1` after a save), so Back walks the
+ * steps and a reload keeps them.
  */
 
 import { putSettings } from "./api.js";
@@ -25,7 +27,12 @@ const STORE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 /** Settings fields of problems: `stores[0].kartograf`, `project_dirs[1]`. */
 const FIELD = /^(stores|project_dirs)\[(\d+)\](?:\.(\w+))?$/;
 const STORE_FIELDS = new Set(["id", "name", "kartograf", "kind"]);
-const NO_ERRORS = { stores: {}, projects: {}, general: [] };
+const NO_ERRORS = { stores: {}, projects: {}, preview: null, general: [] };
+const LIMIT_GB = { min: 1, max: 10_000 };
+const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
+const CACHE_SIZE = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
+const SHARE = new Intl.NumberFormat("pl-PL", { style: "percent", maximumFractionDigits: 1 });
 
 let lastKey = 0;
 const nextKey = () => ++lastKey;
@@ -69,6 +76,11 @@ function Wizard({ initial }) {
       setErrors({ ...NO_ERRORS, stores: found });
       if (Object.keys(found).length) return;
     }
+    if (step === "mode") {
+      const limit = limitError(draft.previewLimit);
+      setErrors({ ...NO_ERRORS, preview: limit });
+      if (limit) return;
+    }
     go(STEPS[STEPS.indexOf(step) + 1]);
   };
 
@@ -77,6 +89,12 @@ function Wizard({ initial }) {
     if (Object.keys(found).length) {
       setErrors({ ...NO_ERRORS, stores: found });
       go("stores");
+      return;
+    }
+    const limit = limitError(draft.previewLimit);
+    if (limit) {
+      setErrors({ ...NO_ERRORS, preview: limit });
+      go("mode");
       return;
     }
     const body = bodyOf(initial, draft);
@@ -103,6 +121,7 @@ function Wizard({ initial }) {
       setProblem(error.problem);
       if (Object.keys(fields.stores).length) go("stores");
       else if (Object.keys(fields.projects).length) go("projects");
+      else if (fields.preview) go("mode");
     } finally {
       setSaving(false);
     }
@@ -121,7 +140,7 @@ function Wizard({ initial }) {
     : html`<form class="wizard-form" onSubmit=${submit} novalidate>
         ${step === "stores" ? html`<${StoresStep} draft=${draft} change=${change} errors=${errors} problem=${problem} />` : null}
         ${step === "projects" ? html`<${ProjectsStep} draft=${draft} change=${change} errors=${errors} problem=${problem} />` : null}
-        ${step === "mode" ? html`<${ModeStep} draft=${draft} change=${change} basemaps=${initial.basemaps ?? []} />` : null}
+        ${step === "mode" ? html`<${ModeStep} draft=${draft} change=${change} errors=${errors} basemaps=${initial.basemaps ?? []} />` : null}
         ${step === "save" ? html`<${SaveStep} draft=${draft} problem=${problem} saving=${saving} />` : null}
         <div class="wizard-actions">
           ${step !== STEPS[0]
@@ -227,7 +246,7 @@ function ProjectsStep({ draft, change, errors, problem }) {
   </section>`;
 }
 
-function ModeStep({ draft, change, basemaps }) {
+function ModeStep({ draft, change, errors, basemaps }) {
   const id = useId();
   return html`<section class="wizard-step-body">
     <fieldset class="step current">
@@ -238,10 +257,37 @@ function ModeStep({ draft, change, basemaps }) {
         <label for=${id}>${L.mode.offline}</label>
       </div>
       <p class="hint" id=${`${id}-hint`}>${L.mode.offline_hint}</p>
-      <p class="hint">${L.mode.basemaps}
+      <p class="hint">${L.mode.basemaps}${" "}
         ${basemaps.length ? basemaps.map((basemap) => basemap.name).join(", ") : L.mode.basemaps_none}</p>
     </fieldset>
+    <fieldset class="step current">
+      <legend class="step-title">${L.previews.legend}</legend>
+      <p class="hint">${L.previews.hint}</p>
+      <${TextField} label=${L.previews.limit} hint=${L.previews.limit_hint} value=${draft.previewLimit}
+        error=${errors.preview} name="preview_cache_limit_gb" type="number" min=${LIMIT_GB.min}
+        max=${LIMIT_GB.max} short onInput=${(value) => change({ previewLimit: value })} />
+      <${CacheUsage} />
+    </fieldset>
   </section>`;
+}
+
+/** The preview cache against its limit, as the server's `/health` gives it. */
+function CacheUsage() {
+  const { health } = useApp();
+  const usage = health?.previews;
+  if (!usage) return html`<p class="hint">${L.previews.usage_none}</p>`;
+  const share = usage.limit_bytes ? usage.used_bytes / usage.limit_bytes : 0;
+  return html`<div class="cache-usage">
+    <p class="hint">${t(L.previews.usage, {
+      used: cacheSize(usage.used_bytes),
+      limit: cacheSize(usage.limit_bytes),
+      percent: SHARE.format(share),
+      objects: int(usage.objects),
+      files: plural(usage.objects, T.common.units.files),
+    })}</p>
+    <progress max=${usage.limit_bytes} value=${Math.min(usage.used_bytes, usage.limit_bytes)}
+      aria-label=${L.previews.usage_label}></progress>
+  </div>`;
 }
 
 function SaveStep({ draft, problem, saving }) {
@@ -268,6 +314,8 @@ function SaveStep({ draft, problem, saving }) {
           : L.projects.none}</dd>
         <dt>${L.summary.mode}</dt>
         <dd>${draft.offline ? L.summary.offline : L.summary.online}</dd>
+        <dt>${L.summary.previews}</dt>
+        <dd>${t(L.summary.previews_value, { limit: draft.previewLimit.trim() })}</dd>
       </dl>
     </fieldset>
   </section>`;
@@ -337,12 +385,13 @@ function General({ errors, problem }) {
   </div>`;
 }
 
-function TextField({ label, hint, error, value, onInput, name, mono }) {
+function TextField({ label, hint, error, value, onInput, name, mono, short, type = "text", min, max }) {
   const id = useId();
   const described = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ");
+  const classes = [mono ? "mono" : null, short ? "short" : null].filter(Boolean).join(" ");
   return html`<div class=${error ? "field invalid" : "field"}>
     <label for=${id}>${label}</label>
-    <input id=${id} name=${name} type="text" class=${mono ? "mono" : null} value=${value}
+    <input id=${id} name=${name} type=${type} class=${classes || null} value=${value} min=${min} max=${max}
       spellcheck="false" autocomplete="off" aria-invalid=${error ? "true" : null}
       aria-describedby=${described || null} onInput=${(event) => onInput(event.currentTarget.value)} />
     ${error ? html`<span class="field-error" id=${`${id}-error`}>${error}</span>` : null}
@@ -378,6 +427,7 @@ function draftOf(settings) {
     stores: stores.length ? stores : [emptyStore()],
     projects: (settings.project_dirs ?? []).map((path) => ({ key: nextKey(), path })),
     offline: Boolean(settings.offline),
+    previewLimit: String(settings.preview_cache_limit_gb ?? 20),
   };
 }
 
@@ -395,6 +445,7 @@ function bodyOf(initial, draft) {
     settings: {
       ...initial,
       offline: draft.offline,
+      preview_cache_limit_gb: Number(draft.previewLimit.trim()),
       project_dirs: projects.map((dir) => dir.path.trim()),
       stores: draft.stores.map((store) => ({
         id: store.id.trim(),
@@ -424,9 +475,23 @@ function storeErrors(stores) {
   return errors;
 }
 
+/** Why a preview cache limit cannot be saved, or `null`. */
+function limitError(value) {
+  const text = value.trim();
+  const number = Number(text);
+  const valid = /^\d+$/.test(text) && number >= LIMIT_GB.min && number <= LIMIT_GB.max;
+  return valid ? null : L.previews.limit_invalid;
+}
+
+/** Bytes of the preview cache in its own unit: GB and MB of 1024³ and 1024² bytes. */
+function cacheSize(bytes) {
+  if (bytes >= GIB / 10) return `${CACHE_SIZE.format(bytes / GIB)} GB`;
+  return `${CACHE_SIZE.format(bytes / MIB)} MB`;
+}
+
 /** Problems of `PUT /settings` by the draft entry and field they concern. */
 function problemFields(problem, draft, projectKeys) {
-  const fields = { stores: {}, projects: {}, general: [] };
+  const fields = { stores: {}, projects: {}, preview: null, general: [] };
   for (const item of problem.problems ?? []) {
     const match = FIELD.exec(item.field ?? "");
     const index = match ? Number(match[2]) : -1;
@@ -436,6 +501,8 @@ function problemFields(problem, draft, projectKeys) {
       entry[name] = entry[name] ? `${entry[name]} ${item.message}` : item.message;
     } else if (match?.[1] === "project_dirs" && projectKeys[index] !== undefined) {
       fields.projects[projectKeys[index]] = item.message;
+    } else if (item.field === "preview_cache_limit_gb") {
+      fields.preview = item.message;
     } else {
       fields.general.push(item.message);
     }

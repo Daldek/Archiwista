@@ -34,6 +34,7 @@ export const common = {
     scan: "skan",
     footprints: "obrysy jednostek",
     link_check: "potwierdzenie dowiązania",
+    preview: "budowa podglądów",
   },
   job_state: {
     queued: "w kolejce",

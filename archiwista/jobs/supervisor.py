@@ -41,6 +41,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import sqlite3
@@ -83,6 +84,7 @@ from archiwista.jobs.protocol import (
     encode_spec,
 )
 from archiwista.messages import MESSAGES
+from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
 
@@ -117,6 +119,8 @@ FINISHED_STATES: tuple[JobState, ...] = (
 MAX_NETWORK_JOBS = 2
 # Refs of one ``preview`` job, also once others joined it.
 MAX_PREVIEW_REFS = 500
+# ``file_id`` of a ``snapshot`` job (``archiwista.index.own_file_id``).
+_FILE_ID = re.compile(r"[0-9a-f]{16}")
 # Seconds an interrupted worker has to stop before it is killed.
 STOP_TIMEOUT_S = 30.0
 LOG_MAX_AGE = timedelta(days=90)
@@ -162,10 +166,23 @@ _OWNER_LOCKS: dict[Path, tuple[IO[bytes], int]] = {}
 
 @dataclass(frozen=True, slots=True)
 class JobError:
-    """Why a job did not succeed: stable ``code`` and Polish ``detail``."""
+    """Why a job did not succeed: stable ``code`` and Polish ``detail``.
+
+    ``reason`` tells some codes apart: why a ``snapshot`` was blocked
+    (``snapshot_blocked``: ``folder_invalid``, ``read_only_folder``,
+    ``insufficient_space``, ``file_missing``); ``None`` for other codes.
+    """
 
     code: str
     detail: str
+    reason: str | None = None
+
+    def to_json(self) -> JsonObject:
+        """Return the error as kept and sent: ``code``, ``detail``, ``reason``."""
+        data: JsonObject = {"code": self.code, "detail": self.detail}
+        if self.reason is not None:
+            data["reason"] = self.reason
+        return data
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +193,7 @@ class JobRecord:
     ----------
     id : str
         Opaque job id.
-    kind : {"scan", "footprints", "link_check", "preview"}
+    kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
         What the job does.
     state : {"queued", "running", "succeeded", "failed", "interrupted", "cancelled"}
         Where the job is in its life.
@@ -190,11 +207,12 @@ class JobRecord:
         for the scheduler.
     store : str or None
         Configured id of the store it works on; ``None`` for a kind working
-        on no store (``preview``).
+        on no store (``preview``, ``own_scan``, ``snapshot``).
     params : dict
         Its parameters (``scan``: ``mode``, ``segment``; ``link_check``:
         ``slot``; ``preview``: ``refs``, their ``contents`` and ``force``,
-        with the refs of the requests that joined it).
+        with the refs of the requests that joined it; ``own_scan``: optional
+        ``project``; ``snapshot``: ``project``, ``file_id``, ``note``).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
@@ -228,7 +246,7 @@ class JobEvent:
     ``seq`` numbers a job's events from 1 (the SSE ``id``; resume after it
     with ``JobSupervisor.events``). ``type`` is ``progress``, ``notice`` or
     ``state``; a ``state`` event has ``data["state"]`` and, at the end,
-    ``result`` (succeeded) or ``error`` (``code``, ``detail``).
+    ``result`` (succeeded) or ``error`` (``code``, ``detail``, maybe ``reason``).
     """
 
     job_id: str
@@ -338,6 +356,11 @@ def _store_key(store: str | None, params: JsonObject) -> object:
     return store
 
 
+def _snapshot_key(store: str | None, params: JsonObject) -> object:
+    """Return the key of a ``snapshot`` job: its project and file."""
+    return (params["project"], params["file_id"])
+
+
 def _join_preview(active: JsonObject, new: JsonObject) -> JsonObject | None:
     """Add a ``preview`` request's refs to an active build of all its contents.
 
@@ -380,6 +403,8 @@ _INDEX_CONFLICT = JobConflict("index", _store_key, "job_conflict")
 _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
 # Only a waiting run takes a request: a running one may have passed the change.
 _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
+# One snapshot of a file at a time; those of other files run side by side.
+_SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job_conflict_snapshot")
 # The rule of each kind, one line per kind of ``JobKind``.
 JOB_RULES: Mapping[JobKind, JobRule] = {
     "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
@@ -387,6 +412,7 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "link_check": JobRule(store=True),
     "preview": JobRule(store=False, exclusive=True, join=_PREVIEW_JOIN),
     "own_scan": JobRule(store=False, exclusive=True, join=_OWN_SCAN_JOIN),
+    "snapshot": JobRule(store=False, conflict=_SNAPSHOT_CONFLICT),
 }
 
 
@@ -612,12 +638,12 @@ class JobSupervisor:
 
         Parameters
         ----------
-        kind : {"scan", "footprints", "link_check", "preview"}
+        kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
             What to run.
         store : str or None, optional
             Configured store id: required by a kind working on a store
             (``scan``, ``footprints``, ``link_check``), refused by one
-            working on none (``preview``).
+            working on none (``preview``, ``own_scan``, ``snapshot``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -625,7 +651,10 @@ class JobSupervisor:
             strings), ``contents`` (the content key of each ref, SHA-256 in
             lower-case hex) and ``force`` (build past the auto-build limits,
             ``False`` by default); a ref given twice with the same content
-            counts once.
+            counts once; ``own_scan``: optional ``project`` (its key);
+            ``snapshot``: ``project`` (its key), ``file_id`` (16 lower-case
+            hex characters) and ``note`` (at most 2000 characters, ``""`` by
+            default).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -1004,8 +1033,9 @@ class JobSupervisor:
         now = _now()
         with _transaction(db):
             row = db.execute(
-                "SELECT params, actor, (SELECT max(seq) FROM job_events e"
-                " WHERE e.job_id = jobs.id) AS seq FROM jobs WHERE id = ?",
+                "SELECT params, actor, actor_kind, session, (SELECT max(seq)"
+                " FROM job_events e WHERE e.job_id = jobs.id) AS seq FROM jobs"
+                " WHERE id = ?",
                 (waiting.job_id,),
             ).fetchone()
             db.execute(
@@ -1023,6 +1053,8 @@ class JobSupervisor:
             store=waiting.store,
             params=json.loads(row["params"]),
             actor=row["actor"],
+            actor_kind=row["actor_kind"],
+            session=row["session"],
             index_path=self._paths.index_file,
             cache_dir=self._paths.cache_dir,
             previews_dir=self._paths.previews_dir,
@@ -1119,7 +1151,7 @@ class JobSupervisor:
                 if run.result is not None and state == "succeeded":
                     data["result"] = run.result
                 if error is not None:
-                    data["error"] = {"code": error.code, "detail": error.detail}
+                    data["error"] = error.to_json()
                 db = self._open_db()
                 now = _now()
                 with _transaction(db):
@@ -1361,6 +1393,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return {"mode": mode, "segment": segment or None}
     if kind == "preview":
         return _preview_params(params)
+    if kind == "snapshot":
+        return _snapshot_params(params)
     if kind == "own_scan":
         project = params.get("project")
         if set(params) - {"project"} or not (
@@ -1376,6 +1410,23 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
+
+
+def _snapshot_params(params: Mapping[str, object]) -> JsonObject:
+    """Check a ``snapshot`` job's project, file and note."""
+    unknown = set(params) - {"project", "file_id", "note"}
+    project = params.get("project")
+    file_id = params.get("file_id")
+    note = params.get("note", "")
+    if (
+        unknown
+        or not (isinstance(project, str) and project)
+        or not (isinstance(file_id, str) and _FILE_ID.fullmatch(file_id))
+        or not isinstance(note, str)
+        or len(note) > MAX_NOTE_CHARS
+    ):
+        raise ValueError(f"invalid snapshot parameters {dict(params)!r}"[:300])
+    return {"project": project, "file_id": file_id, "note": note}
 
 
 def _preview_params(params: Mapping[str, object]) -> JsonObject:
@@ -1418,7 +1469,9 @@ def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | No
             CODE_INTERRUPTED, MESSAGES["job_interrupted_stop"]
         )
     if run.error is not None:
-        return "failed", JobError(str(run.error["code"]), str(run.error["detail"]))
+        return "failed", JobError(
+            str(run.error["code"]), str(run.error["detail"]), _reason(run.error)
+        )
     if status in (INTERRUPTED_EXIT, -signal.SIGINT):
         detail = MESSAGES["job_interrupted_signal"]
         return "interrupted", JobError(CODE_INTERRUPTED, detail)
@@ -1432,6 +1485,12 @@ def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | No
     return "failed", JobError(CODE_WORKER_CRASHED, detail)
 
 
+def _reason(error: JsonObject) -> str | None:
+    """Return the ``reason`` a worker's error message gives, if it gives one."""
+    reason = error.get("reason")
+    return reason if isinstance(reason, str) else None
+
+
 def _finish_row(
     db: sqlite3.Connection,
     job_id: str,
@@ -1440,7 +1499,7 @@ def _finish_row(
     now: datetime,
 ) -> JobEvent:
     """End a job that has no worker (any more) and record its state event."""
-    payload = {"code": error.code, "detail": error.detail}
+    payload = error.to_json()
     db.execute(
         "UPDATE jobs SET state = ?, finished_at = ?, error = ? WHERE id = ?",
         (state, _iso(now), _json(payload), job_id),
@@ -1489,7 +1548,9 @@ def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
         finished_at=_datetime(row["finished_at"]),
         progress=None if progress is None else json.loads(progress["data"]),
         result=None if row["summary"] is None else json.loads(row["summary"]),
-        error=None if error is None else JobError(error["code"], error["detail"]),
+        error=None
+        if error is None
+        else JobError(error["code"], error["detail"], error.get("reason")),
     )
 
 

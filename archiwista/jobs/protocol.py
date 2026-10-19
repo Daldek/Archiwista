@@ -12,8 +12,9 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
   ``warning``), a stable ``code`` and a Polish ``message``;
 - ``result``: the job's summary, a JSON object; the last line of a job
   that succeeded;
-- ``error``: why the job failed: a stable ``code``, a Polish ``detail``
-  and the ``exception`` class behind it.
+- ``error``: why the job failed: a stable ``code``, a Polish ``detail``,
+  the ``exception`` class behind it and, for ``snapshot_blocked``, the
+  ``reason``.
 
 Everything else the worker or a library writes goes to standard error, the
 job's log. The supervisor keeps ``progress`` and ``notice`` as job events
@@ -27,9 +28,10 @@ from typing import Any, Literal, cast, get_args
 
 from pydantic import ValidationError
 
+from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 
@@ -40,6 +42,7 @@ type JobKind = Literal[
     "link_check",
     "preview",
     "own_scan",
+    "snapshot",
 ]
 type MessageType = Literal["progress", "notice", "result", "error"]
 type NoticeLevel = Literal["info", "warning"]
@@ -48,6 +51,7 @@ type JsonObject = dict[str, Any]
 JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
 MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error")
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
+_PRINCIPAL_KINDS: tuple[PrincipalKind, ...] = get_args(PrincipalKind.__value__)
 
 # Codes of a job that did not succeed (its ``error.code``), besides those of
 # the HTTP API (``store_unavailable``, ``source_unavailable``,
@@ -82,17 +86,23 @@ class JobSpec:
     ----------
     job_id : str
         The job's id in the index.
-    kind : {"scan", "footprints", "link_check", "preview"}
+    kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
         What to run.
     store : str or None
         Configured id of the store the job works on; ``None`` for a kind
-        working on no store (``preview``).
+        working on no store (``preview``, ``own_scan``, ``snapshot``).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
-        ``refs``, their ``contents`` and ``force``).
+        ``refs``, their ``contents`` and ``force``; ``own_scan``: optional
+        ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``).
     actor : str
         Who asked for the job (``Principal.id``).
+    actor_kind : {"local_owner", "user", "agent", "scheduler"}
+        How (``Principal.kind``): a snapshot names its author so.
+    session : str or None
+        Label of the session the job was asked in; ``None`` at the terminal
+        and for the scheduler.
     index_path : Path
         The local index.
     cache_dir : Path
@@ -111,6 +121,8 @@ class JobSpec:
     store: str | None
     params: JsonObject
     actor: str
+    actor_kind: PrincipalKind
+    session: str | None
     index_path: Path
     cache_dir: Path
     previews_dir: Path
@@ -162,6 +174,8 @@ def encode_spec(spec: JobSpec) -> str:
                 "store": spec.store,
                 "params": spec.params,
                 "actor": spec.actor,
+                "actor_kind": spec.actor_kind,
+                "session": spec.session,
             },
             "index_path": str(spec.index_path),
             "cache_dir": str(spec.cache_dir),
@@ -196,12 +210,20 @@ def decode_spec(line: str) -> JobSpec:
         store = job["store"]
         if store is not None and not isinstance(store, str):
             raise TypeError("store")
+        actor_kind = job["actor_kind"]
+        if actor_kind not in _PRINCIPAL_KINDS:
+            raise ValueError(f"unknown actor kind {actor_kind!r}")
+        session = job["session"]
+        if session is not None and not isinstance(session, str):
+            raise TypeError("session")
         return JobSpec(
             job_id=str(job["id"]),
             kind=kind,
             store=store,
             params=params,
             actor=str(job["actor"]),
+            actor_kind=actor_kind,
+            session=session,
             index_path=Path(value["index_path"]),
             cache_dir=Path(value["cache_dir"]),
             previews_dir=Path(value["previews_dir"]),

@@ -91,6 +91,8 @@ def test_job_spec_keeps_settings_and_paths(
         store=store,
         params=params,
         actor="agent-7",
+        actor_kind="agent",
+        session="Przeglądarka 1",
         index_path=data / "index.sqlite",
         cache_dir=data / "cache",
         previews_dir=data / "previews",
@@ -104,16 +106,21 @@ def test_job_spec_keeps_settings_and_paths(
 @pytest.mark.parametrize(
     "line",
     [
-        '{"protocol": 1, "job": {"id": "a", "kind": "scan", "store": "s",'
-        ' "params": {}, "actor": "local"}, "index_path": "/i", "cache_dir": "/c",'
-        ' "previews_dir": "/p", "work_dir": "/w", "settings": {}}',
-        '{"protocol": 2, "job": {"id": "a", "kind": "download"}}',
         '{"protocol": 2, "job": {"id": "a", "kind": "scan", "store": "s",'
         ' "params": {}, "actor": "local"}, "index_path": "/i", "cache_dir": "/c",'
+        ' "previews_dir": "/p", "work_dir": "/w", "settings": {}}',
+        '{"protocol": 3, "job": {"id": "a", "kind": "download"}}',
+        '{"protocol": 3, "job": {"id": "a", "kind": "scan", "store": "s",'
+        ' "params": {}, "actor": "local", "actor_kind": "robot", "session": null},'
+        ' "index_path": "/i", "cache_dir": "/c", "previews_dir": "/p",'
+        ' "work_dir": "/w", "settings": {}}',
+        '{"protocol": 3, "job": {"id": "a", "kind": "scan", "store": "s",'
+        ' "params": {}, "actor": "local", "actor_kind": "local_owner",'
+        ' "session": null}, "index_path": "/i", "cache_dir": "/c",'
         ' "previews_dir": "/p", "work_dir": "/w", "settings": {"port": 1}}',
     ],
 )
 def test_decode_spec_rejects_unknown_jobs(line: str) -> None:
-    """Another protocol version, an unknown kind or invalid settings are refused."""
+    """Another protocol version, an unknown kind or actor, bad settings: refused."""
     with pytest.raises(ProtocolError):
         decode_spec(line)

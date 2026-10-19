@@ -1082,7 +1082,7 @@ działa.
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
 | 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | do zrobienia |
-| 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | do zrobienia |
+| 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | do zrobienia |
@@ -2734,6 +2734,80 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_settings_cache_limit_and_usage`, `test_no_csp_violations_previews`,
   `test_offline_previews_make_no_external_requests`).
 - **Zależności:** 6. **Równolegle:** 9, 10, 11.
+- **Stan po kroku 12a:**
+  - *Karta pliku* (`views/file.js`). Wersja ma dwie zakładki ARIA
+    (`tablist`, strzałki, Home, End): „Metadane” — treść karty v0.1 bez
+    zmian — i „Podgląd” (`PreviewPane`). Odstępstwo: domyślna zostaje
+    „Metadane”, „Podgląd” jest drugą zakładką — otwarcie karty z mapy,
+    Katalogu czy wyszukiwania nie uruchamia procesów renderujących
+    (podgląd na żądanie), a karta i testy v0.1 się nie zmieniają. Zakładka
+    i styl są w adresie (`file_tab=preview`, `file_style=<styl>`; stałe
+    `TAB_PARAM`, `STYLE_PARAM`), znikają z kartą razem z `file_version`
+    (`CARD_PARAMS`), więc styl zostaje przy przejściu między wersjami na
+    osi. Wartości techniczne tytułu wersji: `path` i `ref`.
+  - *Moduł* `src/previews.js` z własnym arkuszem `src/previews.css`
+    (odstępstwo: plan wymieniał `views/cards.css`; jak `search.js`
+    i `search.css`, bo moduł posłuży mapie, Wachlarzowi i danym własnym;
+    `cards.css` dostał tylko zakładki). Eksporty:
+    `usePreviewImage(address) -> {src, problem, loading}` (`blob:`
+    z `getImage`, zwalniany przy zmianie adresu i odmontowaniu, poprzedni
+    obraz zostaje do nadejścia następnego; problem `409` z `reason`
+    pokazuje `PreviewReason`), `PreviewPane({preview, name, style,
+    onStyle, children})` z `PreviewSource` = `{key, load(signal),
+    build(force)}` (wersja: `getPreview`/`buildPreview`; plik własny
+    i migawka — funkcje kroku 9 w kroku 15), `PreviewLegend` (gradient
+    z `colors` i zakresem z jednostką albo klasy z próbkami kolorów —
+    kolory tylko `#rrggbb`), `PreviewReason` (komunikat, „Co zrobić:”,
+    kod i komunikat biblioteki pod `Tech`; nuta przy pliku pokazującym coś
+    mimo powodu, ostrzeżenie przy `unavailable`/`failed`), `styleName`,
+    `THUMBNAIL_SIZE` (512). Panel: miniatura w wybranym stylu, przełącznik
+    stylów (`Seg`, przy > 1 stylu), legenda stylu (`legends[styl]`),
+    powód, fakty (rodzaj, stan, „Na mapie”), budowa: `needs_build`
+    z `auto_build` — sama, raz na obiekt i stronę (`AUTO_ASKED`), plik
+    ponad progi albo po nieudanej budowie automatycznej — „Zbuduj
+    podgląd” (`force: true`), `building` — śledzenie `info.job`; postęp
+    przez `useJob`/`JobStatus` (podsumowanie: zbudowane, z pamięci,
+    nieudane z kodem i opisem, sekundy), po końcu zadania opis od nowa;
+    miniatura pliku ponad progi czeka na budowę (bez żądania); „Sprawdź
+    ponownie” przy `failed` i powodach chwilowych (`TRANSIENT_REASONS`);
+    wektor — warstwy (`<details>`: układ, pola z typami po polsku, tabela
+    próbki atrybutów), LAZ — nagłówek, klasy ASPRS z udziałem i opis
+    próby (`sampled_from`), ZIP — człony z `members_url` (pierwsze 200,
+    „Pokaż wszystkie”).
+  - *Klient API* (`api.js`): `getPreview`, `buildPreview` (`202 JobDetail`
+    albo `200 PreviewInfo` bez `id`), dla adresów z odpowiedzi
+    `apiAddress(address, query)` (tylko `/api/v1/` tego pochodzenia,
+    inaczej wyjątek — token CSRF nie wychodzi gdzie indziej; dokłada
+    udokumentowane parametry), `getImage(address) -> Blob`,
+    `getLinked(address) -> JSON`; `request` i one dzielą `send` (nagłówek
+    CSRF, problemy, utrata sesji). `types.js`: `PreviewInfo` i modele
+    kroku 6, `Health.previews`, `Settings.preview_cache_limit_gb`, `ref`
+    w `Version`/`VersionCard`, rodzaj zadania `preview`.
+  - *Odstępstwo od umowy API kroku 6* (uzgodnione z jego wykonawcą):
+    `GradientLegend.colors` (model gubił `colors` z `legends.legend`)
+    i `PreviewInfo.legends` (legenda każdego stylu, który ją ma, po
+    nazwie stylu; `legend` bez zmian) — bez nich interfejs nie narysuje
+    rampy ani legendy hipsometrii NMT, którego stylem domyślnym jest
+    cieniowanie.
+  - *Ustawienia* (`setup.js`): zestaw „Pamięć podglądów” w kroku „Tryb
+    pracy” (bez nowego kroku kreatora — przebieg i testy v0.1 bez zmian):
+    pole limitu (liczba całkowita 1–10 000 sprawdzana przed „Dalej”
+    i zapisem; problem serwera z polem `preview_cache_limit_gb` przy
+    polu), zajętość z `/health` (`previews`) w GB i MB po 1024³ i 1024²
+    bajtów jak limit, procent, liczba plików z podglądami, pasek; wiersz
+    podsumowania „Pamięć podglądów: limit N GB”. Wspólne drobiazgi:
+    `labels/common.js` `job_kind.preview`, `styles.css` (`.field
+    input.short`, `.cache-usage`), spacja przed nazwami podkładów.
+  - *Próby*: `tests/e2e/test_previews.py` (6 testów, ok. 44 s): miniatura
+    `blob:` z nagłówkiem CSRF i rampa z `colors` po przełączeniu na
+    hipsometrię, powody JGW i PNG z zaleceniem i człony ZIP zgodne
+    z `zipfile`, budowa ASC sama przy pierwszym podglądzie (`POST` z
+    `force: false`, pasek postępu, „zakończone”, „gotowy”, bez ponownej
+    budowy po przeładowaniu), limit i zajętość w Ustawieniach, wszystkie
+    rodzaje bez naruszeń CSP i bez żądań poza serwer offline. Zrzuty
+    (`<katalog-danych>/v02-12a/`, 13 widoków, także raster ponad progi —
+    `hostile_files.huge_raster` pod wersją: „Zbuduj podgląd” → zadanie —
+    i telefon 390 px). Inne pliki e2e nie uruchamiane (zasady szybkości).
 
 ### 12b. Interfejs: podglądy na mapie
 - **Cel:** `transformRequest` w `map/canvas.js`; podgląd wersji na mapie

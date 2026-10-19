@@ -518,6 +518,11 @@ class PreviewService:
             and probe.maxzoom is not None
         )
         default = probe.default_style
+        legends = {
+            style: found
+            for style in probe.styles
+            if (found := legend_model(legend(probe, style))) is not None
+        }
         return PreviewInfo(
             ref=located.text,
             state=state,
@@ -542,7 +547,8 @@ class PreviewService:
             bounds=None if probe.bbox_wgs84 is None else list(probe.bbox_wgs84),
             minzoom=probe.minzoom,
             maxzoom=probe.maxzoom,
-            legend=None if default is None else legend_model(legend(probe, default)),
+            legend=None if default is None else legends.get(default),
+            legends=legends,
             layers=list(probe.layers),
             points=probe.points,
             size_bytes=source.size_bytes,
@@ -692,6 +698,7 @@ def _unavailable(
         minzoom=None,
         maxzoom=None,
         legend=None,
+        legends={},
         layers=[],
         points=None,
         size_bytes=None if source is None else source.size_bytes,

@@ -79,6 +79,8 @@
  * @property {IndexInfo} index
  * @property {StoreItem[]} stores - Configured stores: availability, last scan, running
  *   job.
+ * @property {PreviewsState|null} [previews] - Preview cache and render processes of the
+ *   server (v0.2).
  */
 
 /**
@@ -425,6 +427,8 @@
  *
  * @typedef {object} Version
  * @property {string} path - Version path in the store.
+ * @property {string} ref - Reference of the version (`version:<store>:<path>`) for its
+ *   previews, `archiwista preview` and comparisons; copy it, never compose it.
  * @property {string|null} label - Version label, e.g. `2025-04-26_82710`.
  * @property {string|null} label_source - What the label is: `campaign`, `edition` or
  *   `downloaded`.
@@ -487,6 +491,7 @@
  *   it is current.
  * @property {string} store
  * @property {string} slot
+ * @property {string} ref - Reference of the version (`version:<store>:<path>`).
  * @property {Segment} segment
  * @property {Version} version
  * @property {string|null} dataset
@@ -782,6 +787,8 @@
  *   `store_writer` (v0.3).
  * @property {"public"|"private"} [default_project_visibility] - Visibility of a project
  *   without its own access entry.
+ * @property {number} [preview_cache_limit_gb] - Preview cache limit in GB (1024³ bytes),
+ *   1–10 000; the least recently used previews go first.
  */
 
 // Background jobs (9b) -------------------------------------------------------
@@ -801,7 +808,7 @@
  *
  * @typedef {object} JobDetail
  * @property {string} id
- * @property {"scan"|"footprints"|"link_check"} kind
+ * @property {"scan"|"footprints"|"link_check"|"preview"} kind
  * @property {"queued"|"running"|"succeeded"|"failed"|"interrupted"|"cancelled"} state
  * @property {string} actor - Who started it.
  * @property {"local_owner"|"user"|"agent"|"scheduler"} actor_kind - How: the owner, an
@@ -924,6 +931,164 @@
  * @property {string} product
  * @property {string} store
  * @property {string} [segment]
+ */
+
+// Previews (v0.2, step 6) ----------------------------------------------------
+
+/**
+ * @typedef {"raster"|"image"|"vector"|"points"|"archive"|"document"|"auxiliary"|"unknown"}
+ *   PreviewKind
+ */
+
+/**
+ * @typedef {"ready"|"needs_build"|"building"|"unavailable"|"failed"} PreviewState
+ */
+
+/**
+ * @typedef {"hillshade"|"hypsometry"|"rgb"|"gray"|"classes"|"features"|"elevation"}
+ *   StyleName
+ */
+
+/**
+ * Why a file has no preview, or no map preview.
+ *
+ * @typedef {object} PreviewReasonInfo
+ * @property {string} code - Stable code: no_georeference, no_crs, auxiliary_file,
+ *   archive_members_only, document_no_preview, unsupported_format, too_large,
+ *   missing_file, store_unavailable, transform_unavailable, unreadable, timeout,
+ *   memory_limit or changed_since_scan.
+ * @property {string} message - What is missing and why, in Polish.
+ * @property {string} fix - What a person can do about it, in Polish.
+ * @property {string|null} detail - The library's own message (no paths), only in the
+ *   answer that found it.
+ */
+
+/**
+ * Colours from `min` to `max` of continuous values (hypsometry, elevation).
+ *
+ * @typedef {object} GradientLegend
+ * @property {"gradient"} kind
+ * @property {number} min
+ * @property {number} max
+ * @property {string|null} unit - Unit of the values, e.g. `m`.
+ * @property {string[]} colors - Colours of the ramp from `min` to `max`, evenly spaced,
+ *   `#rrggbb`.
+ */
+
+/**
+ * Classes with their colours (CORINE, HSG, a palette of the file).
+ *
+ * @typedef {object} ClassesLegend
+ * @property {"classes"} kind
+ * @property {Array<{value: number, color: string, label: string}>} items - `color`
+ *   `#rrggbb`; `label` the Polish name of the class, else the value.
+ */
+
+/**
+ * A layer of a vector file.
+ *
+ * @typedef {object} VectorLayer
+ * @property {string|null} name - Null for a layer named after its file (Shapefile,
+ *   GeoJSON, FlatGeobuf).
+ * @property {string|null} geometry_type - OGR's name, e.g. `LineString`; null for a
+ *   table without geometry.
+ * @property {number|null} feature_count
+ * @property {Array<{name: string, type: string}>} fields - `type` as OGR names it,
+ *   e.g. `String`, `Integer64`.
+ * @property {string|null} crs
+ * @property {number[]|null} bbox - In the layer's CRS.
+ * @property {number[]|null} bbox_wgs84
+ * @property {Array<Object<string, *>>|null} sample - At most 20 rows; `null` for NULL,
+ *   binary and infinite values, long texts shortened with „…”.
+ */
+
+/**
+ * Header, density and classes of a point cloud (LAZ, LAS).
+ *
+ * @typedef {object} PointCloud
+ * @property {string} version - LAS version, e.g. `1.4`.
+ * @property {number} point_format
+ * @property {number} point_count
+ * @property {boolean} compressed - LAZ.
+ * @property {number[]} min - X, Y, Z.
+ * @property {number[]} max - X, Y, Z.
+ * @property {number|null} density_per_m2 - Only in a planar CRS.
+ * @property {string|null} creation_date
+ * @property {string|null} generating_software
+ * @property {Array<{value: number, label: string, count: number}>} classes - ASPRS
+ *   classes of the sample, Polish labels.
+ * @property {number} sample_points
+ * @property {"all"|"spread"|"start"} sampled_from - The whole cloud, a sample spread
+ *   along the file, or its start (a LAZ without a chunk table).
+ */
+
+/**
+ * The preview of one object (`GET …/preview`): state, reason, styles, legends,
+ * addresses of its images (built by the server, never by the client) and build.
+ *
+ * @typedef {object} PreviewInfo
+ * @property {string} ref - The object (`version:<store>:<path>`).
+ * @property {PreviewState} state - `ready`, `needs_build` (map tiles need a local
+ *   preview first; with `auto_build` the interface builds it at once), `building`
+ *   (`job` builds it), `unavailable` (nothing to show: `reason`) or `failed` (a time
+ *   or memory limit: try again later).
+ * @property {PreviewKind} kind
+ * @property {PreviewReasonInfo|null} reason - Why something is missing (no map, no
+ *   preview).
+ * @property {StyleName[]} styles - Styles of the thumbnail and tiles; empty without
+ *   them.
+ * @property {StyleName|null} default_style
+ * @property {string|null} thumbnail_url - PNG thumbnail; add `style`, `size` (128,
+ *   256, 512, 1024), `bbox`, `bbox_crs`.
+ * @property {string|null} tiles_url - `{z}/{x}/{y}` template within `minzoom`–`maxzoom`
+ *   and `bounds`; add `style`, `rescale`.
+ * @property {string|null} features_url - Template with `{bbox}` and `{zoom}`; add
+ *   `layer`, `limit`.
+ * @property {string|null} members_url - Members of an archive (`ArchiveMembers`).
+ * @property {number[]|null} bounds - WGS84: west, south, east, north.
+ * @property {number|null} minzoom
+ * @property {number|null} maxzoom
+ * @property {GradientLegend|ClassesLegend|null} legend - Legend of the default style.
+ * @property {Object<string, GradientLegend|ClassesLegend>} legends - Legend of every
+ *   style that has one, by style.
+ * @property {VectorLayer[]} layers
+ * @property {PointCloud|null} points
+ * @property {number|null} size_bytes
+ * @property {boolean} auto_build - Whether the build starts at the first view (a file
+ *   of at most 2 GB, a raster of at most 1 Gpx and 8 GB unpacked).
+ * @property {{id: string, state: string}|null} job - The `preview` job building it.
+ */
+
+/**
+ * A member of a ZIP archive, as its central directory lists it.
+ *
+ * @typedef {object} ArchiveMember
+ * @property {string} name - Name in the archive (not unpacked).
+ * @property {number} size_bytes
+ * @property {number} compressed_bytes
+ * @property {boolean} directory
+ * @property {string} format - Format by the name's extension.
+ * @property {PreviewKind} kind
+ */
+
+/**
+ * Members of an archive, read without unpacking it (`members_url`).
+ *
+ * @typedef {object} ArchiveMembers
+ * @property {string} ref
+ * @property {number} total - Members the archive declares.
+ * @property {boolean} truncated - More than the first 10 000 are not listed.
+ * @property {ArchiveMember[]} members
+ */
+
+/**
+ * The preview cache against its limit, and the render processes (`/health`).
+ *
+ * @typedef {object} PreviewsState
+ * @property {number} used_bytes - Bytes of the preview cache.
+ * @property {number} limit_bytes - Its limit (`preview_cache_limit_gb`).
+ * @property {number} objects - Objects: previews of one content each.
+ * @property {number} workers - Render processes at most.
  */
 
 export {};

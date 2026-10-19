@@ -11,12 +11,16 @@ JSON or misses a field is ``InvalidSnapshotError``.
 """
 
 import json
+import os
 import re
+import stat
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
-from archiwista.owndata.content import ContentMethod
+from archiwista.owndata.content import ContentMethod, file_sha256
 
 type SnapshotFormat = Literal["archiwista-snapshot/1"]
 type AuthorKind = Literal["local_owner", "user", "agent"]
@@ -29,6 +33,8 @@ SNAPSHOTS_DIR = ".wersje"
 INCOMING_DIR = ".incoming"
 SNAPSHOT_FILE = "migawka.json"
 MAX_NOTE_CHARS = 2000
+# A ``migawka.json`` larger than this is not a snapshot document.
+MAX_DOCUMENT_BYTES = 1024**2
 # ``<YYYY-MM-DD>_<sha8>``, then ``_<n>`` for the same content the same day.
 LABEL_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9a-f]{8}(?:_[0-9]+)?")
 _SHA256 = r"^[0-9a-f]{64}$"
@@ -195,3 +201,57 @@ def parse_snapshot_document(data: bytes) -> tuple[dict[str, object], SnapshotDoc
     except ValidationError as error:
         raise InvalidSnapshotError(str(error)) from error
     return raw, document
+
+
+def read_snapshot_document(
+    directory: Path,
+) -> tuple[dict[str, object], SnapshotDocument]:
+    """Read ``migawka.json`` of a snapshot directory (``parse_snapshot_document``).
+
+    A document that is a link, not a regular file or larger than
+    ``MAX_DOCUMENT_BYTES`` is refused unread.
+
+    Raises
+    ------
+    UnknownSnapshotSchemaError
+        Another ``schema``.
+    InvalidSnapshotError
+        Not a regular file, too large, or not a valid document.
+    OSError
+        The file cannot be read.
+    """
+    path = directory / SNAPSHOT_FILE
+    found = path.lstat()
+    if not stat.S_ISREG(found.st_mode) or found.st_size > MAX_DOCUMENT_BYTES:
+        raise InvalidSnapshotError("not a snapshot document")
+    with path.open("rb") as stream:
+        return parse_snapshot_document(stream.read(MAX_DOCUMENT_BYTES + 1))
+
+
+def snapshot_files_match(directory: Path, files: Sequence[SnapshotFile]) -> bool:
+    """Whether a snapshot directory holds exactly its document's files.
+
+    Every file the document names, with its size and SHA-256, and no other
+    besides ``migawka.json``.
+
+    Raises
+    ------
+    OSError
+        The directory cannot be listed or a file read.
+    """
+    expected = {item.name: item for item in files}
+    with os.scandir(directory) as entries:
+        present = {
+            entry.name: entry for entry in entries if entry.name != SNAPSHOT_FILE
+        }
+    if present.keys() != expected.keys():
+        return False
+    for name, item in expected.items():
+        entry = present[name]
+        if not entry.is_file(follow_symlinks=False):
+            return False
+        if entry.stat(follow_symlinks=False).st_size != item.size_bytes:
+            return False
+        if file_sha256(Path(entry.path)) != item.sha256:
+            return False
+    return True

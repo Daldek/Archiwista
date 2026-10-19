@@ -17,6 +17,9 @@ environment the test sets, which the worker inherits:
     (``tests.fixtures.render_worker``).
 ``ARCHIWISTA_TEST_BUILD_TIMEOUT_S``, ``ARCHIWISTA_TEST_BUILD_PROCESSES``
     Time limit of one build and build processes at once of that job.
+``ARCHIWISTA_TEST_SNAPSHOT_FAULT``
+    ``<phase>:<signal>``, e.g. ``rename:SIGKILL``: the worker sends itself
+    the signal when a snapshot reaches the phase (``SNAPSHOT_PHASES``).
 """
 
 import json
@@ -26,7 +29,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +37,8 @@ from archiwista.adapter.kartograf.adapter import KartografAdapter
 from archiwista.errors import NotFoundError
 from archiwista.jobs import worker
 from archiwista.jobs.protocol import JobSpec
+from archiwista.owndata import snapshots
+from archiwista.owndata.snapshots import SnapshotPhase, SnapshotResult
 from archiwista.previews import build
 from archiwista.previews.types import PreviewSource
 from archiwista.sources import ScanScope, SourceEntry
@@ -45,6 +50,7 @@ NO_NETWORK_ENV = "ARCHIWISTA_TEST_NO_NETWORK"
 PREVIEW_SOURCES_ENV = "ARCHIWISTA_TEST_PREVIEW_SOURCES"
 BUILD_TIMEOUT_ENV = "ARCHIWISTA_TEST_BUILD_TIMEOUT_S"
 BUILD_PROCESSES_ENV = "ARCHIWISTA_TEST_BUILD_PROCESSES"
+SNAPSHOT_FAULT_ENV = "ARCHIWISTA_TEST_SNAPSHOT_FAULT"
 
 
 def _hook_entries(delay_s: float, crash_after: int | None) -> None:
@@ -105,6 +111,28 @@ def _hook_previews(sources: Path) -> None:
         build.build_processes = lambda: int(processes)
 
 
+def _hook_snapshots(fault: str) -> None:
+    """Send the worker a signal when a snapshot reaches a phase."""
+    phase, _, name = fault.partition(":")
+    sent = signal.Signals[name]
+    real = snapshots.make_snapshot
+
+    def make_snapshot(
+        *args: Any,
+        on_phase: Callable[[SnapshotPhase], None] | None = None,
+        **kwargs: Any,
+    ) -> SnapshotResult:
+        def reached(done: SnapshotPhase) -> None:
+            if on_phase is not None:
+                on_phase(done)
+            if done == phase:
+                os.kill(os.getpid(), sent)
+
+        return real(*args, on_phase=reached, **kwargs)
+
+    worker.make_snapshot = make_snapshot  # type: ignore[attr-defined]
+
+
 def main() -> int:
     """Arm the hooks named in the environment and run the real worker."""
     delay = float(os.environ.get(DELAY_ENV, "0"))
@@ -117,6 +145,9 @@ def main() -> int:
     sources = os.environ.get(PREVIEW_SOURCES_ENV)
     if sources:
         _hook_previews(Path(sources))
+    fault = os.environ.get(SNAPSHOT_FAULT_ENV)
+    if fault:
+        _hook_snapshots(fault)
     return worker.main()
 
 

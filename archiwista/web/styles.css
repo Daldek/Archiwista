@@ -310,6 +310,10 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .outcome { display: inline-flex; gap: 6px; align-items: center; }
 .outcome.ok { color: var(--ok-ink); }
 .outcome.warn { color: var(--warn-ink); }
+.field input.short { max-width: 180px; }
+.cache-usage { display: grid; gap: 6px; }
+.cache-usage .hint { margin: 0; }
+.cache-usage progress { width: 100%; max-width: 420px; }
 
 /* ---------- centre of a view: bar, map, overlays ---------- */
 .center-bar { display: flex; align-items: center; gap: 12px; padding: 9px 14px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 50px; flex-wrap: wrap; }

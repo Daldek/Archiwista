@@ -1,10 +1,12 @@
-"""Polish texts of the projects' own data (plan v0.2, decision 8).
+"""Polish texts of the projects' own data (plan v0.2, decisions 8 and 9).
 
 The settings problems of a data folder (``own_data_dir_<code>``), the
 problems of a folder, its files and snapshots with their fixes
 (``problem_<code>``, ``fix_<code>``; ``archiwista.services.problems``), the
-reasons a folder is refused (``own_folder_reason_<reason>``) and the
-``own_scan`` job.
+reasons a folder is refused (``own_folder_reason_<reason>``), the
+``own_scan`` job, and snapshots: why one is blocked
+(``snapshot_blocked_<reason>``), why it failed (``snapshot_<code>``), its
+warnings and the ``snapshot`` job.
 """
 
 from types import MappingProxyType
@@ -121,6 +123,69 @@ OWN_DATA_MESSAGES = MappingProxyType(
         "job_kind_own_scan": "skan danych własnych",
         "own_scan_reader_failed": (
             "Nie można uruchomić procesu czytającego pliki danych własnych: {detail}"
+        ),
+        # Snapshots (``archiwista.owndata.snapshots``) and the ``snapshot`` job.
+        "job_kind_snapshot": "migawka",
+        "job_conflict_snapshot": (
+            "Migawka tego pliku już trwa: zadanie {job} ({state}). Poczekaj na"
+            " jego koniec."
+        ),
+        "own_file_not_found": (
+            "Projekt „{project}” nie ma w danych własnych pliku {file_id} —"
+            " odśwież dane własne projektu."
+        ),
+        "snapshot_blocked_folder_invalid": (
+            "Folder danych {path} nie przyjmie migawki: {reason}."
+        ),
+        "snapshot_blocked_folder_unavailable": (
+            "Folder danych {path} nie istnieje albo nie można go odczytać —"
+            " migawka nie powstanie."
+        ),
+        "snapshot_blocked_file_missing": (
+            "Pliku {file} nie ma w folderze danych {path} — odśwież dane własne"
+            " projektu."
+        ),
+        "snapshot_blocked_read_only_folder": (
+            "Brak prawa zapisu w {path} — migawka nie może tam powstać."
+        ),
+        "snapshot_blocked_insufficient_space": (
+            "Za mało miejsca w folderze danych {path}: migawka potrzebuje {needed},"
+            " wolne {free}."
+        ),
+        "snapshot_blocked_insufficient_work_space": (
+            "Za mało miejsca w katalogu roboczym Archiwisty {path}: kopia bazy"
+            " potrzebuje {needed}, wolne {free}."
+        ),
+        "snapshot_inconsistent_copy": (
+            "Plik {file} zmieniał się w trakcie kopiowania — zakończ edycję"
+            " i spróbuj ponownie."
+        ),
+        "snapshot_checksum_mismatch": (
+            "Zapisana kopia {name} różni się od odczytanej (suma SHA-256) —"
+            " sprawdź dysk albo udział sieciowy i spróbuj ponownie."
+        ),
+        "snapshot_integrity_failed": (
+            "Kopia bazy {file} nie przechodzi sprawdzenia integralności SQLite"
+            " ({detail}) — plik może być uszkodzony."
+        ),
+        "snapshot_target_exists": (
+            "Migawka {label} pliku {file} powstała w tej samej chwili w innym"
+            " procesie; Archiwista jej nie nadpisuje — spróbuj ponownie."
+        ),
+        "snapshot_editing_detected": (
+            "Plik {file} jest otwarty w edytorze albo edytor go nie zamknął:"
+            " migawka obejmie tylko zatwierdzone zmiany."
+        ),
+        "snapshot_chmod_refused": (
+            "System plików nie oznaczył migawki jako tylko do odczytu ({detail})"
+            " — chroń ją uprawnieniami folderu."
+        ),
+        "snapshot_directory_sync_refused": (
+            "System plików nie potwierdził zapisu katalogu migawki na dysku ({detail})."
+        ),
+        "snapshot_not_indexed": (
+            "Migawka {label} jest zapisana, ale indeks jej jeszcze nie zna —"
+            " doda ją najbliższe odświeżenie danych własnych."
         ),
     }
 )
