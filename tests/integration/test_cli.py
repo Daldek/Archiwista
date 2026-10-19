@@ -26,6 +26,13 @@ from tests.fixtures import api_store
 from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.api_store import ServedStore, served_store
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
+from tests.fixtures.layer_store import (
+    AREA_SHEET,
+    PRODUCT,
+    ServedLayers,
+    served_layer_store,
+    sheet_polygon,
+)
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.preview_api import (
     PreviewApi,
@@ -624,3 +631,105 @@ def test_preview_output_writes_png(
     assert output.read_bytes() == answered.content
     assert 0 < max(decoded_png(answered.content).shape[1:]) <= 256
     assert previews.pool.stats().rendered == rendered
+
+
+# Layers (plan v0.2, step 11).
+
+
+@pytest.fixture(scope="module")
+def layers(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ServedLayers]:
+    """Serve the store of a product's years and campaigns for ``layers``."""
+    with served_layer_store(tmp_path_factory.mktemp("cli-layers")) as found:
+        yield found
+
+
+_LAYERS_STORE = ("--store", api_store.STORE, "--product", PRODUCT)
+
+
+def _layers(
+    layers: ServedLayers,
+    capsys: pytest.CaptureFixture[str],
+    *argv: str,
+    status: int = 0,
+) -> Any:
+    """Run ``archiwista layers --store … --product … --json`` over the store."""
+    capsys.readouterr()
+    command = ["layers", *_LAYERS_STORE, *argv, "--json"]
+    code = main(command, paths=layers.api.api.paths)
+    captured = capsys.readouterr()
+    assert code == status, captured.err
+    return json.loads(captured.out)
+
+
+def _layers_url(route: str, **params: str) -> str:
+    """Return the address of ``/local-layers{route}`` with a query."""
+    return f"/api/v1/local-layers{route}?{urlencode(params)}"
+
+
+def test_layers_cli_equals_http(
+    layers: ServedLayers, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """``layers --json`` is ``GET /local-layers``, refusals and ``--thumbnail`` too.
+
+    With an area once the server has built the layers' previews: the command
+    submits no jobs, so it would name none while they run.
+    """
+    # Arrange
+    served = layers.api
+    created = served.owner.request(
+        "POST", "/areas", json={"geometry": sheet_polygon(AREA_SHEET)}
+    )
+    area = created.json()["id"]
+    query = {"store": api_store.STORE, "product": PRODUCT}
+    for layer in served.get(_layers_url("", **query, area_id=area)).json()["layers"]:
+        if layer["preview"]["job"] is not None:
+            served.wait(layer["preview"]["job"]["id"])
+    built = served.get(_layers_url("", **query, area_id=area)).json()
+    key = built["layers"][0]["key"]
+    output, refused = tmp_path / "warstwa.png", tmp_path / "brak.png"
+    image = {**query, "area_id": area, "size": "256"}
+
+    # Act
+    whole = _layers(layers, capsys)
+    by_campaign = _layers(layers, capsys, "--group", "campaign")
+    shown = _layers(
+        layers,
+        capsys,
+        "--area-id",
+        area,
+        "--thumbnail",
+        key,
+        "--output",
+        str(output),
+        "--size",
+        "256",
+    )
+    unknown = _layers(layers, capsys, "--area-id", "nieznany", status=1)
+    missing = _layers(
+        layers,
+        capsys,
+        "--area-id",
+        area,
+        "--thumbnail",
+        "nie:ma",
+        "--output",
+        str(refused),
+        status=1,
+    )
+    usage = main(["layers", *_LAYERS_STORE, "--thumbnail", key], paths=served.api.paths)
+
+    # Assert
+    assert whole == served.get(_layers_url("", **query)).json()
+    assert by_campaign == served.get(_layers_url("", **query, group="campaign")).json()
+    assert shown == built
+    assert all(layer["preview"]["job"] is None for layer in shown["layers"])
+    thumbnail = served.get(_layers_url("/thumbnail.png", **image, layer=key))
+    assert thumbnail.status_code == 200, thumbnail.text
+    assert output.read_bytes() == thumbnail.content
+    assert unknown == served.get(_layers_url("", **query, area_id="nieznany")).json()
+    assert unknown["code"] == "validation_error"
+    thumbnail_missing = _layers_url("/thumbnail.png", **image, layer="nie:ma")
+    assert missing == served.get(thumbnail_missing).json()
+    assert missing["code"] == "not_found"
+    assert usage == 2
+    assert not refused.exists()
