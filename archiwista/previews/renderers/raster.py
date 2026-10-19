@@ -20,7 +20,8 @@ could take for another format.
   ``transform_unavailable`` (a thumbnail is still made),
   ``unsupported_format`` (an ungridded XYZ file).
 - ``thumbnail``: in the file's CRS from a decimated read, or in a frame
-  (``Extent``: a layer's planar frame) warped with the pinned operation.
+  (``Extent``: a layer's planar frame) warped with the pinned operation and
+  painted only on the window of the frame the file covers.
 - ``tile``: the 256-pixel EPSG:3857 tile warped by ``reproject`` with the
   pinned operation as ``COORDINATE_OPERATION`` from the nearest overview
   (decision 4), with the margin its style looks at.
@@ -35,6 +36,7 @@ import contextlib
 import math
 import warnings
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -47,7 +49,14 @@ from archiwista.formats import FORMATS, open_raster
 from archiwista.previews import tiles
 from archiwista.previews.classes import TABLE_OF_PRODUCT, class_entry
 from archiwista.previews.cog import build_cog
-from archiwista.previews.styles import STYLES, Style, StyleContext, Values
+from archiwista.previews.styles import (
+    STYLES,
+    Metres,
+    Rgba,
+    Style,
+    StyleContext,
+    Values,
+)
 from archiwista.previews.types import (
     COG_NAME,
     BandStats,
@@ -374,7 +383,51 @@ def render_thumbnail(
             decimation=look.reading(probe),
         )
         across, down = tiles.pixel_metres(grid, shape[0], frame.crs)
+        context = StyleContext(probe, None, across, down)
+        return tiles.encode_png(_paint_within(look, values, context))
     return tiles.encode_png(look.apply(values, StyleContext(probe, None, across, down)))
+
+
+def _paint_within(look: Style, values: Values, context: StyleContext) -> Rgba:
+    """Paint a style only on the window of a grid that has values.
+
+    A version's thumbnail in a layer's frame covers a small part of it (one
+    sheet of a year): the style — a hillshade above all — is applied to the
+    values' window with the style's margin and laid into a transparent
+    frame. The pixels are those of painting the whole grid, whose cells
+    without values are transparent anyway (plan v0.2, step 16).
+    """
+    margin = look.margin_px
+    rows, columns = values.shape[1] - 2 * margin, values.shape[2] - 2 * margin
+    rgba = np.zeros((4, rows, columns), dtype=np.uint8)
+    # Every value a style may look at (its percentiles too) lies in the window.
+    present = ~np.ma.getmaskarray(values).all(axis=0)
+    found_rows = np.flatnonzero(present.any(axis=1))
+    found_columns = np.flatnonzero(present.any(axis=0))
+    if found_rows.size == 0:
+        return rgba
+    # A painted pixel's centre is a value; it looks ``margin`` cells around.
+    top = max(int(found_rows[0]) - margin, 0)
+    bottom = min(int(found_rows[-1]) + 1 - margin, rows)
+    left = max(int(found_columns[0]) - margin, 0)
+    right = min(int(found_columns[-1]) + 1 - margin, columns)
+    if top >= bottom or left >= right:
+        return rgba
+    window = values[:, top : bottom + 2 * margin, left : right + 2 * margin]
+    context = replace(
+        context,
+        pixel_x_m=_rows_of(context.pixel_x_m, top, bottom + 2 * margin),
+        pixel_y_m=_rows_of(context.pixel_y_m, top, bottom + 2 * margin),
+    )
+    rgba[:, top:bottom, left:right] = look.apply(window, context)
+    return rgba
+
+
+def _rows_of(metres: Metres, start: int, stop: int) -> Metres:
+    """Return the per-row pixel sizes of rows ``start:stop``; one number as is."""
+    if isinstance(metres, np.ndarray) and metres.ndim == 2:
+        return metres[start:stop]
+    return metres
 
 
 @contextlib.contextmanager
