@@ -847,9 +847,11 @@ i sprawdzone testami z wieloma tożsamościami
   decyzji: `can(principal, action, resource)`, `require(…)`
   (`PermissionDeniedError` → `403 permission_denied`) i
   `visible_projects(principal)`. Akcje (`ACTIONS`): `project.view`,
-  `project.share`, `users.manage`, `groups.manage`, `settings.write`,
-  `store.write`. `admin` zarządza kontami, grupami i ustawieniami, widzi
-  każdy projekt i zarządza dostępem do niego; właściciel — do swojego;
+  `project.share`, `project.write` (od v0.2: migawki plików projektu),
+  `users.manage`, `groups.manage`, `settings.write`, `store.write`.
+  `admin` zarządza kontami, grupami i ustawieniami, widzi każdy projekt,
+  zarządza dostępem do niego i go zmienia; właściciel — swój (projekt bez
+  wpisu dostępu zmienia tylko administrator);
   widoczność `public` (wszyscy), `users` (osoby z wpisu), `group` (członkowie
   grup z wpisu), `private` (tylko właściciel); projekt bez wpisu wg
   `default_project_visibility` (`public` albo `private` = tylko
@@ -864,8 +866,13 @@ i sprawdzone testami z wieloma tożsamościami
   `pin_problems`), a usługi (`store_summary`, `project_detail`) przekazują
   ją dalej. Routery i CLI nie filtrują same. Raport magazynu liczy
   nieużywane wersje względem przypięć wszystkich projektów, ale wymienia
-  tylko projekty widoczne i ich problemy przypięć. Zadania dotyczą
-  magazynów, które widzą wszyscy, więc trasy zadań nie filtrują projektów.
+  tylko projekty widoczne i ich problemy przypięć. Zadania (od v0.2):
+  zakres zadania wynika z `store` i `params` — zadanie magazynu albo wersji
+  (`version:`) i zadanie bez projektu widzą wszyscy, zadanie tylko danych
+  projektów (`own_scan` projektu, `snapshot`, `preview` plików `file:`
+  i `snapshot:`) — ten, kto widzi któryś z nich; `JobSupervisor.list`,
+  `get` i `events` przyjmują `visible`, a zadanie `preview` pokazuje tylko
+  `refs` i `failed[]` widocznych projektów (liczniki w całości).
 - **Klucz projektu** to katalog po `realpath` (`access_key`): ten sam
   w `project_acl` bazy stanu i w kolumnie `projects.access_key` indeksu,
   więc przebudowa indeksu nie zmienia dostępu, a dowiązania symboliczne do

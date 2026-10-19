@@ -1003,7 +1003,10 @@ działa.
   `thumbnail_url`, `tiles_url` warstwy, `minzoom`), `versions` (≤ 500,
   tylko z obszarem: `ref`, `slot`, `unit`, podgląd: stan, `tiles_url`,
   `bounds`); dalej `stale`, `stale_stores`, `stale_reason` jak
-  `/local-coverage`. `Comparison`: `a`, `b` (`ref`, rodzaj, tytuł,
+  `/local-coverage`. `LayerSet` pliku własnego (krok 9): `store`,
+  `product`, `group` = `null`, warstwy rodzajów `file` (klucz `file`)
+  i `snapshot` (klucz `snapshot:<etykieta>`), kadr = suma zasięgów
+  w układzie płaskim kraju. `Comparison`: `a`, `b` (`ref`, rodzaj, tytuł,
   `preview`, obrys WGS84), `same_content`, `rows` (`group`, `field`,
   `label`, `a`, `b`, `differs`), `schema_diff` (warstwy: tylko w A/B,
   liczby obiektów, pola dodane, usunięte i zmienione) albo `null`.
@@ -1079,9 +1082,9 @@ działa.
 | 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | zrobione |
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | zrobione |
-| 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
-| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
-| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | zrobione (kod `a5ae7f3`, próby `02228f4`); warstwy pliku własnego po 9 |
+| 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | zrobione (`aa01878`, `3231869`, `2126c33`, `dcbb454`, `003be5f`, próby `57005bb`) |
+| 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione (strony danych własnych w kroku 9, `dcbb454`) |
+| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | zrobione (kod `a5ae7f3`, próby `02228f4`; warstwy pliku własnego w kroku 9, `003be5f`) |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | zrobione |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
@@ -2721,6 +2724,140 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `own-scan`), `tests/integration/test_agent_flow.py::test_agent_snapshot_flow`
   (token → sesja → plan → migawka → SSE zadania → karta).
 - **Zależności:** 6, 7b, 8. **Równolegle:** 10, 11, 12a, 12b.
+- **Stan po kroku 9 (commity `aa01878`, `3231869`, `2126c33`, `dcbb454`,
+  `003be5f`, próby `57005bb`):**
+  - *Uprawnienia i filtr `project`* (`aa01878`): `project.write`
+    w `Action`/`ACTIONS` — właściciel albo `admin`; projekt bez wpisu
+    dostępu zmienia tylko administrator (komunikat
+    `permission_project_write`). Filtr `project` (klucz projektu)
+    w `/slots`, `/map/footprints` i `archiwista search --project`: wersje
+    przypięte w projekcie razem z trybem `versions` (`current` — przypięte
+    bieżące, `pinned`/`all` — wszystkie przypięte), kursor związany
+    z projektem; projekt nieznany albo niewidoczny → `404`
+    (`api/slots.checked_project`, też w `GET /jobs?project=`).
+  - *Widoczność zadań* (`3231869`, `jobs/supervisor.py`): zakres
+    `_Scope.of(store, params)` — część magazynowa (`store` albo `version:`
+    w `refs`; widzą wszyscy) i projekty (`params.project`, projekt każdego
+    `file:`/`snapshot:`); zadanie bez projektu (globalny `own_scan`) widzą
+    wszyscy, zadanie tylko projektów — kto widzi któryś z nich. `list`,
+    `get` i `events` przyjmują `visible` (domyślnie `ALL_PROJECTS`), `list`
+    także `project`; filtr w zapytaniu przez funkcję SQLite `job_listed`
+    (strony pełne). Zadanie `preview` oglądane bez wszystkich projektów:
+    `refs` z `contents` i `failed[]` (także w końcowym zdarzeniu `state`)
+    tylko widocznych projektów, liczniki w całości. `JobFailure.reason`,
+    `JobFilters.project`, `OwnDataState` i `Health.own_data`
+    (`finished_at`, `busy` z `own_scan_history`; `null` bez nadzorcy,
+    np. w `archiwista status --json`).
+  - *Odwołania* (`2126c33`, `refs.py`): `ObjectResolver(queries, settings,
+    *, visible=None)` — `visible`: principal → `ProjectVisibility`
+    (`Authorizer.visible_projects`; bez niego danych własnych nie widać).
+    `file:` — plik w `realpath` folderu (dowiązanie poza folder → `403
+    path_outside_root`); przy każdym użyciu `stamp_holds`
+    (`owndata/scan.py`, same wywołania `stat`: rozmiar i czas pliku,
+    członów kompletu i `-wal`/`-journal`, nowy `-wal`/`-journal` też jest
+    zmianą; człon dopisany do kompletu po skanie widać dopiero po skanie);
+    zmiana albo zniknięcie od skanu → `OwnFileChangedError` (`409
+    own_file_changed`: „Odśwież” albo `POST …/scan`); klucz pamięci =
+    `content_sha256` skanu (bez niego `unreadable`); źródło `mutable` ze
+    stanem pliku i `-wal` odczytanym przed sprawdzeniem stempla (proces
+    renderujący sprawdza go przed i po renderowaniu; SQLite w stanie (b)
+    i (c) — kopia spójna `source.gpkg` z kroku 5b); plik, którego skan nie
+    znalazł → `missing_file`. `snapshot:` — pliki wymienione
+    w `migawka.json` w `.wersje/<plik>/<etykieta>/`, klucz = tożsamość
+    treści dokumentu (podglądy wspólne z każdym plikiem tej treści),
+    migawka nie `ok` → `unreadable`, `locate` tylko z indeksu. Projekt
+    niewidoczny, nieznany plik albo etykieta → `404`. `job_resolver` widzi
+    wszystkie projekty (`refs` sprawdzone przy zleceniu);
+    `build.RESOLVERS` — `version`, `file`, `snapshot`; nierozwiązany `ref`
+    dostaje własny opis porażki (wcześniej każdy `ref` treści dostawał
+    opis ostatniego, który mógł nazwać plik innego projektu).
+  - *Trasy* (`api/owndata.py`; w `app.py` import i dwa `include_router`):
+    wiersze kroku 9 z umowy API oraz `GET …/members` pliku i migawki
+    (archiwa). Migawka:
+    projekt niewidoczny `404` → brak `project.write` `403` → nieznany plik
+    `404` → plan z `blocked` `409 snapshot_blocked` z `reason` → migawka
+    tego pliku w toku `409 conflict` z `job`. `POST …/scan` i `POST
+    …/snapshots` w `job_router` (tylko przy nadzorcy zadań, jak `/jobs`);
+    zlecone zadanie pokazane tak, jak widzi je sesja. `PUT …/data-dir` od
+    razu zleca `own_scan` projektu. Folder jeszcze nieskanowany: lista
+    i `PUT` opisują go stanem z `folder_check` teraz (`scanned_at: null`,
+    `OwnFolder.checked`, bez plików). `OwnFileCard.preview` = odpowiedź
+    `GET …/preview` (`null` bez puli, przy pełnej kolejce albo dla pliku
+    dowiązanego poza folder). Obrazy i dane danych własnych:
+    `Cache-Control: private, no-cache` z `ETag`
+    (każde użycie sprawdza widoczność, potem `304`). Funkcje bez HTTP dla
+    CLI: `visible_project`, `own_file`, `read_own_files`, `own_file_card`,
+    `snapshot_plan`, `start_snapshot`, `start_own_scan`, `change_data_dir`,
+    `own_ref`; w `services/owndata.py` — `folder_check`, `folder_problems`,
+    `file_problems`.
+  - *Podglądy* (`previews/service.py`, `api/previews.py`): `object_url`
+    plików (`/projects/{project}/files/{file_id}`) i migawek
+    (`…/snapshots/{label}`); plik zmieniony przed renderowaniem albo
+    w jego trakcie → `409 own_file_changed` dla obrazów i danych,
+    w `PreviewInfo` — `unavailable` z `changed_since_scan`. Wspólne
+    pomocniki tras wersji i danych własnych: `info_answer`, `build_answer`
+    (zadanie nowe albo dołączone pokazane przez `jobs.get(id, visible=…)`
+    — także w `POST …/preview` wersji), `respond`, `members_answer`,
+    `require_tile`, `optional_jobs`. `archiwista preview` bierze
+    widoczność z `Authorizer` bazy stanu (`local_previews(…, visible=)`).
+    Teksty `missing_file` już nie tylko o wersjach.
+  - *CLI* (`commands/owndata.py`, linia w `COMMAND_MODULES`): `archiwista
+    files PROJEKT [--q] [--state] [--limit] [--cursor]`, `file PROJEKT
+    PLIK` (16 znaków szesnastkowych → `file_id`, inaczej ścieżka
+    w folderze), `snapshot PROJEKT PLIK [--note TEKST | --plan]` (oba
+    razem → kod 2), `own-scan [--project PROJEKT]`; `--json` = model trasy,
+    zadania na `run_foreground`, zadanie nieudane → `JobDetail` i kod 1.
+  - *Porównanie* (`dcbb454`): strony `file:` i `snapshot:` w `_compared`
+    (tylko indeks): grupa `own` (`OWN_FIELDS`: format, liczba obiektów,
+    układ, zasięg, rozmiar — migawki: bajty kopii, metoda i SHA-256
+    treści, data, autor i opis migawki, modyfikacja, pierwsze wykrycie
+    i ostatnia zmiana pliku), grupa `layers` (obiekty w warstwie);
+    `same_content` z tożsamości treści (metoda i SHA-256; `sha256` wersji
+    = metoda `bytes`); `schema_diff` (`SchemaDiff`: warstwy tylko w A albo
+    B, `LayerDiff` z polami dodanymi, usuniętymi i o innym typie), gdy obie
+    strony mają warstwy wektorowe; w CLI blok „Schemat warstw”. Tekst
+    `compare_kind_unsupported` usunięty, `file:` nieznanego projektu →
+    `404`.
+  - *Warstwy pliku własnego* (`003be5f`): `GET
+    /projects/{project}/files/{file_id}/layers` — opis w „Stan po kroku
+    11”.
+  - *Odstępstwa od umowy:* `GET …/members` plików i migawek (poza listą
+    tras); `LayerSet.store`, `product` i `group` mogą być `null`, rodzaje
+    warstw `file` i `snapshot`.
+  - *Próby* (`57005bb`): `tests/integration/test_own_data_api.py`
+    (kryterium 6 przez HTTP — GeoPackage, Shapefile i GeoTIFF: karta,
+    miniatura z `304`, kafel, obiekty; każda rodzina z podglądem albo
+    powodem; plan → migawka → zadanie → karta, ponowna migawka bez zmian
+    `unchanged`; `409 own_file_changed` do ponownego skanu; `PUT data-dir`
+    — `403` dla nie-admina, `422` z `problems`, `200` i `own_scan`; `409
+    snapshot_blocked` z `file_missing` i `409 conflict` przy migawce
+    w kolejce — nadzorca z `default_max_jobs` = 0),
+    `test_agent_flow.py::test_agent_snapshot_flow` (prawdziwy `archiwista
+    serve`), `test_cli.py::test_own_data_cli_equals_http` (także
+    `own-scan` z projektem i bez; `free_bytes` planu poza porównaniem —
+    wolne miejsce zmienia się między wywołaniami),
+    `test_permissions_api.py::test_own_data_visibility_matrix` (4
+    widoczności × 4 osoby i tryb lokalny, 51 sprawdzeń na układ: trasy
+    plików i migawek, `304` tylko dla widzących, `/compare`, filtr
+    `project`, zadania `snapshot`, `preview` z `file:`, mieszane `preview`
+    i `own_scan` w `/jobs`, `/jobs/{id}` i zdarzeniach, `project.write`,
+    bez CSRF `403 csrf_rejected`; ok. 20 s; łamie się po wyłączeniu
+    redakcji, widoczności zadań albo `project.write`),
+    `test_preview_security.py::test_failure_message_carries_no_other_projects_path`
+    i `::test_store_and_own_folder_unchanged_after_previews` z folderem
+    danych własnych (wszystkie rodziny i GeoPackage w stanach (a), (b) —
+    `GpkgEditor` z otwartą transakcją, (c) — `-wal` bez `-shm` i gorący
+    dziennik; z budową kopii spójnych; bez `.aux.xml` i nowych plików
+    obok). Próby porównania i warstw pliku w ich commitach. Przebieg
+    obszarów kroku (`tests/unit`, `tests/contract` i 17 plików
+    integracyjnych): 817 zielonych w 400 s; ruff, format i mypy czyste;
+    próba dymna tras i poleceń na folderze z GPKG, SHP, GeoTIFF i TXT.
+  - *Uwagi:* plik z jednym punktem ma `PreviewInfo.bounds` o zerowej
+    powierzchni, a `bbox` w `…/features` jej wymaga (`422`) — klient mapy
+    musi poszerzyć widok (kroki 12b, 15). Teksty z `with_detail` po
+    powodzie zakończonym kropką dają „….: …”. Typy `web/src/types.js`
+    zadań (`own_scan`, `snapshot`, `reason`, `project`) dochodzą
+    w kroku 15.
 
 ### 10. Porównanie metadanych
 - **Cel:** `services/compare.py` i `GET /compare` (decyzja 10, poziom 1),
@@ -2759,8 +2896,8 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
     (wartości: tekst, liczba, wartość logiczna, data albo czas jak w karcie
     wersji, `null`), `Comparison`.
   - *Trasa i CLI.* `GET /compare` (`api/compare.py`; sesja i CSRF jak
-    wszędzie): zły `ref` i rodzaj jeszcze nieporównywany → `422
-    invalid_ref` (tekst `compare_kind_unsupported`), nieznana wersja →
+    wszędzie): zły `ref` i (do kroku 9) rodzaj jeszcze nieporównywany →
+    `422 invalid_ref` (tekst `compare_kind_unsupported`), nieznana wersja →
     `404 not_found`, brak `a`/`b` albo nadmiarowy parametr → `422
     validation_error`. `archiwista compare REF REF [--json]`
     (`commands/compare.py`, jedna linia w `COMMAND_MODULES`); bez `--json`
@@ -2773,7 +2910,7 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
     treści), nowe grupy w `RowGroup`, model `schema_diff` zamiast `None`
     w `Comparison` i `object_url` danych własnych (`preview`). Odbiór
     kroku 10 dla migawki z plikiem roboczym i niewidocznego projektu
-    przechodzi na krok 9.
+    przechodzi na krok 9. Zrobione w kroku 9 (`dcbb454`, „Stan po kroku 9”).
   - *Testy.* `tests/integration/test_compare.py` (dwie wersje jednego
     arkusza NMT z kampanią i różnym rozmiarem dopisanymi do sidecarów
     przed skanem: daty, kampania, `sha256`, rozmiar różne, reszta zgodna
@@ -2826,16 +2963,15 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
 - **Zależności:** 3, 5a1, 5b, 6; odbiór miniatur i kafli warstw po 5a3;
   warstwy migawek po 9. **Równolegle:** 5a2, 5a3, 10, 12a.
 - **Stan po kroku 11 (kod `a5ae7f3`, próby `02228f4`; warstwy pliku
-  własnego po kroku 9):**
+  własnego w kroku 9, `003be5f`):**
   - *Usługa* (`services/layers.py`): `read_local_layers` (odświeżenie
     widoku → `IndexQueries.product_versions` → wersje, których obrys ma
     wspólne wnętrze z obszarem → warstwy), `layer_images`,
     `layer_thumbnail`, `layer_tile`, `LayerMemo` (60 s, 256 warstw: kafle
     widoku bez ponownego czytania indeksu), `LayerImages`/`LayerItem`
     (źródło z indeksu, zasięg WGS84, `resolve` na dysk — punkt
-    rozszerzenia dla warstw pliku własnego i migawek z kroku 9; trasa
-    `/projects/{project}/files/{file_id}/layers` i
-    `test_own_file_layers_current_first` czekają na krok 9). Wariant:
+    rozszerzenia dla warstw pliku własnego i migawek z kroku 9 — w kroku 9
+    niepotrzebny, zob. ostatni punkt). Wariant:
     12 znaków SHA-256 z `product\nhorizontal_crs\nresolution\nvertical_crs`,
     bez któregoś pola — segment; okres: `data_year`, inaczej `edition`,
     inaczej `label` (pusty: „bez roku i wydania”); `group=campaign`
@@ -2913,6 +3049,24 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
     spełniony. Po minucie (`LayerMemo` wygasa) pierwszy widok trwa 0,85 s,
     bo każde z 6 równoległych żądań czyta warstwę z indeksu od nowa — też
     w celu, więc bez zmian w kodzie. RSS serwera 160 MB.
+  - *Warstwy pliku własnego* (krok 9, `003be5f`): `GET
+    /projects/{project}/files/{file_id}/layers` (`api/owndata.py`,
+    usługa `services/layers.read_own_file_layers`): na górze plik roboczy
+    (klucz `file`, „plik roboczy”), potem migawki od najnowszej
+    (`snapshot:<etykieta>`, „migawka <etykieta>”, podtytuł ze ścieżką
+    i opisem); warstwa = jeden obiekt z jednym `LayerVersion`. Kadr = suma
+    zasięgów w układzie płaskim ich kraju (jak kadr obszaru: PL EPSG:2180,
+    CZ EPSG:5514), bok co najmniej 1/10 dłuższego i 1 m, margines na
+    znaczniki; obrysy w kadrze. Stan i adresy z `PreviewService.info`
+    obiektu: `thumbnail_url` to `…/preview.png` obiektu z `bbox` kadru,
+    `tiles_url` — jego kafle, gdy gotowy; plik zmieniony od skanu →
+    `unavailable`. `LayerImages`/`LayerItem` niepotrzebne: obrazy idą
+    trasami obiektów, które same sprawdzają widoczność i zmianę pliku.
+    `LayerSet.store`/`product`/`group` = `null`, rodzaje warstw `file`
+    i `snapshot`; odpowiedzi `/local-layers` bez zmian. Próba
+    `test_local_layers.py::test_own_file_layers_current_first` (dwie
+    migawki z `write_snapshot_fixture`, kolejność, kadr, piksele
+    miniatur tylko w zasięgu własnego obiektu, projekt prywatny → `404`).
 
 ### 12a. Interfejs: podgląd w Karcie pliku i ustawienia pamięci
 - **Cel:** zakładka „Podgląd” Karty pliku dla wersji (miniatura przez
