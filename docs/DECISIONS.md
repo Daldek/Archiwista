@@ -42,9 +42,9 @@ Kartografa).
 | [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (errata 1: „Wachlarz” zastępuje „Stos”, M4/P12 rozstrzygnięte) |
 | [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024) |
 | [ADR-020](#adr-020-format-danych-imgw-własny-sidecar-parquet-geojson) | Format danych IMGW: własny sidecar, Parquet, GeoJSON | 2026-10-17 | Proponowana (ADR IMGWTools; SPEC 12.8) |
-| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2); Proponowana (mockup: M11) |
+| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2; errata 3: jednostki znane per stacja ČHMÚ); Proponowana (mockup: M11) |
 | [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
-| [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18) |
+| [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18; errata 2: kształt `imgw-project/1` z IMGWTools 3.0.0) |
 | [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
 | [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika; errata 3: „PL + CZ” jako v0.6 w MVP, ze stacjami ČHMÚ) |
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
@@ -911,7 +911,7 @@ samą polityką wersji (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
 ## ADR-021: Etykiety pokrycia szeregów IMGW
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (P14, P15 — errata 1; P16 — errata 2; decyzje użytkownika 2026-10-17); Proponowana (mockup: M11)
+**Status:** Przyjęta (P14, P15 — errata 1; P16 — errata 2; decyzje użytkownika 2026-10-17; errata 3: jednostki znane per stacja ČHMÚ); Proponowana (mockup: M11)
 
 **Kontekst:** Użytkownik chce etykiet pokrycia szeregów stacji w czasie, np. „ciągły
 1951–2024”, „luki 3%”, zdefiniowanych precyzyjnie. Pokrycie stacji znane jest
@@ -971,6 +971,15 @@ indeks `series_years`) i IMGW-8 liczyły już pokrycie per zmienna — zmienia s
 prezentacja, filtrowanie i kształt odpowiedzi API, nie kontrakt formatu IMGWTools
 (wymagania IMGWTools: IMGW-8).
 
+**Errata 3 (2026-10-19, audyt zgodności z IMGWTools 3.0.0 — odpowiedź na pytanie 11
+ADR-003 IMGWTools; SPEC 4.8.6):** w zbiorach z plikami stacji (ČHMÚ) jednostkami znanymi
+stacji są jednostki jej okresów ze spisu szeregów (`stations[<kod>].periods`, ADR-003 D10
+IMGWTools), a nie okresów całego zbioru: rok bez pliku stacji — także nieopublikowany
+przez ČHMÚ — jest „nieznany”, nie luką, a brak wierszy w znanym okresie jest luką;
+K₁, K₂ i „rok znany” liczy się per stacja. Dla archiwów krajowych IMGW-PIB bez zmian
+(`periods` zbioru). Definicje etykiet bez zmian (SPEC 4.8.4;
+`docs/IMGWTOOLS_REQUIREMENTS.md` 6.3).
+
 ---
 
 ## ADR-022: Dane bez położenia: Katalog zamiast mapy
@@ -1027,7 +1036,7 @@ IMGW, plik użytkownika, wniosek do IMGW-PIB o wykaz) pozostają uzupełnieniem.
 ## ADR-023: Dane IMGW w projektach: manifest IMGWTools
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (dane IMGW w manifeście projektu w v1.0 i dwa pliki manifestu, `kartograf-project.json` i `imgw-project.json` — decyzja użytkownika 2026-10-17, potwierdzona; SPEC 15, P18)
+**Status:** Przyjęta (dane IMGW w manifeście projektu w v1.0 i dwa pliki manifestu, `kartograf-project.json` i `imgw-project.json` — decyzja użytkownika 2026-10-17, potwierdzona; SPEC 15, P18; errata 2: kształt `imgw-project/1` z IMGWTools 3.0.0)
 
 **Kontekst:** ADR-019 pkt 7 i dotychczasowa rekomendacja P18 wyłączały dane IMGW
 z projektów w v1.0, bo manifest `kartograf-project/1` przyjmuje tylko komendy
@@ -1075,6 +1084,19 @@ manifestu (opcja C): `kartograf-project.json` i `imgw-project.json`; status
 zmieniony z „Proponowana” na „Przyjęta”. Nazwy pól `imgw-project/1` zapisane
 w wymaganiu IMGW-14 pozostają nazwami z wymagań dla IMGWTools (tak jak w
 wszystkich wymaganiach IMGW-n), bez wpływu na status decyzji.
+
+**Errata 2 (2026-10-19, audyt zgodności z IMGWTools 3.0.0 — odpowiedź na pytanie 13
+ADR-003 IMGWTools):** kształt `imgw-project/1` w IMGWTools 3.0.0 (ADR-001 i ADR-003
+IMGWTools) różni się od nazw z wymagania IMGW-14: w `files[]` stacja to `station_code`,
+a pin zbioru z formą kanoniczną (ČHMÚ) ma też `content_sha256` i `content_form`; plik
+wyboru obszarem jest w `options.geometry`, a `geometry_sha256` to pole zadania (mapa
+ścieżka → SHA-256); manifest może mieć `extensions`; doszło `set_project_store`
+(`imgw project set-store`). Zadanie dotyczy jednego zbioru, a więc jednego dostawcy —
+projekt łączy zadania IMGW i ČHMÚ. Odtwarzanie: identyczne `sha256` albo — dla ČHMÚ —
+jawnie treścią (`restored_by_content`, stan zadania `content_match`, komunikat
+`pin_restored_by_content`); Archiwista pokazuje ten stan osobno od „bieżące”, nie jako
+błąd, i nigdy nie przepina po cichu. Decyzja (opcja C) bez zmian; SPEC 12.7 (IMGW-14,
+IMGW-19), 13 v0.6 kryt. 7, `docs/IMGWTOOLS_REQUIREMENTS.md` 4.14, 4.19, 6.3.
 
 ---
 

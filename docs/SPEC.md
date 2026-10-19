@@ -454,7 +454,8 @@ i „Pobierz archiwa…” dla stacji ČHMÚ idą przez IMGWTools z „Oknem pla
 i poleceniem `imgw …`; plan obejmuje tylko stacje obszaru, bo ČHMÚ
 publikuje archiwa per stacja. „Karta stacji” ČHMÚ podaje atrybucję CC BY 4.0
 z sidecara, a „Dodaj do projektu…” zapisuje stacje obu dostawców w jednym
-zadaniu projektu IMGW.
+projekcie IMGW — po jednym zadaniu na zbiór, więc osobno dla stacji IMGW
+i ČHMÚ (IMGW-19).
 
 **Sukces:** etykiety zgodne z ręcznym wyliczeniem z archiwów ČHMÚ, a katalog
 IMGW bajtowo taki sam jak po tym samym poleceniu `imgw` z CLI.
@@ -866,13 +867,18 @@ IMGWTools, a w indeksie trzyma tylko pamięć podręczną (4.3). Zakres v0.5 (MV
 `https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/`,
 `IMGWTools/src/imgwtools/core/url_builder.py:104-250`):
 
-| Zbiór (klucz — propozycja) | Archiwa IMGW | Zmienne | Interwał, lata |
+| Zbiór (klucz IMGWTools) | Archiwa IMGW | Zmienne | Interwał, lata |
 |---|---|---|---|
 | Hydro dobowe (`pl.imgw.hydro_daily`) | `dane_hydrologiczne/dobowe/<rok>/codz_<rok>_<mm>.zip` (do 2022), `codz_<rok>.zip` (od 2023) | H — stan wody [cm], Q — przepływ [m³/s], T — temperatura wody [°C] | doba; hydrologiczne, 1951–2025 |
-| Hydro miesięczne (`pl.imgw.hydro_monthly`) | `dane_hydrologiczne/miesieczne/<rok>/mies_<rok>.zip` | H, Q, T: min., śr. i maks. miesiąca | miesiąc; hydrologiczne |
-| Hydro półroczne i roczne (`pl.imgw.hydro_semiannual`) | `dane_hydrologiczne/polroczne_i_roczne/<rok>/polr_<H\|Q\|T>_<rok>.zip` | H, Q, T: min., śr. i maks. z datami wystąpienia ekstremów; półrocze zimowe (XI–IV), letnie (V–X), rok | półrocze, rok; hydrologiczne |
-| Meteo dobowe — klimat (`pl.imgw.meteo_climate_daily`) | `dane_meteorologiczne/dobowe/klimat/<folder>/<rok>_k.zip` (do 2000; folder = pięciolecie), `<rok>_<mm>_k.zip` (od 2001) | Tmax, Tmin, Tśr — temperatura powietrza [°C]; P — suma dobowa opadu [mm] | doba; kalendarzowe, od 1951 |
-| Meteo dobowe — opad (`pl.imgw.meteo_precip_daily`) | `dane_meteorologiczne/dobowe/opad/<folder>/<rok>_o.zip` (do 2000), `<rok>_<mm>_o.zip` (od 2001) | P [mm] | doba; kalendarzowe, od 1950 |
+| Hydro miesięczne (`pl.imgw.hydro_monthly`) | `dane_hydrologiczne/miesieczne/<rok>/mies_<rok>.zip` | H, Q, T: min., śr. i maks. miesiąca (`H_min`, `H_mean`, `H_max`, … `T_max`) | miesiąc; hydrologiczne |
+| Hydro półroczne i roczne (`pl.imgw.hydro_semiannual`) | `dane_hydrologiczne/polroczne_i_roczne/<rok>/polr_<H\|Q\|T>_<rok>.zip` | H, Q, T: min., śr. i maks. (`H_min` … `T_max`) z datami wystąpienia ekstremów; półrocze zimowe (XI–IV), letnie (V–X), rok (w spisie klucze z okresem, np. `Q_max@winter`) | półrocze, rok; hydrologiczne |
+| Meteo dobowe — klimat (`pl.imgw.meteo_climate_daily`) | `dane_meteorologiczne/dobowe/klimat/<folder>/<rok>_k.zip` (do 2000; folder = pięciolecie), `<rok>_<mm>_k.zip` (od 2001) | Tmax, Tmin, Tśr (`Tmean`) — temperatura powietrza [°C]; P — suma dobowa opadu [mm]; w 3.0.0 także `Tground` — minimalna temperatura przy gruncie [°C] i `snow_cover` — wysokość pokrywy śnieżnej [cm] | doba; kalendarzowe, od 1951 |
+| Meteo dobowe — opad (`pl.imgw.meteo_precip_daily`) | `dane_meteorologiczne/dobowe/opad/<folder>/<rok>_o.zip` (do 2000), `<rok>_<mm>_o.zip` (od 2001) | P [mm]; w 3.0.0 także `snow_cover` — wysokość pokrywy śnieżnej [cm] i `fresh_snow` — wysokość świeżo spadłego śniegu [cm] | doba; kalendarzowe, od 1950 |
+
+Nazwy zmiennych i jednostek w plikach IMGWTools (spis `series.json`,
+metadane Parquet, eksport CSV) to klucze, nie teksty interfejsu: `H`, `Q`,
+`T`, `Tmax`, `Tmin`, `Tmean`, `P` itd. oraz jednostki `cm`, `m3/s`,
+`degC`, `mm`; interfejs pokazuje je po polsku ([m³/s], [°C], „Tśr”).
 
 Poza zakresem MVP v1.0: dane bieżące i ostrzeżenia (API IMGW), stany alarmowe,
 zjawiska lodowe (`zjaw_<rok>.zip`), meteo terminowe i miesięczne, synop
@@ -884,29 +890,37 @@ w modelu.
 
 | Byt | Atrybuty | Skąd |
 |---|---|---|
-| **Stacja** | kod — 9 cyfr jako tekst (np. `149190310`; pierwsza cyfra: `1` hydro, `2` albo `3` meteo; cyfry 2–3 i 4–5 to stopnie szerokości i długości kwadratu 1° — wniosek z danych, do potwierdzenia u IMGW: zgodny dla 905 z 910 stacji hydro z API mapy i 786 z 787 stacji publicznego API meteo); rodzaj (`hydro`, `meteo`), dla meteo także klimatologiczna albo opadowa; nazwa; rzeka i jej kod hydrograficzny z listy IMGW (np. Raba `2138`, Mszanka `21382`); kolejność z listy IMGW (rośnie z biegiem rzeki — wniosek z danych); położenie (lon, lat; EPSG:4326 przyjęty — IMGW go nie deklaruje) albo brak, źródło i niepewność położenia, data katalogu; czynna (jest w publicznym API w dniu katalogu) albo historyczna; rok założenia, rzędna zera wodowskazu, kilometr biegu rzeki, wysokość stacji meteo | katalog stacji (IMGW-9) |
+| **Stacja** | kod — 9 cyfr jako tekst (np. `149190310`; pierwsza cyfra: `1` hydro, `2` albo `3` meteo; cyfry 2–3 i 4–5 to stopnie szerokości i długości kwadratu 1° — wniosek z danych, do potwierdzenia u IMGW: zgodny dla 905 z 910 stacji hydro z API mapy i 786 z 787 stacji publicznego API meteo); rodzaj (`hydro`, `meteo`), dla meteo także klimatologiczna albo opadowa (`meteo_kind`: `climate` \| `precipitation`; kandydat IMGWTools `31e96fa` zapisuje `null` — wypełnione w 3.0.0 (poprawka na gałęzi fix/archiwista-compat)); nazwa; rzeka i jej kod hydrograficzny z listy IMGW (np. Raba `2138`, Mszanka `21382`); kolejność z listy IMGW (rośnie z biegiem rzeki — wniosek z danych); położenie (lon, lat; EPSG:4326 przyjęty — IMGW go nie deklaruje) albo brak, źródło i niepewność położenia, data katalogu (etykieta wersji katalogu i `downloaded_at` jego sidecara, nie pole stacji); czynna (jest w publicznym API w dniu katalogu; `active`) albo historyczna; rok założenia, rzędna zera wodowskazu, kilometr biegu rzeki, wysokość stacji meteo | katalog stacji (IMGW-9; pola `stations.geojson` — `docs/IMGWTOOLS_REQUIREMENTS.md` 4.9) |
 | **Szereg** | stacja × zbiór: zmienne z jednostkami, interwał (doba, miesiąc, półrocze, rok), rodzaj lat, dla każdej zmiennej pierwsza i ostatnia data z wartością oraz lista przerw | plik Parquet stacji w wersji szeregów zbioru i spis `series.json` (IMGW-7, IMGW-8) |
-| **Szeregi zbioru** | wersja = migawka szeregów wszystkich stacji zbioru zbudowana z określonych wersji archiwów (`source_files[]`); okresy wejść (`periods`) wyznaczają lata znane (4.8.4) | sidecar `imgw-meta/1` i spis (12.8) |
-| **Archiwum IMGW** | ścieżka na serwerze (slot), okres (rok albo miesiąc), wersje z `sha256`, rozmiarem, `ETag`, `Last-Modified` i datą pobrania | sidecar `imgw-meta/1` (IMGW-3, IMGW-5) |
-| **Katalog stacji** | wersja listy stacji z położeniem; źródła (URL, czas, liczba stacji) w sidecarze | IMGW-9 |
+| **Szeregi zbioru** | wersja = migawka szeregów wszystkich stacji zbioru zbudowana z określonych wersji archiwów (`source_files[]`); okresy wejść (`periods`, a dla stacji ČHMÚ — okresy stacji `stations[<kod>].periods`) wyznaczają lata znane (4.8.4) | sidecar `imgw-meta/1` i spis (12.8) |
+| **Archiwum IMGW** | ścieżka na serwerze (slot `archive:<klucz>:<ścieżka względem katalogu zbioru>`, np. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), okres (rok albo miesiąc), wersje z `sha256`, rozmiarem, `ETag`, `Last-Modified` i datą pobrania; u ČHMÚ także obserwacje sygnału (`observations/`, `imgw-observation/1`) — historia publikacji pliku bez nowej treści, nie wersje (4.8.6) | sidecar `imgw-meta/1` (IMGW-3, IMGW-5, IMGW-16) |
+| **Katalog stacji** | wersja listy stacji z położeniem, osobna dla każdego dostawcy (sloty `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`); źródła (URL, czas, liczba stacji) w sidecarze | IMGW-9, IMGW-17 |
 
-**Wersje.** Tożsamością wersji jest SHA-256 treści (jak w Kartografie),
-a etykieta jest tylko nazwą:
+**Wersje.** Tożsamością wersji jest SHA-256 bajtów (jak w Kartografie),
+a etykieta jest tylko nazwą — datą UTC, a gdy tego samego dnia przychodzą
+te same bajty pod innym sygnałem, z przyrostkiem `+<8 hex>` (np.
+`2025-08-28+1a2b3c4d`; katalog wersji to `<etykieta>_<sha8>`):
 
 - **archiwum** — data `Last-Modified` publikacji (np. `2025-08-28`,
   `label_source = "last_modified"`), bez nagłówka — data pobrania
-  (`"downloaded"`); inna treść = nowa wersja, ta sama treść pod nowymi
-  nagłówkami = `relabeled`; bieżąca = najpóźniejsza publikacja;
+  (`"downloaded"`); inne bajty = nowa wersja (u ČHMÚ — chyba że to ta sama
+  treść kanoniczna: wtedy `unchanged` z obserwacją sygnału, 4.8.6), te same
+  bajty pod nowymi nagłówkami = `relabeled`; bieżąca = najpóźniejsza
+  publikacja;
 - **szeregi zbioru** — najpóźniejszy `Last-Modified` wejść (`"inputs"`, jak
   wydanie wejść HSG); nowa wersja tylko przy innym zestawie `sha256`
   archiwów wejściowych albo nowej wersji schematu `imgw-series/1`;
   bieżąca = najpóźniej zbudowana; „nieaktualne”, gdy bieżące archiwa zbioru
-  nie są jej wejściami;
+  nie są jej wejściami (IMGWTools `series_state`: `outdated`; brak wersji —
+  `missing`);
 - **katalog stacji** — data pobrania (`"downloaded"`); bieżąca = najnowsza.
 
-Bieżącą wersję wylicza API IMGWTools (IMGW-10), nie Archiwista. Starych
-wersji nikt nie usuwa: zestaw wskazujący starsze szeregi zostaje
-odtwarzalny, a Archiwista oznacza go jako „nieaktualny” (8.4).
+Bieżącą wersję wylicza API IMGWTools (`current_version`, IMGW-10), nie
+Archiwista; uszkodzona wersja w slocie daje błąd zamiast cichego wyboru
+starszej, więc Archiwista pokazuje wtedy slot z problemami z `iter_store`
+(12.7, IMGW-10). Starych wersji nikt nie usuwa: zestaw wskazujący starsze
+szeregi zostaje odtwarzalny, a Archiwista oznacza go jako „nieaktualny”
+(8.4).
 
 **Położenie stacji** (pomiar 2026-10-17). Archiwa IMGW nie niosą
 współrzędnych; IMGWTools składa je w katalogu stacji (IMGW-9) ze źródeł
@@ -916,9 +930,9 @@ w tej kolejności:
 |---|---|---|
 | publiczne API `danepubliczne.imgw.pl/api/data/hydro` (wymienione na stronie `apiinfo`, bez opisu pól) | 913 stacji hydro: `lon`, `lat`, rzeka, województwo, rok założenia, rzędna zera wodowskazu, kilometr biegu rzeki | 32 stacje z zastępczym `0,0` (= brak położenia); zwykle 4 miejsca po przecinku, 46 stacji — od 1 do 3; odpowiada bez nagłówka `User-Agent` |
 | publiczne API `…/api/data/meteo` | 788 stacji meteo, 787 z `lon` i `lat`; rok założenia, wysokość | tylko sieć telemetryczna: z 2 149 kodów listy meteo w repozytorium IMGWTools (`data/meteo_stations_names.csv`) położenie ma 562, a 225 stacji API na tej liście nie ma |
-| statyczny plik IMGWTools `data/hydro_stations_locations.csv` | 1 288 stacji hydro, także zamkniętych | pochodzenie nieznane; wobec API hydro (779 wspólnych stacji): mediana różnic 33 m, p90 127 m, maks. 2,9 km |
-| plik współrzędnych użytkownika (kod, `lon`, `lat`, opis źródła) | uzupełnienia, np. stacji zamkniętych | `location_source = "user"` |
-| API mapy `hydro-back.imgw.pl` (nieudokumentowane) | 910 stacji hydro z TERYT i biurem IMGW | bez `User-Agent` odpowiada 403 — **niewymagane** |
+| lokalny plik położeń IMGWTools `hydro_stations_locations.csv` (`station_code,latitude,longitude`; w 3.0.0 poza pakietem — w `IMGW_DATA_DIR`, domyślnie `./data` względem katalogu bieżącego; tworzy go `python -m imgwtools.reference_data` z API mapy) | stacje hydro (plik z repozytorium IMGWTools 2.1.1: 1 288, także zamkniętych) | pomiar dla pliku 2.1.1 (pochodzenie nieznane) wobec API hydro (779 wspólnych stacji): mediana różnic 33 m, p90 127 m, maks. 2,9 km; brak pliku = brak tego źródła |
+| plik współrzędnych użytkownika (CSV UTF-8 `station_code,latitude,longitude[,source]`) | uzupełnienia położeń stacji znanych z innych źródeł, np. zamkniętych | `location_source = "user"`; kod tylko z tego pliku nie tworzy stacji — trafia do problemów katalogu (`catalog_problem`) |
+| API mapy `hydro-back.imgw.pl` (nieudokumentowane) | 910 stacji hydro z TERYT i biurem IMGW | bez `User-Agent` odpowiada 403 — **niewymagane**; w 3.0.0 tylko pośrednio, przez lokalny plik położeń (budowa katalogu go nie odpytuje) |
 
 Stacja bez położenia nie jest zgadywana ani pokazywana na mapie (P13,
 A-ADR-022): zostaje w katalogu stacji z powodem braku (IMGW-9),
@@ -993,9 +1007,12 @@ i zmiennej:
 - **Jednostka czasu** — doba (zbiory dobowe), miesiąc (miesięczne),
   półrocze (półroczne i roczne).
 - **Jednostki znane** — jednostki R w okresach wejść bieżącej wersji
-  szeregów zbioru (`periods`). Pozostałe są **nieznane** (archiwum
-  niepobrane albo szeregi nieprzygotowane) i nie są lukami. Rok jest znany,
-  gdy znane są wszystkie jego jednostki.
+  szeregów zbioru (`periods`); gdy spis podaje okresy stacji
+  (`stations[<kod>].periods` — zbiory z plikami stacji, ČHMÚ), jednostki
+  znane stacji to jednostki R w jej okresach (A-ADR-021 errata 3).
+  Pozostałe są **nieznane** (archiwum albo plik stacji niepobrany, rok
+  nieopublikowany przez ČHMÚ, szeregi nieprzygotowane) i nie są lukami.
+  Rok jest znany, gdy znane są wszystkie jego jednostki.
 - **Wartość** — jednostka z wartością po normalizacji (4.8.3); suma
   zbiorcza opadu jest wartością dnia, w którym ją podano, a dni przed nią
   ze statusem „8” są brakami.
@@ -1042,8 +1059,9 @@ zbioru i zakresu, nie dla stacji:
 
 Obok stoi stan szeregów zbioru: „szeregi 2026-08-31” (etykieta bieżącej
 wersji), „szeregi nieaktualne” (bieżące archiwa nie są jej wejściami) albo
-„szeregi nieprzygotowane”, a po sprawdzeniu u źródła — ostatni rocznik
-opublikowany i data jego publikacji.
+„szeregi nieprzygotowane” (IMGWTools `series_state`: `current`, `outdated`,
+`missing`), a po sprawdzeniu u źródła — ostatni rocznik opublikowany i data
+jego publikacji.
 
 **Wygląd** (jak 6.4: nigdy sam kolor): „ciągły” — zieleń z pełnym
 wypełnieniem; „luki” — zieleń z przerywanym wzorem; „częściowy” — bursztyn
@@ -1086,13 +1104,13 @@ użytkownika 2026-10-18; wymagania IMGW-15..IMGW-19). Archiwista czyta je tym
 samym adapterem IMGW i pokazuje w tych samych widokach co stacje IMGW (6.7):
 stacje na mapie i w „Katalogu”, „Zestawienie” z pokryciem szeregów osobno
 dla każdej zmiennej, „Karta stacji” z wykresem, aktualność i synchronizacja
-archiwów, zadania projektu IMGW. Zakres (klucze — propozycja; ścieżki
-ustali IMGWTools):
+archiwów, zadania projektu IMGW. Zakres (klucze i ścieżki IMGWTools 3.0.0,
+ADR-003 D4 IMGWTools):
 
 | Zbiór | Archiwa ČHMÚ | Zmienne | Interwał, lata |
 |---|---|---|---|
-| Hydro dobowe (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json` — plik na stację i rok | H [cm], Q [m³/s], T [°C] | doba; oba rodzaje lat |
-| Meteo dobowe (`cz.chmi.meteo_daily`) | `meteorology/climate/historical/…` — pliki na stację | opad [mm], temperatura powietrza [°C] | doba; oba rodzaje lat |
+| Hydro dobowe (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json` — plik JSON na stację i rok | H [cm], Q [m³/s], T [°C] | doba; archiwa numerowane latami kalendarzowymi (`year_type` `calendar`), widok — oba rodzaje lat |
+| Meteo dobowe (`cz.chmi.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — plik CSV na stację i element, cała historia | opad `P` [mm], temperatura powietrza `Tmean`, `Tmax`, `Tmin` [°C] | doba; `year_type` `calendar`, widok — oba rodzaje lat |
 
 Różnice wobec IMGW, które obsługuje IMGWTools, a Archiwista tylko pokazuje:
 
@@ -1107,27 +1125,50 @@ Różnice wobec IMGW, które obsługuje IMGWTools, a Archiwista tylko pokazuje:
   (IMGWTools: `unverifiable` z `error` `"nieopublikowany"`): neutralna
   informacja, nie błąd ani problem, i nie to samo co `missing`
   („nowy plik u źródła” — opublikowany, niepobrany). W pokryciu taki rok
-  jest nieznany, nie luką (IMGW-16).
+  jest nieznany, nie luką (IMGW-16). Wybór stacji jest obowiązkowy
+  (`stations`), lata wybiera się tylko dla hydro (plik meteo obejmuje całą
+  historię stacji); IMGW-PIB i ČHMÚ nie łączy się w jednym sprawdzeniu.
+- **Wersje i przypięcia** (ADR-003 D6, D14, D17, D18 IMGWTools): te same
+  bajty pod nowym sygnałem = `relabeled`, jak IMGW; inne bajty tej samej
+  treści kanonicznej (`content_sha256`, forma `chmi-json/1`: JSON
+  w postaci kanonicznej bez pól koperty `zaznamID` i `datumVytvoreni`;
+  mają ją `cz.chmi.hydro_daily` i listy stacji) = `unchanged` bez nowej
+  wersji, a nowy sygnał trafia raz do rejestru `observations/` slotu.
+  Archiwista pokazuje obserwacje jako historię publikacji pliku — nie są
+  wersjami ani problemami. Przypięcie ČHMÚ odtwarza się identycznymi
+  bajtami albo jawnie treścią (`restored_by_content`, stan zadania
+  `content_match` — „zgodne treścią”, nie „bieżące”); zadanie projektu
+  dotyczy jednego zbioru, więc jednego dostawcy.
 - **Identyfikator** stacji to WIGOS (np. `0-203-0-…`); tożsamość w indeksie
   i w zadaniach projektu = dostawca + identyfikator, więc kody PL i CZ się
-  nie zderzają. Katalog stacji ČHMÚ (z metadanych `meta1.json` i listy stacji
-  meteo) ma te same pola i reguły braku położenia co 4.8.1; kod hierarchii
-  zlewni (np. číslo hydrologického pořadí), jeśli źródło go podaje, jest
-  tekstem jak kod hydrograficzny IMGW (filtr prefiksu P19 — do
-  potwierdzenia).
-- **Format**: JSON w UTF-8, brak wartości jako `null`; normalizacja do
-  rekordów z flagą (4.8.3) i kolumna `hydro_year` (XI–X) są po stronie
-  IMGWTools, więc etykiety 4.8.4 i przełącznik rodzaju lat działają bez
-  zmian.
-- **Licencja** CC BY 4.0: atrybucja ČHMÚ w `license.attribution` sidecarów
-  (IMGW-19), w karcie stacji i w zestawie — tekst z sidecara, nie z kodu
-  Archiwisty; regulamin IMGW (4.8.5) stacji ČHMÚ nie dotyczy.
+  nie zderzają. Katalog stacji ČHMÚ to osobna wersja
+  (`stations/versions/chmi_stations/…`, slot `catalog:cz.chmi.stations`;
+  hydro z metadanych `meta1.json` i `meta3.json`, meteo
+  z `meta1-<RRRRMMDD>.json`, obie rodziny także z archiwów list stacji)
+  z tymi samymi polami i regułami braku położenia co 4.8.1 (`meteo_kind`,
+  `river_order`, `gauge_zero_m`, `river_km` puste), z progami SPA w obiekcie
+  `thresholds`; kod hierarchii zlewni hydro to `HLGP4` (tekst, np.
+  `1-05-03-0110`; meteo go nie ma), a filtr prefiksu po pełnych segmentach
+  (np. `1-05`) działa jak P19.
+- **Format**: hydro — JSON w UTF-8 (brak = brak wiersza albo `null`),
+  meteo — CSV (brak = pusty `VALUE`); normalizacja do rekordów z flagą
+  (4.8.3; meteo także `QUALITY` i `FLAG` źródła w kolumnach
+  `<V>_quality`, `<V>_source_flag`) i kolumna `hydro_year` (XI–X) są po
+  stronie IMGWTools; spis ma `year_type` `calendar` i okresy stacji
+  (`stations[<kod>].periods`), więc etykiety 4.8.4 (jednostki znane per
+  stacja) i przełącznik rodzaju lat działają bez zmian.
+- **Licencja** CC BY 4.0 (`license.id` `CC-BY-4.0`, addytywne `terms_url`):
+  atrybucja ČHMÚ w `license.attribution` sidecarów (IMGW-19; w szeregach,
+  katalogu i eksporcie z dopiskiem o przetworzeniu), w karcie stacji
+  i w zestawie — tekst z sidecara, nie z kodu Archiwisty; regulamin IMGW
+  (4.8.5) stacji ČHMÚ nie dotyczy.
 
 Poza zakresem v0.6: dane bieżące i godzinowe ČHMÚ, ostrzeżenia CAP, stany
-SPA (pokazywane najwyżej jako atrybuty stacji). Adapter: jeden adapter IMGW,
-dopóki ČHMÚ jest dostawcą w pakiecie IMGWTools; gdyby trafił do osobnego
-pakietu albo pakiet zmienił nazwę (np. „Obserwator”), decyzja o adapterze
-i extra zapadnie przy tym wydaniu (5.8, A-ADR-024; pytanie otwarte w PRD).
+SPA (pokazywane najwyżej jako atrybuty stacji). Adapter: jeden adapter IMGW
+— IMGWTools 3.0.0 ma ČHMÚ w pakiecie `imgwtools` (ADR-003 IMGWTools);
+gdyby dostawca trafił kiedyś do osobnego pakietu albo pakiet zmienił nazwę
+(np. „Obserwator”), decyzja o adapterze i extra zapadnie przy tym wydaniu
+(5.8, A-ADR-024; pytanie otwarte w PRD).
 
 ## 5. Architektura
 
@@ -3557,10 +3598,10 @@ zachowany w ADR-041 i ADR-044) — bez zmiany.
 
 ### 12.7 IMGW — wymagania wobec IMGWTools
 
-IMGWTools 2.1.1 (Beta) nie ma magazynu: `imgw fetch` zapisuje ZIP-y płasko
+IMGWTools 2.1.1 (Beta) nie miał magazynu: `imgw fetch` zapisywał ZIP-y płasko
 do `--output`, wprost do pliku docelowego, bez sidecarów, sum i wersji,
-a dobowe i terminowe archiwa meteo zderzają się nazwami; cache SQLite (WAL)
-obejmuje tylko hydro i zostawia pierwszą wczytaną wartość (`INSERT OR
+a dobowe i terminowe archiwa meteo zderzały się nazwami; cache SQLite (WAL)
+obejmował tylko hydro i zostawiał pierwszą wczytaną wartość (`INSERT OR
 IGNORE`) (`IMGWTools/src/imgwtools/cli/fetch.py:28-67`,
 `IMGWTools/src/imgwtools/core/url_builder.py:230-241`,
 `IMGWTools/src/imgwtools/db/repository.py:226, 328, 434`). Wymagania
@@ -3576,43 +3617,59 @@ niezależne od Archiwisty. Samodzielny dokument wymagań dla zespołu
 IMGWTools (cel, kryteria akceptacji, priorytety, zależności i kolejność
 wdrożenia): [`docs/IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md).
 
-Stacje ČHMÚ (CZ) od v0.6 (decyzja użytkownika 2026-10-18; 4.8.6): IMGWTools
-3.0.0 ma magazyn wersjonowany bez warstwy dostawców (`provider` w sidecarze
-stale `IMGW-PIB`), a dostawcę ČHMÚ opisuje szkic `docs/OBSERWATOR_SPEC.md`
-(planowane w IMGWTools 4.0, „Obserwator”; stan 2026-10-18: specyfikacja,
-bez kodu). Archiwista potrzebuje od tego wydania IMGW-15..IMGW-19, w tych
-samych kontraktach (`imgw-store/1`, `imgw-meta/1`, `imgw-series/1`,
-`imgw-project/1` — zmiany addytywne według IMGW-13) i przez to samo API
-odczytu, żeby adapter IMGW obsłużył obu dostawców bez osobnej ścieżki.
-Uwagi IMGWTools (2026-10-18, ADR-003 IMGWTools — propozycja; spec
-`docs/superpowers/specs/2026-10-18-chmi-provider-design.md`): identyfikator
-dostawcy `CHMI` (nazwa wyświetlana „ČHMÚ”), plik nieopublikowany przez
-źródło = `unverifiable` z `error` `"nieopublikowany"`, nie `missing`.
+Stacje ČHMÚ (CZ) od v0.6 (decyzja użytkownika 2026-10-18; 4.8.6): Archiwista
+potrzebuje IMGW-15..IMGW-19 w tych samych kontraktach (`imgw-store/1`,
+`imgw-meta/1`, `imgw-series/1`, `imgw-project/1` — zmiany addytywne według
+IMGW-13) i przez to samo API odczytu, żeby adapter IMGW obsłużył obu
+dostawców bez osobnej ścieżki. IMGWTools zrealizował to jako dostawcę
+`CHMI` (nazwa wyświetlana „ČHMÚ”) pakietu `imgwtools` (ADR-003 IMGWTools,
+przyjęty 2026-10-18; spec
+`docs/superpowers/specs/2026-10-18-chmi-provider-design.md`; dziedziny
+wartości `/1` poszerzone przed tagiem 3.0.0, a kod dostawcy — według
+erraty D16 — w 3.0.0 zamiast 3.1.0; szkic `docs/OBSERWATOR_SPEC.md`
+zastąpiony w części ČHMÚ). Plik nieopublikowany przez źródło =
+`unverifiable` z `error` `"nieopublikowany"`, nie `missing`.
 
-| ID | Wymaganie (propozycja) | Po co | Wersja |
+**Stan realizacji (audyt zgodności 2026-10-19):** IMGWTools 3.0.0
+(kandydat wydania `31e96fa`, bez tagu) spełnia IMGW-1..IMGW-20; tabela
+podaje nazwy i sygnatury z 3.0.0 (ADR-001..ADR-003 IMGWTools), a cele,
+kryteria akceptacji, stan każdego wymagania i odpowiedzi Archiwisty na
+pytania ADR-003 — `docs/IMGWTOOLS_REQUIREMENTS.md` (sekcje 4 i 6.3).
+Ograniczenia kandydata — zapis katalogu IMGW tylko na Linuksie
+z `renameat2(RENAME_NOREPLACE)` i znacznik `imgw-store.json` przez
+dowiązanie twarde (więc bez zapisu z Windows i na udziale SMB, których
+wymagają 1.2 i 4.6 pkt 9) oraz zawsze pusty `meteo_kind` w katalogu
+stacji — są usuwane w 3.0.0 (poprawka na gałęzi fix/archiwista-compat).
+Kryteria z siecią (testy live) IMGWTools opisuje jako wykonane; audyt ich
+nie powtarzał.
+
+| ID | Wymaganie (nazwy z IMGWTools 3.0.0) | Po co | Wersja |
 |---|---|---|---|
-| IMGW-1 | **Magazyn wersjonowany** (`imgw-store/1`, 12.8): własny katalog ze znacznikiem `imgw-store.json`, nigdy wewnątrz katalogu Kartografa (ani odwrotnie); niezmienne wersje `<etykieta>_<sha8>` (tożsamość = SHA-256 treści) archiwów, katalogu stacji i szeregów zbiorów; katalog tylko przyrostowy — bez nadpisywania, usuwania, dowiązań twardych i plików zmiennych; wersję bieżącą wylicza API (IMGW-10) z reguły z 4.8.1; ścieżki niezależne od bieżącego katalogu (dziś `data_dir` i `db_path` są względne, `IMGWTools/src/imgwtools/config.py:35-39`); cache SQLite tylko lokalnie, nigdy w katalogu IMGW | wersje, odtwarzalne zestawy i praca zespołowa na SMB bez blokad; prostsza semantyka niż ADR-036 Kartografa to mniej miejsc na rozbieżność dwóch implementacji | v0.5 |
-| IMGW-2 | **Zapis atomowy**: katalog roboczy `.incoming/<host>_<pid>_<token>/` na tym samym systemie plików, jeden odczyt treści (SHA-256), `fsync`, publikacja wyłączna (np. `os.rename` gotowego katalogu wersji — błąd, gdy cel istnieje), sprzątanie pozostałości starszych niż 24 h; pliki szeregów budowane lokalnie i kopiowane jako gotowe bajty; płaskie `imgw fetch` — `.part` i `os.replace`, a niepełny plik nigdy nie jest „już istnieje” (dziś zapis wprost do pliku docelowego, `IMGWTools/src/imgwtools/cli/fetch.py:28-67`) | brak połowicznych plików po przerwaniu i anulowaniu (5.6) | v0.5 |
-| IMGW-3 | **Sidecar `imgw-meta/1`** (12.8): `<plik>.meta.json` przy każdej wersji, pisany raz; wspólna koperta pól z `kartograf-meta/1` i pola IMGW (producent i jego wersja, okres, schemat szeregów, źródła katalogu stacji); `license.attribution` z formułami IMGW (4.8.5) | jedna logika wersji, pochodzenia i licencji w indeksie dla obu producentów | v0.5 |
-| IMGW-4 | **Archiwa 1:1 i rozdzielone nazwy**: publiczny katalog plików `archive_files(dataset, *, years, months=None)` ze ścieżką względną jak na serwerze i polami okresu; slot archiwum = ta ścieżka, więc `dane_meteorologiczne/dobowe/klimat/2001/2001_01_k.zip` i `…/terminowe/klimat/2001/2001_01_k.zip` się nie zderzają (dziś w płaskim `--output` drugi plik jest po cichu pomijany, `IMGWTools/src/imgwtools/core/url_builder.py:230-241`); ten sam układ w płaskim `imgw fetch`; listy stacji IMGW (`lista_stacji_hydro.csv`, `wykaz_stacji.csv`) też jako archiwa | brak cichych pominięć; jedna lista plików dla CLI, API i Archiwisty | v0.5 |
-| IMGW-5 | **Aktualność i synchronizacja**: `check_store(root, *, datasets, years) -> StorePlan` bez pobierania — `HEAD` archiwów (`ETag`, `Last-Modified`; `Content-Length` jako rozmiar w planie) i listing lat opublikowanych; statusy jak `kartograf-plan/1` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`) i stan szeregów zbiorów (`current`, `outdated`); postać JSON `imgw-plan/1` dla `--plan`; `sync_store(root, *, plan=None, series=True, …)`: nowa wersja tylko przy innej treści, ta sama treść pod nowymi nagłówkami = `relabeled` (nowa etykieta, kopia treści — archiwa są małe), pozycje zmienione od planu zgłaszane jako nieaktualne; `download_*` zwracają też nagłówki odpowiedzi (dziś same bajty, `IMGWTools/src/imgwtools/fetch.py:453-460, 549-556`) | „Sprawdź aktualność” i „Pobierz nowsze” (UC-19); opóźnione i ponowne publikacje IMGW (4.8.2) | v0.5 |
-| IMGW-6 | **Parsery i normalizacja**: parsery dobowe meteo — klimat (`k_d`) i opad (`o_d`) — obok hydro (`IMGWTools/src/imgwtools/db/parsers.py:436-445`); rekordy z flagą: wartość, brak, brak zjawiska = 0, suma zbiorcza opadu (4.8.3); wykrywanie kodowania, separatora i cudzysłowów dla wszystkich roczników 1951–2025 (dziś sprawdzone 2019–2024) | wartości i braki bez wiedzy o formacie IMGW poza IMGWTools (A-ADR-014) | v0.5 |
-| IMGW-7 | **Szeregi zbioru**: `build_series(root, *, dataset) -> SeriesReport` — migawka wszystkich stacji zbioru z bieżących wersji archiwów, także stacji z lukami i bez położenia (nic nie jest pomijane z powodu braków, P14): plik Parquet `imgw-series/1` na stację i spis `series.json` (12.8); kolumna `hydro_year` we wszystkich zbiorach, także meteo (oba rodzaje lat dla obu rodzajów danych, P15); `source_files[]` = archiwa wejściowe; ten sam zestaw `sha256` wejść i ta sama wersja schematu = `reused`, bez zapisu (wzór HSG, ADR-036 D33) — chroni też przed wersjami różnymi tylko bajtami zapisu biblioteki Parquet; publikacja jak IMGW-2 | wykres, pokrycie, zestaw i Hydrolog bez parsowania archiwów | v0.5 |
-| IMGW-8 | **Pokrycie szeregów**: `summarize_coverage(records) -> list[StationCoverage]` — osobno dla każdej zmiennej stacji (P16; wynik per stacja × zmienna, bez agregatu stacji): pierwsza i ostatnia data z wartością, lista przerw (od–do), liczba jednostek z wartością i sum zbiorczych; zapis w `series.json` razem z okresami wejść | etykiety 4.8.4 dla dowolnego zakresu i rodzaju lat bez czytania szeregów (A-ADR-021) | v0.5 |
-| IMGW-9 | **Katalog stacji**: wersjonowany `stations.geojson` (RFC 7946) z polami z 4.8.1 dla hydro i meteo; źródła i walidacja z 4.8.1 (publiczne API IMGW → statyczny plik IMGWTools → plik użytkownika; `0,0` i punkty poza krajem = brak położenia); stacja bez położenia to pełnoprawny wpis (`geometry: null` i powód braku: `none`, `zero`, `outside_country`), nigdy pomijany (P13, A-ADR-022); kod hydrograficzny jako tekst (porównanie prefiksów, P19) i kolejność z listy IMGW (dziś odrzucane, `IMGWTools/src/imgwtools/stations.py:284-292`); naprawa nieistniejącego pola `riverName` (`IMGWTools/src/imgwtools/stations.py:349`); API mapy `hydro-back` niewymagane | stacje na mapie, w Katalogu (także bez położenia) i w zlewni; odtwarzalny wybór stacji, gdy źródła się zmienią | v0.5 |
-| IMGW-10 | **API odczytu** (odpowiednik KA): `store_info(root)` (wersje kontraktów), `iter_store(root, *, kind=None) -> Iterator[StoreEntry]` (wersje i problemy: `.incoming/` starsze niż 24 h, sidecar nieczytelny, nieznana wersja schematu, plik bez sidecara, katalog nieznany), `read_meta(path) -> Meta` (typowany, tolerancyjny), `current_version(slot)`, `read_catalog(version)`, `read_series_index(version)`, `read_series(version, *, station, variables, start=None, end=None)` | adapter IMGW bez własnego parsera plików (A-ADR-014, A-ADR-019) | v0.5 |
-| IMGW-11 | **Katalog komend i CLI = API** (odpowiednik KB): `data_commands()` (komendy, opcje, dozwolone wartości, opisy po polsku), `validate_command`, `format_command` → `imgw …`, `run_command` i `check_command` z `on_progress`, `on_notice` (poziom, kod, tekst — także informacja o celu użycia danych, 4.8.5) i `cancel` sprawdzanym między plikami; CLI woła te same funkcje (dziś `imgw fetch` pobiera własną `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); wyjątki z hierarchii `IMGWError` | formularze, „Okno planu”, polecenie do skopiowania, anulowanie bez zabijania procesu | v0.5 |
-| IMGW-12 | **Eksport szeregu**: `export_series(version, station, path, *, variables, year_type=None, format="csv")` — UTF-8, separator `,`, kropka dziesiętna, daty ISO, nagłówek z jednostkami, kolumna roku w wybranej konwencji (`year_type`: `hydrological` albo `calendar`, dla hydro i meteo, P15; `None` = konwencja numeracji archiwów zbioru, czyli `year_type` spisu `series.json`), pusta komórka = brak, kolumna flag; wszystkie dni ciągłego kalendarza stacji, także z brakami (P14) | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`), konsumowany przez Archiwistę od v1.1 | v0.5 (IMGWTools) |
-| IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.5 |
-| IMGW-14 | **Manifest projektu IMGW** (`imgw-project/1`, P18, A-ADR-023): plik `imgw-project.json` w katalogu projektu obok `kartograf-project.json` (każdy plik ma jednego właściciela; projekt może mieć jeden albo oba); pola: `schema`, `store_dir` (katalog IMGW; ścieżki względne i bezwzględne jak w manifeście Kartografa), `tasks[]` — `name` (reguły nazw Kartografa), `command` (komenda IMGW z IMGW-11, np. `series select`), `options` (zbiór, stacje jako jawna lista kodów — wybór obszarem zapisany po rozstrzygnięciu, z `geometry` i `geometry_sha256` jak w Kartografie — zmienne, lata i `year_type`), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — ścieżka wersji względna do `store_dir`; `sha256`; `station` dla plików stacji); API = CLI (`imgw project init/add/remove/download/status/verify`): `init_project`, `open_project` (pełna walidacja, błędy po polsku), `add_project_task` (walidacja jak `validate_command`), `remove_project_task`, `download_project` (synchronizacja potrzebnych archiwów, szeregi z `reused`, przypięcie; odtwarzanie tylko przy identycznych `sha256`), bliźniak `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (bez sieci); zapis atomowy (`os.replace`) pod blokadą `.imgw-project.lock` (`mkdir`, właściciel, bez przejmowania) i scalanie per zadanie | dane IMGW jako zadania i przypięcia projektu w v1.0: „Dodaj do projektu” dla stacji, status, weryfikacja, odtwarzanie u kolegi, zestaw z przypięć (4.7, 8.4) | v0.5 |
+| IMGW-1 | **Magazyn wersjonowany** (`imgw-store/1`, 12.8): własny katalog ze znacznikiem `imgw-store.json`, nigdy wewnątrz katalogu Kartografa (ani odwrotnie); niezmienne wersje `<etykieta>_<sha8>` (tożsamość = SHA-256 treści; etykieta to nazwa — data UTC, przy tych samych bajtach pod innym sygnałem tego samego dnia z przyrostkiem `+<8 hex>`) archiwów, katalogu stacji i szeregów zbiorów; katalog tylko przyrostowy — bez nadpisywania, usuwania, dowiązań twardych i plików zmiennych; wersję bieżącą wylicza API (IMGW-10) z reguły z 4.8.1; ścieżki niezależne od bieżącego katalogu (w 2.1.1 `data_dir` i `db_path` były względne, `IMGWTools/src/imgwtools/config.py:35-39`; w 3.0.0 magazyn jest od niego niezależny, ale lokalny plik położeń IMGW-9 nadal leży domyślnie w `./data`); cache SQLite tylko lokalnie, nigdy w katalogu IMGW (3.0.0: cache usunięty); znacznik przez dowiązanie twarde nie powstaje na SMB ani FAT — w 3.0.0 (poprawka na gałęzi fix/archiwista-compat) | wersje, odtwarzalne zestawy i praca zespołowa na SMB bez blokad; prostsza semantyka niż ADR-036 Kartografa to mniej miejsc na rozbieżność dwóch implementacji | v0.5 |
+| IMGW-2 | **Zapis atomowy**: katalog roboczy `.incoming/<host>_<pid>_<token>/` na tym samym systemie plików, jeden odczyt treści (SHA-256), `fsync`, publikacja wyłączna (błąd, gdy cel istnieje; 3.0.0: `renameat2(RENAME_NOREPLACE)`, w kandydacie `31e96fa` tylko na Linuksie — zapis z Windows i na udziale SMB w 3.0.0 (poprawka na gałęzi fix/archiwista-compat)), sprzątanie pozostałości starszych niż 24 h; pliki szeregów budowane lokalnie i kopiowane jako gotowe bajty; płaskie pobieranie (2.1.1: `imgw fetch`; 3.0.0: `imgw datasets download`) — `.part` i `os.replace`, a niepełny plik nigdy nie jest „już istnieje” (w 2.1.1 zapis wprost do pliku docelowego, `IMGWTools/src/imgwtools/cli/fetch.py:28-67`) | brak połowicznych plików po przerwaniu i anulowaniu (5.6) | v0.5 |
+| IMGW-3 | **Sidecar `imgw-meta/1`** (12.8): `<plik>.meta.json` przy każdej wersji, pisany raz; wspólna koperta pól z `kartograf-meta/1` i pola IMGW (producent i jego wersja, okres, schemat szeregów, źródła katalogu stacji); `license.attribution` z formułami IMGW (4.8.5); 3.0.0: `request` szeregów zbioru to sam klucz zbioru (okresy wejść są w `series.json`), `license.id` `IMGW-PIB` albo `CC-BY-4.0` z addytywnym `terms_url`, a zbiory z formą kanoniczną (ČHMÚ) mają addytywne `content_sha256` i `content_form` | jedna logika wersji, pochodzenia i licencji w indeksie dla obu producentów | v0.5 |
+| IMGW-4 | **Archiwa 1:1 i rozdzielone nazwy**: publiczny katalog plików `archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)` ze ścieżką względną jak na serwerze i polami okresu; slot archiwum z tej ścieżki (`archive:<klucz>:<ścieżka względem katalogu zbioru>`), więc `dane_meteorologiczne/dobowe/klimat/2001/2001_01_k.zip` i `…/terminowe/klimat/2001/2001_01_k.zip` się nie zderzają (w 2.1.1 w płaskim `--output` drugi plik był po cichu pomijany, `IMGWTools/src/imgwtools/core/url_builder.py:230-241`); ten sam układ w płaskim pobieraniu (3.0.0: `imgw datasets download`); listy stacji IMGW (`lista_stacji_hydro.csv`, `wykaz_stacji.csv`) też jako archiwa | brak cichych pominięć; jedna lista plików dla CLI, API i Archiwisty | v0.5 |
+| IMGW-5 | **Aktualność i synchronizacja**: `check_store(root, /, *, datasets, years=None, months=None, stations=None, plan=None, …) -> StorePlan` bez pobierania — `HEAD` archiwów (`ETag`, `Last-Modified`; `Content-Length` jako rozmiar w planie) i listing lat opublikowanych; `years` wymagane dla `pl.imgw.*`, `stations` dla nich niedozwolone (błąd wyboru → `IMGWValidationError` z `details.option` przed siecią); statusy jak `kartograf-plan/1` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`) i stan szeregów zbiorów `series_state` według slugu zbioru (`current`, `outdated`, `missing`); postać JSON `imgw-plan/1` dla `--plan`; `sync_store(root, /, *, datasets=None, …, plan=None, series=True, …) -> SyncReport` (plan albo selektory): nowa wersja tylko przy innych bajtach, te same bajty pod nowymi nagłówkami = `relabeled` (nowa etykieta, kopia treści — archiwa są małe), pozycje zmienione od planu = `stale_plan` bez pobrania; statusy pozycji `created`, `relabeled`, `unchanged`, `reused`, `restored_by_content` (projekt), `failed`, `stale_plan`, `cancelled`, a szeregów `created`, `reused`, `cancelled`, `failed`; `download_hydro_data`/`download_meteo_data` zwracają `DownloadResult` (`data`, `url`, `etag`, `last_modified`, `content_length`) zamiast samych bajtów (2.1.1: `IMGWTools/src/imgwtools/fetch.py:453-460, 549-556`) — zmiana niezgodna wobec 2.x | „Sprawdź aktualność” i „Pobierz nowsze” (UC-19); opóźnione i ponowne publikacje IMGW (4.8.2) | v0.5 |
+| IMGW-6 | **Parsery i normalizacja**: parsery dobowe meteo — klimat (`k_d`) i opad (`o_d`) — obok hydro (`IMGWTools/src/imgwtools/db/parsers.py:436-445`); rekordy z flagą: wartość, brak, brak zjawiska = 0, suma zbiorcza opadu (4.8.3); wykrywanie kodowania, separatora i cudzysłowów dla wszystkich roczników 1951–2025 (w 2.1.1 sprawdzone 2019–2024) | wartości i braki bez wiedzy o formacie IMGW poza IMGWTools (A-ADR-014) | v0.5 |
+| IMGW-7 | **Szeregi zbioru**: `build_series(root, /, *, dataset, …) -> SeriesReport` (`created`, `reused`, `cancelled`, `failed`) — migawka wszystkich stacji zbioru z bieżących wersji archiwów, także stacji z lukami i bez położenia (nic nie jest pomijane z powodu braków, P14): plik Parquet `imgw-series/1` na stację (kolumny `date`, `hydro_year`, `<V>_value`, `<V>_flag`) i spis `series.json` (12.8); kolumna `hydro_year` we wszystkich zbiorach, także meteo (oba rodzaje lat dla obu rodzajów danych, P15); `source_files[]` = archiwa wejściowe; ten sam zestaw `sha256` wejść i ta sama wersja schematu = `reused`, bez zapisu (wzór HSG, ADR-036 D33) — chroni też przed wersjami różnymi tylko bajtami zapisu biblioteki Parquet; publikacja jak IMGW-2 | wykres, pokrycie, zestaw i Hydrolog bez parsowania archiwów | v0.5 |
+| IMGW-8 | **Pokrycie szeregów**: `summarize_coverage(records, /, *, dataset, station_periods=None) -> list[StationCoverage]` — osobno dla każdej zmiennej stacji (P16; wynik per stacja × zmienna, bez agregatu stacji): pierwsza i ostatnia data z wartością, lista przerw (od–do), liczba jednostek z wartością i sum zbiorczych (`with_value`, `accumulated`); zapis w `series.json` razem z okresami wejść (`periods`; w zbiorach z plikami stacji, ČHMÚ, także okresy stacji `stations[<kod>].periods`) | etykiety 4.8.4 dla dowolnego zakresu i rodzaju lat bez czytania szeregów (A-ADR-021) | v0.5 |
+| IMGW-9 | **Katalog stacji**: wersjonowany `stations.geojson` (RFC 7946) z polami z 4.8.1 dla hydro i meteo; źródła i walidacja z 4.8.1 (publiczne API IMGW → lokalny plik położeń IMGWTools → plik użytkownika `station_code,latitude,longitude[,source]`, który uzupełnia tylko położenia — kod obecny wyłącznie w nim trafia do `CatalogReport.problems`, nie do katalogu; `0,0` i punkty poza krajem = brak położenia); stacja bez położenia to pełnoprawny wpis (`geometry: null` i powód braku: `none`, `zero`, `outside_country`), nigdy pomijany (P13, A-ADR-022); kod hydrograficzny jako tekst (porównanie prefiksów, P19) i kolejność z listy IMGW (w 2.1.1 odrzucane, `IMGWTools/src/imgwtools/stations.py:284-292`); naprawa nieistniejącego pola `riverName` (`IMGWTools/src/imgwtools/stations.py:349`); API mapy `hydro-back` niewymagane; `meteo_kind` (`climate` \| `precipitation`): kandydat `31e96fa` zapisuje `null` — wypełnione w 3.0.0 (poprawka na gałęzi fix/archiwista-compat) | stacje na mapie, w Katalogu (także bez położenia) i w zlewni; odtwarzalny wybór stacji, gdy źródła się zmienią | v0.5 |
+| IMGW-10 | **API odczytu** (odpowiednik KA): `store_info(root, /)` (wersje kontraktów, dostawcy), `iter_store(root, /, *, kind=None, provider=None) -> Iterator[StoreEntry]` (wpisy `archive`, `series`, `catalog`, `pmaxtp`, `observation` i `problem` z `problem_code` — m.in. `.incoming/` starsze niż 24 h, sidecar nieczytelny, nieznana wersja schematu, plik bez sidecara, katalog nieznany; obserwacje sygnału ČHMÚ to historia publikacji, nie wersje ani problemy), `read_meta(path, /) -> Meta` (typowany, tolerancyjny; `path` = plik główny wersji albo jego sidecar), `current_version(root, /, *, slot)` (sloty `archive:<klucz>:<ścieżka>`, `series:<klucz>`, `catalog:pl.imgw.stations` \| `catalog:cz.chmi.stations`; uszkodzona wersja w slocie → `IMGWDataError`, a adapter pokazuje wtedy problemy slotu z `iter_store`), `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index(version, /)`, `read_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None) -> Iterator[NormalizedRecord]` | adapter IMGW bez własnego parsera plików (A-ADR-014, A-ADR-019) | v0.5 |
+| IMGW-11 | **Katalog komend i CLI = API** (odpowiednik KB): `data_commands()` (komendy, opcje, dozwolone wartości, opisy po polsku), `validate_command`, `format_command` → `imgw …`, `run_command` i `check_command` z `on_progress`, `on_notice` (poziom, kod, tekst — także informacja o celu użycia danych, 4.8.5) i `cancel` sprawdzanym między plikami; CLI woła te same funkcje (w 2.1.1 `imgw fetch` pobierało własną `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); wyjątki z hierarchii `IMGWError` | formularze, „Okno planu”, polecenie do skopiowania, anulowanie bez zabijania procesu | v0.5 |
+| IMGW-12 | **Eksport szeregu**: `export_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None, year_type=None, format="csv", path=None, …) -> Path \| Iterator[str]` (`station` i `path` tylko nazwane; `path=None` = strumień wierszy) — UTF-8, separator `,`, kropka dziesiętna, daty ISO, jeden wiersz nagłówka z jednostkami, kolumna roku w wybranej konwencji (`year_type`: `hydrological` albo `calendar`, dla hydro i meteo, P15; `None` = konwencja numeracji archiwów zbioru, czyli `year_type` spisu `series.json`), pusta komórka = brak, kolumna flag, formuły w kolumnach `attribution_source` i `attribution_processed` pierwszego wiersza danych; wszystkie dni ciągłego kalendarza stacji, także z brakami (P14) | zestaw (8.4) dla Excela, QGIS i Hydrologa (`daily_values`, `dates`), konsumowany przez Archiwistę od v1.1 | v0.5 (IMGWTools) |
+| IMGW-13 | **Wersjonowanie schematów**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` (3.0.0 dodaje m.in. `imgw-plan/1` i `imgw-observation/1`) — w obrębie `/1` tylko zmiany addytywne, zmiana niezgodna = `/2` i czytnik obu wersji w okresie przejściowym; polityka wersji API odczytu; testy kontraktu offline na fixturach archiwów (CP1250, UTF-8 z BOM, cudzysłowy, oba układy plików dobowych hydro) | Archiwista deklaruje obsługiwane wersje i nie czyta nieznanych zamiast zgadywać | v0.5 |
+| IMGW-14 | **Manifest projektu IMGW** (`imgw-project/1`, P18, A-ADR-023): plik `imgw-project.json` w katalogu projektu obok `kartograf-project.json` (każdy plik ma jednego właściciela; projekt może mieć jeden albo oba); pola: `schema`, `store_dir` (katalog IMGW; ścieżki względne i bezwzględne jak w manifeście Kartografa), opcjonalne `extensions`, `tasks[]` — `name` (reguły nazw Kartografa), `command` (komenda IMGW z IMGW-11, np. `series select`), `options` (zbiór — zadanie dotyczy jednego zbioru, więc jednego dostawcy; stacje jako jawna lista kodów — wybór obszarem zapisany po rozstrzygnięciu, z plikiem obszaru w `options.geometry`; zmienne, lata i `year_type`), `geometry_sha256` (pole zadania: mapa ścieżka → SHA-256, tylko przy wyborze obszarem), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — ścieżka wersji względna do `store_dir`; `sha256`; `station_code` dla plików stacji; przy formie kanonicznej ČHMÚ także `content_sha256` i `content_form`); API = CLI (`imgw project init/add/remove/set-store/download/check/status/verify`): `init_project`, `open_project` (pełna walidacja, błędy po polsku), `add_project_task` (walidacja jak `validate_command`), `remove_project_task`, `set_project_store`, `download_project` (synchronizacja potrzebnych archiwów, szeregi z `reused`, przypięcie; odtwarzanie przy identycznych `sha256` albo — ČHMÚ — jawnie treścią, IMGW-19), bliźniak `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (bez sieci); stany zadań `unpinned`, `current`, `content_match`, `missing`, `changed`, `upgraded`, `failed`, `cancelled`; zapis atomowy (`os.replace`) pod blokadą `.imgw-project.lock` (`mkdir`, właściciel, bez przejmowania) i scalanie per zadanie | dane IMGW jako zadania i przypięcia projektu w v1.0: „Dodaj do projektu” dla stacji, status, weryfikacja, odtwarzanie u kolegi, zestaw z przypięć (4.7, 8.4) | v0.5 |
 | IMGW-15 | **Dostawca w kontrakcie**: każdy zbiór, sidecar, wpis katalogu stacji i zadanie projektu niesie dostawcę (`dataset` `cz.chmi.<zbiór>`, `country` `CZ`, `provider` `CHMI` — identyfikator maszynowy; nazwa wyświetlana „ČHMÚ” z deskryptora dostawcy); tożsamość stacji = dostawca + identyfikator (WIGOS dla ČHMÚ); `store_info` podaje obsługiwanych dostawców (identyfikator, nazwa wyświetlana, zbiory, licencja); filtr `provider` (`IMGW-PIB` \| `CHMI`) w `iter_store`, `read_catalog` i katalogu komend; slot archiwum ČHMÚ = ścieżka pliku na serwerze (jak IMGW-4); zmiana tylko addytywna w `/1` albo `/2` z czytnikiem obu (IMGW-13) | jeden adapter i jeden indeks dla stacji PL i CZ, bez zderzeń kodów; plakietka „ČHMÚ” bez tłumaczenia w kodzie Archiwisty | v0.6 |
-| IMGW-16 | **Archiwa ČHMÚ, aktualność i synchronizacja**: zbiory z 4.8.6 jako archiwa 1:1 z sidecarem `imgw-meta/1` (zapis jak IMGW-1..IMGW-3); `check_store`/`sync_store` dla `cz.chmi.*` z argumentem `stations` (jednostką publikacji jest stacja — bez „całego kraju”), sygnał z listingu katalogu serwera, statusy jak IMGW-5; plik nieopublikowany przez źródło = `unverifiable` z `error` `"nieopublikowany"` (synchronizacja: `unchanged` bez wersji; pobieranie płaskie: `not_published`), odrębny od `missing` (plik opublikowany, brak lokalnie), bez błędu zadania; plan `imgw-plan/1` z liczbą zapytań | aktualność i „Pobierz nowsze” dla stacji ČHMÚ w zlewni; „nieopublikowany” jako informacja, nie problem | v0.6 |
-| IMGW-17 | **Katalog stacji ČHMÚ**: wersjonowany wpis katalogu stacji (hydro z `meta1.json`, meteo z listy stacji ČHMÚ) z polami i walidacją 4.8.1 (położenie WGS84 ze źródłem i niepewnością; poza CZ albo `0,0` = brak położenia, wpis zostaje); nazwa, rzeka, kod hierarchii zlewni jako tekst, jeśli źródło go podaje; progi SPA jako atrybuty | stacje ČHMÚ na mapie, w „Katalogu” i w zlewni | v0.6 |
-| IMGW-18 | **Szeregi i pokrycie ČHMÚ**: `build_series` dla `cz.chmi.*` (`imgw-series/1`: te same kolumny, `null` → brak z flagą, `hydro_year` XI–X dla hydro i meteo); `summarize_coverage` osobno dla każdej zmiennej (IMGW-8) zapisane w `series.json`; `read_series`, `read_series_index` i `export_series` bez zmian sygnatur | etykiety pokrycia, wykres i zestaw dla stacji ČHMÚ tak samo jak dla IMGW | v0.6 |
-| IMGW-19 | **Komendy, projekt i licencja ČHMÚ**: komendy synchronizacji i szeregów ČHMÚ w `data_commands()` z `format_command` → `imgw …` (CLI = API, `cancel`); zadania projektu `imgw-project/1` ze stacjami obu dostawców; `license` CC BY 4.0 z atrybucją wymaganą przez ČHMÚ w sidecarach archiwów, katalogu i szeregów oraz w eksporcie CSV; komunikaty `on_notice` po polsku | „Okno planu”, polecenie do skopiowania, zadania projektu i atrybucje bez wiedzy Archiwisty o ČHMÚ | v0.6 |
-| IMGW-20 | **Konwencja kluczy zbiorów** (4.2.1): klucz zbioru = `dataset` sidecara `imgw-meta/1` i spisu `series.json` w postaci `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (małe litery, kropki między częściami, podkreślenia wewnątrz: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); niezmienny od pierwszego wydania z magazynem; zmiana nazwy wyłącznie przez tabelę aliasów IMGWTools — surowy `dataset` w sidecarze bez zmian, znormalizowany `dataset_key` z `read_meta` (wzór: `_DEV_DATASETS` Kartografa); dostawca wyłącznie w polu `provider` (`IMGW-PIB`, `CHMI`), a przedrostek klucza (`imgw`, `chmi`) nie jest jego identyfikatorem (IMGW-15) | indeks, filtry i przypięcia oparte na kluczu bez rozbioru klucza; ten sam kontrakt kluczy co w Kartografie (KA-8); stare sidecary czytelne po zmianie nazwy | v0.5 |
+| IMGW-16 | **Archiwa ČHMÚ, aktualność i synchronizacja**: zbiory z 4.8.6 jako archiwa 1:1 z sidecarem `imgw-meta/1` (zapis jak IMGW-1..IMGW-3); `check_store`/`sync_store` dla `cz.chmi.*` z wymaganym `stations` (jednostką publikacji jest stacja — bez „całego kraju”; `years` opcjonalne dla hydro, niedozwolone dla meteo; bez łączenia z `pl.imgw.*` w jednym wywołaniu), sygnał z listingu katalogu serwera, statusy jak IMGW-5; plik nieopublikowany przez źródło = `unverifiable` z `error` `"nieopublikowany"` (synchronizacja: `unchanged` bez wersji; pobieranie płaskie: `not_published`), odrębny od `missing` (plik opublikowany, brak lokalnie), bez błędu zadania; te same bajty pod nowym sygnałem = `relabeled`, inne bajty tej samej treści kanonicznej (`content_sha256`, forma `chmi-json/1`) = `unchanged` z komunikatem `content_unchanged` i obserwacją sygnału (`observations/`, `imgw-observation/1`); plan `imgw-plan/1` z liczbą zapytań | aktualność i „Pobierz nowsze” dla stacji ČHMÚ w zlewni; „nieopublikowany” jako informacja, nie problem | v0.6 |
+| IMGW-17 | **Katalog stacji ČHMÚ**: osobna wersja katalogu stacji dostawcy (slot `catalog:cz.chmi.stations`, `stations/versions/chmi_stations/`; hydro z `meta1.json`, `meta3.json` i archiwum listy stacji, meteo z `meta1-<RRRRMMDD>.json` i archiwum listy stacji) z polami i walidacją 4.8.1 (położenie WGS84 ze źródłem i niepewnością; poza CZ albo `0,0` = brak położenia, wpis zostaje); nazwa, rzeka, kod hierarchii zlewni (`HLGP4`) jako tekst w `hydrographic_code`; progi SPA w obiekcie `thresholds` | stacje ČHMÚ na mapie, w „Katalogu” i w zlewni | v0.6 |
+| IMGW-18 | **Szeregi i pokrycie ČHMÚ**: `build_series` dla `cz.chmi.*` (`imgw-series/1`: te same kolumny, `null` → brak z flagą, `hydro_year` XI–X dla hydro i meteo; `year_type` spisu `calendar`; okresy stacji `stations[<kod>].periods`, więc rok bez pliku stacji jest nieznany, nie luką; meteo także `<V>_quality` i `<V>_source_flag`); `summarize_coverage` osobno dla każdej zmiennej (IMGW-8) zapisane w `series.json`; `read_series`, `read_series_index` i `export_series` bez zmian sygnatur | etykiety pokrycia, wykres i zestaw dla stacji ČHMÚ tak samo jak dla IMGW | v0.6 |
+| IMGW-19 | **Komendy, projekt i licencja ČHMÚ**: komendy synchronizacji i szeregów ČHMÚ w `data_commands()` z `format_command` → `imgw …` (CLI = API, `cancel`); projekt `imgw-project/1` z zadaniami obu dostawców (zadanie = jeden zbiór, więc jeden dostawca); odtworzenie przypięć ČHMÚ identycznymi bajtami albo jawnie treścią (`restored_by_content`, stan zadania `content_match`); `license` CC BY 4.0 (`id` `CC-BY-4.0`, `terms_url`) z atrybucją ČHMÚ w sidecarach archiwów, katalogu i szeregów oraz w eksporcie CSV (w postaci przetworzonej z dopiskiem o przetworzeniu); komunikaty `on_notice` po polsku | „Okno planu”, polecenie do skopiowania, zadania projektu i atrybucje bez wiedzy Archiwisty o ČHMÚ | v0.6 |
+| IMGW-20 | **Konwencja kluczy zbiorów** (4.2.1): klucz zbioru = `dataset` sidecara `imgw-meta/1` i spisu `series.json` w postaci `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (małe litery, kropki między częściami, podkreślenia wewnątrz: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); niezmienny od pierwszego wydania z magazynem; zmiana nazwy wyłącznie przez tabelę aliasów IMGWTools — surowy `dataset` w sidecarze bez zmian, znormalizowany `dataset_key` z `read_meta` (`None` dla klucza nieznanego, nie pusty tekst; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; wzór: `_DEV_DATASETS` Kartografa); dostawca wyłącznie w polu `provider` (`IMGW-PIB`, `CHMI`), a przedrostek klucza (`imgw`, `chmi`) nie jest jego identyfikatorem (IMGW-15) | indeks, filtry i przypięcia oparte na kluczu bez rozbioru klucza; ten sam kontrakt kluczy co w Kartografie (KA-8); stare sidecary czytelne po zmianie nazwy | v0.5 |
 
 ### 12.8 Kontrakt formatu IMGW (rekomendacja, A-ADR-020)
+
+Stan: kontrakt zrealizowany w IMGWTools 3.0.0 (ADR-001 i ADR-003
+IMGWTools); opis poniżej podaje postać z 3.0.0.
 
 **Sidecar: własny `imgw-meta/1`, nie zgodność z `kartograf-meta/1`.**
 Format zna i rozwija tylko jego producent (A-ADR-019), a nazwa schematu
@@ -3627,14 +3684,15 @@ pól:
 | Pole | Znaczenie w `imgw-meta/1` |
 |---|---|
 | `schema` | `imgw-meta/1` |
-| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`; konwencja kluczy 4.2.1, IMGW-20), `PL`, `IMGW-PIB` |
-| `request` | co dało plik: archiwum — ścieżka na serwerze i okres; szeregi zbioru — zbiór i okresy wejść; katalog stacji — źródła |
-| `license` | `{id, attribution, url}` z formułami IMGW (4.8.5) |
+| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (np. `pl.imgw.hydro_daily`; konwencja kluczy 4.2.1, IMGW-20), `PL`, `IMGW-PIB`; ČHMÚ — `cz.chmi.<zbiór>`, `CZ`, `CHMI`; katalog stacji — `pl.imgw.stations`, `cz.chmi.stations` |
+| `request` | co dało plik: archiwum — `server_path`, `year`, `month` (ČHMÚ także `station_code`, `param`); szeregi zbioru — tylko `dataset` (pełny klucz; okresy wejść są w `series.json`: `periods`, a dla ČHMÚ także `stations[<kod>].periods`); katalog stacji — `user_locations` (nazwa pliku użytkownika albo `null`), a źródła w `extra.catalog` |
+| `license` | `{id, attribution, url}` z formułami IMGW (4.8.5); `id` `IMGW-PIB` (ČHMÚ: `CC-BY-4.0` i addytywne `terms_url`); w sidecarze szeregów (i katalogu ČHMÚ) formuła przetworzenia jest dołączona po „. ”, bez kropki na końcu |
 | `downloaded_at` | chwila zapisu wersji (UTC, ISO 8601) |
 | `sha256`, `size_bytes` | treść pliku; dla szeregów zbioru — treść spisu `series.json`, który wylicza `sha256` każdego pliku stacji |
 | `extra.version` | `label`, `label_source` (`last_modified`, `downloaded`, `inputs`; 4.8.1) |
 | `extra.http` | `url`, `etag`, `last_modified`, `content_length` odpowiedzi IMGW |
-| `extra.derived`, `extra.source_files[]` | szeregi zbioru: `series`; wejścia (`name`, `file` — ścieżka wersji archiwum, `sha256`, `label`), jak HSG (ADR-036 D33) |
+| `extra.derived`, `extra.source_files[]` | szeregi zbioru: `series`, katalog stacji: `catalog`; wejścia szeregów (`name`, `file` — ścieżka wersji archiwum, `sha256`, `label`; ČHMÚ także `content_sha256`, `content_form`), jak HSG (ADR-036 D33) |
+| `content_sha256`, `content_form` | addytywne, opcjonalne, zawsze razem: suma SHA-256 postaci kanonicznej i jej identyfikator (`chmi-json/1`) — tylko zbiory z formą kanoniczną (`cz.chmi.hydro_daily`, listy stacji ČHMÚ); w sidecarach IMGW pól nie ma (czytane jako `null`) |
 
 Pola tylko IMGW: `producer` (`imgwtools`), `producer_version`,
 `extra.period` (rok albo miesiąc archiwum i rodzaj roku),
@@ -3651,24 +3709,33 @@ kandydatem na wspólny `store-meta/1`, gdyby doszedł trzeci producent.
   archives/versions/<katalog na serwerze>/<plik bez rozszerzenia>/<etykieta>_<sha8>/<plik>
                                    + <plik>.meta.json
     np. archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/2025-08-28_7c41e0b2/codz_2024.zip
+  archives/versions/<…>/<plik bez rozszerzenia>/observations/<RRRR-MM-DD>_<sha8>.json
+                                   obserwacje sygnału ČHMÚ (imgw-observation/1; nie wersje)
   stations/versions/<etykieta>_<sha8>/stations.geojson        + stations.geojson.meta.json
-  series/versions/<zbiór>/<etykieta>_<sha8>/series.json       + series.json.meta.json
+  stations/versions/chmi_stations/<etykieta>_<sha8>/stations.geojson   katalog stacji ČHMÚ
+  series/versions/<slug zbioru>/<etykieta>_<sha8>/series.json + series.json.meta.json
                                             stations/<kod>.parquet
     np. series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
+  pmaxtp/versions/…                komórki PMAXTP (poza zakresem MVP)
   .incoming/<host>_<pid>_<token>/  katalogi robocze (sprzątane po 24 h)
 ```
 
 **Szeregi zbioru (`imgw-series/1`).** Jedna wersja to migawka wszystkich
 stacji zbioru zbudowana z określonych wersji archiwów: plik Parquet na
 stację (ciągły kalendarz od pierwszego do ostatniego rekordu stacji;
-kolumny: `date` — data kalendarzowa, `hydro_year` we wszystkich zbiorach
-(także meteo, P15), a dla
-każdej zmiennej wartość i flaga: `value`, `missing`, `no_phenomenon`,
-`accumulated`; jednostki w metadanych pliku) oraz spis `series.json`
-z konwencją numeracji archiwów zbioru (`year_type`; to nie rodzaj lat
-widoku — ten wybiera użytkownik, 6.7), okresami wejść (`periods`) i — dla
-każdej stacji — plikiem, jego
-`sha256`, liczbą wierszy i pokryciem zmiennych (IMGW-8). Ze spisu
+kolumny: `date` — data kalendarzowa (w zbiorach miesięcznych i półrocznych
+początek okresu), `hydro_year` we wszystkich zbiorach (także meteo, P15),
+a dla każdej zmiennej `<V>_value` i `<V>_flag` (`value`, `missing`,
+`no_phenomenon`, `accumulated`); półrocza — także `period`, `<V>_start`,
+`<V>_end`, `<V>_occurrences`; ČHMÚ meteo — `<V>_quality`
+i `<V>_source_flag`; jednostki w metadanych pliku — `units`, JSON, np.
+`degC`) oraz spis `series.json` z konwencją numeracji archiwów zbioru
+(`year_type`; to nie rodzaj lat widoku — ten wybiera użytkownik, 6.7;
+ČHMÚ — `calendar`), okresami wejść (`periods`) i — dla każdej stacji —
+plikiem, jego `sha256`, liczbą wierszy, pokryciem zmiennych (IMGW-8; per
+zmienna `unit`, `first`, `last`, `with_value`, `accumulated`, `gaps`,
+w półroczach klucze z okresem, np. `Q_min@winter`) i — w zbiorach
+z plikami stacji (ČHMÚ) — jej okresami `periods`. Ze spisu
 Archiwista buduje indeks pokrycia jednym odczytem; pliki Parquet czyta
 dopiero do wykresu i zestawu. Sidecar i spis (fragmenty, wartości
 ilustracyjne):
@@ -3681,9 +3748,9 @@ ilustracyjne):
   "dataset": "pl.imgw.hydro_daily",
   "country": "PL",
   "provider": "IMGW-PIB",
-  "request": {"dataset": "hydro_daily", "periods": [["1950-11-01", "2025-10-31"]]},
+  "request": {"dataset": "pl.imgw.hydro_daily"},
   "license": {"id": "IMGW-PIB",
-              "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone.",
+              "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
               "url": "https://danepubliczne.imgw.pl/regulations"},
   "downloaded_at": "2026-10-17T12:00:00.000000Z",
   "sha256": "ab12cd34…",
@@ -3712,18 +3779,25 @@ ilustracyjne):
       "file": "stations/149190310.parquet", "sha256": "…", "rows": 27394,
       "variables": {
         "Q": {"unit": "m3/s", "first": "1950-11-01", "last": "2025-10-31",
-              "with_value": 26804,
+              "with_value": 26804, "accumulated": 0,
               "gaps": [["1981-06-02", "1982-12-31"], ["2003-01-14", "2003-01-25"]]},
         "H": {"unit": "cm", "first": "1950-11-01", "last": "2025-10-31",
-              "with_value": 27394, "gaps": []}
+              "with_value": 27394, "accumulated": 0, "gaps": []}
       }
     }
   }
 }
 ```
 
+Spis zbioru ČHMÚ ma `year_type` `calendar`, a przy każdej stacji jej
+okresy, np. `"periods": [["2004-01-01", "2004-12-31"], ["2006-01-01",
+"2006-12-31"]]` — rok bez pliku stacji (tu 2005) jest nieznany, nie luką
+(4.8.4).
+
 **Wersjonowanie schematów (IMGW-13):** `imgw-store/1`, `imgw-meta/1`,
-`imgw-series/1` i `imgw-project/1` zmieniają się addytywnie; zmiana niezgodna to `/2`
+`imgw-series/1` i `imgw-project/1` zmieniają się addytywnie (w 3.0.0 doszły
+m.in. pola `content_sha256`, `content_form`, `terms_url`, okresy stacji
+i schemat `imgw-observation/1`); zmiana niezgodna to `/2`
 i czytnik obu wersji w okresie przejściowym. Archiwista deklaruje
 obsługiwane wersje, a katalogu w nieznanej wersji nie czyta, tylko go
 zgłasza (UC-13).
@@ -3969,8 +4043,10 @@ Kryteria akceptacji:
    i `sha256` na nagranych odpowiedziach); anulowanie bez częściowych
    wersji.
 7. Atrybucja CC BY 4.0 ČHMÚ w karcie stacji, porównaniu i sidecarach;
-   zadanie projektu IMGW ze stacjami obu dostawców odtwarza się
-   z identycznymi `sha256`.
+   projekt IMGW z zadaniami obu dostawców odtwarza się z identycznymi
+   `sha256` albo — dla ČHMÚ, gdy źródło daje inne bajty tej samej treści —
+   jawnie treścią (`restored_by_content`, stan zadania `content_match`),
+   nigdy przez ciche przepięcie.
 8. Testy na żywo z raportem: UC-09 (zlewnia Olzy, scalona powierzchnia)
    i UC-20 (aktualność i synchronizacja kilku stacji ČHMÚ).
 

@@ -149,8 +149,10 @@ SCOPE etap 3.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
 - Nazwy przy A-ADR-024 (`GET /sources`, `source_unavailable` /
   `source_incompatible`, fabryki `moduł:load`) — do ewentualnej zmiany.
-- Drobne rozbieżności SPEC 12.7 / 4.8 z kodem IMGWTools — świadomie
-  niepoprawiane (decyzja użytkownika).
+- IMGWTools 3.0.0 (kandydat `31e96fa`, bez tagu) spełnia IMGW-1..20 z ČHMÚ;
+  SPEC (UC-20, 4.8, 12.7–12.8, 13 v0.6), `docs/IMGWTOOLS_REQUIREMENTS.md`
+  (6.3: odpowiedzi na pytania ADR-003) i A-ADR-021/023 zgodne z audytem
+  2026-10-19; poprawki A, B, D przed tagiem — gałąź IMGWTools `fix/archiwista-compat`.
 
 ### Mockup
 
