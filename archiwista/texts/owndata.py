@@ -191,5 +191,124 @@ OWN_DATA_MESSAGES = MappingProxyType(
             "Migawka {label} jest zapisana, ale indeks jej jeszcze nie zna —"
             " doda ją najbliższe odświeżenie danych własnych."
         ),
+        # Own data and snapshots over HTTP and the command line (step 9).
+        "api_title_own_file_changed": "Plik zmienił się od skanu",
+        "api_title_snapshot_blocked": "Migawka niemożliwa",
+        "own_file_changed": (
+            "Plik {path} projektu „{project}” zmienił się od ostatniego skanu"
+            " danych własnych — odśwież dane własne projektu („Odśwież” albo"
+            " POST /api/v1/projects/{project}/scan) i spróbuj ponownie."
+        ),
+        "own_snapshot_not_found": (
+            "Plik {path} projektu „{project}” nie ma migawki {label}."
+        ),
+        # ``archiwista files``, ``file``, ``snapshot``, ``own-scan`` (decision 11).
+        "cli_files_help": (
+            "Pliki danych własnych projektu wg ścieżki, z folderem danych i zmianą"
+            " od ostatniej migawki (--json: model OwnFileList); kolejna strona:"
+            " --cursor."
+        ),
+        "cli_file_help": (
+            "Karta pliku danych własnych: warstwy, zasięg, historia stanów,"
+            " migawki i podgląd (--json: model OwnFileCard)."
+        ),
+        "cli_snapshot_help": (
+            "Migawka pliku danych własnych do .wersje/ na pierwszym planie"
+            " (--json: model JobDetail z wynikiem); --plan: plan migawki bez"
+            " zapisu (model SnapshotPlan)."
+        ),
+        "cli_own_scan_help": (
+            "Skan danych własnych na pierwszym planie, jak „Odśwież” (--json:"
+            " model JobDetail z wynikiem); bez --project — wszystkie projekty."
+        ),
+        "cli_own_project_help": "Identyfikator projektu (pole project z API).",
+        "cli_own_file_help": (
+            "Ścieżka pliku w folderze danych (z /, np. sieci/kanalizacja.gpkg)"
+            " albo jego file_id (16 znaków szesnastkowych)."
+        ),
+        "cli_files_q_help": "Słowa, które muszą wystąpić w ścieżce.",
+        "cli_files_state_help": (
+            "Tylko pliki w tym stanie (ok, unrecognized, unreadable, missing)"
+            " albo o tej zmianie (unsnapshotted, unchanged, changed)."
+        ),
+        "cli_files_limit_help": "Liczba plików na stronie (1–200, domyślnie 50).",
+        "cli_files_cursor_help": "next_cursor poprzedniej strony tych samych filtrów.",
+        "cli_snapshot_note_help": "Notatka zapisywana w migawka.json.",
+        "cli_snapshot_plan_help": (
+            "Tylko plan migawki: co zostanie skopiowane, dokąd i czy coś ją"
+            " blokuje; nic nie jest zapisywane."
+        ),
+        "cli_own_scan_project_help": "Tylko folder danych tego projektu.",
+        "cli_own_failed": "Nie można odczytać danych własnych",
+        "cli_own_state_ok": "w porządku",
+        "cli_own_state_unrecognized": "nierozpoznany",
+        "cli_own_state_unreadable": "nieczytelny",
+        "cli_own_state_missing": "nie istnieje",
+        "cli_own_state_invalid": "odrzucony przez reguły",
+        "cli_own_change_unsnapshotted": "bez migawki",
+        "cli_own_change_unchanged": "bez zmian od migawki",
+        "cli_own_change_changed": "zmieniony od migawki",
+        "cli_own_folder": (
+            "{project}: folder danych {path} ({state}), plików {files}, {size},"
+            " migawki {snapshots}; skan: {scanned}"
+        ),
+        "cli_own_problem": "Problem: {message} {instruction}",
+        "cli_own_row": "{path}  {state}, {change}, migawek {snapshots}",
+        "cli_own_no_files": "Brak plików.",
+        "cli_own_card_title": "{ref} ({file_id}): {kind}, {format}, {size}",
+        "cli_own_card_state": (
+            "Stan: {state}, {change}; ostatnia migawka: {last}; zmieniony {modified}"
+        ),
+        "cli_own_card_path": "Plik: {path}",
+        "cli_own_card_crs": "Układ: {crs}",
+        "cli_own_card_layer": "Warstwa {name}: {geometry}, obiektów {count}",
+        "cli_own_card_raster": "Raster: {width}×{height}, kanałów {bands}, {dtype}",
+        "cli_own_card_snapshots": "Migawki ({count}):",
+        "cli_own_card_snapshot": "  {label}  {created}  {size}  {state}{note}",
+        "cli_own_card_preview": "Podgląd: {state}",
+        "cli_snapshot_state_ok": "w porządku",
+        "cli_snapshot_state_invalid": "bez poprawnego opisu",
+        "cli_snapshot_state_modified": "pliki zmienione",
+        "cli_snapshot_plan": (
+            "Migawka {file}: {size} do {destination} (kopia {copy_method},"
+            " treść {content_method})"
+        ),
+        "cli_snapshot_plan_unchanged": (
+            "Ostatnia migawka {label} ({created}) ma tę treść — nowa ją powtórzy."
+        ),
+        "cli_snapshot_plan_blocked": "Migawka niemożliwa: {message}",
+        "cli_snapshot_plan_free": "Wolne miejsce: {free}",
+        "cli_snapshot_plan_warning": "Uwaga: {message}",
+        "cli_snapshot_started": "Migawka: zadanie {job}.",
+        "cli_snapshot_progress": "Migawka: etap {current}/{total} ({phase}).",
+        "cli_snapshot_phase_copy": "kopiowanie",
+        "cli_snapshot_phase_checksums": "sumy kontrolne",
+        "cli_snapshot_phase_document": "opis migawka.json",
+        "cli_snapshot_phase_rename": "przeniesienie na miejsce",
+        "cli_snapshot_phase_published": "opublikowana",
+        "cli_snapshot_notice": "Migawka: {message}",
+        "cli_snapshot_cancelling": "Przerywam migawkę (zadanie {job})…",
+        "cli_snapshot_created": (
+            "Migawka {label} utworzona (zadanie {job}): {size}, SHA-256 treści"
+            " {sha256}, {seconds} s."
+        ),
+        "cli_snapshot_unchanged": (
+            "Bez nowej migawki (zadanie {job}): ostatnia migawka {label} ma tę treść."
+        ),
+        "cli_own_scan_started": "Skan danych własnych: zadanie {job}.",
+        "cli_own_scan_progress": (
+            "Skan danych własnych: projekt {current}/{total}, plików {files},"
+            " odczytanych {read}."
+        ),
+        "cli_own_scan_notice": "Skan danych własnych: {message}",
+        "cli_own_scan_cancelling": "Przerywam skan danych własnych (zadanie {job})…",
+        "cli_own_scan_done": (
+            "Skan danych własnych (zadanie {job}): projektów {projects}, plików"
+            " {files} (nowe {new}, zmienione {changed}, brakujące {missing},"
+            " nieczytelne {unreadable}), migawek {snapshots}, problemów"
+            " {problems}; {seconds} s."
+        ),
+        "cli_own_job": "Zadanie {job} ({kind}): {state}.",
+        "cli_own_job_failed": "Zadanie {job} ({kind}) {state}: {detail}",
     }
 )

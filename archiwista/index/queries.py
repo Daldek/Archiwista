@@ -1493,7 +1493,8 @@ class IndexQueries:
             if row is None:
                 return None
             found = connection.execute(
-                f"SELECT {_OWN_FILE_COLUMNS}, f.disk_path, f.members, f.read_error,"
+                f"SELECT {_OWN_FILE_COLUMNS}, f.disk_path, f.stamp, f.members,"
+                " f.read_error,"
                 " f.read_detail, f.content_method, f.content_sha256, f.layers,"
                 " f.raster, f.feature_count, f.native_crs, f.native_bbox,"
                 " f.first_seen_at, f.changed_at"
@@ -1521,6 +1522,7 @@ class IndexQueries:
             file=_own_file_row(found),
             folder=folder,
             disk_path=found["disk_path"],
+            stamp=found["stamp"],
             members=tuple(json.loads(found["members"])),
             read_error=found["read_error"],
             read_detail=found["read_detail"],

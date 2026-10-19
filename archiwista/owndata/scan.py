@@ -272,6 +272,49 @@ def snapshot_stamp(directory: Path) -> tuple[str, int]:
     return _dump(rows), size
 
 
+def stamp_holds(main: Path, stamp: str) -> bool:
+    """Whether a file is still as a scan stamped it (``OwnFileWrite.stamp``).
+
+    Every file the stamp names (the main file, the members of its set and a
+    SQLite ``-wal`` or ``-journal``, all next to ``main``) must have its
+    stamped size and modification time, and no ``-wal`` or ``-journal`` may
+    have appeared next to ``main`` since. Only ``stat`` calls and no listing,
+    so a preview checks a working file cheaply before and after it renders
+    it; a member added to a set since the scan goes unnoticed until the next
+    scan.
+
+    Parameters
+    ----------
+    main : Path
+        The main file as the scan listed it: below the folder's real path,
+        by its name on the disk (``OwnFileDetail.disk_path``).
+    stamp : str
+        The stamp the scan recorded.
+
+    Returns
+    -------
+    bool
+        ``False`` also for a stamp that cannot be read or a file gone.
+    """
+    try:
+        rows = json.loads(stamp)
+        stamped = {str(name): (int(size), int(mtime)) for name, size, mtime in rows}
+    except (TypeError, ValueError):
+        return False
+    for name, expected in stamped.items():
+        try:
+            found = os.stat(main.parent / name)
+        except OSError:
+            return False
+        if (found.st_size, found.st_mtime_ns) != expected:
+            return False
+    return not any(
+        f"{main.name}{suffix}" not in stamped
+        and os.path.lexists(main.with_name(f"{main.name}{suffix}"))
+        for suffix in _STAMPED_COMPANIONS
+    )
+
+
 @dataclass(slots=True)
 class _Found:
     """A file of a folder as listed: where it is and its stamp."""

@@ -997,6 +997,10 @@ class OwnFileDetail:
     disk_path : str
         The main file's path below the folder as named on the disk
         (``path`` in NFC may differ).
+    stamp : str
+        Sizes and modification times of its files (and of a SQLite ``-wal``
+        or ``-journal``) when it was read: a preview checks the file has not
+        changed since (``archiwista.owndata.scan.stamp_holds``).
     members : tuple[str, ...]
         Every file of its set, the main file first, relative to the folder.
     read_error : str or None
@@ -1034,6 +1038,7 @@ class OwnFileDetail:
     file: OwnFileRow
     folder: OwnFolderRecord
     disk_path: str
+    stamp: str
     members: tuple[str, ...]
     read_error: str | None
     read_detail: str | None

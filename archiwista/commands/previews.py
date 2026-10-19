@@ -29,6 +29,7 @@ from pydantic import ValidationError
 from archiwista.api.errors import service_problem, validation_problem
 from archiwista.api.models_previews import PreviewInfo, ThumbnailQuery
 from archiwista.auth import LOCAL_OWNER
+from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser, refuse
 from archiwista.config import (
     AppPaths,
@@ -37,7 +38,7 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
 )
-from archiwista.errors import ArchiwistaError
+from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.jobs import ACTIVE_STATES, JobEvent, JobRecord, JobSupervisor, label
 from archiwista.jobs.foreground import run_foreground
@@ -45,8 +46,9 @@ from archiwista.messages import MESSAGES, with_detail
 from archiwista.previews.cache import PreviewCache
 from archiwista.previews.pool import RenderPool
 from archiwista.previews.service import PreviewService
-from archiwista.refs import ObjectResolver, format_ref, parse_ref
+from archiwista.refs import ObjectResolver, VisibleProjects, format_ref, parse_ref
 from archiwista.sources.registry import PluginRegistry
+from archiwista.state import StateStore
 
 COMMANDS = frozenset({"preview"})
 # Side of the thumbnail ``--output`` writes.
@@ -64,7 +66,11 @@ class LocalPreviews:
 
 @contextmanager
 def local_previews(
-    paths: AppPaths, settings: AppSettings, *, jobs: JobSupervisor | None = None
+    paths: AppPaths,
+    settings: AppSettings,
+    *,
+    jobs: JobSupervisor | None = None,
+    visible: VisibleProjects | None = None,
 ) -> Iterator[LocalPreviews]:
     """Open the index, the server's preview cache and one render process.
 
@@ -77,6 +83,10 @@ def local_previews(
         The stores' directories and the preview cache limit.
     jobs : JobSupervisor or None, optional
         The started supervisor of ``PreviewService.build``, if any.
+    visible : Callable[[Principal], ProjectVisibility] or None, optional
+        The projects a principal sees (``Authorizer.visible_projects``):
+        their own data and snapshots are previewed too; without it only
+        store versions.
 
     Raises
     ------
@@ -95,7 +105,7 @@ def local_previews(
         pool = stack.enter_context(
             RenderPool(workers=1, cache=cache, work_dir=paths.work_dir)
         )
-        resolver = ObjectResolver(queries, lambda: settings)
+        resolver = ObjectResolver(queries, lambda: settings, visible=visible)
         yield LocalPreviews(queries, pool, PreviewService(pool, resolver, jobs))
 
 
@@ -166,15 +176,22 @@ def main(
     with ExitStack() as stack:
         try:
             settings = SettingsService(ConfigStore(paths.config_file), registry)
+            decisions = Authorizer(StateStore(paths.state_file), settings.get)
             jobs = None
             if args.build:
                 jobs = stack.enter_context(JobSupervisor(paths, settings))
             previews = stack.enter_context(
-                local_previews(paths, settings.get(), jobs=jobs)
+                local_previews(
+                    paths,
+                    settings.get(),
+                    jobs=jobs,
+                    visible=decisions.visible_projects,
+                )
             )
         except (
             SettingsValidationError,
             IndexUnsupportedError,
+            StateError,
             OSError,
             sqlite3.Error,
         ) as error:

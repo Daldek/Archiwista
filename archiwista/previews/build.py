@@ -20,7 +20,9 @@ refs share it:
 
 A file whose build fails (time limit, memory, unreadable, too large without
 ``force``) fails alone: the job goes on, and its summary names it in
-``failed`` with ``ref``, ``code`` and a Polish ``detail`` without paths.
+``failed`` with ``ref``, ``code`` and a Polish ``detail`` without paths; a
+ref that does not resolve fails with a detail of its own, naming no other
+ref of the same content.
 Progress: ``current`` of ``total`` contents with ``built``, ``cached`` and
 ``failed``; the summary: ``built``, ``cached``, ``failed`` and ``seconds``.
 An interrupt kills the build processes before the job ends.
@@ -42,6 +44,7 @@ from typing import TYPE_CHECKING, Literal
 from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
+    OwnFileChangedError,
     PathOutsideRootError,
     PreviewUnavailableError,
     SourceUnavailableError,
@@ -78,12 +81,18 @@ type SourceResolver = Callable[[str], PreviewSource]
 type ResolverFactory = Callable[[JobSpec], SourceResolver]
 
 # How the job turns a ref into its source, by the ref's kind (decision 10):
-# ``version`` (step 6), ``file`` and ``snapshot`` (step 9). A resolver raises
-# ``InvalidRefError``, ``NotFoundError``, ``PathOutsideRootError``,
+# ``version`` (step 6), ``file`` and ``snapshot`` (step 9), all through
+# ``ObjectResolver``. A resolver raises ``InvalidRefError``,
+# ``NotFoundError``, ``PathOutsideRootError``, ``OwnFileChangedError`` (a
+# working file changed since its scan: ``changed_since_scan``),
 # ``SourceUnavailableError`` (``store_unavailable``) or
 # ``PreviewUnavailableError`` (e.g. ``missing_file``); it runs in the job's
 # main thread only.
-RESOLVERS: Mapping[str, ResolverFactory] = {"version": job_resolver}
+RESOLVERS: Mapping[str, ResolverFactory] = {
+    "version": job_resolver,
+    "file": job_resolver,
+    "snapshot": job_resolver,
+}
 BUILD_COMMAND: tuple[str, ...] = RENDER_WORKER_COMMAND
 BUILD_TIMEOUT_S = BUILD.timeout_s
 BUILD_MEMORY_BYTES = 4 * 1024**3
@@ -96,14 +105,22 @@ def build_processes() -> int:
 
 @dataclass(frozen=True, slots=True)
 class _Outcome:
-    """How the build of one content ended, for all its refs."""
+    """How the build of one content ended, for all its refs.
+
+    ``unresolved``: the failure of each ref when none of them resolved, each
+    with its own code and detail, so a failure names no other ref of the
+    same content (another project's file of the same bytes, decision 3).
+    """
 
     status: Literal["built", "cached", "failed"]
     refs: tuple[str, ...]
     code: str | None = None
     detail: str | None = None
+    unresolved: tuple[JsonObject, ...] = ()
 
     def failures(self) -> list[JsonObject]:
+        if self.unresolved:
+            return list(self.unresolved)
         return [
             {"ref": ref, "code": self.code, "detail": self.detail} for ref in self.refs
         ]
@@ -174,32 +191,39 @@ class _Builder:
         self._stopped = False
 
     def resolve(self, refs: Sequence[str]) -> PreviewSource | _Outcome:
-        """Return the source of the first ref that resolves, else the failure."""
-        failure = _Outcome("failed", tuple(refs))
+        """Return the source of the first ref that resolves, else each failure."""
+        failures: list[JsonObject] = []
         for ref in refs:
-            scheme = ref.partition(":")[0]
-            factory = RESOLVERS.get(scheme)
-            if factory is None:
-                failure = self._unresolved(refs, "invalid_ref", ref, None)
-                continue
-            if scheme not in self._resolvers:
-                self._resolvers[scheme] = factory(self._spec)
-            try:
-                return self._resolvers[scheme](ref)
-            except InvalidRefError as error:
-                failure = self._unresolved(refs, "invalid_ref", ref, str(error))
-            except NotFoundError as error:
-                failure = self._unresolved(refs, "not_found", ref, str(error))
-            except PathOutsideRootError as error:
-                failure = self._unresolved(refs, "path_outside_root", ref, str(error))
-            except SourceUnavailableError as error:
-                failure = _Outcome(
-                    "failed", tuple(refs), "store_unavailable", str(error)
-                )
-            except PreviewUnavailableError as error:
-                detail = MESSAGES.get(f"preview_reason_{error.reason}", error.reason)
-                failure = _Outcome("failed", tuple(refs), error.reason, detail)
-        return failure
+            found = self._resolve(ref)
+            if isinstance(found, PreviewSource):
+                return found
+            code, detail = found
+            failures.append({"ref": ref, "code": code, "detail": detail})
+        return _Outcome("failed", tuple(refs), unresolved=tuple(failures))
+
+    def _resolve(self, ref: str) -> PreviewSource | tuple[str, str]:
+        """Return a ref's source, or the code and Polish detail of its failure."""
+        scheme = ref.partition(":")[0]
+        factory = RESOLVERS.get(scheme)
+        if factory is None:
+            return "invalid_ref", _unresolved(ref, None)
+        if scheme not in self._resolvers:
+            self._resolvers[scheme] = factory(self._spec)
+        try:
+            return self._resolvers[scheme](ref)
+        except InvalidRefError as error:
+            return "invalid_ref", _unresolved(ref, str(error))
+        except NotFoundError as error:
+            return "not_found", _unresolved(ref, str(error))
+        except PathOutsideRootError as error:
+            return "path_outside_root", _unresolved(ref, str(error))
+        except OwnFileChangedError as error:
+            return "changed_since_scan", str(error)
+        except SourceUnavailableError as error:
+            return "store_unavailable", str(error)
+        except PreviewUnavailableError as error:
+            reason = error.reason
+            return reason, MESSAGES.get(f"preview_reason_{reason}", reason)
 
     def build(self, refs: Sequence[str], source: PreviewSource | _Outcome) -> _Outcome:
         """Build one content unless it is built already; never raise for it."""
@@ -327,13 +351,6 @@ class _Builder:
                     return answer
         raise _Ended(process.returncode)
 
-    def _unresolved(
-        self, refs: Sequence[str], code: str, ref: str, detail: str | None
-    ) -> _Outcome:
-        reason = detail or MESSAGES["preview_build_unknown_ref"]
-        message = MESSAGES["preview_build_unresolved"].format(ref=ref, detail=reason)
-        return _Outcome("failed", tuple(refs), code, message)
-
 
 def _groups(refs: Sequence[str], contents: Sequence[str]) -> dict[str, list[str]]:
     """Return the refs of each content, contents in the order of first use."""
@@ -341,6 +358,12 @@ def _groups(refs: Sequence[str], contents: Sequence[str]) -> dict[str, list[str]
     for ref, content in zip(refs, contents, strict=True):
         groups.setdefault(content, []).append(ref)
     return groups
+
+
+def _unresolved(ref: str, detail: str | None) -> str:
+    """Return why a ref of the job did not resolve, in Polish."""
+    reason = detail or MESSAGES["preview_build_unknown_ref"]
+    return MESSAGES["preview_build_unresolved"].format(ref=ref, detail=reason)
 
 
 def _failure(refs: tuple[str, ...], code: str, detail: str | None) -> _Outcome:

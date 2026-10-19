@@ -13,48 +13,78 @@ it never builds one; ``parse_ref`` and ``format_ref`` are each other's
 inverse.
 
 ``ObjectResolver`` is the only way from a ``ref`` to a file. It decides who
-sees the object first (store versions: everyone), finds it in the index and
-returns its ``PreviewSource``: ``resolve`` resolves the file inside its root
-(``resolve_indexed_path``: a symbolic link leaving it is
-``PathOutsideRootError``), ``locate`` answers from the index alone, so that
-the preview cache answers for a version with a ``sha256`` while its store is
-disconnected. A version without a ``sha256`` is keyed by its path, size and
-modification time (``path_key``), so it needs its file either way. Own-data
-kinds (``file``, ``snapshot``) are resolved from step 9 on; until then they
-are refused like an unknown kind (``InvalidRefError``).
+sees the object first (store versions: everyone; an own-data file and its
+snapshots: whoever sees its project, else ``NotFoundError`` as for an
+unknown object), finds it in the index and returns its ``PreviewSource``:
+``resolve`` resolves the file inside its root (``resolve_indexed_path``: a
+symbolic link leaving it is ``PathOutsideRootError``), ``locate`` answers
+from the index alone, so that the preview cache answers for a version with
+a ``sha256`` (or a snapshot) while its store (folder) is disconnected. A
+version without a ``sha256`` is keyed by its path, size and modification
+time (``path_key``), so it needs its file either way.
+
+An own-data working file (``file``) changes while people work: it is keyed
+by the content identity of its last scan (decision 8), so every use first
+checks that its files are still as the scan stamped them
+(``stamp_holds``), else ``OwnFileChangedError`` (``409 own_file_changed``:
+refresh the project's own data), and its source is ``mutable`` with the
+state a render process checks again before and after rendering. A snapshot
+(``snapshot``) is read only in ``.wersje/`` of its project's folder and is
+keyed by the content identity of its ``migawka.json``.
 
 The ``preview`` job resolves its refs with ``job_resolver`` (registered in
-``archiwista.previews.build.RESOLVERS``).
+``archiwista.previews.build.RESOLVERS`` for every kind).
 """
 
 import os
 import re
-from collections.abc import Callable
+import unicodedata
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from archiwista.auth import LOCAL_OWNER, Principal, ProjectVisibility
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal, ProjectVisibility
 from archiwista.config import AppSettings
 from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
+    OwnFileChangedError,
+    PathOutsideRootError,
     PreviewUnavailableError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, ProductVersion
+from archiwista.index import (
+    IndexQueries,
+    OwnFileDetail,
+    ProductVersion,
+    SnapshotRecord,
+    own_file_id,
+)
 from archiwista.jobs.protocol import JobSpec
 from archiwista.messages import MESSAGES
+from archiwista.owndata.document import SNAPSHOTS_DIR
+from archiwista.owndata.formats import fileset_members
+from archiwista.owndata.scan import stamp_holds
 from archiwista.paths import indexed_path, resolve_indexed_path
 from archiwista.previews.cache import path_key
-from archiwista.previews.types import CONTENT_KEY, Extent, PreviewSource
+from archiwista.previews.types import (
+    CONTENT_KEY,
+    Extent,
+    FileStat,
+    PreviewSource,
+    SourceStat,
+)
 from archiwista.sources import GeoJSONGeometry
 
 REF_KINDS = ("version", "file", "snapshot")
 _STORE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 _PROJECT = re.compile(r"[a-z0-9-]+")
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
-# Only whether a version exists: no project's pins are read.
+# Only whether a version exists: no project's pins are read. Also what a
+# resolver without a visibility rule sees of own data: nothing.
 _NO_PROJECTS = ProjectVisibility()
+
+type VisibleProjects = Callable[[Principal], ProjectVisibility]
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,13 +180,22 @@ class ObjectResolver:
         Reader of the local index.
     settings : Callable[[], AppSettings]
         The settings in effect (the stores' directories), read per call.
+    visible : Callable[[Principal], ProjectVisibility] or None, optional
+        The projects a principal sees (``Authorizer.visible_projects``):
+        their own data and snapshots. Without it no project's are visible,
+        only store versions.
     """
 
     def __init__(
-        self, queries: IndexQueries, settings: Callable[[], AppSettings]
+        self,
+        queries: IndexQueries,
+        settings: Callable[[], AppSettings],
+        *,
+        visible: VisibleProjects | None = None,
     ) -> None:
         self._queries = queries
         self._settings = settings
+        self._visible = visible
 
     def resolve(self, ref: str | ObjectRef, *, principal: Principal) -> PreviewSource:
         """Return the object's source with its file resolved inside its root.
@@ -166,46 +205,57 @@ class ObjectResolver:
         ref : str or ObjectRef
             The object.
         principal : Principal
-            Who asks: store versions are visible to everyone.
+            Who asks: store versions are visible to everyone, own data and
+            snapshots to whoever sees their project.
 
         Returns
         -------
         PreviewSource
             Real paths inside the root; the content key is the version's
-            ``sha256``, else its path key.
+            ``sha256`` (else its path key), or the content identity of an
+            own-data file or snapshot.
 
         Raises
         ------
         InvalidRefError
-            Not a reference, or one of a kind this resolver does not handle.
+            Not a reference.
         NotFoundError
-            The index does not know the object (``404``).
+            The index does not know the object, or the principal does not
+            see its project (``404``).
         PathOutsideRootError
             Its file resolves outside its root, e.g. through a link (``403``).
         SourceUnavailableError
             Its store cannot be reached (``503 store_unavailable``).
+        OwnFileChangedError
+            A working file differs from its last scan (``409``).
         PreviewUnavailableError
-            ``missing_file``: its store is there, its file is not.
+            ``missing_file``: its store or folder is there, its file is not
+            (or a working file the last scan found gone, or a folder out of
+            reach); ``unreadable``: a working file without a content
+            identity, or a snapshot that is not valid.
         """
-        return self._source(_parsed(ref), on_disk=True)
+        return self._source(_parsed(ref), principal, on_disk=True)
 
     def locate(self, ref: str | ObjectRef, *, principal: Principal) -> PreviewSource:
         """Return the object's source from the index, for the preview cache.
 
-        A version with a ``sha256`` is located without touching its store:
-        its path is the indexed one, not resolved, and must not be rendered
-        (``resolve`` gives the source to render). One without a ``sha256``
-        is resolved as by ``resolve``.
+        A version with a ``sha256`` and a snapshot are located without
+        touching their store or folder: their paths are the indexed ones,
+        not resolved, and must not be rendered (``resolve`` gives the source
+        to render). A version without a ``sha256`` is resolved as by
+        ``resolve``, and a working file too: whether it changed since its
+        scan decides its content.
 
         Raises
         ------
         InvalidRefError, NotFoundError, PathOutsideRootError
             As ``resolve``.
-        SourceUnavailableError, PreviewUnavailableError
-            As ``resolve``, only for a version without a ``sha256``, or one
-            of a store no longer configured.
+        SourceUnavailableError, OwnFileChangedError, PreviewUnavailableError
+            As ``resolve``, only for a version without a ``sha256`` or one of
+            a store no longer configured, a working file, or a snapshot that
+            is not valid.
         """
-        return self._source(_parsed(ref), on_disk=False)
+        return self._source(_parsed(ref), principal, on_disk=False)
 
     def version_source(
         self, store: str, version: ProductVersion, *, on_disk: bool
@@ -240,11 +290,17 @@ class ObjectResolver:
             on_disk=on_disk,
         )
 
-    def _source(self, ref: ObjectRef, *, on_disk: bool) -> PreviewSource:
-        if isinstance(ref, VersionRef):
-            return self._version(ref, on_disk=on_disk)
-        message = MESSAGES["ref_kind_unsupported"].format(ref=format_ref(ref))
-        raise InvalidRefError(message)
+    def _source(
+        self, ref: ObjectRef, principal: Principal, *, on_disk: bool
+    ) -> PreviewSource:
+        match ref:
+            case VersionRef():
+                return self._version(ref, on_disk=on_disk)
+            case FileRef():
+                return self._working(ref, self._own_file(ref, principal))
+            case SnapshotRef():
+                detail = self._own_file(ref, principal)
+                return _snapshot_source(ref, detail, on_disk=on_disk)
 
     def _version(self, ref: VersionRef, *, on_disk: bool) -> PreviewSource:
         detail = self._queries.version(ref.store, ref.path, visible=_NO_PROJECTS)
@@ -282,19 +338,87 @@ class ObjectResolver:
             raise SourceUnavailableError(MESSAGES["preview_reason_store_unavailable"])
         return root
 
+    def _own_file(
+        self, ref: FileRef | SnapshotRef, principal: Principal
+    ) -> OwnFileDetail:
+        """Return the indexed working file of a reference its principal sees.
+
+        Raises
+        ------
+        NotFoundError
+            An unknown project, file or folder never scanned, or a project
+            the principal does not see.
+        """
+        visible = _NO_PROJECTS if self._visible is None else self._visible(principal)
+        path = unicodedata.normalize("NFC", ref.path)
+        detail = self._queries.own_file(ref.project, own_file_id(path), visible=visible)
+        if detail is None or detail.file.path != path:
+            message = MESSAGES["own_file_not_found"].format(
+                project=ref.project, file_id=path
+            )
+            raise NotFoundError(message)
+        return detail
+
+    def _working(self, ref: FileRef, detail: OwnFileDetail) -> PreviewSource:
+        """Return a working file's source once it is known unchanged since its scan.
+
+        Its state for the render process (the main file and its ``-wal``) is
+        read before the scan's stamp is checked, so a change after the check
+        shows to the render process as a change since the scan.
+        """
+        if detail.file.state == "missing":
+            raise PreviewUnavailableError("missing_file")
+        root = Path(os.path.realpath(detail.folder.path))
+        listed = indexed_path(root, detail.disk_path)
+        try:
+            real = resolve_indexed_path(root, detail.disk_path)
+            stat = _source_stat(real)
+            members = fileset_members(real)
+        except FileNotFoundError:
+            if _reachable(root):
+                raise own_file_changed(ref) from None
+            raise PreviewUnavailableError("missing_file") from None
+        except OSError:  # a folder out of reach, a stale share
+            raise PreviewUnavailableError("missing_file") from None
+        reals = tuple(Path(os.path.realpath(member)) for member in members)
+        if not all(member.is_relative_to(root) for member in reals):
+            message = MESSAGES["path_outside_root"].format(path=detail.file.path)
+            raise PathOutsideRootError(message)
+        if not stamp_holds(listed, detail.stamp):
+            raise own_file_changed(ref)
+        content = (detail.content_sha256 or "").lower()
+        if CONTENT_KEY.fullmatch(content) is None:
+            raise PreviewUnavailableError("unreadable")
+        return PreviewSource(
+            ref=format_ref(FileRef(ref.project, detail.file.path)),
+            content_key=content,
+            paths=reals,
+            size_bytes=stat.main.size_bytes,
+            mutable=True,
+            stat=stat,
+        )
+
+
+def own_file_changed(ref: FileRef) -> OwnFileChangedError:
+    """Return the refusal of a working file that changed since its scan."""
+    message = MESSAGES["own_file_changed"].format(path=ref.path, project=ref.project)
+    return OwnFileChangedError(message)
+
 
 def job_resolver(spec: JobSpec) -> Callable[[str], PreviewSource]:
     """Return how a ``preview`` job resolves its refs (``build.RESOLVERS``).
 
     The index is opened for each ref and closed again; the refs were checked
     against the principal who asked when the job was submitted, so the job
-    resolves them as the owner of the installation.
+    resolves them as the owner of the installation, who sees every project.
     """
     settings = spec.settings
 
     def resolve(ref: str) -> PreviewSource:
         with IndexQueries(spec.index_path) as queries:
-            resolver = ObjectResolver(queries, lambda: settings)
+            resolver = ObjectResolver(
+                queries, lambda: settings, visible=lambda _: ALL_PROJECTS
+            )
             return resolver.resolve(ref, principal=LOCAL_OWNER)
 
     return resolve
@@ -347,6 +471,91 @@ def _version_source(
         dataset_key=dataset_key,
         nodata=nodata,
     )
+
+
+def _snapshot_source(
+    ref: SnapshotRef, detail: OwnFileDetail, *, on_disk: bool
+) -> PreviewSource:
+    """Return a snapshot's source in ``.wersje/`` of its file's data folder.
+
+    Its files are those its ``migawka.json`` names, the main file first, in
+    ``<folder>/.wersje/<file>/<label>/``; on the disk each must resolve
+    inside that directory. The content key is the document's content
+    identity, so a snapshot shares its previews with every file of the same
+    content (decision 3).
+
+    Raises
+    ------
+    NotFoundError
+        The file has no snapshot of that label.
+    PreviewUnavailableError
+        ``unreadable``: the snapshot is not valid (``invalid``, ``modified``);
+        ``missing_file``: its directory or a file of it is gone.
+    PathOutsideRootError
+        A file of it resolves outside its directory.
+    """
+    snapshot = next(
+        (item for item in detail.snapshots if item.label == ref.label), None
+    )
+    if snapshot is None:
+        message = MESSAGES["own_snapshot_not_found"].format(
+            project=ref.project, path=detail.file.path, label=ref.label
+        )
+        raise NotFoundError(message)
+    content = (snapshot.content_sha256 or "").lower()
+    files = _snapshot_files(snapshot)
+    if snapshot.state != "ok" or not files or CONTENT_KEY.fullmatch(content) is None:
+        raise PreviewUnavailableError("unreadable")
+    root = Path(os.path.realpath(detail.folder.path))
+    place = f"{SNAPSHOTS_DIR}/{detail.disk_path}/{snapshot.label}"
+    size_bytes = files[0][1]
+    if on_disk:
+        try:
+            directory = resolve_indexed_path(root, place)
+            paths = tuple(resolve_indexed_path(directory, name) for name, _ in files)
+            size_bytes = paths[0].stat().st_size
+        except OSError:  # gone, or a folder out of reach
+            raise PreviewUnavailableError("missing_file") from None
+    else:
+        directory = indexed_path(root, place)
+        paths = tuple(indexed_path(directory, name) for name, _ in files)
+    return PreviewSource(
+        ref=format_ref(SnapshotRef(ref.project, snapshot.label, detail.file.path)),
+        content_key=content,
+        paths=paths,
+        size_bytes=size_bytes,
+    )
+
+
+def _snapshot_files(snapshot: SnapshotRecord) -> list[tuple[str, int]]:
+    """Return the names and sizes of a snapshot's files from its document."""
+    files = (snapshot.document or {}).get("files")
+    found: list[tuple[str, int]] = []
+    for item in files if isinstance(files, list) else ():
+        entry = item if isinstance(item, Mapping) else {}
+        name, size = entry.get("name"), entry.get("size_bytes")
+        if not isinstance(name, str) or not isinstance(size, int):
+            return []
+        found.append((name, size))
+    return found
+
+
+def _source_stat(main: Path) -> SourceStat:
+    """Return what a render process checks of a working file: it and its ``-wal``.
+
+    Raises
+    ------
+    OSError
+        The file cannot be read (``FileNotFoundError``: it is gone).
+    """
+    found = os.stat(main)
+    try:
+        wal_found = os.stat(main.with_name(f"{main.name}-wal"))
+    except FileNotFoundError:
+        wal = None
+    else:
+        wal = FileStat(wal_found.st_size, wal_found.st_mtime_ns)
+    return SourceStat(FileStat(found.st_size, found.st_mtime_ns), wal)
 
 
 def _georeference(

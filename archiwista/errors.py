@@ -269,6 +269,16 @@ class InvalidRefError(ArchiwistaError):
     """
 
 
+class OwnFileChangedError(ArchiwistaError):
+    """An own-data working file changed since its scan (``409 own_file_changed``).
+
+    Its preview would show content the index does not know (decision 8):
+    the sizes and times of its files differ from what the last ``own_scan``
+    recorded, before or after a render. The message is Polish and says to
+    refresh the project's own data (``POST /projects/{project}/scan``).
+    """
+
+
 class PreviewParameterError(ArchiwistaError):
     """A parameter does not fit the file (``422 validation_error``).
 

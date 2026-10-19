@@ -3,23 +3,28 @@
 ``set_data_dir`` is the one way to give a project another data folder
 (``PUT /projects/{project}/data-dir``, step 9): an administrator's
 ``settings.write``, the same rules as every scan (``check_own_folder``) and
-then the settings' own checks. ``own_problems`` explains the problems a scan
-recorded, in Polish, without paths of other projects.
+then the settings' own checks. ``folder_check`` checks a project's folder
+now against the rules, as the ``snapshot`` job does before it writes.
+``own_problems``, ``file_problems`` and ``folder_problems`` explain the
+problems a scan recorded (or a folder's state now), in Polish, without paths
+of other projects.
 """
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from archiwista.auth import ALL_PROJECTS, Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
     AppPaths,
+    AppSettings,
     SettingsProblem,
     SettingsService,
     SettingsValidationError,
     own_folder_conflict,
 )
 from archiwista.errors import NotFoundError
-from archiwista.index import IndexQueries, OwnFolderRecord
+from archiwista.index import IndexQueries, OwnFileDetail, OwnFolderRecord, OwnProblem
 from archiwista.messages import MESSAGES
 from archiwista.owndata.scan import OwnFolderCheck, check_own_folder, folder_rules
 from archiwista.services.problems import Problem, explain
@@ -102,16 +107,71 @@ def set_data_dir(
     )
 
 
+def folder_check(
+    settings: AppSettings, queries: IndexQueries, paths: AppPaths, project: str
+) -> OwnFolderCheck:
+    """Check a project's data folder now against the rules of decision 8.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Settings in effect (``own_data_dirs``, the stores).
+    queries : IndexQueries
+        The indexed projects: their folders and stores take part in the rules.
+    paths : AppPaths
+        Archiwista's data directory, which no folder may overlap.
+    project : str
+        The project's access key (``ProjectRef.access_key``).
+    """
+    known = queries.projects(visible=ALL_PROJECTS)
+    stores, folders = folder_rules(settings, known)
+    others = [path for key, path in folders.items() if key != project]
+    return check_own_folder(
+        settings, project, stores=stores, app_data=paths.data_dir, others=others
+    )
+
+
+def folder_problems(check: OwnFolderCheck, project: str) -> tuple[Problem, ...]:
+    """Return the problems of a folder checked now, before its first scan.
+
+    Parameters
+    ----------
+    check : OwnFolderCheck
+        The folder and its state now.
+    project : str
+        The project's key (``ProjectRef.key``).
+    """
+    found: list[OwnProblem] = []
+    if check.state == "invalid":
+        found.append(OwnProblem("own_folder_invalid", reason=check.reason))
+    elif check.state == "unreadable":
+        found.append(OwnProblem("own_folder_unreadable"))
+    return _explained(found, project=project, folder=check.path)
+
+
+def file_problems(detail: OwnFileDetail) -> tuple[Problem, ...]:
+    """Return the problems of one file and its snapshots with their fixes."""
+    folder = detail.folder
+    return _explained(detail.problems, project=folder.project, folder=Path(folder.path))
+
+
 def own_problems(record: OwnFolderRecord) -> tuple[Problem, ...]:
     """Return the problems of a project's folder with their fix instructions."""
+    return _explained(record.problems, project=record.project, folder=Path(record.path))
+
+
+def _explained(
+    found: Iterable[OwnProblem], *, project: str, folder: Path
+) -> tuple[Problem, ...]:
+    """Return problems of a project's folder in Polish, with their fixes."""
     problems: list[Problem] = []
-    for problem in record.problems:
+    for problem in found:
         reason = problem.reason
         if problem.code == "own_folder_invalid" and reason is not None:
             reason = MESSAGES[f"own_folder_reason_{reason}"]
         elif problem.code == "own_file_unreadable" and reason is not None:
             reason = MESSAGES.get(f"own_read_error_{reason}", reason)
-        place = problem.path or str(Path(record.path))
+        place = problem.path or str(folder)
         message, instruction = explain(
             problem.code, path=place, reason=reason, limit="10 000"
         )
@@ -121,7 +181,7 @@ def own_problems(record: OwnFolderRecord) -> tuple[Problem, ...]:
                 message=message,
                 instruction=instruction,
                 path=problem.path,
-                project=record.project,
+                project=project,
                 first_seen_at=problem.first_seen_at,
             )
         )

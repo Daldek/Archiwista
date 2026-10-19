@@ -50,9 +50,10 @@ PREVIEW_MESSAGES = MappingProxyType(
         "preview_fix_too_large": (
             "Duży raster: użyj „Zbuduj podgląd”. Inny plik otwórz w QGIS."
         ),
-        "preview_reason_missing_file": "Pliku tej wersji nie ma na dysku.",
+        "preview_reason_missing_file": "Pliku nie ma na dysku.",
         "preview_fix_missing_file": (
-            "Odśwież magazyn; jeśli plik usunięto, pobierz wersję ponownie Kartografem."
+            "Odśwież magazyn albo dane własne projektu; wersję usuniętą"
+            " z magazynu pobierz ponownie Kartografem."
         ),
         "preview_reason_store_unavailable": (
             "Magazyn jest odłączony, a w pamięci podglądów nie ma tego podglądu."

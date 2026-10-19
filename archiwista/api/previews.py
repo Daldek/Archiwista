@@ -16,10 +16,13 @@ Images and data carry ``Cache-Control: private, max-age=86400, immutable``
 (a version's content never changes and everyone sees the store) and an
 ``ETag``; ``If-None-Match`` naming it is answered ``304``. A request whose
 client goes away before its answer gives its render up, so the tiles of a
-map moved on leave the render queue unrendered. Routes only translate:
-``PreviewService`` does the work, ``archiwista preview`` calls it too. This
-router comes before the catalog's, whose ``/stores/{store}/versions/{version}``
-would otherwise take these addresses.
+map moved on leave the render queue unrendered. The ``preview`` job a build
+starts or joins is shown as the session sees it: a joined job may hold refs
+of projects it does not see. Routes only translate: ``PreviewService`` does
+the work, ``archiwista preview`` calls it too; the own-data routes
+(``archiwista.api.owndata``) answer with the helpers here. This router comes
+before the catalog's, whose ``/stores/{store}/versions/{version}`` would
+otherwise take these addresses.
 """
 
 import asyncio
@@ -33,6 +36,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 
 from archiwista.api import API_PREFIX
+from archiwista.api.dependencies import visible_projects
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
 from archiwista.api.models import JobDetail
 from archiwista.api.models_previews import (
@@ -44,9 +48,11 @@ from archiwista.api.models_previews import (
     ThumbnailQuery,
     TileQuery,
 )
-from archiwista.auth import Principal
+from archiwista.auth import Principal, ProjectVisibility
+from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.errors import PreviewBusyError
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import MESSAGES
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
 from archiwista.previews.service import Payload, PreviewService
@@ -71,6 +77,9 @@ class ClientGone(Exception):
 def preview_service(request: Request) -> PreviewService:
     """Return the previews of the application's render pool and index.
 
+    Own data and snapshots are resolved for whoever sees their project
+    (``Authorizer.visible_projects``).
+
     Raises
     ------
     PreviewBusyError
@@ -81,12 +90,23 @@ def preview_service(request: Request) -> PreviewService:
     if pool is None:
         raise PreviewBusyError(MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S)
     settings: SettingsService = state.settings
-    resolver = ObjectResolver(state.queries, settings.get)
+    decisions: Authorizer = state.authorizer
+    resolver = ObjectResolver(
+        state.queries, settings.get, visible=decisions.visible_projects
+    )
     return PreviewService(pool, resolver, state.jobs)
+
+
+def optional_jobs(request: Request) -> JobSupervisor | None:
+    """Return the server's supervisor of background jobs, if it runs one."""
+    value: JobSupervisor | None = request.app.state.jobs
+    return value
 
 
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Service = Annotated[PreviewService, Depends(preview_service)]
+_Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
+_OptionalJobs = Annotated[JobSupervisor | None, Depends(optional_jobs)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _Version = Annotated[
     str,
@@ -230,11 +250,7 @@ async def get_preview(
     addresses it gives (`thumbnail_url`, `tiles_url`, `features_url`,
     `members_url`); never compose them.
     """
-    ref = version_ref(store, version)
-    try:
-        return await while_connected(request, service.info(ref, principal=principal))
-    except ClientGone:
-        return Response(status_code=CLIENT_GONE)
+    return await info_answer(request, service, version_ref(store, version), principal)
 
 
 @router.post(
@@ -254,7 +270,9 @@ async def build_preview(
     store: _Store,
     version: _Version,
     principal: _Principal,
+    visible: _Visible,
     service: _Service,
+    jobs: _OptionalJobs,
     body: Annotated[BuildRequest | None, Body()] = None,
 ) -> Response:
     """Build the local preview of a version (its COG) in the background.
@@ -263,18 +281,17 @@ async def build_preview(
     building the same content) and `Location: /api/v1/jobs/{job}`, or `200`
     with the `PreviewInfo` when nothing needs building. A file past the
     auto-build limits needs `force: true` (`409 preview_unavailable`,
-    `too_large`, otherwise).
+    `too_large`, otherwise). A joined job lists only the refs of projects
+    the session sees.
     """
-    ref = version_ref(store, version)
     force = body is not None and body.force
-    record = await service.build([ref], principal=principal, force=force)
-    if record is None:
-        info = await service.info(ref, principal=principal)
-        return JSONResponse(info.model_dump(mode="json"))
-    return JSONResponse(
-        JobDetail.of(record).model_dump(mode="json"),
-        status_code=202,
-        headers={"Location": f"{API_PREFIX}/jobs/{record.id}"},
+    return await build_answer(
+        service,
+        version_ref(store, version),
+        principal=principal,
+        visible=visible,
+        jobs=jobs,
+        force=force,
     )
 
 
@@ -304,7 +321,7 @@ async def get_thumbnail(
         frame=query.frame(),
         if_none_match=if_none_match,
     )
-    return await _respond(request, work, PNG)
+    return await respond(request, work, PNG, VERSION_CACHE_CONTROL)
 
 
 @router.get(
@@ -329,19 +346,7 @@ async def get_tile(
     Outside the version's `minzoom`–`maxzoom` or extent: `404`. A file
     whose map needs its local preview built first: `409 preview_not_ready`.
     """
-    last = 2**z - 1
-    wrong = [("x", x), ("y", y)]
-    errors = [
-        {
-            "loc": ("path", name),
-            "msg": MESSAGES["preview_tile_range"].format(z=z, last=last),
-            "type": "value_error",
-        }
-        for name, value in wrong
-        if value > last
-    ]
-    if errors:
-        raise RequestValidationError(errors)
+    require_tile(z, x, y)
     work = service.tile(
         version_ref(store, version),
         principal=principal,
@@ -352,7 +357,7 @@ async def get_tile(
         rescale=query.rescale_values(),
         if_none_match=if_none_match,
     )
-    return await _respond(request, work, PNG)
+    return await respond(request, work, PNG, VERSION_CACHE_CONTROL)
 
 
 @router.get(
@@ -386,7 +391,7 @@ async def get_features(
         limit=query.limit,
         if_none_match=if_none_match,
     )
-    return await _respond(request, work, GEOJSON)
+    return await respond(request, work, GEOJSON, VERSION_CACHE_CONTROL)
 
 
 @router.get(
@@ -412,42 +417,122 @@ async def get_members(
     directory declares over 100 000 members is `too_large`.
     """
     ref = version_ref(store, version)
+    return await members_answer(
+        request, service, ref, principal, if_none_match, VERSION_CACHE_CONTROL
+    )
+
+
+# What the preview routes of versions, own files and snapshots share.
+
+
+async def info_answer(
+    request: Request, service: PreviewService, ref: str, principal: Principal
+) -> PreviewInfo | Response:
+    """Answer ``GET …/preview``: the ``PreviewInfo`` of an object."""
+    try:
+        return await while_connected(request, service.info(ref, principal=principal))
+    except ClientGone:
+        return Response(status_code=CLIENT_GONE)
+
+
+async def build_answer(
+    service: PreviewService,
+    ref: str,
+    *,
+    principal: Principal,
+    visible: ProjectVisibility,
+    jobs: JobSupervisor | None,
+    force: bool,
+) -> Response:
+    """Answer ``POST …/preview``: ``200 PreviewInfo``, or ``202`` with its job.
+
+    The job, a new one or one building the same content that the request
+    joined, is shown as the session sees it (``JobSupervisor.get`` with
+    ``visible``): a joined job may hold refs of projects it does not see.
+    """
+    record = await service.build([ref], principal=principal, force=force)
+    if record is None:
+        info = await service.info(ref, principal=principal)
+        return JSONResponse(info.model_dump(mode="json"))
+    if jobs is not None:  # the request's own ref keeps the job visible
+        record = await asyncio.to_thread(jobs.get, record.id, visible=visible) or record
+    return JSONResponse(
+        JobDetail.of(record).model_dump(mode="json"),
+        status_code=202,
+        headers={"Location": f"{API_PREFIX}/jobs/{record.id}"},
+    )
+
+
+def require_tile(z: int, x: int, y: int) -> None:
+    """Refuse a column or a row past the last one of zoom ``z`` (``422``)."""
+    last = 2**z - 1
+    errors = [
+        {
+            "loc": ("path", name),
+            "msg": MESSAGES["preview_tile_range"].format(z=z, last=last),
+            "type": "value_error",
+        }
+        for name, value in (("x", x), ("y", y))
+        if value > last
+    ]
+    if errors:
+        raise RequestValidationError(errors)
+
+
+async def respond(
+    request: Request,
+    work: Coroutine[Any, Any, Payload],
+    media_type: str,
+    cache_control: str,
+) -> Response:
+    """Answer an image or data, ``304`` when the client holds it.
+
+    ``cache_control``: ``VERSION_CACHE_CONTROL`` for a store version, a
+    revalidated one for own data, whose content and visibility change.
+    """
+    try:
+        payload = await while_connected(request, work)
+    except ClientGone:
+        return Response(status_code=CLIENT_GONE)
+    if payload.data is None:
+        return _not_modified(payload, cache_control)
+    return Response(
+        payload.data,
+        media_type=media_type,
+        headers=_cache_headers(payload, cache_control),
+    )
+
+
+async def members_answer(
+    request: Request,
+    service: PreviewService,
+    ref: str,
+    principal: Principal,
+    if_none_match: str | None,
+    cache_control: str,
+) -> Response:
+    """Answer ``GET …/members``: an archive's ``ArchiveMembers``, or ``304``."""
     work = service.members(ref, principal=principal, if_none_match=if_none_match)
     try:
         payload = await while_connected(request, work)
     except ClientGone:
         return Response(status_code=CLIENT_GONE)
     if payload.data is None:
-        return _not_modified(payload)
+        return _not_modified(payload, cache_control)
     members = ArchiveMembers.model_validate({"ref": ref, **json.loads(payload.data)})
     return Response(
         members.model_dump_json(),
         media_type="application/json",
-        headers=_cache_headers(payload),
+        headers=_cache_headers(payload, cache_control),
     )
 
 
-async def _respond(
-    request: Request, work: Coroutine[Any, Any, Payload], media_type: str
-) -> Response:
-    """Answer an image or data, ``304`` when the client holds it."""
-    try:
-        payload = await while_connected(request, work)
-    except ClientGone:
-        return Response(status_code=CLIENT_GONE)
-    if payload.data is None:
-        return _not_modified(payload)
-    return Response(
-        payload.data, media_type=media_type, headers=_cache_headers(payload)
-    )
+def _cache_headers(payload: Payload, cache_control: str) -> dict[str, str]:
+    return {"Cache-Control": cache_control, "ETag": payload.etag}
 
 
-def _cache_headers(payload: Payload) -> dict[str, str]:
-    return {"Cache-Control": VERSION_CACHE_CONTROL, "ETag": payload.etag}
-
-
-def _not_modified(payload: Payload) -> Response:
-    return Response(status_code=304, headers=_cache_headers(payload))
+def _not_modified(payload: Payload, cache_control: str) -> Response:
+    return Response(status_code=304, headers=_cache_headers(payload, cache_control))
 
 
 async def while_connected[T](request: Request, work: Coroutine[Any, Any, T]) -> T:

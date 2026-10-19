@@ -21,7 +21,10 @@ rendered. Parameters are checked against the file: a style of its
 ``styles`` (``422``), a tile within its zoom range and extent (``404``), map
 tiles only after their local COG is built (``409 preview_not_ready``).
 ``build`` submits the ``preview`` job of what files need built, joining a
-job that builds them already.
+job that builds them already. An own-data working file that changed since
+its scan, before or while it is rendered, is ``OwnFileChangedError`` (``409
+own_file_changed``) for images and data, and ``changed_since_scan`` in its
+``PreviewInfo``.
 """
 
 import asyncio
@@ -46,6 +49,7 @@ from archiwista.api.models_previews import (
 from archiwista.auth import Principal
 from archiwista.errors import (
     NotFoundError,
+    OwnFileChangedError,
     PreviewBusyError,
     PreviewNotReadyError,
     PreviewParameterError,
@@ -54,12 +58,12 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.formats import file_format
-from archiwista.index import MAX_PAGE_LIMIT
+from archiwista.index import MAX_PAGE_LIMIT, own_file_id
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import MESSAGES
 from archiwista.previews.cache import INFO_NAME, CacheKey, cache_key
 from archiwista.previews.legends import legend
-from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
+from archiwista.previews.pool import RETRY_AFTER_S, RenderPool, RenderResult
 from archiwista.previews.types import (
     PREVIEW_REASONS,
     JsonObject,
@@ -73,10 +77,13 @@ from archiwista.previews.types import (
 )
 from archiwista.previews.worker import OPERATIONS
 from archiwista.refs import (
+    FileRef,
     ObjectRef,
     ObjectResolver,
+    SnapshotRef,
     VersionRef,
     format_ref,
+    own_file_changed,
     parse_ref,
 )
 
@@ -95,6 +102,9 @@ NOTHING_SHOWN: frozenset[PreviewReason] = frozenset(
 )
 # Reasons of a load or a moment: the preview ``failed`` and may succeed later.
 FAILURES: frozenset[PreviewReason] = frozenset({"timeout", "memory_limit"})
+# What a render process answers for a working file that changed, or went,
+# since its scan: its content is not the one its key names.
+_CHANGED_REASONS: frozenset[str] = frozenset({"changed_since_scan", "missing_file"})
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +168,8 @@ class PreviewService:
 
         A file that cannot be reached, or whose probe failed, is described
         with its reason (``store_unavailable``, ``missing_file``,
-        ``timeout``…) rather than refused.
+        ``timeout``…) rather than refused; so is an own-data working file
+        that changed since its scan (``changed_since_scan``).
 
         Raises
         ------
@@ -177,6 +188,8 @@ class PreviewService:
             located = await self._locate(parsed, principal)
         except SourceUnavailableError:
             return _unavailable(text, _kind(parsed), "store_unavailable")
+        except OwnFileChangedError:
+            return _unavailable(text, _kind(parsed), "changed_since_scan")
         except PreviewUnavailableError as error:
             return _unavailable(
                 text, _kind(parsed), _reason(error.reason), error.detail
@@ -188,6 +201,8 @@ class PreviewService:
             return _unavailable(text, source.kind, "store_unavailable", source=source)
         except PreviewTimeoutError:
             return _unavailable(text, source.kind, "timeout", source=source)
+        except OwnFileChangedError:
+            return _unavailable(text, source.kind, "changed_since_scan", source=source)
         except PreviewUnavailableError as error:
             code = _reason(error.reason)
             return _unavailable(text, source.kind, code, error.detail, source=source)
@@ -451,7 +466,7 @@ class PreviewService:
             with contextlib.suppress(ValueError):  # a damaged object: probe again
                 return PreviewProbe.from_bytes(data), None
         source = await self._resolve(located, principal)
-        result = await self._pool.arequest("probe", source)
+        result = await self._render("probe", located, source)
         return result.probe(), result.detail
 
     async def _image(
@@ -473,7 +488,7 @@ class PreviewService:
         data = await asyncio.to_thread(self._cached, key, name)
         if data is None:
             source = await self._resolve(located, principal)
-            data = (await self._pool.arequest(op, source, params)).data
+            data = (await self._render(op, located, source, params)).data
         return Payload(data, etag)
 
     async def _data(
@@ -490,8 +505,28 @@ class PreviewService:
         if _matches(if_none_match, etag):
             return Payload(None, etag)
         source = await self._resolve(located, principal)
-        result = await self._pool.arequest(op, source, params)
+        result = await self._render(op, located, source, params)
         return Payload(result.data, etag)
+
+    async def _render(
+        self,
+        op: str,
+        located: _Located,
+        source: PreviewSource,
+        params: JsonObject | None = None,
+    ) -> RenderResult:
+        """Render an operation of a file in a render process.
+
+        A working file that changed (or went) while it was rendered differs
+        from its scan: ``OwnFileChangedError``, as before the render.
+        """
+        try:
+            return await self._pool.arequest(op, source, params)
+        except PreviewUnavailableError as error:
+            ref = located.ref
+            if isinstance(ref, FileRef) and error.reason in _CHANGED_REASONS:
+                raise own_file_changed(ref) from error
+            raise
 
     async def _described(
         self, located: _Located, probe: PreviewProbe, detail: str | None
@@ -607,15 +642,23 @@ class PreviewService:
 def object_url(ref: ObjectRef) -> str:
     """Return the address of an object's preview routes (without the route).
 
-    Raises
-    ------
-    ValueError
-        An object without preview routes yet (own data: step 9).
+    A store version's are below ``/stores/{store}/versions/{path}``; an
+    own-data file's below its project by its ``file_id`` (one URL segment,
+    decision 10): ``/projects/{project}/files/{file_id}``, and a snapshot's
+    below its file: ``…/snapshots/{label}``.
     """
-    if isinstance(ref, VersionRef):
-        store = quote(ref.store, safe="")
-        return f"{API_PREFIX}/stores/{store}/versions/{quote(ref.path)}"
-    raise ValueError(f"no preview routes of {format_ref(ref)}")
+    match ref:
+        case VersionRef(store, path):
+            return f"{API_PREFIX}/stores/{quote(store, safe='')}/versions/{quote(path)}"
+        case FileRef(project, path):
+            return _file_url(project, path)
+        case SnapshotRef(project, label, path):
+            return f"{_file_url(project, path)}/snapshots/{quote(label, safe='')}"
+
+
+def _file_url(project: str, path: str) -> str:
+    file_id = own_file_id(path)
+    return f"{API_PREFIX}/projects/{quote(project, safe='')}/files/{file_id}"
 
 
 def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:

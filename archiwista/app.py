@@ -45,6 +45,7 @@ from archiwista.api import compare as compare_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import layers as layer_routes
 from archiwista.api import map as map_routes
+from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api.docs import install_docs, operation_id
@@ -167,8 +168,10 @@ def create_app(
     app.include_router(area_routes.router, prefix=API_PREFIX)
     app.include_router(compare_routes.router, prefix=API_PREFIX)
     app.include_router(layer_routes.router, prefix=API_PREFIX)
+    app.include_router(owndata_routes.router, prefix=API_PREFIX)
     if jobs is not None:
         app.include_router(job_routes.router, prefix=API_PREFIX)
+        app.include_router(owndata_routes.job_router, prefix=API_PREFIX)
     install_docs(app)
 
     index_page = web_dir / "index.html"

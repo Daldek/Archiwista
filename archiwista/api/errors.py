@@ -11,7 +11,8 @@ a producer's own error (its exception and unchanged message), ``problems``
 for invalid settings, ``errors`` for invalid request data, ``job`` for
 the job in the way of a ``409 conflict`` (or building the preview of a
 ``409 preview_not_ready``, else ``build_required``), ``reason`` for a
-``409 preview_unavailable`` (its code, Polish description and fix) and
+``409 preview_unavailable`` (its code, Polish description and fix) and for
+a ``409 snapshot_blocked`` (why the snapshot cannot be made now), and
 ``layers`` for an area file with several layers to choose from; ``503
 preview_busy`` carries ``Retry-After``. Unknown routes
 answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
@@ -41,6 +42,7 @@ from archiwista.errors import (
     JobConflictError,
     NotFoundError,
     OfflineModeError,
+    OwnFileChangedError,
     PathOutsideRootError,
     PermissionDeniedError,
     PreviewBusyError,
@@ -49,6 +51,7 @@ from archiwista.errors import (
     PreviewTimeoutError,
     PreviewUnavailableError,
     ProducerError,
+    SnapshotBlockedError,
     SourceIncompatibleError,
     SourceStateError,
     SourceUnavailableError,
@@ -67,6 +70,8 @@ PROBLEMS: Mapping[type[ArchiwistaError], tuple[int, str]] = MappingProxyType(
         NotFoundError: (404, "not_found"),
         ConflictError: (409, "conflict"),
         OfflineModeError: (409, "offline_mode"),
+        OwnFileChangedError: (409, "own_file_changed"),
+        SnapshotBlockedError: (409, "snapshot_blocked"),
         AreaTooLargeError: (413, "area_too_large"),
         AreaUnreadableError: (422, "area_unreadable"),
         AreaTooComplexError: (422, "area_too_complex"),
@@ -113,8 +118,10 @@ _DOCUMENTED: Mapping[int, tuple[str, str, str]] = MappingProxyType(
             "conflict",
             "api_title_conflict",
             "Conflicts with the current state: `conflict` (e.g. another job"
-            " already writes the store's index; `job` names it) or"
-            " `offline_mode` (the job needs the network).",
+            " already writes the store's index; `job` names it),"
+            " `offline_mode` (the job needs the network), `own_file_changed`"
+            " (an own-data file changed since its scan: refresh the project's"
+            " own data) or `snapshot_blocked` (`reason`).",
         ),
         413: (
             "area_too_large",
@@ -289,6 +296,8 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
         members["job"] = {"id": error.job_id, "kind": error.kind, "state": error.state}
     elif isinstance(error, AreaUnreadableError) and error.layers:
         members["layers"] = list(error.layers)
+    elif isinstance(error, SnapshotBlockedError):
+        members["reason"] = error.reason
     elif isinstance(error, PreviewUnavailableError):
         reason = preview_reason(error.reason, error.detail)
         text = MESSAGES["preview_unavailable_detail"].format_map(reason)

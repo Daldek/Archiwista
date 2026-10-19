@@ -5,6 +5,7 @@ characters of the SHA-256 of its path in the folder); ``ref`` is
 ``file:<project>:<path>`` and of a snapshot
 ``snapshot:<project>:<label>:<path>`` (decision 10). Absolute paths appear
 only as copy paths (``CopyPath``), on this computer and as aliased elsewhere.
+The request models refuse unknown parameters and members (``422``).
 """
 
 from collections.abc import Sequence
@@ -13,30 +14,27 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.models import CopyPath, Issue, Location
+from archiwista.api.models_previews import PreviewInfo
 from archiwista.config import AppSettings
 from archiwista.index import (
+    DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
     OwnFileDetail,
     OwnFileObservation,
     OwnFilePage,
     OwnFileRow,
     OwnFolderRecord,
+    OwnSnapshotRef,
     SnapshotRecord,
 )
-from archiwista.owndata.document import SNAPSHOTS_DIR
+from archiwista.owndata.document import MAX_NOTE_CHARS, SNAPSHOTS_DIR
+from archiwista.owndata.scan import OwnFolderCheck
+from archiwista.owndata.snapshots import SnapshotPlan as PlannedSnapshot
+from archiwista.refs import FileRef, SnapshotRef, format_ref
 from archiwista.services.problems import Problem
-
-
-def file_ref(project: str, path: str) -> str:
-    """Return the ``ref`` of a working file (decision 10)."""
-    return f"file:{project}:{path}"
-
-
-def snapshot_ref(project: str, label: str, path: str) -> str:
-    """Return the ``ref`` of a snapshot (decision 10)."""
-    return f"snapshot:{project}:{label}:{path}"
 
 
 def copy_path(settings: AppSettings, path: Path) -> CopyPath:
@@ -47,6 +45,67 @@ def copy_path(settings: AppSettings, path: Path) -> CopyPath:
             alias for alias in store.foreign_paths(path) if alias not in aliases
         ]
     return CopyPath(local=str(path), aliases=aliases)
+
+
+class OwnFilesQuery(BaseModel):
+    """Filters and page of `GET /projects/{project}/files`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    q: str | None = Field(
+        default=None,
+        description="Words that must all occur in the path (ASCII case ignored).",
+        examples=["kanalizacja"],
+    )
+    state: str | None = Field(
+        default=None,
+        description=(
+            "Only files in this state (`ok`, `unrecognized`, `unreadable`,"
+            " `missing`) or present files of this change (`unsnapshotted`,"
+            " `unchanged`, `changed`)."
+        ),
+        examples=["changed"],
+    )
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT, description="Page size."
+    )
+    cursor: str | None = Field(
+        default=None,
+        description="`next_cursor` of the previous page of the same filters.",
+    )
+
+
+class DataDirRequest(BaseModel):
+    """What `PUT /projects/{project}/data-dir` reads."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [{"path": "/mnt/nas/raba/dane"}, {"path": None}]
+        },
+    )
+
+    path: str | None = Field(
+        description=(
+            "Absolute folder on the server's computer; `null` brings back the"
+            " default `<project directory>/dane`."
+        )
+    )
+
+
+class SnapshotRequest(BaseModel):
+    """What `POST /projects/{project}/files/{file_id}/snapshots` reads."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"note": "nowy kolektor deszczowy"}]},
+    )
+
+    note: str = Field(
+        default="",
+        max_length=MAX_NOTE_CHARS,
+        description="The person's note kept in `migawka.json`.",
+    )
 
 
 class OwnFolder(BaseModel):
@@ -60,7 +119,12 @@ class OwnFolder(BaseModel):
     files: int = Field(description="Files present.")
     size_bytes: int
     snapshots_bytes: int = Field(description="Bytes of the snapshots in `.wersje/`.")
-    scanned_at: datetime
+    scanned_at: datetime | None = Field(
+        description=(
+            "When it was last scanned; `null`: not yet (its state is now's;"
+            " `POST /projects/{project}/scan` reads it)."
+        )
+    )
     problems: list[Issue]
 
     @classmethod
@@ -80,6 +144,26 @@ class OwnFolder(BaseModel):
             size_bytes=record.size_bytes,
             snapshots_bytes=record.snapshots_bytes,
             scanned_at=record.scanned_at,
+            problems=[Issue.of(problem) for problem in problems],
+        )
+
+    @classmethod
+    def checked(
+        cls,
+        check: OwnFolderCheck,
+        *,
+        settings: AppSettings,
+        problems: Sequence[Problem],
+    ) -> Self:
+        """Return the model of a folder checked now, not scanned yet."""
+        return cls(
+            path=copy_path(settings, check.path),
+            source=check.source,
+            state=check.state,
+            files=0,
+            size_bytes=0,
+            snapshots_bytes=0,
+            scanned_at=None,
             problems=[Issue.of(problem) for problem in problems],
         )
 
@@ -113,7 +197,7 @@ class _OwnFileFields(BaseModel):
         return dict(
             file_id=row.file_id,
             path=row.path,
-            ref=file_ref(project, row.path),
+            ref=format_ref(FileRef(project, row.path)),
             kind=row.kind,
             format=row.driver,
             size_bytes=row.size_bytes,
@@ -223,7 +307,7 @@ class SnapshotItem(BaseModel):
         directory = folder / SNAPSHOTS_DIR / item.path / item.label
         return cls(
             label=item.label,
-            ref=snapshot_ref(project, item.label, item.path),
+            ref=format_ref(SnapshotRef(project, item.label, item.path)),
             created_at=item.created_at,
             author=_object(document.get("author")),
             note=_text(document.get("note")),
@@ -237,10 +321,7 @@ class SnapshotItem(BaseModel):
 
 
 class OwnFileCard(_OwnFileFields):
-    """Everything known of an own file: what was read, history and snapshots.
-
-    Its preview (`preview`) joins in step 9 with the routes of previews.
-    """
+    """Everything known of an own file: what was read, history and snapshots."""
 
     layers: list[dict[str, Any]]
     raster: dict[str, Any] | None
@@ -251,6 +332,13 @@ class OwnFileCard(_OwnFileFields):
     content: Content | None
     history: list[Observation] = Field(description="Observed states, newest first.")
     snapshots: list[SnapshotItem] = Field(description="Newest first.")
+    preview: PreviewInfo | None = Field(
+        description=(
+            "Its preview, as `GET …/files/{file_id}/preview` answers it (a file"
+            " changed since its scan: `changed_since_scan`); `null` without"
+            " render processes."
+        )
+    )
     paths: CopyPath = Field(description="The main file.")
     problems: list[Issue]
 
@@ -262,6 +350,7 @@ class OwnFileCard(_OwnFileFields):
         *,
         settings: AppSettings,
         problems: Sequence[Problem],
+        preview: PreviewInfo | None,
     ) -> Self:
         """Return the model of a file's card."""
         folder = Path(detail.folder.path)
@@ -285,8 +374,104 @@ class OwnFileCard(_OwnFileFields):
                 SnapshotItem.of(project, item, folder=folder, settings=settings)
                 for item in detail.snapshots
             ],
+            preview=preview,
             paths=copy_path(settings, folder / detail.disk_path),
             problems=[Issue.of(problem) for problem in problems],
+        )
+
+
+class PlanBlock(BaseModel):
+    """Why a snapshot cannot be made now."""
+
+    code: Literal[
+        "folder_invalid", "read_only_folder", "insufficient_space", "file_missing"
+    ] = Field(
+        description=(
+            "`folder_invalid` (the data folder breaks the rules),"
+            " `read_only_folder` (no write access), `insufficient_space` (less"
+            " than 1.1 times the file free) or `file_missing`."
+        )
+    )
+    message: str = Field(description="Polish description.")
+
+
+class PlanWarning(BaseModel):
+    """What the person should know before a snapshot, not a refusal."""
+
+    code: str = Field(
+        description="`editing_detected`: open in an editor, committed changes only."
+    )
+    message: str = Field(description="Polish description.")
+
+
+class SnapshotPlan(BaseModel):
+    """What a snapshot of a file would do now; nothing is written."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "file": "sieci/kanalizacja.gpkg",
+                    "size_bytes": 192512,
+                    "destination": {
+                        "local": "/mnt/nas/raba/dane/.wersje/sieci/kanalizacja.gpkg",
+                        "aliases": [],
+                    },
+                    "copy_method": "sqlite_backup",
+                    "content_method": "sqlite",
+                    "unchanged_since": None,
+                    "blocked": None,
+                    "free_bytes": 52428800000,
+                    "warnings": [],
+                }
+            ]
+        }
+    )
+
+    file: str = Field(description="The working file, relative to the data folder.")
+    size_bytes: int = Field(
+        description="Bytes to copy: the file with its set, a SQLite `-wal` too."
+    )
+    destination: CopyPath = Field(
+        description="Directory of the file's snapshots, `.wersje/<file>/`."
+    )
+    copy_method: Literal["sqlite_backup", "files"]
+    content_method: Literal["sqlite", "fileset", "bytes"]
+    unchanged_since: LastSnapshot | None = Field(
+        description=(
+            "The last snapshot, when the last scan found its content in the"
+            " file: a new one would repeat it (`unchanged`)."
+        )
+    )
+    blocked: PlanBlock | None = Field(
+        description="Why `POST …/snapshots` would answer `409 snapshot_blocked`."
+    )
+    free_bytes: int | None = Field(
+        description="Free bytes where the snapshot goes; `null`: out of reach."
+    )
+    warnings: list[PlanWarning]
+
+    @classmethod
+    def of(cls, plan: PlannedSnapshot, *, settings: AppSettings) -> Self:
+        """Return the model of a planned snapshot."""
+        since: OwnSnapshotRef | None = plan.unchanged_since
+        return cls(
+            file=plan.path,
+            size_bytes=plan.size_bytes,
+            destination=copy_path(settings, plan.destination),
+            copy_method=plan.copy_method,
+            content_method=plan.content_method,
+            unchanged_since=None
+            if since is None
+            else LastSnapshot(label=since.label, created_at=since.created_at),
+            blocked=None
+            if plan.blocked is None
+            else PlanBlock(code=plan.blocked.reason, message=plan.blocked.message),
+            free_bytes=plan.free_bytes,
+            warnings=[
+                PlanWarning(code=item.code, message=item.message)
+                for item in plan.warnings
+            ],
         )
 
 
