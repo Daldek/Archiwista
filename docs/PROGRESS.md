@@ -8,9 +8,11 @@
 zaliczone, bramka zielona (`docs/reports/v0.1-measurements.md`, sekcja 10).
 Bez tagu `v0.1.0` i bez scalenia do `main` — czeka na decyzję
 użytkownika.
-**Następny krok:** plan v0.2 „Podglądy” — nowy `docs/PLAN_v0.2.md`
-w kolejności jak przy v0.1: spec → plan → przegląd planu → implementacja.
-Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
+**Następny krok:** przegląd planu v0.2 „Podglądy” (`docs/PLAN_v0.2.md`,
+projekt z 2026-10-19: decyzje 1–14, umowy, kroki 0–18, bramka), potem
+implementacja od fali A (kroki 0–3) — kolejność jak przy v0.1: spec →
+plan → przegląd planu → implementacja. Zakres i kryteria: SPEC 13 v0.2,
+SCOPE etap 3.
 
 ### Czytaj najpierw
 
@@ -22,6 +24,7 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
 | `docs/PLAN_v0.1.md` | plan v0.1 z umowami między krokami — wzór dla planu v0.2 |
+| `docs/PLAN_v0.2.md` | plan v0.2 „Podglądy” (projekt do przeglądu): decyzje, umowy między krokami, kroki 0–18 z równoległością, bramka SPEC 13 v0.2, ryzyka |
 | `docs/ARCHITECTURE.md` | architektura kodu 0.1.0: moduły, przepływy, granice — opis kodu, nie planu |
 | `docs/reports/v0.1-measurements.md` | pomiary SPEC 4.5, odbiór v0.1, bramka wydania, zrzuty |
 | `docs/USAGE.md`, `docs/AGENT_API.md` | dokumentacja użytkownika i agentów (stan 0.1.0) |
@@ -34,10 +37,13 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 - Gałęzie: `main` (tylko commit inicjalizujący), `develop` (wydanie 0.1.0),
   `feat/mockup` (historia pierwszych wersji mockupu, `e25e833`). Bez
   remote, bez tagów.
-- Kartograf: gałąź `feat/archiwista-store-api` — KA-1..KA-6 w wydaniu 0.8.0
-  (ADR-045) oraz `list_partitions`, `iter_store(partition=…)` i mapowanie
-  w `skip_versions` (ADR-045 errata 1). Archiwista 0.1.0 wymaga tej gałęzi
-  zainstalowanej edytowalnie w `.venv`.
+- Kartograf: KA-1..KA-6 w wydaniu 0.8.0 (ADR-045) oraz `list_partitions`,
+  `iter_store(partition=…)` i mapowanie w `skip_versions` (ADR-045
+  errata 1). Stan 2026-10-19: gałąź `feat/archiwista-store-api` scalona
+  do `develop` Kartografa (scalenie `b71cc370`) i usunięta, tagu `v0.8.0`
+  brak; Archiwista wymaga Kartografa zainstalowanego edytowalnie w `.venv`
+  (z `develop`; instrukcja README wskazuje jeszcze gałąź — krok 18 planu
+  v0.2).
 - Dane robocze poza repo: `<katalog-danych>` (magazyny syntetyczne,
   przebiegi pomiarów, środowiska smoke).
 
@@ -105,24 +111,28 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 
 ### Otwarte
 
-- **Kartograf:** scalenie gałęzi `feat/archiwista-store-api` do `develop`
-  i tag `v0.8.0` — decyzja użytkownika. Do tego czasu Archiwista 0.1.0
-  działa tylko z gałęzią zainstalowaną edytowalnie (plan v0.1, „Ryzyka”:
-  wydanie miało wymagać otagowanego Kartografa — świadomie odłożone).
+- **Kartograf:** gałąź `feat/archiwista-store-api` scalona do `develop`
+  Kartografa (2026-10-19, `b71cc370`); tag `v0.8.0` — decyzja użytkownika
+  i zespołu Kartografa. Do tego czasu Archiwista działa z Kartografem
+  zainstalowanym edytowalnie (plan v0.1, „Ryzyka”: wydanie miało wymagać
+  otagowanego Kartografa — świadomie odłożone).
 - **Tag `v0.1.0` i scalenie `develop` → `main`** — na prośbę użytkownika.
-- **KA-8 w SCOPE:** wiersz v0.1 tabeli „Zależności” w `docs/SCOPE.md`
-  (i SPEC 13) wymienia tylko KA-1..KA-6, a SPEC 12.1 przypisuje do v0.1
-  także KA-8 (konwencja kluczy zbiorów: Kartograf 0.8.0 spełnia ją
-  w kodzie, ale reguły nie zapisano w jego ARCH).
 - **Płynność mapy** z 5000 obrysów (≥ 30 klatek/s, kryterium v0.2) wymaga
-  pomiaru w przeglądarce z GPU; bez GPU (WebGL programowy) 8–9 klatek/s.
-- Plan v0.2: nazwy katalogów i schemat `archiwista-snapshot/1` migawek.
+  WebGL sprzętowego: komputer odniesienia ma GTX 1060 (`nouveau`), ale
+  konto pomiarowe nie ma dostępu do `/dev/dri/renderD128` — decyzja
+  właściciela komputera (grupa `render` albo pomiar przez CDP w jego
+  sesji; plan v0.2, decyzja 1 i krok 16). Bez GPU 8–9 klatek/s.
+- **Plan v0.2 do przeglądu:** nazwy `.wersje/` i `migawka.json`, schemat
+  `archiwista-snapshot/1`, obrysy-wielokąty zamiast obwiedni, dane własne
+  poza `/slots`, akcja `project.write` i pozostałe decyzje 1–14
+  (`docs/PLAN_v0.2.md`) — do potwierdzenia przez użytkownika.
 - Drobne sprawy techniczne po pomiarach v0.1: pola ścieżek `SourceEntry`
   jako `Path` kosztują 2–3 s skanu przyrostowego na SSD (zmiana interfejsu
   wtyczek, cel spełniony bez niej); `ResourceWarning` niezamkniętego
   połączenia SQLite w pełnym przebiegu testów (zgłaszany przy
   `tests/unit/test_security.py::test_security_current_principal_owner_then_agent`,
-  źródło nieustalone — kod `security.py` zamyka swoje połączenia).
+  źródło nieustalone — kod `security.py` zamyka swoje połączenia) — krok 0
+  planu v0.2.
 - PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
   M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
   łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v0.6),

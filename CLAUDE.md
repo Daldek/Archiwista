@@ -44,6 +44,7 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Wymagania produktu (F/N), miary sukcesu, otwarte decyzje|`docs/PRD.md`|
 |Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
 |Plan wdrozenia v0.1: kroki, zaleznosci, bramka akceptacji|`docs/PLAN_v0.1.md`|
+|Plan wdrozenia v0.2 (Podglady): decyzje, umowy, kroki, bramka|`docs/PLAN_v0.2.md`|
 |Stan prac, sprawy otwarte, nastepny krok|`docs/PROGRESS.md`|
 |Architektura kodu Archiwisty (moduly, przeplywy, stan wydania)|`docs/ARCHITECTURE.md`|
 |Zmiany w wydaniach|`docs/CHANGELOG.md`|

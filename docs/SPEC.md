@@ -3748,7 +3748,7 @@ MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025; v0.6 „PL + CZ” w MVP
 
 | Wersja | Zakres | Wymaga od producentów |
 |---|---|---|
-| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera; model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora) | KA-1..KA-6 |
+| v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera; model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora) | KA-1..KA-6, KA-8 |
 | v0.2 „Podglądy” | podglądy, Wachlarz i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna; dane własne projektu i migawki | — |
 | v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” sprawdzane przy działaniach | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik działań, wspólna kolejka | — |

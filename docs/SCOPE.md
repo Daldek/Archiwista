@@ -102,7 +102,7 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 
 | Wersja Archiwisty | Wymaga od producentów |
 | --- | --- |
-| v0.1 | Kartograf: KA-1..KA-6 (odczyt magazynu) |
+| v0.1 | Kartograf: KA-1..KA-6 (odczyt magazynu), KA-8 (konwencja kluczy zbiorów — Kartograf 0.8.0 spełnia ją w kodzie, reguła do zapisania w jego ARCH) |
 | v0.2 | — |
 | v0.3 | Kartograf: KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 | — |
