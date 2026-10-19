@@ -14,11 +14,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.windows import Window
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
-from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.index import IndexWriter, ManifestStamp, own_file_id
 from archiwista.reader import add_read_commands
 from archiwista.security import redeem_one_time_token
 from archiwista.sources import ProjectInfo
@@ -34,6 +37,7 @@ from tests.fixtures.layer_store import (
     sheet_polygon,
 )
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.own_data_api import OwnDataApi, own_data_api
 from tests.fixtures.preview_api import (
     PreviewApi,
     decoded_png,
@@ -631,6 +635,139 @@ def test_preview_output_writes_png(
     assert output.read_bytes() == answered.content
     assert 0 < max(decoded_png(answered.content).shape[1:]) <= 256
     assert previews.pool.stats().rendered == rendered
+
+
+# Own data of projects (plan v0.2, step 9).
+
+
+def _own(
+    served: OwnDataApi,
+    capsys: pytest.CaptureFixture[str],
+    *argv: str,
+    status: int = 0,
+) -> Any:
+    """Run ``archiwista … --json`` over the served projects' data folders."""
+    capsys.readouterr()
+    code = main([*argv, "--json"], paths=served.paths)
+    captured = capsys.readouterr()
+    assert code == status, captured.err
+    return json.loads(captured.out)
+
+
+def test_own_data_cli_equals_http(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``files``, ``file``, ``snapshot`` and ``own-scan --json`` are the routes'.
+
+    Each answer is compared with the route's at the same moment, refusals
+    included; jobs as ``GET /jobs/{job}`` shows them once they ended. After a
+    working file is edited, ``own-scan`` makes ``file`` show ``changed``.
+    """
+    with own_data_api(tmp_path) as served:
+        # Arrange
+        first, owner = served.first, served.owner
+        raster = first.folder.file("tif_2180").path
+        vector = first.folder.file("gpkg_layers").path
+        files = f"/projects/{first.key}/files"
+
+        def http(method: str, path: str, **body: Any) -> Any:
+            return owner.request(method, path, **body).json()
+
+        def job(answer: Any) -> Any:
+            return http("GET", f"/jobs/{answer['id']}")
+
+        # Act
+        listed = (_own(served, capsys, "files", first.key), http("GET", files))
+        query = ("--q", "kanalizacja", "--state", "unsnapshotted", "--limit", "1")
+        filtered = (
+            _own(served, capsys, "files", first.key, *query),
+            http("GET", f"{files}?q=kanalizacja&state=unsnapshotted&limit=1"),
+        )
+        bad_state = (
+            _own(served, capsys, "files", first.key, "--state", "zly", status=1),
+            http("GET", f"{files}?state=zly"),
+        )
+        by_path = _own(served, capsys, "file", first.key, raster)
+        by_id = _own(served, capsys, "file", first.key, own_file_id(raster))
+        card = http("GET", first.url(raster))
+        no_project = (
+            _own(served, capsys, "file", "nie-ma", raster, status=1),
+            http("GET", f"/projects/nie-ma/files/{own_file_id(raster)}"),
+        )
+        plan = (
+            _own(served, capsys, "snapshot", first.key, raster, "--plan"),
+            http("GET", first.url(raster, "snapshot-plan")),
+        )
+        argv = ("snapshot", first.key, raster, "--note", "przed zmianą")
+        snapshot = _own(served, capsys, *argv)
+        snapshot_job = job(snapshot)
+        snapshotted = (
+            _own(served, capsys, "file", first.key, raster),
+            http("GET", first.url(raster)),
+        )
+        (first.root / vector).unlink()
+        blocked = (
+            _own(served, capsys, "snapshot", first.key, vector, status=1),
+            http("POST", first.url(vector, "snapshots"), json={"note": ""}),
+        )
+        with rasterio.open(first.root / raster, "r+") as edited:
+            pixel = np.full((1, 1), 999.0, dtype=np.float32)
+            edited.write(pixel, 1, window=Window(0, 0, 1, 1))
+        scan = _own(served, capsys, "own-scan", "--project", first.key)
+        scan_job = job(scan)
+        changed = (
+            _own(served, capsys, "file", first.key, raster),
+            http("GET", first.url(raster)),
+        )
+        every = _own(served, capsys, "own-scan")
+        every_job = job(every)
+        projects = http("GET", "/projects")["items"]
+        unknown = (
+            _own(served, capsys, "own-scan", "--project", "nie-ma", status=1),
+            http("POST", "/projects/nie-ma/scan"),
+        )
+
+    # Assert
+    for printed, answered in (
+        listed,
+        filtered,
+        bad_state,
+        no_project,
+        blocked,
+        unknown,
+    ):
+        assert printed == answered
+    assert [item["path"] for item in filtered[0]["items"]] == [vector]
+    assert bad_state[0]["code"] == "validation_error"
+    assert by_path == by_id == card
+    assert card["preview"] is not None
+    assert no_project[0]["code"] == "not_found"
+    # Free space is read anew for each answer: anything writing to the disk
+    # meanwhile changes it.
+    assert {**plan[0], "free_bytes": None} == {**plan[1], "free_bytes": None}
+    assert plan[0]["blocked"] is None and plan[0]["file"] == raster
+    assert snapshot == snapshot_job
+    assert snapshot["kind"] == "snapshot" and snapshot["state"] == "succeeded"
+    assert snapshot["params"]["note"] == "przed zmianą"
+    assert snapshot["result"]["status"] == "created"
+    label = snapshot["result"]["label"]
+    assert snapshotted[0] == snapshotted[1]
+    assert [item["label"] for item in snapshotted[0]["snapshots"]] == [label]
+    assert snapshotted[0]["change"] == "unchanged"
+    assert blocked[0]["code"] == "snapshot_blocked"
+    assert blocked[0]["reason"] == "file_missing"
+    assert scan == scan_job
+    assert (scan["kind"], scan["state"]) == ("own_scan", "succeeded")
+    assert scan["params"] == {"project": first.key}
+    assert scan["result"]["projects"] == 1
+    assert (scan["result"]["changed"], scan["result"]["missing"]) == (1, 1)
+    assert changed[0] == changed[1]
+    assert changed[0]["change"] == "changed"
+    assert changed[0]["last_snapshot"]["label"] == label
+    assert every == every_job
+    assert (every["params"], every["state"]) == ({}, "succeeded")
+    assert every["result"]["projects"] == len(projects) > 2
+    assert unknown[0]["code"] == "not_found"
 
 
 # Layers (plan v0.2, step 11).

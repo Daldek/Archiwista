@@ -3,7 +3,8 @@
 The agent takes a one-time token from ``archiwista token --json``, opens a
 session with a cookie jar and no ``Origin``, pages the catalog with cursors,
 starts a scan with the CSRF header and follows it over SSE, and meets the
-documented problems.
+documented problems. It also snapshots a project's own file: the plan, the
+``snapshot`` job over SSE and the file's card (plan v0.2, step 9).
 """
 
 import io
@@ -22,6 +23,9 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_store import STORE, store_settings
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
+from tests.fixtures.own_data import make_own_folder
+from tests.fixtures.own_data_api import DATA_DIR, FIRST, scan_own
+from tests.fixtures.preview_api import scanned_store
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 KRAKOW = "19.9,50.0,20.0,50.05"
@@ -111,3 +115,48 @@ def test_agent_session_paging_and_errors(
     assert no_plugin.headers["content-type"] == "application/problem+json"
     assert no_plugin.json()["code"] == "source_unavailable"
     assert no_plugin.json()["source"]["id"] == "kartograf"
+
+
+def test_agent_snapshot_flow(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Token, session, snapshot plan, snapshot job followed over SSE, the card."""
+    # Arrange: a project with a scanned data folder, served with jobs and previews.
+    store, paths = scanned_store(tmp_path)
+    project_dir = store.output_dir / store.project(FIRST).path
+    folder = make_own_folder(project_dir / DATA_DIR, families=("tif_2180",))
+    scan_own(paths)
+    registry = load_registry(cache_dir=paths.cache_dir)
+    with serving(paths, registry=registry) as (server, _):
+        capsys.readouterr()
+        assert main(["token", "--port", str(server.port), "--json"], paths=paths) == 0
+        issued = json.loads(capsys.readouterr().out)
+        base = f"http://127.0.0.1:{server.port}/api/v1"
+        with httpx.Client(base_url=base, timeout=None) as agent:
+            # Act
+            session = agent.post("/session", json={"token": issued["token"]})
+            agent.headers[CSRF_HEADER] = session.json()["csrf_token"]
+            files = agent.get(f"/projects/{FIRST}/files").json()["items"]
+            address = f"/projects/{FIRST}/files/{files[0]['file_id']}"
+            plan = agent.get(f"{address}/snapshot-plan")
+            started = agent.post(f"{address}/snapshots", json={"note": "Od agenta"})
+            events = _events(agent, started.json()["id"])
+            job = agent.get(f"/jobs/{started.json()['id']}").json()
+            card = agent.get(address).json()
+
+    # Assert
+    assert session.status_code == 200, session.text
+    assert [item["path"] for item in files] == [folder.file("tif_2180").path]
+    assert plan.status_code == 200 and plan.json()["blocked"] is None
+    assert started.status_code == 202, started.text
+    assert started.headers["location"] == f"/api/v1/jobs/{job['id']}"
+    assert started.json()["kind"] == "snapshot"
+    assert [data["phase"] for kind, data in events if kind == "progress"][-1] == (
+        "published"
+    )
+    assert events[-1][0] == "state" and events[-1][1]["state"] == "succeeded"
+    assert (job["state"], job["result"]["status"]) == ("succeeded", "created")
+    assert [(item["label"], item["note"]) for item in card["snapshots"]] == [
+        (job["result"]["label"], "Od agenta")
+    ]
+    assert card["last_snapshot"]["label"] == job["result"]["label"]

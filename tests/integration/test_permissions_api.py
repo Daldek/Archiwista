@@ -3,22 +3,35 @@
 Each session comes from a one-time token minted by the identity under test
 (``current_principal`` then acts as it), so the routes see owners, listed
 people, other people, administrators and their agents exactly as the
-server would.
+server would. The own-data matrix (plan v0.2, step 9) serves a generated
+store whose project has a data folder, with render processes and the real
+job worker (``tests.fixtures.own_data_api``).
 """
 
+import json
+import zipfile
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
+from urllib.parse import urlencode
 
+import httpx
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_bounds
 
 from archiwista.auth import LOCAL_OWNER, access_key
-from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
+from archiwista.refs import version_ref
 from archiwista.sources import ProjectInfo
 from archiwista.state import Visibility
-from tests.fixtures.api_session import Api, assert_problem, running_api
+from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
+from tests.fixtures.api_store import STORE as GENERATED_STORE
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.own_data_api import OwnDataApi, own_data_api
 from tests.fixtures.permissions import (
     ADMIN,
     GROUP,
@@ -34,6 +47,7 @@ from tests.fixtures.permissions import (
     principal,
     share,
 )
+from tests.fixtures.preview_api import center_tile_url, entry_of
 
 PROJECT_DIR = Path("/projekty/raba")
 KEY = access_key(PROJECT_DIR)
@@ -51,6 +65,21 @@ ADMIN_ROUTES = [
 CHANGES = [route for route in ADMIN_ROUTES if route[0] != "GET"] + [
     ("PUT", ACCESS, {"visibility": "private"})
 ]
+
+# The own-data matrix: the project ``projekt-01`` of a generated store, its
+# data folder, its snapshots and the jobs holding its data (plan v0.2, step 9).
+GPKG = "kanalizacja.gpkg"
+TIF = "nmt.tif"
+STRIP = "pas.tif"
+"""A GeoTIFF in strips wider than direct tiles allow: its map needs a local COG."""
+DAMAGED = "uszkodzony.tif"
+ARCHIVE = "archiwum.zip"
+NOTE = "Stan przed przebudową kolektora"
+POLAND = "14.0,49.0,24.2,55.0"
+FEATURES_ZOOM = 14
+HIDDEN = "404 not_found"
+# Jobs made once by the owner; ``mixed`` previews a store version with a file.
+PROBE_JOBS = ("mixed", "own_scan", "preview", "snapshot")
 
 
 @pytest.fixture
@@ -438,3 +467,363 @@ def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
         (ADMIN, "agent", labels[2], "group.add"),
     ]
     assert len(set(labels)) == 3
+
+
+# Headers of the generated store's JPEG sheets carry no geotransform (their
+# outline comes from the world file); rasterio says so while reading them.
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+def test_own_data_visibility_matrix(tmp_path: Path) -> None:
+    """Own data, its snapshots and its jobs follow the visibility of the project.
+
+    Under each visibility, for each person and for the computer's owner:
+    every route of the project's own data, its ``file:`` and ``snapshot:``
+    refs in ``/compare``, its ``project`` filter and its jobs (a snapshot with
+    a note, the preview of a file, the scan of its folder) are ``404`` or left
+    out for one who does not see the project; a ``preview`` job of a store
+    version and a file of the project shows such a person only the version,
+    with whole counts. A snapshot needs ``project.write`` (``403``), another
+    data folder an administrator, every change the session's CSRF token;
+    local mode may do everything.
+    """
+    with own_data_api(tmp_path, first=("gpkg_layers", "tif_2180"), second=()) as served:
+        # Arrange
+        routes = _own_routes(served)
+        callers = {who: served.caller(who) for who in WHO}
+        observed: dict[tuple[str, str], dict[str, object]] = {}
+
+        # Act
+        for visibility in VISIBILITY_VALUES:
+            share(served.api.state, served.first.access_key, visibility)
+            for who in WHO:
+                observed[visibility, who] = _own_answers(served, callers[who], routes)
+        observed["private", "local"] = _own_answers(served, served.owner, routes)
+        _settle(served)
+
+    # Assert
+    expected: dict[tuple[str, str], dict[str, object]] = {
+        (visibility, who): _own_expected(
+            routes,
+            sees=who in SEES[visibility],
+            manages=who in MANAGES,
+            admin=who == "admin",
+        )
+        for visibility in VISIBILITY_VALUES
+        for who in WHO
+    }
+    expected["private", "local"] = _own_expected(
+        routes, sees=True, manages=True, admin=True
+    )
+    assert [
+        (visibility, who, route, observed[visibility, who].get(route), answer)
+        for (visibility, who), answers in expected.items()
+        for route, answer in answers.items()
+        if observed[visibility, who].get(route) != answer
+    ] == []
+    assert {key: sorted(answers) for key, answers in observed.items()} == {
+        key: sorted(answers) for key, answers in expected.items()
+    }
+
+
+type _Event = tuple[int, str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _OwnRoutes:
+    """What the matrix asks of the project's own data, prepared by its owner.
+
+    ``ids`` names the project's jobs (``PROBE_JOBS``); ``jobs`` and
+    ``streams`` are their details and events as the owner sees them, and
+    ``hidden_mixed`` and ``hidden_mixed_events`` the ``mixed`` job as one who
+    does not see the project must see it.
+    """
+
+    key: str
+    reads: dict[str, str]
+    """``GET`` routes by name: their addresses."""
+    changes: dict[str, tuple[str, str, dict[str, object] | None]]
+    """Routes changing something by name: method, address and body."""
+    thumbnail: str
+    etag: str
+    ids: dict[str, str]
+    jobs: dict[str, dict[str, Any]]
+    streams: dict[str, list[_Event]]
+    hidden_mixed: dict[str, Any]
+    hidden_mixed_events: list[_Event]
+
+
+def _own_routes(served: OwnDataApi) -> _OwnRoutes:
+    """Add files to the project's data folder, make its jobs, find what to ask.
+
+    As the owner: the ``preview`` job building the local COG of a file,
+    snapshots of a GeoPackage, a GeoTIFF and a ZIP (with a note), the scan of
+    the folder, and one ``preview`` job of a store version and of a damaged
+    file of the project, submitted together as a batch is.
+    """
+    project = served.first
+    owner = served.owner
+    _strip_geotiff(project.root / STRIP)
+    (project.root / DAMAGED).write_bytes(b"II*\x00")  # a TIFF cut after its signature
+    with zipfile.ZipFile(project.root / ARCHIVE, "w") as archive:
+        archive.writestr("opis.txt", "Opis danych projektu.\n")
+    served.scan()
+    built = owner.request("POST", project.url(STRIP, "preview"), json={"force": False})
+    assert built.status_code == 202, built.text
+    snapshots = {
+        path: owner.request("POST", project.url(path, "snapshots"), json={"note": NOTE})
+        for path in (GPKG, TIF, ARCHIVE)
+    }
+    scanned = owner.request("POST", f"/projects/{project.key}/scan")
+    assert scanned.status_code == 202, scanned.text
+    sheet = entry_of(served.previews.store, "asc_sheet", "regular")
+    assert sheet.sha256 is not None
+    version = version_ref(GENERATED_STORE, sheet.path)
+    damaged = owner.request("GET", project.url(DAMAGED)).json()["content"]["sha256"]
+    mixed = served.jobs.submit(
+        "preview",
+        params={
+            "refs": [version, project.ref(DAMAGED)],
+            "contents": [sheet.sha256, damaged],
+            "force": False,
+        },
+        actor=LOCAL_OWNER,
+    )
+    ids = {
+        "mixed": mixed.id,
+        "own_scan": str(scanned.json()["id"]),
+        "preview": str(built.json()["id"]),
+        "snapshot": str(snapshots[GPKG].json()["id"]),
+    }
+    labels: dict[str, str] = {}
+    for path, answer in snapshots.items():
+        assert answer.status_code == 202, answer.text
+        record = served.wait(answer.json()["id"])
+        assert record.state == "succeeded" and record.result is not None, record
+        labels[path] = str(record.result["label"])
+    for job in ids.values():
+        assert served.wait(job).state == "succeeded"
+    jobs = {
+        name: owner.request("GET", f"/jobs/{job}").json() for name, job in ids.items()
+    }
+    streams = {
+        name: _events(owner.request("GET", f"/jobs/{job}/events"))
+        for name, job in ids.items()
+    }
+    # Only the project's damaged file failed: what one not seeing it loses.
+    failed = jobs["mixed"]["result"]["failed"]
+    assert [entry["ref"] for entry in failed] == [project.ref(DAMAGED)]
+    assert jobs["mixed"]["progress"]["failed"] == 1
+    raster = _info(served, project.url(TIF, "preview"))
+    vector = _info(served, project.url(GPKG, "preview"))
+    archive_info = _info(served, project.url(ARCHIVE, "preview"))
+    raster_snapshot = _info(served, project.snapshot_url(TIF, labels[TIF]))
+    vector_snapshot = _info(served, project.snapshot_url(GPKG, labels[GPKG]))
+    archive_snapshot = _info(served, project.snapshot_url(ARCHIVE, labels[ARCHIVE]))
+    snapshot_ref = owner.request("GET", project.url(GPKG)).json()["snapshots"][0]["ref"]
+    thumbnail = served.get(owner, raster["thumbnail_url"])
+    assert thumbnail.status_code == 200, thumbnail.text
+    files = f"/projects/{project.key}"
+    pair = urlencode({"a": project.ref(GPKG), "b": snapshot_ref})
+    mixed_pair = urlencode({"a": version, "b": project.ref(GPKG)})
+    return _OwnRoutes(
+        key=project.key,
+        reads={
+            "files": f"{files}/files",
+            "card": project.url(GPKG),
+            "preview": project.url(TIF, "preview"),
+            "preview.png": raster["thumbnail_url"],
+            "tile": center_tile_url(raster),
+            "features": _features_url(vector),
+            "members": archive_info["members_url"],
+            "snapshot-plan": project.url(GPKG, "snapshot-plan"),
+            "snapshot preview": project.snapshot_url(TIF, labels[TIF]),
+            "snapshot preview.png": raster_snapshot["thumbnail_url"],
+            "snapshot tile": center_tile_url(raster_snapshot),
+            "snapshot features": _features_url(vector_snapshot),
+            "snapshot members": archive_snapshot["members_url"],
+            "compare file and snapshot": f"/compare?{pair}",
+            "compare version and file": f"/compare?{mixed_pair}",
+            "slots of project": f"/slots?project={project.key}",
+            "footprints of project": (
+                f"/map/footprints?bbox={POLAND}&project={project.key}"
+            ),
+        },
+        changes={
+            "POST preview": ("POST", project.url(TIF, "preview"), {"force": False}),
+            "POST snapshot preview": (
+                "POST",
+                project.snapshot_url(TIF, labels[TIF]),
+                {"force": False},
+            ),
+            "POST scan": ("POST", f"{files}/scan", None),
+            "POST snapshots": ("POST", project.url(GPKG, "snapshots"), {"note": NOTE}),
+            "PUT data-dir": ("PUT", f"{files}/data-dir", {"path": None}),
+        },
+        thumbnail=raster["thumbnail_url"],
+        etag=thumbnail.headers["etag"],
+        ids=ids,
+        jobs=jobs,
+        streams=streams,
+        hidden_mixed={
+            **jobs["mixed"],
+            "params": {"refs": [version], "contents": [sheet.sha256], "force": False},
+            "result": {**jobs["mixed"]["result"], "failed": []},
+        },
+        hidden_mixed_events=_without_failures(streams["mixed"]),
+    )
+
+
+def _own_answers(
+    served: OwnDataApi, caller: Caller, routes: _OwnRoutes
+) -> dict[str, object]:
+    """Ask every route of the project's own data and its jobs as ``caller``."""
+    answers: dict[str, object] = {
+        route: _answer(served.get(caller, url)) for route, url in routes.reads.items()
+    }
+    again = served.get(caller, routes.thumbnail, etag=routes.etag)
+    answers["preview.png again"] = _answer(again)
+    for route, (method, path, body) in routes.changes.items():
+        unsigned = caller.request(method, path, json=body, csrf=False)
+        answers[f"{route} without CSRF"] = _answer(unsigned)
+        answer = caller.request(method, path, json=body)
+        answers[route] = _answer(answer)
+        if route == "POST snapshots" and answer.status_code == 202:
+            served.wait(answer.json()["id"])  # one snapshot of a file at a time
+    for name, job in routes.ids.items():
+        detail = caller.request("GET", f"/jobs/{job}")
+        events = caller.request("GET", f"/jobs/{job}/events")
+        answers[f"job {name}"] = (
+            detail.json() if detail.status_code == 200 else _answer(detail)
+        )
+        answers[f"job {name} events"] = (
+            _events(events) if events.status_code == 200 else _answer(events)
+        )
+    listed = caller.request("GET", f"/jobs?limit={MAX_PAGE_LIMIT}")
+    answers["jobs"] = (_probes(listed, routes), routes.key in listed.text)
+    filtered = caller.request(
+        "GET", f"/jobs?project={routes.key}&limit={MAX_PAGE_LIMIT}"
+    )
+    answers["jobs of project"] = (
+        _probes(filtered, routes) if filtered.status_code == 200 else _answer(filtered)
+    )
+    return answers
+
+
+def _own_expected(
+    routes: _OwnRoutes, *, sees: bool, manages: bool, admin: bool
+) -> dict[str, object]:
+    """Return what one seeing the project, managing it or administering gets."""
+
+    def shown(answer: object) -> object:
+        return answer if sees else HIDDEN
+
+    expected: dict[str, object] = {route: shown("200") for route in routes.reads}
+    expected["preview.png again"] = shown("304")
+    expected.update(
+        {f"{route} without CSRF": "403 csrf_rejected" for route in routes.changes}
+    )
+    expected.update(
+        {
+            "POST preview": shown("200"),
+            "POST snapshot preview": shown("200"),
+            "POST scan": shown("202"),
+            "POST snapshots": shown("202" if manages else "403 permission_denied"),
+            "PUT data-dir": "200" if admin else "403 permission_denied",
+        }
+    )
+    for name in PROBE_JOBS:
+        expected[f"job {name}"] = shown(routes.jobs[name])
+        expected[f"job {name} events"] = shown(routes.streams[name])
+    if not sees:  # its store part stays, with whole counts
+        expected["job mixed"] = routes.hidden_mixed
+        expected["job mixed events"] = routes.hidden_mixed_events
+    expected["jobs"] = (PROBE_JOBS if sees else ("mixed",), sees)
+    expected["jobs of project"] = shown(PROBE_JOBS)
+    return expected
+
+
+def _answer(response: httpx.Response) -> str:
+    """Return a status, with the problem's code for a problem (``404 not_found``)."""
+    if response.headers.get("content-type") == "application/problem+json":
+        return f"{response.status_code} {response.json()['code']}"
+    return str(response.status_code)
+
+
+def _events(response: httpx.Response) -> list[_Event]:
+    """Parse a job's event stream into ``(id, event, data)``."""
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events: list[_Event] = []
+    for block in response.text.split("\n\n"):
+        fields = dict(
+            line.split(": ", 1) for line in block.splitlines() if line[:1] != ":"
+        )
+        if fields:
+            data = json.loads(fields["data"])
+            events.append((int(fields["id"]), fields["event"], data))
+    return events
+
+
+def _without_failures(events: list[_Event]) -> list[_Event]:
+    """Return a ``preview`` job's events with no failure in its result."""
+    return [
+        (seq, event, {**data, "result": {**data["result"], "failed": []}})
+        if "result" in data
+        else (seq, event, data)
+        for seq, event, data in events
+    ]
+
+
+def _probes(listed: httpx.Response, routes: _OwnRoutes) -> tuple[str, ...]:
+    """Return the names of the project's jobs a page of ``GET /jobs`` holds."""
+    assert listed.status_code == 200, listed.text
+    shown = {item["id"] for item in listed.json()["items"]}
+    return tuple(sorted(name for name, job in routes.ids.items() if job in shown))
+
+
+def _info(served: OwnDataApi, url: str) -> dict[str, Any]:
+    """Return a ``PreviewInfo`` as the owner gets it."""
+    answer = served.owner.request("GET", url)
+    assert answer.status_code == 200, answer.text
+    info: dict[str, Any] = answer.json()
+    return info
+
+
+def _features_url(info: dict[str, Any]) -> str:
+    """Return the address of the features of a ``PreviewInfo``'s whole extent."""
+    bbox = ",".join(str(value) for value in info["bounds"])
+    return str(info["features_url"]).format(bbox=bbox, zoom=FEATURES_ZOOM)
+
+
+def _strip_geotiff(target: Path) -> None:
+    """Write a GeoTIFF in strips, 4100 px wide: its map tiles need a local COG."""
+    width, height = 4100, 4
+    west, south = 566_100.0, 241_050.0
+    transform = from_bounds(west, south, west + width, south + height, width, height)
+    with (
+        rasterio.Env(GDAL_PAM_ENABLED="NO"),
+        rasterio.open(
+            target,
+            "w",
+            driver="GTiff",
+            width=width,
+            height=height,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:2180",
+            transform=transform,
+        ) as dst,
+    ):
+        dst.write(np.full((height, width), 100, dtype=np.uint8), 1)
+
+
+def _settle(served: OwnDataApi) -> None:
+    """Wait for the scans the matrix started that still wait or run.
+
+    Waiting ones are listed first: a job only goes from waiting to running.
+    """
+    active = [
+        job.id
+        for state in ("queued", "running")
+        for job in served.jobs.list(state=state, limit=MAX_PAGE_LIMIT).items
+    ]
+    for job in active:
+        served.wait(job)
