@@ -17,18 +17,22 @@ in an error's detail become file names (``scrub_paths``). An own-data
 working file (``PreviewSource.mutable``) is checked against its scan before
 and after rendering (``changed_since_scan``). After running out of memory
 the process answers ``memory_limit`` and ends, so the next request gets a
-fresh one.
+fresh one. A renderer reads a large file the cache keeps for its source (the
+local COG, a consistent copy of an own-data SQLite file) through
+``cached_file``; the cache's directory is ``--previews-dir DIR``.
 
 This module imports no preview library at import time: the server reads
 ``OPERATIONS`` from it; renderers are loaded when the process starts.
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import os
+import secrets
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, cast
@@ -36,10 +40,20 @@ from typing import IO, Any, cast
 from archiwista.errors import FormatRefusedError, PreviewUnavailableError
 from archiwista.previews.cache import (
     INFO_NAME,
+    OBJECTS_DIR,
+    RENDERER_VERSIONS,
     CacheKey,
     cache_key,
     thumbnail_name,
     tile_name,
+)
+from archiwista.previews.compose import (
+    LAYER_THUMBNAIL,
+    LAYER_TILE,
+    layer_thumbnail,
+    layer_thumbnail_target,
+    layer_tile,
+    layer_tile_target,
 )
 from archiwista.previews.protocol import (
     CODE_PROTOCOL_ERROR,
@@ -75,6 +89,7 @@ type Handler = Callable[[Sequence[Renderer], RenderRequest], dict[str, bytes]]
 type Target = Callable[[PreviewSource | None, JsonObject], tuple[CacheKey, str] | None]
 
 _work_root: Path | None = None
+_previews_root: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +125,8 @@ def main(
     ----------
     argv : Sequence[str] or None, optional
         Arguments (``--work-dir``: root of the processes' work directories,
-        ``AppPaths.work_dir``); ``sys.argv[1:]`` when omitted.
+        ``AppPaths.work_dir``; ``--previews-dir``: the preview cache,
+        ``AppPaths.previews_dir``); ``sys.argv[1:]`` when omitted.
     renderers : Sequence[Renderer] or None, optional
         Renderers to use; ``RENDERERS`` when omitted (tests give their own).
 
@@ -120,9 +136,10 @@ def main(
         ``0`` at the end of the input, ``MEMORY_EXIT`` after running out of
         memory.
     """
-    global _work_root
+    global _work_root, _previews_root
     arguments = _parser().parse_args(argv)
     _work_root = arguments.work_dir
+    _previews_root = arguments.previews_dir
     protocol = _protocol_stream()
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     if renderers is None:
@@ -155,6 +172,109 @@ def work_dir() -> Path:
     return process_dir(_work_root)
 
 
+@contextlib.contextmanager
+def cached_file(source: PreviewSource, name: str) -> Iterator[Path | None]:
+    """Hold a large file of the source's preview cache object while reading it.
+
+    For ``cog.tif`` and ``source.gpkg`` (decision 3). The file is linked
+    into this process's work directory, so another process evicting the
+    object meanwhile leaves it readable to the end of the block, also to
+    libraries opening it more than once; where no link can be made (another
+    file system, no ``--work-dir``) the cache's own path is given. Render
+    processes only read the cache: the pool and the ``preview`` job put
+    into it.
+
+    Parameters
+    ----------
+    source : PreviewSource
+        The file whose object holds it (``cache_key(source)``).
+    name : str
+        The file in the object, e.g. ``COG_NAME``.
+
+    Yields
+    ------
+    Path or None
+        A path of the file, valid inside the block; ``None`` when the cache
+        has no such file or the process has no ``--previews-dir``.
+    """
+    if _previews_root is None:
+        yield None
+        return
+    found = _previews_root.joinpath(*cache_key(source).directory.parts, name)
+    if _work_root is None:
+        yield found if found.is_file() else None
+        return
+    link = work_dir() / f"cached-{secrets.token_hex(8)}-{found.name}"
+    try:
+        os.link(found, link)
+    except FileNotFoundError:
+        yield None
+        return
+    except OSError:  # another file system, or no hard links there
+        yield found if found.is_file() else None
+        return
+    try:
+        yield link
+    finally:
+        link.unlink(missing_ok=True)
+
+
+def cached_bytes(key: CacheKey, name: str) -> bytes | None:
+    """Return a small file of a preview cache object, read whole (not a use).
+
+    For another object than the request's: a version's tile or probe in a
+    layer (``archiwista.previews.compose``). ``None`` on a miss or without
+    ``--previews-dir``.
+    """
+    if _previews_root is None:
+        return None
+    try:
+        return _previews_root.joinpath(
+            *key.directory.parts, *name.split("/")
+        ).read_bytes()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+
+
+def cached_exists(key: CacheKey, name: str) -> bool:
+    """Whether a preview cache object has a file (``False`` without the cache)."""
+    if _previews_root is None:
+        return False
+    return _previews_root.joinpath(*key.directory.parts, *name.split("/")).is_file()
+
+
+def object_file(key: CacheKey, name: str) -> str:
+    """Return the name in an answer's ``files`` of a file of another object.
+
+    An operation may render, on its way, files of other objects (a layer
+    tile: its versions' tiles); the pool keeps each under its object
+    (``parse_object_file``), so it is rendered once.
+    """
+    return f"{key.directory}/{name}"
+
+
+def parse_object_file(text: str) -> tuple[CacheKey, str]:
+    """Return the object and file name of ``object_file``.
+
+    Raises
+    ------
+    ValueError
+        Not such a name, or an object of another renderer version than the
+        current one.
+    """
+    parts = text.split("/")
+    if len(parts) < 5 or parts[0] != OBJECTS_DIR:
+        raise ValueError(f"not a file of a cache object: {text!r}")
+    prefix, content, renderer, *name = parts[1:]
+    found, _, version = renderer.partition("-r")
+    if prefix != content[:2] or found not in RENDERER_VERSIONS or not version.isdigit():
+        raise ValueError(f"not a file of a cache object: {text!r}")
+    key = CacheKey(content, found, int(version))  # type: ignore[arg-type]
+    if key.renderer_version != RENDERER_VERSIONS[key.renderer]:
+        raise ValueError(f"an object of an older renderer: {text!r}")
+    return key, "/".join(name)
+
+
 def answer_line(line: str, renderers: Sequence[Renderer]) -> RenderAnswer:
     """Run the request of one line and return its answer, paths scrubbed."""
     try:
@@ -172,10 +292,10 @@ def answer_line(line: str, renderers: Sequence[Renderer]) -> RenderAnswer:
     detail: str | None
     try:
         if source is not None:
-            _require_unchanged(source)
+            require_unchanged(source)
         files = operation.handler(renderers, request)
         if source is not None:
-            _require_unchanged(source)
+            require_unchanged(source)
     except PreviewUnavailableError as error:
         code, detail = error.reason, error.detail
     except FormatRefusedError as error:
@@ -332,14 +452,17 @@ def _tile_target(
     return cache_key(source), name
 
 
-# Operations of the render pool (decision 3; step 5a3 adds ``layer_thumbnail``
-# (60 s) and ``layer_tile`` (15 s) with one line each).
+# Operations of the render pool (decision 3; one line each).
 OPERATIONS: Mapping[str, Operation] = {
     "probe": Operation(20.0, _probe, INFO_NAME, _info_target),
     "thumbnail": Operation(30.0, _thumbnail, IMAGE_NAME, _thumbnail_target),
     "tile": Operation(15.0, _tile, IMAGE_NAME, _tile_target),
     "features": Operation(15.0, _features, FEATURES_NAME),
     "members": Operation(10.0, _members, MEMBERS_NAME),
+    LAYER_THUMBNAIL: Operation(
+        60.0, layer_thumbnail, IMAGE_NAME, layer_thumbnail_target
+    ),
+    LAYER_TILE: Operation(15.0, layer_tile, IMAGE_NAME, layer_tile_target),
 }
 # The ``preview`` job's build of one file, in a process of its own with
 # 10 minutes and 4 GiB (decision 3); never an operation of the pool.
@@ -376,8 +499,16 @@ def _optional_method(renderer: Renderer, name: str) -> Callable[..., Any]:
     return cast(Callable[..., Any], method)
 
 
-def _require_unchanged(source: PreviewSource) -> None:
-    """Refuse a working file whose state differs from its scan."""
+def require_unchanged(source: PreviewSource) -> None:
+    """Refuse a working file whose state differs from its scan.
+
+    Raises
+    ------
+    FileNotFoundError
+        The file is gone.
+    PreviewUnavailableError
+        ``changed_since_scan``.
+    """
     if not source.mutable or source.stat is None:
         return
     main = source.paths[0]
@@ -425,6 +556,7 @@ def _request_id(line: str) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="archiwista.previews.worker")
     parser.add_argument("--work-dir", type=Path, default=None)
+    parser.add_argument("--previews-dir", type=Path, default=None)
     return parser
 
 
@@ -441,4 +573,9 @@ def _protocol_stream() -> IO[str]:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Run in the imported module, not in ``__main__``: renderers import
+    # ``archiwista.previews.worker`` (``work_dir``, ``cached_file``) and must
+    # see the directories ``main`` sets.
+    from archiwista.previews import worker
+
+    sys.exit(worker.main())

@@ -2,7 +2,8 @@
 
 ``RenderPool`` runs the operations of ``archiwista.previews.worker.OPERATIONS``
 (``probe`` 20 s, ``thumbnail`` 30 s, ``tile`` 15 s, ``features`` 15 s,
-``members`` 10 s) in at most ``workers`` render processes
+``members`` 10 s, ``layer_thumbnail`` 60 s, ``layer_tile`` 15 s) in at most
+``workers`` render processes
 (``RENDER_WORKER_COMMAND``; ``min(4, cpu)`` in ``archiwista serve``), each
 started with the sandbox: the environment of ``untrusted_env``, a session
 of its own and ``RLIMIT_AS`` of 2 GiB. The server itself never opens a
@@ -11,7 +12,9 @@ data file.
 - The preview cache first: an operation kept there (``Operation.target``)
   answers from it without rendering, and what is rendered is put there. A
   request for a file whose ``info.json`` is cached carries that probe, so
-  the render process does not recognise the file again.
+  the render process does not recognise the file again. Files of other
+  objects an answer carries (a layer's versions' tiles) are kept under
+  those objects.
 - One rendering per key: equal requests (operation, content, renderer
   version, parameters) wait for the same answer.
 - At most ``queue_size`` (64) requests wait; one more is refused at once
@@ -77,7 +80,7 @@ from archiwista.previews.types import (
     PreviewReason,
     PreviewSource,
 )
-from archiwista.previews.worker import OPERATIONS, Operation
+from archiwista.previews.worker import OPERATIONS, Operation, parse_object_file
 from archiwista.sandbox import child_limits, kill_untrusted, untrusted_env
 
 QUEUE_SIZE = 64
@@ -212,7 +215,8 @@ class RenderPool:
         Seconds per operation instead of ``Operation.timeout_s``.
     command : Sequence[str], optional
         Command of a render process (tests give one with test renderers);
-        ``--work-dir`` is appended when ``work_dir`` is given.
+        ``--previews-dir`` (the cache's root, for ``worker.cached_file``) is
+        appended, and ``--work-dir`` when ``work_dir`` is given.
     work_dir : Path or None, optional
         Root of the processes' work directories (``AppPaths.work_dir``).
     queue_size : int, default 64
@@ -638,6 +642,7 @@ class RenderPool:
                     f"render answer without {prepared.operation.result}"
                 )
             self._keep(prepared, data)
+            self._keep_others(prepared, answer.files)
             return RenderResult(data)
         code = cast(str, answer.code)
         if code == CODE_PROTOCOL_ERROR:
@@ -705,6 +710,24 @@ class RenderPool:
         except (OSError, sqlite3.Error):
             logger.exception("Keeping a preview in the cache failed")
 
+    def _keep_others(self, prepared: _Prepared, files: Mapping[str, bytes]) -> None:
+        """Keep the files of other objects an answer carries (``object_file``).
+
+        A layer's tile or thumbnail brings its versions' own ones rendered on
+        the way: each goes to its version's object, rendered once for every
+        layer and view.
+        """
+        for name, data in files.items():
+            if name == prepared.operation.result:
+                continue
+            try:
+                key, file = parse_object_file(name)
+                self._cache.put(key, file, data)
+            except ValueError:
+                logger.warning("A render answer named no cache object: %r", name)
+            except (OSError, sqlite3.Error):
+                logger.exception("Keeping a preview in the cache failed")
+
     def _ensure(self, slot: _Slot) -> subprocess.Popen[bytes]:
         """Return the slot's live process, started when needed."""
         process = slot.process
@@ -714,7 +737,7 @@ class RenderPool:
         with self._lock:
             if self._phase != "open":
                 raise _Closed
-            argv = list(self._command)
+            argv = [*self._command, "--previews-dir", str(self._cache.root)]
             if self._work_dir is not None:
                 argv += ["--work-dir", str(self._work_dir)]
             process = subprocess.Popen(
