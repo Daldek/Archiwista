@@ -1081,7 +1081,7 @@ działa.
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | zrobione |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
 | 10 | Porównanie metadanych | 6; strony danych własnych po 9 | 5a2, 5a3, 8, 11, 12a, 12b | zrobione dla wersji magazynu (strony danych własnych po 9) |
-| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | kod zrobiony (`a5ae7f3`); bez prób `test_local_layers.py`, `test_layers_cli_equals_http`, `test_cz_preview_tile_within_2_m` i pomiaru 200 arkuszy; warstwy pliku własnego po 9 |
+| 11 | Warstwy lokalne, miniatury i kafle warstw | 3, 5a1, 5b, 6; odbiór warstw po 5a3; warstwy migawek po 9 | 5a2, 5a3, 10, 12a | zrobione (kod `a5ae7f3`, próby `02228f4`); warstwy pliku własnego po 9 |
 | 12a | Interfejs: podgląd w Karcie pliku i ustawienia pamięci | 6 | 9, 10, 11 | zrobione |
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | do zrobienia |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
@@ -1923,9 +1923,12 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
     `test_compose.py` (2, prawdziwa pula) — razem z `test_render_pool.py`
     i `test_imports.py` 50 zielonych. Szew cieniowania: mozaika 2 × 2
     kafli = jedno renderowanie kadru (bez marginesu różnica ok. 24 na
-    styku). Próba warp jak w kroku 1: 0,665 m (z = 19). Niezrobione:
-    `test_cz_preview_tile_within_2_m` (GeoTIFF i JPEG SM5 z COG) w
-    `tests/integration/test_cz_control_point.py` — do dopisania.
+    styku). Próba warp jak w kroku 1: 0,665 m (z = 19).
+    `test_cz_preview_tile_within_2_m` (GeoTIFF i JPEG SM5 przez lokalny
+    COG) w `tests/integration/test_cz_control_point.py` dopisany z próbami
+    kroku 11 (`02228f4`): środek znaku w punkcie 3722 na kaflach z = 19
+    leży 0,667 m (GeoTIFF) i 0,669 m (JPEG SM5) od współrzędnych ETRS89
+    ČÚZK.
 
 ### 5b. Podglądy wektorów
 - **Cel:** renderer `vector.py`: rozpoznanie przez pyogrio z jawnym
@@ -2822,7 +2825,8 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `--thumbnail`).
 - **Zależności:** 3, 5a1, 5b, 6; odbiór miniatur i kafli warstw po 5a3;
   warstwy migawek po 9. **Równolegle:** 5a2, 5a3, 10, 12a.
-- **Stan po kroku 11 (kod, commit `a5ae7f3`; próby niedokończone):**
+- **Stan po kroku 11 (kod `a5ae7f3`, próby `02228f4`; warstwy pliku
+  własnego po kroku 9):**
   - *Usługa* (`services/layers.py`): `read_local_layers` (odświeżenie
     widoku → `IndexQueries.product_versions` → wersje, których obrys ma
     wspólne wnętrze z obszarem → warstwy), `layer_images`,
@@ -2871,13 +2875,44 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
     `--thumbnail`); `test_local_coverage.py`, `test_coverage.py`,
     `test_previews_api.py`, `test_compare.py`, `test_imports.py` — 44
     zielone; ruff, format i mypy na zmienionych plikach czyste.
-  - *Do dopisania:* `tests/integration/test_local_layers.py` (lista
-    z „Test/odbiór”; magazyn ręczny przez `FileStorage` i sidecary
-    z `extra.campaign.id`/`extra.edition`, bo `make_store` nie daje
-    kampanii ani dwóch formatów z tym samym rokiem),
-    `test_cli.py::test_layers_cli_equals_http`,
-    `test_cz_control_point.py::test_cz_preview_tile_within_2_m` (z kroku
-    5a) oraz pomiar roku z 200 arkuszy z pamięci (cel ≤ 2 s).
+  - *Próby* (`02228f4`): magazyn ręczny `tests/fixtures/layer_store.py`
+    (ścieżki z `FileStorage`, sidecary z `extra.campaign.id`, arkusz NMT
+    w ASC i ASCII-NMT z jednego nalotu, sidecar bez `resolution`
+    i `vertical_crs`, wycinek WCS z etykietą daty pobrania, arkusz poza
+    obszarem, wydania BDOT10k bez roku; wszystko pobrane w latach
+    2025–2026; magazyn sprawdzany przez `iter_store`)
+    i `tests/integration/test_local_layers.py` — 12 prób z listy
+    „Test/odbiór” bez `test_own_file_layers_current_first` (krok 9):
+    warstwy lat danych (wycinek bez roku — warstwa etykiety), wydań
+    i kampanii; jedna warstwa z formatami `ASCII Grid` i `ZIP` (4 wersje,
+    2 arkusze, archiwum bez podglądu poza `total`); wariant z segmentu;
+    pokrycie w EPSG:2180 równe policzonemu w próbie przez pyproj i shapely
+    (pas 1,6° na północ: w stopniach udział inny o > 1%); obrysy w kadrze
+    = prostokąty arkuszy w EPSG:2180 (do 1 cm); nalot dopisany po skanie
+    w pierwszej odpowiedzi; odłączony magazyn (brak katalogu albo pusty
+    punkt montowania) → `stale` z indeksu, bez nowych zadań; miniatura
+    i kafel na styku dwóch arkuszy przed budową (gotowy jeden arkusz,
+    drugi przezroczysty) i po niej (oba; kafel warstwy = kafle wersji),
+    oba adresy `v` z `immutable`, `304`, poniżej `minzoom` i poza
+    zasięgiem `404`; bez obszaru same liczby całego magazynu, bez zadań.
+    `test_cli.py::test_layers_cli_equals_http` (bez obszaru, `--group
+    campaign`, z obszarem po zbudowaniu podglądów, `--thumbnail` — te same
+    bajty co HTTP, nieznany obszar `422`, nieznana warstwa `404`,
+    `--thumbnail` bez `--output` → kod 2) i
+    `test_cz_control_point.py::test_cz_preview_tile_within_2_m` (krok 5a).
+  - *Pomiar roku z 200 arkuszy* (komputer odniesienia, SSD, prawdziwy
+    `archiwista serve`, skrypt jednorazowy): 200 sąsiednich arkuszy
+    1:10 000 z `find_sheets_for_bbox` (20 × 10, ASC 64 × 64 px, nalot
+    2023). Skan startowy 0,18 s; pierwsze `/local-layers` z odświeżeniem
+    200 slotów 0,14 s; zadanie `preview` warstwy zbudowało 200 COG
+    w 118 s (n = 2). Widok 1440 × 900 px przy `minzoom` = 11 (cały rok;
+    28 kafli, z tego 13 poza warstwą → `404`): pierwsze rysowanie 6,1 s,
+    potem z pamięci przez 6 połączeń, od pierwszego żądania do ostatniego
+    kafla — mediana 0,075 s, p95 0,14 s, maks. 0,16 s z 30 prób (kafel p95
+    35 ms); przy z = 12 (35 kafli) mediana 0,11 s, p95 0,16 s. Cel ≤ 2 s
+    spełniony. Po minucie (`LayerMemo` wygasa) pierwszy widok trwa 0,85 s,
+    bo każde z 6 równoległych żądań czyta warstwę z indeksu od nowa — też
+    w celu, więc bez zmian w kodzie. RSS serwera 160 MB.
 
 ### 12a. Interfejs: podgląd w Karcie pliku i ustawienia pamięci
 - **Cel:** zakładka „Podgląd” Karty pliku dla wersji (miniatura przez
