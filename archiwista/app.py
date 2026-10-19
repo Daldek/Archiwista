@@ -38,6 +38,7 @@ from archiwista.api import (
     stores,
 )
 from archiwista.api import areas as area_routes
+from archiwista.api import compare as compare_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import map as map_routes
 from archiwista.api import previews as preview_routes
@@ -157,6 +158,7 @@ def create_app(
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
     app.include_router(area_routes.router, prefix=API_PREFIX)
+    app.include_router(compare_routes.router, prefix=API_PREFIX)
     if jobs is not None:
         app.include_router(job_routes.router, prefix=API_PREFIX)
     install_docs(app)
