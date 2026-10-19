@@ -2,7 +2,8 @@
 
 Upper layers know just ``archiwista.sources`` (A-ADR-014, A-ADR-019,
 A-ADR-024): a producer can change its internals without breaking them, and
-Archiwista starts without the optional IMGWTools.
+Archiwista starts without the optional IMGWTools. The server starts without
+the libraries of the render processes (plan v0.2, decision 3).
 """
 
 import ast
@@ -46,6 +47,22 @@ print(json.dumps({
     "kartograf_in_upper_layers": upper_layers,
     "states": {state.producer: state.status for state in states},
 }))
+"""
+# Libraries only render and build processes import (plan v0.2, decision 3).
+PREVIEW_LIBRARIES = frozenset(
+    {"rio_tiler", "laspy", "lazrs", "morecantile", "numexpr", "color_operations"}
+)
+# Imports what ``archiwista serve`` starts with, loads the plugins and lists
+# the top-level modules imported by then.
+SERVER_START = """
+import json, sys
+from pathlib import Path
+
+import archiwista.app, archiwista.cli, archiwista.server
+from archiwista.sources.registry import load_registry
+
+load_registry(cache_dir=Path(sys.argv[1])).states()
+print(json.dumps(sorted({name.partition(".")[0] for name in sys.modules})))
 """
 
 
@@ -103,3 +120,16 @@ def test_archiwista_starts_without_imgwtools(tmp_path: Path) -> None:
     assert "archiwista.sources.registry" in report["modules"]
     assert report["kartograf_in_upper_layers"] == []
     assert report["states"]["kartograf"] == "available"
+
+
+def test_server_start_imports_no_preview_library(tmp_path: Path) -> None:
+    """The server and its plugins load no rio-tiler, laspy or their kin."""
+    result = subprocess.run(
+        [sys.executable, "-c", SERVER_START, str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert PREVIEW_LIBRARIES.isdisjoint(json.loads(result.stdout))

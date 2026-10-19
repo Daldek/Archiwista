@@ -156,3 +156,13 @@ class AreaTooComplexError(ArchiwistaError):
     Archiwista never simplifies an area silently; the message is Polish and
     gives the count and the limit.
     """
+
+
+class FormatRefusedError(ArchiwistaError):
+    """A file may not be opened as its format (preview reason ``unsupported_format``).
+
+    Raised by ``archiwista.formats`` before GDAL opens anything: a format
+    without that kind of reading, a wrong signature, a MapInfo table other
+    than a native one, a path GDAL would split. The message is English and
+    never contains the path.
+    """

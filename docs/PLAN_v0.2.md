@@ -1066,7 +1066,7 @@ działa.
 | Krok | Tytuł | Zależności | Równolegle z | Stan |
 |---|---|---|---|---|
 | 0 | Porządki po v0.1: `ResourceWarning` | — | 1, 2, 3, 7a | do zrobienia |
-| 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | do zrobienia |
+| 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | zrobione |
 | 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | do zrobienia |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
 | 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | do zrobienia |
@@ -1199,6 +1199,131 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   potomnego, `test_process_work_dir_cleanup_keeps_live_processes`)
   i `tests/integration/test_areas.py` bez regresji.
 - **Zależności:** —. **Równolegle:** 0, 2, 3.
+- **Stan po kroku 1:**
+  - *Zależności.* `rio-tiler>=9.0,<9.1` (9.0.6: od 9.1 rio-tiler wymaga
+    `httpx2`, a z nim Starlette 1.8 przełącza `TestClient` i jego typy na
+    `httpx2` — mypy testów z `httpx.Response` przestaje przechodzić),
+    `laspy[lazrs]>=2.7,<3` (2.7.0, lazrs 0.8.2). Nowe pakiety blokady:
+    cachetools 7.2.3, color-operations 0.4.0, morecantile 7.1.0, numexpr
+    2.14.2, pystac 1.15.2 (z pystac-core i 24 pakietami `pystac-ext-*`),
+    python-dateutil 2.9.0.post0, six 1.17.0. Licencje: MIT (cachetools,
+    color-operations, lazrs, morecantile, numexpr, six), BSD-2-Clause
+    (laspy), BSD-3-Clause (rio-tiler), Apache-2.0 (pystac i rozszerzenia),
+    Apache-2.0/BSD-3-Clause (python-dateutil) — zgodne z MIT. Blokada
+    przeliczona jak w nagłówku (`-c` poprzednich wersji): żadna dotychczasowa
+    wersja się nie zmieniła; `pip install --require-hashes -r
+    requirements.lock` w czystym `.venv` (Python 3.13) i `pip check` —
+    przechodzą. mypy: `ignore_missing_imports` dla rasterio, laspy, lazrs.
+    Serwer przy starcie nie ładuje rio_tiler, laspy, lazrs, morecantile,
+    numexpr ani color_operations
+    (`tests/contract/test_imports.py::test_server_start_imports_no_preview_library`;
+    rasterio ładuje Kartograf przy wczytaniu wtyczki — stan v0.1).
+  - *Sandbox* (`archiwista/sandbox.py`): `untrusted_env() -> dict[str,
+    str]` (dozwolone zmienne `UNTRUSTED_INHERITED` i przedrostki
+    `ARCHIWISTA_`, `COVERAGE_`, `LC_` — przeniesione z `areas.py` — oraz
+    wymuszone `UNTRUSTED_FORCED`: `PROJ_NETWORK=OFF`, pośrednicy GDAL na
+    `127.0.0.1:9`, `GDAL_PAM_ENABLED=NO`,
+    `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`, `GDAL_SKIP` z
+    `SKIPPED_GDAL_DRIVERS` (lista decyzji 3) i `GDAL_CACHEMAX=256`
+    — `GDAL_CACHE_MB`, dla wszystkich procesów);
+    `child_limits(memory_bytes: int | None = None) -> dict[str, Any]` —
+    argumenty `subprocess.Popen`: własna sesja, `umask=0o077` i przy
+    `memory_bytes` `preexec_fn` z samym `setrlimit(RLIMIT_AS)` (bez blokad,
+    więc bezpieczny w wielowątkowym serwerze); `run_untrusted(argv, *,
+    timeout_s, memory_bytes=None, input=None, cwd=None) ->
+    CompletedProcess[bytes]` (stdout; stderr odrzucony — komunikaty
+    bibliotek mają ścieżki; po czasie zabija grupę i zgłasza
+    `subprocess.TimeoutExpired`); `kill_untrusted(process)` (SIGKILL grupy —
+    dla puli kroku 4: `Popen(argv, env=untrusted_env(), stdin=PIPE,
+    stdout=PIPE, **child_limits(2 * 1024**3))`); `process_work_dir(paths)
+    -> Path` (`AppPaths.work_dir` = `<katalog danych>/work`; katalog
+    `<host>_<pid>_<token>/` z prawami `0700`, ten sam przy każdym wywołaniu
+    w procesie; przy utworzeniu usuwa katalogi martwych procesów tego
+    komputera — `os.kill(pid, 0)` — a zostawia żywe, innych komputerów
+    i nazwy spoza wzoru; przy wyjściu nie sprząta — robi to następny
+    proces). Odstępstwa od umowy: `cwd` w `run_untrusted` (czytnik obszarów
+    pracuje w katalogu przesłanego pliku) i dodatkowe `kill_untrusted`.
+    Czytnik obszarów: `run_untrusted(command, timeout_s=…, cwd=…)` bez
+    limitu pamięci, jak w v0.1; `tests/integration/test_areas.py` bez
+    regresji.
+  - *Tabela formatów* (`archiwista/formats.py`, tylko biblioteka
+    standardowa przy imporcie): `FileFormat(name, kind, extensions,
+    driver=None)`, `FormatKind` (`raster`, `image`, `vector`, `points`,
+    `archive`, `document`, `auxiliary`, `unknown` — krok 4 bierze go jako
+    `PreviewKind` zamiast drugiej listy), `FORMATS`, `UNKNOWN_FORMAT`,
+    `file_format(path)` (rozszerzenie bez względu na wielkość liter):
+    `GTiff` (`.tif .tiff`), `AAIGrid` (`.asc`), `XYZ` (`.xyz`) — `raster`;
+    `JPEG` (`.jpg .jpeg`), `PNG` — `image`; `GPKG`, `ESRI Shapefile`
+    (`.shp`), `GeoJSON` (`.geojson`), `FlatGeobuf` (`.fgb`), `MapInfo File`
+    (`.tab`) — `vector`; `.laz .las` — `points`; `.zip` — `archive`;
+    `.pdf .txt` — `document`; `.jgw .pgw .tfw .wld` — `auxiliary`.
+    `open_raster(path, fmt, **open_options)` (`rasterio.open(path,
+    driver=…)`, rasterio importowany dopiero tu; np. `OVERVIEW_LEVEL=0`);
+    `vector_source(path, fmt) -> str`: `GPKG:"<ścieżka>"` **w cudzysłowie**
+    (GDAL dzieli `GPKG:` na `:` — `plan:2026.gpkg` bez cudzysłowu otwiera
+    plik `plan`; ścieżka z `"` → odmowa), `GeoJSON:<ścieżka>`, `.shp`
+    (kod 9994), `.fgb` (`fgb\x03fgb`), `.tab` tylko natywny (`!table`,
+    `Definition Table`, `Type NATIVE`; widok, `\IsSeamless`, `RASTER`,
+    `LINKED`, nagłówek > 1 MiB → odmowa); ścieżka względna albo `/vsi…` →
+    odmowa. `FormatRefusedError` (w `archiwista/errors.py`, komunikat po
+    angielsku bez ścieżki) → `unsupported_format`. Poza planem plików:
+    `tests/unit/test_formats.py` (tabele MapInfo, nazwy) i skrypt prób
+    `tests/fixtures/preview_probes.py` (JSON na stdin, uruchamiany przez
+    `run_untrusted`).
+  - *Wyniki prób* (2026-10-19; rasterio 1.5.2 z GDAL 3.12.2, pyogrio 0.13.0
+    z GDAL 3.12.4, SQLite 3.46.1, rio-tiler 9.0.6, laspy 2.7.0 z lazrs 0.8.2;
+    `tests/contract/test_preview_stack.py`, 14 testów):
+    - warp, kafel z = 19 (x = 289216, y = 178354), GeoTIFF EPSG:5514
+      0,5 m z jasnym blokiem na punkcie 3722: `reproject`
+      z `COORDINATE_OPERATION = pinned_transform(5514, 3857).gdal_operation()`
+      — 0,665 m, z nakładki `OVERVIEW_LEVEL=0` (1 m) — 0,665 m; ta sama
+      operacja przesunięta o 50 m na wschód — 32,2 m (operacja jest
+      użyta); operacja wielkimi literami — błąd `Cannot instantiate
+      pipeline`; operacja domyślna GDAL (bez wymuszenia) — 0,719 m;
+      `WarpedVRT` i rio-tiler (`vrt_options`) z operacją przesuniętą —
+      0,719 m, tyle co bez niej: opcja jest po cichu pomijana, bez błędu.
+      Decyzja 4 bez zmian (kafel przez `reproject`). Raster EPSG:4326 bez
+      wymuszenia — 0,06 m; `pinned_transform(4326, 3857)` — błąd Kartografa;
+    - LAZ (format 6, LAS 1.4, kawałki po 50 000 punktów): nagłówek, układ
+      z VLR WKT (EPSG:2180), `seek(150 000)` czyta czwarty kawałek także
+      przy zniszczonym pierwszym (odczyt od początku tego pliku — błąd
+      lazrs), więc przeskok idzie przez tablicę kawałków;
+    - SQLite — wszystkie trzy stany jak w decyzji 8, oraz nowa obserwacja:
+      w stanie (c) GDAL z `IMMUTABLE=YES` widzi wiersze bez WAL, a mimo to
+      przepisuje WAL do pliku głównego i usuwa `-wal` (tak samo jak bez
+      tej opcji) — stan (c) nigdy w miejscu, także z `IMMUTABLE=YES`, co
+      decyzja 8 już przewiduje. Tabele wirtualne i cienie (rtree, fts3,
+      fts4, fts5) z `sqlite_master` = `PRAGMA table_list`; modułu `geopoly`
+      nie ma w SQLite Pythona, więc jego przyrostki zostają z decyzji 8.
+      Tablica przyrostków jest na razie w teście (`SHADOW_SUFFIXES`) — krok
+      7a przenosi ją do kodu produkcyjnego, a test ma ją importować;
+    - otwieranie: w sandboxie treść VRT pod `.tif` jest odrzucana przed
+      pierwszym `WarpedVRT`, a po nim zwykły `rasterio.open` czyta plik
+      docelowy (zagrożenie potwierdzone); `open_raster` odrzuca `.tif`
+      i `.asc` z treścią VRT przed i po. `a.tif.ovr` z treścią VRT: przy
+      `EMPTY_DIR` brak nakładek, bez `EMPTY_DIR` po `WarpedVRT` odczyt
+      nakładki czyta plik docelowy. Treść OGR VRT: `.gpkg` i `.geojson`
+      odrzuca GDAL (prefiks), `.shp`, `.fgb`, `.tab` — tabela formatów
+      (sygnatura, nagłówek); bez `GDAL_SKIP` zwykłe otwarcie `.geojson`
+      czyta plik docelowy. Przy `EMPTY_DIR` Shapefile czyta `.shx .dbf
+      .prj .cpg` (tekst w Windows-1250 dekoduje się tylko dzięki `.cpg`,
+      `.dbf` ma LDID 0), MapInfo TAB — `.dat .map .id`. `stats()` (w
+      rasterio 1.5 `statistics()` jest przestarzałe) przy
+      `GDAL_PAM_ENABLED=NO` nie zapisuje `.aux.xml`, bez tej zmiennej —
+      zapisuje;
+    - dostarczanie (`tests/e2e/test_tile_headers.py`): MapLibre 6.14
+      z `transformRequest` dodającym `X-Archiwista-CSRF` do żądań `Tile`
+      tego samego pochodzenia — każdy kafel rastrowy miał nagłówek,
+      `<img src="blob:…">` z `fetch` się wyświetla, zero naruszeń CSP
+      v0.1 (`csp_header`, tryb offline: `connect-src 'self'`, `img-src
+      'self' data: blob:`).
+  - *Dla kroków 4, 5 i 7a.* Rastry otwierać tylko `open_raster(path,
+    file_format(path), …)`, rio-tiler dostaje `Reader(str(path),
+    dataset=src)`; wektory tylko przez `vector_source` (opcje otwarcia
+    pyogrio jako argumenty, np. `IMMUTABLE="YES"` w stanie (a)); proces
+    renderujący i czytnik danych własnych biorą `process_work_dir(paths)`
+    we własnym procesie (katalog danych przekazany w argumentach albo
+    w zmiennej `ARCHIWISTA_*`, która przechodzi przez `untrusted_env`).
 
 ### 2. Magazyn testowy i fixtury v0.2
 - **Cel:** dać testom każdą rodzinę plików z decyzji 5 i foldery danych

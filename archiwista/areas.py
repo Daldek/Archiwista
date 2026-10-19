@@ -13,8 +13,8 @@ before and while it is read (decision 9, SPEC 10.1): a body of at most
 ``AREA_BODY_LIMIT_BYTES`` (50 MB); an archive declaring at most
 ``UNPACKED_LIMIT_BYTES`` (200 MB) unpacked, with no member leaving its
 directory, refused before unpacking; reading in ``archiwista.area_reader``,
-a separate process killed after ``AREA_READ_TIMEOUT_S`` (30 s), started
-with a minimal environment that keeps GDAL and PROJ offline; at most
+a separate process in the sandbox of ``archiwista.sandbox`` (GDAL and PROJ
+offline), killed after ``AREA_READ_TIMEOUT_S`` (30 s); at most
 ``MAX_VERTICES`` (100 000) vertices. The file's CRS is converted to WGS84
 with the producer's pinned operation (``GeoAdapter.transformer``, KA-6)
 after densifying the edges. A path from the client is never opened: the
@@ -23,14 +23,12 @@ upload is written under a random name. The copy of the file stays in
 ``AREA_COPY_MAX_AGE`` (7 days); the area itself stays in the index.
 """
 
-import contextlib
 import hashlib
 import json
 import logging
 import os
 import secrets
 import shutil
-import signal
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
@@ -60,6 +58,7 @@ from archiwista.index.coverage import (
 from archiwista.index.geometry import require_wgs84_area
 from archiwista.messages import MESSAGES
 from archiwista.paths import private_directory
+from archiwista.sandbox import run_untrusted
 from archiwista.sources import GeoAdapter, GeoJSONGeometry
 
 type AreaSource = Literal["drawn", "view", "sheet", "file"]
@@ -77,52 +76,6 @@ AREA_READER_COMMAND: tuple[str, ...] = (
     "-m",
     "archiwista.area_reader",
 )
-# Inherited by the reader: what Python and its libraries need to start on
-# Linux and Windows, ARCHIWISTA_* (the application's own) and COVERAGE_*
-# (measuring the reader in tests). Nothing about proxies, credentials, GDAL
-# or the network: libcurl honours NO_PROXY even with GDAL_HTTP_PROXY set.
-_READER_INHERITED = frozenset(
-    {
-        "APPDATA",
-        "COMSPEC",
-        "HOME",
-        "LANG",
-        "LANGUAGE",
-        "LD_LIBRARY_PATH",
-        "LOCALAPPDATA",
-        "NUMBER_OF_PROCESSORS",
-        "PATH",
-        "PATHEXT",
-        "PROCESSOR_ARCHITECTURE",
-        "PROJ_DATA",
-        "PROJ_LIB",
-        "PYTHONHOME",
-        "PYTHONPATH",
-        "PYTHONUTF8",
-        "SYSTEMDRIVE",
-        "SYSTEMROOT",
-        "TEMP",
-        "TMP",
-        "TMPDIR",
-        "TZ",
-        "USERPROFILE",
-        "VIRTUAL_ENV",
-        "WINDIR",
-        "XDG_DATA_HOME",
-    }
-)
-_READER_INHERITED_PREFIXES = ("ARCHIWISTA_", "COVERAGE_", "LC_")
-# GDAL and PROJ kept offline even if they try to fetch something: every
-# request goes to a closed local port, gives up within a second, untried again.
-_READER_FORCED = {
-    "PROJ_NETWORK": "OFF",
-    "GDAL_HTTP_PROXY": "127.0.0.1:9",
-    "GDAL_HTTPS_PROXY": "127.0.0.1:9",
-    "GDAL_HTTP_TIMEOUT": "1",
-    "GDAL_HTTP_CONNECTTIMEOUT": "1",
-    "GDAL_HTTP_MAX_RETRY": "0",
-    "GDAL_HTTP_NETRC": "NO",
-}
 # Uploads being read; what a crash leaves is pruned like the copies.
 INCOMING_DIR = ".incoming"
 AREA_ID_CHARS = 16
@@ -456,33 +409,18 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
     command = [*files.command, str(directory.absolute())]
     if layer is not None:
         command.append(f"--layer={layer}")
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        cwd=directory,
-        env=_reader_environment(),
-        **_own_group(),
-    )
     try:
-        output, _ = process.communicate(timeout=files.timeout_s)
+        finished = run_untrusted(command, timeout_s=files.timeout_s, cwd=directory)
     except subprocess.TimeoutExpired:
-        _kill(process)
-        process.communicate()
         seconds = f"{files.timeout_s:g}"
         raise AreaUnreadableError(
             MESSAGES["area_read_timeout"].format(seconds=seconds)
         ) from None
-    except BaseException:
-        _kill(process)
-        process.wait()
-        raise
     crashed = AreaUnreadableError(
-        MESSAGES["area_reader_crashed"].format(code=process.returncode)
+        MESSAGES["area_reader_crashed"].format(code=finished.returncode)
     )
-    lines = output.decode("utf-8", "replace").strip().splitlines()
-    if process.returncode != 0 or not lines:
+    lines = finished.stdout.decode("utf-8", "replace").strip().splitlines()
+    if finished.returncode != 0 or not lines:
         raise crashed
     try:
         answer = json.loads(lines[-1])
@@ -500,34 +438,6 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
         raise AreaTooComplexError(detail)
     layers = tuple(str(item) for item in answer.get("layers") or ())
     raise AreaUnreadableError(detail, layers=layers)
-
-
-def _reader_environment() -> dict[str, str]:
-    """Return the reader's environment: allowed inherited variables, forced ones."""
-    kept = {
-        name: value
-        for name, value in os.environ.items()
-        if name.upper() in _READER_INHERITED
-        or name.upper().startswith(_READER_INHERITED_PREFIXES)
-    }
-    return {**kept, **_READER_FORCED}
-
-
-def _own_group() -> dict[str, Any]:
-    """Start the reader in its own process group, killed as a whole."""
-    if sys.platform == "win32":  # pragma: no cover - Windows
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
-
-
-def _kill(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    if sys.platform == "win32":  # pragma: no cover - Windows
-        process.kill()
-        return
-    with contextlib.suppress(ProcessLookupError):  # ended in the meantime
-        os.killpg(process.pid, signal.SIGKILL)
 
 
 def _polygons(geometry: Any) -> Any:

@@ -121,6 +121,11 @@ class AppPaths:
         """Local copies of uploaded area files."""
         return self.data_dir / "areas"
 
+    @property
+    def work_dir(self) -> Path:
+        """Scratch directories of processes reading files, one per process."""
+        return self.data_dir / "work"
+
     def source_cache_dir(self, producer: str) -> Path:
         """Return the local cache directory owned by one producer plugin."""
         return self.cache_dir / producer
