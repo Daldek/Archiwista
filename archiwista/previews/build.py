@@ -40,9 +40,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from archiwista.errors import (
+    InvalidRefError,
     NotFoundError,
     PathOutsideRootError,
     PreviewUnavailableError,
+    SourceUnavailableError,
 )
 from archiwista.jobs.protocol import JobSpec, JsonObject
 from archiwista.messages import MESSAGES, with_detail
@@ -66,6 +68,7 @@ from archiwista.previews.types import (
     build_product,
 )
 from archiwista.previews.worker import BUILD
+from archiwista.refs import job_resolver
 from archiwista.sandbox import child_limits, kill_untrusted, untrusted_env
 
 if TYPE_CHECKING:
@@ -76,9 +79,11 @@ type ResolverFactory = Callable[[JobSpec], SourceResolver]
 
 # How the job turns a ref into its source, by the ref's kind (decision 10):
 # ``version`` (step 6), ``file`` and ``snapshot`` (step 9). A resolver raises
-# ``NotFoundError``, ``PathOutsideRootError`` or ``PreviewUnavailableError``
-# (e.g. ``missing_file``); it runs in the job's main thread only.
-RESOLVERS: Mapping[str, ResolverFactory] = {}
+# ``InvalidRefError``, ``NotFoundError``, ``PathOutsideRootError``,
+# ``SourceUnavailableError`` (``store_unavailable``) or
+# ``PreviewUnavailableError`` (e.g. ``missing_file``); it runs in the job's
+# main thread only.
+RESOLVERS: Mapping[str, ResolverFactory] = {"version": job_resolver}
 BUILD_COMMAND: tuple[str, ...] = RENDER_WORKER_COMMAND
 BUILD_TIMEOUT_S = BUILD.timeout_s
 BUILD_MEMORY_BYTES = 4 * 1024**3
@@ -181,10 +186,16 @@ class _Builder:
                 self._resolvers[scheme] = factory(self._spec)
             try:
                 return self._resolvers[scheme](ref)
+            except InvalidRefError as error:
+                failure = self._unresolved(refs, "invalid_ref", ref, str(error))
             except NotFoundError as error:
                 failure = self._unresolved(refs, "not_found", ref, str(error))
             except PathOutsideRootError as error:
                 failure = self._unresolved(refs, "path_outside_root", ref, str(error))
+            except SourceUnavailableError as error:
+                failure = _Outcome(
+                    "failed", tuple(refs), "store_unavailable", str(error)
+                )
             except PreviewUnavailableError as error:
                 detail = MESSAGES.get(f"preview_reason_{error.reason}", error.reason)
                 failure = _Outcome("failed", tuple(refs), error.reason, detail)

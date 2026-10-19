@@ -328,6 +328,17 @@ class PreviewProbe:
         Pixels of a raster and its bytes once unpacked (auto-build limits).
     reason : PreviewReason or None
         Why the file has no preview (or no map preview); a code only.
+    styles : tuple[StyleName, ...]
+        Styles the file can be shown in, the renderer's choice; empty for a
+        file without an image preview.
+    default_style : StyleName or None
+        The style shown first: one of ``styles``, chosen by the renderer from
+        the product (``PreviewSource.product``, ``dataset_key``).
+    unit : str or None
+        Unit of the values of a gradient legend, e.g. ``m``.
+    class_table : str or None
+        Table of the Polish class names a classes legend uses (``clc``,
+        ``hsg``); ``None``: the palette's values only.
     """
 
     kind: PreviewKind
@@ -353,13 +364,22 @@ class PreviewProbe:
     pixels: int | None = None
     unpacked_bytes: int | None = None
     reason: PreviewReason | None = None
+    styles: tuple[StyleName, ...] = ()
+    default_style: StyleName | None = None
+    unit: str | None = None
+    class_table: str | None = None
 
     def __post_init__(self) -> None:
-        """Refuse an unknown kind or reason."""
+        """Refuse an unknown kind, reason or style."""
         if self.kind not in PREVIEW_KINDS:
             raise ValueError(f"unknown preview kind {self.kind!r}")
         if self.reason is not None and self.reason not in PREVIEW_REASONS:
             raise ValueError(f"unknown preview reason {self.reason!r}")
+        unknown = [style for style in self.styles if style not in STYLE_NAMES]
+        if unknown:
+            raise ValueError(f"unknown preview styles {unknown!r}")
+        if self.default_style is not None and self.default_style not in self.styles:
+            raise ValueError(f"default style {self.default_style!r} not in styles")
 
     def to_json(self) -> JsonObject:
         """Return the probe as a JSON object (also inside render requests)."""
@@ -402,6 +422,7 @@ class PreviewProbe:
                 for entry in items.get("palette") or ()
             )
             items["layers"] = tuple(dict(layer) for layer in items.get("layers") or ())
+            items["styles"] = tuple(str(style) for style in items.get("styles") or ())
             return cls(**items)
         except (TypeError, ValueError, IndexError) as error:
             raise ValueError(f"invalid preview probe: {error}") from error

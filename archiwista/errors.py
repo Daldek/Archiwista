@@ -230,3 +230,61 @@ class PreviewUnavailableError(ArchiwistaError):
         super().__init__(f"{reason}: {detail}" if detail else reason)
         self.reason = reason
         self.detail = detail
+
+
+class InvalidRefError(ArchiwistaError):
+    """A reference to an object is not one (``422 invalid_ref``).
+
+    References are ``version:<store>:<path>``, ``file:<project>:<path>`` and
+    ``snapshot:<project>:<label>:<path>`` (decision 10); the message is
+    Polish and quotes the reference.
+    """
+
+
+class PreviewParameterError(ArchiwistaError):
+    """A parameter does not fit the file (``422 validation_error``).
+
+    A style not among the file's styles, a layer it does not have: what the
+    request model cannot know before the file's probe.
+
+    Parameters
+    ----------
+    field : str
+        Where the value came from, e.g. ``query.style``.
+    message : str
+        Polish description naming the value and what is allowed.
+    """
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.message = message
+
+
+class PreviewNotReadyError(ArchiwistaError):
+    """A preview needs its build first (``409 preview_not_ready``).
+
+    The map tiles of a file whose local COG is not in the preview cache yet
+    (decision 6). The problem names the ``preview`` job building it, or says
+    ``build_required`` when none does.
+
+    Parameters
+    ----------
+    message : str
+        Polish description.
+    job_id, kind, state : str or None, optional
+        The job building the preview, if any.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        job_id: str | None = None,
+        kind: str | None = None,
+        state: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+        self.kind = kind
+        self.state = state

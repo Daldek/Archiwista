@@ -40,6 +40,7 @@ from archiwista.api import (
 from archiwista.api import areas as area_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import map as map_routes
+from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api.docs import install_docs, operation_id
 from archiwista.api.errors import ApiError, install_error_handlers
@@ -150,6 +151,7 @@ def create_app(
     app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(stores.router, prefix=API_PREFIX)
+    app.include_router(preview_routes.router, prefix=API_PREFIX)
     app.include_router(slots.router, prefix=API_PREFIX)
     app.include_router(map_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)

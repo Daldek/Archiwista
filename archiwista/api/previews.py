@@ -1,0 +1,482 @@
+"""Previews of store versions over HTTP (plan v0.2, step 6; SPEC 9.2, 5.7).
+
+Under ``/stores/{store}/versions/{version}``:
+
+- ``GET …/preview``: the ``PreviewInfo`` of the version;
+- ``POST …/preview`` (``{"force": false}``): ``200 PreviewInfo`` when
+  nothing needs building, else ``202 JobDetail`` of the ``preview`` job
+  building it, a new one or one building it already (``Location``);
+- ``GET …/preview.png?style&size&bbox&bbox_crs``: the thumbnail;
+- ``GET …/tiles/{z}/{x}/{y}.png?style&rescale``: a map tile (EPSG:3857);
+- ``GET …/features?bbox&zoom&layer&limit``: the features of a map view as
+  GeoJSON in WGS84;
+- ``GET …/members``: the members of an archive.
+
+Images and data carry ``Cache-Control: private, max-age=86400, immutable``
+(a version's content never changes and everyone sees the store) and an
+``ETag``; ``If-None-Match`` naming it is answered ``304``. A request whose
+client goes away before its answer gives its render up, so the tiles of a
+map moved on leave the render queue unrendered. Routes only translate:
+``PreviewService`` does the work, ``archiwista preview`` calls it too. This
+router comes before the catalog's, whose ``/stores/{store}/versions/{version}``
+would otherwise take these addresses.
+"""
+
+import asyncio
+import contextlib
+import json
+from collections.abc import Coroutine
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+
+from archiwista.api import API_PREFIX
+from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
+from archiwista.api.models import JobDetail
+from archiwista.api.models_previews import (
+    MAX_ZOOM,
+    ArchiveMembers,
+    BuildRequest,
+    FeaturesQuery,
+    PreviewInfo,
+    ThumbnailQuery,
+    TileQuery,
+)
+from archiwista.auth import Principal
+from archiwista.config import SettingsService
+from archiwista.errors import PreviewBusyError
+from archiwista.messages import MESSAGES
+from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
+from archiwista.previews.service import Payload, PreviewService
+from archiwista.refs import ObjectResolver, version_ref
+from archiwista.security import current_principal
+
+router = APIRouter(tags=["previews"])
+
+PNG = "image/png"
+GEOJSON = "application/geo+json"
+# A version's content never changes, and everyone sees the store (decision 3).
+VERSION_CACHE_CONTROL = "private, max-age=86400, immutable"
+# Status of an answer nobody receives: the client went away first.
+CLIENT_GONE = 499
+_VERSION_PREFIX = "/stores/{store}/versions/{version:path}"
+
+
+class _ClientGone(Exception):
+    """The client disconnected before its answer was ready."""
+
+
+def preview_service(request: Request) -> PreviewService:
+    """Return the previews of the application's render pool and index.
+
+    Raises
+    ------
+    PreviewBusyError
+        The server runs no render pool (``503 preview_busy``).
+    """
+    state = request.app.state
+    pool: RenderPool | None = state.previews
+    if pool is None:
+        raise PreviewBusyError(MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S)
+    settings: SettingsService = state.settings
+    resolver = ObjectResolver(state.queries, settings.get)
+    return PreviewService(pool, resolver, state.jobs)
+
+
+_Principal = Annotated[Principal, Depends(current_principal)]
+_Service = Annotated[PreviewService, Depends(preview_service)]
+_Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
+_Version = Annotated[
+    str,
+    Path(
+        description="Version path in the store.",
+        examples=[
+            "nmt/pl_1992_1m_evrf2007/versions/N-34/130/D/d/2/4/"
+            "2025-04-26_82710_fdd30535/N-34-130-D-d-2-4.asc"
+        ],
+    ),
+]
+_IfNoneMatch = Annotated[
+    str | None,
+    Header(description="`ETag` of the answer the client holds: `304` when equal."),
+]
+
+
+def _problems(*codes: str) -> dict[int | str, dict[str, Any]]:
+    """Return the OpenAPI problems of the preview routes, by code."""
+    examples: dict[str, tuple[int, dict[str, object]]] = {
+        "preview_unavailable": (
+            409,
+            problem_body(
+                409,
+                "preview_unavailable",
+                MESSAGES["preview_unavailable_detail"].format(
+                    message=MESSAGES["preview_reason_document_no_preview"],
+                    fix=MESSAGES["preview_fix_document_no_preview"],
+                ),
+                {
+                    "reason": {
+                        "code": "document_no_preview",
+                        "message": MESSAGES["preview_reason_document_no_preview"],
+                        "fix": MESSAGES["preview_fix_document_no_preview"],
+                        "detail": None,
+                    }
+                },
+            ),
+        ),
+        "preview_not_ready": (
+            409,
+            problem_body(
+                409,
+                "preview_not_ready",
+                MESSAGES["preview_not_ready_build"],
+                {"build_required": True},
+            ),
+        ),
+        "preview_busy": (
+            503,
+            problem_body(
+                503,
+                "preview_busy",
+                MESSAGES["preview_busy"].format(seconds=RETRY_AFTER_S),
+            ),
+        ),
+        "store_unavailable": (
+            503,
+            problem_body(
+                503,
+                "store_unavailable",
+                MESSAGES["preview_reason_store_unavailable"],
+            ),
+        ),
+        "preview_timeout": (
+            504,
+            problem_body(
+                504,
+                "preview_timeout",
+                MESSAGES["preview_timeout"].format(seconds=30),
+            ),
+        ),
+    }
+    descriptions = {
+        409: (
+            "No such preview: `preview_unavailable` (`reason`: code, Polish"
+            " description and fix) or `preview_not_ready` (map tiles before"
+            " their build: the `job` building it, or `build_required`)."
+        ),
+        503: (
+            "`preview_busy` (the render queue is full; `Retry-After`) or"
+            " `store_unavailable` (not in the preview cache, and the store is"
+            " out of reach)."
+        ),
+        504: "`preview_timeout`: the render ran past its time limit.",
+    }
+    responses: dict[int | str, dict[str, Any]] = {}
+    for code in codes:
+        status, body = examples[code]
+        entry = responses.setdefault(
+            status,
+            {
+                "description": descriptions[status],
+                "content": {
+                    PROBLEM_MEDIA_TYPE: {
+                        "schema": {"$ref": "#/components/schemas/ProblemDetails"},
+                        "examples": {},
+                    }
+                },
+            },
+        )
+        entry["content"][PROBLEM_MEDIA_TYPE]["examples"][code] = {"value": body}
+    return responses
+
+
+def _image_responses(media_type: str, *codes: str) -> dict[int | str, dict[str, Any]]:
+    return {
+        200: {
+            "description": "The image or data; `ETag` and `Cache-Control` set.",
+            "content": {media_type: {}},
+        },
+        304: {"description": "Not modified: the client holds this `ETag`."},
+        **problem_responses(403, 404, 422),
+        **_problems(*codes),
+    }
+
+
+_RENDERED = ("preview_unavailable", "preview_busy", "store_unavailable")
+
+
+@router.get(
+    f"{_VERSION_PREFIX}/preview",
+    response_model=PreviewInfo,
+    responses={
+        **problem_responses(403, 404, 422),
+        **_problems("preview_busy"),
+    },
+)
+async def get_preview(
+    store: _Store,
+    version: _Version,
+    request: Request,
+    principal: _Principal,
+    service: _Service,
+) -> PreviewInfo | Response:
+    """Return the preview of a version: state, styles, legend and addresses.
+
+    A version that cannot be read now is described with its `reason`
+    (`store_unavailable`, `missing_file`, `timeout`…), not refused. Use the
+    addresses it gives (`thumbnail_url`, `tiles_url`, `features_url`,
+    `members_url`); never compose them.
+    """
+    ref = version_ref(store, version)
+    try:
+        return await _while_connected(request, service.info(ref, principal=principal))
+    except _ClientGone:
+        return Response(status_code=CLIENT_GONE)
+
+
+@router.post(
+    f"{_VERSION_PREFIX}/preview",
+    response_model=None,
+    responses={
+        200: {"model": PreviewInfo, "description": "Nothing needs building."},
+        202: {
+            "model": JobDetail,
+            "description": "The `preview` job building it (`Location`).",
+        },
+        **problem_responses(403, 404, 422),
+        **_problems("preview_unavailable", "preview_busy", "store_unavailable"),
+    },
+)
+async def build_preview(
+    store: _Store,
+    version: _Version,
+    principal: _Principal,
+    service: _Service,
+    body: Annotated[BuildRequest | None, Body()] = None,
+) -> Response:
+    """Build the local preview of a version (its COG) in the background.
+
+    Answers `202` with the `preview` job (a new one, or the one already
+    building the same content) and `Location: /api/v1/jobs/{job}`, or `200`
+    with the `PreviewInfo` when nothing needs building. A file past the
+    auto-build limits needs `force: true` (`409 preview_unavailable`,
+    `too_large`, otherwise).
+    """
+    ref = version_ref(store, version)
+    force = body is not None and body.force
+    record = await service.build([ref], principal=principal, force=force)
+    if record is None:
+        info = await service.info(ref, principal=principal)
+        return JSONResponse(info.model_dump(mode="json"))
+    return JSONResponse(
+        JobDetail.of(record).model_dump(mode="json"),
+        status_code=202,
+        headers={"Location": f"{API_PREFIX}/jobs/{record.id}"},
+    )
+
+
+@router.get(
+    f"{_VERSION_PREFIX}/preview.png",
+    response_class=Response,
+    responses=_image_responses(PNG, *_RENDERED, "preview_timeout"),
+)
+async def get_thumbnail(
+    store: _Store,
+    version: _Version,
+    query: Annotated[ThumbnailQuery, Query()],
+    request: Request,
+    principal: _Principal,
+    service: _Service,
+    if_none_match: _IfNoneMatch = None,
+) -> Response:
+    """Return a PNG thumbnail of a version, at most `size` pixels a side.
+
+    In the file's CRS, or in the frame `bbox` (in `bbox_crs`) when given.
+    """
+    work = service.thumbnail(
+        version_ref(store, version),
+        principal=principal,
+        style=query.style,
+        size=query.size,
+        frame=query.frame(),
+        if_none_match=if_none_match,
+    )
+    return await _respond(request, work, PNG)
+
+
+@router.get(
+    f"{_VERSION_PREFIX}/tiles/{{z}}/{{x}}/{{y}}.png",
+    response_class=Response,
+    responses=_image_responses(PNG, *_RENDERED, "preview_not_ready", "preview_timeout"),
+)
+async def get_tile(
+    store: _Store,
+    version: _Version,
+    z: Annotated[int, Path(ge=0, le=MAX_ZOOM, description="Zoom level.")],
+    x: Annotated[int, Path(ge=0, description="Column, 0 to 2^z - 1.")],
+    y: Annotated[int, Path(ge=0, description="Row, 0 to 2^z - 1.")],
+    query: Annotated[TileQuery, Query()],
+    request: Request,
+    principal: _Principal,
+    service: _Service,
+    if_none_match: _IfNoneMatch = None,
+) -> Response:
+    """Return the map tile `z/x/y` of a version (EPSG:3857, 256 pixels).
+
+    Outside the version's `minzoom`–`maxzoom` or extent: `404`. A file
+    whose map needs its local preview built first: `409 preview_not_ready`.
+    """
+    last = 2**z - 1
+    wrong = [("x", x), ("y", y)]
+    errors = [
+        {
+            "loc": ("path", name),
+            "msg": MESSAGES["preview_tile_range"].format(z=z, last=last),
+            "type": "value_error",
+        }
+        for name, value in wrong
+        if value > last
+    ]
+    if errors:
+        raise RequestValidationError(errors)
+    work = service.tile(
+        version_ref(store, version),
+        principal=principal,
+        z=z,
+        x=x,
+        y=y,
+        style=query.style,
+        rescale=query.rescale_values(),
+        if_none_match=if_none_match,
+    )
+    return await _respond(request, work, PNG)
+
+
+@router.get(
+    f"{_VERSION_PREFIX}/features",
+    response_class=Response,
+    responses=_image_responses(
+        GEOJSON, *_RENDERED, "preview_not_ready", "preview_timeout"
+    ),
+)
+async def get_features(
+    store: _Store,
+    version: _Version,
+    query: Annotated[FeaturesQuery, Query()],
+    request: Request,
+    principal: _Principal,
+    service: _Service,
+    if_none_match: _IfNoneMatch = None,
+) -> Response:
+    """Return the features of a map view as a GeoJSON `FeatureCollection`.
+
+    In WGS84, simplified to `zoom`, at most `limit` features and 500 000
+    vertices together; `number_matched`, `truncated` (more: zoom in or open
+    the file in QGIS) and `simplified` tell what was left out.
+    """
+    work = service.features(
+        version_ref(store, version),
+        principal=principal,
+        bbox=query.bbox_values(),
+        zoom=query.zoom,
+        layer=query.layer,
+        limit=query.limit,
+        if_none_match=if_none_match,
+    )
+    return await _respond(request, work, GEOJSON)
+
+
+@router.get(
+    f"{_VERSION_PREFIX}/members",
+    response_model=ArchiveMembers,
+    responses={
+        304: {"description": "Not modified: the client holds this `ETag`."},
+        **problem_responses(403, 404, 422),
+        **_problems(*_RENDERED, "preview_timeout"),
+    },
+)
+async def get_members(
+    store: _Store,
+    version: _Version,
+    request: Request,
+    principal: _Principal,
+    service: _Service,
+    if_none_match: _IfNoneMatch = None,
+) -> Response:
+    """Return the members of an archive: names, sizes, formats; nothing unpacked.
+
+    At most the first 10 000 (`truncated` beyond them); an archive whose
+    directory declares over 100 000 members is `too_large`.
+    """
+    ref = version_ref(store, version)
+    work = service.members(ref, principal=principal, if_none_match=if_none_match)
+    try:
+        payload = await _while_connected(request, work)
+    except _ClientGone:
+        return Response(status_code=CLIENT_GONE)
+    if payload.data is None:
+        return _not_modified(payload)
+    members = ArchiveMembers.model_validate({"ref": ref, **json.loads(payload.data)})
+    return Response(
+        members.model_dump_json(),
+        media_type="application/json",
+        headers=_cache_headers(payload),
+    )
+
+
+async def _respond(
+    request: Request, work: Coroutine[Any, Any, Payload], media_type: str
+) -> Response:
+    """Answer an image or data, ``304`` when the client holds it."""
+    try:
+        payload = await _while_connected(request, work)
+    except _ClientGone:
+        return Response(status_code=CLIENT_GONE)
+    if payload.data is None:
+        return _not_modified(payload)
+    return Response(
+        payload.data, media_type=media_type, headers=_cache_headers(payload)
+    )
+
+
+def _cache_headers(payload: Payload) -> dict[str, str]:
+    return {"Cache-Control": VERSION_CACHE_CONTROL, "ETag": payload.etag}
+
+
+def _not_modified(payload: Payload) -> Response:
+    return Response(status_code=304, headers=_cache_headers(payload))
+
+
+async def _while_connected[T](request: Request, work: Coroutine[Any, Any, T]) -> T:
+    """Await ``work``; cancel it when the client disconnects first.
+
+    Cancelling gives a waiting render request up (``RenderPool.arequest``).
+
+    Raises
+    ------
+    _ClientGone
+        The client went away; ``work`` was cancelled.
+    """
+    task = asyncio.ensure_future(work)
+    watcher = asyncio.ensure_future(_disconnected(request))
+    try:
+        await asyncio.wait((task, watcher), return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        watcher.cancel()
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+    if task.cancelled():
+        raise _ClientGone
+    return task.result()
+
+
+async def _disconnected(request: Request) -> None:
+    """Return when the client has disconnected (its body read first)."""
+    while True:
+        message = await request.receive()
+        if message["type"] == "http.disconnect":
+            return

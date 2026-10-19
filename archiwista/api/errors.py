@@ -9,8 +9,11 @@ add members: ``source`` for an unavailable or incompatible producer plugin
 (with the pip requirement that fixes it), ``kartograf`` or ``imgwtools`` for
 a producer's own error (its exception and unchanged message), ``problems``
 for invalid settings, ``errors`` for invalid request data, ``job`` for
-the job in the way of a ``409 conflict`` and ``layers`` for an area file
-with several layers to choose from. Unknown routes
+the job in the way of a ``409 conflict`` (or building the preview of a
+``409 preview_not_ready``, else ``build_required``), ``reason`` for a
+``409 preview_unavailable`` (its code, Polish description and fix) and
+``layers`` for an area file with several layers to choose from; ``503
+preview_busy`` carries ``Retry-After``. Unknown routes
 answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
 ``Allow``) and unexpected failures ``500 internal_error``.
 """
@@ -34,17 +37,23 @@ from archiwista.errors import (
     ConflictError,
     IndexQueryError,
     InvalidChangeError,
+    InvalidRefError,
     JobConflictError,
     NotFoundError,
     OfflineModeError,
     PathOutsideRootError,
     PermissionDeniedError,
+    PreviewBusyError,
+    PreviewNotReadyError,
+    PreviewParameterError,
+    PreviewTimeoutError,
+    PreviewUnavailableError,
     ProducerError,
     SourceIncompatibleError,
     SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import MESSAGES, with_detail
 from archiwista.sources.registry import install_requirement, source_fix
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
@@ -65,6 +74,12 @@ PROBLEMS: Mapping[type[ArchiwistaError], tuple[int, str]] = MappingProxyType(
         IndexQueryError: (422, "validation_error"),
         SettingsValidationError: (422, "validation_error"),
         ProducerError: (422, "producer_error"),
+        InvalidRefError: (422, "invalid_ref"),
+        PreviewParameterError: (422, "validation_error"),
+        PreviewUnavailableError: (409, "preview_unavailable"),
+        PreviewNotReadyError: (409, "preview_not_ready"),
+        PreviewBusyError: (503, "preview_busy"),
+        PreviewTimeoutError: (504, "preview_timeout"),
         SourceIncompatibleError: (503, "source_incompatible"),
         SourceUnavailableError: (503, "source_unavailable"),
     }
@@ -274,7 +289,43 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
         members["job"] = {"id": error.job_id, "kind": error.kind, "state": error.state}
     elif isinstance(error, AreaUnreadableError) and error.layers:
         members["layers"] = list(error.layers)
+    elif isinstance(error, PreviewUnavailableError):
+        reason = preview_reason(error.reason, error.detail)
+        text = MESSAGES["preview_unavailable_detail"].format_map(reason)
+        detail = with_detail(text, error.detail)
+        members["reason"] = reason
+    elif isinstance(error, PreviewNotReadyError):
+        if error.job_id is None:
+            members["build_required"] = True
+        else:
+            members["job"] = {
+                "id": error.job_id,
+                "kind": error.kind,
+                "state": error.state,
+            }
+    elif isinstance(error, PreviewParameterError):
+        members["errors"] = [
+            {"field": error.field, "type": "value_error", "message": error.message}
+        ]
     return problem_body(status, code, detail, members)
+
+
+def preview_reason(code: str, detail: str | None = None) -> dict[str, str | None]:
+    """Return why a file has no preview: its code, Polish description and fix.
+
+    Parameters
+    ----------
+    code : str
+        Reason code (``PreviewReason``).
+    detail : str or None, optional
+        The library's message without paths, when the request found it.
+    """
+    return {
+        "code": code,
+        "message": MESSAGES.get(f"preview_reason_{code}", code),
+        "fix": MESSAGES.get(f"preview_fix_{code}", ""),
+        "detail": detail,
+    }
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -297,7 +348,12 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
         raise error
     status = body["status"]
     assert isinstance(status, int)
-    return JSONResponse(body, status_code=status, media_type=PROBLEM_MEDIA_TYPE)
+    headers = None
+    if isinstance(error, PreviewBusyError):
+        headers = {"Retry-After": str(error.retry_after_s)}
+    return JSONResponse(
+        body, status_code=status, media_type=PROBLEM_MEDIA_TYPE, headers=headers
+    )
 
 
 def validation_problem(errors: Iterable[Mapping[str, Any]]) -> dict[str, object]:

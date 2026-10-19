@@ -80,6 +80,8 @@ from archiwista.index import (
 from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState
 from archiwista.messages import MESSAGES
+from archiwista.previews.cache import CacheUsage
+from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
 from archiwista.sources import LocationKind, SourceState, SourceStatus
 
@@ -132,6 +134,7 @@ _PIN_EXAMPLE = {
 }
 _VERSION_EXAMPLE = {
     "path": _VERSION,
+    "ref": f"version:{_STORE}:{_VERSION}",
     "label": "2025-04-26_82710",
     "label_source": "campaign",
     "data_year": 2025,
@@ -872,6 +875,13 @@ class Version(BaseModel):
     model_config = _examples(_VERSION_EXAMPLE)
 
     path: str = Field(description="Version path in the store.")
+    ref: str = Field(
+        description=(
+            "Reference of the version (`version:<store>:<path>`) for its"
+            " previews, `archiwista preview` and comparisons; copy it, never"
+            " build it."
+        )
+    )
     label: str | None = Field(description="Version label, e.g. `2025-04-26_82710`.")
     label_source: str | None = Field(
         description="What the label is: `campaign`, `edition` or `downloaded`."
@@ -897,10 +907,11 @@ class Version(BaseModel):
     )
 
     @classmethod
-    def of(cls, version: VersionSummary) -> Self:
-        """Return the model of an indexed version."""
+    def of(cls, version: VersionSummary, store: str) -> Self:
+        """Return the model of an indexed version of ``store``."""
         return cls(
             path=version.path,
+            ref=version_ref(store, version.path),
             label=version.label,
             label_source=version.label_source,
             data_year=version.data_year,
@@ -953,7 +964,9 @@ class SlotItem(BaseModel):
             country=row.country,
             status=row.status,
             location=Location.of(row.location),
-            version=None if row.version is None else Version.of(row.version),
+            version=(
+                None if row.version is None else Version.of(row.version, row.store)
+            ),
             versions_count=row.versions_count,
         )
 
@@ -1133,7 +1146,7 @@ class SlotCard(IndexAnswer):
             current=detail.current,
             full_sheet=detail.full_sheet,
             paths=paths,
-            versions=[Version.of(item) for item in detail.versions],
+            versions=[Version.of(item, detail.store) for item in detail.versions],
             problems=[Issue.of(problem) for problem in problems],
             **freshness,
         )
@@ -1146,6 +1159,7 @@ class VersionCard(IndexAnswer):
         {
             "store": _STORE,
             "slot": _SLOT,
+            "ref": f"version:{_STORE}:{_VERSION}",
             "segment": _SEGMENT_EXAMPLE,
             "version": _VERSION_EXAMPLE,
             "dataset": "pl.gugik.nmt_1m",
@@ -1174,6 +1188,7 @@ class VersionCard(IndexAnswer):
 
     store: str
     slot: str
+    ref: str = Field(description="Reference of the version (`version:<store>:<path>`).")
     segment: Segment
     version: Version
     dataset: str | None
@@ -1219,8 +1234,9 @@ class VersionCard(IndexAnswer):
         return cls(
             store=detail.store,
             slot=detail.slot,
+            ref=version_ref(detail.store, detail.summary.path),
             segment=Segment.of(detail.segment),
-            version=Version.of(detail.summary),
+            version=Version.of(detail.summary, detail.store),
             dataset=detail.dataset,
             dataset_key=detail.dataset_key,
             product=detail.product,
@@ -2038,6 +2054,36 @@ class IndexInfo(BaseModel):
     size_bytes: int
 
 
+class PreviewsState(BaseModel):
+    """The preview cache against its limit, and the render processes."""
+
+    model_config = _examples(
+        {
+            "used_bytes": 1840000000,
+            "limit_bytes": 21474836480,
+            "objects": 5210,
+            "workers": 4,
+        }
+    )
+
+    used_bytes: int = Field(description="Bytes of the preview cache.")
+    limit_bytes: int = Field(
+        description="Its limit (`preview_cache_limit_gb`); least used go first."
+    )
+    objects: int = Field(description="Objects: previews of one content each.")
+    workers: int = Field(description="Render processes at most.")
+
+    @classmethod
+    def of(cls, usage: CacheUsage, workers: int) -> Self:
+        """Return the state of a preview cache and its render pool."""
+        return cls(
+            used_bytes=usage.used_bytes,
+            limit_bytes=usage.limit_bytes,
+            objects=usage.objects,
+            workers=workers,
+        )
+
+
 class Health(BaseModel):
     """Versions, sources, the index and every configured store's state."""
 
@@ -2047,6 +2093,12 @@ class Health(BaseModel):
             "sources": [_SOURCE_EXAMPLE],
             "index": _INDEX_EXAMPLE,
             "stores": [_STORE_EXAMPLE],
+            "previews": {
+                "used_bytes": 1840000000,
+                "limit_bytes": 21474836480,
+                "objects": 5210,
+                "workers": 4,
+            },
         }
     )
 
@@ -2058,6 +2110,13 @@ class Health(BaseModel):
     stores: list[StoreItem] = Field(
         description="Configured stores: availability, last scan, running job."
     )
+    previews: PreviewsState | None = Field(
+        default=None,
+        description=(
+            "Preview cache and render processes of the server; null without"
+            " them (`archiwista status`)."
+        ),
+    )
 
     @classmethod
     def of(
@@ -2066,8 +2125,9 @@ class Health(BaseModel):
         sources: list[SourceInfo],
         status: IndexStatus,
         stores: Iterable[StoreConfig],
+        previews: PreviewsState | None = None,
     ) -> Self:
-        """Return the health model of the index and the configured stores."""
+        """Return the health model of the index, the stores and the previews."""
         states = {state.store: state for state in status.stores}
         return cls(
             archiwista=version,
@@ -2078,6 +2138,7 @@ class Health(BaseModel):
                 size_bytes=status.size_bytes,
             ),
             stores=[StoreItem.of(store, states.get(store.id)) for store in stores],
+            previews=previews,
         )
 
 
