@@ -59,6 +59,25 @@ class SnapshotError(ArchiwistaError):
     """An own-data snapshot could not be made consistently."""
 
 
+class InconsistentReadError(ArchiwistaError):
+    """An own-data file changed while it was read or copied (decision 8).
+
+    A SQLite file read in place differs before and after the read, or the
+    copy of a file with its ``-wal`` did not hold in any attempt. A later
+    read gives a consistent result. The message is English and never
+    contains the path.
+    """
+
+
+class OwnReaderError(ArchiwistaError):
+    """The own-data reader process did not start or answered out of turn.
+
+    The process (``archiwista.owndata.reader``) ended or stayed silent before
+    it was ready, e.g. without the GDAL bindings it imports; no file can be
+    read until that is fixed.
+    """
+
+
 class IndexQueryError(ArchiwistaError):
     """A query of the local index has invalid parameters.
 

@@ -1076,7 +1076,7 @@ działa.
 | 5b | Podglądy wektorów | 1, 2, 4, 7a | 5a1–5a3, 5c, 6, 7b, 8 | do zrobienia |
 | 5c | Chmury punktów, archiwa, dokumenty, pliki pomocnicze | 1, 2, 4 | 5a1–5a3, 5b, 6, 7b, 8 | do zrobienia |
 | 6 | Podglądy magazynu przez HTTP i CLI; odwołania `ref` | 3, 4; odbiór po 5a1–5c | 5a1–5c, 7b, 8 | do zrobienia |
-| 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | do zrobienia |
+| 7a | Czytnik danych własnych i tożsamość treści | 1 (sandbox, tabela formatów, próba SQLite) | 2, 3, 4 | zrobione |
 | 7b | Folder danych, indeks i skan danych własnych | 2, 3, 7a | 4, 5a1–5c, 6 | do zrobienia |
 | 8 | Migawki | 7a, 7b | 5a1–5c, 6, 10, 11, 12a | do zrobienia |
 | 9 | Dane własne i migawki przez HTTP i CLI; `project.write`; widoczność zadań | 6, 7b, 8 | 10, 11, 12a, 12b | do zrobienia |
@@ -1843,6 +1843,101 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   w wyniku).
 - **Zależności:** 1 (sandbox, tabela formatów, próba SQLite).
   **Równolegle:** 2, 3, 4.
+- **Stan po kroku 7a:**
+  - *Treść* (`owndata/content.py`): `ContentIdentity(method, sha256)`,
+    `ContentMethod` (`bytes`, `fileset`, `sqlite`), `content_method(path)`
+    (komplet → `fileset`, nagłówek SQLite → `sqlite`, inny plik → `bytes`),
+    `content_identity(paths, *, method, work_dir=None)` — odstępstwo:
+    `work_dir` (katalog roboczy procesu, `process_work_dir`) wymagany dla
+    `sqlite`; `file_sha256(path)`; `sqlite_content_sha256(connection)`:
+    wersja schematu skrótu `archiwista-sqlite-content/1`,
+    `application_id`, `user_version`, posortowane wpisy `sqlite_master`
+    (JSON), potem skrót wierszy każdej tabeli. Wiersz to `repr` krotki
+    wartości w kolejności `PRAGMA table_info` (bez kolumn generowanych),
+    tekst i blob jako `T`/`X` i bajty szesnastkowo — typ wartości się
+    liczy, a liczby rzeczywiste formatuje Python (dokładnie i tak samo
+    w każdej wersji), nie `quote()` SQLite, którego zapis zależy od wersji
+    i platformy. Porządek: klucz główny, potem każda kolumna `COLLATE
+    BINARY` z `typeof` — tabela z `INTEGER PRIMARY KEY` czytana po kluczu
+    bez sortowania, tabela bez klucza jako posortowany multizbiór.
+    `table_kinds(connection)` (`table`/`virtual`/`shadow` z
+    `sqlite_master`); `SHADOW_SUFFIXES` przeniesione z
+    `tests/contract/test_preview_stack.py` (test je importuje), dodany
+    `rtree_i32` (ten sam moduł i te same cienie co `rtree`);
+    `DERIVED_TABLES`, `DERIVED_COLUMNS`.
+  - *Spójny odczyt SQLite:* `consistent_sqlite_read(path, *, work_dir,
+    attempts=3) -> ContextManager[SqliteRead]`; `SqliteRead(path, state:
+    "in_place" | "backup" | "copy", source: FileStamp, wal, journal)` —
+    stany (a), (b), (c); `sqlite_uri` (`mode=ro&immutable=1`),
+    `gdal_options` (`{"IMMUTABLE": "YES"}`), `connect()`
+    (`trusted_schema=OFF`, `query_only`); `FileStamp(size_bytes,
+    modified_ns)` pliku i `-wal` sprzed odczytu. `read_sqlite(path, read,
+    *, work_dir, attempts=3)` — to samo z ponowieniem całego odczytu po
+    `InconsistentReadError`. Odstępstwa: (1) kopia stanów (b) i (c)
+    staje się w katalogu roboczym jednym plikiem bez dziennika
+    (odzyskanie WAL, punkt kontrolny, `journal_mode=DELETE`), więc każdy
+    stan otwiera się tak samo (`immutable=1`, `IMMUTABLE=YES`); (2)
+    niepusty `-journal` (gorący dziennik po awarii piszącego w trybie
+    `DELETE`) to też stan (c): kopia z dziennikiem i wycofanie w kopii —
+    odczyt w miejscu liczyłby strony niezatwierdzonej transakcji, które
+    już są w pliku (`test_sqlite_hash_rolls_back_a_hot_journal_in_a_copy`
+    pada bez tego); (3) stan (a) porównuje przed i po także licznik zmian
+    z nagłówka (bajty 24–27) i obecność `-wal`, `-journal`, `-shm`: czas
+    modyfikacji ma rozdzielczość zegara jądra (ok. 4 ms), więc sam rozmiar
+    i czas nie widziały zapisu tuż po poprzednim.
+  - *Rozpoznanie* (`owndata/formats.py`): `FILESET_SUFFIXES` (`.shp .shx
+    .dbf .prj .cpg .qix .sbn .sbx`; `.tab .dat .map .id .ind`),
+    `is_fileset(path)` (`.shp` albo `.tab` natywny według
+    `vector_source`), `fileset_members(path) -> tuple[Path, ...]` (plik
+    główny, potem człony w tej kolejności; rozszerzenie bez względu na
+    wielkość liter, zwykłe pliki — dowiązanie liczy się celem),
+    `is_sqlite(path)`, `SQLITE_MAGIC`, `SQLITE_COMPANION_SUFFIXES`
+    (`-wal`, `-shm`, `-journal` — nie są osobnymi plikami).
+  - *Czytnik* (`owndata/reader.py`; importowany wprost, pakiet go nie
+    eksportuje, bo działa jako `-m`): `python -P -m
+    archiwista.owndata.reader --config-file F --data-dir D` importuje GDAL,
+    pisze `{"ready": true}`, potem na każdą linię `{"path": "…"}` odpowiada
+    linią z `OwnFileInfo`. `OwnReader(paths, *, timeout_s=30,
+    memory_bytes=2 GiB, command=OWN_READER_COMMAND, start_timeout_s=60)`:
+    `read(path) -> OwnFileInfo`, `close()`, menedżer kontekstu, jeden
+    wątek naraz; proces startuje przy pierwszym pliku (zegar pliku rusza
+    po imporcie GDAL), po przekroczeniu czasu jest zabijany (`timeout`),
+    jego śmierć daje `unreadable`, następny plik czyta nowy proces; proces,
+    który się nie zgłosi → `OwnReaderError`. `OwnFileInfo(kind, driver,
+    members, layers, raster, native_crs, native_bbox, feature_count, error,
+    detail)` — odstępstwo: `detail` (komunikat biblioteki po angielsku bez
+    katalogu pliku i katalogu roboczego, do 300 znaków); `LayerInfo(name,
+    geometry_type, feature_count, fields: tuple[FieldInfo(name, type)],
+    crs, bbox)`, `RasterInfo(width, height, bands, dtype, nodata,
+    pixel_size, georeferenced)`. `error`: `unsupported_format` (tabela
+    formatów; także człon kompletu będący dowiązaniem symbolicznym — GDAL
+    otwiera człony po nazwie), `unreadable`, `timeout`, `memory_limit`;
+    `driver is None` — plik spoza GDAL (dla skanu „nierozpoznany”).
+    `native_crs`: `EPSG:<kod>` albo WKT; wektor — jeden układ wszystkich
+    warstw z geometrią (różne → `None`), `native_bbox` — suma ich zasięgów
+    (x na wschód). Warstwy pytane po indeksie (`pyogrio.read_info(layer=i,
+    IMMUTABLE="YES")`, najwyżej `MAX_LAYERS` = 1000), bo `list_layers` nie
+    przyjmuje opcji otwarcia. Czytnik nie liczy tożsamości treści — robi
+    to wołający, bez limitu 30 s (skrót logiczny dużej bazy trwa dłużej).
+  - *Błędy* (`errors.py`): `InconsistentReadError` (plik zmienił się
+    w czasie odczytu albo kopii), `OwnReaderError`.
+  - *Dla 7b.* Skan woła `OwnReader.read(<ścieżka po realpath>)` dla pliku
+    głównego i `content_identity(fileset_members(p) if metoda ==
+    "fileset" else [p], method=content_method(p),
+    work_dir=process_work_dir(paths))` we własnym procesie; człony
+    kompletu sprawdza jak pliki (dowiązanie poza folder); w liście plików
+    pomija człony kompletów i pliki `SQLITE_COMPANION_SUFFIXES`;
+    `InconsistentReadError` → nieczytelny do następnego skanu.
+  - *Dla 8 i 5b.* `with consistent_sqlite_read(p, work_dir=…) as view:` —
+    `view.state != "in_place"` → ostrzeżenie `editing_detected`; kopia
+    z `view.path` przez `Connection.backup` z `view.sqlite_uri`,
+    tożsamość kopii `sqlite_content_sha256`; w stanie (a) koniec bloku
+    zgłasza `InconsistentReadError`, gdy plik się zmienił (dla 8:
+    `inconsistent_copy`).
+  - *Pomiary* (2026-10-19, komputer odniesienia, SSD): GeoPackage
+    148,6 MB (500 000 wielokątów, 3 pola): skrót logiczny 2,85 s (ok.
+    52 MB/s), `bytes` 0,38 s; czytnik: start z importem GDAL i pierwszy
+    odczyt 0,39 s, kolejny odczyt tego pliku 6 ms.
 
 ### 7b. Folder danych, indeks i skan danych własnych
 - **Cel:** ustawienie `own_data_dirs` z walidacją i funkcją usługi do

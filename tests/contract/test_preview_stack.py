@@ -34,6 +34,7 @@ from pyproj import CRS, Geod, Transformer
 from rasterio.enums import Resampling
 from rasterio.transform import from_origin
 
+from archiwista.owndata.content import SHADOW_SUFFIXES
 from archiwista.sandbox import run_untrusted, untrusted_env
 from tests.fixtures import preview_probes
 from tests.fixtures.control_points import POINT_3722
@@ -62,14 +63,6 @@ connection.execute("ROLLBACK")
 connection.close()
 """
 GPKG_ROWS = ["a", "b", "c"]
-# Shadow tables of the virtual table modules (decision 8).
-SHADOW_SUFFIXES = {
-    "rtree": ("_node", "_parent", "_rowid"),
-    "geopoly": ("_node", "_parent", "_rowid"),
-    "fts3": ("_content", "_segments", "_segdir", "_docsize", "_stat"),
-    "fts4": ("_content", "_segments", "_segdir", "_docsize", "_stat"),
-    "fts5": ("_data", "_idx", "_content", "_docsize", "_config"),
-}
 _MODULE = re.compile(r"\s*create\s+virtual\s+table\s.*?\busing\s+(\w+)", re.I | re.S)
 
 
