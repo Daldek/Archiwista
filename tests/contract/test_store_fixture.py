@@ -5,11 +5,17 @@ readers (offline), not against Archiwista's index.
 """
 
 import json
+import re
+import struct
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, get_args
 
+import laspy
+import pyogrio
 import pytest
+import rasterio
 from kartograf import (
     ValidationError,
     file_footprint,
@@ -17,6 +23,7 @@ from kartograf import (
     link_target,
     open_project,
 )
+from rasterio.enums import ColorInterp
 
 from tests.fixtures.make_store import (
     BDOT_GPKG,
@@ -31,6 +38,13 @@ from tests.fixtures.make_store import (
     main,
     make_store,
     verify_store,
+)
+from tests.fixtures.store_files import (
+    CLC_CLASSES,
+    CLC_NODATA,
+    LAZ_CLASSES,
+    OVERVIEW_FACTORS,
+    SOIL_NODATA,
 )
 
 SLOTS = MIN_SLOTS + 40
@@ -86,7 +100,8 @@ def test_store_fixture_has_every_family_case_and_requested_slots(
     assert {e.case for e in store.entries} == set(get_args(Case))
     assert len(regular_links) == SLOTS
     assert len(versions) > len(store.by_kind("link"))
-    assert sum(e.current for e in versions) == len(store.by_kind("link")) - 2
+    linked = [e for e in store.by_kind("link") if e.version_path is not None]
+    assert sum(e.current for e in versions) == len(linked)
     assert store.by_kind("full_sheet")
 
 
@@ -181,6 +196,15 @@ def _versions_of(store: StoreManifest, family: Family) -> list[Any]:
         ("tif_bbox", "request"),
         ("laz_tile", "request"),
         ("hsg_bbox", "request"),
+        ("png_preview", "request"),
+        ("tif_classes", "header"),
+        ("tif_map", "sheet"),
+        ("pdf_map", "sheet"),
+        ("tif_oblique", "sheet"),
+        ("tif_wgs84", "request"),
+        ("laz_compressed", "request"),
+        ("gpkg_layers", "header"),
+        ("zip_ascii_nmt", "sheet"),
     ],
 )
 def test_store_fixture_files_give_offline_footprints(
@@ -200,18 +224,20 @@ def test_store_fixture_files_give_offline_footprints(
     assert all(f.native.min_x < f.native.max_x for f in footprints)
 
 
-@pytest.mark.parametrize("family", ["tif_bbox", "hsg_bbox", "laz_tile"])
+@pytest.mark.parametrize(
+    "family", ["tif_bbox", "hsg_bbox", "laz_tile", "laz_compressed"]
+)
 def test_store_fixture_raster_and_point_headers_give_the_written_extent(
     store: StoreManifest, family: Family
 ) -> None:
-    """Without the request, Kartograf reads the GeoTIFF or LAS header."""
+    """Without the request, Kartograf reads the GeoTIFF or LAS/LAZ header."""
     for entry in _versions_of(store, family):
         bare = replace(entry, sidecar=replace(entry.sidecar, request=None))
 
         footprint = file_footprint(bare)
 
         assert footprint is not None and footprint.source == "header"
-        if family != "laz_tile":  # a tile lies inside its requested area
+        if not family.startswith("laz_"):  # a tile lies inside its requested area
             bbox = entry.sidecar.request["bbox"]
             assert list(footprint.native[:4]) == pytest.approx(bbox)
             assert footprint.native.crs == entry.sidecar.request["bbox_crs"]
@@ -225,6 +251,89 @@ def test_store_fixture_country_file_has_no_offline_footprint(
     [entry] = [e for e in iter_store(store.root) if e.path == store.root / path]
 
     assert file_footprint(entry) is None
+
+
+def _first_version(store: StoreManifest, family: Family) -> Path:
+    return store.root / next(
+        e.path for e in store.by_family(family) if e.kind == "version"
+    )
+
+
+def _laszip_chunk_size(header: Any) -> int:
+    """Points per chunk from the LASzip VLR (user ``laszip encoded``, 22204)."""
+    [vlr] = [v for v in header.vlrs if v.record_id == 22204]
+    size: int = struct.unpack_from("<I", vlr.record_data, 12)[0]
+    return size
+
+
+def test_store_fixture_file_families_have_their_structure(
+    store: StoreManifest,
+) -> None:
+    """Each v0.2 family has the structure its preview path depends on."""
+    with rasterio.open(_first_version(store, "tif_classes"), driver="GTiff") as src:
+        assert (src.crs.to_string(), src.colorinterp) == (
+            "EPSG:3035",
+            (ColorInterp.palette,),
+        )
+        assert set(src.colormap(1)) >= set(CLC_CLASSES)
+        assert src.nodata == CLC_NODATA
+    with rasterio.open(_first_version(store, "tif_map"), driver="GTiff") as src:
+        assert src.crs.to_string() == "EPSG:2180"
+        assert src.colorinterp[3] == ColorInterp.alpha
+        assert not src.profile["tiled"] and src.overviews(1) == []
+        assert min(src.width, src.height) > 4096
+    with rasterio.open(_first_version(store, "tif_oblique"), driver="GTiff") as src:
+        assert src.crs.to_string() == "EPSG:2177"
+        assert src.profile["tiled"] and src.overviews(1) == list(OVERVIEW_FACTORS)
+    with rasterio.open(_first_version(store, "tif_wgs84"), driver="GTiff") as src:
+        assert src.crs.to_string() == "EPSG:4326" and src.nodata == SOIL_NODATA
+    png = _first_version(store, "png_preview").read_bytes()
+    assert png.startswith(b"\x89PNG") and b"pHYs" not in png and b"tEXt" not in png
+    assert _first_version(store, "pdf_map").read_bytes().startswith(b"%PDF-")
+    with zipfile.ZipFile(_first_version(store, "zip_citygml")) as archive:
+        assert {Path(n).suffix for n in archive.namelist()} == {".gml", ".pdf"}
+    with zipfile.ZipFile(_first_version(store, "zip_ascii_nmt")) as archive:
+        assert [Path(n).suffix for n in archive.namelist()] == [".xyz"]
+    layers = pyogrio.list_layers(_first_version(store, "gpkg_layers"))
+    assert [tuple(row) for row in layers] == [
+        ("swrs", "LineString"),
+        ("ptwp", "Polygon"),
+    ]
+    with laspy.open(_first_version(store, "laz_compressed")) as reader:
+        header = reader.header
+        chunk_size = _laszip_chunk_size(header)
+        points = reader.read()
+    assert header.are_points_compressed and header.parse_crs() is not None
+    assert header.point_count > chunk_size
+    assert set(points.classification) == set(LAZ_CLASSES)
+
+
+def test_store_fixture_two_formats_share_the_variant(store: StoreManifest) -> None:
+    """ASC and ASCII-NMT of one sheet: one product, CRS, heights, resolution."""
+    links = [e for e in store.by_case("two_formats") if e.kind == "link"]
+    metas = [
+        e.sidecar
+        for e in iter_store(store.root)
+        if e.kind == "link" and entry_row(e, store.root)[3] in {x.path for x in links}
+    ]
+
+    assert len({link.segment for link in links}) == 2
+    assert len({link.unit for link in links}) == 1
+    assert (
+        len(
+            {(m.product, m.horizontal_crs, m.vertical_crs, m.resolution) for m in metas}
+        )
+        == 1
+    )
+
+
+def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -> None:
+    """The 0.7.x sidecar has no ``sha256``; Kartograf lists it as a link."""
+    [wanted] = store.by_case("no_sha256")
+    [found] = [e for e in iter_store(store.root) if e.path == store.root / wanted.path]
+
+    assert found.kind == "link" and found.version_path is None
+    assert found.sidecar is not None and found.sidecar.sha256 is None
 
 
 def test_store_fixture_projects_open_as_expected(store: StoreManifest) -> None:
@@ -322,7 +431,7 @@ def test_make_store_cli_prints_summary(
 
     out = capsys.readouterr().out
     assert status == 0
-    assert f"slots: {MIN_SLOTS + 6} ({MIN_SLOTS} regular)" in out
+    assert re.search(rf"^slots: \d+ \({MIN_SLOTS} regular\)$", out, re.MULTILINE)
     assert (tmp_path / "data").is_dir()
     assert len(list((tmp_path / "projects").iterdir())) == 4
 

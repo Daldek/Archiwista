@@ -1,20 +1,33 @@
 """Tiny but well-formed data files for the synthetic Kartograf store.
 
-Every encoder is pure Python and deterministic: the same arguments give the
-same bytes, and ``nonce`` makes the content (and so the version identity,
-the SHA-256 of the file) differ between versions. Readers only need the
-headers to be genuine (Kartograf's ``file_footprint`` reads ASC/GeoTIFF/JPEG
-+ world file/GPKG/LAS headers), so the payloads stay minimal: rasters are
-64 x 64 pixels, a GeoPackage holds one point and a point cloud a few points.
+Every encoder is deterministic: the same arguments give the same bytes, and
+``nonce`` makes the content (and so the version identity, the SHA-256 of
+the file) differ between versions. The v0.1 encoders are pure Python: the
+bulk of a 50 000-slot store only needs genuine headers (Kartograf's
+``file_footprint`` reads ASC/GeoTIFF/JPEG + world file/GPKG/LAS headers), so
+rasters are 64 x 64 pixels, a GeoPackage holds one point and a point cloud a
+few points. The file families of plan v0.2 (decision 5: palette, tiling and
+overviews, RGBA strips, a compressed LAZ, two-layer GeoPackages, archives
+with members) are written once per store, so they use GDAL (rasterio) and
+laspy to get the real structure previews depend on.
 """
 
 import io
 import sqlite3
 import struct
 import zipfile
+import zlib
+from collections.abc import Sequence
+from datetime import date
 from functools import cache
 
-from pyproj import CRS
+import laspy
+import numpy as np
+import numpy.typing as npt
+from pyproj import CRS, Transformer
+from rasterio.enums import Resampling
+from rasterio.io import MemoryFile
+from rasterio.transform import from_bounds
 
 RASTER_SIZE_PX = 64
 NODATA = -9999
@@ -239,7 +252,7 @@ def geopackage(bounds: Bounds, epsg: int, nonce: int) -> bytes:
         conn.close()
 
 
-_GPKG_SCHEMA = """
+_GPKG_TABLES = """
 PRAGMA application_id = 1196444487;
 PRAGMA user_version = 10200;
 CREATE TABLE gpkg_spatial_ref_sys (
@@ -259,8 +272,10 @@ CREATE TABLE gpkg_geometry_columns (
     geometry_type_name TEXT NOT NULL, srs_id INTEGER NOT NULL,
     z TINYINT NOT NULL, m TINYINT NOT NULL,
     PRIMARY KEY (table_name, column_name));
-CREATE TABLE objects (fid INTEGER PRIMARY KEY, geom POINT, name TEXT);
 """
+_GPKG_SCHEMA = _GPKG_TABLES + (
+    "CREATE TABLE objects (fid INTEGER PRIMARY KEY, geom POINT, name TEXT);\n"
+)
 
 
 @cache
@@ -366,3 +381,420 @@ def las_points(bounds: Bounds, nonce: int, *, points: int = 5) -> bytes:
         100.0,
     )
     return header + body
+
+
+# --- v0.2 file families (plan v0.2, decision 5) --------------------------------
+
+NONCE_TAG = "ARCHIWISTA_NONCE"
+"""GDAL metadata item carrying ``nonce`` in the GDAL-written rasters."""
+
+CLC_CLASSES: dict[int, tuple[str, tuple[int, int, int]]] = {
+    1: ("111", (230, 0, 77)),
+    2: ("112", (255, 0, 0)),
+    12: ("211", (255, 255, 168)),
+    23: ("311", (128, 255, 0)),
+    41: ("512", (128, 242, 230)),
+}
+"""CORINE raster values written by ``geotiff_classes``: CLC code and colour."""
+CLC_NODATA = 48
+SOIL_NODATA = -32768
+STRIPED_SIZE_PX = 4160
+"""Side of the striped RGBA map: above the 4096 px limit of direct tiles."""
+OBLIQUE_SIZE_PX = (1024, 640)
+"""``(width, height)`` of the tiled oblique orthophoto (a 1:1000 sheet)."""
+OVERVIEW_FACTORS = (2, 4)
+LAZ_POINTS = 120_000
+"""Points of the compressed LAZ: three LASzip chunks of 50 000 points."""
+LAZ_CLASSES = (2, 3, 6)
+"""ASPRS classes of the compressed LAZ: ground, low vegetation, building."""
+
+
+def reprojected_bounds(bounds: Bounds, source_epsg: int, target_epsg: int) -> Bounds:
+    """Envelope of ``bounds`` in another CRS (fixture geometry, densified).
+
+    Only used to place test rasters whose CRS differs from the slot's
+    request (CORINE in EPSG:3035, SoilGrids in EPSG:4326); never the
+    reference values of a check.
+    """
+    transformer = Transformer.from_crs(source_epsg, target_epsg, always_xy=True)
+    min_x, min_y, max_x, max_y = transformer.transform_bounds(*bounds, densify_pts=21)
+    return (min_x, min_y, max_x, max_y)
+
+
+def png_image(nonce: int, *, size: int = RASTER_SIZE_PX) -> bytes:
+    """RGB PNG without georeference, like a WMS ``GetMap`` answer.
+
+    Parameters
+    ----------
+    nonce : int
+        Colour of the first pixel; distinguishes versions.
+    size : int, optional
+        Side in pixels.
+
+    Returns
+    -------
+    bytes
+        An 8-bit RGB PNG (no ancillary chunks).
+    """
+    rows = bytearray()
+    for row in range(size):
+        rows.append(0)  # filter: none
+        for col in range(size):
+            rows += bytes(((row * 4) % 256, (col * 4) % 256, 128))
+    rows[1:4] = (nonce % 2**24).to_bytes(3, "big")
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(kind + data)
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", crc)
+
+    header = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(bytes(rows), 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def geotiff_classes(bounds: Bounds, epsg: int, nonce: int) -> bytes:
+    """CORINE-like class raster: 512 x 512 ``uint8`` with a colour table.
+
+    Values are the keys of ``CLC_CLASSES`` in bands, ``CLC_NODATA`` in the
+    south-east corner (nodata); 256-pixel tiles, DEFLATE.
+    """
+    size = 512
+    codes = np.array(list(CLC_CLASSES), dtype=np.uint8)
+    rows, cols = np.indices((size, size))
+    pixels = codes[(rows // 32 + cols // 64) % len(codes)]
+    pixels[-16:, -16:] = CLC_NODATA
+    colormap = {code: (*rgb, 255) for code, (_, rgb) in CLC_CLASSES.items()}
+    colormap[CLC_NODATA] = (255, 255, 255, 0)
+    return _gdal_tiff(
+        pixels[np.newaxis],
+        nonce,
+        crs=f"EPSG:{epsg}",
+        bounds=bounds,
+        nodata=CLC_NODATA,
+        colormap=colormap,
+        tiled=True,
+        blockxsize=256,
+        blockysize=256,
+        compress="deflate",
+    )
+
+
+def geotiff_rgba_strips(
+    bounds: Bounds, epsg: int, nonce: int, *, size: int = STRIPED_SIZE_PX
+) -> bytes:
+    """RGBA map sheet in strips, without overviews (BDOT10k map TIFF).
+
+    ``size`` x ``size`` pixels (default above 4096, so previews build a
+    local COG), DEFLATE; the alpha band is transparent in the north-west
+    eighth.
+    """
+    axis = np.arange(size, dtype=np.uint32)
+    red = np.broadcast_to(((axis // 64) % 256).astype(np.uint8), (size, size))
+    blue = ((np.add.outer(axis, axis) // 128) % 256).astype(np.uint8)
+    alpha = np.full((size, size), 255, dtype=np.uint8)
+    alpha[: size // 8, : size // 8] = 0
+    return _gdal_tiff(
+        np.stack([red, red.T, blue, alpha]),
+        nonce,
+        crs=f"EPSG:{epsg}",
+        bounds=bounds,
+        tiled=False,
+        compress="deflate",
+        photometric="RGB",
+        alpha="YES",
+    )
+
+
+def geotiff_tiled_overviews(bounds: Bounds, epsg: int, nonce: int) -> bytes:
+    """RGB orthophoto tiled 256 x 256 with internal overviews 2 and 4.
+
+    ``OBLIQUE_SIZE_PX`` pixels, DEFLATE (the oblique orthophotomap).
+    """
+    width, height = OBLIQUE_SIZE_PX
+    rows, cols = np.indices((height, width))
+    bands = np.stack(
+        [(cols // 16) % 256, (rows // 16) % 256, ((rows + cols) // 8) % 256]
+    ).astype(np.uint8)
+    return _gdal_tiff(
+        bands,
+        nonce,
+        crs=f"EPSG:{epsg}",
+        bounds=bounds,
+        overviews=OVERVIEW_FACTORS,
+        tiled=True,
+        blockxsize=256,
+        blockysize=256,
+        compress="deflate",
+        photometric="RGB",
+    )
+
+
+def geotiff_wgs84(bounds: Bounds, nonce: int) -> bytes:
+    """SoilGrids-like ``int16`` raster in EPSG:4326 (values 150-349).
+
+    ``bounds`` are degrees; 64 x 64 pixels; ``SOIL_NODATA`` in the
+    south-east corner.
+    """
+    size = RASTER_SIZE_PX
+    rows, cols = np.indices((size, size))
+    values = (150 + (rows + cols) % 200).astype(np.int16)
+    values[-8:, -8:] = SOIL_NODATA
+    return _gdal_tiff(
+        values[np.newaxis],
+        nonce,
+        crs="EPSG:4326",
+        bounds=bounds,
+        nodata=SOIL_NODATA,
+        compress="deflate",
+    )
+
+
+def _gdal_tiff(
+    bands: npt.NDArray[np.generic],
+    nonce: int,
+    *,
+    crs: str,
+    bounds: Bounds,
+    nodata: float | None = None,
+    colormap: dict[int, tuple[int, int, int, int]] | None = None,
+    overviews: Sequence[int] = (),
+    **options: object,
+) -> bytes:
+    """GeoTIFF written by GDAL in memory (no ``.aux.xml``, no timestamps)."""
+    count, height, width = bands.shape
+    with MemoryFile() as memory:
+        with memory.open(
+            driver="GTiff",
+            width=width,
+            height=height,
+            count=count,
+            dtype=bands.dtype.name,
+            crs=crs,
+            transform=from_bounds(*bounds, width, height),
+            nodata=nodata,
+            **options,
+        ) as dataset:
+            dataset.write(bands)
+            dataset.update_tags(**{NONCE_TAG: str(nonce)})
+            if colormap is not None:
+                dataset.write_colormap(1, colormap)
+            if overviews:
+                dataset.build_overviews(list(overviews), Resampling.average)
+        return bytes(memory.read())
+
+
+def xyz_grid(bounds: Bounds, nonce: int, *, size: int = 32) -> bytes:
+    """Regular ASCII XYZ grid (``x y z`` of cell centres, north row first).
+
+    The order GDAL's XYZ driver reads: rows by falling Y, X rising in a row.
+    The first Z is ``nonce``; it distinguishes versions.
+    """
+    min_x, min_y, max_x, max_y = bounds
+    dx = (max_x - min_x) / size
+    dy = (max_y - min_y) / size
+    lines = []
+    for row in range(size):
+        y = max_y - (row + 0.5) * dy
+        for col in range(size):
+            z = nonce if row == col == 0 else 100 + (row + col) % 50
+            lines.append(f"{min_x + (col + 0.5) * dx:.2f} {y:.2f} {z:.2f}")
+    return ("\n".join(lines) + "\n").encode("ascii")
+
+
+def zip_members(members: Sequence[tuple[str, bytes]]) -> bytes:
+    """ZIP of named members (DEFLATE, fixed timestamp, order kept)."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members:
+            info = zipfile.ZipInfo(name, date_time=(2024, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, data)
+    return buffer.getvalue()
+
+
+def citygml(bounds: Bounds, epsg: int, nonce: int) -> bytes:
+    """CityGML 2.0 document with one LoD2 building envelope in ``bounds``."""
+    min_x, min_y, max_x, max_y = bounds
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<core:CityModel xmlns:core="http://www.opengis.net/citygml/2.0"'
+        ' xmlns:bldg="http://www.opengis.net/citygml/building/2.0"'
+        ' xmlns:gml="http://www.opengis.net/gml">\n'
+        f'  <gml:boundedBy><gml:Envelope srsName="EPSG:{epsg}" srsDimension="3">\n'
+        f"    <gml:lowerCorner>{min_x:.2f} {min_y:.2f} 100.0</gml:lowerCorner>\n"
+        f"    <gml:upperCorner>{max_x:.2f} {max_y:.2f} 130.0</gml:upperCorner>\n"
+        "  </gml:Envelope></gml:boundedBy>\n"
+        "  <core:cityObjectMember>\n"
+        f'    <bldg:Building gml:id="fixture_{nonce}">\n'
+        '      <bldg:measuredHeight uom="m">12.5</bldg:measuredHeight>\n'
+        "    </bldg:Building>\n"
+        "  </core:cityObjectMember>\n"
+        "</core:CityModel>\n"
+    ).encode()
+
+
+def pdf_document(title: str) -> bytes:
+    """One-page PDF 1.4 (a line, ``title`` in the document information)."""
+    content = b"0 0 m 595 842 l S"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
+        b"<< /Title (%s) /Producer (archiwista fixture) >>" % title.encode("ascii"),
+    ]
+    body = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, text in enumerate(objects, start=1):
+        offsets.append(len(body))
+        body += b"%d 0 obj\n%s\nendobj\n" % (number, text)
+    xref = len(body)
+    body += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    body += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    body += b"trailer\n<< /Size %d /Root 1 0 R /Info 5 0 R >>\n" % (len(objects) + 1)
+    body += b"startxref\n%d\n%%%%EOF\n" % xref
+    return bytes(body)
+
+
+GPKG_LAYERS = (("swrs", "LINESTRING"), ("ptwp", "POLYGON"))
+"""Layers of ``geopackage_layers`` (BDOT10k classes): name and geometry type."""
+
+
+def geopackage_layers(bounds: Bounds, epsg: int, nonce: int) -> bytes:
+    """GeoPackage 1.2 with a line layer and a polygon layer inside ``bounds``.
+
+    ``swrs`` (watercourses): three lines (``nazwa``, ``szerokosc_m``);
+    ``ptwp`` (water surfaces): two squares (``nazwa``). The first line is
+    named after ``nonce``.
+    """
+    min_x, min_y, max_x, max_y = bounds
+    width, height = max_x - min_x, max_y - min_y
+
+    def at(fx: float, fy: float) -> tuple[float, float]:
+        return (min_x + width * fx, min_y + height * fy)
+
+    lines = [
+        (str(nonce), 12, [at(0.0, 0.1), at(0.5, 0.5), at(1.0, 0.9)]),
+        ("Potok", 3, [at(0.1, 0.0), at(0.1, 1.0)]),
+        ("Rów", 1, [at(0.6, 0.2), at(0.9, 0.3)]),
+    ]
+    squares = [
+        ("Staw", [at(0.2, 0.2), at(0.4, 0.2), at(0.4, 0.4), at(0.2, 0.4)]),
+        ("Jezioro", [at(0.6, 0.6), at(0.8, 0.6), at(0.8, 0.8), at(0.6, 0.8)]),
+    ]
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript(
+            _GPKG_TABLES
+            + "CREATE TABLE swrs (fid INTEGER PRIMARY KEY, geom LINESTRING,"
+            " nazwa TEXT, szerokosc_m INTEGER);\n"
+            "CREATE TABLE ptwp (fid INTEGER PRIMARY KEY, geom POLYGON,"
+            " nazwa TEXT);\n"
+        )
+        conn.execute(
+            "INSERT INTO gpkg_spatial_ref_sys VALUES (?, ?, 'EPSG', ?, ?, NULL)",
+            (f"EPSG:{epsg}", epsg, epsg, _wkt(epsg)),
+        )
+        for (table, kind), points in zip(
+            GPKG_LAYERS,
+            (
+                [p for _, _, line in lines for p in line],
+                [p for _, s in squares for p in s],
+            ),
+            strict=True,
+        ):
+            xs, ys = [p[0] for p in points], [p[1] for p in points]
+            conn.execute(
+                "INSERT INTO gpkg_contents VALUES (?, 'features', ?, '', "
+                "'2026-01-01T00:00:00.000Z', ?, ?, ?, ?, ?)",
+                (table, table, min(xs), min(ys), max(xs), max(ys), epsg),
+            )
+            conn.execute(
+                "INSERT INTO gpkg_geometry_columns VALUES (?, 'geom', ?, ?, 0, 0)",
+                (table, kind, epsg),
+            )
+        conn.executemany(
+            "INSERT INTO swrs (geom, nazwa, szerokosc_m) VALUES (?, ?, ?)",
+            [
+                (_gpkg_blob(epsg, _wkb_linestring(line)), name, size)
+                for name, size, line in lines
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO ptwp (geom, nazwa) VALUES (?, ?)",
+            [(_gpkg_blob(epsg, _wkb_polygon(ring)), name) for name, ring in squares],
+        )
+        conn.commit()
+        return conn.serialize()
+    finally:
+        conn.close()
+
+
+def _gpkg_blob(epsg: int, wkb: bytes) -> bytes:
+    """GeoPackage geometry: header (little endian, no envelope) + WKB."""
+    return struct.pack("<2sBBi", b"GP", 0, 1, epsg) + wkb
+
+
+def _wkb_linestring(points: Sequence[tuple[float, float]]) -> bytes:
+    coords = b"".join(struct.pack("<2d", x, y) for x, y in points)
+    return struct.pack("<BII", 1, 2, len(points)) + coords
+
+
+def _wkb_polygon(ring: Sequence[tuple[float, float]]) -> bytes:
+    closed = [*ring, ring[0]]
+    coords = b"".join(struct.pack("<2d", x, y) for x, y in closed)
+    return struct.pack("<BIII", 1, 3, 1, len(closed)) + coords
+
+
+def laz_points(bounds: Bounds, nonce: int, *, epsg: int = 2180) -> bytes:
+    """LASzip-compressed LAS 1.4 (point format 6) with classes 2, 3 and 6.
+
+    ``LAZ_POINTS`` points on a regular grid over ``bounds`` (so several
+    LASzip chunks with a chunk table), ASPRS classes ``LAZ_CLASSES`` in
+    40-point bands, the CRS of ``epsg`` as a WKT VLR and a fixed creation
+    date.
+
+    Parameters
+    ----------
+    bounds : Bounds
+        Extent of the points in ``epsg``.
+    nonce : int
+        Intensity of every point; distinguishes versions.
+    epsg : int, optional
+        Horizontal CRS written into the WKT VLR.
+
+    Returns
+    -------
+    bytes
+        The ``.laz`` file.
+    """
+    min_x, min_y, max_x, max_y = bounds
+    side = int(np.ceil(np.sqrt(LAZ_POINTS)))
+    index = np.arange(LAZ_POINTS)
+    col, row = index % side, index // side
+    band = (col // 40 + row // 40) % 5
+    classes = np.full(LAZ_POINTS, LAZ_CLASSES[0], dtype=np.uint8)
+    classes[band == 1] = LAZ_CLASSES[1]
+    classes[band == 3] = LAZ_CLASSES[2]
+    header = laspy.LasHeader(point_format=6, version="1.4")
+    header.offsets = np.array([min_x, min_y, 0.0])
+    header.scales = np.array([0.01, 0.01, 0.01])
+    header.add_crs(CRS.from_epsg(epsg))
+    header.date = date(2026, 1, 1)
+    header.system_identifier = "archiwista fixture"
+    header.generating_software = "archiwista make_store"
+    las = laspy.LasData(header)
+    las.x = min_x + (col + 0.5) * (max_x - min_x) / side
+    las.y = min_y + (row + 0.5) * (max_y - min_y) / side
+    las.z = 200.0 + (col % 50) * 0.1 + np.where(classes == 6, 12.0, 0.0)
+    las.classification = classes
+    las.intensity = np.full(LAZ_POINTS, nonce % 2**16, dtype=np.uint16)
+    las.return_number = np.ones(LAZ_POINTS, dtype=np.uint8)
+    las.number_of_returns = np.ones(LAZ_POINTS, dtype=np.uint8)
+    buffer = io.BytesIO()
+    las.write(buffer, do_compress=True, laz_backend=laspy.LazBackend.Lazrs)
+    return buffer.getvalue()

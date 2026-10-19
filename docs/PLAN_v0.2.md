@@ -1067,7 +1067,7 @@ działa.
 |---|---|---|---|---|
 | 0 | Porządki po v0.1: `ResourceWarning` | — | 1, 2, 3, 7a | zrobione |
 | 1 | Zależności podglądów, sandbox i próby techniczne | — | 0, 2, 3 | zrobione |
-| 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | do zrobienia |
+| 2 | Magazyn testowy i fixtury v0.2 | — | 0, 1, 3, 4, 7a | zrobione |
 | 3 | Obrysy-wielokąty i operacja dla GDAL w umowie źródła | — | 0, 1, 2, 4, 7a | zrobione |
 | 4 | Infrastruktura podglądów: pamięć, pula, zadanie `preview` | 1 | 2, 3, 7a, 7b | do zrobienia |
 | 5a1 | Podglądy rastrów: rozpoznanie, miniatura, kafel | 1, 2, 3, 4 | 5b, 5c, 6, 7b, 8 | do zrobienia |
@@ -1399,6 +1399,96 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   w notatce kroku.
 - **Zależności:** — (prawdziwy LAZ wymaga laspy z kroku 1 — ten przypadek
   dochodzi po nim). **Równolegle:** 0, 1, 3, 4, 7a.
+- **Stan po kroku 2:**
+  - *Magazyn (`make_store`).* Nowe rodziny `Family` w `ExpectedEntry.family`
+    (raz na magazyn, ponad `slots`, pisane po projektach — część v0.1
+    magazynu danego ziarna jest bajtowo bez zmian; `MIN_SLOTS` = 17 bez
+    zmian, `slots` dalej liczy tylko przypadki `regular`): `png_preview`
+    (`landcover/eu_corine_2018_preview/bbox/…png`, `EPSG:3857`, PNG bez
+    georeferencji), `tif_classes` (`landcover/eu_corine_2018`, arkusz
+    1:50 000, GeoTIFF `EPSG:3035` 512 × 512 z paletą `CLC_CLASSES`, nodata
+    48), `tif_map` (`maps/pl_bdot10k_10000_tiff`, RGBA paskowy 4160 × 4160
+    bez nakładek, kanał alfa), `pdf_map` (`maps/pl_bdot10k_10000_pdf`),
+    `tif_oblique` (`oblique-orto/pl_2000/…/6.179.12.20.1_n.tif`,
+    `EPSG:2177`, kafle 256, nakładki 2 i 4), `tif_wgs84`
+    (`soil/global_soilgrids_clay_0-5cm_mean/bbox/…`, `EPSG:4326` `int16`,
+    nodata −32768), `zip_citygml` (`models3d/pl_buildings_lod2_2017/teryt/`,
+    człony `.gml` CityGML i `.pdf`), `laz_compressed` (prawdziwy LAZ:
+    laspy + lazrs z kroku 1, LAS 1.4 PDRF 6, 120 000 punktów = 3 kawałki po
+    50 000 z tablicą kawałków, klasy 2/3/6, WKT VLR `EPSG:2180`),
+    `gpkg_layers` (`landcover/pl_bdot10k_gpkg_ptwp-swrs`: warstwy `swrs`
+    LineString i `ptwp` Polygon), `zip_ascii_nmt`; przypadki `Case`:
+    `file_family`, `no_sha256`, `two_formats` (ten sam arkusz w
+    `nmt/pl_1992_1m_evrf2007` jako ASC i w `nmt/pl_1992_ascii-nmt_1m_evrf2007`
+    jako ZIP z członem XYZ). Koderzy w `tests/fixtures/store_files.py`
+    (rastry v0.2 pisze GDAL w pamięci, deterministycznie, `nonce` w metadanej
+    `ARCHIWISTA_NONCE`): `png_image`, `geotiff_classes`,
+    `geotiff_rgba_strips`, `geotiff_tiled_overviews`, `geotiff_wgs84`,
+    `xyz_grid`, `zip_members`, `citygml`, `pdf_document`,
+    `geopackage_layers`, `laz_points`, `reprojected_bounds`. Każdy wpis
+    sprawdza `verify_store` (`iter_store`), obrysy offline — test kontraktu.
+  - *Odstępstwa od planu.* (1) „Wersja ze starszym sidecarem bez `sha256`”
+    nie istnieje w Kartografie 0.8.0: wpis `versions/` bez `sha256` to
+    `invalid_sidecar` (`store._valid_version`), więc `no_sha256` to plik na
+    ścieżce standardowej z sidecarem 0.7.x (`kind="link"`, bez
+    `version_path`, etykiety i `sha8`). (2) PNG CORINE „z obrysem z godła”:
+    `_sheet_footprint` Kartografa pomija sidecar kraju innego niż PL
+    (CORINE = `EU`), więc podgląd arkusza nie miałby obrysu — fixtura bierze
+    wycinek bbox (obrys z żądania); brak obrysu arkusza CORINE to kandydat
+    na wymaganie SPEC 12. (3) GeoPackage dwuwarstwowy ma własny segment, bo
+    część masowa 50 000 slotów wyczerpuje kody TERYT
+    `landcover/pl_bdot10k_gpkg`. (4) ZIP LoD2 nie ma obrysu offline (TERYT
+    z PRG), jak `zip_teryt` v0.1.
+  - *Dane własne (`tests/fixtures/own_data.py`).*
+    `make_own_folder(path, *, families=ALL_OWN_FAMILIES) ->
+    OwnFolderManifest` (`root`, `files: tuple[OwnFile]`, `outside`,
+    `file(family)`, `path(family)`, `indexed`); `OwnFile` (`family`, `path`,
+    `members`, `indexed`, `driver`, `crs` — jak podaje GDAL, `layers:
+    tuple[OwnLayer(name, geometry_type, feature_count)]`, `raster: (w, h,
+    bands)`, `feature_count`). Rodziny `OwnFamily`: `gpkg_layers`
+    (`kanalizacja.gpkg`, `przewody` + `zlewnie`, `EPSG:2180`), `shp_full`
+    (`dzialki.shp .shx .dbf .prj .cpg`), `shp_no_prj`, `tif_2180`,
+    `tif_world_file` (TIFF bez znaczników GeoTIFF + `skan.tfw`),
+    `geojson_wgs84`, `fgb`, `tab_native` (`budynki.tab .dat .map .id`;
+    OGR podaje typ warstwy `Unknown`, a układ jako WKT bez kodu EPSG —
+    MapInfo CoordSys zapisuje `EPSG:2180` jako nienazwany TM na WGS84),
+    `csv`, `txt`, `hidden` (`.ukryty.geojson`, `.ukryty_katalog/`),
+    `subdir` (`archiwum/2025/punkty.geojson`), `symlink_outside`
+    (`poza.geojson`, `katalog_poza` → `<folder>.poza/`), `gpkg_5514_control`
+    (`punkt_3722.gpkg`, `POINT_3722.epsg5514` z `control_points.py`).
+    `project_inside_store(store_root, name="w-magazynie") -> Path`
+    (`<store>/projekty/<name>`; Kartograf widzi go jako nieznany segment).
+    `GpkgEditor(path)` — osobny proces (`python -m tests.fixtures.own_data
+    edit PATH`), `journal_mode=WAL`, `wal_autocheckpoint=0`, funkcje SQL
+    `ST_IsEmpty`/`ST_MinX…` dla wyzwalaczy R*Tree GDAL: `begin`,
+    `insert(layer, geometry, **values) -> fid`, `commit`,
+    `reopen_for_update_unchanged` (przepisuje `gpkg_ogr_contents`,
+    `gpkg_contents.last_change`, `gpkg_metadata_reference.timestamp`),
+    `close`, `crash_without_shm`, `wal`, `shm`, menedżer kontekstu.
+    `write_snapshot_fixture(folder, source, *, created_at, content=None,
+    note, author, layers, raster, extent) -> SnapshotFixture(directory,
+    label, document)`: `.wersje/<plik>/<RRRR-MM-DD>_<sha8>[_n]/`, kopia
+    SQLite przez `Connection.backup`, pliki `0444`, katalog `0555`;
+    `content` (metoda, sha256) wymagany dla SQLite i kompletów — fixtura nie
+    liczy skrótu logicznego (to kod kroku 7a), sama liczy tylko `bytes`.
+  - *Pliki podstawione (`tests/fixtures/hostile_files.py`).*
+    `hostile_files(path) -> HostileFiles` (`root`, `targets` =
+    `<path>-cel/`, `raster_target`, `vector_target`, `vrt_rasters` `.tif
+    .asc`, `ogr_vrt_vectors` `.gpkg .geojson .shp .fgb`, `ovr_base`, `ovr`,
+    `mapinfo_view`, `mapinfo_seamless`, `huge_raster`, `zip_many_entries`;
+    `SECRET_VALUE` = 173, `SECRET_TEXT` = `tajne`). Sprawdzone 2026-10-19 bez
+    sandboxa (GDAL 3.12): każdy VRT, OGR VRT i `a.tif.ovr` czyta cel; tabela
+    łączona czyta człon spoza folderu; widok otwiera obie tabele spoza
+    folderu i dopiero potem odmawia (brak indeksu `.IND`, którego sterownik
+    OGR nie zapisuje); raster 100 000 × 100 000 ma 307 KB; ZIP deklaruje
+    200 000 wpisów w rekordzie ZIP64, a `zipfile` go otwiera (1 człon).
+  - *Czas.* `python -m tests.fixtures.make_store --slots 50000 --seed 1
+    --projects 30`: 97,8 s (generacja i weryfikacja; 50 018 dowiązań,
+    80 065 wersji, 26 segmentów). Każdy `make_store` jest dłuższy o ok.
+    1,1 s (głównie mapa RGBA 4160 × 4160). Magazyn pomiarowy v0.1
+    (`store-50k`) trzeba wygenerować od nowa przed krokiem 16:
+    `tests/perf/test_store_50k.py::test_store_50k_generator_reproduces_store`
+    porównuje całe drzewo.
 
 ### 3. Obrysy-wielokąty i operacja dla GDAL w umowie źródła
 - **Cel:** obrysy na mapie zgodne z rzeczywistością (decyzja 4,

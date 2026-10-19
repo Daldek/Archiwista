@@ -1,4 +1,4 @@
-"""Synthetic Kartograf store for Archiwista tests (plan v0.1, step 4).
+"""Synthetic Kartograf store for Archiwista tests (plan v0.1 step 4, v0.2 step 2).
 
 ``make_store(output_dir, slots=..., seed=...)`` writes under ``output_dir``:
 
@@ -8,6 +8,15 @@
   ZIP packages, a point cloud, collections by TERYT, KU and country and an
   HSG raster; several versions per slot, the standard-path link and
   ``full_sheet/`` links;
+- on top of ``slots``, once per store, the file families of plan v0.2
+  (decision 5, case ``file_family``): a CORINE WMS preview PNG without
+  georeference, a CORINE class GeoTIFF with a palette, a striped RGBA
+  BDOT10k map above 4096 px and its PDF, a tiled oblique EPSG:2177 GeoTIFF
+  with overviews, a SoilGrids EPSG:4326 GeoTIFF, a LoD2 ZIP with CityGML and
+  PDF members, a compressed LAZ with classes 2, 3 and 6 and a two-layer
+  GeoPackage; a standard-path file with a 0.7.x sidecar without ``sha256``
+  (``no_sha256``) and one NMT sheet in two formats, ASC and ASCII-NMT
+  (``two_formats``);
 - ``projects/`` - ``kartograf-project.json`` manifests with tasks and pins
   (also of an older version, a missing version and another store) and one
   invalid manifest;
@@ -87,6 +96,17 @@ Family = Literal[
     "zip_ku",
     "laz_tile",
     "hsg_bbox",
+    # plan v0.2 decision 5 (``file_families``, on top of ``slots``):
+    "png_preview",
+    "tif_classes",
+    "tif_map",
+    "pdf_map",
+    "tif_oblique",
+    "tif_wgs84",
+    "zip_citygml",
+    "laz_compressed",
+    "gpkg_layers",
+    "zip_ascii_nmt",
 ]
 Case = Literal[
     "regular",
@@ -99,6 +119,9 @@ Case = Literal[
     "unknown_segment",
     "legacy_campaigns",
     "stale_incoming",
+    "file_family",
+    "no_sha256",
+    "two_formats",
 ]
 ProjectCase = Literal["regular", "missing_version", "other_store", "invalid_manifest"]
 Row = tuple[str, str, str, str, str | None, str | None, str | None, str | None]
@@ -124,6 +147,20 @@ HSG = "hsg/global_soilgrids_0-5cm_mean"
 DEV_SEGMENT = "orto/pl_1992_true"
 UNKNOWN_SEGMENT = "newproduct/pl_experimental"
 DEV_DATASET = "pl.gugik.buildings_3d"
+# Segments of the plan v0.2 file families (decision 5).
+CORINE_PREVIEW = "landcover/eu_corine_2018_preview"
+CORINE = "landcover/eu_corine_2018"
+BDOT_MAP_TIFF = "maps/pl_bdot10k_10000_tiff"
+BDOT_MAP_PDF = "maps/pl_bdot10k_10000_pdf"
+OBLIQUE = "oblique-orto/pl_2000"
+OBLIQUE_SHEET = "6.179.12.20.1"
+"""PL-2000 zone 6 (EPSG:2177) sheet 1:1000 of the oblique orthophoto."""
+SOILGRIDS = "soil/global_soilgrids_clay_0-5cm_mean"
+BUILDINGS_LOD2 = "models3d/pl_buildings_lod2_2017"
+BDOT_GPKG_LAYERS = "landcover/pl_bdot10k_gpkg_ptwp-swrs"
+NMT_ASCII = "nmt/pl_1992_ascii-nmt_1m_evrf2007"
+LEGACY_KARTOGRAF = "0.7.4"
+"""``kartograf_version`` of the sidecar without ``sha256`` (case no_sha256)."""
 
 # Regular slots of the base catalogue (every family once, see base_catalogue).
 MIN_SLOTS = 17
@@ -352,6 +389,8 @@ def make_store(
     writer.edge_cases()
     writer.bulk(slots - writer.regular_links())
     expected_projects = writer.projects(projects)
+    # Last: the v0.1 part of a seed's store stays as it was.
+    writer.file_families()
     manifest = StoreManifest(
         output_dir=output_dir,
         seed=seed,
@@ -531,8 +570,10 @@ class _StoreWriter:
         vertical_crs: str | None = None,
         product: str | None = None,
         subdir: str | None = None,
+        format: str | None = None,
+        suffix: str | None = None,
     ) -> FileStorage:
-        key = (resolution, vertical_crs, product, subdir)
+        key = (resolution, vertical_crs, product, subdir, format, suffix)
         storage = self._storages.get(key)
         if storage is None:
             storage = FileStorage(
@@ -541,6 +582,8 @@ class _StoreWriter:
                 vertical_crs=vertical_crs,
                 product=product,
                 subdir=subdir,
+                format=format,
+                suffix=suffix,
             )
             self._storages[key] = storage
         return storage
@@ -1007,8 +1050,14 @@ class _StoreWriter:
             unit=code,
         )
 
-    def laz_tile(self, versions: int) -> _Written:
-        """PL point-cloud tile named after its source file (D26 labels)."""
+    def laz_tile(
+        self, versions: int, *, compressed: bool = False, case: Case = "regular"
+    ) -> _Written:
+        """PL point-cloud tile named after its source file (D26 labels).
+
+        ``compressed``: a real LASzip file (``store_files.laz_points``)
+        instead of the uncompressed few-point LAS of the bulk.
+        """
         sheet = self._pl_sheet(LAZ)
         quarter = self.rng.randrange(1, 5)
         tile = f"{sheet}-{quarter}"
@@ -1042,7 +1091,7 @@ class _StoreWriter:
                 )
             )
         profile = _Profile(
-            "laz_tile",
+            "laz_compressed" if compressed else "laz_tile",
             LAZ,
             "EPSG:2180",
             vertical_crs="EPSG:9651",
@@ -1052,9 +1101,14 @@ class _StoreWriter:
             slot,
             profile,
             specs,
-            body=lambda nonce: store_files.las_points(bounds, nonce),
+            body=(
+                (lambda nonce: store_files.laz_points(bounds, nonce))
+                if compressed
+                else (lambda nonce: store_files.las_points(bounds, nonce))
+            ),
             request={"bbox": area, "bbox_crs": "EPSG:2180"},
             unit="_".join(format(value, ".10g") for value in area),
+            case=case,
         )
 
     def cz_orto(self, versions: int) -> tuple[_Written, _Written]:
@@ -1447,6 +1501,261 @@ class _StoreWriter:
         for path in (partial, staging):
             os.utime(path, (STALE_MTIME, STALE_MTIME))
         self._problem("stale_incoming", NMT, staging)
+
+    # --- plan v0.2 file families ----------------------------------------------
+
+    def file_families(self) -> None:
+        """Write the plan v0.2 file families (decision 5), on top of ``slots``.
+
+        Written after the projects, so the v0.1 part of a seed's store does
+        not change. Every slot has the case ``file_family``, except the
+        standard-path file with a sidecar without ``sha256`` (``no_sha256``)
+        and the NMT sheet in ASC and ASCII-NMT (``two_formats``: one
+        product, CRS, height system and resolution in two segments).
+        """
+        self._corine_preview()
+        self._corine_classes()
+        self._bdot10k_map(
+            BDOT_MAP_TIFF,
+            "tif_map",
+            ".tif",
+            lambda bounds, nonce: store_files.geotiff_rgba_strips(bounds, 2180, nonce),
+        )
+        self._bdot10k_map(
+            BDOT_MAP_PDF,
+            "pdf_map",
+            ".pdf",
+            lambda _bounds, nonce: store_files.pdf_document(f"BDOT10k {nonce}"),
+        )
+        self._oblique_orto()
+        self._soilgrids()
+        self._lod2_package()
+        self.laz_tile(1, compressed=True, case="file_family")
+        self._gpkg_layers()
+        self._no_sha256()
+        self._two_formats()
+
+    def _sheet_bounds(self, sheet: str) -> Bounds:
+        parsed = SheetParser(sheet).get_bbox()
+        return (parsed.min_x, parsed.min_y, parsed.max_x, parsed.max_y)
+
+    def _corine_preview(self) -> None:
+        """CORINE WMS preview of a PL-1992 bbox: a PNG without georeference.
+
+        By bbox, not by sheet: Kartograf 0.8.0 computes a sheet outline only
+        for PL sidecars, and CORINE is ``EU`` - a preview of a sheet would
+        have no outline at all (the request bbox gives one).
+        """
+        bounds = self._bbox_code(CORINE_PREVIEW, _PL_EXTENT)
+        code = _coords(bounds)
+        specs = [
+            _Spec(
+                spec.label,
+                spec.label_source,
+                spec.data_year,
+                extra={"fallback": "wms_png", "note": "podglad WMS, nie dane"},
+            )
+            for spec in self._downloads(1)
+        ]
+        self._write_slot(
+            self._flat_slot(CORINE_PREVIEW, "bbox", code, ".png"),
+            _Profile("png_preview", CORINE_PREVIEW, "EPSG:3857"),
+            specs,
+            body=store_files.png_image,
+            request={"bbox": list(bounds), "bbox_crs": "EPSG:2180"},
+            unit=code,
+            case="file_family",
+        )
+
+    def _corine_classes(self) -> None:
+        """CORINE (CLMS) class raster in EPSG:3035 with a colour table."""
+        sheet = "-".join(self._pl_sheet(CORINE).split("-")[:4])
+        bounds = store_files.reprojected_bounds(self._sheet_bounds(sheet), 2180, 3035)
+        self._write_slot(
+            self._sheet_slot(self._storage(subdir=CORINE), CORINE, sheet, ".tif"),
+            _Profile(
+                "tif_classes",
+                CORINE,
+                "EPSG:3035",
+                resolution="100m",
+                nodata=float(store_files.CLC_NODATA),
+            ),
+            [_Spec(label="2018", label_source="edition", data_year=2018)],
+            body=lambda nonce: store_files.geotiff_classes(bounds, 3035, nonce),
+            request={"sheet": sheet},
+            unit=sheet,
+            case="file_family",
+        )
+
+    def _bdot10k_map(
+        self,
+        segment: str,
+        family: Family,
+        ext: str,
+        body: Callable[[Bounds, int], bytes],
+    ) -> None:
+        """BDOT10k topographic map of a 1:10 000 sheet (TIFF or PDF)."""
+        sheet = self._pl_sheet(segment).rsplit("-", 1)[0]  # 1:10 000
+        bounds = self._sheet_bounds(sheet)
+        self._write_slot(
+            self._sheet_slot(self._storage(subdir=segment), segment, sheet, ext),
+            _Profile(family, segment, "EPSG:2180"),
+            self._editions(1),
+            body=lambda nonce: body(bounds, nonce),
+            request={"sheet": sheet},
+            unit=sheet,
+            case="file_family",
+        )
+
+    def _oblique_orto(self) -> None:
+        """Oblique orthophoto (north view) of a PL-2000 zone 6 sheet."""
+        bounds = self._sheet_bounds(OBLIQUE_SHEET)
+        storage = self._storage(subdir=OBLIQUE, suffix="_n")
+        self._write_slot(
+            self._sheet_slot(storage, OBLIQUE, OBLIQUE_SHEET, ".tif"),
+            _Profile("tif_oblique", OBLIQUE, "EPSG:2177"),
+            self._editions(1),
+            body=lambda nonce: store_files.geotiff_tiled_overviews(bounds, 2177, nonce),
+            request={"sheet": OBLIQUE_SHEET, "direction": "n"},
+            unit=OBLIQUE_SHEET,
+            case="file_family",
+        )
+
+    def _soilgrids(self) -> None:
+        """SoilGrids layer in EPSG:4326 of a PL-1992 bbox (WCS cutout)."""
+        bounds = self._bbox_code(SOILGRIDS, _PL_EXTENT)
+        code = _coords(bounds)
+        degrees = store_files.reprojected_bounds(bounds, 2180, 4326)
+        self._write_slot(
+            self._flat_slot(SOILGRIDS, "bbox", code, ".tif"),
+            _Profile(
+                "tif_wgs84",
+                SOILGRIDS,
+                "EPSG:4326",
+                nodata=float(store_files.SOIL_NODATA),
+            ),
+            [_Spec(label="2.0", label_source="edition", data_year=None)],
+            body=lambda nonce: store_files.geotiff_wgs84(degrees, nonce),
+            request={"bbox": list(bounds), "bbox_crs": "EPSG:2180"},
+            unit=code,
+            case="file_family",
+        )
+
+    def _lod2_package(self) -> None:
+        """LoD2 buildings of a powiat: ZIP with CityGML and PDF members."""
+        segment, code = self._teryt((BUILDINGS_LOD2,))
+        bounds = self._teryt_bounds()
+        self._write_slot(
+            self._flat_slot(segment, "teryt", code, ".zip"),
+            _Profile("zip_citygml", segment, "EPSG:2180", vertical_crs="EPSG:9650"),
+            [_Spec(label="2017", label_source="edition", data_year=2017)],
+            body=lambda nonce: store_files.zip_members(
+                [
+                    (
+                        f"{code}/{code}_lod2.gml",
+                        store_files.citygml(bounds, 2180, nonce),
+                    ),
+                    (
+                        f"{code}/informacja.pdf",
+                        store_files.pdf_document(f"LoD2 {code}"),
+                    ),
+                ]
+            ),
+            request={"teryt": code},
+            unit=code,
+            case="file_family",
+        )
+
+    def _gpkg_layers(self) -> None:
+        """BDOT10k GeoPackage of chosen classes (``--layers PTWP,SWRS``).
+
+        Its own segment, so the bulk never uses up its TERYT codes.
+        """
+        segment, code = self._teryt((BDOT_GPKG_LAYERS,))
+        bounds = self._teryt_bounds()
+        self._write_slot(
+            self._flat_slot(segment, "teryt", code, ".gpkg"),
+            _Profile("gpkg_layers", segment, "EPSG:2180"),
+            self._editions(1),
+            body=lambda nonce: store_files.geopackage_layers(bounds, 2180, nonce),
+            request={"teryt": code},
+            unit=code,
+            case="file_family",
+        )
+
+    def _no_sha256(self) -> None:
+        """Write a 0.7.x file at the standard path: no ``sha256`` in its sidecar.
+
+        Kartograf 0.8.0 reads a ``versions/`` entry without ``sha256`` as
+        ``invalid_sidecar``, so the older sidecar without it lives at the
+        standard path (no version directory, no label, no ``sha8``).
+        """
+        sheet = self._pl_sheet(NMT)
+        storage = self._storage(resolution="1m", vertical_crs="EVRF2007")
+        slot = self._sheet_slot(storage, NMT, sheet, ".asc")
+        bounds = self._sheet_bounds(sheet)
+        profile = _Profile(
+            "asc_sheet",
+            NMT,
+            "EPSG:2180",
+            vertical_crs="EPSG:9651",
+            vertical_source="native",
+            resolution="1m",
+            nodata=float(store_files.NODATA),
+        )
+        [spec] = self._campaigns(sheet, 1)
+        meta = self._sidecar(
+            profile,
+            request={"sheet": sheet},
+            extra=spec.extra,
+            sha256=None,
+            size_bytes=None,
+        )
+        del meta["sha256"], meta["size_bytes"]
+        meta["kartograf_version"] = LEGACY_KARTOGRAF
+        slot.link.parent.mkdir(parents=True, exist_ok=True)
+        slot.link.write_bytes(store_files.asc_grid(bounds, self._next_nonce()))
+        _write_json(_sidecar_path(slot.link), meta)
+        self.entries.append(
+            ExpectedEntry(
+                kind="link",
+                segment=NMT,
+                hierarchy=slot.hierarchy,
+                path=self._rel(slot.link),
+                family="asc_sheet",
+                case="no_sha256",
+                dataset_key=self._dataset_key(profile),
+                unit=sheet,
+                data_year=spec.data_year,
+            )
+        )
+
+    def _two_formats(self) -> None:
+        """One NMT sheet as ASC and as the ASCII-NMT archive (XYZ member)."""
+        sheet = self._pl_sheet(NMT)
+        self.asc_sheet(NMT, 1, sheet=sheet, case="two_formats")
+        bounds = self._sheet_bounds(sheet)
+        storage = self._storage(
+            resolution="1m", vertical_crs="EVRF2007", format="ASCII-NMT"
+        )
+        self._write_slot(
+            self._sheet_slot(storage, NMT_ASCII, sheet, ".zip"),
+            _Profile(
+                "zip_ascii_nmt",
+                NMT_ASCII,
+                "EPSG:2180",
+                vertical_crs="EPSG:9651",
+                vertical_source="native",
+                resolution="1m",
+            ),
+            self._campaigns(sheet, 1),
+            body=lambda nonce: store_files.zip_members(
+                [(f"{sheet}.xyz", store_files.xyz_grid(bounds, nonce))]
+            ),
+            request={"sheet": sheet, "format": "ASCII-NMT"},
+            unit=sheet,
+            case="two_formats",
+        )
 
     # --- projects ------------------------------------------------------------
 
