@@ -1,11 +1,12 @@
-"""Models of the metadata comparison (plan v0.2, step 10; decision 10, level 1).
+"""Models of the metadata comparison (plan v0.2, steps 9-10; decision 10, level 1).
 
 ``Comparison`` answers ``GET /compare?a=<ref>&b=<ref>`` and ``archiwista
 compare REF REF``: both sides (reference, kind, title, the address of their
-preview and their outline), whether their content is the same, and rows of
-one field each with the human name of the field and the values of A and B,
-marked when they differ. The interface exports the rows as CSV itself; the
-server writes nothing.
+preview and their outline), whether their content is the same, rows of one
+field each with the human name of the field and the values of A and B,
+marked when they differ, and for two sides with vector layers the
+differences of their layers and fields (``schema_diff``). The interface
+exports the rows as CSV itself; the server writes nothing.
 """
 
 from datetime import date, datetime
@@ -17,9 +18,11 @@ from archiwista.api.models import Geometry
 from archiwista.messages import MESSAGES
 
 type CompareValue = str | int | float | bool | datetime | date | None
-# ``metadata``: normalized fields of the index; ``sidecar``: the raw sidecar's
-# fields as flattened JSON paths, uninterpreted (A-ADR-014).
-type RowGroup = Literal["metadata", "sidecar"]
+# ``metadata``: normalized fields of a store version in the index;
+# ``sidecar``: the raw sidecar's fields as flattened JSON paths, uninterpreted
+# (A-ADR-014); ``own``: fields of an own file or a snapshot; ``layers``:
+# objects per vector layer of an own file or a snapshot, by layer name.
+type RowGroup = Literal["metadata", "sidecar", "own", "layers"]
 type RefKind = Literal["version", "file", "snapshot"]
 
 _A = (
@@ -100,15 +103,67 @@ class ComparisonRow(BaseModel):
 
     group: RowGroup = Field(
         description=(
-            "`metadata`: a normalized field of the index; `sidecar`: a field of"
-            " the raw sidecar, named by its JSON path."
+            "`metadata`: a normalized field of a store version; `sidecar`: a"
+            " field of the raw sidecar, named by its JSON path; `own`: a field"
+            " of an own file or a snapshot; `layers`: objects of a vector layer"
+            " (`field` is the layer name)."
         )
     )
-    field: str = Field(description="Field id (a JSON path in the `sidecar` group).")
+    field: str = Field(
+        description=(
+            "Field id (a JSON path in the `sidecar` group, a layer name in `layers`)."
+        )
+    )
     label: str = Field(description="Human name of the field.")
     a: CompareValue = Field(description="Value of A; null when A has none.")
     b: CompareValue = Field(description="Value of B; null when B has none.")
     differs: bool = Field(description="Whether the values of A and B differ.")
+
+
+class SchemaField(BaseModel):
+    """A field of a vector layer with its OGR type."""
+
+    name: str = Field(description="Field name.")
+    type: str = Field(description="OGR type (`String`, `Integer`, `Real`…).")
+
+
+class FieldTypeChange(BaseModel):
+    """A field of both layers whose type differs."""
+
+    name: str = Field(description="Field name.")
+    type_a: str = Field(description="Its type in A.")
+    type_b: str = Field(description="Its type in B.")
+
+
+class LayerDiff(BaseModel):
+    """A vector layer of both sides: object counts and field differences."""
+
+    name: str = Field(description="Layer name.")
+    feature_count_a: int | None = Field(
+        description="Objects of the layer in A; null when unknown."
+    )
+    feature_count_b: int | None = Field(
+        description="Objects of the layer in B; null when unknown."
+    )
+    fields_added: list[SchemaField] = Field(
+        description="Fields only B has, in B's order."
+    )
+    fields_removed: list[SchemaField] = Field(
+        description="Fields only A has, in A's order."
+    )
+    fields_changed: list[FieldTypeChange] = Field(
+        description="Fields of both with another type, in A's order."
+    )
+
+
+class SchemaDiff(BaseModel):
+    """Differences of the vector layers of two sides (A changed into B)."""
+
+    layers_only_a: list[str] = Field(description="Layers only A has, in A's order.")
+    layers_only_b: list[str] = Field(description="Layers only B has, in B's order.")
+    layers: list[LayerDiff] = Field(
+        description="Layers of both sides, in A's order, also when unchanged."
+    )
 
 
 class Comparison(BaseModel):
@@ -119,14 +174,22 @@ class Comparison(BaseModel):
     a: ComparisonSide
     b: ComparisonSide
     same_content: bool = Field(
-        description="Whether both files are known to hold the same content."
+        description=(
+            "Whether both are known to hold the same content: equal content"
+            " identities (method and SHA-256; a store version's `sha256` counts"
+            " as the method `bytes`)."
+        )
     )
     rows: list[ComparisonRow] = Field(
-        description="Index fields first, then the raw sidecar's flattened fields."
-    )
-    schema_diff: None = Field(
         description=(
-            "Differences of layers and fields of own data (step 9); null for"
-            " store versions."
+            "A store version's index fields, then its raw sidecar's flattened"
+            " fields; an own file's or a snapshot's fields, then its objects per"
+            " layer."
+        )
+    )
+    schema_diff: SchemaDiff | None = Field(
+        description=(
+            "Differences of the vector layers and their fields when both sides"
+            " have vector layers (own files and snapshots); null otherwise."
         )
     )

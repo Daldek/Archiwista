@@ -1,16 +1,17 @@
-"""``archiwista compare REF REF`` (plan v0.2, decision 11; step 10).
+"""``archiwista compare REF REF`` (plan v0.2, decision 11; steps 9-10).
 
 Compares the metadata of two objects as ``GET /compare`` does, by calling
 ``services.compare.compare`` without HTTP as the owner of the installation:
-``--json`` prints the route's ``Comparison``, without it the sides and one
-line per field, a differing one marked with ``*``.
+``--json`` prints the route's ``Comparison``, without it the sides, one line
+per field, a differing one marked with ``*``, and the layers and fields that
+differ (``schema_diff``).
 """
 
 import argparse
 from typing import TextIO
 
 from archiwista.api.errors import service_problem
-from archiwista.api.models_compare import CompareValue, Comparison
+from archiwista.api.models_compare import CompareValue, Comparison, SchemaDiff
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser, refuse
@@ -78,6 +79,8 @@ def _text(comparison: Comparison) -> str:
         )
         for row in comparison.rows
     ]
+    if comparison.schema_diff is not None:
+        lines += _schema(comparison.schema_diff)
     differs = sum(row.differs for row in comparison.rows)
     lines.append(
         MESSAGES["cli_compare_summary"].format(
@@ -85,6 +88,40 @@ def _text(comparison: Comparison) -> str:
         )
     )
     return "\n".join(lines)
+
+
+def _schema(diff: SchemaDiff) -> list[str]:
+    """Lines of the layers and fields that differ; none when the schema matches."""
+    lines = [
+        *(
+            MESSAGES["cli_compare_layer_only_a"].format(layer=n)
+            for n in diff.layers_only_a
+        ),
+        *(
+            MESSAGES["cli_compare_layer_only_b"].format(layer=n)
+            for n in diff.layers_only_b
+        ),
+    ]
+    for layer in diff.layers:
+        fields = [
+            *(
+                MESSAGES["cli_compare_field_added"].format(name=f.name, type=f.type)
+                for f in layer.fields_added
+            ),
+            *(
+                MESSAGES["cli_compare_field_removed"].format(name=f.name, type=f.type)
+                for f in layer.fields_removed
+            ),
+            *(
+                MESSAGES["cli_compare_field_changed"].format(
+                    name=f.name, type_a=f.type_a, type_b=f.type_b
+                )
+                for f in layer.fields_changed
+            ),
+        ]
+        if fields:
+            lines += [MESSAGES["cli_compare_layer"].format(layer=layer.name), *fields]
+    return [MESSAGES["cli_compare_schema"], *lines] if lines else []
 
 
 def _value(value: CompareValue) -> str:

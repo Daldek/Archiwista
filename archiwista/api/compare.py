@@ -32,9 +32,13 @@ def get_comparison(
     """Compare the metadata of two objects, each named by a `ref` of an answer.
 
     Rows hold a field's human name and the values of A and B, marked by
-    `differs`: a store version's index fields first, then its raw sidecar's
-    fields as flattened JSON paths. Mixed pairs are allowed (e.g. versions of
-    two slots). An unknown kind or a malformed reference is `422
-    invalid_ref`, an unknown object `404`.
+    `differs`: a store version's index fields, then its raw sidecar's fields
+    as flattened JSON paths; an own file's or a snapshot's fields (objects,
+    extent, CRS, size, content identity, author, note, dates), then its
+    objects per layer. Mixed pairs are allowed (a snapshot with its working
+    file, versions of two slots); `schema_diff` lists layers and fields added,
+    removed or retyped when both sides have vector layers. A malformed
+    reference is `422 invalid_ref`; an unknown object, or one of a project
+    the caller does not see, `404`.
     """
     return compare(queries, query.a, query.b, visible=visible)
