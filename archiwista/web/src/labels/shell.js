@@ -1,7 +1,8 @@
 /**
  * Texts of the shell: navigation, the session screen, the index state
- * banner and the view host. `nav` names every v0.1 view by its route id
- * (routes.js), so a view's route line needs no text of its own.
+ * banner and the view host. `nav` names every view by its route id
+ * (routes.js) — also one outside the navigation, for the page title — so
+ * a view's route line needs no text of its own.
  */
 
 export const shell = {
@@ -14,6 +15,7 @@ export const shell = {
     projects: "Projekty",
     store: "Magazyn",
     setup: "Ustawienia",
+    compare: "Porównanie",
   },
   stores_label: "Magazyny",
   store_title: "Magazyn „{name}” ({id}): {status}",

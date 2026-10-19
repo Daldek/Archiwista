@@ -41,6 +41,11 @@ export const file = {
   },
   preview_on_map: "Pokaż podgląd na mapie",
   preview_on_map_title: "Otwórz mapę z podglądem tej wersji i jej obrysem",
+  compare: {
+    action: "Porównaj z…",
+    title: "Zestaw tę wersję z inną wersją pliku: różnice metadanych i kurtyna na mapie",
+    list: "Inne wersje pliku do porównania",
+  },
   version: {
     title: "Wersja {label}",
     title_plain: "Plik bez wersji",

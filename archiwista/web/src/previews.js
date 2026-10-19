@@ -225,9 +225,18 @@ export function styleName(style) {
 /**
  * Start and follow the build of an object's local preview: by itself once
  * per object and page for a file within the auto-build limits (decision 6),
- * on demand (`force`) for a larger one or after a failed build.
+ * on demand (`force`) for a larger one or after a failed build. Shared by
+ * `PreviewPane` and the comparison's sides (views/compare.js).
+ *
+ * @param {PreviewSource} preview
+ * @param {import("./types.js").PreviewInfo|null|undefined} info - Its loaded
+ *   description; nothing is built without one.
+ * @param {() => void} reload - Reads the description again (after a build).
+ * @returns {{job: ReturnType<typeof useJob>, problem:
+ *   import("./types.js").Problem|null, asked: boolean, start: (force: boolean)
+ *   => Promise<void>, busy: boolean}} For `BuildSection`.
  */
-function useBuild(preview, info, reload) {
+export function useBuild(preview, info, reload) {
   const job = useJob({ onEnd: reload });
   const [problem, setProblem] = useState(null);
   const [starting, setStarting] = useState(false);
@@ -271,7 +280,15 @@ function useBuild(preview, info, reload) {
   return { job, problem, asked, start, busy: starting || job.running };
 }
 
-function BuildSection({ info, build, loading }) {
+/**
+ * The build of a local preview for people: why it is needed, „Zbuduj
+ * podgląd” when it waits for a person, the job's progress and result.
+ *
+ * @param {{info: import("./types.js").PreviewInfo, build: ReturnType<typeof
+ *   useBuild>, loading: boolean}} props - `loading`: the description is being
+ *   read again.
+ */
+export function BuildSection({ info, build, loading }) {
   const { job, problem, asked, start, busy } = build;
   const needed = info.state === "needs_build";
   if (!needed && info.state !== "building" && job.events === null && problem === null) return null;

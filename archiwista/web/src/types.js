@@ -1199,4 +1199,43 @@
  * @property {StaleStore[]} stale_stores
  */
 
+// Comparison (v0.2, step 10) -------------------------------------------------
+
+/**
+ * One compared object (`Comparison.a`, `Comparison.b`).
+ *
+ * @typedef {object} ComparisonSide
+ * @property {string} ref - `version:<store>:<path>`, `file:` or `snapshot:`.
+ * @property {"version"|"file"|"snapshot"} kind
+ * @property {string} title - For people, e.g. `N-34-130-D-d-2-4.asc — 2019-07-12_41022`.
+ * @property {string|null} preview - Address of its preview description (`…/preview`,
+ *   a `PreviewInfo`); `POST` to it builds the local preview.
+ * @property {Geometry|null} outline - WGS84.
+ */
+
+/**
+ * One field of both objects.
+ *
+ * @typedef {object} ComparisonRow
+ * @property {"metadata"|"sidecar"|"own"|"layers"} group - `metadata`: a normalized
+ *   field of a store version; `sidecar`: a raw sidecar's field named by its JSON path;
+ *   `own` and `layers`: an own file's or a snapshot's field and objects per layer.
+ * @property {string} field - Field id (the JSON path in `sidecar`).
+ * @property {string} label - Human name of the field.
+ * @property {string|number|boolean|null} a - Value of A (dates as ISO text).
+ * @property {string|number|boolean|null} b
+ * @property {boolean} differs
+ */
+
+/**
+ * Metadata of two objects side by side (`GET /compare?a&b`, level 1).
+ *
+ * @typedef {object} Comparison
+ * @property {ComparisonSide} a
+ * @property {ComparisonSide} b
+ * @property {boolean} same_content - Both known to hold the same content.
+ * @property {ComparisonRow[]} rows
+ * @property {Object<string, *>|null} schema_diff - Layers and fields of own data.
+ */
+
 export {};

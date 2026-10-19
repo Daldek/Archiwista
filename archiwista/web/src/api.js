@@ -61,6 +61,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").PreviewInfo} PreviewInfo */
 /** @typedef {import("./types.js").LayersQuery} LayersQuery */
 /** @typedef {import("./types.js").LayerSet} LayerSet */
+/** @typedef {import("./types.js").Comparison} Comparison */
 
 /**
  * Abort a read: every function takes these options last.
@@ -283,6 +284,25 @@ export async function getImage(address, { signal } = {}) {
 export async function getLinked(address, { signal } = {}) {
   const headers = { Accept: JSON_ANSWERS };
   const response = await send("GET", apiAddress(address), { headers, signal });
+  return response.json();
+}
+
+/**
+ * Build the local preview of the object whose preview description is at an
+ * address the API gave (`ComparisonSide.preview`): `POST` to that address,
+ * as `buildPreview` does for a version.
+ *
+ * @param {string} address - A `…/preview` address of this server's API.
+ * @param {{force?: boolean}} [options] - `force`: also past the auto-build
+ *   limits (the „Zbuduj podgląd” button).
+ * @returns {Promise<JobDetail|PreviewInfo>} `202` the job, `200` the
+ *   `PreviewInfo` when nothing needs building (no `id`).
+ * @throws {ApiError} `409 preview_unavailable`, `503 preview_busy`,
+ *   `store_unavailable`.
+ */
+export async function buildLinked(address, { force = false } = {}) {
+  const headers = { Accept: JSON_ANSWERS, "Content-Type": "application/json" };
+  const response = await send("POST", apiAddress(address), { headers, body: JSON.stringify({ force }) });
   return response.json();
 }
 
@@ -717,6 +737,24 @@ export function getLocalCoverage(query, { signal } = {}) {
  */
 export function getLocalLayers(query, { signal } = {}) {
   return request("GET", "/local-layers", { query, signal });
+}
+
+// Comparison (v0.2, step 10) --------------------------------------------------
+
+/**
+ * The metadata of two objects side by side (`get_comparison`): both sides
+ * (title, preview address, outline), whether their content is the same and
+ * one row per field with the values of A and B, marked when they differ.
+ *
+ * @param {string} a - `ref` of side A, copied from an answer.
+ * @param {string} b - `ref` of side B.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<Comparison>}
+ * @throws {ApiError} `422 invalid_ref` (malformed, or a kind not compared
+ *   yet), `404 not_found`.
+ */
+export function getComparison(a, b, { signal } = {}) {
+  return request("GET", "/compare", { query: { a, b }, signal });
 }
 
 // Previews (v0.2, step 6) -----------------------------------------------------

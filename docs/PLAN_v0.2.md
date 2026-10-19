@@ -1089,7 +1089,7 @@ działa.
 | 12b | Interfejs: podglądy na mapie | 11, 12a | 9, 10 | zrobione |
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | do zrobienia |
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | do zrobienia |
-| 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | do zrobienia |
+| 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | do zrobienia |
 | 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | do zrobienia |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
@@ -3309,6 +3309,90 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_side_by_side_maps_stay_in_sync`, `test_two_year_layers_compared`,
   `test_csv_export_matches_table`, `test_no_csp_violations_compare`).
 - **Zależności:** 10, 12b. **Równolegle:** 13a, 13b, 15, 16.
+- **Stan po kroku 14 (strony: wersje magazynu i warstwy lat; dane własne —
+  punkt rozszerzenia dla kroku 15; wejście z „Szczegółów zestawu” — krok
+  13b):**
+  - *Widok* `compare` (`views/compare.js`): linia w `VIEWS` z `nav: false`
+    — widok spoza nawigacji, otwierany przez „Porównaj z…” (decyzja 14;
+    `shell.js` pomija takie widoki w nawigacji, `labels/shell.js` daje
+    nazwę do tytułu strony). Adres: `a`/`b` (`ref` z odpowiedzi) albo
+    `store`, `product`, `area_id`, `group` z `a_layer`/`b_layer`; `mode`
+    (`fade`, `side`, kurtyna bez parametru), `style`, `only_diff=1`,
+    `center`/`zoom`; bez obu stron — opis, skąd otworzyć porównanie.
+    Prawy panel „Szczegóły porównania” (`ViewLayout`, na telefonie
+    arkusz): strony A i B (tytuł, rodzaj, `ref` pod „Tech”, stan podglądu
+    na mapie, powód, budowa przez wspólne `useBuild`/`BuildSection`
+    z `previews.js`, „Karta pliku” nad porównaniem), potem tabela.
+    „Zamień A i B” w pasku nad mapą.
+  - *Tabela*: wiersze `/compare` w grupach (nazwy także dla `own`
+    i `layers`), różnica tłem i znakiem ≠ (z tekstem dla czytników ekranu),
+    „Różne pola: N z M”, notka przy `same_content`; daty, rozmiar, układy
+    i udział dla ludzi z surową wartością pod „Tech”, pola sidecara bez
+    interpretacji. „Eksportuj CSV” w przeglądarce: wiersze widoczne w tabeli
+    (także z „tylko różnice”), UTF-8 z BOM, przecinek, CRLF, surowe
+    wartości (ISO, kropka, tak/nie), nagłówek z tytułami A i B, apostrof
+    przed tekstem zaczynającym się jak formuła arkusza, nazwa
+    `porownanie-<A>-<B>.csv`. Dwie warstwy lat: podsumowania obok siebie
+    jako te same wiersze liczone w przeglądarce (rok, wariant, daty,
+    kampanie, wersje, arkusze, pokrycie lokalne, układy, rozdzielczość,
+    formaty, segmenty, gotowe podglądy, klucz) — bez `/compare`; wybór
+    innej warstwy A albo B z tego samego zestawu; zadania budowy obu warstw
+    śledzone, warstwy czytane od nowa po ich końcu.
+  - *Mapa* (`map/compare.js`): dwie mapy MapLibre z jednym położeniem (ruch
+    jednej kopiowany do drugiej przez `jumpTo`, bez sprzężenia zwrotnego),
+    `transformRequest` z `apiHeaders` jak w `canvas.js`. Kurtyna: B nad A
+    przycięta `clip-path: inset(0 0 0 var(--split))` z właściwości
+    ustawianej z JS (CSSOM); uchwyt `role="slider"` — mysz i dotyk przez
+    zdarzenia wskaźnika, strzałki (z Shift co 10), PageUp/PageDown,
+    Home/End; gdzie B jest odcięta, wskaźnik trafia do A. Przenikanie:
+    przezroczystość płótna B (`--fade`) suwakiem na mapie, przyciski B
+    zostają nieprzezroczyste. Obok siebie: dwie mapy jednej wielkości
+    (telefon: jedna nad drugą). Te same przyciski mapy w tym samym miejscu
+    obu map — klika się wierzchnią. Plakietki A i B, legenda (wspólna skala
+    barw, obrysy, obiekty wektora), „Przybliż, aby zobaczyć podgląd” poniżej
+    `minzoom`, notka o stronie bez podglądu; kadr na obie strony raz na
+    parę (nie przy linku z położeniem). Wspólny styl stron (`style`),
+    a w rampie (hipsometria) wspólny `rescale`: od mniejszego minimum do
+    większego maksimum legend obu stron — te same barwy to te same
+    wartości. Podgląd strony z adresu `ComparisonSide.preview`
+    (`getLinked`), budowa w progach automatycznie przez `POST` na ten sam
+    adres (`buildLinked`).
+  - *Karta pliku*: „Porównaj z…” obok tytułu wersji — lista pozostałych
+    wersji slotu, starsza jako A (porównanie czyta się jako zmiana A → B).
+  - *Klient API i typy*: `getComparison`, `buildLinked` (`api.js`),
+    `Comparison`, `ComparisonSide`, `ComparisonRow` (`types.js`).
+  - *Punkt rozszerzenia dla danych własnych (krok 15).* Widok przyjmuje
+    każdy `ref`: od kroku 9 (`dcbb454`) `/compare` porównuje `file:`
+    i `snapshot:` i podaje ich `preview`, więc tabela i mapa (podgląd,
+    budowa) działają bez zmian. Krok 15 dopisuje w `views/compare.js`:
+    w `RefSide` przejście do nakładki `own=` dla stron `file`/`snapshot`
+    (dziś „Karta pliku” tylko dla wersji, przez `useVersionCard`), sekcję
+    `schema_diff` pod tabelą (warstwy tylko w A albo B, liczby obiektów,
+    pola dodane, usunięte i zmienione), a w karcie pliku własnego
+    „Porównaj z…” (migawka z plikiem roboczym;
+    `test_compare_snapshot_with_current`).
+  - *Wejście z „Szczegółów zestawu” (13b)*: link `view=compare` z `store`,
+    `product`, `area_id`, `group` (tylko `campaign`), `a_layer`, `b_layer`
+    — dopisuje go krok 13b w `views/set-details.js` (uzgodnione z jego
+    wykonawcą).
+  - *Odstępstwa od listy plików*: `shell.js` (jedna linia), `labels/shell.js`,
+    `labels/file.js` i `views/cards.css` („Porównaj z…”), `api.js`,
+    `types.js`, `previews.js` (eksport `useBuild` i `BuildSection`); arkusz
+    stylów to `views/compare.css` (widok ładuje też `map/map.css`).
+  - *Próby*: `tests/e2e/test_compare.py` (7 testów, jeden serwer na moduł
+    z podkładem z drugiego pochodzenia, ok. 52 s): tabela = wiersze
+    `/compare` z oznaczeniem różnic, „tylko różnice” w adresie, zamiana
+    stron; kurtyna myszą, strzałkami, dotykiem (`Input.dispatchTouchEvent`)
+    i Home/End z `clip-path` B, kafle obu stron z nagłówkiem CSRF;
+    przenikanie: przezroczystość płótna B = suwak, powrót do kurtyny; obok
+    siebie: przybliżenie A — B pobiera te same kafle następnego zoomu,
+    przeciągnięcie i oddalenie B — A pobiera te same kafle; dwie warstwy
+    lat: kafle `/local-layers/tiles` obu kluczy, zero kafli wersji, wiersze
+    warstw, inna warstwa B, zamiana; CSV = wiersze tabeli z surowymi
+    wartościami `/compare`; bez naruszeń CSP we wszystkich trybach,
+    hipsometria ze wspólnym `rescale`, karta pliku nad porównaniem,
+    nagłówek tylko do API. Zrzuty (1440 i 390 px):
+    `<katalog-danych>/v02-14/shots/`.
 
 ### 15. Interfejs: dane własne i migawki
 - **Cel:** w widoku projektu grupa „Dane własne” obok zadań producentów

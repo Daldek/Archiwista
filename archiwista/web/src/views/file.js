@@ -13,7 +13,9 @@
  * the files of the same producer request and the raw sidecar — and
  * „Podgląd” (`file_tab=preview`, style `file_style`): the version's preview
  * (previews.js `PreviewPane`) with „Pokaż podgląd na mapie” when it has
- * tiles or features (the map with `preview=<ref>`). Then the slot's problems.
+ * tiles or features (the map with `preview=<ref>`). „Porównaj z…” next to
+ * the version's title opens the comparison with another version of the
+ * slot (`view=compare&a&b`, views/compare.js). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
  * /stores/{store}/link-check`) and shows its result from the job's events.
  * Everything is read by store and path from the index, never from a file URL.
@@ -164,7 +166,7 @@ function SlotCard({ store, slot, wanted, tab, style }) {
     <${VersionAxis} versions=${versions} chosen=${chosen} />
     ${chosen
       ? html`<${VersionDetails} key=${chosen.path} store=${store} card=${card} version=${chosen}
-          tab=${tab} style=${style} />`
+          versions=${versions} tab=${tab} style=${style} />`
       : html`<section class="det-sec"><${StandardPathRows} card=${card} /></section>`}
     <${LinkCheck} store=${store} card=${card} versions=${versions} onDone=${reload} />
     ${loading ? html`<${Spinner} quiet />` : null}
@@ -279,15 +281,18 @@ function Pins({ pins }) {
   </p>`;
 }
 
-function VersionDetails({ store, card, version, tab, style }) {
+function VersionDetails({ store, card, version, versions, tab, style }) {
   const panel = useId();
   const title = version.label
     ? t(L.version.title, { label: version.label })
     : L.version.title_plain;
   return html`<section class="det-sec fc-details" aria-label=${title}>
-    <h3 class="fc-version-title">
-      <${Tech} value=${[["path", version.path], ["ref", version.ref]]}>${title}</${Tech}>
-    </h3>
+    <div class="fc-version-head">
+      <h3 class="fc-version-title">
+        <${Tech} value=${[["path", version.path], ["ref", version.ref]]}>${title}</${Tech}>
+      </h3>
+      <${CompareWith} versions=${versions} version=${version} />
+    </div>
     <${VersionTabs} tab=${tab} panel=${panel} />
     <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
       ${tab === "preview"
@@ -295,6 +300,35 @@ function VersionDetails({ store, card, version, tab, style }) {
         : html`<${VersionMetadata} store=${store} card=${card} version=${version} />`}
     </div>
   </section>`;
+}
+
+/**
+ * „Porównaj z…”: this version next to another one of the slot in the
+ * comparison (views/compare.js) — the older one as A, so the comparison
+ * reads as the change from A to B.
+ *
+ * @param {{versions: import("../types.js").Version[], version:
+ *   import("../types.js").Version}} props - `versions` newest first.
+ */
+function CompareWith({ versions, version }) {
+  const others = versions.filter((other) => other !== version);
+  if (!others.length) return null;
+  const mine = versions.indexOf(version);
+  return html`<details class="fc-compare">
+    <summary class="btn sm" title=${L.compare.title}><${Icon} name="layers" size=${14} />${L.compare.action}</summary>
+    <ul class="fc-compare-list" aria-label=${L.compare.list}>
+      ${others.map((other) => {
+        const [a, b] = versions.indexOf(other) > mine ? [other, version] : [version, other];
+        return html`<li key=${other.path}>
+          <${Link} view="compare" params=${{ a: a.ref, b: b.ref }}>
+            <span class="fc-year">${other.data_year ?? L.axis.no_year}</span>
+            <span class="fc-label mono">${other.label ?? L.axis.no_label}</span>
+            ${other.data_date ? html`<span class="faint">${day(other.data_date)}</span>` : null}
+          </${Link}>
+        </li>`;
+      })}
+    </ul>
+  </details>`;
 }
 
 /**

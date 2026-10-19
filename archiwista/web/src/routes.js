@@ -8,8 +8,10 @@
  * in `labels/shell.js` (`nav`); `icon` — an `Icon` name of `ui.js`; `load` —
  * imports the module whose default export is the view component, rendered
  * with `route` (router.js `Route`); `start: true` — the view opened without
- * `view=`; `bottom: true` — placed at the bottom of the navigation. The order
- * of the lines is the order of the navigation.
+ * `view=`; `bottom: true` — placed at the bottom of the navigation; `nav:
+ * false` — not in the navigation, opened from another view (e.g. the
+ * comparison by „Porównaj z…”). The order of the lines is the order of the
+ * navigation.
  *
  * An overlay: `param` — the address parameter opening it (`?view=map&file=…`);
  * `load` — imports the module whose default export is rendered with `route`,
@@ -27,6 +29,7 @@
  * @property {() => Promise<{default: Function}>} load
  * @property {boolean} [start]
  * @property {boolean} [bottom]
+ * @property {boolean} [nav]
  */
 
 /**
@@ -41,6 +44,7 @@ export const VIEWS = [
   { id: "catalog", icon: "table", load: () => import("./views/catalog.js") },
   { id: "projects", icon: "folder", load: () => import("./views/projects.js") },
   { id: "store", icon: "database", load: () => import("./views/store.js") },
+  { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
 ];
 

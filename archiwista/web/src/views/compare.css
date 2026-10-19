@@ -1,0 +1,93 @@
+/* Comparison view (views/compare.js, map/compare.js): loaded by the view with
+   loadStylesheet after map/map.css, whose notes, legend sections and swatches it shares. */
+
+.cmp-view { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ---------- centre bar: modes, style, swap, details ---------- */
+.cmp-bar { gap: 10px; }
+.cmp-swap { margin-left: auto; }
+.cmp-bar .seg button { white-space: nowrap; }
+
+/* ---------- the stage: two maps at one position (map/compare.js) ---------- */
+.cmp-stage { position: absolute; inset: 0; overflow: hidden; background: var(--line-2); }
+.cmp-pane { position: absolute; inset: 0; }
+/* Above maplibre-gl.css, which makes its container `position: relative`. */
+.cmp-pane > .cmp-gl { position: absolute; inset: 0; }
+/* curtain: B over A, cut away left of the handle (--split set from JS, CSSOM) */
+.cmp-stage.curtain .cmp-pane.b { clip-path: inset(0 0 0 var(--split, 50%)); }
+/* fade: B's picture over A's; its controls stay opaque */
+.cmp-stage.fade .cmp-pane.b .maplibregl-canvas { opacity: var(--fade, 0.5); }
+/* side by side: two maps of one size */
+.cmp-stage.side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
+.cmp-stage.side .cmp-pane { position: relative; inset: auto; min-width: 0; min-height: 0; }
+
+/* which map is which: A left, B right (side by side: each on its map) */
+.cmp-badge { position: absolute; top: 12px; z-index: 3; display: inline-flex; align-items: center; gap: 6px; max-width: calc(50% - 48px); padding: 3px 10px 3px 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.96); border: 1px solid var(--line); box-shadow: var(--shadow-sm); font-size: 12px; pointer-events: none; }
+.cmp-badge.a { left: 12px; }
+.cmp-badge.b { right: 12px; }
+.cmp-badge-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-stage.side .cmp-badge { max-width: calc(50% - 24px); }
+.cmp-stage.side .cmp-badge.b { right: auto; left: calc(50% + 13px); }
+.cmp-letter { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 12px; }
+.cmp-letter.a { background: var(--accent); }
+.cmp-letter.b { background: #b45309; }
+
+/* the curtain's handle (a slider): a line with a grip, dragged anywhere along it */
+.cmp-handle { position: absolute; top: 0; bottom: 0; left: var(--split, 50%); width: 24px; margin-left: -12px; z-index: 3; cursor: ew-resize; touch-action: none; outline: none; }
+.cmp-handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: 10.5px; width: 3px; background: #fff; box-shadow: 0 0 0 1px rgba(16, 24, 40, 0.35); }
+.cmp-grip { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: #fff; border: 1px solid var(--line-2); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--text-2); }
+.cmp-handle:hover .cmp-grip, .cmp-handle:focus-visible .cmp-grip { color: var(--accent); border-color: var(--accent-2); }
+.cmp-handle:focus-visible .cmp-grip { box-shadow: 0 0 0 3px #c7d2fe, var(--shadow); }
+
+/* fade: B's opacity on a slider at the bottom of the maps */
+.cmp-fade { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.cmp-fade input { width: 160px; margin: 0; accent-color: var(--accent); }
+.cmp-fade output { min-width: 4ch; text-align: right; color: var(--text); font-weight: 600; }
+.cmp-stage.fade .map-note { bottom: 64px; }
+
+.cmp-note { margin: 0; padding: 6px 12px; }
+.cmp-legend { max-width: 280px; }
+.cmp-legend-side > b { font-size: 11.5px; color: var(--text); }
+
+/* ---------- right panel: the sides, then the table ---------- */
+.cmp-panel { display: grid; gap: 14px; align-content: start; }
+.cmp-sides { display: grid; gap: 10px; }
+.cmp-side { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel); }
+.cmp-side-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.cmp-side-name { display: grid; gap: 2px; min-width: 0; font-size: 12px; }
+.cmp-side-title { font-size: 12.5px; overflow-wrap: anywhere; }
+.cmp-side-map { margin: 0; font-size: 12px; color: var(--text-2); }
+.cmp-side .hint { margin: 0; }
+.cmp-side .pv-reason { font-size: 12px; }
+.cmp-side-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cmp-side-actions .btn { text-decoration: none; }
+.cmp-choose { margin: 0; }
+.cmp-choose span { font-weight: 600; font-size: 12px; }
+.cmp-choose select { height: 30px; width: 100%; min-width: 0; border: 1px solid var(--line-2); border-radius: 8px; background: #fff; padding: 0 8px; }
+
+.cmp-table-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.cmp-table-head .section-title { margin: 0; }
+.cmp-summary { font-size: 12px; color: var(--text-2); }
+.cmp-same { margin: 6px 0 0; }
+.cmp-table-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.cmp-only { font-weight: 500; font-size: 12.5px; }
+.cmp-table { table-layout: fixed; }
+.cmp-table thead th:first-child { width: 36%; }
+.cmp-table tbody th[scope="row"] { text-transform: none; letter-spacing: 0; white-space: normal; background: transparent; font-size: 12px; font-weight: 500; color: var(--text-2); vertical-align: top; overflow-wrap: anywhere; }
+.cmp-table td { font-size: 12px; vertical-align: top; overflow-wrap: anywhere; }
+.cmp-table .cmp-group th { padding-top: 10px; }
+.cmp-table tr.diff th[scope="row"], .cmp-table tr.diff td { background: var(--warn-bg); }
+.cmp-table tr.diff th[scope="row"] { color: var(--warn-ink); font-weight: 600; }
+.cmp-mark { display: inline-block; margin-right: 4px; font-weight: 700; }
+.cmp-empty h2 { font-size: 18px; }
+
+/* ---------- phones: maps one above the other, the fade's slider under the badges ---------- */
+@media (max-width: 860px) {
+  .cmp-fade { top: 48px; bottom: auto; }
+  .cmp-fade input { width: 110px; }
+  .cmp-stage.fade .map-notes { top: 96px; }
+  .cmp-badge { max-width: calc(50% - 30px); }
+  .cmp-stage.side { grid-template-columns: none; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .cmp-stage.side .cmp-badge { max-width: calc(100% - 24px); }
+  .cmp-stage.side .cmp-badge.b { left: 12px; top: calc(50% + 13px); }
+}

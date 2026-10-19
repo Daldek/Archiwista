@@ -151,7 +151,7 @@ function TopBar() {
 
 function Navigation({ current }) {
   const items = (bottom) =>
-    VIEWS.filter((view) => Boolean(view.bottom) === bottom).map(
+    VIEWS.filter((view) => view.nav !== false && Boolean(view.bottom) === bottom).map(
       (view) => html`<${Link} key=${view.id} view=${view.id}
         class=${view.id === current ? "rail-item active" : "rail-item"}
         aria-current=${view.id === current ? "page" : null}>
