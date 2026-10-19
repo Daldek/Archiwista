@@ -12,8 +12,15 @@ process, ``archiwista reindex`` too. ``GET /jobs/{job}/events`` streams a
 job's ``progress``, ``notice`` and ``state`` events as Server-Sent Events:
 the ``id`` of each is its number, a client resumes after ``Last-Event-ID``
 from the events kept in the index, and the stream ends after the final state
-(or when the server stops). Jobs concern stores, which everyone sees
-(A-ADR-029), so no project visibility applies to them.
+(or when the server stops). What a session sees of the jobs follows their
+scope (plan v0.2 "Zadania", ``JobSupervisor``): a job of a store or of
+versions (``version:`` refs), or of no project at all, everyone sees; one of
+projects only (an ``own_scan`` of a project, a ``snapshot``, a ``preview`` of
+own files) only whoever sees one of them, the others find it neither in
+``GET /jobs`` nor at its address (``404 not_found``, as an unknown job). A
+``preview`` job shows only the refs and failures of visible projects, with
+whole counts (A-ADR-029); ``GET /jobs?project=`` keeps the jobs with data of
+one project.
 """
 
 import asyncio
@@ -40,6 +47,7 @@ from archiwista.api.models import (
     LinkCheckRequest,
     ScanRequest,
 )
+from archiwista.api.slots import checked_project
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import SettingsService
 from archiwista.errors import NotFoundError
@@ -137,7 +145,12 @@ def _final(events: Sequence[JobEvent]) -> bool:
 
 
 async def job_event_stream(
-    jobs: JobSupervisor, streams: JobStreams, job: str, *, after: int = 0
+    jobs: JobSupervisor,
+    streams: JobStreams,
+    job: str,
+    *,
+    visible: ProjectVisibility,
+    after: int = 0,
 ) -> AsyncIterator[str]:
     """Yield a job's events after ``after`` as SSE messages until it ends.
 
@@ -145,7 +158,7 @@ async def job_event_stream(
     events, and a quiet second reads the index anyway, so jobs of other
     processes stream too; the events of each read go out in one write. It
     ends after the final ``state`` event, when the job has ended past
-    ``after`` or disappears, or when ``streams`` close.
+    ``after`` or disappears (or is no longer seen), or when ``streams`` close.
 
     Parameters
     ----------
@@ -155,6 +168,10 @@ async def job_event_stream(
         The application's streams; closing them ends this one.
     job : str
         Job id.
+    visible : ProjectVisibility
+        Projects the session sees: a job it does not see has no events, and a
+        ``preview`` job's final state lists the failures of visible refs only
+        (``JobSupervisor.events``).
     after : int, optional
         Number of the last event the client has (``Last-Event-ID``).
     """
@@ -173,7 +190,9 @@ async def job_event_stream(
         quiet_s = 0.0
         while not streams.closed:
             wake.clear()
-            events = await asyncio.to_thread(jobs.events, job, after=last)
+            events = await asyncio.to_thread(
+                jobs.events, job, after=last, visible=visible
+            )
             if events:
                 yield _messages(events)
                 if _final(events):
@@ -185,10 +204,12 @@ async def job_event_stream(
                 continue
             except TimeoutError:
                 quiet_s += POLL_INTERVAL_S
-            record = await asyncio.to_thread(jobs.get, job)
+            record = await asyncio.to_thread(jobs.get, job, visible=visible)
             if record is None or record.state in FINISHED_STATES:
                 # Events written before the state was read come last.
-                rest = await asyncio.to_thread(jobs.events, job, after=last)
+                rest = await asyncio.to_thread(
+                    jobs.events, job, after=last, visible=visible
+                )
                 if rest:
                     yield _messages(rest)
                 return
@@ -200,9 +221,9 @@ async def job_event_stream(
         unwatch()
 
 
-def _job(jobs: JobSupervisor, job: str) -> JobRecord:
-    """Return a job or refuse with ``404 not_found``."""
-    record = jobs.get(job)
+def _job(jobs: JobSupervisor, job: str, visible: ProjectVisibility) -> JobRecord:
+    """Return a job the session sees or refuse with ``404 not_found``."""
+    record = jobs.get(job, visible=visible)
     if record is None:
         raise NotFoundError(MESSAGES["job_not_found"].format(job=job))
     return record
@@ -279,6 +300,8 @@ _SSE_EXAMPLE = "".join(
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Streams = Annotated[JobStreams, Depends(job_streams)]
+_Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
+_Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"])]
 
@@ -334,10 +357,10 @@ def start_link_check(
     store: _Store,
     body: LinkCheckRequest,
     principal: _Principal,
-    visible: Annotated[ProjectVisibility, Depends(visible_projects)],
+    visible: _Visible,
     jobs: _Jobs,
     settings: Annotated[SettingsService, Depends(settings_service)],
-    queries: Annotated[IndexQueries, Depends(index_queries)],
+    queries: _Queries,
     response: Response,
 ) -> JobDetail:
     """Confirm by its content which version a slot's link holds (KA-5).
@@ -356,25 +379,44 @@ def start_link_check(
     return _accepted(job, response)
 
 
-@router.get("/jobs", response_model=JobList, responses=problem_responses(422))
+@router.get("/jobs", response_model=JobList, responses=problem_responses(404, 422))
 def list_jobs(
-    filters: Annotated[JobFilters, Query()], principal: _Principal, jobs: _Jobs
+    filters: Annotated[JobFilters, Query()],
+    principal: _Principal,
+    visible: _Visible,
+    jobs: _Jobs,
+    queries: _Queries,
 ) -> JobList:
-    """List background jobs newest first, with who started each (`actor`)."""
+    """List background jobs newest first, with who started each (`actor`).
+
+    Jobs only of projects the session does not see are left out, and a
+    `preview` job lists only the refs (and failures) of visible projects.
+    `project` keeps the jobs with that project's data (`404` for a project
+    the session does not see).
+    """
+    checked_project(queries, filters.project, visible)
     page = jobs.list(
         kind=filters.kind,
         store=filters.store,
         state=filters.state,
+        project=filters.project,
         limit=filters.limit,
         cursor=filters.cursor,
+        visible=visible,
     )
     return JobList.of(page)
 
 
 @router.get("/jobs/{job}", response_model=JobDetail, responses=problem_responses(404))
-def get_job(job: _JobId, principal: _Principal, jobs: _Jobs) -> JobDetail:
-    """Return a job: who started it, its state, progress, and result or error."""
-    return JobDetail.of(_job(jobs, job))
+def get_job(
+    job: _JobId, principal: _Principal, visible: _Visible, jobs: _Jobs
+) -> JobDetail:
+    """Return a job: who started it, its state, progress, and result or error.
+
+    A job only of projects the session does not see answers `404`, as an
+    unknown one; a `preview` job lists only the refs of visible projects.
+    """
+    return JobDetail.of(_job(jobs, job, visible))
 
 
 @router.get(
@@ -402,6 +444,7 @@ def get_job(job: _JobId, principal: _Principal, jobs: _Jobs) -> JobDetail:
 def get_job_events(
     job: _JobId,
     principal: _Principal,
+    visible: _Visible,
     jobs: _Jobs,
     streams: _Streams,
     last_event_id: Annotated[
@@ -420,14 +463,17 @@ def get_job_events(
     adds `segment` and `entries`, footprints `written` and `failed`),
     `notice` has `level` (`info`, `warning`), `code` and a Polish `message`,
     `state` has `state` and, at the end, `result` (succeeded) or `error`
-    (`code`, `detail`). The stream ends after the final state; stop
-    reconnecting then. A `: keepalive` comment comes after 15 s of silence.
+    (`code`, `detail`, `reason` for some codes). The stream ends after the
+    final state; stop reconnecting then. A `: keepalive` comment comes after
+    15 s of silence. A job only of projects the session does not see answers
+    `404`; a `preview` job's final state lists the failures of visible refs.
     """
     after = last_event_id or 0
-    record = _job(jobs, job)
-    if record.state in FINISHED_STATES and not jobs.events(job, after=after):
+    record = _job(jobs, job, visible)
+    finished = record.state in FINISHED_STATES
+    if finished and not jobs.events(job, after=after, visible=visible):
         return Response(status_code=204)
     return EventStreamResponse(
-        job_event_stream(jobs, streams, job, after=after),
+        job_event_stream(jobs, streams, job, visible=visible, after=after),
         headers={"Cache-Control": "no-store"},
     )

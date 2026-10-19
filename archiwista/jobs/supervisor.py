@@ -33,6 +33,15 @@ last finished job of each store and kind stays) and logs while under 1 GB.
 Routine scans, the scheduler's incremental scans that succeeded without
 changing anything, go after 48 hours with their events and logs (the newest
 of each store stays); ``prune`` runs at the start and from the scheduler.
+
+What a principal sees of the jobs follows their scope (plan v0.2 "Zadania"),
+read from ``store`` and ``params``: a store or versions (``version:`` refs)
+everyone sees, and so a job of no project (the ``own_scan`` of every
+project); a job of projects only (``params.project``, ``file:`` and
+``snapshot:`` refs) is seen by whoever sees one of them. ``list``, ``get``
+and ``events`` take the principal's ``visible`` projects (every project by
+default); a ``preview`` job then shows only the refs and failures of visible
+projects, its counts staying whole (A-ADR-029).
 """
 
 import base64
@@ -52,13 +61,13 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Any, Literal, Self, cast
 
-from archiwista.auth import Principal, PrincipalKind
+from archiwista.auth import ALL_PROJECTS, Principal, PrincipalKind, ProjectVisibility
 from archiwista.config import AppPaths, AppSettings, SettingsService
 from archiwista.errors import (
     IndexQueryError,
@@ -121,6 +130,10 @@ MAX_NETWORK_JOBS = 2
 MAX_PREVIEW_REFS = 500
 # ``file_id`` of a ``snapshot`` job (``archiwista.index.own_file_id``).
 _FILE_ID = re.compile(r"[0-9a-f]{16}")
+# Refs of a project's own data (``file:<project>:…``, ``snapshot:<project>:…``)
+# and of a store's version: what a job's scope is made of (``_Scope``).
+_PROJECT_REFS = ("file", "snapshot")
+_VERSION_REF = "version:"
 # Seconds an interrupted worker has to stop before it is killed.
 STOP_TIMEOUT_S = 30.0
 LOG_MAX_AGE = timedelta(days=90)
@@ -842,23 +855,66 @@ class JobSupervisor:
 
         return unsubscribe
 
-    def get(self, job_id: str) -> JobRecord | None:
-        """Return a job, or ``None`` when no job has this id."""
+    def get(
+        self, job_id: str, *, visible: ProjectVisibility = ALL_PROJECTS
+    ) -> JobRecord | None:
+        """Return a job, or ``None`` when no job has this id.
+
+        Parameters
+        ----------
+        job_id : str
+            Job id.
+        visible : ProjectVisibility, default ALL_PROJECTS
+            Projects the principal sees: a job it does not see is ``None``
+            too, and a ``preview`` job shows only the refs (with their
+            contents) and failures of visible projects; counts stay whole.
+        """
         with self._reading() as connection:
             row = connection.execute(
                 f"SELECT {_JOB_COLUMNS} FROM jobs WHERE id = ?", (job_id,)
             ).fetchone()
-            return None if row is None else _job_record(connection, row)
+            if row is None:
+                return None
+            seen = _seen_projects(connection, visible)
+            record = _job_record(connection, row)
+        if not _Scope.of(record.store, record.params).seen_by(seen):
+            return None
+        return _redacted(record, seen)
 
-    def events(self, job_id: str, *, after: int = 0) -> tuple[JobEvent, ...]:
-        """Return a job's events after ``seq`` ``after`` (SSE ``Last-Event-ID``)."""
+    def events(
+        self,
+        job_id: str,
+        *,
+        after: int = 0,
+        visible: ProjectVisibility = ALL_PROJECTS,
+    ) -> tuple[JobEvent, ...]:
+        """Return a job's events after ``seq`` ``after`` (SSE ``Last-Event-ID``).
+
+        ``visible`` (every project by default) are the projects the principal
+        sees: a job it does not see has no events, and the final ``state`` of
+        a ``preview`` job lists the failures of visible refs only (``get``).
+        """
         with self._reading() as connection:
+            seen = _seen_projects(connection, visible)
+            # Projects whose refs a ``preview`` job's failures keep.
+            redact: frozenset[str] | None = None
+            if seen is not None:
+                job = connection.execute(
+                    "SELECT kind, store, params FROM jobs WHERE id = ?", (job_id,)
+                ).fetchone()
+                if job is None:
+                    return ()
+                scope = _Scope.of(job["store"], json.loads(job["params"]))
+                if not scope.seen_by(seen):
+                    return ()
+                if job["kind"] == "preview":
+                    redact = seen
             rows = connection.execute(
                 "SELECT seq, type, data, at FROM job_events"
                 " WHERE job_id = ? AND seq > ? ORDER BY seq",
                 (job_id, after),
             ).fetchall()
-        return tuple(
+        events = tuple(
             JobEvent(
                 job_id=job_id,
                 seq=int(row["seq"]),
@@ -868,6 +924,9 @@ class JobSupervisor:
             )
             for row in rows
         )
+        if redact is None:
+            return events
+        return tuple(_redacted_event(event, redact) for event in events)
 
     def scan_history(self, store: str) -> ScanHistory:
         """Return when a store was last scanned and whether it is busy."""
@@ -920,8 +979,10 @@ class JobSupervisor:
         kind: str | None = None,
         store: str | None = None,
         state: str | None = None,
+        project: str | None = None,
         limit: int = DEFAULT_PAGE_LIMIT,
         cursor: str | None = None,
+        visible: ProjectVisibility = ALL_PROJECTS,
     ) -> JobPage:
         """Return jobs newest first (``GET /jobs``).
 
@@ -929,10 +990,17 @@ class JobSupervisor:
         ----------
         kind, store, state : str or None, optional
             Only jobs of this kind, store or state.
+        project : str or None, optional
+            Only jobs with data of this project (its key): its ``own_scan``,
+            its snapshots, previews of its files.
         limit : int, default 50
             Page size, 1 to 200.
         cursor : str or None, optional
             ``next_cursor`` of the previous page of the same filters.
+        visible : ProjectVisibility, default ALL_PROJECTS
+            Projects the principal sees: only the jobs it sees, shown as
+            ``get`` shows them. The query leaves the others out, so a page
+            keeps its size.
 
         Raises
         ------
@@ -944,7 +1012,7 @@ class JobSupervisor:
                 MESSAGES["index_invalid_limit"].format(limit=MAX_PAGE_LIMIT)
             )
         fingerprint = hashlib.sha256(
-            json.dumps([kind, store, state]).encode()
+            json.dumps([kind, store, state, project]).encode()
         ).hexdigest()[:16]
         after = _decode_cursor(cursor, fingerprint)
         conditions: list[str] = []
@@ -956,14 +1024,23 @@ class JobSupervisor:
         if after is not None:
             conditions.append("(created_at, id) < (?, ?)")
             values.extend(after)
-        where = " AND ".join(conditions) or "1"
         with self._reading() as connection:
+            seen = _seen_projects(connection, visible)
+            if seen is not None or project is not None:
+                # The scope rule of ``get`` filters in the query, so a page
+                # keeps its size; registered on this thread's connection, the
+                # function is this call's alone.
+                connection.create_function("job_listed", 2, _listed(seen, project))
+                conditions.append("job_listed(store, params)")
+            where = " AND ".join(conditions) or "1"
             rows = connection.execute(
                 f"SELECT {_JOB_COLUMNS} FROM jobs WHERE {where}"
                 " ORDER BY created_at DESC, id DESC LIMIT ?",
                 (*values, limit + 1),
             ).fetchall()
-            items = tuple(_job_record(connection, row) for row in rows[:limit])
+            items = tuple(
+                _redacted(_job_record(connection, row), seen) for row in rows[:limit]
+            )
         next_cursor = None
         if len(rows) > limit:
             last = rows[limit - 1]
@@ -1552,6 +1629,151 @@ def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
         if error is None
         else JobError(error["code"], error["detail"], error.get("reason")),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Scope:
+    """Whose data a job holds, read from its ``store`` and ``params``.
+
+    Attributes
+    ----------
+    stores : bool
+        It works on a store or on versions (``version:`` refs): data everyone
+        sees (A-ADR-029).
+    projects : frozenset[str]
+        Keys of the projects whose data it holds: ``params.project`` and the
+        project of each ``file:`` and ``snapshot:`` ref.
+    """
+
+    stores: bool
+    projects: frozenset[str]
+
+    @classmethod
+    def of(cls, store: str | None, params: Mapping[str, Any]) -> Self:
+        """Return the scope of a job of ``store`` with ``params``."""
+        refs = params.get("refs")
+        refs = refs if isinstance(refs, list) else []
+        projects = {key for ref in refs if (key := _ref_project(ref)) is not None}
+        named = params.get("project")
+        if isinstance(named, str):
+            projects.add(named)
+        stores = store is not None or any(
+            isinstance(ref, str) and ref.startswith(_VERSION_REF) for ref in refs
+        )
+        return cls(stores, frozenset(projects))
+
+    def seen_by(self, projects: frozenset[str] | None) -> bool:
+        """Whether one seeing the projects ``projects`` (``None``: all) sees it.
+
+        A job with a store part, or of no project at all (the ``own_scan``
+        of every project), everyone sees; one of projects only, whoever sees
+        one of them.
+        """
+        return (
+            projects is None
+            or self.stores
+            or not self.projects
+            or not self.projects.isdisjoint(projects)
+        )
+
+
+def _ref_project(ref: object) -> str | None:
+    """Return the project of a ``file:`` or ``snapshot:`` ref, else ``None``.
+
+    Project keys (``[a-z0-9-]+``) hold no ``:``, so the project is the text
+    between the first two; ``archiwista.refs`` imports this package, so its
+    ``parse_ref`` is out of reach here.
+    """
+    if not isinstance(ref, str):
+        return None
+    kind, _, rest = ref.partition(":")
+    return rest.partition(":")[0] if kind in _PROJECT_REFS else None
+
+
+def _ref_seen(ref: object, projects: frozenset[str]) -> bool:
+    """Whether a ref is shown: one of no project always, a project's if seen."""
+    project = _ref_project(ref)
+    return project is None or project in projects
+
+
+def _seen_projects(
+    connection: sqlite3.Connection, visible: ProjectVisibility
+) -> frozenset[str] | None:
+    """Return the keys of the indexed projects ``visible`` sees; ``None``: all.
+
+    Jobs name projects by key, visibility goes by access key (the index's
+    ``projects``); a key the index does not have is seen only by one who sees
+    everything.
+    """
+    if visible.everything:
+        return None
+    rows = connection.execute("SELECT key, access_key FROM projects").fetchall()
+    return frozenset(row["key"] for row in rows if visible.sees(row["access_key"]))
+
+
+def _listed(
+    seen: frozenset[str] | None, project: str | None
+) -> Callable[[str | None, str], bool]:
+    """Return the SQL function keeping the jobs ``list`` gives (``job_listed``).
+
+    It takes a job's ``store`` and ``params`` (JSON) and keeps a job that one
+    seeing the projects ``seen`` (``None``: all) sees and that, given a
+    ``project``, has data of that project.
+    """
+
+    def listed(store: str | None, params: str) -> bool:
+        scope = _Scope.of(store, json.loads(params))
+        return scope.seen_by(seen) and (project is None or project in scope.projects)
+
+    return listed
+
+
+def _redacted(record: JobRecord, seen: frozenset[str] | None) -> JobRecord:
+    """Return a seen job as one seeing the projects ``seen`` (``None``: all) sees it.
+
+    A ``preview`` job keeps the refs of visible projects with their contents,
+    and their failures; its counts (``built``, ``cached``, progress) stay
+    whole (A-ADR-029: counts in aggregate, names of visible ones only). The
+    other kinds have one scope and are shown whole.
+    """
+    if seen is None or record.kind != "preview":
+        return record
+    params = record.params
+    refs, contents = params.get("refs"), params.get("contents")
+    if isinstance(refs, list) and isinstance(contents, list):
+        kept = [
+            (ref, content)
+            for ref, content in zip(refs, contents, strict=True)
+            if _ref_seen(ref, seen)
+        ]
+        params = {
+            **params,
+            "refs": [ref for ref, _ in kept],
+            "contents": [content for _, content in kept],
+        }
+    result = None if record.result is None else _shown_result(record.result, seen)
+    return replace(record, params=params, result=result)
+
+
+def _redacted_event(event: JobEvent, seen: frozenset[str]) -> JobEvent:
+    """Return an event of a ``preview`` job as ``_redacted`` shows the job."""
+    result = event.data.get("result")
+    if event.type != "state" or not isinstance(result, dict):
+        return event
+    return replace(event, data={**event.data, "result": _shown_result(result, seen)})
+
+
+def _shown_result(result: JsonObject, seen: frozenset[str]) -> JsonObject:
+    """Return a ``preview`` summary listing the failures of visible refs only."""
+    failed = result.get("failed")
+    if not isinstance(failed, list):
+        return result
+    shown = [
+        entry
+        for entry in failed
+        if isinstance(entry, dict) and _ref_seen(entry.get("ref"), seen)
+    ]
+    return {**result, "failed": shown}
 
 
 @contextmanager

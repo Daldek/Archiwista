@@ -3,9 +3,10 @@
 ``/health`` gives the versions of Archiwista and of the producer libraries,
 the local index and every configured store's state: availability, the last
 complete pass, the last scan with its actor, a running job with its progress
-and whether answers about the store are stale, and the preview cache with
-the render processes. ``archiwista status --json`` prints the same model
-(``read_health``; without previews: the command runs no render pool).
+and whether answers about the store are stale, the preview cache with the
+render processes and the last scan of every project's own data. ``archiwista
+status --json`` prints the same model (``read_health``; without previews and
+own data: the command runs no render pool and no jobs).
 ``/sources`` lists the producer plugins with a Polish description of their
 state and of its fix.
 """
@@ -17,11 +18,18 @@ from fastapi import APIRouter, Depends, Request
 
 from archiwista.api.dependencies import index_queries, plugin_registry, settings_service
 from archiwista.api.errors import problem_responses
-from archiwista.api.models import Health, PreviewsState, SourceInfo, SourceList
+from archiwista.api.models import (
+    Health,
+    OwnDataState,
+    PreviewsState,
+    SourceInfo,
+    SourceList,
+)
 from archiwista.auth import Principal
 from archiwista.config import AppSettings, SettingsService
 from archiwista.doctor import source_check
 from archiwista.index import IndexQueries
+from archiwista.jobs import JobSupervisor
 from archiwista.previews.pool import RenderPool
 from archiwista.security import current_principal
 from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
@@ -48,6 +56,7 @@ def read_health(
     registry: PluginRegistry,
     queries: IndexQueries,
     previews: RenderPool | None = None,
+    jobs: JobSupervisor | None = None,
 ) -> Health:
     """Return the state of the server, its sources, index, stores and previews.
 
@@ -62,6 +71,9 @@ def read_health(
     previews : RenderPool or None, optional
         The server's render pool with its preview cache; ``previews`` is
         null without one.
+    jobs : JobSupervisor or None, optional
+        The server's supervisor of background jobs; ``own_data`` (its last
+        ``own_scan`` of every project) is null without one.
     """
     return Health.of(
         version(APP_DISTRIBUTION),
@@ -71,6 +83,7 @@ def read_health(
         None
         if previews is None
         else PreviewsState.of(previews.cache.usage(), previews.workers),
+        None if jobs is None else OwnDataState.of(jobs.own_scan_history()),
     )
 
 
@@ -87,10 +100,13 @@ def get_health(
     A store not scanned yet is `unknown`. An unavailable store (e.g. a
     disconnected share) is `stale`: lists still answer from the index as of
     its `indexed_at`. `previews` gives the preview cache's use against its
-    limit and the render processes.
+    limit and the render processes, `own_data` the end of the last scan of
+    every project's own data and whether one waits or runs.
     """
-    pool: RenderPool | None = request.app.state.previews
-    return read_health(settings.get(), registry, queries, pool)
+    state = request.app.state
+    pool: RenderPool | None = state.previews
+    jobs: JobSupervisor | None = state.jobs
+    return read_health(settings.get(), registry, queries, pool, jobs)
 
 
 @router.get("/sources", response_model=SourceList, responses=problem_responses())

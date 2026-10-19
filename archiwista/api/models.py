@@ -78,7 +78,7 @@ from archiwista.index import (
     VersionSummary,
 )
 from archiwista.index.geometry import polygon_bounds
-from archiwista.jobs import JobKind, JobPage, JobRecord, JobState
+from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, ScanHistory
 from archiwista.messages import MESSAGES
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
@@ -171,6 +171,7 @@ _JOB_EXAMPLE = {
 _JOB_FAILURE_EXAMPLE = {
     "code": "store_unavailable",
     "detail": "Nie można odczytać magazynu /mnt/nas/kartograf/data",
+    "reason": None,
 }
 _JOB_DETAIL_EXAMPLE = {
     "id": "3f9c1a7e5b2d4c60",
@@ -1618,18 +1619,37 @@ class Job(BaseModel):
 class JobFailure(BaseModel):
     """Why a job did not succeed: a stable code and a Polish detail."""
 
-    model_config = _examples(_JOB_FAILURE_EXAMPLE)
+    model_config = _examples(
+        _JOB_FAILURE_EXAMPLE,
+        {
+            "code": "snapshot_blocked",
+            "detail": MESSAGES["snapshot_blocked_read_only_folder"].format(
+                path="/mnt/nas/raba/dane/.wersje"
+            ),
+            "reason": "read_only_folder",
+        },
+    )
 
     code: str = Field(
         description=(
             "Stable code: `store_unavailable`, `source_unavailable`,"
             " `source_incompatible`, `kartograf_error` (`<package>_error`),"
             " `offline_mode`, `not_found`, `unsupported`, `internal_error`,"
-            " `worker_crashed`, `interrupted` (safe to retry) or `cancelled`."
+            " `worker_crashed`, `interrupted` (safe to retry), `cancelled`; of"
+            " a snapshot also `snapshot_blocked` (see `reason`),"
+            " `inconsistent_copy`, `checksum_mismatch`, `integrity_failed`,"
+            " `target_exists`, `path_outside_root` or `own_reader_failed`."
         )
     )
     detail: str = Field(
         description="Polish description; for a crashed worker it names the job log."
+    )
+    reason: str | None = Field(
+        description=(
+            "Why a snapshot was blocked (`snapshot_blocked`): `folder_invalid`,"
+            " `read_only_folder`, `insufficient_space` or `file_missing`; null"
+            " for other codes."
+        )
     )
 
 
@@ -1637,7 +1657,9 @@ class JobDetail(BaseModel):
     """A background job: what it does, who asked, how far it got, how it ended.
 
     Its events (progress, notices, changes of state) stream from
-    `GET /jobs/{job}/events`.
+    `GET /jobs/{job}/events`. A job only of projects the session does not
+    see is not shown; a `preview` job lists only the refs (and failures) of
+    visible projects, with whole counts.
     """
 
     model_config = _examples(_JOB_DETAIL_EXAMPLE, _JOB_FAILED_EXAMPLE)
@@ -1646,8 +1668,10 @@ class JobDetail(BaseModel):
     kind: JobKind = Field(
         description=(
             "`scan` (index the store), `footprints` (unit outlines over the"
-            " network), `link_check` (which version a slot's link holds) or"
-            " `preview` (build local previews of files)."
+            " network), `link_check` (which version a slot's link holds),"
+            " `preview` (build local previews of files), `own_scan` (scan the"
+            " projects' own data folders) or `snapshot` (a snapshot of an"
+            " own-data file)."
         )
     )
     state: JobState = Field(
@@ -1675,11 +1699,15 @@ class JobDetail(BaseModel):
             " /api/v1/session); `null` at the terminal and for the scheduler."
         )
     )
-    store: str | None = Field(description="Store id; `null` for `preview`.")
+    store: str | None = Field(
+        description="Store id; `null` for `preview`, `own_scan` and `snapshot`."
+    )
     params: dict[str, Any] = Field(
         description=(
             "`scan`: `mode` and `segment`; `link_check`: `slot`; `footprints`:"
-            " none; `preview`: `refs`, their `contents` and `force`."
+            " none; `preview`: `refs`, their `contents` and `force`; `own_scan`:"
+            " `project` (none: every project); `snapshot`: `project`, `file_id`"
+            " and `note`."
         )
     )
     created_at: datetime
@@ -1688,9 +1716,11 @@ class JobDetail(BaseModel):
     progress: dict[str, Any] | None = Field(
         description=(
             "The last progress: `current` of `total` (segments of a scan,"
-            " versions of `footprints`, contents of `preview`); a scan adds"
-            " `segment` and `entries`, `footprints` adds `written` and `failed`,"
-            " `preview` adds `built`, `cached` and `failed`."
+            " versions of `footprints`, contents of `preview`, project folders"
+            " of `own_scan`, phases of `snapshot`); a scan adds `segment` and"
+            " `entries`, `footprints` adds `written` and `failed`, `preview`"
+            " adds `built`, `cached` and `failed`, `own_scan` adds `files` and"
+            " `read`, `snapshot` adds `phase`."
         )
     )
     result: dict[str, Any] | None = Field(
@@ -1701,7 +1731,11 @@ class JobDetail(BaseModel):
             " `failed`; `link_check`: `status` (`confirmed`, `index_outdated`,"
             " `mismatch`, `missing` or `not_a_link`) with the `expected` and"
             " `confirmed` versions; `preview`: `built`, `cached`, `failed`"
-            " (`ref`, `code`, `detail`) and `seconds`."
+            " (`ref`, `code`, `detail`) and `seconds`; `own_scan`: `projects`,"
+            " `files`, `new`, `changed`, `missing`, `unreadable`, `snapshots`,"
+            " `problems` and `seconds`; `snapshot`: `status` (`created` or"
+            " `unchanged`), `label`, `content_sha256`, `size_bytes` and"
+            " `seconds`."
         )
     )
     error: JobFailure | None = Field(
@@ -1727,7 +1761,9 @@ class JobDetail(BaseModel):
             result=job.result,
             error=None
             if job.error is None
-            else JobFailure(code=job.error.code, detail=job.error.detail),
+            else JobFailure(
+                code=job.error.code, detail=job.error.detail, reason=job.error.reason
+            ),
         )
 
 
@@ -1764,6 +1800,15 @@ class JobFilters(BaseModel):
         examples=[_STORE],
     )
     state: JobState | None = Field(default=None, description="Only jobs in this state.")
+    project: str | None = Field(
+        default=None,
+        description=(
+            "Only jobs with this project's data (`project` of /projects): its"
+            " own-data scans, its snapshots, previews of its files; a project"
+            " not visible to the session's principal is `404`."
+        ),
+        examples=["raba"],
+    )
     limit: int = Field(
         default=DEFAULT_PAGE_LIMIT,
         ge=1,
@@ -2096,6 +2141,25 @@ class PreviewsState(BaseModel):
         )
 
 
+class OwnDataState(BaseModel):
+    """The scans of the projects' own data (`own_scan` of every project)."""
+
+    model_config = _examples({"finished_at": "2026-10-18T03:20:44Z", "busy": False})
+
+    finished_at: datetime | None = Field(
+        description=(
+            "End of the last scan of every project's own data, whatever its"
+            " outcome; null before the first one."
+        )
+    )
+    busy: bool = Field(description="Whether such a scan waits or runs.")
+
+    @classmethod
+    def of(cls, history: ScanHistory) -> Self:
+        """Return the state of the own-data scans (``own_scan_history``)."""
+        return cls(finished_at=history.finished_at, busy=history.busy)
+
+
 class Health(BaseModel):
     """Versions, sources, the index and every configured store's state."""
 
@@ -2111,6 +2175,7 @@ class Health(BaseModel):
                 "objects": 5210,
                 "workers": 4,
             },
+            "own_data": {"finished_at": "2026-10-18T03:20:44Z", "busy": False},
         }
     )
 
@@ -2129,6 +2194,13 @@ class Health(BaseModel):
             " them (`archiwista status`)."
         ),
     )
+    own_data: OwnDataState | None = Field(
+        default=None,
+        description=(
+            "The last scan of every project's own data and whether one waits"
+            " or runs; null without the server's jobs (`archiwista status`)."
+        ),
+    )
 
     @classmethod
     def of(
@@ -2138,8 +2210,9 @@ class Health(BaseModel):
         status: IndexStatus,
         stores: Iterable[StoreConfig],
         previews: PreviewsState | None = None,
+        own_data: OwnDataState | None = None,
     ) -> Self:
-        """Return the health model of the index, the stores and the previews."""
+        """Return the health model of the index, stores, previews and own data."""
         states = {state.store: state for state in status.stores}
         return cls(
             archiwista=version,
@@ -2151,6 +2224,7 @@ class Health(BaseModel):
             ),
             stores=[StoreItem.of(store, states.get(store.id)) for store in stores],
             previews=previews,
+            own_data=own_data,
         )
 
 
