@@ -1091,7 +1091,7 @@ działa.
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | zrobione |
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | zrobione |
-| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | zrobione dla SSD (raport `docs/reports/v0.2-measurements.md`); SMB i kryterium 5 (GPU) — niezweryfikowane |
+| 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | zrobione dla SSD i SMB (raport `docs/reports/v0.2-measurements.md`); kryterium 5 (GPU) — niezweryfikowane |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
 | 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
 
@@ -3626,12 +3626,16 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   - *Poprawka:* `renderers/raster.py` `_paint_within` — miniatura w kadrze
     warstwy malowana tylko w oknie z wartościami (te same piksele); miniatura
     warstwy 35 arkuszy ASC p95 2,61 → 1,31 s.
-  - *Otwarte:* przebiegi `-m smb` (kopia magazynu 50k na udziale uzupełniona;
-    `previews-perf/` i `own-data-perf/` do skopiowania), pomiar z GPU,
-    test płynności z przeglądarką z flagami GPU (llvmpipe) bez żądania
-    obrysów mapy 50k — do diagnozy przy pomiarze z GPU; arkusz SM5 125 Mpx
-    decyzji 12 wobec 320 Mpx prawdziwych arkuszy (6,9 s) — do opisu w SPEC 4.5
-    w kroku 18.
+  - *Wyniki SMB* (raport, sekcja 5): wszystkie cele kolumny SMB decyzji 12
+    i regresja SPEC 4.5 spełnione (pełny skan 247,3 s, przyrostowy 101,1 s,
+    `/local-layers` p95 2,26 s, rok SM5 212,5 s); mapa 4964 obrysów p95
+    295 ms na granicy (indeks lokalny, obciążenie). Test migawki zmienia
+    wiersz GeoPackage z `nolock=1` (zapis SQLite na udziale `nounix` kończy
+    się `database is locked`).
+  - *Otwarte:* pomiar z GPU, test płynności z przeglądarką z flagami GPU
+    (llvmpipe) bez żądania obrysów mapy 50k — do diagnozy przy pomiarze
+    z GPU; arkusz SM5 125 Mpx decyzji 12 wobec 320 Mpx prawdziwych arkuszy
+    (6,9 s) — do opisu w SPEC 4.5 w kroku 18.
 
 ### 17. E2E i odbiór v0.2
 - **Cel:** przejście odbiorcze na prawdziwym `archiwista serve`

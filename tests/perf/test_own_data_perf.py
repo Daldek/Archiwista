@@ -8,7 +8,7 @@ directory next to the store's copy on the share (copied there by hand)::
 
     ARCHIWISTA_PERF_STORE=<katalog-danych>/store-50k \\
         .venv/bin/python -m pytest -m perf tests/perf/test_own_data_perf.py --no-cov -s
-    rsync -a <katalog-danych>/own-data-perf/ <udział>/own-data-perf/
+    rsync -a --exclude .wersje <katalog-danych>/own-data-perf/ <udział>/own-data-perf/
     ARCHIWISTA_SMB_STORE=<udział>/store-50k ARCHIWISTA_SMB_WORK=<katalog-danych> \\
         .venv/bin/python -m pytest -m smb tests/perf/test_own_data_perf.py --no-cov -s
 
@@ -321,7 +321,11 @@ def _add_row(path: Path, number: int) -> None:
     """Rename a parcel as an editor would: another content, the same size.
 
     GDAL's R*Tree triggers call its SQL functions on every update; they get
-    the envelope the geometry's GeoPackage header holds.
+    the envelope the geometry's GeoPackage header holds. The write runs
+    without SQLite's locks (``nolock=1``), nothing else touching the file
+    meanwhile: on a share mounted without POSIX extensions (``nounix``) a
+    shared lock never becomes exclusive, and every commit ends ``database is
+    locked``.
     """
 
     def envelope(blob: bytes) -> tuple[float, float, float, float]:
@@ -331,7 +335,7 @@ def _add_row(path: Path, number: int) -> None:
         )
         return found
 
-    with sqlite3.connect(path) as connection:
+    with sqlite3.connect(f"{path.as_uri()}?nolock=1", uri=True) as connection:
         connection.create_function("ST_IsEmpty", 1, lambda blob: int(blob[3] >> 4 & 1))
         for index, name in enumerate(("ST_MinX", "ST_MaxX", "ST_MinY", "ST_MaxY")):
             connection.create_function(
