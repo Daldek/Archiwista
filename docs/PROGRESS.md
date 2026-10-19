@@ -149,10 +149,19 @@ SCOPE etap 3.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
 - Nazwy przy A-ADR-024 (`GET /sources`, `source_unavailable` /
   `source_incompatible`, fabryki `moduł:load`) — do ewentualnej zmiany.
-- IMGWTools 3.0.0 (kandydat `31e96fa`, bez tagu) spełnia IMGW-1..20 z ČHMÚ;
-  SPEC (UC-20, 4.8, 12.7–12.8, 13 v0.6), `docs/IMGWTOOLS_REQUIREMENTS.md`
-  (6.3: odpowiedzi na pytania ADR-003) i A-ADR-021/023 zgodne z audytem
-  2026-10-19; poprawki A, B, D przed tagiem — gałąź IMGWTools `fix/archiwista-compat`.
+- IMGWTools 3.0.0 (`slave` od `0d98f3b`, bez tagu) spełnia IMGW-1..20 z ČHMÚ;
+  SPEC (UC-20, 4.4, 4.6, 4.8, 5.6, 12.7–12.8, 13 v0.5–v0.6, 14),
+  `docs/IMGWTOOLS_REQUIREMENTS.md` (6.3: odpowiedzi na pytania ADR-003)
+  i A-ADR-019 (errata 3)/021/023 zgodne z audytem 2026-10-19 i modelem
+  zapisu Kartografa w IMGWTools (dowiązania twarde, sidecar zatwierdza
+  wersję; udział musi obsługiwać dowiązania twarde dla obu producentów).
+  Przed tagiem — gałąź IMGWTools `fix/archiwista-compat-2`: wycofanie
+  publikacji bez usuwania plików przejętych przez współbieżny zapis,
+  `meteo_kind`, test kolizji `2001_01_k.zip` (`fix/archiwista-compat`
+  zastąpiona). Adapter v0.5: `missing_sidecar` to problem niekrytyczny
+  i możliwie przejściowy, `current_version` nie zgłasza dla niego
+  `IMGWDataError`; zapis IMGWTools na prawdziwym Windows i macOS
+  nieuruchomiony.
 
 ### Mockup
 

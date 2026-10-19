@@ -15,15 +15,28 @@ Przy rozbieżności rozstrzyga SPEC 12.7–12.8; zmiana wymagania trafia
 najpierw do SPEC, potem tutaj.
 
 **Stan realizacji (audyt zgodności 2026-10-19):** IMGWTools 3.0.0
-(kandydat wydania `31e96fa`, gałąź `slave`, bez tagu) spełnia
+(gałąź `slave` od `0d98f3b`, bez tagu) spełnia
 IMGW-1..IMGW-20, także stacje ČHMÚ (IMGW-15..IMGW-19), które weszły już do
 3.0.0 (errata D16 ADR-003 IMGWTools). Sekcje 4.x podają nazwy, sygnatury
-i kształty z kodu 3.0.0. Ograniczenia kandydata — zapis katalogu IMGW
-tylko na Linuksie z `renameat2(RENAME_NOREPLACE)` i znacznik
-`imgw-store.json` przez dowiązanie twarde, więc bez zapisu z Windows i na
-udziale SMB (IMGW-1, IMGW-2), zawsze pusty `meteo_kind` w katalogu stacji
-(IMGW-9) i brak osobnego testu regresji kolizji nazw (IMGW-4, kryt. 3) —
-są usuwane w 3.0.0 (poprawka na gałęzi fix/archiwista-compat). Kryteria
+i kształty z kodu 3.0.0. Zapis katalogu IMGW działa według modelu
+publikacji Kartografa (errata ADR-001 IMGWTools z 2026-10-19, `0d98f3b`;
+zastępuje `renameat2(RENAME_NOREPLACE)` dostępne tylko na Linuksie):
+pliki wersji trafiają z `.incoming/` do `<etykieta>_<sha8>` dowiązaniami
+twardymi, sidecar pliku głównego dowiązywany ostatni zatwierdza wersję,
+a znacznik `imgw-store.json` też powstaje przez dowiązanie twarde. Zapis
+wymaga więc systemu plików z dowiązaniami twardymi — tak jak magazyn
+Kartografa (SPEC 4.6 pkt 1 i 9; sprawdza to `archiwista doctor`); bez
+nich (FAT, exFAT, część FUSE i NAS) każdy zapis, także `init_store`,
+kończy się `IMGWStoreConflictError` (`details.reason = "not_atomic"`).
+Linux, macOS i Windows na dysku lokalnym są obsługiwane, udział SMB —
+gdy obsługuje dowiązania twarde; zapisu na prawdziwym Windows i macOS
+IMGWTools jeszcze nie uruchomił (`IMGWTools/docs/PROGRESS.md`). W 3.0.0
+(poprawki na gałęzi fix/archiwista-compat-2): wycofanie przerwanej
+publikacji bez usuwania plików przejętych przez współbieżny zapis tej
+samej treści (IMGW-2), `meteo_kind` w katalogu stacji (IMGW-9; `0d98f3b`
+zapisuje zawsze pusty) i test regresji kolizji nazw (IMGW-4, kryt. 3);
+wcześniejsza gałąź fix/archiwista-compat jest w części zapisu zastąpiona
+przez `0d98f3b`. Kryteria
 z siecią (IMGW-5 kryt. 10, IMGW-6 kryt. 7, IMGW-9 kryt. 10) IMGWTools opisuje
 jako wykonane (`IMGWTools/docs/PROGRESS.md`, CHANGELOG; przy IMGW-6 kryt. 7
 bez osobnego raportu formatów każdego rocznika); audyt ich nie powtarzał.
@@ -391,9 +404,13 @@ użytkowników może czytać (także z udziału SMB, bez blokad), a Archiwista
     .incoming/<host>_<pid>_<token>/      katalogi robocze (sprzątane po 24 h)
   ```
 
-- katalog tylko przyrostowy: bez nadpisywania, usuwania, dowiązań
-  twardych i plików zmiennych (prostsza semantyka niż ADR-036 Kartografa
-  — mniej miejsc na rozbieżność dwóch implementacji, SPEC 14);
+- katalog tylko przyrostowy: bez nadpisywania, usuwania, trwałych
+  dowiązań twardych i plików zmiennych — po publikacji każdy plik ma
+  jedną nazwę (prostsza semantyka niż ADR-036 Kartografa — mniej miejsc
+  na rozbieżność dwóch implementacji, SPEC 14); dowiązania twarde służą
+  tylko do przeniesienia plików z `.incoming/` do wersji (IMGW-2), więc
+  zapis wymaga systemu plików, który je obsługuje — jak magazyn
+  Kartografa (SPEC 4.6 pkt 1 i 9);
 - wersję bieżącą wylicza API (IMGW-10) z reguły SPEC 4.8.1: archiwum —
   najpóźniejsza publikacja; szeregi zbioru — najpóźniej zbudowane;
   katalog stacji — najnowszy;
@@ -432,11 +449,17 @@ użytkowników może czytać (także z udziału SMB, bez blokad), a Archiwista
 wersji to data UTC (`Last-Modified` albo pobrania), a gdy tego samego dnia
 przychodzą te same bajty pod innym sygnałem — z przyrostkiem `+<8 hex>`
 (np. `2025-08-28+1a2b3c4d_7c41e0b2`), więc etykieta jest nazwą, nie zawsze
-datą. Cache SQLite usunięto (kryt. 6 bezprzedmiotowe). Ograniczenie
-kandydata `31e96fa`: znacznik powstaje przez dowiązanie twarde
-(`os.link`), więc na SMB i FAT `init_store` kończy się
-`IMGWStoreConflictError` (`details.reason = "not_atomic"`) — usuwane
-w 3.0.0 (poprawka na gałęzi fix/archiwista-compat).
+datą. Cache SQLite usunięto (kryt. 6 bezprzedmiotowe). Znacznik powstaje
+przez dowiązanie twarde (`os.link` pliku tymczasowego), a wersje —
+dowiązaniami z `.incoming/` (IMGW-2); na systemie plików bez dowiązań
+twardych (FAT, exFAT, część FUSE i NAS, udział SMB bez ich obsługi)
+`init_store` i każdy zapis kończą się `IMGWStoreConflictError`
+(`details.reason = "not_atomic"`) — wymaganie wspólne z Kartografem,
+zapisane w erracie ADR-001 IMGWTools (2026-10-19). Kryt. 4: katalog
+roboczy jest usuwany zaraz po publikacji, więc licznik dowiązań wraca do
+1; tylko po zabiciu procesu między publikacją a sprzątaniem pozostałość
+`.incoming/` trzyma drugie dowiązanie, dopóki następny zapis nie usunie
+jej po 24 h (IMGW-2, kryt. 5).
 
 **Priorytet.** P1.
 
@@ -462,8 +485,13 @@ gotowy (sekcja 2.2).
   systemie plików co katalog IMGW.
 - Jeden odczyt treści: SHA-256 liczone w trakcie zapisu.
 - `fsync` plików przed publikacją.
-- Publikacja wyłączna, np. `os.rename` gotowego katalogu wersji — błąd,
-  gdy cel istnieje (nigdy nadpisanie).
+- Publikacja wyłączna — nigdy nadpisanie: w 3.0.0 według modelu
+  Kartografa (ADR-036 D18, D21, D22 Kartografa; errata ADR-001 IMGWTools
+  z 2026-10-19) pliki z katalogu roboczego trafiają do katalogu wersji
+  dowiązaniami twardymi (`os.link`, błąd, gdy cel istnieje), a sidecar
+  pliku głównego, dowiązywany ostatni, zatwierdza wersję. Katalog wersji
+  bez tego sidecara to przerwana publikacja (albo publikacja w toku), nie
+  wersja.
 - Sprzątanie pozostałości `.incoming/` starszych niż 24 h.
 - Pliki szeregów (Parquet) budowane lokalnie i kopiowane do katalogu
   roboczego jako gotowe bajty.
@@ -490,12 +518,29 @@ gotowy (sekcja 2.2).
    zostawia tylko `<plik>.part`; następne uruchomienie pobiera plik
    ponownie i nie zgłasza „już istnieje”.
 
-**Stan 3.0.0.** Spełnione. Publikacja wersji przez
-`renameat2(RENAME_NOREPLACE)`. Ograniczenie kandydata `31e96fa`: na
-systemie innym niż Linux albo na systemie plików bez tej operacji zapis
-kończy się `IMGWStoreConflictError` — razem ze znacznikiem z IMGW-1 to
-brak zapisu z Windows i na udziale SMB, którego wymagają SPEC 1.2 i 4.6
-pkt 9; usuwane w 3.0.0 (poprawka na gałęzi fix/archiwista-compat).
+**Stan 3.0.0.** Spełnione w modelu publikacji Kartografa (opis wyżej),
+kryt. 1 w zmienionej postaci (niżej). Model wszedł w `0d98f3b`
+i zastępuje `renameat2(RENAME_NOREPLACE)` kandydata `31e96fa`, dostępne
+tylko na Linuksie. Zapis działa na Linuksie, macOS i Windows
+(`fsync` katalogu pomijany na Windows i tam, gdzie system plików go nie
+obsługuje), na udziale SMB — gdy udział obsługuje dowiązania twarde; bez
+nich zapis kończy się `IMGWStoreConflictError`
+(`details.reason = "not_atomic"`, IMGW-1). Kryt. 1 w tym modelu: błąd,
+`KeyboardInterrupt` albo zabicie procesu przed dowiązaniem sidecara nie
+daje nowej wersji, ale może zostawić w `versions/` katalog bez sidecara
+z częścią plików danych. `current_version` i zapisy go pomijają,
+`iter_store` zgłasza go jako problem `missing_sidecar` (także pusty
+katalog), a następny zapis tej samej treści go uzupełnia; wyjątek:
+katalog stacji ma etykietę z daty budowy (UTC), więc przerwany katalog
+ponowiony innego dnia trafia do nowego katalogu wersji, a stary zostaje
+problemem do ręcznego usunięcia (Archiwista go nie usuwa). Kryt. 2:
+współbieżny zapis tej samej treści przejmuje już dowiązane pliki;
+wycofanie publikacji zostawia pliki danych na miejscu i usuwa tylko
+puste katalogi, które samo założyło, więc nie psuje wersji zatwierdzonej
+przez drugi proces (w 3.0.0, poprawki na gałęzi fix/archiwista-compat-2;
+`0d98f3b` przy błędzie po przejęciu usuwał plik główny spod cudzego
+sidecara). Zapisu na prawdziwym Windows i macOS IMGWTools nie uruchomił
+(`IMGWTools/docs/PROGRESS.md`).
 Płaskie pobieranie to w 3.0.0 `imgw datasets download`
 (`download_archives`): unikalny `.part`, `os.replace` i `fsync`; przerwany
 zapis nie zostawia ani pliku, ani `.part` (ostrzej niż kryt. 7),
@@ -919,11 +964,11 @@ odtwarzalny wybór stacji, nawet gdy źródła IMGW się zmienią.
   `river_km`, `elevation_m` (ČHMÚ hydro także obiekt `thresholds`);
   „data katalogu” to etykieta wersji i `downloaded_at` sidecara, nie
   właściwość stacji. `meteo_kind` stacji meteo IMGW-PIB w 3.0.0 (poprawka
-  na gałęzi fix/archiwista-compat): `climate`, gdy stacja jest w bieżących
+  na gałęzi fix/archiwista-compat-2): `climate`, gdy stacja jest w bieżących
   szeregach `pl.imgw.meteo_climate_daily` (także gdy jest i w opadowych),
   inaczej `precipitation`, gdy jest w bieżących szeregach
   `pl.imgw.meteo_precip_daily`, inaczej `null` (stacja bez bieżącego
-  szeregu); ČHMÚ — zawsze `null`; kandydat `31e96fa` zapisuje zawsze
+  szeregu); ČHMÚ — zawsze `null`; `slave` w `0d98f3b` zapisuje zawsze
   `null`. Archiwista pokazuje `null` jako „rodzaj nieznany”, nie błąd.
 - Źródła w kolejności (SPEC 4.8.1): publiczne API IMGW
   (`danepubliczne.imgw.pl/api/data/hydro` i `…/meteo`) → lokalny plik
@@ -1001,7 +1046,7 @@ pakietu KA Kartografa, SPEC 12.1).
 | Funkcja (3.0.0) | Co zwraca |
 |---|---|
 | `store_info(root, /) -> StoreInfo` | rozpoznanie katalogu (`exists`, `schema`, `supported`, `problems`), obsługiwane kontrakty (`contracts`: `store`, `meta`, `series`, `plan`, `project`, `pmaxtp`, `observation`) i dostawcy (`providers`); katalog nieznany bez wyjątku |
-| `iter_store(root, /, *, kind=None, provider=None) -> Iterator[StoreEntry]` | wpisy `kind` = `archive`, `series`, `catalog`, `pmaxtp`, `observation` albo `problem` (`slot`, `version`, `meta`, `provider`); problem ma `problem_code`, m.in. `stale_incoming`, `missing_sidecar`, `missing_file`, `invalid_json`, `invalid_meta`, `unknown_schema`, `unknown_entry`, `size_mismatch`, `symlink`, `unsupported_store` |
+| `iter_store(root, /, *, kind=None, provider=None) -> Iterator[StoreEntry]` | wpisy `kind` = `archive`, `series`, `catalog`, `pmaxtp`, `observation` albo `problem` (`slot`, `version`, `meta`, `provider`); problem ma `problem_code`, m.in. `stale_incoming`, `missing_sidecar` (katalog wersji bez sidecara, także pusty — przerwana albo trwająca publikacja, IMGW-2), `missing_file`, `invalid_json`, `invalid_meta`, `unknown_schema`, `unknown_entry`, `size_mismatch`, `symlink`, `unsupported_store` |
 | `read_meta(path, /) -> Meta` | typowany, tolerancyjny odczyt `imgw-meta/1`; `path` = plik główny wersji albo jego `.meta.json`; `dataset_key` (`None` dla klucza nieznanego, IMGW-20), `content_sha256` i `content_form` (`None` bez formy kanonicznej) |
 | `current_version(root, /, *, slot) -> StoreEntry \| None` | bieżąca wersja slotu wg reguły SPEC 4.8.1; slot: `archive:<klucz>:<ścieżka względem katalogu zbioru na serwerze>` (np. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), `series:<klucz>`, `catalog:pl.imgw.stations` albo `catalog:cz.chmi.stations`, `pmaxtp:pl.imgw.pmaxtp:<POT\|AMP>/<x>_<y>` |
 | `read_catalog(version=None, /, *, root=None, provider=None)` | stacje (`StationFeature`) wersji katalogu albo — z `root` — bieżących katalogów wszystkich dostawców |
@@ -1020,6 +1065,18 @@ Oczekiwania adaptera wobec 3.0.0 (audyt zgodności 2026-10-19):
   `read_catalog(root=…)`. Adapter nie wylicza wtedy wersji bieżącej sam,
   tylko pokazuje slot z jego problemami z `iter_store` (te same wpisy
   `problem`, UC-13); resztę katalogu IMGW indeksuje normalnie.
+- Wyjątek od tej reguły (3.0.0, `0d98f3b`): katalog wersji bez sidecara
+  pliku głównego — także pusty — to przerwana albo trwająca publikacja
+  (IMGW-2), nie wersja. `iter_store` zgłasza go jako problem
+  `missing_sidecar`, ale `current_version` i `read_catalog(root=…)` go
+  pomijają i zwracają wersję bieżącą bez `IMGWDataError`. Adapter (v0.5)
+  traktuje `missing_sidecar` jako problem niekrytyczny i możliwie
+  przejściowy: nie oczekuje dla takiego slotu `IMGWDataError`, pokazuje
+  wersję bieżącą z `current_version` i problem obok niej, a przy
+  następnym skanie problem może zniknąć (następny zapis tej samej treści
+  uzupełnia katalog). Przerwany katalog stacji ponowiony innego dnia
+  zostaje problemem do ręcznego usunięcia (IMGW-2, stan). Wersja z
+  sidecarem bez pliku głównego (`missing_file`) nadal daje `IMGWDataError`.
 - Wpisy `observation` to historia publikacji pliku, nie wersje ani
   problemy (6.3, odpowiedź 15); wpisy `pmaxtp` nie są problemami —
   PMAXTP jest poza zakresem MVP (SPEC 4.8). Lista kodów problemów jest

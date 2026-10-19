@@ -845,6 +845,22 @@ IMGWTools to odtąd IMGW-1..IMGW-14 (SPEC 12.7, `docs/IMGWTOOLS_REQUIREMENTS.md`
 wtyczkami: Kartograf jest wymaganą zależnością, IMGWTools extra `archiwista[imgw]`;
 brak IMGWTools oznacza źródło niedostępne, nie awarię (SPEC 5.3).
 
+**Errata 3 (2026-10-19, decyzja użytkownika — model zapisu IMGWTools 3.0.0):**
+w Konsekwencjach „bez dowiązań” znaczy: bez trwałych dowiązań twardych w katalogu
+IMGW (po publikacji każdy plik ma jedną nazwę). IMGWTools 3.0.0 publikuje wersje
+według modelu Kartografa (errata ADR-001 IMGWTools z 2026-10-19; ADR-036 D18, D21,
+D22 Kartografa): pliki z `.incoming/` trafiają do katalogu wersji dowiązaniami
+twardymi `os.link`, sidecar pliku głównego, dowiązywany ostatni, zatwierdza wersję,
+a znacznik `imgw-store.json` też powstaje przez dowiązanie twarde. Udział
+z magazynem musi więc obsługiwać dowiązania twarde dla obu producentów (SPEC 4.6
+pkt 1 i 9, sprawdza to `archiwista doctor`); bez nich zapis IMGWTools kończy się
+`IMGWStoreConflictError` (`not_atomic`). Katalog wersji bez sidecara to przerwana
+albo trwająca publikacja, nie wersja: `current_version` go pomija, `iter_store`
+zgłasza `missing_sidecar`, a adapter IMGW traktuje to jako problem niekrytyczny
+i możliwie przejściowy (SPEC 4.4, IMGW-2, IMGW-10). Prostszy kontrakt IMGW (tylko
+przyrost, bez nadpisywania i plików zmiennych) zostaje; model publikacji jest
+teraz wspólny z Kartografem, co zmniejsza rozbieżność dwóch implementacji (SPEC 14).
+
 ---
 
 ## ADR-020: Format danych IMGW: własny sidecar, Parquet, GeoJSON
