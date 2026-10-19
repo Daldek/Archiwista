@@ -45,9 +45,9 @@ danych do laczenia. Wprowadzenie: `README.md`; specyfikacja: `docs/SPEC.md`.
 |Zakres MVP, poza zakresem, etapy i bramki, zaleznosci|`docs/SCOPE.md`|
 |Plan wdrozenia v0.1: kroki, zaleznosci, bramka akceptacji|`docs/PLAN_v0.1.md`|
 |Stan prac, sprawy otwarte, nastepny krok|`docs/PROGRESS.md`|
-|Zmiany w wydaniach|`CHANGELOG.md`|
-|Widoki dla uzytkownika; API i CLI dla skryptow i agentow|`docs/Przewodnik_uzytkownika.md`, `docs/API_dla_agentow.md`|
-|Pomiary, odbior i bramka wydania v0.1|`docs/raporty/v0.1-pomiary.md`|
+|Zmiany w wydaniach|`docs/CHANGELOG.md`|
+|Widoki dla uzytkownika; API i CLI dla skryptow i agentow|`docs/USAGE.md`, `docs/AGENT_API.md`|
+|Pomiary, odbior i bramka wydania v0.1|`docs/reports/v0.1-measurements.md`|
 |Cel, uzytkownicy, slownik pojec|`docs/SPEC.md` 1-2|
 |Przypadki uzycia i scenariusze|`docs/SPEC.md` 3|
 |Model danych, indeks, odswiezanie, SMB|`docs/SPEC.md` 4|

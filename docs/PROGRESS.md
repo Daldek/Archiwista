@@ -5,7 +5,7 @@
 **Status:** wydanie **0.1.0 „Przeglądarka”** gotowe na `develop`
 (`chore(release): wydanie 0.1.0`): kroki 0–14 planu v0.1
 (`docs/PLAN_v0.1.md`) ukończone, wszystkie kryteria SPEC 13 v0.1
-zaliczone, bramka zielona (`docs/raporty/v0.1-pomiary.md`, sekcja 10).
+zaliczone, bramka zielona (`docs/reports/v0.1-measurements.md`, sekcja 10).
 Bez tagu `v0.1.0` i bez scalenia do `main` — czeka na decyzję
 użytkownika.
 **Następny krok:** plan v0.2 „Podglądy” — nowy `docs/PLAN_v0.2.md`
@@ -17,13 +17,13 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
 | Dokument | Rola |
 |---|---|
 | `README.md` | instalacja, uruchomienie, CLI, położenie danych, bramka |
-| `CHANGELOG.md` | co weszło do 0.1.0, znane ograniczenia |
+| `docs/CHANGELOG.md` | co weszło do 0.1.0, znane ograniczenia |
 | `docs/PRD.md` | wymagania F1–F16, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
 | `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
 | `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
 | `docs/PLAN_v0.1.md` | plan v0.1 z umowami między krokami — wzór dla planu v0.2 |
-| `docs/raporty/v0.1-pomiary.md` | pomiary SPEC 4.5, odbiór v0.1, bramka wydania, zrzuty |
-| `docs/Przewodnik_uzytkownika.md`, `docs/API_dla_agentow.md` | dokumentacja użytkownika i agentów (stan 0.1.0) |
+| `docs/reports/v0.1-measurements.md` | pomiary SPEC 4.5, odbiór v0.1, bramka wydania, zrzuty |
+| `docs/USAGE.md`, `docs/AGENT_API.md` | dokumentacja użytkownika i agentów (stan 0.1.0) |
 | `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
 | `docs/DECISIONS.md` | A-ADR-001..029 (erraty na końcu wpisów) |
 | `mockup/README.md` | mockup: przepływ, co prawdziwe, co symulowane, zrzuty |
@@ -132,7 +132,7 @@ Zakres i kryteria: SPEC 13 v0.2, SCOPE etap 3.
   KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa Kartografa niezaktualizowana (czeka
   na decyzję użytkownika); KF (scalona powierzchnia, dziś R6 w backlogu,
   poza publicznym API 0.8.0) blokuje v0.6, a więc MVP. IMGWTools —
-  `docs/wymagania-imgwtools.md` (IMGW-1..20) do przekazania; IMGW-1..14
+  `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-1..20) do przekazania; IMGW-1..14
   blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś szkic „Obserwator” bez
   kodu) — v0.6, a więc MVP — największe ryzyko harmonogramu.
 - Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).

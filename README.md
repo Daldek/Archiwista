@@ -18,7 +18,7 @@ indeks i podglądy, które można w każdej chwili odbudować.
 **Status:** wydanie **0.1.0 „Przeglądarka”** (2026-10-19) — lokalna
 przeglądarka magazynu Kartografa, tylko do odczytu: indeks, widoki „Mapa”,
 „Katalog”, „Karta pliku”, „Projekty” (podgląd) i „Magazyn”, wiersz poleceń
-oraz API HTTP dla skryptów i agentów. Zmiany: [`CHANGELOG.md`](CHANGELOG.md).
+oraz API HTTP dla skryptów i agentów. Zmiany: [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 Następne wersje: v0.2 „Podglądy” (podglądy plików, Wachlarz, dane własne
 projektu), v0.3 „Działania” (dostępność u źródła, pobieranie i akcje
 projektów przez API Kartografa), v0.4 „Zespół”, v0.5 „Stacje IMGW”,
@@ -70,7 +70,7 @@ pokazuje pasek nad widokami. `Ctrl+C` zatrzymuje serwer.
 
 Sesja przeglądarki wygasa po 24 godzinach bez użycia i kończy się wraz
 z zatrzymaniem serwera; nowy adres sesji wystawia `archiwista token`. Opis
-widoków: [`docs/Przewodnik_uzytkownika.md`](docs/Przewodnik_uzytkownika.md).
+widoków: [`docs/USAGE.md`](docs/USAGE.md).
 
 ## Diagnostyka
 
@@ -100,7 +100,7 @@ Polecenia odczytu (`status`, `sources`, `search`, `entry`, `version`,
 indeks tymi samymi usługami co API. Z opcją `--json` wypisują na stdout
 wyłącznie JSON o schemacie odpowiedzi API (błąd: problem RFC 9457 i kod
 wyjścia `1`), a tekst po polsku — na stderr. Skrypty i agenci AI:
-[`docs/API_dla_agentow.md`](docs/API_dla_agentow.md) (sesja HTTP, filtry,
+[`docs/AGENT_API.md`](docs/AGENT_API.md) (sesja HTTP, filtry,
 stronicowanie, zadania w tle, błędy). Pełny schemat API jest pod
 `/api/v1/openapi.json`, a dokumentacja interaktywna pod `/api/docs`
 uruchomionego serwera.
@@ -135,21 +135,21 @@ z `umask 077` — inne konta komputera nie czytają indeksu ani bazy stanu.
 `pytest` domyślnie pomija testy `live`, `perf` i `smb` (prawdziwe magazyny,
 magazyn 50 000 slotów, udział SMB 3), uruchamia testy interfejsu w Chromium
 i wymaga 80% pokrycia. Pomiary i ich metoda:
-[`docs/raporty/v0.1-pomiary.md`](docs/raporty/v0.1-pomiary.md).
+[`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md).
 
 ## Dokumentacja
 
 | Dokument | Zawartość |
 |---|---|
-| [`CHANGELOG.md`](CHANGELOG.md) | zmiany w kolejnych wydaniach |
-| [`docs/Przewodnik_uzytkownika.md`](docs/Przewodnik_uzytkownika.md) | widoki v0.1 dla użytkownika: kreator, Mapa, Katalog, Karta pliku, Projekty, Magazyn |
-| [`docs/API_dla_agentow.md`](docs/API_dla_agentow.md) | API HTTP i CLI `--json` dla skryptów i agentów AI |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | zmiany w kolejnych wydaniach |
+| [`docs/USAGE.md`](docs/USAGE.md) | widoki v0.1 dla użytkownika: kreator, Mapa, Katalog, Karta pliku, Projekty, Magazyn |
+| [`docs/AGENT_API.md`](docs/AGENT_API.md) | API HTTP i CLI `--json` dla skryptów i agentów AI |
 | [`docs/PRD.md`](docs/PRD.md) | wymagania produktu: problem, odbiorcy, wymagania funkcjonalne i niefunkcjonalne, miary sukcesu, otwarte decyzje |
 | [`docs/SCOPE.md`](docs/SCOPE.md) | zakres: MVP, poza zakresem, etapy z bramkami, zależności od producentów, ryzyka |
 | [`docs/SPEC.md`](docs/SPEC.md) | specyfikacja szczegółowa: przypadki użycia, model danych i indeks (także dane IMGW), architektura, interfejs, łączenie danych, API HTTP, bezpieczeństwo, wymagania wobec Kartografa i IMGWTools, roadmapa z kryteriami akceptacji, ryzyka, pytania otwarte |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | decyzje (ADR) |
 | [`docs/PLAN_v0.1.md`](docs/PLAN_v0.1.md) | plan implementacji v0.1: umowy między krokami, kroki z odbiorem, bramka |
-| [`docs/raporty/v0.1-pomiary.md`](docs/raporty/v0.1-pomiary.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |
+| [`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | stan prac i sprawy otwarte |
 | [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) | standardy kodowania: język, nazewnictwo, formatowanie, testy, git |
 | `mockup/` | klikalny mockup interfejsu do decyzji przed implementacją (uruchomienie: `mockup/README.md`) |

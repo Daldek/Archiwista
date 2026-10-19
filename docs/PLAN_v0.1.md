@@ -1,7 +1,7 @@
 # Plan implementacji v0.1 „Przeglądarka”
 
 **Status:** wykonany — kroki 0–14 ukończone, wydanie 0.1.0 (2026-10-19;
-bramka i wyniki: `docs/raporty/v0.1-pomiary.md`, sekcje 4 i 10). Wersja
+bramka i wyniki: `docs/reports/v0.1-measurements.md`, sekcje 4 i 10). Wersja
 planu po przeglądzie (2026-10-18): uwzględnia wszystkie uwagi przeglądu
 oraz decyzje kontraktowe z Kartografem (decyzje 2–5 i 8 poniżej).
 **Zakres:** wyłącznie lokalny, tylko odczyt magazynu Kartografa; zapisy
@@ -113,7 +113,7 @@ nie wdrażać kolejnego zależnego kroku, dopóki poprzedni nie działa.
      z `segment`, `units` i `known_versions`, z jednostkami podzielonymi na
      rozłączne paczki w tej samej puli; jednostki z siatki godeł
      (`sheet_grid`) albo z obrysów w indeksie.
-   - *Errata 1 (2026-10-19, pomiary kroku 13, `docs/raporty/v0.1-pomiary.md`).*
+   - *Errata 1 (2026-10-19, pomiary kroku 13, `docs/reports/v0.1-measurements.md`).*
      Równoległość wyłącznie po segmentach nie wystarczyła na udziale: 43%
      wpisów (`nmt/pl_1992`) czytał jeden wątek (skan przyrostowy 342 s).
      Teraz na udziale (`scan_threads` > 1) każdy segment adaptera
@@ -1342,7 +1342,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `search` sprawdza `CatalogFilters`, a błędy to ten sam problem `422`
   co trasa (wspólne `validation_problem` w `api/errors.py`). Widoczność
   `LOCAL_OWNER` daje `Authorizer.visible_projects` jak w HTTP. Przewodnik
-  `docs/API_dla_agentow.md` powstał w tym kroku (z sekcją zadań i SSE
+  `docs/AGENT_API.md` powstał w tym kroku (z sekcją zadań i SSE
   według 9b); krok 14 go aktualizuje. CLI nie ma poleceń zadań.
 
 ### 13. E2E, awarie udziału i pomiary
@@ -1383,7 +1383,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   `--store`); pomiary z `--no-cov`. Wyniki, metoda i poprawki (brak
   `TCP_NODELAY` — +40 ms na żądanie, czytelnicy indeksu bez `mmap` — RSS
   serwera 638 → 179 MiB, filtr „przypięte” z przypięć — 228 → 12 ms p95):
-  `docs/raporty/v0.1-pomiary.md`. Otwarte po przebiegach 1–2: skan
+  `docs/reports/v0.1-measurements.md`. Otwarte po przebiegach 1–2: skan
   przyrostowy na SSD na granicy 20 s (19,3 i 20,3 s); na prawdziwym SMB 3
   (1 Gb/s) pełny skan 477 s w progu, ale przyrostowy 342 s (cel 180 s)
   i odświeżenie widoku 10,6 s (cel 5 s) poza progami — największy segment
@@ -1394,7 +1394,7 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   Płynność mapy v0.2 bez GPU niezweryfikowana.
 
 ### 14. Dokumentacja, bramka i wydanie
-- **Cel:** `README.md`, `CHANGELOG.md`, `docs/API_dla_agentow.md` (nowy
+- **Cel:** `README.md`, `docs/CHANGELOG.md`, `docs/AGENT_API.md` (nowy
   dokument tworzony dopiero przy wdrożeniu), dokumentacja instalacji,
   konfiguracji, CLI, API, sesji agenta, trybu offline, ograniczeń v0.1
   i metodologii pomiarów; wskazać v0.1 wobec v0.2/v0.3 i repozytorium
@@ -1414,8 +1414,8 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
 - **Stan po kroku 14:** `README.md` (instalacja z `requirements.lock`
   i edytowalnym Kartografem z gałęzi `feat/archiwista-store-api`,
   `archiwista serve`, `doctor`, CLI z `--json`, położenie danych, bramka),
-  `CHANGELOG.md` (`[0.1.0]`), `docs/Przewodnik_uzytkownika.md` (widoki
-  v0.1 ze zrzutami), `docs/API_dla_agentow.md` sprawdzony z kodem
+  `docs/CHANGELOG.md` (`[0.1.0]`), `docs/USAGE.md` (widoki
+  v0.1 ze zrzutami), `docs/AGENT_API.md` sprawdzony z kodem
   (`/requests/{parent_request}`, CSRF w każdym żądaniu, SSE przez `fetch`
   albo klienta HTTP zamiast `EventSource`, `--revoke-all`, `DELETE
   /session`, obszary i stan lokalny), opis OpenAPI (sesja z CSRF w każdym
@@ -1424,8 +1424,8 @@ Pomiar w kroku 13 liczy otwarcia sidecarów i porównuje je z tą tabelą.
   i v0.1 w `docs/SCOPE.md`; wersja pakietu 0.1.0. Bramka, pomiar SSD
   i test na żywo na kodzie wydania, przejście `archiwista serve`
   w przeglądarce na magazynie zamontowanym `ro` i przewodnik agenta przez
-  `curl`: `docs/raporty/v0.1-pomiary.md`, sekcja 10; zrzuty
-  `docs/raporty/v0.1-zrzuty/`. Bez tagu `v0.1.0` i scalenia do `main`
+  `curl`: `docs/reports/v0.1-measurements.md`, sekcja 10; zrzuty
+  `docs/reports/v0.1-screenshots/`. Bez tagu `v0.1.0` i scalenia do `main`
   (decyzja użytkownika).
 
 ## Bramka SPEC 13 v0.1: dowód dla każdego kryterium

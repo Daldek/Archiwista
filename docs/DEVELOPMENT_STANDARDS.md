@@ -67,6 +67,22 @@ PREVIEW_CACHE_LIMIT_BYTES = 20 * 1024**3
 | `*Event` | Zdarzenie zadania w tle (postęp, komunikat) | `JobEvent` |
 | `*Error` | Wyjątek | `SourceUnavailableError` |
 
+### 1.3 Pliki dokumentacji
+
+Nazwy plików po angielsku (jak w Kartografie i IMGWTools), treść po polsku
+(sekcja 0):
+
+| Rodzaj | Nazwa | Przykład |
+|--------|-------|----------|
+| Dokument w `docs/` | angielska nazwa, WIELKIE LITERY | `docs/USAGE.md`, `docs/AGENT_API.md` |
+| Plan wersji | `docs/PLAN_v<X.Y>.md` | `docs/PLAN_v0.2.md` |
+| Raport wydania | `docs/reports/<wersja>-<temat>.md`, małe litery, po angielsku | `docs/reports/v0.1-measurements.md` |
+| Załączniki raportu (zrzuty) | `docs/reports/<wersja>-<temat>/`, małe litery, po angielsku | `docs/reports/v0.1-screenshots/02-map.webp` |
+
+W katalogu głównym repozytorium zostają tylko pliki, których szukają tam
+GitHub i narzędzia (`README.md`, `CLAUDE.md`, `CONTRIBUTING.md`,
+`CONTRIBUTORS.md`, `LICENSE`); historia zmian to `docs/CHANGELOG.md`.
+
 ---
 
 ## 2. Formatowanie

@@ -832,7 +832,7 @@ dane IMGW są zadaniami projektu i przypięciami w v1.0 — w manifeście IMGWTo
 `imgw-project.json` (`imgw-project/1`) obok `kartograf-project.json`, zmienianym
 wyłącznie przez API IMGWTools (wymaganie IMGW-14; ADR-023). Zasada jednego właściciela
 formatu (pkt 1) zostaje: manifest Kartografa się nie zmienia. Wymagania wobec
-IMGWTools to odtąd IMGW-1..IMGW-14 (SPEC 12.7, `docs/wymagania-imgwtools.md`).
+IMGWTools to odtąd IMGW-1..IMGW-14 (SPEC 12.7, `docs/IMGWTOOLS_REQUIREMENTS.md`).
 
 **Errata 2 (2026-10-17, decyzja użytkownika — ADR-024):** adaptery producentów są
 wtyczkami: Kartograf jest wymaganą zależnością, IMGWTools extra `archiwista[imgw]`;
@@ -1164,7 +1164,7 @@ decyzje). Przed v0.1 dochodzi etap 0 „Architektura i plan” (architektura otw
 ADR-004..008, 015).
 
 **Konsekwencje:** Kolejność i zakres wydań określa `docs/SCOPE.md`; SPEC 13 trzyma
-szczegóły i kryteria akceptacji w nowej numeracji; SPEC i `docs/wymagania-imgwtools.md`
+szczegóły i kryteria akceptacji w nowej numeracji; SPEC i `docs/IMGWTOOLS_REQUIREMENTS.md`
 przenumerowane. Wcześniejsze wpisy tego rejestru zachowują numerację z chwili decyzji
 (np. „v0.9” w ADR-019..024 = dzisiejsze v0.5, „v0.8” = v0.4). MVP zależy od wydania
 IMGWTools z IMGW-1..IMGW-14; tryb zespołu wchodzi do MVP przed danymi IMGW.
@@ -1193,7 +1193,7 @@ przez adapter IMGW (wtyczka z ADR-024); osobny adapter tylko wtedy, gdy IMGWTool
 wyda ČHMÚ jako osobny pakiet (pytanie otwarte w PRD). Zmiany: SPEC nagłówek, 2,
 3 (UC-09, UC-20), 4.8.6, 5.3, 6.7, 8.3, 8.6, 10.2, 11, 12.5, 12.7, 13, 14; PRD F12,
 F14, F17, założenia, miary sukcesu, otwarte decyzje; SCOPE; README; plan v0.1
-(granice zakresu); `docs/wymagania-imgwtools.md` (IMGW-15..IMGW-19).
+(granice zakresu); `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-15..IMGW-19).
 
 ---
 

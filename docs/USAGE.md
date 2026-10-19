@@ -5,7 +5,7 @@ mapie, w katalogu i na karcie pliku, a obok — projekty i stan magazynu.
 Niczego nie pobiera ani nie zmienia: magazyn i katalogi projektów tylko
 czyta, a własny indeks trzyma lokalnie. Instalacja i wiersz poleceń:
 [`README.md`](../README.md); skrypty i agenci AI:
-[`API_dla_agentow.md`](API_dla_agentow.md).
+[`AGENT_API.md`](AGENT_API.md).
 
 ## Start
 
@@ -26,7 +26,7 @@ czyta, a własny indeks trzyma lokalnie. Instalacja i wiersz poleceń:
    postęp. Dalej skanuje harmonogram: przyrostowo co 5 minut (dysk
    lokalny) albo co 15 minut (udział) i w całości raz na dobę.
 
-![Kreator pierwszego uruchomienia](raporty/v0.1-zrzuty/01-kreator.webp)
+![Kreator pierwszego uruchomienia](reports/v0.1-screenshots/01-wizard.webp)
 
 ## Okno
 
@@ -47,7 +47,7 @@ czyta, a własny indeks trzyma lokalnie. Instalacja i wiersz poleceń:
 
 ## Mapa
 
-![Mapa z obszarem i stanem lokalnym](raporty/v0.1-zrzuty/02-mapa.webp)
+![Mapa z obszarem i stanem lokalnym](reports/v0.1-screenshots/02-map.webp)
 
 Panel „Wybór” prowadzi przez trzy kroki:
 
@@ -75,7 +75,7 @@ mapę, plus i minus przybliżają.
 
 ## Katalog
 
-![Katalog z wyszukiwaniem i filtrami](raporty/v0.1-zrzuty/03-katalog.webp)
+![Katalog z wyszukiwaniem i filtrami](reports/v0.1-screenshots/03-catalog.webp)
 
 - **Wyszukiwanie** (`Ctrl+K` albo `/`): każde słowo musi pasować do
   początku godła, TERYT, KU, nazwy pliku, produktu, etykiety wersji, numeru
@@ -96,7 +96,7 @@ mapę, plus i minus przybliżają.
 
 ## Karta pliku
 
-![Karta pliku](raporty/v0.1-zrzuty/04-karta-pliku.webp)
+![Karta pliku](reports/v0.1-screenshots/04-file-card.webp)
 
 - **Oś wersji:** najnowsza na górze; „bieżąca” — wskazuje ją ścieżka
   standardowa, „pełny arkusz” — dowiązanie `full_sheet/`, „brak
@@ -122,7 +122,7 @@ mapę, plus i minus przybliżają.
 
 ## Projekty
 
-![Projekty](raporty/v0.1-zrzuty/05-projekty.webp)
+![Projekty](reports/v0.1-screenshots/05-projects.webp)
 
 - **Lista** projektów z katalogów projektów: magazyn, stan przy skanie,
   liczba zadań, przypiętych i brakujących wersji, czas odczytu manifestu;
@@ -137,7 +137,7 @@ mapę, plus i minus przybliżają.
 
 ## Magazyn
 
-![Magazyn](raporty/v0.1-zrzuty/06-magazyn.webp)
+![Magazyn](reports/v0.1-screenshots/06-store.webp)
 
 - **Stan:** dostępny, niedostępny (od kiedy) albo jeszcze nie zeskanowany;
   dysk lokalny albo udział; ostatnie pełne przejście, zawartość indeksu,

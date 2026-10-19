@@ -11,7 +11,7 @@ projektu `kartograf-project/1`, plan aktualizacji `kartograf-plan/1`, raport
 dostępności `kartograf-availability/1`; od v0.6 także KF (scalona
 powierzchnia PL + CZ, 12.5); od v0.5 IMGWTools (dane IMGW) —
 wydanie z wymaganiami IMGW-1..IMGW-14 (sekcja 12.7, dokument
-[`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md); dziś 2.1.1, Beta,
+[`docs/IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md); dziś 2.1.1, Beta,
 bez magazynu): katalog `imgw-store/1`, sidecar `imgw-meta/1`, szeregi
 `imgw-series/1` (12.8), manifest projektu `imgw-project/1` (IMGW-14), a od
 v0.6 wydanie ze stacjami ČHMÚ (IMGW-15..IMGW-19)
@@ -1249,7 +1249,7 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 | `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
 | `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
 | `archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
-| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista token` (jednorazowy token sesji agenta), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import`; polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API (`archiwista/reader.py`; `docs/API_dla_agentow.md`) |
+| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista token` (jednorazowy token sesji agenta), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import`; polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API (`archiwista/reader.py`; `docs/AGENT_API.md`) |
 
 Interfejs (`archiwista/web/`, A-ADR-028): trasy
 z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link
@@ -3487,7 +3487,7 @@ v0.1. Wszystkie funkcje są tylko do odczytu; dowolnie wiele wywołań
 jednego segmentu z `list_partitions` albo rozłączne paczki `units` jednego
 segmentu; każdy generator konsumuje jeden wątek), tak samo `read_sidecar`,
 `describe_segment` i `link_target`. Uzupełnienie 2026-10-19 (pomiary v0.1,
-`docs/raporty/v0.1-pomiary.md`): `list_partitions`, argument `partition`
+`docs/reports/v0.1-measurements.md`): `list_partitions`, argument `partition`
 i mapowanie w `skip_versions` w tym samym wydaniu 0.8.0 — skan na udziale
 dzieli największy segment między wątki, a skan przyrostowy i odświeżenie
 widoku nie listują znanych katalogów wersji (4.4).
@@ -3574,7 +3574,7 @@ testy offline na fixturach archiwów. Rdzeń zostaje lekki (`httpx`,
 `imgwtools[store]`). IMGW-2, IMGW-4 i IMGW-11 naprawiają też błędy
 niezależne od Archiwisty. Samodzielny dokument wymagań dla zespołu
 IMGWTools (cel, kryteria akceptacji, priorytety, zależności i kolejność
-wdrożenia): [`docs/wymagania-imgwtools.md`](wymagania-imgwtools.md).
+wdrożenia): [`docs/IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md).
 
 Stacje ČHMÚ (CZ) od v0.6 (decyzja użytkownika 2026-10-18; 4.8.6): IMGWTools
 3.0.0 ma magazyn wersjonowany bez warstwy dostawców (`provider` w sidecarze
@@ -4046,8 +4046,8 @@ projektu z przypięciem wejść i wyniku.
 | Obciążenie publicznych usług | spowolnienia, blokady po stronie źródeł | niska | cache Kartografa, limity asystenta, 2 zadania sieciowe naraz |
 | Interfejs bez kontroli typów (A-ADR-028: Preact + htm bez kroku budowania) | błędy wykrywane dopiero w działaniu | średnia | testy w przeglądarce (Playwright), adnotacje JSDoc, testy kontraktu z OpenAPI; dodanie Vite i TypeScriptu później bez przepisywania komponentów |
 | Warunki licencji danych przy przekazaniu | naruszenie atrybucji | niska | atrybucje w karcie pliku, zestawie i kopii danych |
-| Zależność od IMGWTools (2.1.1, Beta, bez magazynu; IMGW-1..IMGW-14); od A-ADR-024 opcjonalna (extra `[imgw]`) | dane IMGW (v0.5), a z nimi MVP (v1.0, A-ADR-025), czekają na IMGWTools; wydania v0.1–v0.4 i instalacja bez IMGW go nie potrzebują | średnia | IMGWTools jest wtyczką i nie blokuje v0.1–v0.4 (5.8); kontrakt uzgodniony wcześnie (12.7–12.8, `docs/wymagania-imgwtools.md`), interfejs źródła od v0.1, testy kontraktu na katalogu zbudowanym przez IMGWTools; IMGW-2, IMGW-4 i IMGW-11 naprawiają błędy niezależne od Archiwisty |
-| Stacje ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu, możliwa zmiana nazwy pakietu) | v0.6, a z nim MVP, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter i extra | średnia | wymagania zgłoszone przed v0.5 (`docs/wymagania-imgwtools.md`), te same kontrakty z dostawcą jako zmiana addytywna, jeden adapter IMGW; decyzja o adapterze przy wydaniu IMGWTools (4.8.6, A-ADR-024) |
+| Zależność od IMGWTools (2.1.1, Beta, bez magazynu; IMGW-1..IMGW-14); od A-ADR-024 opcjonalna (extra `[imgw]`) | dane IMGW (v0.5), a z nimi MVP (v1.0, A-ADR-025), czekają na IMGWTools; wydania v0.1–v0.4 i instalacja bez IMGW go nie potrzebują | średnia | IMGWTools jest wtyczką i nie blokuje v0.1–v0.4 (5.8); kontrakt uzgodniony wcześnie (12.7–12.8, `docs/IMGWTOOLS_REQUIREMENTS.md`), interfejs źródła od v0.1, testy kontraktu na katalogu zbudowanym przez IMGWTools; IMGW-2, IMGW-4 i IMGW-11 naprawiają błędy niezależne od Archiwisty |
+| Stacje ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu, możliwa zmiana nazwy pakietu) | v0.6, a z nim MVP, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter i extra | średnia | wymagania zgłoszone przed v0.5 (`docs/IMGWTOOLS_REQUIREMENTS.md`), te same kontrakty z dostawcą jako zmiana addytywna, jeden adapter IMGW; decyzja o adapterze przy wydaniu IMGWTools (4.8.6, A-ADR-024) |
 | Archiwa ČHMÚ per stacja (brak archiwum kraju) | setki zapytań przy synchronizacji, wolne plany | średnia | synchronizacja tylko wybranych stacji (obszar, projekt), plan z liczbą zapytań, 2 zadania sieciowe naraz |
 | Konflikty wersji bibliotek naukowych między Kartografem i IMGWTools (numpy, pandas, GDAL/rasterio, pyarrow) | niemożliwa instalacja albo rozjazd środowiska z `[imgw]` | średnia | jeden plik blokady dla spójnego zestawu, CI w dwóch konfiguracjach (bez i z `[imgw]`), testy kontraktu względem `develop` producentów (5.8, 11, A-ADR-024) |
 | Niezgodna wersja albo schemat zainstalowanego producenta (np. `imgw-meta/2`) | źródło nie działa albo czyta błędnie | średnia | sprawdzenie przy starcie i w `archiwista doctor`, czytelny komunikat po polsku, wyłączone tylko to źródło (5.8) |

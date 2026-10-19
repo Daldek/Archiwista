@@ -81,7 +81,7 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 1. **Etap 0 – Architektura i plan.** Decyzje architektoniczne — **przyjęte 2026-10-18**: Python + FastAPI, interfejs Preact + htm bez kroku budowania, MapLibre GL, procesy robocze, rio-tiler, pakiet Pythona, tryb zespołu jako jeden serwer (A-ADR-004, 006, 007, 008, 013, 015, 028). Komputer odniesienia i plan implementacji v0.1 ustalone w [`PLAN_v0.1.md`](PLAN_v0.1.md).
    - Bramka: ADR architektury przyjęte (spełnione), plan v0.1 zatwierdzony przez użytkownika (spełnione: plan po przeglądzie 2026-10-18, wykonany w krokach 0–14).
 2. **v0.1 „Przeglądarka”** — **wydana jako 0.1.0 (2026-10-19)**. Indeks, „Mapa”, „Katalog”, „Karta pliku”, „Projekty” (podgląd), „Magazyn”, mechanizm źródeł z atrapą drugiego adaptera, ochrona trybu lokalnego, model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora).
-   - Bramka (spełniona; dowody każdego kryterium SPEC 13 v0.1: [`raporty/v0.1-pomiary.md`](raporty/v0.1-pomiary.md)): indeks zgodny z API odczytu Kartografa (spełnione, trzy magazyny testu na żywo Kartografa 0.8.0); cele wydajności na magazynie syntetycznym 50 000 slotów (spełnione na SSD i na udziale SMB 3); magazyn tylko do odczytu działa (spełnione, także `archiwista serve` na montowaniu `ro`); testy bezpieczeństwa zielone (spełnione); macierz widoczności projektów zielona (spełnione). Kartograf z API odczytu magazynu pochodzi z gałęzi `feat/archiwista-store-api` — scalenie i tag `v0.8.0` czekają na decyzję użytkownika.
+   - Bramka (spełniona; dowody każdego kryterium SPEC 13 v0.1: [`reports/v0.1-measurements.md`](reports/v0.1-measurements.md)): indeks zgodny z API odczytu Kartografa (spełnione, trzy magazyny testu na żywo Kartografa 0.8.0); cele wydajności na magazynie syntetycznym 50 000 slotów (spełnione na SSD i na udziale SMB 3); magazyn tylko do odczytu działa (spełnione, także `archiwista serve` na montowaniu `ro`); testy bezpieczeństwa zielone (spełnione); macierz widoczności projektów zielona (spełnione). Kartograf z API odczytu magazynu pochodzi z gałęzi `feat/archiwista-store-api` — scalenie i tag `v0.8.0` czekają na decyzję użytkownika.
 3. **v0.2 „Podglądy”.** Podglądy, „Wachlarz”, „Oś czasu”, porównanie metadanych i kurtyna; dane własne projektu i migawki.
    - Bramka: każdy typ pliku ma podgląd albo powód braku; obrysy CZ ≤ 2 m od punktu kontrolnego; mapa z 5 000 obrysów płynna; migawka GeoPackage w użyciu spójna, przerwanie bez częściowej wersji.
 4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” przy działaniach.
@@ -98,7 +98,7 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 
 ## Zależności
 
-**Producenci** (wymagania: SPEC 12, [`wymagania-imgwtools.md`](wymagania-imgwtools.md)):
+**Producenci** (wymagania: SPEC 12, [`IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md)):
 
 | Wersja Archiwisty | Wymaga od producentów |
 | --- | --- |
@@ -135,7 +135,7 @@ Pełna lista: SPEC 14.
 | Ryzyko | Skutek | Działanie zaradcze |
 | --- | --- | --- |
 | MVP zależy od wydania IMGWTools z magazynem (dziś Beta, IMGW-1..14) | v1.0 czeka na IMGWTools | wymagania uzgodnione wcześnie; v0.1–v0.4 bez IMGWTools; źródło IMGW jako dodatek |
-| MVP zależy od stacji ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu) | v0.6, a z nim v1.0, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter | wymagania zgłoszone wcześnie (`wymagania-imgwtools.md`); te same kontrakty z dostawcą jako zmiana addytywna; jeden adapter IMGW, decyzja o adapterze przy wydaniu IMGWTools |
+| MVP zależy od stacji ČHMÚ w IMGWTools (IMGW-15..IMGW-19; dziś szkic „Obserwator” bez kodu) | v0.6, a z nim v1.0, czeka na IMGWTools; zmiana nazwy pakietu albo osobny pakiet zmienia adapter | wymagania zgłoszone wcześnie (`IMGWTOOLS_REQUIREMENTS.md`); te same kontrakty z dostawcą jako zmiana addytywna; jeden adapter IMGW, decyzja o adapterze przy wydaniu IMGWTools |
 | Zależność od wydań Kartografa (KA–KH); KF (scalona powierzchnia, dziś R6 w backlogu) blokuje MVP | etapy czekają, v0.6 i v1.0 czekają na KF | KA mały i pierwszy; KF zgłoszony jako wymaganie MVP; wspólny harmonogram z roadmapą Kartografa |
 | Tryb zespołu w MVP poszerza zakres bezpieczeństwa | dłuższa droga do v1.0 | v0.4 przed danymi IMGW; przegląd bezpieczeństwa w bramce v1.0 |
 | Interfejs bez kontroli typów (Preact + htm bez budowania, A-ADR-028) | błędy wykrywane późno | testy w przeglądarce (Playwright), JSDoc; Vite i TypeScript można dodać później bez przepisywania |

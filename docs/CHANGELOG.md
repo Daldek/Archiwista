@@ -5,6 +5,18 @@ Istotne zmiany Archiwisty w kolejnych wydaniach. Format wzorowany na
 według [SemVer](https://semver.org/lang/pl/). Do v1.0 API HTTP i polecenia
 wiersza poleceń mogą się zmieniać.
 
+## [Unreleased]
+
+### Zmieniono
+
+- Dokumentacja ma angielskie nazwy plików (treść po polsku, jak
+  w Kartografie i IMGWTools): `docs/USAGE.md` (dawniej
+  `Przewodnik_uzytkownika.md`), `docs/AGENT_API.md` (dawniej
+  `API_dla_agentow.md`), `docs/IMGWTOOLS_REQUIREMENTS.md` (dawniej
+  `wymagania-imgwtools.md`), `docs/reports/v0.1-measurements.md` ze zrzutami
+  w `docs/reports/v0.1-screenshots/` (dawniej `docs/raporty/`), a dziennik
+  zmian przeszedł do `docs/CHANGELOG.md`.
+
 ## [0.1.0] — 2026-10-19 — „Przeglądarka”
 
 Pierwsze wydanie: lokalna przeglądarka magazynu Kartografa, tylko do
@@ -72,9 +84,9 @@ odczytu. Wymaga Kartografa 0.8.0 z publicznym API odczytu magazynu
   `archiwista.sources`, adapter Kartografa, stany źródeł; brak albo
   niezgodna wersja producenta to `503 source_unavailable` /
   `source_incompatible` z opisem naprawy, nie awaria serwera.
-- Dokumentacja: `docs/Przewodnik_uzytkownika.md` (widoki),
-  `docs/API_dla_agentow.md` (skrypty i agenci AI),
-  `docs/raporty/v0.1-pomiary.md` (pomiary i odbiór).
+- Dokumentacja: `docs/USAGE.md` (widoki),
+  `docs/AGENT_API.md` (skrypty i agenci AI),
+  `docs/reports/v0.1-measurements.md` (pomiary i odbiór).
 
 ### Bezpieczeństwo
 
@@ -109,7 +121,7 @@ przebieg 3): pierwszy pełny skan 48,3 s na SSD i 225,6 s na udziale;
 skan przyrostowy 12,4 s i 74,7 s; odświeżenie widoku (p95) 408 ms
 i 1,83 s; lista, wyszukiwanie i karta najwyżej 143 ms (p95, próg 200 ms),
 obrysy 198 ms (próg 300 ms); szczyt RSS serwera 168–179 MiB przy indeksie
-256 MB. Metoda i wszystkie liczby: `docs/raporty/v0.1-pomiary.md`.
+256 MB. Metoda i wszystkie liczby: `docs/reports/v0.1-measurements.md`.
 
 ### Znane ograniczenia
 
