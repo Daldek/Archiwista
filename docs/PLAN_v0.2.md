@@ -1090,7 +1090,7 @@ działa.
 | 13a | Interfejs: przełącznik widoków i Wachlarz | 11, 12a, 12b | 14, 15, 16 | zrobione (Wachlarz migawek: komponent gotowy, podłączenie w 15) |
 | 13b | Interfejs: Oś czasu, Szczegóły zestawu i wspólny wybór | 13a | 14, 15, 16 | zrobione |
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
-| 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | do zrobienia |
+| 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | zrobione |
 | 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | do zrobienia |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
 | 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
@@ -3512,6 +3512,72 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_data_dir_change_admin_only`, `test_no_csp_violations_own_data`).
 - **Zależności:** 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14.
   **Równolegle:** 13a, 13b, 14, 16.
+- **Stan po kroku 15:**
+  - *Widok projektu* (`views/projects.js`, teksty `labels/projects.js`
+    `own`): grupa „Dane własne” pod zadaniami producenta — folder (ścieżka
+    do skopiowania, źródło: domyślny `dane/` albo ustawienie), stan, pliki
+    i zajętość, zajętość migawek, czas skanu, problemy folderu; lista plików
+    (do 200 na stronę, „Pokaż więcej”) ze stanem i zmianą od migawki
+    prowadząca do karty pliku; „Odśwież” → `POST /projects/{p}/scan`
+    z postępem i podsumowaniem `own_scan`; „Pokaż na mapie” → mapa
+    z `project` i `versions=pinned`; „Zmień folder danych…” (`PUT
+    …/data-dir`, potem śledzenie skanu nowego folderu, „Przywróć domyślny
+    folder dane/”) tylko dla sesji właściciela lokalnego (`actor` =
+    `local`, A-ADR-029) — sesja nie podaje ról, więc konto z rolą `admin`
+    w trybie zespołu (v0.4) zobaczy akcję dopiero, gdy `SessionState` dostanie
+    role; serwer i tak odmawia innym (`403`).
+  - *Karta pliku własnego* (`views/own.js`, nakładka `own=<projekt>/<file_id>`
+    jedną linią w `OVERLAYS`; parametry `own_version` — etykieta migawki,
+    `own_tab=preview`, `own_style`, `own_fan=1`, znikają z kartą): nagłówek
+    (ścieżka, projekt, format, rozmiar, liczba migawek, „zmieniony od migawki
+    z …”/„bez zmian…”/„bez migawki”, stan), problemy, oś wersji (plik
+    roboczy, migawki od najnowszej z datą, etykietą, obiektami, opisem),
+    zakładki „Metadane” (format, układ — WKT pod „Tech”, zasięg, położenie,
+    tożsamość treści, obiekty, warstwy z typem geometrii i polami, raster,
+    ścieżki do skopiowania, historia stanów; migawki: autor, opis, stan,
+    katalog) i „Podgląd” (`PreviewPane` z `getOwnPreview`/`buildOwnPreview`,
+    klucz z treścią pliku roboczego). Akcje: „Zrób migawkę…” — „Okno planu”
+    jako `<dialog>` modalny (plik, rozmiar, dokąd z kopiowaniem, metoda kopii
+    i treści, wolne miejsce, „tylko przyrost”, „bez zmian od migawki z …”,
+    ostrzeżenia, blokada; opis ≤ 2000 znaków; „Anuluj”/„Zrób migawkę”;
+    Esc zamyka tylko okno) → zadanie `snapshot` z etapami → podsumowanie
+    i nowa migawka na osi; „Porównaj z migawką…” (starsza jako A);
+    „Pokaż na mapie”; „Wachlarz migawek” (`Fan` z kroku 13a na `LayerSet`
+    pliku, wybór wspólny z osią); „Odśwież dane własne projektu” przy
+    `changed_since_scan`.
+  - *Mapa w kontekście projektu* (`map/own.js`, `map/canvas.js`,
+    `views/map.js`): `project` w filtrach mapy (obrysy wersji przypiętych
+    przez `/map/footprints?project=`, plakietka „projekt: …”), warstwa
+    „Dane własne” — zasięgi plików (wszystkie strony listy, do 5000) nad
+    obrysami, podpowiedź ze zmianą od migawki, klik (także z listy wyboru
+    obok obrysów magazynu) otwiera kartę i pokazuje obiekty albo kafle pliku
+    (`preview=<ref>`); sekcja legendy z liczbą zasięgów, plikami bez
+    położenia, „Pokaż wszystkie” i przejściem do projektu; kadr projektu
+    łączy obrysy przypięć i zasięgi. `useVersionPreview` przyjmuje `file:`
+    i `snapshot:` (`file_id` z listy plików po ścieżce, `findOwnFile`),
+    zwraca `outline` (obrys wersji, zasięg pliku albo prostokąt migawki);
+    legenda podglądu prowadzi do karty pliku własnego. Poprawka pojedynczego
+    punktu: widok proszony o `…/features` jest poszerzany (`widenBounds`,
+    ≥ 0,00002°), a kadr obiektu bez pola — do 0,003°.
+  - *Porównanie* (`views/compare.js`): „Karta pliku” stron `file`/`snapshot`
+    (nakładka `own=` na wersji strony), sekcja „Różnice schematu” pod tabelą
+    (`schema_diff`: warstwy tylko w A/B, obiekty, pola dodane, usunięte
+    i o zmienionym typie).
+  - *API i typy*: funkcje danych własnych w `api.js` (`listOwnFiles`,
+    `startProjectScan`, `putDataDir`, `getOwnFile`, `getOwnFileLayers`,
+    `getSnapshotPlan`, `startFileSnapshot`, `getOwnPreview`,
+    `buildOwnPreview`), modele w `types.js` oraz pola zadań (`own_scan`,
+    `snapshot`, `JobFailure.reason`, `JobFilters.project`, `store` null,
+    `Health.own_data`); nazwy rodzajów zadań w `labels/common.js`, postęp
+    etapów migawki i skanu oraz podsumowanie `own_scan` w `views/cards.js`.
+  - *Odstępstwo od umowy API*: `OwnFileItem.outline` (wielokąt WGS84 zasięgu
+    z indeksu, `OwnFileRow.outline`) — mapa projektu rysuje zasięgi bez karty
+    każdego pliku; próba w `test_folder_with_gpkg_shp_geotiff_indexed_with_extent_and_preview`.
+    Poza listą plików: `map/geo.js` (`widenBounds`), `views/cards.js`,
+    `labels/{cards,common,compare}.js`, `views/compare.css`, `api.js`,
+    `types.js`; arkusz stylów `views/own.css` ładuje `map/own.js`.
+  - *Próby*: `tests/e2e/test_own_data.py` (8 testów planu, jeden serwer na
+    moduł, offline); zrzuty w `<katalog-danych>/v02-15/`.
 
 ### 16. Wydajność i pomiary (z płynnością mapy na GPU)
 - **Cel:** zmierzyć cele SPEC 4.5 (regresja z obrysami-wielokątami) i cele
