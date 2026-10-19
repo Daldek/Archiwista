@@ -1150,8 +1150,10 @@
  * A version of a layer in the area.
  *
  * @typedef {object} LayerVersion
- * @property {string} ref - `version:<store>:<path>`.
- * @property {string} slot
+ * @property {string} ref - `version:<store>:<path>`; of an own file's layer `file:` or
+ *   `snapshot:`.
+ * @property {string} slot - Slot path; of an own file's layer its path in the data
+ *   folder.
  * @property {string|null} unit
  * @property {{state: PreviewState, tiles_url: string|null}} preview
  * @property {number[]|null} bounds - WGS84: west, south, east, north.
@@ -1162,9 +1164,9 @@
  *
  * @typedef {object} Layer
  * @property {string} key - `<variant>:<year|edition|label>[:<campaign>]` (`layer` of
- *   the address).
+ *   the address); of an own file's layers `file` or `snapshot:<label>`.
  * @property {LayerVariant} variant
- * @property {"year"|"edition"|"label"|"campaign"} kind
+ * @property {"year"|"edition"|"label"|"campaign"|"file"|"snapshot"} kind
  * @property {number|null} year - Data year, never the download's.
  * @property {string} title - Polish, e.g. `2023` or `wydanie 2021`.
  * @property {string} subtitle - The variant's name.
@@ -1184,10 +1186,11 @@
  * @typedef {object} LayerSet
  * @property {{id: string, name: string|null, area_km2: number|null, countries:
  *   string[]}|null} area
- * @property {string} store
- * @property {string} product
+ * @property {string|null} store - Null for an own file's layers
+ *   (`/projects/{project}/files/{file_id}/layers`), as `product` and `group`.
+ * @property {string|null} product
  * @property {string|null} segment
- * @property {"year"|"campaign"} group
+ * @property {"year"|"campaign"|null} group
  * @property {{crs: string, bbox: number[]}|null} frame - The area's box in its planar
  *   CRS.
  * @property {Layer[]} layers
