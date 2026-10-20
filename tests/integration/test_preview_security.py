@@ -20,6 +20,7 @@ import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import httpx
 import laspy
@@ -28,6 +29,7 @@ import pyogrio.raw
 import pytest
 import rasterio
 import shapely
+from starlette.applications import Starlette
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.config import ConfigStore
@@ -399,7 +401,8 @@ def test_hidden_preview_job_only_reports_generic_building(
             },
             actor=LOCAL_OWNER,
         )
-        visibility = served.api.client.app.state.authorizer.visible_projects(
+        app = cast(Starlette, served.api.client.app)
+        visibility = app.state.authorizer.visible_projects(
             principal(served.api.state, "other")
         )
         assert served.jobs.get(hidden.id, visible=visibility) is None

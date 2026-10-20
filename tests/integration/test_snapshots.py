@@ -61,7 +61,7 @@ from archiwista.owndata.snapshots import (
     check_snapshot,
     make_snapshot,
 )
-from archiwista.sandbox import process_work_dir
+from archiwista.sandbox import process_owner, process_work_dir
 from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import SourceRegistry, load_registry
 from tests.fixtures.job_worker import SNAPSHOT_FAULT_ENV
@@ -463,7 +463,7 @@ def test_snapshot_symlink_swap_before_work_creation_stays_in_project(
     outside.mkdir()
     if swapped == ".wersje":
         (outside / ".incoming").mkdir()
-    original_owner = snapshots.process_owner
+    original_owner = process_owner
     swapped_once = False
 
     def swap_before_work() -> str:
@@ -507,9 +507,7 @@ def test_snapshot_symlink_swap_before_publish_stays_in_project(
     detached = root / ".wersje" / "pomiary.csv-detached"
     swapped_once = False
 
-    def swap_before_rename(
-        source: Path | str, target: Path | str, **options: int
-    ) -> None:
+    def swap_before_rename(source: str, target: str, **options: int) -> None:
         nonlocal swapped_once
         parent = root / ".wersje" / "pomiary.csv"
         parent.rename(detached)

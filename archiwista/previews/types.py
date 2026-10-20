@@ -282,7 +282,9 @@ class PreviewSource:
                 nodata=_optional(value.get("nodata"), float),
                 mutable=bool(value.get("mutable", False)),
                 stat=None if stat is None else _stat_of(stat),
-                content_method=_optional(value.get("content_method"), str),
+                content_method=cast(
+                    ContentMethod | None, _optional(value.get("content_method"), str)
+                ),
             )
         except (KeyError, TypeError) as error:
             raise ValueError(f"invalid preview source: {error}") from error
