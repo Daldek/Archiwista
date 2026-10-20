@@ -366,6 +366,16 @@ modyfikacji)` w osobnej przestrzeni kluczy. Wersje są niezmienne, więc pamię�
 nie jest nieaktualna, ale takie wersje nie dzielą podglądów z kopiami tej samej treści.
 Wersje z `sha256` — bez zmian.
 
+**Errata 4 (2026-10-20, wykonanie v0.2):** rio-tiler i GDAL nie otwierają
+plików magazynu ani projektu w procesie serwera. `RenderPool` zarządza
+procesami `archiwista.previews.worker` z limitami kolejki, czasu i pamięci;
+`run_preview` buduje COG w zadaniu. Kafel roku składa się z kafli wersji,
+a raster przeliczany na mapę używa przypiętej operacji
+`COORDINATE_OPERATION` przez `rasterio.warp.reproject`, nie `WarpedVRT`
+(który zmienia wielkość liter pipeline'u PROJ). Obrazy i kafle dostarcza
+API z nagłówkiem CSRF; przed odczytem pamięci po treści `ObjectResolver`
+sprawdza widoczność `ref`. Szczegóły: `docs/PLAN_v0.2.md`, decyzje 3–4.
+
 ---
 
 ## ADR-009: Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście
@@ -1358,6 +1368,16 @@ PRD F15, N2.5; SCOPE.
 **Errata 1 (2026-10-18, decyzja użytkownika, ADR-029):** w zespole migawkę robi
 właściciel projektu albo administrator (rola „operator” zniknęła); widoczność danych
 własnych i migawek wynika z widoczności projektu.
+
+**Errata 2 (2026-10-20, wykonanie v0.2):** nazwy `.wersje/`,
+`migawka.json` i `archiwista-snapshot/1` są przyjęte. Folder inny
+niż domyślny ustawia administrator, także domyślny jest sprawdzany
+przeciw korzeniom magazynów i katalogowi lokalnych danych; problem
+folderu lub niedokończonej migawki jest przy projekcie, nie w „Magazynie”.
+Odczyt GeoPackage rozróżnia trzy stany plików SQLite i nie zapisuje
+przy pliku źródłowym; tożsamość treści to skrót logiczny SQLite
+z pominięciem pochodnych indeksów przestrzennych. Uprawnienie do
+migawki to `project.write` (właściciel albo administrator).
 
 ---
 

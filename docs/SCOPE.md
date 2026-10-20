@@ -2,7 +2,7 @@
 
 Oct 17, 2026 · @Piotr
 
-**Status:** szkic do zatwierdzenia · wymagania: [`PRD.md`](PRD.md) ·
+**Status:** zakres MVP zatwierdzony; v0.1 i v0.2 wydane · wymagania: [`PRD.md`](PRD.md) ·
 szczegóły wersji i kryteria akceptacji: [`SPEC.md`](SPEC.md) sekcja 13 ·
 decyzja o zakresie: A-ADR-025 ([`DECISIONS.md`](DECISIONS.md))
 
@@ -81,9 +81,15 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
 1. **Etap 0 – Architektura i plan.** Decyzje architektoniczne — **przyjęte 2026-10-18**: Python + FastAPI, interfejs Preact + htm bez kroku budowania, MapLibre GL, procesy robocze, rio-tiler, pakiet Pythona, tryb zespołu jako jeden serwer (A-ADR-004, 006, 007, 008, 013, 015, 028). Komputer odniesienia i plan implementacji v0.1 ustalone w [`PLAN_v0.1.md`](PLAN_v0.1.md).
    - Bramka: ADR architektury przyjęte (spełnione), plan v0.1 zatwierdzony przez użytkownika (spełnione: plan po przeglądzie 2026-10-18, wykonany w krokach 0–14).
 2. **v0.1 „Przeglądarka”** — **wydana jako 0.1.0 (2026-10-19)**. Indeks, „Mapa”, „Katalog”, „Karta pliku”, „Projekty” (podgląd), „Magazyn”, mechanizm źródeł z atrapą drugiego adaptera, ochrona trybu lokalnego, model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora).
-   - Bramka (spełniona; dowody każdego kryterium SPEC 13 v0.1: [`reports/v0.1-measurements.md`](reports/v0.1-measurements.md)): indeks zgodny z API odczytu Kartografa (spełnione, trzy magazyny testu na żywo Kartografa 0.8.0); cele wydajności na magazynie syntetycznym 50 000 slotów (spełnione na SSD i na udziale SMB 3); magazyn tylko do odczytu działa (spełnione, także `archiwista serve` na montowaniu `ro`); testy bezpieczeństwa zielone (spełnione); macierz widoczności projektów zielona (spełnione). Kartograf z API odczytu magazynu pochodzi z gałęzi `feat/archiwista-store-api` — scalenie i tag `v0.8.0` czekają na decyzję użytkownika.
-3. **v0.2 „Podglądy”.** Podglądy, „Wachlarz”, „Oś czasu”, porównanie metadanych i kurtyna; dane własne projektu i migawki.
-   - Bramka: każdy typ pliku ma podgląd albo powód braku; obrysy CZ ≤ 2 m od punktu kontrolnego; mapa z 5 000 obrysów płynna; migawka GeoPackage w użyciu spójna, przerwanie bez częściowej wersji.
+   - Bramka (spełniona; dowody każdego kryterium SPEC 13 v0.1: [`reports/v0.1-measurements.md`](reports/v0.1-measurements.md)): indeks zgodny z API odczytu Kartografa (trzy magazyny na żywo); cele wydajności 50 000 slotów spełnione na SSD i SMB 3; magazyn tylko do odczytu działa; testy bezpieczeństwa i macierz widoczności projektów zielone. API Kartografa jest na `develop`, tag `v0.8.0` czeka na decyzję użytkownika.
+3. **v0.2 „Podglądy” — wydana jako 0.2.0 (2026-10-20).** Podglądy,
+   „Wachlarz”, „Oś czasu”, porównanie metadanych i kurtyna; dane własne
+   projektu i migawki.
+   - Bramka: każdy typ pliku ma podgląd albo powód braku (spełnione);
+     obrysy CZ ≤ 2 m od punktu kontrolnego (spełnione); migawka GeoPackage
+     w trakcie edycji spójna, przerwanie bez częściowej wersji (spełnione).
+     **≥ 30 klatek/s przy 5000 obrysów niezweryfikowane** bez GPU
+     sprzętowego. Dowody i warunki: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md).
 4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” przy działaniach.
    - Bramka: parytet z CLI; anulowanie bez częściowych wersji; etykiety dla obszaru „Kraków” zgodne z ręcznym wyliczeniem; UC-01 i UC-06 na żywo; działanie zapisujące magazyn bez uprawnienia odrzucone.
 5. **v0.4 „Zespół”.** Serwer w sieci lokalnej: logowanie, zarządzanie kontami i udostępnianie projektów w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik, wspólna kolejka.

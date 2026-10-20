@@ -2165,7 +2165,7 @@ class Health(BaseModel):
 
     model_config = _examples(
         {
-            "archiwista": "0.1.0",
+            "archiwista": "0.2.0",
             "sources": [_SOURCE_EXAMPLE],
             "index": _INDEX_EXAMPLE,
             "stores": [_STORE_EXAMPLE],

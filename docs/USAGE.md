@@ -1,11 +1,11 @@
-# Przewodnik użytkownika — Archiwista 0.1
+# Przewodnik użytkownika — Archiwista 0.2
 
-Archiwista 0.1 „Przeglądarka” pokazuje, co jest w magazynie Kartografa: na
-mapie, w katalogu i na karcie pliku, a obok — projekty i stan magazynu.
-Niczego nie pobiera ani nie zmienia: magazyn i katalogi projektów tylko
-czyta, a własny indeks trzyma lokalnie. Instalacja i wiersz poleceń:
-[`README.md`](../README.md); skrypty i agenci AI:
-[`AGENT_API.md`](AGENT_API.md).
+Archiwista 0.2 „Podglądy” pokazuje magazyn Kartografa na mapie, w katalogu
+i kartach plików, a także podglądy, Wachlarz, Oś czasu i porównanie. Projekty
+mają folder danych własnych i migawki. Magazyn producenta pozostaje tylko
+do odczytu; migawki powstają wyłącznie na polecenie uprawnionej osoby
+w folderze projektu. Instalacja i CLI: [`README.md`](../README.md);
+skrypty i agenci: [`AGENT_API.md`](AGENT_API.md).
 
 ## Start
 
@@ -78,6 +78,15 @@ podkładów; nowe wbudowane daje usunięcie tabel `[[basemaps]]`
 z `config.toml`. Bez myszy: strzałki przesuwają mapę, plus i minus
 przybliżają.
 
+![Karta pliku z powodem braku podglądu](reports/v0.2-screenshots/02-karta-pliku-powod.webp)
+
+Obrysy arkuszy są wielokątami WGS84, a nie prostokątnymi obwiedniami.
+Podgląd pliku na mapie pojawia się po przygotowaniu kafli; większe rastry
+mogą wymagać przycisku „Zbuduj podgląd”. Kafle, miniatury i podgląd całego
+roku zapisują się w lokalnej pamięci po treści (limit 20 GB, najdawniejsze
+nieużywane znikają). Przy każdym pliku jest podgląd albo polski powód braku
+z instrukcją, co zrobić.
+
 ## Katalog
 
 ![Katalog z wyszukiwaniem i filtrami](reports/v0.1-screenshots/03-catalog.webp)
@@ -125,20 +134,50 @@ przybliżają.
 
 `Esc` albo „×” zamyka kartę.
 
-## Projekty
+## Projekty i dane własne
 
-![Projekty](reports/v0.1-screenshots/05-projects.webp)
+![Projekt z migawką](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
-- **Lista** projektów z katalogów projektów: magazyn, stan przy skanie,
-  liczba zadań, przypiętych i brakujących wersji, czas odczytu manifestu;
-  błędny manifest z opisem od producenta. Lista filtruje się po magazynie.
-- **Karta projektu:** „Stan teraz” od producenta („Sprawdź stan ponownie”
-  — producent sprawdza przypięte pliki bez sieci i bez liczenia sum),
-  zadania z poleceniem Kartografa (do skopiowania) i opcjami, przypięte
-  wersje — bieżąca albo starsza, z odnośnikiem do karty pliku — oraz
-  brakujące przypięcia.
-- Archiwista tylko pokazuje projekt: pobieranie, przepinanie i zmiany robi
-  się poleceniami Kartografa.
+- **Lista** projektów pokazuje magazyn, zadania, przypięte i brakujące
+  wersje oraz dane własne. Ukrytych projektów nie widać.
+- **Karta projektu** pokazuje „Stan teraz” producenta, zadania i przypięcia
+  z manifestu. Manifest zmienia tylko Kartograf.
+- **Folder danych** jest domyślnie `<katalog projektu>/dane/`; inny folder
+  może wskazać administrator. Skan tego folderu tylko czyta pliki. Dane
+  własne są na mapie i w karcie projektu, poza katalogiem `/slots` magazynu.
+- **Plik roboczy i migawki:** karta podaje metadane, podgląd i historię;
+  „Zmieniony od migawki” oznacza, że zawartość różni się od ostatniej
+  zapisanej wersji. Najpierw zobacz plan migawki (szacowany rozmiar
+  i ewentualna przeszkoda), potem „Zrób migawkę”. Uprawnienie `project.write`
+  ma właściciel projektu lub administrator; samo oglądanie projektu
+  nie wystarcza. Spójna migawka GeoPackage zawiera zatwierdzone zmiany
+  nawet przy otwartym edytorze. Dwa razy ta sama treść nie powiela wersji.
+  Migawki leżą w `<folder danych>/.wersje/`, w otwartym formacie
+  `archiwista-snapshot/1`; Archiwista ich nie usuwa.
+
+![Plik zmieniony od migawki](reports/v0.2-screenshots/09-zmieniony-od-migawki.webp)
+![Powtórna migawka tej samej treści](reports/v0.2-screenshots/10-ta-sama-tresc.webp)
+
+## Wachlarz, Oś czasu i Porównanie
+
+![Wachlarz lat](reports/v0.2-screenshots/04-wachlarz.webp)
+
+Po wskazaniu obszaru i produktu otwórz „Wachlarz”: karty kolejnych lat
+lub kampanii zawierają podgląd lokalnych arkuszy; najnowsze są na górze.
+Wybrana warstwa pokazuje się w całości i na mapie. Dla danych własnych
+Wachlarz pokazuje plik roboczy i jego migawki. „Oś czasu” pokazuje lata
+z danymi i ich lokalne pokrycie obszaru; wybór roku jest wspólny dla
+mapy, Wachlarza i adresu strony. Brakujący rok nie oznacza braku
+produktu u producenta — tylko brak tej warstwy lokalnie.
+
+![Oś czasu i pokrycie](reports/v0.2-screenshots/05-os-czasu.webp)
+
+„Porównaj” zestawia metadane dwóch wersji, plików własnych albo migawek
+(bez obliczania różnic obiektów). Dwa podglądy możesz oglądać w kurtynie,
+przez przenikanie lub obok siebie; to wizualne zestawienie, nie modyfikacja
+danych.
+
+![Porównanie i kurtyna](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
 
 ## Magazyn
 
@@ -180,9 +219,9 @@ otwartej karty Archiwisty.
 - **Źródło danych niedostępne** (brak Kartografa albo niewspierana wersja):
   pasek stanu podaje polecenie naprawy, to samo wypisuje `archiwista doctor`.
 
-## Czego wersja 0.1 nie robi
+## Czego wersja 0.2 nie robi
 
-- Nie pobiera danych, nie pokazuje podglądów plików, nie porównuje wersji,
-  nie sprawdza dostępności u źródła i nie zmienia projektów — to wersje
-  v0.2 „Podglądy” i v0.3 „Działania”.
-- Nie ma logowania ani pracy w zespole — v0.4 „Zespół”.
+- Nie pobiera danych, nie sprawdza dostępności u źródła i nie zmienia
+  manifestów projektu przez producenta — to v0.3 „Działania”.
+- Nie pokazuje różnic obiektów między migawkami, nie ma logowania ani
+  pracy w zespole (v0.4) i nie indeksuje jeszcze danych IMGW (v0.5).

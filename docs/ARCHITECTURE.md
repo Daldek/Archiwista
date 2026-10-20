@@ -1,13 +1,11 @@
 # Architektura Archiwisty
 
-**Wersja opisywana:** kod gałęzi, w której leży ten plik — wydanie 0.1.0
-„Przeglądarka” (`pyproject.toml`, pole `version`). Zmiany w wydaniach:
-[`CHANGELOG.md`](CHANGELOG.md); stan prac i sprawy otwarte:
-[`PROGRESS.md`](PROGRESS.md); przewodnik użytkownika: [`USAGE.md`](USAGE.md);
-API HTTP i CLI dla skryptów i agentów: [`AGENT_API.md`](AGENT_API.md);
-standardy kodu: [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md);
-pomiary i bramka wydania:
-[`reports/v0.1-measurements.md`](reports/v0.1-measurements.md).
+**Wersja opisywana:** kod wydania 0.2.0 „Podglądy” (`pyproject.toml`).
+Historia: [`CHANGELOG.md`](CHANGELOG.md), stan:
+[`PROGRESS.md`](PROGRESS.md), instrukcje:
+[`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
+Pomiary i odbiór: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md);
+standardy: [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md).
 
 Każde twierdzenie o zachowaniu systemu opisuje **kod** w tym repozytorium
 (`archiwista/`, `tests/`), nie plan ani spec. Wymagania i zakres leżą
@@ -25,21 +23,20 @@ magazynu (`data/`, sidecar `kartograf-meta/1`, manifest
 
 ## 1. Cel i granice
 
-Archiwista 0.1 to lokalna przeglądarka magazynu Kartografa: serwer HTTP na
-`127.0.0.1` z interfejsem w przeglądarce, wiersz poleceń i API dla skryptów
-oraz agentów. Wszystko, co pokazuje, wynika z plików producenta — sidecarów,
-dowiązań i manifestów projektów — przeczytanych przez publiczne API
-Kartografa i zapisanych w lokalnym indeksie, który można w każdej chwili
-odbudować (A-ADR-002). Jedyne dane nieodtwarzalne to baza stanu z kontami
-i dostępem do projektów (A-ADR-029, sekcja 4).
+Archiwista 0.2 działa lokalnie: FastAPI na `127.0.0.1`, interfejs
+przeglądarkowy, API i CLI. Katalog magazynu pochodzi z publicznego API
+Kartografa i odtwarzalnego lokalnego indeksu SQLite; dane własne pochodzą
+z osobno skanowanych folderów projektów. `state.sqlite` zawiera
+nieodtwarzalne konta i uprawnienia (A-ADR-029).
 
-**Magazyn tylko do odczytu.** Kod 0.1.0 nie ma ścieżki zapisu do magazynu
-ani do katalogów projektów: skan, odświeżenie widoku, obrysy, potwierdzenie
-dowiązania i status projektu wyłącznie czytają. Pliki Archiwisty leżą tylko
-w lokalnym katalogu danych konta (sekcja 4). Pilnuje tego
-`tests/integration/test_read_only_store.py`: drzewo magazynu i projektów
-bez prawa zapisu przechodzi skany i wszystkie trasy odczytu API, a nazwy,
-rozmiary, czasy modyfikacji i i-węzły zostają takie same.
+**Magazyn producenta tylko do odczytu.** Skan, karta, podgląd, obrysy,
+potwierdzenie dowiązania i status projektu nie zapisują w nim niczego.
+`tests/integration/test_read_only_store.py` i testy bezpieczeństwa
+podglądów pilnują tej granicy. Wyjątek dotyczący projektów:
+`owndata/snapshots.py:make_snapshot` zapisuje na polecenie osoby
+z `project.write` pełną migawkę pliku w `<folder danych>/.wersje/`
+(`archiwista-snapshot/1` w `migawka.json`); nie zmienia manifestu.
+Indeks, pamięć podglądów, obszary i zadania pozostają wyłącznie lokalne.
 
 **Producenci przez publiczne API, w adapterach.** Wiedzę o układzie
 magazynu ma producent (A-ADR-014). Archiwista nie przechodzi drzewa `data/`
@@ -50,27 +47,15 @@ sam, tylko woła nazwy z `kartograf.__all__` — `list_segments`,
 `SheetParser` — i to wyłącznie w `archiwista/adapter/kartograf/`
 (sekcja 2.2). Reszta aplikacji zna tylko interfejs źródła
 `archiwista/sources/`. Brakująca funkcja Kartografa to wymaganie wobec
-Kartografa (SPEC 12), nie obejście w Archiwiście. Wersja 0.1.0 wymaga
-`kartograf>=0.8.0,<0.9` (`pyproject.toml`) z API odczytu magazynu KA-1..KA-6.
+Kartografa (SPEC 12), nie obejście w Archiwiście. Pakiet wymaga
+`kartograf>=0.8.0,<0.9` z KA-1..KA-6.
 
-**Czego Archiwista 0.1.0 nie robi:**
-
-- nie pobiera danych i nie wykonuje poleceń producenta — rodzaje zadań
-  w tle to tylko `scan`, `footprints` i `link_check` (`JOB_KINDS`
-  w `jobs/protocol.py`);
-- nie zapisuje, nie przenosi i nie usuwa plików magazynu ani projektów;
-  problemy i raport nieużywanych wersji niosą instrukcję dla człowieka,
-  nigdy działanie usuwające (`services/problems.py`);
-- nie zostawia żadnego pliku na udziale ani w magazynie (SQLite, blokady,
-  pamięć podręczna);
-- nie używa sieci w skanie; jedyne zadanie sieciowe to obrysy jednostek
-  (`footprints`: `file_footprint(..., network=True)` Kartografa),
-  odrzucane w trybie offline;
-- nie upraszcza geometrii obszaru i nie umieszcza na mapie pliku bez
-  obrysu: taki wpis ma położenie `country` albo `none` z powodem
-  (`Footprint.reason`) i jest widoczny w „Katalogu” (grupy położenia,
-  filtr `location`; A-ADR-022);
-- nie pobiera bibliotek z CDN — pliki interfejsu są w pakiecie (sekcja 9).
+**Granice wydania:** Archiwista nie pobiera danych ani nie wykonuje
+poleceń producenta (v0.3), nie zapisuje i nie usuwa plików magazynu,
+nie usuwa migawek. `JOB_KINDS` obejmuje teraz `scan`, `footprints`,
+`link_check`, `preview`, `own_scan`, `snapshot`. Zadanie `footprints`
+korzysta z sieci tylko po wyłączeniu trybu offline. Dane bez obrysu
+pozostają w katalogu z powodem, a interfejs nie ładuje bibliotek z CDN.
 
 ---
 
@@ -78,11 +63,9 @@ Kartografa (SPEC 12), nie obejście w Archiwiście. Wersja 0.1.0 wymaga
 
 ### 2.1 Moduły
 
-Tabele wymieniają każdy moduł `.py` pakietu `archiwista/` (pliki
-`__init__.py` tylko wtedy, gdy niosą treść). „Kluczowe symbole” to nazwy
-zdefiniowane w danym module; metody `IndexWriter`, `IndexQueries`
-i `JobSupervisor` opisują sekcje 4 i 5. Interfejs WWW (`archiwista/web/`):
-sekcja 9.
+Tabele zawierają główne moduły pakietu `archiwista/` i ich symbole,
+nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
+`IndexQueries` i `JobSupervisor` opisują sekcje 4–5.
 
 **Wejścia: CLI, serwer, aplikacja**
 
@@ -94,6 +77,7 @@ sekcja 9.
 | `reader.py` | polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` na funkcjach i modelach API | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | polecenia `users`, `groups`, `share`, `state export` i `state import`, wykonywane jako `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
 | `doctor.py` | `archiwista doctor`: diagnostyka bez zapisu — ustawienia, wtyczki, magazyny i katalogi projektów, katalog danych, port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `is_port_available`, `REQUIRED_PRODUCERS` |
+| `commands/previews.py`, `commands/layers.py`, `commands/compare.py`, `commands/owndata.py` | CLI v0.2 wspólne z usługami API: `preview`, `layers`, `compare`, `files`, `file`, `snapshot`, `own-scan` | `add_commands`, `main` w każdym module |
 
 **HTTP i bezpieczeństwo**
 
@@ -115,6 +99,10 @@ sekcja 9.
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | zadania w tle przez HTTP i strumień SSE | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
 | `api/admin.py` | `/users`, `/groups`, `/projects/{project}/access` | modele `User`, `Group`, `ProjectAccess`, `AccessChange` i trasy o nazwach funkcji `services/access.py` |
+| `api/previews.py`, `api/models_previews.py` | opis, budowa, PNG, kafle, obiekty i człony ZIP wersji magazynu | `get_preview`, `build_preview`, `PreviewInfo` |
+| `api/owndata.py`, `api/models_owndata.py` | pliki projektu, folder, migawki, skan, podglądy własnych plików | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
+| `api/layers.py`, `api/models_layers.py` | lokalne lata i kampanie, miniatury i kafle warstw | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
+| `api/compare.py`, `api/models_compare.py` | porównanie dwóch `ref` | `get_comparison`, `CompareQuery` |
 
 **Usługi, uprawnienia, stan**
 
@@ -124,6 +112,9 @@ sekcja 9.
 | `services/stores.py` | stan magazynu dla widoku „Magazyn” | `store_summary`, `StoreSummary`, `issue_problem` |
 | `services/projects.py` | karta projektu i żywy status producenta | `project_detail`, `ProjectDetail`, `project_problems`, `project_status` |
 | `services/access.py` | konta, grupy i dostęp do projektów — dla HTTP i CLI | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project` |
+| `services/owndata.py` | sprawdzanie folderu i problemy plików projektu | `set_data_dir`, `folder_check`, `folder_problems`, `file_problems` |
+| `services/layers.py` | warstwy lokalne produktu i warstwy pliku własnego | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
+| `services/compare.py` | porównanie metadanych i schematu, nie danych obiektowych | `compare` |
 | `auth/principal.py` | kto działa | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | jedyne miejsce decyzji o uprawnieniach | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | które projekty widać | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
@@ -137,7 +128,7 @@ sekcja 9.
 |---|---|---|
 | `index/schema.py` | schemat SQLite, ustawienia połączeń, przebudowa przy zmianie wersji | `SCHEMA_VERSION`, `initialize`, `connect`, `IndexUnsupportedError`, `MIN_SQLITE_VERSION` |
 | `index/writer.py` | zapis indeksu z typów interfejsu źródła (nigdy z obiektów Kartografa) | `IndexWriter` |
-| `index/queries.py` | odczyt: katalog, karty, mapa, produkty, zajętość, problemy, projekty, stan | `IndexQueries` |
+| `index/queries.py` | katalog, mapa, produkty, dane własne i migawki, projekty, stan | `IndexQueries` |
 | `index/scanner.py` | skan magazynu i odświeżenie widoku | `scan_store`, `refresh_view`, `ScanProgress`, `ScanNotice`, `ScanSummary`, `SegmentScan`, `BATCH_ENTRIES`, `BATCH_SECONDS`, `FOOTPRINT_THREADS`, `REFRESH_VIEW_MAX_UNITS` |
 | `index/projects.py` | odkrywanie i indeksowanie manifestów projektów | `scan_projects`, `ProjectScanSummary`, `PROJECT_MANIFESTS`, `MAX_PROJECT_DEPTH` |
 | `index/coverage.py` | pokrycie lokalne w układzie płaskim | `measure_coverage`, `planar_crs`, `PLANAR_CRS`, `CoverageShape`, `CoverageMeasure` |
@@ -149,11 +140,12 @@ sekcja 9.
 | Moduł | Rola | Kluczowe symbole |
 |---|---|---|
 | `jobs/supervisor.py` | nadzorca: kolejka, procesy robocze, zdarzenia, odzyskiwanie po awarii, przycinanie historii | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs` |
-| `jobs/worker.py` | proces roboczy jednego zadania | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `Emitter` |
+| `jobs/worker.py` | proces roboczy zadania: skan, obrysy, link, podgląd, skan własny, migawka | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `Emitter` |
 | `jobs/protocol.py` | protokół JSON Lines nadzorca ↔ proces roboczy | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `INTERRUPTED_EXIT`, `CODE_WORKER_CRASHED` |
-| `jobs/scheduler.py` | skany okresowe i kontrolne | `ScanScheduler`, `plan_scans`, `PlannedScan`, `TICK_S`, `STARTUP_STALE`, `PROBE_TIMEOUT_S`, `PRUNE_INTERVAL` |
+| `jobs/scheduler.py` | skany okresowe magazynu i danych własnych | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
 | `jobs/reindex.py` | `archiwista reindex`: pełny skan na pierwszym planie | `reindex_main` |
 | `jobs/availability.py` | czy magazyn da się czytać teraz (pusty punkt montowania znanego magazynu = niedostępny) | `unreachable_detail` |
+| `jobs/foreground.py` | śledzenie zadań CLI na pierwszym planie | `run_foreground` |
 
 **Obszary**
 
@@ -161,6 +153,18 @@ sekcja 9.
 |---|---|---|
 | `areas.py` | obszary: walidacja, pomiar, kopie plików, uruchamianie czytnika | `AreaFiles`, `area_from_geometry`, `read_area_file`, `area_from_file`, `keep_copy`, `discard_copy`, `prune_area_copies`, `area_id`, `area_crs`, `check_body_size`, `AREA_BODY_LIMIT_BYTES`, `AREA_READ_TIMEOUT_S`, `AREA_COPY_MAX_AGE`, `AREA_READER_COMMAND` |
 | `area_reader.py` | proces czytający niezaufany plik obszaru (GDAL przez `pyogrio`) | `main`, `read_area`, `AreaFileError`, `MAX_VERTICES`, `MAX_MEMBERS`, `UNPACKED_LIMIT_BYTES` |
+
+**Podglądy i dane własne**
+
+| Moduł | Rola | Kluczowe symbole |
+|---|---|---|
+| `refs.py` | odwołania `version:`, `file:`, `snapshot:` i kontrola widoczności przed odczytem | `ObjectResolver`, `parse_ref`, `format_ref` |
+| `sandbox.py`, `formats.py` | izolacja procesów oraz jawne sterowniki odczytu plików | `untrusted_env`, `file_format`, `open_raster` |
+| `previews/service.py`, `previews/cache.py` | podgląd po `ref`, cache po treści i LRU z lokalnym `cache.sqlite` | `PreviewService`, `PreviewCache`, `cache_key`, `RENDERER_VERSIONS` |
+| `previews/pool.py`, `previews/worker.py` | kolejka i procesy renderujące (czas, pamięć, odpowiedzi bez ścieżek) | `RenderPool`, `default_render_workers`, `answer_line` |
+| `previews/build.py`, `previews/compose.py`, `previews/tiles.py` | budowa lokalnego COG, miniatury/kafle warstw, wymuszona operacja kartograficzna | `run_preview`, `layer_tile`, `layer_thumbnail`, `warp` |
+| `owndata/scan.py`, `owndata/reader.py` | skan folderu, ograniczony proces odczytu plików | `scan_own_data`, `OwnReader`, `check_own_folder` |
+| `owndata/content.py`, `owndata/snapshots.py`, `owndata/document.py` | treść logiczna GeoPackage, spójna kopia, atomowa migawka i otwarty manifest | `consistent_sqlite_read`, `check_snapshot`, `make_snapshot`, `SnapshotDocument` |
 
 **Źródła i adaptery**
 
@@ -178,6 +182,7 @@ sekcja 9.
 | Moduł | Rola | Kluczowe symbole |
 |---|---|---|
 | `config.py` | ścieżki lokalne, ustawienia TOML, walidacja, zapis atomowy, powiadamianie o zmianach | `AppPaths`, `AppSettings`, `StoreConfig`, `BasemapConfig`, `ConfigStore`, `SettingsService`, `parse_settings`, `validate_settings`, `detect_store_kind`, `write_text_atomic`, `DEFAULT_BASEMAPS` |
+| `config.py` (`AppSettings`) | opcje v0.2 | `preview_cache_limit_gb`, `own_data_dirs`, `DEFAULT_BASEMAPS` (OpenFreeMap vector, GUGiK OSM raster) |
 | `paths.py` | prywatne katalogi i ścieżki z indeksu wewnątrz korzenia | `private_directory`, `indexed_path`, `resolve_indexed_path`, `PRIVATE_DIRECTORY_MODE` |
 | `errors.py` | wyjątki aplikacji | `ArchiwistaError`, `SourceUnavailableError`, `SourceIncompatibleError`, `ProducerError`, `PathOutsideRootError`, `IndexQueryError`, `PermissionDeniedError`, `NotFoundError`, `ConflictError`, `JobConflictError`, `OfflineModeError`, `AreaTooLargeError`, `AreaUnreadableError`, `AreaTooComplexError`, `StateError`, `SnapshotError` |
 | `messages.py` | wszystkie polskie teksty serwera i CLI | `MESSAGES`, `with_detail` |
@@ -189,7 +194,7 @@ flowchart LR
   subgraph PRZ["Przeglądarka"]
     UI["web/src: Preact + htm, MapLibre GL<br/>api.js: fetch + X-Archiwista-CSRF"]
   end
-  CLI["CLI archiwista<br/>reader.py, admin.py, jobs/reindex.py"]
+  CLI["CLI archiwista<br/>reader.py, commands/, admin.py, jobs/reindex.py"]
   subgraph SRV["Proces serwera: archiwista serve, 127.0.0.1"]
     MW["SecurityMiddleware"]
     API["api/: routery /api/v1, SSE"]
@@ -199,74 +204,49 @@ flowchart LR
     SUP["jobs/: JobSupervisor, ScanScheduler"]
     AF["areas.py: AreaFiles"]
     REG["sources/: SourceRegistry"]
+    POOL["previews/: RenderPool, PreviewService"]
   end
-  W["procesy robocze<br/>python -P -m archiwista.jobs.worker<br/>scan_store, IndexWriter"]
-  AR["czytnik obszaru<br/>python -P -m archiwista.area_reader"]
+  W["proces zadania<br/>python -P -m archiwista.jobs.worker<br/>scan, own_scan, preview, snapshot"]
+  R["procesy odczytu<br/>area_reader, owndata.reader, previews.worker"]
   ADP["adapter/kartograf/: KartografAdapter"]
   KG["Kartograf: kartograf.__all__"]
   IDX[("index.sqlite")]
   ST[("state.sqlite")]
-  MAG[("magazyn i katalogi projektów<br/>tylko odczyt")]
+  MAG[("magazyn tylko do odczytu")]
+  OWN[("folder danych projektu: odczyt<br/>migawki .wersje/ na polecenie")]
+  CACHE[("previews/cache.sqlite, objects/<br/>lokalny work/")]
   UI --> MW --> API
   MW -. "session_principals" .-> AUTH
   API --> SVC --> Q --> IDX
   API --> AUTH --> ST
   API --> SUP
-  API --> AF --> AR
+  API --> AF --> R
   API --> REG
+  API --> POOL --> R
+  POOL --> CACHE
   SUP -- "JobSpec, JSON Lines" --> W
   SUP --> IDX
   W --> IDX
   W --> REG
+  W --> OWN
+  R --> OWN
+  R --> MAG
   REG -- "entry point archiwista.sources" --> ADP --> KG --> MAG
   CLI --> SVC
   CLI --> AUTH
   CLI --> SUP
 ```
 
-Graf krawędzi importu między pakietami i modułami najwyższego poziomu
-`archiwista/` (importy między nimi są wyłącznie na poziomie modułu; jedyny
-import leniwy, `KartografAdapter` w fabryce `load`, zostaje w adapterze;
-w nawiasie — gdy krawędź dotyczy tylko wskazanych modułów albo nazw):
-
-```
-cli ───────> admin, config, doctor, jobs, messages, reader, security, server, sources
-server ────> api, app, auth, config, errors, index, jobs, messages, paths, security, sources, state
-app ───────> api, areas, auth, config, index, jobs, messages, security, sources, state
-reader ────> api, auth, config, errors, index, messages, sources, state
-admin ─────> api, auth, config, errors, index, messages, services, state
-doctor ────> config, messages, security (LOOPBACK_HOST), sources
-api ───────> areas, auth, config, doctor, errors, index, jobs, messages, paths,
-             security, services, sources, state
-security ──> api (API_PREFIX, DOCS_PATH, api.errors), auth, config,
-             index (schema.connect), messages, state
-jobs ──────> api (tylko reindex: api.errors.problem_of), auth, config, errors, index,
-             messages, paths, services (tylko worker: services.problems.explain), sources
-services ──> auth, config, errors, index, messages, paths, sources, state
-areas ─────> area_reader, errors, index, messages, paths, sources
-area_reader ─> messages
-index ─────> auth (ProjectVisibility, access_key), config, errors, messages, paths, sources
-auth ──────> config, errors, messages, state (tylko auth.authorize)
-state ─────> auth (tylko principal), errors, messages, paths
-adapter.kartograf ─> errors, messages, sources  (+ kartograf)
-sources ───> config, errors, messages (tylko sources.registry)
-config ────> errors, messages, sources (typy)
-paths ─────> errors, messages
-errors ────> sources (sources.types.SourceState)
-messages ──> (nic)
-```
-
-Na poziomie modułów graf nie ma cykli: liście to `sources.types`,
-`sources.protocol`, `messages`, `auth.principal` i `auth.visibility`;
-krawędzie „w obie strony” między pakietami (`api` ↔ `security`, `api` ↔
-`jobs`, `auth` ↔ `state`, `config` ↔ `sources`) łączą różne moduły tych
-pakietów. Komplet krawędzi daje
-
-```bash
-grep -rnE '^\s*(from|import) archiwista' archiwista/ --include=*.py
-```
-
-— graf trzeba poprawić przy każdej nowej krawędzi.
+Diagram opisuje przepływ danych, nie każdą krawędź importu. `api/`
+używa `services/`, `refs.py:ObjectResolver` i `index/` oraz kontroluje
+widoczność przed podglądem (`PreviewService`). `previews/pool.py` kieruje
+żądania do procesów `previews.worker`; `jobs/worker.py` uruchamia skan,
+budowę podglądu, skan folderu własnego i migawkę przez osobne granice
+procesów. Odczyt niezaufanych plików korzysta z `sandbox.py:untrusted_env`
+i `formats.py:open_raster` / `vector_source`. `owndata.reader` czyta
+folder bez zmian, a `owndata.snapshots:make_snapshot` jest jedyną
+ścieżką zapisu w katalogu projektu. Producent jest dostępny tylko przez
+adapter z publicznym API.
 
 **Reguły pilnowane testami** (`tests/contract/`):
 
@@ -297,9 +277,10 @@ grep -rnE '^\s*(from|import) archiwista' archiwista/ --include=*.py
   `server`; `services/` nie importuje `api`;
 - trasy nie filtrują projektów same: biorą `visible_projects` i przekazują
   je zapytaniom i usługom (`api/dependencies.py`, sekcja 7);
-- CLI nie ma drugiej implementacji odczytu: `reader.py` woła te same
-  funkcje bez HTTP z `api/` (`read_health`, `search_slots`, `slot_card`,
-  `version_card`, `read_projects`, `project_card`) i wypisuje te same modele.
+- CLI nie tworzy drugiej implementacji odczytu: `reader.py` używa
+  wspólnych zapytań indeksu, usług i modeli API, a podgląd, porównanie,
+  warstwy i pliki projektu prowadzi przez te same usługi oraz
+  `RenderPool`; wynik `--json` zachowuje kontrakt modeli HTTP.
 
 ---
 
@@ -308,10 +289,12 @@ grep -rnE '^\s*(from|import) archiwista' archiwista/ --include=*.py
 | Proces | Kto uruchamia | Co robi | Komunikacja |
 |---|---|---|---|
 | serwer `archiwista serve` | użytkownik | Uvicorn z aplikacją `create_app`, `JobSupervisor`, `ScanScheduler`; odczyt indeksu i krótkie, ograniczone odczyty magazynu | HTTP na `127.0.0.1:<port>` |
-| proces roboczy zadania | `JobSupervisor`, po jednym na zadanie, we własnej grupie procesów (`WORKER_COMMAND`: `python -P -m archiwista.jobs.worker`) | `run_scan`, `run_footprints`, `run_link_check` (`RUNNERS`) | stdin: jedna linia `JobSpec`, potem otwarty do końca; stdout: JSON Lines `WorkerMessage`; stderr: dziennik `<jobs>/<id>.log` |
-| czytnik obszaru | `read_area_file` (`AREA_READER_COMMAND`: `python -P -m archiwista.area_reader <katalog> [--layer NAZWA]`) | GDAL czyta niezaufany plik obszaru; zabijany po `AREA_READ_TIMEOUT_S` (30 s) | jedna linia JSON na stdout |
-| polecenia CLI | człowiek, skrypt, agent | odczyt indeksu (`reader.py`), baza stanu (`admin.py`), `reindex` z własnym `JobSupervisor` i procesami roboczymi, `token`, `doctor` | stdout, stderr; serwer niepotrzebny |
-| przeglądarka | `open_in_browser` (strona `LaunchFile`) albo człowiek | interfejs `web/` | `fetch` do `/api/v1`, SSE przez `fetch` |
+| proces roboczy zadania | `JobSupervisor`, jeden na zadanie, we własnej grupie procesów (`python -P -m archiwista.jobs.worker`) | `RUNNERS`: `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_preview` | stdin: `JobSpec`; stdout: JSON Lines `WorkerMessage`; stderr: `jobs/<id>.log` |
+| pula renderująca | `RenderPool`, domyślnie `min(4, cpu)` długowiecznych procesów `python -P -m archiwista.previews.worker` | GDAL, OGR, laspy i ZIP: próba otwarcia, miniatura, kafel, obiekty, ZIP i składanie warstw; limit czasu i pamięci, ponowny start procesu po błędzie | kolejka ≤ 64, wspólne żądanie liczone raz, pliki w `previews/` |
+| czytnik danych własnych | `OwnReader` (`owndata/reader.py`) | jeden plik z folderu naraz, GDAL w izolowanym procesie; GeoPackage czytany spójnie bez zapisu przy źródle | odpowiedź z metadanymi do skanu |
+| czytnik obszaru | `read_area_file` (`AREA_READER_COMMAND`: `python -P -m archiwista.area_reader`) | GDAL czyta niezaufany plik obszaru, limit 30 s | linia JSON na stdout |
+| polecenia CLI | człowiek, skrypt, agent | `reader.py`, `commands/`, `admin.py`, `reindex`, `token`, `doctor`; dla budowy i migawki własny nadzorca | stdout, stderr; serwer niepotrzebny |
+| przeglądarka | `open_in_browser` lub człowiek | interfejs `web/` | `fetch` do `/api/v1`, SSE przez `fetch` |
 
 Flaga `-P` trzyma bieżący katalog (katalog `jobs/`) poza `sys.path`.
 Uruchamianie GDAL-a, skanu i pobierania obrysów poza procesem serwera
@@ -360,31 +343,37 @@ w trasach obszarów, `session_tokens`) oraz pozostałe zadania w procesach
 roboczych — `footprints` (`write_footprints`) i `link_check`
 (`record_issue`, `clear_issue`).
 
-**Odczyty magazynu w procesie serwera** są krótkie i ograniczone:
-`refresh_view` w `GET /local-coverage` (≤ `REFRESH_VIEW_MAX_UNITS` = 500
-jednostek, budżet `REFRESH_TIMEOUT_S` = 10 s), `probe` (wątek harmonogramu
-z limitem 10 s; walidacja nowych katalogów w `PUT /settings`) i status
-projektu (`project_status` producenta, bez haszowania). Skan i obrysy
-działają wyłącznie w procesach roboczych.
+**Proces serwera nie renderuje danych.** Krótkie odczyty magazynu to
+`refresh_view` w `GET /local-coverage`, sonda dostępu i status projektu
+bez haszowania; renderowanie przekazuje `RenderPool` do `previews.worker`.
+`own_scan` używa `OwnReader`, a migawka (`make_snapshot`) i budowa COG
+(`run_preview`) odbywają się w procesach zadań z dodatkowymi ograniczeniami
+procesów potomnych. `sandbox.untrusted_env` wyłącza połączenia GDAL i PROJ
+z siecią, dane uwierzytelniające i zapis `.aux.xml`; jawne sterowniki
+oraz `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` blokują obce pliki obok
+źródła. `consistent_sqlite_read` obsługuje trzy stany WAL/journal.
 
 ---
 
 ## 4. Dane lokalne
 
-Położenie wyznacza `AppPaths.default()` przez `platformdirs` (Linux:
-ustawienia `~/.config/archiwista/`, dane `~/.local/share/archiwista/`;
-dokładne ścieżki wypisuje `archiwista doctor`). Wszystkie pliki Archiwisty
-leżą w tych dwóch katalogach — żaden w magazynie ani w katalogu projektu.
+Położenie lokalne wyznacza `AppPaths.default()` przez `platformdirs` (Linux:
+`~/.config/archiwista/` i `~/.local/share/archiwista/`). Poza nimi
+Archiwista zapisuje **wyłącznie** migawki w katalogu projektu na polecenie
+osoby z `project.write`; magazyn pozostaje bez zmian.
 
 | Ścieżka (`AppPaths`) | Zawartość | Odtwarzalne | Kto pisze |
 |---|---|---|---|
-| `config_file` = `config.toml` | `AppSettings`: `port` (8090), `offline`, `scan_threads` (8), `scan_interval_local_min` (5), `scan_interval_share_min` (15), `full_scan_interval_h` (24), `project_dirs`, `stores` (`StoreConfig`: `id`, `name`, `kartograf`, `kind`, `path_aliases`), `basemaps`, `store_write_for_all`, `default_project_visibility` | nie (kreator albo „Ustawienia”) | `SettingsService.update` → `ConfigStore.save` |
-| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | indeks magazynów, projektów i obszarów, historia zadań, skróty tokenów jednorazowych | tak | `IndexWriter`, `JobSupervisor`, `security.py` |
+| `config_file` = `config.toml` | `AppSettings`: port, tryb offline, katalogi magazynów i projektów, `own_data_dirs` (wyjątek od `<katalog projektu>/dane/`), `preview_cache_limit_gb` (20), `basemaps` (OpenFreeMap vector i OSM GUGiK domyślnie) oraz uprawnienia | nie (kreator lub Ustawienia) | `SettingsService.update` → `ConfigStore.save` |
+| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | indeks magazynów, projektów, plików własnych, migawek i obszarów, historia zadań, skróty tokenów | tak, schemat 6 przebudowywany ze skanem pełnym | `IndexWriter`, `JobSupervisor`, `security.py` |
 | `state_file` = `state.sqlite` | konta, grupy, role, dostęp do projektów, dziennik uprawnień | **nie** — kopia `archiwista state export` | `StateStore` |
 | `cache_dir` = `cache/<producent>/` | pamięć wtyczki (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | tak, z sieci | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr procesu roboczego), `owner-<pid>.lock` (blokada nadzorcy) | dzienniki niepotrzebne do pracy | `JobSupervisor`, procesy robocze |
 | `areas_dir` = `areas/` | `<id>/area.*` (kopia pliku obszaru), `.incoming/<losowa>/` (plik w trakcie czytania) | wczytanie pliku od nowa | `AreaFiles` |
 | `open-<losowa>.html` w katalogu danych | strona startowa z adresem tokenu dla przeglądarki (`LaunchFile`, plik `0600`) | — | `serve_main`; znika po użyciu tokenu, po 10 min i przy zatrzymaniu |
+| `previews_dir` = `previews/` | `cache.sqlite`, `objects/<klucz>/<renderer>-r<wersja>/`: rozpoznanie, miniatury, kafle, COG, kopie do spójnego odczytu SQLite; lokalne LRU | tak | `PreviewCache`, `RenderPool`, zadanie `preview` |
+| `work_dir` = `work/` | prywatne katalogi robocze procesów; sprzątane po zatrzymaniu lub awarii | tak | `sandbox.process_work_dir`, czytniki i renderery |
+| `<folder danych>/.wersje/` (poza `AppPaths`) | pełne migawki plików, `migawka.json` z `archiwista-snapshot/1` | **nie** — przenosi się z projektem | `make_snapshot`, tylko na polecenie uprawnionej osoby |
 
 **Prawa dostępu.** `private_directory` zakłada albo zamyka katalog do
 `0700` (`PRIVATE_DIRECTORY_MODE`) — katalog danych przy każdym otwarciu
@@ -409,7 +398,7 @@ komputerami przez `path_aliases` (SPEC 4.6).
 Pamięć podręczna odbudowywana z plików producentów (A-ADR-002),
 `index/schema.py`:
 
-- **Wersja schematu** `SCHEMA_VERSION` (4 w wydaniu 0.1.0)
+- **Wersja schematu** `SCHEMA_VERSION` (6 w wydaniu 0.2.0)
   w `PRAGMA user_version`. Każde otwarcie (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) woła `initialize`: inna wersja (starsza
   albo nowsza) to przebudowa zamiast migracji — wszystkie obiekty usuwane
@@ -595,8 +584,8 @@ kolejnego sprawdzenia (`clear_issue`).
 
 ### 5.2 Odświeżenie widoku
 
-W 0.1.0 odświeża widok tylko `GET /api/v1/local-coverage?area_id&product&store[&segment]`
-(`read_local_coverage`), w procesie serwera:
+Odświeżenie na żądanie wykonuje `GET /api/v1/local-coverage?area_id&product&store[&segment]`
+(`read_local_coverage`) w procesie serwera:
 
 1. Obszar z indeksu, jednostki ze slotów, których obrys przecina prostokąt
    obszaru (`IndexQueries.slots_in_bbox`). Ponad
@@ -708,8 +697,8 @@ w `sessionStorage`. Sesje żyją w pamięci serwera: koniec po 24 h bez żądań
    `worker_crashed` (sygnał albo kod wyjścia i ścieżka dziennika).
    Końcowe zdarzenie `state` niesie `result` albo `error` (`code`,
    `detail`).
-5. **Przerwanie** — anulowanie (`cancel`: Ctrl+C w `archiwista reindex`,
-   usunięcie magazynu z ustawień; API 0.1.0 nie ma trasy anulowania)
+5. **Przerwanie** — anulowanie (`cancel`: Ctrl+C w poleceniach na pierwszym
+   planie, usunięcie magazynu z ustawień; API nie ma trasy anulowania)
    i zatrzymanie serwera (`close`) wysyłają SIGINT (Windows:
    `CTRL_BREAK_EVENT`) i zabijają proces po 30 s; skan porzuca wtedy
    przebieg. Proces roboczy, któremu zniknął nadzorca (koniec stdin),
@@ -755,10 +744,10 @@ z `Location`):
      (`check_body_size`);
   2. `read_area_file` zapisuje treść pod losową nazwą w
      `areas/.incoming/<losowa>/upload` (ścieżka klienta nigdy nie jest
-     otwierana) i uruchamia `AREA_READER_COMMAND` z okrojonym środowiskiem
-     (`_READER_INHERITED`) i wymuszonym brakiem sieci GDAL i PROJ
-     (`PROJ_NETWORK=OFF`, proxy `127.0.0.1:9`); po 30 s proces jest zabijany
-     (`422 area_unreadable`);
+     otwierana) i uruchamia `AREA_READER_COMMAND` w środowisku
+     `sandbox.untrusted_env`: bez sieci GDAL/PROJ, bez proxy i poświadczeń,
+     z `GDAL_PAM_ENABLED=NO` i `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`;
+     po 30 s proces jest zabijany (`422 area_unreadable`);
   3. `area_reader.read_area` rozpoznaje format po treści (GeoJSON,
      GeoPackage, ZIP z jednym Shapefile), archiwum sprawdza przed
      rozpakowaniem (`MAX_MEMBERS` członków, razem ≤ `UNPACKED_LIMIT_BYTES`
@@ -778,6 +767,40 @@ z `Location`):
   ta sama geometria zawsze ma ten sam id. Kopie starsze niż
   `AREA_COPY_MAX_AGE` (7 dni) usuwa `prune_area_copies` przy starcie
   aplikacji; obszar zostaje w indeksie.
+
+### 5.6 Podgląd i lokalne warstwy
+
+`refs.py:ObjectResolver` zamienia `version:`, `file:` lub `snapshot:`
+na źródło po sprawdzeniu korzenia, bieżącej tożsamości pliku i widoczności
+projektu (`404` przy niewidocznym). `PreviewService` pyta
+`PreviewCache` o obiekt po tożsamości treści, metadanych renderowania
+i wersji renderera. Przy braku rozpoznania `RenderPool` oddaje żądanie
+procesowi `previews.worker`, z limitem kolejki, czasu i pamięci.
+Renderery rozpoznają rodzaj pliku; bez podglądu `PreviewInfo.reason`
+daje kod, polski opis i zalecenie. Build (`POST …/preview`) tworzy zadanie
+`preview` i lokalny COG, gdy źródło go potrzebuje. `GET /local-layers`
+(`read_local_layers`) zbiera wersje dla roku albo kampanii, a
+`layer_thumbnail` i `layer_tile` składają ich obrazy w procesie
+renderującym. Obrazy z `/api/v1` wymagają CSRF również przy odczycie.
+`version:` korzysta z prywatnego długiego cache HTTP; własny plik
+i migawka z `ETag` sprawdzają widoczność przy każdym ponownym użyciu.
+
+### 5.7 Skan własny, migawka, porównanie
+
+`run_own_scan` → `scan_own_data` sprawdza folder projektu: domyślnie
+`<katalog projektu>/dane/`, a wyjątkowy folder z `AppSettings.own_data_dirs`
+ustawia administrator. `OwnReader` czyta pliki w procesie z ograniczeniami,
+indeksuje zasięgi, treść i stan zmian od ostatniej migawki; nie zmienia
+plików źródłowych. Dla GeoPackage `consistent_sqlite_read` bierze spójny
+widok danych także przy otwartym edytorze i plikach WAL. Skan zakończony
+na limicie nie oznacza nieprzejrzanych plików jako brakujących.
+`check_snapshot` daje plan i powód blokady bez zapisu; `start_snapshot`
+wymaga `project.write`, a `run_snapshot` → `make_snapshot` kopiuje spójny
+komplet (SQLite backup lub pliki zestawu) do prywatnego katalogu
+przejściowego, sprawdza sumy i publikuje atomowo przez zmianę nazwy
+w `.wersje/`. Ten sam skrót treści nie tworzy drugiej wersji.
+`services.compare:compare` czyta dwa widoczne `ref` i zestawia metadane
+oraz schemat warstw, nie różnice obiektów.
 
 ---
 
@@ -817,8 +840,12 @@ z erratami. Stan kodu w skrócie:
   dowiązanie symboliczne (`PathOutsideRootError` →
   `403 path_outside_root`); `indexed_path` składa ścieżkę „do skopiowania” bez
   dotykania dysku.
-- **Niezaufane pliki** czyta osobny proces z limitem czasu, bez sieci
-  i z kontrolą archiwum przed rozpakowaniem (sekcja 5.5).
+- **Niezaufane pliki:** `sandbox.untrusted_env`, jawne sterowniki
+  (`formats.py`), `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` i
+  `GDAL_PAM_ENABLED=NO` bronią przed siecią, niejawnie dołączanymi plikami
+  i zapisem obok źródła. Pliki obszarów, podglądy i dane własne czytają
+  procesy z limitami czasu i pamięci; `ObjectResolver` sprawdza korzeń
+  oraz widoczność projektu przed sięgnięciem do pamięci wspólnej po treści.
 - **Dzienniki.** Dziennik dostępu Uvicorna jest domyślnie wyłączony;
   `archiwista serve --access-log` włącza go z redakcją wartości `token=`
   (`TokenRedactionFilter`, `redact_tokens`).
@@ -830,10 +857,10 @@ z erratami. Stan kodu w skrócie:
 ## 7. Uprawnienia
 
 Model z A-ADR-029 (SPEC 10.2): Archiwista egzekwuje uprawnienia tylko we
-własnej powierzchni — interfejsie, API, CLI i sesjach agentów. W 0.1.0
-działa jedna osoba, ale model, egzekwowanie i baza stanu są pełne
-i sprawdzone testami z wieloma tożsamościami
-(`tests/unit/test_authorize.py`, `tests/integration/test_permissions_api.py`,
+własnej powierzchni — interfejsie, API, CLI, sesjach agentów i podglądach.
+Lokalnie działa jedna osoba, lecz model i baza stanu są testowane z wieloma
+tożsamościami (`tests/unit/test_authorize.py`,
+`tests/integration/test_permissions_api.py`,
 `tests/unit/test_project_visibility.py`).
 
 - **`Principal`** (`auth/principal.py`): `id` (zapisywany jako `actor`
@@ -856,7 +883,7 @@ i sprawdzone testami z wieloma tożsamościami
   grup z wpisu), `private` (tylko właściciel); projekt bez wpisu wg
   `default_project_visibility` (`public` albo `private` = tylko
   administratorzy). `store.write` = rola `store_writer` albo ustawienie
-  `store_write_for_all`; w 0.1.0 żadna trasa jej nie wymaga (sekcja 10).
+  `store_write_for_all`; w 0.2.0 żadna trasa jej nie wymaga (v0.3).
 - **Widoczność — jeden punkt przejścia.** `visible_projects` buduje
   `ProjectVisibility` (`everything`, `granted`, `denied`, `unlisted`;
   `sees(key)`; administrator dostaje `ALL_PROJECTS`). Trasy biorą ją
@@ -881,8 +908,8 @@ i sprawdzone testami z wieloma tożsamościami
   prawa do działania → `403 permission_denied` (`services/access.py`).
   Każda zmiana kont, grup i dostępu trafia do `permission_log` z
   wykonawcą, rodzajem i sesją.
-- **CLI** (`reader.py`, `admin.py`) działa jako `LOCAL_OWNER` przez ten sam
-  `Authorizer` i te same usługi.
+- **CLI** (`reader.py`, `commands/`, `admin.py`) działa jako `LOCAL_OWNER`
+  przez ten sam `Authorizer` i te same usługi.
 
 ---
 
@@ -900,16 +927,21 @@ czyta z serwera tylko własne pliki statyczne.
 | `api/session.py` (`session`) | `POST /session` (bez sesji), `GET`/`DELETE /session`, `POST /session/tokens` |
 | `api/health.py` (`health`) | `GET /health`, `GET /sources` |
 | `api/stores.py` (`stores`) | `GET /stores`, `GET /stores/{store}` |
-| `api/slots.py` (`catalog`) | `GET /slots`, `GET /products`, `GET /stores/{store}/slots/{slot}`, `GET /stores/{store}/versions/{version}`, `…/sidecar`, `GET /requests/{parent_request}` |
+| `api/slots.py` (`catalog`) | `GET /slots` (także filtr `project`), `/products`, karty slotów i wersji, `…/sidecar`, `/requests/{parent_request}` |
 | `api/map.py` (`map`) | `GET /map/footprints`, `GET /map/sheets` |
 | `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status` |
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; tylko gdy `create_app` dostaje `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
 | `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
+| `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members` |
+| `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
+| `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
+| `api/owndata.py` (`own_data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; podglądy, kafle, obiekty i ZIP pliku i migawki |
 
-Zasady w kodzie: modele Pydantic (`api/models.py`; sesja i administracja
-— `api/session.py`, `api/admin.py`) są jednocześnie schematem OpenAPI
+Zasady w kodzie: modele Pydantic (`api/models.py`, `models_previews.py`,
+`models_layers.py`, `models_compare.py`, `models_owndata.py`; sesja
+i administracja przy routerach) tworzą także schemat OpenAPI
 z przykładami; `operationId` = nazwa funkcji trasy
 (`operation_id`); `/api/v1/openapi.json` wymaga sesji, a `/api/docs` to
 lokalny Swagger UI z `api/swagger/` (bez CDN i skryptów inline). Filtry
@@ -932,6 +964,8 @@ z niezmienionym komunikatem (`<producent>_error`).
 | `users list\|add\|roles\|remove`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` i `share` z `--json` o modelu API; `state export [--output PLIK]`; `state import PLIK` przyjmuje tylko pustą bazę stanu |
 | `reindex [--store ID]` | `jobs/reindex.py` | pełny skan jako zadanie `local` na pierwszym planie; postęp na stderr, podsumowanie na stdout; wyjście 0, 1 (błąd, przerwanie, `conflict`), 2 (nieznany magazyn); Ctrl+C anuluje |
 | `doctor` | `doctor.py` | diagnostyka po polsku z poleceniem naprawy przy każdym problemie |
+| `preview REF [--build] [--output PLIK.png]`, `layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ]`, `compare REF REF` | `commands/previews.py`, `commands/layers.py`, `commands/compare.py` | te same usługi co API, obrazy zapisywane na żądanie |
+| `files PROJEKT`, `file PROJEKT PLIK`, `snapshot PROJEKT PLIK [--plan \| --note TEKST]`, `own-scan [--project PROJEKT]` | `commands/owndata.py` | lista i karta z indeksu; migawka i skan to zadania z postępem |
 
 ---
 
@@ -975,6 +1009,9 @@ Jedyna zmiana w plikach z npm: w `vendor/preact/hooks.mjs` import
 | `views/` | `map.js` (start), `catalog.js` z `catalog-grid.js` (rysuje tylko wiersze blisko widoku) i `catalog-filters.js`, `file.js` (karta pliku — nakładka), `projects.js`, `store.js`, wspólne `cards.js` (`IssueList`, `useJob` i `JobStatus` dla SSE, `FileLink`, `CopyAction`) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (podkład: rastrowy albo wektorowy we własnym szarym stylu), `sheets.js` (siatki godeł), `geo.js`, `products.js` |
 | `labels/` | słownik tekstów (niżej) |
+| `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | podglądy przez `fetch` z CSRF i adres `blob:`, Wachlarz lat/migawek, Oś czasu warstw |
+| `views/own.js`, `views/compare.js`, `views/set-details.js` | plik własny i plan migawki, zestawienie metadanych i kurtyna, szczegóły wybranej warstwy |
+| `map/previews.js`, `map/own.js` | kafle i obiekty lokalnych warstw, dane projektu oraz migawki na mapie |
 
 **Rejestracja widoku.** Widok to jedna linia w `VIEWS` (`id` = parametr
 `view` i klucz nazwy w `labels/shell.js` `nav`, `icon`, `load` = dynamiczny
@@ -982,8 +1019,8 @@ import modułu, opcjonalnie `start`, `bottom`), nakładka — linia w
 `OVERLAYS` (`param`, `load`). Moduł eksportuje domyślnie komponent
 dostający `route` (nakładka także `value` i `onClose`); teksty trzyma
 w `labels/<widok>.js`, styl ładuje przez `loadStylesheet`. Nic innego
-w powłoce się nie zmienia. Widoki 0.1.0: `map` (start), `catalog`,
-`projects`, `store`, `setup` (na dole nawigacji); nakładka `file`.
+w powłoce się nie zmienia. Widoki 0.2.0: `map` (start), `catalog`,
+`projects`, `store`, `setup`; nakładki `file`, `own`, `compare`.
 
 **Słownik.** Interfejs nie wpisuje tekstów w komponenty
 (`DEVELOPMENT_STANDARDS.md`): `labels/index.js` składa część wspólną
@@ -1016,24 +1053,10 @@ było — także z podkładem z innego pochodzenia.
 
 ---
 
-## 10. Punkty rozszerzeń (v0.2+)
+## 10. Punkty rozszerzeń (v0.3+)
 
-Zakres wydań: [`SCOPE.md`](SCOPE.md) i SPEC 13. Poniżej szwy, które kod
-0.1.0 już ma, i to, czego jeszcze nie ma.
-
-- **Podglądy (v0.2, A-ADR-008).** Pakietu podglądów jeszcze nie ma
-  (`archiwista/previews/` to propozycja SPEC 5.3). Szwy: nowy rodzaj
-  zadania to wpis w `JOB_KINDS` i `RUNNERS` (ciężkie budowanie poza
-  serwerem, limity `INDEX_JOB_KINDS` / `NETWORK_JOB_KINDS`), nowy router to
-  jedna linia `include_router` w `create_app`, a pamięć podglądów — nowy
-  katalog w `AppPaths` obok `cache_dir`, z kluczem `sha256` wersji, który
-  indeks już ma; kafle z tego samego pochodzenia mieszczą się w obecnym
-  `img-src 'self'`. Interfejs: nakładka albo widok to linia w `routes.js`.
-- **Dane własne i migawki (v0.2, A-ADR-027)** — jedyny planowany wyjątek od
-  zasady „Archiwista nie zapisuje”: migawki w folderze danych projektu.
-  W kodzie 0.1.0 jest tylko wyjątek `SnapshotError`, a
-  `tests/integration/test_read_only_store.py` pilnuje, że drzewo magazynu
-  i projektów zostaje nietknięte.
+Zakres wydań: [`SCOPE.md`](SCOPE.md) i SPEC 13. Podglądy oraz dane własne
+z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etapów.
 - **Działania (v0.3).** Pobieranie i akcje projektów przez API Kartografa
   (wymagania KB, KC, KD i KH w SPEC 12) wejdą jako nowe rodzaje zadań
   w procesach roboczych; protokół ma już stan `cancelled` i przerwanie
@@ -1063,24 +1086,25 @@ Zakres wydań: [`SCOPE.md`](SCOPE.md) i SPEC 13. Poniżej szwy, które kod
 
 ## 11. Wydajność
 
-Cele SPEC 4.5 dotyczą magazynu odniesienia: 50 000 slotów, 80 000 wersji
-(ok. 260 000 plików), 30 projektów. Metoda, sprzęt i pełne wyniki:
-[`reports/v0.1-measurements.md`](reports/v0.1-measurements.md) (bramka
-wydania 0.1.0 — sekcja 10, udział SMB 3 — sekcje 3 i 9).
+Magazyn odniesienia: 50 000 slotów, 80 000 wersji, 30 projektów.
+Metoda i wszystkie wyniki v0.2 (SSD oraz SMB 3):
+[`reports/v0.2-measurements.md`](reports/v0.2-measurements.md);
+punkt wyjścia v0.1: [`reports/v0.1-measurements.md`](reports/v0.1-measurements.md).
 
-| Operacja | Cel SSD / SMB | SSD, kod wydania (2026-10-19) | SMB 3, przebieg 3 (2026-10-19) |
-|---|---|---|---|
-| pierwszy pełny skan | ≤ 2 min / ≤ 10 min | 48,3 s | 225,6 s |
-| skan przyrostowy bez zmian | ≤ 20 s / ≤ 3 min | 12,4 s | 74,7 s |
-| odświeżenie widoku (492 sloty), p95 | ≤ 1 s / ≤ 5 s | 408 ms | 1833 ms |
-| lista (strona 50 wierszy), p95 | ≤ 200 ms | najwyżej 142,4 ms | w progach (indeks lokalny, sekcja 3 raportu) |
-| wyszukiwanie tekstowe, p95 | ≤ 200 ms | 41,0 ms | jw. |
-| karta pliku, p95 | ≤ 200 ms | 3,2 ms | jw. |
-| obrysy mapy (4963 w widoku), p95 | ≤ 300 ms | 197,5 ms | jw. |
-| indeks / szczyt RSS serwera | ≤ 500 MB | 256 MB / 179 MiB | 255 MB / 168 MiB |
+| Operacja | Cel SSD | Wynik v0.2 SSD |
+|---|---|---|
+| pełny skan / przyrost bez zmian | ≤ 120 s / ≤ 20 s | 64,8 s / 13,2–13,6 s |
+| odświeżenie widoku, p95 / lista, p95 | ≤ 1 s / ≤ 200 ms | 441–447 ms / ≤ 162 ms |
+| obrysy mapy ok. 5000, p95 | ≤ 300 ms | 229 ms (285,6 ms pod obciążeniem) |
+| pierwszy kafel ortofotomapy 22 528 × 24 326 px, p95 | ≤ 1 s | 222 ms |
+| miniatura warstwy 35 arkuszy / 50 SM5 | ≤ 2 s | 1306 / 1234 ms |
+| podgląd roku: przesunięcie do ostatniego kafla | ≤ 2 s | p95 528 ms |
+| `own_scan` 1000 plików, p95 / migawka GeoPackage 123 MB | ≤ 2 s / ≤ 15 s | 0,89–1,07 s / 5,8–6,3 s |
+| indeks / szczyt RSS serwera | ≤ 500 MB | 263 MB / 188–202 MiB |
 
-Otwarte: płynność mapy z 5000 obrysów (≥ 30 klatek/s, kryterium v0.2)
-wymaga pomiaru z GPU — przy WebGL programowym 9,1 klatek/s.
+Płynność mapy ≥ 30 klatek/s z GPU jest **niezweryfikowana**:
+konto testowe nie ma dostępu do sprzętowego WebGL; SwiftShader osiągał
+8,4 klatek/s przy 4532 obrysach-wielokątach.
 
 **Co w kodzie odpowiada za te liczby:**
 
@@ -1106,6 +1130,5 @@ wymaga pomiaru z GPU — przy WebGL programowym 9,1 klatek/s.
   widoku.
 
 Testy wydajności (domyślnie pominięte, znaczniki `perf` i `smb`):
-`tests/perf/test_scan_perf.py`, `test_index_perf.py`, `test_api_perf.py`
-i `test_store_50k.py` (przez prawdziwe `archiwista serve`); polecenia —
-sekcja 8 raportu.
+`tests/perf/test_store_50k.py`, `test_previews_perf.py` i
+`test_own_data_perf.py`; polecenia i warunki — raport v0.2.

@@ -1,17 +1,12 @@
 # Plan implementacji v0.2 „Podglądy”
 
-**Status:** projekt po przeglądzie (2026-10-19): uwzględnia wszystkie
-ustalenia przeglądu planu (m.in. sandbox GDAL z jawnymi sterownikami
-i `EMPTY_DIR`, widoczność zadań z danymi projektu, trzy stany plików
-SQLite, folder domyślny poza magazynem, kafle warstw, podział kroków 5a
-i 13); erraty, których wymagały, są w `docs/DECISIONS.md` (A-ADR-008
-errata 3, A-ADR-029 errata 1). Kod v0.2 powstaje dopiero po zatwierdzeniu
-tego planu (kolejność jak przy v0.1: spec → plan → przegląd planu →
-implementacja; `CLAUDE.md`). Wzór i umowy v0.1:
-`docs/PLAN_v0.1.md`; stan kodu 0.1.0: `docs/ARCHITECTURE.md`; pomiary
-wyjściowe: `docs/reports/v0.1-measurements.md`. Jak w v0.1, po każdym
-kroku dopisuje się tu „Stan po kroku N” (commit, odstępstwa od umowy,
-wyniki prób) i aktualizuje kolumnę „Stan” w tabeli kolejności prac.
+**Status:** wykonany plan wydania 0.2.0 (2026-10-20); kroki 0–18
+zakończone, odbiór i pomiary w `docs/reports/v0.2-measurements.md`.
+Kryterium ≥ 30 klatek/s z GPU pozostaje niezweryfikowane (brak dostępu
+do sprzętowego WebGL na komputerze odniesienia). Spec i plan v0.3
+powstają przed jego implementacją. Wzór i umowy v0.1:
+`docs/PLAN_v0.1.md`; kod wydania: `docs/ARCHITECTURE.md`. Po każdym
+kroku zapisano „Stan po kroku N” (commit, odstępstwa i wyniki prób).
 **Zakres (SPEC 13 v0.2):** podglądy (SPEC 5.7) z pamięcią po `sha256`;
 „Wachlarz” i „Oś czasu” dla danych lokalnych (lata i kampanie w magazynie);
 porównanie metadanych i kurtyna (SPEC 8.5, poziomy 1 i 2); dane własne
@@ -1099,7 +1094,7 @@ działa.
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | zrobione |
 | 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | zrobione dla SSD i SMB (raport `docs/reports/v0.2-measurements.md`); kryterium 5 (GPU) — niezweryfikowane |
 | 17 | E2E i odbiór v0.2 | 12a–15 | 16 | zrobione: przejście w przeglądarce, magazyn tylko do odczytu i odłączony udział; 3 magazyny live, 44 wersje; pełna bramka 1049 zaliczonych (raport, sekcje 9–11); kryterium GPU 5 otwarte |
-| 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
+| 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | zrobione: dokumentacja i demo, bramka w `.venv` (wyniki: Stan po kroku 18); GPU kryterium 5 niezweryfikowane |
 
 Fale równoległości: **A** — 0, 1, 2, 3; **B** — 4, 7a; **C** — 5a1, 5b,
 5c, 6 (umowa API na rejestrze rendererów), 7b; **D** — 5a2, 5a3, 8, 10
@@ -3729,6 +3724,27 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   w przeglądarce; wydanie tylko po odnotowaniu wyniku *każdego* wiersza
   bramki niżej. Bez tagu i scalenia do `main` bez decyzji użytkownika.
 - **Zależności:** 0–17. **Równolegle:** —.
+- **Stan po kroku 18 (wydanie 0.2.0, 2026-10-20):**
+  - Wersja pakietu i przykładu `/health` podniesiona do 0.2.0; dokumenty
+    `README`, CHANGELOG, USAGE, AGENT_API, ARCHITECTURE, SPEC, DECISIONS,
+    SCOPE i PROGRESS oraz raport pomiarowy uaktualnione. Przykładowy
+    magazyn `store2` i dane własne czterech rodzin wygenerowano poza repo;
+    świeży lokalny indeks odtworzono dla tego magazynu.
+  - `ruff check .` — zaliczony po poprawkach stylistycznych;
+    `ruff format --check .` — 256 plików; `mypy archiwista/ tests/` —
+    251 plików, bez problemów; `pip-audit` na `requirements.lock` —
+    brak znanych podatności.
+  - Domyślny `pytest`: 1064 zaliczone, 2 niezaliczone, 47 odfiltrowanych,
+    2 ostrzeżenia, 91,75% pokrycia. Powtórzono **tylko** 2 niezaliczone
+    scenariusze po dostosowaniu prób do nowych kluczy pamięci i sprawdzania
+    zawartości plików własnych — obie zaliczone. Nie wykonano ponownie
+    całego przebiegu; nie jest to jeden zielony pełny przebieg (raport,
+    sekcja 13).
+  - `archiwista serve` uruchomiony i obejrzany w przeglądarce: mapa,
+    Wachlarz NMT, projekt i 4 pliki własne. Dostawca podkładu nie był
+    testowany, bo przeglądarka miała dostęp tylko do localhost.
+    Kryterium ≥ 30 klatek/s z GPU nadal niezweryfikowane. Bez tagu
+    ani scalenia do `main`; następny krok to spec i plan v0.3.
 
 ## Bramka SPEC 13 v0.2: dowód dla każdego kryterium
 

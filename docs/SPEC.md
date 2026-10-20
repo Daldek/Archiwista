@@ -743,6 +743,16 @@ archiwów), katalog ok. 3 500 stacji, po jednej wersji szeregów zbioru.
 Interfejs nigdy nie czeka na skan: zapytania idą do indeksu, a stan
 indeksu („Indeks z 14:02, skan trwa: 63%”) jest zawsze widoczny.
 
+Pomiary wydania 0.2.0 na tym samym magazynie i udziale:
+[`reports/v0.2-measurements.md`](reports/v0.2-measurements.md) —
+pełny skan SSD 64,8 s, przyrostowy 13,2–13,6 s, zapytanie mapy
+4964 obrysów p95 117,4 ms po usprawnieniu odpowiedzi (`5610065`),
+indeks 263 MB i RSS serwera 188–202 MiB. Dla podglądów p95 kafla
+ortofotomapy po pierwszym odczycie 222 ms, migawka GeoPackage 123 MB
+5,8–6,3 s, skan własny 1000 plików p95 0,89–1,07 s.
+Próg ≥ 30 klatek/s przy 5000 obrysach pozostaje niezweryfikowany
+bez dostępu do sprzętowego GPU (SwiftShader: 8,4 klatek/s).
+
 ### 4.6 Praca na udziale SMB
 
 1. Na udziale nie ma żadnego pliku Archiwisty (SQLite, pamięć, blokady).
@@ -832,18 +842,30 @@ Decyzja użytkownika 2026-10-18: dane własne są czytane z folderu przypisanego
 do projektu, a migawki robi Archiwista w tym folderze.
 
 - **Folder danych:** każdy projekt ma folder danych własnych — domyślnie
-  `<katalog projektu>/dane/`, w ustawieniach projektu można wskazać inny
-  (zapis w konfiguracji Archiwisty, nie w manifeście producenta). Folder jest
-  indeksowany jak magazyn tylko do odczytu: pliki rastrowe i wektorowe
-  rozpoznane przez GDAL/OGR (GeoPackage, Shapefile jako komplet plików,
-  GeoTIFF, GeoJSON, FlatGeobuf…), z zasięgiem, układem, warstwami, liczbą
-  obiektów i schematem atrybutów; inne pliki — „nierozpoznane”. Odczyt
+  `<katalog projektu>/dane/`, inny folder może wskazać wyłącznie
+  administrator (`settings.write`, `PUT /projects/{project}/data-dir`;
+  ustawienie właściciela projektu od v0.4). Folder domyślny też musi
+  leżeć poza magazynem i lokalnym katalogiem Archiwisty. Konfiguracja
+  Archiwisty zapisuje wybór, manifest producenta pozostaje bez zmian.
+  Folder jest indeksowany jak magazyn tylko do odczytu: pliki rastrowe
+  i wektorowe rozpoznane przez GDAL/OGR (GeoPackage, Shapefile jako komplet
+  plików, GeoTIFF, GeoJSON, FlatGeobuf…), z zasięgiem, układem, warstwami,
+  liczbą obiektów i schematem atrybutów; inne pliki — „nierozpoznane”. Odczyt
   w procesie roboczym jak przy plikach geometrii (10.1).
+- **Trzy stany SQLite:** GeoPackage bez `-wal` (i aktywnego `-journal`)
+  czyta się przez `immutable=1` z kontrolą niezmienności; z `-wal`
+  i `-shm` tworzy się lokalną kopię zatwierdzonych wierszy przez
+  `Connection.backup`; z `-wal` bez `-shm` (lub z aktywnym `-journal`)
+  kopiuje się stabilne pliki do katalogu roboczego i dopiero tam
+  odtwarza stan. GDAL nie otwiera aktywnego WAL bezpośrednio w folderze
+  źródłowym; pliki robocze są poza magazynem i folderem projektu
+  (`owndata/content.py:consistent_sqlite_read`).
 - **Widok:** rodzaj ogólny (PRD N8.3): obrys z zasięgu, podgląd jak dla
   plików magazynu (5.7), metadane; w widoku projektu grupa „Dane własne”
   obok zadań producentów, na mapie razem z przypiętymi danymi projektu.
   Bez etykiet dostępności (brak źródła zdalnego).
-- **Migawka** („Zrób migawkę”; w zespole właściciel projektu albo administrator, A-ADR-029): plan pokazuje
+- **Migawka** („Zrób migawkę”; wymaga `project.write`: właściciel projektu
+  albo administrator, A-ADR-029): plan pokazuje
   plik, rozmiar i miejsce; kopia trafia do
   `<folder danych>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/` razem
   z `migawka.json` (`archiwista-snapshot/1`: ścieżka źródłowa, pliki z sumami
@@ -852,7 +874,7 @@ do projektu, a migawki robi Archiwista w tym folderze.
   1. tylko przyrost: migawek nie nadpisuje się ani nie usuwa;
   2. zapis atomowy: kopia do `.wersje/.incoming/<host>_<pid>_<token>/`,
      sprawdzenie sum, publikacja przez zmianę nazwy katalogu — błąd, gdy
-     cel istnieje; pozostałości starsze niż 24 h zgłasza „Magazyn”;
+     cel istnieje; pozostałości starsze niż 24 h są problemem projektu;
   3. spójna kopia pliku w użyciu: GeoPackage przez kopię zapasową SQLite
      (nie kopię bajtów przy otwartym WAL), Shapefile i inne formaty
      wieloplikowe jako komplet;
@@ -1231,6 +1253,13 @@ flowchart LR
   PRV -. "szeregi (read_series)" .-> AI
 ```
 
+W aktualnym v0.2 `PRV` jest usługą nadzorującą procesy
+`archiwista.previews.worker`: rio-tiler/GDAL/OGR/laspy nie czytają
+plików danych w procesie serwera. Cache i katalogi `work/` są lokalne,
+`ObjectResolver` autoryzuje `ref` przed cache, a zapis poza katalogiem
+Archiwisty jest ograniczony do migawek w folderze projektu; adapter IMGW,
+asystent i zadania pobierania na diagramie należą do późniejszych wersji.
+
 Zasady architektury:
 
 - **API najpierw.** Jedno API HTTP (`/api/v1`, sekcja 9) obsługuje
@@ -1498,12 +1527,12 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 | Rodzina plików | Podgląd | Uwagi |
 |---|---|---|
 | NMT, NMPT, DMR, DMP, SoilGrids | cieniowanie i hipsometria z legendą | ASC (tekst, bez kafelkowania) → lokalny COG z piramidą przy pierwszym podglądzie (zadanie `preview`); GeoTIFF kafelkowany czytany wprost |
-| Ortofotomapa, true orto, intensywność, mapy TIFF | RGB albo skala szarości z rozciągnięciem | JPEG CUZK z plikami JGW: VRT-owijka z układem z sidecara (`extra.world_files`) |
+| Ortofotomapa, true orto, intensywność, mapy TIFF | RGB albo skala szarości z rozciągnięciem | JPEG CZ z JGW: georeferencja z nagłówkowego obrysu KA-4, bez czytania pliku świata; obrót → `no_georeference` |
 | CORINE, HSG | paleta klas z legendą | |
 | GeoPackage (BDOT10k, PRG, EGiB, ZABAGED, RUIAN…) | warstwy, liczba obiektów, obiekty w widoku (GeoJSON, do 5 000), próbka atrybutów | otwarcie `immutable=1`; powyżej limitu „Przybliż albo otwórz w QGIS” |
 | ZIP (SHP, GML, CityGML, XLS, PDF, OBJ) | lista członów z rozmiarami i rozpoznanym formatem | podgląd SHP i GML przez `/vsizip/` później |
 | LAZ | nagłówek (zasięg, liczba punktów, klasy, gęstość) i obraz 2D z próbki | widok 3D po v1.0 (sekcja 15, P5) |
-| TXT/XYZ, PDF | metadane; PDF w przeglądarce | |
+| TXT, PDF | metadane i powód `document_no_preview` | PDF bez dostarczania pliku do przeglądarki (v0.4); siatki XYZ jak ASC |
 | Szeregi IMGW (Parquet w wersji szeregów zbioru) | wykres zmiennej (do 2 000 punktów na serię: min./śr./maks. w przedziałach), pierwsze i ostatnie wiersze | odczyt przez `read_series` (IMGW-10); pamięć po `sha256` pliku stacji (6.7) |
 | Archiwa IMGW (ZIP), katalog stacji (GeoJSON) | lista członów z rozmiarami; punkty i tabela atrybutów | treść archiwów czyta tylko IMGWTools |
 
@@ -1515,6 +1544,19 @@ miniatury i kafle rozróżnia także styl. Zmiana sposobu renderowania podnosi
 wersję renderera i unieważnia jego dawne obiekty. Limit pamięci 20 GB (LRU,
 ustawienie); plik większy niż 2 GB nie dostaje podglądu automatycznie
 — przycisk „Zbuduj podgląd”.
+
+Wydanie v0.2: `GET /…/preview` zwraca `ready`, `needs_build`, `building`
+albo `unavailable` i zrozumiały `reason` (`code`, opis, zalecenie).
+Renderery działają w izolowanych procesach (`python -P -m
+archiwista.previews.worker`), a lokalny COG powstaje w zadaniu `preview`.
+Wszystkie obrazy/kafle idą przez API z nagłówkiem CSRF; wektorowe `features`
+są uproszczone do zoomu (≤ 5000 obiektów i 500 000 wierzchołków).
+Kafle warstw składa się z kafli wersji. Do wspieranych rodzin danych
+własnych należą także Shapefile, GeoJSON, FlatGeobuf i natywne TAB; plik
+pomocniczy JGW ma `auxiliary_file`, ZIP ma `archive_members_only`, raster
+bez mapy `no_georeference`. Raster > 1 Gpx lub > 8 GiB rozpakowanych
+danych wymaga budowy na żądanie. Sandboxed odczyt wyłącza dostęp GDAL
+do innych plików w katalogu (`GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`).
 
 **Podglądy są lekkie (A-ADR-018):** niskiej rozdzielczości, generowane
 z nakładek przeglądowych (piramida/overviews COG), nie z pełnych danych
@@ -3007,17 +3049,18 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 | `POST /stores/{store}/footprints` | obrysy jednostek (TERYT, KU, SM5) z siecią dla wersji bez obrysu → zadanie w tle (5.6); w trybie offline `409 offline_mode` |
 | `POST /stores/{store}/link-check` | potwierdzenie celu dowiązania slotu treścią (`slot`; KA-5) → zadanie w tle |
 | `GET /products` | produkty z opisami, krajami i licznikami w magazynach (KB-1, IMGW-11 + indeks) |
-| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją; `location` (`any` — domyślnie, `with`, `none`) i grupy położenia z licznikami (4.3, 6.8); `unit` — dokładny kod jednostki (TERYT, KU, godło) |
+| `GET /slots` | wyszukiwanie i filtry: sloty z bieżącą wersją; `location` (`any`, `with`, `none`), `unit` i `project` (tylko przypięcia w widocznym projekcie) |
 | `GET /stores/{store}/slots/{slot}` | karta pliku: wersje, bieżąca i pełna, przypięcia |
 | `GET /stores/{store}/versions/{version}` | wersja: metadane po ludzku i sidecar |
 | `GET /stores/{store}/versions/{version}/sidecar` | surowy sidecar |
+| `GET`/`POST /stores/{store}/versions/{version}/preview` | stan podglądu albo budowa w zadaniu `preview` |
 | `GET /stores/{store}/versions/{version}/file` | plik danych (strumień; potrzebny w trybie zespołu) |
 | `GET /stores/{store}/versions/{version}/preview.png` | miniatura |
 | `GET /stores/{store}/versions/{version}/tiles/{z}/{x}/{y}.png` | kafle podglądu (`style`: `hillshade`, `rgb`, `classes`…) |
 | `GET /stores/{store}/versions/{version}/features` | obiekty wektorowe w widoku (`layer`, `bbox`, `limit`) |
 | `GET /stores/{store}/versions/{version}/members` | lista członów ZIP |
 | `GET /requests/{parent_request}` | pliki jednego zadania Kartografa (także PL i CZ); `/groups` należy do grup uprawnień |
-| `GET /compare?a=…&b=…` | porównanie metadanych dwóch wersji (8.5, poziom 1) |
+| `GET /compare?a=…&b=…` | porównanie metadanych `ref` dwóch wersji, plików własnych lub migawek (8.5, poziom 1) |
 | `GET /map/footprints` | obrysy w widoku (`bbox`, `zoom`, filtry) albo agregacja |
 | `GET /map/sheets` | siatka godeł w widoku (`system`, `scale`) |
 | `GET /map/stations` | punkty stacji IMGW w widoku (`bbox`, `zoom`, filtry) jako GeoJSON albo skupienia |
@@ -3029,6 +3072,13 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 | `POST /areas` | obszar z GeoJSON albo z pliku geometrii → `id`, powierzchnia, kraje (limity: 10.1) |
 | `GET /areas/{id}` | obszar: geometria (WGS84), powierzchnia, kraje |
 | `GET /local-coverage` | stan magazynu dla obszaru i produktu („lokalnie 83% obszaru”; `area_id`, `product`, `store`) po odświeżeniu slotów obszaru (4.4); procent w układzie płaskim kraju produktu |
+| `GET /local-layers`, `GET /local-layers/thumbnail.png`, `GET /local-layers/tiles/{z}/{x}/{y}.png` | lokalne lata/kampanie, miniatura i kafle warstwy |
+| `GET /projects/{project}/files`, `GET /projects/{project}/files/{file_id}` | własny folder projektu i karta pliku, tylko dla widzących projekt |
+| `PUT /projects/{project}/data-dir` | administrator ustawia folder danych własnych |
+| `POST /projects/{project}/scan` | skan danych własnych w tle, dla widzących projekt |
+| `GET /projects/{project}/files/{file_id}/snapshot-plan`, `POST …/snapshots` | plan i migawka wymagająca `project.write` |
+| `GET /projects/{project}/files/{file_id}/layers` | plik roboczy i migawki jako warstwy |
+| `GET`/`POST /projects/{project}/files/{file_id}/preview` i `…/snapshots/{label}/preview` | podglądy danych własnych i migawek; analogiczne `preview.png`, `tiles`, `features`, `members` |
 | `POST /availability` | dostępność obszaru dla produktu → zadanie w tle; wynik: stan lokalny, raport źródła, wiersze z etykietami; dla zbiorów IMGW — lata opublikowane z datami publikacji i stacje obszaru z etykietami pokrycia |
 | `GET /availability` | ostatni raport dla obszaru i produktu (bez sieci) |
 | `GET /commands` | katalog komend danych producentów (KB-1, IMGW-11) |
@@ -3036,8 +3086,8 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 | `POST /commands/validate` | walidacja bez sieci (KB-3, IMGW-11) |
 | `POST /commands/format` | opcje → tekst polecenia `kartograf …` albo `imgw …` (KB-4, IMGW-11) |
 | `POST /jobs` | zadanie w tle: `check`, `download`, `series`, `project`, `compose`, `export`, `preview`; polecenie z `producer` (9.1) |
-| `GET /jobs`, `GET /jobs/{id}` | lista i stan zadań z wykonawcą (`actor`) |
-| `GET /jobs/{id}/events` | strumień SSE: `progress`, `notice`, `state` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, `interrupted`; przy `failed` — `error`); wznowienie przez `Last-Event-ID` |
+| `GET /jobs`, `GET /jobs/{id}` | lista i stan zadań z wykonawcą (`actor`), filtr `project`; ukryte zadanie projektu → `404` |
+| `GET /jobs/{id}/events` | SSE widocznego zadania (`progress`, `notice`, `state`), wznowienie przez `Last-Event-ID` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | anulowanie, ponowienie |
 | `GET /jobs/{id}/log` | dziennik zadania |
 | `GET /projects`, `POST /projects` | lista; rejestracja istniejącego (`path`) albo nowy (`path`, `producer`, `output_dir` albo `store_dir` → `init_project` producenta) |
@@ -3323,6 +3373,12 @@ Decyzja: A-ADR-012.
   offline albo podkładów przeładowuje stronę. Dodatkowo `Referrer-Policy: no-referrer`
   i `X-Content-Type-Options: nosniff`. Biblioteki interfejsu są w pakiecie
   (bez CDN — działa też bez internetu).
+- **Odczyt plików v0.2:** izolowane procesy GDAL z jawnym sterownikiem
+  formatu (`formats.py`), `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`,
+  `GDAL_PAM_ENABLED=NO`, `PROJ_NETWORK=OFF`, `GDAL_SKIP` jako drugą
+  linią obrony, limitem czasu i pamięci. Serwer nie otwiera danych do
+  renderowania; przed pamięcią podglądów sprawdza `ref` i widoczność
+  projektu. Kafle z `/api/v1` również wymagają sesji i CSRF.
 - **Ścieżki:** API przyjmuje tylko ścieżki znane indeksowi; plik do
   odczytu jest rozstrzygany (`realpath`) i musi leżeć w korzeniu
   skonfigurowanego magazynu albo katalogu projektu; dowiązania symboliczne

@@ -1,10 +1,10 @@
 # API Archiwisty dla agentów i skryptów
 
 Przewodnik dla agentów AI (np. Claude Code) i skryptów, które korzystają
-z Archiwisty bez przeglądarki. Opisuje stan wydania 0.1.0: odczyt indeksu
-magazynu, karty plików i projektów, obszary i stan lokalny, stan serwera
-oraz zadania w tle. Agent używa zwykłego API HTTP `/api/v1` albo poleceń
-`archiwista … --json` — nie narzędzi czatu ani MCP (tych v0.1 nie ma).
+z Archiwisty bez przeglądarki. Opisuje wydanie 0.2.0: odczyt katalogu,
+podglądy, warstwy, porównanie, dane własne i migawki projektu, obszary
+oraz zadania. Agent używa API HTTP `/api/v1` albo poleceń
+`archiwista … --json` — bez narzędzi czatu ani MCP.
 
 Do v1.0 API może się zmieniać. Pełny schemat z przykładami jest zawsze pod
 `/api/v1/openapi.json` (wymaga sesji), a dokumentacja interaktywna pod
@@ -25,6 +25,12 @@ ludzi (`detail`, `title`, `message`) — po polsku.
 | token sesji dla agenta | `archiwista token --json` | `POST /session/tokens` |
 | obszar i stan lokalny produktu | — (obszar zakłada HTTP; jego wiersze: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | skan magazynu, zadania, SSE | — (tylko HTTP) | `POST /stores/{store}/scan`, `/jobs` |
+| podgląd i budowa, opcjonalny obraz PNG | `archiwista preview REF [--build] [--output PLIK.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
+| porównanie metadanych dwóch obiektów | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
+| lata/kampanie i miniatura warstwy | `archiwista layers --store ID --product PRODUKT --area-id ID [--thumbnail KLUCZ --output PLIK.png]` | `GET /local-layers`, `GET /local-layers/thumbnail.png` |
+| pliki projektu i karta pliku | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
+| plan i wykonanie migawki | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
+| skan folderu danych własnych | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
 
 CLI czyta lokalny indeks bez działającego serwera i wywołuje te same usługi
 co trasy HTTP, jako właściciel lokalnej instalacji (`LOCAL_OWNER`, role
@@ -133,6 +139,7 @@ Wartości sprawdza ten sam model co trasa, więc błędy są identyczne.
 | `bbox` | `--bbox` | prostokąt `min_x,min_y,max_x,max_y` w układzie `bbox_crs` |
 | `bbox_crs` | `--bbox-crs` | układ `bbox`, domyślnie `EPSG:4326`; inny przelicza przypięta operacja producenta |
 | `limit` | `--limit` | wierszy na stronie: 1–200, domyślnie 50 |
+| `project` | `--project` | wersje przypięte w widocznym projekcie; niewidoczny projekt → `404` |
 | `cursor` | `--cursor` | `next_cursor` poprzedniej strony tego samego zapytania |
 
 Wartości zaczynające się od minusa podawaj z `=`:
@@ -256,7 +263,81 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-## 6. Błędy
+## 6. Podglądy, warstwy, porównanie i dane własne (v0.2)
+
+`ref` bierz z odpowiedzi karty wersji, pliku własnego albo migawki:
+`version:<store>:<ścieżka-wersji>`, `file:<project>:<ścieżka-pliku>`
+lub `snapshot:<project>:<etykieta>:<ścieżka-pliku>`. Nie twórz
+odwołań z bezwzględnych ścieżek systemu plików. Resolver przed dostępem
+do pamięci podglądów sprawdza widoczność projektu. Projekt niewidoczny
+daje `404`, brak prawa do migawki — `403`.
+
+`GET /stores/{store}/versions/{version}/preview` zwraca `PreviewInfo`:
+`state` (`ready`, `needs_build`, `building`, `unavailable`), `kind`,
+`reason` (`code`, polskie `message`, `fix`), `styles`, `default_style`
+oraz adresy `thumbnail_url`, `tiles_url`, `features_url`, `members_url`.
+Przy `needs_build` wywołaj `POST …/preview`: `202` zwraca zadanie, `200`
+oznacza gotowy podgląd. Obraz pobierz przez `GET …/preview.png?size=512`
+(`--style` w CLI, parametr `style` w HTTP). Kafle `…/tiles/{z}/{x}/{y}.png`,
+wektory `…/features?bbox=…&zoom=…` i spis ZIP `…/members` mają tę samą
+ochronę sesji i nagłówka CSRF, **również dla obrazów**. Żądania odłączonego
+magazynu mogą korzystać z pamięci, a przy jej braku podają powód.
+
+```sh
+archiwista search --project=projekt-01 --json
+# REF pochodzi z pola ref karty wersji lub pliku zwróconej przez API.
+archiwista preview "$REF" --build --json
+archiwista preview "$REF" --output=<katalog-danych>/podglad.png
+```
+
+`GET /local-layers?store=demo&product=nmt&area_id=$AREA&group=year`
+zwraca lata (albo `group=campaign`), ich klucze, pokrycie i adresy
+miniatur/kafli. Bez `area_id` daje liczniki, nie obrazy. Użyj adresu
+`thumbnail_url` z odpowiedzi, nie zgaduj klucza i wersji obrazu:
+
+```sh
+archiwista layers --store=demo --product=nmt --area-id="$AREA" --json
+LAYER="$(archiwista layers --store=demo --product=nmt \
+  --area-id="$AREA" --json | jq -r '.layers[0].key')"
+archiwista layers --store=demo --product=nmt --area-id="$AREA" \
+  --thumbnail="$LAYER" --output=<katalog-danych>/rok.png
+curl -sf -b "$JAR" -H "$H" "$BASE/local-layers?store=demo&product=nmt&area_id=$AREA&group=year"
+archiwista compare "$REF_A" "$REF_B" --json
+curl -sf -b "$JAR" -H "$H" -G --data-urlencode "a=$REF_A" \
+  --data-urlencode "b=$REF_B" "$BASE/compare"
+```
+
+Folder projektu (domyślnie `<katalog projektu>/dane/`, inny ustawia
+administrator przez `PUT /projects/{project}/data-dir`) jest indeksowany
+osobno od magazynu: `GET /projects/{project}/files?q=…&state=changed`
+z `limit`/`cursor`, `GET …/files/{file_id}` i `GET …/files/{file_id}/layers`
+(plik roboczy oraz migawki w Wachlarzu). Obrazy, kafle, obiekty i spis
+archiwum mają odpowiedniki tras wersji pod `…/files/{file_id}/preview`,
+`…/files/{file_id}/snapshots/{label}/preview` itd. Plik zmieniony od
+ostatniego skanu trzeba przeskanować ponownie, zamiast używać starego
+podglądu. Plan migawki sprawdza wykonalność i rozmiar bez jej tworzenia;
+`POST …/snapshots` wymaga `project.write` (właściciel projektu lub admin),
+zwraca zadanie `snapshot`; identyczna treść daje wynik `unchanged`.
+
+```sh
+archiwista files projekt-01 --state=changed --json
+archiwista file projekt-01 kanalizacja.gpkg --json
+archiwista own-scan --project=projekt-01 --json
+archiwista snapshot projekt-01 kanalizacja.gpkg --plan --json
+archiwista snapshot projekt-01 kanalizacja.gpkg --note="przed zmianą" --json
+curl -sf -b "$JAR" -H "$H" "$BASE/projects/projekt-01/files"
+curl -sf -b "$JAR" -H "$H" "$BASE/projects/projekt-01/files/$FILE_ID/snapshot-plan"
+curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
+  -d '{"note":"przed zmianą"}' "$BASE/projects/projekt-01/files/$FILE_ID/snapshots"
+```
+
+`GET /jobs?project=projekt-01` filtruje zadania projektu. Lista, szczegóły
+`/jobs/{job}` i SSE `/jobs/{job}/events` nie ujawniają zadań z danymi
+niewidocznego projektu (`404` przy bezpośrednim adresie); zwykły skan
+magazynu jest wspólny. SSE wysyła `progress`, `notice` i `state`, a klient
+wznawia po `Last-Event-ID`.
+
+## 7. Błędy
 
 Każdy błąd HTTP to `application/problem+json` (RFC 9457), np. dla
 `GET /slots?limit=201`:
@@ -286,6 +367,7 @@ Decyzje opieraj na `status` i `code` — nigdy na tekście `detail`.
 | 405 | `method_not_allowed` | inna metoda; dozwolone w nagłówku `Allow` |
 | 409 | `conflict` | trwa już zadanie zapisujące indeks tego magazynu (pole `job`) — śledź je zamiast ponawiać |
 | 409 | `offline_mode` | operacja wymaga sieci, a włączony jest tryb offline |
+| 409 | `snapshot_blocked`, `own_file_changed` | plan blokuje migawkę albo plik zmienił się od skanu: odśwież folder i odczytaj plan |
 | 413 | `request_too_large` | treść żądania ponad limit (4 KiB wymiana tokenu, 1 MiB pozostałe) |
 | 413 | `area_too_large` | plik obszaru ponad 50 MB albo archiwum ponad 200 MB po rozpakowaniu |
 | 422 | `validation_error` | niepoprawne parametry lub treść: `errors` (`field`, `type`, `message`) albo `problems` (ustawienia) |
@@ -295,11 +377,12 @@ Decyzje opieraj na `status` i `code` — nigdy na tekście `detail`.
 | 503 | `source_unavailable` | brak wtyczki producenta; pole `source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), naprawa na końcu `detail` |
 | 503 | `source_incompatible` | wtyczka w niewspieranej wersji lub schemacie; jak wyżej |
 | 503 | `store_unavailable` | magazynu nie da się odczytać, a indeks nie ma odpowiedzi |
+| 503 | `preview_busy` | pula renderowania jest pełna; zaczekaj według `Retry-After` |
 
 CLI z `--json` wypisuje dokładnie te same problemy (z tym samym `status`
 w treści) i kończy się kodem `1`.
 
-## 7. Zalecany przebieg pracy agenta
+## 8. Zalecany przebieg pracy agenta
 
 1. **Rozpoznanie:** `archiwista status --json` (albo `GET /health`) —
    czy są magazyny, czy są `available`, czy wtyczka producenta jest
@@ -321,7 +404,7 @@ w treści) i kończy się kodem `1`.
 7. **Ścieżki:** do pracy z plikiem użyj `paths.local` z karty; nie składaj
    ścieżek samodzielnie.
 
-## 8. Zadania w tle i SSE
+## 9. Zadania w tle i SSE
 
 Długie operacje zwracają `202 Accepted` z zadaniem (`JobDetail`) i nagłówkiem
 `Location: /api/v1/jobs/{id}`. Wszystkie wymagają `X-Archiwista-CSRF`.
@@ -331,6 +414,9 @@ Długie operacje zwracają `202 Accepted` z zadaniem (`JobDetail`) i nagłówkie
 | `POST /stores/{store}/scan` | opcjonalnie `{"mode": "incremental"}` (domyślnie) albo `"full"`, opcjonalnie `"segment"` | skan magazynu do indeksu |
 | `POST /stores/{store}/footprints` | brak | obrysy jednostek (TERYT, KU) z sieci; offline → `409 offline_mode` |
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | potwierdzenie celu dowiązania slotu; nieznany slot → `404` |
+| `POST /projects/{project}/scan` | brak | skan folderu projektu, możliwy dla widzących projekt |
+| `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` albo brak | migawka, wymaga `project.write` |
+| `POST …/preview` | brak | budowa podglądu pliku lub wersji (odpowiedź `200` albo zadanie `202`) |
 
 Nieznany magazyn daje `404 not_found`, zła treść `422 validation_error`.
 Gdy dla magazynu trwa już zadanie zapisujące indeks (skan albo obrysy),
@@ -338,13 +424,13 @@ odpowiedź to `409 conflict` z polem `job` (`id`, `kind`, `state`) —
 śledź to zadanie zamiast zakładać nowe.
 
 Zadanie (`GET /jobs/{id}`) ma pola `id`, `kind` (`scan`, `footprints`,
-`link_check`), `state` (`queued`, `running`, `succeeded`, `failed`,
-`interrupted`, `cancelled`), `actor`, `actor_kind` (`local_owner`, `user`,
-`agent`, `scheduler`), `session` (etykieta sesji), `store`, `params`, `created_at`,
-`started_at`, `finished_at`, `progress`, `result` i `error` (`code`,
-`detail`; `null`, gdy brak błędu). Lista: `GET /jobs?kind=&store=&state=`
-z `limit` (1–200) i `cursor`, najnowsze najpierw — stronicowanie jak
-w sekcji 4.
+`link_check`, `preview`, `own_scan`, `snapshot`), `state` (`queued`,
+`running`, `succeeded`, `failed`, `interrupted`, `cancelled`), `actor`,
+`actor_kind`, `session`, `store`, `params`, `created_at`, `started_at`,
+`finished_at`, `progress`, `result` i `error`. Lista:
+`GET /jobs?kind=&store=&state=&project=` z `limit` (1–200) i `cursor`,
+najnowsze najpierw. Zadania z danymi projektu mają kontrolę jego widoczności
+także w pojedynczej karcie i w strumieniu SSE.
 
 Zdarzenia płyną jako SSE z `GET /jobs/{id}/events` (`text/event-stream`).
 Każda ramka ma `id: <numer kolejny>`, `event: progress|notice|state`
@@ -384,11 +470,11 @@ planie (dla właściciela przy terminalu, nie dla agenta przy działającym
 serwerze — oba trafiają do tej samej kolejki i dostają `409` przy
 konflikcie).
 
-## 9. Ograniczenia v0.1
+## 10. Ograniczenia v0.2
 
 - Tylko tryb lokalny: jedna osoba na `127.0.0.1`, bez logowania; konta
   i grupy służą widoczności projektów (A-ADR-029).
-- Bez pobierania danych, podglądów, porównań, sprawdzania dostępności
-  u źródła i zmian projektów przez Archiwistę — te funkcje przyjdą
-  w kolejnych wersjach.
-- Bez asystenta czatu i MCP; agent zewnętrzny używa API opisanego wyżej.
+- Bez pobierania danych, sprawdzania dostępności u źródła i działań
+  producenta zmieniających manifest projektu (plan v0.3).
+- Bez danych IMGW w Archiwiście, czatu i MCP; agent zewnętrzny używa API
+  opisanego wyżej.

@@ -5,35 +5,56 @@ Istotne zmiany Archiwisty w kolejnych wydaniach. Format wzorowany na
 według [SemVer](https://semver.org/lang/pl/). Do v1.0 API HTTP i polecenia
 wiersza poleceń mogą się zmieniać.
 
-## [Unreleased]
+## [0.2.0] — 2026-10-20 — „Podglądy”
+
+### Dodano
+
+- Podglądy rastrów, wektorów, chmur punktów i archiwów ZIP; dla
+  nieobsługiwanych plików — powód i sposób postępowania. Miniatury, kafle
+  i uproszczone obiekty powstają w odizolowanych procesach, a pamięć
+  podręczna po treści z limitem LRU leży lokalnie.
+- „Wachlarz” i „Oś czasu” lokalnych lat i kampanii, podgląd całego roku
+  z arkuszy, porównanie metadanych i kurtyna dwóch warstw (także przenikanie
+  i widok obok siebie).
+- Dane własne projektu: indeks folderu, pliki i warstwy na mapie, wykrywanie
+  zmian od migawki, plan oraz atomowe migawki całych plików w `.wersje/`.
+  Zapis migawki wymaga `project.write`; magazyn producenta pozostaje
+  wyłącznie do odczytu. Zadania zawierające dane projektu widzą tylko
+  osoby z dostępem do niego.
+- API podglądów, porównania, warstw, danych własnych, planów i migawek;
+  polecenia CLI `preview`, `compare`, `layers`, `files`, `file`, `snapshot`
+  i `own-scan`; filtr `project` w katalogu i zadaniach.
 
 ### Zmieniono
 
-- Dokumentacja ma angielskie nazwy plików (treść po polsku, jak
-  w Kartografie i IMGWTools): `docs/USAGE.md` (dawniej
-  `Przewodnik_uzytkownika.md`), `docs/AGENT_API.md` (dawniej
-  `API_dla_agentow.md`), `docs/IMGWTOOLS_REQUIREMENTS.md` (dawniej
-  `wymagania-imgwtools.md`), `docs/reports/v0.1-measurements.md` ze zrzutami
-  w `docs/reports/v0.1-screenshots/` (dawniej `docs/raporty/`), a dziennik
-  zmian przeszedł do `docs/CHANGELOG.md`.
-- **Podkład mapy:** domyślnie kafle wektorowe OpenFreeMap we własnym
-  jasnoszarym stylu Archiwisty, z polskimi nazwami miejscowości i wód
-  (także egzonimy: Praga, Drezno, Lwów), zamiast BKG TopPlusOpen, który obok
-  polskich nazw drukował niemieckie („Gdańsk / Danzig”); drugi wbudowany
-  podkład to szara OSM BaseMap GUGiK (tylko Polska). Nowy rodzaj podkładu
-  `vector` (adres TileJSON kafli w schemacie OpenMapTiles); glify
-  U+0200–U+02FF i cyrylicy w pakiecie. Ustawienia zapisane wcześniej
-  zachowują swoją listę podkładów — nowe wbudowane daje usunięcie tabel
-  `[[basemaps]]` z `config.toml`.
+- Obrysy WGS84 są wielokątami zamiast prostokątnych obwiedni; zapytania
+  mapy ograniczają koszt zwracania obrysów. Zmiana `SCHEMA_VERSION` indeksu
+  do 6 powoduje **przebudowę indeksu i pełny skan przy pierwszym starcie**
+  po aktualizacji (także na odłączanym udziale); baza uprawnień pozostaje.
+- Domyślny podkład to kafle wektorowe OpenFreeMap w szarym stylu z polskimi
+  nazwami miejscowości i wód (również egzonimami: Praga, Drezno, Lwów).
+  Drugą opcją jest OSM BaseMap GUGiK (tylko Polska); BKG usunięto.
+  Stare konfiguracje zachowują własne `[[basemaps]]`; aby dostać nowe
+  podkłady, usuń te wpisy z `config.toml`.
+- Dane testowe mają obrysy wewnątrz Polski i Czech (`34c42ce`).
 
 ### Poprawiono
 
-- Stan budowy podglądu nie ujawnia identyfikatora ani stanu zadania
-  z projektu niewidocznego dla użytkownika: widoczny jest tylko ogólny
-  stan „w budowie”.
-- Skan danych własnych kończy przejście po przekroczeniu wspólnych limitów
-  wpisów (także ukrytych), katalogów, głębokości i migawek bez oznaczania
-  niewidzianych plików i migawek jako brakujących.
+- Przyspieszono obrysy mapy (`5610065`). Przegląd bezpieczeństwa
+  i niezawodności (`d2d3402`, `f445633`, `48ff701`, `f582d86`,
+  `cde1349`, `ec83b7c`, `416dd4f`): izolacja odczytu i renderowania,
+  kontrola ścieżek, uprawnień i zmian plików, spójność migawek, limitowanie
+  skanu i komunikaty błędów bez ujawniania cudzych danych. Stan budowy
+  podglądu nie zdradza zadania niewidocznego projektu; limity skanu danych
+  własnych nie oznaczają nieprzejrzanych plików jako brakujących.
+
+### Znane ograniczenia
+
+- ≥ 30 klatek/s mapy przy 5000 obrysów pozostaje niezweryfikowane bez
+  dostępu do sprzętowego GPU na komputerze odniesienia.
+- Dane IMGW nie są jeszcze dostępne w Archiwiście (plan v0.5).
+- Georeferencja obróconego JPEG z plikiem świata oraz różnice obiektów
+  między migawkami nie należą do v0.2.
 
 ## [0.1.0] — 2026-10-19 — „Przeglądarka”
 
