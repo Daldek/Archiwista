@@ -585,7 +585,9 @@ class _Snapshot:
                     if unchanged is not None:
                         return unchanged
                 self._reached("copy")
-                described = work / self.working.real.name if backup is None else backup.path
+                described = (
+                    work / self.working.real.name if backup is None else backup.path
+                )
                 info = self._describe(described)
                 self._verify(destination.work_fd, copy.files)
                 self._reached("checksums")
@@ -607,16 +609,18 @@ class _Snapshot:
                         os.close(descriptor)
                 self._sync_directory(destination.work_fd)
                 self._reached("rename")
-                with self._writes(access=True):
-                    with self._directories(self.parent, destination.root_fd) as parent_fd:
-                        target = self._publish(destination, document.label, parent_fd)
-                        published = True
-                        self._reached("published")
-                        self._chmod(
-                            destination.work_fd, SNAPSHOT_DIRECTORY_MODE,
-                            published=True,
-                        )
-                        self._sync_directory(parent_fd, published=True)
+                with (
+                    self._writes(access=True),
+                    self._directories(self.parent, destination.root_fd) as parent_fd,
+                ):
+                    target = self._publish(destination, document.label, parent_fd)
+                    published = True
+                    self._reached("published")
+                    self._chmod(
+                        destination.work_fd, SNAPSHOT_DIRECTORY_MODE,
+                        published=True,
+                    )
+                    self._sync_directory(parent_fd, published=True)
                 return SnapshotResult(
                     "created", document.label, target, document, self._warnings()
                 )
@@ -675,10 +679,8 @@ class _Snapshot:
                 size = sum(stamp.size_bytes for stamp in before)
                 return _Copy(files, FileStamp(size, before[0].modified_ns), identity)
             for member in members:
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     os.unlink(member.name, dir_fd=work_fd)
-                except FileNotFoundError:
-                    pass
         raise self._inconsistent()
 
     def _unchanged(self, identity: ContentIdentity) -> SnapshotResult | None:
