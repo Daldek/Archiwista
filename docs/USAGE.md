@@ -223,5 +223,7 @@ otwartej karty Archiwisty.
 
 - Nie pobiera danych, nie sprawdza dostępności u źródła i nie zmienia
   manifestów projektu przez producenta — to v0.3 „Działania”.
+- Nie buduje podglądów przed pierwszym otwarciem; wstępne budowanie miniatur
+  i przeglądów bieżących wersji zaplanowano na v0.3.
 - Nie pokazuje różnic obiektów między migawkami, nie ma logowania ani
   pracy w zespole (v0.4) i nie indeksuje jeszcze danych IMGW (v0.5).

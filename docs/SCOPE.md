@@ -90,8 +90,8 @@ dalej. Pełne kryteria akceptacji: SPEC 13.
      w trakcie edycji spójna, przerwanie bez częściowej wersji (spełnione).
      **≥ 30 klatek/s przy 5000 obrysów niezweryfikowane** bez GPU
      sprzętowego. Dowody i warunki: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md).
-4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” przy działaniach.
-   - Bramka: parytet z CLI; anulowanie bez częściowych wersji; etykiety dla obszaru „Kraków” zgodne z ręcznym wyliczeniem; UC-01 i UC-06 na żywo; działanie zapisujące magazyn bez uprawnienia odrzucone.
+4. **v0.3 „Działania”.** Dostępność z etykietami pokrycia (także obrazy PL i wydania produktów jednostkowych), „Okno planu”, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” przy działaniach; wstępne budowanie podglądów bieżących wersji (decyzja użytkownika 2026-10-19).
+   - Bramka: parytet z CLI; anulowanie bez częściowych wersji; etykiety dla obszaru „Kraków” zgodne z ręcznym wyliczeniem; UC-01 i UC-06 na żywo; działanie zapisujące magazyn bez uprawnienia odrzucone; po wstępnym zbudowaniu pierwsza miniatura bieżącej wersji z magazynu HDD/SMB podana z lokalnej pamięci w czasie docelowym podglądu z pamięci (SPEC 4.5).
 5. **v0.4 „Zespół”.** Serwer w sieci lokalnej: logowanie, zarządzanie kontami i udostępnianie projektów w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik, wspólna kolejka.
    - Bramka: scenariusz na żywo z trzema osobami bez podwójnych pobrań; uprawnienia ról sprawdzone testami.
 6. **v0.5 „Stacje IMGW”.** Dodatek IMGW, stacje, pokrycie szeregów, karta stacji, aktualność i synchronizacja archiwów, zadania projektu IMGW.

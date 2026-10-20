@@ -126,6 +126,7 @@ każdego wymagania: wskazana sekcja SPEC.
 
 - F5.1 Podgląd każdego typu pliku magazynu albo podany powód braku; ten sam plik nie jest przeliczany drugi raz; limit pamięci podglądów. (v0.2)
 - F5.2 „Wachlarz” i „Oś czasu” lat danych lokalnych; porównanie metadanych dwóch wersji i kurtyna na mapie. (v0.2)
+- F5.3 Wstępne budowanie miniatur i przeglądu przy małym powiększeniu (bez wszystkich kafli) bieżących wersji w zadaniu w tle: po odświeżeniu indeksu dla nowych wersji po włączeniu przez administratora (domyślnie wyłączone) lub na żądanie z filtrem produktu/segmentu, projektu i obszaru przez CLI albo API; niski priorytet wobec podglądów interaktywnych, anulowanie, limit pamięci bez wypierania niedawno używanych podglądów, odczyt magazynu bez sieci i z zachowaniem widoczności projektów. (v0.3; decyzja użytkownika 2026-10-19)
 
 **F6. Dostępność i etykiety pokrycia** (SPEC 6.4, A-ADR-010, 017)
 

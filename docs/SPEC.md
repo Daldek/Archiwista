@@ -587,6 +587,11 @@ a kopię zapasową daje `archiwista state export` (JSON
 `archiwista-state/1`), odtwarzaną przez `archiwista state import` do pustej
 bazy.
 
+Przy wdrożeniu produkcyjnym magazyn może pozostać na HDD/NAS, ale katalog
+danych Archiwisty (indeks i pamięć podglądów) powinien leżeć na lokalnym SSD.
+`state.sqlite` wymaga kopii zapasowej; nie należy ręcznie kopiować plików
+magazynu w celu przyspieszenia podglądów.
+
 Zawartość (tabele logiczne; schemat ustali plan implementacji):
 
 | Tabela | Co trzyma |
@@ -1563,6 +1568,26 @@ z nakładek przeglądowych (piramida/overviews COG), nie z pełnych danych
 rastra; służą rozpoznaniu zawartości, nie analizie. Zrzuty ekranu i podglądy
 przechowywane w repozytorium (dokumentacja, mockup) to WebP albo JPEG
 o szerokości ok. 1280 px, nie PNG pełnej rozdzielczości.
+
+**Wstępne budowanie (v0.3; decyzja użytkownika 2026-10-19).** Zadanie w tle
+`preview_warm` (5.6) przygotowuje dla bieżących wersji miniatury i przegląd
+przy małym powiększeniu, nie wszystkie kafle. Po odświeżeniu indeksu może
+obejmować nowo wykryte wersje, jeśli administrator włączy ustawienie
+(domyślnie wyłączone). Ręczne `archiwista preview warm` przyjmuje filtry
+produktu/segmentu, projektu i obszaru oraz `--json`; równoważne działanie
+udostępniają API HTTP i token agenta. Zadanie można anulować, a istniejąca
+pula rendererów obsługuje je z niskim priorytetem: praca wstępna nie
+opóźnia podglądów interaktywnych. Respektuje limit pamięci i LRU, nie
+wypiera niedawno używanych podglądów; przy wyczerpaniu dostępnego budżetu
+kończy pracę i podaje przyczynę oraz liczbę pominiętych wersji. Nie używa
+sieci i czyta magazyn tylko do odczytu. Obowiązują te same reguły
+widoczności co dla podglądów (A-ADR-029): dane własne projektów prywatnych
+tylko dla uprawnionych, bez ujawniania ukrytych projektów w wyborze,
+wynikach ani w pamięci podglądów.
+
+Magazyn na HDD/NAS może pozostać na wolniejszym nośniku, podczas gdy
+lokalna pamięć podglądów na SSD obsłuży pierwsze wyświetlenie przygotowanej
+wersji; pierwszy odczyt nieprzygotowanej wersji pozostaje wolną ścieżką.
 
 ### 5.8 Źródła jako wtyczki: rejestracja, instalacja, wersje
 
@@ -3927,7 +3952,7 @@ MVP = v1.0 (decyzja użytkownika 2026-10-17, A-ADR-025; v0.6 „PL + CZ” w MVP
 |---|---|---|
 | v0.1 „Przeglądarka” | lokalnie, tylko odczyt: indeks, Mapa, Katalog, Karta pliku, Projekty (podgląd), Magazyn (stan), stan lokalny obszaru; mechanizm wtyczek źródeł z atrapą drugiego adaptera; model uprawnień (baza stanu, `Principal`, widoczność projektów, API i CLI administratora) | KA-1..KA-6, KA-8 |
 | v0.2 „Podglądy” | podglądy, Wachlarz i Oś czasu dla danych lokalnych, porównanie metadanych i kurtyna; dane własne projektu i migawki | — |
-| v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów; uprawnienie „zapis do magazynu” sprawdzane przy działaniach | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
+| v0.3 „Działania” | dostępność u źródła z etykietami (wysokości PL i CZ, obrazy PL, wydania produktów jednostkowych), Okno planu, pobieranie, zadania w tle, aktualność, akcje projektów; wstępne budowanie podglądów; uprawnienie „zapis do magazynu” sprawdzane przy działaniach | KA-4 dla pozycji planu, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
 | v0.4 „Zespół” | serwer w sieci lokalnej: logowanie, zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy LDAP/AD, TLS, dziennik działań, wspólna kolejka | — |
 | v0.5 „Stacje IMGW” | extra `archiwista[imgw]` (adapter IMGW jako wtyczka); katalog IMGW: stacje na mapie i w Katalogu (także bez położenia), Zestawienie i Karta stacji z wykresem, porównanie stacji, etykiety pokrycia szeregów osobno dla każdej zmiennej, w obu rodzajach lat, aktualność i synchronizacja archiwów, szeregi, zadania projektu IMGW | IMGWTools: IMGW-1..IMGW-14 |
 | v0.6 „PL + CZ” | pogranicze: zestawienie PL + CZ bez scalania (grupa `parent_request`, kontrola zgodności) i scalona powierzchnia przygraniczna przez Kartografa (tryb 2, 8.3); stacje ČHMÚ przez IMGWTools w widokach v0.5 (4.8.6) | Kartograf: KF; IMGWTools: IMGW-15..IMGW-19 |
@@ -4009,9 +4034,10 @@ i etykietami pokrycia (6.4); „Okno planu”; pobieranie z formularza
 i z wklejonego polecenia; zadania w tle z postępem i anulowaniem;
 sprawdzanie aktualności i „Pobierz nowsze”; akcje projektów (utworzenie,
 dodanie i usunięcie zadania projektu, pobranie, przepięcie, sprawdzenie,
-weryfikacja); wybór obszaru po nazwie jednostki; sprawdzenie uprawnienia
-„zapis do magazynu” (`store_writer`, `store_write_for_all`) przed każdym
-działaniem zapisującym magazyn (10.2).
+weryfikacja); wybór obszaru po nazwie jednostki; wstępne budowanie
+podglądów bieżących wersji (5.7; decyzja użytkownika 2026-10-19);
+sprawdzenie uprawnienia „zapis do magazynu” (`store_writer`,
+`store_write_for_all`) przed każdym działaniem zapisującym magazyn (10.2).
 
 Kryteria:
 
@@ -4027,6 +4053,9 @@ Kryteria:
 6. Testy na żywo UC-01 i UC-06 z raportem.
 7. Działanie zapisujące magazyn bez `store_writer` (i bez
    `store_write_for_all`) → `403 permission_denied`, bez zadania w tle.
+8. Po wstępnym zbudowaniu pierwsza miniatura przygotowanej bieżącej wersji
+   z magazynu HDD/SMB jest podana z lokalnej pamięci podglądów w czasie
+   docelowym dla podglądu z pamięci z 4.5 (bez zmiany progów).
 
 ### v0.4 „Zespół”
 

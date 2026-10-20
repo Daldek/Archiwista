@@ -9,8 +9,9 @@ porównanie i kurtyna, dane własne i migawki. Dowody odbioru
 oraz ograniczenie GPU: `docs/reports/v0.2-measurements.md`.
 Bez tagu i bez scalenia do `main` (decyzja użytkownika).
 **Następny krok:** spec i plan v0.3 „Działania” do zatwierdzenia przed
-implementacją. Zależności producenta: `docs/SPEC.md` § 12, zakres
-`docs/SCOPE.md` etap 4.
+implementacją; uwzględnić wstępne budowanie podglądów (decyzja użytkownika
+2026-10-19; PRD F5.3, SPEC 5.7 i 13). Zależności producenta:
+`docs/SPEC.md` § 12, zakres `docs/SCOPE.md` etap 4.
 
 ### Czytaj najpierw
 
