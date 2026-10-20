@@ -122,7 +122,7 @@ def test_scan_projects_links_pins_to_indexed_versions(
     ]
     assert detail.tasks[0].options == {
         "product": "nmt",
-        "sheet": "M-33-138-C-b-2-3",
+        "sheet": expected.tasks[0].pins[0].unit,
         "resolution": "1m",
         "vertical_crs": "EVRF2007",
     }

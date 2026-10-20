@@ -22,6 +22,12 @@
   invalid manifest;
 - ``other-data/`` - an empty directory named by one project as its store.
 
+Every footprint lies where its data would: the files of the Czech segments
+inside ``CZ_OUTLINE``, all others inside ``PL_OUTLINE``. PL-1992 sheets come
+from the 1:100 000 sheets inside Poland, bboxes and header extents are drawn
+again until they lie inside the outline, and TERYT units are real powiat
+codes.
+
 Slot paths and project manifests come from Kartograf's public API where it
 exists (``FileStorage``, ``init_project``, ``add_project_task``). The 0.8.0
 API has no offline writer of versions, sidecars, links or pins, so those are
@@ -43,8 +49,10 @@ repository and outside ``/tmp``.
 """
 
 import argparse
+import functools
 import hashlib
 import json
+import math
 import os
 import random
 import sys
@@ -56,7 +64,9 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import kartograf
+import shapely
 from kartograf import (
+    BBox,
     FileStorage,
     SheetParser,
     StoreEntry,
@@ -66,6 +76,7 @@ from kartograf import (
     init_project,
     iter_store,
     open_project,
+    transform_bbox,
 )
 
 from tests.fixtures import store_files
@@ -170,8 +181,44 @@ MIN_PROJECTS = 4
 PIN_TIME = "2026-09-01T12:00:00+00:00"
 STALE_MTIME = 1_577_836_800.0  # 2020-01-01: always older than 24 h
 
-_PL_EXTENT = (180_000, 150_000, 840_000, 760_000)  # EPSG:2180
-_CZ_EXTENT = (-880_000, -1_220_000, -460_000, -940_000)  # EPSG:5514
+# Every footprint lies inside one of these coarse country outlines (WGS84
+# longitude, latitude), taken from Natural Earth 1:10m Admin 0 - Countries
+# 5.1.1 (https://www.naturalearthdata.com, public domain): the largest part of
+# the country shrunk by 8 km and simplified with a 5 km tolerance in
+# EPSG:3035, so every point lies at least 3 km inside the Natural Earth border.
+PL_OUTLINE = shapely.from_wkt(
+    "POLYGON ((14.653 53.922, 16.224 54.196, 16.613 54.488, 17.376 54.68, "
+    "18.158 54.767, 18.292 54.762, 18.49 54.39, 18.862 54.28, 19.629 54.371, "
+    "22.691 54.271, 22.873 54.315, 23.26 54.17, 23.763 53.133, 23.803 52.748, "
+    "23.308 52.56, 23.049 52.279, 23.117 52.184, 23.539 52.027, 23.429 51.582, "
+    "23.564 51.404, 23.529 51.278, 23.904 50.884, 23.847 50.778, 23.98 50.564, "
+    "23.896 50.462, 23.603 50.419, 22.674 49.714, 22.531 49.535, 22.572 49.157, "
+    "22.112 49.262, 21.996 49.387, 21.619 49.497, 21.046 49.49, 20.907 49.381, "
+    "20.709 49.471, 20.292 49.462, 19.998 49.286, 19.475 49.671, 19.069 49.478, "
+    "18.878 49.711, 18.713 49.765, 18.626 49.964, 18.019 50.118, 17.861 50.061, "
+    "17.767 50.372, 17.444 50.336, 16.864 50.502, 16.754 50.429, 16.843 50.271, "
+    "16.664 50.179, 16.406 50.43, 16.539 50.567, 16.406 50.698, 16.067 50.718, "
+    "15.374 50.905, 15.331 51.022, 15.073 51.078, 15.067 51.453, 14.844 51.568, "
+    "14.72 51.818, 14.878 52.071, 14.664 52.393, 14.755 52.603, 14.281 52.878, "
+    "14.561 53.247, 14.416 53.609, 14.598 53.527, 14.743 53.626, 14.75 53.865, "
+    "14.653 53.922))"
+)
+"""Poland: every file except those of the Czech segments."""
+CZ_OUTLINE = shapely.from_wkt(
+    "POLYGON ((12.348 50.092, 12.577 50.325, 12.997 50.338, 13.631 50.64, "
+    "14.474 50.859, 14.816 50.746, 15.057 50.805, 15.131 50.911, 15.311 50.709, "
+    "15.727 50.664, 15.96 50.533, 16.275 50.578, 16.093 50.383, 16.559 50.046, "
+    "16.731 50.026, 17.074 50.152, 17.104 50.307, 17.475 50.173, 17.786 49.91, "
+    "18.038 49.929, 18.455 49.827, 18.532 49.666, 18.715 49.566, 18.467 49.538, "
+    "18.072 49.302, 17.989 49.093, 17.54 48.892, 17.133 48.928, 16.929 48.78, "
+    "16.525 48.877, 16.105 48.816, 15.858 48.939, 14.968 49.079, 14.845 48.85, "
+    "14.599 48.693, 14.425 48.712, 14.307 48.636, 14.143 48.659, 13.678 49.002, "
+    "13.489 49.04, 13.069 49.351, 12.736 49.476, 12.541 49.736, 12.627 49.933, "
+    "12.348 50.092))"
+)
+"""Czechia: the files of the Czech segments."""
+_OUTLINES = {"EPSG:2180": PL_OUTLINE, "EPSG:5514": CZ_OUTLINE}
+"""Outline of the country of a national CRS, the CRS of its drawn bboxes."""
 _PROVIDERS = {"PL": "GUGiK", "CZ": "CUZK", "GLOBAL": "ISRIC"}
 _LICENSE = {
     "id": "fixture",
@@ -199,6 +246,10 @@ _FULL_SHEET_SHARE = 0.03
 
 class StoreFixtureError(AssertionError):
     """Kartograf's readers disagree with the store the generator wrote."""
+
+
+class _UnitsUsedUp(ValueError):
+    """Every unit code of a pool already has its slot."""
 
 
 @dataclass(frozen=True)
@@ -610,7 +661,7 @@ class _StoreWriter:
         try:
             return next(pool)
         except StopIteration:
-            raise ValueError(f"no unused unit left in pool {name}") from None
+            raise _UnitsUsedUp(f"no unused unit left in pool {name}") from None
 
     def _sheet_slot(
         self, storage: FileStorage, segment: str, sheet: str, ext: str
@@ -989,7 +1040,9 @@ class _StoreWriter:
             full_sheet_to=full_sheet_to,
         )
 
-    def _bbox_code(self, segment: str, extent: tuple[int, int, int, int]) -> Bounds:
+    def _bbox_code(self, segment: str, crs: str) -> Bounds:
+        """Draw a new square bbox of ``segment`` in ``crs``, inside its country."""
+        extent = _extent(crs)
         while True:
             min_x = self.rng.randrange(extent[0], extent[2]) // 100 * 100
             min_y = self.rng.randrange(extent[1], extent[3]) // 100 * 100
@@ -1001,7 +1054,7 @@ class _StoreWriter:
                 float(min_y + width),
             )
             name = f"{segment}/{_coords(bounds)}"
-            if name not in self._bbox_names:
+            if name not in self._bbox_names and _inside(BBox(*bounds, crs)):
                 self._bbox_names.add(name)
                 return bounds
 
@@ -1009,7 +1062,7 @@ class _StoreWriter:
         """WCS cutout ``bbox/<coords>.tif`` labelled by download date."""
         czech = segment.startswith("nmt/cz_")
         crs = "EPSG:5514" if czech else "EPSG:2180"
-        bounds = self._bbox_code(segment, _CZ_EXTENT if czech else _PL_EXTENT)
+        bounds = self._bbox_code(segment, crs)
         code = _coords(bounds)
         slot = self._flat_slot(segment, "bbox", code, ".tif")
         profile = _Profile(
@@ -1033,7 +1086,7 @@ class _StoreWriter:
 
     def hsg_bbox(self, versions: int) -> _Written:
         """Write a derived HSG raster ``bbox/<coords>.tif`` (SoilGrids)."""
-        bounds = self._bbox_code(HSG, _PL_EXTENT)
+        bounds = self._bbox_code(HSG, "EPSG:2180")
         code = _coords(bounds)
         slot = self._flat_slot(HSG, "bbox", code, ".tif")
         profile = _Profile("hsg_bbox", HSG, "EPSG:2180", nodata=0.0)
@@ -1119,9 +1172,7 @@ class _StoreWriter:
         """
         code = self._pool("sm5", _sm5_sheets)
         storage = self._storage(subdir=CZ_ORTO)
-        min_x = self.rng.randrange(_CZ_EXTENT[0], _CZ_EXTENT[2] - 2500) // 50 * 50
-        min_y = self.rng.randrange(_CZ_EXTENT[1], _CZ_EXTENT[3] - 2000) // 50 * 50
-        bounds = (float(min_x), float(min_y), float(min_x + 2500), float(min_y + 2000))
+        bounds = self._sm5_bounds()
         specs = []
         for year in self._years(versions, 2012, 2025):
             updated = self._date(min(year + 1, 2026))
@@ -1159,19 +1210,44 @@ class _StoreWriter:
         )
         return image, world
 
+    def _sm5_bounds(self) -> Bounds:
+        """Draw the 2500 x 2000 m S-JTSK extent of an SM5 sheet inside Czechia."""
+        extent = _extent("EPSG:5514")
+        while True:
+            min_x = self.rng.randrange(extent[0], extent[2] - 2500) // 50 * 50
+            min_y = self.rng.randrange(extent[1], extent[3] - 2000) // 50 * 50
+            bounds = (
+                float(min_x),
+                float(min_y),
+                float(min_x + 2500),
+                float(min_y + 2000),
+            )
+            if _inside(BBox(*bounds, "EPSG:5514")):
+                return bounds
+
     def _teryt(self, segments: Sequence[str]) -> tuple[str, str]:
         for segment in segments:
             try:
                 return segment, self._pool(segment, _teryt_codes)
-            except ValueError:
+            except _UnitsUsedUp:
                 continue
-        raise ValueError(f"no unused TERYT code left in {', '.join(segments)}")
+        raise _UnitsUsedUp(f"no unused TERYT code left in {', '.join(segments)}")
 
     def _teryt_bounds(self) -> Bounds:
-        min_x = self.rng.randrange(_PL_EXTENT[0], _PL_EXTENT[2] - 40_000)
-        min_y = self.rng.randrange(_PL_EXTENT[1], _PL_EXTENT[3] - 40_000)
-        width = self.rng.randrange(15_000, 40_000)
-        return (float(min_x), float(min_y), float(min_x + width), float(min_y + width))
+        """Draw the EPSG:2180 extent of a powiat package inside Poland."""
+        extent = _extent("EPSG:2180")
+        while True:
+            min_x = self.rng.randrange(extent[0], extent[2] - 40_000)
+            min_y = self.rng.randrange(extent[1], extent[3] - 40_000)
+            width = self.rng.randrange(15_000, 40_000)
+            bounds = (
+                float(min_x),
+                float(min_y),
+                float(min_x + width),
+                float(min_y + width),
+            )
+            if _inside(BBox(*bounds, "EPSG:2180")):
+                return bounds
 
     def gpkg_teryt(
         self, versions: int, segments: Sequence[str] = (BDOT_GPKG, EGIB_GPKG)
@@ -1258,12 +1334,16 @@ class _StoreWriter:
         self.hsg_bbox(1)
 
     def bulk(self, count: int) -> None:
-        """``count`` more regular slots in the SPEC 4.5 mix."""
-        names = [name for name, _ in _BULK_WEIGHTS]
-        weights = [weight for _, weight in _BULK_WEIGHTS]
+        """``count`` more regular slots in the SPEC 4.5 mix.
+
+        A TERYT segment holds one package per powiat, as in a real store:
+        once every segment of a TERYT family has a package of every powiat,
+        the other families share its weight.
+        """
+        mix = dict(_BULK_WEIGHTS)
         remaining = count
         while remaining > 0:
-            name = self.rng.choices(names, weights)[0]
+            name = self.rng.choices(list(mix), list(mix.values()))[0]
             if name == "cz_orto" and remaining < 2:
                 name = "nmt"
             versions = self._versions()
@@ -1280,10 +1360,15 @@ class _StoreWriter:
                 self.laz_tile(versions)
             elif name == "tif_bbox":
                 self.tif_bbox(NMT if self.rng.random() < 0.85 else CZ_NMT, versions)
-            elif name == "gpkg_teryt":
-                self.gpkg_teryt(versions)
-            elif name == "zip_teryt":
-                self.zip_teryt(versions)
+            elif name in ("gpkg_teryt", "zip_teryt"):
+                try:
+                    if name == "gpkg_teryt":
+                        self.gpkg_teryt(versions)
+                    else:
+                        self.zip_teryt(versions)
+                except _UnitsUsedUp:
+                    del mix[name]
+                    continue
             elif name == "cz_orto":
                 self.cz_orto(versions)
                 remaining -= 1
@@ -1443,6 +1528,8 @@ class _StoreWriter:
         sheet = self._pl_sheet(NMT)
         storage = self._storage(resolution="1m", vertical_crs="EVRF2007")
         lone = self._sheet_slot(storage, NMT, sheet, ".asc")
+        parsed = SheetParser(sheet).get_bbox()
+        bounds = (parsed.min_x, parsed.min_y, parsed.max_x, parsed.max_y)
         lone.link.parent.mkdir(parents=True, exist_ok=True)
         lone.link.write_bytes(store_files.asc_grid(bounds, self._next_nonce()))
         self._problem("missing_sidecar", NMT, lone.link, hierarchy=lone.hierarchy)
@@ -1546,7 +1633,7 @@ class _StoreWriter:
         for PL sidecars, and CORINE is ``EU`` - a preview of a sheet would
         have no outline at all (the request bbox gives one).
         """
-        bounds = self._bbox_code(CORINE_PREVIEW, _PL_EXTENT)
+        bounds = self._bbox_code(CORINE_PREVIEW, "EPSG:2180")
         code = _coords(bounds)
         specs = [
             _Spec(
@@ -1623,7 +1710,7 @@ class _StoreWriter:
 
     def _soilgrids(self) -> None:
         """SoilGrids layer in EPSG:4326 of a PL-1992 bbox (WCS cutout)."""
-        bounds = self._bbox_code(SOILGRIDS, _PL_EXTENT)
+        bounds = self._bbox_code(SOILGRIDS, "EPSG:2180")
         code = _coords(bounds)
         degrees = store_files.reprojected_bounds(bounds, 2180, 4326)
         self._write_slot(
@@ -1937,23 +2024,59 @@ class _StoreWriter:
         )
 
 
+# --- country outlines ----------------------------------------------------------
+
+
+def _inside(bbox: BBox) -> bool:
+    """Whether ``bbox`` lies inside the outline of the country of its CRS."""
+    wgs84 = transform_bbox(bbox, "EPSG:4326")
+    envelope = shapely.box(wgs84.min_x, wgs84.min_y, wgs84.max_x, wgs84.max_y)
+    return bool(_OUTLINES[bbox.crs].contains(envelope))
+
+
+@functools.cache
+def _extent(crs: str) -> tuple[int, int, int, int]:
+    """Whole-metre envelope in ``crs`` of the outline of its country."""
+    envelope = transform_bbox(BBox(*_OUTLINES[crs].bounds, "EPSG:4326"), crs)
+    return (
+        math.floor(envelope.min_x),
+        math.floor(envelope.min_y),
+        math.ceil(envelope.max_x),
+        math.ceil(envelope.max_y),
+    )
+
+
 # --- unit pools ----------------------------------------------------------------
 
 
 def _pl1992_sheets() -> list[str]:
-    """Return every PL-1992 1:5000 sheet code covering Poland.
+    """Return the PL-1992 1:5000 sheet codes of the 1:100 000 sheets in Poland.
 
-    The four 1:1 000 000 sheets give 36 864 codes in canonical form.
+    The 189 sheets of ``_pl1992_hundreds`` give 48 384 codes in canonical
+    form.
     """
     return [
-        f"{million}-{hundred}-{fifty}-{twenty_five}-{ten}-{five}"
-        for million in ("M-33", "M-34", "N-33", "N-34")
-        for hundred in range(1, 145)
+        f"{hundred}-{fifty}-{twenty_five}-{ten}-{five}"
+        for hundred in _pl1992_hundreds()
         for fifty in "ABCD"
         for twenty_five in "abcd"
         for ten in "1234"
         for five in "1234"
     ]
+
+
+@functools.cache
+def _pl1992_hundreds() -> tuple[str, ...]:
+    """Return the 1:100 000 sheets whose WGS84 envelope is inside ``PL_OUTLINE``.
+
+    Of the 576 sheets of M-33, M-34, N-33 and N-34 (12-24 E, 48-56 N).
+    """
+    sheets = (
+        f"{million}-{number}"
+        for million in ("M-33", "M-34", "N-33", "N-34")
+        for number in range(1, 145)
+    )
+    return tuple(sheet for sheet in sheets if _inside(SheetParser(sheet).get_bbox()))
 
 
 def _sm5_sheets() -> list[str]:
@@ -1970,12 +2093,47 @@ def _sm5_sheets() -> list[str]:
 
 
 def _teryt_codes() -> list[str]:
-    """Four-digit powiat codes: voivodeship 02-32 (even) and powiat 01-99."""
-    return [
-        f"{voivodeship:02d}{powiat:02d}"
-        for voivodeship in range(2, 33, 2)
-        for powiat in range(1, 100)
-    ]
+    """Return the 380 powiat TERYT codes (``_POWIATS``)."""
+    return _POWIATS.split()
+
+
+# Every powiat of PRG (GUGiK; ``discover_teryts_for_bbox`` over all of Poland,
+# 2026-10-19), a voivodeship per group of lines: land powiats from 01, city
+# powiats from 61.
+_POWIATS = """
+0201 0202 0203 0204 0205 0206 0207 0208 0209 0210 0211 0212 0213 0214 0215 0216
+0217 0218 0219 0220 0221 0222 0223 0224 0225 0226 0261 0262 0264 0265
+0401 0402 0403 0404 0405 0406 0407 0408 0409 0410 0411 0412 0413 0414 0415 0416
+0417 0418 0419 0461 0462 0463 0464
+0601 0602 0603 0604 0605 0606 0607 0608 0609 0610 0611 0612 0613 0614 0615 0616
+0617 0618 0619 0620 0661 0662 0663 0664
+0801 0802 0803 0804 0805 0806 0807 0808 0809 0810 0811 0812 0861 0862
+1001 1002 1003 1004 1005 1006 1007 1008 1009 1010 1011 1012 1013 1014 1015 1016
+1017 1018 1019 1020 1021 1061 1062 1063
+1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1213 1214 1215 1216
+1217 1218 1219 1261 1262 1263
+1401 1402 1403 1404 1405 1406 1407 1408 1409 1410 1411 1412 1413 1414 1415 1416
+1417 1418 1419 1420 1421 1422 1423 1424 1425 1426 1427 1428 1429 1430 1432 1433
+1434 1435 1436 1437 1438 1461 1462 1463 1464 1465
+1601 1602 1603 1604 1605 1606 1607 1608 1609 1610 1611 1661
+1801 1802 1803 1804 1805 1806 1807 1808 1809 1810 1811 1812 1813 1814 1815 1816
+1817 1818 1819 1820 1821 1861 1862 1863 1864
+2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2061 2062
+2063
+2201 2202 2203 2204 2205 2206 2207 2208 2209 2210 2211 2212 2213 2214 2215 2216
+2261 2262 2263 2264
+2401 2402 2403 2404 2405 2406 2407 2408 2409 2410 2411 2412 2413 2414 2415 2416
+2417 2461 2462 2463 2464 2465 2466 2467 2468 2469 2470 2471 2472 2473 2474 2475
+2476 2477 2478 2479
+2601 2602 2603 2604 2605 2606 2607 2608 2609 2610 2611 2612 2613 2661
+2801 2802 2803 2804 2805 2806 2807 2808 2809 2810 2811 2812 2813 2814 2815 2816
+2817 2818 2819 2861 2862
+3001 3002 3003 3004 3005 3006 3007 3008 3009 3010 3011 3012 3013 3014 3015 3016
+3017 3018 3019 3020 3021 3022 3023 3024 3025 3026 3027 3028 3029 3030 3031 3061
+3062 3063 3064
+3201 3202 3203 3204 3205 3206 3207 3208 3209 3210 3211 3212 3213 3214 3215 3216
+3217 3218 3261 3262 3263
+"""
 
 
 def _coords(bounds: Bounds) -> str:

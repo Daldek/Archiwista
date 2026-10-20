@@ -16,6 +16,7 @@ import laspy
 import pyogrio
 import pytest
 import rasterio
+import shapely
 from kartograf import (
     ValidationError,
     file_footprint,
@@ -27,8 +28,10 @@ from rasterio.enums import ColorInterp
 
 from tests.fixtures.make_store import (
     BDOT_GPKG,
+    CZ_OUTLINE,
     MIN_PROJECTS,
     MIN_SLOTS,
+    PL_OUTLINE,
     Case,
     Family,
     ProblemCode,
@@ -251,6 +254,26 @@ def test_store_fixture_country_file_has_no_offline_footprint(
     [entry] = [e for e in iter_store(store.root) if e.path == store.root / path]
 
     assert file_footprint(entry) is None
+
+
+@pytest.mark.filterwarnings("ignore::rasterio.errors.NotGeoreferencedWarning")
+def test_store_fixture_footprints_lie_in_their_country(store: StoreManifest) -> None:
+    """Every offline footprint is centred inside the outline of its country.
+
+    Czech files lie in Czechia; the others, EU and global products included,
+    in Poland.
+    """
+    entries = [entry for entry in iter_store(store.root) if entry.kind != "problem"]
+
+    footprints = [(entry, file_footprint(entry)) for entry in entries]
+
+    placed = [(entry, found) for entry, found in footprints if found is not None]
+    czech = [(e, found) for e, found in placed if e.sidecar.country == "CZ"]
+    polish = [(e, found) for e, found in placed if e.sidecar.country != "CZ"]
+    assert czech and polish
+    for outline, group in ((CZ_OUTLINE, czech), (PL_OUTLINE, polish)):
+        centres = {e.path: shapely.box(*found.wgs84[:4]).centroid for e, found in group}
+        assert [path for path, c in centres.items() if not outline.contains(c)] == []
 
 
 def _first_version(store: StoreManifest, family: Family) -> Path:
