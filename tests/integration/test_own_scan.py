@@ -34,10 +34,12 @@ from archiwista.index import (
     TransformerFactory,
     own_file_id,
 )
+from archiwista.owndata import scan as own_scan
 from archiwista.owndata.content import content_identity
 from archiwista.owndata.formats import fileset_members
 from archiwista.owndata.reader import OwnFileInfo, OwnReader
 from archiwista.owndata.scan import OwnScanSummary, scan_own_data
+from archiwista.services.owndata import own_problems
 from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import load_registry
 from tests.fixtures.own_data import (
@@ -649,3 +651,105 @@ def test_too_large_folder_indexes_first_10000_by_path(env: OwnEnv) -> None:
     assert (second.new, second.missing) == (1, 0)
     assert (after[0], after[-1], len(after)) == ("0.txt", "d_09995.txt", 10_000)
     assert env.folder(key).files == 10_000
+
+
+def test_hidden_entry_flood_stops_without_marking_files_missing(
+    env: OwnEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hidden names count toward the scan budget even when no file is indexed."""
+    key, project = env.project("Raba")
+    root = project / "dane"
+    root.mkdir()
+    (root / "known.txt").write_text("indexed", encoding="utf-8")
+    env.scan(reader=_no_reads())
+    (root / "known.txt").unlink()
+    for number in range(9):
+        (root / f".hidden_{number}").touch()
+
+    monkeypatch.setattr(own_scan, "MAX_SCAN_ENTRIES", 8, raising=False)
+    summary = env.scan(reader=_no_reads())
+
+    assert summary.missing == 0
+    assert env.file(key, "known.txt").file.state == "unrecognized"
+    assert _codes(env.folder(key)) == [("own_folder_too_large", None)]
+    assert "limit" in own_problems(env.folder(key))[0].message.lower()
+
+
+def test_nested_empty_directories_stop_at_depth_budget(
+    env: OwnEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even a chain without files cannot monopolize the scan worker."""
+    key, project = env.project("Raba")
+    directory = project / "dane"
+    directory.mkdir()
+    for _ in range(5):
+        directory = directory / "empty"
+        directory.mkdir()
+
+    monkeypatch.setattr(own_scan, "MAX_SCAN_DEPTH", 3, raising=False)
+    env.scan(reader=_no_reads())
+
+    assert _codes(env.folder(key)) == [("own_folder_too_large", None)]
+
+
+def test_empty_directory_proliferation_stops_at_directory_budget(
+    env: OwnEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Many shallow folders are bounded independently of depth and file count."""
+    key, project = env.project("Raba")
+    root = project / "dane"
+    root.mkdir()
+    for number in range(5):
+        (root / f"empty_{number}").mkdir()
+
+    monkeypatch.setattr(own_scan, "MAX_SCAN_DIRECTORIES", 4, raising=False)
+    env.scan(reader=_no_reads())
+
+    assert _codes(env.folder(key)) == [("own_folder_too_large", None)]
+
+
+def test_snapshot_proliferation_stops_and_preserves_existing_snapshots(
+    env: OwnEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An incomplete snapshot walk cannot declare unseen snapshots missing."""
+    key, project = env.project("Raba")
+    root = project / "dane"
+    root.mkdir()
+    (root / "known.txt").write_text("indexed", encoding="utf-8")
+    snapshot = _snapshot(root, "known.txt", _MONDAY)
+    env.scan(reader=_no_reads())
+    versions = root / ".wersje" / "known.txt"
+    for number in range(3):
+        directory = versions / f"9999-01-0{number + 1}_00000000"
+        directory.mkdir()
+        (directory / "migawka.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(own_scan, "MAX_SCAN_SNAPSHOTS", 1, raising=False)
+    env.scan(reader=_no_reads())
+
+    assert _codes(env.folder(key)) == [("own_folder_too_large", None)]
+    assert [found.label for found in env.file(key, "known.txt").snapshots] == [
+        snapshot.label
+    ]
+
+
+def test_entry_budget_is_shared_by_files_and_snapshots(
+    env: OwnEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The snapshot walk does not get a new budget after scanning working files."""
+    key, project = env.project("Raba")
+    root = project / "dane"
+    root.mkdir()
+    (root / "known.txt").write_text("indexed", encoding="utf-8")
+    snapshot = _snapshot(root, "known.txt", _MONDAY)
+    env.scan(reader=_no_reads())
+
+    # Two entries in dane/, then the working-file directory inside .wersje/
+    # and a snapshot label: each walk alone fits, but the combined scan does not.
+    monkeypatch.setattr(own_scan, "MAX_SCAN_ENTRIES", 3, raising=False)
+    env.scan(reader=_no_reads())
+
+    assert _codes(env.folder(key)) == [("own_folder_too_large", None)]
+    assert [found.label for found in env.file(key, "known.txt").snapshots] == [
+        snapshot.label
+    ]

@@ -172,9 +172,7 @@ def _explained(
         elif problem.code == "own_file_unreadable" and reason is not None:
             reason = MESSAGES.get(f"own_read_error_{reason}", reason)
         place = problem.path or str(folder)
-        message, instruction = explain(
-            problem.code, path=place, reason=reason, limit="10 000"
-        )
+        message, instruction = explain(problem.code, path=place, reason=reason)
         problems.append(
             Problem(
                 code=problem.code,

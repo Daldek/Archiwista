@@ -7,8 +7,8 @@ or another project's folder is ``invalid`` and never read. A valid folder is
 walked in the order of its paths (relative, in NFC), skipping hidden files
 and directories (``.wersje/`` too), SQLite companions (``-wal``, ``-shm``,
 ``-journal``), the members of a file set and symbolic links leading out of
-the folder (``path_outside_root``); of more than ``MAX_OWN_FILES`` files the
-first ones are indexed (``own_folder_too_large``).
+the folder (``path_outside_root``). Scans exceeding the file, entry,
+directory, depth or snapshot limits report ``own_folder_too_large``.
 
 A file whose size, modification time, inode and change time (with its set's
 members and SQLite ``-wal`` or ``-journal``) equal the index costs one ``stat``.
@@ -88,6 +88,12 @@ logger = logging.getLogger(__name__)
 STALE_INCOMING = timedelta(hours=24)
 # Files written to the index in one transaction (and one progress event).
 WRITE_BATCH = 50
+# Per-project bounds across the working tree, snapshots and incoming leftovers.
+# They include skipped/hidden entries, before any directory is sorted.
+MAX_SCAN_ENTRIES = 50_000
+MAX_SCAN_DIRECTORIES = 25_000
+MAX_SCAN_DEPTH = 64
+MAX_SCAN_SNAPSHOTS = 10_000
 # The companions that change while a SQLite file is edited (``-shm`` is the
 # editor's shared memory: SQLite may change its content, never its data).
 _STAMPED_COMPANIONS = ("-wal", "-journal")
@@ -353,6 +359,34 @@ class _Listing:
     too_large: bool = False
 
 
+@dataclass(slots=True)
+class _ScanBudget:
+    """Bound one project's traversal, including snapshots and hidden entries."""
+
+    entries: int = 0
+    directories: int = 0
+    snapshots: int = 0
+
+    def enter_directory(self, depth: int) -> None:
+        if depth > MAX_SCAN_DEPTH or self.directories >= MAX_SCAN_DIRECTORIES:
+            raise _ScanLimitError
+        self.directories += 1
+
+    def add_entry(self) -> None:
+        if self.entries >= MAX_SCAN_ENTRIES:
+            raise _ScanLimitError
+        self.entries += 1
+
+    def add_snapshot(self) -> None:
+        if self.snapshots >= MAX_SCAN_SNAPSHOTS:
+            raise _ScanLimitError
+        self.snapshots += 1
+
+
+class _ScanLimitError(Exception):
+    """The per-project scan cannot safely list the entire folder."""
+
+
 class _FolderUnreadableError(OSError):
     """The folder itself cannot be listed."""
 
@@ -511,9 +545,12 @@ class _FolderScan:
             self.problems.append(OwnProblem("own_folder_unreadable"))
         if state == "ok":
             root = Path(os.path.realpath(folder))
+            budget = _ScanBudget()
             try:
-                self._scan_files(root)
-                self._scan_snapshots(root)
+                self._scan_files(root, budget)
+                self._scan_snapshots(root, budget)
+            except _ScanLimitError:
+                self.problems.append(OwnProblem("own_folder_too_large"))
             except _FolderUnreadableError:
                 self.writer.write_own_folder(
                     key,
@@ -530,10 +567,10 @@ class _FolderScan:
             self.project.access_key, problems=self.problems, now=self.now
         )
 
-    def _scan_files(self, root: Path) -> None:
+    def _scan_files(self, root: Path, budget: _ScanBudget) -> None:
         key = self.project.access_key
         known = self.writer.known_own_files(key)
-        listing = _walk(root, MAX_OWN_FILES)
+        listing = _walk(root, MAX_OWN_FILES, budget)
         if listing.too_large:
             self.problems.append(OwnProblem("own_folder_too_large"))
         self.problems.extend(
@@ -692,29 +729,34 @@ class _FolderScan:
             logger.info("No WGS84 outline for %s: %s", info.native_crs[:80], error)
             return None, "transform_unavailable"
 
-    def _scan_snapshots(self, root: Path) -> None:
+    def _scan_snapshots(self, root: Path, budget: _ScanBudget) -> None:
         key = self.project.access_key
         known = self.writer.known_own_snapshots(key)
         versions = root / SNAPSHOTS_DIR
         found: list[SnapshotWrite] = []
         keep: set[tuple[str, str]] = set()
+        start_problems = len(self.problems)
         try:
             listed = versions.is_dir() and not versions.is_symlink()
         except OSError:
             listed = False
-        if listed:
-            try:
-                for directory, path, label in _snapshot_dirs(versions):
-                    keep.add((path, label))
-                    snapshot = self._snapshot(
-                        directory, path, label, known.get((path, label))
-                    )
-                    if snapshot is not None:
-                        found.append(snapshot)
-            except OSError as error:
-                logger.warning("Snapshots of %s not listed: %s", root, error)
-                keep.update(known)
-            self._stale_incoming(versions / INCOMING_DIR)
+        try:
+            if listed:
+                try:
+                    for directory, path, label in _snapshot_dirs(versions, budget):
+                        keep.add((path, label))
+                        snapshot = self._snapshot(
+                            directory, path, label, known.get((path, label))
+                        )
+                        if snapshot is not None:
+                            found.append(snapshot)
+                except OSError as error:
+                    logger.warning("Snapshots of %s not listed: %s", root, error)
+                    keep.update(known)
+                self._stale_incoming(versions / INCOMING_DIR, budget)
+        except _ScanLimitError:
+            del self.problems[start_problems:]
+            raise
         self.summary.snapshots += self.writer.write_own_snapshots(key, found, keep=keep)
 
     def _snapshot(
@@ -764,17 +806,20 @@ class _FolderScan:
             content_sha256=document.content.sha256,
         )
 
-    def _stale_incoming(self, incoming: Path) -> None:
+    def _stale_incoming(self, incoming: Path, budget: _ScanBudget) -> None:
         """Report working directories of snapshots left for more than 24 hours."""
         oldest = (self.now - STALE_INCOMING).timestamp()
         try:
             with os.scandir(incoming) as entries:
-                stale = [
-                    entry.name
-                    for entry in entries
-                    if entry.is_dir(follow_symlinks=False)
-                    and entry.stat(follow_symlinks=False).st_mtime < oldest
-                ]
+                budget.enter_directory(2)
+                stale = []
+                for entry in entries:
+                    budget.add_entry()
+                    if (
+                        entry.is_dir(follow_symlinks=False)
+                        and entry.stat(follow_symlinks=False).st_mtime < oldest
+                    ):
+                        stale.append(entry.name)
         except OSError:
             return
         self.problems.extend(
@@ -799,23 +844,26 @@ def _folder_state(folder: Path) -> OwnFolderState:
     return "ok"
 
 
-def _walk(root: Path, limit: int) -> _Listing:
+def _walk(root: Path, limit: int, budget: _ScanBudget) -> _Listing:
     """List a folder's files in the order of their paths, at most ``limit``.
 
     Directories are entered depth-first with their entries sorted by name in
     NFC (a directory's name followed by ``/``), which is the order of the
     relative paths. A symbolic link counts by its target when it stays in
-    the folder; a directory reached twice is listed once.
+    the folder; a directory reached twice is listed once. A budget failure
+    discards the incomplete listing without marking existing files missing.
 
     Raises
     ------
     _FolderUnreadableError
         ``root`` itself cannot be listed.
+    _ScanLimitError
+        Too many entries or directories, or too deep a directory.
     """
     listing = _Listing()
     visited = {str(root)}
     try:
-        stack = [iter(_directory(root, root, "", "", listing))]
+        stack = [iter(_directory(root, root, "", "", listing, budget, 1))]
     except OSError as error:
         raise _FolderUnreadableError(str(error)) from error
     while stack:
@@ -838,14 +886,26 @@ def _walk(root: Path, limit: int) -> _Listing:
         directory = Path(entry.path)
         disk = directory.relative_to(root).as_posix()
         try:
-            stack.append(iter(_directory(directory, root, relative, disk, listing)))
+            stack.append(
+                iter(
+                    _directory(
+                        directory, root, relative, disk, listing, budget, len(stack) + 1
+                    )
+                )
+            )
         except OSError:
             listing.unreadable.append(relative)
     return listing
 
 
 def _directory(
-    directory: Path, root: Path, prefix: str, disk_prefix: str, listing: _Listing
+    directory: Path,
+    root: Path,
+    prefix: str,
+    disk_prefix: str,
+    listing: _Listing,
+    budget: _ScanBudget,
+    depth: int,
 ) -> list[_Entry]:
     """List one directory in path order: files found, directories to enter.
 
@@ -853,9 +913,15 @@ def _directory(
     ------
     OSError
         The directory cannot be listed.
+    _ScanLimitError
+        Listing this directory would exceed the per-project budget.
     """
+    budget.enter_directory(depth)
+    entries: list[os.DirEntry[str]] = []
     with os.scandir(directory) as scanned:
-        entries = list(scanned)
+        for entry in scanned:
+            budget.add_entry()
+            entries.append(entry)
     names = {entry.name.lower(): entry for entry in entries}
     members_of: dict[str, list[os.DirEntry[str]]] = {}
     member_names: set[str] = set()
@@ -948,7 +1014,9 @@ def _stamp(stamped: Sequence[Path]) -> str:
     return _dump(sorted(rows))
 
 
-def _snapshot_dirs(versions: Path) -> Iterator[tuple[Path, str, str]]:
+def _snapshot_dirs(
+    versions: Path, budget: _ScanBudget
+) -> Iterator[tuple[Path, str, str]]:
     """Yield ``(directory, file path, label)`` of each snapshot in ``.wersje/``.
 
     A snapshot is a directory holding ``migawka.json``; its parent below
@@ -959,22 +1027,30 @@ def _snapshot_dirs(versions: Path) -> Iterator[tuple[Path, str, str]]:
     ------
     OSError
         A directory cannot be listed.
+    _ScanLimitError
+        Too many entries, directories or snapshots, or too deep a directory.
     """
-    pending = [versions]
+    pending = [(versions, 1)]
     while pending:
-        directory = pending.pop()
+        directory, depth = pending.pop()
+        budget.enter_directory(depth)
+        entries: list[os.DirEntry[str]] = []
         with os.scandir(directory) as scanned:
-            entries = sorted(scanned, key=lambda entry: entry.name)
+            for entry in scanned:
+                budget.add_entry()
+                entries.append(entry)
+        entries.sort(key=lambda entry: entry.name)
         if directory != versions and any(
             entry.name == SNAPSHOT_FILE and entry.is_file(follow_symlinks=False)
             for entry in entries
         ):
             parts = directory.relative_to(versions).parts
             if len(parts) >= 2:
+                budget.add_snapshot()
                 yield directory, _nfc("/".join(parts[:-1])), parts[-1]
             continue
         pending.extend(
-            Path(entry.path)
+            (Path(entry.path), depth + 1)
             for entry in reversed(entries)
             if not entry.name.startswith(".") and entry.is_dir(follow_symlinks=False)
         )

@@ -31,6 +31,9 @@ wiersza poleceń mogą się zmieniać.
 - Stan budowy podglądu nie ujawnia identyfikatora ani stanu zadania
   z projektu niewidocznego dla użytkownika: widoczny jest tylko ogólny
   stan „w budowie”.
+- Skan danych własnych kończy przejście po przekroczeniu wspólnych limitów
+  wpisów (także ukrytych), katalogów, głębokości i migawek bez oznaczania
+  niewidzianych plików i migawek jako brakujących.
 
 ## [0.1.0] — 2026-10-19 — „Przeglądarka”
 

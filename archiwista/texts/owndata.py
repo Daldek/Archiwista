@@ -73,12 +73,13 @@ OWN_DATA_MESSAGES = MappingProxyType(
             " Archiwisty."
         ),
         "problem_own_folder_too_large": (
-            "Folder danych ma więcej niż {limit} plików — w indeksie jest"
-            " pierwsze {limit} w porządku ścieżki: {path}"
+            "Folder danych przekracza limit skanowania (plików, wpisów,"
+            " katalogów, migawek lub głębokości); indeks może nie obejmować"
+            " wszystkich danych: {path}"
         ),
         "fix_own_folder_too_large": (
-            "Przenieś pliki archiwalne poza folder danych albo podziel go"
-            " między projekty."
+            "Przenieś nadmiar plików i migawek poza folder danych, ogranicz"
+            " liczbę podkatalogów lub podziel dane między projekty."
         ),
         "problem_own_file_unreadable": "Nie można odczytać pliku {path} ({reason})",
         "fix_own_file_unreadable": (

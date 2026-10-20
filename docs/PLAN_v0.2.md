@@ -375,6 +375,12 @@ działa.
      i dowiązań symbolicznych wychodzących poza folder, najwyżej 10 000
      plików: z większego indeksuje pierwsze 10 000 w porządku ścieżki
      (ścieżka względna w NFC) i zgłasza problem `own_folder_too_large`.
+     Całe przejście po jednym folderze ma także wspólne limity: 50 000 wpisów
+     (włącznie z ukrytymi i `.wersje/`), 25 000 katalogów, głębokość 64
+     i 10 000 migawek. Przekroczenie któregokolwiek zgłasza
+     `own_folder_too_large`; skan przerywa niepełne przejście bez oznaczania
+     niewidzianych w nim plików ani migawek jako brakujących. Dotychczasowy
+     indeks pozostaje dostępny do kolejnego pełnego przejścia.
      Plik nowy albo zmieniony (rozmiar, czas modyfikacji, także pliku
      `-wal`) czyta proces czytnika
      (`python -P -m archiwista.owndata.reader`, sandbox i tabela formatów
