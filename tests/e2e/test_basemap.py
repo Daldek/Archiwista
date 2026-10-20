@@ -8,6 +8,7 @@ configured text and not the TileJSON's HTML, and a label in a script the
 glyphs lack is still drawn, without a map failure.
 """
 
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -83,3 +84,49 @@ def test_vector_basemap_within_csp_with_polish_names(
     expect(page.get_by_text("Podkład nie odpowiada")).to_have_count(0)
     expect(page.get_by_label("Podkład")).to_have_value("Wektor testowy")
     tab.assert_clean()
+
+
+def test_vector_basemap_rejects_tiles_outside_tilejson_origin(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """A mismatched TileJSON shows a note without requesting CSP-blocked tiles."""
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    with tile_server() as tiles:
+        served = serve(
+            AppSettings(
+                offline=False,
+                basemaps=(
+                    BasemapConfig(name="Wektor testowy", kind="vector", url=tiles.tilejson),
+                ),
+                stores=(
+                    StoreConfig(
+                        id="zespol", name="Zespół", kartograf=store.root, kind="local"
+                    ),
+                ),
+                project_dirs=(store.projects_dir,),
+            )
+        )
+        page = tab.page
+        foreign = "https://other.example.invalid/planet/{z}/{x}/{y}.pbf"
+        tilejson = {
+            "tilejson": "3.0.0",
+            "tiles": [f"{tiles.origin}/planet/{{z}}/{{x}}/{{y}}.pbf", foreign],
+        }
+        page.route(
+            tiles.tilejson,
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                headers={"Access-Control-Allow-Origin": "*"},
+                body=json.dumps(tilejson),
+            ),
+        )
+        page.goto(served.token_url())
+        expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+        page.goto(f"{served.base}/?view=map&center=19.0,52.0&zoom=6")
+        expect(page.get_by_text("Podkład nie odpowiada", exact=False)).to_be_visible()
+        expect(page.get_by_label("Podkład")).to_have_value("Wektor testowy")
+        expect(page.locator(".maplibregl-canvas")).to_be_visible()
+        assert tiles.tiles() == []
+        assert all("other.example.invalid" not in url for url in tab.requests)
+        tab.assert_clean()

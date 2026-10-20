@@ -299,7 +299,8 @@ class BasemapConfig(BaseModel):
     url : str
         Tile template, WMS address or TileJSON address (http or https). The
         tiles of a TileJSON must come from its origin: the page's CSP allows
-        only the origin of this address.
+        only the origin of this address, and the browser rejects mismatched
+        tiles with a basemap warning.
     attribution : str
         Attribution text required by the provider.
     grayscale : bool

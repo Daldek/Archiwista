@@ -1355,7 +1355,10 @@ pilnuje, że warstwy wyżej nie zależą od Kartografa (sekcje 11 i 13).
   „bez podkładu”. Rodzaje podkładu (`kind`): `xyz` (szablon `{z}/{x}/{y}`),
   `wms` (GetMap w EPSG:3857), `vector` (adres TileJSON kafli w schemacie
   OpenMapTiles; kafle w pochodzeniu TileJSON, bo CSP zna tylko adres
-  z ustawień). OpenStreetMap (tile.openstreetmap.org) tylko jako podkład
+  z ustawień). Archiwista sprawdza adresy wszystkich kafli w TileJSON przed
+  użyciem podkładu: jeśli choć jeden ma inne pochodzenie niż skonfigurowany
+  adres TileJSON, nie ładuje kafli i pokazuje komunikat o niedostępnym
+  podkładzie. OpenStreetMap (tile.openstreetmap.org) tylko jako podkład
   skonfigurowany przez użytkownika: wymaga nagłówka `Referer`, którego
   Archiwista nie wysyła (`Referrer-Policy: no-referrer`), a jego zasady
   korzystania z kafli nie pasują do pracy zespołu. „Tryb offline”

@@ -53,20 +53,50 @@ const POINTS = ["match", ["geometry-type"], ["Point", "MultiPoint"], true, false
 const LINES = ["match", ["geometry-type"], ["LineString", "MultiLineString"], true, false];
 
 /**
+ * Load a vector TileJSON before MapLibre can request any of its tiles.
+ * The CSP permits the configured TileJSON origin only; reject the entire
+ * basemap if any tile template would leave that origin.
+ *
+ * @param {import("../types.js").BasemapSettings|null} basemap
+ * @returns {Promise<object|null>} A MapLibre source, or null for no basemap.
+ */
+export async function loadBasemapSource(basemap) {
+  if (!basemap) return null;
+  const attribution = escapeHtml(basemap.attribution ?? "");
+  if (basemap.kind !== "vector") {
+    return { type: "raster", tiles: [tileUrl(basemap)], tileSize: TILE_PX, maxzoom: 19, attribution };
+  }
+  const response = await fetch(basemap.url);
+  if (!response.ok) throw new Error(`TileJSON returned ${response.status}`);
+  const document = await response.json();
+  if (!Array.isArray(document.tiles) || !document.tiles.length) throw new Error("TileJSON has no tiles");
+  const origin = new URL(basemap.url).origin;
+  const tiles = document.tiles.map((tile) => {
+    if (typeof tile !== "string") throw new Error("Invalid TileJSON tile URL");
+    const url = new URL(tile, basemap.url);
+    if (url.origin !== origin) throw new Error("TileJSON tile origin differs from its URL");
+    return url.href.replace(/%7B/gi, "{").replace(/%7D/gi, "}");
+  });
+  const { minzoom, maxzoom, bounds, scheme } = document;
+  return { type: "vector", tiles, minzoom, maxzoom, bounds, scheme, attribution };
+}
+
+/**
  * The style a map view starts with.
  *
  * @param {import("../types.js").BasemapSettings|null} basemap - `null`: none.
+ * @param {object|null} source - Validated source; null omits the basemap.
  * @returns {object} MapLibre style specification.
  */
-export function mapStyle(basemap) {
+export function mapStyle(basemap, source) {
   const style = {
     version: 8,
     glyphs: GLYPHS,
     sources: {},
     layers: [{ id: "background", type: "background", paint: { "background-color": BACKGROUND } }],
   };
-  if (basemap) {
-    style.sources[SOURCE] = basemapSource(basemap);
+  if (basemap && source) {
+    style.sources[SOURCE] = source;
     style.layers.push(...basemapLayers(basemap));
   }
   return style;
@@ -77,14 +107,15 @@ export function mapStyle(basemap) {
  *
  * @param {*} map - A MapLibre map with the data layers added.
  * @param {import("../types.js").BasemapSettings|null} basemap
+ * @param {object|null} source - Validated source; null removes the basemap.
  */
-export function setBasemap(map, basemap) {
+export function setBasemap(map, basemap, source) {
   for (const id of map.getLayersOrder()) {
     if (map.getLayer(id).source === SOURCE) map.removeLayer(id);
   }
   if (map.getSource(SOURCE)) map.removeSource(SOURCE);
-  if (!basemap) return;
-  map.addSource(SOURCE, basemapSource(basemap));
+  if (!basemap || !source) return;
+  map.addSource(SOURCE, source);
   const before = map.getLayer(FIRST_DATA_LAYER) ? FIRST_DATA_LAYER : undefined;
   for (const layer of basemapLayers(basemap)) map.addLayer(layer, before);
 }
@@ -138,13 +169,6 @@ export function keepBasemap(name) {
   }
 }
 
-function basemapSource(basemap) {
-  const attribution = escapeHtml(basemap.attribution ?? "");
-  // A source's own attribution wins over the TileJSON's (HTML from another
-  // origin), even when empty.
-  if (basemap.kind === "vector") return { type: "vector", url: basemap.url, attribution };
-  return { type: "raster", tiles: [tileUrl(basemap)], tileSize: TILE_PX, maxzoom: 19, attribution };
-}
 
 function basemapLayers(basemap) {
   if (basemap.kind === "vector") return vectorLayers();

@@ -27,7 +27,7 @@ import { html, useEffect, useRef, useState } from "../ui.js";
 import { COLORS } from "./canvas.js";
 import { HOME_BOUNDS, positionParams, viewBounds } from "./geo.js";
 import { versionTiles } from "./previews.js";
-import { mapStyle } from "./style.js";
+import { loadBasemapSource, mapStyle } from "./style.js";
 
 /** How the two sides are shown (`mode` of the address); the first is the default. */
 export const MODES = ["curtain", "fade", "side"];
@@ -144,11 +144,17 @@ export function CompareMaps({ basemap, start, mode, sides, onReady, onMove, chil
     let live = true;
     let created = [];
     let unsync = null;
-    loadMapLibre().then(
-      (maplibre) => {
+    Promise.all([
+      loadMapLibre(),
+      loadBasemapSource(basemap).catch(() => {
+        if (live) setNotes((current) => ({ ...current, basemap: true }));
+        return null;
+      }),
+    ]).then(
+      ([maplibre, source]) => {
         if (!live) return;
         created = SIDES.map((side, index) =>
-          makeMap(maplibre, boxes[index].current, { side, basemap, start, setNotes, setFailure }),
+          makeMap(maplibre, boxes[index].current, { side, basemap, source, start, setNotes, setFailure }),
         );
         Promise.all(created.map((map) => new Promise((resolve) => map.once("load", resolve)))).then(() => {
           if (!live) return;
@@ -284,10 +290,10 @@ function CurtainHandle({ value, onChange }) {
 }
 
 /** A map of one side: the basemap, controls, and the API's header for tiles. */
-function makeMap(maplibre, container, { side, basemap, start, setNotes, setFailure }) {
+function makeMap(maplibre, container, { side, basemap, source, start, setNotes, setFailure }) {
   const map = new maplibre.Map({
     container,
-    style: mapStyle(basemap),
+    style: mapStyle(basemap, source),
     ...(start
       ? { center: start.center, zoom: start.zoom }
       : { bounds: HOME_BOUNDS, fitBoundsOptions: { padding: 16 } }),

@@ -25,7 +25,7 @@ import { html, Icon, useEffect, useLayoutEffect, useRef, useState } from "../ui.
 import { startDrawing } from "./draw.js";
 import { HOME_BOUNDS, positionParams, viewBounds } from "./geo.js";
 import { changeText } from "./own.js";
-import { mapStyle, setBasemap } from "./style.js";
+import { loadBasemapSource, mapStyle, setBasemap } from "./style.js";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
 const NO_OWN = [];
@@ -333,13 +333,19 @@ export function MapCanvas({
   useEffect(() => {
     let live = true;
     let created = null;
-    loadMapLibre().then(
-      (maplibre) => {
+    Promise.all([
+      loadMapLibre(),
+      loadBasemapSource(basemap).catch(() => {
+        if (live) setBasemapFailed(true);
+        return null;
+      }),
+    ]).then(
+      ([maplibre, source]) => {
         if (!live) return;
         const narrow = box.current.clientWidth < 600;
         created = new maplibre.Map({
           container: box.current,
-          style: mapStyle(basemap),
+          style: mapStyle(basemap, source),
           ...(start
             ? { center: start.center, zoom: start.zoom }
             : { bounds: HOME_BOUNDS, fitBoundsOptions: { padding: 16 } }),
@@ -407,8 +413,20 @@ export function MapCanvas({
   useEffect(() => {
     if (!map || shownBasemap.current === basemapKey) return;
     shownBasemap.current = basemapKey;
-    setBasemapFailed(false);
-    setBasemap(map, basemap);
+    let live = true;
+    loadBasemapSource(basemap).then(
+      (source) => {
+        if (!live) return;
+        setBasemapFailed(false);
+        setBasemap(map, basemap, source);
+      },
+      () => {
+        if (!live) return;
+        setBasemapFailed(true);
+        setBasemap(map, null, null);
+      },
+    );
+    return () => { live = false; };
   }, [map, basemapKey]);
 
   useEffect(() => {
