@@ -403,7 +403,7 @@ class PreviewService:
                 too_large = True
                 continue
             chosen.append(located.text)
-            contents.append(located.source.content_key)
+            contents.append(cache_key(located.source).content_key)
         if not chosen:
             if too_large:
                 raise PreviewUnavailableError("too_large")

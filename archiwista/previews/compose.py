@@ -22,9 +22,10 @@ drawn at all (no map place, too large without its COG, a working file
 changed since its scan) stays out; its outline remains on the map.
 
 Each composite is a cache object of its own (renderer ``composite``) whose
-content key names the operation, the contents of the versions drawn, the
-frame or the tile, the style and the size (``cache.composite_key``): a new
-ready version changes the key only of the tiles it meets. The parameters::
+content key names the operation, the rendered-object identities of the
+versions drawn (bytes and indexed metadata), the frame or the tile, the style
+and the size (``cache.composite_key``): a new ready version changes the key
+only of the tiles it meets. The parameters::
 
     layer_thumbnail: {"versions": [{"source": PreviewSource JSON,
                                     "bounds": [w, s, e, n] or null}, …],
@@ -90,7 +91,7 @@ def layer_thumbnail_target(
     versions = _versions(params)
     frame = _canonical(_frame_json(params))
     style, size = str(params["style"]), int(params["size"])
-    contents = [found.content_key for found, _ in versions]
+    contents = [cache_key(found).content_key for found, _ in versions]
     key = composite_key(LAYER_THUMBNAIL, contents, frame, style, size)
     return _composite(key), thumbnail_name(style, size)
 
@@ -109,7 +110,9 @@ def layer_tile_target(
     """
     z, x, y = int(params["z"]), int(params["x"]), int(params["y"])
     style = str(params["style"])
-    contents = [found.content_key for found, _ in _tile_versions(params, z, x, y)]
+    contents = [
+        cache_key(found).content_key for found, _ in _tile_versions(params, z, x, y)
+    ]
     key = composite_key(LAYER_TILE, contents, f"{z}/{x}/{y}", style, None)
     return _composite(key), tile_name(style, z, x, y)
 

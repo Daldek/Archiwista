@@ -16,6 +16,7 @@ import random
 import subprocess
 import sys
 from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -37,8 +38,11 @@ from archiwista.previews.cache import (
     composite_key,
     tile_name,
 )
-from archiwista.previews.types import PreviewSource, RendererName
+from archiwista.previews.compose import layer_thumbnail_target
+from archiwista.previews.renderers.raster import probe_raster
+from archiwista.previews.types import Extent, PreviewSource, RendererName
 from archiwista.sandbox import process_owner
+from tests.fixtures import store_files
 from tests.fixtures.make_store import StoreManifest
 from tests.fixtures.preview_api import (
     PreviewApi,
@@ -493,7 +497,9 @@ def test_renderer_version_bump_keeps_other_kinds(
         cache.put(old_raster, INFO_NAME, b'{"kind": "raster"}')
         cache.put(cache_key(vector), INFO_NAME, vector_probe)
     monkeypatch.setattr(
-        preview_cache, "RENDERER_VERSIONS", {**RENDERER_VERSIONS, "raster": 2}
+        preview_cache,
+        "RENDERER_VERSIONS",
+        {**RENDERER_VERSIONS, "raster": old_raster.renderer_version + 1},
     )
 
     # Act
@@ -505,7 +511,6 @@ def test_renderer_version_bump_keeps_other_kinds(
         vector_after = cache.get(cache_key(vector), INFO_NAME)
 
     # Assert
-    assert cache_key(raster) == CacheKey(raster.content_key, "raster", 2)
     assert raster_hit is None
     assert vector_hit == vector_after == vector_probe
     assert not (root / old_raster.directory).exists()
@@ -560,6 +565,74 @@ def test_cache_composite_key_ignores_order_keeps_fields_apart() -> None:
     assert len(others) == 4
     with pytest.raises(ValueError):
         composite_key("layer_tile", [first], f"{tile}\ngray", "", None)
+
+
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+def test_same_raster_bytes_with_different_metadata_have_independent_previews(
+    tmp_path: Path,
+) -> None:
+    """Indexed placement, style and hints partition all artifacts of shared bytes."""
+    grid = tmp_path / "height.asc"
+    data = store_files.asc_grid((19.0, 50.0, 20.0, 51.0), 31)
+    grid.write_bytes(data)
+    source = PreviewSource(
+        ref="version:zespol:height.asc",
+        content_key=hashlib.sha256(data).hexdigest(),
+        paths=(grid,),
+        crs="EPSG:4326",
+        product="nmt",
+    )
+    other = replace(source, crs="EPSG:3857", product="orto")
+    first_probe, second_probe = probe_raster(source), probe_raster(other)
+    assert first_probe.bbox_wgs84 != second_probe.bbox_wgs84
+    assert first_probe.default_style != second_probe.default_style
+
+    with PreviewCache(tmp_path / "previews", limit_bytes=MB) as cache:
+        cache.put(cache_key(source), INFO_NAME, first_probe.to_bytes())
+        second_hit = cache.get(cache_key(other), INFO_NAME)
+    assert second_hit is None
+
+    # A change in any indexed rendering input must miss the same cache object.
+    variants = (
+        replace(source, crs="EPSG:3857"),
+        replace(source, product="orto"),
+        replace(source, nodata=0.0),
+        replace(source, dataset_key="another_dataset"),
+        replace(source, format_hint="JPEG"),
+    )
+    assert all(cache_key(item) != cache_key(source) for item in variants)
+
+    # A layer must not reuse a composite drawn from the other placement/style.
+    frame = {"bbox": [19.0, 50.0, 20.0, 51.0], "crs": "EPSG:4326"}
+    layer_params = {
+        "frame": frame,
+        "style": "gray",
+        "size": 256,
+    }
+    first_layer = layer_thumbnail_target(
+        None, {**layer_params, "versions": [{"source": source.to_json()}]}
+    )
+    second_layer = layer_thumbnail_target(
+        None, {**layer_params, "versions": [{"source": other.to_json()}]}
+    )
+    assert first_layer[0] != second_layer[0]
+
+    image = tmp_path / "sheet.jpg"
+    image_data = store_files.jpeg(31)
+    image.write_bytes(image_data)
+    first = PreviewSource(
+        ref="version:zespol:sheet.jpg",
+        content_key=hashlib.sha256(image_data).hexdigest(),
+        paths=(image,),
+        georeference=Extent((19.0, 50.0, 20.0, 51.0), "EPSG:4326"),
+    )
+    moved = replace(
+        first, georeference=Extent((21.0, 51.0, 22.0, 52.0), "EPSG:4326")
+    )
+    assert probe_raster(first).bbox_wgs84 != probe_raster(moved).bbox_wgs84
+    with PreviewCache(tmp_path / "images", limit_bytes=MB) as cache:
+        cache.put(cache_key(first), INFO_NAME, probe_raster(first).to_bytes())
+        assert cache.get(cache_key(moved), INFO_NAME) is None
 
 
 def _twin(root: Path, version: str, label: str) -> str:

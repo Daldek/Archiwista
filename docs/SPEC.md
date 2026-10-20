@@ -1508,10 +1508,13 @@ path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4
 | Archiwa IMGW (ZIP), katalog stacji (GeoJSON) | lista członów z rozmiarami; punkty i tabela atrybutów | treść archiwów czyta tylko IMGWTools |
 
 Zasady: `nodata` przezroczyste; przeliczenia i przepróbkowanie tylko do
-wyświetlenia (podgląd nigdy nie jest produktem danych); pamięć podglądów
-po `sha256` wersji i stylu — wersje są niezmienne, więc pamięć nigdy nie
-jest nieaktualna; limit pamięci 20 GB (LRU, ustawienie); plik większy niż
-2 GB nie dostaje podglądu automatycznie — przycisk „Zbuduj podgląd”.
+wyświetlenia (podgląd nigdy nie jest produktem danych); klucz pamięci
+podglądów obejmuje `sha256` treści oraz metadane wpływające na wynik
+(format, układ i georeferencję, `nodata`, produkt i rodzaj danych);
+miniatury i kafle rozróżnia także styl. Zmiana sposobu renderowania podnosi
+wersję renderera i unieważnia jego dawne obiekty. Limit pamięci 20 GB (LRU,
+ustawienie); plik większy niż 2 GB nie dostaje podglądu automatycznie
+— przycisk „Zbuduj podgląd”.
 
 **Podglądy są lekkie (A-ADR-018):** niskiej rozdzielczości, generowane
 z nakładek przeglądowych (piramida/overviews COG), nie z pełnych danych

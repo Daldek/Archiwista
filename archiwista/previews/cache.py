@@ -9,11 +9,12 @@ share or in a store) keeps what render processes make, by content::
     cache.sqlite                     the objects' files, sizes, uses and pins
     .incoming/<host>_<pid>_<token>/  a process's files before they are put
 
-An object's key is its content (a ``sha256``; ``path_key`` for a version
-without one; ``composite_key`` for a layer) with its renderer and the
-renderer's version (``RENDERER_VERSIONS``). Store versions never change and
-every change of a renderer raises its version, so an object is never stale,
-and a new version of one renderer keeps the other renderers' objects.
+An object's key hashes its content (a ``sha256``; ``path_key`` for a version
+without one; ``composite_key`` for a layer) together with the source metadata
+used for rendering, its renderer and the renderer's version
+(``RENDERER_VERSIONS``). Store versions never change and every change of a
+renderer raises its version, so an object is never stale; different indexed
+placements or styles of the same bytes never share an object.
 ``cache.sqlite`` only accounts for the files: without it ``reconcile`` adopts
 the objects found on the disk, and an empty directory is an empty cache.
 
@@ -39,6 +40,7 @@ cache at its start.
 
 import contextlib
 import hashlib
+import json
 import logging
 import math
 import os
@@ -86,13 +88,14 @@ TOUCH_INTERVAL_S = 300.0
 EVICT_TO = 0.9
 # Version of each renderer's objects, raised with every change of what it
 # makes: its older objects become misses, and ``reconcile`` removes them.
+# Version 2 partitions identical bytes by their indexed rendering metadata.
 RENDERER_VERSIONS: Mapping[RendererName, int] = {
-    "raster": 1,
-    "vector": 1,
-    "points": 1,
-    "archive": 1,
-    "document": 1,
-    "composite": 1,
+    "raster": 2,
+    "vector": 2,
+    "points": 2,
+    "archive": 2,
+    "document": 2,
+    "composite": 2,
 }
 # Version of the tables of cache.sqlite: another one is dropped and rebuilt.
 SCHEMA_VERSION = 1
@@ -260,20 +263,37 @@ class CacheUsage:
 
 
 def cache_key(source: PreviewSource) -> CacheKey:
-    """Return the key of a file's object: its content, its kind's renderer.
+    """Key artifacts by bytes and all inputs that can affect their rendering.
 
-    Parameters
-    ----------
-    source : PreviewSource
-        The file.
-
-    Returns
-    -------
-    CacheKey
-        With the current version of the renderer (``RENDERER_VERSIONS``).
+    The main file name can change vector layer labels and auxiliary-file
+    recognition; the other names identify files in a file set. A source
+    stamp, reference or absolute path is deliberately excluded: identical
+    content and rendering metadata can still share the rendered artifacts.
     """
+    metadata = {
+        "format": source.format.name,
+        "format_hint": source.format_hint,
+        "kind": source.kind,
+        "filename": source.paths[0].name,
+        "members": [path.name for path in source.paths[1:]],
+        "crs": source.crs,
+        "georeference": None
+        if source.georeference is None
+        else {
+            "bbox": source.georeference.bbox,
+            "crs": source.georeference.crs,
+        },
+        "nodata": source.nodata,
+        "product": source.product,
+        "dataset_key": source.dataset_key,
+        "mutable": source.mutable,
+    }
+    identity = json.dumps(
+        [source.content_key, metadata], sort_keys=True, separators=(",", ":")
+    )
+    content = _sha256("preview-source:" + identity)
     renderer = source.renderer
-    return CacheKey(source.content_key, renderer, RENDERER_VERSIONS[renderer])
+    return CacheKey(content, renderer, RENDERER_VERSIONS[renderer])
 
 
 def composite_key(
