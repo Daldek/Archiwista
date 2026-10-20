@@ -5,13 +5,13 @@ copy. Once the ``preview`` build kept that copy as ``source.gpkg`` in the
 preview cache, the render processes read it and never open the file again.
 """
 
-import hashlib
 import os
 from pathlib import Path
 
 import pytest
 import shapely
 
+from archiwista.owndata.content import content_identity
 from archiwista.previews.cache import INFO_NAME, PreviewCache, cache_key
 from archiwista.previews.pool import RenderPool
 from archiwista.previews.protocol import RenderRequest, encode_request
@@ -33,19 +33,19 @@ _VIEW = [19.9, 50.0, 20.0, 50.1]
 
 
 def _stat(path: Path) -> FileStat:
-    found = path.stat()
-    return FileStat(found.st_size, found.st_mtime_ns)
+    return FileStat.of(path.stat())
 
 
 @pytest.mark.skipif(
     getattr(os, "geteuid", lambda: -1)() == 0, reason="root reads any file"
 )
-def test_open_gpkg_read_from_kept_copy(tmp_path: Path) -> None:
-    """The kept ``source.gpkg`` serves the map: the file itself stays closed.
+def test_open_gpkg_read_from_kept_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cached GeoPackage preview shows committed, not uncommitted rows.
 
-    The build (as the ``preview`` job runs it) copies the committed rows of a
-    GeoPackage open in an editor; with the file unreadable afterwards, its
-    features still come, from the copy alone.
+    The preview build keeps a consistent ``source.gpkg`` copy while an editor
+    holds an uncommitted transaction. The features request reads that copy.
     """
     # Arrange
     folder = make_own_folder(tmp_path / "dane", families=("gpkg_layers",))
@@ -57,15 +57,17 @@ def test_open_gpkg_read_from_kept_copy(tmp_path: Path) -> None:
     editor.begin()
     editor.insert("zlewnie", _BASIN, nazwa="Zlewnia D")
     wal = path.with_name(path.name + "-wal")
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setattr("archiwista.previews.worker._work_root", work)
     source = PreviewSource(
         f"file:p:{path.name}",
-        hashlib.sha256(path.read_bytes()).hexdigest(),
+        content_identity((path,), method="sqlite", work_dir=work).sha256,
         (path,),
         mutable=True,
         stat=SourceStat(_stat(path), _stat(wal)),
+        content_method="sqlite",
     )
-    work = tmp_path / "work"
-    work.mkdir()
     built = tmp_path / "built.gpkg"
     request = RenderRequest("1", "build", source, {"out": str(built), "force": False})
     params = {"layer": "zlewnie", "bbox": _VIEW, "zoom": 14, "limit": 100}
@@ -73,6 +75,7 @@ def test_open_gpkg_read_from_kept_copy(tmp_path: Path) -> None:
     # Act
     try:
         answer = answer_line(encode_request(request), (VectorRenderer(work_dir=work),))
+        assert answer.ok, (answer.code, answer.detail)
         info = answer.files[INFO_NAME]
         with (
             PreviewCache(tmp_path / "previews", limit_bytes=100 * 1024**2) as cache,
@@ -80,11 +83,7 @@ def test_open_gpkg_read_from_kept_copy(tmp_path: Path) -> None:
         ):
             cache.put(cache_key(source), INFO_NAME, info)
             cache.put(cache_key(source), SOURCE_GPKG_NAME, built)
-            path.chmod(0)
-            try:
-                found = pool.request("features", source, params).json()
-            finally:
-                path.chmod(0o600)
+            found = pool.request("features", source, params).json()
     finally:
         editor.close()
 

@@ -10,9 +10,13 @@ from pathlib import Path
 
 import pytest
 
+from archiwista.auth import LOCAL_OWNER
+from archiwista.config import ConfigStore
+from archiwista.index import IndexQueries
 from archiwista.messages import MESSAGES
 from archiwista.previews.cache import INFO_NAME, cache_key, path_key
-from archiwista.previews.types import PREVIEW_REASONS, PreviewSource
+from archiwista.previews.types import PREVIEW_REASONS
+from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_store import STORE
 from tests.fixtures.preview_api import (
     center_tile_url,
@@ -68,14 +72,18 @@ def test_every_store_file_type_has_preview_or_reason(tmp_path: Path) -> None:
             path: served.get(center_tile_url(info)) for path, info in built.items()
         }
         unkeyed = {}
-        for path, version in versions.items():
-            if version["sha256"] is None:
-                status = (served.store.root / path).stat()
-                content = path_key(STORE, path, status.st_size, status.st_mtime_ns)
-                source = PreviewSource(
-                    version["ref"], content, (served.store.root / path,)
-                )
-                unkeyed[path] = served.pool.cache.has(cache_key(source), INFO_NAME)
+        with IndexQueries(served.api.paths.index_file) as queries:
+            settings = ConfigStore(served.api.paths.config_file).load()
+            resolver = ObjectResolver(queries, lambda: settings)
+            for path, version in versions.items():
+                if version["sha256"] is None:
+                    status = (served.store.root / path).stat()
+                    content = path_key(STORE, path, status.st_size, status.st_mtime_ns)
+                    source = resolver.locate(
+                        VersionRef(STORE, path), principal=LOCAL_OWNER
+                    )
+                    assert source.content_key == content
+                    unkeyed[path] = served.pool.cache.has(cache_key(source), INFO_NAME)
 
     # Assert
     assert {info["kind"] for info in infos.values()} == KINDS
