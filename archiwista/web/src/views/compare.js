@@ -117,9 +117,9 @@ const LAYER_FIELDS = [
   ],
   ["key", (layer) => layer.key],
 ];
-// A text a spreadsheet would run as a formula starts with one of these (CSV
-// injection): such a cell gets a leading apostrophe.
-const FORMULA = /^[=+\-@\t\r]/;
+// Neutralize spreadsheet formulas in every CSV cell before quoting, not only
+// values: sidecar keys, labels and group names can also come from a producer.
+const FORMULA = /^[=+\-@\t\r\n]/;
 // A side without a preview address: nothing is loaded or built.
 const NO_SOURCE = { key: "", load: () => Promise.resolve(null), build: () => Promise.resolve(null) };
 
@@ -745,11 +745,12 @@ function saveCsv(rows, titles) {
 function csvValue(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? L.table.yes : L.table.no;
-  return typeof value === "string" && FORMULA.test(value) ? `'${value}` : String(value);
+  return typeof value === "number" ? value : String(value);
 }
 
 function csvCell(text) {
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  const safe = typeof text === "number" || !FORMULA.test(text) ? String(text) : `'${text}`;
+  return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
 /** `porownanie-<A>-<B>.csv` with the sides' names in safe letters. */

@@ -22,7 +22,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import pytest
-from playwright.sync_api import Locator, Page, Request, expect
+from playwright.sync_api import Locator, Page, Request, Route, expect
 
 from archiwista.config import AppSettings, BasemapConfig, ConfigStore, StoreConfig
 from archiwista.security import CSRF_HEADER
@@ -693,6 +693,69 @@ def test_csv_export_matches_table(
     assert [line[2] for line in only] == [
         row["label"] for row in page.evaluate(TABLE_ROWS)
     ]
+    tab.assert_clean()
+
+
+def test_csv_export_neutralizes_every_cell(
+    compare_store: CompareStore, tab: Tab, tmp_path: Path
+) -> None:
+    """Sidecar keys, labels, groups and values remain visible but cannot run as formulas."""
+    served = compare_store.served
+    page = open_session(tab, served)
+    _, versions = version_pair(page, compare_store.store)
+    original_count = len(comparison(page, versions)["rows"])
+    attack = '=HYPERLINK("https://example.invalid/?x=1,2","click")'
+    rows = [
+        {
+            "group": "=1+2",
+            "field": "+SUM(1,2)",
+            "label": attack,
+            "a": "@SUM(1,2)",
+            "b": "\t=1+2",
+            "differs": True,
+        },
+        {
+            "group": "sidecar",
+            "field": "\r=1+2",
+            "label": "-1+2",
+            "a": "\n=1+2",
+            "b": attack,
+            "differs": True,
+        },
+    ]
+
+    def inject_comparison(route: Route) -> None:
+        answer = route.fetch()
+        comparison = answer.json()
+        comparison["a"]["title"] = attack
+        comparison["b"]["title"] = "+SUM(1,2)"
+        comparison["rows"].extend(rows)
+        route.fulfill(response=answer, json=comparison)
+
+    page.route("**/api/v1/compare?*", inject_comparison)
+    page.goto(compare_address(served, versions))
+    expect(page.locator(".cmp-table tbody tr:not(.cmp-group)")).to_have_count(
+        original_count + len(rows)
+    )
+    assert attack in [row["label"] for row in page.evaluate(TABLE_ROWS)]
+    with page.expect_download() as started:
+        panel(page).get_by_role("button", name="Eksportuj CSV").click()
+    saved = tmp_path / "comparison.csv"
+    started.value.save_as(saved)
+    data = list(
+        csv.reader(io.StringIO(saved.read_bytes().decode("utf-8-sig"), newline=""))
+    )
+    assert data[0][3:5] == [f"A: {attack}", "B: +SUM(1,2)"]
+    assert data[-2:] == [
+        ["'=1+2", "'+SUM(1,2)", f"'{attack}", "'@SUM(1,2)", "'\t=1+2", "tak"],
+        ["Pola surowego sidecara", "'\r=1+2", "'-1+2", "'\n=1+2", f"'{attack}", "tak"],
+    ]
+    assert all(
+        not cell.startswith(("=", "+", "-", "@", "\t", "\r", "\n"))
+        or re.fullmatch(r"-\d+(?:\.\d+)?", cell)
+        for line in data
+        for cell in line
+    )
     tab.assert_clean()
 
 
