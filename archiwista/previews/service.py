@@ -46,7 +46,7 @@ from archiwista.api.models_previews import (
     PreviewReasonInfo,
     legend_model,
 )
-from archiwista.auth import Principal
+from archiwista.auth import ALL_PROJECTS, Principal, ProjectVisibility
 from archiwista.errors import (
     NotFoundError,
     OwnFileChangedError,
@@ -206,7 +206,7 @@ class PreviewService:
         except PreviewUnavailableError as error:
             code = _reason(error.reason)
             return _unavailable(text, source.kind, code, error.detail, source=source)
-        return await self._described(located, probe, detail)
+        return await self._described(located, probe, detail, principal)
 
     async def thumbnail(
         self,
@@ -297,7 +297,7 @@ class PreviewService:
                 z=z, x=x, y=y, minzoom=minzoom, maxzoom=maxzoom
             )
             raise NotFoundError(message)
-        await self._require_built(located.source, probe)
+        await self._require_built(located.source, probe, principal)
         if rescale is not None:
             params["rescale"] = rescale
         return await self._image("tile", located, params, principal, if_none_match)
@@ -338,7 +338,7 @@ class PreviewService:
                 layer=layer, layers=", ".join(names) or MESSAGES["preview_none"]
             )
             raise PreviewParameterError("query.layer", message)
-        await self._require_built(located.source, probe)
+        await self._require_built(located.source, probe, principal)
         params: JsonObject = {
             "layer": layer,
             "bbox": bbox,
@@ -529,20 +529,26 @@ class PreviewService:
             raise
 
     async def _described(
-        self, located: _Located, probe: PreviewProbe, detail: str | None
+        self, located: _Located, probe: PreviewProbe, detail: str | None,
+        principal: Principal,
     ) -> PreviewInfo:
         source = located.source
         job: JobRecord | None = None
+        building = False
         built = await self._built(source, probe)
         if not built and probe.reason not in NOTHING_SHOWN:
-            job = await asyncio.to_thread(self._active_job, source.content_key)
+            job, building = await asyncio.to_thread(
+                self._active_job,
+                cache_key(source).content_key,
+                self._resolver.visible_projects(principal),
+            )
         state: PreviewState
         if probe.reason in NOTHING_SHOWN:
             state = "unavailable"
         elif built:
             state = "ready"
         else:
-            state = "building" if job is not None else "needs_build"
+            state = "building" if building else "needs_build"
         base = object_url(located.ref)
         shown = state != "unavailable"
         located_on_map = shown and probe.reason is None and probe.bbox_wgs84 is not None
@@ -598,30 +604,54 @@ class PreviewService:
             return True
         return await asyncio.to_thread(self._has, cache_key(source), product)
 
-    async def _require_built(self, source: PreviewSource, probe: PreviewProbe) -> None:
+    async def _require_built(
+        self, source: PreviewSource, probe: PreviewProbe, principal: Principal
+    ) -> None:
         """Refuse a map preview whose local COG is not built yet."""
         if await self._built(source, probe):
             return
-        job = await asyncio.to_thread(self._active_job, source.content_key)
-        if job is None:
-            raise PreviewNotReadyError(MESSAGES["preview_not_ready_build"])
-        raise PreviewNotReadyError(
-            MESSAGES["preview_not_ready_job"].format(job=job.id),
-            job_id=job.id,
-            kind=job.kind,
-            state=job.state,
+        job, building = await asyncio.to_thread(
+            self._active_job,
+            cache_key(source).content_key,
+            self._resolver.visible_projects(principal),
         )
+        if job is not None:
+            raise PreviewNotReadyError(
+                MESSAGES["preview_not_ready_job"].format(job=job.id),
+                job_id=job.id,
+                kind=job.kind,
+                state=job.state,
+            )
+        if building:
+            raise PreviewNotReadyError(
+                MESSAGES["preview_not_ready_building"], state="building"
+            )
+        raise PreviewNotReadyError(MESSAGES["preview_not_ready_build"])
 
-    def _active_job(self, content_key: str) -> JobRecord | None:
-        """Return the ``preview`` job building a content, running ones first."""
+    def _active_job(
+        self, content_key: str, visible: ProjectVisibility
+    ) -> tuple[JobRecord | None, bool]:
+        """Find a visible preview job, or report an otherwise hidden build."""
         if self._jobs is None:
-            return None
+            return None, False
         for state in ("running", "queued"):
-            page = self._jobs.list(kind="preview", state=state, limit=MAX_PAGE_LIMIT)
-            for record in page.items:
+            shown = self._jobs.list(
+                kind="preview", state=state, limit=MAX_PAGE_LIMIT, visible=visible
+            )
+            for record in shown.items:
                 if content_key in record.params.get("contents", ()):
-                    return record
-        return None
+                    return record, True
+        if visible.everything:
+            return None, False
+        for state in ("running", "queued"):
+            all_jobs = self._jobs.list(
+                kind="preview", state=state, limit=MAX_PAGE_LIMIT,
+                visible=ALL_PROJECTS,
+            )
+            for record in all_jobs.items:
+                if content_key in record.params.get("contents", ()):
+                    return None, True
+        return None, False
 
     def _cached(self, key: CacheKey, name: str) -> bytes | None:
         """Return a small file of the cache; a broken cache is a miss."""

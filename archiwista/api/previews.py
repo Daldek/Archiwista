@@ -184,7 +184,7 @@ def preview_problems(*codes: str) -> dict[int | str, dict[str, Any]]:
         409: (
             "No such preview: `preview_unavailable` (`reason`: code, Polish"
             " description and fix) or `preview_not_ready` (map tiles before"
-            " their build: the `job` building it, or `build_required`)."
+            " their build: visible `job`, hidden `building`, or `build_required`)."
         ),
         503: (
             "`preview_busy` (the render queue is full; `Retry-After`) or"

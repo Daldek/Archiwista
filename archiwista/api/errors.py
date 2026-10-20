@@ -10,7 +10,7 @@ add members: ``source`` for an unavailable or incompatible producer plugin
 a producer's own error (its exception and unchanged message), ``problems``
 for invalid settings, ``errors`` for invalid request data, ``job`` for
 the job in the way of a ``409 conflict`` (or building the preview of a
-``409 preview_not_ready``, else ``build_required``), ``reason`` for a
+``409 preview_not_ready``, else ``building`` or ``build_required``), ``reason`` for a
 ``409 preview_unavailable`` (its code, Polish description and fix) and for
 a ``409 snapshot_blocked`` (why the snapshot cannot be made now), and
 ``layers`` for an area file with several layers to choose from; ``503
@@ -307,7 +307,9 @@ def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
         )
         members["reason"] = reason
     elif isinstance(error, PreviewNotReadyError):
-        if error.job_id is None:
+        if error.state == "building":
+            members["building"] = True
+        elif error.job_id is None:
             members["build_required"] = True
         else:
             members["job"] = {

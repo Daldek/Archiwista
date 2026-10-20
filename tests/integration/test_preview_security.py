@@ -30,11 +30,15 @@ import rasterio
 import shapely
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
+from archiwista.config import ConfigStore
 from archiwista.index import IndexQueries, own_file_id
+from archiwista.previews.cache import cache_key
+from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_session import assert_problem
+from tests.fixtures.api_store import STORE
 from tests.fixtures.own_data import ALL_OWN_FAMILIES, GpkgEditor
 from tests.fixtures.own_data_api import OwnDataApi, OwnProject, own_data_api
-from tests.fixtures.permissions import share
+from tests.fixtures.permissions import principal, share
 from tests.fixtures.preview_api import (
     PreviewApi,
     center_tile_url,
@@ -366,3 +370,51 @@ def test_failure_message_carries_no_other_projects_path(tmp_path: Path) -> None:
     leaks = (str(tmp_path), first.key, first.directory.name)
     for answer in (cached, built):
         assert [part for part in leaks if part in answer.text] == [], answer.text
+
+
+def test_hidden_preview_job_only_reports_generic_building(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Public tiles cannot disclose the private job ID or its queue state."""
+    with own_data_api(tmp_path, first=(), second=()) as served:
+        share(served.api.state, served.first.access_key, "private")
+        visitor = served.caller("other")
+        path = entry_of(served.previews.store, "asc_sheet", "regular").path
+        url = version_url(path)
+        before = served.get(visitor, url).json()
+        assert before["state"] == "needs_build"
+        with IndexQueries(served.paths.index_file) as queries:
+            settings = ConfigStore(served.paths.config_file).load()
+            source = ObjectResolver(queries, lambda: settings).locate(
+                VersionRef(STORE, path), principal=LOCAL_OWNER
+            )
+        # Keep a real job queued so the request observes its stable state.
+        monkeypatch.setattr(served.jobs, "_dispatch", lambda: None)
+        hidden = served.jobs.submit(
+            "preview",
+            params={
+                "refs": [served.first.ref("private.asc")],
+                "contents": [cache_key(source).content_key],
+                "force": False,
+            },
+            actor=LOCAL_OWNER,
+        )
+        visibility = served.api.client.app.state.authorizer.visible_projects(
+            principal(served.api.state, "other")
+        )
+        assert served.jobs.get(hidden.id, visible=visibility) is None
+        owner_info = served.get(served.owner, url)
+        owner_tile = served.get(served.owner, center_tile_url(before))
+        described = served.get(visitor, url)
+        refused = served.get(visitor, center_tile_url(before))
+
+    assert described.status_code == 200
+    assert owner_info.json()["state"] == "building"
+    assert owner_info.json()["job"]["id"] == hidden.id
+    assert owner_tile.json()["job"]["id"] == hidden.id
+    assert described.json()["state"] == "building"
+    assert described.json()["job"] is None
+    assert_problem(refused, 409, "preview_not_ready")
+    assert refused.json()["building"] is True
+    assert "job" not in refused.json()
+    assert hidden.id not in described.text + refused.text

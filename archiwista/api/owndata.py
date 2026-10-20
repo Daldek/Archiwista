@@ -465,7 +465,7 @@ _CHANGED_PROBLEM: dict[int | str, dict[str, Any]] = {
         "description": (
             "`own_file_changed` (the file changed since its scan: `POST"
             " /projects/{project}/scan`), `preview_unavailable` (`reason`) or"
-            " `preview_not_ready` (`job` or `build_required`)."
+            " `preview_not_ready` (`job`, `building` or `build_required`)."
         ),
         "content": {
             PROBLEM_MEDIA_TYPE: {

@@ -199,6 +199,10 @@ class ObjectResolver:
         self._settings = settings
         self._visible = visible
 
+    def visible_projects(self, principal: Principal) -> ProjectVisibility:
+        """Use the same project visibility for preview jobs as for own files."""
+        return _NO_PROJECTS if self._visible is None else self._visible(principal)
+
     def resolve(self, ref: str | ObjectRef, *, principal: Principal) -> PreviewSource:
         """Return the object's source with its file resolved inside its root.
 
@@ -351,7 +355,7 @@ class ObjectResolver:
             An unknown project, file or folder never scanned, or a project
             the principal does not see.
         """
-        visible = _NO_PROJECTS if self._visible is None else self._visible(principal)
+        visible = self.visible_projects(principal)
         path = unicodedata.normalize("NFC", ref.path)
         detail = self._queries.own_file(ref.project, own_file_id(path), visible=visible)
         if detail is None or detail.file.path != path:

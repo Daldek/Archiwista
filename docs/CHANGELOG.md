@@ -26,6 +26,12 @@ wiersza poleceń mogą się zmieniać.
   zachowują swoją listę podkładów — nowe wbudowane daje usunięcie tabel
   `[[basemaps]]` z `config.toml`.
 
+### Poprawiono
+
+- Stan budowy podglądu nie ujawnia identyfikatora ani stanu zadania
+  z projektu niewidocznego dla użytkownika: widoczny jest tylko ogólny
+  stan „w budowie”.
+
 ## [0.1.0] — 2026-10-19 — „Przeglądarka”
 
 Pierwsze wydanie: lokalna przeglądarka magazynu Kartografa, tylko do

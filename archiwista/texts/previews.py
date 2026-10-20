@@ -154,6 +154,10 @@ PREVIEW_MESSAGES = MappingProxyType(
             "Podgląd tego pliku jest w budowie (zadanie {job}); kafle mapy będą"
             " dostępne po jej zakończeniu."
         ),
+        "preview_not_ready_building": (
+            "Podgląd tego pliku jest w budowie; kafle mapy będą dostępne"
+            " po jej zakończeniu."
+        ),
         "preview_tile_outside": (
             "Kafel {z}/{x}/{y} leży poza zasięgiem pliku albo poza zakresem"
             " powiększeń {minzoom}–{maxzoom}."

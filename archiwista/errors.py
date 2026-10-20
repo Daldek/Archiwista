@@ -303,7 +303,8 @@ class PreviewNotReadyError(ArchiwistaError):
     """A preview needs its build first (``409 preview_not_ready``).
 
     The map tiles of a file whose local COG is not in the preview cache yet
-    (decision 6). The problem names the ``preview`` job building it, or says
+    (decision 6). The problem names a visible ``preview`` job building it,
+    reports ``building`` without an ID for a hidden job, or says
     ``build_required`` when none does.
 
     Parameters
