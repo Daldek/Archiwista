@@ -13,6 +13,7 @@ import math
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
 from archiwista.api.dependencies import (
     index_queries,
@@ -56,22 +57,24 @@ def map_view(
     filters: MapFilters,
     *,
     visible: ProjectVisibility,
-) -> MapView:
-    """Return the footprints of a map view, or their grid above the limit.
+) -> Response:
+    """Return an indexed map view with polygons copied from indexed JSON.
 
-    Raises
-    ------
-    IndexQueryError
-        An unknown store, a view outside WGS84, a reversed range or a limit
-        out of range.
-    NotFoundError
-        ``project`` is unknown or not visible to the principal.
+    The index supplies validated location metadata and trusted GeoJSON written
+    by the scanner. Serializing it directly avoids decoding and revalidating
+    thousands of polygons just to emit their original coordinates.
     """
     freshness = queries.freshness()
     stores = checked_store(filters.store, settings, freshness)
     checked_project(queries, filters.project, visible)
-    page = queries.footprints(filters.map_query(), visible=visible)
-    return MapView.of(page, staleness(freshness, stores))
+    page, items = queries.footprints_json(filters.map_query(), visible=visible)
+    header = MapView.of(page, staleness(freshness, stores)).model_dump_json(
+        exclude={"items"}
+    )
+    return Response(
+        content=header[:-1] + ',"items":' + items + "}",
+        media_type="application/json",
+    )
 
 
 def sheet_list(registry: PluginRegistry, filters: SheetFilters) -> SheetList:
@@ -156,7 +159,7 @@ def list_footprints(
     visible: _Visible,
     settings: _Settings,
     queries: _Queries,
-) -> MapView:
+) -> Response:
     """List outlines in a map view (WGS84) with the catalog filters, or a grid.
 
     Above `limit` the answer is `aggregated`: `cells` count outline centres.

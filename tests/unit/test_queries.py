@@ -198,6 +198,41 @@ def test_queries_map_lists_5000_footprints_then_aggregates(index: Index) -> None
     assert gridded.groups.footprint == 5001
 
 
+def test_queries_map_json_keeps_outlines_and_refreshes_group_counts(
+    index: Index,
+) -> None:
+    """Encoded shapes match decoded ones, and map counts track later writes."""
+    writer, queries = index
+    first = version(slot_path(NMT, "T-001"), "2023-06-11_93763", 1)
+    second = version(slot_path(NMT, "T-002"), "2023-06-11_93763", 2)
+    outline = polygon((19.123456789, 49.25), (19.75, 49.25), (19.25, 49.75))
+    write_pass(
+        writer,
+        [
+            link(slot_path(NMT, "T-001"), first),
+            first,
+            link(slot_path(NMT, "T-002"), second),
+            second,
+        ],
+        footprints={
+            first.relative_path.as_posix(): Footprint(
+                "footprint", wgs84=outline, source="header"
+            )
+        },
+    )
+    view = MapQuery(bbox=(19.0, 49.0, 20.0, 50.0))
+    before, encoded = queries.footprints_json(view, visible=ALL_PROJECTS)
+    decoded = queries.footprints(view, visible=ALL_PROJECTS)
+
+    assert before.groups.none == 1
+    assert json.loads(encoded)[0]["geometry"] == decoded.items[0].geometry == outline
+    assert json.loads(encoded)[0]["version"] == first.relative_path.as_posix()
+
+    writer.write_footprints(STORE, [(second, box(22.0, 52.0, 22.1, 52.1))])
+    after, _ = queries.footprints_json(view, visible=ALL_PROJECTS)
+    assert (after.total, after.groups.none, after.groups.footprint) == (1, 0, 2)
+
+
 def test_queries_map_draws_the_versions_of_the_mode(index: Index) -> None:
     """The map shows current versions by default and every version on demand."""
     # Arrange

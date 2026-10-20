@@ -569,6 +569,23 @@ class IndexQueries:
     def footprints(
         self, query: MapQuery, *, visible: ProjectVisibility
     ) -> FootprintPage:
+        """Return decoded outlines for index consumers, or grid cells."""
+        page, _ = self._footprints(query, visible=visible, encoded=False)
+        return page
+
+    def footprints_json(
+        self, query: MapQuery, *, visible: ProjectVisibility
+    ) -> tuple[FootprintPage, str]:
+        """Return metadata and JSON items for HTTP, without decoding polygons.
+
+        The page's ``items`` stay empty even for unaggregated views: the JSON
+        string supplies them. In aggregated views the JSON string is ``[]``.
+        """
+        return self._footprints(query, visible=visible, encoded=True)
+
+    def _footprints(
+        self, query: MapQuery, *, visible: ProjectVisibility, encoded: bool
+    ) -> tuple[FootprintPage, str]:
         """Return the footprints of a map view, or their grid above the limit.
 
         Parameters
@@ -581,9 +598,10 @@ class IndexQueries:
 
         Returns
         -------
-        FootprintPage
-            ``items`` when at most ``query.limit`` footprints are in the
-            view, otherwise ``cells`` counting footprint centres.
+        tuple[FootprintPage, str]
+            For decoded views the page contains ``items``; for encoded ones
+            its items are in the JSON text instead. Above ``query.limit``,
+            ``cells`` count footprint centres and the items text is ``[]``.
 
         Raises
         ------
@@ -608,7 +626,7 @@ class IndexQueries:
         with self._read() as connection:
             stores = _stores(connection)
             where = _where(connection, filters, stores, visible)
-            groups = _groups(connection, filters.versions, where)
+            groups = self._map_groups(connection, filters.versions, where)
             view = _Where(list(where.conditions), list(where.params))
             for condition in _MAP_MODES.get(filters.versions, ()):
                 view.add(condition)
@@ -647,7 +665,7 @@ class IndexQueries:
                     )
                     for cell in sorted(cells, key=lambda c: (c["row"], c["col"]))
                 )
-                return FootprintPage(total, True, (), grid, groups)
+                return FootprintPage(total, True, (), grid, groups), "[]"
             rows = connection.execute(
                 "SELECT s.store_id, s.path, v.path, g.segment, s.product, v.label,"
                 " v.data_year, v.location_source, v.is_box, v.min_lon, v.min_lat,"
@@ -656,6 +674,11 @@ class IndexQueries:
                 f" WHERE {view.sql()} ORDER BY v.id",
                 view.params,
             ).fetchall()
+        if encoded:
+            items_json = "[" + ",".join(
+                _map_item_json(row, stores[row[0]]) for row in rows
+            ) + "]"
+            return FootprintPage(total, False, (), (), groups), items_json
         items = tuple(
             MapFootprint(
                 store=stores[row[0]],
@@ -672,7 +695,8 @@ class IndexQueries:
             )
             for row in rows
         )
-        return FootprintPage(total, False, items, (), groups)
+        return FootprintPage(total, False, items, (), groups), "[]"
+
 
     def slots_in_bbox(
         self,
@@ -1568,6 +1592,26 @@ class IndexQueries:
                 self._connections.append(connection)
         return connection
 
+    def _map_groups(
+        self, connection: sqlite3.Connection, versions: VersionsMode, where: _Where
+    ) -> LocationCounts:
+        """Reuse catalog totals until the index changes, per reader connection."""
+        revision = connection.execute("PRAGMA data_version").fetchone()[0]
+        cached = getattr(self._local, "map_groups", None)
+        if cached is None or revision != cached[0]:
+            cache: dict[tuple[object, ...], LocationCounts] = {}
+            self._local.map_groups = (revision, cache)
+        else:
+            cache = cached[1]
+        key = (versions, where.sql(), tuple(where.params))
+        groups = cache.get(key)
+        if groups is None:
+            groups = _groups(connection, versions, where)
+            if len(cache) >= 64:
+                cache.pop(next(iter(cache)))
+            cache[key] = groups
+        return groups
+
     @contextmanager
     def _read(self) -> Iterator[sqlite3.Connection]:
         """One read snapshot for every statement of a query."""
@@ -1721,6 +1765,33 @@ def _area(connection: sqlite3.Connection, area: AreaFilter) -> _Area:
         f" IN ({_IDS})) OR (v.location = 'footprint' AND {footprint})"
     )
     return _Area(admits, (json.dumps(list(area.countries)), *params))
+
+
+def _map_item_json(row: sqlite3.Row, store: str) -> str:
+    """Serialize one indexed outline, reusing polygon JSON already in SQLite."""
+    fields = json.dumps(
+        {
+            "store": store,
+            "slot": row[1],
+            "version": row[2],
+            "segment": row[3] or None,
+            "product": row[4],
+            "label": row[5],
+            "data_year": row[6],
+            "source": row[7],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    geometry = (
+        json.dumps(
+            box_geometry((row[9], row[10], row[11], row[12])),
+            separators=(",", ":"),
+        )
+        if row[8] or row[13] is None
+        else row[13]
+    )
+    return f'{fields[:-1]},"geometry":{geometry}}}'
 
 
 def _refine(

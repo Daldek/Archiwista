@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 import archiwista.api.models as models
 from archiwista.api.errors import service_problem
-from archiwista.auth import LOCAL_OWNER
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.config import ConfigStore
 from archiwista.errors import (
     IndexQueryError,
@@ -25,7 +25,7 @@ from archiwista.errors import (
     ProducerError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, MapQuery
 from archiwista.security import CSRF_HEADER
 from archiwista.sources import ProjectInfo, SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
@@ -127,6 +127,25 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     assert [item["producer"] for item in sources["items"]] == ["kartograf"]
     assert sources["items"][0]["status"] == "available"
     assert not page["stale"] and page["stale_stores"] == []
+
+
+def test_api_map_outlines_match_index_and_keep_response_contract(
+    served: ServedStore,
+) -> None:
+    """Large map answers reuse the indexed polygons without changing JSON fields."""
+    query = MapQuery(bbox=(14.0, 49.0, 24.2, 55.0))
+    with IndexQueries(served.api.paths.index_file) as queries:
+        page = queries.footprints(query, visible=ALL_PROJECTS)
+    response = served.owner.request("GET", "/map/footprints?bbox=14,49,24.2,55")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/json"
+    actual = models.MapView.model_validate_json(response.content)
+    assert actual.total == len(page.items) and not actual.aggregated
+    assert [item.model_dump() for item in actual.items] == [
+        models.Footprint.of(item).model_dump() for item in page.items
+    ]
+    assert actual.groups == models.LocationGroups.of(page.groups)
 
 
 def test_api_slots_filters_limit_and_cursor(served: ServedStore) -> None:
