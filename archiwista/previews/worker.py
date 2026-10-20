@@ -31,13 +31,20 @@ import json
 import logging
 import os
 import secrets
+import sqlite3
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, cast
 
-from archiwista.errors import FormatRefusedError, PreviewUnavailableError
+from archiwista.errors import (
+    FormatRefusedError,
+    InconsistentReadError,
+    PreviewUnavailableError,
+)
+from archiwista.owndata.content import content_identity
+from archiwista.owndata.formats import fileset_members
 from archiwista.previews.cache import (
     INFO_NAME,
     OBJECTS_DIR,
@@ -284,11 +291,17 @@ def answer_line(line: str, renderers: Sequence[Renderer]) -> RenderAnswer:
     code: str
     detail: str | None
     try:
-        if source is not None:
-            require_unchanged(source)
-        files = operation.handler(renderers, request)
-        if source is not None:
-            require_unchanged(source)
+        sources = _request_sources(request)
+        for item in sources:
+            require_unchanged(item)
+        try:
+            files = operation.handler(renderers, request)
+        finally:
+            # Neither successful results nor lasting failures can name stale
+            # content in a globally shared cache object.
+            for item in sources:
+                require_unchanged(item)
+                _require_indexed_content(item)
     except PreviewUnavailableError as error:
         code, detail = error.reason, error.detail
     except FormatRefusedError as error:
@@ -498,8 +511,38 @@ def _optional_method(renderer: Renderer, name: str) -> Callable[..., Any]:
     return cast(Callable[..., Any], method)
 
 
+def _request_sources(request: RenderRequest) -> tuple[PreviewSource, ...]:
+    """Include the sources of a layer's secondary cache publications."""
+    if request.op not in (LAYER_THUMBNAIL, LAYER_TILE):
+        return () if request.source is None else (request.source,)
+    versions = request.params.get("versions", ())
+    return tuple(PreviewSource.from_json(item["source"]) for item in versions)
+
+
+def _require_indexed_content(source: PreviewSource) -> None:
+    """Compare mutable content to its indexed SHA-256 inside the render process."""
+    if not source.mutable:
+        return
+    method = source.content_method or "bytes"
+    try:
+        paths = source.paths
+        if method == "fileset":
+            actual = fileset_members(paths[0])
+            if tuple(path.name for path in actual) != tuple(path.name for path in paths):
+                raise PreviewUnavailableError("changed_since_scan")
+        identity = content_identity(
+            paths if method == "fileset" else paths[:1],
+            method=method,
+            work_dir=work_dir() if method == "sqlite" else None,
+        )
+    except (InconsistentReadError, OSError, sqlite3.Error, ValueError) as error:
+        raise PreviewUnavailableError("changed_since_scan") from error
+    if identity.sha256 != source.content_key:
+        raise PreviewUnavailableError("changed_since_scan")
+
+
 def require_unchanged(source: PreviewSource) -> None:
-    """Refuse a working file whose state differs from its scan.
+    """Refuse an own-data file whose metadata differs from its resolution.
 
     Raises
     ------
@@ -515,16 +558,20 @@ def require_unchanged(source: PreviewSource) -> None:
     if found is None:
         raise FileNotFoundError(main.name)
     wal = _stat(main.with_name(main.name + "-wal"))
-    if found != source.stat.main or wal != source.stat.wal:
+    journal = _stat(main.with_name(main.name + "-journal"))
+    if (
+        found != source.stat.main
+        or wal != source.stat.wal
+        or journal != source.stat.journal
+    ):
         raise PreviewUnavailableError("changed_since_scan")
 
 
 def _stat(path: Path) -> FileStat | None:
     try:
-        found = os.stat(path)
+        return FileStat.of(os.stat(path))
     except FileNotFoundError:
         return None
-    return FileStat(found.st_size, found.st_mtime_ns)
 
 
 def _bbox(value: Any) -> tuple[float, float, float, float]:

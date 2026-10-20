@@ -42,6 +42,7 @@ import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal, ProjectVisibility
 from archiwista.config import AppSettings
@@ -62,6 +63,7 @@ from archiwista.index import (
 )
 from archiwista.jobs.protocol import JobSpec
 from archiwista.messages import MESSAGES
+from archiwista.owndata.content import CONTENT_METHODS, ContentMethod
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.formats import fileset_members
 from archiwista.owndata.scan import stamp_holds
@@ -387,7 +389,10 @@ class ObjectResolver:
         if not stamp_holds(listed, detail.stamp):
             raise own_file_changed(ref)
         content = (detail.content_sha256 or "").lower()
-        if CONTENT_KEY.fullmatch(content) is None:
+        if (
+            CONTENT_KEY.fullmatch(content) is None
+            or detail.content_method not in CONTENT_METHODS
+        ):
             raise PreviewUnavailableError("unreadable")
         return PreviewSource(
             ref=format_ref(FileRef(ref.project, detail.file.path)),
@@ -396,6 +401,7 @@ class ObjectResolver:
             size_bytes=stat.main.size_bytes,
             mutable=True,
             stat=stat,
+            content_method=cast(ContentMethod, detail.content_method),
         )
 
 
@@ -504,16 +510,23 @@ def _snapshot_source(
         raise NotFoundError(message)
     content = (snapshot.content_sha256 or "").lower()
     files = _snapshot_files(snapshot)
-    if snapshot.state != "ok" or not files or CONTENT_KEY.fullmatch(content) is None:
+    if (
+        snapshot.state != "ok"
+        or not files
+        or CONTENT_KEY.fullmatch(content) is None
+        or snapshot.content_method not in CONTENT_METHODS
+    ):
         raise PreviewUnavailableError("unreadable")
     root = Path(os.path.realpath(detail.folder.path))
     place = f"{SNAPSHOTS_DIR}/{detail.disk_path}/{snapshot.label}"
     size_bytes = files[0][1]
+    state = None
     if on_disk:
         try:
             directory = resolve_indexed_path(root, place)
             paths = tuple(resolve_indexed_path(directory, name) for name, _ in files)
-            size_bytes = paths[0].stat().st_size
+            state = _source_stat(paths[0])
+            size_bytes = state.main.size_bytes
         except OSError:  # gone, or a folder out of reach
             raise PreviewUnavailableError("missing_file") from None
     else:
@@ -524,6 +537,9 @@ def _snapshot_source(
         content_key=content,
         paths=paths,
         size_bytes=size_bytes,
+        mutable=on_disk,
+        stat=state if on_disk else None,
+        content_method=cast(ContentMethod, snapshot.content_method),
     )
 
 
@@ -541,21 +557,24 @@ def _snapshot_files(snapshot: SnapshotRecord) -> list[tuple[str, int]]:
 
 
 def _source_stat(main: Path) -> SourceStat:
-    """Return what a render process checks of a working file: it and its ``-wal``.
+    """Return the main file's and SQLite companions' current identity.
 
     Raises
     ------
     OSError
         The file cannot be read (``FileNotFoundError``: it is gone).
     """
-    found = os.stat(main)
+    found = FileStat.of(os.stat(main))
+    wal = _companion_stat(main, "-wal")
+    journal = _companion_stat(main, "-journal")
+    return SourceStat(found, wal, journal)
+
+
+def _companion_stat(main: Path, suffix: str) -> FileStat | None:
     try:
-        wal_found = os.stat(main.with_name(f"{main.name}-wal"))
+        return FileStat.of(os.stat(main.with_name(f"{main.name}{suffix}")))
     except FileNotFoundError:
-        wal = None
-    else:
-        wal = FileStat(wal_found.st_size, wal_found.st_mtime_ns)
-    return SourceStat(FileStat(found.st_size, found.st_mtime_ns), wal)
+        return None
 
 
 def _georeference(

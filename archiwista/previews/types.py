@@ -16,6 +16,7 @@ server uses these types without loading GDAL.
 """
 
 import json
+import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, cast, get_args
 
 from archiwista.formats import FORMATS, FileFormat, FormatKind, file_format
+from archiwista.owndata.content import CONTENT_METHODS, ContentMethod
 
 type PreviewKind = FormatKind
 type PreviewState = Literal["ready", "needs_build", "building", "unavailable", "failed"]
@@ -104,22 +106,34 @@ _FORMAT_BY_NAME = {found.name: found for found in FORMATS}
 
 @dataclass(frozen=True, slots=True)
 class FileStat:
-    """Size and modification time of a file, as ``os.stat`` gives them."""
+    """Size, modification time and available identity of an ``os.stat`` result."""
 
     size_bytes: int
     modified_ns: int
+    inode: int | None = None
+    changed_ns: int | None = None
+
+    @classmethod
+    def of(cls, found: os.stat_result) -> "FileStat":
+        """Keep inode and change time where the filesystem exposes them."""
+        return cls(
+            found.st_size,
+            found.st_mtime_ns,
+            getattr(found, "st_ino", None),
+            getattr(found, "st_ctime_ns", None),
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class SourceStat:
-    """State of an own-data working file, checked before and after rendering.
+    """State of an own-data file, checked before and after rendering.
 
-    ``wal`` is the SQLite ``-wal`` next to the file, ``None`` when there is
-    none (a working GeoPackage edited in QGIS has one).
+    ``wal`` and ``journal`` are SQLite companions next to a GeoPackage.
     """
 
     main: FileStat
     wal: FileStat | None = None
+    journal: FileStat | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,10 +181,13 @@ class PreviewSource:
     nodata : float or None, optional
         ``nodata`` of the version's metadata.
     mutable : bool, optional
-        An own-data working file: its ``stat`` is checked before and after
-        rendering (``changed_since_scan``).
+        An own-data file whose state and content must match its indexed key
+        before any preview is published.
     stat : SourceStat or None, optional
-        The working file's state at its scan.
+        Its state when the server resolved the indexed file.
+    content_method : ContentMethod or None, optional
+        How its indexed content SHA-256 was computed (bytes by default for
+        manually constructed sources).
     """
 
     ref: str
@@ -185,6 +202,7 @@ class PreviewSource:
     nodata: float | None = None
     mutable: bool = False
     stat: SourceStat | None = None
+    content_method: ContentMethod | None = None
 
     def __post_init__(self) -> None:
         """Refuse a key that is no SHA-256, relative paths, an unknown format."""
@@ -194,6 +212,8 @@ class PreviewSource:
             raise ValueError("a preview source has absolute paths, the main first")
         if self.format_hint is not None and self.format_hint not in _FORMAT_BY_NAME:
             raise ValueError(f"unknown format {self.format_hint!r}")
+        if self.content_method is not None and self.content_method not in CONTENT_METHODS:
+            raise ValueError("unknown own-data content method")
 
     @property
     def format(self) -> FileFormat:
@@ -229,6 +249,7 @@ class PreviewSource:
             "nodata": self.nodata,
             "mutable": self.mutable,
             "stat": None if self.stat is None else _stat_json(self.stat),
+            "content_method": self.content_method,
         }
 
     @classmethod
@@ -258,6 +279,7 @@ class PreviewSource:
                 nodata=_optional(value.get("nodata"), float),
                 mutable=bool(value.get("mutable", False)),
                 stat=None if stat is None else _stat_of(stat),
+                content_method=_optional(value.get("content_method"), str),
             )
         except (KeyError, TypeError) as error:
             raise ValueError(f"invalid preview source: {error}") from error
@@ -535,19 +557,33 @@ def auto_build(source: PreviewSource, probe: PreviewProbe | None) -> bool:
 
 
 def _stat_json(stat: SourceStat) -> JsonObject:
-    wal = stat.wal
     return {
-        "main": [stat.main.size_bytes, stat.main.modified_ns],
-        "wal": None if wal is None else [wal.size_bytes, wal.modified_ns],
+        "main": _file_stat_json(stat.main),
+        "wal": None if stat.wal is None else _file_stat_json(stat.wal),
+        "journal": None if stat.journal is None else _file_stat_json(stat.journal),
     }
 
 
+def _file_stat_json(stat: FileStat) -> list[int | None]:
+    return [stat.size_bytes, stat.modified_ns, stat.inode, stat.changed_ns]
+
+
+def _file_stat_of(value: Sequence[Any]) -> FileStat:
+    return FileStat(
+        int(value[0]),
+        int(value[1]),
+        None if len(value) < 3 or value[2] is None else int(value[2]),
+        None if len(value) < 4 or value[3] is None else int(value[3]),
+    )
+
+
 def _stat_of(value: Mapping[str, Any]) -> SourceStat:
-    main = value["main"]
     wal = value.get("wal")
+    journal = value.get("journal")
     return SourceStat(
-        main=FileStat(int(main[0]), int(main[1])),
-        wal=None if wal is None else FileStat(int(wal[0]), int(wal[1])),
+        main=_file_stat_of(value["main"]),
+        wal=None if wal is None else _file_stat_of(wal),
+        journal=None if journal is None else _file_stat_of(journal),
     )
 
 

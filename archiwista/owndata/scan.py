@@ -10,9 +10,9 @@ and directories (``.wersje/`` too), SQLite companions (``-wal``, ``-shm``,
 the folder (``path_outside_root``); of more than ``MAX_OWN_FILES`` files the
 first ones are indexed (``own_folder_too_large``).
 
-A file whose sizes and modification times (with its set's members and a
-SQLite ``-wal`` or ``-journal``) equal the index costs one ``stat``. A new
-or changed one is read by the reader process (``OwnReader``: driver,
+A file whose size, modification time, inode and change time (with its set's
+members and SQLite ``-wal`` or ``-journal``) equal the index costs one ``stat``.
+A new or changed one is read by the reader process (``OwnReader``: driver,
 layers, CRS, extent) and its content identity is computed here
 (``content_identity``); its extent gets a WGS84 polygon (``outline_wgs84``)
 with the producer's pinned operation. A file that changed while it was read
@@ -248,27 +248,38 @@ def scan_own_data(
     return summary
 
 
+def _stat_stamp(found: os.stat_result) -> tuple[int, int, int | None, int | None]:
+    """Record file identity beyond timestamp and length where supported."""
+    return (
+        found.st_size,
+        found.st_mtime_ns,
+        getattr(found, "st_ino", None),
+        getattr(found, "st_ctime_ns", None),
+    )
+
+
+
 def snapshot_stamp(directory: Path) -> tuple[str, int]:
     """Return the stamp of a snapshot directory and the bytes of its copy.
 
-    The stamp (names, sizes and modification times of its files) tells a
-    scan whether to check a snapshot again; the ``snapshot`` job records it
-    with a snapshot it published (``IndexWriter.record_snapshot``). The
-    bytes leave ``migawka.json`` out, like the document's ``size_bytes``.
+    The stamp (names, sizes, modification times and available inode/change
+    times of its files) tells a scan whether to check a snapshot again; the
+    ``snapshot`` job records it with a snapshot it published. The byte count
+    leaves ``migawka.json`` out, like the document's ``size_bytes``.
 
     Raises
     ------
     OSError
         The directory cannot be listed.
     """
-    rows: list[tuple[str, int, int]] = []
+    rows = []
     with os.scandir(directory) as entries:
         for entry in entries:
             if entry.is_file(follow_symlinks=False):
                 found = entry.stat(follow_symlinks=False)
-                rows.append((entry.name, found.st_size, found.st_mtime_ns))
+                rows.append((entry.name, *_stat_stamp(found)))
     rows.sort()
-    size = sum(size for name, size, _ in rows if name != SNAPSHOT_FILE)
+    size = sum(row[1] for row in rows if row[0] != SNAPSHOT_FILE)
     return _dump(rows), size
 
 
@@ -276,12 +287,12 @@ def stamp_holds(main: Path, stamp: str) -> bool:
     """Whether a file is still as a scan stamped it (``OwnFileWrite.stamp``).
 
     Every file the stamp names (the main file, the members of its set and a
-    SQLite ``-wal`` or ``-journal``, all next to ``main``) must have its
-    stamped size and modification time, and no ``-wal`` or ``-journal`` may
-    have appeared next to ``main`` since. Only ``stat`` calls and no listing,
-    so a preview checks a working file cheaply before and after it renders
-    it; a member added to a set since the scan goes unnoticed until the next
-    scan.
+    SQLite ``-wal`` or ``-journal``, all next to ``main``) must retain its
+    stamped size, modification time, inode and change time where available.
+    Old two-field stamps are rejected so the scan can refresh their identity.
+    No ``-wal`` or ``-journal`` may have appeared next to ``main`` since.
+    These checks need only ``stat`` calls; a member added to a set since the
+    scan goes unnoticed until the next scan.
 
     Parameters
     ----------
@@ -298,7 +309,10 @@ def stamp_holds(main: Path, stamp: str) -> bool:
     """
     try:
         rows = json.loads(stamp)
-        stamped = {str(name): (int(size), int(mtime)) for name, size, mtime in rows}
+        stamped = {
+            str(name): (int(size), int(mtime), inode, changed_ns)
+            for name, size, mtime, inode, changed_ns in rows
+        }
     except (TypeError, ValueError):
         return False
     for name, expected in stamped.items():
@@ -306,7 +320,7 @@ def stamp_holds(main: Path, stamp: str) -> bool:
             found = os.stat(main.parent / name)
         except OSError:
             return False
-        if (found.st_size, found.st_mtime_ns) != expected:
+        if _stat_stamp(found) != expected:
             return False
     return not any(
         f"{main.name}{suffix}" not in stamped
@@ -915,9 +929,7 @@ def _found(
         absolute=Path(members[0].path),
         stamped=tuple(Path(entry.path) for entry, _ in stats),
         stamp=_dump(
-            sorted(
-                (entry.name, found.st_size, found.st_mtime_ns) for entry, found in stats
-            )
+            sorted((entry.name, *_stat_stamp(found)) for entry, found in stats)
         ),
         size_bytes=sum(found.st_size for _, found in stats[: len(members)]),
         modified_ns=stats[0][1].st_mtime_ns,
@@ -932,7 +944,7 @@ def _stamp(stamped: Sequence[Path]) -> str:
             found = path.stat()
         except OSError:
             return ""
-        rows.append((path.name, found.st_size, found.st_mtime_ns))
+        rows.append((path.name, *_stat_stamp(found)))
     return _dump(sorted(rows))
 
 
