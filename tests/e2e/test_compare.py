@@ -699,7 +699,7 @@ def test_csv_export_matches_table(
 def test_csv_export_neutralizes_every_cell(
     compare_store: CompareStore, tab: Tab, tmp_path: Path
 ) -> None:
-    """Sidecar keys, labels, groups and values remain visible but cannot run as formulas."""
+    """Sidecar cells stay visible but cannot run as formulas."""
     served = compare_store.served
     page = open_session(tab, served)
     _, versions = version_pair(page, compare_store.store)

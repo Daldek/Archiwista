@@ -212,7 +212,10 @@ class PreviewSource:
             raise ValueError("a preview source has absolute paths, the main first")
         if self.format_hint is not None and self.format_hint not in _FORMAT_BY_NAME:
             raise ValueError(f"unknown format {self.format_hint!r}")
-        if self.content_method is not None and self.content_method not in CONTENT_METHODS:
+        if (
+            self.content_method is not None
+            and self.content_method not in CONTENT_METHODS
+        ):
             raise ValueError("unknown own-data content method")
 
     @property

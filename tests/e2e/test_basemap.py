@@ -96,7 +96,9 @@ def test_vector_basemap_rejects_tiles_outside_tilejson_origin(
             AppSettings(
                 offline=False,
                 basemaps=(
-                    BasemapConfig(name="Wektor testowy", kind="vector", url=tiles.tilejson),
+                    BasemapConfig(
+                        name="Wektor testowy", kind="vector", url=tiles.tilejson
+                    ),
                 ),
                 stores=(
                     StoreConfig(

@@ -528,7 +528,9 @@ def _require_indexed_content(source: PreviewSource) -> None:
         paths = source.paths
         if method == "fileset":
             actual = fileset_members(paths[0])
-            if tuple(path.name for path in actual) != tuple(path.name for path in paths):
+            if tuple(path.name for path in actual) != tuple(
+                path.name for path in paths
+            ):
                 raise PreviewUnavailableError("changed_since_scan")
         identity = content_identity(
             paths if method == "fileset" else paths[:1],

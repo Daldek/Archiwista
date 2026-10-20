@@ -782,7 +782,9 @@ class _Snapshot:
                     if error.errno in (errno.ELOOP, errno.ENOTDIR):
                         found = os.stat(part, dir_fd=current_fd, follow_symlinks=False)
                         if stat.S_ISLNK(found.st_mode):
-                            raise _outside(current.relative_to(root).as_posix()) from error
+                            raise _outside(
+                                current.relative_to(root).as_posix()
+                            ) from error
                         if not stat.S_ISDIR(found.st_mode):
                             raise FileExistsError(
                                 errno.EEXIST, os.strerror(errno.EEXIST), str(current)
