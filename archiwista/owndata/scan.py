@@ -264,7 +264,6 @@ def _stat_stamp(found: os.stat_result) -> tuple[int, int, int | None, int | None
     )
 
 
-
 def snapshot_stamp(directory: Path) -> tuple[str, int]:
     """Return the stamp of a snapshot directory and the bytes of its copy.
 

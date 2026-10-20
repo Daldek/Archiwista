@@ -675,9 +675,11 @@ class IndexQueries:
                 view.params,
             ).fetchall()
         if encoded:
-            items_json = "[" + ",".join(
-                _map_item_json(row, stores[row[0]]) for row in rows
-            ) + "]"
+            items_json = (
+                "["
+                + ",".join(_map_item_json(row, stores[row[0]]) for row in rows)
+                + "]"
+            )
             return FootprintPage(total, False, (), (), groups), items_json
         items = tuple(
             MapFootprint(
@@ -696,7 +698,6 @@ class IndexQueries:
             for row in rows
         )
         return FootprintPage(total, False, items, (), groups), "[]"
-
 
     def slots_in_bbox(
         self,

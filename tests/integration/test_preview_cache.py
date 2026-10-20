@@ -626,9 +626,7 @@ def test_same_raster_bytes_with_different_metadata_have_independent_previews(
         paths=(image,),
         georeference=Extent((19.0, 50.0, 20.0, 51.0), "EPSG:4326"),
     )
-    moved = replace(
-        first, georeference=Extent((21.0, 51.0, 22.0, 52.0), "EPSG:4326")
-    )
+    moved = replace(first, georeference=Extent((21.0, 51.0, 22.0, 52.0), "EPSG:4326"))
     assert probe_raster(first).bbox_wgs84 != probe_raster(moved).bbox_wgs84
     with PreviewCache(tmp_path / "images", limit_bytes=MB) as cache:
         cache.put(cache_key(first), INFO_NAME, probe_raster(first).to_bytes())

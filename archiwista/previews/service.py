@@ -529,7 +529,10 @@ class PreviewService:
             raise
 
     async def _described(
-        self, located: _Located, probe: PreviewProbe, detail: str | None,
+        self,
+        located: _Located,
+        probe: PreviewProbe,
+        detail: str | None,
         principal: Principal,
     ) -> PreviewInfo:
         source = located.source
@@ -645,7 +648,9 @@ class PreviewService:
             return None, False
         for state in ("running", "queued"):
             all_jobs = self._jobs.list(
-                kind="preview", state=state, limit=MAX_PAGE_LIMIT,
+                kind="preview",
+                state=state,
+                limit=MAX_PAGE_LIMIT,
                 visible=ALL_PROJECTS,
             )
             for record in all_jobs.items:

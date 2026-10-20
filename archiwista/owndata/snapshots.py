@@ -539,7 +539,6 @@ class _Destination:
     path: Path
 
 
-
 @dataclass(slots=True)
 class _Snapshot:
     """One snapshot being made (``make_snapshot``)."""
@@ -576,7 +575,8 @@ class _Snapshot:
                         copy = self._files_copy(work, destination.work_fd)
                     else:
                         copied = _copy_hashed(
-                            backup.path, work / backup.path.name,
+                            backup.path,
+                            work / backup.path.name,
                             dir_fd=destination.work_fd,
                         )
                         copy = _Copy((copied,), backup.source, backup.identity)
@@ -594,13 +594,15 @@ class _Snapshot:
                 document = self._document(copy, info)
                 with self._writes():
                     _write_new(
-                        work / SNAPSHOT_FILE, _document_bytes(document),
+                        work / SNAPSHOT_FILE,
+                        _document_bytes(document),
                         dir_fd=destination.work_fd,
                     )
                 self._reached("document")
                 for name in (*(item.name for item in copy.files), SNAPSHOT_FILE):
                     descriptor = os.open(
-                        name, os.O_RDONLY | os.O_NOFOLLOW | _O_BINARY,
+                        name,
+                        os.O_RDONLY | os.O_NOFOLLOW | _O_BINARY,
                         dir_fd=destination.work_fd,
                     )
                     try:
@@ -617,7 +619,8 @@ class _Snapshot:
                     published = True
                     self._reached("published")
                     self._chmod(
-                        destination.work_fd, SNAPSHOT_DIRECTORY_MODE,
+                        destination.work_fd,
+                        SNAPSHOT_DIRECTORY_MODE,
                         published=True,
                     )
                     self._sync_directory(parent_fd, published=True)
@@ -885,8 +888,10 @@ class _Snapshot:
         target = self.parent / label
         try:
             _rename_exclusive(
-                destination.path.name, label,
-                src_dir_fd=destination.incoming_fd, dst_dir_fd=parent_fd,
+                destination.path.name,
+                label,
+                src_dir_fd=destination.incoming_fd,
+                dst_dir_fd=parent_fd,
             )
         except FileExistsError as error:
             message = MESSAGES["snapshot_target_exists"].format(
@@ -1024,8 +1029,10 @@ def _write_new(path: Path, data: bytes, *, dir_fd: int) -> None:
 def _new_file(path: Path, *, dir_fd: int) -> Iterator[BinaryIO]:
     """Create a file that must not exist; sync and close it after the block."""
     descriptor = os.open(
-        path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _O_BINARY,
-        0o600, dir_fd=dir_fd,
+        path.name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _O_BINARY,
+        0o600,
+        dir_fd=dir_fd,
     )
     with os.fdopen(descriptor, "wb") as stream:
         yield stream
