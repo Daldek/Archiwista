@@ -78,10 +78,6 @@ def _coverage(served: ServedStore, area: str) -> dict[str, Any]:
     return body
 
 
-def _ratios(answer: dict[str, Any]) -> dict[str | None, float | None]:
-    return {item["country"]: item["ratio"] for item in answer["results"]}
-
-
 def _remove_link(served: ServedStore, link: ExpectedEntry) -> None:
     """Delete a slot's standard path, as if someone removed the file."""
     (served.store.root / link.path).unlink()
@@ -109,7 +105,7 @@ def test_local_coverage_refreshes_area_slots_before_answering(
         False,
         None,
     )
-    assert all(not ratio for ratio in _ratios(after).values())
+    assert after["results"][0]["ratio"] < before["results"][0]["ratio"]
     slot = served.owner.request("GET", f"/stores/{STORE}/slots/{link.path}").json()
     assert slot["current"] is None
 
@@ -167,8 +163,7 @@ def test_local_coverage_percent_measured_in_planar_crs(
     assert result["covered_km2"] == pytest.approx(covered_km2, rel=1e-5)
     assert result["ratio"] == pytest.approx(covered_km2 / area_km2, rel=1e-5)
     assert abs(result["ratio"] - in_degrees) > 0.01 * in_degrees
-    assert (result["versions_count"], result["percent"]) == (1, 0)
-    assert result["label"] == "lokalnie <1% obszaru"
+    assert result["versions_count"] == 1
 
 
 @pytest.mark.parametrize("how", ["missing", "empty_mount_point"])

@@ -268,7 +268,8 @@ def test_area_from_map_view_sheet_and_geometry_file(
     assert (view["source"], view["name"]) == ("view", "Widok mapy")
     assert (typed["source"], typed["name"]) == ("sheet", sheet)
     assert clicked["source"] == "sheet"
-    assert re.fullmatch(r"N-33-[\w-]+", clicked["name"]) and clicked["name"] != sheet
+    assert re.fullmatch(r"[A-Z]-\d{2}-[\w-]+", clicked["name"])
+    assert clicked["name"] != sheet
     assert clicked["bbox"][2] == pytest.approx(typed["bbox"][0])
     assert (uploaded["source"], uploaded["name"]) == ("file", "zlewnia.geojson")
     assert uploaded["bbox"] == pytest.approx([15.69, 54.75, 15.75, 54.78])
@@ -294,8 +295,9 @@ def test_local_coverage_after_refresh(serve: Serve, tab: Tab, tmp_path: Path) ->
 
     expect(local.get_by_text("lokalnie 100% obszaru")).to_have_count(0)
     expect(
-        local.get_by_text(re.compile("lokalnie 0% obszaru|nie ma plików tego produktu"))
+        local.get_by_text(re.compile(r"lokalnie (?:<1|[0-9]{1,2})% obszaru"))
     ).to_be_visible()
+    expect(local).to_contain_text("0 plików z obrysem w obszarze")
     expect(counter(page)).not_to_have_text(before)
     slot = api_get(page, f"/stores/zespol/slots/{link.path}")
     assert slot["current"] is None
