@@ -451,6 +451,87 @@ def test_interrupted_snapshot_leaves_no_partial_version(
     assert document.files[0].sha256 == file_sha256(directory / "kanalizacja.gpkg")
 
 
+@pytest.mark.parametrize("swapped", [".incoming", ".wersje"])
+def test_snapshot_symlink_swap_before_work_creation_stays_in_project(
+    env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch, swapped: str
+) -> None:
+    """Replacing a checked destination cannot redirect the copied files outside."""
+    key, project = env.project()
+    root = make_own_folder(project / "dane", families=("csv",)).root
+    env.scan()
+    outside = env.root / "outside"
+    outside.mkdir()
+    if swapped == ".wersje":
+        (outside / ".incoming").mkdir()
+    original_owner = snapshots.process_owner
+    swapped_once = False
+
+    def swap_before_work() -> str:
+        nonlocal swapped_once
+        if not swapped_once:
+            checked = root / ".wersje"
+            if swapped == ".incoming":
+                checked /= ".incoming"
+            checked.rename(checked.with_name(f"{checked.name}-detached"))
+            checked.symlink_to(outside, target_is_directory=True)
+            swapped_once = True
+        return original_owner()
+
+    class StopAfterCopy(Exception):
+        pass
+
+    def check_copy(phase: SnapshotPhase) -> None:
+        if phase == "copy":
+            if swapped == ".wersje":
+                assert list((outside / ".incoming").iterdir()) == []
+            else:
+                assert list(outside.iterdir()) == []
+            raise StopAfterCopy
+
+    monkeypatch.setattr(snapshots, "process_owner", swap_before_work)
+    with pytest.raises(StopAfterCopy):
+        env.make(key, "pomiary.csv", on_phase=check_copy)
+    assert swapped_once
+
+
+def test_snapshot_symlink_swap_before_publish_stays_in_project(
+    env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Publish must rename under its checked destination, not a new symlink."""
+    key, project = env.project()
+    root = make_own_folder(project / "dane", families=("csv",)).root
+    env.scan()
+    outside = env.root / "outside"
+    outside.mkdir()
+    original_rename = snapshots._rename_exclusive
+    detached = root / ".wersje" / "pomiary.csv-detached"
+    swapped_once = False
+
+    def swap_before_rename(
+        source: Path | str, target: Path | str, **options: int
+    ) -> None:
+        nonlocal swapped_once
+        parent = root / ".wersje" / "pomiary.csv"
+        parent.rename(detached)
+        parent.symlink_to(outside, target_is_directory=True)
+        swapped_once = True
+        original_rename(source, target, **options)
+
+    class StopAfterPublish(Exception):
+        pass
+
+    def check_publish(phase: SnapshotPhase) -> None:
+        if phase == "published":
+            assert list(outside.iterdir()) == []
+            assert len(list(detached.iterdir())) == 1
+            raise StopAfterPublish
+
+    monkeypatch.setattr(snapshots, "_rename_exclusive", swap_before_rename)
+    with pytest.raises(StopAfterPublish):
+        env.make(key, "pomiary.csv", on_phase=check_publish)
+    assert swapped_once
+
+
 def test_same_content_makes_no_second_snapshot(env: SnapshotEnv) -> None:
     """The content of the last snapshot is ``unchanged`` with its label.
 
@@ -523,8 +604,8 @@ def test_fileset_changing_during_copy_retries_then_fails(
     copied: list[str] = []
     changes = [1]
 
-    def changing(source: Path, target: Path) -> SnapshotFile:
-        result = real(source, target)
+    def changing(source: Path, target: Path, *, dir_fd: int) -> SnapshotFile:
+        result = real(source, target, dir_fd=dir_fd)
         copied.append(source.name)
         if source.suffix == ".dbf" and changes[0] > 0:
             changes[0] -= 1
@@ -745,19 +826,20 @@ def test_chmod_and_directory_fsync_errors_are_notices(
     root = make_own_folder(project / "dane", families=("tif_2180",)).root
     env.scan()
     real_root = Path(os.path.realpath(root))
-    real_chmod, real_fsync = os.chmod, os.fsync
+    real_chmod, real_fsync = os.fchmod, os.fsync
 
-    def chmod(path: str | os.PathLike[str], mode: int, **options: object) -> None:
-        if Path(os.path.realpath(path)).is_relative_to(real_root):
+    def chmod(descriptor: int, mode: int) -> None:
+        path = Path(os.path.realpath(f"/proc/self/fd/{descriptor}"))
+        if path.is_relative_to(real_root):
             raise PermissionError(errno.EPERM, os.strerror(errno.EPERM), str(path))
-        real_chmod(path, mode, **options)  # type: ignore[arg-type]
+        real_chmod(descriptor, mode)
 
     def fsync(descriptor: int) -> None:
         if stat.S_ISDIR(os.fstat(descriptor).st_mode):
             raise OSError(errno.EINVAL, os.strerror(errno.EINVAL))
         real_fsync(descriptor)
 
-    monkeypatch.setattr(os, "chmod", chmod)
+    monkeypatch.setattr(os, "fchmod", chmod)
     monkeypatch.setattr(os, "fsync", fsync)
 
     # Act

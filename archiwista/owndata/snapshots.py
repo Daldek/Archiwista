@@ -73,7 +73,6 @@ from archiwista.owndata.content import (
     SqliteRead,
     content_identity,
     content_method,
-    file_sha256,
     fileset_sha256,
     read_sqlite,
 )
@@ -131,7 +130,6 @@ _REFUSED = frozenset(
     {errno.EPERM, errno.EACCES, errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}
 )
 _NO_SPACE = frozenset({errno.ENOSPC, errno.EDQUOT})
-_AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 
 
@@ -531,6 +529,17 @@ def _not_writable(root: Path, directory: Path) -> Path | None:
     return current
 
 
+@dataclass(frozen=True, slots=True)
+class _Destination:
+    """Opened project and incoming directories for one snapshot's writes."""
+
+    root_fd: int
+    incoming_fd: int
+    work_fd: int
+    path: Path
+
+
+
 @dataclass(slots=True)
 class _Snapshot:
     """One snapshot being made (``make_snapshot``)."""
@@ -558,43 +567,64 @@ class _Snapshot:
             unchanged = self._unchanged(backup.identity)
             if unchanged is not None:
                 return unchanged
-        work = self._incoming()
-        published = False
-        try:
-            with self._writes():
+        with self._incoming() as destination:
+            work = destination.path
+            published = False
+            try:
+                with self._writes():
+                    if backup is None:
+                        copy = self._files_copy(work, destination.work_fd)
+                    else:
+                        copied = _copy_hashed(
+                            backup.path, work / backup.path.name,
+                            dir_fd=destination.work_fd,
+                        )
+                        copy = _Copy((copied,), backup.source, backup.identity)
                 if backup is None:
-                    copy = self._files_copy(work)
-                else:
-                    copied = _copy_hashed(backup.path, work / backup.path.name)
-                    copy = _Copy((copied,), backup.source, backup.identity)
-            if backup is None:
-                unchanged = self._unchanged(copy.identity)
-                if unchanged is not None:
-                    return unchanged
-            self._reached("copy")
-            described = work / self.working.real.name if backup is None else backup.path
-            info = self._describe(described)
-            self._verify(work, copy.files)
-            self._reached("checksums")
-            document = self._document(copy, info)
-            with self._writes():
-                _write_new(work / SNAPSHOT_FILE, _document_bytes(document))
-            self._reached("document")
-            for name in (*(item.name for item in copy.files), SNAPSHOT_FILE):
-                self._chmod(work / name, SNAPSHOT_FILE_MODE)
-            self._sync_directory(work)
-            self._reached("rename")
-            target = self._publish(work, document.label)
-            published = True
-        finally:
-            if not published:
-                shutil.rmtree(work, ignore_errors=True)
-        self._reached("published")
-        self._chmod(target, SNAPSHOT_DIRECTORY_MODE, published=True)
-        self._sync_directory(self.parent, published=True)
-        return SnapshotResult(
-            "created", document.label, target, document, self._warnings()
-        )
+                    unchanged = self._unchanged(copy.identity)
+                    if unchanged is not None:
+                        return unchanged
+                self._reached("copy")
+                described = work / self.working.real.name if backup is None else backup.path
+                info = self._describe(described)
+                self._verify(destination.work_fd, copy.files)
+                self._reached("checksums")
+                document = self._document(copy, info)
+                with self._writes():
+                    _write_new(
+                        work / SNAPSHOT_FILE, _document_bytes(document),
+                        dir_fd=destination.work_fd,
+                    )
+                self._reached("document")
+                for name in (*(item.name for item in copy.files), SNAPSHOT_FILE):
+                    descriptor = os.open(
+                        name, os.O_RDONLY | os.O_NOFOLLOW | _O_BINARY,
+                        dir_fd=destination.work_fd,
+                    )
+                    try:
+                        self._chmod(descriptor, SNAPSHOT_FILE_MODE)
+                    finally:
+                        os.close(descriptor)
+                self._sync_directory(destination.work_fd)
+                self._reached("rename")
+                with self._writes(access=True):
+                    with self._directories(self.parent, destination.root_fd) as parent_fd:
+                        target = self._publish(destination, document.label, parent_fd)
+                        published = True
+                        self._reached("published")
+                        self._chmod(
+                            destination.work_fd, SNAPSHOT_DIRECTORY_MODE,
+                            published=True,
+                        )
+                        self._sync_directory(parent_fd, published=True)
+                return SnapshotResult(
+                    "created", document.label, target, document, self._warnings()
+                )
+            finally:
+                if not published:
+                    shutil.rmtree(
+                        work.name, dir_fd=destination.incoming_fd, ignore_errors=True
+                    )
 
     def _sqlite_backup(self) -> _Backup:
         """Back a SQLite file up into the scratch directory, one file, checked."""
@@ -624,14 +654,15 @@ class _Snapshot:
             self._warn("editing_detected", message)
         return _Backup(local, view.source, identity)
 
-    def _files_copy(self, work: Path) -> _Copy:
+    def _files_copy(self, work: Path, work_fd: int) -> _Copy:
         """Copy the file, or every member of its set, while none of them changes."""
         members = self.working.members
         for _ in range(COPY_ATTEMPTS):
             before = _stamps(members)
             try:
                 files = tuple(
-                    _copy_hashed(member, work / member.name) for member in members
+                    _copy_hashed(member, work / member.name, dir_fd=work_fd)
+                    for member in members
                 )
             except FileNotFoundError:  # a member went away: the set changed
                 files = ()
@@ -644,7 +675,10 @@ class _Snapshot:
                 size = sum(stamp.size_bytes for stamp in before)
                 return _Copy(files, FileStamp(size, before[0].modified_ns), identity)
             for member in members:
-                (work / member.name).unlink(missing_ok=True)
+                try:
+                    os.unlink(member.name, dir_fd=work_fd)
+                except FileNotFoundError:
+                    pass
         raise self._inconsistent()
 
     def _unchanged(self, identity: ContentIdentity) -> SnapshotResult | None:
@@ -692,38 +726,73 @@ class _Snapshot:
         _, _, directory, document = max(found, key=lambda item: (item[0], item[1]))
         return directory, document
 
-    def _incoming(self) -> Path:
-        """Make this snapshot's working directory in ``.wersje/.incoming/``."""
-        with self._writes(access=True):
-            incoming = self.working.root / SNAPSHOTS_DIR / INCOMING_DIR
-            self._directories(incoming)
-            work = incoming / f"{process_owner()}_{secrets.token_hex(8)}"
-            work.mkdir(mode=0o700)
-        return work
+    @contextlib.contextmanager
+    def _incoming(self) -> Iterator[_Destination]:
+        """Open the project's snapshot directories and create one working directory."""
+        with contextlib.ExitStack() as stack:
+            with self._writes(access=True):
+                root_fd = os.open(
+                    self.working.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                )
+                stack.callback(os.close, root_fd)
+                incoming = self.working.root / SNAPSHOTS_DIR / INCOMING_DIR
+                incoming_fd = stack.enter_context(self._directories(incoming, root_fd))
+                work = incoming / f"{process_owner()}_{secrets.token_hex(8)}"
+                os.mkdir(work.name, mode=0o700, dir_fd=incoming_fd)
+                try:
+                    work_fd = os.open(
+                        work.name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=incoming_fd,
+                    )
+                except BaseException:
+                    shutil.rmtree(work.name, dir_fd=incoming_fd, ignore_errors=True)
+                    raise
+                stack.callback(os.close, work_fd)
+            yield _Destination(root_fd, incoming_fd, work_fd, work)
 
-    def _directories(self, directory: Path) -> None:
-        """Make the missing directories down to ``directory``, as the folder.
+    @contextlib.contextmanager
+    def _directories(self, directory: Path, root_fd: int) -> Iterator[int]:
+        """Create and open each child relative to its verified parent, without links.
 
-        They get the data folder's permissions (a process's umask may take
-        some away); a symbolic link on the way leads out of the folder.
+        New directories get the data folder's permissions (subject to the umask).
+        Every descriptor remains open until the caller has finished using it.
         """
         root = self.working.root
-        permissions = stat.S_IMODE(os.stat(root).st_mode) & 0o777
+        permissions = stat.S_IMODE(os.fstat(root_fd).st_mode) & 0o777
+        current_fd = root_fd
         current = root
-        for part in directory.relative_to(root).parts:
-            current = current / part
-            try:
-                os.mkdir(current, permissions)
-            except FileExistsError:
-                found = os.lstat(current)
-                if stat.S_ISLNK(found.st_mode):
-                    raise _outside(current.relative_to(root).as_posix()) from None
-                if not stat.S_ISDIR(found.st_mode):
+        with contextlib.ExitStack() as opened:
+            for part in directory.relative_to(root).parts:
+                current /= part
+                try:
+                    os.mkdir(part, permissions, dir_fd=current_fd)
+                    created = True
+                except FileExistsError:
+                    created = False
+                try:
+                    child_fd = os.open(
+                        part,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=current_fd,
+                    )
+                except OSError as error:
+                    if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                        found = os.stat(part, dir_fd=current_fd, follow_symlinks=False)
+                        if stat.S_ISLNK(found.st_mode):
+                            raise _outside(current.relative_to(root).as_posix()) from error
+                        if not stat.S_ISDIR(found.st_mode):
+                            raise FileExistsError(
+                                errno.EEXIST, os.strerror(errno.EEXIST), str(current)
+                            ) from error
                     raise
-                continue
-            mode = stat.S_IMODE(os.lstat(current).st_mode)
-            if mode & 0o777 != permissions:
-                self._chmod(current, (mode & ~0o777) | permissions)
+                opened.callback(os.close, child_fd)
+                current_fd = child_fd
+                if created:
+                    mode = stat.S_IMODE(os.fstat(child_fd).st_mode)
+                    if mode & 0o777 != permissions:
+                        self._chmod(child_fd, (mode & ~0o777) | permissions)
+            yield current_fd
 
     def _describe(self, path: Path) -> OwnFileInfo:
         """Read the copy in the reader process; a non-GDAL file is not read."""
@@ -732,20 +801,24 @@ class _Snapshot:
             return OwnFileInfo(fmt.kind, None, (path.name,))
         return self.reader.read(path)
 
-    def _verify(self, work: Path, files: tuple[SnapshotFile, ...]) -> None:
+    def _verify(self, work_fd: int, files: tuple[SnapshotFile, ...]) -> None:
         """Read the written files again: exactly these names, sizes and sums."""
         expected = {item.name: item for item in files}
-        with os.scandir(work) as entries:
-            names = {entry.name for entry in entries}
-        stray = sorted(names ^ expected.keys())
+        stray = sorted(set(os.listdir(work_fd)) ^ expected.keys())
         if stray:
             raise self._mismatch(stray[0])
         for name, item in expected.items():
-            path = work / name
-            if os.lstat(path).st_size != item.size_bytes:
-                raise self._mismatch(name)
-            if file_sha256(path) != item.sha256:
-                raise self._mismatch(name)
+            descriptor = os.open(
+                name, os.O_RDONLY | os.O_NOFOLLOW | _O_BINARY, dir_fd=work_fd
+            )
+            with os.fdopen(descriptor, "rb") as reading:
+                if os.fstat(reading.fileno()).st_size != item.size_bytes:
+                    raise self._mismatch(name)
+                digest = hashlib.sha256()
+                while chunk := reading.read(_CHUNK_BYTES):
+                    digest.update(chunk)
+                if digest.hexdigest() != item.sha256:
+                    raise self._mismatch(name)
 
     def _document(self, copy: _Copy, info: OwnFileInfo) -> SnapshotDocument:
         """``migawka.json`` of the copy, labelled from the listing of ``.wersje``."""
@@ -803,13 +876,14 @@ class _Snapshot:
                 logger.info("No WGS84 extent for %s: %s", info.native_crs[:80], error)
         return SnapshotExtent(crs=info.native_crs, bbox=info.native_bbox, wgs84=wgs84)
 
-    def _publish(self, work: Path, label: str) -> Path:
-        """Rename the working directory to its label; an existing one stays."""
-        with self._writes(access=True):
-            self._directories(self.parent)
+    def _publish(self, destination: _Destination, label: str, parent_fd: int) -> Path:
+        """Rename the working directory under the opened snapshot parent."""
         target = self.parent / label
         try:
-            _rename_exclusive(work, target)
+            _rename_exclusive(
+                destination.path.name, label,
+                src_dir_fd=destination.incoming_fd, dst_dir_fd=parent_fd,
+            )
         except FileExistsError as error:
             message = MESSAGES["snapshot_target_exists"].format(
                 label=label, file=self.file.file.path
@@ -817,13 +891,13 @@ class _Snapshot:
             raise SnapshotFailedError("target_exists", message) from error
         return target
 
-    def _chmod(self, path: Path, mode: int, *, published: bool = False) -> None:
+    def _chmod(self, descriptor: int, mode: int, *, published: bool = False) -> None:
         """Change a mode; a refusal of the file system is a warning.
 
         After publication any failure is one: the snapshot exists already.
         """
         try:
-            os.chmod(path, mode)
+            os.fchmod(descriptor, mode)
         except OSError as error:
             if not published and error.errno not in _REFUSED:
                 raise
@@ -831,14 +905,10 @@ class _Snapshot:
             message = MESSAGES["snapshot_chmod_refused"].format(detail=detail)
             self._warn("chmod_refused", message)
 
-    def _sync_directory(self, path: Path, *, published: bool = False) -> None:
+    def _sync_directory(self, descriptor: int, *, published: bool = False) -> None:
         """Sync a directory's entries; a refusal of the file system is a warning."""
         try:
-            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
+            os.fsync(descriptor)
         except OSError as error:
             if not published and error.errno not in _REFUSED:
                 raise
@@ -928,11 +998,11 @@ def _integrity_problems(path: Path) -> list[str]:
     return [] if rows == ["ok"] else rows
 
 
-def _copy_hashed(source: Path, target: Path) -> SnapshotFile:
-    """Copy a file into a new one, synced; return its name, size and SHA-256."""
+def _copy_hashed(source: Path, target: Path, *, dir_fd: int) -> SnapshotFile:
+    """Copy a file into the opened directory, synced; return its SHA-256."""
     digest = hashlib.sha256()
     size = 0
-    with source.open("rb") as reading, _new_file(target) as writing:
+    with source.open("rb") as reading, _new_file(target, dir_fd=dir_fd) as writing:
         while chunk := reading.read(_CHUNK_BYTES):
             digest.update(chunk)
             writing.write(chunk)
@@ -940,16 +1010,19 @@ def _copy_hashed(source: Path, target: Path) -> SnapshotFile:
     return SnapshotFile(name=target.name, size_bytes=size, sha256=digest.hexdigest())
 
 
-def _write_new(path: Path, data: bytes) -> None:
-    """Write a new file and sync it."""
-    with _new_file(path) as stream:
+def _write_new(path: Path, data: bytes, *, dir_fd: int) -> None:
+    """Write a new file into the opened directory and sync it."""
+    with _new_file(path, dir_fd=dir_fd) as stream:
         stream.write(data)
 
 
 @contextlib.contextmanager
-def _new_file(path: Path) -> Iterator[BinaryIO]:
+def _new_file(path: Path, *, dir_fd: int) -> Iterator[BinaryIO]:
     """Create a file that must not exist; sync and close it after the block."""
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, 0o600)
+    descriptor = os.open(
+        path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _O_BINARY,
+        0o600, dir_fd=dir_fd,
+    )
     with os.fdopen(descriptor, "wb") as stream:
         yield stream
         stream.flush()
@@ -1046,8 +1119,10 @@ def _load_renameat2() -> Callable[..., int] | None:
 _RENAMEAT2 = _load_renameat2()
 
 
-def _rename_exclusive(source: Path, target: Path) -> None:
-    """Rename a directory to ``target``; never replace what is there.
+def _rename_exclusive(
+    source: str, target: str, *, src_dir_fd: int, dst_dir_fd: int
+) -> None:
+    """Rename a directory by its parent descriptors; never replace the target.
 
     ``renameat2`` with ``RENAME_NOREPLACE`` where Linux and the file system
     have it; else a look at ``target`` and ``rename``, which refuses a
@@ -1060,18 +1135,22 @@ def _rename_exclusive(source: Path, target: Path) -> None:
     """
     if _RENAMEAT2 is not None:
         old, new = os.fsencode(source), os.fsencode(target)
-        if _RENAMEAT2(_AT_FDCWD, old, _AT_FDCWD, new, _RENAME_NOREPLACE) == 0:
+        if _RENAMEAT2(src_dir_fd, old, dst_dir_fd, new, _RENAME_NOREPLACE) == 0:
             return
         code = ctypes.get_errno()
         if code == errno.EEXIST:
-            raise FileExistsError(code, os.strerror(code), str(target))
+            raise FileExistsError(code, os.strerror(code), target)
         if code not in (errno.EINVAL, errno.ENOSYS):
-            raise OSError(code, os.strerror(code), str(source))
-    if os.path.lexists(target):
-        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), str(target))
+            raise OSError(code, os.strerror(code), source)
     try:
-        os.rename(source, target)
+        os.stat(target, dir_fd=dst_dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), target)
+    try:
+        os.rename(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
     except OSError as error:
         if error.errno in (errno.EEXIST, errno.ENOTEMPTY):
-            raise FileExistsError(error.errno, error.strerror, str(target)) from error
+            raise FileExistsError(error.errno, error.strerror, target) from error
         raise
