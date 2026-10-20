@@ -1092,7 +1092,7 @@ działa.
 | 14 | Interfejs: Porównanie i kurtyna | 10, 12b; wejście z panelu po 13b | 13a, 13b, 15, 16 | zrobione dla wersji magazynu i warstw lat (strony danych własnych — punkt rozszerzenia dla 15; wejście z panelu „Szczegóły zestawu” w 13b) |
 | 15 | Interfejs: dane własne i migawki | 9, 12a; Wachlarz migawek po 13a, „Porównaj” po 14 | 13a, 13b, 14, 16 | zrobione |
 | 16 | Wydajność i pomiary (z płynnością mapy na GPU) | 3, 6, 7b, 8, 11, 12b | 13a–15, 17 | zrobione dla SSD i SMB (raport `docs/reports/v0.2-measurements.md`); kryterium 5 (GPU) — niezweryfikowane |
-| 17 | E2E i odbiór v0.2 | 12a–15 | 16 | do zrobienia |
+| 17 | E2E i odbiór v0.2 | 12a–15 | 16 | zrobione: przejście w przeglądarce, magazyn tylko do odczytu i odłączony udział; 3 magazyny live, 44 wersje; pełna bramka 1049 zaliczonych (raport, sekcje 9–11); kryterium GPU 5 otwarte |
 | 18 | Dokumentacja, bramka i wydanie 0.2.0 | 0–17 | — | do zrobienia |
 
 Fale równoległości: **A** — 0, 1, 2, 3; **B** — 4, 7a; **C** — 5a1, 5b,
@@ -3659,6 +3659,35 @@ polecenia CLI i teksty leżą w modułach per funkcja (umowy „CLI” oraz
   `test_acceptance_v02_read_only_store_previews`,
   `test_acceptance_v02_disconnected_share_serves_cached_previews`.
 - **Zależności:** 12a–15. **Równolegle:** 16.
+- **Stan po kroku 17:**
+  - *Kod i próba odbiorcza:* sesje i uprawnienia (commit `4c4bd0c`),
+    komunikaty podglądów (`263c421`), przejście e2e i test na żywo
+    (`c490593`), odłączony udział (`3832ce2`), korekty prób po zmianie
+    położenia fixtur PL/CZ i zrzuty (`53fcd9d`). Prawdziwy
+    `archiwista serve` z Playwright przeszedł kartę pliku, mapę roku,
+    Wachlarz, Oś czasu, porównanie z kurtyną, folder projektu i migawki;
+    osobne próby magazynu tylko do odczytu i odłączonego udziału też
+    przeszły. Zrzuty po kontroli prywatności:
+    `docs/reports/v0.2-screenshots/`.
+  - *Test na żywo:* `-m live tests/integration/test_live_previews.py
+    --no-cov -s` na `<udział>/kartograf/release-0.8.0/data`,
+    `<udział>/kartograf/release-0.8.0-final/data` oraz
+    `<udział>/kartograf/release-0.8.0-final/verify/data`: każdy przebieg
+    zaliczony; łącznie 44 wersje (41 gotowych, w tym 6 budów na żądanie;
+    3 pomocnicze `jgw` z opisanym powodem). Tabela rozszerzenie → wynik
+    w raporcie, sekcja 10; magazyny pozostały niezmienione.
+  - *Pełna bramka:* `ruff check .` — zaliczony; `ruff format --check .` —
+    255 plików; `mypy` — 250 plików, 0 problemów; pierwszy `pytest` —
+    1045 zaliczonych, 4 niezaliczone; po poprawie oczekiwań czterech
+    prób wobec geografii fixtur (bez zmiany algorytmu produktu) ponowiono
+    tylko te próby — 4 zaliczone; końcowy `pytest` — **1049 zaliczonych,
+    0 niezaliczonych, 91,71% pokrycia**. Szczegóły: raport, sekcja 11.
+  - *Odstępstwa i otwarte:* test otwartego GPKG odtwarza pracę edytora
+    przez WAL i `integrity_check`, ale QGIS nie jest zainstalowany —
+    ręczna próba u użytkownika zalecana. Mapa przy 5000 obrysach
+    i ≥ 30 klatek/s pozostaje **niezweryfikowana — brak dostępu do GPU**;
+    tryb pomiaru opisano w raporcie, sekcje 4, 8 i 9. Bez wyniku
+    sprzętowego nie zamykać kryterium 5 bramki wydania.
 
 ### 18. Dokumentacja, bramka i wydanie 0.2.0
 - **Cel:** `README.md` (zależności podglądów, folder danych, migawki,
