@@ -1,176 +1,180 @@
-# Dziennik zmian
+# Changelog
 
-Istotne zmiany Archiwisty w kolejnych wydaniach. Format wzorowany na
-[Keep a Changelog](https://keepachangelog.com/pl/1.1.0/), numery wersji
-według [SemVer](https://semver.org/lang/pl/). Do v1.0 API HTTP i polecenia
-wiersza poleceń mogą się zmieniać.
+Notable changes of Archiwista by release. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the version
+numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
+command-line interface may change.
 
-## [0.2.0] — 2026-10-20 — „Podglądy”
+## [Unreleased]
 
-### Dodano
+## [0.2.0] - 2026-10-20
 
-- Podglądy rastrów, wektorów, chmur punktów i archiwów ZIP; dla
-  nieobsługiwanych plików — powód i sposób postępowania. Miniatury, kafle
-  i uproszczone obiekty powstają w odizolowanych procesach, a pamięć
-  podręczna po treści z limitem LRU leży lokalnie.
-- „Wachlarz” i „Oś czasu” lokalnych lat i kampanii, podgląd całego roku
-  z arkuszy, porównanie metadanych i kurtyna dwóch warstw (także przenikanie
-  i widok obok siebie).
-- Dane własne projektu: indeks folderu, pliki i warstwy na mapie, wykrywanie
-  zmian od migawki, plan oraz atomowe migawki całych plików w `.wersje/`.
-  Zapis migawki wymaga `project.write`; magazyn producenta pozostaje
-  wyłącznie do odczytu. Zadania zawierające dane projektu widzą tylko
-  osoby z dostępem do niego.
-- API podglądów, porównania, warstw, danych własnych, planów i migawek;
-  polecenia CLI `preview`, `compare`, `layers`, `files`, `file`, `snapshot`
-  i `own-scan`; filtr `project` w katalogu i zadaniach.
+Release "Previews".
 
-### Zmieniono
+Known limitations:
 
-- Obrysy WGS84 są wielokątami zamiast prostokątnych obwiedni; zapytania
-  mapy ograniczają koszt zwracania obrysów. Zmiana `SCHEMA_VERSION` indeksu
-  do 6 powoduje **przebudowę indeksu i pełny skan przy pierwszym starcie**
-  po aktualizacji (także na odłączanym udziale); baza uprawnień pozostaje.
-- Domyślny podkład to kafle wektorowe OpenFreeMap w szarym stylu z polskimi
-  nazwami miejscowości i wód (również egzonimami: Praga, Drezno, Lwów).
-  Drugą opcją jest OSM BaseMap GUGiK (tylko Polska); BKG usunięto.
-  Stare konfiguracje zachowują własne `[[basemaps]]`; aby dostać nowe
-  podkłady, usuń te wpisy z `config.toml`.
-- Dane testowe mają obrysy wewnątrz Polski i Czech (`34c42ce`).
+- 30 frames per second or more on the map with 5,000 footprints stays
+  unverified without a hardware GPU on the reference computer.
+- IMGW data is not yet available in Archiwista (plan v0.5).
+- Georeferencing of a rotated JPEG with a world file and differences between
+  objects of two snapshots are not part of v0.2.
 
-### Poprawiono
+### Added
 
-- Przyspieszono obrysy mapy (`5610065`). Przegląd bezpieczeństwa
-  i niezawodności (`d2d3402`, `f445633`, `48ff701`, `f582d86`,
-  `cde1349`, `ec83b7c`, `416dd4f`): izolacja odczytu i renderowania,
-  kontrola ścieżek, uprawnień i zmian plików, spójność migawek, limitowanie
-  skanu i komunikaty błędów bez ujawniania cudzych danych. Stan budowy
-  podglądu nie zdradza zadania niewidocznego projektu; limity skanu danych
-  własnych nie oznaczają nieprzejrzanych plików jako brakujących.
+- Previews of rasters, vectors, point clouds and ZIP archives; for unsupported
+  files the reason and what to do. Thumbnails, tiles and simplified objects
+  are built in isolated processes, and the content-addressed cache with an LRU
+  limit is kept locally.
+- "Fan" (Wachlarz) and "Timeline" (Oś czasu) of local years and campaigns, the
+  preview of a whole year from sheets, metadata comparison and the curtain of
+  two layers (also cross-fade and side by side).
+- Own project data: folder index, files and layers on the map, detection of
+  changes since a snapshot, a plan and atomic snapshots of whole files in
+  `.wersje/`. Writing a snapshot needs `project.write`; the producer's store
+  stays read-only. Jobs that contain project data are visible only to people
+  who can access the project.
+- API for previews, comparison, layers, own data, plans and snapshots; CLI
+  commands `preview`, `compare`, `layers`, `files`, `file`, `snapshot` and
+  `own-scan`; the `project` filter in the catalog and in jobs.
 
-### Znane ograniczenia
+### Changed
 
-- ≥ 30 klatek/s mapy przy 5000 obrysów pozostaje niezweryfikowane bez
-  dostępu do sprzętowego GPU na komputerze odniesienia.
-- Dane IMGW nie są jeszcze dostępne w Archiwiście (plan v0.5).
-- Georeferencja obróconego JPEG z plikiem świata oraz różnice obiektów
-  między migawkami nie należą do v0.2.
+- WGS84 footprints are polygons instead of rectangular envelopes; map queries
+  limit the cost of returning footprints. The index `SCHEMA_VERSION` is 6,
+  which **rebuilds the index and runs a full scan on the first start** after
+  the update (also on a share that can be disconnected); the permissions
+  database stays.
+- The default basemap is OpenFreeMap vector tiles in a grey style with Polish
+  names of places and waters (exonyms too: Praga, Drezno, Lwów). The second
+  option is the GUGiK OSM BaseMap (Poland only); BKG is removed. Old
+  configurations keep their own `[[basemaps]]`; to get the new basemaps,
+  remove those entries from `config.toml`.
+- Test data has footprints inside Poland and Czechia (`34c42ce`).
 
-## [0.1.0] — 2026-10-19 — „Przeglądarka”
+### Fixed
 
-Pierwsze wydanie: lokalna przeglądarka magazynu Kartografa, tylko do
-odczytu. Wymaga Kartografa 0.8.0 z publicznym API odczytu magazynu
-(KA-1..KA-6, `docs/SPEC.md` 12.1) — dziś z gałęzi
-`feat/archiwista-store-api` repozytorium Kartografa (instalacja: `README.md`).
+- Faster map footprints (`5610065`). Security and reliability review
+  (`d2d3402`, `f445633`, `48ff701`, `f582d86`, `cde1349`, `ec83b7c`,
+  `416dd4f`): isolation of reading and rendering, checks of paths,
+  permissions and file changes, consistency of snapshots, limits of the scan
+  and error messages that do not reveal other people's data. The state of a
+  preview build does not reveal the job of an invisible project; the limits of
+  the own-data scan do not mark unvisited files as missing.
 
-### Dodano
+## [0.1.0] - 2026-10-19
 
-- **Serwer i pierwsze uruchomienie.** `archiwista serve` na `127.0.0.1`
-  (domyślnie port 8090) wypisuje i otwiera jednorazowy adres sesji;
-  kreator pierwszego uruchomienia: magazyny Kartografa, katalogi
-  projektów, tryb offline; widok „Ustawienia” z tym samym formularzem.
-- **Lokalny indeks** (SQLite, odtwarzalny): pełny i przyrostowy skan
-  magazynu, odświeżenie slotów zaznaczonego obszaru, skany z harmonogramu
-  (dysk lokalny co 5 min, udział co 15 min) i pełny skan kontrolny co 24 h
-  (`full_scan_interval_h`). Na udziale sieciowym skan czyta części
-  segmentów w `scan_threads` wątkach, a skan przyrostowy nie listuje
-  znanych katalogów wersji. Odłączony udział nie czyści indeksu: wyniki są
-  oznaczone jako „z indeksu z <czas>”, a pasek stanu to mówi.
-- **Mapa:** obrysy plików i siatka zagęszczenia (ponad 5000 obrysów
-  w widoku), obszar jako prostokąt, wielokąt, widok mapy, godło (wpisane
-  albo kliknięte w siatce godeł PL-1992 i PL-2000) albo plik (GeoJSON,
-  GeoPackage, ZIP z Shapefile); wybór produktu i filtry; stan lokalny
-  obszaru („lokalnie 83% obszaru”) liczony w układzie płaskim kraju
-  (EPSG:2180, EPSG:5514); domyślny szary podkład BKG TopPlusOpen.
-- **Katalog:** wyszukiwanie po godle, TERYT, KU, nazwie pliku, etykiecie
-  wersji, numerze zgłoszenia i początku SHA-256 (`Ctrl+K` albo `/`
-  z każdego widoku); filtry zapisane w adresie strony; stronicowanie
-  kursorem; grupy położenia z licznikami i grupa „bez położenia”; wpisy
-  każdej zarejestrowanej wtyczki źródła obok wpisów Kartografa.
-- **Karta pliku:** oś wszystkich wersji z bieżącą i pełnym arkuszem
-  (`full_sheet/`), rok danych odróżniony od daty pobrania, metadane po
-  ludzku obok wartości technicznych, licencja z kopiowaniem atrybucji,
-  ścieżki wersji i ścieżka standardowa do skopiowania (także pod innymi
-  literami dysków), przypięcia w projektach, pliki tego samego zapytania
-  producenta, surowy sidecar i potwierdzenie bieżącej wersji treścią.
-- **Projekty** (podgląd): manifesty `kartograf-project.json` z katalogów
-  projektów, zadania z poleceniami producenta, przypięte i brakujące
-  wersje, stan teraz od producenta (bez sieci).
-- **Magazyn:** stan i źródło danych, ostatni skan i ostatni pełny skan,
-  przyciski „Odśwież”, „Pełny skan” i „Uzupełnij obrysy jednostek”,
-  zajętość według produktów (każda wersja liczona raz), raport wersji
-  niebieżących i nieprzypiętych (bez usuwania), problemy z opisem naprawy,
-  projekty korzystające z magazynu.
-- **Zadania w tle** w osobnych procesach roboczych: skan, obrysy jednostek
-  (TERYT, KU — z sieci), potwierdzenie bieżącej wersji; postęp przez SSE ze
-  wznowieniem po `Last-Event-ID`; przy zajętym magazynie `409 conflict`
-  z trwającym zadaniem.
-- **API HTTP `/api/v1`:** stan (`/health`, `/sources`, `/stores`), katalog
-  (`/slots`, `/products`), karty slotu i wersji z sidecarem, pliki
-  zgłoszenia (`/requests/{parent_request}`), mapa (`/map/footprints`,
-  `/map/sheets`), obszary i pokrycie lokalne (`/areas`, `/local-coverage`),
-  projekty, ustawienia, zadania; błędy RFC 9457 ze stałym `code`
-  i polskim `detail`; dokument OpenAPI z przykładami i lokalne `/api/docs`.
-- **Wiersz poleceń:** `doctor`, `status`, `sources`, `search`, `entry`,
-  `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API,
-  `reindex`, `token` dla sesji agenta.
-- **Uprawnienia** (A-ADR-029): lokalna baza stanu (konta, grupy,
-  udostępnienia, dziennik zmian), role `admin` i `store_writer`,
-  widoczność projektów `public` / `users` / `group` / `private`
-  w usługach, API i CLI; polecenia `users`, `groups`, `share`,
-  `state export` / `state import` i ich trasy HTTP.
-- **Wtyczki źródeł** (A-ADR-024): adaptery z entry points
-  `archiwista.sources`, adapter Kartografa, stany źródeł; brak albo
-  niezgodna wersja producenta to `503 source_unavailable` /
-  `source_incompatible` z opisem naprawy, nie awaria serwera.
-- Dokumentacja: `docs/USAGE.md` (widoki),
-  `docs/AGENT_API.md` (skrypty i agenci AI),
-  `docs/reports/v0.1-measurements.md` (pomiary i odbiór).
+Release "Browser": the first release, a local browser of the Kartograf store,
+read-only. It needs Kartograf 0.8.0 with the public store read API (KA-1 to
+KA-6, `docs/SPEC.md` 12.1), at that time from the branch
+`feat/archiwista-store-api` of the Kartograf repository (installation:
+`README.md`).
 
-### Bezpieczeństwo
+Known limitations:
 
-- Serwer odmawia startu poza `127.0.0.1`, przyjmuje tylko nagłówek `Host`
-  `127.0.0.1:<port>` albo `localhost:<port>` i nie ma CORS.
-- Jednorazowy token we fragmencie adresu (start 10 min, agent 5 min;
-  w indeksie tylko skrót SHA-256), przeglądarka dostaje adres przez
-  prywatny plik `0600`, nie przez wiersz poleceń.
-- Sesja w ciasteczku `HttpOnly`, `SameSite=Strict` i token CSRF
-  w nagłówku `X-Archiwista-CSRF` w każdym żądaniu `/api`, także odczycie;
-  reguły `Origin` i `Sec-Fetch-Site`; `DELETE /api/v1/session` kończy sesję.
-- Role i grupy czytane przy każdym żądaniu: odebranie roli działa od razu,
-  wyłączone albo usunięte konto kończy swoje sesje; sesja agenta trwa
-  najwyżej 12 h, a `archiwista token --revoke-all` kończy wszystkie.
-- Limity treści żądań (4 KiB wymiana tokenu, 1 MiB pozostałe, 50 MB plik
-  obszaru), pliki obszarów czytane w procesie z limitem czasu i bez
-  pobierania układów współrzędnych z sieci.
-- Pliki otwierane tylko pod ścieżkami z indeksu w korzeniach magazynów;
-  manifest projektu wskazujący poza katalog projektów nie jest czytany.
-- CSP liczona z ustawień, `Referrer-Policy: no-referrer`,
-  `X-Content-Type-Options: nosniff`; biblioteki interfejsu dołączone do
-  pakietu (bez CDN) z sumami sha256 sprawdzanymi w testach;
-  `requirements.lock` z sumami sha256.
-- Dane lokalne prywatne: katalog `0700`, `umask 077`; `archiwista doctor`
-  ostrzega przed dostępem innych kont.
+- Local mode only: one person on `127.0.0.1`, no sign-in (team: v0.4).
+- No downloads, previews, comparisons, availability checks at the source and
+  project changes; they come in v0.2 and v0.3.
+- The Kartograf store read API is not yet in a tagged Kartograf release: it
+  needs the branch `feat/archiwista-store-api`.
+- The smoothness of a map with 5,000 footprints (30 frames per second or more,
+  a v0.2 criterion) is not measured on a computer with a GPU; without a GPU
+  (software WebGL) it is 8 to 9 frames per second.
+- Checked on Linux (Debian 13, Python 3.13); Windows and installation with
+  `pipx` or `uv tool` come in v1.0.
 
-### Wydajność
+### Added
 
-Cele SPEC 4.5 spełnione na magazynie syntetycznym 50 000 slotów przez
-prawdziwy `archiwista serve` (SSD — pomiar na kodzie wydania, SMB 3 —
-przebieg 3): pierwszy pełny skan 48,3 s na SSD i 225,6 s na udziale;
-skan przyrostowy 12,4 s i 74,7 s; odświeżenie widoku (p95) 408 ms
-i 1,83 s; lista, wyszukiwanie i karta najwyżej 143 ms (p95, próg 200 ms),
-obrysy 198 ms (próg 300 ms); szczyt RSS serwera 168–179 MiB przy indeksie
-256 MB. Metoda i wszystkie liczby: `docs/reports/v0.1-measurements.md`.
+- **Server and first run.** `archiwista serve` on `127.0.0.1` (port 8090 by
+  default) prints and opens a one-time session address; the first-run wizard
+  asks for Kartograf stores, project folders and offline mode; the "Settings"
+  view has the same form.
+- **Local index** (SQLite, rebuildable): full and incremental scan of the
+  store, refresh of the slots of the selected area, scheduled scans (local
+  disk every 5 minutes, share every 15 minutes) and a full control scan every
+  24 hours (`full_scan_interval_h`). On a network share the scan reads parts
+  of segments in `scan_threads` threads, and the incremental scan does not
+  list known version folders. A disconnected share does not clear the index:
+  results are marked "from the index of <time>", and the status bar says so.
+- **Map:** file footprints and a density grid (more than 5,000 footprints in
+  view), an area as a rectangle, polygon, map view, sheet code (typed or
+  clicked in the PL-1992 and PL-2000 sheet grids) or a file (GeoJSON,
+  GeoPackage, ZIP with a Shapefile); product choice and filters; the local
+  state of an area ("83% of the area local") computed in the flat national
+  coordinate systems (EPSG:2180, EPSG:5514); the default grey basemap is BKG
+  TopPlusOpen.
+- **Catalog:** search by sheet code, TERYT, KU, file name, version label,
+  request number and the beginning of a SHA-256 (`Ctrl+K` or `/` from every
+  view); filters kept in the page address; cursor pagination; location groups
+  with counters and a group "without location"; entries of every registered
+  source plugin next to the Kartograf entries.
+- **File card:** a timeline of all versions with the current one and the full
+  sheet (`full_sheet/`), data year told apart from download date, metadata in
+  plain words next to the technical values, the licence with copying of the
+  attribution, version paths and the standard path to copy (also under other
+  drive letters), pins in projects, files of the same producer request, the
+  raw sidecar and confirmation of the current version by content.
+- **Projects** (preview): `kartograf-project.json` manifests from project
+  folders, tasks with the producer's commands, pinned and missing versions,
+  the current state from the producer (without network).
+- **Store:** state and data source, last scan and last full scan, the
+  buttons "Refresh", "Full scan" and "Complete unit footprints", usage by
+  product (each version counted once), a report of non-current and unpinned
+  versions (nothing is deleted), problems with a repair description, projects
+  that use the store.
+- **Background jobs** in separate worker processes: scan, unit footprints
+  (TERYT, KU: from the network), confirmation of the current version;
+  progress through SSE with resuming after `Last-Event-ID`; for a busy store
+  `409 conflict` with the running job.
+- **HTTP API `/api/v1`:** state (`/health`, `/sources`, `/stores`), catalog
+  (`/slots`, `/products`), slot and version cards with the sidecar, request
+  files (`/requests/{parent_request}`), map (`/map/footprints`,
+  `/map/sheets`), areas and local coverage (`/areas`, `/local-coverage`),
+  projects, settings, jobs; RFC 9457 errors with a stable `code` and a Polish
+  `detail`; an OpenAPI document with examples and the local `/api/docs`.
+- **Command line:** `doctor`, `status`, `sources`, `search`, `entry`,
+  `version`, `projects`, `project` with `--json` in the schema of the API
+  response, `reindex`, `token` for an agent session.
+- **Permissions** (A-ADR-029): a local state database (accounts, groups,
+  shares, change log), the roles `admin` and `store_writer`, the project
+  visibility `public` / `users` / `group` / `private` in the services, the API
+  and the CLI; the commands `users`, `groups`, `share`, `state export` /
+  `state import` and their HTTP routes.
+- **Source plugins** (A-ADR-024): adapters from the `archiwista.sources` entry
+  points, the Kartograf adapter, source states; a missing or incompatible
+  producer version is `503 source_unavailable` / `source_incompatible` with a
+  repair description, not a server failure.
+- Documentation: `docs/USAGE.md` (views), `docs/AGENT_API.md` (scripts and AI
+  agents), `docs/reports/v0.1-measurements.md` (measurements and acceptance).
+- Performance: the targets of SPEC 4.5 are met on a synthetic store of 50,000
+  slots through a real `archiwista serve` (SSD: measured on the release code;
+  SMB 3: run 3). First full scan 48.3 s on SSD and 225.6 s on the share;
+  incremental scan 12.4 s and 74.7 s; view refresh (p95) 408 ms and 1.83 s;
+  list, search and card at most 143 ms (p95, threshold 200 ms), footprints
+  198 ms (threshold 300 ms); peak server RSS 168 to 179 MiB with a 256 MB
+  index. Method and all figures: `docs/reports/v0.1-measurements.md`.
 
-### Znane ograniczenia
+### Security
 
-- Tylko tryb lokalny: jedna osoba na `127.0.0.1`, bez logowania (zespół —
-  v0.4).
-- Bez pobierania, podglądów, porównań, sprawdzania dostępności u źródła
-  i zmian projektów — od v0.2 i v0.3.
-- API odczytu magazynu Kartografa nie jest jeszcze w wydaniu Kartografa
-  z tagiem: wymaga gałęzi `feat/archiwista-store-api`.
-- Płynność mapy z 5000 obrysów (≥ 30 klatek/s, kryterium v0.2) nie jest
-  zmierzona na komputerze z GPU; bez GPU (WebGL programowy) 8–9 klatek/s.
-- Sprawdzone na Linuksie (Debian 13, Python 3.13); Windows i instalacja
-  przez `pipx` albo `uv tool` — v1.0.
+- The server refuses to start outside `127.0.0.1`, accepts only the `Host`
+  header `127.0.0.1:<port>` or `localhost:<port>` and has no CORS.
+- A one-time token in the address fragment (start 10 minutes, agent 5
+  minutes; only its SHA-256 in the index); the browser gets the address
+  through a private `0600` file, not through the command line.
+- The session is an `HttpOnly`, `SameSite=Strict` cookie and a CSRF token in
+  the `X-Archiwista-CSRF` header in every `/api` request, reads included;
+  rules for `Origin` and `Sec-Fetch-Site`; `DELETE /api/v1/session` ends the
+  session.
+- Roles and groups are read on every request: taking a role away works at
+  once, and a disabled or deleted account ends its sessions; an agent session
+  lasts 12 hours at most, and `archiwista token --revoke-all` ends all of them.
+- Request body limits (4 KiB token exchange, 1 MiB others, 50 MB area file);
+  area files are read in a process with a time limit and without fetching
+  coordinate systems from the network.
+- Files are opened only under paths from the index in the store roots; a
+  project manifest that points outside the project folders is not read.
+- CSP computed from the settings, `Referrer-Policy: no-referrer`,
+  `X-Content-Type-Options: nosniff`; the interface libraries ship with the
+  package (no CDN) with SHA-256 sums checked in tests; `requirements.lock`
+  with SHA-256 sums.
+- Private local data: a `0700` folder and `umask 077`; `archiwista doctor`
+  warns about access by other accounts.
