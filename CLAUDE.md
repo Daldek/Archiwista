@@ -54,16 +54,18 @@ authoritative). Introduction: [README.md](README.md); specification:
 uv sync --locked                       # environment in .venv (DEV-6.2, DEV-6.3)
 uv run playwright install chromium     # once, for the interface tests
 scripts/gate.sh                        # ruff format, ruff check, mypy, pytest + coverage, commits
-uv run pytest tests/unit -q --no-cov   # a part of the tests
+uv run pytest tests/unit -q           # a part of the tests (coverage is measured by the gate)
 uv run archiwista doctor               # checks the installation
 uv run archiwista serve                # the server (prints a one-time address)
 ```
 
 Python 3.12 or newer. The default run and the gate leave out the markers `live` (real
 network services and stores), `perf` (the synthetic store of 50,000 slots) and `smb`
-(a real SMB share); each needs its own setup (`.env.example`). Coverage floor 80%. Run
-tests with `TMPDIR` on a local disk: a network share breaks SQLite and hard links. The
-full gate takes about 25 minutes (the interface tests drive Chromium).
+(a real SMB share); each needs its own setup (`.env.example`). `db` and `slow` are
+registered (DEV-10.1) and not used yet. Coverage floor 80% (`fail_under` of
+`[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local
+disk: a network share breaks SQLite and hard links. The full gate takes about 25 minutes
+(the interface tests drive Chromium).
 
 ## Code map
 
@@ -125,8 +127,8 @@ contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer, planned for 
   beside the standard tree.
 - DEV-7.7: CI runs on Linux only; the Windows and macOS port is planned for v1.0 and an
   `app` MAY run the platform matrix.
-- DEV-10.1: the registered markers are `live`, `perf` and `smb` (`db` and `slow` are not
-  used yet); the gate leaves all three out.
+- DEV-10.1: the gate leaves out two markers more than the standard, `perf` (the synthetic
+  store of 50,000 slots) and `smb` (a real SMB share), besides `live`.
 - DEV-15.1: about 650 lines of the build-free JavaScript exceed 100 columns (templates
   and long Polish texts); there is no formatter (A-ADR-028). New lines keep the limit.
 - DEV-16.5: the CLA is signed by a comment on the pull request, as the author's
