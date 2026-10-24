@@ -1,0 +1,8 @@
+# Line endings (DEV-14.1): LF in the repository and in every working copy.
+* text=auto eol=lf
+
+# Third-party files of the interface are served byte for byte; tests compare
+# their sha256 sums with archiwista/web/vendor/vendor.json and
+# archiwista/api/swagger/vendor.json.
+archiwista/web/vendor/** -text
+archiwista/api/swagger/** -text

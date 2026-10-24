@@ -7,6 +7,14 @@ command-line interface may change.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/gate.sh` runs ruff format, ruff check, mypy, one pytest call with the
+  coverage floor of 80% and the commit check (`scripts/check-commits.sh`: Conventional
+  Commits, no AI attribution, author) before every commit; `.editorconfig`,
+  `.gitattributes` (LF endings, vendored libraries byte for byte) and `.env.example`.
+  (DEV-7.6, DEV-14.1, DEV-4.5)
+
 ### Changed
 
 - **Breaking for developers:** the environment is managed by uv. `uv sync --locked`

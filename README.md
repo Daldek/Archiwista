@@ -128,11 +128,11 @@ z `umask 077` — inne konta komputera nie czytają indeksu ani bazy stanu.
 ## Testy i bramka
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy archiwista tests
-uv run pytest
+scripts/gate.sh    # ruff format, ruff check, mypy, pytest z pokryciem, sprawdzenie commitów
 ```
+
+Bramka (DEV-7.6) działa z katalogu roboczego git i stosuje `uv sync --locked`;
+współtwórcy uruchamiają ją jako `GATE_CHECK_AUTHOR=0 scripts/gate.sh`.
 
 `pytest` domyślnie pomija testy `live`, `perf` i `smb` (prawdziwe magazyny,
 magazyn 50 000 slotów, udział SMB 3), uruchamia testy interfejsu w Chromium

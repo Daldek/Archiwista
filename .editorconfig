@@ -1,0 +1,24 @@
+# EditorConfig (DEV-14.1, DEV-14.2): https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Third-party files are kept byte for byte (sha256 sums are checked in tests;
+# .gitattributes).
+[{archiwista/web/vendor/**,archiwista/api/swagger/**}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
