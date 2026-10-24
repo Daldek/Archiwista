@@ -2037,7 +2037,8 @@ def _inside(bbox: BBox) -> bool:
 @functools.cache
 def _extent(crs: str) -> tuple[int, int, int, int]:
     """Whole-metre envelope in ``crs`` of the outline of its country."""
-    envelope = transform_bbox(BBox(*_OUTLINES[crs].bounds, "EPSG:4326"), crs)
+    min_x, min_y, max_x, max_y = _OUTLINES[crs].bounds
+    envelope = transform_bbox(BBox(min_x, min_y, max_x, max_y, "EPSG:4326"), crs)
     return (
         math.floor(envelope.min_x),
         math.floor(envelope.min_y),

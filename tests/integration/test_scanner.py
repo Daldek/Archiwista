@@ -619,7 +619,9 @@ def test_refresh_view_unit_missing_its_slot_marks_nothing(env: _Env) -> None:
     tile = next(entry for entry in env.store.by_kind("link") if entry.segment == LAZ)
     env.scan("full")
     before = env.slot(tile.path)
-    area = kartograf.read_sidecar(env.store.root / tile.path).request["bbox"]
+    request = kartograf.read_sidecar(env.store.root / tile.path).request
+    assert request is not None
+    area = request["bbox"]
     unit = "_".join(format(value, ".10g") for value in area)
 
     # Act

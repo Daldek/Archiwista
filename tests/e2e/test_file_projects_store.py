@@ -180,6 +180,7 @@ def test_human_labels_expose_raw_values(serve: Serve, tab: Tab, tmp_path: Path) 
     expect(raw(vertical, "EPSG:9651")).to_be_visible()
     expect(sha).to_contain_text(f"{str(current.sha256)[:12]}…")
     expect(raw(sha, str(current.sha256))).to_be_visible()
+    assert sidecar.license is not None
     expect(card.locator(".fc-license")).to_contain_text(sidecar.license["id"])
     expect(card.locator(".fc-attribution")).to_have_text(
         f"Atrybucja: {sidecar.license['attribution']}"
@@ -245,7 +246,9 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     )
     slot = archive_pin(store).path
     current = current_of(store, slot)
-    attribution = read_sidecar(store.root / current.path).license["attribution"]
+    licence = read_sidecar(store.root / current.path).license
+    assert licence is not None
+    attribution = licence["attribution"]
     alias = str(PureWindowsPath(ALIAS, "data", *PurePosixPath(slot).parts))
     copied: dict[str, str] = {}
 

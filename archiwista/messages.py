@@ -266,9 +266,6 @@ MESSAGES = merge_messages(
         "plugin_package_missing": "brak pakietu {package}",
         "plugin_not_adapter": "fabryka wtyczki nie zwróciła adaptera źródła",
         "plugin_wrong_producer": "adapter wtyczki deklaruje producenta „{declared}”",
-        "plugin_range_missing": (
-            "Archiwista nie deklaruje wspieranych wersji pakietu {package}"
-        ),
         "store_unreadable": "Nie można odczytać magazynu {path}",
         "kartograf_not_store": (
             "żaden katalog nie jest segmentem Kartografa — wskaż katalog --output"

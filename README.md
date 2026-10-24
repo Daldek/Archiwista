@@ -27,32 +27,20 @@ i FastAPI, interfejs Preact + htm bez budowania, MapLibre GL.
 
 ## Instalacja
 
-Wymagania: Linux (sprawdzone na Debianie 13), Python 3.13 (pakiet wymaga
-≥ 3.12; `requirements.lock` przypina środowisko 3.13) i repozytorium
-Kartografa obok repozytorium Archiwisty (`../Kartograf`). Archiwista 0.2.0
-wymaga Kartografa 0.8.0 z publicznym API odczytu magazynu (KA-1..KA-6,
-[`docs/SPEC.md`](docs/SPEC.md) 12.1). To API jest na `develop` Kartografa
-(gałąź `feat/archiwista-store-api` została scalona i usunięta); do tagu
-Kartografa instaluj go edytowalnie z `develop`:
+Wymagania: Linux (sprawdzone na Debianie 13), Python ≥ 3.12 i [uv](https://docs.astral.sh/uv/).
+Archiwista 0.2.0 wymaga Kartografa 0.8.0 z publicznym API odczytu magazynu
+(KA-1..KA-6, [`docs/SPEC.md`](docs/SPEC.md) 12.1). To API jest na `develop`
+Kartografa, a `pyproject.toml` przypina jego commit (REL-5.3) do czasu tagu
+`v0.8.0`; `uv.lock` przypina wszystkie pakiety z sumami sha256:
 
 ```bash
-git -C ../Kartograf switch develop
-python3 -m venv .venv
-.venv/bin/python -m pip install --require-hashes -r requirements.lock
-.venv/bin/python -m pip install --no-deps -e ../Kartograf
-.venv/bin/python -m pip install --no-deps -e ".[dev]"
-.venv/bin/archiwista doctor
+uv sync --locked                      # środowisko w .venv z uv.lock
+uv run playwright install chromium    # raz: przeglądarka testów interfejsu
+uv run archiwista doctor
 ```
 
-Plik `requirements.lock` przypina pakiety zewnętrzne (Archiwista z `[dev]`
-i Kartograf 0.8.0) wraz z sumami sha256, więc pip instaluje je w trybie
-`--require-hashes`. Kartograf i Archiwista nie są w nim zapisane: instalują
-się potem edytowalnie z `--no-deps`, a ścieżka do Kartografa nie jest
-zależnością pakietu. Testy interfejsu potrzebują jeszcze przeglądarki
-Playwright: `.venv/bin/python -m playwright install chromium`.
-
 Pakiety podglądów (`rio-tiler`, rasterio, pyogrio, laspy z lazrs) są w
-`requirements.lock`; pliki renderują odizolowane procesy, nie serwer.
+`uv.lock`; pliki renderują odizolowane procesy, nie serwer.
 Pierwszy start po aktualizacji z 0.1 przebudowuje lokalny indeks
 (`SCHEMA_VERSION = 6`) i wykonuje pełny skan: przy odłączonym magazynie
 zaczekaj z aktualizacją lub udostępnij go ponownie przed skanem.
@@ -60,7 +48,7 @@ zaczekaj z aktualizacją lub udostępnij go ponownie przed skanem.
 ## Uruchomienie
 
 ```bash
-.venv/bin/archiwista serve
+uv run archiwista serve
 ```
 
 Serwer słucha wyłącznie na `127.0.0.1` (port 8090 z ustawienia `port`;
@@ -140,10 +128,10 @@ z `umask 077` — inne konta komputera nie czytają indeksu ani bazy stanu.
 ## Testy i bramka
 
 ```bash
-.venv/bin/ruff check .
-.venv/bin/ruff format --check .
-.venv/bin/mypy archiwista/ tests/
-.venv/bin/python -m pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy archiwista tests
+uv run pytest
 ```
 
 `pytest` domyślnie pomija testy `live`, `perf` i `smb` (prawdziwe magazyny,

@@ -7,6 +7,24 @@ command-line interface may change.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for developers:** the environment is managed by uv. `uv sync --locked`
+  replaces the pip installation from `requirements.lock`, which is removed;
+  `uv.lock` pins every package with SHA-256 sums at the versions of the 0.2.0
+  lock. Development tools are the `dev` dependency group, and the extra `dev` is
+  gone. (DEV-6.2, DEV-6.3, DEV-6.5)
+- Kartograf is pinned by commit (`8e9bcbb`, the head of its branch `develop`) in
+  `pyproject.toml` instead of being installed editable from a sibling checkout;
+  the release pull request replaces the commit with the tag. The range of
+  Kartograf versions the adapter reads is `SUPPORTED_VERSIONS` in
+  `archiwista.adapter.kartograf`; the install command in the repair texts is
+  now the pin. (REL-5.3)
+- `develop` carries the development version `0.3.0.dev0`. (REL-1.1)
+- Kartograf ships `py.typed`, so mypy checks the calls to it; the code and tests
+  that its types rejected are corrected and the `ignore_missing_imports`
+  override is gone.
+
 ## [0.2.0] - 2026-10-20
 
 Release "Previews".

@@ -88,8 +88,8 @@ def _versions(pool: RenderPool, sources: list[PreviewSource]) -> list[JsonObject
 
 
 def _moved(x: float, y: float, src: str, dst: str) -> tuple[float, float]:
-    xs, ys = kartograf.pinned_transform(src, dst).transform([x], [y])
-    return float(xs[0]), float(ys[0])
+    moved_x, moved_y = kartograf.pinned_transform(src, dst).transform(x, y)
+    return float(moved_x), float(moved_y)
 
 
 @pytest.fixture

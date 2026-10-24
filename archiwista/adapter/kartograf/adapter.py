@@ -681,10 +681,14 @@ def _sheet_outline(code: str, system: str) -> GeoJSONGeometry:
     if system == "1992":
         return _polygon(parser.get_bbox(_WGS84))
     native = parser.get_bbox()
-    xs = [native.min_x, native.max_x, native.max_x, native.min_x]
-    ys = [native.min_y, native.min_y, native.max_y, native.max_y]
-    lon, lat = pinned_transform(native.crs, _WGS84).transform(xs, ys)
-    ring = [[float(x), float(y)] for x, y in zip(lon, lat, strict=True)]
+    corners = [
+        (native.min_x, native.min_y),
+        (native.max_x, native.min_y),
+        (native.max_x, native.max_y),
+        (native.min_x, native.max_y),
+    ]
+    pinned = pinned_transform(native.crs, _WGS84)
+    ring = [[float(value) for value in pinned.transform(x, y)] for x, y in corners]
     return {"type": "Polygon", "coordinates": [[*ring, ring[0]]]}
 
 

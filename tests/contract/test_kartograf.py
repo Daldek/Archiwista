@@ -6,7 +6,6 @@ directory listings, never confirm links during a scan and keep Kartograf's
 pinned coordinate operations.
 """
 
-import importlib.metadata
 import inspect
 import os
 import socket
@@ -20,11 +19,11 @@ from typing import Any, cast
 import kartograf
 import numpy as np
 import pytest
-from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 import archiwista.adapter.kartograf.adapter as adapter_module
-from archiwista.adapter.kartograf import load
+from archiwista.adapter.kartograf import SUPPORTED_VERSIONS, load
 from archiwista.adapter.kartograf.adapter import UNIT_CACHE_FILE, KartografAdapter
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
@@ -269,16 +268,11 @@ def test_kartograf_bbox_and_pinned_transform_shape() -> None:
     assert isinstance(pinned.accuracy_m, float)
 
 
-def test_installed_kartograf_within_pinned_range() -> None:
-    """The imported Kartograf satisfies the pin of the installed Archiwista."""
-    pins = [
-        Requirement(line)
-        for line in importlib.metadata.requires("archiwista") or []
-        if Requirement(line).name == "kartograf"
-    ]
+def test_installed_kartograf_within_supported_range() -> None:
+    """The imported Kartograf is one the adapter declares it reads."""
+    supported = SpecifierSet(SUPPORTED_VERSIONS)
 
-    assert len(pins) == 1
-    assert pins[0].specifier.contains(Version(kartograf.__version__), prereleases=True)
+    assert supported.contains(Version(kartograf.__version__), prereleases=True)
 
 
 def test_adapter_entries_match_iter_store(
@@ -299,6 +293,7 @@ def test_adapter_entries_match_iter_store(
             assert entry.meta is None
             continue
         assert entry.meta is not None
+        assert sidecar is not None
         assert (
             entry.meta.sha256,
             entry.meta.size_bytes,

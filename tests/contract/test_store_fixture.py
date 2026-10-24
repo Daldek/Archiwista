@@ -84,6 +84,7 @@ def test_store_fixture_sidecars_give_expected_metadata(store: StoreManifest) -> 
         if found.kind == "problem":
             continue
         meta = found.sidecar
+        assert meta is not None
         assert (meta.sha256, meta.dataset_key, meta.unit, meta.data_year) == (
             wanted.sha256,
             wanted.dataset_key,
@@ -120,12 +121,13 @@ def test_store_fixture_data_year_never_comes_from_download(
     by_download = [
         meta
         for meta in versions
-        if meta.extra["version"]["label_source"] == "downloaded"
+        if (meta.extra or {})["version"]["label_source"] == "downloaded"
     ]
 
     assert by_download and all(meta.data_year is None for meta in by_download)
     assert any(
-        meta.data_year is not None and meta.data_year != int(meta.downloaded_at[:4])
+        meta.data_year is not None
+        and meta.data_year != int((meta.downloaded_at or "")[:4])
         for meta in versions
     )
 
@@ -224,7 +226,7 @@ def test_store_fixture_files_give_offline_footprints(
 
     assert entries
     assert all(f is not None and f.source == source for f in footprints), family
-    assert all(f.native.min_x < f.native.max_x for f in footprints)
+    assert all(f is not None and f.native.min_x < f.native.max_x for f in footprints)
 
 
 @pytest.mark.parametrize(
@@ -268,8 +270,12 @@ def test_store_fixture_footprints_lie_in_their_country(store: StoreManifest) -> 
     footprints = [(entry, file_footprint(entry)) for entry in entries]
 
     placed = [(entry, found) for entry, found in footprints if found is not None]
-    czech = [(e, found) for e, found in placed if e.sidecar.country == "CZ"]
-    polish = [(e, found) for e, found in placed if e.sidecar.country != "CZ"]
+    countries: dict[Path, str | None] = {}
+    for entry, _ in placed:
+        assert entry.sidecar is not None
+        countries[entry.path] = entry.sidecar.country
+    czech = [(e, found) for e, found in placed if countries[e.path] == "CZ"]
+    polish = [(e, found) for e, found in placed if countries[e.path] != "CZ"]
     assert czech and polish
     for outline, group in ((CZ_OUTLINE, czech), (PL_OUTLINE, polish)):
         centres = {e.path: shapely.box(*found.wgs84[:4]).centroid for e, found in group}
@@ -342,12 +348,13 @@ def test_store_fixture_two_formats_share_the_variant(store: StoreManifest) -> No
 
     assert len({link.segment for link in links}) == 2
     assert len({link.unit for link in links}) == 1
-    assert (
-        len(
-            {(m.product, m.horizontal_crs, m.vertical_crs, m.resolution) for m in metas}
-        )
-        == 1
-    )
+    assert None not in metas
+    variants = {
+        (m.product, m.horizontal_crs, m.vertical_crs, m.resolution)
+        for m in metas
+        if m is not None
+    }
+    assert len(variants) == 1
 
 
 def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -> None:

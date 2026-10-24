@@ -75,9 +75,10 @@ def app_requirement(package: str) -> Requirement | None:
     Returns
     -------
     Requirement or None
-        The requirement of the installed ``archiwista`` metadata, e.g.
-        ``kartograf<0.9,>=0.8.0``; ``None`` when Archiwista requires the
-        package only through an extra or not at all.
+        The requirement of the installed ``archiwista`` metadata: a direct
+        reference to the producer's tag or commit while it has no release
+        (REL-5.1, REL-5.3), a version range afterwards; ``None`` when
+        Archiwista requires the package only through an extra or not at all.
     """
     try:
         lines = importlib.metadata.requires(APP_DISTRIBUTION) or []
@@ -102,9 +103,10 @@ def install_requirement(producer: str) -> str:
     Returns
     -------
     str
-        Archiwista's own dependency pin for a core producer, e.g.
-        ``"kartograf<0.9,>=0.8.0"``; otherwise the Archiwista extra named
-        after the producer, e.g. ``"archiwista[imgw]"``.
+        Archiwista's own dependency on a core producer, e.g.
+        ``"kartograf@ git+https://github.com/Daldek/Kartograf@<commit>"``;
+        otherwise the Archiwista extra named after the producer, e.g.
+        ``"archiwista[imgw]"``.
     """
     requirement = app_requirement(producer)
     if requirement is not None:

@@ -12,7 +12,7 @@ from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.doctor import is_port_available, run_doctor
 from archiwista.sources import SourceAdapter, SourceState
-from archiwista.sources.registry import source_error
+from archiwista.sources.registry import install_requirement, source_error
 
 KARTOGRAF = SourceState(
     producer="kartograf",
@@ -147,7 +147,7 @@ def test_doctor_missing_plugin_shows_install_command(
 
     assert status == 1
     assert "[BŁĄD] Wtyczka kartograf: pakiet producenta nie jest zainstalowany" in out
-    assert 'pip install "kartograf<0.9,>=0.8.0"' in out
+    assert f'pip install "{install_requirement("kartograf")}"' in out
 
 
 def test_doctor_unregistered_plugin_for_store_fails(
