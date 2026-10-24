@@ -2,7 +2,7 @@
 * text=auto eol=lf
 
 # Third-party files of the interface are served byte for byte; tests compare
-# their sha256 sums with archiwista/web/vendor/vendor.json and
-# archiwista/api/swagger/vendor.json.
-archiwista/web/vendor/** -text
-archiwista/api/swagger/** -text
+# their sha256 sums with src/archiwista/web/vendor/vendor.json and
+# src/archiwista/api/swagger/vendor.json.
+src/archiwista/web/vendor/** -text
+src/archiwista/api/swagger/** -text

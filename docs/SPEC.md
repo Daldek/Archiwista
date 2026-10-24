@@ -1271,8 +1271,8 @@ Zasady architektury:
   przeglądarkę, narzędzia asystenta i skrypty użytkownika. Interfejs nie
   ma żadnej ścieżki obok API.
 - **Producenci w adapterach.** Kod Archiwisty importuje Kartografa
-  wyłącznie w `archiwista/adapter/kartograf/`, a IMGWTools wyłącznie
-  w `archiwista/adapter/imgw/`; test pilnuje, że nigdzie indziej (wzór:
+  wyłącznie w `src/archiwista/adapter/kartograf/`, a IMGWTools wyłącznie
+  w `src/archiwista/adapter/imgw/`; test pilnuje, że nigdzie indziej (wzór:
   test importów CLI w Kartografie, ADR-037 Z1). Reszta Archiwisty zna tylko
   interfejs źródła (5.3). Adapter tłumaczy, nie decyduje: żadnych reguł
   danych, wyboru arkuszy, wersji, transformacji ani normalizacji wartości.
@@ -1320,30 +1320,30 @@ Propozycja podziału (ostateczny ustali plan implementacji):
 
 | Moduł | Odpowiedzialność |
 |---|---|
-| `archiwista/app.py` | aplikacja FastAPI, rejestracja tras, pliki statyczne interfejsu |
-| `archiwista/config.py` | konfiguracja (TOML): magazyny (katalogi producentów), aliasy ścieżek, katalogi projektów, limity, podkłady, dostawca asystenta |
-| `archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP, `current_principal` (tożsamość żądania); od v0.4 uwierzytelnianie |
-| `archiwista/state/` | baza stanu (4.3): konta, grupy, członkostwa, role, widoczność projektów, dziennik zmian uprawnień; migracje, eksport |
-| `archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — jedno miejsce decyzji o uprawnieniach dla API, CLI i zapytań indeksu (A-ADR-029) |
-| `archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów ładowanych z entry points (grupa `archiwista.sources`), stany źródeł, sprawdzenie wersji i schematów producentów (5.8) |
-| `archiwista/adapter/kartograf/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
-| `archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 (od v0.6 także IMGW-15..IMGW-19 — stacje ČHMÚ) i konwersje typów |
-| `archiwista/index/` | schemat, skaner, zapytania, obrysy, wyszukiwanie, stacje i pokrycie szeregów |
-| `archiwista/jobs/` | nadzorca, kolejka, proces roboczy (`python -m archiwista.jobs.worker`), protokół zdarzeń |
-| `archiwista/previews/` | kafle i podglądy rastrów, wektorów, LAZ, ZIP; dane wykresów szeregów (agregacja do wyświetlenia); pamięć podglądów |
-| `archiwista/sets/` | zestaw do projektu/QGIS (tryb 3 łączenia, sekcja 8.4) |
-| `archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
-| `archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
-| `archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
-| `archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista token` (jednorazowy token sesji agenta), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import`; polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API (`archiwista/reader.py`; `docs/AGENT_API.md`) |
+| `src/archiwista/app.py` | aplikacja FastAPI, rejestracja tras, pliki statyczne interfejsu |
+| `src/archiwista/config.py` | konfiguracja (TOML): magazyny (katalogi producentów), aliasy ścieżek, katalogi projektów, limity, podkłady, dostawca asystenta |
+| `src/archiwista/security.py` | sprawdzanie `Host`, token startowy, CSRF, nagłówki CSP, `current_principal` (tożsamość żądania); od v0.4 uwierzytelnianie |
+| `src/archiwista/state/` | baza stanu (4.3): konta, grupy, członkostwa, role, widoczność projektów, dziennik zmian uprawnień; migracje, eksport |
+| `src/archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — jedno miejsce decyzji o uprawnieniach dla API, CLI i zapytań indeksu (A-ADR-029) |
+| `src/archiwista/sources/` | interfejs źródła: protokół adaptera, wspólne typy (wpis magazynu, metadane, plan, zdarzenia zadań), rejestr adapterów ładowanych z entry points (grupa `archiwista.sources`), stany źródeł, sprawdzenie wersji i schematów producentów (5.8) |
+| `src/archiwista/adapter/kartograf/` | jedyne miejsce importu Kartografa: wywołania KA-KH i konwersje typów |
+| `src/archiwista/adapter/imgw/` | jedyne miejsce importu IMGWTools: wywołania IMGW-1..IMGW-14 (od v0.6 także IMGW-15..IMGW-19 — stacje ČHMÚ) i konwersje typów |
+| `src/archiwista/index/` | schemat, skaner, zapytania, obrysy, wyszukiwanie, stacje i pokrycie szeregów |
+| `src/archiwista/jobs/` | nadzorca, kolejka, proces roboczy (`python -m archiwista.jobs.worker`), protokół zdarzeń |
+| `src/archiwista/previews/` | kafle i podglądy rastrów, wektorów, LAZ, ZIP; dane wykresów szeregów (agregacja do wyświetlenia); pamięć podglądów |
+| `src/archiwista/sets/` | zestaw do projektu/QGIS (tryb 3 łączenia, sekcja 8.4) |
+| `src/archiwista/assistant/` | adaptery dostawców, narzędzia, propozycje, rozmowy, liczniki kosztów |
+| `src/archiwista/api/` | trasy `/api/v1` (sekcja 9) — cienkie, tylko wywołania warstwy usług |
+| `src/archiwista/web/` | interfejs: moduły ES (Preact + htm) i dołączone biblioteki, serwowane statycznie — bez kroku budowania (A-ADR-028) |
+| `src/archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostyka: Kartograf, IMGWTools, magazyny i katalogi producentów, uprawnienia, port), `archiwista token` (jednorazowy token sesji agenta), `archiwista users`, `groups`, `share` (administracja uprawnień), `archiwista state export` i `state import`; polecenia odczytu `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` z `--json` o schemacie odpowiedzi API (`archiwista/reader.py`; `docs/AGENT_API.md`) |
 
-Interfejs (`archiwista/web/`, A-ADR-028): trasy
+Interfejs (`src/archiwista/web/`, A-ADR-028): trasy
 z całym stanem w adresie URL (obszar, produkt, filtry, widok mapy — link
 można wysłać koledze), komponenty widoków z sekcji 6, zgodność z OpenAPI
 serwera sprawdzana testami kontraktu, teksty interfejsu w jednym słowniku (polski; inne języki
 możliwe później).
 
-**Interfejs źródła** (`archiwista/sources/`; nazwy ustali plan
+**Interfejs źródła** (`src/archiwista/sources/`; nazwy ustali plan
 implementacji). Dwa adaptery, jedna umowa — warstwy wyżej nie wiedzą,
 który producent zapisał plik:
 
@@ -1619,7 +1619,7 @@ kartograf = "archiwista.adapter.kartograf:load"
 imgw = "archiwista.adapter.imgw:load"   # ładowany tylko z extra [imgw]
 ```
 
-Rejestr (`archiwista/sources/`) ładuje entry points leniwie, po jednym,
+Rejestr (`src/archiwista/sources/`) ładuje entry points leniwie, po jednym,
 i zapisuje stan każdego źródła: `available`, `not_installed` (ImportError
 pakietu producenta), `incompatible` (wersja albo schemat poza wspieranym
 zakresem) albo `error` (wyjątek przy ładowaniu — nie kładzie serwera i jest
@@ -3436,8 +3436,8 @@ Decyzja: A-ADR-012.
   (`CLMS_CREDENTIALS`) — jak 5.6.
 - **Zależności:** wersje przypięte; audyt podatności (`pip-audit`,
   `npm audit`) w bramce wydania. Pliki zewnętrzne interfejsu
-  (`archiwista/web/vendor/`) i Swagger UI z `/api/docs`
-  (`archiwista/api/swagger/`) są wbudowane w pakiet, bez CDN. Każdy z tych
+  (`src/archiwista/web/vendor/`) i Swagger UI z `/api/docs`
+  (`src/archiwista/api/swagger/`) są wbudowane w pakiet, bez CDN. Każdy z tych
   katalogów ma manifest `vendor.json`: nazwa, wersja, licencja, źródło
   (paczka npm z `integrity` rejestru albo archiwum z sha256), dla każdego
   pliku ścieżka w źródle (`from`) i suma sha256; wyjątki są opisane
@@ -3519,7 +3519,7 @@ Decyzja: A-ADR-012.
 ## 11. Testy i weryfikacja
 
 - **Bramka (jak w Kartografie):** `pytest -m "not live"`, `ruff check .`,
-  `ruff format --check .`, `mypy archiwista/ tests/`; interfejs: testy
+  `ruff format --check .`, `mypy src tests`; interfejs: testy
   w przeglądarce (Playwright) i kontrola składni modułów ES; bez kroku
   budowania (A-ADR-028). Wszystko offline.
 - **Magazyn testowy:** generator (`tests/fixtures/make_store.py`) buduje
@@ -3578,8 +3578,8 @@ Decyzja: A-ADR-012.
   zapisujące magazyn z `store_writer`, bez niego i z `store_write_for_all`;
   przebudowa indeksu nie zmienia bazy stanu, eksport → import ją odtwarza.
 - **Zgodność z producentami:** test importów — Kartograf tylko
-  w `archiwista/adapter/kartograf/`, IMGWTools tylko
-  w `archiwista/adapter/imgw/`, reszta zna wyłącznie `archiwista/sources/`
+  w `src/archiwista/adapter/kartograf/`, IMGWTools tylko
+  w `src/archiwista/adapter/imgw/`, reszta zna wyłącznie `src/archiwista/sources/`
   (od v0.1 także test z atrapą drugiego adaptera); test parytetu —
   pobranie przez API Archiwisty i tym samym poleceniem CLI na nagranych
   odpowiedziach źródeł daje ten sam magazyn (wersje, `sha256`, sidecary

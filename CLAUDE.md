@@ -26,7 +26,7 @@ authoritative). Introduction: [README.md](README.md); specification:
   downloading or processing of its own; a missing function is a requirement for the
   producer (SPEC section 12), reported as a GitHub issue labelled `request` in the
   producer's repository (DEV-17.5), never a workaround here. Only the Kartograf
-  adapter (`archiwista/adapter/kartograf/`) imports `kartograf` (a contract test checks it).
+  adapter (`src/archiwista/adapter/kartograf/`) imports `kartograf` (a contract test checks it).
 - The producer's store is read-only for Archiwista: writes only through the producer's
   API. No SQLite or Archiwista files on a network share or in the store; the index,
   the preview cache and the job history are local and rebuildable. The one exception
@@ -68,7 +68,7 @@ full gate takes about 25 minutes (the interface tests drive Chromium).
 ## Code map
 
 ```
-archiwista/
+src/archiwista/
 ├── app.py cli.py server.py config.py doctor.py   # application, CLI entry, server, settings
 ├── api/            # HTTP routes /api/v1, models, problems (errors.py), OpenAPI (docs.py)
 ├── adapter/kartograf/  # the Kartograf source plugin: the only importer of kartograf

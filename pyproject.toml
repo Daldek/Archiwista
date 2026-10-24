@@ -54,6 +54,7 @@ archiwista = "archiwista.cli:main"
 kartograf = "archiwista.adapter.kartograf:load"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["archiwista*"]
 
 [tool.setuptools.package-data]
@@ -75,7 +76,7 @@ convention = "numpy"
 
 [tool.mypy]
 python_version = "3.12"
-files = ["archiwista", "tests"]
+files = ["src", "tests"]
 strict = true
 
 [[tool.mypy.overrides]]

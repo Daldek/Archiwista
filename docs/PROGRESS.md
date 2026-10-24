@@ -11,9 +11,9 @@ commit that introduced this file).
 |---|---|---|
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
-| Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files; open: `src/` layout, markers and package-data test, ruff and mypy rule sets (Next 1.1 to 1.3) |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.6) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | planned | designed, not started (Next 1.4) |
+| Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files; open: markers and package-data test, ruff rule set (Next 1.1 and 1.2) |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.5) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | planned | designed, not started (Next 1.3) |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
@@ -35,14 +35,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    green before each; the source of the rules is the Nogat branch `feature/data-output`,
    `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`; Hydrolog and
    Retman have the same branch name as worked examples):
-   1. `refactor: move the package to src/archiwista` (ECO-011; DEV-5.1 lets an `app` keep
-      another layout, but the ADOPTION_PLAN row names `src/`): `git mv archiwista
-      src/archiwista`; in `pyproject.toml` `[tool.setuptools.packages.find] where =
-      ["src"]` and `[tool.mypy] files = ["src", "tests"]`; `TYPED_PATHS=(src tests)` in
-      `scripts/gate.sh`; paths in `CLAUDE.md` (code map and adapter path), README and the
-      27 mentions in `docs/SPEC.md`; delete the stale untracked `archiwista.egg-info/` and
-      `build/`; `uv sync --locked`. Import paths and package data do not change.
-   2. `test:` register `db` and `slow` next to `live`, `perf`, `smb` (DEV-10.1; the
+   1. `test:` register `db` and `slow` next to `live`, `perf`, `smb` (DEV-10.1; the
       deviation line in CLAUDE.md then loses its first half); drop `--cov=archiwista
       --cov-fail-under=80` from `addopts` (the gate passes `--cov`, the floor is
       `[tool.coverage.report] fail_under`); `tests/contract/test_package_data.py` reading
@@ -50,16 +43,16 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       `archiwista.api` swagger files through `importlib.resources` (DEV-5.4); a test that
       runs the commands of the README examples (DOC-2.6); remove the stray `.gitkeep`
       files of `tests/e2e`, `tests/integration` and `tests/perf`.
-   3. `style:` add `W` and `C4` to the ruff `select` (DEV-7.2; `uv run ruff check --select
+   2. `style:` add `W` and `C4` to the ruff `select` (DEV-7.2; `uv run ruff check --select
       W,C4 .` finds 3 places, one is a `dict.fromkeys` in `tests/integration/test_snapshots.py`)
       and `[tool.ruff.format] quote-style = "double"`.
-   4. **Error registry** (ERR-3, ERR-4, DEV-11.1, AGI-6.3; ERROR_REGISTRY §4 row
+   3. **Error registry** (ERR-3, ERR-4, DEV-11.1, AGI-6.3; ERROR_REGISTRY §4 row
       "Archiwista"). Copy `error_registry.json` and `schemas/agent/*.schema.json` into
       `schemas/nogat/` with its README, `scripts/generate_errors.py`,
       `tests/contract/_nogat.py` and `tests/contract/test_error_registry.py` exactly as
       Hydrolog did (`git -C ~/workspace/Hydrolog show chore/nogat-2.1:<path>`); add
       `jsonschema` to the `dev` group; generate `src/archiwista/_errors.py`. Give
-      `ArchiwistaError` (`archiwista/errors.py`) `code`, `message`, `details`, `hint`, with
+      `ArchiwistaError` (`src/archiwista/errors.py`) `code`, `message`, `details`, `hint`, with
       a default `code` and `reason` per subclass. Planned mapping of today's problem codes
       (HTTP status from the registry): `permission_denied`, `path_outside_root`,
       `csrf_rejected`, `invalid_host` to `forbidden` (403); `session_required` to
@@ -75,7 +68,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       with `Accept-Language: pl`), `instance`, `hint`, `details` (the extension members move
       there; the old `reason` object becomes `details.preview_reason` and the snapshot
       `reason` string `details.blocked_by`) and `errors[]` with JSON Pointers. Places:
-      `archiwista/api/errors.py` (`PROBLEMS`, `problem_body`, `_DOCUMENTED`,
+      `src/archiwista/api/errors.py` (`PROBLEMS`, `problem_body`, `_DOCUMENTED`,
       `problem_responses`), `security.py` (`_Rejection`), the examples in `api/previews.py`,
       `api/jobs.py`, `api/owndata.py`, `api/models.py` (`ProblemDetails`), the
       `problem_responses(...)` decorators (`422` becomes `400`), the CLI refusals in
@@ -85,9 +78,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       to `195`, `previews.js:134` and `347`, `views/cards.js:306`, `views/map.js:307`,
       `setup.js:297` and `495`, and the `Accept-Language: pl` header. Tests: about 206 status
       and 54 code assertions. Docs: AGENT_API section 7, SPEC 9.1, README errors section.
-   5. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
+   4. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
       in the README and `.env.example`.
-   6. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
+   5. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
       Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
       summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
       move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8
@@ -106,15 +99,15 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    change on its development head** (not before; plan `docs/plans/2026-10-24-data-output.md`
    of Nogat, step 4). Re-pin Kartograf to that commit in `pyproject.toml` (`uv lock`).
    Archiwista keeps calling Kartograf in store mode, so the names change to `root`, not the
-   behaviour. Call sites, as of 2026-10-24 (the paths get the prefix `src/` after 1.1):
-   - `archiwista/adapter/kartograf/adapter.py:645` reads `project.output_dir` (becomes
+   behaviour. Call sites, as of 2026-10-24:
+   - `src/archiwista/adapter/kartograf/adapter.py:645` reads `project.output_dir` (becomes
      `project.root`); the docstrings of lines 76, 109, 136 and 167 say "Kartograf's
      `--output` directory" (`--root`); `probe` follows the marker rules (DEV-19.12,
      DEV-19.13): a root with the layout but no `kartograf-store.json` is
      `store_unavailable` with the hint `kartograf store init --root <path>`.
-   - Texts: `archiwista/messages.py:271` and `:390` (the Polish messages that name the
-     `--output` directory), `archiwista/config.py:179`, `archiwista/api/models.py:2401`,
-     `archiwista/sources/types.py:4`.
+   - Texts: `src/archiwista/messages.py:271` and `:390` (the Polish messages that name the
+     `--output` directory), `src/archiwista/config.py:179`,
+     `src/archiwista/api/models.py:2401`, `src/archiwista/sources/types.py:4`.
    - `tests/contract/test_kartograf.py:53`, `:55` and `:60` pin the parameter names of
      `list_segments`, `list_partitions` and `iter_store` (`output_dir` becomes `root`); the
      probe tests at `:601` to `:608` and the project reads at `:633` to `:669`.

@@ -42,6 +42,9 @@ command-line interface may change.
   `archiwista.adapter.kartograf`; the install command in the repair texts is
   now the pin. (REL-5.3)
 - `develop` carries the development version `0.3.0.dev0`. (REL-1.1)
+- **Breaking for developers:** the package moved from `archiwista/` to
+  `src/archiwista/`; import paths and package data are unchanged, and `uv sync
+  --locked` reinstalls the editable package. (ECO-011, DEV-5.1)
 - Kartograf ships `py.typed`, so mypy checks the calls to it; the code and tests
   that its types rejected are corrected and the `ignore_missing_imports`
   override is gone.

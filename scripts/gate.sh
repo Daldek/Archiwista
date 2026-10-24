@@ -12,7 +12,7 @@ set -euo pipefail
 
 # --- project settings --------------------------------------------------------
 PACKAGE="archiwista"               # import name, measured by coverage
-TYPED_PATHS=(archiwista tests)      # mypy targets (DEV-7.3)
+TYPED_PATHS=(src tests)             # mypy targets (DEV-7.3)
 # Marker expression of the gate (DEV-10.1). The default run also leaves out the
 # measurements on the large synthetic store (`perf`) and on a real SMB share
 # (`smb`), which need that store and that share.

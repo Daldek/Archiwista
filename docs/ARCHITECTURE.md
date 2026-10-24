@@ -8,7 +8,7 @@ Pomiary i odbiór: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md
 standardy: [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md).
 
 Każde twierdzenie o zachowaniu systemu opisuje **kod** w tym repozytorium
-(`archiwista/`, `tests/`), nie plan ani spec. Wymagania i zakres leżą
+(`src/`, `tests/`), nie plan ani spec. Wymagania i zakres leżą
 w [`PRD.md`](PRD.md), [`SCOPE.md`](SCOPE.md) i [`SPEC.md`](SPEC.md), decyzje
 (A-ADR-0xx) w [`DECISIONS.md`](DECISIONS.md), umowy między krokami v0.1
 w [`PLAN_v0.1.md`](PLAN_v0.1.md). Gdzie kod odbiega od specu albo planu,
@@ -44,9 +44,9 @@ sam, tylko woła nazwy z `kartograf.__all__` — `list_segments`,
 `list_partitions`, `iter_store`, `read_sidecar`, `describe_segment`,
 `file_footprint`, `link_target`, `pinned_transform`, `open_project`,
 `get_project_status`, `countries_for_bbox`, `find_sheets_for_bbox`,
-`SheetParser` — i to wyłącznie w `archiwista/adapter/kartograf/`
+`SheetParser` — i to wyłącznie w `src/archiwista/adapter/kartograf/`
 (sekcja 2.2). Reszta aplikacji zna tylko interfejs źródła
-`archiwista/sources/`. Brakująca funkcja Kartografa to wymaganie wobec
+`src/archiwista/sources/`. Brakująca funkcja Kartografa to wymaganie wobec
 Kartografa (SPEC 12), nie obejście w Archiwiście. Pakiet wymaga
 `kartograf>=0.8.0,<0.9` z KA-1..KA-6.
 
@@ -63,7 +63,7 @@ pozostają w katalogu z powodem, a interfejs nie ładuje bibliotek z CDN.
 
 ### 2.1 Moduły
 
-Tabele zawierają główne moduły pakietu `archiwista/` i ich symbole,
+Tabele zawierają główne moduły pakietu `src/archiwista/` i ich symbole,
 nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
 `IndexQueries` i `JobSupervisor` opisują sekcje 4–5.
 
@@ -251,7 +251,7 @@ adapter z publicznym API.
 **Reguły pilnowane testami** (`tests/contract/`):
 
 - `kartograf` (i `imgwtools`) importuje wyłącznie jego adapter
-  (`archiwista/adapter/kartograf/`, `archiwista/adapter/imgw/`) —
+  (`src/archiwista/adapter/kartograf/`, `src/archiwista/adapter/imgw/`) —
   `test_imports.py::test_producers_are_imported_only_in_their_adapters`;
 - adapter Kartografa importuje tylko `from kartograf import …` z nazwami
   z `kartograf.__all__` —
@@ -1072,7 +1072,7 @@ z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etap
 - **Drugi producent: IMGWTools i ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024).**
   Wtyczka rejestruje się w grupie entry points `archiwista.sources`
   (extra `archiwista[imgw]`, `install_requirement`); test importów już
-  rezerwuje dla niej `archiwista/adapter/imgw/`, a błędy mają kod
+  rezerwuje dla niej `src/archiwista/adapter/imgw/`, a błędy mają kod
   `imgwtools_error` (`PRODUCER_CODES`). Testowa wtyczka
   `tests/fixtures/second_source/` (płaski magazyn bez segmentów, arkuszy
   i dowiązań) przechodzi przez skaner, indeks i API bez zmian w rdzeniu

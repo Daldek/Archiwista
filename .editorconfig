@@ -17,7 +17,7 @@ trim_trailing_whitespace = false
 
 # Third-party files are kept byte for byte (sha256 sums are checked in tests;
 # .gitattributes).
-[{archiwista/web/vendor/**,archiwista/api/swagger/**}]
+[{src/archiwista/web/vendor/**,src/archiwista/api/swagger/**}]
 charset = unset
 end_of_line = unset
 insert_final_newline = unset
