@@ -1,229 +1,247 @@
-# Przewodnik użytkownika — Archiwista 0.2
+# User guide: Archiwista 0.2
 
-Archiwista 0.2 „Podglądy” pokazuje magazyn Kartografa na mapie, w katalogu
-i kartach plików, a także podglądy, Wachlarz, Oś czasu i porównanie. Projekty
-mają folder danych własnych i migawki. Magazyn producenta pozostaje tylko
-do odczytu; migawki powstają wyłącznie na polecenie uprawnionej osoby
-w folderze projektu. Instalacja i CLI: [`README.md`](../README.md);
-skrypty i agenci: [`AGENT_API.md`](AGENT_API.md).
+Archiwista 0.2 "Previews" shows a Kartograf store on a map, in a catalog and
+in file cards, and adds previews, the Fan, the Timeline and comparison.
+Projects have a folder of own data and snapshots. The producer's store stays
+read-only; snapshots are made only on the command of an authorised person, in
+the project folder. The interface text is Polish; the Polish label of a control
+is given in quotes where this guide first names it. Running and the command
+line: [`README.md`](../README.md); scripts and agents:
+[`AGENT_API.md`](AGENT_API.md).
 
 ## Start
 
-1. `archiwista serve` otwiera przeglądarkę pod jednorazowym adresem
-   z tokenem (ważny 10 minut). Gdy przeglądarka się nie otworzy, skopiuj
-   adres z terminala.
-2. Kreator „Pierwsze uruchomienie” ma cztery kroki:
-   - **Magazyny** — nazwa dla ludzi, krótki identyfikator (w adresach
-     i API), pełna ścieżka katalogu Kartografa (jego `--output`, czyli
-     katalog `data/`) i rodzaj: dysk lokalny albo udział sieciowy
-     (domyślnie wykrywany). Magazynów może być kilka.
-   - **Projekty** — katalogi z projektami Kartografa
-     (`kartograf-project.json`); można je dodać później.
-   - **Tryb pracy** — tryb offline: przeglądarka nie wysyła żadnych zapytań
-     poza Archiwistę, więc mapa jest bez podkładu.
-   - **Zapis** — podsumowanie i „Zapisz i zindeksuj”.
-3. Pierwszy pełny skan trwa w tle, a pasek stanu nad widokami pokazuje
-   postęp. Dalej skanuje harmonogram: przyrostowo co 5 minut (dysk
-   lokalny) albo co 15 minut (udział) i w całości raz na dobę.
+1. `archiwista serve` opens the browser at a one-time address with a token
+   (valid for 10 minutes). If the browser does not open, copy the address from
+   the terminal.
+2. The wizard "Pierwsze uruchomienie" (first run) has four steps:
+   - **Stores** ("Magazyny"): a name for people, a short identifier (used in
+     addresses and in the API), the full path of the Kartograf directory (its
+     `--output` directory, that is the `data/` directory) and the kind: local
+     disk or network share (detected by default). There can be several stores.
+   - **Projects** ("Projekty"): directories with Kartograf projects
+     (`kartograf-project.json`); they can be added later.
+   - **Mode** ("Tryb pracy"): offline mode means the browser sends no request
+     outside Archiwista, so the map has no basemap.
+   - **Save** ("Zapis"): a summary and "Zapisz i zindeksuj" (save and index).
+3. The first full scan runs in the background, and the status bar above the
+   views shows its progress. After that the scheduler scans: incrementally
+   every 5 minutes (local disk) or 15 minutes (share), and in full once a day.
 
-![Kreator pierwszego uruchomienia](reports/v0.1-screenshots/01-wizard.webp)
+![First-run wizard](reports/v0.1-screenshots/01-wizard.webp)
 
-## Okno
+## The window
 
-- **Widoki** po lewej: Mapa (start), Katalog, Projekty, Magazyn, a na dole
-  Ustawienia — ten sam formularz co kreator. Zapis ustawień zastępuje je
-  wszystkie naraz; nowy albo przeniesiony magazyn jest skanowany od nowa.
-- **Górna belka:** magazyny z kropką stanu, „Szukaj” (`Ctrl+K` albo `/`
-  w każdym widoku) i bieżąca sesja.
-- **Pasek stanu indeksu** pod belką mówi o skanie w toku, nieudanym skanie
-  i magazynie niedostępnym (np. odłączony udział): wtedy widoki pokazują
-  stan z indeksu z podaną godziną, co nie dowodzi, że plików nie ma.
-- **Ikona `</>`** obok nazwy dla ludzi pokazuje wartość techniczną: segment,
-  klucz zbioru, układ EPSG, identyfikator.
-- **Panele** poszerza się, przeciągając brzeg (albo strzałkami;
-  dwuklik przywraca szerokość domyślną), i zwija.
-- **Adres strony** zapisuje widok, filtry i otwartą kartę pliku — można go
-  dodać do zakładek albo przesłać.
+- **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
+  Projects ("Projekty"), Store ("Magazyn") and, at the bottom, Settings
+  ("Ustawienia"), the same form as the wizard. Saving the settings replaces
+  all of them at once; a new or moved store is scanned from scratch.
+- **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
+  in every view) and the current session.
+- **The index status bar** under the top bar reports a scan in progress, a
+  failed scan and an unavailable store (for example a disconnected share); the
+  views then show the state of the index with its time, which does not prove
+  that the files are gone.
+- **The `</>` icon** next to a name for people shows the technical value:
+  segment, dataset key, EPSG code, identifier.
+- **Panels** are widened by dragging their edge (or with the arrow keys; a
+  double click restores the default width) and can be collapsed.
+- **The page address** keeps the view, the filters and the open file card, so
+  it can be bookmarked or sent.
 
-## Mapa
+## Map
 
-![Mapa z obszarem i stanem lokalnym](reports/v0.1-screenshots/02-map.webp)
+![Map with an area and the local state](reports/v0.1-screenshots/02-map.webp)
 
-Panel „Wybór” prowadzi przez trzy kroki:
+The panel "Wybór" (selection) leads through three steps:
 
-1. **Obszar:** „Prostokąt” (przeciągnij po mapie), „Wielokąt” (wierzchołki
-   kliknięciami; koniec kliknięciem w pierwszy punkt, dwuklikiem albo
-   `Enter`, `Backspace` cofa, `Esc` anuluje), „Widok mapy” (to, co teraz
-   widać), godło arkusza wpisane albo kliknięte w „Siatce godeł” (PL-1992,
-   PL-2000, wybrana skala) i „Plik…” — GeoJSON, GeoPackage albo ZIP
-   z jednym Shapefile; z pliku o kilku warstwach wybiera się jedną.
-2. **Produkt i filtry:** produkt z listy (z liczbą slotów i wersji),
-   warianty (segmenty) i filtry: magazyn, kraj, lata danych, kod jednostki,
-   wersje, stan plików, tekst. Aktywne filtry widać nad mapą.
-3. **Stan lokalny:** ile obszaru pokrywają bieżące wersje produktu
-   w magazynie, np. „lokalnie 30% obszaru”, z km² i liczbą wersji, osobno
-   dla każdego kraju. „Odśwież” czyta sloty obszaru z magazynu jeszcze raz;
-   „Pokaż pliki obszaru w Katalogu” przechodzi do listy.
+1. **Area:** "Prostokąt" (rectangle: drag on the map), "Wielokąt" (polygon:
+   click the vertices; finish by clicking the first point, with a double click
+   or `Enter`; `Backspace` undoes, `Esc` cancels), "Widok mapy" (the current
+   map view), a sheet code typed or clicked in the "Siatka godeł" (sheet grid:
+   PL-1992, PL-2000, the chosen scale) and "Plik…" (file): GeoJSON,
+   GeoPackage or a ZIP with one Shapefile; of a file with several layers you
+   choose one.
+2. **Product and filters:** a product from the list (with the number of slots
+   and versions), variants (segments) and filters: store, country, data
+   years, unit code, versions, file state, text. Active filters show above the
+   map.
+3. **Local state:** how much of the area the current versions of the product
+   cover in the store, for example "lokalnie 30% obszaru" (30% of the area is
+   local), with km² and the number of versions, separately for every country.
+   "Odśwież" (refresh) reads the slots of the area from the store again;
+   "Pokaż pliki obszaru w Katalogu" (show the files of the area in the
+   Catalog) opens the list.
 
-Obrysy plików są widoczne od razu; przy ponad 5000 obrysach w widoku mapa
-pokazuje siatkę zagęszczenia, a kliknięcie komórki przybliża. Kliknięcie
-obrysu otwiera kartę pliku (gdy w jednym miejscu jest kilka plików —
-najpierw ich listę). Pliki bez obrysu nie trafiają na mapę: licznik
-„… bez obrysu” prowadzi do nich w Katalogu. W legendzie zmienia się
-podkład: domyślnie szary „OpenFreeMap szary” (kafle wektorowe z danych
-OpenStreetMap, nazwy po polsku także za granicą: Praga, Drezno, Lwów),
-do wyboru „OSM GUGiK szary (tylko Polska)” — poza Polską jest pusty —
-albo „bez podkładu”. Ustawienia zapisane przed v0.2 zachowują swoją listę
-podkładów; nowe wbudowane daje usunięcie tabel `[[basemaps]]`
-z `config.toml`. Bez myszy: strzałki przesuwają mapę, plus i minus
-przybliżają.
+File footprints are visible at once; with more than 5,000 footprints in view
+the map shows a density grid, and clicking a cell zooms in. Clicking a
+footprint opens the file card (when several files lie in one place, their list
+comes first). Files without a footprint do not reach the map: the counter
+"… bez obrysu" (without footprint) leads to them in the Catalog. The legend
+changes the basemap: by default the grey "OpenFreeMap szary" (vector tiles
+from OpenStreetMap data, names in Polish also abroad: Praga, Drezno, Lwów), as
+options "OSM GUGiK szary (tylko Polska)" (Poland only; outside Poland it is
+empty) or "bez podkładu" (no basemap). Settings saved before v0.2 keep their
+list of basemaps; removing the `[[basemaps]]` tables from `config.toml` gives
+the new built-in ones. Without a mouse the arrow keys pan the map, plus and
+minus zoom.
 
-![Karta pliku z powodem braku podglądu](reports/v0.2-screenshots/02-karta-pliku-powod.webp)
+![File card with the reason a preview is missing](reports/v0.2-screenshots/02-karta-pliku-powod.webp)
 
-Obrysy arkuszy są wielokątami WGS84, a nie prostokątnymi obwiedniami.
-Podgląd pliku na mapie pojawia się po przygotowaniu kafli; większe rastry
-mogą wymagać przycisku „Zbuduj podgląd”. Kafle, miniatury i podgląd całego
-roku zapisują się w lokalnej pamięci po treści (limit 20 GB, najdawniejsze
-nieużywane znikają). Przy każdym pliku jest podgląd albo polski powód braku
-z instrukcją, co zrobić.
+Sheet footprints are WGS84 polygons, not rectangular envelopes. The preview of
+a file appears on the map after its tiles are prepared; larger rasters may
+need the button "Zbuduj podgląd" (build the preview). Tiles, thumbnails and
+the preview of a whole year are kept in the local content-addressed memory
+(limit 20 GB, the least recently used go first). Every file has a preview or a
+reason, in Polish, why it has none, with an instruction on what to do.
 
-## Katalog
+## Catalog
 
-![Katalog z wyszukiwaniem i filtrami](reports/v0.1-screenshots/03-catalog.webp)
+![Catalog with search and filters](reports/v0.1-screenshots/03-catalog.webp)
 
-- **Wyszukiwanie** (`Ctrl+K` albo `/`): każde słowo musi pasować do
-  początku godła, TERYT, KU, nazwy pliku, produktu, etykiety wersji, numeru
-  zgłoszenia prac albo kampanii; bez polskich znaków. 8–64 znaki
-  szesnastkowe to początek sumy SHA-256.
-- **Filtry:** magazyn, produkt z wariantami, kraj, rok danych (od–do; rok
-  nalotu albo wydania, nigdy rok pobrania), jednostka (dokładny kod),
-  wersje (bieżące, wszystkie, pełne arkusze `full_sheet/`, przypięte
-  w projektach, niebieżące i nieprzypięte), stan oraz obszar albo
-  prostokąt w wybranym układzie. Ctrl+K z mapy przenosi jej filtry i obszar.
-- **Położenie:** „Wszystkie”, „Z położeniem”, „Bez obrysu” — liczniki
-  obejmują cały wynik. Pliki bez obrysu są tylko tutaj; powód braku jest
-  w kolumnie „Położenie”.
-- Lista doczytuje kolejne strony przy przewijaniu. Klawiatura: `↑` `↓`
-  wybór, `Enter` karta pliku, `M` pokaż na mapie.
-- „Pokaż wynik na mapie” otwiera mapę z tymi samymi filtrami, a „Zapytanie
-  API” — to samo zapytanie jako adres API.
+- **Search** (`Ctrl+K` or `/`): every word must match the beginning of a sheet
+  code, TERYT, KU, file name, product, version label, request number or
+  campaign, without Polish diacritics. 8 to 64 hexadecimal characters are the
+  beginning of a SHA-256 sum.
+- **Filters:** store, product with variants, country, data year (from to: the
+  year of the flight or release, never the year of download), unit (exact
+  code), versions (current, all, full sheets `full_sheet/`, pinned in
+  projects, non-current and unpinned), state, and an area or a rectangle in
+  the chosen coordinate system. `Ctrl+K` from the map carries its filters and
+  area over.
+- **Location:** "Wszystkie" (all), "Z położeniem" (with location), "Bez
+  obrysu" (without footprint); the counters cover the whole result. Files
+  without a footprint are only here; the reason is in the column
+  "Położenie" (location).
+- The list loads further pages while you scroll. Keyboard: `↑` `↓` choose,
+  `Enter` opens the file card, `M` shows it on the map.
+- "Pokaż wynik na mapie" (show the result on the map) opens the map with the
+  same filters, and "Zapytanie API" (API query) gives the same query as an API
+  address.
 
-## Karta pliku
+## File card
 
-![Karta pliku](reports/v0.1-screenshots/04-file-card.webp)
+![File card](reports/v0.1-screenshots/04-file-card.webp)
 
-- **Oś wersji:** najnowsza na górze; „bieżąca” — wskazuje ją ścieżka
-  standardowa, „pełny arkusz” — dowiązanie `full_sheet/`, „brak
-  w magazynie od …” — wersja, której pliku już nie ma.
-- **Wersja:** rok i data danych, etykieta (kampania, wydanie albo data
-  pobrania), zgłoszenie prac, arkusz pełny, rozdzielczość, układy poziomy
-  i wysokości, nodata, rozmiar, SHA-256, data pobrania i położenie ze
-  źródłem obrysu.
-- **Licencja** z przyciskiem „Kopiuj atrybucję”.
-- **Ścieżki:** ścieżka wersji wskazuje zawsze tę samą treść — tej używa się
-  w projektach i analizach; ścieżka standardowa to dowiązanie do bieżącej
-  wersji, które po pobraniu nowszej wskaże inną treść. „Na innym
-  komputerze” podaje tę samą ścieżkę pod inną literą dysku albo
-  montowaniem (ustawienie `path_aliases` magazynu).
-- **„Przypięta w:”** — projekty, które przypięły daną wersję.
-- **„Pliki tego samego zapytania”** — pliki pobrane jednym zapytaniem
-  producenta, np. obie strony granicy PL/CZ.
-- **Sidecar** — surowe metadane producenta bez zmian, do skopiowania.
-- **„Potwierdź bieżącą wersję”** sprawdza treścią (SHA-256 całego pliku),
-  którą wersję trzyma ścieżka standardowa; na udziale może to potrwać.
+- **Version timeline:** the newest on top; "bieżąca" (current) is the one the
+  standard path points to, "pełny arkusz" (full sheet) the `full_sheet/` link,
+  "brak w magazynie od …" (missing from the store since …) a version whose
+  file is gone.
+- **Version:** year and date of the data, label (campaign, release or download
+  date), request, full sheet, resolution, horizontal and vertical systems,
+  nodata, size, SHA-256, download date and the location with the source of the
+  footprint.
+- **Licence** with the button "Kopiuj atrybucję" (copy the attribution).
+- **Paths:** the version path always points to the same content, which is the
+  one to use in projects and analyses; the standard path is a link to the
+  current version and points to other content once a newer one is downloaded.
+  "Na innym komputerze" (on another computer) gives the same path under another
+  drive letter or mount (the store setting `path_aliases`).
+- **"Przypięta w:"** (pinned in): the projects that pinned this version.
+- **"Pliki tego samego zapytania"** (files of the same request): files
+  downloaded by one producer request, for example both sides of the PL/CZ
+  border.
+- **Sidecar:** the producer's raw metadata, unchanged, ready to copy.
+- **"Potwierdź bieżącą wersję"** (confirm the current version) checks by
+  content (SHA-256 of the whole file) which version the standard path holds;
+  on a share it can take a while.
 
-`Esc` albo „×” zamyka kartę.
+`Esc` or "×" closes the card.
 
-## Projekty i dane własne
+## Projects and own data
 
-![Projekt z migawką](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
+![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
-- **Lista** projektów pokazuje magazyn, zadania, przypięte i brakujące
-  wersje oraz dane własne. Ukrytych projektów nie widać.
-- **Karta projektu** pokazuje „Stan teraz” producenta, zadania i przypięcia
-  z manifestu. Manifest zmienia tylko Kartograf.
-- **Folder danych** jest domyślnie `<katalog projektu>/dane/`; inny folder
-  może wskazać administrator. Skan tego folderu tylko czyta pliki. Dane
-  własne są na mapie i w karcie projektu, poza katalogiem `/slots` magazynu.
-- **Plik roboczy i migawki:** karta podaje metadane, podgląd i historię;
-  „Zmieniony od migawki” oznacza, że zawartość różni się od ostatniej
-  zapisanej wersji. Najpierw zobacz plan migawki (szacowany rozmiar
-  i ewentualna przeszkoda), potem „Zrób migawkę”. Uprawnienie `project.write`
-  ma właściciel projektu lub administrator; samo oglądanie projektu
-  nie wystarcza. Spójna migawka GeoPackage zawiera zatwierdzone zmiany
-  nawet przy otwartym edytorze. Dwa razy ta sama treść nie powiela wersji.
-  Migawki leżą w `<folder danych>/.wersje/`, w otwartym formacie
-  `archiwista-snapshot/1`; Archiwista ich nie usuwa.
+- **The list** of projects shows the store, the tasks, the pinned and missing
+  versions and the own data. Hidden projects are not visible.
+- **The project card** shows the producer's "Stan teraz" (state now), the
+  tasks and the pins from the manifest. Only Kartograf changes the manifest.
+- **The data folder** is `<project folder>/dane/` by default; an administrator
+  can point to another folder. Its scan only reads files. Own data is on the
+  map and in the project card, outside the `/slots` catalog of the store.
+- **Working file and snapshots:** the card gives metadata, a preview and the
+  history; "Zmieniony od migawki" (changed since the snapshot) means the
+  content differs from the last saved version. First look at the plan of the
+  snapshot (estimated size and any obstacle), then "Zrób migawkę" (make a
+  snapshot). The permission `project.write` belongs to the owner of the
+  project or an administrator; viewing a project is not enough. A consistent
+  GeoPackage snapshot holds the committed changes even when an editor is open.
+  The same content twice does not duplicate a version. Snapshots lie in
+  `<data folder>/.wersje/`, in the open format `archiwista-snapshot/1`;
+  Archiwista does not delete them.
 
-![Plik zmieniony od migawki](reports/v0.2-screenshots/09-zmieniony-od-migawki.webp)
-![Powtórna migawka tej samej treści](reports/v0.2-screenshots/10-ta-sama-tresc.webp)
+![File changed since the snapshot](reports/v0.2-screenshots/09-zmieniony-od-migawki.webp)
+![A second snapshot of the same content](reports/v0.2-screenshots/10-ta-sama-tresc.webp)
 
-## Wachlarz, Oś czasu i Porównanie
+## Fan, Timeline and Comparison
 
-![Wachlarz lat](reports/v0.2-screenshots/04-wachlarz.webp)
+![Fan of years](reports/v0.2-screenshots/04-wachlarz.webp)
 
-Po wskazaniu obszaru i produktu otwórz „Wachlarz”: karty kolejnych lat
-lub kampanii zawierają podgląd lokalnych arkuszy; najnowsze są na górze.
-Wybrana warstwa pokazuje się w całości i na mapie. Dla danych własnych
-Wachlarz pokazuje plik roboczy i jego migawki. „Oś czasu” pokazuje lata
-z danymi i ich lokalne pokrycie obszaru; wybór roku jest wspólny dla
-mapy, Wachlarza i adresu strony. Brakujący rok nie oznacza braku
-produktu u producenta — tylko brak tej warstwy lokalnie.
+After you choose an area and a product, open the "Wachlarz" (Fan): the cards
+of successive years or campaigns hold the preview of the local sheets, the
+newest on top. The chosen layer shows in full and on the map. For own data the
+Fan shows the working file and its snapshots. The "Oś czasu" (Timeline) shows
+the years with data and their local coverage of the area; the choice of a year
+is shared by the map, the Fan and the page address. A missing year does not
+mean the producer has no such product, only that this layer is not local.
 
-![Oś czasu i pokrycie](reports/v0.2-screenshots/05-os-czasu.webp)
+![Timeline and coverage](reports/v0.2-screenshots/05-os-czasu.webp)
 
-„Porównaj” zestawia metadane dwóch wersji, plików własnych albo migawek
-(bez obliczania różnic obiektów). Dwa podglądy możesz oglądać w kurtynie,
-przez przenikanie lub obok siebie; to wizualne zestawienie, nie modyfikacja
-danych.
+"Porównaj" (compare) sets the metadata of two versions, own files or
+snapshots side by side (object differences are not computed). You can view two
+previews with the curtain, by cross-fading or side by side; this is a visual
+comparison and changes no data.
 
-![Porównanie i kurtyna](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
+![Comparison and curtain](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
 
-## Magazyn
+## Store
 
-![Magazyn](reports/v0.1-screenshots/06-store.webp)
+![Store](reports/v0.1-screenshots/06-store.webp)
 
-- **Stan:** dostępny, niedostępny (od kiedy) albo jeszcze nie zeskanowany;
-  dysk lokalny albo udział; ostatnie pełne przejście, zawartość indeksu,
-  ostatni skan z wykonawcą, ostatni pełny skan, wersja Kartografa i indeks
-  lokalny.
-- **Przyciski:** „Odśwież” — skan przyrostowy (tylko zmiany); „Pełny skan”
-  — cały magazyn, także pliki usunięte albo dodane ręcznie w znanych
-  katalogach wersji; „Uzupełnij obrysy jednostek” — granice TERYT i KU
-  pobierane z sieci (niedostępne w trybie offline). Postęp zadania widać
-  w tym widoku i w pasku stanu.
-- **Zajętość według produktów** — każda wersja liczona raz, bez dowiązań
-  i powtórzonej treści.
-- **Niebieżące i nieprzypięte** — wersje ani bieżące, ani w `full_sheet/`,
-  ani przypięte w projektach, i ile miejsca zwolniłoby ich usunięcie.
-  Archiwista niczego nie usuwa — raport służy decyzji.
-- **Problemy magazynu** z opisem naprawy (i kartą pliku, gdy dotyczą
-  pliku) oraz **projekty** korzystające z magazynu.
+- **State:** available, unavailable (since when) or not yet scanned; local disk
+  or share; the last full pass, the content of the index, the last scan with
+  its executor, the last full scan, the Kartograf version and the local
+  index.
+- **Buttons:** "Odśwież" (refresh) is an incremental scan (changes only);
+  "Pełny skan" (full scan) covers the whole store, also files removed or added
+  by hand in known version folders; "Uzupełnij obrysy jednostek" (complete
+  unit footprints) fetches TERYT and KU boundaries from the network
+  (unavailable in offline mode). The progress of the job shows in this view
+  and in the status bar.
+- **Usage by product:** every version counted once, without links and repeated
+  content.
+- **Non-current and unpinned:** versions that are neither current, nor in
+  `full_sheet/`, nor pinned in projects, and how much space removing them would
+  free. Archiwista deletes nothing; the report serves a decision.
+- **Store problems** with a repair description (and the file card when they
+  concern a file), and the **projects** that use the store.
 
-## Sesja
+## Session
 
-Archiwista działa tylko na tym komputerze (`127.0.0.1`) i bez sesji nic nie
-pokazuje. Sesja wygasa po 24 godzinach bez użycia i kończy się wraz
-z zatrzymaniem serwera; wtedy pojawia się ekran „Wymagana sesja”. Nową
-sesję otwiera adres wypisany przez `archiwista serve` albo nowy adres
-z polecenia `archiwista token`. Kolejna karta przeglądarki dostaje sesję od
-otwartej karty Archiwisty.
+Archiwista works only on this computer (`127.0.0.1`) and shows nothing
+without a session. The session expires after 24 hours without use and ends
+when the server stops; the screen "Wymagana sesja" (session required) then
+appears. A new session is opened by the address `archiwista serve` printed or
+a new address from `archiwista token`. Another browser tab gets its session
+from an open Archiwista tab.
 
-## Gdy coś nie działa
+## When something does not work
 
-- `archiwista doctor` sprawdza instalację, wtyczkę Kartografa, magazyny
-  i port, a przy każdym problemie podaje naprawę.
-- **Magazyn niedostępny** (np. odłączony udział): widoki pokazują stan
-  z indeksu, pasek stanu podaje jego czas; po ponownym podłączeniu kolejny
-  skan uzupełnia zmiany bez przebudowy indeksu.
-- **Źródło danych niedostępne** (brak Kartografa albo niewspierana wersja):
-  pasek stanu podaje polecenie naprawy, to samo wypisuje `archiwista doctor`.
+- `archiwista doctor` checks the installation, the Kartograf plugin, the
+  stores and the port, and gives a repair for every problem.
+- **Store unavailable** (for example a disconnected share): the views show the
+  state of the index, the status bar gives its time; after reconnecting, the
+  next scan completes the changes without rebuilding the index.
+- **Data source unavailable** (Kartograf missing or an unsupported version):
+  the status bar gives the repair command, and `archiwista doctor` prints the
+  same.
 
-## Czego wersja 0.2 nie robi
+## What version 0.2 does not do
 
-- Nie pobiera danych, nie sprawdza dostępności u źródła i nie zmienia
-  manifestów projektu przez producenta — to v0.3 „Działania”.
-- Nie buduje podglądów przed pierwszym otwarciem; wstępne budowanie miniatur
-  i przeglądów bieżących wersji zaplanowano na v0.3.
-- Nie pokazuje różnic obiektów między migawkami, nie ma logowania ani
-  pracy w zespole (v0.4) i nie indeksuje jeszcze danych IMGW (v0.5).
+- It does not download data, does not check availability at the source and
+  does not change project manifests through the producer; that is v0.3
+  "Actions".
+- It does not build previews before the first opening; pre-building of
+  thumbnails and overviews of current versions is planned for v0.3.
+- It does not show object differences between snapshots, has no sign-in or
+  team work (v0.4) and does not yet index IMGW data (v0.5).

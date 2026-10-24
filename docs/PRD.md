@@ -1,286 +1,292 @@
-# PRD – Archiwista
+# PRD: Archiwista
 
-Oct 17, 2026 · @Piotr
+2026-10-17 · @Piotr
 
-**Status:** szkic do zatwierdzenia · **Licencja:** MIT · **Zakres i etapy:**
-[`SCOPE.md`](SCOPE.md) · **Szczegóły:** [`SPEC.md`](SPEC.md) · **Decyzje:**
+**Status:** draft for approval · **Licence:** MIT · **Scope and stages:**
+[`SCOPE.md`](SCOPE.md) · **Details:** [`SPEC.md`](SPEC.md) · **Decisions:**
 [`DECISIONS.md`](DECISIONS.md)
 
-Ten dokument mówi, **co** Archiwista ma robić, **dla kogo** i **po co**. Nie
-opisuje technologii: architekturę ustalono w etapie 0 (decyzja użytkownika
-2026-10-18; SPEC 5, A-ADR-004..008, 013, 015, 028). Przy rozbieżności
-w sprawach zakresu i priorytetów PRD i SCOPE mają pierwszeństwo przed SPEC.
+This document says **what** Archiwista does, **for whom** and **why**. It does
+not describe technology: the architecture was settled in stage 0 (user decision
+2026-10-18; SPEC 5, A-ADR-004 to 008, 013, 015, 028). Where they disagree on
+scope and priorities, the PRD and SCOPE take precedence over the SPEC. The
+interface is Polish; the names of views and controls are given in English with
+the Polish label on first use.
 
-## Cel i problem
+## Goal and problem
 
-Archiwista to aplikacja webowa do pracy z magazynem danych: przestrzennych,
-które zapisuje Kartograf, i pomiarowych IMGW-PIB, które zapisuje IMGWTools.
-Pozwala widzieć, co jest w magazynie, sprawdzać, co jest dostępne i aktualne
-u źródła, i działać — pobierać, aktualizować i przypinać dane w projektach —
-bez znajomości CLI i układu katalogów.
+Archiwista is a web application for working with a data store: the spatial
+data that Kartograf writes and the IMGW-PIB measurement data that IMGWTools
+writes. It shows what is in the store, checks what is available and current at
+the source, and acts (downloads, updates and pins data in projects) without
+knowing the CLI or the directory layout.
 
-Problem: magazyn Kartografa szybko rośnie (dziesiątki tysięcy plików, kilka
-wersji tego samego arkusza, wiele projektów przypinających różne wersje, dane
-PL i CZ w różnych układach, dysk lokalny albo udział sieciowy). Proste
-pytania wymagają dziś CLI, reguł katalogów `data/` i czytania plików JSON:
+The problem: the Kartograf store grows quickly (tens of thousands of files,
+several versions of the same sheet, many projects that pin different versions,
+PL and CZ data in different systems, a local disk or a network share). Simple
+questions today need the CLI, the rules of the `data/` directories and reading
+JSON files:
 
-- „Co mam w magazynie dla tej zlewni i z którego roku?”
-- „Z którego roku źródło ma komplet arkuszy dla tego obszaru?”
-- „Czy jest nowszy nalot niż ten, którego używa projekt?”
-- „Których plików użył projekt X i czy są nienaruszone?”
-- „Które wodowskazy w tej zlewni mają ciągłe przepływy dobowe od 1951?”
-- „Czy IMGW opublikował nowy rocznik albo poprawił stary?”
+- "What do I have in the store for this catchment, and from which year?"
+- "From which year does the source have a complete set of sheets for this
+  area?"
+- "Is there a newer flight than the one a project uses?"
+- "Which files did project X use, and are they untouched?"
+- "Which gauges in this catchment have continuous daily discharge since 1951?"
+- "Has IMGW published a new year or corrected an old one?"
 
-Charakter produktu: **manager magazynu**, nie program GIS ani program
-obliczeń. Archiwista zleca pobieranie i aktualizację danych, ale nie ma
-własnego mechanizmu pobierania ani obróbki — każde działanie na danych
-wykonuje publiczne API producenta (Kartografa albo IMGWTools), a źródłem
-prawdy są pliki w magazynie (sidecary, manifesty).
+The character of the product: a **store manager**, not a GIS program or a
+calculation program. Archiwista orders data to be downloaded and updated, but
+has no mechanism of its own to download or process it: every action on data is
+done by the public API of the producer (Kartograf or IMGWTools), and the source
+of truth is the files in the store (sidecars, manifests).
 
-Kod jest otwarty (MIT). Archiwista zastępuje podprojekt 5 roadmapy Kartografa
-(„GUI webowe”).
+The code is open (MIT). Archiwista replaces subproject 5 of the Kartograf
+roadmap ("web GUI").
 
-## Odbiorcy i ich potrzeby
+## Users and their needs
 
-| Odbiorca | Etap | Kluczowe pytanie | Czego potrzebuje |
+| User | Stage | Key question | Needs |
 | --- | --- | --- | --- |
-| Hydrolog przygotowujący dane do modelu (zna QGIS, CLI rzadko) | MVP | Co jest dostępne dla mojej zlewni i z którego roku? | obszar na mapie → dostępność z etykietami pokrycia → pobranie; wodowskazy w zlewni z pokryciem szeregów |
-| Specjalista GIS (zna Kartografa i CLI) | MVP | Które wersje mam, czy są nowsze, czym się różnią? | przegląd wersji i kampanii, aktualność, podglądy, dane z pogranicza PL/CZ |
-| Zespół projektowy (kilka osób, wspólny magazyn na udziale SMB) | MVP | Kto co pobrał i które projekty używają których danych? | jeden serwer w sieci lokalnej, logowanie i role, wspólna kolejka bez podwójnych pobrań, dziennik działań |
-| Deweloper Hydrografa, Hydrologa, Retmana | MVP | Gdzie leży niezmienna wersja tego pliku albo szeregu? | ścieżki wersji do skryptów, stan magazynu, projekty |
-| Użytkownik przygotowujący dane do QGIS i obliczeń | po MVP | Jak wczytać to jednym ruchem / zlecić zdaniem? | zestaw do QGIS, asystent w języku naturalnym, mozaiki, porównania |
+| A hydrologist preparing data for a model (knows QGIS, rarely the CLI) | MVP | What is available for my catchment, and from which year? | area on the map → availability with coverage labels → download; gauges in the catchment with the coverage of series |
+| A GIS specialist (knows Kartograf and the CLI) | MVP | Which versions do I have, are there newer ones, how do they differ? | a review of versions and campaigns, freshness, previews, PL/CZ border data |
+| A project team (several people, a shared store on an SMB share) | MVP | Who downloaded what, and which projects use which data? | one server on the local network, sign-in and roles, a shared queue without double downloads, an action log |
+| A developer of Hydrograf, Hydrolog, Retman | MVP | Where is the immutable version of this file or series? | version paths for scripts, store state, projects |
+| A user preparing data for QGIS and calculations | after the MVP | How do I load this in one move, or order it in a sentence? | a QGIS set, a natural-language assistant, mosaics, comparisons |
 
-Wspólna potrzeba: **ludzkie nazwy i jasny plan** — „NMT 1 m · PL-1992 ·
-EVRF2007”, a nie `nmt/pl_1992_1m_evrf2007`; przed każdym działaniem: co,
-ile plików, ile już jest lokalnie, ile danych, dokąd.
+A shared need: **human names and a clear plan**: "NMT 1 m · PL-1992 ·
+EVRF2007", not `nmt/pl_1992_1m_evrf2007`; before every action: what, how many
+files, how many are already local, how much data, where to.
 
-## Opis produktu
+## Product description
 
-Główny przepływ: **mapa → obszar → produkt → wynik**. Użytkownik zaznacza
-obszar (prostokąt, wielokąt, plik geometrii, godło, TERYT, KU, kraj),
-wybiera produkt i od razu widzi stan magazynu (bez sieci), a w tle
-sprawdzenie u źródła: lata (kampanie, wydania) z etykietami pokrycia
-(„pełne”, „pełne · 2 kampanie”, „częściowe · 58%”, „brak danych”)
-i plakietką magazynu („pobrane 5/12”). Z wiersza roku: „Pobierz…” → okno
-planu → zadanie w tle z postępem i anulowaniem.
+The main flow: **map → area → product → result**. The user selects an area
+(rectangle, polygon, geometry file, sheet code, TERYT, KU, country), chooses a
+product and at once sees the state of the store (no network), and in the
+background a check at the source: years (campaigns, releases) with coverage
+labels ("full", "full · 2 campaigns", "partial · 58%", "no data") and the store
+badge ("downloaded 5/12"). From a year row: "Download…" → the plan window → a
+background job with progress and cancellation.
 
-Widoki MVP: „Mapa” (obrysy, stacje, zaznaczanie obszaru), „Wachlarz” (lata
-wyniku jako miniatury, każda w całości), „Katalog” (lista i wyszukiwanie,
-także dane bez położenia), „Karta pliku” i „Karta stacji”, „Projekty”,
-„Magazyn” (zajętość i problemy), „Zadania”, „Ustawienia”. Słownictwo
-i szkice: SPEC 2 i 6, mockup `mockup/`.
+The MVP views: "Map" (footprints, stations, area selection), "Fan" (Wachlarz:
+the years of a result as thumbnails, each shown whole), "Catalog" (list and
+search, also data without location), "File card" and "Station card",
+"Projects", "Store" (usage and problems), "Jobs", "Settings". Vocabulary and
+sketches: SPEC 2 and 6, the mockup `mockup/`.
 
-**Czym Archiwista nie jest** (SPEC 1.3): programem GIS (analizy w QGIS);
-własnym mechanizmem pobierania ani obróbki (zleca je producentom); narzędziem usuwania
-danych z magazynu; programem analiz hydrologicznych (Hydrolog, Retman);
-źródłem danych bieżących IMGW (stany, ostrzeżenia); edytorem danych ani
-systemem historii pojedynczych obiektów; zamiennikiem wtyczki QGIS Kartografa.
+**What Archiwista is not** (SPEC 1.3): a GIS program (analyses belong to
+QGIS); its own mechanism for downloading or processing (it orders them from the
+producers); a tool for deleting data from the store; a hydrological analysis
+program (Hydrolog, Retman); a source of current IMGW data (states, warnings);
+a data editor or a history system of single objects; a replacement for the
+Kartograf QGIS plugin.
 
-## Widoki według rodzaju danych
+## Views by kind of data
 
-Widoki powstają z obrysów jednostek (zasięg pliku od producenta), raportu
-dostępności u źródła i stanu magazynu; podglądy — wyłącznie z danych w
-magazynie albo z usług źródła, które mają wymiar czasu. Lata niepobrane bez
-takiej usługi mają w „Wachlarzu” tylko obrysy w kolorach pokrycia. Mockup
-pokazuje dla każdego roku ten sam bieżący obraz z WMS GUGiK — to
-uproszczenie mockupu, nie cecha danych.
+Views are made from unit footprints (the extent of a file from the producer),
+the availability report from the source and the state of the store; previews
+come only from data in the store or from source services that have a time
+dimension. Years that are not downloaded and have no such service have, in the
+"Fan", only footprints in the coverage colours. The mockup shows the same
+current picture from the GUGiK WMS for every year; that is a simplification of
+the mockup, not a property of the data.
 
-| Rodzaj danych | Jednostka i obrys | „Mapa” | „Wachlarz” (warstwa = rok, kampania, wydanie) | Pokrycie i zmiany |
+| Kind of data | Unit and footprint | "Map" | "Fan" (layer = year, campaign, release) | Coverage and changes |
 | --- | --- | --- | --- | --- |
-| Rastry z arkuszy (NMT, NMPT, LAZ, ortofotomapa) | arkusz (godło), kafel CZ | arkusze w kolorach pokrycia i kampanii | obrysy + podgląd arkuszy pobranych; ortofotomapa także lata niepobrane z WMS GUGiK z wymiarem czasu (1995–2025) | etykiety roku (6.4); zmiany: porównanie metadanych i kurtyna (v0.2), model różnic (v1.3) |
-| Produkty jednostkowe (BDOT10k, BDOO, modele 3D, CORINE) | jednostka administracyjna (powiat — TERYT), granice z PRG | jednostki obszaru: paczka jest / brak / w magazynie | obrysy jednostek + render wybranych warstw z pobranych paczek, przycięty do obszaru | etykiety wydania (KD-4, v0.3); zmiany: różnica wydań wg klas obiektów (porównanie wektorów u producenta, później) |
-| Pliki krajowe i wyniki obszaru (PRG, ZABAGED, RUIAN…) | kraj albo obszar zadania | zasięg | jeden wpis „bieżące” albo wersje wg daty | wersje wg daty pobrania lub wydania |
-| Stacje IMGW (od v0.6 także ČHMÚ) | punkt stacji; bez położenia — „Katalog” | punkty w kolorach pokrycia wybranej zmiennej, z plakietką dostawcy | — (dane opisują czas, nie obszar): „Oś czasu” stacje × lata | etykiety pokrycia szeregów (A-ADR-021) |
-| Dane własne projektu (np. sieć kanalizacyjna) i rodzaj ogólny (dowolny plik rastrowy lub wektorowy) | zasięg z pliku | zasięg i podgląd w widoku, razem z danymi projektu | migawki jako warstwy | bez źródła zdalnego: bez etykiet dostępności; „zmieniony od migawki z …”; porównanie metadanych migawek |
+| Rasters from sheets (NMT, NMPT, LAZ, orthophoto) | sheet (code), CZ tile | sheets in the coverage and campaign colours | footprints + a preview of downloaded sheets; for the orthophoto also years not downloaded, from the GUGiK WMS with a time dimension (1995 to 2025) | year labels (6.4); changes: metadata comparison and the curtain (v0.2), difference model (v1.3) |
+| Unit products (BDOT10k, BDOO, 3D models, CORINE) | administrative unit (county, TERYT), boundaries from PRG | units of the area: package present / missing / in the store | unit footprints + a render of chosen layers from downloaded packages, clipped to the area | release labels (KD-4, v0.3); changes: a difference of releases by feature class (vector comparison at the producer, later) |
+| National files and area results (PRG, ZABAGED, RUIAN…) | the country or the area of the task | extent | one "current" entry or versions by date | versions by download or release date |
+| IMGW stations (also ČHMÚ from v0.6) | station point; without location: the "Catalog" | points in the coverage colours of the chosen variable, with a provider badge | none (the data describes time, not area): the "Timeline" stations × years | coverage labels of series (A-ADR-021) |
+| Own project data (for example a sewer network) and the general kind (any raster or vector file) | extent from the file | extent and preview in the view, together with the project data | snapshots as layers | no remote source: no availability labels; "changed since the snapshot of …"; metadata comparison of snapshots |
 
-## Wymagania funkcjonalne
+## Functional requirements
 
-Oznaczenie etapu w nawiasie: wersja z [`SCOPE.md`](SCOPE.md). Szczegóły
-każdego wymagania: wskazana sekcja SPEC.
+The stage in brackets is the version from [`SCOPE.md`](SCOPE.md). Details of
+each requirement: the SPEC section named.
 
-**F1. Magazyny i indeks** (SPEC 4)
+**F1. Stores and index** (SPEC 4)
 
-- F1.1 Konfiguracja kilku magazynów (np. lokalny i zespołowy); magazyn = katalog Kartografa i/lub katalog IMGW. (v0.1)
-- F1.2 Lokalny indeks magazynu i projektów budowany z sidecarów i manifestów przez API producentów; pełny i przyrostowy skan, odświeżenie widoku przed odpowiedzią. Indeks jest pamięcią podręczną: można go usunąć i odbudować. (v0.1)
-- F1.3 Stan indeksu zawsze widoczny („Indeks z 14:02, skan trwa: 63%”); interfejs nigdy nie czeka na skan. (v0.1)
-- F1.4 Praca na udziale SMB, także zamontowanym tylko do odczytu; odłączony udział = baner i indeks bez zmian, po podłączeniu odświeżenie bez przebudowy. (v0.1)
-- F1.5 Źródła danych jako dodatki: bez IMGWTools aplikacja działa w całości dla danych Kartografa, a źródło IMGW jest jawnie „niedostępne” (A-ADR-024). (v0.1)
+- F1.1 Configuration of several stores (for example local and team); a store is a Kartograf directory and/or an IMGW directory. (v0.1)
+- F1.2 A local index of the store and the projects built from sidecars and manifests through the producers' APIs; full and incremental scan, view refresh before the answer. The index is a cache: it can be deleted and rebuilt. (v0.1)
+- F1.3 The index state is always visible ("Index from 14:02, scan in progress: 63%"); the interface never waits for a scan. (v0.1)
+- F1.4 Work on an SMB share, also mounted read-only; a disconnected share means a banner and an unchanged index, and after reconnecting a refresh without a rebuild. (v0.1)
+- F1.5 Data sources as add-ons: without IMGWTools the application works in full for Kartograf data, and the IMGW source is explicitly "unavailable" (A-ADR-024). (v0.1)
 
-**F2. Mapa i obszar** (SPEC 5.4, 6.3)
+**F2. Map and area** (SPEC 5.4, 6.3)
 
-- F2.1 Mapa z obrysami wersji w magazynie i podkładem (szary OSM, tryb offline). (v0.1)
-- F2.2 Zaznaczanie obszaru: prostokąt, wielokąt, godło, TERYT, KU, plik geometrii; po nazwie gminy lub powiatu. (v0.1; nazwy: v0.3)
-- F2.3 Stan magazynu dla obszaru i produktu bez sieci („lokalnie 83% obszaru”). (v0.1)
+- F2.1 A map with the footprints of versions in the store and a basemap (grey OSM, offline mode). (v0.1)
+- F2.2 Area selection: rectangle, polygon, sheet code, TERYT, KU, geometry file; by the name of a municipality or county. (v0.1; names: v0.3)
+- F2.3 The state of the store for an area and product without a network ("83% of the area local"). (v0.1)
 
-**F3. Katalog i wyszukiwanie** (SPEC 6.6, 6.8)
+**F3. Catalog and search** (SPEC 6.6, 6.8)
 
-- F3.1 „Katalog”: lista z filtrami (produkt, rok danych, wariant, projekt, stan) i grupą danych bez położenia. (v0.1)
-- F3.2 Wyszukiwanie po identyfikatorze z rozpoznaniem rodzaju: godło, TERYT, numer zgłoszenia, początek sumy SHA-256, kod stacji IMGW. (v0.1; stacje: v0.5)
+- F3.1 The "Catalog": a list with filters (product, data year, variant, project, state) and a group of data without location. (v0.1)
+- F3.2 Search by identifier with recognition of the kind: sheet code, TERYT, request number, the beginning of a SHA-256 sum, IMGW station code. (v0.1; stations: v0.5)
 
-**F4. Karta pliku i wersje** (SPEC 3 UC-04, 6.5)
+**F4. File card and versions** (SPEC 3 UC-04, 6.5)
 
-- F4.1 Oś wersji slotu: bieżąca, pełna, etykiety (kampania, wydanie), które projekty przypinają którą wersję. (v0.1)
-- F4.2 Metadane po ludzku i surowa wartość o jedno kliknięcie; licencja z „Kopiuj atrybucję”; kopiowanie ścieżki wersji. (v0.1)
+- F4.1 The version timeline of a slot: current, full, labels (campaign, release), which projects pin which version. (v0.1)
+- F4.2 Metadata in plain words and the raw value one click away; the licence with "Copy attribution"; copying the version path. (v0.1)
 
-**F5. Podglądy** (SPEC 5.7, 8.5 poziomy 1–2)
+**F5. Previews** (SPEC 5.7, 8.5 levels 1 and 2)
 
-- F5.1 Podgląd każdego typu pliku magazynu albo podany powód braku; ten sam plik nie jest przeliczany drugi raz; limit pamięci podglądów. (v0.2)
-- F5.2 „Wachlarz” i „Oś czasu” lat danych lokalnych; porównanie metadanych dwóch wersji i kurtyna na mapie. (v0.2)
-- F5.3 Wstępne budowanie miniatur i przeglądu przy małym powiększeniu (bez wszystkich kafli) bieżących wersji w zadaniu w tle: po odświeżeniu indeksu dla nowych wersji po włączeniu przez administratora (domyślnie wyłączone) lub na żądanie z filtrem produktu/segmentu, projektu i obszaru przez CLI albo API; niski priorytet wobec podglądów interaktywnych, anulowanie, limit pamięci bez wypierania niedawno używanych podglądów, odczyt magazynu bez sieci i z zachowaniem widoczności projektów. (v0.3; decyzja użytkownika 2026-10-19)
+- F5.1 A preview of every file type in the store or the reason it has none; the same file is not computed twice; a limit of the preview memory. (v0.2)
+- F5.2 The "Fan" and the "Timeline" of local data years; metadata comparison of two versions and the curtain on the map. (v0.2)
+- F5.3 Pre-building of thumbnails and a low-zoom overview (without all tiles) of current versions in a background job: after an index refresh for new versions when an administrator turns it on (off by default), or on request with a product/segment, project and area filter through the CLI or API; low priority against interactive previews, cancellation, a memory limit that does not evict recently used previews, a read of the store without a network and with project visibility kept. (v0.3; user decision 2026-10-19)
 
-**F6. Dostępność i etykiety pokrycia** (SPEC 6.4, A-ADR-010, 017)
+**F6. Availability and coverage labels** (SPEC 6.4, A-ADR-010, 017)
 
-- F6.1 Sprawdzenie u źródła dla obszaru i produktu (wysokości PL i CZ) w tle; ostatni raport z datą dostępny bez sieci. (v0.3)
-- F6.2 Etykiety pokrycia roku i plakietka magazynu; wariant = produkt, rok, układ, rozdzielczość, układ wysokości, zgłoszenie (formaty jako plakietki). (v0.3)
-- F6.3 Pokrycie wydań produktów jednostkowych (BDOT10k i jego archiwum, BDOO, modele 3D, CORINE): które jednostki obszaru mają paczkę w danym wydaniu (KD-4; decyzja użytkownika 2026-10-18). (v0.3)
-- F6.4 Lata obrazów PL (ortofotomapa, true orto, intensywność) z pełnością arkuszy ze skorowidza (KD-3; decyzja użytkownika 2026-10-18). (v0.3)
+- F6.1 A check at the source for an area and product (PL and CZ elevation) in the background; the last report with its date is available without a network. (v0.3)
+- F6.2 Year coverage labels and the store badge; a variant is product, year, system, resolution, vertical datum, request (formats as badges). (v0.3)
+- F6.3 Coverage of releases of unit products (BDOT10k and its archive, BDOO, 3D models, CORINE): which units of the area have a package in a given release (KD-4; user decision 2026-10-18). (v0.3)
+- F6.4 Years of PL images (orthophoto, true orthophoto, intensity) with the completeness of sheets from the index (KD-3; user decision 2026-10-18). (v0.3)
 
-**F7. Działania** (SPEC 3 UC-01, UC-05, UC-15; 5.6)
+**F7. Actions** (SPEC 3 UC-01, UC-05, UC-15; 5.6)
 
-- F7.1 „Okno planu” przed każdym działaniem z siecią albo zapisem: co, ile plików, ile lokalnie, rozmiar, dokąd, polecenie CLI do skopiowania. (v0.3)
-- F7.2 Pobieranie z formularza i z wklejonego polecenia `kartograf …`. (v0.3)
-- F7.3 Zadania w tle: postęp, komunikaty producenta bez przeróbek, anulowanie bez częściowych wersji; restart serwera → „przerwane”, ponowienie nie pobiera gotowych jednostek. (v0.3)
-- F7.4 Sprawdzanie aktualności segmentu, obszaru albo projektu i „Pobierz nowsze” według tego samego planu. (v0.3)
+- F7.1 The "plan window" before every action with a network or a write: what, how many files, how many local, size, where to, a CLI command to copy. (v0.3)
+- F7.2 Download from a form and from a pasted `kartograf …` command. (v0.3)
+- F7.3 Background jobs: progress, producer messages unchanged, cancellation without partial versions; a server restart means "interrupted", and a retry does not download finished units. (v0.3)
+- F7.4 A freshness check of a segment, an area or a project, and "Download newer" by the same plan. (v0.3)
 
-**F8. Projekty** (SPEC 4.7, UC-06, UC-07)
+**F8. Projects** (SPEC 4.7, UC-06, UC-07)
 
-- F8.1 Podgląd projektów: zadania projektu jako polecenia, przypięte wersje, status, indeks użycia („Przypięta w: Raba (teren)”). (v0.1)
-- F8.2 Akcje projektów przez API producenta: utworzenie, dodanie i usunięcie zadania, pobranie, przepięcie, sprawdzenie aktualizacji, weryfikacja sum. (v0.3)
-- F8.3 Projekt z manifestami obu producentów (`kartograf-project.json`, `imgw-project.json`) w jednym widoku z kolumną producenta. (v0.5)
+- F8.1 A project preview: the tasks of a project as commands, pinned versions, status, the usage index ("Pinned in: Raba (field)"). (v0.1)
+- F8.2 Project actions through the producer's API: create, add and remove a task, download, re-pin, update check, verification of sums. (v0.3)
+- F8.3 A project with the manifests of both producers (`kartograf-project.json`, `imgw-project.json`) in one view with a producer column. (v0.5)
 
-**F9. Kondycja magazynu** (SPEC UC-13)
+**F9. Store health** (SPEC UC-13)
 
-- F9.1 Zajętość wg produktów (każda wersja liczona raz) i problemy z wyjaśnieniem i poleceniem naprawy; raport „nieużywane przez żaden projekt” i „niebieżące wersje” — bez usuwania. (v0.1)
+- F9.1 Usage by product (each version counted once) and problems with an explanation and a repair command; the reports "unused by any project" and "non-current versions", with nothing deleted. (v0.1)
 
-**F10. Tryb zespołu** (SPEC 10.2, UC-14)
+**F10. Team mode** (SPEC 10.2, UC-14)
 
-- F10.1 Jeden serwer w sieci lokalnej, logowanie (konta lokalne albo odwrotne proxy), zarządzanie kontami i ekran udostępniania projektu w interfejsie, opcjonalnie grupy z LDAP/AD — na modelu uprawnień F16. (v0.4)
-- F10.2 Wspólna kolejka zadań bez podwójnych pobrań, historia i dziennik działań, limity per osoba, pobieranie plików przez HTTP, aliasy ścieżek per klient. (v0.4)
+- F10.1 One server on the local network, sign-in (local accounts or a reverse proxy), account management and a project sharing screen in the interface, optional groups from LDAP/AD, on the permissions model F16. (v0.4)
+- F10.2 A shared job queue without double downloads, a history and action log, limits per person, file download over HTTP, path aliases per client. (v0.4)
 
-**F11. Dane IMGW** (SPEC 4.8, 6.7, UC-16, UC-17, UC-19)
+**F11. IMGW data** (SPEC 4.8, 6.7, UC-16, UC-17, UC-19)
 
-- F11.1 Stacje na mapie, w „Katalogu” (także bez położenia, z filtrem rzeki i kodu hydrograficznego) i w „Zestawieniu”. (v0.5)
-- F11.2 Etykiety pokrycia szeregów osobno dla każdej zmiennej, w latach hydrologicznych i kalendarzowych z przełącznikiem; wszystkie stacje, także z lukami. (v0.5)
-- F11.3 „Karta stacji” z wykresem (luki jako przerwy, zero interpolacji), wersjami i formułami IMGW; porównanie stacji. Bez obliczeń statystycznych. (v0.5)
-- F11.4 Aktualność archiwów (nowa publikacja, nowy rocznik), synchronizacja i szeregi jako zadania w tle IMGWTools z oknem planu i poleceniem `imgw …`. (v0.5)
-- F11.5 Zadania projektu IMGW z przypięciami. (v0.5)
+- F11.1 Stations on the map, in the "Catalog" (also without location, with a river and hydrographic code filter) and in the "summary". (v0.5)
+- F11.2 Coverage labels of series for each variable separately, in hydrological and calendar years with a switch; all stations, also with gaps. (v0.5)
+- F11.3 The "Station card" with a chart (gaps as breaks, no interpolation), versions and IMGW formulas; station comparison. No statistical calculations. (v0.5)
+- F11.4 Freshness of archives (a new publication, a new year), synchronisation and series as IMGWTools background jobs with the plan window and an `imgw …` command. (v0.5)
+- F11.5 IMGW project tasks with pins. (v0.5)
 
-**F15. Dane własne i migawki** (SPEC 4.7.1, A-ADR-027)
+**F15. Own data and snapshots** (SPEC 4.7.1, A-ADR-027)
 
-- F15.1 Folder danych własnych przypisany do projektu (domyślnie `<katalog projektu>/dane/`, można wskazać inny); pliki rastrowe i wektorowe indeksowane tylko do odczytu: zasięg, układ, warstwy, liczba obiektów, schemat atrybutów, podgląd. (v0.2)
-- F15.2 „Zrób migawkę”: Archiwista kopiuje plik do `<folder danych>/.wersje/` jako niezmienną wersję z sumą SHA-256 i opisem (`migawka.json`); tylko przyrost, zapis atomowy, spójna kopia pliku w użyciu (np. GeoPackage otwarty w QGIS), ta sama treść nie tworzy nowej migawki. (v0.2)
-- F15.3 Migawki jako wersje: oś wersji, „Wachlarz”, kurtyna, porównanie metadanych (liczba obiektów, zasięg, schemat). (v0.2)
-- F15.4 Wykrycie zmiany pliku od ostatniej migawki i podpowiedź „zrób migawkę”; historia zaobserwowanych stanów w indeksie (bez treści). (v0.2)
+- F15.1 A folder of own data assigned to a project (by default `<project folder>/dane/`, another can be set); raster and vector files indexed read-only: extent, system, layers, number of objects, attribute schema, preview. (v0.2)
+- F15.2 "Make a snapshot": Archiwista copies the file into `<data folder>/.wersje/` as an immutable version with a SHA-256 sum and a description (`migawka.json`); growth only, atomic write, a consistent copy of a file in use (for example a GeoPackage open in QGIS), the same content makes no new snapshot. (v0.2)
+- F15.3 Snapshots as versions: the version timeline, the "Fan", the curtain, metadata comparison (object count, extent, schema). (v0.2)
+- F15.4 Detection of a file change since the last snapshot and a hint "make a snapshot"; a history of observed states in the index (without content). (v0.2)
 
-**F16. Uprawnienia i udostępnianie projektów** (SPEC 10.2, A-ADR-029)
+**F16. Permissions and project sharing** (SPEC 10.2, A-ADR-029)
 
-- F16.1 Archiwista egzekwuje uprawnienia tylko we własnej powierzchni (interfejs, API, CLI, tokeny agentów, pamięć podglądów); bezpieczeństwo serwera i udziału oraz dostęp do systemu plików to odpowiedzialność administratora serwera. (v0.1)
-- F16.2 Role: „administrator” (`admin`; administrator systemu Archiwista: ustawienia, magazyny, konta, grupy, uprawnienia), „zapis do magazynu” (`store_writer`) i zwykły „użytkownik”; ustawienie `store_write_for_all` nadaje zapis wszystkim. W trybie lokalnym właściciel ma `admin` i `store_writer`. (v0.1)
-- F16.3 Widoczność projektu: publiczny, wybrane osoby, wybrana grupa (np. dział), prywatny; właściciel projektu; administrator widzi wszystkie. Lista projektów, „Przypięta w:”, wyszukiwanie i podglądy danych własnych uwzględniają widoczność; zmiany uprawnień trafiają do dziennika. (v0.1)
-- F16.4 Konta, grupy, członkostwa, role i widoczność projektów w osobnej lokalnej bazie stanu z kopią zapasową (`archiwista state export`, odtworzenie `archiwista state import`); przebudowa indeksu jej nie dotyka. Administracja przez API i CLI. (v0.1)
-- F16.5 Zapis do magazynu centralnego wyłącznie przez API producentów i tylko z uprawnieniem „zapis do magazynu”. (v0.3)
-- F16.6 Logowanie, zarządzanie kontami i ekran udostępniania w interfejsie, opcjonalnie grupy z LDAP/AD (F10.1). (v0.4)
+- F16.1 Archiwista enforces permissions only on its own surface (interface, API, CLI, agent tokens, preview memory); the security of the server and the share and access to the file system are the responsibility of the server administrator. (v0.1)
+- F16.2 Roles: "administrator" (`admin`; the administrator of the Archiwista system: settings, stores, accounts, groups, permissions), "store write" (`store_writer`) and an ordinary "user"; the setting `store_write_for_all` gives write to everyone. In local mode the owner has `admin` and `store_writer`. (v0.1)
+- F16.3 Project visibility: public, chosen people, a chosen group (for example a department), private; the project owner; an administrator sees all. The list of projects, "Pinned in:", search and previews of own data respect visibility; permission changes go to the log. (v0.1)
+- F16.4 Accounts, groups, memberships, roles and project visibility in a separate local state database with a backup (`archiwista state export`, restore with `archiwista state import`); an index rebuild does not touch it. Administration through the API and the CLI. (v0.1)
+- F16.5 A write to the central store only through the producers' APIs and only with the "store write" permission. (v0.3)
+- F16.6 Sign-in, account management and the sharing screen in the interface, optional groups from LDAP/AD (F10.1). (v0.4)
 
-**F17. Pogranicze PL + CZ** (SPEC 4.8.6, 8.3, UC-09, UC-20; A-ADR-025 errata 3)
+**F17. The PL + CZ border** (SPEC 4.8.6, 8.3, UC-09, UC-20; A-ADR-025 erratum 3)
 
-- F17.1 Pliki PL i CZ jednego zadania zgrupowane (`parent_request`) na mapie i w „Katalogu”; kontrola zgodności układów, pionu, rozdzielczości i dat z podpowiedzią brakującego pobrania. (v0.6)
-- F17.2 „Łączenie › PL + CZ”: scalona powierzchnia NMT na wspólnej siatce z regułą i raportem styku, liczona przez Kartografa (KF) z planem, w tle, z poleceniem `kartograf …`; wynik jako produkt pochodny w magazynie i zadanie projektu. (v0.6)
-- F17.3 Stacje ČHMÚ (hydro i meteo dobowe) przez IMGWTools w widokach F11: mapa, „Katalog”, „Zestawienie” z pokryciem każdej zmiennej, „Karta stacji” z wykresem i atrybucją CC BY 4.0, porównanie ze stacjami IMGW, aktualność i synchronizacja wybranych stacji, zadania projektu IMGW. (v0.6)
+- F17.1 PL and CZ files of one task grouped (`parent_request`) on the map and in the "Catalog"; a check of systems, vertical datum, resolution and dates with a hint for the missing download. (v0.6)
+- F17.2 "Combine › PL + CZ": a merged NMT surface on a common grid with a rule and a seam report, computed by Kartograf (KF) with a plan, in the background, with a `kartograf …` command; the result as a derived product in the store and a project task. (v0.6)
+- F17.3 ČHMÚ stations (daily hydro and meteo) through IMGWTools in the F11 views: map, "Catalog", "summary" with the coverage of each variable, "Station card" with a chart and CC BY 4.0 attribution, comparison with IMGW stations, freshness and synchronisation of chosen stations, IMGW project tasks. (v0.6)
 
-**Po MVP** (szczegóły: SCOPE, „Poza zakresem MVP”)
+**After the MVP** (details: SCOPE, "Out of the MVP")
 
-- F12 Zestaw do projektu i QGIS: `.qgz`, lista ścieżek, atrybucje, także dane IMGW i ČHMÚ oraz eksport PL + CZ bez scalania (SPEC 8.4). (v1.1)
-- F13 Asystent (agent LLM): planuje przygotowanie danych, wykonuje dopiero po „Zatwierdź i uruchom”; domyślnie wyłączony (SPEC 7). (v1.2)
-- F14 Łączenie: mozaika, porównanie wersji z modelem różnic — obróbka w Kartografie (SPEC 8). (v1.3)
+- F12 A project and QGIS set: `.qgz`, a list of paths, attributions, also IMGW and ČHMÚ data and a PL + CZ export without merging (SPEC 8.4). (v1.1)
+- F13 The assistant (an LLM agent): plans data preparation, executes only after "Approve and run"; off by default (SPEC 7). (v1.2)
+- F14 Combining: mosaic, version comparison with a difference model; the processing is done in Kartograf (SPEC 8). (v1.3)
 
-## Wymagania niefunkcjonalne
+## Non-functional requirements
 
-**N1. Prostota (nadrzędna zasada)**
+**N1. Simplicity (the overriding principle)**
 
-- N1.1 Każda wartość techniczna ma ludzką nazwę, a każda ludzka nazwa — dostęp do wartości technicznej.
-- N1.2 Zero cichych zmian: nic nie jest pobierane, przepinane ani nadpisywane bez jawnej decyzji człowieka.
-- N1.3 Komunikaty producentów pokazywane bez przeróbek; każde działanie da się powtórzyć z CLI (polecenie do skopiowania).
-- N1.4 Interfejs po polsku; daty `RRRR.MM.DD` w interfejsie, ISO w API i plikach (A-ADR-016).
+- N1.1 Every technical value has a human name, and every human name gives access to the technical value.
+- N1.2 No silent changes: nothing is downloaded, re-pinned or overwritten without an explicit human decision.
+- N1.3 Producer messages are shown unchanged; every action can be repeated from the CLI (a command to copy).
+- N1.4 The interface is Polish; dates are `RRRR.MM.DD` in the interface and ISO in the API and in files (A-ADR-016).
 
-**N2. Integralność danych**
+**N2. Data integrity**
 
-- N2.1 Magazyn tylko do odczytu: Archiwista nie zapisuje w katalogach producentów; zapis wyłącznie przez API Kartografa i IMGWTools.
-- N2.2 Parytet z CLI: działanie przez Archiwistę i to samo polecenie CLI dają te same wersje, `sha256` i przypięcia.
-- N2.3 Stan Archiwisty (indeks, podglądy, historia zadań) wyłącznie lokalnie i odtwarzalny; konta, grupy i widoczność projektów — w osobnej lokalnej bazie stanu z eksportem, bo nie da się ich odtworzyć z dysku; nic na udziale sieciowym ani w magazynie.
-- N2.4 Wiedza o formacie magazynu tylko u producentów (A-ADR-014): brakująca funkcja = wymaganie wobec producenta (SPEC 12).
-- N2.5 Poza indeksem Archiwista zapisuje wyłącznie na polecenie użytkownika i wyłącznie w katalogu projektu (migawki danych własnych, pliki obszarów, zestawy) — w otwartym formacie, czytelnym bez Archiwisty.
+- N2.1 A read-only store: Archiwista writes nothing in the producers' directories; a write goes only through the Kartograf and IMGWTools APIs.
+- N2.2 Parity with the CLI: an action through Archiwista and the same CLI command give the same versions, `sha256` and pins.
+- N2.3 Archiwista's state (index, previews, job history) is only local and rebuildable; accounts, groups and project visibility are in a separate local state database with an export, because they cannot be rebuilt from disk; nothing on a network share or in the store.
+- N2.4 Knowledge of the store format lives only at the producers (A-ADR-014): a missing function is a requirement for the producer (SPEC 12).
+- N2.5 Apart from the index Archiwista writes only on the user's command and only in the project directory (snapshots of own data, area files, sets), in an open format readable without Archiwista.
 
-**N3. Wydajność** (magazyn odniesienia: 50 000 slotów, 80 000 wersji, 30 projektów; SPEC 4.5)
+**N3. Performance** (reference store: 50,000 slots, 80,000 versions, 30 projects; SPEC 4.5)
 
-- N3.1 Pierwszy pełny skan ≤ 10 min na SMB, ≤ 2 min na dysku lokalnym; skan przyrostowy bez zmian ≤ 3 min / ≤ 20 s.
-- N3.2 Odświeżenie widoku (obszar + produkt) ≤ 5 s / ≤ 1 s; lista, wyszukiwanie, karta pliku p95 ≤ 200 ms; obrysy w widoku p95 ≤ 300 ms.
-- N3.3 Dane IMGW: warstwa stacji i tabela pokrycia p95 ≤ 300 ms; wykres pełnego szeregu dobowego p95 ≤ 500 ms (SMB).
-- N3.4 Pamięć serwera ≤ 500 MB bez podglądów; indeks ≤ 500 MB.
+- N3.1 The first full scan 10 minutes or less on SMB, 2 minutes or less on a local disk; an incremental scan without changes 3 minutes or less / 20 seconds or less.
+- N3.2 View refresh (area + product) 5 s or less / 1 s or less; list, search, file card p95 200 ms or less; footprints in view p95 300 ms or less.
+- N3.3 IMGW data: the station layer and the coverage table p95 300 ms or less; a chart of a full daily series p95 500 ms or less (SMB).
+- N3.4 Server memory 500 MB or less without previews; the index 500 MB or less.
 
-**N4. Praca bez sieci i na udziale SMB**
+**N4. Work without a network and on an SMB share**
 
-- N4.1 Przegląd magazynu działa bez internetu („Brak sieci — pokazuję tylko magazyn”); podkład w trybie offline.
-- N4.2 Poprawność na SMB bez blokad zakresów bajtów i bez stabilnych i-węzłów.
+- N4.1 Browsing the store works without the internet ("No network, showing only the store"); the basemap in offline mode.
+- N4.2 Correctness on SMB without byte-range locks and without stable inodes.
 
-**N5. Bezpieczeństwo** (SPEC 10)
+**N5. Security** (SPEC 10)
 
-- N5.1 Tryb lokalny: serwer tylko na `127.0.0.1`, ochrona przed CSRF i DNS rebinding, dostęp tylko dla osoby, która uruchomiła serwer; odmowa startu poza `127.0.0.1` bez trybu zespołu.
-- N5.2 Tryb zespołu: logowanie, role, TLS poza `127.0.0.1`, dziennik działań; od v0.1 każda usługa i zapytanie sprawdza uprawnienia `Principal` (F16).
-- N5.3 Odczyt plików tylko w korzeniach skonfigurowanych magazynów i projektów; niezaufane wejście (pliki geometrii, archiwa IMGW) bez ryzyka dla serwera.
-- N5.4 Sekrety tylko po stronie serwera; zależności z przypiętymi wersjami i audytem podatności w bramce wydania.
+- N5.1 Local mode: the server only on `127.0.0.1`, protection against CSRF and DNS rebinding, access only for the person who started the server; refusal to start outside `127.0.0.1` without team mode.
+- N5.2 Team mode: sign-in, roles, TLS outside `127.0.0.1`, an action log; from v0.1 every service and query checks the permissions of the `Principal` (F16).
+- N5.3 Files are read only in the roots of the configured stores and projects; untrusted input (geometry files, IMGW archives) is no risk for the server.
+- N5.4 Secrets only on the server side; dependencies with pinned versions and a vulnerability audit in the release gate.
 
-**N6. Platformy i instalacja**
+**N6. Platforms and installation**
 
-- N6.1 Linux i Windows od v1.0; macOS bez gwarancji.
-- N6.2 Instalacja jednym poleceniem; dodatek IMGW opcjonalny; serwer zespołu łatwy do wdrożenia w sieci lokalnej.
-- N6.3 Dostępność cyfrowa: WCAG 2.1 AA (audyt przed v1.0); priorytet desktop i monitory ultrawide.
+- N6.1 Linux and Windows from v1.0; macOS without a guarantee.
+- N6.2 Installation with one command; the IMGW add-on is optional; the team server is easy to deploy on a local network.
+- N6.3 Digital accessibility: WCAG 2.1 AA (an audit before v1.0); desktop and ultrawide monitors first.
 
-**N7. Kod i licencje**
+**N7. Code and licences**
 
-- N7.1 Kod otwarty na licencji MIT; kontrybucje z CLA (A-ADR-026, [`CONTRIBUTING.md`](../CONTRIBUTING.md)).
-- N7.2 Zależności o licencjach zgodnych z MIT; zależność z licencją copyleft wymaga decyzji (ADR) przed dodaniem.
-- N7.3 Zgodność z warunkami danych: atrybucje GUGiK, CUZK (CC BY 4.0), formuły IMGW-PIB (regulamin §5), OSM (ODbL) dla podkładu — w karcie pliku i karcie stacji.
+- N7.1 Open code under the MIT licence; contributions with a CLA (A-ADR-026, [`CONTRIBUTING.md`](../CONTRIBUTING.md)).
+- N7.2 Dependencies with licences compatible with MIT; a dependency with a copyleft licence needs a decision (ADR) before it is added.
+- N7.3 Compliance with the data terms: GUGiK and ČÚZK (CC BY 4.0) attributions, the IMGW-PIB formulas (terms, section 5), OSM (ODbL) for the basemap, in the file card and the station card.
 
-**N8. Rozszerzalność**
+**N8. Extensibility**
 
-- N8.1 Nowe źródło istniejącego producenta (np. dane z Niemiec w Kartografie) pojawia się w Archiwiście bez zmian w jego kodzie: nazwy, warianty, komendy i obrysy pochodzą z API producenta. Brakujące elementy (raport dostępności, obrysy, transformacje dla nowych układów) to wymagania wobec producenta.
-- N8.2 Nowy producent to nowa wtyczka (adapter) bez zmian w warstwach wyżej (A-ADR-024).
-- N8.3 Każdy rodzaj danych bez dedykowanego widoku dostaje widok ogólny: zasięg, metadane, wersje i podgląd; brak źródła zdalnego nie psuje widoków (brak etykiet dostępności zamiast błędu).
+- N8.1 A new source of an existing producer (for example data from Germany in Kartograf) appears in Archiwista without changes in its code: names, variants, commands and footprints come from the producer's API. Missing elements (availability report, footprints, transformations for new systems) are requirements for the producer.
+- N8.2 A new producer is a new plugin (adapter) without changes in the layers above (A-ADR-024).
+- N8.3 Every kind of data without a dedicated view gets a general view: extent, metadata, versions and preview; a missing remote source does not break the views (no availability labels instead of an error).
 
-## Założenia i ograniczenia
+## Assumptions and limits
 
-| Założenie | Skutek | Jak komunikujemy |
+| Assumption | Effect | How it is communicated |
 | --- | --- | --- |
-| Producenci dostarczą wymagane API (Kartograf KA–KH, IMGWTools IMGW-1..20) | wydania Archiwisty czekają na wydania producentów | wymagania w SPEC 12 i `docs/IMGWTOOLS_REQUIREMENTS.md`; kolumna „wymaga" w SCOPE |
-| IMGWTools (2.1.1, Beta) nie ma dziś magazynu | dane IMGW (v0.5), a więc i MVP, zależą od IMGWTools | wymagania uzgodnione wcześnie; źródło IMGW jako dodatek |
-| KF (scalona powierzchnia PL + CZ) nie jest jeszcze w publicznym API Kartografa; stacje ČHMÚ w IMGWTools dopiero w przygotowaniu | v0.6, a więc i MVP, zależy od obu wydań | wymagania KF (SPEC 12.5) i IMGW-15..IMGW-19 (SPEC 12.7) zgłoszone wcześnie; ryzyko w SCOPE i SPEC 14 |
-| Opóźnienie publikacji IMGW (10–19 miesięcy), ponowne publikacje archiwów | niepełny ostatni rok, zmiany danych | lata opublikowane i daty publikacji w interfejsie; nowe wersje zamiast nadpisania |
-| Część stacji IMGW bez położenia | stacje poza mapą | „Katalog” z grupą „bez położenia” i licznikiem na mapie; nigdy zgadywanie położenia |
-| Semantyka SMB (pamięć atrybutów, i-węzły) | indeks może być chwilowo nieaktualny | odświeżanie widoku przed odpowiedzią, widoczny stan indeksu |
-| Archiwista niczego nie usuwa | magazyn tylko rośnie | raport kandydatów do usunięcia z zajętością (decyzję podejmuje człowiek, usuwanie ewentualnie w Kartografie) |
-| Podkład online ujawnia obszar zainteresowania | poufność projektu | tryb offline; w zespole decyduje administrator |
-| Migawki leżą w katalogu projektu i tylko przybywa | zajętość dysku projektu rośnie | rozmiar w planie migawki; zajętość migawek w widoku projektu; usuwanie tylko ręcznie poza Archiwistą |
-| Migawki to trzecia implementacja wersji (obok Kartografa i IMGWTools) | rozbieżne gwarancje | najprostszy kontrakt: tylko przyrost, bez dowiązań, zapis atomowy, testy przerwania (A-ADR-027) |
+| The producers deliver the required APIs (Kartograf KA to KH, IMGWTools IMGW-1 to 20) | Archiwista releases wait for the producers' releases | requirements in SPEC 12 and `docs/IMGWTOOLS_REQUIREMENTS.md`; the "needs" column in SCOPE |
+| IMGWTools (2.1.1, Beta) has no store today | IMGW data (v0.5), and so the MVP, depends on IMGWTools | requirements agreed early; the IMGW source is an add-on |
+| KF (merged PL + CZ surface) is not yet in the public Kartograf API; ČHMÚ stations in IMGWTools are only in preparation | v0.6, and so the MVP, depends on both releases | requirements KF (SPEC 12.5) and IMGW-15 to IMGW-19 (SPEC 12.7) reported early; the risk in SCOPE and SPEC 14 |
+| IMGW publication lag (10 to 19 months), republished archives | an incomplete last year, changed data | published years and publication dates in the interface; new versions instead of overwriting |
+| Some IMGW stations have no location | stations outside the map | the "Catalog" with the group "without location" and a counter on the map; a location is never guessed |
+| SMB semantics (attribute cache, inodes) | the index may be briefly stale | view refresh before the answer, a visible index state |
+| Archiwista deletes nothing | the store only grows | a report of deletion candidates with usage (a human decides, deleting is possibly in Kartograf) |
+| An online basemap reveals the area of interest | project confidentiality | offline mode; in a team the administrator decides |
+| Snapshots lie in the project directory and only grow | the project disk usage grows | the size in the snapshot plan; snapshot usage in the project view; deleting only by hand outside Archiwista |
+| Snapshots are a third implementation of versions (next to Kartograf and IMGWTools) | divergent guarantees | the simplest contract: growth only, no links, atomic write, interruption tests (A-ADR-027) |
 
-## Miary sukcesu
+## Success measures
 
-Kryteria sukcesu MVP (v1.0):
+MVP success criteria (v1.0):
 
-- [ ] Scenariusze MVP (SPEC 3: UC-01..UC-07, UC-09, UC-13..UC-17, UC-19, UC-20) przechodzą na żywo i są opisane w raporcie.
-- [ ] Indeks przykładowego magazynu zgodny z API odczytu producentów (te same wersje, dowiązania i problemy).
-- [ ] Parytet z CLI dla pobierania, projektów, scalenia PL + CZ i synchronizacji IMGW i ČHMÚ (te same wersje i `sha256`).
-- [ ] Cele wydajności N3 spełnione na prawdziwym udziale SMB.
-- [ ] Anulowanie i restart w trakcie zadań nie zostawiają częściowych wersji.
-- [ ] Zespół trzech osób na wspólnym magazynie: żadna jednostka nie jest pobrana dwa razy; role sprawdzone testami.
-- [ ] Instalacja na Linuksie i Windows; audyt WCAG 2.1 AA i przegląd bezpieczeństwa bez krytycznych uwag.
-- [ ] (propozycja, do zatwierdzenia) Osoba znająca QGIS, a nie CLI, przechodzi UC-01 bez instrukcji (test z użytkownikiem; etykiety pokrycia zrozumiane bez wyjaśnień).
+- [ ] The MVP scenarios (SPEC 3: UC-01 to UC-07, UC-09, UC-13 to UC-17, UC-19, UC-20) pass live and are described in a report.
+- [ ] The index of a sample store agrees with the producers' read API (the same versions, links and problems).
+- [ ] Parity with the CLI for downloads, projects, PL + CZ merging and the synchronisation of IMGW and ČHMÚ (the same versions and `sha256`).
+- [ ] The N3 performance targets are met on a real SMB share.
+- [ ] Cancellation and restart during jobs leave no partial versions.
+- [ ] A team of three on a shared store: no unit is downloaded twice; the roles are checked by tests.
+- [ ] Installation on Linux and Windows; a WCAG 2.1 AA audit and a security review without critical remarks.
+- [ ] (proposal, to be approved) A person who knows QGIS and not the CLI completes UC-01 without instructions (a test with a user; the coverage labels understood without explanation).
 
-## Otwarte decyzje
+## Open decisions
 
-| Decyzja | Opcje / wartość robocza | Kiedy rozstrzygnąć |
+| Decision | Options / working value | When to decide |
 | --- | --- | --- |
-| Etykiety pokrycia i ich wygląd | robocze z SPEC 6.4 (A-ADR-010; mockup M2) | przed v0.3 |
-| Format danych IMGW | `imgw-meta/1`, Parquet, GeoJSON (A-ADR-020) | z zespołem IMGWTools, przed v0.5 |
-| Wyniki łączenia jako produkty pochodne Kartografa | tak, wzór HSG (A-ADR-009; SPEC 15 P2, P3) | przed v0.6 |
-| Komputer odniesienia dla celów wydajności | do ustalenia | przed v0.1 |
-| Adapter stacji ČHMÚ | jeden adapter IMGW, dopóki ČHMÚ jest dostawcą w pakiecie IMGWTools; osobny adapter (wtyczka) tylko gdy IMGWTools wyda ČHMÚ jako osobny pakiet; zmiana nazwy pakietu (np. „Obserwator”) zmienia import i nazwę extra (SPEC 4.8.6, A-ADR-024) | przy wydaniu IMGWTools ze stacjami ČHMÚ, przed v0.6 |
+| Coverage labels and their look | working ones from SPEC 6.4 (A-ADR-010; mockup M2) | before v0.3 |
+| The IMGW data format | `imgw-meta/1`, Parquet, GeoJSON (A-ADR-020) | with the IMGWTools team, before v0.5 |
+| Merge results as derived Kartograf products | yes, on the HSG model (A-ADR-009; SPEC 15 P2, P3) | before v0.6 |
+| The reference computer for the performance targets | to be set | before v0.1 |
+| The ČHMÚ station adapter | one IMGW adapter while ČHMÚ is a provider inside the IMGWTools package; a separate adapter (plugin) only if IMGWTools releases ČHMÚ as a separate package; a package rename (for example "Observer") changes the import and the extra name (SPEC 4.8.6, A-ADR-024) | at the IMGWTools release with ČHMÚ stations, before v0.6 |
