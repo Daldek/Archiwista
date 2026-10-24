@@ -14,6 +14,11 @@ command-line interface may change.
   Commits, no AI attribution, author) before every commit; `.editorconfig`,
   `.gitattributes` (LF endings, vendored libraries byte for byte) and `.env.example`.
   (DEV-7.6, DEV-14.1, DEV-4.5)
+- GitHub Actions: `.github/workflows/ci.yml` runs the gate on Linux with Python 3.12
+  (required) and the newest Python (reported) after installing Chromium, and audits the
+  locked PyPI dependencies with `pip-audit` (informative); `live.yml` runs the `live`
+  tests weekly; Dependabot updates the pinned actions. Nothing has run yet.
+  (DEV-7.7, DEV-10.3, DEV-13.6)
 
 ### Changed
 
