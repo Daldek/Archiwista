@@ -1,180 +1,181 @@
-# PROGRESS — Archiwista
+# PROGRESS: Archiwista
 
-## Start następnej sesji (stan 2026-10-20)
+Current state only (DOC-6.1). Branch, tag and remote state: ask git (`git status`,
+`git log --oneline -10`). History: the git log and [CHANGELOG](CHANGELOG.md); the
+Polish session notes that used to live here are in git (`docs/PROGRESS.md` before the
+commit that introduced this file).
 
-**Status:** wydanie **0.2.0 „Podglądy”** gotowe na `develop`
-(`chore(release): wydanie 0.2.0`). Kroki 0–18 planu v0.2
-(`docs/PLAN_v0.2.md`) ukończone: podglądy, Wachlarz, Oś czasu,
-porównanie i kurtyna, dane własne i migawki. Dowody odbioru
-oraz ograniczenie GPU: `docs/reports/v0.2-measurements.md`.
-Bez tagu i bez scalenia do `main` (decyzja użytkownika).
-**Następny krok:** spec i plan v0.3 „Działania” do zatwierdzenia przed
-implementacją; uwzględnić wstępne budowanie podglądów (decyzja użytkownika
-2026-10-19; PRD F5.3, SPEC 5.7 i 13). Zależności producenta:
-`docs/SPEC.md` § 12, zakres `docs/SCOPE.md` etap 4.
+## Status
 
-### Czytaj najpierw
+| Component | State | Note |
+|---|---|---|
+| Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
+| Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
+| Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files; open: `src/` layout, markers and package-data test, ruff and mypy rule sets (Next 1.1 to 1.3) |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.6) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | planned | designed, not started (Next 1.4) |
+| Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
+| Gate | green except one flaky test | `scripts/gate.sh` on the tree of the tooling commits: ruff format, ruff check and mypy clean; pytest 1065 passed and 1 failed, `tests/unit/test_security.py::test_token_not_logged` (an `AssertionError` when the `serving` helper stopped the server; probably a timing effect, because other test suites loaded the machine; not investigated further: it passes alone and passed in two earlier full runs); `scripts/check-commits.sh` passes. The full run takes about 25 minutes; Python 3.12 passed the unit and integration tests (875) |
+| CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
-| Dokument | Rola |
+Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
+
+| Item | Why |
 |---|---|
-| `README.md` | instalacja, uruchomienie, CLI, położenie danych, bramka |
-| `docs/CHANGELOG.md` | co weszło do 0.2.0, znane ograniczenia |
-| `docs/PRD.md` | wymagania F1–F16, N1–N8, widoki wg rodzaju danych, miary sukcesu, otwarte decyzje |
-| `docs/SCOPE.md` | MVP, poza MVP, etapy z bramkami, zależności od producentów, ryzyka |
-| `docs/SPEC.md` | szczegóły; sekcja 13 — zakres i kryteria akceptacji każdej wersji |
-| `docs/PLAN_v0.1.md` | plan v0.1 z umowami między krokami — wzór dla planu v0.2 |
-| `docs/PLAN_v0.2.md` | wykonany plan v0.2, decyzje, umowy, kroki 0–18 i bramka |
-| `docs/ARCHITECTURE.md` | architektura kodu 0.2.0: moduły, przepływy i granice |
-| `docs/reports/v0.2-measurements.md` | pomiary, odbiór v0.2, zrzuty |
-| `docs/USAGE.md`, `docs/AGENT_API.md` | dokumentacja widoków, API i CLI 0.2.0 |
-| `docs/DEVELOPMENT_STANDARDS.md` | standardy kodowania (na bazie IMGWTools): język, nazewnictwo, testy, git, checklista |
-| `docs/DECISIONS.md` | A-ADR-001..029 (erraty na końcu wpisów) |
-| `mockup/README.md` | mockup: przepływ, co prawdziwe, co symulowane, zrzuty |
+| History rewrite (phase 1) | Archiwista needs only DEV-4.2: every commit is by `Daldek <git@debever.pl>` and has no AI trailer |
+| Rulesets for `main`, `develop` and `v*` tags, private vulnerability reporting, Dependabot security updates, `main` pushed and made the default branch (DEV-3.6, DEV-13.6, DEV-13.7, ECO-008) | GitHub settings. The required check is the one job `gate (ubuntu-latest, Python 3.12)` (CI runs on Linux only) |
+| `docs/CLA.md` text and signing mechanism | the author's legal text: it says "comment on the pull request", while DEV-16.5 says checkbox plus a line in `CONTRIBUTORS.md` in the same pull request |
+| `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
+| Tags, releases, replacing the Kartograf commit pin by the tag `v0.8.0`, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
+| Push of `chore/nogat-2.1`, pull request, merge into `develop` | approvals (DEV-3.3) |
 
-### Stan repozytorium
+## Next
 
-- Gałęzie: `main` (bez scalenia wydania), `develop` (0.2.0),
-  `feat/mockup` (historia mockupu). Bez remote, bez tagów.
-- Kartograf: KA-1..KA-6 z `develop`, w `.venv` zainstalowany edytowalnie;
-  gałąź `feat/archiwista-store-api` scalona i usunięta, tag `v0.8.0`
-  czeka na decyzję użytkownika i zespołu Kartografa.
-- Dane robocze poza repo: `<katalog-danych>`; indeks i pamięć podglądów
-  na dysku lokalnym, a nie w magazynie.
+1. **Finish the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per step, gate
+   green before each; the source of the rules is the Nogat branch `feature/data-output`,
+   `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`; Hydrolog and
+   Retman have the same branch name as worked examples):
+   1. `refactor: move the package to src/archiwista` (ECO-011; DEV-5.1 lets an `app` keep
+      another layout, but the ADOPTION_PLAN row names `src/`): `git mv archiwista
+      src/archiwista`; in `pyproject.toml` `[tool.setuptools.packages.find] where =
+      ["src"]` and `[tool.mypy] files = ["src", "tests"]`; `TYPED_PATHS=(src tests)` in
+      `scripts/gate.sh`; paths in `CLAUDE.md` (code map and adapter path), README and the
+      27 mentions in `docs/SPEC.md`; delete the stale untracked `archiwista.egg-info/` and
+      `build/`; `uv sync --locked`. Import paths and package data do not change.
+   2. `test:` register `db` and `slow` next to `live`, `perf`, `smb` (DEV-10.1; the
+      deviation line in CLAUDE.md then loses its first half); drop `--cov=archiwista
+      --cov-fail-under=80` from `addopts` (the gate passes `--cov`, the floor is
+      `[tool.coverage.report] fail_under`); `tests/contract/test_package_data.py` reading
+      `archiwista.web` (index.html, a vendored module, `src/main.js`) and
+      `archiwista.api` swagger files through `importlib.resources` (DEV-5.4); a test that
+      runs the commands of the README examples (DOC-2.6); remove the stray `.gitkeep`
+      files of `tests/e2e`, `tests/integration` and `tests/perf`.
+   3. `style:` add `W` and `C4` to the ruff `select` (DEV-7.2; `uv run ruff check --select
+      W,C4 .` finds 3 places, one is a `dict.fromkeys` in `tests/integration/test_snapshots.py`)
+      and `[tool.ruff.format] quote-style = "double"`.
+   4. **Error registry** (ERR-3, ERR-4, DEV-11.1, AGI-6.3; ERROR_REGISTRY §4 row
+      "Archiwista"). Copy `error_registry.json` and `schemas/agent/*.schema.json` into
+      `schemas/nogat/` with its README, `scripts/generate_errors.py`,
+      `tests/contract/_nogat.py` and `tests/contract/test_error_registry.py` exactly as
+      Hydrolog did (`git -C ~/workspace/Hydrolog show chore/nogat-2.1:<path>`); add
+      `jsonschema` to the `dev` group; generate `src/archiwista/_errors.py`. Give
+      `ArchiwistaError` (`archiwista/errors.py`) `code`, `message`, `details`, `hint`, with
+      a default `code` and `reason` per subclass. Planned mapping of today's problem codes
+      (HTTP status from the registry): `permission_denied`, `path_outside_root`,
+      `csrf_rejected`, `invalid_host` to `forbidden` (403); `session_required` to
+      `unauthorized` (401); `not_found`; `conflict`, `offline_mode`, `own_file_changed`,
+      `snapshot_blocked`, `preview_not_ready` to `conflict` (409); `validation_error`,
+      `invalid_ref`, `area_too_large`, `area_too_complex`, `request_too_large` to
+      `validation_error` (400); `area_unreadable` and producer errors to `data_error`;
+      `source_unavailable` and `source_incompatible` to `missing_dependency` (503);
+      `store_unavailable`; `preview_unavailable` to `unsupported` (422); `preview_busy` to
+      `rate_limited` (429, `Retry-After`); `preview_timeout` to `calculation_error`;
+      `method_not_allowed`; `internal_error`; the old code becomes `details.reason`. Problem
+      bodies get `type` (`ERROR_REGISTRY.md#<code>` URL), registry `title` (English, Polish
+      with `Accept-Language: pl`), `instance`, `hint`, `details` (the extension members move
+      there; the old `reason` object becomes `details.preview_reason` and the snapshot
+      `reason` string `details.blocked_by`) and `errors[]` with JSON Pointers. Places:
+      `archiwista/api/errors.py` (`PROBLEMS`, `problem_body`, `_DOCUMENTED`,
+      `problem_responses`), `security.py` (`_Rejection`), the examples in `api/previews.py`,
+      `api/jobs.py`, `api/owndata.py`, `api/models.py` (`ProblemDetails`), the
+      `problem_responses(...)` decorators (`422` becomes `400`), the CLI refusals in
+      `reader.py`, `admin.py`, `commands/*.py`. The CLI prints no JSON on stdout for an
+      error, ends stderr with the `archiwista-error/1` document and exits with the registry
+      code (AGI-3.3, ERR-4). Front end: `web/src/api.js:971` (`csrf_rejected`), `ui.js:171`
+      to `195`, `previews.js:134` and `347`, `views/cards.js:306`, `views/map.js:307`,
+      `setup.js:297` and `495`, and the `Accept-Language: pl` header. Tests: about 206 status
+      and 54 code assertions. Docs: AGENT_API section 7, SPEC 9.1, README errors section.
+   5. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
+      in the README and `.env.example`.
+   6. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
+      Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
+      summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
+      move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8
+      and 10) into CLAUDE.md and delete the file (DEV-1.3); `git mv docs/PLAN_v0.1.md
+      docs/plans/2026-10-18-plan-v0.1.md` and `docs/PLAN_v0.2.md
+      docs/plans/2026-10-19-plan-v0.2.md` (DEV-17.4); an ADR `docs/decisions/0030-...md`
+      with the index entry in `docs/DECISIONS.md` (DOC-8.2): `src/` layout, uv and the
+      commit pin, the gate, Linux-only CI, the deviations of CLAUDE.md. Translate the Polish
+      documents (ECO-005), most useful first: `docs/AGENT_API.md` (27 KB, with the error
+      section of 1.4), `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses
+      of DOC-8.1), `docs/SPEC.md` (326 KB), the two plans (377 KB), `docs/reports/` (57 KB);
+      `docs/IMGWTOOLS_REQUIREMENTS.md` (105 KB) is met by IMGWTools 3.0.0 (IMGW-1 to 20):
+      delete it or translate it (see Open questions). `<katalog-danych>` becomes `<data-dir>`
+      in what is translated.
+2. **Data output (DEV §19, ECO-051): migrate the calls to Kartograf after Kartograf has the
+   change on its development head** (not before; plan `docs/plans/2026-10-24-data-output.md`
+   of Nogat, step 4). Re-pin Kartograf to that commit in `pyproject.toml` (`uv lock`).
+   Archiwista keeps calling Kartograf in store mode, so the names change to `root`, not the
+   behaviour. Call sites, as of 2026-10-24 (the paths get the prefix `src/` after 1.1):
+   - `archiwista/adapter/kartograf/adapter.py:645` reads `project.output_dir` (becomes
+     `project.root`); the docstrings of lines 76, 109, 136 and 167 say "Kartograf's
+     `--output` directory" (`--root`); `probe` follows the marker rules (DEV-19.12,
+     DEV-19.13): a root with the layout but no `kartograf-store.json` is
+     `store_unavailable` with the hint `kartograf store init --root <path>`.
+   - Texts: `archiwista/messages.py:271` and `:390` (the Polish messages that name the
+     `--output` directory), `archiwista/config.py:179`, `archiwista/api/models.py:2401`,
+     `archiwista/sources/types.py:4`.
+   - `tests/contract/test_kartograf.py:53`, `:55` and `:60` pin the parameter names of
+     `list_segments`, `list_partitions` and `iter_store` (`output_dir` becomes `root`); the
+     probe tests at `:601` to `:608` and the project reads at `:633` to `:669`.
+   - `tests/fixtures/make_store.py`: `StoreManifest.output_dir` (line 340) and its docstrings
+     (lines 3, 5, 328, 330) name the store root; the generator writes the marker
+     `kartograf-store.json` and the project manifest key `output_dir` (becomes `root`);
+     follow-ups: `tests/integration/test_projects.py:88` to `:90` (`_write_manifest`),
+     `tests/fixtures/api_store.py:37`, `tests/fixtures/own_data.py:542`,
+     `tests/unit/test_own_data_fixture.py:246`, and the `store.output_dir` uses in
+     `tests/integration/test_read_only_store.py`, `test_preview_security.py`,
+     `test_agent_flow.py`, `test_projects.py`, `test_scanner.py`.
+   - `docs/SPEC.md`: section 12 KB-5 (line 3684, `run_command(..., output_dir, ...)`), KA-1
+     (3659), KH-1 (3717, `set_project_output_dir`), and the passages that call the
+     `--output` directory the store (lines 174, 783 to 785, 813, 1431, 1445, 1458, 1459,
+     3118, 3723); the same names in `docs/ARCHITECTURE.md` and `docs/USAGE.md` ("its
+     `--output` directory, that is the `data/` directory").
+3. Replace the Kartograf commit pin by the tag `v0.8.0` in the release pull request
+   (REL-5.3, REL-2.1); use `kartograf.testing` (DEV-10.6) instead of the hand-made
+   `tests/fixtures/make_store.py` when Kartograf ships it.
+4. **Gate and CI proof.** Run `scripts/gate.sh` again before the first commit of a session, on a
+   machine without other test suites running, and look at `test_token_not_logged` first (find
+   what the `serving` helper of `tests/unit/test_security.py` asserts when the server stops
+   late). The first CI run needs the push: check the Chromium step of `ci.yml` and the weekly
+   `live.yml`.
+5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
+   13, SCOPE stage 4).
 
-### Wydanie 0.2.0 w skrócie
+## Open questions
 
-- Renderowanie podglądów w procesach, pamięć po treści i kafle, lokalne
-  warstwy lat i kampanii, porównanie metadanych i kurtyna.
-- Dane własne w projektach: folder i skan tylko do odczytu, migawki
-  atomowe w `.wersje/` na polecenie osoby z `project.write`.
-- Indeks schematu 6: po przejściu z 0.1 pełny skan; obrysy wielokątne.
-- Wszystkie kryteria odbioru poza pomiarem ≥ 30 klatek/s z GPU mają
-  dowody w raporcie v0.2; ten próg pozostaje niezweryfikowany.
+Decisions awaiting the author:
 
-### Wydanie 0.1.0 w skrócie
+- Machine output is English (AGI-9.2, AGI-6.4, ERR-6), but Archiwista's `detail` texts come
+  from one Polish dictionary and services raise them as Polish text. Translate the texts
+  of the problems (hundreds of raise sites, language chosen by `Accept-Language`), or keep
+  a deviation line "problem `detail` and `hint` are Polish"?
+- DEV-5.1 lets an `app` keep its layout: confirm the `src/` move of the ADOPTION_PLAN row.
+- AGI-6.2 names `/openapi.json`; Archiwista serves `/api/v1/openapi.json` behind the session
+  and names operations after route functions (no command catalog). Keep, or move?
+- AGI-4.1 asks a top-level `schema` in every machine-readable document; the API responses
+  and `--json` outputs have none. Add `archiwista-<kind>/1`, or leave it for the catalog work?
+- DEV §18 is profile `tool` only, but ECO-028 says all tools read `nogat.toml`
+  (`lang`, `data_dir`, `cache_dir`). Should Archiwista, which uses its own `config.toml` and
+  platform directories, read it too?
+- `docs/IMGWTOOLS_REQUIREMENTS.md` and the executed plans: translate, or leave in git history
+  (requests are GitHub issues now, ECO-043)?
+- The Kartograf pin is `8e9bcbb`, the head of `origin/develop`; the local `develop` is one
+  docs-only commit ahead and unpushed. Pin the local head after it is pushed?
+- `main` of this repository is not on GitHub: push and make it the default branch (ECO-008).
 
-- Widoki Mapa, Katalog, Karta pliku, Projekty, Magazyn, kreator
-  i Ustawienia; API `/api/v1` z OpenAPI i `/api/docs`; CLI z `--json`;
-  uprawnienia (A-ADR-029) z bazą stanu; wtyczki źródeł (A-ADR-024).
-- SPEC 4.5 na 50 000 slotów przez `archiwista serve`: SSD (kod wydania) —
-  pełny skan 48,3 s, przyrostowy 12,4 s, odświeżenie widoku p95 408 ms;
-  SMB 3 (przebieg 3) — 225,6 s, 74,7 s, 1,83 s; RSS serwera ≤ 179 MiB,
-  indeks 256 MB.
-- Po przeglądach kodu i bezpieczeństwa: token CSRF w każdym żądaniu `/api`
-  (także odczycie), sesje bez kopii ról, sesje agentów do 12 h
-  i `archiwista token --revoke-all`, limity treści żądań, prywatne dane
-  lokalne (`0700`, `umask 077`), trasa plików zgłoszenia przeniesiona
-  z `/groups/{…}` na `/requests/{parent_request}`, przycinanie rutynowych
-  skanów po 48 h.
+Open since the previous PROGRESS (Polish, in git):
 
-### Decyzje (stan na 2026-10-19)
-
-- **Zakres MVP = v1.0** (A-ADR-025, erraty 1–3): v0.1 Przeglądarka, v0.2
-  Podglądy (+ dane własne i migawki), v0.3 Działania (dostępność z etykietami,
-  także obrazy PL — KD-3 i wydania BDOT10k — KD-4), v0.4 Zespół, v0.5 Stacje
-  IMGW, v0.6 PL + CZ (scalona powierzchnia przez KF Kartografa, stacje ČHMÚ
-  przez IMGWTools — IMGW-15..19; errata 3, decyzja 2026-10-18), v1.0 Wydanie.
-  Po MVP: v1.1 Zestaw (KB-6; też eksport PL + CZ bez scalania), v1.2
-  Asystent, v1.3 Mozaika i porównanie. ADR-019..024 zachowują starą
-  numerację („v0.8” = v0.4, „v0.9” = v0.5).
-- **Architektura** (etap 0): Python + FastAPI (A-ADR-004), interfejs
-  Preact + htm bez kroku budowania, biblioteki w pakiecie, bez Node.js
-  (A-ADR-028), MapLibre GL (006), procesy robocze (007), rio-tiler, podgląd
-  roku z kafli arkuszy (008, od v0.2), pakiet Pythona `archiwista serve`
-  (015), tryb zespołu jako jeden serwer (013, P1). Indeks SQLite lokalnie
-  (002).
-- **Granice:** magazyn producentów tylko do odczytu; Archiwista zleca
-  pobieranie i obróbkę, nie ma własnego mechanizmu (zapis przez API
-  Kartografa i IMGWTools); IMGWTools opcjonalny (`archiwista[imgw]`,
-  A-ADR-024).
-- **Dane własne** (A-ADR-027, od v0.2): folder projektu (domyślnie
-  `<katalog projektu>/dane/`), indeks tylko do odczytu; migawki całych plików
-  robi Archiwista w `<folder danych>/.wersje/` (tylko przyrost, zapis atomowy,
-  spójna kopia GeoPackage); jedyny wyjątek od zasady „Archiwista nie
-  zapisuje” (także w `CLAUDE.md`).
-- **Widoki wg rodzaju danych** (PRD): ortofotomapa — rok z archiwalnego WMS
-  GUGiK z wymiarem czasu; NMT/NMPT/LAZ — rok z kafli pobranych arkuszy;
-  BDOT10k — powiaty z PRG; dane własne — linie i migawki; N8 Rozszerzalność.
-- **Interfejs i słownictwo:** A-ADR-016..018 (Wachlarz, daty `RRRR.MM.DD`,
-  asystent jako panel boczny); domyślny podkład to kafle wektorowe
-  OpenFreeMap we własnym szarym stylu z polskimi nazwami (A-ADR-016
-  errata 2 — BKG TopPlusOpen drukował niemieckie egzonimy; errata 1 — kafle
-  OSM bez nagłówka `Referer` są blokowane), drugi wbudowany to OSM GUGiK
-  (tylko Polska); etykiety pokrycia A-ADR-010, 017; dane IMGW
-  A-ADR-019..023.
-- **Uprawnienia** (A-ADR-029): egzekwowane tylko we własnej powierzchni
-  Archiwisty (UI, API, CLI, tokeny agentów, pamięć podglądów); role `admin`
-  i `store_writer`, ustawienie `store_write_for_all`, widoczność projektu
-  `public`/`users`/`group`/`private`. v0.1 — model, egzekwowanie i baza
-  stanu `state.sqlite` (nieodtwarzalna; `archiwista state export`/`import`);
-  v0.3 — `store_writer` przy działaniach; v0.4 — logowanie, konta i ekran
-  udostępniania, opcjonalnie grupy LDAP/AD.
-- **Klucze zbiorów** (SPEC 4.2.1): `<kraj>.<dostawca>.<zbiór>[_<wariant>]`,
-  niezmienne, zmiany nazw tylko przez tabelę aliasów producenta, dostawca
-  z pola `provider`; Archiwista nie rozbiera kluczy; wymagania KA-8
-  i IMGW-20.
-- **Licencja i kontrybucje:** MIT, CLA jak w Hydrauliku i IMGWTools
-  (A-ADR-026, errata 1).
-
-### Otwarte
-
-- **Kartograf:** API odczytu na `develop`; wydanie z tagiem `v0.8.0`
-  czeka na decyzję użytkownika i zespołu Kartografa. Zależności
-  v0.3 i kolejnych wersji wymagają uzgodnienia z Kartografem.
-- **IMGWTools:** gałąź `fix/archiwista-compat-2` i tag wydania
-  czekają na decyzję użytkownika; adapter danych IMGW powstaje w v0.5.
-- **GPU:** pomiar ≥ 30 klatek/s przy 5000 obrysów wymaga WebGL
-  sprzętowego; konto testowe nie ma dostępu do `/dev/dri/renderD128`.
-- **Podkład wektorowy:** jeden domyślny dostawca OpenFreeMap to ryzyko
-  dostępności poza trybem offline; drugi wbudowany GUGiK działa
-  tylko w Polsce, własne podkłady konfiguruje się w `config.toml`.
-- PRD „Otwarte decyzje”: etykiety pokrycia i ich wygląd (A-ADR-010, mockup
-  M2, przed v0.3), format danych IMGW (A-ADR-020, z IMGWTools, przed v0.5),
-  łączenie jako produkty pochodne Kartografa (A-ADR-009, P2/P3, przed v0.6),
-  adapter stacji ČHMÚ (jeden adapter IMGW czy osobna wtyczka, przy wydaniu
-  IMGWTools ze stacjami ČHMÚ).
-- Mockup: pytania M3, M5–M8, M10, M11 (SPEC 16).
-- Producenci: Kartograf — v0.3: KA-4 (pozycje planu), KB-1..KB-5, KB-7,
-  KC-1..KC-3, KD-1..KD-4, KH-1; roadmapa Kartografa niezaktualizowana (czeka
-  na decyzję użytkownika); KF (scalona powierzchnia, dziś R6 w backlogu,
-  poza publicznym API 0.8.0) blokuje v0.6, a więc MVP. IMGWTools —
-  `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-1..20) do przekazania; IMGW-1..14
-  blokują v0.5, a IMGW-15..19 (stacje ČHMÚ; dziś szkic „Obserwator” bez
-  kodu) — v0.6, a więc MVP — największe ryzyko harmonogramu.
-- Szkice SPEC 6.5 a, b, i, j w starym układzie (panel „Zestawienie”).
-- Nazwy przy A-ADR-024 (`GET /sources`, `source_unavailable` /
-  `source_incompatible`, fabryki `moduł:load`) — do ewentualnej zmiany.
-- IMGWTools 3.0.0 (`slave` od `0d98f3b`, bez tagu) spełnia IMGW-1..20 z ČHMÚ;
-  SPEC (UC-20, 4.4, 4.6, 4.8, 5.6, 12.7–12.8, 13 v0.5–v0.6, 14),
-  `docs/IMGWTOOLS_REQUIREMENTS.md` (6.3: odpowiedzi na pytania ADR-003)
-  i A-ADR-019 (errata 3)/021/023 zgodne z audytem 2026-10-19 i modelem
-  zapisu Kartografa w IMGWTools (dowiązania twarde, sidecar zatwierdza
-  wersję; udział musi obsługiwać dowiązania twarde dla obu producentów).
-  Przed tagiem — gałąź IMGWTools `fix/archiwista-compat-2`: wycofanie
-  publikacji bez usuwania plików przejętych przez współbieżny zapis,
-  `meteo_kind`, test kolizji `2001_01_k.zip` (`fix/archiwista-compat`
-  zastąpiona). Adapter v0.5: `missing_sidecar` to problem niekrytyczny
-  i możliwie przejściowy, `current_version` nie zgłasza dla niego
-  `IMGWDataError`; zapis IMGWTools na prawdziwym Windows i macOS
-  nieuruchomiony.
-
-### Mockup
-
-- Uruchomienie: `python3 -m http.server 8090 --bind 127.0.0.1 --directory mockup`
-  (z korzenia repo); użytkownik ogląda przez tunel SSH
-  (`ssh -L 8090:localhost:8090 …`), bo `ufw` blokuje port w LAN. Potrzebny
-  internet (CDN bibliotek, kafle OpenFreeMap).
-- Mockup był punktem wyjścia interfejsu (A-ADR-028), ale nie jest kodem
-  produkcyjnym: pobieranie idzie w nim przez asystenta (w MVP — „Okno planu”
-  bez asystenta), sprawdzanie, magazyn, zadania, migawki i mozaika są
-  symulowane.
-- Fixtury: `mockup/tools/build_fixtures.py` (NMT, NMPT, LAZ, arkusze),
-  `build_orto_bdot.py` (ortofotomapa, BDOT10k), `build_mvp_fixtures.py`
-  (`orto` — archiwalne ortofotomapy per rok, `powiaty` — PRG, `own` —
-  przykładowa sieć kanalizacyjna, `nmt` — kafle z arkuszy magazynu);
-  uruchamiane z korzenia Kartografa jego `.venv`.
-- Roboczy katalog poza repo: `../archiwista-mockup-data/` (ok. 2,9 GB;
-  `magazyn/` — prawdziwe arkusze NMT pobrane Kartografem: 2023 1 m — 5 ark.,
-  2019 5 m, 2017 1 m KRON86, 2024 1 m; źródło kafli
-  `mockup/data/previews/nmt/`). Mockup go nie potrzebuje; do usunięcia za
-  zgodą użytkownika.
+- Kartograf: the tag `v0.8.0` waits for the author and the Kartograf team; v0.3 needs KA-4,
+  KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH-1; KF (merged PL + CZ surface) blocks v0.6.
+- IMGWTools: 3.0.0 (`slave` from `0d98f3b`, untagged) meets IMGW-1 to 20; the branch
+  `fix/archiwista-compat-2` and the tag wait for the author; the v0.5 adapter treats
+  `missing_sidecar` as a non-critical, possibly transient problem.
+- GPU: the measurement of 30 frames per second or more with 5,000 footprints needs hardware
+  WebGL; the test account has no access to `/dev/dri/renderD128`.
+- Basemap: one default provider (OpenFreeMap) is an availability risk outside offline mode.
+- PRD "Open decisions" (coverage labels before v0.3, the IMGW data format before v0.5, merge
+  results as Kartograf products before v0.6, the ČHMÚ adapter) and the mockup questions M3,
+  M5 to M8, M10, M11 (SPEC 16).
+- The mockup (`mockup/`) is a clickable prototype, not production code; its working data
+  directory is outside the repository and can be removed with the author's consent.

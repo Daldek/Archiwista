@@ -26,6 +26,10 @@ command-line interface may change.
 
 ### Changed
 
+- `docs/PRD.md`, `docs/SCOPE.md`, `docs/USAGE.md`, `CLAUDE.md` and `docs/PROGRESS.md` are
+  English; the Polish interface labels stay in quotes. `docs/PROGRESS.md` has the three
+  sections of the standard and lists the documents still to translate. (DEV-2.1, ECO-005,
+  DOC-3.1, DOC-6.1)
 - **Breaking for developers:** the environment is managed by uv. `uv sync --locked`
   replaces the pip installation from `requirements.lock`, which is removed;
   `uv.lock` pins every package with SHA-256 sums at the versions of the 0.2.0
