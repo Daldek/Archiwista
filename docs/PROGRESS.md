@@ -15,7 +15,7 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.6) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | planned | designed, not started (Next 1.4) |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| Gate | green except one flaky test | `scripts/gate.sh` on the tree of the tooling commits: ruff format, ruff check and mypy clean; pytest 1065 passed and 1 failed, `tests/unit/test_security.py::test_token_not_logged` (an `AssertionError` when the `serving` helper stopped the server; probably a timing effect, because other test suites loaded the machine; not investigated further: it passes alone and passed in two earlier full runs); `scripts/check-commits.sh` passes. The full run takes about 25 minutes; Python 3.12 passed the unit and integration tests (875) |
+| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -134,11 +134,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 3. Replace the Kartograf commit pin by the tag `v0.8.0` in the release pull request
    (REL-5.3, REL-2.1); use `kartograf.testing` (DEV-10.6) instead of the hand-made
    `tests/fixtures/make_store.py` when Kartograf ships it.
-4. **Gate and CI proof.** Run `scripts/gate.sh` again before the first commit of a session, on a
-   machine without other test suites running, and look at `test_token_not_logged` first (find
-   what the `serving` helper of `tests/unit/test_security.py` asserts when the server stops
-   late). The first CI run needs the push: check the Chromium step of `ci.yml` and the weekly
-   `live.yml`.
+4. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
+   weekly `live.yml`.
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
