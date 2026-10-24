@@ -11,8 +11,8 @@ commit that introduced this file).
 |---|---|---|
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
-| Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests; open: ruff rule set, `--verbose` and `--quiet` (Next 1.1 and 1.2) |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.3) |
+| Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2; open: `--verbose` and `--quiet` (Next 1.1) |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end; deviations in CLAUDE.md (job `error.code`, outcome statuses, no result envelope, Polish `detail`) |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
@@ -35,12 +35,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    green before each; the source of the rules is the Nogat branch `feature/data-output`,
    `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`; Hydrolog and
    Retman have the same branch name as worked examples):
-   1. `style:` add `W` and `C4` to the ruff `select` (DEV-7.2; `uv run ruff check --select
-      W,C4 .` finds 3 places, one is a `dict.fromkeys` in `tests/integration/test_snapshots.py`)
-      and `[tool.ruff.format] quote-style = "double"`.
-   2. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
+   1. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
       in the README and `.env.example`.
-   3. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
+   2. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
       Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
       summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
       move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8

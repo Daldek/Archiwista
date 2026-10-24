@@ -194,25 +194,25 @@ class _OwnFileFields(BaseModel):
     def fields(project: str, row: OwnFileRow) -> dict[str, Any]:
         """Return the values of these fields for a file."""
         last = row.last_snapshot
-        return dict(
-            file_id=row.file_id,
-            path=row.path,
-            ref=format_ref(FileRef(project, row.path)),
-            kind=row.kind,
-            format=row.driver,
-            size_bytes=row.size_bytes,
-            modified_at=row.modified_at,
-            state=row.state,
-            change=row.change,
-            last_snapshot=None
+        return {
+            "file_id": row.file_id,
+            "path": row.path,
+            "ref": format_ref(FileRef(project, row.path)),
+            "kind": row.kind,
+            "format": row.driver,
+            "size_bytes": row.size_bytes,
+            "modified_at": row.modified_at,
+            "state": row.state,
+            "change": row.change,
+            "last_snapshot": None
             if last is None
             else LastSnapshot(label=last.label, created_at=last.created_at),
-            location=Location(
+            "location": Location(
                 kind=row.location.kind,
                 reason=row.location.reason,
                 source=row.location.source,
             ),
-        )
+        }
 
 
 class OwnFileItem(_OwnFileFields):

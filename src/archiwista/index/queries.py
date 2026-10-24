@@ -1390,7 +1390,7 @@ class IndexQueries:
             shapes.setdefault(row[0], []).append(
                 CoverageShape(outline, native, row[6] if native else None)
             )
-        wanted = set(shapes) | ({country for country in countries} & held)
+        wanted = set(shapes) | (set(countries) & held)
         results = []
         for country in sorted(wanted, key=lambda item: (item is None, item or "")):
             results.append(

@@ -807,7 +807,7 @@ def test_published_files_read_only(env: SnapshotEnv) -> None:
 
     # Assert
     names = {"dzialki.shp", "dzialki.shx", "dzialki.dbf", "dzialki.prj", "dzialki.cpg"}
-    assert seen["rename"] == {name: 0o444 for name in [*names, "migawka.json"]}
+    assert seen["rename"] == dict.fromkeys([*names, "migawka.json"], 0o444)
     assert seen["published"] == seen["rename"]
     assert seen["directory"] == {result.label: 0o700}
     assert _mode(result.directory) == 0o555
