@@ -328,7 +328,7 @@ def checked_project(
 @router.get(
     "/slots",
     response_model=CatalogPage,
-    responses=problem_responses(404, 422, 503),
+    responses=problem_responses(404, 400, 503),
 )
 def list_slots(
     filters: Annotated[CatalogFilters, Query()],
@@ -348,7 +348,7 @@ def list_slots(
     return search_slots(queries, settings.get(), registry, filters, visible=visible)
 
 
-@router.get("/products", response_model=ProductList, responses=problem_responses(422))
+@router.get("/products", response_model=ProductList, responses=problem_responses(400))
 def list_products(
     principal: _Principal,
     settings: _Settings,

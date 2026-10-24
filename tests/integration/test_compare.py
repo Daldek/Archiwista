@@ -220,16 +220,21 @@ def test_same_content_is_recognized(served: ServedStore) -> None:
 
 
 @pytest.mark.parametrize(
-    ("a", "b", "status", "code"),
+    ("a", "b", "status", "code", "reason"),
     [
-        ("plik.tif", None, 422, "invalid_ref"),
-        (None, "version:ZŁY:plik.tif", 422, "invalid_ref"),
-        (None, "file:raba:dzialki.gpkg", 404, "not_found"),
-        (None, f"version:{STORE}:nie/ma.tif", 404, "not_found"),
+        ("plik.tif", None, 400, "validation_error", "invalid_ref"),
+        (None, "version:ZŁY:plik.tif", 400, "validation_error", "invalid_ref"),
+        (None, "file:raba:dzialki.gpkg", 404, "not_found", None),
+        (None, f"version:{STORE}:nie/ma.tif", 404, "not_found", None),
     ],
 )
 def test_bad_refs_refused(
-    served: ServedStore, a: str | None, b: str | None, status: int, code: str
+    served: ServedStore,
+    a: str | None,
+    b: str | None,
+    status: int,
+    code: str,
+    reason: str | None,
 ) -> None:
     """A malformed reference, an unknown version or an unknown project."""
     # Arrange
@@ -240,7 +245,7 @@ def test_bad_refs_refused(
     response = served.owner.request("GET", f"/compare?{query}")
 
     # Assert
-    assert_problem(response, status, code)
+    assert_problem(response, status, code, reason)
 
 
 def test_query_and_session_rules(served: ServedStore) -> None:
@@ -259,11 +264,11 @@ def test_query_and_session_rules(served: ServedStore) -> None:
     document = served.owner.request("GET", "/openapi.json").json()
 
     # Assert
-    assert_problem(missing, 422, "validation_error")
-    assert_problem(extra, 422, "validation_error")
-    assert_problem(no_csrf, 403, "csrf_rejected")
+    assert_problem(missing, 400, "validation_error")
+    assert_problem(extra, 400, "validation_error")
+    assert_problem(no_csrf, 403, "forbidden", "csrf_rejected")
     responses = document["paths"]["/api/v1/compare"]["get"]["responses"]
-    assert {"200", "404", "422"} <= set(responses)
+    assert {"200", "404", "400"} <= set(responses)
     assert document["components"]["schemas"]["Comparison"]["examples"]
 
 

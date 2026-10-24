@@ -16,10 +16,11 @@ import pytest
 from pydantic import BaseModel
 
 import archiwista.api.models as models
-from archiwista.api.errors import service_problem
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.config import ConfigStore
+from archiwista.error_document import describe
 from archiwista.errors import (
+    ArchiwistaError,
     IndexQueryError,
     PathOutsideRootError,
     ProducerError,
@@ -170,12 +171,12 @@ def test_api_slots_filters_limit_and_cursor(served: ServedStore) -> None:
     assert paged == every and len(every) > 7
     assert nmt and set(nmt) < set(every)
     assert all(2019 <= row["version"]["data_year"] <= 2021 for row in years["items"])
-    assert_problem(too_many, 422, "validation_error")
-    assert too_many.json()["errors"][0]["field"] == "query.limit"
-    assert_problem(foreign, 422, "validation_error")
-    assert_problem(misspelt, 422, "validation_error")
-    assert_problem(unknown, 422, "validation_error")
-    assert_problem(reversed_years, 422, "validation_error")
+    assert_problem(too_many, 400, "validation_error")
+    assert too_many.json()["errors"][0]["pointer"] == "/query/limit"
+    assert_problem(foreign, 400, "validation_error")
+    assert_problem(misspelt, 400, "validation_error")
+    assert_problem(unknown, 400, "validation_error")
+    assert_problem(reversed_years, 400, "validation_error")
 
 
 def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) -> None:
@@ -202,35 +203,46 @@ def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) 
     assert members.headers["allow"] == "PUT"
     assert_problem(slot, 404, "not_found")
     assert_problem(group, 404, "not_found")
-    assert_problem(sheets, 422, "validation_error")
-    assert_problem(scale, 422, "kartograf_error")
-    assert scale.json()["kartograf"]["exception"] == "ValidationError"
+    assert_problem(sheets, 400, "validation_error")
+    assert_problem(scale, 500, "data_error", "kartograf_error")
+    assert scale.json()["details"]["kartograf"]["exception"] == "ValidationError"
 
 
 @pytest.mark.parametrize(
-    ("error", "status", "code"),
+    ("error", "status", "code", "reason"),
     [
-        (PathOutsideRootError("poza"), 403, "path_outside_root"),
-        (IndexQueryError("kursor"), 422, "validation_error"),
+        (PathOutsideRootError("poza"), 403, "forbidden", "path_outside_root"),
+        (IndexQueryError("kursor"), 400, "validation_error", None),
         (
             ProducerError("kartograf", "ValidationError", "zła skala"),
-            422,
+            500,
+            "data_error",
             "kartograf_error",
         ),
-        (ProducerError("external-producer", "Boom", "x"), 422, "producer_error"),
-        (SourceUnavailableError("magazyn odłączony"), 503, "store_unavailable"),
+        (
+            ProducerError("external-producer", "Boom", "x"),
+            500,
+            "data_error",
+            "producer_error",
+        ),
+        (
+            SourceUnavailableError("magazyn odłączony"),
+            503,
+            "store_unavailable",
+            "store_unreadable",
+        ),
     ],
 )
-def test_api_service_errors_map_to_stable_codes(
-    error: Exception, status: int, code: str
+def test_api_service_errors_map_to_registry_codes(
+    error: ArchiwistaError, status: int, code: str, reason: str | None
 ) -> None:
-    """Each service error has one status and code, independent of the text."""
+    """Each service error has one registry code and status, whatever the text."""
     # Act
-    body = service_problem(error)  # type: ignore[arg-type]
+    problem = describe(error)
 
     # Assert
-    assert body is not None
-    assert (body["status"], body["code"], body["detail"]) == (status, code, str(error))
+    assert (problem.status, problem.code, problem.detail) == (status, code, str(error))
+    assert problem.details.get("reason") == reason
 
 
 class _Incompatible(NoSources):
@@ -244,14 +256,14 @@ class _Incompatible(NoSources):
 
 
 @pytest.mark.parametrize(
-    ("registry", "code", "state"),
+    ("registry", "reason", "state"),
     [
         (NoSources(), "source_unavailable", "not_installed"),
         (_Incompatible(), "source_incompatible", "incompatible"),
     ],
 )
 def test_source_states_map_to_503(
-    tmp_path: Path, registry: NoSources, code: str, state: str
+    tmp_path: Path, registry: NoSources, reason: str, state: str
 ) -> None:
     """Requests needing a producer say which plugin is missing and how to fix it."""
     # Arrange
@@ -275,8 +287,8 @@ def test_source_states_map_to_503(
 
     # Assert
     for answer in answers:
-        assert_problem(answer, 503, code)
-        source = answer.json()["source"]
+        assert_problem(answer, 503, "missing_dependency", reason)
+        source = answer.json()["details"]["source"]
         assert (source["id"], source["state"]) == ("kartograf", state)
         assert source["requirement"].startswith("kartograf")
         assert "pip install" in answer.json()["detail"]
@@ -307,7 +319,7 @@ def test_api_disconnected_store_answers_stale(tmp_path: Path) -> None:
     assert page["stale_stores"][0]["detail"] == "udział odłączony"
     assert stores["items"][0]["state"]["stale"]
     assert status["stale"] and status["stale_reason"] == "store_unavailable"
-    assert_problem(unchecked, 503, "store_unavailable")
+    assert_problem(unchecked, 503, "store_unavailable", "store_unreadable")
 
 
 def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
@@ -333,13 +345,13 @@ def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
         no_csrf = served.owner.request("PUT", "/settings", json=current, csrf=False)
 
     # Assert
-    assert_problem(refused, 422, "validation_error")
-    assert refused.json()["problems"][0]["field"] == "stores[0].kartograf"
+    assert_problem(refused, 400, "validation_error")
+    assert refused.json()["details"]["problems"][0]["field"] == "stores[0].kartograf"
     assert unchanged == before
     assert saved.status_code == 200 and saved.json()["offline"] is True
     assert "https://tiles.openfreemap.org" in online["content-security-policy"]
     assert "tiles.openfreemap.org" not in offline["content-security-policy"]
-    assert_problem(no_csrf, 403, "csrf_rejected")
+    assert_problem(no_csrf, 403, "forbidden", "csrf_rejected")
 
 
 def test_api_openapi_documents_routes_examples_and_problems(
@@ -386,7 +398,7 @@ def test_api_openapi_documents_routes_examples_and_problems(
         "/api/docs/swagger-ui-bundle.js",
         "/api/docs/archiwista-docs.js",
     ]
-    assert_problem(anonymous, 401, "session_required")
+    assert_problem(anonymous, 401, "unauthorized", "session_required")
 
 
 def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
@@ -405,7 +417,7 @@ def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
     # Assert
     assert exchanged.status_code == 200
     assert health.status_code == 200 and health.json()["archiwista"]
-    assert_problem(refused, 401, "session_required")
+    assert_problem(refused, 401, "unauthorized", "session_required")
 
 
 def test_api_examples_validate_against_their_models() -> None:

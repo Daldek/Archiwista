@@ -39,7 +39,11 @@ from archiwista.api.dependencies import (
     settings_service,
     visible_projects,
 )
-from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
+from archiwista.api.errors import (
+    PROBLEM_MEDIA_TYPE,
+    problem_example,
+    problem_responses,
+)
 from archiwista.api.models import (
     JobDetail,
     JobFilters,
@@ -239,8 +243,7 @@ def _conflicts(*codes: str) -> dict[int | str, dict[str, Any]]:
     """Return the OpenAPI ``409`` of a route answering these problem codes."""
     running = {"id": "3f9c1a7e5b2d4c60", "kind": "scan", "state": "running"}
     examples = {
-        "conflict": problem_body(
-            409,
+        "conflict": problem_example(
             "conflict",
             MESSAGES["job_conflict"].format(
                 store="zespol",
@@ -248,15 +251,18 @@ def _conflicts(*codes: str) -> dict[int | str, dict[str, Any]]:
                 state=label("job_state", running["state"]),
                 job=running["id"],
             ),
-            {"job": running},
+            details={"job": running},
         ),
-        "offline_mode": problem_body(409, "offline_mode", MESSAGES["job_offline_mode"]),
+        "offline_mode": problem_example(
+            "conflict", MESSAGES["job_offline_mode"], reason="offline_mode"
+        ),
     }
     return {
         409: {
             "description": (
                 "Another job already writes the store's index (`conflict`, that"
-                " job in `job`) or offline mode is on (`offline_mode`)."
+                " job in `details.job`) or offline mode is on (`offline_mode`:"
+                " `details.reason`)."
             ),
             "content": {
                 PROBLEM_MEDIA_TYPE: {
@@ -310,7 +316,7 @@ _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"
     "/stores/{store}/scan",
     response_model=JobDetail,
     status_code=202,
-    responses={**problem_responses(404, 422), **_conflicts("conflict")},
+    responses={**problem_responses(404, 400), **_conflicts("conflict")},
 )
 def start_scan(
     store: _Store,
@@ -351,7 +357,7 @@ def start_footprints(
     "/stores/{store}/link-check",
     response_model=JobDetail,
     status_code=202,
-    responses=problem_responses(404, 422),
+    responses=problem_responses(404, 400),
 )
 def start_link_check(
     store: _Store,
@@ -379,7 +385,7 @@ def start_link_check(
     return _accepted(job, response)
 
 
-@router.get("/jobs", response_model=JobList, responses=problem_responses(404, 422))
+@router.get("/jobs", response_model=JobList, responses=problem_responses(404, 400))
 def list_jobs(
     filters: Annotated[JobFilters, Query()],
     principal: _Principal,
@@ -438,7 +444,7 @@ def get_job(
                 " a client stops reconnecting."
             )
         },
-        **problem_responses(404, 422),
+        **problem_responses(404, 400),
     },
 )
 def get_job_events(

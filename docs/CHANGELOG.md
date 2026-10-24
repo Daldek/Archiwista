@@ -26,6 +26,26 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** errors follow the Nogat error registry. Every problem of the HTTP API has
+  the registry's `code` (`validation_error`, `not_found`, `conflict`, `forbidden`,
+  `unauthorized`, `missing_dependency`, `store_unavailable`, `data_error`,
+  `unsupported`, ...), its HTTP status and the members `type` (the registry page and
+  `#<code>`), `title` (Polish with `Accept-Language: pl`), `detail` and `hint` (Polish),
+  `instance`, `details` and `errors[]` with JSON Pointers. The old codes are
+  `details.reason` (`session_required`, `csrf_rejected`, `preview_busy`,
+  `area_too_large`, ...); the extra members moved into `details` (`job`, `source`,
+  `problems`, `layers`, `kartograf`, `preview_reason`, `blocked_by`); the answers `422`
+  and `413` are `400`, and `invalid_host` is `403`. The command line prints nothing on
+  standard output for an error, ends standard error with the `archiwista-error/1`
+  document and exits with the registry's code (2 invalid input, 3 not found, 4
+  conflict, 8 store unavailable, 12 forbidden, ...) instead of `1`; a job that does not
+  succeed exits `11` (failed) or `130` (cancelled or interrupted), `reindex` of several
+  stores `10` when only some were scanned, and `archiwista doctor` `10` or `11` when
+  checks fail. The interface sends `Accept-Language: pl` and reads the new members.
+  The registry and the Nogat JSON schemas are vendored in `schemas/nogat/`;
+  `scripts/generate_errors.py` generates `archiwista._errors`, which a contract test
+  compares with the generator's output. `docs/AGENT_API.md` is English and lists the
+  codes. (ERR-1 to ERR-6, AGI-6.3, DEV-11.1)
 - `docs/PRD.md`, `docs/SCOPE.md`, `docs/USAGE.md`, `CLAUDE.md` and `docs/PROGRESS.md` are
   English; the Polish interface labels stay in quotes. `docs/PROGRESS.md` has the three
   sections of the standard and lists the documents still to translate. (DEV-2.1, ECO-005,

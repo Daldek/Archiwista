@@ -15,16 +15,23 @@ file the other job built finds nothing left to build). Ctrl+C meanwhile
 stops only the waiting: the other process's job goes on. A conflict
 (``JobConflictError``: another job writes the store's index) is raised to
 the command, not waited for.
+
+A command exits with the outcome of its job (ERR §1, ``exit_status``): ``0``
+when it succeeded, ``11`` when it failed, ``130`` when it was cancelled or
+interrupted, and after Ctrl+C. These are outcomes, not errors: the command
+prints no error document for them.
 """
 
 import time
 from collections.abc import Callable
 from typing import TextIO
 
+from archiwista._errors import OUTCOMES
 from archiwista.jobs.supervisor import (
     FINISHED_STATES,
     JobEvent,
     JobRecord,
+    JobState,
     JobSupervisor,
     label,
 )
@@ -32,6 +39,25 @@ from archiwista.messages import MESSAGES
 
 # Seconds between two looks at a job of another process.
 POLL_S = 0.5
+
+
+def exit_status(state: JobState) -> int:
+    """Return the exit status of a command whose job is in ``state`` (ERR §1).
+
+    Parameters
+    ----------
+    state : JobState
+        The job's state when the command stopped following it.
+
+    Returns
+    -------
+    int
+        ``0`` for ``succeeded``, ``11`` for ``failed``, ``130`` for
+        ``cancelled``, ``interrupted`` and a job still active after Ctrl+C.
+    """
+    if state == "succeeded":
+        return OUTCOMES["ok"]
+    return OUTCOMES["failed"] if state == "failed" else OUTCOMES["cancelled"]
 
 
 def run_foreground[R: (JobRecord, JobRecord | None)](

@@ -12,8 +12,8 @@ commit that introduced this file).
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files; open: markers and package-data test, ruff rule set (Next 1.1 and 1.2) |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.5) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | most of the code is parked as one unfinished commit on the local branch `wip/nogat-2.1-error-registry`; starting point in Next 1.3 |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.4) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end; deviations in CLAUDE.md (job `error.code`, outcome statuses, no result envelope, Polish `detail`) |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
@@ -46,81 +46,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    2. `style:` add `W` and `C4` to the ruff `select` (DEV-7.2; `uv run ruff check --select
       W,C4 .` finds 3 places, one is a `dict.fromkeys` in `tests/integration/test_snapshots.py`)
       and `[tool.ruff.format] quote-style = "double"`.
-   3. **Error registry** (ERR-3, ERR-4, DEV-11.1, AGI-6.3; ERROR_REGISTRY §4 row
-      "Archiwista"). Copy `error_registry.json` and `schemas/agent/*.schema.json` into
-      `schemas/nogat/` with its README, `scripts/generate_errors.py`,
-      `tests/contract/_nogat.py` and `tests/contract/test_error_registry.py` exactly as
-      Hydrolog did (`git -C ~/workspace/Hydrolog show chore/nogat-2.1:<path>`); add
-      `jsonschema` to the `dev` group; generate `src/archiwista/_errors.py`. Give
-      `ArchiwistaError` (`src/archiwista/errors.py`) `code`, `message`, `details`, `hint`, with
-      a default `code` and `reason` per subclass. Planned mapping of today's problem codes
-      (HTTP status from the registry): `permission_denied`, `path_outside_root`,
-      `csrf_rejected`, `invalid_host` to `forbidden` (403); `session_required` to
-      `unauthorized` (401); `not_found`; `conflict`, `offline_mode`, `own_file_changed`,
-      `snapshot_blocked`, `preview_not_ready` to `conflict` (409); `validation_error`,
-      `invalid_ref`, `area_too_large`, `area_too_complex`, `request_too_large` to
-      `validation_error` (400); `area_unreadable` and producer errors to `data_error`;
-      `source_unavailable` and `source_incompatible` to `missing_dependency` (503);
-      `store_unavailable`; `preview_unavailable` to `unsupported` (422); `preview_busy` to
-      `rate_limited` (429, `Retry-After`); `preview_timeout` to `calculation_error`;
-      `method_not_allowed`; `internal_error`; the old code becomes `details.reason`. Problem
-      bodies get `type` (`ERROR_REGISTRY.md#<code>` URL), registry `title` (English, Polish
-      with `Accept-Language: pl`), `instance`, `hint`, `details` (the extension members move
-      there; the old `reason` object becomes `details.preview_reason` and the snapshot
-      `reason` string `details.blocked_by`) and `errors[]` with JSON Pointers. Places:
-      `src/archiwista/api/errors.py` (`PROBLEMS`, `problem_body`, `_DOCUMENTED`,
-      `problem_responses`), `security.py` (`_Rejection`), the examples in `api/previews.py`,
-      `api/jobs.py`, `api/owndata.py`, `api/models.py` (`ProblemDetails`), the
-      `problem_responses(...)` decorators (`422` becomes `400`), the CLI refusals in
-      `reader.py`, `admin.py`, `commands/*.py`. The CLI prints no JSON on stdout for an
-      error, ends stderr with the `archiwista-error/1` document and exits with the registry
-      code (AGI-3.3, ERR-4). Front end: `web/src/api.js:971` (`csrf_rejected`), `ui.js:171`
-      to `195`, `previews.js:134` and `347`, `views/cards.js:306`, `views/map.js:307`,
-      `setup.js:297` and `495`, and the `Accept-Language: pl` header. Tests: about 206 status
-      and 54 code assertions. Docs: AGENT_API section 7, SPEC 9.1, README errors section.
-      **Starting point (stopped at a budget limit).** The unfinished work is one commit,
-      `99e8964`, on the local branch `wip/nogat-2.1-error-registry` (parent `b6d411a`; not
-      gated, never pushed). Bring it in with `git cherry-pick --no-commit
-      wip/nogat-2.1-error-registry`, finish, run the gate and commit it as one `feat(errors)!:`.
-      *In it:* the vendored registry and schemas (`schemas/nogat/`, Nogat `cc656e7`),
-      `scripts/generate_errors.py`, the generated `src/archiwista/_errors.py`, `jsonschema>=4.18`
-      in the `dev` group (`uv.lock` locked offline, mypy override), `tests/contract/_nogat.py`
-      and `test_error_registry.py` (57 tests pass); `ArchiwistaError(message, *, code, reason,
-      details, hint)` with a default code and reason per class (`SnapshotFailedError.code` is
-      `job_code` now; `SettingsValidationError` and `IndexUnsupportedError` carry codes);
-      `src/archiwista/error_document.py` (`Problem`, `describe`, `error_document`, `refuse`,
-      `fail`, `exception_problem`, `language_of`, `pointer`); the problems of the HTTP API in
-      `api/errors.py`, `security.py` and the route modules (registry `type`, `title`, `status`,
-      `instance`, `hint`, `details.reason`, `errors[].pointer`, `Content-Language: pl`; every
-      documented `422` is `400`; the Polish `api_title_*` texts are gone); the CLI (`refuse`
-      in every command, `reader.py`, `admin.py`, `reindex.py`, `server.py`, and `cli.py` with the
-      argparse and internal-error documents; exits: unknown store 3, no stores 14, job failed
-      11, interrupted 130, conflict 4); the three `assert_problem` helpers and 109 call sites.
-      *Not done:* (a) run and repair the tests (`uv run pytest tests/unit tests/integration
-      tests/e2e --no-cov`; only the contract tests were run, a scoped run stopped on an
-      unrelated flake, see 4): expect assertions on `status_code == 422, 413, 503, 504, 409`,
-      on `["code"]`, the CLI exit codes of `tests/integration/test_cli.py` and the problem
-      members that moved into `details` (`job`, `problems`, `source`, `kartograf`);
-      `mypy src tests` was not run again after the last edits; (b) the job-outcome exits
-      `return 0 if succeeded else 1` in `commands/owndata.py` (`_job`), `commands/previews.py`
-      (`_preview`, `status = 1`) and the usage exit of `commands/layers.py` (`_USAGE`) become 11
-      (failed), 130 (cancelled, interrupted) and a `validation_error`; (c) the front end, no
-      edit made yet: `web/src/api.js` (`send` adds `Accept-Language: pl`; line 971 tests
-      `problem.details?.reason === "csrf_rejected"`; `sessionMissingProblem` becomes
-      `unauthorized` with `details.reason`; the `@throws` comments at 272, 305, 547, 561, 572,
-      698, 758, 792, 838, 892, 924), `ui.js` `ProblemView` (168 to 196: `problems`, `job` and
-      the producer member move into `problem.details`, `errors[].field` is `pointer`),
-      `types.js` `Problem` (46 to 72), comments in `map/sheets.js:5`, `views/cards.js:254`,
-      `views/store.js:10`, and the e2e expectations; (d) documents: AGENT_API section 7, SPEC
-      9.1, README errors section, a CHANGELOG entry (**Breaking**: codes, statuses and shape
-      of problems, CLI exit codes) and CLAUDE.md Deviations: AGI-6.4 and AGI-9.2 (`detail`,
-      `hint` and `message` stay Polish; only `title` follows `Accept-Language`), ERR-4
-      (`archiwista doctor` exits 1 on a failed check without a document; the `error.code`
-      values inside job documents are job codes, not registry codes), AGI-4.1 (no `schema`
-      field in API responses).
-   4. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
+   3. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
       in the README and `.env.example`.
-   5. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
+   4. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
       Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
       summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
       move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8
@@ -129,8 +57,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       docs/plans/2026-10-19-plan-v0.2.md` (DEV-17.4); an ADR `docs/decisions/0030-...md`
       with the index entry in `docs/DECISIONS.md` (DOC-8.2): `src/` layout, uv and the
       commit pin, the gate, Linux-only CI, the deviations of CLAUDE.md. Translate the Polish
-      documents (ECO-005), most useful first: `docs/AGENT_API.md` (27 KB, with the error
-      section of 1.4), `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses
+      documents (ECO-005), most useful first (`docs/AGENT_API.md` is done):
+      `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses
       of DOC-8.1), `docs/SPEC.md` (326 KB), the two plans (377 KB), `docs/reports/` (57 KB);
       `docs/IMGWTOOLS_REQUIREMENTS.md` (105 KB) is met by IMGWTools 3.0.0 (IMGW-1 to 20):
       delete it or translate it (see Open questions). `<katalog-danych>` becomes `<data-dir>`
@@ -171,7 +99,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    weekly `live.yml`. Also look at `tests/unit/test_sandbox.py::
    test_sandbox_child_killed_with_its_group_at_time_limit`: it failed once with a
    `ProcessLookupError` (a `/proc` read of a process that had ended) in a scoped run while the
-   machine was loaded; it passed in both full gate runs, so it is probably a race in the test.
+   machine was loaded; it passed in all full gate runs, so it is probably a race in the test
+   (the child may end between listing and reading `/proc`). Not investigated yet.
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
@@ -180,9 +109,13 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 Decisions awaiting the author:
 
 - Machine output is English (AGI-9.2, AGI-6.4, ERR-6), but Archiwista's `detail` texts come
-  from one Polish dictionary and services raise them as Polish text. Translate the texts
-  of the problems (hundreds of raise sites, language chosen by `Accept-Language`), or keep
-  a deviation line "problem `detail` and `hint` are Polish"?
+  from one Polish dictionary and services raise them as Polish text. CLAUDE.md now has the
+  deviation line (only `title` follows `Accept-Language`). Translate the texts of the
+  problems instead (hundreds of raise sites, language chosen by `Accept-Language`)?
+- The `error.code` of job documents are job codes: `source_unavailable` there means a
+  missing plugin, in the registry a failed remote service. Map them to registry codes with
+  the old code as `details.reason` (jobs table, worker protocol, API model)? Deviation line
+  ERR-1 in CLAUDE.md until then.
 - DEV-5.1 lets an `app` keep its layout: confirm the `src/` move of the ADOPTION_PLAN row.
 - AGI-6.2 names `/openapi.json`; Archiwista serves `/api/v1/openapi.json` behind the session
   and names operations after route functions (no command catalog). Keep, or move?

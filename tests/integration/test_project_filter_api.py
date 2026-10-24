@@ -131,7 +131,7 @@ def test_project_filter_cursor_belongs_to_the_project(api: Api) -> None:
         [_path(A_OLDER), _path(B_CURRENT)]
     )
     assert following.json()["next_cursor"] is None
-    assert_problem(elsewhere, 422, "validation_error")
+    assert_problem(elsewhere, 400, "validation_error")
 
 
 @pytest.mark.parametrize("route", ROUTES)

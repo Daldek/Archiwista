@@ -294,7 +294,7 @@ function SaveStep({ draft, problem, saving }) {
   const projects = draft.projects.map((dir) => dir.path.trim()).filter(Boolean);
   return html`<section class="wizard-step-body">
     ${problem
-      ? html`${problem.problems?.length ? html`<p class="hint warn">${L.invalid}</p>` : null}
+      ? html`${problem.details?.problems?.length ? html`<p class="hint warn">${L.invalid}</p>` : null}
           <${ProblemView} problem=${problem} />`
       : null}
     <fieldset class="step current" disabled=${saving}>
@@ -378,7 +378,7 @@ function Sources({ sources }) {
 
 /** The validation summary above the fields after a refused save. */
 function General({ errors, problem }) {
-  if (!problem?.problems?.length) return null;
+  if (!problem?.details?.problems?.length) return null;
   return html`<div class="general-errors">
     <p class="hint warn">${L.invalid}</p>
     ${errors.general.length ? html`<ul>${errors.general.map((text) => html`<li>${text}</li>`)}</ul>` : null}
@@ -492,7 +492,7 @@ function cacheSize(bytes) {
 /** Problems of `PUT /settings` by the draft entry and field they concern. */
 function problemFields(problem, draft, projectKeys) {
   const fields = { stores: {}, projects: {}, preview: null, general: [] };
-  for (const item of problem.problems ?? []) {
+  for (const item of problem.details?.problems ?? []) {
     const match = FIELD.exec(item.field ?? "");
     const index = match ? Number(match[2]) : -1;
     if (match?.[1] === "stores" && draft.stores[index]) {

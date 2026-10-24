@@ -2,7 +2,7 @@
  * Sheet grids a person can show on the map (`GET /map/sheets`, docs/SPEC.md
  * 5.4): Kartograf's systems and scales, as its `find_sheets_for_bbox`
  * documents them. The server computes every sheet; an unknown system or
- * scale is its `422 kartograf_error`, shown as the producer says it.
+ * scale is its `500 data_error` (reason `kartograf_error`), shown as the producer says it.
  */
 
 /** Scales of each Kartograf sheet system, coarse to fine. */

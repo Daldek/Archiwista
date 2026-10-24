@@ -304,9 +304,8 @@ export default function MapScreen({ route, embedded = false }) {
         try {
           return await uploadArea(file, { name: file.name, layer });
         } catch (error) {
-          if (error instanceof ApiError && error.problem.layers?.length) {
-            setFileLayers({ file, layers: error.problem.layers });
-          }
+          const layers = error instanceof ApiError ? error.problem.details?.layers : null;
+          if (layers?.length) setFileLayers({ file, layers });
           throw error;
         }
       }),

@@ -22,10 +22,9 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from archiwista.api.errors import service_problem, validation_problem
 from archiwista.api.models_layers import LayerSet, LayersQuery, LayerThumbnailQuery
 from archiwista.auth import LOCAL_OWNER
-from archiwista.commands import Commands, add_parser, refuse
+from archiwista.commands import Commands, add_parser
 from archiwista.commands.previews import LocalPreviews, local_previews
 from archiwista.config import (
     AppPaths,
@@ -33,6 +32,13 @@ from archiwista.config import (
     ConfigStore,
     SettingsService,
     SettingsValidationError,
+)
+from archiwista.error_document import (
+    describe,
+    exception_problem,
+    fail,
+    refuse,
+    validation_problem,
 )
 from archiwista.errors import ArchiwistaError
 from archiwista.index import IndexUnsupportedError
@@ -43,8 +49,6 @@ from archiwista.sources.registry import PluginRegistry
 COMMANDS = frozenset({"layers"})
 # Side of the thumbnail ``--output`` writes, as ``archiwista preview``.
 DEFAULT_SIZE = 512
-# Exit status of a wrong use of the command line (``argparse``).
-_USAGE = 2
 
 
 def add_commands(commands: Commands) -> None:
@@ -119,20 +123,23 @@ def main(
     registry : PluginRegistry
         Producer plugins: the store's producer and the pinned operations.
     out, err : TextIO
-        The ``LayerSet`` (as JSON with ``--json``) or the problem; Polish
-        messages.
+        The ``LayerSet`` (as JSON with ``--json``); a refusal's Polish message
+        and its ``archiwista-error/1`` document go to ``err``.
 
     Returns
     -------
     int
-        ``0`` on success; ``1`` when the query is refused (its problem), the
-        thumbnail cannot be written, or the settings, the index or the
-        preview cache cannot be used; ``2`` for ``--thumbnail`` without
-        ``--output``.
+        ``0`` on success; a refusal (the query, a thumbnail that cannot be
+        written, ``--thumbnail`` without ``--output``, unusable settings, index
+        or preview cache) returns the exit code of its registry code.
     """
     if (args.thumbnail is None) != (args.output is None):
-        err.write(MESSAGES["cli_layers_output_required"] + "\n")
-        return _USAGE
+        return fail(
+            err,
+            "validation_error",
+            MESSAGES["cli_layers_output_required"],
+            reason="usage",
+        )
     try:
         query = LayersQuery(
             store=args.store,
@@ -151,7 +158,7 @@ def main(
             )
     except ValidationError as error:
         located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
-        return refuse(validation_problem(located), out, err, as_json=args.json)
+        return refuse(validation_problem(located), err)
     with ExitStack() as stack:
         try:
             settings = SettingsService(ConfigStore(paths.config_file), registry).get()
@@ -162,17 +169,18 @@ def main(
             OSError,
             sqlite3.Error,
         ) as error:
-            err.write(with_detail(MESSAGES["cli_layers_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["cli_layers_failed"], str(error))
+                ),
+                err,
+            )
         try:
             return _layers(
                 args, query, image, previews, settings, paths, registry, out, err
             )
         except ArchiwistaError as error:
-            problem = service_problem(error)
-            if problem is None:
-                raise
-            return refuse(problem, out, err, as_json=args.json)
+            return refuse(describe(error), err)
 
 
 def _layers(
@@ -210,8 +218,12 @@ def _layers(
         try:
             args.output.write_bytes(drawn.data)
         except OSError as error:
-            err.write(with_detail(MESSAGES["cli_layers_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["cli_layers_failed"], str(error))
+                ),
+                err,
+            )
         message = MESSAGES["cli_layers_written"].format(
             layer=image.layer,
             path=args.output,

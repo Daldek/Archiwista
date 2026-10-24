@@ -7,14 +7,16 @@ and is registered with one line in ``archiwista.cli.COMMAND_MODULES``. A
 command calls the functions behind the HTTP routes, without HTTP, as the
 owner of the installation (``LOCAL_OWNER``) and through the same
 ``Authorizer``. With ``--json`` it prints exactly the response model of the
-matching route on standard output; a refusal prints the route's RFC 9457
-problem there instead and exits with status 1, its Polish detail always
-going to standard error. A wrong use of the command line exits with
-status 2 (``argparse``).
+matching route on standard output; a refusal prints nothing there: its
+Polish detail goes to standard error, the ``archiwista-error/1`` document
+(``archiwista.error_document``) is the last line of standard error, and the
+exit status is the registry's exit code of its code (ERR-4). A job that
+ends ``failed`` exits with 11, one that ends ``cancelled`` or ``interrupted``
+with 130 (ERR §1). A wrong use of the command line exits with status 2
+(``argparse``, with the same document).
 """
 
 import argparse
-import json
 from typing import Protocol, TextIO
 
 from archiwista.config import AppPaths
@@ -51,13 +53,3 @@ def add_parser(commands: Commands, name: str, help_key: str) -> argparse.Argumen
     parser = commands.add_parser(name, help=text, description=text)
     parser.add_argument("--json", action="store_true", help=MESSAGES["cli_json_help"])
     return parser
-
-
-def refuse(
-    problem: dict[str, object], out: TextIO, err: TextIO, *, as_json: bool
-) -> int:
-    """Report a refusal: the problem on ``out`` with ``--json``; return ``1``."""
-    if as_json:
-        out.write(json.dumps(problem, ensure_ascii=False) + "\n")
-    err.write(f"{problem['detail']}\n")
-    return 1

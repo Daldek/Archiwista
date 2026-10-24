@@ -641,13 +641,17 @@ class StateStore:
         with self._write() as connection:
             if not _is_empty(connection):
                 raise StateError(
-                    MESSAGES["state_import_not_empty"].format(path=self.path)
+                    MESSAGES["state_import_not_empty"].format(path=self.path),
+                    code="conflict",
+                    reason="state_not_empty",
                 )
             try:
                 _restore(connection, snapshot)
             except (sqlite3.IntegrityError, InvalidChangeError) as error:
                 raise StateError(
-                    MESSAGES["state_import_inconsistent"].format(detail=error)
+                    MESSAGES["state_import_inconsistent"].format(detail=error),
+                    code="data_error",
+                    reason="invalid_backup",
                 ) from error
 
     # Connections.

@@ -239,7 +239,7 @@ def test_import_into_non_empty_state_is_rejected(tmp_path: Path) -> None:
     status = main(["state", "import", str(backup)], paths=paths)
 
     # Assert
-    assert status == 1
+    assert status == 4  # conflict
     assert state.snapshot() == before
 
 

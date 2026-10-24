@@ -57,7 +57,7 @@ def get_settings(principal: _Principal, service: _Settings) -> Settings:
     return Settings.of(service.get())
 
 
-@router.put("", response_model=Settings, responses=problem_responses(403, 422))
+@router.put("", response_model=Settings, responses=problem_responses(403, 400))
 def put_settings(
     body: Settings,
     principal: Annotated[Principal, Depends(settings_writer)],

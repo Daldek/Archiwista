@@ -117,7 +117,7 @@ def test_project_access_follows_visibility_matrix(
     if who not in SEES[visibility]:
         assert_problem(response, 404, "not_found")
     elif who not in MANAGES:
-        assert_problem(response, 403, "permission_denied")
+        assert_problem(response, 403, "forbidden", "permission_denied")
     else:
         assert response.status_code == 200
         assert response.json() == {
@@ -150,7 +150,7 @@ def test_project_routes_follow_visibility_matrix(
         assert [item["project"] for item in listed] == ["raba"]
         assert detail.status_code == 200 and detail.json()["name"] == "Raba"
         # Visible: the producer is asked, and this server has none.
-        assert_problem(status, 503, "source_unavailable")
+        assert_problem(status, 503, "missing_dependency", "source_unavailable")
     else:
         assert listed == []
         assert_problem(detail, 404, "not_found")
@@ -169,7 +169,7 @@ def test_settings_change_needs_administrator(api: Api) -> None:
     accepted = admin.request("PUT", "/settings", json={**current, "offline": True})
 
     # Assert
-    assert_problem(refused, 403, "permission_denied")
+    assert_problem(refused, 403, "forbidden", "permission_denied")
     assert accepted.status_code == 200 and accepted.json()["offline"] is True
 
 
@@ -199,7 +199,7 @@ def test_other_person_cannot_change_access(api: Api) -> None:
     response = caller.request("PUT", ACCESS, json={"visibility": "private"})
 
     # Assert
-    assert_problem(response, 403, "permission_denied")
+    assert_problem(response, 403, "forbidden", "permission_denied")
     assert api.state.snapshot() == before
 
 
@@ -229,7 +229,7 @@ def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
     assert change.after is not None and change.after["users"] == [LISTED]
     # Lena now sees the project, without managing it.
     assert_problem(hidden, 404, "not_found")
-    assert_problem(listed.request("GET", ACCESS), 403, "permission_denied")
+    assert_problem(listed.request("GET", ACCESS), 403, "forbidden", "permission_denied")
 
 
 def test_admin_transfers_ownership_of_scanned_project(api: Api) -> None:
@@ -279,7 +279,7 @@ def test_share_rejects_entries_that_do_not_fit(
     response = admin.request("PUT", ACCESS, json=body)
 
     # Assert
-    assert_problem(response, 422, "validation_error")
+    assert_problem(response, 400, "validation_error")
     assert api.state.project_access(KEY) is None
 
 
@@ -296,7 +296,7 @@ def test_admin_routes_refuse_people_without_admin(
     response = caller.request(method, path, json=body)
 
     # Assert
-    assert_problem(response, 403, "permission_denied")
+    assert_problem(response, 403, "forbidden", "permission_denied")
     assert api.state.snapshot() == before
 
 
@@ -313,7 +313,7 @@ def test_changes_need_csrf_token(
     response = caller.request(method, path, json=body, csrf=False)
 
     # Assert
-    assert_problem(response, 403, "csrf_rejected")
+    assert_problem(response, 403, "forbidden", "csrf_rejected")
     assert api.state.snapshot() == before
 
 
@@ -347,11 +347,11 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
     assert created.status_code == 201
     assert created.json()["roles"] == ["store_writer"]
     assert_problem(taken, 409, "conflict")
-    assert_problem(reserved, 422, "validation_error")
+    assert_problem(reserved, 400, "validation_error")
     assert promoted.json()["roles"] == ["admin"]
     assert grouped.status_code == 201
     assert grouped.json()["members"] == [OTHER, "jan"]
-    assert_problem(unknown, 422, "validation_error")
+    assert_problem(unknown, 400, "validation_error")
     assert regrouped.json()["members"] == ["jan"]
     assert removed.status_code == 204 and not removed.content
     assert_problem(gone, 404, "not_found")
@@ -415,7 +415,7 @@ def test_revoked_admin_role_holds_for_live_session(
     assert before.status_code == 200
     assert signed_in.json()["roles"] == ["admin"]
     assert revoked.status_code == 200 and revoked.json()["roles"] == []
-    assert_problem(after, 403, "permission_denied")
+    assert_problem(after, 403, "forbidden", "permission_denied")
     assert still_signed_in.status_code == 200
     assert still_signed_in.json()["roles"] == []
 
@@ -442,8 +442,8 @@ def test_disabled_or_removed_account_ends_its_sessions(
     # Assert
     assert before.status_code == 200
     assert done.status_code in (200, 204)
-    assert_problem(ended, 401, "session_required")
-    assert_problem(again, 401, "session_required")
+    assert_problem(ended, 401, "unauthorized", "session_required")
+    assert_problem(again, 401, "unauthorized", "session_required")
 
 
 @pytest.mark.parametrize("token", ["startup", "agent"])
@@ -463,7 +463,7 @@ def test_token_of_disabled_account_starts_no_session(
 
     # Assert
     assert disabled.status_code == 200
-    assert_problem(exchanged, 401, "session_required")
+    assert_problem(exchanged, 401, "unauthorized", "session_required")
     assert "set-cookie" not in exchanged.headers
 
 
@@ -771,9 +771,11 @@ def _own_expected(
 
 
 def _answer(response: httpx.Response) -> str:
-    """Return a status, with the problem's code for a problem (``404 not_found``)."""
+    """Return a status, with the problem's reason or code (``403 csrf_rejected``)."""
     if response.headers.get("content-type") == "application/problem+json":
-        return f"{response.status_code} {response.json()['code']}"
+        body = response.json()
+        cause = body.get("details", {}).get("reason", body["code"])
+        return f"{response.status_code} {cause}"
     return str(response.status_code)
 
 

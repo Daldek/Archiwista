@@ -33,6 +33,10 @@ def merge_messages(*dictionaries: Mapping[str, str]) -> MappingProxyType[str, st
 MESSAGES = merge_messages(
     {
         "cli_description": "Archiwista — przeglądarka lokalnego magazynu danych.",
+        "cli_internal_error": (
+            "Nieoczekiwany błąd programu; ślad wywołań jest wyżej. Zgłoś go z"
+            " poleceniem i wersją Archiwisty."
+        ),
         "cli_doctor_help": "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
         # Local server, sessions and access protection (step 8).
         "cli_serve_help": (
@@ -80,14 +84,6 @@ MESSAGES = merge_messages(
             "Sesja agenta nie wystawia tokenów kolejnych sesji; token dla agenta"
             " wystawia właściciel („archiwista token”) albo jego przeglądarka."
         ),
-        "api_title_invalid_host": "Niedozwolony adres serwera",
-        "api_title_session_required": "Wymagana sesja",
-        "api_title_csrf_rejected": "Żądanie odrzucone",
-        "api_title_validation_error": "Niepoprawne dane żądania",
-        "api_title_not_found": "Nie znaleziono",
-        "api_title_permission_denied": "Brak uprawnień",
-        "api_title_conflict": "Konflikt",
-        "api_title_request_too_large": "Za duże żądanie",
         "api_request_too_large": "Treść żądania przekracza limit {limit}.",
         "api_invalid_host": (
             "Archiwista przyjmuje tylko żądania na adres 127.0.0.1:{port}"
@@ -96,6 +92,10 @@ MESSAGES = merge_messages(
         "api_session_required": (
             "Brak ważnej sesji. Otwórz adres wypisany przez „archiwista serve”"
             " albo wystaw nowy poleceniem „archiwista token”."
+        ),
+        "api_hint_session_required": (
+            "Wymień jednorazowy token na sesję: POST /api/v1/session"
+            " („archiwista token” wypisuje adres z tokenem)."
         ),
         "api_token_rejected": (
             "Token jest nieznany, wygasł albo został już użyty. Wystaw nowy"
@@ -126,16 +126,6 @@ MESSAGES = merge_messages(
         "source_incompatible": "Wersja źródła danych jest niezgodna.",
         "store_unavailable": "Magazyn danych jest niedostępny.",
         # Read API: errors, catalog, map and projects (step 9a).
-        "api_title_method_not_allowed": "Niedozwolona metoda",
-        "api_title_path_outside_root": "Ścieżka poza magazynem",
-        "api_title_store_unavailable": "Magazyn niedostępny",
-        "api_title_source_unavailable": "Źródło danych niedostępne",
-        "api_title_source_incompatible": "Niezgodne źródło danych",
-        "api_title_kartograf_error": "Błąd Kartografa",
-        "api_title_imgwtools_error": "Błąd IMGWTools",
-        "api_title_producer_error": "Błąd biblioteki producenta",
-        "api_title_http_error": "Błąd żądania",
-        "api_title_internal_error": "Błąd serwera",
         "api_route_not_found": "Nie ma takiego zasobu.",
         "api_method_not_allowed": "Metoda {method} nie jest dostępna dla {path}.",
         "api_internal_error": (
@@ -174,9 +164,6 @@ MESSAGES = merge_messages(
             " nie sprawdził jeszcze projektu."
         ),
         # Areas and local coverage (step 9c).
-        "api_title_area_too_large": "Za duży plik obszaru",
-        "api_title_area_unreadable": "Nie można odczytać obszaru",
-        "api_title_area_too_complex": "Zbyt złożony obszar",
         "area_body_too_large": (
             "Treść żądania ma ponad {limit_mb} MB, a tyle najwyżej może mieć"
             " obszar albo jego plik."
@@ -808,7 +795,6 @@ MESSAGES = merge_messages(
             " odśwież magazyn."
         ),
         # Background jobs over HTTP and their event streams (step 9b).
-        "api_title_offline_mode": "Tryb offline",
         "cli_reindex_help": (
             "Przebudowuje indeks: pełny skan magazynu (bez --store — wszystkich)"
             " jako zadanie, wykonywane na pierwszym planie."

@@ -584,11 +584,26 @@ class SettingsProblem:
 
 
 class SettingsValidationError(ArchiwistaError):
-    """Settings are malformed or point at unusable directories."""
+    """Settings are malformed or point at unusable directories.
+
+    A ``validation_error`` with the reason ``invalid_settings``; the problems
+    are ``details["problems"]``.
+    """
+
+    default_code = "validation_error"
+    default_reason = "invalid_settings"
 
     def __init__(self, problems: Sequence[SettingsProblem]) -> None:
         self.problems = tuple(problems)
-        super().__init__("; ".join(problem.message for problem in self.problems))
+        super().__init__(
+            "; ".join(problem.message for problem in self.problems),
+            details={
+                "problems": [
+                    {"code": item.code, "field": item.field, "message": item.message}
+                    for item in self.problems
+                ]
+            },
+        )
 
 
 _PYDANTIC_MESSAGES = {

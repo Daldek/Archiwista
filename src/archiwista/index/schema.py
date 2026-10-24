@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 
 SCHEMA_VERSION = 6
@@ -399,8 +400,14 @@ END;
 """
 
 
-class IndexUnsupportedError(RuntimeError):
-    """The Python SQLite library lacks a feature the index needs."""
+class IndexUnsupportedError(ArchiwistaError, RuntimeError):
+    """The Python SQLite library lacks a feature the index needs.
+
+    A ``store_unavailable`` (reason ``index_unsupported``).
+    """
+
+    default_code = "store_unavailable"
+    default_reason = "index_unsupported"
 
 
 def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:

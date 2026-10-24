@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TextIO
 
+from archiwista._errors import OUTCOMES
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -287,11 +288,18 @@ def format_report(report: DoctorReport) -> str:
 def doctor_main(paths: AppPaths, registry: SourceRegistryView, out: TextIO) -> int:
     """Print the diagnostics and return the process exit status.
 
+    A failed check is an outcome, not an error (ERR §1): the report is the
+    result and no error document follows it.
+
     Returns
     -------
     int
-        ``0`` without errors, ``1`` when any check failed.
+        ``0`` without errors, ``10`` (``partial``) when some checks failed and
+        others passed, ``11`` (``failed``) when every check failed.
     """
     report = run_doctor(paths, registry)
     out.write(format_report(report))
-    return 1 if report.errors else 0
+    if not report.errors:
+        return OUTCOMES["ok"]
+    everything_failed = report.errors == len(report.checks)
+    return OUTCOMES["failed" if everything_failed else "partial"]

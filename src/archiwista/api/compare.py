@@ -22,7 +22,7 @@ router = APIRouter(tags=["compare"])
 @router.get(
     "/compare",
     response_model=Comparison,
-    responses=problem_responses(404, 422),
+    responses=problem_responses(404, 400),
 )
 def get_comparison(
     query: Annotated[CompareQuery, Query()],

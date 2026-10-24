@@ -515,7 +515,7 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
             "snapshot_blocked", str(error), type(error).__name__, reason=error.reason
         ) from error
     except SnapshotFailedError as error:
-        raise JobFailure(error.code, str(error), type(error).__name__) from error
+        raise JobFailure(error.job_code, str(error), type(error).__name__) from error
     except PathOutsideRootError as error:
         raise JobFailure(
             "path_outside_root", str(error), type(error).__name__

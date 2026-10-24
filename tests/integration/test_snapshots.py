@@ -623,7 +623,7 @@ def test_fileset_changing_during_copy_retries_then_fails(
 
     # Assert
     assert retried.status == "created" and copies_once == 2
-    assert failed.value.code == "inconsistent_copy"
+    assert failed.value.job_code == "inconsistent_copy"
     assert "zmieniał się w trakcie kopiowania" in str(failed.value)
     assert copied.count("dzialki.shp") == 3
     assert _labels(root, "dzialki.shp") == [retried.label]
@@ -885,7 +885,7 @@ def test_label_taken_before_rename_is_target_exists(
         env.make(key, "nmt.tif", on_phase=publish_first)
 
     # Assert
-    assert failed.value.code == "target_exists"
+    assert failed.value.job_code == "target_exists"
     target = taken_dirs[0]
     expected = ["nmt.tif"] if taken == "complete" else []
     assert sorted(os.listdir(target)) == expected

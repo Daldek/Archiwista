@@ -53,7 +53,7 @@ from archiwista.api.dependencies import (
     settings_service,
     visible_projects,
 )
-from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
+from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import JobDetail
 from archiwista.api.models_layers import LayerSet
@@ -436,23 +436,23 @@ async def own_ref(
 _JOB_PROBLEMS: dict[int | str, dict[str, Any]] = {
     409: {
         "description": (
-            "`snapshot_blocked` (the plan refuses it now: `reason`"
-            " `folder_invalid`, `read_only_folder`, `insufficient_space`,"
-            " `file_missing`) or `conflict` (a snapshot of the file runs; `job`"
-            " names it)."
+            "Conflicts with the current state: reason `snapshot_blocked` (the"
+            " plan refuses it now: `details.blocked_by` `folder_invalid`,"
+            " `read_only_folder`, `insufficient_space`, `file_missing`) or no"
+            " reason (a snapshot of the file runs; `details.job` names it)."
         ),
         "content": {
             PROBLEM_MEDIA_TYPE: {
                 "schema": {"$ref": "#/components/schemas/ProblemDetails"},
                 "examples": {
                     "snapshot_blocked": {
-                        "value": problem_body(
-                            409,
-                            "snapshot_blocked",
+                        "value": problem_example(
+                            "conflict",
                             MESSAGES["snapshot_blocked_read_only_folder"].format(
                                 path="/mnt/nas/raba/dane/.wersje"
                             ),
-                            {"reason": "read_only_folder"},
+                            reason="snapshot_blocked",
+                            details={"blocked_by": "read_only_folder"},
                         )
                     }
                 },
@@ -463,21 +463,21 @@ _JOB_PROBLEMS: dict[int | str, dict[str, Any]] = {
 _CHANGED_PROBLEM: dict[int | str, dict[str, Any]] = {
     409: {
         "description": (
-            "`own_file_changed` (the file changed since its scan: `POST"
-            " /projects/{project}/scan`), `preview_unavailable` (`reason`) or"
-            " `preview_not_ready` (`job`, `building` or `build_required`)."
+            "`own_file_changed` (reason: the file changed since its scan: `POST"
+            " /projects/{project}/scan`) or `preview_not_ready` (reason:"
+            " `details.job`, `details.building` or `details.build_required`)."
         ),
         "content": {
             PROBLEM_MEDIA_TYPE: {
                 "schema": {"$ref": "#/components/schemas/ProblemDetails"},
                 "examples": {
                     "own_file_changed": {
-                        "value": problem_body(
-                            409,
-                            "own_file_changed",
+                        "value": problem_example(
+                            "conflict",
                             MESSAGES["own_file_changed"].format(
                                 path="sieci/kanalizacja.gpkg", project="raba"
                             ),
+                            reason="own_file_changed",
                         )
                     }
                 },
@@ -491,20 +491,21 @@ _RENDERED = ("preview_unavailable", "preview_busy", "preview_timeout")
 def _images(media_type: str, *codes: str) -> dict[int | str, dict[str, Any]]:
     """Return the OpenAPI responses of an own-data image or data route."""
     responses = image_responses(media_type, *codes)
+    changed = _CHANGED_PROBLEM[409]
     conflict = responses.get(409)
-    if conflict is not None:
+    if conflict is None:
+        responses[409] = changed
+    else:
         examples = conflict["content"][PROBLEM_MEDIA_TYPE]["examples"]
-        examples.update(
-            _CHANGED_PROBLEM[409]["content"][PROBLEM_MEDIA_TYPE]["examples"]
-        )
-        conflict["description"] = _CHANGED_PROBLEM[409]["description"]
+        examples.update(changed["content"][PROBLEM_MEDIA_TYPE]["examples"])
+        conflict["description"] = changed["description"]
     return responses
 
 
 @router.get(
     "/files",
     response_model=OwnFileList,
-    responses=problem_responses(404, 422),
+    responses=problem_responses(404, 400),
 )
 def list_own_files(
     project: _Project,
@@ -529,7 +530,7 @@ def list_own_files(
 @router.put(
     "/data-dir",
     response_model=OwnFolder,
-    responses=problem_responses(403, 404, 422),
+    responses=problem_responses(403, 404, 400),
 )
 def put_data_dir(
     project: _Project,
@@ -556,7 +557,7 @@ def put_data_dir(
 @router.get(
     _FILE,
     response_model=OwnFileCard,
-    responses=problem_responses(404, 422),
+    responses=problem_responses(404, 400),
 )
 async def get_own_file(
     project: _Project,
@@ -587,7 +588,7 @@ async def get_own_file(
 @router.get(
     f"{_FILE}/snapshot-plan",
     response_model=SnapshotPlan,
-    responses=problem_responses(403, 404, 422),
+    responses=problem_responses(403, 404, 400),
 )
 def get_snapshot_plan(
     project: _Project,
@@ -612,7 +613,7 @@ def get_snapshot_plan(
 @router.get(
     f"{_FILE}/layers",
     response_model=LayerSet,
-    responses={**problem_responses(404, 422), **preview_problems("preview_busy")},
+    responses={**problem_responses(404, 400), **preview_problems("preview_busy")},
 )
 async def get_own_file_layers(
     project: _Project,
@@ -671,7 +672,7 @@ def start_project_scan(
     f"{_FILE}/snapshots",
     response_model=JobDetail,
     status_code=202,
-    responses={**problem_responses(403, 404, 422), **_JOB_PROBLEMS},
+    responses={**problem_responses(403, 404, 400), **_JOB_PROBLEMS},
 )
 def start_file_snapshot(
     project: _Project,
@@ -710,13 +711,13 @@ def start_file_snapshot(
 
 
 _INFO_RESPONSES = {
-    **problem_responses(403, 404, 422),
+    **problem_responses(403, 404, 400),
     **preview_problems("preview_busy"),
 }
 _BUILD_RESPONSES = {
     200: {"model": PreviewInfo, "description": "Nothing needs building."},
     202: {"model": JobDetail, "description": "The `preview` job building it."},
-    **problem_responses(403, 404, 422),
+    **problem_responses(403, 404, 400),
     **_CHANGED_PROBLEM,
     **preview_problems("preview_busy"),
 }

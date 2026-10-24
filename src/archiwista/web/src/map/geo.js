@@ -69,7 +69,7 @@ export function unionBounds(boxes) {
 /**
  * A box at least `span` degrees wide and high around its centre, inside
  * WGS84: a single point's bounds have no area, which the API refuses as a
- * `bbox` (`422`) and which frames the map at its deepest zoom.
+ * `bbox` (`400`) and which frames the map at its deepest zoom.
  *
  * @param {number[]} bbox - `[min_lon, min_lat, max_lon, max_lat]`.
  * @param {number} span - Least width and height in degrees.

@@ -20,6 +20,7 @@ from archiwista.config import ConfigStore
 from archiwista.jobs.reindex import reindex_main
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
+from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE, store_settings
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
@@ -97,24 +98,20 @@ def test_agent_session_paging_and_errors(
     # Assert
     assert issued["url"] == f"http://127.0.0.1:{server.port}/#token={issued['token']}"
     assert session.status_code == 200 and session.json()["actor"] == "local"
-    assert reused.status_code == 401 and reused.json()["code"] == "session_required"
+    assert_problem(reused, 401, "unauthorized", "session_required")
     assert len(pages) > 1
     assert _rows([page["items"] for page in pages]) == _rows([whole.json()["items"]])
-    assert foreign.status_code == 422 and foreign.json()["code"] == "validation_error"
-    assert unchecked.status_code == 403
-    assert unchecked.json()["code"] == "csrf_rejected"
+    assert_problem(foreign, 400, "validation_error")
+    assert_problem(unchecked, 403, "forbidden", "csrf_rejected")
     # The session cookie alone reads nothing either.
-    assert unchecked_read.status_code == 403
-    assert unchecked_read.json()["code"] == "csrf_rejected"
+    assert_problem(unchecked_read, 403, "forbidden", "csrf_rejected")
     assert scan.status_code == 202, scan.text
     assert scan.headers["location"] == f"/api/v1/jobs/{scan.json()['id']}"
     assert scan.json()["actor"] == "local"
     assert events[-1][0] == "state" and events[-1][1]["state"] == job["state"]
     assert job["state"] == "succeeded" and job["error"] is None
-    assert no_plugin.status_code == 503
-    assert no_plugin.headers["content-type"] == "application/problem+json"
-    assert no_plugin.json()["code"] == "source_unavailable"
-    assert no_plugin.json()["source"]["id"] == "kartograf"
+    assert_problem(no_plugin, 503, "missing_dependency", "source_unavailable")
+    assert no_plugin.json()["details"]["source"]["id"] == "kartograf"
 
 
 def test_agent_snapshot_flow(

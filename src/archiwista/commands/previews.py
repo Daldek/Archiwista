@@ -12,7 +12,10 @@ foreground (``archiwista.jobs.foreground``; ``POST …/preview`` with
 ``force``). Everything goes through ``PreviewService`` with one render
 process, as the owner of the installation (``LOCAL_OWNER``). Without
 ``--build`` no job supervisor runs, so the answer names no ``job``: a file a
-server is building shows ``needs_build``.
+server is building shows ``needs_build``. A build that does not succeed still
+prints the preview and exits with its outcome (``11`` failed, ``130``
+cancelled or interrupted); a refusal prints no preview, its
+``archiwista-error/1`` document ends standard error.
 """
 
 import argparse
@@ -26,11 +29,10 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from archiwista.api.errors import service_problem, validation_problem
 from archiwista.api.models_previews import PreviewInfo, ThumbnailQuery
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
-from archiwista.commands import Commands, add_parser, refuse
+from archiwista.commands import Commands, add_parser
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -38,10 +40,23 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
 )
+from archiwista.error_document import (
+    describe,
+    exception_problem,
+    refuse,
+    validation_problem,
+)
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.jobs import ACTIVE_STATES, JobEvent, JobRecord, JobSupervisor, label
-from archiwista.jobs.foreground import run_foreground
+from archiwista.jobs import (
+    ACTIVE_STATES,
+    JobEvent,
+    JobRecord,
+    JobState,
+    JobSupervisor,
+    label,
+)
+from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.previews.cache import PreviewCache
 from archiwista.previews.pool import RenderPool
@@ -164,15 +179,16 @@ def main(
     Returns
     -------
     int
-        ``0`` on success; ``1`` when the object is refused (its problem),
-        its build fails, the thumbnail cannot be written, or the settings,
-        the index or the preview cache cannot be used.
+        ``0`` on success; the exit code of the registry code of a refusal
+        (the object, the thumbnail that cannot be written, the settings, the
+        index or the preview cache); ``11`` or ``130`` when the build does not
+        succeed.
     """
     try:
         query = ThumbnailQuery(style=args.style, size=args.size)
     except ValidationError as error:
         located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
-        return refuse(validation_problem(located), out, err, as_json=args.json)
+        return refuse(validation_problem(located), err)
     with ExitStack() as stack:
         try:
             settings = SettingsService(ConfigStore(paths.config_file), registry)
@@ -195,15 +211,16 @@ def main(
             OSError,
             sqlite3.Error,
         ) as error:
-            err.write(with_detail(MESSAGES["cli_preview_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["cli_preview_failed"], str(error))
+                ),
+                err,
+            )
         try:
             return _preview(args, query, previews.service, jobs, out, err)
         except ArchiwistaError as error:
-            problem = service_problem(error)
-            if problem is None:
-                raise
-            return refuse(problem, out, err, as_json=args.json)
+            return refuse(describe(error), err)
 
 
 def _preview(
@@ -218,10 +235,7 @@ def _preview(
     ref = format_ref(parse_ref(args.ref))
     status = 0
     if jobs is not None:
-        failure = _build(ref, service, jobs, err)
-        status = 0 if failure is None else 1
-        if failure:
-            err.write(failure + "\n")
+        status = _build(ref, service, jobs, err)
     written = None
     if status == 0 and args.output is not None:
         thumbnail = asyncio.run(
@@ -233,8 +247,12 @@ def _preview(
         try:
             args.output.write_bytes(thumbnail.data)
         except OSError as error:
-            err.write(with_detail(MESSAGES["cli_preview_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["cli_preview_failed"], str(error))
+                ),
+                err,
+            )
         written = args.output
     info = asyncio.run(service.info(ref, principal=LOCAL_OWNER))
     if written is not None:
@@ -247,13 +265,11 @@ def _preview(
     return status
 
 
-def _build(
-    ref: str, service: PreviewService, jobs: JobSupervisor, err: TextIO
-) -> str | None:
-    """Build what the file needs in the foreground; why it failed, if it did.
+def _build(ref: str, service: PreviewService, jobs: JobSupervisor, err: TextIO) -> int:
+    """Build what the file needs in the foreground; return the exit status.
 
-    ``""``: Ctrl+C stopped the waiting for another process's job, which
-    said so already.
+    Why it did not succeed goes to ``err``, unless Ctrl+C stopped the waiting
+    for another process's job, which said so already.
     """
     record = run_foreground(
         jobs,
@@ -266,8 +282,11 @@ def _build(
         ),
     )
     if record is None:
-        return None
-    return _build_failure(record, ref)
+        return exit_status("succeeded")
+    state, failure = _build_end(record, ref)
+    if failure is not None:
+        err.write(failure + "\n")
+    return exit_status(state)
 
 
 def _build_event(event: JobEvent) -> str | None:
@@ -285,20 +304,25 @@ def _build_event(event: JobEvent) -> str | None:
     return None
 
 
-def _build_failure(record: JobRecord, ref: str) -> str | None:
-    """Return why a ``preview`` job did not build ``ref``, or ``None``."""
+def _build_end(record: JobRecord, ref: str) -> tuple[JobState, str | None]:
+    """Return the state of the build of ``ref`` and why it failed, if it did.
+
+    A ``preview`` job that succeeded without building ``ref`` has failed for
+    it; a job still active after Ctrl+C has no failure to tell.
+    """
     if record.state in ACTIVE_STATES:
-        return ""
+        return record.state, None
     if record.state == "succeeded":
         result = record.result or {}
         failed = [item for item in result.get("failed", ()) if item["ref"] == ref]
         if not failed:
-            return None
-        state, detail = "failed", failed[0]["detail"] or failed[0]["code"]
+            return record.state, None
+        state: JobState = "failed"
+        detail = failed[0]["detail"] or failed[0]["code"]
     else:
         state = record.state
         detail = "" if record.error is None else record.error.detail
-    return MESSAGES["cli_preview_build_failed"].format(
+    return state, MESSAGES["cli_preview_build_failed"].format(
         job=record.id, state=label("job_state", state), detail=detail
     )
 

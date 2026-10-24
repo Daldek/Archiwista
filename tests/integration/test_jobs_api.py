@@ -144,7 +144,8 @@ def test_second_scan_of_store_returns_409_with_job_id(
     for refused in (scan, footprints):
         assert_problem(refused, 409, "conflict")
         body = refused.json()
-        assert body["job"] == {"id": first["id"], "kind": "scan", "state": "running"}
+        running = {"id": first["id"], "kind": "scan", "state": "running"}
+        assert body["details"]["job"] == running
         assert first["id"] in body["detail"]
     assert [job["id"] for job in recorded] == [first["id"]]
 
@@ -167,7 +168,7 @@ def test_footprints_refused_offline(
     served.env.wait(accepted.json()["id"])
 
     # Assert
-    assert_problem(refused, 409, "offline_mode")
+    assert_problem(refused, 409, "conflict", "offline_mode")
     assert refused.json()["detail"] == MESSAGES["job_offline_mode"]
     assert listed.json() == {"items": [], "next_cursor": None}
     assert accepted.status_code == 202
@@ -233,7 +234,7 @@ def test_sse_resume_from_last_event_id(served: JobsApi) -> None:
     assert len(whole) > 4 and whole[-1][2]["state"] == "succeeded"
     assert resumed == whole[3:]
     assert ended.status_code == 204 and ended.content == b""
-    assert_problem(invalid, 422, "validation_error")
+    assert_problem(invalid, 400, "validation_error")
     assert_problem(unknown, 404, "not_found")
 
 
@@ -276,7 +277,7 @@ def test_post_without_csrf_rejected(served: JobsApi) -> None:
 
     # Assert
     for response in refused:
-        assert_problem(response, 403, "csrf_rejected")
+        assert_problem(response, 403, "forbidden", "csrf_rejected")
     assert listed["items"] == []
 
 
@@ -328,7 +329,7 @@ def test_job_list_filters_and_pages(served: JobsApi) -> None:
         scan.id,
     ]
     for refused in (foreign, misspelt, unknown_state):
-        assert_problem(refused, 422, "validation_error")
+        assert_problem(refused, 400, "validation_error")
 
 
 def test_event_stream_ends_when_server_stops(

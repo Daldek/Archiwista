@@ -39,6 +39,7 @@ from archiwista.messages import MESSAGES
 from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
 from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
+from tests.fixtures.cli_errors import refusal
 from tests.fixtures.job_worker import (
     BUILD_PROCESSES_ENV,
     BUILD_TIMEOUT_ENV,
@@ -461,27 +462,31 @@ def test_reindex_conflict_exits_nonzero(
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
     running = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
     env.follow(running.id, lambda event: event.type == "progress")
-    err = io.StringIO()
+    out, err = io.StringIO(), io.StringIO()
 
     # Act
-    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store=STORE)
+    status = reindex_main(env.paths, NoSources(), out, err, store=STORE)
     env.jobs.cancel(running.id)
 
     # Assert
-    assert status == 1
-    assert "(kod conflict)" in err.getvalue()
-    assert running.id in err.getvalue()
+    document = refusal(out.getvalue(), err.getvalue(), status)
+    assert (status, document["code"]) == (4, "conflict")
+    assert document["details"]["job"]["id"] == running.id
     assert [job.id for job in env.jobs.list(kind="scan").items] == [running.id]
 
 
 def test_reindex_unknown_store(env: JobsEnv) -> None:
     """An unknown store is an argument error; nothing is recorded."""
-    err = io.StringIO()
+    out, err = io.StringIO(), io.StringIO()
 
-    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store="brak")
+    status = reindex_main(env.paths, NoSources(), out, err, store="brak")
 
-    assert status == 2
-    assert err.getvalue() == MESSAGES["job_store_unknown"].format(store="brak") + "\n"
+    document = refusal(out.getvalue(), err.getvalue(), status)
+    assert (status, document["code"]) == (3, "not_found")
+    assert document["details"]["reason"] == "unknown_store"
+    assert err.getvalue().splitlines()[0] == MESSAGES["job_store_unknown"].format(
+        store="brak"
+    )
     assert env.jobs.list().items == ()
 
 
@@ -492,7 +497,7 @@ def test_reindex_on_foreground_helper(
 
     The scan runs on ``jobs/foreground.py``: its progress reaches standard
     error, Ctrl+C (pressed here while ``wait`` follows the scan) cancels it
-    and waits for its end, and ``reindex`` exits 1 with the job's state; a
+    and waits for its end, and ``reindex`` exits 130 with the job's state; a
     version gone since the last scan is not marked missing.
     """
     # Arrange
@@ -529,7 +534,7 @@ def test_reindex_on_foreground_helper(
     record = env.jobs.get(pressed[0])
 
     # Assert
-    assert status == 1 and out.getvalue() == ""
+    assert status == 130 and out.getvalue() == ""
     assert record is not None and record.state == "cancelled"
     lines = err.getvalue().splitlines()
     assert lines[0] == MESSAGES["reindex_started"].format(store=STORE, job=record.id)

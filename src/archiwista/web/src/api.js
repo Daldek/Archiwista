@@ -20,9 +20,10 @@
  * origin for it (`BroadcastChannel`); a tab starting a new session tells
  * them its token. Job events stream through `fetch`, which can send the
  * header (`EventSource` cannot), resuming after `Last-Event-ID`. Errors are
- * RFC 9457 problems thrown as `ApiError`; a `401` or `csrf_rejected` of any
- * request after the start goes to the `onSessionLost` listeners, so the
- * shell can say how to open a new session.
+ * RFC 9457 problems thrown as `ApiError`: `code` is a code of the Nogat error
+ * registry, `details.reason` the project's own cause; a `401`, or a `403` with
+ * the reason `csrf_rejected`, of any request after the start goes to the
+ * `onSessionLost` listeners, so the shell can say how to open a new session.
  */
 
 import { T, t } from "./labels/index.js";
@@ -76,6 +77,8 @@ import { T, t } from "./labels/index.js";
 
 export const API_PREFIX = "/api/v1";
 const CSRF_HEADER = "X-Archiwista-CSRF";
+// The language of a problem's `title` (AGI-6.4): the interface is Polish.
+const LANGUAGE = "pl";
 // `sessionStorage` key of the session's CSRF token (this origin, this tab).
 export const TOKEN_KEY = "archiwista_csrf";
 const CHANNEL = "archiwista-session";
@@ -125,8 +128,9 @@ export class ApiError extends Error {
  * Start the browser session: the token of `#token=…`, else the session cookie.
  *
  * @returns {Promise<SessionState>}
- * @throws {ApiError} `401 session_required` without a usable token or session,
- *   `network_error` when the server does not answer.
+ * @throws {ApiError} `401 unauthorized` (reason `session_required`) without a
+ *   usable token or session, `source_unavailable` (reason `network_error`)
+ *   when the server does not answer.
  */
 export async function startSession() {
   const token = takeFragmentToken();
@@ -269,8 +273,8 @@ export function apiHeaders(address) {
  * @param {RequestOptions} [options]
  * @returns {Promise<Blob>} The PNG; the browser's cache answers a repeated
  *   address (`Cache-Control: immutable`, `ETag`).
- * @throws {ApiError} E.g. `409 preview_unavailable` with `reason`, `503
- *   preview_busy`; aborting rejects with `AbortError`.
+ * @throws {ApiError} E.g. `422 unsupported` (`details.preview_reason`), `429
+ *   rate_limited`; aborting rejects with `AbortError`.
  */
 export async function getImage(address, { signal } = {}) {
   const headers = { Accept: IMAGE_ANSWERS };
@@ -302,8 +306,8 @@ export async function getLinked(address, { signal } = {}) {
  *   limits (the „Zbuduj podgląd” button).
  * @returns {Promise<JobDetail|PreviewInfo>} `202` the job, `200` the
  *   `PreviewInfo` when nothing needs building (no `id`).
- * @throws {ApiError} `409 preview_unavailable`, `503 preview_busy`,
- *   `store_unavailable`.
+ * @throws {ApiError} `422 unsupported` (`details.preview_reason`), `429
+ *   rate_limited`, `store_unavailable`.
  */
 export async function buildLinked(address, { force = false } = {}) {
   const headers = { Accept: JSON_ANSWERS, "Content-Type": "application/json" };
@@ -544,7 +548,8 @@ export function getSettings({ signal } = {}) {
  *
  * @param {Settings} settings
  * @returns {Promise<Settings>} The settings now in effect.
- * @throws {ApiError} `422 validation_error` with `problems` per field.
+ * @throws {ApiError} `400 validation_error` (reason `invalid_settings`) with
+ *   `details.problems` per field.
  */
 export function putSettings(settings) {
   return request("PUT", "/settings", { json: settings });
@@ -569,7 +574,8 @@ export function startScan(store, scan = {}) {
  *
  * @param {string} store - Store id.
  * @returns {Promise<JobDetail>}
- * @throws {ApiError} `409 offline_mode` in offline mode, `409 conflict`.
+ * @throws {ApiError} `409 conflict`: reason `offline_mode` in offline mode, or
+ *   the job in the way (`details.job`).
  */
 export function startFootprints(store) {
   return request("POST", `/stores/${one(store)}/footprints`);
@@ -645,13 +651,13 @@ export function watchJob(job, { onProgress, onNotice, onState, onError } = {}) {
       if (response.status === 204) return;
       if (!response.ok) {
         ended = true;
-        onError?.({
-          type: "about:blank",
-          title: T.common.problem.http_title,
-          status: response.status,
-          detail: t(T.common.problem.stream, { job }),
-          code: "stream_closed",
-        });
+        onError?.(
+          pageProblem("source_unavailable", "stream_closed", {
+            title: T.common.problem.http_title,
+            status: response.status,
+            detail: t(T.common.problem.stream, { job }),
+          }),
+        );
         return;
       }
       try {
@@ -695,8 +701,9 @@ export function createArea(input) {
  * @param {{name?: string, layer?: string}} [options] - Display name (e.g. the
  *   file name) and the layer when the file has several.
  * @returns {Promise<Area>}
- * @throws {ApiError} `413 area_too_large`, `422 area_unreadable`,
- *   `422 area_too_complex`.
+ * @throws {ApiError} `400 validation_error` (reason `area_too_large` or
+ *   `area_too_complex`), `500 data_error` (reason `area_unreadable`; the file's
+ *   layers in `details.layers`).
  */
 export function uploadArea(file, { name, layer } = {}) {
   return request("POST", "/areas", {
@@ -755,8 +762,8 @@ export function getLocalLayers(query, { signal } = {}) {
  * @param {string} b - `ref` of side B.
  * @param {RequestOptions} [options]
  * @returns {Promise<Comparison>}
- * @throws {ApiError} `422 invalid_ref` (malformed, or a kind not compared
- *   yet), `404 not_found`.
+ * @throws {ApiError} `400 validation_error` (reason `invalid_ref`: malformed,
+ *   or a kind not compared yet), `404 not_found`.
  */
 export function getComparison(a, b, { signal } = {}) {
   return request("GET", "/compare", { query: { a, b }, signal });
@@ -789,8 +796,8 @@ export function getPreview(store, version, { signal } = {}) {
  *   limits (the „Zbuduj podgląd” button).
  * @returns {Promise<JobDetail|PreviewInfo>} `202` the job, `200` the
  *   `PreviewInfo` when nothing needs building (no `id`).
- * @throws {ApiError} `409 preview_unavailable` (`too_large` without `force`),
- *   `503 preview_busy`, `store_unavailable`.
+ * @throws {ApiError} `422 unsupported` (`details.preview_reason`; `too_large`
+ *   without `force`), `429 rate_limited`, `store_unavailable`.
  */
 export function buildPreview(store, version, { force = false } = {}) {
   return request("POST", `/stores/${one(store)}/versions/${segments(version)}/preview`, {
@@ -810,7 +817,8 @@ export function buildPreview(store, version, { force = false } = {}) {
  * @param {OwnFilesQuery} [query] - `q`, `state`, `limit` (1–200), `cursor`.
  * @param {RequestOptions} [options]
  * @returns {Promise<OwnFileList>}
- * @throws {ApiError} `404 not_found` (unknown, or not visible), `422`.
+ * @throws {ApiError} `404 not_found` (unknown, or not visible), `400
+ *   validation_error`.
  */
 export function listOwnFiles(project, query = {}, { signal } = {}) {
   return request("GET", `/projects/${one(project)}/files`, { query, signal });
@@ -835,8 +843,8 @@ export function startProjectScan(project) {
  * @param {string|null} path - Absolute folder on the server's computer;
  *   `null` brings back the default.
  * @returns {Promise<OwnFolder>}
- * @throws {ApiError} `403 permission_denied`, `422 validation_error` with
- *   `problems` (the folder breaks a rule).
+ * @throws {ApiError} `403 forbidden` (reason `permission_denied`), `400
+ *   validation_error` with `details.problems` (the folder breaks a rule).
  */
 export function putDataDir(project, path) {
   return request("PUT", `/projects/${one(project)}/data-dir`, { json: { path } });
@@ -889,8 +897,9 @@ export function getSnapshotPlan(project, fileId, { signal } = {}) {
  * @param {string} fileId
  * @param {string} note - The person's note kept in `migawka.json` (≤ 2000).
  * @returns {Promise<JobDetail>}
- * @throws {ApiError} `403 permission_denied`, `409 snapshot_blocked`
- *   (`reason`), `409 conflict` (a snapshot of the file runs: `job`).
+ * @throws {ApiError} `403 forbidden` (reason `permission_denied`), `409
+ *   conflict` with the reason `snapshot_blocked` (`details.blocked_by`), or
+ *   while a snapshot of the file runs (`details.job`).
  */
 export function startFileSnapshot(project, fileId, note) {
   return request("POST", `/projects/${one(project)}/files/${one(fileId)}/snapshots`, {
@@ -921,8 +930,8 @@ export function getOwnPreview(project, fileId, label, { signal } = {}) {
  * @param {string|null} label - A snapshot's label; `null`: the working file.
  * @param {{force?: boolean}} [options]
  * @returns {Promise<JobDetail|PreviewInfo>}
- * @throws {ApiError} `409 own_file_changed` (scan the folder again),
- *   `409 preview_unavailable`, `503 preview_busy`.
+ * @throws {ApiError} `409 conflict` (reason `own_file_changed`: scan the folder
+ *   again), `422 unsupported` (`details.preview_reason`), `429 rate_limited`.
  */
 export function buildOwnPreview(project, fileId, label, { force = false } = {}) {
   return request("POST", ownPreviewPath(project, fileId, label), { json: { force } });
@@ -959,6 +968,7 @@ function apiUrl(address) {
 async function send(method, address, { headers, body, signal }) {
   const token = storedToken();
   if (token !== null) headers[CSRF_HEADER] = token;
+  headers["Accept-Language"] = LANGUAGE;
   let response;
   try {
     response = await fetch(address, { method, headers, body, signal, credentials: "same-origin" });
@@ -968,7 +978,7 @@ async function send(method, address, { headers, body, signal }) {
   }
   if (response.ok) return response;
   const problem = await readProblem(response);
-  if ((problem.status === 401 || problem.code === "csrf_rejected") && current !== null) {
+  if ((problem.status === 401 || problem.details?.reason === "csrf_rejected") && current !== null) {
     current = null;
     sessionStorage.removeItem(TOKEN_KEY);
     for (const listener of [...sessionLost]) listener(problem);
@@ -1038,13 +1048,11 @@ function pause(ms, signal) {
 }
 
 function sessionMissingProblem() {
-  return {
-    type: "about:blank",
+  return pageProblem("unauthorized", "session_required", {
     title: T.common.problem.http_title,
     status: 401,
     detail: T.common.problem.session_missing,
-    code: "session_required",
-  };
+  });
 }
 
 /** Remove `token=…` from the fragment and return it (or `null`). */
@@ -1079,14 +1087,32 @@ function segments(path) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function networkProblem() {
-  return {
-    type: "about:blank",
+/**
+ * The problem of a server that does not answer (`status` 0): the registry's
+ * `source_unavailable`, the page's own reason `network_error`.
+ *
+ * @returns {Problem}
+ */
+export function networkProblem() {
+  return pageProblem("source_unavailable", "network_error", {
     title: T.common.problem.network_title,
     status: 0,
     detail: T.common.problem.network,
-    code: "network_error",
-  };
+  });
+}
+
+/**
+ * A problem the page makes itself when the server's answer is none of the
+ * API's: a registry code with the page's own reason, as the server would give.
+ *
+ * @param {string} code - Registry code.
+ * @param {string} reason - `details.reason`.
+ * @param {{title: string, status: number, detail: string}} text - Polish title
+ *   and description, and the HTTP status.
+ * @returns {Problem}
+ */
+function pageProblem(code, reason, { title, status, detail }) {
+  return { type: "about:blank", title, status, detail, code, details: { reason } };
 }
 
 async function readProblem(response) {
@@ -1100,11 +1126,9 @@ async function readProblem(response) {
       // Not JSON after all: described below by its status.
     }
   }
-  return {
-    type: "about:blank",
+  return pageProblem("source_unavailable", "http_error", {
     title: T.common.problem.http_title,
     status: response.status,
     detail: t(T.common.problem.http, { status: response.status }),
-    code: "http_error",
-  };
+  });
 }

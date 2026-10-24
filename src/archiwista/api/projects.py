@@ -168,7 +168,7 @@ def _unavailable(
     return root is not None and registry.probe(producer, root).status != "available"
 
 
-@router.get("", response_model=ProjectList, responses=problem_responses(422))
+@router.get("", response_model=ProjectList, responses=problem_responses(400))
 def list_projects(
     visible: _Visible,
     settings: _Settings,
@@ -194,7 +194,7 @@ def get_project(project: _Project, visible: _Visible, queries: _Queries) -> Proj
 @router.get(
     "/{project}/status",
     response_model=ProjectStatus,
-    responses=problem_responses(403, 404, 422, 503),
+    responses=problem_responses(403, 404, 400, 503),
 )
 def get_project_status(
     project: _Project,

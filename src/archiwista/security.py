@@ -51,6 +51,7 @@ from archiwista.api.errors import ApiError, problem_response
 from archiwista.auth import Principal, PrincipalKind
 from archiwista.auth.authorize import session_principal
 from archiwista.config import AppSettings
+from archiwista.error_document import Problem
 from archiwista.index.schema import connect
 from archiwista.messages import MESSAGES
 from archiwista.state import StateStore
@@ -684,9 +685,15 @@ def _replay(first: Message, receive: Receive) -> Receive:
 
 @dataclass(frozen=True, slots=True)
 class _Rejection:
-    status: int
     code: str
+    reason: str
     detail: str
+    hint: str | None = None
+
+    def problem(self) -> Problem:
+        return Problem(
+            self.code, self.detail, self.hint, details={"reason": self.reason}
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -698,13 +705,14 @@ class _Authorized:
 class SecurityMiddleware:
     """Apply the local-mode rules to every HTTP request and response.
 
-    Order: ``Host`` (``400 invalid_host``), ``Origin`` and ``Sec-Fetch-Site``
-    (``403 csrf_rejected``); then for ``/api/*``, except ``POST
-    /api/v1/session`` and the files of ``/api/docs``, the session cookie
-    (``401 session_required``), the session's CSRF token in every request
-    (``403 csrf_rejected``) and who the session acts as now (``401
-    session_required`` once its account is disabled or removed, or its agent
-    session revoked); last the size of the body (``413 request_too_large``).
+    Order: ``Host`` (``403 forbidden``, reason ``invalid_host``), ``Origin`` and
+    ``Sec-Fetch-Site`` (``403 forbidden``, reason ``csrf_rejected``); then for
+    ``/api/*``, except ``POST /api/v1/session`` and the files of ``/api/docs``,
+    the session cookie (``401 unauthorized``, reason ``session_required``), the
+    session's CSRF token in every request (``403 csrf_rejected``) and who the
+    session acts as now (``401 session_required`` once its account is disabled
+    or removed, or its agent session revoked); last the size of the body
+    (``400 validation_error``, reason ``request_too_large``).
     Only a request passing all of them extends its session. The session and
     its principal are left in ``request.state`` for ``require_session`` and
     ``current_principal``. Every response, including these problems, gets
@@ -772,11 +780,11 @@ class SecurityMiddleware:
             body = await _read_body(connection.headers, receive, limit)
             if body is None:
                 detail = MESSAGES["api_request_too_large"].format(limit=_size(limit))
-                outcome = _Rejection(413, "request_too_large", detail)
+                outcome = _Rejection("validation_error", "request_too_large", detail)
             else:
                 receive = _replay(body, receive)
         if isinstance(outcome, _Rejection):
-            response = problem_response(outcome.status, outcome.code, outcome.detail)
+            response = problem_response(outcome.problem(), Request(scope))
             await response(scope, receive, send_secured)
             return
         if outcome is not None:
@@ -791,25 +799,27 @@ class SecurityMiddleware:
         host = connection.headers.get("host", "").lower()
         if host not in self._hosts:
             detail = MESSAGES["api_invalid_host"].format(port=self._port)
-            return _Rejection(400, "invalid_host", detail)
+            return _Rejection("forbidden", "invalid_host", detail)
         reason = origin_rejection(method, connection.headers, host)
         if reason is not None:
-            return _Rejection(403, "csrf_rejected", reason)
+            return _Rejection("forbidden", "csrf_rejected", reason)
         if not _is_api(path) or _is_public(method, path):
             return None
         session_id = connection.cookies.get(SESSION_COOKIE)
         session = self._sessions.get(session_id)
+        hint = MESSAGES["api_hint_session_required"]
         if session_id is None or session is None:
             detail = MESSAGES["api_session_required"]
-            return _Rejection(401, "session_required", detail)
+            return _Rejection("unauthorized", "session_required", detail, hint)
         reason = csrf_rejection(connection.headers, session)
         if reason is not None:
-            return _Rejection(403, "csrf_rejected", reason)
+            return _Rejection("forbidden", "csrf_rejected", reason)
         principal = self._principals(session)
         extended = None if principal is None else self._sessions.extend(session_id)
         if principal is None or extended is None:
             self._sessions.end(session_id)
-            return _Rejection(401, "session_required", MESSAGES["api_session_ended"])
+            ended = MESSAGES["api_session_ended"]
+            return _Rejection("unauthorized", "session_required", ended, hint)
         return _Authorized(extended, principal)
 
 
@@ -840,7 +850,7 @@ async def require_session(
     _cookie: Annotated[str | None, Security(_SESSION_SCHEME)],
     _header: Annotated[str | None, Security(_CSRF_SCHEME)],
 ) -> Session:
-    """Return the request's session or answer ``401 session_required``.
+    """Return the request's session or answer ``401 unauthorized``.
 
     ``SecurityMiddleware`` checks the session cookie and the CSRF token of
     every ``/api`` request and leaves the session here; the dependency names
@@ -849,7 +859,12 @@ async def require_session(
     """
     session = getattr(request.state, "session", None)
     if not isinstance(session, Session):
-        raise ApiError(401, "session_required", MESSAGES["api_session_required"])
+        raise ApiError(
+            "unauthorized",
+            MESSAGES["api_session_required"],
+            reason="session_required",
+            hint=MESSAGES["api_hint_session_required"],
+        )
     return session
 
 

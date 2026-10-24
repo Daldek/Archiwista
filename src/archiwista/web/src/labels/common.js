@@ -28,6 +28,7 @@ export const common = {
     show: "Pokaż wartość techniczną",
     hide: "Ukryj wartość techniczną",
     code: "kod",
+    reason: "przyczyna",
     type: "typ",
   },
   job_kind: {

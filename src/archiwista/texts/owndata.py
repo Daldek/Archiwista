@@ -193,8 +193,6 @@ OWN_DATA_MESSAGES = MappingProxyType(
             " doda ją najbliższe odświeżenie danych własnych."
         ),
         # Own data and snapshots over HTTP and the command line (step 9).
-        "api_title_own_file_changed": "Plik zmienił się od skanu",
-        "api_title_snapshot_blocked": "Migawka niemożliwa",
         "own_file_changed": (
             "Plik {path} projektu „{project}” zmienił się od ostatniego skanu"
             " danych własnych — odśwież dane własne projektu („Odśwież” albo"

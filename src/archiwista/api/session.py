@@ -175,14 +175,18 @@ def exchange_token(
     index_path: Path = request.app.state.index_path
     grant = redeem_one_time_token(index_path, body.token)
     if grant is None:
-        raise ApiError(401, "session_required", MESSAGES["api_token_rejected"])
+        raise ApiError(
+            "unauthorized", MESSAGES["api_token_rejected"], reason="session_required"
+        )
     sessions: SessionStore = request.app.state.sessions
     session_id, session = sessions.create(grant)
     principals: Callable[[Session], Principal | None] = request.app.state.principals
     principal = principals(session)
     if principal is None:
         sessions.end(session_id)
-        raise ApiError(401, "session_required", MESSAGES["api_token_rejected"])
+        raise ApiError(
+            "unauthorized", MESSAGES["api_token_rejected"], reason="session_required"
+        )
     set_session_cookie(response, session_id)
     on_redeem(request, grant.token_kind)
     return NewSession(

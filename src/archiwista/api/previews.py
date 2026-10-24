@@ -37,7 +37,7 @@ from fastapi.responses import JSONResponse, Response
 
 from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import visible_projects
-from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_body, problem_responses
+from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.models import JobDetail
 from archiwista.api.models_previews import (
     MAX_ZOOM,
@@ -125,77 +125,72 @@ _IfNoneMatch = Annotated[
 
 
 def preview_problems(*codes: str) -> dict[int | str, dict[str, Any]]:
-    """Return the OpenAPI problems of the preview routes, by code."""
-    examples: dict[str, tuple[int, dict[str, object]]] = {
-        "preview_unavailable": (
-            409,
-            problem_body(
-                409,
-                "preview_unavailable",
-                MESSAGES["preview_unavailable_detail"].format(
-                    message=MESSAGES["preview_reason_document_no_preview"],
-                    fix=MESSAGES["preview_fix_document_no_preview"],
-                ),
-                {
-                    "reason": {
-                        "code": "document_no_preview",
-                        "message": MESSAGES["preview_reason_document_no_preview"],
-                        "fix": MESSAGES["preview_fix_document_no_preview"],
-                        "detail": None,
-                    }
-                },
+    """Return the OpenAPI problems of the preview routes, by reason."""
+    unavailable = MESSAGES["preview_reason_document_no_preview"]
+    examples: dict[str, dict[str, object]] = {
+        "preview_unavailable": problem_example(
+            "unsupported",
+            MESSAGES["preview_unavailable_detail"].format(
+                message=unavailable, fix=MESSAGES["preview_fix_document_no_preview"]
             ),
+            reason="preview_unavailable",
+            details={
+                "preview_reason": {
+                    "code": "document_no_preview",
+                    "message": unavailable,
+                    "fix": MESSAGES["preview_fix_document_no_preview"],
+                    "detail": None,
+                }
+            },
+            hint=MESSAGES["preview_fix_document_no_preview"],
         ),
-        "preview_not_ready": (
-            409,
-            problem_body(
-                409,
-                "preview_not_ready",
-                MESSAGES["preview_not_ready_build"],
-                {"build_required": True},
-            ),
+        "preview_not_ready": problem_example(
+            "conflict",
+            MESSAGES["preview_not_ready_build"],
+            reason="preview_not_ready",
+            details={"build_required": True},
         ),
-        "preview_busy": (
-            503,
-            problem_body(
-                503,
-                "preview_busy",
-                MESSAGES["preview_busy"].format(seconds=RETRY_AFTER_S),
-            ),
+        "preview_busy": problem_example(
+            "rate_limited",
+            MESSAGES["preview_busy"].format(seconds=RETRY_AFTER_S),
+            reason="preview_busy",
+            details={"retry_after_s": RETRY_AFTER_S},
         ),
-        "store_unavailable": (
-            503,
-            problem_body(
-                503,
-                "store_unavailable",
-                MESSAGES["preview_reason_store_unavailable"],
-            ),
+        "store_unavailable": problem_example(
+            "store_unavailable",
+            MESSAGES["preview_reason_store_unavailable"],
+            reason="store_unreadable",
         ),
-        "preview_timeout": (
-            504,
-            problem_body(
-                504,
-                "preview_timeout",
-                MESSAGES["preview_timeout"].format(seconds=30),
-            ),
+        "preview_timeout": problem_example(
+            "calculation_error",
+            MESSAGES["preview_timeout"].format(seconds=30),
+            reason="preview_timeout",
         ),
     }
     descriptions = {
         409: (
-            "No such preview: `preview_unavailable` (`reason`: code, Polish"
-            " description and fix) or `preview_not_ready` (map tiles before"
-            " their build: visible `job`, hidden `building`, or `build_required`)."
+            "`preview_not_ready` (reason): map tiles before their build, with"
+            " the visible `details.job`, the hidden `details.building`, or"
+            " `details.build_required`."
+        ),
+        422: (
+            "`unsupported` (reason `preview_unavailable`: `details.preview_reason`"
+            " has the code, Polish description and fix) or `calculation_error`"
+            " (reason `preview_timeout`: the render ran past its time limit)."
+        ),
+        429: (
+            "`rate_limited` (reason `preview_busy`): the render queue is full;"
+            " `Retry-After` says when to ask again."
         ),
         503: (
-            "`preview_busy` (the render queue is full; `Retry-After`) or"
-            " `store_unavailable` (not in the preview cache, and the store is"
-            " out of reach)."
+            "`store_unavailable`: not in the preview cache, and the store is out"
+            " of reach."
         ),
-        504: "`preview_timeout`: the render ran past its time limit.",
     }
     responses: dict[int | str, dict[str, Any]] = {}
     for code in codes:
-        status, body = examples[code]
+        body = examples[code]
+        status = int(str(body["status"]))
         entry = responses.setdefault(
             status,
             {
@@ -220,7 +215,7 @@ def image_responses(media_type: str, *codes: str) -> dict[int | str, dict[str, A
             "content": {media_type: {}},
         },
         304: {"description": "Not modified: the client holds this `ETag`."},
-        **problem_responses(403, 404, 422),
+        **problem_responses(403, 404, 400),
         **preview_problems(*codes),
     }
 
@@ -232,7 +227,7 @@ _RENDERED = ("preview_unavailable", "preview_busy", "store_unavailable")
     f"{_VERSION_PREFIX}/preview",
     response_model=PreviewInfo,
     responses={
-        **problem_responses(403, 404, 422),
+        **problem_responses(403, 404, 400),
         **preview_problems("preview_busy"),
     },
 )
@@ -262,7 +257,7 @@ async def get_preview(
             "model": JobDetail,
             "description": "The `preview` job building it (`Location`).",
         },
-        **problem_responses(403, 404, 422),
+        **problem_responses(403, 404, 400),
         **preview_problems("preview_unavailable", "preview_busy", "store_unavailable"),
     },
 )
@@ -399,7 +394,7 @@ async def get_features(
     response_model=ArchiveMembers,
     responses={
         304: {"description": "Not modified: the client holds this `ETag`."},
-        **problem_responses(403, 404, 422),
+        **problem_responses(403, 404, 400),
         **preview_problems(*_RENDERED, "preview_timeout"),
     },
 )

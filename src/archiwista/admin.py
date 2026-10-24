@@ -4,9 +4,9 @@ The commands act as the owner of the local installation (``LOCAL_OWNER``,
 roles ``admin`` and ``store_writer``) through the same services as the HTTP
 routes of ``archiwista/api/admin.py``, so ``--json`` prints exactly the
 models of those routes and every change lands in the permission log
-(A-ADR-029). A refused action exits with status 1; with ``--json`` the RFC
-9457 problem the API would answer goes to stdout, the Polish text always to
-stderr. ``state export`` and ``state import`` back up and restore the state
+(A-ADR-029). A refused action exits with the registry's exit code and ends
+standard error with the ``archiwista-error/1`` document, the Polish text
+before it (ERR-4). ``state export`` and ``state import`` back up and restore the state
 database (``archiwista-state/1``, into an empty database only).
 """
 
@@ -20,7 +20,6 @@ from typing import TextIO
 from pydantic import BaseModel
 
 from archiwista.api.admin import Group, GroupList, ProjectAccess, User, UserList
-from archiwista.api.errors import problem_body, problem_of
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
@@ -28,6 +27,12 @@ from archiwista.config import (
     ConfigStore,
     SettingsValidationError,
     write_text_atomic,
+)
+from archiwista.error_document import (
+    describe,
+    exception_problem,
+    fail,
+    refuse,
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
@@ -185,23 +190,25 @@ def admin_main(
         authorizer = Authorizer(StateStore(paths.state_file), lambda: settings)
         if args.command == "share":
             if args.visibility is None and (args.users or args.groups or args.owner):
-                err.write(MESSAGES["cli_share_needs_visibility"] + "\n")
-                return 2
+                return fail(
+                    err,
+                    "validation_error",
+                    MESSAGES["cli_share_needs_visibility"],
+                    reason="share_needs_visibility",
+                )
             output = _share(args, authorizer, paths)
         else:
             commands = _USERS if args.command == "users" else _GROUPS
             output = commands[args.action](args, authorizer)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
-        err.write(with_detail(MESSAGES["cli_admin_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(
+                error, with_detail(MESSAGES["cli_admin_failed"], str(error))
+            ),
+            err,
+        )
     except ArchiwistaError as error:
-        problem = problem_of(error)
-        if problem is None:
-            raise
-        if as_json:
-            out.write(_json_line(problem_body(*problem, str(error))))
-        err.write(str(error) + "\n")
-        return 1
+        return refuse(describe(error), err)
     if as_json:
         if output.model is not None:
             out.write(output.model.model_dump_json() + "\n")
@@ -339,8 +346,11 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
         data = args.file.read_bytes()
     except OSError as error:
         detail = error.strerror or str(error)
+        missing = isinstance(error, FileNotFoundError)
         raise StateError(
-            MESSAGES["cli_state_unreadable"].format(path=args.file, detail=detail)
+            MESSAGES["cli_state_unreadable"].format(path=args.file, detail=detail),
+            code="not_found" if missing else "io_error",
+            reason="backup_missing" if missing else "backup_unreadable",
         ) from error
     restored = import_state(store, data)
     err.write(

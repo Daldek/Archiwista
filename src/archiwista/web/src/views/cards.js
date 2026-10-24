@@ -251,7 +251,7 @@ function issueValues(issue) {
  * Start a background job and follow its events (SSE, `watchJob`).
  *
  * `run(start, kind)` calls `start()`, an `api.js` POST answering
- * `JobDetail`; a `409 conflict` naming the running job follows that job
+ * `JobDetail`; a `409 conflict` naming the running job (`details.job`) follows that job
  * instead, and any problem stays in `problem`. `follow(id, kind)` follows a
  * job started elsewhere (e.g. the scheduler's scan from `/health`).
  *
@@ -303,7 +303,8 @@ export function useJob({ onEnd } = {}) {
     } catch (error) {
       if (!error.problem) throw error;
       setProblem(error.problem);
-      if (error.problem.job) follow(error.problem.job.id, error.problem.job.kind);
+      const running = error.problem.details?.job;
+      if (running) follow(running.id, running.kind);
     } finally {
       setStarting(false);
     }

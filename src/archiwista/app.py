@@ -181,7 +181,7 @@ def create_app(
     @app.get("/", include_in_schema=False)
     def interface() -> FileResponse:
         if not index_page.is_file():
-            raise ApiError(404, "not_found", MESSAGES["api_interface_missing"])
+            raise ApiError("not_found", MESSAGES["api_interface_missing"])
         return FileResponse(index_page)
 
     app.mount("/static", StaticFiles(directory=web_dir), name="static")

@@ -122,7 +122,7 @@ def test_doctor_disconnected_store_explains_fix_and_fails(
 
     status, out = run_cli(paths, FakeRegistry(), capsys)
 
-    assert status == 1
+    assert status == 10  # partial: the other checks passed
     assert "[BŁĄD] Katalog kartograf magazynu „zespol” nie istnieje" in out
     assert "Naprawa: podłącz udział albo popraw ścieżkę magazynu" in out
     assert not (tmp_path / "unplugged").exists()
@@ -145,7 +145,7 @@ def test_doctor_missing_plugin_shows_install_command(
 
     status, out = run_cli(paths, registry, capsys)
 
-    assert status == 1
+    assert status == 10
     assert "[BŁĄD] Wtyczka kartograf: pakiet producenta nie jest zainstalowany" in out
     assert f'pip install "{install_requirement("kartograf")}"' in out
 
@@ -158,7 +158,7 @@ def test_doctor_unregistered_plugin_for_store_fails(
 
     status, out = run_cli(paths, FakeRegistry(source_states=()), capsys)
 
-    assert status == 1
+    assert status == 10
     assert "Wtyczka kartograf nie jest zarejestrowana" in out
 
 
@@ -180,7 +180,7 @@ def test_doctor_wrong_version_shows_installed_supported_and_fix(
 
     status, out = run_cli(paths, registry, capsys)
 
-    assert status == 1
+    assert status == 10
     assert "zainstalowana wersja 0.7.2 jest niezgodna (wspierane >=0.8.0,<0.9" in out
     assert 'Naprawa: zainstaluj zgodną wersję: pip install "kartograf' in out
 
@@ -214,7 +214,7 @@ def test_doctor_invalid_config_is_an_error(
 
     status, out = run_cli(paths, FakeRegistry(), capsys)
 
-    assert status == 1
+    assert status == 10
     assert "Niepoprawne ustawienie „port”" in out
     assert "Naprawa: popraw plik konfiguracji" in out
 

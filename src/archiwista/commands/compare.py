@@ -10,12 +10,12 @@ differ (``schema_diff``).
 import argparse
 from typing import TextIO
 
-from archiwista.api.errors import service_problem
 from archiwista.api.models_compare import CompareValue, Comparison, SchemaDiff
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
-from archiwista.commands import Commands, add_parser, refuse
+from archiwista.commands import Commands, add_parser
 from archiwista.config import AppPaths, ConfigStore, SettingsValidationError
+from archiwista.error_document import describe, exception_problem, refuse
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.messages import MESSAGES, with_detail
@@ -48,16 +48,17 @@ def main(
         ).visible_projects(LOCAL_OWNER)
         queries = IndexQueries(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
-        err.write(with_detail(MESSAGES["cli_compare_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(
+                error, with_detail(MESSAGES["cli_compare_failed"], str(error))
+            ),
+            err,
+        )
     with queries:
         try:
             comparison = compare(queries, args.a, args.b, visible=visible)
         except ArchiwistaError as error:
-            problem = service_problem(error)
-            if problem is None:
-                raise
-            return refuse(problem, out, err, as_json=args.json)
+            return refuse(describe(error), err)
     text = comparison.model_dump_json() if args.json else _text(comparison)
     out.write(text + "\n")
     return 0

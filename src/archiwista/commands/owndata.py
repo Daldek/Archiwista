@@ -22,7 +22,9 @@ of ``archiwista.api.owndata``, as the owner of the installation
 
 ``PLIK`` is the file's ``file_id`` (16 hexadecimal characters) or its path in
 the data folder (``/`` separated). A job that does not succeed prints its
-``JobDetail`` too and exits with status 1.
+``JobDetail`` too and exits with the outcome (``archiwista.jobs.foreground``):
+``11`` when it failed, ``130`` when it was cancelled or interrupted. A refusal
+prints no model: its ``archiwista-error/1`` document ends standard error.
 """
 
 import argparse
@@ -37,7 +39,6 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from archiwista.api.errors import service_problem, validation_problem
 from archiwista.api.models import Issue, JobDetail
 from archiwista.api.models_owndata import (
     OwnFileCard,
@@ -55,7 +56,7 @@ from archiwista.api.owndata import (
 )
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
-from archiwista.commands import Commands, add_parser, refuse
+from archiwista.commands import Commands, add_parser
 from archiwista.commands.previews import local_previews
 from archiwista.config import (
     AppPaths,
@@ -63,10 +64,16 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
 )
+from archiwista.error_document import (
+    describe,
+    exception_problem,
+    refuse,
+    validation_problem,
+)
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError, own_file_id
 from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor, label
-from archiwista.jobs.foreground import run_foreground
+from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.previews.service import PreviewService
 from archiwista.sources.registry import PluginRegistry
@@ -133,22 +140,23 @@ def main(
     registry : PluginRegistry
         Producer plugins, for the settings.
     out, err : TextIO
-        The route's model (as JSON with ``--json``) or the problem; Polish
-        messages, progress of a job.
+        The route's model (as JSON with ``--json``), or for a refusal the
+        Polish message and the ``archiwista-error/1`` document on ``err``;
+        Polish messages, progress of a job.
 
     Returns
     -------
     int
-        ``0`` on success; ``1`` when the request is refused (its problem),
-        its job does not succeed, or the settings, the index, the state
-        database or the preview cache cannot be used.
+        ``0`` on success; the exit code of the registry code of a refusal
+        (the request, the settings, the index, the state database or the
+        preview cache); ``11`` or ``130`` when the job does not succeed.
     """
     try:
         query, body = _requests(args)
     except ValidationError as error:
         where = "query" if args.command == "files" else "body"
         located = ({**item, "loc": (where, *item["loc"])} for item in error.errors())
-        return refuse(validation_problem(located), out, err, as_json=args.json)
+        return refuse(validation_problem(located), err)
     with ExitStack() as stack:
         try:
             settings = SettingsService(ConfigStore(paths.config_file), registry)
@@ -173,18 +181,19 @@ def main(
             OSError,
             sqlite3.Error,
         ) as error:
-            err.write(with_detail(MESSAGES["cli_own_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["cli_own_failed"], str(error))
+                ),
+                err,
+            )
         local_data = _Local(
             args, paths, settings, decisions, queries, previews, jobs, out, err
         )
         try:
             return _RUN[args.command](local_data, query, body)
         except ArchiwistaError as error:
-            problem = service_problem(error)
-            if problem is None:
-                raise
-            return refuse(problem, out, err, as_json=args.json)
+            return refuse(describe(error), err)
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,7 +362,7 @@ _RUN: dict[
 
 
 def _job(local: _Local, record: JobRecord, done: Callable[[JobDetail], str]) -> int:
-    """Print a job as ``GET /jobs/{job}`` shows it; ``1`` unless it succeeded.
+    """Print a job as ``GET /jobs/{job}`` shows it; return its exit status.
 
     A job of another process still active (Ctrl+C stopped the waiting, which
     said so already) is printed as it is now.
@@ -371,7 +380,7 @@ def _job(local: _Local, record: JobRecord, done: Callable[[JobDetail], str]) -> 
         )
         local.err.write(failure + "\n")
     local.print(detail, done(detail) if succeeded else _job_title(detail))
-    return 0 if succeeded else 1
+    return exit_status(detail.state)
 
 
 def _snapshot_event(event: JobEvent) -> str | None:

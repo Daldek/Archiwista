@@ -28,6 +28,7 @@ from archiwista.sources import ProjectInfo
 from tests.fixtures import api_store
 from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.api_store import ServedStore, served_store
+from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
 from tests.fixtures.layer_store import (
     AREA_SHEET,
@@ -69,11 +70,18 @@ class _Cli:
         self._paths = api.paths
         self._capsys = capsys
 
-    def __call__(self, *argv: str, status: int = 0) -> object:
+    def __call__(self, *argv: str) -> object:
         self._capsys.readouterr()
-        assert main([*argv, "--json"], paths=self._paths) == status
+        assert main([*argv, "--json"], paths=self._paths) == 0
         out = self._capsys.readouterr().out
         return json.loads(out) if out else None
+
+    def refused(self, *argv: str) -> dict[str, Any]:
+        """Run a command that is refused; return its error document."""
+        self._capsys.readouterr()
+        status = main([*argv, "--json"], paths=self._paths)
+        captured = self._capsys.readouterr()
+        return refusal(captured.out, captured.err, status)
 
 
 def _item(listing: object, key: str) -> object:
@@ -163,17 +171,17 @@ def test_admin_cli_refusal_equals_http_problem(
     path: str,
     body: object,
 ) -> None:
-    """A refused command prints the API's problem and exits with status 1."""
+    """A refused command reports the API's problem and exits with its code."""
     # Arrange
     cli = _Cli(api, capsys)
     local: Caller = api.session(LOCAL_OWNER)
 
     # Act
-    printed = cli(*argv, status=1)
+    printed = cli.refused(*argv)
     answered = local.request(method, path, json=body)
 
     # Assert
-    assert printed == answered.json()
+    assert_same_error(printed, answered.json())
 
 
 def test_admin_cli_taken_id_is_a_conflict(
@@ -186,12 +194,13 @@ def test_admin_cli_taken_id_is_a_conflict(
     cli("groups", "add", "hydro")
 
     # Act
-    printed = cli("groups", "add", "hydro", status=1)
+    printed = cli.refused("groups", "add", "hydro")
     answered = local.request("POST", "/groups", json={"id": "hydro"})
 
     # Assert
     assert answered.status_code == 409
-    assert printed == answered.json()
+    assert_same_error(printed, answered.json())
+    assert printed["exit_code"] == 4
 
 
 # Read commands over a scanned store (step 12).
@@ -211,7 +220,7 @@ class _Reader:
         self._served = served
         self._capsys = capsys
 
-    def cli(self, *argv: str, status: int = 0) -> Any:
+    def cli(self, *argv: str) -> Any:
         self._capsys.readouterr()
         code = main(
             [*argv, "--json"],
@@ -219,8 +228,19 @@ class _Reader:
             paths=self._served.api.paths,
         )
         captured = self._capsys.readouterr()
-        assert code == status, captured.err
+        assert code == 0, captured.err
         return json.loads(captured.out)
+
+    def refused(self, *argv: str) -> dict[str, Any]:
+        """Run a command that is refused; return its error document."""
+        self._capsys.readouterr()
+        code = main(
+            [*argv, "--json"],
+            registry=self._served.registry,
+            paths=self._served.api.paths,
+        )
+        captured = self._capsys.readouterr()
+        return refusal(captured.out, captured.err, code)
 
     def http(self, path: str, status: int = 200) -> Any:
         response = self._served.owner.request("GET", path)
@@ -320,17 +340,17 @@ def test_search_cli_equals_http(
 def test_search_cli_refusal_equals_http_problem(
     served: ServedStore, capsys: pytest.CaptureFixture[str], params: dict[str, str]
 ) -> None:
-    """Invalid options print the route's ``422`` problem and exit with status 1."""
+    """Invalid options give the route's ``400`` problem; the command exits 2."""
     # Arrange
     run = _Reader(served, capsys)
 
     # Act
-    printed = run.cli(*_search_argv(params), status=1)
-    answered = run.http(f"/slots?{urlencode(params)}", status=422)
+    printed = run.refused(*_search_argv(params))
+    answered = run.http(f"/slots?{urlencode(params)}", status=400)
 
     # Assert
-    assert printed == answered
-    assert printed["code"] == "validation_error"
+    assert_same_error(printed, answered)
+    assert (printed["code"], printed["exit_code"]) == ("validation_error", 2)
 
 
 def test_search_cursor_of_another_query_refused(
@@ -342,11 +362,11 @@ def test_search_cursor_of_another_query_refused(
     cursor = run.cli("search", "--limit=3")["next_cursor"]
 
     # Act
-    printed = run.cli("search", "--product=nmt", f"--cursor={cursor}", status=1)
-    answered = run.http(f"/slots?product=nmt&cursor={cursor}", status=422)
+    printed = run.refused("search", "--product=nmt", f"--cursor={cursor}")
+    answered = run.http(f"/slots?product=nmt&cursor={cursor}", status=400)
 
     # Assert
-    assert printed == answered
+    assert_same_error(printed, answered)
 
 
 def test_status_json_equals_health(
@@ -416,15 +436,16 @@ def test_entry_json_equals_slot_card(
     # Act
     entry = run.cli("entry", store, slot)
     version = run.cli("version", store, entry["current"])
-    missing = run.cli("entry", store, "nie/ma.tif", status=1)
+    missing = run.refused("entry", store, "nie/ma.tif")
 
     # Assert
     assert entry == run.http(f"/stores/{store}/slots/{slot}")
     assert entry["versions"]
     path = entry["current"]
     assert version == run.http(f"/stores/{store}/versions/{path}")
-    assert missing == run.http(f"/stores/{store}/slots/nie/ma.tif", status=404)
-    assert missing["code"] == "not_found"
+    expected = run.http(f"/stores/{store}/slots/nie/ma.tif", status=404)
+    assert_same_error(missing, expected)
+    assert (missing["code"], missing["exit_code"]) == ("not_found", 3)
     assert run.cli("projects") == projects
     assert run.cli("projects", "--store", store) == run.http(f"/projects?store={store}")
     assert run.cli("project", project) == run.http(f"/projects/{project}")
@@ -452,7 +473,8 @@ def test_read_commands_text_for_people(
     assert status[0] == 0 and "Magazyn „zespol”" in status[1]
     assert "ostatni pełny skan: brak." in status[1]
     assert page[0] == 0 and "Następna strona: --cursor " in page[1]
-    assert refused[0] == 1 and refused[1] == ""
+    document = refusal(refused[1], refused[2], refused[0])
+    assert (document["code"], refused[0]) == ("validation_error", 2)
     assert "query.limit" in refused[2]
 
 
@@ -487,7 +509,8 @@ def test_token_is_one_time_and_expires(
     assert issued["url"].endswith(f"/#token={issued['token']}")
     assert first.status_code == 200 and first.json()["actor"] == "local"
     assert second.status_code == 401
-    assert second.json()["code"] == "session_required"
+    assert second.json()["code"] == "unauthorized"
+    assert second.json()["details"]["reason"] == "session_required"
     assert expired is None and in_time is not None
     assert in_time.principal_id == "local"
 
@@ -506,21 +529,23 @@ def test_compare_cli_equals_http(
 
     # Act
     compared = run.cli("compare", a, b)
-    unknown = run.cli("compare", a, missing, status=1)
-    malformed = run.cli("compare", "plik.tif", b, status=1)
+    unknown = run.refused("compare", a, missing)
+    malformed = run.refused("compare", "plik.tif", b)
     capsys.readouterr()
     code = main(["compare", a, b], registry=served.registry, paths=served.api.paths)
     text = capsys.readouterr().out
 
     # Assert
     assert compared == run.http("/compare?" + urlencode({"a": a, "b": b}))
-    assert unknown == run.http(
-        "/compare?" + urlencode({"a": a, "b": missing}), status=404
+    expected = run.http("/compare?" + urlencode({"a": a, "b": missing}), status=404)
+    assert_same_error(unknown, expected)
+    assert unknown["exit_code"] == 3
+    expected = run.http("/compare?" + urlencode({"a": "plik.tif", "b": b}), status=400)
+    assert_same_error(malformed, expected)
+    assert (malformed["code"], malformed["details"]["reason"]) == (
+        "validation_error",
+        "invalid_ref",
     )
-    assert malformed == run.http(
-        "/compare?" + urlencode({"a": "plik.tif", "b": b}), status=422
-    )
-    assert malformed["code"] == "invalid_ref"
     differs = [row for row in compared["rows"] if row["differs"]]
     assert code == 0 and differs
     assert f"* {differs[0]['label']}: " in text
@@ -543,12 +568,14 @@ def _preview(
     *argv: str,
     status: int = 0,
 ) -> Any:
-    """Run ``archiwista preview … --json`` over the served store's data."""
+    """Run ``archiwista preview … --json``; a refusal gives its error document."""
     capsys.readouterr()
     code = main(["preview", *argv, "--json"], paths=previews.api.paths)
     captured = capsys.readouterr()
     assert code == status, captured.err
-    return json.loads(captured.out)
+    if status == 0:
+        return json.loads(captured.out)
+    return refusal(captured.out, captured.err, code)
 
 
 def _ref(path: str) -> str:
@@ -573,9 +600,9 @@ def test_preview_cli_equals_http(
     # Act
     described = [_preview(previews, capsys, _ref(path)) for path in paths]
     built = _preview(previews, capsys, _ref(sheet), "--build")
-    unknown = _preview(previews, capsys, _ref("nie/ma.tif"), status=1)
-    malformed = _preview(previews, capsys, "version:Zespol:plik.tif", status=1)
-    small = _preview(previews, capsys, _ref(raster), "--size", "77", status=1)
+    unknown = _preview(previews, capsys, _ref("nie/ma.tif"), status=3)
+    malformed = _preview(previews, capsys, "version:Zespol:plik.tif", status=2)
+    small = _preview(previews, capsys, _ref(raster), "--size", "77", status=2)
     unstyled = _preview(
         previews,
         capsys,
@@ -584,10 +611,10 @@ def test_preview_cli_equals_http(
         "nieznany",
         "--output",
         str(output),
-        status=1,
+        status=2,
     )
     refused = _preview(
-        previews, capsys, _ref(document), "--output", str(output), status=1
+        previews, capsys, _ref(document), "--output", str(output), status=15
     )
 
     # Assert
@@ -596,20 +623,27 @@ def test_preview_cli_equals_http(
     assert before["state"] == "needs_build"
     assert built == previews.get(version_url(sheet)).json()
     assert built["state"] == "ready"
-    assert unknown == previews.get(version_url("nie/ma.tif")).json()
+    assert_same_error(unknown, previews.get(version_url("nie/ma.tif")).json())
     assert unknown["code"] == "not_found"
-    assert (
-        malformed
-        == previews.get("/api/v1/stores/Zespol/versions/plik.tif/preview").json()
+    assert_same_error(
+        malformed,
+        previews.get("/api/v1/stores/Zespol/versions/plik.tif/preview").json(),
     )
-    assert malformed["code"] == "invalid_ref"
-    assert small == previews.get(version_url(raster, "preview.png?size=77")).json()
-    assert (
-        unstyled
-        == previews.get(version_url(raster, "preview.png?style=nieznany")).json()
+    assert malformed["details"]["reason"] == "invalid_ref"
+    assert_same_error(
+        small, previews.get(version_url(raster, "preview.png?size=77")).json()
     )
-    assert refused == previews.get(version_url(document, "preview.png")).json()
-    assert refused["code"] == "preview_unavailable"
+    assert_same_error(
+        unstyled,
+        previews.get(version_url(raster, "preview.png?style=nieznany")).json(),
+    )
+    assert_same_error(
+        refused, previews.get(version_url(document, "preview.png")).json()
+    )
+    assert (refused["code"], refused["details"]["reason"]) == (
+        "unsupported",
+        "preview_unavailable",
+    )
     assert not output.exists()
 
 
@@ -646,12 +680,14 @@ def _own(
     *argv: str,
     status: int = 0,
 ) -> Any:
-    """Run ``archiwista … --json`` over the served projects' data folders."""
+    """Run ``archiwista … --json``; a refusal gives its error document."""
     capsys.readouterr()
     code = main([*argv, "--json"], paths=served.paths)
     captured = capsys.readouterr()
     assert code == status, captured.err
-    return json.loads(captured.out)
+    if status == 0:
+        return json.loads(captured.out)
+    return refusal(captured.out, captured.err, code)
 
 
 def test_own_data_cli_equals_http(
@@ -684,14 +720,14 @@ def test_own_data_cli_equals_http(
             http("GET", f"{files}?q=kanalizacja&state=unsnapshotted&limit=1"),
         )
         bad_state = (
-            _own(served, capsys, "files", first.key, "--state", "zly", status=1),
+            _own(served, capsys, "files", first.key, "--state", "zly", status=2),
             http("GET", f"{files}?state=zly"),
         )
         by_path = _own(served, capsys, "file", first.key, raster)
         by_id = _own(served, capsys, "file", first.key, own_file_id(raster))
         card = http("GET", first.url(raster))
         no_project = (
-            _own(served, capsys, "file", "nie-ma", raster, status=1),
+            _own(served, capsys, "file", "nie-ma", raster, status=3),
             http("GET", f"/projects/nie-ma/files/{own_file_id(raster)}"),
         )
         plan = (
@@ -707,7 +743,7 @@ def test_own_data_cli_equals_http(
         )
         (first.root / vector).unlink()
         blocked = (
-            _own(served, capsys, "snapshot", first.key, vector, status=1),
+            _own(served, capsys, "snapshot", first.key, vector, status=4),
             http("POST", first.url(vector, "snapshots"), json={"note": ""}),
         )
         with rasterio.open(first.root / raster, "r+") as edited:
@@ -723,20 +759,15 @@ def test_own_data_cli_equals_http(
         every_job = job(every)
         projects = http("GET", "/projects")["items"]
         unknown = (
-            _own(served, capsys, "own-scan", "--project", "nie-ma", status=1),
+            _own(served, capsys, "own-scan", "--project", "nie-ma", status=3),
             http("POST", "/projects/nie-ma/scan"),
         )
 
     # Assert
-    for printed, answered in (
-        listed,
-        filtered,
-        bad_state,
-        no_project,
-        blocked,
-        unknown,
-    ):
+    for printed, answered in (listed, filtered):
         assert printed == answered
+    for printed, answered in (bad_state, no_project, blocked, unknown):
+        assert_same_error(printed, answered)
     assert [item["path"] for item in filtered[0]["items"]] == [vector]
     assert bad_state[0]["code"] == "validation_error"
     assert by_path == by_id == card
@@ -754,8 +785,9 @@ def test_own_data_cli_equals_http(
     assert snapshotted[0] == snapshotted[1]
     assert [item["label"] for item in snapshotted[0]["snapshots"]] == [label]
     assert snapshotted[0]["change"] == "unchanged"
-    assert blocked[0]["code"] == "snapshot_blocked"
-    assert blocked[0]["reason"] == "file_missing"
+    assert blocked[0]["code"] == "conflict"
+    assert blocked[0]["details"]["reason"] == "snapshot_blocked"
+    assert blocked[0]["details"]["blocked_by"] == "file_missing"
     assert scan == scan_job
     assert (scan["kind"], scan["state"]) == ("own_scan", "succeeded")
     assert scan["params"] == {"project": first.key}
@@ -789,13 +821,15 @@ def _layers(
     *argv: str,
     status: int = 0,
 ) -> Any:
-    """Run ``archiwista layers --store … --product … --json`` over the store."""
+    """Run ``archiwista layers … --json``; a refusal gives its error document."""
     capsys.readouterr()
     command = ["layers", *_LAYERS_STORE, *argv, "--json"]
     code = main(command, paths=layers.api.api.paths)
     captured = capsys.readouterr()
     assert code == status, captured.err
-    return json.loads(captured.out)
+    if status == 0:
+        return json.loads(captured.out)
+    return refusal(captured.out, captured.err, code)
 
 
 def _layers_url(route: str, **params: str) -> str:
@@ -841,7 +875,7 @@ def test_layers_cli_equals_http(
         "--size",
         "256",
     )
-    unknown = _layers(layers, capsys, "--area-id", "nieznany", status=1)
+    unknown = _layers(layers, capsys, "--area-id", "nieznany", status=2)
     missing = _layers(
         layers,
         capsys,
@@ -851,9 +885,11 @@ def test_layers_cli_equals_http(
         "nie:ma",
         "--output",
         str(refused),
-        status=1,
+        status=3,
     )
+    capsys.readouterr()
     usage = main(["layers", *_LAYERS_STORE, "--thumbnail", key], paths=served.api.paths)
+    usage_error = refusal(*capsys.readouterr(), usage)
 
     # Assert
     assert whole == served.get(_layers_url("", **query)).json()
@@ -863,10 +899,15 @@ def test_layers_cli_equals_http(
     thumbnail = served.get(_layers_url("/thumbnail.png", **image, layer=key))
     assert thumbnail.status_code == 200, thumbnail.text
     assert output.read_bytes() == thumbnail.content
-    assert unknown == served.get(_layers_url("", **query, area_id="nieznany")).json()
+    assert_same_error(
+        unknown, served.get(_layers_url("", **query, area_id="nieznany")).json()
+    )
     assert unknown["code"] == "validation_error"
     thumbnail_missing = _layers_url("/thumbnail.png", **image, layer="nie:ma")
-    assert missing == served.get(thumbnail_missing).json()
+    assert_same_error(missing, served.get(thumbnail_missing).json())
     assert missing["code"] == "not_found"
-    assert usage == 2
+    assert (usage_error["code"], usage_error["details"]["reason"]) == (
+        "validation_error",
+        "usage",
+    )
     assert not refused.exists()

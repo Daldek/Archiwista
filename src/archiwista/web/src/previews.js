@@ -18,7 +18,7 @@
  * a snapshot share it; actions of later steps come as its children.
  */
 
-import { apiAddress, getImage, getLinked } from "./api.js";
+import { apiAddress, getImage, getLinked, networkProblem } from "./api.js";
 import { count, day, int, size } from "./format.js";
 import { useResource } from "./hooks.js";
 import { T, t } from "./labels/index.js";
@@ -93,7 +93,7 @@ export function usePreviewImage(address) {
       },
       (error) => {
         if (controller.signal.aborted) return;
-        setImage({ address, src: null, problem: error.problem ?? noAnswer() });
+        setImage({ address, src: null, problem: error.problem ?? networkProblem() });
       },
     );
     return () => {
@@ -259,7 +259,7 @@ export function useBuild(preview, info, reload) {
         if ("id" in answer) job.follow(answer.id, answer.kind);
         else reload();
       } catch (error) {
-        if (live.current) setProblem(error.problem ?? noAnswer());
+        if (live.current) setProblem(error.problem ?? networkProblem());
       } finally {
         if (live.current) setStarting(false);
       }
@@ -343,8 +343,8 @@ function Thumbnail({ address, alt, note }) {
       ${image.src ? html`<img class="pv-image" src=${image.src} alt=${alt} />` : null}
       ${image.loading ? html`<${Spinner} label=${L.thumbnail.loading} />` : null}
       ${note ? html`<p class="pv-frame-note">${note}</p>` : null}
-      ${problem?.reason
-        ? html`<${PreviewReason} reason=${problem.reason} />`
+      ${problem?.details?.preview_reason
+        ? html`<${PreviewReason} reason=${problem.details.preview_reason} />`
         : problem
           ? html`<${ProblemView} problem=${problem} compact />`
           : null}
@@ -567,15 +567,4 @@ function bytes(value) {
   if (value < 1000) return `${int(value)} B`;
   if (value < 1e6) return `${KILO.format(value / 1e3)} kB`;
   return size(value);
-}
-
-/** The problem of an answer that never arrived whole (no problem of the server). */
-function noAnswer() {
-  return {
-    type: "about:blank",
-    title: T.common.problem.network_title,
-    status: 0,
-    detail: T.common.problem.network,
-    code: "network_error",
-  };
 }

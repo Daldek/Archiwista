@@ -139,6 +139,10 @@ def openapi_document(app: FastAPI) -> dict[str, Any]:
     for path, operations in document.get("paths", {}).items():
         for method, operation in operations.items():
             responses: dict[str, Any] = operation.setdefault("responses", {})
+            # FastAPI documents invalid request data as 422; the API answers 400
+            # (``validation_error``, ERR §2), documented below.
+            if responses.pop("422", None) is not None:
+                responses.setdefault("400", {})
             wanted = [
                 int(status)
                 for status, response in responses.items()

@@ -20,6 +20,8 @@ from archiwista import server as server_module
 from archiwista.cli import main
 from archiwista.security import CSRF_HEADER, SESSION_COOKIE, TOKEN_TTL
 from archiwista.server import LocalServer, bind_loopback, open_in_browser
+from tests.fixtures.api_session import assert_problem
+from tests.fixtures.cli_errors import refusal
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
@@ -76,8 +78,8 @@ def test_serve_prints_fragment_url(tmp_path: Path) -> None:
     assert port == server.port
     assert exchanged.status_code == 200
     assert state.json()["actor"] == "local"
-    assert replayed.status_code == 401
-    assert rebound.status_code == 400
+    assert_problem(replayed, 401, "unauthorized", "session_required")
+    assert_problem(rebound, 403, "forbidden", "invalid_host")
 
 
 def test_serve_reports_busy_port(
@@ -95,8 +97,11 @@ def test_serve_reports_busy_port(
             paths=local_paths(tmp_path),
         )
 
-    assert status == 1
-    assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    document = refusal(captured.out, captured.err, status)
+    assert (status, document["code"]) == (4, "conflict")
+    assert document["details"]["reason"] == "port_unavailable"
+    assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in captured.err
 
 
 def test_serve_connections_send_without_nagle_delay() -> None:
@@ -255,7 +260,8 @@ def test_token_revoke_all_ends_agent_sessions_of_running_server(
     assert "unieważnione niewykorzystane tokeny agentów: 1." in printed
     assert before.status_code == 200 and before.json()["kind"] == "agent"
     assert ended.status_code == 401
-    assert ended.json()["code"] == "session_required"
+    assert ended.json()["code"] == "unauthorized"
+    assert ended.json()["details"]["reason"] == "session_required"
     assert kept.status_code == 200 and kept.json()["kind"] == "local_owner"
     assert late.status_code == 401
 

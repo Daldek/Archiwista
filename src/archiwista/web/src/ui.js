@@ -161,22 +161,41 @@ export function Tech({ children, value }) {
 }
 
 /**
+ * A JSON Pointer (`errors[].pointer`) as a dotted path for people:
+ * `/query/limit` is `query.limit`.
+ *
+ * @param {string|undefined} pointer
+ * @returns {string}
+ */
+export function pointerPath(pointer) {
+  const parts = String(pointer ?? "").split("/").slice(1);
+  return parts.map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")).join(".");
+}
+
+/**
  * A problem of the API (RFC 9457) for people: the Polish title and detail,
  * the fields to fix, the producer's own message, the code a click away.
  *
  * @param {{problem: import("./types.js").Problem, compact?: boolean}} props
  */
 export function ProblemView({ problem, compact }) {
+  const details = problem.details ?? {};
   const fields = [
-    ...(problem.problems ?? []).map((item) => item.message),
-    ...(problem.errors ?? []).map((item) => `${item.field}: ${item.message}`),
+    ...(details.problems ?? []).map((item) => item.message),
+    ...(problem.errors ?? []).map((item) => `${pointerPath(item.pointer)}: ${item.message}`),
   ];
-  const producer = Object.entries(problem).find(
+  const producer = Object.entries(details).find(
     ([, member]) => member && typeof member === "object" && "exception" in member,
   );
+  // A fix that the detail already ends with is not said twice.
+  const hint = problem.hint && !problem.detail.includes(problem.hint) ? problem.hint : null;
+  const technical = [[T.common.technical.code, problem.code]];
+  if (details.reason) technical.push([T.common.technical.reason, details.reason]);
+  technical.push([T.common.technical.type, problem.type]);
   return html`<div class=${compact ? "problem compact" : "problem"} role="alert">
     <div class="problem-head"><${Icon} name="alert" /><b>${problem.title}</b></div>
     <p class="problem-detail">${problem.detail}</p>
+    ${hint ? html`<p class="problem-hint">${hint}</p>` : null}
     ${fields.length
       ? html`<div class="problem-fields">${T.common.problem.fields}
           <ul>${fields.map((text) => html`<li>${text}</li>`)}</ul></div>`
@@ -185,13 +204,13 @@ export function ProblemView({ problem, compact }) {
       ? html`<p class="problem-producer">${t(T.common.problem.producer, { package: producer[0] })}
           <code>${producer[1].message}</code></p>`
       : null}
-    ${problem.job
+    ${details.job
       ? html`<p class="problem-job">${t(T.common.problem.running_job, {
-          kind: T.common.job_kind[problem.job.kind] ?? problem.job.kind,
-          state: T.common.job_state[problem.job.state] ?? problem.job.state,
+          kind: T.common.job_kind[details.job.kind] ?? details.job.kind,
+          state: T.common.job_state[details.job.state] ?? details.job.state,
         })}</p>`
       : null}
-    <${Tech} value=${[[T.common.technical.code, problem.code], [T.common.technical.type, problem.type]]}>
+    <${Tech} value=${technical}>
       <span class="faint">HTTP ${problem.status || "–"}</span>
     </${Tech}>
   </div>`;

@@ -3,12 +3,22 @@
 import argparse
 import os
 import sys
+import traceback
 from collections.abc import Callable
+from typing import NoReturn, cast
 
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
-from archiwista.commands import CommandModule, compare, layers, owndata, previews
+from archiwista.commands import (
+    CommandModule,
+    Commands,
+    compare,
+    layers,
+    owndata,
+    previews,
+)
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
+from archiwista.error_document import Problem, refuse
 from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import MESSAGES
 from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
@@ -18,6 +28,18 @@ from archiwista.sources.registry import PluginRegistry, load_registry
 
 # Modules of commands per function (contract "CLI"): one line each.
 COMMAND_MODULES: tuple[CommandModule, ...] = (previews, owndata, compare, layers)
+
+
+class _Parser(argparse.ArgumentParser):
+    """An argument parser whose usage errors end like every refusal (ERR-4)."""
+
+    def error(self, message: str) -> NoReturn:
+        """Print the usage and the error document, then exit with status 2."""
+        self.print_usage(sys.stderr)
+        problem = Problem(
+            "validation_error", f"{self.prog}: {message}", details={"reason": "usage"}
+        )
+        raise SystemExit(refuse(problem, sys.stderr))
 
 
 def main(
@@ -47,10 +69,8 @@ def main(
     if os.name == "posix":
         # Local data (index, state, logs, area copies) is the user's alone.
         os.umask(0o077)
-    parser = argparse.ArgumentParser(
-        prog="archiwista", description=MESSAGES["cli_description"]
-    )
-    commands = parser.add_subparsers(dest="command")
+    parser = _Parser(prog="archiwista", description=MESSAGES["cli_description"])
+    commands = cast(Commands, parser.add_subparsers(dest="command"))
     commands.add_parser(
         "doctor",
         help=MESSAGES["cli_doctor_help"],
@@ -109,6 +129,19 @@ def main(
         parser.print_help()
         return 0
     paths = paths or AppPaths.default()
+    try:
+        return _dispatch(args, paths, registry)
+    except Exception:
+        # A defect: the traceback for the maintainer, the document for agents.
+        traceback.print_exc()
+        problem = Problem("internal_error", MESSAGES["cli_internal_error"])
+        return refuse(problem, sys.stderr)
+
+
+def _dispatch(
+    args: argparse.Namespace, paths: AppPaths, registry: PluginRegistry | None
+) -> int:
+    """Run the command ``args`` names and return its exit status."""
     if args.command in ADMIN_COMMANDS:
         return admin_main(args, paths, sys.stdout, sys.stderr)
     if args.command == "token":

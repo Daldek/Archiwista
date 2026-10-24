@@ -2,7 +2,7 @@
 
 import pytest
 
-from archiwista.api.errors import service_problem
+from archiwista.error_document import describe
 from archiwista.errors import PreviewUnavailableError
 from archiwista.messages import MESSAGES, with_detail
 
@@ -40,10 +40,9 @@ def test_with_detail_never_puts_colon_after_full_stop(
 
 def test_preview_problem_detail_explains_reason_before_fix() -> None:
     """A file without a preview: reason, the library's detail, then the fix."""
-    problem = service_problem(PreviewUnavailableError("unreadable", "not a TIFF file"))
+    problem = describe(PreviewUnavailableError("unreadable", "not a TIFF file"))
 
-    assert problem is not None
     reason = MESSAGES["preview_reason_unreadable"].removesuffix(".")
-    assert problem["detail"] == (
+    assert problem.detail == (
         f"{reason}: not a TIFF file. {MESSAGES['preview_fix_unreadable']}"
     )

@@ -95,8 +95,9 @@ Polecenia odczytu działają bez uruchomionego serwera, bo korzystają
 z lokalnego indeksu i wspólnych usług; budowa podglądu, skan danych
 własnych i migawka wykonują zadania w procesach roboczych na pierwszym
 planie w CLI, a w serwerze — jako zadania w tle. Z opcją `--json`
-wypisują na stdout wyłącznie JSON o schemacie odpowiedzi API (błąd:
-problem RFC 9457 i kod wyjścia `1`), a tekst po polsku — na stderr. Skrypty
+wypisują na stdout wyłącznie JSON o schemacie odpowiedzi API (błąd: nic na
+stdout, ostatni wiersz stderr to dokument `archiwista-error/1`, kod wyjścia
+z rejestru błędów Nogat), a tekst po polsku — na stderr. Skrypty
 i agenci AI:
 [`docs/AGENT_API.md`](docs/AGENT_API.md) (sesja HTTP, filtry,
 stronicowanie, zadania w tle, błędy). Pełny schemat API jest pod

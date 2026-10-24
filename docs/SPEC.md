@@ -3038,18 +3038,27 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
   przez SSE (`/jobs/{id}/events`). Drugie zadanie zapisujące indeks tego
   samego magazynu (skan, obrysy) dostaje `409 conflict` z identyfikatorem
   trwającego zadania w polu `job`.
-- **Błędy:** RFC 9457 (`application/problem+json`) z polami `type`,
-  `title`, `status`, `detail` (po polsku), `code` (`validation_error`,
-  `not_found`, `conflict`, `offline_mode`, `session_required`,
-  `csrf_rejected`, `permission_denied`, `store_unavailable`, `source_unavailable`,
-  `source_incompatible`, `kartograf_error`, `imgwtools_error`,
-  `budget_exceeded`…) i — gdy błąd pochodzi od
-  producenta — `kartograf` albo `imgwtools` (`exception`, `message` bez
-  zmian). Operacja na źródle, którego pakiet nie jest zainstalowany
-  (`source_unavailable`, stan `not_installed`) albo którego wersja lub schemat
-  jest niezgodny (`source_incompatible`), zwraca `503` z polem `source`
-  (`id`, `state`, komunikat po polsku z poleceniem instalacji albo
-  wspieranym zakresem); `GET /sources` podaje stan każdego źródła (5.8).
+- **Błędy:** RFC 9457 (`application/problem+json`) z polami `type` (wpis kodu
+  w rejestrze błędów Nogat: `…/ERROR_REGISTRY.md#<code>`), `title` (tytuł
+  z rejestru: po angielsku, po polsku przy `Accept-Language: pl`), `status`
+  (z rejestru), `detail` i `hint` (po polsku), `instance` (ścieżka żądania),
+  `code` (kod z rejestru: `validation_error`, `not_found`, `conflict`,
+  `forbidden`, `unauthorized`, `method_not_allowed`, `rate_limited`,
+  `missing_dependency`, `store_unavailable`, `data_error`, `unsupported`,
+  `calculation_error`, `internal_error`), `details` i — dla niepoprawnych
+  wartości — `errors[]` (`pointer` JSON, `type`, `message`). Własna przyczyna
+  projektu to `details.reason` (`session_required`, `csrf_rejected`,
+  `invalid_host`, `permission_denied`, `offline_mode`, `source_unavailable`,
+  `source_incompatible`, `kartograf_error`, `imgwtools_error`…), a kontekst
+  to pozostałe pola `details`: `job`, `source`, `problems`, `layers`,
+  `preview_reason`, `blocked_by`, `building`, `build_required` oraz — gdy błąd
+  pochodzi od producenta — `kartograf` albo `imgwtools` (`exception`,
+  `message` bez zmian). Operacja na źródle, którego pakiet nie jest
+  zainstalowany (`missing_dependency`, przyczyna `source_unavailable`, stan
+  `not_installed`) albo którego wersja lub schemat jest niezgodny
+  (`source_incompatible`), zwraca `503` z polem `details.source` (`id`,
+  `state`, komunikat po polsku z poleceniem instalacji albo wspieranym
+  zakresem); `GET /sources` podaje stan każdego źródła (5.8).
 - **Stronicowanie:** `limit` (do 200) i nieprzezroczysty `cursor`.
 - **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
   w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo
@@ -3219,31 +3228,42 @@ event: state
 data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
 ```
 
-**Błąd z Kartografa** — `422`, `application/problem+json`:
+**Błąd z Kartografa** — `500`, `application/problem+json` (kod `data_error`,
+przyczyna `kartograf_error`):
 
 ```json
 {
-  "type": "/api/v1/problems/validation",
-  "title": "Niepoprawne opcje polecenia",
-  "status": 422,
-  "code": "validation_error",
+  "type": "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md#data_error",
+  "title": "Invalid data",
+  "status": 500,
   "detail": "(tekst ValidationError Kartografa bez zmian)",
-  "kartograf": {"exception": "ValidationError",
-                "message": "(tekst ValidationError Kartografa bez zmian)"}
+  "instance": "/api/v1/map/sheets",
+  "code": "data_error",
+  "details": {
+    "reason": "kartograf_error",
+    "kartograf": {"exception": "ValidationError",
+                  "message": "(tekst ValidationError Kartografa bez zmian)"}
+  }
 }
 ```
 
 **Źródło niedostępne** — `GET /api/v1/stations?…` bez zainstalowanego IMGWTools,
-`503`, `application/problem+json` (kod `source_unavailable`, A-ADR-024):
+`503`, `application/problem+json` (kod `missing_dependency`, przyczyna
+`source_unavailable`, A-ADR-024):
 
 ```json
 {
-  "type": "/api/v1/problems/source-unavailable",
-  "title": "Źródło danych niedostępne",
+  "type": "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md#missing_dependency",
+  "title": "Missing optional dependency",
   "status": 503,
-  "code": "source_unavailable",
   "detail": "Źródło danych IMGW jest niedostępne: pakiet IMGWTools nie jest zainstalowany. Zainstaluj go poleceniem: pip install \"archiwista[imgw]\".",
-  "source": {"id": "imgw", "state": "not_installed", "extra": "imgw"}
+  "instance": "/api/v1/stations",
+  "code": "missing_dependency",
+  "hint": "Zainstaluj go poleceniem: pip install \"archiwista[imgw]\".",
+  "details": {
+    "reason": "source_unavailable",
+    "source": {"id": "imgw", "state": "not_installed", "extra": "imgw"}
+  }
 }
 ```
 

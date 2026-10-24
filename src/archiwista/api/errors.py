@@ -1,25 +1,31 @@
-"""RFC 9457 problem responses of the HTTP API (SPEC 9.1).
+"""RFC 9457 problem responses of the HTTP API (SPEC 9.1, AGI-6.3).
 
-Every error is ``application/problem+json`` with ``type``, ``title``,
-``status``, a Polish ``detail`` and a stable machine code that does not
-depend on the Polish text. ``title`` comes from ``MESSAGES["api_title_<code>"]``.
-Errors of the services map to codes in one table (``PROBLEMS``), which the
-command line uses too (``problem_of``, ``service_problem``). Some problems
-add members: ``source`` for an unavailable or incompatible producer plugin
-(with the pip requirement that fixes it), ``kartograf`` or ``imgwtools`` for
-a producer's own error (its exception and unchanged message), ``problems``
-for invalid settings, ``errors`` for invalid request data, ``job`` for
-the job in the way of a ``409 conflict`` (or building the preview of a
-``409 preview_not_ready``, else ``building`` or ``build_required``), ``reason`` for a
-``409 preview_unavailable`` (its code, Polish description and fix) and for
-a ``409 snapshot_blocked`` (why the snapshot cannot be made now), and
-``layers`` for an area file with several layers to choose from; ``503
-preview_busy`` carries ``Retry-After``. Unknown routes
-answer ``404 not_found``, other methods ``405 method_not_allowed`` (with
-``Allow``) and unexpected failures ``500 internal_error``.
+Every error is ``application/problem+json`` with ``type`` (the entry of its
+code on the registry page), ``title`` (the registry title: English, Polish
+with ``Accept-Language: pl``), ``status`` (the registry's HTTP status), a
+Polish ``detail``, ``instance`` (the request path), the registry ``code``, a
+``hint`` when a fix is known and ``details``. ``details.reason`` is the
+project's own cause (ERR-1): the codes of earlier versions, such as
+``session_required``, ``preview_busy`` or ``area_too_large``, are reasons
+now. Other members of ``details`` give the context: ``source`` for an
+unavailable or incompatible producer plugin (with the pip requirement that
+fixes it), ``kartograf`` or ``imgwtools`` for a producer's own error (its
+exception and unchanged message), ``problems`` for invalid settings, ``job``
+for the job in the way of a ``409 conflict`` (or building the preview of a
+``preview_not_ready``, else ``building`` or ``build_required``),
+``preview_reason`` for an ``unsupported`` preview (its code, Polish
+description and fix), ``blocked_by`` for a ``snapshot_blocked`` (why the
+snapshot cannot be made now) and ``layers`` for an area file with several
+layers to choose from. Invalid request data adds ``errors``: a JSON Pointer,
+the type and the message of each value. ``rate_limited`` carries
+``Retry-After``. Unknown routes answer ``404 not_found``, other methods
+``405 method_not_allowed`` (with ``Allow``) and unexpected failures ``500
+internal_error``. Errors of the services map to codes in the services
+themselves (``archiwista.errors``), which the command line shares
+(``archiwista.error_document``).
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -30,6 +36,15 @@ from starlette.exceptions import HTTPException
 
 from archiwista.api import API_PREFIX
 from archiwista.config import SettingsValidationError
+from archiwista.error_document import (
+    REGISTRY_PAGE,
+    Language,
+    Problem,
+    describe,
+    language_of,
+    title_of,
+    validation_problem,
+)
 from archiwista.errors import (
     ArchiwistaError,
     AreaTooComplexError,
@@ -39,7 +54,6 @@ from archiwista.errors import (
     IndexQueryError,
     InvalidChangeError,
     InvalidRefError,
-    JobConflictError,
     NotFoundError,
     OfflineModeError,
     OwnFileChangedError,
@@ -53,94 +67,110 @@ from archiwista.errors import (
     ProducerError,
     SnapshotBlockedError,
     SourceIncompatibleError,
-    SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.messages import MESSAGES, with_detail
-from archiwista.sources.registry import install_requirement, source_fix
+from archiwista.messages import MESSAGES
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
-# Service errors answered with a problem: HTTP status and machine code. A
-# source error without a plugin state is a store that cannot be read
-# (``store_unavailable``); a producer's error is ``<producer>_error``.
-PROBLEMS: Mapping[type[ArchiwistaError], tuple[int, str]] = MappingProxyType(
+# Service errors answered with a problem, each by its own code (the other
+# errors of ``archiwista.errors`` are not part of the API: 500).
+ANSWERED: tuple[type[ArchiwistaError], ...] = (
+    PermissionDeniedError,
+    PathOutsideRootError,
+    NotFoundError,
+    ConflictError,
+    OfflineModeError,
+    OwnFileChangedError,
+    SnapshotBlockedError,
+    AreaTooLargeError,
+    AreaUnreadableError,
+    AreaTooComplexError,
+    InvalidChangeError,
+    IndexQueryError,
+    SettingsValidationError,
+    ProducerError,
+    InvalidRefError,
+    PreviewParameterError,
+    PreviewUnavailableError,
+    PreviewNotReadyError,
+    PreviewBusyError,
+    PreviewTimeoutError,
+    SourceIncompatibleError,
+    SourceUnavailableError,
+)
+# Statuses of the framework's own errors and their codes; other 4xx are
+# ``validation_error``, 5xx ``internal_error``.
+_HTTP_CODES = MappingProxyType(
     {
-        PermissionDeniedError: (403, "permission_denied"),
-        PathOutsideRootError: (403, "path_outside_root"),
-        NotFoundError: (404, "not_found"),
-        ConflictError: (409, "conflict"),
-        OfflineModeError: (409, "offline_mode"),
-        OwnFileChangedError: (409, "own_file_changed"),
-        SnapshotBlockedError: (409, "snapshot_blocked"),
-        AreaTooLargeError: (413, "area_too_large"),
-        AreaUnreadableError: (422, "area_unreadable"),
-        AreaTooComplexError: (422, "area_too_complex"),
-        InvalidChangeError: (422, "validation_error"),
-        IndexQueryError: (422, "validation_error"),
-        SettingsValidationError: (422, "validation_error"),
-        ProducerError: (422, "producer_error"),
-        InvalidRefError: (422, "invalid_ref"),
-        PreviewParameterError: (422, "validation_error"),
-        PreviewUnavailableError: (409, "preview_unavailable"),
-        PreviewNotReadyError: (409, "preview_not_ready"),
-        PreviewBusyError: (503, "preview_busy"),
-        PreviewTimeoutError: (504, "preview_timeout"),
-        SourceIncompatibleError: (503, "source_incompatible"),
-        SourceUnavailableError: (503, "source_unavailable"),
+        401: "unauthorized",
+        403: "forbidden",
+        404: "not_found",
+        405: "method_not_allowed",
+        409: "conflict",
+        429: "rate_limited",
     }
 )
-# Codes of the producers' own errors (SPEC 9.1); other packages share one.
-PRODUCER_CODES: Mapping[str, str] = MappingProxyType(
-    {"kartograf": "kartograf_error", "imgwtools": "imgwtools_error"}
-)
-_HTTP_CODES = MappingProxyType({404: "not_found", 405: "method_not_allowed"})
-# Statuses routes document: the example's code and what the status means.
-_DOCUMENTED: Mapping[int, tuple[str, str, str]] = MappingProxyType(
+# Statuses routes document: the example's code and reason, the key of its
+# Polish detail and what the status means.
+_DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
     {
+        400: (
+            "validation_error",
+            "invalid_request",
+            "api_validation_error",
+            "Invalid parameters or body (`errors`: the JSON Pointer, type and"
+            " message of each value), or a value over a limit (`details.reason`:"
+            " `area_too_large` over 50 MB or 200 MB unpacked, `area_too_complex`,"
+            " `invalid_ref`, `request_too_large`).",
+        ),
         401: (
+            "unauthorized",
             "session_required",
             "api_session_required",
             "No valid session: exchange a one-time token (POST /api/v1/session).",
         ),
         403: (
+            "forbidden",
             "csrf_rejected",
             "api_csrf_missing",
-            "Refused: `csrf_rejected` (no or another X-Archiwista-CSRF, a"
-            " foreign `Origin` or a cross-site request), `permission_denied`"
-            " (A-ADR-029) or `path_outside_root`.",
+            "Refused (`details.reason`): `csrf_rejected` (no or another"
+            " X-Archiwista-CSRF, a foreign `Origin` or a cross-site request),"
+            " `invalid_host`, `permission_denied` (A-ADR-029) or"
+            " `path_outside_root`.",
         ),
         404: (
             "not_found",
+            None,
             "api_route_not_found",
             "Unknown, or not visible to the session's principal.",
         ),
         409: (
             "conflict",
-            "api_title_conflict",
-            "Conflicts with the current state: `conflict` (e.g. another job"
-            " already writes the store's index; `job` names it),"
-            " `offline_mode` (the job needs the network), `own_file_changed`"
-            " (an own-data file changed since its scan: refresh the project's"
-            " own data) or `snapshot_blocked` (`reason`).",
+            "offline_mode",
+            "job_offline_mode",
+            "Conflicts with the current state (`details.reason`): none (another"
+            " job already writes the store's index; `details.job` names it),"
+            " `offline_mode` (the job needs the network), `own_file_changed` (an"
+            " own-data file changed since its scan: refresh the project's own"
+            " data) or `snapshot_blocked` (`details.blocked_by`).",
         ),
-        413: (
-            "area_too_large",
-            "api_title_area_too_large",
-            "The body is over 50 MB, or an archive declares more than 200 MB"
-            " unpacked (`area_too_large`).",
-        ),
-        422: (
-            "validation_error",
-            "api_validation_error",
-            "Invalid parameters or body (`errors`, `problems`), or the producer"
-            " refused (`kartograf_error`, with the producer's own message).",
+        500: (
+            "data_error",
+            "area_unreadable",
+            "area_format_unknown",
+            "Data the server read is malformed (`details.reason`):"
+            " `area_unreadable` (an area file; `details.layers` lists the layers"
+            " to choose from) or `kartograf_error` (the producer refused, with"
+            " its own message in `details.kartograf`).",
         ),
         503: (
+            "missing_dependency",
             "source_unavailable",
             "source_unavailable",
             "A producer plugin is missing (`source_unavailable`) or incompatible"
-            " (`source_incompatible`), with `source` and the fix; or the store"
-            " cannot be read and the index has no answer (`store_unavailable`).",
+            " (`source_incompatible`), with `details.source` and the fix; or"
+            " (`store_unavailable`) the store cannot be read and the index has"
+            " no answer.",
         ),
     }
 )
@@ -156,14 +186,14 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """
     responses: dict[int | str, dict[str, Any]] = {}
     for status in sorted({401, *statuses}):
-        code, message, description = _DOCUMENTED[status]
+        code, reason, message, description = _DOCUMENTED[status]
         detail = MESSAGES[message].format(path=f"{API_PREFIX}/…", fields="query.limit")
         responses[status] = {
             "description": description,
             "content": {
                 PROBLEM_MEDIA_TYPE: {
                     "schema": {"$ref": "#/components/schemas/ProblemDetails"},
-                    "example": problem_body(status, code, detail),
+                    "example": problem_example(code, detail, reason=reason),
                 }
             },
         }
@@ -175,235 +205,149 @@ class ApiError(ArchiwistaError):
 
     Parameters
     ----------
-    status : int
-        HTTP status code.
     code : str
-        Stable machine code, e.g. ``session_required``.
-    detail : str
+        Registry code, e.g. ``unauthorized``.
+    message : str
         Polish description for the user.
+    reason : str or None, optional
+        The project's cause, e.g. ``session_required`` (``details.reason``).
+    hint : str or None, optional
+        Polish line telling how to fix it.
     """
 
-    def __init__(self, status: int, code: str, detail: str) -> None:
-        super().__init__(detail)
-        self.status = status
-        self.code = code
-        self.detail = detail
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        reason: str | None = None,
+        hint: str | None = None,
+    ) -> None:
+        super().__init__(message, code=code, reason=reason, hint=hint)
 
 
 def problem_body(
-    status: int,
-    code: str,
-    detail: str,
-    members: Mapping[str, object] | None = None,
+    problem: Problem, *, instance: str | None = None, lang: Language = "en"
 ) -> dict[str, object]:
-    """Return the members of a problem (also printed by ``--json`` commands).
+    """Return the members of a problem (RFC 9457, AGI-6.3).
 
     Parameters
     ----------
-    status : int
-        HTTP status code.
-    code : str
-        Stable machine code; ``MESSAGES`` must hold ``api_title_<code>``.
-    detail : str
-        Polish description for the user.
-    members : Mapping[str, object] or None, optional
-        Further members of the problem, e.g. ``source``.
+    problem : Problem
+        What went wrong.
+    instance : str or None, optional
+        The request path that failed.
+    lang : {"en", "pl"}, optional
+        Language of the ``title``.
 
     Returns
     -------
     dict[str, object]
-        ``type`` (``/api/v1/problems/<code with hyphens>``), ``title``,
-        ``status``, ``detail``, ``code`` and ``members``.
+        ``type`` (the registry page and ``#<code>``), ``title``, ``status``,
+        ``detail``, ``instance`` when known, ``code``, ``hint`` when known,
+        ``details`` when not empty and ``errors`` for invalid values.
     """
-    return {
-        "type": f"{API_PREFIX}/problems/{code.replace('_', '-')}",
-        "title": MESSAGES[f"api_title_{code}"],
-        "status": status,
-        "detail": detail,
-        "code": code,
-        **(members or {}),
+    body: dict[str, object] = {
+        "type": f"{REGISTRY_PAGE}#{problem.code}",
+        "title": title_of(problem.code, lang),
+        "status": problem.status,
+        "detail": problem.detail,
     }
+    if instance is not None:
+        body["instance"] = instance
+    body["code"] = problem.code
+    if problem.hint:
+        body["hint"] = problem.hint
+    if problem.details:
+        body["details"] = dict(problem.details)
+    if problem.errors:
+        body["errors"] = list(problem.errors)
+    return body
 
 
-def problem_response(
-    status: int,
+def problem_example(
     code: str,
     detail: str,
-    members: Mapping[str, object] | None = None,
     *,
-    headers: Mapping[str, str] | None = None,
-) -> JSONResponse:
-    """Return an ``application/problem+json`` response (see ``problem_body``)."""
-    return JSONResponse(
-        problem_body(status, code, detail, members),
-        status_code=status,
-        media_type=PROBLEM_MEDIA_TYPE,
-        headers=headers,
-    )
-
-
-def problem_of(error: ArchiwistaError) -> tuple[int, str] | None:
-    """Return the status and code a service error is answered with, if any."""
-    found = next(
-        (problem for kind, problem in PROBLEMS.items() if isinstance(error, kind)),
-        None,
-    )
-    if found is None:
-        return None
-    status, code = found
-    if isinstance(error, SourceUnavailableError) and error.state is None:
-        return status, "store_unavailable"
-    if isinstance(error, ProducerError):
-        return status, PRODUCER_CODES.get(error.package, code)
-    return status, code
-
-
-def service_problem(error: ArchiwistaError) -> dict[str, object] | None:
-    """Return the whole problem a service error is answered with, if any.
-
-    The ``detail`` of an unavailable or incompatible plugin ends with its
-    fix; members carry the machine-readable rest (see the module).
-    """
-    found = problem_of(error)
-    if found is None:
-        return None
-    status, code = found
-    detail = str(error)
-    members: dict[str, object] = {}
-    if isinstance(error, SourceStateError) and error.state is not None:
-        state = error.state
-        detail = MESSAGES["api_source_problem"].format(
-            message=detail, fix=source_fix(state)
-        )
-        members["source"] = {
-            "id": state.producer,
-            "state": state.status,
-            "package_version": state.package_version,
-            "supported_versions": state.supported_versions,
-            "requirement": install_requirement(state.producer),
-        }
-    elif isinstance(error, ProducerError):
-        members[error.package] = {
-            "exception": error.exception,
-            "message": error.message,
-        }
-    elif isinstance(error, SettingsValidationError):
-        members["problems"] = [
-            {"code": problem.code, "field": problem.field, "message": problem.message}
-            for problem in error.problems
-        ]
-    elif isinstance(error, JobConflictError):
-        members["job"] = {"id": error.job_id, "kind": error.kind, "state": error.state}
-    elif isinstance(error, AreaUnreadableError) and error.layers:
-        members["layers"] = list(error.layers)
-    elif isinstance(error, SnapshotBlockedError):
-        members["reason"] = error.reason
-    elif isinstance(error, PreviewUnavailableError):
-        reason = preview_reason(error.reason, error.detail)
-        # The library's detail explains the reason; the fix closes the text.
-        detail = MESSAGES["preview_unavailable_detail"].format(
-            message=with_detail(str(reason["message"]), error.detail),
-            fix=reason["fix"],
-        )
-        members["reason"] = reason
-    elif isinstance(error, PreviewNotReadyError):
-        if error.state == "building":
-            members["building"] = True
-        elif error.job_id is None:
-            members["build_required"] = True
-        else:
-            members["job"] = {
-                "id": error.job_id,
-                "kind": error.kind,
-                "state": error.state,
-            }
-    elif isinstance(error, PreviewParameterError):
-        members["errors"] = [
-            {"field": error.field, "type": "value_error", "message": error.message}
-        ]
-    return problem_body(status, code, detail, members)
-
-
-def preview_reason(code: str, detail: str | None = None) -> dict[str, str | None]:
-    """Return why a file has no preview: its code, Polish description and fix.
+    reason: str | None = None,
+    details: Mapping[str, object] | None = None,
+    hint: str | None = None,
+) -> dict[str, object]:
+    """Return a problem for an OpenAPI example (English title).
 
     Parameters
     ----------
     code : str
-        Reason code (``PreviewReason``).
-    detail : str or None, optional
-        The library's message without paths, when the request found it.
+        Registry code.
+    detail : str
+        Polish description.
+    reason : str or None, optional
+        ``details.reason``.
+    details : Mapping[str, object] or None, optional
+        Further members of ``details``.
+    hint : str or None, optional
+        Polish line telling how to fix it.
     """
-    return {
-        "code": code,
-        "message": MESSAGES.get(f"preview_reason_{code}", code),
-        "fix": MESSAGES.get(f"preview_fix_{code}", ""),
-        "detail": detail,
-    }
+    members = {**({"reason": reason} if reason else {}), **(details or {})}
+    return problem_body(
+        Problem(code, detail, hint, members), instance=f"{API_PREFIX}/…"
+    )
+
+
+def problem_response(
+    problem: Problem,
+    request: Request,
+    *,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    """Return the ``application/problem+json`` response of ``problem``.
+
+    The ``title`` follows the request's ``Accept-Language`` (English without
+    it); a Polish request also gets ``Content-Language: pl``, for its
+    ``detail`` and ``hint`` are always Polish.
+    """
+    lang = language_of(request.headers.get("accept-language"))
+    sent = dict(headers or {})
+    if lang == "pl":
+        sent["Content-Language"] = "pl"
+    return JSONResponse(
+        problem_body(problem, instance=request.url.path, lang=lang),
+        status_code=problem.status,
+        media_type=PROBLEM_MEDIA_TYPE,
+        headers=sent or None,
+    )
 
 
 def install_error_handlers(app: FastAPI) -> None:
     """Answer every failure of a request with a problem (see the module)."""
-    app.exception_handler(ApiError)(_api_error)
-    for kind in PROBLEMS:
+    app.exception_handler(ApiError)(_service_error)
+    for kind in ANSWERED:
         app.exception_handler(kind)(_service_error)
     app.exception_handler(RequestValidationError)(_validation_error)
     app.exception_handler(HTTPException)(_http_error)
     app.exception_handler(Exception)(_internal_error)
 
 
-async def _api_error(request: Request, error: ApiError) -> JSONResponse:
-    return problem_response(error.status, error.code, error.detail)
-
-
 async def _service_error(request: Request, error: Exception) -> JSONResponse:
-    body = service_problem(error) if isinstance(error, ArchiwistaError) else None
-    if body is None:  # pragma: no cover - only registered for PROBLEMS
+    if not isinstance(error, ArchiwistaError):  # pragma: no cover - by registration
         raise error
-    status = body["status"]
-    assert isinstance(status, int)
     headers = None
     if isinstance(error, PreviewBusyError):
         headers = {"Retry-After": str(error.retry_after_s)}
-    return JSONResponse(
-        body, status_code=status, media_type=PROBLEM_MEDIA_TYPE, headers=headers
-    )
-
-
-def validation_problem(errors: Iterable[Mapping[str, Any]]) -> dict[str, object]:
-    """Return the ``422 validation_error`` problem of invalid request data.
-
-    Parameters
-    ----------
-    errors : Iterable[Mapping[str, Any]]
-        Pydantic errors; ``loc`` starts with where the value came from
-        (``query``, ``path``, ``body``), as FastAPI reports it.
-    """
-    items = [
-        {
-            "field": ".".join(str(part) for part in item.get("loc", ())),
-            "type": item.get("type"),
-            "message": item.get("msg"),
-        }
-        for item in errors
-    ]
-    fields = ", ".join(str(item["field"]) for item in items)
-    detail = MESSAGES["api_validation_error"].format(fields=fields)
-    return problem_body(422, "validation_error", detail, {"errors": items})
+    return problem_response(describe(error), request, headers=headers)
 
 
 async def _validation_error(
     request: Request, error: RequestValidationError
 ) -> JSONResponse:
-    return JSONResponse(
-        validation_problem(error.errors()),
-        status_code=422,
-        media_type=PROBLEM_MEDIA_TYPE,
-    )
+    return problem_response(validation_problem(error.errors()), request)
 
 
 async def _http_error(request: Request, error: HTTPException) -> JSONResponse:
-    code = _HTTP_CODES.get(error.status_code, "http_error")
+    status = error.status_code
+    code = _HTTP_CODES.get(
+        status, "internal_error" if status >= 500 else "validation_error"
+    )
     if code == "not_found":
         detail = MESSAGES["api_route_not_found"].format(path=request.url.path)
     elif code == "method_not_allowed":
@@ -412,9 +356,11 @@ async def _http_error(request: Request, error: HTTPException) -> JSONResponse:
         )
     else:
         detail = str(error.detail)
-    return problem_response(error.status_code, code, detail, headers=error.headers)
+    problem = Problem(code, detail, details={"http_status": status})
+    return problem_response(problem, request, headers=error.headers)
 
 
 async def _internal_error(request: Request, error: Exception) -> JSONResponse:
     # Starlette re-raises the error afterwards, so the server logs it.
-    return problem_response(500, "internal_error", MESSAGES["api_internal_error"])
+    problem = Problem("internal_error", MESSAGES["api_internal_error"])
+    return problem_response(problem, request)

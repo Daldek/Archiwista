@@ -549,11 +549,11 @@ function useIndexRefresh(indexStamp, pages) {
   }, [indexStamp]);
 }
 
-/** The API's messages by parameter (`errors[].field` is `query.<name>`). */
+/** The API's messages by parameter (`errors[].pointer` is `/query/<name>`). */
 function fieldErrors(error) {
   const found = {};
   for (const item of error?.problem?.errors ?? []) {
-    const name = String(item.field ?? "").replace(/^query\./, "");
+    const name = String(item.pointer ?? "").replace(/^\/query\//, "");
     if (name) found[name] = item.message;
   }
   return found;

@@ -43,6 +43,7 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
 )
+from archiwista.error_document import exception_problem, fail, refuse
 from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
@@ -282,23 +283,26 @@ def serve_main(
     Returns
     -------
     int
-        ``0`` after a normal stop, ``2`` for a refused address, ``1`` when
-        the settings, the index, the state database, the jobs directory, the
-        preview cache or the port cannot be used.
+        ``0`` after a normal stop; else the registry's exit code of what
+        went wrong: ``2`` for a refused address, ``4`` for a port that is
+        taken, and for the settings, the index, the state database, the jobs
+        directory or the preview cache that cannot be used the code of the
+        error (``2`` invalid settings, ``8``, ``9``).
     """
     if host != LOOPBACK_HOST:
         message = MESSAGES["serve_host_refused"].format(
             host=host, loopback=LOOPBACK_HOST
         )
-        err.write(message + "\n")
-        return 2
+        return fail(err, "validation_error", message, reason="host_refused")
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
         initialize(paths.index_file)
         state = StateStore(paths.state_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
-        err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(error, with_detail(MESSAGES["serve_failed"], str(error))),
+            err,
+        )
     if port is None:
         port = settings.get().port
     try:
@@ -307,22 +311,30 @@ def serve_main(
         message = MESSAGES["serve_port_unavailable"].format(
             host=LOOPBACK_HOST, port=port
         )
-        err.write(with_detail(message, error.strerror or str(error)) + "\n")
-        return 1
+        detail = with_detail(message, error.strerror or str(error))
+        return fail(err, "conflict", detail, reason="port_unavailable")
     with sock:
         bound_port: int = sock.getsockname()[1]
         jobs = JobSupervisor(paths, settings)
         try:
             jobs.start()
         except OSError as error:
-            err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["serve_failed"], str(error))
+                ),
+                err,
+            )
         try:
             previews = _start_previews(paths, settings.get().preview_cache_limit_bytes)
         except (OSError, sqlite3.Error) as error:
             jobs.close()
-            err.write(with_detail(MESSAGES["serve_failed"], str(error)) + "\n")
-            return 1
+            return refuse(
+                exception_problem(
+                    error, with_detail(MESSAGES["serve_failed"], str(error))
+                ),
+                err,
+            )
         unsubscribe = settings.subscribe(
             lambda previous, current: previews.cache.set_limit(
                 current.preview_cache_limit_bytes
@@ -412,14 +424,17 @@ def token_main(
     Returns
     -------
     int
-        ``0``, or ``1`` when the settings or the index cannot be used.
+        ``0``, or the registry's exit code when the settings or the index
+        cannot be used.
     """
     try:
         settings = ConfigStore(paths.config_file).load()
         initialize(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError) as error:
-        err.write(with_detail(MESSAGES["token_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(error, with_detail(MESSAGES["token_failed"], str(error))),
+            err,
+        )
     if revoke_all:
         refused = revoke_agent_sessions(paths.index_file)
         out.write(MESSAGES["token_revoked"].format(count=refused) + "\n")

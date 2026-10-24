@@ -23,7 +23,6 @@ from typing import TextIO
 
 from pydantic import BaseModel, ValidationError
 
-from archiwista.api.errors import service_problem, validation_problem
 from archiwista.api.health import read_health, source_infos
 from archiwista.api.models import (
     CatalogFilters,
@@ -46,6 +45,13 @@ from archiwista.config import (
     AppSettings,
     ConfigStore,
     SettingsValidationError,
+)
+from archiwista.error_document import (
+    Problem,
+    describe,
+    exception_problem,
+    refuse,
+    validation_problem,
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
@@ -82,10 +88,10 @@ class _Output:
 
 
 class _InvalidQuery(Exception):
-    """Options of ``search`` the query model refuses (``422 validation_error``)."""
+    """Options of ``search`` the query model refuses (``400 validation_error``)."""
 
-    def __init__(self, problem: dict[str, object]) -> None:
-        super().__init__(problem["detail"])
+    def __init__(self, problem: Problem) -> None:
+        super().__init__(problem.detail)
         self.problem = problem
 
 
@@ -162,19 +168,20 @@ def read_main(
         ).visible_projects(LOCAL_OWNER)
         queries = IndexQueries(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
-        err.write(with_detail(MESSAGES["cli_read_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(
+                error, with_detail(MESSAGES["cli_read_failed"], str(error))
+            ),
+            err,
+        )
     with queries:
         reader = _Reader(settings, registry, queries, visible)
         try:
             output = _COMMANDS[args.command](args, reader)
         except _InvalidQuery as error:
-            return _refused(error.problem, out, err, as_json=args.json)
+            return refuse(error.problem, err)
         except ArchiwistaError as error:
-            problem = service_problem(error)
-            if problem is None:
-                raise
-            return _refused(problem, out, err, as_json=args.json)
+            return refuse(describe(error), err)
     out.write((output.model.model_dump_json() if args.json else output.text) + "\n")
     return 0
 
@@ -184,7 +191,7 @@ def search_filters(args: argparse.Namespace) -> CatalogFilters:
 
     Options left out keep the model's defaults, as parameters left out of
     the URL do; values are validated by the model as the route validates
-    them, so a refusal is the same ``422 validation_error`` problem.
+    them, so a refusal is the same ``400 validation_error`` problem.
     """
     values = {
         name: getattr(args, name)
@@ -196,15 +203,6 @@ def search_filters(args: argparse.Namespace) -> CatalogFilters:
     except ValidationError as error:
         located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
         raise _InvalidQuery(validation_problem(located)) from None
-
-
-def _refused(
-    problem: dict[str, object], out: TextIO, err: TextIO, *, as_json: bool
-) -> int:
-    if as_json:
-        out.write(_json_line(problem))
-    err.write(f"{problem['detail']}\n")
-    return 1
 
 
 def _json_line(data: dict[str, object]) -> str:

@@ -141,11 +141,6 @@ PREVIEW_MESSAGES = MappingProxyType(
         "preview_state_unavailable": "niedostępny",
         "preview_state_failed": "nieudany",
         # Previews over HTTP (step 6).
-        "api_title_invalid_ref": "Niepoprawne odwołanie",
-        "api_title_preview_unavailable": "Podgląd niedostępny",
-        "api_title_preview_not_ready": "Podgląd nie jest gotowy",
-        "api_title_preview_busy": "Podglądy zajęte",
-        "api_title_preview_timeout": "Przekroczony czas podglądu",
         "preview_unavailable_detail": "{message} {fix}",
         "preview_not_ready_build": (
             "Kafle mapy tego pliku wymagają zbudowania podglądu („Zbuduj podgląd”)."

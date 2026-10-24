@@ -256,14 +256,18 @@ def parse_state(text: str | bytes) -> StateDocument:
         data = json.loads(text)
     except (ValueError, UnicodeDecodeError) as error:
         raise StateError(
-            MESSAGES["state_import_not_json"].format(detail=error)
+            MESSAGES["state_import_not_json"].format(detail=error),
+            code="data_error",
+            reason="invalid_backup",
         ) from error
     found = data.get("schema") if isinstance(data, dict) else None
     if found != STATE_DOCUMENT_SCHEMA:
         raise StateError(
             MESSAGES["state_import_schema"].format(
                 found=found, expected=STATE_DOCUMENT_SCHEMA
-            )
+            ),
+            code="data_error",
+            reason="invalid_backup",
         )
     try:
         return StateDocument.model_validate(data)
@@ -272,5 +276,7 @@ def parse_state(text: str | bytes) -> StateDocument:
             ".".join(str(part) for part in item["loc"]) for item in error.errors()
         )
         raise StateError(
-            MESSAGES["state_import_invalid"].format(fields=fields)
+            MESSAGES["state_import_invalid"].format(fields=fields),
+            code="data_error",
+            reason="invalid_backup",
         ) from error

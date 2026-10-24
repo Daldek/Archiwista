@@ -99,10 +99,16 @@ def running_api(
         yield Api(client, paths, state)
 
 
-def assert_problem(response: httpx.Response, status: int, code: str) -> None:
-    """Check an RFC 9457 problem with a Polish detail."""
+def assert_problem(
+    response: httpx.Response, status: int, code: str, reason: str | None = None
+) -> None:
+    """Check an RFC 9457 problem: registry code and status, reason, Polish detail."""
     assert response.status_code == status, response.text
     assert response.headers["content-type"] == "application/problem+json"
     body = response.json()
     assert (body["status"], body["code"]) == (status, code)
+    assert body["type"].endswith(f"ERROR_REGISTRY.md#{code}")
+    assert body["instance"] == response.request.url.path
     assert body["detail"]
+    if reason is not None:
+        assert body["details"]["reason"] == reason

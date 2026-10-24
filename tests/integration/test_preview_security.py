@@ -272,8 +272,8 @@ def test_link_leaving_root_is_path_outside_root(tmp_path: Path) -> None:
         thumbnail = served.get(version_url(path, "preview.png"))
 
     # Assert
-    assert_problem(described, 403, "path_outside_root")
-    assert_problem(thumbnail, 403, "path_outside_root")
+    assert_problem(described, 403, "forbidden", "path_outside_root")
+    assert_problem(thumbnail, 403, "forbidden", "path_outside_root")
 
 
 def test_store_and_own_folder_unchanged_after_previews(tmp_path: Path) -> None:
@@ -414,10 +414,10 @@ def test_hidden_preview_job_only_reports_generic_building(
     assert described.status_code == 200
     assert owner_info.json()["state"] == "building"
     assert owner_info.json()["job"]["id"] == hidden.id
-    assert owner_tile.json()["job"]["id"] == hidden.id
+    assert owner_tile.json()["details"]["job"]["id"] == hidden.id
     assert described.json()["state"] == "building"
     assert described.json()["job"] is None
-    assert_problem(refused, 409, "preview_not_ready")
-    assert refused.json()["building"] is True
-    assert "job" not in refused.json()
+    assert_problem(refused, 409, "conflict", "preview_not_ready")
+    assert refused.json()["details"]["building"] is True
+    assert "job" not in refused.json()["details"]
     assert hidden.id not in described.text + refused.text

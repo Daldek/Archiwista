@@ -92,35 +92,37 @@ def test_routes_answer_each_kind_of_file(served: PreviewApi) -> None:
 
 
 @pytest.mark.parametrize(
-    ("route", "field"),
+    ("route", "pointer"),
     [
-        ("preview.png?size=77", "query.size"),
-        ("preview.png?style=nieznany", "query.style"),
-        ("preview.png?bbox=1,2,3", "query.bbox"),
-        ("preview.png?bbox_crs=WGS84", "query.bbox_crs"),
-        ("tiles/23/0/0.png", "path.z"),
-        ("tiles/3/8/0.png", "path.x"),
-        ("tiles/3/0/8.png", "path.y"),
-        ("tiles/12/0/0.png?rescale=450,200", "query.rescale"),
-        ("features?zoom=14", "query.bbox"),
-        ("features?bbox=19,50,20,51&zoom=23", "query.zoom"),
+        ("preview.png?size=77", "/query/size"),
+        ("preview.png?style=nieznany", "/query/style"),
+        ("preview.png?bbox=1,2,3", "/query/bbox"),
+        ("preview.png?bbox_crs=WGS84", "/query/bbox_crs"),
+        ("tiles/23/0/0.png", "/path/z"),
+        ("tiles/3/8/0.png", "/path/x"),
+        ("tiles/3/0/8.png", "/path/y"),
+        ("tiles/12/0/0.png?rescale=450,200", "/query/rescale"),
+        ("features?zoom=14", "/query/bbox"),
+        ("features?bbox=19,50,20,51&zoom=23", "/query/zoom"),
     ],
 )
-def test_invalid_parameters_are_422(served: PreviewApi, route: str, field: str) -> None:
+def test_invalid_parameters_are_400(
+    served: PreviewApi, route: str, pointer: str
+) -> None:
     """Sizes, styles, frames, tile numbers, ranges and zooms are validated."""
     path = entry_of(served.store, "tif_sheet", "regular").path
 
     response = served.get(version_url(path, route))
 
-    assert_problem(response, 422, "validation_error")
-    assert field in [item["field"] for item in response.json()["errors"]]
+    assert_problem(response, 400, "validation_error")
+    assert pointer in [item["pointer"] for item in response.json()["errors"]]
 
 
-def test_invalid_ref_is_422(served: PreviewApi) -> None:
+def test_invalid_ref_is_400(served: PreviewApi) -> None:
     """A store id no store can have makes no reference (``invalid_ref``)."""
     response = served.get("/api/v1/stores/Zespol/versions/nmt/plik.asc/preview")
 
-    assert_problem(response, 422, "invalid_ref")
+    assert_problem(response, 400, "validation_error", "invalid_ref")
 
 
 def test_tiles_outside_zoom_range_or_extent_are_404(served: PreviewApi) -> None:
@@ -160,8 +162,8 @@ def test_tiles_not_ready_until_build_then_ready(tmp_path: Path) -> None:
         True,
         None,
     )
-    assert_problem(refused, 409, "preview_not_ready")
-    assert refused.json()["build_required"] is True
+    assert_problem(refused, 409, "conflict", "preview_not_ready")
+    assert refused.json()["details"]["build_required"] is True
     assert posted.status_code == 202, posted.text
     job = posted.json()
     assert job["kind"] == "preview" and job["params"]["refs"] == [before["ref"]]
@@ -223,12 +225,12 @@ def test_preview_unavailable_carries_reason(served: PreviewApi) -> None:
         "fix": MESSAGES["preview_fix_document_no_preview"],
         "detail": None,
     }
-    assert_problem(thumbnail, 409, "preview_unavailable")
-    assert thumbnail.json()["reason"] == info["reason"]
+    assert_problem(thumbnail, 422, "unsupported", "preview_unavailable")
+    assert thumbnail.json()["details"]["preview_reason"] == info["reason"]
     assert (picture["state"], picture["tiles_url"]) == ("ready", None)
     assert picture["reason"]["code"] == "no_georeference"
-    assert_problem(tile, 409, "preview_unavailable")
-    assert tile.json()["reason"]["code"] == "no_georeference"
+    assert_problem(tile, 422, "unsupported", "preview_unavailable")
+    assert tile.json()["details"]["preview_reason"]["code"] == "no_georeference"
 
 
 @pytest.mark.parametrize("mount_point", [False, True], ids=["gone", "empty_mount"])
@@ -267,7 +269,7 @@ def test_disconnected_store_answers_from_cache_or_503(
     assert described == known
     assert unknown["state"] == "unavailable"
     assert unknown["reason"]["code"] == "store_unavailable"
-    assert_problem(refused, 503, "store_unavailable")
+    assert_problem(refused, 503, "store_unavailable", "store_unreadable")
 
 
 def test_preview_routes_need_csrf(served: PreviewApi) -> None:
@@ -282,4 +284,4 @@ def test_preview_routes_need_csrf(served: PreviewApi) -> None:
     ]
 
     for response in answers:
-        assert_problem(response, 403, "csrf_rejected")
+        assert_problem(response, 403, "forbidden", "csrf_rejected")

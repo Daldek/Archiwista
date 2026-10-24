@@ -82,7 +82,7 @@ export function Shell({ session }) {
  * @param {{problem: import("./types.js").Problem, lost?: boolean}} props
  */
 export function SessionScreen({ problem, lost }) {
-  const retry = problem.code === "network_error";
+  const retry = problem.details?.reason === "network_error";
   return html`<div class="session-screen">
     <div class="session-card" role="alert">
       <div class="brand"><${Logo} /><span>${L.brand}</span></div>

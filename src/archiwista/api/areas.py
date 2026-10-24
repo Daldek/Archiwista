@@ -424,7 +424,7 @@ async def _body(request: Request) -> bytes:
 
 
 def _area_input(content: bytes) -> AreaInput:
-    """Validate a JSON body like FastAPI does (``422 validation_error``)."""
+    """Validate a JSON body like FastAPI does (``400 validation_error``)."""
     try:
         return AreaInput.model_validate_json(content)
     except ValidationError as error:
@@ -435,9 +435,9 @@ def _area_input(content: bytes) -> AreaInput:
         raise RequestValidationError(errors) from error
 
 
-def _with_422(description: str, *statuses: int) -> dict[int | str, dict[str, Any]]:
-    responses = problem_responses(422, *statuses)
-    responses[422] = {**responses[422], "description": description}
+def _with_400(description: str, *statuses: int) -> dict[int | str, dict[str, Any]]:
+    responses = problem_responses(400, 500, *statuses)
+    responses[400] = {**responses[400], "description": description}
     return responses
 
 
@@ -460,12 +460,10 @@ _REQUEST_BODY = {
     "/areas",
     status_code=201,
     response_model=Area,
-    responses=_with_422(
-        "Invalid GeoJSON (`validation_error`), a file that cannot be read"
-        " (`area_unreadable`; `layers` when it has several), more than 100 000"
-        " vertices (`area_too_complex`), or no pinned operation from the file's"
-        " CRS (`kartograf_error`).",
-        413,
+    responses=_with_400(
+        "Invalid GeoJSON (`errors`), a file over 50 MB or 200 MB unpacked"
+        " (`details.reason` `area_too_large`) or an area of more than 100 000"
+        " vertices (`area_too_complex`).",
         503,
     ),
     openapi_extra={"requestBody": _REQUEST_BODY},
@@ -535,9 +533,9 @@ def get_area(
 @router.get(
     "/local-coverage",
     response_model=AreaCoverage,
-    responses=_with_422(
-        "Unknown parameter, area or store (`validation_error`), or the producer"
-        " refused (`kartograf_error`).",
+    responses=_with_400(
+        "Unknown parameter, area or store (`errors`, or `details.reason`"
+        " `invalid_ref`).",
         503,
     ),
 )

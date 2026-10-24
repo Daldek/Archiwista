@@ -208,13 +208,16 @@ def wait_job(page: Page, base: str, job: str) -> dict[str, Any]:
         page.wait_for_timeout(250)
 
 
-def assert_problem(response: APIResponse, status: int, code: str, detail: str) -> None:
-    """Check an RFC 9457 problem: status, stable code and the Polish detail."""
+def assert_problem(
+    response: APIResponse, status: int, code: str, reason: str, detail: str
+) -> None:
+    """Check an RFC 9457 problem: status, registry code, reason and Polish detail."""
     assert response.status == status, response.text()
     assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     body = response.json()
-    assert {"type", "title", "status", "detail", "code"} <= set(body)
+    assert {"type", "title", "status", "detail", "code", "instance"} <= set(body)
     assert (body["status"], body["code"], body["detail"]) == (status, code, detail)
+    assert body["details"]["reason"] == reason
     assert body["title"]
 
 
@@ -654,7 +657,11 @@ def test_acceptance_api_requests_with_browser_session(
     try:
         without_session = anonymous.request.get(f"{base}/api/v1/health")
         assert_problem(
-            without_session, 401, "session_required", MESSAGES["api_session_required"]
+            without_session,
+            401,
+            "unauthorized",
+            "session_required",
+            MESSAGES["api_session_required"],
         )
     finally:
         anonymous.close()
@@ -676,17 +683,26 @@ def test_acceptance_api_requests_with_browser_session(
     assert card.json()["current"] == current["path"]
     assert len(versions) == len(versions_of(store, slot))
     assert set(cookies) == {"archiwista_session"}
-    assert_problem(cookie_only, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
-    assert_problem(refused, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
+    assert_problem(
+        cookie_only, 403, "forbidden", "csrf_rejected", MESSAGES["api_csrf_missing"]
+    )
+    assert_problem(
+        refused, 403, "forbidden", "csrf_rejected", MESSAGES["api_csrf_missing"]
+    )
     assert started.status == 202, started.text()
     assert started.headers["location"] == f"/api/v1/jobs/{started.json()['id']}"
     assert (finished["state"], finished["actor"]) == ("succeeded", "local")
     assert finished["params"]["mode"] == "incremental"
-    assert_problem(cross_site, 403, "csrf_rejected", MESSAGES["api_cross_site"])
-    assert_problem(other_origin, 403, "csrf_rejected", MESSAGES["api_cross_site"])
+    assert_problem(
+        cross_site, 403, "forbidden", "csrf_rejected", MESSAGES["api_cross_site"]
+    )
+    assert_problem(
+        other_origin, 403, "forbidden", "csrf_rejected", MESSAGES["api_cross_site"]
+    )
     assert_problem(
         foreign_host,
-        400,
+        403,
+        "forbidden",
         "invalid_host",
         MESSAGES["api_invalid_host"].format(port=served.server.port),
     )

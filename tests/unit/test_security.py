@@ -121,14 +121,18 @@ def api(tmp_path: Path) -> Iterator[Api]:
         yield Api(client, index_path, settings, clock)
 
 
-def assert_problem(response: httpx.Response, status: int, code: str) -> None:
-    """Check an RFC 9457 problem with a Polish detail."""
+def assert_problem(
+    response: httpx.Response, status: int, code: str, reason: str | None = None
+) -> None:
+    """Check an RFC 9457 problem: registry code and status, reason, Polish detail."""
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     body = response.json()
     assert body["status"] == status
     assert body["code"] == code
     assert body["detail"]
+    if reason is not None:
+        assert body["details"]["reason"] == reason
 
 
 # Host ----------------------------------------------------------------------
@@ -154,8 +158,8 @@ def test_security_foreign_host_rejected(api: Api, host: str) -> None:
         "/api/v1/session", headers={"host": host, **cookies(session_id)}
     )
 
-    assert_problem(page, 400, "invalid_host")
-    assert_problem(data, 400, "invalid_host")
+    assert_problem(page, 403, "forbidden", "invalid_host")
+    assert_problem(data, 403, "forbidden", "invalid_host")
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1:8090", "localhost:8090"])
@@ -197,7 +201,7 @@ def test_security_token_exchange_starts_session(api: Api) -> None:
     for attribute in ("httponly", "samesite=strict", "path=/"):
         assert attribute in set_cookie.lower()
     assert session_id not in (issued.token, csrf)
-    assert_problem(cookie_only, 403, "csrf_rejected")
+    assert_problem(cookie_only, 403, "forbidden", "csrf_rejected")
     assert state.status_code == 200
     assert state.json() == {key: body[key] for key in state.json()}
     assert "csrf_token" not in state.json()
@@ -213,7 +217,7 @@ def test_security_token_used_twice_rejected(api: Api) -> None:
     second = api.client.post("/api/v1/session", json={"token": issued.token})
 
     assert first.status_code == 200
-    assert_problem(second, 401, "session_required")
+    assert_problem(second, 401, "unauthorized", "session_required")
     assert "set-cookie" not in second.headers
 
 
@@ -308,7 +312,7 @@ def test_security_expired_token_rejected_over_http(api: Api) -> None:
 
     response = api.client.post("/api/v1/session", json={"token": issued.token})
 
-    assert_problem(response, 401, "session_required")
+    assert_problem(response, 401, "unauthorized", "session_required")
 
 
 def test_security_index_keeps_only_token_hash(tmp_path: Path) -> None:
@@ -344,8 +348,8 @@ def test_security_api_without_session_rejected(
     missing = api.client.request(method, path)
     unknown = api.client.request(method, path, headers=cookies("forged-session"))
 
-    assert_problem(missing, 401, "session_required")
-    assert_problem(unknown, 401, "session_required")
+    assert_problem(missing, 401, "unauthorized", "session_required")
+    assert_problem(unknown, 401, "unauthorized", "session_required")
 
 
 def test_security_session_ends_after_idle_timeout(api: Api) -> None:
@@ -359,7 +363,7 @@ def test_security_session_ends_after_idle_timeout(api: Api) -> None:
 
     assert kept.status_code == 200
     assert kept.json()["expires_at"] == "2026-10-20T11:00:00Z"
-    assert_problem(ended, 401, "session_required")
+    assert_problem(ended, 401, "unauthorized", "session_required")
 
 
 # CSRF, Origin and Sec-Fetch-Site ------------------------------------------
@@ -379,9 +383,9 @@ def test_security_every_request_needs_csrf_token(
     api.clock.now = START + timedelta(hours=25)
     later = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
-    assert_problem(response, 403, "csrf_rejected")
+    assert_problem(response, 403, "forbidden", "csrf_rejected")
     # A refused request does not keep the session alive.
-    assert_problem(later, 401, "session_required")
+    assert_problem(later, 401, "unauthorized", "session_required")
 
 
 def test_security_logout_ends_session(api: Api) -> None:
@@ -393,7 +397,7 @@ def test_security_logout_ends_session(api: Api) -> None:
 
     assert ended.status_code == 204
     assert "max-age=0" in ended.headers["set-cookie"].lower()
-    assert_problem(after, 401, "session_required")
+    assert_problem(after, 401, "unauthorized", "session_required")
 
 
 def _agent(api: Api, session_id: str, csrf: str) -> tuple[str, str]:
@@ -417,7 +421,7 @@ def test_security_agent_cannot_issue_tokens(api: Api) -> None:
         "/api/v1/session/tokens", headers=cookies(agent_id, agent_csrf)
     )
 
-    assert_problem(refused, 403, "permission_denied")
+    assert_problem(refused, 403, "forbidden", "permission_denied")
 
 
 def test_security_agent_session_ends_after_max_age(api: Api) -> None:
@@ -432,7 +436,7 @@ def test_security_agent_session_ends_after_max_age(api: Api) -> None:
 
     assert [answer.status_code for answer in answers[:-1]] == [200] * 11
     assert answers[0].json()["expires_at"] == "2026-10-19T00:00:00Z"
-    assert_problem(answers[-1], 401, "session_required")
+    assert_problem(answers[-1], 401, "unauthorized", "session_required")
 
 
 def test_security_revoke_agent_sessions(api: Api) -> None:
@@ -449,9 +453,9 @@ def test_security_revoke_agent_sessions(api: Api) -> None:
     fresh = api.client.get("/api/v1/session", headers=cookies(*next_agent))
 
     assert refused == 1
-    assert_problem(agent, 401, "session_required")
+    assert_problem(agent, 401, "unauthorized", "session_required")
     assert kept.status_code == 200
-    assert_problem(late, 401, "session_required")
+    assert_problem(late, 401, "unauthorized", "session_required")
     assert fresh.status_code == 200 and fresh.json()["kind"] == "agent"
 
 
@@ -474,7 +478,7 @@ def test_security_body_over_limit_refused_before_reading(api: Api) -> None:
     )
 
     for response in (declared, chunked, settings):
-        assert_problem(response, 413, "request_too_large")
+        assert_problem(response, 400, "validation_error", "request_too_large")
 
 
 def test_security_docs_files_need_no_session(api: Api) -> None:
@@ -483,7 +487,7 @@ def test_security_docs_files_need_no_session(api: Api) -> None:
     document = api.client.get("/api/v1/openapi.json")
 
     assert page.status_code == 200
-    assert_problem(document, 401, "session_required")
+    assert_problem(document, 401, "unauthorized", "session_required")
 
 
 def test_security_client_without_origin_passes_with_session_and_csrf(
@@ -516,8 +520,8 @@ def test_security_foreign_origin_rejected(api: Api, origin: str) -> None:
         "/api/v1/session", json={"token": issued.token}, headers={"origin": origin}
     )
 
-    assert_problem(read, 403, "csrf_rejected")
-    assert_problem(exchange, 403, "csrf_rejected")
+    assert_problem(read, 403, "forbidden", "csrf_rejected")
+    assert_problem(exchange, 403, "forbidden", "csrf_rejected")
     later = api.client.post("/api/v1/session", json={"token": issued.token})
     assert later.status_code == 200
 
@@ -532,8 +536,8 @@ def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
         "/api/v1/session", headers={"sec-fetch-site": site, **cookies(session_id)}
     )
 
-    assert_problem(page, 403, "csrf_rejected")
-    assert_problem(data, 403, "csrf_rejected")
+    assert_problem(page, 403, "forbidden", "csrf_rejected")
+    assert_problem(data, 403, "forbidden", "csrf_rejected")
 
 
 @pytest.mark.parametrize(
@@ -616,7 +620,7 @@ def test_security_interface_files_need_no_session(api: Api) -> None:
 def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> None:
     """Neither ``..`` nor a symbolic link serves a file outside the interface."""
     secret = tmp_path / "secret.txt"
-    secret.write_text("secret", "utf-8")
+    secret.write_text("classified", "utf-8")
     (tmp_path / "web" / "link.txt").symlink_to(secret)
 
     linked = api.client.get("/static/link.txt")
@@ -624,7 +628,7 @@ def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> N
 
     assert linked.status_code == 404
     assert climbed.status_code == 404
-    assert "secret" not in linked.text + climbed.text
+    assert "classified" not in linked.text + climbed.text
 
 
 def test_security_csp_lists_basemaps_only_online() -> None:

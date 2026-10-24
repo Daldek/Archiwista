@@ -298,8 +298,8 @@ def test_changed_file_is_own_file_changed_until_rescanned(tmp_path: Path) -> Non
         features = served.get(served.owner, _features_url(rescanned_info))
 
     # Assert
-    assert_problem(changed_thumbnail, 409, "own_file_changed")
-    assert_problem(changed_features, 409, "own_file_changed")
+    assert_problem(changed_thumbnail, 409, "conflict", "own_file_changed")
+    assert_problem(changed_features, 409, "conflict", "own_file_changed")
     assert changed_info["state"] == "unavailable"
     assert changed_info["reason"]["code"] == "changed_since_scan"
     assert changed_info["reason"]["fix"]
@@ -314,7 +314,7 @@ def test_changed_file_is_own_file_changed_until_rescanned(tmp_path: Path) -> Non
 
 
 def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
-    """Non-admin ``403``; admin sets a folder and scans it; bad folders ``422``."""
+    """Non-admin ``403``; admin sets a folder and scans it; bad folders ``400``."""
     with own_data_api(tmp_path, first=("txt",), second=()) as served:
         # Arrange
         project = served.first
@@ -341,7 +341,7 @@ def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
         listed = admin.request("GET", f"/projects/{project.key}/files").json()
 
     # Assert
-    assert_problem(refused, 403, "permission_denied")
+    assert_problem(refused, 403, "forbidden", "permission_denied")
     assert changed.status_code == 200, changed.text
     assert (changed.json()["path"]["local"], changed.json()["source"]) == (
         str(folder),
@@ -353,8 +353,9 @@ def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
         (in_store, "own_data_dir_inside_store"),
         (missing, "own_data_dir_missing"),
     ):
-        assert_problem(answer, 422, "validation_error")
-        assert [problem["code"] for problem in answer.json()["problems"]] == [code]
+        assert_problem(answer, 400, "validation_error", "invalid_settings")
+        problems = answer.json()["details"]["problems"]
+        assert [problem["code"] for problem in problems] == [code]
     assert listed["folder"]["path"]["local"] == str(folder)
     assert [item["path"] for item in listed["items"]] == ["opis.txt"]
 
@@ -383,12 +384,12 @@ def test_snapshot_refused_while_blocked_or_running(
     assert plan.status_code == 200, plan.text
     assert plan.json()["blocked"]["code"] == "file_missing"
     assert plan.json()["blocked"]["message"]
-    assert_problem(blocked, 409, "snapshot_blocked")
-    assert blocked.json()["reason"] == "file_missing"
+    assert_problem(blocked, 409, "conflict", "snapshot_blocked")
+    assert blocked.json()["details"]["blocked_by"] == "file_missing"
     assert queued.status_code == 202, queued.text
     assert queued.json()["state"] == "queued"
     assert_problem(conflict, 409, "conflict")
-    assert conflict.json()["job"] == {
+    assert conflict.json()["details"]["job"] == {
         "id": queued.json()["id"],
         "kind": "snapshot",
         "state": "queued",

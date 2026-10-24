@@ -32,6 +32,7 @@ from archiwista.config import (
     StoreConfig,
     StoreKind,
 )
+from archiwista.error_document import REGISTRY_PAGE
 from archiwista.index import (
     DEFAULT_GRID_COLUMNS,
     DEFAULT_PAGE_LIMIT,
@@ -426,61 +427,98 @@ def _examples(*examples: dict[str, Any], closed: bool = False) -> ConfigDict:
 
 
 class ProblemDetails(BaseModel):
-    """An error, as ``application/problem+json`` (RFC 9457).
+    """An error, as ``application/problem+json`` (RFC 9457, AGI-6.3).
 
-    ``code`` is stable and does not depend on the Polish ``detail``. Some
-    problems add members: ``source`` (an unavailable producer plugin and the
-    pip requirement fixing it), ``kartograf`` or ``imgwtools`` (the
-    producer's exception and its unchanged message), ``problems`` (invalid
-    settings, field by field), ``errors`` (invalid request data) and ``job``
-    (``id``, ``kind``, ``state`` of the job in the way of a ``409 conflict``).
+    ``code`` is a code of the shared error registry; ``status`` is the HTTP
+    status of that code. ``details.reason`` names the project's own cause
+    (the machine codes of earlier versions, e.g. ``session_required``,
+    ``preview_busy``) and does not depend on the Polish ``detail``. Other
+    members of ``details`` give the context: ``source`` (an unavailable
+    producer plugin and the pip requirement fixing it), ``kartograf`` or
+    ``imgwtools`` (the producer's exception and its unchanged message),
+    ``problems`` (invalid settings, field by field), ``job`` (``id``,
+    ``kind``, ``state`` of the job in the way of a ``409 conflict``),
+    ``preview_reason`` (why a file has no preview), ``blocked_by`` (why a
+    snapshot cannot be made now) and ``layers`` (the layers of an area file).
+    ``errors`` lists the invalid values of a request.
     """
 
     model_config = ConfigDict(
-        extra="allow",
         json_schema_extra={
             "examples": [
                 {
-                    "type": "/api/v1/problems/not-found",
-                    "title": "Nie znaleziono",
+                    "type": f"{REGISTRY_PAGE}#not_found",
+                    "title": "Not found",
                     "status": 404,
                     "detail": f"Indeks nie zna pliku „{_SLOT}” w magazynie „zespol”.",
+                    "instance": "/api/v1/stores/zespol/slots/…",
                     "code": "not_found",
                 },
                 {
-                    "type": "/api/v1/problems/source-unavailable",
-                    "title": "Źródło danych niedostępne",
+                    "type": f"{REGISTRY_PAGE}#missing_dependency",
+                    "title": "Missing optional dependency",
                     "status": 503,
                     "detail": (
                         "Źródło danych kartograf jest niedostępne: pakiet"
                         " producenta nie jest zainstalowany. Naprawa: zainstaluj"
                         ' zgodną wersję: pip install "kartograf<0.9,>=0.8.0"'
                     ),
-                    "code": "source_unavailable",
-                    "source": {
-                        "id": "kartograf",
-                        "state": "not_installed",
-                        "package_version": None,
-                        "supported_versions": None,
-                        "requirement": "kartograf<0.9,>=0.8.0",
+                    "instance": "/api/v1/stores",
+                    "code": "missing_dependency",
+                    "hint": (
+                        'Zainstaluj zgodną wersję: pip install "kartograf<0.9,>=0.8.0"'
+                    ),
+                    "details": {
+                        "reason": "source_unavailable",
+                        "source": {
+                            "id": "kartograf",
+                            "state": "not_installed",
+                            "package_version": None,
+                            "supported_versions": None,
+                            "requirement": "kartograf<0.9,>=0.8.0",
+                        },
                     },
                 },
             ]
         },
     )
 
-    type: str = Field(description="`/api/v1/problems/<code with hyphens>`.")
-    title: str = Field(description="Polish title of the code.")
-    status: int = Field(description="HTTP status.")
+    type: str = Field(
+        description=(
+            "The code's entry on the registry page (`ERROR_REGISTRY.md#<code>`)."
+        )
+    )
+    title: str = Field(
+        description=(
+            "Registry title of the code: English, Polish with `Accept-Language: pl`."
+        )
+    )
+    status: int = Field(description="HTTP status of the code (the registry's).")
     detail: str = Field(description="Polish description: what and how to fix.")
+    instance: str | None = Field(
+        default=None, description="The request path that failed."
+    )
     code: str = Field(
         description=(
-            "Stable machine code: validation_error, not_found, method_not_allowed,"
-            " session_required, csrf_rejected, permission_denied,"
-            " path_outside_root, conflict, offline_mode, store_unavailable,"
-            " source_unavailable, source_incompatible, kartograf_error,"
-            " internal_error…"
+            "Registry code: validation_error, not_found, conflict,"
+            " missing_dependency, data_error, store_unavailable, forbidden,"
+            " calculation_error, unsupported, unauthorized, method_not_allowed,"
+            " rate_limited, internal_error."
         )
+    )
+    hint: str | None = Field(
+        default=None, description="Polish line telling how to fix it, when known."
+    )
+    details: dict[str, Any] | None = Field(
+        default=None,
+        description="`reason` (the project's cause) and the context of the error.",
+    )
+    errors: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Invalid values of a request: `pointer` (JSON Pointer, e.g."
+            " `/query/limit`), `type` and `message`."
+        ),
     )
 
 

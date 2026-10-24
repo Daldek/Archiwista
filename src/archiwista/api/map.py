@@ -148,11 +148,11 @@ def _too_many(count: int, scale: str) -> ApiError:
     message = MESSAGES["api_too_many_sheets"].format(
         count=count, scale=scale, limit=MAP_FOOTPRINT_LIMIT
     )
-    return ApiError(422, "validation_error", message)
+    return ApiError("validation_error", message)
 
 
 @router.get(
-    "/footprints", response_model=MapView, responses=problem_responses(404, 422)
+    "/footprints", response_model=MapView, responses=problem_responses(404, 400)
 )
 def list_footprints(
     filters: Annotated[MapFilters, Query()],
@@ -170,7 +170,7 @@ def list_footprints(
     return map_view(queries, settings.get(), filters, visible=visible)
 
 
-@router.get("/sheets", response_model=SheetList, responses=problem_responses(422, 503))
+@router.get("/sheets", response_model=SheetList, responses=problem_responses(400, 503))
 def list_sheets(
     filters: Annotated[SheetFilters, Query()],
     principal: _Principal,

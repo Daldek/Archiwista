@@ -104,7 +104,7 @@ _IMAGE_PROBLEMS = ("preview_busy", "store_unavailable", "preview_timeout")
 @router.get(
     "/local-layers",
     response_model=LayerSet,
-    responses=problem_responses(422, 503),
+    responses=problem_responses(400, 503),
 )
 def get_local_layers(
     query: Annotated[LayersQuery, Query()],

@@ -12,7 +12,7 @@ is marked missing.
 from collections.abc import Sequence
 from typing import TextIO
 
-from archiwista.api.errors import problem_of
+from archiwista._errors import OUTCOMES
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import (
     AppPaths,
@@ -21,9 +21,10 @@ from archiwista.config import (
     SettingsValidationError,
     SourceRegistryView,
 )
+from archiwista.error_document import describe, exception_problem, fail, refuse
 from archiwista.errors import JobConflictError
 from archiwista.index.schema import IndexUnsupportedError, initialize
-from archiwista.jobs.foreground import run_foreground
+from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.jobs.supervisor import (
     WORKER_COMMAND,
     JobEvent,
@@ -61,29 +62,44 @@ def reindex_main(
     Returns
     -------
     int
-        ``0`` when every scan succeeded, ``1`` when one failed, was
-        interrupted or met a running job of its store (``conflict``), ``2``
-        for an unknown store.
+        ``0`` when every scan succeeded; ``10`` when some did and some did
+        not; ``130`` when one was cancelled or interrupted; otherwise the worst
+        of the scans: ``11`` for a failed scan, ``4`` when a running job of
+        its store is in the way (``conflict``). ``3`` for an unknown store,
+        ``14`` without stores and the registry's exit code of an unusable
+        configuration or index.
     """
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
         initialize(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError) as error:
-        err.write(with_detail(MESSAGES["reindex_failed"], str(error)) + "\n")
-        return 1
+        return refuse(
+            exception_problem(
+                error, with_detail(MESSAGES["reindex_failed"], str(error))
+            ),
+            err,
+        )
     current = settings.get()
     if store is not None and current.store(store) is None:
-        err.write(MESSAGES["job_store_unknown"].format(store=store) + "\n")
-        return 2
+        message = MESSAGES["job_store_unknown"].format(store=store)
+        return fail(err, "not_found", message, reason="unknown_store")
     stores = [store] if store is not None else [item.id for item in current.stores]
     if not stores:
-        err.write(MESSAGES["reindex_no_stores"] + "\n")
-        return 1
-    status = 0
+        return fail(err, "no_data", MESSAGES["reindex_no_stores"], reason="no_stores")
+    statuses: list[int] = []
     with JobSupervisor(paths, settings, worker_command=worker_command) as jobs:
         for store_id in stores:
-            status = max(status, _reindex(jobs, store_id, out, err))
-    return status
+            statuses.append(_reindex(jobs, store_id, out, err))
+    return _overall(statuses)
+
+
+def _overall(statuses: Sequence[int]) -> int:
+    """Return the exit status of scans of several stores (ERR §1)."""
+    if not any(statuses):
+        return OUTCOMES["ok"]
+    if OUTCOMES["cancelled"] in statuses:
+        return OUTCOMES["cancelled"]
+    return OUTCOMES["partial"] if 0 in statuses else max(statuses)
 
 
 def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
@@ -117,10 +133,7 @@ def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
             cancelling=lambda job: MESSAGES["reindex_cancelling"].format(job=job.id),
         )
     except JobConflictError as error:
-        problem = problem_of(error)
-        code = "conflict" if problem is None else problem[1]
-        err.write(MESSAGES["reindex_error"].format(message=error, code=code) + "\n")
-        return 1
+        return refuse(describe(error), err)
     return _report(record, store, out, err)
 
 
@@ -148,4 +161,4 @@ def _report(record: JobRecord, store: str, out: TextIO, err: TextIO) -> int:
         detail=detail,
     )
     err.write(MESSAGES["reindex_error"].format(message=message, code=code) + "\n")
-    return 1
+    return exit_status(record.state)

@@ -46,29 +46,55 @@
 // Problems -------------------------------------------------------------------
 
 /**
- * An error, as `application/problem+json` (RFC 9457), with the members some
- * codes add.
+ * An error, as `application/problem+json` (RFC 9457) with the registry's
+ * members (ERR-4, AGI-6.3); the server answers in Polish for the request
+ * header `Accept-Language: pl`, which `api.js` sends.
  *
  * @typedef {object} Problem
- * @property {string} type - `/api/v1/problems/<code with hyphens>`.
+ * @property {string} type - The code's entry on the registry page
+ *   (`…/ERROR_REGISTRY.md#<code>`); `about:blank` for a problem the page makes.
  * @property {string} title - Polish title of the code.
- * @property {number} status - HTTP status; `0` when the server did not answer.
+ * @property {number} status - HTTP status of the code; `0` when the server did
+ *   not answer.
  * @property {string} detail - Polish description: what and how to fix.
- * @property {string} code - Stable machine code: validation_error, not_found,
- *   method_not_allowed, session_required, csrf_rejected, permission_denied,
- *   path_outside_root, conflict, offline_mode, store_unavailable, source_unavailable,
- *   source_incompatible, kartograf_error, area_too_large, area_unreadable,
- *   area_too_complex, internal_error…; the client adds `network_error` and
- *   `http_error`.
- * @property {Array<{code: string, field: string, message: string}>} [problems] - Invalid
- *   settings, field by field (`field` like `stores[0].kartograf`).
- * @property {Array<{field: string, type: string, message: string}>} [errors] - Invalid
- *   request data.
+ * @property {string} [instance] - The request path that failed.
+ * @property {string} code - Code of the Nogat error registry: validation_error,
+ *   not_found, conflict, forbidden, unauthorized, method_not_allowed, rate_limited,
+ *   missing_dependency, store_unavailable, data_error, unsupported,
+ *   calculation_error, internal_error…; the page makes `source_unavailable`
+ *   problems of its own when the server does not answer.
+ * @property {string} [hint] - Polish line telling how to fix it.
+ * @property {ProblemDetails} [details] - The reason and the context.
+ * @property {Array<{pointer: string, type: string, message: string}>} [errors] -
+ *   Invalid request data: the JSON Pointer of each value (`/query/limit`).
+ */
+
+/**
+ * The project's own cause and the context of a problem (`details`).
+ *
+ * @typedef {object} ProblemDetails
+ * @property {string} [reason] - Finer cause under the code: session_required,
+ *   csrf_rejected, invalid_host, permission_denied, path_outside_root,
+ *   offline_mode, own_file_changed, snapshot_blocked, preview_not_ready,
+ *   preview_unavailable, invalid_ref, invalid_settings, area_too_large,
+ *   area_too_complex, area_unreadable, request_too_large, source_unavailable,
+ *   source_incompatible, kartograf_error, store_unreadable…; the page adds
+ *   network_error, http_error and stream_closed.
+ * @property {Array<{code: string, field: string, message: string}>} [problems] -
+ *   Invalid settings, field by field (`field` like `stores[0].kartograf`).
  * @property {{id: string, state: string, package_version: string|null,
  *   supported_versions: string|null, requirement: string}} [source] - An unavailable
  *   producer plugin and the pip requirement fixing it.
  * @property {{id: string, kind: string, state: string}} [job] - The running job of a
- *   `409 conflict`.
+ *   `409 conflict`, or building a preview that is not ready.
+ * @property {boolean} [building] - A preview is being built (its job is not visible).
+ * @property {boolean} [build_required] - A preview needs its build first.
+ * @property {{code: string, message: string, fix: string, detail: string|null}}
+ *   [preview_reason] - Why a file has no preview of the kind asked for.
+ * @property {string} [blocked_by] - Why a snapshot cannot be made now.
+ * @property {string[]} [layers] - The layers of an area file to choose from.
+ * @property {{exception: string, message: string}} [kartograf] - The producer's own
+ *   error (`imgwtools` and other producers likewise).
  */
 
 // Index state (9a: /health, /sources, /stores) -------------------------------
@@ -294,7 +320,7 @@
  */
 
 /**
- * Filters shared by `GET /slots` and `GET /map/footprints` (unknown ones answer 422).
+ * Filters shared by `GET /slots` and `GET /map/footprints` (unknown ones answer 400).
  *
  * @typedef {object} CommonFilters
  * @property {string} [q] - Search text; every word must match (unit, file name,
@@ -349,7 +375,7 @@
  *   it is current.
  * @property {SlotItem[]} items
  * @property {string|null} next_cursor - Opaque cursor of the next page of the same
- *   query; null on the last page. A cursor of other filters is rejected (422).
+ *   query; null on the last page. A cursor of other filters is rejected (400).
  * @property {LocationGroups} groups
  */
 

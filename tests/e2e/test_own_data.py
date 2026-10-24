@@ -12,6 +12,7 @@ project's data folder.
 """
 
 import json
+import os
 import re
 import time
 from collections.abc import Callable, Iterator
@@ -39,7 +40,8 @@ PROJECT = "projekt-01"
 OTHER_PROJECT = "projekt-02"
 FAMILIES = ("gpkg_layers", "shp_full", "tif_2180", "geojson_wgs84", "gpkg_5514_control")
 WAIT_S = 60.0
-SHOTS = Path("/home/claude-agent/workspace/archiwista-data/v02-15")
+# Directory for the screenshots of a step's report; none are taken when unset.
+SHOTS = os.environ.get("ARCHIWISTA_SCREENSHOTS")
 BLOB = re.compile(r"^blob:")
 API = """async ([method, path, body]) => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
@@ -164,9 +166,11 @@ def query_of(page: Page) -> dict[str, str]:
 
 
 def shot(page: Page, name: str) -> None:
-    """Keep a screenshot of the page for the step's report."""
-    SHOTS.mkdir(parents=True, exist_ok=True)
-    page.screenshot(path=str(SHOTS / f"{name}.png"))
+    """Keep a screenshot of the page for the step's report (if asked for)."""
+    if SHOTS is None:
+        return
+    Path(SHOTS).mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(Path(SHOTS) / f"{name}.png"))
 
 
 def test_project_own_data_on_map_and_card(own_server: OwnServer, tab: Tab) -> None:
@@ -427,8 +431,9 @@ def test_data_dir_change_admin_only(
                 )
                 assert (refused["status"], refused["body"]["code"]) == (
                     403,
-                    "permission_denied",
+                    "forbidden",
                 )
+                assert refused["body"]["details"]["reason"] == "permission_denied"
         finally:
             context.close()
 
