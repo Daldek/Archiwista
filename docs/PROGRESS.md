@@ -13,7 +13,7 @@ commit that introduced this file).
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | in progress | done on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files; open: markers and package-data test, ruff rule set (Next 1.1 and 1.2) |
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, PRD, SCOPE, this file; open: README, AGENT_API, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.5) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | planned | designed, not started (Next 1.3) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | most of the code is parked as one unfinished commit on the local branch `wip/nogat-2.1-error-registry`; starting point in Next 1.3 |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
@@ -78,6 +78,46 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       to `195`, `previews.js:134` and `347`, `views/cards.js:306`, `views/map.js:307`,
       `setup.js:297` and `495`, and the `Accept-Language: pl` header. Tests: about 206 status
       and 54 code assertions. Docs: AGENT_API section 7, SPEC 9.1, README errors section.
+      **Starting point (stopped at a budget limit).** The unfinished work is one commit,
+      `99e8964`, on the local branch `wip/nogat-2.1-error-registry` (parent `b6d411a`; not
+      gated, never pushed). Bring it in with `git cherry-pick --no-commit
+      wip/nogat-2.1-error-registry`, finish, run the gate and commit it as one `feat(errors)!:`.
+      *In it:* the vendored registry and schemas (`schemas/nogat/`, Nogat `cc656e7`),
+      `scripts/generate_errors.py`, the generated `src/archiwista/_errors.py`, `jsonschema>=4.18`
+      in the `dev` group (`uv.lock` locked offline, mypy override), `tests/contract/_nogat.py`
+      and `test_error_registry.py` (57 tests pass); `ArchiwistaError(message, *, code, reason,
+      details, hint)` with a default code and reason per class (`SnapshotFailedError.code` is
+      `job_code` now; `SettingsValidationError` and `IndexUnsupportedError` carry codes);
+      `src/archiwista/error_document.py` (`Problem`, `describe`, `error_document`, `refuse`,
+      `fail`, `exception_problem`, `language_of`, `pointer`); the problems of the HTTP API in
+      `api/errors.py`, `security.py` and the route modules (registry `type`, `title`, `status`,
+      `instance`, `hint`, `details.reason`, `errors[].pointer`, `Content-Language: pl`; every
+      documented `422` is `400`; the Polish `api_title_*` texts are gone); the CLI (`refuse`
+      in every command, `reader.py`, `admin.py`, `reindex.py`, `server.py`, and `cli.py` with the
+      argparse and internal-error documents; exits: unknown store 3, no stores 14, job failed
+      11, interrupted 130, conflict 4); the three `assert_problem` helpers and 109 call sites.
+      *Not done:* (a) run and repair the tests (`uv run pytest tests/unit tests/integration
+      tests/e2e --no-cov`; only the contract tests were run, a scoped run stopped on an
+      unrelated flake, see 4): expect assertions on `status_code == 422, 413, 503, 504, 409`,
+      on `["code"]`, the CLI exit codes of `tests/integration/test_cli.py` and the problem
+      members that moved into `details` (`job`, `problems`, `source`, `kartograf`);
+      `mypy src tests` was not run again after the last edits; (b) the job-outcome exits
+      `return 0 if succeeded else 1` in `commands/owndata.py` (`_job`), `commands/previews.py`
+      (`_preview`, `status = 1`) and the usage exit of `commands/layers.py` (`_USAGE`) become 11
+      (failed), 130 (cancelled, interrupted) and a `validation_error`; (c) the front end, no
+      edit made yet: `web/src/api.js` (`send` adds `Accept-Language: pl`; line 971 tests
+      `problem.details?.reason === "csrf_rejected"`; `sessionMissingProblem` becomes
+      `unauthorized` with `details.reason`; the `@throws` comments at 272, 305, 547, 561, 572,
+      698, 758, 792, 838, 892, 924), `ui.js` `ProblemView` (168 to 196: `problems`, `job` and
+      the producer member move into `problem.details`, `errors[].field` is `pointer`),
+      `types.js` `Problem` (46 to 72), comments in `map/sheets.js:5`, `views/cards.js:254`,
+      `views/store.js:10`, and the e2e expectations; (d) documents: AGENT_API section 7, SPEC
+      9.1, README errors section, a CHANGELOG entry (**Breaking**: codes, statuses and shape
+      of problems, CLI exit codes) and CLAUDE.md Deviations: AGI-6.4 and AGI-9.2 (`detail`,
+      `hint` and `message` stay Polish; only `title` follows `Accept-Language`), ERR-4
+      (`archiwista doctor` exits 1 on a failed check without a document; the `error.code`
+      values inside job documents are job codes, not registry codes), AGI-4.1 (no `schema`
+      field in API responses).
    4. `feat(cli): --verbose, --quiet and ARCHIWISTA_LOG_LEVEL` (DEV-12.2); list the variable
       in the README and `.env.example`.
    5. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
@@ -128,7 +168,10 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    (REL-5.3, REL-2.1); use `kartograf.testing` (DEV-10.6) instead of the hand-made
    `tests/fixtures/make_store.py` when Kartograf ships it.
 4. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
-   weekly `live.yml`.
+   weekly `live.yml`. Also look at `tests/unit/test_sandbox.py::
+   test_sandbox_child_killed_with_its_group_at_time_limit`: it failed once with a
+   `ProcessLookupError` (a `/proc` read of a process that had ended) in a scoped run while the
+   machine was loaded; it passed in both full gate runs, so it is probably a race in the test.
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
