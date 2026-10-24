@@ -19,6 +19,10 @@ command-line interface may change.
   locked PyPI dependencies with `pip-audit` (informative); `live.yml` runs the `live`
   tests weekly; Dependabot updates the pinned actions. Nothing has run yet.
   (DEV-7.7, DEV-10.3, DEV-13.6)
+- `SECURITY.md` (private vulnerability reporting, scope); `CONTRIBUTING.md` describes
+  `uv sync --locked`, the gate, the CLA and where to report security issues, and
+  the pull request template is `.github/PULL_REQUEST_TEMPLATE.md` with the gate
+  and CLA checkboxes. (DEV-13.7, DEV-16.2, DEV-16.4)
 
 ### Changed
 
