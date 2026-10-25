@@ -13,9 +13,9 @@ commit that introduced this file).
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1; started on the local branch `step2`, not finished); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
+| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running. What it showed under load is fixed on the local branch `fix/timing-flakes` (four commits, one per item, ruff, mypy and the stress runs below done, **the gate has not run on it**: run it on the tip, then `git merge --ff-only` into `chore/nogat-2.1`): `test_preview_build_item_timeout_fails_item_only` (the limit of one second was every file's; now only the slow file has one, `build_timeout_s`; ten of ten runs side by side failed before, none now), `test_year_buttons_select_layer_and_tiles` and the other interface tests (an expectation waits 30 s, not 5 s; six of eight runs side by side failed before, none now), the race of `tests/unit/test_sandbox.py` (`ProcessLookupError` of a `/proc` read, 55 of 300 reads of killed processes) and the one hang in `tests/e2e/test_timeline.py`, which was not reproduced: `faulthandler_timeout = 600` writes the stacks of a test that runs ten minutes, and a job worker that a killed run left behind was found stuck in coverage's exit handler (`Collector._clear_data` waits for a `data_lock` that an interrupt in traced code leaves locked, with `patch = ["subprocess"]`), so a worker interrupted under `--cov` can stay alive until it is killed |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -77,7 +77,29 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       its `_DATA` and `_NAME_TABLES` list what is Polish by design (names, example values of
       the OpenAPI document, the legend names of the class tables); the entries that quote a
       description saying "Polish" go with step 2.
-      **Step 2, the behavior, is one more commit.** Starting points:
+      **Step 2, the behavior, is one more commit.** It is **started** on the local branch
+      `step2` (one WIP commit on `chore/nogat-2.1` at `093ea8c`, not gated, may be squashed).
+      Done there: `DEFAULT_LANG` is `"en"`; `messages.localize_json`, `dump`, `load` and `join`;
+      `Problem.localized` and the localization in `error_document`, `refuse` (person's line
+      Polish, document English) and `problem_body`; `Content-Language` and `Vary` of every
+      problem; `ArchiwistaError.__str__` keeps the message; `api/language.py` (the pure ASGI
+      `LanguageMiddleware`, outermost in `app.py`); the CLI (`main`, `_run`, `_usage_error`);
+      `SettingsValidationError` and `_validator_text`; explicit `"en"` in the OpenAPI examples
+      made at import; `JobError` with `key`, `values`, `hint_key`, `hint_values` (texts stored in
+      Polish) and the protocol 5 check. **Open, in this order:** `messages.STORED_LANG = "pl"` (use it
+      in `jobs/error.py`); `IndexWriter.set_store_status` localizes `detail` to it; `jobs/worker.py`
+      (`main` in `language(STORED_LANG)`, `_report` through `JobError(...).to_json()` plus
+      `exception`, English text in its log lines); `api/models.py` `JobDetail.of` and the `state`
+      events of `api/jobs.py` render the error with `JobError.localized` and `public_json`;
+      `area_reader.py` and `areas.py` carry `key` and `values` (`messages.dump`, `load`);
+      `reader.py` and `commands/layers.py` validate under `language("en")`; the front end sends
+      `Accept-Language: pl` also in `watchJob` and `apiHeaders`; run unit, contract and
+      integration tests and give the ones that read Polish `Accept-Language: pl` or
+      `language("pl")`; tests for the middleware (default English, `pl`, `Content-Language`,
+      `Vary`, streams), the document under a Polish person's line, the round trip of a
+      `JobError` (and a 0.2.x row), `localize_json`, `dump`, `load`, `join`; the descriptions that
+      say Polish (about 120, `grep -rn Polish src/archiwista`) and the `_DATA` entries of
+      `tests/unit/test_messages.py`; the documents named below. Starting points:
       - `messages.DEFAULT_LANG` becomes `"en"`; then every test that reads Polish text needs
         `Accept-Language: pl` (API) or `language("pl")` (unit, CLI): run the suite to find them.
       - A pure ASGI middleware (`app.py`, `api/`) sets the language of a request from
@@ -161,14 +183,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    (REL-5.3, REL-2.1); use `kartograf.testing` (DEV-10.6) instead of the hand-made
    `tests/fixtures/make_store.py` when Kartograf ships it.
 4. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
-   weekly `live.yml`. Also look at `tests/unit/test_sandbox.py::
-   test_sandbox_child_killed_with_its_group_at_time_limit`: it failed once with a
-   `ProcessLookupError` (a `/proc` read of a process that had ended) in a scoped run while the
-   machine was loaded; it passed in all full gate runs, so it is a race in the test, not in
-   the sandbox: `_running` reads `/proc/<pid>/stat` with `Path.read_text` and catches only
-   `FileNotFoundError`, but a process that is reaped after the open makes the read fail with
-   `ProcessLookupError` (ESRCH); catching both is the likely fix (not reproduced, the race
-   needs the reaping to fall into the read).
+   weekly `live.yml`. The race of `tests/unit/test_sandbox.py::
+   test_sandbox_child_killed_with_its_group_at_time_limit` is fixed on `fix/timing-flakes`
+   (see Status, Gate).
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
