@@ -37,6 +37,11 @@ from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
 from archiwista.server import LocalServer
 
 VIEWPORT: ViewportSize = {"width": 1440, "height": 900}
+# How long an expectation waits for the page, the server or a build before it
+# fails: a bound for what never arrives, not a speed the page has to keep. How
+# fast the state arrives depends on the load of the computer (a gate runs next
+# to other test suites); once it has arrived the expectation passes at once.
+EXPECT_TIMEOUT_MS = 30_000
 CDP_VARIABLE = "ARCHIWISTA_BROWSER_CDP"
 REQUIRE_GPU_VARIABLE = "ARCHIWISTA_REQUIRE_GPU"
 # nouveau is on Chromium's GPU blocklist; ANGLE on EGL takes Mesa's driver of

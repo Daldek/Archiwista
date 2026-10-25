@@ -11,12 +11,12 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Browser, sync_playwright
+from playwright.sync_api import Browser, expect, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from archiwista.config import AppSettings, ConfigStore
 from archiwista.sources.registry import load_registry
-from tests.fixtures.browser import VIEWPORT, Served, Tab
+from tests.fixtures.browser import EXPECT_TIMEOUT_MS, VIEWPORT, Served, Tab
 from tests.fixtures.local_server import local_paths, serving
 
 
@@ -27,8 +27,11 @@ def chromium() -> Iterator[Browser]:
     Playwright's sync API keeps its event loop running in the main thread,
     so the browser closes with the last test of this package: later tests of
     the run call ``asyncio.run`` (the CLI's commands) in that thread.
+
+    Expectations (``expect``) wait up to ``EXPECT_TIMEOUT_MS``.
     """
     with sync_playwright() as playwright:
+        expect.set_options(timeout=EXPECT_TIMEOUT_MS)
         try:
             browser = playwright.chromium.launch()
         except PlaywrightError as error:
@@ -38,6 +41,7 @@ def chromium() -> Iterator[Browser]:
             )
         yield browser
         browser.close()
+        expect.set_options(timeout=None)
 
 
 @pytest.fixture
