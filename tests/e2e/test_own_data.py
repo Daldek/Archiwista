@@ -65,7 +65,7 @@ def own_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OwnServer]:
     """Serve a generated store whose project ``projekt-01`` has own data."""
     root = tmp_path_factory.mktemp("own")
     store = make_store(root / "store", slots=24, seed=11, projects=5)
-    project_dir = store.output_dir / store.project(PROJECT).path
+    project_dir = store.base / store.project(PROJECT).path
     folder = make_own_folder(project_dir / "dane", families=FAMILIES)
     paths = local_paths(root)
     ConfigStore(paths.config_file).save(
@@ -385,7 +385,7 @@ def test_data_dir_change_admin_only(
     nor gets it from the API.
     """
     page = open_session(tab, own_server)
-    other_dir = own_server.store.output_dir.parent / "inne-dane"
+    other_dir = own_server.store.base.parent / "inne-dane"
     (other_dir / "warstwy").mkdir(parents=True, exist_ok=True)
     page.goto(f"{own_server.served.base}/?view=projects&project={OTHER_PROJECT}")
     group = page.locator(".own-group")

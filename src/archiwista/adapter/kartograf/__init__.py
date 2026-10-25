@@ -13,9 +13,11 @@ PRODUCER = "kartograf"
 PACKAGE = "kartograf"
 # The Kartograf versions the adapter reads (PEP 440). Archiwista's own
 # requirement on Kartograf is a commit or tag (REL-5.3), so it cannot hold
-# the range.
-SUPPORTED_VERSIONS = ">=0.8.0,<0.9"
-SCHEMAS = ("kartograf-meta/1", "kartograf-project/1")
+# the range. While the commit is pinned the range starts at the development
+# version of the pending release (REL-5.6): PEP 440 sorts ``0.8.0.dev0``
+# below ``0.8.0``. The release pull request narrows it to ``>=0.8.0,<0.9``.
+SUPPORTED_VERSIONS = ">=0.8.0.dev0,<0.9"
+SCHEMAS = ("kartograf-meta/1", "kartograf-project/1", "kartograf-store/1")
 
 
 def load(context: SourceContext) -> SourceAdapter:

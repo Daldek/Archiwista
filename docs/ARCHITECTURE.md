@@ -47,8 +47,9 @@ itself, but calls the names from `kartograf.__all__` — `list_segments`,
 `SheetParser` — and only in `src/archiwista/adapter/kartograf/`
 (section 2.2). The rest of the application knows only the source interface
 `src/archiwista/sources/`. A missing Kartograf function is a requirement on
-Kartograf (SPEC 12), not a workaround in Archiwista. The package requires
-`kartograf>=0.8.0,<0.9` with KA-1..KA-6.
+Kartograf (SPEC 12), not a workaround in Archiwista. The adapter reads Kartograf
+`>=0.8.0.dev0,<0.9` with KA-1..KA-6 (`SUPPORTED_VERSIONS`: while a commit is pinned the
+range starts at the development version, REL-5.6; the release narrows it to `>=0.8.0`).
 
 **Release boundaries:** Archiwista does not download data or run
 producer commands (v0.3), does not write or delete store files,

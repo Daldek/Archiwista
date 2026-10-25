@@ -34,7 +34,7 @@ def store_settings(store: StoreManifest) -> AppSettings:
         name="Zespół",
         kartograf=store.root,
         kind="local",
-        path_aliases={f"{store.output_dir}/": ALIAS},
+        path_aliases={f"{store.base}/": ALIAS},
     )
     return AppSettings(stores=(config,), project_dirs=(store.projects_dir,))
 

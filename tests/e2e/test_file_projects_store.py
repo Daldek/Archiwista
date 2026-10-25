@@ -58,7 +58,7 @@ def settings_of(store: StoreManifest) -> AppSettings:
         name="Zespół",
         kartograf=store.root,
         kind="local",
-        path_aliases={f"{store.output_dir}/": ALIAS},
+        path_aliases={f"{store.base}/": ALIAS},
     )
     return AppSettings(
         offline=True, stores=(config,), project_dirs=(store.projects_dir,)
@@ -287,7 +287,7 @@ def test_manifest_error_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     store, served, page = served_store(serve, tab, tmp_path)
     broken = next(p for p in store.projects if p.case == "invalid_manifest")
     try:
-        open_project(store.output_dir / broken.path)
+        open_project(store.base / broken.path)
     except ValidationError as error:
         message = str(error)
     else:

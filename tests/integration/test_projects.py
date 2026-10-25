@@ -85,9 +85,9 @@ def _config(root: Path, store_id: str = STORE, **aliases: str) -> StoreConfig:
     )
 
 
-def _write_manifest(directory: Path, output_dir: str) -> None:
+def _write_manifest(directory: Path, root: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    document = {"schema": "kartograf-project/1", "output_dir": output_dir, "tasks": []}
+    document = {"schema": "kartograf-project/1", "root": root, "tasks": []}
     (directory / MANIFEST_NAME).write_text(json.dumps(document), encoding="utf-8")
 
 
@@ -253,7 +253,7 @@ def test_scan_projects_unknown_store_matches_once_configured(
     """A project of an unconfigured store says so; adding the store links it."""
     # Arrange
     writer, queries = index
-    other = store.output_dir / "other-data"
+    other = store.base / "other-data"
     stores = [_config(store.root), _config(other, "inny")]
 
     # Act
@@ -288,7 +288,7 @@ def test_scan_projects_discovery_depth_and_skipped_directories(
     """Depth ≤ 4 below a project directory; no hidden, ``.git`` or store dirs."""
     # Arrange
     writer, queries = index
-    top = store.output_dir
+    top = store.base
     output = str(store.root)
     _write_manifest(top / "a" / "b" / "c" / "deep4", output)
     _write_manifest(top / "a" / "b" / "c" / "d" / "deep5", output)
@@ -357,7 +357,7 @@ def test_scan_projects_removes_gone_manifests_but_keeps_unreachable_dirs(
     after_delete = scan_projects(
         adapter, writer, project_dirs=[store.projects_dir], stores=stores
     )
-    store.projects_dir.rename(store.output_dir / "odlaczony")
+    store.projects_dir.rename(store.base / "odlaczony")
     disconnected = scan_projects(
         adapter, writer, project_dirs=[store.projects_dir], stores=stores
     )
@@ -472,7 +472,7 @@ def test_project_status_refuses_project_leaving_project_dirs(
         project_dirs=[store.projects_dir],
         stores=[_config(store.root)],
     )
-    project = store.output_dir / store.project("projekt-01").path
+    project = store.base / store.project("projekt-01").path
     outside = tmp_path / "outside" / project.name
     shutil.copytree(project, outside)
     if planted == "directory":
@@ -537,7 +537,7 @@ def test_project_status_accepts_symlinked_project_dirs_root(
     # Arrange
     writer, queries = index
     # Beside the real one, so the manifests' relative store paths still match.
-    alias = store.output_dir / "projekty-alias"
+    alias = store.base / "projekty-alias"
     alias.symlink_to(store.projects_dir, target_is_directory=True)
     scan_projects(adapter, writer, project_dirs=[alias], stores=[_config(store.root)])
     registry = load_registry(cache_dir=tmp_path / "registry")

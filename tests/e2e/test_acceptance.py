@@ -553,9 +553,9 @@ def test_acceptance_read_only_store_every_view(
     its names, sizes, modification times and inodes.
     """
     store = generate(tmp_path)
-    read_only(store.output_dir, locked=True)
+    read_only(store.base, locked=True)
     try:
-        before = tree(store.output_dir)
+        before = tree(store.base)
         served = serve(offline_settings(store))
         base = served.base
         page = tab.page
@@ -568,9 +568,9 @@ def test_acceptance_read_only_store_every_view(
         )
         done = scans(page, base)
         browse_every_view(page, base, store)
-        after = tree(store.output_dir)
+        after = tree(store.base)
     finally:
-        read_only(store.output_dir, locked=False)
+        read_only(store.base, locked=False)
 
     assert [(job["params"]["mode"], job["state"]) for job in done] == [
         ("incremental", "succeeded"),
@@ -801,10 +801,10 @@ def test_acceptance_serve_on_read_only_mount(
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     ConfigStore(AppPaths.default().config_file).save(offline_settings(store))
-    before = tree(store.output_dir)
+    before = tree(store.base)
     page = tab.page
 
-    with serving_read_only(store.output_dir, dict(os.environ), tmp_path) as (
+    with serving_read_only(store.base, dict(os.environ), tmp_path) as (
         process,
         url,
     ):
@@ -813,7 +813,7 @@ def test_acceptance_serve_on_read_only_mount(
         wait_indexed(page, base)
         indexed = scans(page, base)
         browse_every_view(page, base, store)
-        options = mount_options(process.pid, store.output_dir)
+        options = mount_options(process.pid, store.base)
         tab.assert_clean()
         page.goto("about:blank")
 
@@ -822,7 +822,7 @@ def test_acceptance_serve_on_read_only_mount(
         ("full", "succeeded")
     ]
     assert process.returncode == 0, (tmp_path / "serve.err").read_text("utf-8")
-    assert tree(store.output_dir) == before
+    assert tree(store.base) == before
 
 
 # The in-process scan reads the synthetic JPEG sheets, whose headers carry no

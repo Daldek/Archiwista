@@ -99,7 +99,7 @@ class LayerStore:
 
     @property
     def root(self) -> Path:
-        """The Kartograf store (``--output`` directory)."""
+        """The Kartograf store root (``data/``)."""
         return self.manifest.root
 
     def version(self, unit: str, campaign: str, segment: str = NMT) -> StoredVersion:
@@ -123,18 +123,18 @@ class ServedLayers:
     api: PreviewApi
 
 
-def make_layer_store(output_dir: Path) -> LayerStore:
-    """Write the store under ``output_dir`` (``data/`` and an empty ``projects/``).
+def make_layer_store(base: Path) -> LayerStore:
+    """Write the store under ``base`` (``data/`` and an empty ``projects/``).
 
     Raises
     ------
     StoreFixtureError
         Kartograf reads the store otherwise than it was written.
     """
-    output_dir = output_dir.absolute()
-    root = output_dir / STORE_DIR
+    base = base.absolute()
+    root = base / STORE_DIR
     root.mkdir(parents=True)
-    (output_dir / PROJECTS_DIR).mkdir()
+    (base / PROJECTS_DIR).mkdir()
     versions = [
         add_campaign(root, SHEET_NW, "2019-05-10", "41022", downloaded="2025-02-03"),
         add_campaign(root, SHEET_NW, "2023-06-02", "82710", downloaded="2026-01-15"),
@@ -154,7 +154,7 @@ def make_layer_store(output_dir: Path) -> LayerStore:
         *(_edition(root, edition, number) for number, edition in enumerate(EDITIONS)),
     ]
     _verify(root, versions)
-    return LayerStore(StoreManifest(output_dir, 0, 0, (), ()), tuple(versions))
+    return LayerStore(StoreManifest(base, 0, 0, (), ()), tuple(versions))
 
 
 @contextmanager

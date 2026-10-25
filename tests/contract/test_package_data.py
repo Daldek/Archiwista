@@ -4,7 +4,9 @@ The files are read through ``importlib.resources``, as an installed wheel is
 read, and the patterns of ``[tool.setuptools.package-data]`` are matched against
 the source tree. A checkout holds every file whatever the patterns say, so a
 pattern that stops matching a kind of file, the defect that reaches users who
-install a wheel, fails here and nowhere else.
+install a wheel, fails here and nowhere else. The source tree and
+``pyproject.toml`` are found from this file, never through the installed package
+(REL-2.5): a wheel holds no repository.
 """
 
 import json
@@ -14,11 +16,10 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-import archiwista
-
-PACKAGE_DIR = Path(archiwista.__file__).resolve().parent
+REPO = Path(__file__).resolve().parents[2]
+PACKAGE_DIR = REPO / "src" / "archiwista"
 PACKAGE_DATA: dict[str, list[str]] = tomllib.loads(
-    (PACKAGE_DIR.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    (REPO / "pyproject.toml").read_text(encoding="utf-8")
 )["tool"]["setuptools"]["package-data"]
 MANIFEST = "vendor.json"
 # Files of the package Archiwista wrote itself, next to the vendored ones.

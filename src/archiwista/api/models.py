@@ -268,13 +268,13 @@ _STORE_EXAMPLE = {
 _SOURCE_EXAMPLE = {
     "producer": "kartograf",
     "status": "available",
-    "package_version": "0.8.0",
-    "supported_versions": "<0.9,>=0.8.0",
-    "schemas": ["kartograf-meta/1", "kartograf-project/1"],
+    "package_version": "0.8.0.dev0",
+    "supported_versions": ">=0.8.0.dev0,<0.9",
+    "schemas": ["kartograf-meta/1", "kartograf-project/1", "kartograf-store/1"],
     "detail": None,
     "message": (
-        "Wtyczka kartograf: wersja 0.8.0 (wspierane <0.9,>=0.8.0; schematy:"
-        " kartograf-meta/1, kartograf-project/1)"
+        "Wtyczka kartograf: wersja 0.8.0.dev0 (wspierane >=0.8.0.dev0,<0.9;"
+        " schematy: kartograf-meta/1, kartograf-project/1, kartograf-store/1)"
     ),
     "fix": None,
 }

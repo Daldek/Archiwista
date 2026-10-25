@@ -1,7 +1,7 @@
 """A store of preview fixtures of real sizes for the measurements (plan v0.2, step 16).
 
-``make_preview_store(output_dir, source=…)`` writes a Kartograf store under
-``output_dir`` (``data/`` and an empty ``projects/``; slot paths from
+``make_preview_store(base, source=…)`` writes a Kartograf store under
+``base`` (``data/`` and an empty ``projects/``; slot paths from
 ``FileStorage``, versions, links and sidecars as ARCH 3.2-3.4, like the
 other fixtures) from three real files of a Kartograf store ``source``
 (``SOURCES``; the live store of Kartograf 0.8.0,
@@ -103,7 +103,7 @@ class PreviewStore:
 
     Parameters
     ----------
-    output_dir : Path
+    base : Path
         The directory given (``data/``, ``projects/`` and ``MANIFEST``).
     ortho : str
         Store path of the orthophoto version.
@@ -113,7 +113,7 @@ class PreviewStore:
         Store path of the real SM5 sheet's JPEG version.
     """
 
-    output_dir: Path
+    base: Path
     ortho: str
     asc_year: tuple[str, ...]
     asc_singles: tuple[str, ...]
@@ -124,28 +124,28 @@ class PreviewStore:
 
     @property
     def root(self) -> Path:
-        """The store's ``data/`` directory."""
-        return self.output_dir / STORE_DIR
+        """The store root: its ``data/`` directory."""
+        return self.base / STORE_DIR
 
     def save(self) -> None:
         """Write the groups to ``MANIFEST``."""
         groups = {
             name: getattr(self, name)
             for name in self.__dataclass_fields__
-            if name != "output_dir"
+            if name != "base"
         }
-        (self.output_dir / MANIFEST).write_text(
+        (self.base / MANIFEST).write_text(
             json.dumps(groups, indent=2) + "\n", encoding="utf-8"
         )
 
     @classmethod
-    def load(cls, output_dir: Path) -> "PreviewStore":
-        """Read the groups a ``make_preview_store`` of ``output_dir`` wrote."""
+    def load(cls, base: Path) -> "PreviewStore":
+        """Read the groups a ``make_preview_store`` of ``base`` wrote."""
         groups: dict[str, Any] = json.loads(
-            (output_dir / MANIFEST).read_text(encoding="utf-8")
+            (base / MANIFEST).read_text(encoding="utf-8")
         )
         return cls(
-            output_dir,
+            base,
             ortho=groups["ortho"],
             asc_year=tuple(groups["asc_year"]),
             asc_singles=tuple(groups["asc_singles"]),
@@ -156,12 +156,12 @@ class PreviewStore:
         )
 
 
-def make_preview_store(output_dir: Path, *, source: Path) -> PreviewStore:
-    """Write the store under ``output_dir`` from the real files of ``source``.
+def make_preview_store(base: Path, *, source: Path) -> PreviewStore:
+    """Write the store under ``base`` from the real files of ``source``.
 
     Parameters
     ----------
-    output_dir : Path
+    base : Path
         A missing or empty directory.
     source : Path
         ``data/`` of a Kartograf store with the files of ``SOURCES`` and
@@ -173,15 +173,15 @@ def make_preview_store(output_dir: Path, *, source: Path) -> PreviewStore:
         A source file is missing, or Kartograf reads the store otherwise
         than it was written.
     """
-    output_dir = output_dir.absolute()
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise StoreFixtureError(f"not an empty directory: {output_dir}")
+    base = base.absolute()
+    if base.exists() and any(base.iterdir()):
+        raise StoreFixtureError(f"not an empty directory: {base}")
     for relative in SOURCES.values():
         if not (source / relative).is_file():
             raise StoreFixtureError(f"the source store has no {relative}")
-    root = output_dir / STORE_DIR
+    root = base / STORE_DIR
     root.mkdir(parents=True)
-    (output_dir / PROJECTS_DIR).mkdir()
+    (base / PROJECTS_DIR).mkdir()
     ortho_storage = FileStorage(root, resolution=None, vertical_crs=None, subdir=ORTO)
     ortho_source = source / SOURCES["ortho"]
     ortho = _put_file(
@@ -194,7 +194,7 @@ def make_preview_store(output_dir: Path, *, source: Path) -> PreviewStore:
     asc_year, asc_singles = _asc_sheets(root, source / SOURCES["asc"])
     sm5_year, sm5_singles, sm5_sheet = _sm5_sheets(root, source / SOURCES["sm5"])
     store = PreviewStore(
-        output_dir,
+        base,
         ortho,
         asc_year,
         asc_singles,
@@ -587,7 +587,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "and outside /tmp."
         ),
     )
-    parser.add_argument("output_dir", type=Path, help="missing or empty directory")
+    parser.add_argument("base", type=Path, help="missing or empty directory")
     parser.add_argument(
         "--source",
         type=Path,
@@ -595,13 +595,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="data/ of a Kartograf store holding " + ", ".join(SOURCES.values()),
     )
     args = parser.parse_args(argv)
-    output_dir = cast(Path, args.output_dir).absolute()
+    base = cast(Path, args.base).absolute()
     repository = Path(__file__).resolve().parents[2]
-    if output_dir.resolve().is_relative_to(repository):
-        parser.error(f"refusing to write test data into the repository: {output_dir}")
+    if base.resolve().is_relative_to(repository):
+        parser.error(f"refusing to write test data into the repository: {base}")
     started = time.perf_counter()
     try:
-        store = make_preview_store(output_dir, source=cast(Path, args.source))
+        store = make_preview_store(base, source=cast(Path, args.source))
     except StoreFixtureError as exc:
         parser.error(str(exc))
     # Each file once: versions (the standard paths are their hard links), sidecars.

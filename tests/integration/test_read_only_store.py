@@ -42,8 +42,8 @@ def test_read_only_store_scan_and_browse(tmp_path: Path) -> None:
     snapshots: list[dict[str, tuple[int, int, int]]] = []
 
     def lock(store: StoreManifest) -> None:
-        _read_only(store.output_dir, read_only=True)
-        snapshots.append(_tree(store.output_dir))
+        _read_only(store.base, read_only=True)
+        snapshots.append(_tree(store.base))
 
     try:
         with served_store(tmp_path, before_scan=lock) as served:
@@ -70,7 +70,7 @@ def test_read_only_store_scan_and_browse(tmp_path: Path) -> None:
 
             # Act
             statuses = {path: owner.request("GET", path).status_code for path in paths}
-            after = _tree(served.store.output_dir)
+            after = _tree(served.store.base)
     finally:
         _read_only(tmp_path / "store", read_only=False)
 

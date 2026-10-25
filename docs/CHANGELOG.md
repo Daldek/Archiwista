@@ -96,12 +96,23 @@ command-line interface may change.
   `uv.lock` pins every package with SHA-256 sums at the versions of the 0.2.0
   lock. Development tools are the `dev` dependency group, and the extra `dev` is
   gone. (DEV-6.2, DEV-6.3, DEV-6.5)
-- Kartograf is pinned by commit (`8e9bcbb`, the head of its branch `develop`) in
-  `pyproject.toml` instead of being installed editable from a sibling checkout;
-  the release pull request replaces the commit with the tag. The range of
-  Kartograf versions the adapter reads is `SUPPORTED_VERSIONS` in
-  `archiwista.adapter.kartograf`; the install command in the repair texts is
-  now the pin. (REL-5.3)
+- Kartograf is pinned by commit in `pyproject.toml` instead of being installed editable
+  from a sibling checkout: `8a36e977`, the head of its branch `feature/data-output` (the
+  data-output convention, ADR-054; the commit is not pushed). The release pull request
+  replaces the commit with the tag. The range of Kartograf versions the adapter reads is
+  `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`, `>=0.8.0.dev0,<0.9` while the
+  commit is pinned, because PEP 440 sorts the development version `0.8.0.dev0` below
+  `0.8.0`; the release pull request narrows it to `>=0.8.0,<0.9`. The install command in
+  the repair texts is now the pin. (REL-5.3, REL-5.6)
+- **Breaking:** the store root of Kartograf is `root` (the data-output convention, DEV §19,
+  ECO-051). Archiwista reads the store with the pinned head, whose read API takes `root`
+  and whose project manifest `kartograf-project.json` names the store of a project with
+  the key `root`: a manifest written by an earlier Kartograf, with `output_dir`, is listed
+  as an invalid project with Kartograf's message until Kartograf writes it again. The
+  source states `kartograf-store/1` among the schemas it reads. (ECO-051)
+- The tests find the repository from the test file, never through the installed package,
+  so they run against an installed wheel; the generated stores of the tests call the
+  directory that holds `data/`, `projects/` and `other-data/` `base`. (REL-2.5)
 - `develop` carries the development version `0.3.0.dev0`. (REL-1.1)
 - **Breaking for developers:** the package moved from `archiwista/` to
   `src/archiwista/`; import paths and package data are unchanged, and `uv sync

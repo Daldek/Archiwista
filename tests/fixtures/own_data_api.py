@@ -164,7 +164,7 @@ def own_data_api(
         Render processes.
     """
     store, paths = scanned_store(tmp_path)
-    first_dir = store.output_dir / store.project(FIRST).path
+    first_dir = store.base / store.project(FIRST).path
     first_folder = make_own_folder(first_dir / DATA_DIR, families=first)
     second_dir = tmp_path / "projekty" / SECOND
     second_dir.mkdir(parents=True)

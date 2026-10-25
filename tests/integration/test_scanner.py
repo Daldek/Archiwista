@@ -770,7 +770,7 @@ def test_scans_never_confirm_links(env: _Env, monkeypatch: pytest.MonkeyPatch) -
 def test_read_only_store_scan_leaves_store_unchanged(env: _Env) -> None:
     """Scans read a store without write permission and change nothing in it."""
     # Arrange
-    output = env.store.output_dir
+    output = env.store.base
     before = _tree(output)
     _make_tree_read_only(output, read_only=True)
 

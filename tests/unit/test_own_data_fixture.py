@@ -235,12 +235,12 @@ def test_snapshot_fixture_needs_content_for_sqlite(tmp_path: Path) -> None:
         )
 
 
-def test_project_inside_store_names_the_store_as_output(tmp_path: Path) -> None:
-    """The manifest lies in the producer directory it names as its store."""
+def test_project_inside_store_names_the_store_as_root(tmp_path: Path) -> None:
+    """The manifest lies in the producer directory it names as its store root."""
     store = tmp_path / "data"
     store.mkdir()
 
     directory = project_inside_store(store)
 
     assert directory.is_relative_to(store)
-    assert Path(open_project(directory).output_dir).resolve() == store.resolve()
+    assert Path(open_project(directory).root).resolve() == store.resolve()

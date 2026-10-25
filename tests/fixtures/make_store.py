@@ -1,8 +1,8 @@
 """Synthetic Kartograf store for Archiwista tests (plan v0.1 step 4, v0.2 step 2).
 
-``make_store(output_dir, slots=..., seed=...)`` writes under ``output_dir``:
+``make_store(base, slots=..., seed=...)`` writes under ``base``:
 
-- ``data/`` - a Kartograf store (the ``--output`` directory, ARCH 3.2-3.3)
+- ``data/`` - a Kartograf store (its root, ARCH 3.2-3.3)
   with every product family Archiwista reads: 64 x 64 rasters (ASC sheets,
   GeoTIFF sheets and cutouts, a JPEG with world files), small GeoPackages,
   ZIP packages, a point cloud, collections by TERYT, KU and country and an
@@ -325,9 +325,9 @@ class ExpectedProject:
 
     name: str
     path: str
-    """Relative to ``output_dir`` with ``/``."""
+    """Relative to ``base`` with ``/``."""
     store: str
-    """Directory (relative to ``output_dir``) the manifest names as store."""
+    """Directory (relative to ``base``) the manifest names as its store root."""
     case: ProjectCase
     valid: bool
     tasks: tuple[ExpectedTask, ...] = ()
@@ -337,7 +337,8 @@ class ExpectedProject:
 class StoreManifest:
     """What the generated store must look like to Kartograf's readers."""
 
-    output_dir: Path
+    base: Path
+    """The directory that holds ``data/``, ``projects/`` and ``other-data/``."""
     seed: int
     slots: int
     """Regular slots requested (base catalogue + bulk)."""
@@ -346,13 +347,13 @@ class StoreManifest:
 
     @property
     def root(self) -> Path:
-        """The Kartograf store (``--output`` directory)."""
-        return self.output_dir / STORE_DIR
+        """The Kartograf store root (``root`` of its read API): ``data/``."""
+        return self.base / STORE_DIR
 
     @property
     def projects_dir(self) -> Path:
         """Directory holding every project directory."""
-        return self.output_dir / PROJECTS_DIR
+        return self.base / PROJECTS_DIR
 
     @property
     def rows(self) -> frozenset[Row]:
@@ -396,15 +397,15 @@ def entry_row(entry: StoreEntry, root: Path) -> Row:
 
 
 def make_store(
-    output_dir: Path, *, slots: int, seed: int, projects: int = MIN_PROJECTS
+    base: Path, *, slots: int, seed: int, projects: int = MIN_PROJECTS
 ) -> StoreManifest:
     """Write the synthetic store and projects and verify them with Kartograf.
 
     Parameters
     ----------
-    output_dir : Path
-        Missing or empty directory; receives ``data/``, ``projects/`` and
-        ``other-data/``.
+    base : Path
+        Missing or empty directory; receives ``data/`` (the store root),
+        ``projects/`` and ``other-data/``.
     slots : int
         Regular slots (standard-path links) of the store, at least
         ``MIN_SLOTS``: the base catalogue with every family, then a bulk mix
@@ -423,7 +424,7 @@ def make_store(
     Raises
     ------
     ValueError
-        Too few slots or projects, or a non-empty ``output_dir``.
+        Too few slots or projects, or a non-empty ``base``.
     StoreFixtureError
         Kartograf's readers disagree with the written store.
     """
@@ -431,10 +432,10 @@ def make_store(
         raise ValueError(f"slots must be at least {MIN_SLOTS}, got {slots}")
     if projects < MIN_PROJECTS:
         raise ValueError(f"projects must be at least {MIN_PROJECTS}, got {projects}")
-    output_dir = output_dir.absolute()
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise ValueError(f"output directory is not empty: {output_dir}")
-    writer = _StoreWriter(output_dir, seed)
+    base = base.absolute()
+    if base.exists() and any(base.iterdir()):
+        raise ValueError(f"base directory is not empty: {base}")
+    writer = _StoreWriter(base, seed)
     writer.base_catalogue()
     # Edge cases first: the bulk may use up a unit pool they need.
     writer.edge_cases()
@@ -443,7 +444,7 @@ def make_store(
     # Last: the v0.1 part of a seed's store stays as it was.
     writer.file_families()
     manifest = StoreManifest(
-        output_dir=output_dir,
+        base=base,
         seed=seed,
         slots=slots,
         entries=tuple(writer.entries),
@@ -480,7 +481,7 @@ def verify_store(manifest: StoreManifest) -> None:
         problems.extend(_sidecar_differences(wanted, found))
     problems.extend(f"missing: {row}" for row in expected.keys() - seen)
     for project in manifest.projects:
-        problems.extend(_project_differences(manifest.output_dir, project))
+        problems.extend(_project_differences(manifest.base, project))
     if problems:
         shown = "\n".join(problems[:20])
         more = f"\n... and {len(problems) - 20} more" if len(problems) > 20 else ""
@@ -502,8 +503,8 @@ def _sidecar_differences(wanted: ExpectedEntry, found: StoreEntry) -> list[str]:
     return []
 
 
-def _project_differences(output_dir: Path, project: ExpectedProject) -> list[str]:
-    directory = output_dir / project.path
+def _project_differences(base: Path, project: ExpectedProject) -> list[str]:
+    directory = base / project.path
     try:
         opened = open_project(directory)
     except ValidationError as exc:
@@ -578,9 +579,9 @@ class _Written:
 class _StoreWriter:
     """Writes the store and collects the expected entries."""
 
-    def __init__(self, output_dir: Path, seed: int) -> None:
-        self.output_dir = output_dir
-        self.root = output_dir / STORE_DIR
+    def __init__(self, base: Path, seed: int) -> None:
+        self.base = base
+        self.root = base / STORE_DIR
         self.root.mkdir(parents=True, exist_ok=True)
         self.rng = random.Random(seed)
         self.entries: list[ExpectedEntry] = []
@@ -1852,7 +1853,7 @@ class _StoreWriter:
         Three special cases, then regular projects pinning current and
         (every second one) older versions.
         """
-        base = self.output_dir / PROJECTS_DIR
+        base = self.base / PROJECTS_DIR
         sheets = [
             written
             for written in self.written[NMT]
@@ -1928,7 +1929,7 @@ class _StoreWriter:
         """
         directory = base / name
         store_dir = store or self.root
-        init_project(directory, output_dir=os.path.relpath(store_dir))
+        init_project(directory, root=os.path.relpath(store_dir))
         for task in tasks:
             add_project_task(
                 directory,
@@ -1959,8 +1960,8 @@ class _StoreWriter:
         _write_json(manifest, doc)
         return ExpectedProject(
             name=name,
-            path=directory.relative_to(self.output_dir).as_posix(),
-            store=store_dir.relative_to(self.output_dir).as_posix(),
+            path=directory.relative_to(self.base).as_posix(),
+            store=store_dir.relative_to(self.base).as_posix(),
             case=case,
             valid=True,
             tasks=tuple(tasks),
@@ -1993,7 +1994,7 @@ class _StoreWriter:
 
     def _other_store_project(self, base: Path) -> ExpectedProject:
         """Write a project of a store Archiwista is not configured with."""
-        other = self.output_dir / OTHER_STORE_DIR
+        other = self.base / OTHER_STORE_DIR
         other.mkdir()
         task = ExpectedTask("teren", "elevation download")
         sheet = self.written[NMT][0]
@@ -2210,7 +2211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "repository and outside /tmp."
         ),
     )
-    parser.add_argument("output_dir", type=Path, help="missing or empty directory")
+    parser.add_argument("base", type=Path, help="missing or empty directory")
     parser.add_argument(
         "--slots", type=int, default=50_000, help="regular slots (default: 50000)"
     )
@@ -2219,18 +2220,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--projects", type=int, default=30, help="project directories (default: 30)"
     )
     args = parser.parse_args(argv)
-    output_dir = cast(Path, args.output_dir).absolute()
-    if output_dir.resolve().is_relative_to(_repository_root()):
-        parser.error(f"refusing to write test data into the repository: {output_dir}")
+    base = cast(Path, args.base).absolute()
+    if base.resolve().is_relative_to(_repository_root()):
+        parser.error(f"refusing to write test data into the repository: {base}")
     started = time.perf_counter()
     try:
         manifest = make_store(
-            output_dir, slots=args.slots, seed=args.seed, projects=args.projects
+            base, slots=args.slots, seed=args.seed, projects=args.projects
         )
     except ValueError as exc:
         parser.error(str(exc))
     elapsed_s = time.perf_counter() - started
-    stats = store_stats(manifest.output_dir)
+    stats = store_stats(manifest.base)
     print(f"store: {manifest.root}")
     print(f"projects: {manifest.projects_dir} ({len(manifest.projects)})")
     print(f"slots: {len(manifest.by_kind('link'))} ({manifest.slots} regular)")

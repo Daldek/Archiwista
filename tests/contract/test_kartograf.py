@@ -50,14 +50,14 @@ KEYWORD = inspect.Parameter.KEYWORD_ONLY
 # KA-1..KA-6, list_segments and list_partitions (Kartograf ADR-045, ARCH
 # 3.3.1): parameter name, kind and default.
 STORE_API: dict[str, list[tuple[str, inspect._ParameterKind, object]]] = {
-    "list_segments": [("output_dir", POSITIONAL, EMPTY)],
+    "list_segments": [("root", POSITIONAL, EMPTY)],
     "list_partitions": [
-        ("output_dir", POSITIONAL, EMPTY),
+        ("root", POSITIONAL, EMPTY),
         ("segment", POSITIONAL, EMPTY),
         ("target", KEYWORD, 32),
     ],
     "iter_store": [
-        ("output_dir", POSITIONAL, EMPTY),
+        ("root", POSITIONAL, EMPTY),
         ("segment", KEYWORD, None),
         ("units", KEYWORD, None),
         ("skip_versions", KEYWORD, None),
@@ -118,6 +118,12 @@ STORE_RECORDS: dict[str, set[str]] = {
     },
     "SegmentInfo": {"segment", "product", "country", "dataset_key", "name", "known"},
     "Footprint": {"native", "wgs84", "source"},
+    # The store of a project is its ``root`` (ADR-054); it was ``output_dir``.
+    "Project": {"directory", "root", "tasks"},
+    "ProjectTask": {"name", "command", "options", "files"},
+    "PinnedFile": {"version", "sha256"},
+    "ProjectCheck": {"project", "files", "not_downloaded"},
+    "FileCheck": {"task", "status"},
 }
 PRAGUE_SJTSK = (-743_000.0, -1_043_000.0)
 PRAGUE_WGS84 = (14.4185946, 50.0873465)
@@ -600,7 +606,7 @@ def test_probe_accepts_store_and_rejects_its_parent(
 
     assert adapter.probe(store.root).status == "available"
     assert adapter.probe(empty).status == "available"
-    parent = adapter.probe(store.output_dir)
+    parent = adapter.probe(store.base)
     assert (parent.status, parent.detail) == (
         "incompatible",
         message("source.kartograf_not_store"),
@@ -630,7 +636,7 @@ def test_read_project_gives_tasks_and_pins_of_the_manifest(
     """A project lists its tasks and pins, including older versions."""
     expected = store.project("projekt-01")
 
-    project = adapter.read_project(store.output_dir / expected.path)
+    project = adapter.read_project(store.base / expected.path)
 
     assert project.store == str(store.root)
     assert [(t.task_id, t.command) for t in project.tasks] == [
@@ -648,8 +654,8 @@ def test_project_status_reports_missing_and_undownloaded_tasks(
 ) -> None:
     """Status names the worst pinned file of each task and of the project."""
     expected = store.project("projekt-01")
-    regular = adapter.project_status(store.output_dir / expected.path)
-    missing = adapter.project_status(store.output_dir / "projects" / "brak-wersji")
+    regular = adapter.project_status(store.base / expected.path)
+    missing = adapter.project_status(store.base / "projects" / "brak-wersji")
 
     assert {t.task_id: t.status for t in regular.tasks} == {
         task.name: "ok" if task.pins else "not_downloaded" for task in expected.tasks
@@ -666,7 +672,7 @@ def test_invalid_manifest_reports_kartograf_message(
 ) -> None:
     """A broken manifest is Kartograf's validation error, text unchanged."""
     with pytest.raises(ProducerError) as raised:
-        adapter.read_project(store.output_dir / "projects" / "zepsuty")
+        adapter.read_project(store.base / "projects" / "zepsuty")
 
     assert (raised.value.package, raised.value.exception) == (
         "kartograf",

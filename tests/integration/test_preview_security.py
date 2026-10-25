@@ -288,7 +288,7 @@ def test_store_and_own_folder_unchanged_after_previews(tmp_path: Path) -> None:
     """
     with own_data_api(tmp_path, first=ALL_OWN_FAMILIES, second=()) as served:
         # Arrange
-        output = served.previews.store.output_dir
+        output = served.previews.store.base
         folder = served.first.root
         with _geopackages_in_three_states(folder):
             served.scan()  # the edits came after the first scan

@@ -369,14 +369,14 @@ def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -
 def test_store_fixture_projects_open_as_expected(store: StoreManifest) -> None:
     """Valid manifests open with their pins; the invalid one is rejected."""
     for project in store.projects:
-        directory = store.output_dir / project.path
+        directory = store.base / project.path
         if not project.valid:
             with pytest.raises(ValidationError):
                 open_project(directory)
             continue
         opened = open_project(directory)
-        store_dir = (store.output_dir / project.store).resolve()
-        assert opened.output_dir.resolve() == store_dir
+        store_dir = (store.base / project.store).resolve()
+        assert opened.root.resolve() == store_dir
         pins = {(task.name, pin.version) for task in opened.tasks for pin in task.files}
         assert pins == {
             (task.name, pin.version) for task in project.tasks for pin in task.pins
@@ -419,7 +419,7 @@ def test_verify_store_rejects_accepted_invalid_manifest(tmp_path: Path) -> None:
     """An invalid manifest that opens stops the generator's verification."""
     manifest = make_store(tmp_path / "store", slots=MIN_SLOTS, seed=2)
     invalid = next(p for p in manifest.projects if not p.valid)
-    path = manifest.output_dir / invalid.path / "kartograf-project.json"
+    path = manifest.base / invalid.path / "kartograf-project.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
     doc["tasks"][0]["command"] = "elevation download"
     path.write_text(json.dumps(doc), encoding="utf-8")

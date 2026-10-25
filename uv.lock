@@ -81,7 +81,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=8e9bcbb058d11f06afae5a65e62f31870f69d169" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=8a36e977d607192b11c66f44f318f2e7676b60d1" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
     { name = "packaging", specifier = ">=24" },
     { name = "platformdirs", specifier = ">=4,<5" },
@@ -742,10 +742,11 @@ wheels = [
 
 [[package]]
 name = "kartograf"
-version = "0.8.0"
-source = { git = "https://github.com/Daldek/Kartograf?rev=8e9bcbb058d11f06afae5a65e62f31870f69d169#8e9bcbb058d11f06afae5a65e62f31870f69d169" }
+version = "0.8.0.dev0"
+source = { git = "https://github.com/Daldek/Kartograf?rev=8a36e977d607192b11c66f44f318f2e7676b60d1#8a36e977d607192b11c66f44f318f2e7676b60d1" }
 dependencies = [
     { name = "numpy" },
+    { name = "platformdirs" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pyogrio" },
     { name = "pyproj" },

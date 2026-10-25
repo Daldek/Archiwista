@@ -110,7 +110,7 @@ def _write_folder(directory: Path) -> None:
     """Write the project, its store and its data folder of ``FILES`` files."""
     store = directory / "store"
     project = directory / "projects" / PROJECT
-    init_project(project, output_dir=store.absolute())
+    init_project(project, root=store.absolute())
     folder = project / DATA_DIR
     pristine = directory / "pristine"
     pristine.mkdir(parents=True)

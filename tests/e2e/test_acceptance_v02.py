@@ -473,7 +473,7 @@ def test_acceptance_v02_walkthrough(serve: Serve, tab: Tab, tmp_path: Path) -> N
     content once more makes none („bez zmian od migawki”).
     """
     store = make_store(tmp_path / "store", slots=24, seed=7)
-    project_dir = store.output_dir / store.project(PROJECT).path
+    project_dir = store.base / store.project(PROJECT).path
     folder = make_own_folder(project_dir / "dane", families=OWN_FAMILIES)
     served = serve(offline_settings(store))
     base = served.base
@@ -669,10 +669,10 @@ def test_acceptance_v02_read_only_store_previews(
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     paths = AppPaths.default()
     ConfigStore(paths.config_file).save(offline_settings(store))
-    before = tree(store.output_dir)
+    before = tree(store.base)
     page = tab.page
 
-    with serving_read_only(store.output_dir, dict(os.environ), tmp_path) as (
+    with serving_read_only(store.base, dict(os.environ), tmp_path) as (
         process,
         url,
     ):
@@ -683,7 +683,7 @@ def test_acceptance_v02_read_only_store_previews(
         expect(vector.locator(".pv-layer")).to_have_count(2)
         info = built_preview(page, base, store)
         tile = map_tile(page, base, info)
-        options = mount_options(process.pid, store.output_dir)
+        options = mount_options(process.pid, store.base)
         tab.assert_clean()
         page.goto("about:blank")
 
@@ -692,7 +692,7 @@ def test_acceptance_v02_read_only_store_previews(
     assert process.returncode == 0, (tmp_path / "serve.err").read_text("utf-8")
     assert tile
     assert cached
-    assert tree(store.output_dir) == before
+    assert tree(store.base) == before
 
 
 def test_acceptance_v02_disconnected_share_serves_cached_previews(

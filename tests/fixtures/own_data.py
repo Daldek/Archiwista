@@ -539,8 +539,8 @@ def project_inside_store(store_root: Path, name: str = "w-magazynie") -> Path:
         The project directory (``<store_root>/projekty/<name>``).
     """
     directory = store_root / "projekty" / name
-    # Like Kartograf's CLI: ``output_dir`` as given from the working directory.
-    init_project(directory, output_dir=os.path.relpath(store_root))
+    # Like Kartograf's CLI: ``root`` as given from the working directory.
+    init_project(directory, root=os.path.relpath(store_root))
     return directory
 
 

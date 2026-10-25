@@ -642,7 +642,7 @@ def _readable_sidecar(path: Path) -> Any | None:
 
 def _project_info(project: Any) -> ProjectInfo:
     """Convert a Kartograf project; its pins are relative to its store."""
-    store = str(project.output_dir)
+    store = str(project.root)
     directory = Path(project.directory)
     tasks = tuple(
         ProjectTask(task_id=task.name, command=task.command, options=dict(task.options))

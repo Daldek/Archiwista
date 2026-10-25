@@ -120,7 +120,7 @@ def test_agent_snapshot_flow(
     """Token, session, snapshot plan, snapshot job followed over SSE, the card."""
     # Arrange: a project with a scanned data folder, served with jobs and previews.
     store, paths = scanned_store(tmp_path)
-    project_dir = store.output_dir / store.project(FIRST).path
+    project_dir = store.base / store.project(FIRST).path
     folder = make_own_folder(project_dir / DATA_DIR, families=("tif_2180",))
     scan_own(paths)
     registry = load_registry(cache_dir=paths.cache_dir)
