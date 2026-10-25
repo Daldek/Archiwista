@@ -13,9 +13,9 @@ commit that introduced this file).
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten); open: error texts that follow `Accept-Language` (Next 1.1; step 1, the message catalog, is parked on the local branch `wip/message-catalog`); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
+| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -58,43 +58,52 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       (`Problem`, `describe`, `refuse`, `validation_problem`, `preview_reason`),
       `api/errors.py` (`problem_body`, `problem_response`, `_DOCUMENTED`), `errors.py`,
       `services/problems.py`, `config.py` (settings problems).
-      **Step 1, the catalog without a change of behavior, is parked** as one unfinished
-      commit on the local branch `wip/message-catalog` (on top of the job error commit; the
-      worktree is in the repo's TMPDIR, `wt/`, see `git worktree list`; nothing is pushed).
-      It holds `src/archiwista/messages/` (`__init__.py` with `Text`, `Message`,
-      `message`, `lookup`, `label`, `localize`, `language` and `current_language`,
-      `with_detail`, `placeholders`, `catalogs`, `valid_key`; the language is `pl` until step
-      2; and 30 area modules with the 665 entries: area = prefix of the old key, but `with`
-      is `common`, `path` is `ref`, `kartograf` is `source` and `refresh` is `api`; the
-      English texts are a model translation with the placeholders checked and three hand
-      fixes; the literal braces of `cli_project_help`, `settings_basemap_xyz` and
-      `settings_basemap_vector` are written `{{x}}`), the removal of `messages.py` and
-      `texts/`, and a codemod's result: 609 uses in 77 files of `src` and `tests` are
-      `message("area.name", ...)`, locals named `message` in the scopes that call it are
-      renamed (`text`, `detail`), imports sorted, `ruff format` applied. Nothing imports
-      until the rest is done. Open in it: (a) the 30 sites `grep -rn MESSAGES src tests`
-      still finds (and two docstrings and the name `_PYDANTIC_MESSAGES`): `.get(f"...")`
-      becomes `lookup(f"area.prefix_{x}", default)`,
-      `supervisor.label` takes `"job.state"` (area and name prefix) and calls `lookup`, and
-      the tables whose values are old keys (`api/errors.py` `_DOCUMENTED`, `config.py`
-      `_PYDANTIC_MESSAGES` and the codes of the settings problems, `doctor.py`
-      `_FIX_BY_CODE` and its message codes, `area_reader.py`, `api/slots.py`,
-      `api/models.py` local coverage, the help keys of `reader.py` and `commands/__init__.py`,
-      `JobConflict.message`, `auth/authorize.py` `"permission_" + action`) get new keys;
-      four `.format(**dict)` calls (`commands/owndata.py`, `doctor.py`) become
-      `message(key, **values)`; `api/errors.py` passes a `path=` that `api.route_not_found`
-      does not use; also look for strings equal to an old key outside `MESSAGES[...]` (the
-      survey tools are in the repo's TMPDIR, `tools/`: `keyliterals.py`, `plainfmt.py`,
-      `clash.py`; `codemod.py` is the codemod, a dry run without `--write`, fed by
-      `newkeys.json`); (b) `tests/unit/test_messages.py` becomes the catalog test, shaped
-      like IMGWTools' (both languages with the same placeholders, every call against its
-      entry with f-string prefixes counting as uses, no entry unused, no Polish literal
-      outside the package, rendering, `with_detail`); (c) ruff, mypy, the full gate; the
-      commit is then `refactor(messages)`. Step 2 is the behavior, one more commit: the
-      default language `en`, the middleware and `Content-Language`, the CLI languages, the
-      boundaries, explicit `"pl"` where texts are stored, the key and values in the job
-      error, the tests that read Polish text (`Accept-Language: pl` or `language("pl")`),
-      the deviation line, AGENT_API, SPEC 9.1, CHANGELOG.
+      **Step 1 is done** (`refactor(messages)`, the catalog without a change of behavior).
+      `src/archiwista/messages/` has `__init__.py` (`Text`, `Message`, `message`, `entry`,
+      `lookup`, `label`, `localize`, `with_detail`, `language`, `current_language`,
+      `placeholders`, `catalogs`, `valid_key`; the language is `pl` until step 2; the spec
+      `:sentence` of a field drops a closing full stop) and one module per area (the prefix
+      of the old key, but `with` is `common`, `path` is `ref`, `kartograf` is `source`,
+      `refresh` is `api`; `metavar` holds the placeholders of the options in `--help`). The
+      language of a call is the positional `lang` after the key, else the context
+      (`with language("pl"):`). `message` returns a `Message`, a `str` that keeps its key and
+      values (`.key`, `.params`, `.lang`, `.localized(lang)`; copies and pickles keep it); a
+      `Message` among the values is rendered in the language of its parent. Tables hold keys
+      as literals (`api/errors.py` `_DOCUMENTED`, `config.py` `_PYDANTIC_KEYS`, `doctor.py`
+      `_FIX_BY_CODE`, `JobConflict.message`), computed keys are f-strings of a known prefix
+      (`lookup`, `label("job.state", value)`). `tests/unit/test_messages.py` checks both
+      languages of every entry, every call against its entry, unused entries, entries that
+      are read without values, and that no module outside the catalog holds Polish text;
+      its `_DATA` and `_NAME_TABLES` list what is Polish by design (names, example values of
+      the OpenAPI document, the legend names of the class tables); the entries that quote a
+      description saying "Polish" go with step 2.
+      **Step 2, the behavior, is one more commit.** Starting points:
+      - `messages.DEFAULT_LANG` becomes `"en"`; then every test that reads Polish text needs
+        `Accept-Language: pl` (API) or `language("pl")` (unit, CLI): run the suite to find them.
+      - A pure ASGI middleware (`app.py`, `api/`) sets the language of a request from
+        `Accept-Language` (`error_document.language_of`) with `language()`; sync routes run in
+        the thread pool, which copies the context, so texts of response models follow it. Every
+        problem answers `Content-Language` (now only `pl`) and `Vary: Accept-Language`.
+      - CLI (`cli.py`): text output and the parser under `pl`, `--json` and the document
+        `archiwista-error/1` under `en`; `refuse` prints `localize(detail, "pl")` for the person.
+      - Boundaries: a walk with `localize` over `Problem.details` and `errors` (a `Message`
+        anywhere inside) at `problem_body`, `refuse` and `error_document`; `describe` uses
+        `error.message`, not `str(error)` (plain); `SettingsValidationError` (the `"; ".join`)
+        and `_problem_from_pydantic` (`str(ctx["error"])`) lose the `Message` the same way.
+      - Stored texts stay Polish through an explicit `"pl"`: the `stores.detail` column
+        (`set_store_status` in `index/scanner.py` and `jobs/availability.py`) and the job
+        notices (`emit.notice` in `jobs/worker.py`, `ScanNotice` in the scanner); the AGI-6.4
+        line of the deviations shrinks to those.
+      - `JobError` (`jobs/error.py`) keeps the `key` and `values` of its `detail` in `to_json`,
+        `from_json`, `from_message` and the worker's `error` message (`jobs/worker.py` near
+        line 662; protocol version 5 in `jobs/protocol.py`), so `GET /jobs/{id}` and its
+        stream render it in the language of the request; an error stored without them is read
+        as it is.
+      - `area_reader.py` is a worker process whose answer carries a rendered `detail`: add the
+        `key` and `values` so the parent renders it in the language of the request.
+      - Descriptions that say a text is Polish (`grep -rn Polish src/archiwista`) and the
+        entries of `_DATA` that quote them; AGENT_API 9, SPEC 9.1, USAGE, CHANGELOG,
+        ARCHITECTURE 5.4 and the deviation line of CLAUDE.md.
    2. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
       Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
       summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
@@ -129,8 +138,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `--output` directory" (`--root`); `probe` follows the marker rules (DEV-19.12,
      DEV-19.13): a root with the layout but no `kartograf-store.json` is
      `store_unavailable` with the hint `kartograf store init --root <path>`.
-   - Texts: `src/archiwista/messages.py:271` and `:390` (the Polish messages that name the
-     `--output` directory), `src/archiwista/config.py:179`,
+   - Texts: the entries `source.kartograf_not_store` and `fix.source` (`src/archiwista/messages/`
+     `source.py` and `fix.py`; they name the `--output` directory), `src/archiwista/config.py:179`,
      `src/archiwista/api/models.py:2401`, `src/archiwista/sources/types.py:4`.
    - `tests/contract/test_kartograf.py:53`, `:55` and `:60` pin the parameter names of
      `list_segments`, `list_partitions` and `iter_store` (`output_dir` becomes `root`); the
@@ -155,8 +164,11 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    weekly `live.yml`. Also look at `tests/unit/test_sandbox.py::
    test_sandbox_child_killed_with_its_group_at_time_limit`: it failed once with a
    `ProcessLookupError` (a `/proc` read of a process that had ended) in a scoped run while the
-   machine was loaded; it passed in all full gate runs, so it is probably a race in the test
-   (the child may end between listing and reading `/proc`). Not investigated yet.
+   machine was loaded; it passed in all full gate runs, so it is a race in the test, not in
+   the sandbox: `_running` reads `/proc/<pid>/stat` with `Path.read_text` and catches only
+   `FileNotFoundError`, but a process that is reaped after the open makes the read fail with
+   `ProcessLookupError` (ESRCH); catching both is the likely fix (not reproduced, the race
+   needs the reaping to fall into the read).
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
