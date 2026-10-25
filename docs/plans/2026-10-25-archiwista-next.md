@@ -644,7 +644,10 @@ by the author or by a session with access; none is a blocker of M.
 
 ## Decisions for the author
 
-Each has a recommendation; the plan assumes it until the author says otherwise.
+Decided 2026-10-25 by delegated approval: the coordinating session of the Nogat
+data-output work accepted D1 to D11 on the author's behalf, each as the choice written
+first in its item. The author may still amend any of them; steps not yet started follow
+the amendment.
 
 - **D1. Unmarked store.** Strict, as DEV-19.13 and ADR-054 leave it to the consumer: a
   directory with the layout and no marker is unavailable until `kartograf store init`.
@@ -664,7 +667,8 @@ Each has a recommendation; the plan assumes it until the author says otherwise.
 - **D7. The default root in the wizard.** A suggestion read through Kartograf's
   `get_config()`, never written. It touches the open question about `nogat.toml`
   (PROGRESS): Archiwista itself still reads and writes only its `config.toml`.
-- **D8. This plan.** Confirm or amend it; the approval line is delegated until then.
+- **D8. This plan.** Approved by delegated approval (the first lines of this document);
+  the author confirms or amends it, and the approval line stays "delegated" until then.
 - **D9. Marking the real stores.** Before the first start on the new pin the author runs
   `kartograf store init --root <path>` for each real store, among them the live-test
   store and the large stores of the `perf` and `smb` runs, and moves what `init` refuses.
