@@ -276,14 +276,18 @@ def test_plugins_failing_probe_and_unknown_producer_are_states(
 def test_plugins_default_root_comes_from_the_source_that_has_one(
     tmp_path: Path, producer_canary: Canary
 ) -> None:
-    """Kartograf reports its root; a source without the capability has none."""
+    """Kartograf reports its root; a source without the capability has none.
+
+    Nor has a producer that no plugin registers. IMGWTools reports its root as
+    well (``test_imgw_default_root.py``, collected with the extra ``imgw``).
+    """
     # Arrange
     registry = load_registry(cache_dir=tmp_path / "cache")
 
     # Act
     kartograf = read_default_root(registry, "kartograf")
     external = read_default_root(registry, "external")
-    unregistered = read_default_root(registry, "imgw")
+    unregistered = read_default_root(registry, "unregistered")
 
     # Assert
     assert kartograf == DefaultRoot(

@@ -1,8 +1,9 @@
 """The IMGWTools source beside Kartograf, and its directory in the settings (plan I2).
 
-``GET /sources`` lists it with its versions and schemas when the extra
-``archiwista[imgw]`` is installed. Without the package it is ``not_installed``
-with the extra as its fix, a state of this source only (A-ADR-024, SPEC 5.8).
+``GET /sources`` lists it with its versions, schemas and default store root when
+the extra ``archiwista[imgw]`` is installed. Without the package it is
+``not_installed`` with the extra as its fix, a state of this source only
+(A-ADR-024, SPEC 5.8).
 A store takes an IMGW directory in ``PUT /settings``, with or without a
 Kartograf one; a directory inside a store, found by the marker file name, is
 refused at its own field (DEV-19.14).
@@ -19,6 +20,7 @@ from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppSettings, ConfigStore, StoreConfig
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import assert_problem, running_api
+from tests.fixtures.isolation import Canary
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.missing_package import hide_packages
 
@@ -32,13 +34,19 @@ def _sources(tmp_path: Path) -> dict[str, dict[str, object]]:
     return {item["producer"]: item for item in response.json()["items"]}
 
 
-def test_sources_lists_imgw_with_its_versions_and_schemas(tmp_path: Path) -> None:
-    """With IMGWTools installed the source is available and names what it reads."""
+def test_sources_lists_imgw_with_its_versions_and_schemas(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """With IMGWTools installed the source is available and names what it reads.
+
+    Its default store root is the canary's ``IMGW_ROOT`` (``tests/conftest.py``).
+    """
     pytest.importorskip("imgwtools")
     from archiwista.adapter.imgw import SCHEMAS, SUPPORTED_VERSIONS
 
     sources = _sources(tmp_path)
 
+    root = producer_canary.imgw_root
     assert sources["imgw"] == {
         "producer": "imgw",
         "status": "available",
@@ -48,6 +56,17 @@ def test_sources_lists_imgw_with_its_versions_and_schemas(tmp_path: Path) -> Non
         "detail": None,
         "message": sources["imgw"]["message"],
         "fix": None,
+        "default_root": {
+            "path": str(root),
+            "source": "env",
+            "name": "IMGW_ROOT",
+            "exists": False,
+            "marked": False,
+            "message": (
+                f"Plugin imgw: default store root {root}"
+                " (variable IMGW_ROOT; does not exist)"
+            ),
+        },
     }
     assert sources["imgw"]["message"] and sources["kartograf"]["status"] == "available"
 

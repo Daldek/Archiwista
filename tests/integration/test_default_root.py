@@ -3,6 +3,8 @@
 The producer reports the directory it uses when a call names no store (D7); the
 first-run wizard offers it and Archiwista never uses it. ``/health`` is polled and
 the producer sizes the directory while it reports it, so ``/health`` leaves it out.
+The source ``imgw`` is listed beside Kartograf and reports its own root
+(``test_sources_imgw.py``).
 """
 
 import json
@@ -126,7 +128,7 @@ def test_default_root_health_leaves_it_out(served: ServedStore) -> None:
     # Assert
     assert response.status_code == 200, response.text
     sources = response.json()["sources"]
-    assert [source["producer"] for source in sources] == ["kartograf"]
+    assert [source["producer"] for source in sources] == ["imgw", "kartograf"]
     assert all("default_root" not in source for source in sources)
 
 
@@ -150,9 +152,11 @@ def test_default_root_command_line_prints_what_the_route_answers(
 
     # Assert
     assert as_json == _sources(served)
-    assert len(text) == 2
-    assert text[0].startswith("Źródło kartograf (")
-    assert text[1] == (
+    items = as_json["items"]
+    shown = len(items) + sum(item["default_root"] is not None for item in items)
+    assert len(text) == shown  # a line per source and one per default root
+    kartograf = [line.startswith("Źródło kartograf (") for line in text].index(True)
+    assert text[kartograf + 1] == (
         f"  Wtyczka kartograf: domyślny katalog główny magazynu {root}"
         " (zmienna KARTOGRAF_ROOT; magazyn ze znacznikiem)"
     )
