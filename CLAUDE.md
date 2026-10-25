@@ -100,7 +100,12 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
   SSD in `ARCHIWISTA_PERF_STORE`), `smb` (that store on a real SMB 3 share in
   `ARCHIWISTA_SMB_STORE`, the local index directory in `ARCHIWISTA_SMB_WORK`); `perf`
   and `smb` run with `--no-cov`. Names `test_<module>_<function>_<scenario>`; arrange,
-  act, assert; a change in `src/archiwista/web/` runs `tests/e2e` too.
+  act, assert; a change in `src/archiwista/web/` runs `tests/e2e` too. Every test runs as
+  on a computer without settings of the producers (`tests/fixtures/isolation.py`, applied
+  in `tests/conftest.py`): `nogat.toml` is an empty file and `NOGAT_*`, `KARTOGRAF_*` and
+  `IMGW_*` lead every default root and directory into a canary tree that must stay empty,
+  so a test after which anything lies there fails (a producer call that names no store
+  root wrote into a default root). A test that needs another value sets it itself.
 - **Public surface**: Archiwista is an application, not a library. Public are the HTTP
   API `/api/v1` (SPEC 9), the `archiwista` command and the source interface for
   plugins (entry-point group `archiwista.sources`, A-ADR-024; `archiwista.sources`

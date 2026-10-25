@@ -8,6 +8,7 @@ from collections.abc import Iterator
 import pytest
 
 from archiwista.messages import language
+from tests.fixtures.isolation import Canary, isolated_producers
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -49,6 +50,27 @@ def restore_umask() -> Iterator[None]:
     os.umask(mask)
     yield
     os.umask(mask)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def producer_canary(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Canary]:
+    """Run the session as on a computer without settings of Kartograf and IMGWTools.
+
+    The settings file is empty and every directory the producers would use, the
+    default store roots among them, lies in a canary tree that does not exist
+    (``tests/fixtures/isolation.py``). The variables are set once for the whole
+    session, so the module and session fixtures meet them too, and the processes
+    the tests start inherit them (``serving_*`` copy ``os.environ``).
+    """
+    with isolated_producers(tmp_path_factory.mktemp("producers")) as canary:
+        yield canary
+
+
+@pytest.fixture(autouse=True)
+def producers_untouched(producer_canary: Canary) -> Iterator[None]:
+    """Fail the test after which anything lies in the canary tree, and empty it."""
+    yield
+    producer_canary.check()
 
 
 @pytest.fixture
