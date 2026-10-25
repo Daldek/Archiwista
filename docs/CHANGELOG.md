@@ -62,9 +62,12 @@ command-line interface may change.
   an existing index is rebuilt when it is opened and filled by the next full scan, as
   with every schema change). The segment of an archive, a series or a station catalog
   is its dataset, named in Polish from the producer's registry (`Dane hydrologiczne
-  dobowe`, `Katalog stacji ČHMÚ`) with the country of its provider; a slot keeps the
-  producer's own key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) and is named by
-  its file (a catalog by its key); a version keeps its provider (`IMGW-PIB`, `CHMI`).
+  dobowe`, `Katalog stacji ČHMÚ`) with the country of its provider and, as its product,
+  the family the producer declares for it (`hydro`, `meteo`, `pmaxtp`; `stations` for a
+  catalog), so the store view and the Map group the datasets instead of listing them as
+  unrecognised segments; a slot keeps the producer's own key
+  (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) and is named by its file (a catalog
+  by its key); a version keeps its provider (`IMGW-PIB`, `CHMI`).
   The observation register of an archive (a source republished the same content under a
   new signal) is kept as the history of its slot (`IndexQueries.observations`) and is
   neither a version, a current version nor part of any count; a record the producer no

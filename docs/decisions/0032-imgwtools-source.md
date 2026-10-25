@@ -84,15 +84,16 @@ side.
    optional capability `SegmentDescriptionAdapter` (`describe_segment`; `SegmentedAdapter`
    extends it) lets the scan describe the segments the entries named, at the end of the
    pass. A dataset is described from the producer's registry: its Polish title, the
-   country of its provider, `dataset_key` the current key, no product (IMGWTools has
-   none); the station catalogs `pl.imgw.stations` and `cz.chmi.stations`, which are slots
-   of the store but no datasets of the registry, are named after their provider; any
-   other key is not recognised and keeps its own name. An observation is history, never a
-   version, a link or a count: it is kept only when its slot is known by the end of its
-   batch (it never makes a slot), a known record costs nothing, and one that a pass does
-   not see again is forgotten. Rejected: reading the key from the layout (the layout is
-   the producer's knowledge, A-ADR-014); a list of segments for IMGWTools; observations as
-   versions (they would change every count and, for an archive, its current version).
+   country of its provider, `dataset_key` the current key and a product that only groups
+   it (decision 10); the station catalogs `pl.imgw.stations` and `cz.chmi.stations`, which
+   are slots of the store but no datasets of the registry, are named after their provider;
+   any other key is not recognised, keeps its own name and has no product. An observation
+   is history, never a version, a link or a count: it is kept only when its slot is known
+   by the end of its batch (it never makes a slot), a known record costs nothing, and one
+   that a pass does not see again is forgotten. Rejected: reading the key from the layout
+   (the layout is the producer's knowledge, A-ADR-014); a list of segments for IMGWTools;
+   observations as versions (they would change every count and, for an archive, its
+   current version).
 8. **IMGWTools names the current version of a slot, and the index only asks** (plan I3,
    commit 2). IMGWTools has no links, so no entry says which version of a slot is current.
    The optional capability `CurrentVersionAdapter` (`current_version(root, slot_key)`) asks
@@ -135,6 +136,23 @@ side.
    for a valid request that the producer cannot serve); a pass per dataset (above); the
    whole directory for a job that names a segment (the caller asked for less than it gets,
    and the result would name a segment that was not scanned).
+10. **An IMGW dataset has its family for a product** (plan I3, commit 3). IMGWTools has no
+    products, but the store view and the product list of the Map group segments by product
+    and put the ones without under "unknown product" ("Nierozpoznane segmenty"), where
+    every IMGW dataset would sit among the segments a plugin did not recognise.
+    `describe_segment` therefore gives a dataset the family the registry declares for it
+    (`DatasetDescriptor.kind`: `hydro`, `meteo`), the one dataset that has none (PMAXTP) its
+    short name, `pmaxtp`, and a station catalog `stations`; a key the registry does not
+    know has no product, as an unrecognised segment of Kartograf has none. The product is a
+    label that groups datasets, those of both providers together (`hydro` holds IMGW-PIB
+    and ČHMÚ, which stay apart in their segments); it follows the segment into the slots,
+    the catalog filter `product` and the search. The key stays opaque (SPEC 4.2.1: Archiwista
+    never derives a product from it), so the family is the producer's own word for the
+    dataset the key names, not a part of the key. Rejected: no product (the store view
+    and the Map would call every IMGW dataset unrecognised); the first word of the key (the
+    same labels today, by a rule the SPEC forbids); one product `imgw` (hydrological and
+    meteorological files, station lists and PMAXTP cells have only their provider in
+    common, and `provider` already says it).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;

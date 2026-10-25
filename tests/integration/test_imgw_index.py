@@ -198,8 +198,52 @@ def test_a_segment_is_a_dataset_named_by_the_registry_with_its_country(
         "Katalog stacji ČHMÚ",
         "CZ",
     )
-    assert all(found.known and found.product is None for found in segments.values())
+    assert all(found.known for found in segments.values())
     assert {found.country for found in segments.values()} == {"PL", "CZ"}
+
+
+def test_the_store_view_groups_the_datasets_of_both_providers_by_their_family(
+    open_env: Callable[[str], _Env],
+) -> None:
+    """IMGWTools has no products: a family groups the datasets, none is unrecognised."""
+    # Arrange
+    env = open_env("complete_pl_cz")
+
+    # Act
+    env.scan("full")
+    grouped = {
+        item.product: sorted(str(found.segment.segment) for found in item.segments)
+        for item in env.queries.products(store=STORE)
+    }
+    usage = env.queries.usage(STORE)
+    page = env.queries.slots(SlotQuery(limit=200), visible=ALL_PROJECTS)
+    meteo = env.queries.slots(
+        SlotQuery(product="meteo", limit=200), visible=ALL_PROJECTS
+    )
+
+    # Assert
+    assert grouped == {
+        "hydro": [
+            "cz.chmi.hydro_daily",
+            "cz.chmi.hydro_stations",
+            "pl.imgw.hydro_daily",
+            "pl.imgw.hydro_stations",
+        ],
+        "meteo": [
+            "cz.chmi.meteo_daily",
+            "cz.chmi.meteo_stations",
+            "pl.imgw.meteo_precip_daily",
+            "pl.imgw.meteo_stations",
+        ],
+        "stations": ["cz.chmi.stations", "pl.imgw.stations"],
+    }
+    assert usage is not None
+    assert {item.product for item in usage.products} == {"hydro", "meteo", "stations"}
+    assert {row.product for row in page.items} == {"hydro", "meteo", "stations"}
+    listed = {row.slot for row in meteo.items}
+    assert listed and listed == {
+        row.slot for row in page.items if row.product == "meteo"
+    }
 
 
 def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(

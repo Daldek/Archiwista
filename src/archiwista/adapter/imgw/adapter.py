@@ -12,13 +12,14 @@ IMGWTools has no links and cannot scan one segment alone: a slot is the
 directory that holds its versions (``<slot>/<label>_<sha8>/<file>``), named
 by the producer's own slot (``slot_key``, e.g.
 ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``), and an entry's
-``segment`` is its dataset, so the files of IMGW-PIB and ČHMÚ never mix and
-``describe_segment`` names each dataset for people. The versions the index
-knows (``ScanScope.known_versions``) are the ``skip_versions`` of
-``iter_store``: they come back ``skipped``, with no sidecar read. A slot has
-no link, so ``current_version`` asks IMGWTools which version of a slot is the
-current one. Exceptions of the producer surface as ``ProducerError`` with the
-message unchanged.
+``segment`` is its dataset, so the files of IMGW-PIB and ČHMÚ never mix.
+``describe_segment`` names each dataset for people and gives it the family the
+producer declares for it as a product (``hydro``, ``meteo``), which only groups
+the datasets. The versions the index knows (``ScanScope.known_versions``) are
+the ``skip_versions`` of ``iter_store``: they come back ``skipped``, with no
+sidecar read. A slot has no link, so ``current_version`` asks IMGWTools which
+version of a slot is the current one. Exceptions of the producer surface as
+``ProducerError`` with the message unchanged.
 """
 
 import os
@@ -220,10 +221,11 @@ class ImgwAdapter:
         """Describe a dataset for people, from the producer's registry.
 
         No disk access. A dataset of the registry has its Polish title for a
-        name and its provider's country; a station catalog
-        (``pl.imgw.stations``, ``cz.chmi.stations``: slots of the store that
-        are no datasets of the registry) is named after its provider; any
-        other key is not recognised and is its own name.
+        name, its provider's country and the family the registry declares for
+        it as a product; a station catalog (``pl.imgw.stations``,
+        ``cz.chmi.stations``: slots of the store that are no datasets of the
+        registry) is named after its provider and is of the family
+        ``stations``; any other key is not recognised and is its own name.
 
         Parameters
         ----------
@@ -233,8 +235,12 @@ class ImgwAdapter:
         Returns
         -------
         SourceSegment
-            ``dataset_key`` is the current key of the dataset; ``product`` is
-            ``None``: IMGWTools has no products.
+            ``dataset_key`` is the current key of the dataset. ``product`` is
+            its family: the ``kind`` of the registry (``hydro``, ``meteo``),
+            for the dataset that has none (PMAXTP) its short name, ``pmaxtp``,
+            and ``stations`` for a catalog; ``None`` for a key that is not
+            recognised. IMGWTools has no products, so it only groups the
+            datasets, and the key itself is not read (SPEC 4.2.1).
         """
         return _describe(segment)
 
@@ -548,12 +554,13 @@ def _describe(segment: str) -> SourceSegment:
     else:
         country = get_provider(dataset.provider).country
         title = _polish(dataset.title)
-        return SourceSegment(segment, None, country, dataset.key, title, True)
+        family = dataset.kind or dataset.slug
+        return SourceSegment(segment, family, country, dataset.key, title, True)
     for provider in providers():
         if segment == f"{provider.key_prefix}.{_CATALOG}":
             name = message("source.imgw_catalog", "pl", provider=provider.short_name)
             return SourceSegment(
-                segment, None, provider.country, segment, str(name), True
+                segment, _CATALOG, provider.country, segment, str(name), True
             )
     return SourceSegment(segment, None, None, None, segment, False)
 

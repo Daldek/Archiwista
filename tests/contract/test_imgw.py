@@ -338,12 +338,12 @@ def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
     assert (found.slot_key, found.segment, found.slot_path) == (None, None, None)
 
 
-def test_a_dataset_of_the_registry_is_described_by_its_polish_title_and_country(
+def test_a_dataset_of_the_registry_is_described_by_its_polish_title_country_and_family(
     adapter: ImgwAdapter,
 ) -> None:
-    """A segment is a dataset: the registry's name, the provider's country."""
+    """A segment is a dataset: its name, its provider's country and its family."""
     assert adapter.describe_segment(HYDRO) == SourceSegment(
-        HYDRO, None, "PL", HYDRO, "Dane hydrologiczne dobowe", True
+        HYDRO, "hydro", "PL", HYDRO, "Dane hydrologiczne dobowe", True
     )
     czech = adapter.describe_segment("cz.chmi.hydro_daily")
     assert (czech.country, czech.dataset_key, czech.known) == (
@@ -351,6 +351,20 @@ def test_a_dataset_of_the_registry_is_described_by_its_polish_title_and_country(
         "cz.chmi.hydro_daily",
         True,
     )
+    assert {
+        key: adapter.describe_segment(key).product
+        for key in (
+            "pl.imgw.meteo_precip_daily",
+            "cz.chmi.meteo_daily",
+            "cz.chmi.hydro_stations",
+            "pl.imgw.pmaxtp",
+        )
+    } == {
+        "pl.imgw.meteo_precip_daily": "meteo",
+        "cz.chmi.meteo_daily": "meteo",
+        "cz.chmi.hydro_stations": "hydro",
+        "pl.imgw.pmaxtp": "pmaxtp",
+    }
 
 
 @pytest.mark.parametrize("key", [dataset.key for dataset in imgwtools.datasets()])
@@ -358,7 +372,8 @@ def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_count
     adapter: ImgwAdapter, key: str
 ) -> None:
     """The registry is the producer's own, so no dataset is left unrecognised."""
-    provider = imgwtools.get_provider(imgwtools.get_dataset(key).provider)
+    dataset = imgwtools.get_dataset(key)
+    provider = imgwtools.get_provider(dataset.provider)
 
     described = adapter.describe_segment(key)
 
@@ -367,7 +382,9 @@ def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_count
         provider.country,
         key,
     )
-    assert described.product is None and described.name not in ("", key)
+    # The family the producer declares; PMAXTP, the one dataset without it, is its own.
+    assert described.product == (dataset.kind or "pmaxtp")
+    assert described.name not in ("", key)
 
 
 def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_itself(
@@ -376,14 +393,19 @@ def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_its
     """The catalogs are slots of the store but no datasets of the registry."""
     assert adapter.describe_segment("pl.imgw.stations") == SourceSegment(
         "pl.imgw.stations",
-        None,
+        "stations",
         "PL",
         "pl.imgw.stations",
         "Katalog stacji IMGW-PIB",
         True,
     )
     assert adapter.describe_segment("cz.chmi.stations") == SourceSegment(
-        "cz.chmi.stations", None, "CZ", "cz.chmi.stations", "Katalog stacji ČHMÚ", True
+        "cz.chmi.stations",
+        "stations",
+        "CZ",
+        "cz.chmi.stations",
+        "Katalog stacji ČHMÚ",
+        True,
     )
     assert adapter.describe_segment("pl.imgw.removed_dataset") == SourceSegment(
         "pl.imgw.removed_dataset", None, None, None, "pl.imgw.removed_dataset", False
