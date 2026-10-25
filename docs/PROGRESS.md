@@ -12,8 +12,8 @@ commit that introduced this file).
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.3) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end; open: registry codes in job documents and error texts that follow `Accept-Language` (Next 1.1 and 1.2); deviations in CLAUDE.md: ERR-1 and AGI-6.4 until then, outcome statuses and no result envelope for good |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten); open: error texts that follow `Accept-Language` (Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes about 25 minutes; start it on a machine without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
@@ -35,32 +35,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    green before each; the source of the rules is the Nogat branch `feature/data-output`,
    `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`; Hydrolog and
    Retman have the same branch name as worked examples):
-   1. **`error.code` of job documents becomes a registry code** (decided by the coordinator
-      for the author; then remove the ERR-1 line of the CLAUDE.md deviations). The `error` of
-      a job (`GET /jobs/{id}`, the `state` events of the SSE stream, the job rows) gets a
-      registry `code`, the old job code becomes `reason` and context such as the blocked
-      cause of a snapshot goes to `details`. Proposed pairs: missing plugin
-      (`source_unavailable`) and `source_incompatible` become `missing_dependency`; a failed
-      remote service (outlines fetched by `footprints`) is `source_unavailable`;
-      `store_unavailable` stays; `offline_mode` is `conflict`; `<package>_error` is
-      `data_error`; `snapshot_blocked` is `conflict` (its old `reason` becomes
-      `details.blocked_by`); `path_outside_root` is `forbidden`; `own_reader_failed` is
-      `missing_dependency`; `not_found` and `unsupported` stay; `worker_crashed`,
-      `protocol_error` and `internal_error` are `internal_error`; `interrupted` and
-      `cancelled` are `cancelled`. Take each pair from the classes of
-      `src/archiwista/errors.py` (`default_code`, `default_reason`,
-      `SnapshotFailedError._CODES`), so that the problem of a request and the error of a job
-      agree on one cause. Sites: `jobs/protocol.py` (`CODE_*`, the `error` message),
-      `jobs/worker.py` (`JobFailure`, `_failure`, `_adapter`, `_require_reachable`, the
-      raise sites from line 272 to 633), `jobs/supervisor.py` (`JobError` and its JSON, `_start`,
-      `_outcome`, the restart recovery, the row reader), `api/models.py` (`JobFailure`: the
-      list of codes in the description, add `details`), `web/src/views/cards.js` (shows
-      `error.code`), `docs/AGENT_API.md` section 9, SPEC 9, the tests
-      `tests/integration/test_jobs.py` (codes at its lines 183, 207, 248, 297, 724 and 768),
-      `tests/unit/test_job_outcome.py` and `tests/integration/test_jobs_api.py`. Rows of the
-      job history keep the old codes: map them once on read or bump the schema (the history
-      is rebuildable); decide it in the commit.
-   2. **Error texts follow `Accept-Language`** (AGI-6.4, AGI-9.2; decided by the coordinator
+   1. **Error texts follow `Accept-Language`** (AGI-6.4, AGI-9.2; decided by the coordinator
       for the author; then remove the AGI-6.4 line of the deviations). `detail`, `hint`,
       `errors[].message` and the texts inside `details` (`preview_reason`, `problems`) are
       English by default and Polish with `Accept-Language: pl` (the interface sends it),
@@ -87,7 +62,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
       `validation_problem`, `preview_reason`), `api/errors.py` (`problem_body`,
       `problem_response`, `_DOCUMENTED`), `errors.py`, `services/problems.py`, `config.py`
       (settings problems), `jobs/supervisor.py` (`JobError`).
-   3. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
+   2. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
       Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
       summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
       move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8

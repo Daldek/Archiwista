@@ -204,7 +204,10 @@ def test_worker_crash_fails_job(env: JobsEnv, monkeypatch: pytest.MonkeyPatch) -
     # Assert
     assert crashed.state == "failed"
     assert crashed.error is not None
-    assert crashed.error.code == "worker_crashed"
+    assert (crashed.error.code, crashed.error.reason) == (
+        "internal_error",
+        "worker_crashed",
+    )
     assert "SIGKILL" in crashed.error.detail
     assert f"{crashed.id}.log" in crashed.error.detail
     assert after == before
@@ -245,7 +248,8 @@ def test_close_interrupts_running_and_waiting_jobs(
     ]
     error = records[running.id].error
     assert error is not None
-    assert (error.code, error.detail) == (
+    assert (error.code, error.reason, error.detail) == (
+        "cancelled",
         "interrupted",
         MESSAGES["job_interrupted_stop"],
     )
@@ -294,7 +298,8 @@ def test_restart_marks_running_job_interrupted(
     assert recovered == 1
     assert record is not None and record.state == "interrupted"
     assert record.error is not None
-    assert (record.error.code, record.error.detail) == (
+    assert (record.error.code, record.error.reason, record.error.detail) == (
+        "cancelled",
         "interrupted",
         MESSAGES["job_interrupted_restart"],
     )
@@ -721,7 +726,10 @@ def test_link_check_refuses_standard_path_leaving_store(
     # Assert
     assert (record.state, record.result) == ("failed", None)
     assert record.error is not None
-    assert record.error.code == "path_outside_root"
+    assert (record.error.code, record.error.reason) == (
+        "forbidden",
+        "path_outside_root",
+    )
     assert record.error.detail == MESSAGES["path_outside_root"].format(
         path=planted.path
     )
@@ -765,7 +773,11 @@ def test_footprints_job_on_disconnected_store_changes_nothing(env: JobsEnv) -> N
 
     # Assert
     assert record.state == "failed"
-    assert record.error is not None and record.error.code == "store_unavailable"
+    assert record.error is not None
+    assert (record.error.code, record.error.reason) == (
+        "store_unavailable",
+        "store_unreadable",
+    )
     assert env.state().status == "unavailable"
     assert env.rows() == before
 
@@ -831,7 +843,55 @@ def test_worker_rejects_unreadable_job() -> None:
 
     message = decode_message(finished.stdout.decode("utf-8"))
     assert finished.returncode == 2
-    assert (message.type, message.data["code"]) == ("error", "protocol_error")
+    assert (message.type, message.data["code"]) == ("error", "internal_error")
+    assert message.data["details"] == {"reason": "protocol_error"}
+
+
+def test_error_of_an_earlier_version_reads_with_a_registry_code(env: JobsEnv) -> None:
+    """A stored job error of 0.2.x is read as a registry code and its reason."""
+    # Arrange
+    link = env.store.by_kind("link")[0].path
+    job = env.run("link_check", slot=link)
+    old = {
+        "code": "snapshot_blocked",
+        "detail": "Folder jest tylko do odczytu.",
+        "reason": "read_only_folder",
+    }
+    with sqlite3.connect(env.paths.index_file) as db:
+        db.execute(
+            "UPDATE jobs SET state = 'failed', summary = NULL, error = ? WHERE id = ?",
+            (json.dumps(old), job.id),
+        )
+        last = db.execute(
+            "SELECT max(seq) FROM job_events WHERE job_id = ?", (job.id,)
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE job_events SET data = ? WHERE job_id = ? AND seq = ?",
+            (json.dumps({"state": "failed", "error": old}), job.id, last),
+        )
+    db.close()
+
+    # Act
+    record = env.jobs.get(job.id)
+    listed = env.jobs.list(kind="link_check").items[0]
+    final = env.jobs.events(job.id)[-1]
+    with sqlite3.connect(env.paths.index_file) as db:
+        stored = db.execute(
+            "SELECT error FROM jobs WHERE id = ?", (job.id,)
+        ).fetchone()[0]
+    db.close()
+
+    # Assert
+    current = {
+        "code": "conflict",
+        "detail": old["detail"],
+        "details": {"reason": "snapshot_blocked", "blocked_by": "read_only_folder"},
+    }
+    assert record is not None and record.error is not None
+    assert record.error.to_json() == current
+    assert listed.error == record.error
+    assert final.data == {"state": "failed", "error": current}
+    assert json.loads(stored) == old  # read as current, never rewritten
 
 
 def test_start_forgets_old_jobs_but_each_store_last(env: JobsEnv) -> None:

@@ -7,6 +7,7 @@ process (``archiwista.jobs.worker``) that reports in JSON Lines
 the configured stores (SPEC 4.4, 5.6; A-ADR-007).
 """
 
+from archiwista.jobs.error import JobError
 from archiwista.jobs.protocol import JOB_KINDS, JobKind, JobSpec, WorkerMessage
 from archiwista.jobs.scheduler import (
     PlannedScan,
@@ -22,7 +23,6 @@ from archiwista.jobs.supervisor import (
     MAX_PREVIEW_REFS,
     EventType,
     JobConflict,
-    JobError,
     JobEvent,
     JobJoin,
     JobListener,

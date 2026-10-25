@@ -172,7 +172,8 @@ _JOB_EXAMPLE = {
 _JOB_FAILURE_EXAMPLE = {
     "code": "store_unavailable",
     "detail": "Nie można odczytać magazynu /mnt/nas/kartograf/data",
-    "reason": None,
+    "hint": None,
+    "details": {"reason": "store_unreadable"},
 }
 _JOB_DETAIL_EXAMPLE = {
     "id": "3f9c1a7e5b2d4c60",
@@ -1655,38 +1656,50 @@ class Job(BaseModel):
 
 
 class JobFailure(BaseModel):
-    """Why a job did not succeed: a stable code and a Polish detail."""
+    """Why a job did not succeed: a registry code, a Polish detail, the reason."""
 
     model_config = _examples(
         _JOB_FAILURE_EXAMPLE,
         {
-            "code": "snapshot_blocked",
+            "code": "conflict",
             "detail": MESSAGES["snapshot_blocked_read_only_folder"].format(
                 path="/mnt/nas/raba/dane/.wersje"
             ),
-            "reason": "read_only_folder",
+            "hint": None,
+            "details": {"reason": "snapshot_blocked", "blocked_by": "read_only_folder"},
         },
     )
 
     code: str = Field(
         description=(
-            "Stable code: `store_unavailable`, `source_unavailable`,"
-            " `source_incompatible`, `kartograf_error` (`<package>_error`),"
-            " `offline_mode`, `not_found`, `unsupported`, `internal_error`,"
-            " `worker_crashed`, `interrupted` (safe to retry), `cancelled`; of"
-            " a snapshot also `snapshot_blocked` (see `reason`),"
-            " `inconsistent_copy`, `checksum_mismatch`, `integrity_failed`,"
-            " `target_exists`, `path_outside_root` or `own_reader_failed`."
+            "Code of the shared error registry, as in a problem: `not_found`,"
+            " `conflict`, `forbidden`, `unsupported`, `data_error`,"
+            " `store_unavailable`, `missing_dependency`, `cancelled` or"
+            " `internal_error`. The job's own cause is `details.reason`."
         )
     )
     detail: str = Field(
         description="Polish description; for a crashed worker it names the job log."
     )
-    reason: str | None = Field(
+    hint: str | None = Field(
+        description="Polish line telling how to fix it; null when no fix is known."
+    )
+    details: dict[str, Any] = Field(
         description=(
-            "Why a snapshot was blocked (`snapshot_blocked`): `folder_invalid`,"
-            " `read_only_folder`, `insufficient_space` or `file_missing`; null"
-            " for other codes."
+            "`reason`, the job's own cause, and the context. Reasons:"
+            " `store_unreadable` (`store_unavailable`); `source_unavailable` or"
+            " `source_incompatible` (a plugin; `details.source` and the fix),"
+            " `own_reader_failed` (`missing_dependency`); `offline_mode` and"
+            " `snapshot_blocked` (`conflict`; `details.blocked_by`:"
+            " `folder_invalid`, `read_only_folder`, `insufficient_space` or"
+            " `file_missing`); of a snapshot `inconsistent_copy` and"
+            " `target_exists` (`conflict`), `checksum_mismatch` and"
+            " `integrity_failed` (`data_error`); `path_outside_root`"
+            " (`forbidden`); `kartograf_error` (`<package>_error`, a"
+            " producer's own error, `data_error`; `details.kartograf`);"
+            " `interrupted` (`cancelled`: the server stopped, safe to retry);"
+            " `worker_crashed` and `protocol_error` (`internal_error`). None for"
+            " `not_found`, `unsupported`, `cancelled` and `internal_error`."
         )
     )
 
@@ -1800,7 +1813,10 @@ class JobDetail(BaseModel):
             error=None
             if job.error is None
             else JobFailure(
-                code=job.error.code, detail=job.error.detail, reason=job.error.reason
+                code=job.error.code,
+                detail=job.error.detail,
+                hint=job.error.hint,
+                details=dict(job.error.details),
             ),
         )
 

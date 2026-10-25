@@ -152,8 +152,9 @@ def _report(record: JobRecord, store: str, out: TextIO, err: TextIO) -> int:
             + "\n"
         )
         return 0
-    detail = record.error.detail if record.error is not None else ""
-    code = record.error.code if record.error is not None else record.state
+    error = record.error
+    detail = error.detail if error is not None else ""
+    code = (error.reason or error.code) if error is not None else record.state
     message = MESSAGES["reindex_job_failed"].format(
         store=store,
         job=record.id,

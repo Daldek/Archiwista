@@ -52,6 +52,21 @@ command-line interface may change.
   `scripts/generate_errors.py` generates `archiwista._errors`, which a contract test
   compares with the generator's output. `docs/AGENT_API.md` is English and lists the
   codes. (ERR-1 to ERR-6, AGI-6.3, DEV-11.1)
+- **Breaking:** the `error` of a job (`GET /jobs/{id}`, `GET /jobs`, the final `state`
+  event of the SSE stream) has a code of the error registry, like a problem, and the
+  members `detail`, `hint` and `details`. The old job code is `details.reason`
+  (`worker_crashed`, `interrupted`, `offline_mode`, `snapshot_blocked`,
+  `kartograf_error`, ...): `store_unavailable` stays, a missing or incompatible plugin
+  and `own_reader_failed` are `missing_dependency`, `offline_mode`, `snapshot_blocked`,
+  `inconsistent_copy` and `target_exists` are `conflict`, `<package>_error`,
+  `checksum_mismatch` and `integrity_failed` are `data_error`, `path_outside_root` is
+  `forbidden`, `worker_crashed` and `protocol_error` are `internal_error`,
+  `interrupted` is `cancelled`; `not_found`, `unsupported` and `cancelled` are as they
+  were. The cause of a blocked snapshot is `details.blocked_by`, the member `reason` is
+  gone, and a job error of a missing plugin carries `details.source` and a `hint` as the
+  problem of a request does. Jobs recorded by 0.2.0 are read with the new codes on
+  every read and are not rewritten; the history needs no migration. The command
+  line and the interface show the reason where they showed the code. (ERR-1)
 - `docs/PRD.md`, `docs/SCOPE.md`, `docs/USAGE.md`, `CLAUDE.md` and `docs/PROGRESS.md` are
   English; the Polish interface labels stay in quotes. `docs/PROGRESS.md` has the three
   sections of the standard and lists the documents still to translate. (DEV-2.1, ECO-005,

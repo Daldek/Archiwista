@@ -207,13 +207,13 @@ class SnapshotBlockedError(SnapshotError):
 
 
 class SnapshotFailedError(SnapshotError):
-    """A snapshot was not published; ``job_code`` is the ``snapshot`` job's error.
+    """A snapshot was not published; its ``reason`` says why.
 
-    ``inconsistent_copy`` (the file kept changing while it was copied),
-    ``checksum_mismatch`` (written bytes differ from those read),
-    ``integrity_failed`` (the SQLite copy fails ``PRAGMA integrity_check``) or
-    ``target_exists`` (another process published the label first). The
-    message is Polish.
+    The reasons are ``inconsistent_copy`` (the file kept changing while it was
+    copied), ``checksum_mismatch`` (written bytes differ from those read),
+    ``integrity_failed`` (the SQLite copy fails ``PRAGMA integrity_check``) and
+    ``target_exists`` (another process published the label first); the code
+    follows from the reason (``_CODES``). The message is Polish.
     """
 
     _CODES: ClassVar[Mapping[str, str]] = {
@@ -223,13 +223,10 @@ class SnapshotFailedError(SnapshotError):
         "integrity_failed": "data_error",
     }
 
-    def __init__(self, job_code: str, message: str) -> None:
+    def __init__(self, reason: str, message: str) -> None:
         super().__init__(
-            message,
-            code=self._CODES.get(job_code, self.default_code),
-            details={"job_code": job_code},
+            message, code=self._CODES.get(reason, self.default_code), reason=reason
         )
-        self.job_code = job_code
 
 
 class InconsistentReadError(ArchiwistaError):
@@ -290,6 +287,16 @@ class ConflictError(ArchiwistaError):
     """A change conflicts with the current state, e.g. a taken id (``409``)."""
 
     default_code = "conflict"
+
+
+class UnsupportedError(ArchiwistaError):
+    """A request is valid but this combination is not supported (``422``).
+
+    For example a link check of a store whose producer cannot confirm links;
+    the message is Polish.
+    """
+
+    default_code = "unsupported"
 
 
 class InvalidChangeError(ArchiwistaError):

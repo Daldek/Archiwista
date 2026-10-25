@@ -3037,7 +3037,11 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
 - **Operacje długie:** `202 Accepted` z zasobem zadania w tle; zdarzenia
   przez SSE (`/jobs/{id}/events`). Drugie zadanie zapisujące indeks tego
   samego magazynu (skan, obrysy) dostaje `409 conflict` z identyfikatorem
-  trwającego zadania w polu `job`.
+  trwającego zadania w polu `job`. Zadanie, które się nie powiodło, ma
+  `error` opisany jak problem żądania: `code` z rejestru, `detail`, `hint`
+  i `details` z przyczyną zadania w `reason` (`worker_crashed`,
+  `interrupted`, `offline_mode`, `snapshot_blocked`...); dotyczy to też
+  ostatniego zdarzenia `state`.
 - **Błędy:** RFC 9457 (`application/problem+json`) z polami `type` (wpis kodu
   w rejestrze błędów Nogat: `…/ERROR_REGISTRY.md#<code>`), `title` (tytuł
   z rejestru: po angielsku, po polsku przy `Accept-Language: pl`), `status`

@@ -9,8 +9,8 @@ reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
 (SSE, SPEC 9.2): ``progress``, ``notice`` and ``state``. A job is
 ``queued``, then ``running``, then ``succeeded``, ``failed``, ``interrupted``
-or ``cancelled``; one that did not succeed has an ``error`` (``code``,
-``detail``).
+or ``cancelled``; one that did not succeed has an ``error`` (``JobError``: a
+registry ``code``, ``detail``, ``details`` with the ``reason``).
 
 Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
 whether it works on a configured store, needs the network (refused in
@@ -77,13 +77,14 @@ from archiwista.errors import (
 )
 from archiwista.index import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, IndexWriter
 from archiwista.index.schema import connect, initialize
+from archiwista.jobs.error import JobError
 from archiwista.jobs.protocol import (
     CODE_CANCELLED,
     CODE_INTERNAL_ERROR,
-    CODE_INTERRUPTED,
-    CODE_WORKER_CRASHED,
     INTERRUPTED_EXIT,
     JOB_KINDS,
+    REASON_INTERRUPTED,
+    REASON_WORKER_CRASHED,
     JobKind,
     JobSpec,
     JsonObject,
@@ -178,27 +179,6 @@ _OWNER_LOCKS: dict[Path, tuple[IO[bytes], int]] = {}
 
 
 @dataclass(frozen=True, slots=True)
-class JobError:
-    """Why a job did not succeed: stable ``code`` and Polish ``detail``.
-
-    ``reason`` tells some codes apart: why a ``snapshot`` was blocked
-    (``snapshot_blocked``: ``folder_invalid``, ``read_only_folder``,
-    ``insufficient_space``, ``file_missing``); ``None`` for other codes.
-    """
-
-    code: str
-    detail: str
-    reason: str | None = None
-
-    def to_json(self) -> JsonObject:
-        """Return the error as kept and sent: ``code``, ``detail``, ``reason``."""
-        data: JsonObject = {"code": self.code, "detail": self.detail}
-        if self.reason is not None:
-            data["reason"] = self.reason
-        return data
-
-
-@dataclass(frozen=True, slots=True)
 class JobRecord:
     """A background job (``GET /jobs/{id}``).
 
@@ -233,7 +213,7 @@ class JobRecord:
     result : dict or None
         Summary of a job that succeeded.
     error : JobError or None
-        Why a job did not succeed.
+        Why a job did not succeed (a registry code and the reason).
     """
 
     id: str
@@ -259,7 +239,8 @@ class JobEvent:
     ``seq`` numbers a job's events from 1 (the SSE ``id``; resume after it
     with ``JobSupervisor.events``). ``type`` is ``progress``, ``notice`` or
     ``state``; a ``state`` event has ``data["state"]`` and, at the end,
-    ``result`` (succeeded) or ``error`` (``code``, ``detail``, maybe ``reason``).
+    ``result`` (succeeded) or ``error`` (``code``, ``detail``, maybe ``hint``,
+    and ``details`` with the ``reason``: ``JobError.to_json``).
     """
 
     job_id: str
@@ -618,7 +599,7 @@ class JobSupervisor:
             self._phase = "closing"
             if self._unsubscribe is not None:
                 self._unsubscribe()
-            stopped = JobError(CODE_INTERRUPTED, MESSAGES["job_interrupted_stop"])
+            stopped = _interrupted(MESSAGES["job_interrupted_stop"])
             while self._queue:
                 self._end_waiting(self._queue.popleft(), "interrupted", stopped)
             runs = tuple(self._running.values())
@@ -919,7 +900,7 @@ class JobSupervisor:
                 job_id=job_id,
                 seq=int(row["seq"]),
                 type=row["type"],
-                data=json.loads(row["data"]),
+                data=_event_data(row["type"], row["data"]),
                 at=datetime.fromisoformat(row["at"]),
             )
             for row in rows
@@ -1102,7 +1083,7 @@ class JobSupervisor:
             self._end_waiting(waiting, "cancelled", error)
             return
         if JOB_RULES[waiting.kind].network and settings.offline:
-            error = JobError("offline_mode", MESSAGES["job_offline_mode"])
+            error = JobError.of(OfflineModeError(MESSAGES["job_offline_mode"]))
             self._end_waiting(waiting, "failed", error)
             return
         self._sync(settings)
@@ -1151,8 +1132,9 @@ class JobSupervisor:
         except OSError as error:
             log.close()
             failed = JobError(
-                CODE_WORKER_CRASHED,
+                CODE_INTERNAL_ERROR,
                 MESSAGES["job_worker_not_started"].format(detail=error),
+                {"reason": REASON_WORKER_CRASHED},
             )
             self._end_waiting(waiting, "failed", failed)
             return
@@ -1371,7 +1353,7 @@ class JobSupervisor:
     def _mark_stale(
         self, db: sqlite3.Connection, job_id: str, now: datetime
     ) -> JobEvent:
-        error = JobError(CODE_INTERRUPTED, MESSAGES["job_interrupted_restart"])
+        error = _interrupted(MESSAGES["job_interrupted_restart"])
         return _finish_row(db, job_id, "interrupted", error, now)
 
     def _interrupt(self, run: _Run) -> None:
@@ -1535,6 +1517,11 @@ def _preview_params(params: Mapping[str, object]) -> JsonObject:
     return {"refs": list(known), "contents": list(known.values()), "force": force}
 
 
+def _interrupted(detail: str) -> JobError:
+    """Return the error of an interrupted job: ``cancelled``, reason ``interrupted``."""
+    return JobError(CODE_CANCELLED, detail, {"reason": REASON_INTERRUPTED})
+
+
 def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | None]:
     """Return the final state of a job whose worker ended with ``status``."""
     if run.result is not None:
@@ -1542,16 +1529,11 @@ def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | No
     if run.cancel:
         return "cancelled", JobError(CODE_CANCELLED, MESSAGES["job_cancelled"])
     if run.stop:
-        return "interrupted", JobError(
-            CODE_INTERRUPTED, MESSAGES["job_interrupted_stop"]
-        )
+        return "interrupted", _interrupted(MESSAGES["job_interrupted_stop"])
     if run.error is not None:
-        return "failed", JobError(
-            str(run.error["code"]), str(run.error["detail"]), _reason(run.error)
-        )
+        return "failed", JobError.from_message(run.error)
     if status in (INTERRUPTED_EXIT, -signal.SIGINT):
-        detail = MESSAGES["job_interrupted_signal"]
-        return "interrupted", JobError(CODE_INTERRUPTED, detail)
+        return "interrupted", _interrupted(MESSAGES["job_interrupted_signal"])
     if status < 0:
         ending = MESSAGES["job_status_signal"].format(
             signal=signal.Signals(-status).name
@@ -1559,13 +1541,9 @@ def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | No
     else:
         ending = MESSAGES["job_status_code"].format(code=status)
     detail = MESSAGES["job_worker_crashed"].format(status=ending, log=log)
-    return "failed", JobError(CODE_WORKER_CRASHED, detail)
-
-
-def _reason(error: JsonObject) -> str | None:
-    """Return the ``reason`` a worker's error message gives, if it gives one."""
-    reason = error.get("reason")
-    return reason if isinstance(reason, str) else None
+    return "failed", JobError(
+        CODE_INTERNAL_ERROR, detail, {"reason": REASON_WORKER_CRASHED}
+    )
 
 
 def _finish_row(
@@ -1604,6 +1582,14 @@ def _insert_event(
     return JobEvent(job_id=job_id, seq=seq, type=kind, data=data, at=at)
 
 
+def _event_data(kind: str, raw: str) -> JsonObject:
+    """Return the data of a stored event; the error of a 0.2.x job is made current."""
+    data: JsonObject = json.loads(raw)
+    if kind == "state" and isinstance(data.get("error"), dict):
+        data["error"] = JobError.from_json(data["error"]).to_json()
+    return data
+
+
 def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
     progress = connection.execute(
         "SELECT data FROM job_events WHERE job_id = ? AND type = 'progress'"
@@ -1625,9 +1611,7 @@ def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
         finished_at=_datetime(row["finished_at"]),
         progress=None if progress is None else json.loads(progress["data"]),
         result=None if row["summary"] is None else json.loads(row["summary"]),
-        error=None
-        if error is None
-        else JobError(error["code"], error["detail"], error.get("reason")),
+        error=None if error is None else JobError.from_json(error),
     )
 
 

@@ -839,13 +839,15 @@
  * Why a job ended without success.
  *
  * @typedef {object} JobFailure
- * @property {string} code - store_unavailable, source_unavailable, kartograf_error,
- *   offline_mode, worker_crashed, interrupted, cancelled…; of a snapshot also
- *   snapshot_blocked, inconsistent_copy, checksum_mismatch, integrity_failed,
- *   target_exists, path_outside_root, own_reader_failed.
+ * @property {string} code - A code of the error registry, as in a problem:
+ *   store_unavailable, missing_dependency, conflict, forbidden, data_error, not_found,
+ *   unsupported, cancelled, internal_error.
  * @property {string} detail - Polish description.
- * @property {"folder_invalid"|"read_only_folder"|"insufficient_space"|"file_missing"|null}
- *   reason - Why a snapshot was blocked (`snapshot_blocked`); null for other codes.
+ * @property {string|null} hint - Polish line telling how to fix it.
+ * @property {ProblemDetails} details - The reason (`reason`: store_unreadable,
+ *   source_unavailable, offline_mode, snapshot_blocked, inconsistent_copy,
+ *   path_outside_root, kartograf_error, interrupted, worker_crashed…) and the
+ *   context (`blocked_by` of a blocked snapshot).
  */
 
 /**

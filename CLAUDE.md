@@ -137,9 +137,6 @@ contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer, planned for 
   `/api` route) and `operationId` is the route function name; there is no command catalog.
 - DEV-18, DEV-19: profile `tool` only; Archiwista keeps its own `config.toml` and writes no
   data files except snapshots.
-- ERR-1: the `error.code` values inside job documents (`GET /jobs/{id}`, job events) are
-  the job codes listed in `docs/AGENT_API.md` section 9, not registry codes; the problems
-  of the API and of the command line carry registry codes only.
 - ERR-4: a job that does not succeed, `reindex` and `archiwista doctor` end with the
   outcome statuses 10, 11 and 130 and print no error document; every other refusal ends
   standard error with the `archiwista-error/1` document.

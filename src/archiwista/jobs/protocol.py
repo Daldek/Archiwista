@@ -12,9 +12,11 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
   ``warning``), a stable ``code`` and a Polish ``message``;
 - ``result``: the job's summary, a JSON object; the last line of a job
   that succeeded;
-- ``error``: why the job failed: a stable ``code``, a Polish ``detail``,
-  the ``exception`` class behind it and, for ``snapshot_blocked``, the
-  ``reason``.
+- ``error``: why the job failed: a registry ``code`` (ERR §2), a Polish
+  ``detail``, the ``exception`` class behind it, and when there are any a
+  ``hint`` and the JSON ``details`` (``reason``, the project's own cause,
+  and the context), as ``archiwista.error_document.describe`` reports an
+  error of a request.
 
 Everything else the worker or a library writes goes to standard error, the
 job's log. The supervisor keeps ``progress`` and ``notice`` as job events
@@ -28,10 +30,11 @@ from typing import Any, Literal, cast, get_args
 
 from pydantic import ValidationError
 
+from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 
@@ -53,17 +56,17 @@ MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 _PRINCIPAL_KINDS: tuple[PrincipalKind, ...] = get_args(PrincipalKind.__value__)
 
-# Codes of a job that did not succeed (its ``error.code``), besides those of
-# the HTTP API (``store_unavailable``, ``source_unavailable``,
-# ``source_incompatible``, ``offline_mode``, ``not_found``,
-# ``path_outside_root`` and ``<package>_error`` for a producer's own error,
-# e.g. ``kartograf_error``).
-CODE_UNSUPPORTED = "unsupported"
-CODE_INTERNAL_ERROR = "internal_error"
-CODE_PROTOCOL_ERROR = "protocol_error"
-CODE_WORKER_CRASHED = "worker_crashed"
-CODE_INTERRUPTED = "interrupted"
+# What a job that did not succeed reports as its ``error``: a code of the
+# shared registry (ERR §2) and its own cause as ``details["reason"]`` (ERR-1).
+# The worker reports an ``ArchiwistaError`` as a request's problem is
+# (``archiwista.error_document.describe``), so that both agree on one cause;
+# these are the codes and reasons the supervisor and the worker choose
+# themselves.
 CODE_CANCELLED = "cancelled"
+CODE_INTERNAL_ERROR = "internal_error"
+REASON_INTERRUPTED = "interrupted"
+REASON_WORKER_CRASHED = "worker_crashed"
+REASON_PROTOCOL_ERROR = "protocol_error"
 
 
 class ProtocolError(ValueError):
@@ -261,7 +264,12 @@ def _check(kind: MessageType, data: JsonObject) -> None:
             isinstance(data.get(name), str) for name in ("code", "message")
         )
     elif kind == "error":
-        valid = all(isinstance(data.get(name), str) for name in ("code", "detail"))
+        valid = (
+            all(isinstance(data.get(name), str) for name in ("code", "detail"))
+            and data["code"] in BY_CODE
+            and isinstance(data.get("hint", ""), str)
+            and isinstance(data.get("details", {}), dict)
+        )
     else:
         valid = True
     if not valid:

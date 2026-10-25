@@ -492,10 +492,33 @@ curl -sfN -b "$JAR" -H "$H" "$BASE/jobs/$JOB/events"
 curl -sf -b "$JAR" -H "$H" "$BASE/jobs/$JOB" | jq '{state, error}'
 ```
 
-The codes of a job's error (`error.code`) are job codes, not registry codes:
-`store_unavailable`, `source_unavailable`, `source_incompatible`,
-`kartograf_error`, `offline_mode`, `not_found`, `unsupported`, `internal_error`,
-`worker_crashed`, `interrupted`, `cancelled`. The CLI has no job commands:
+The `error` of a job that did not succeed (`failed`, `interrupted`, `cancelled`) is
+described as a problem is (section 7): `code` is a code of the error registry,
+`detail` is Polish, `hint` tells how to fix it when a fix is known, and `details`
+holds the job's own cause as `reason` and the context. Base decisions on `code` and
+`details.reason`, never on the text of `detail`:
+
+| `code` | `details.reason` | What it means |
+|---|---|---|
+| `store_unavailable` | `store_unreadable` | the store cannot be read now (an unmounted share); the index stays as it was, try again later |
+| `missing_dependency` | `source_unavailable`, `source_incompatible` | the producer plugin is missing or has an unsupported version: `details.source` and `hint` give the fix |
+| `missing_dependency` | `own_reader_failed` | the process that reads own data did not start (for example without the GDAL bindings) |
+| `conflict` | `offline_mode` | the job needs the network and offline mode is on |
+| `conflict` | `snapshot_blocked` | the plan refuses the snapshot: `details.blocked_by` is `folder_invalid`, `read_only_folder`, `insufficient_space` or `file_missing` |
+| `conflict` | `inconsistent_copy`, `target_exists` | a snapshot: the file kept changing while it was copied, or another process published the label first; nothing was published, try again |
+| `data_error` | `checksum_mismatch`, `integrity_failed` | a snapshot copy differs from its source or fails the SQLite integrity check; nothing was published |
+| `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
+| `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
+| `not_found` | none | the store, slot, project or file is unknown |
+| `unsupported` | none | the producer cannot do it (a link check without link support) |
+| `cancelled` | none | cancelled by the person, or the store was removed |
+| `cancelled` | `interrupted` | the server stopped or the worker was interrupted; safe to try again |
+| `internal_error` | `worker_crashed` | the worker ended without a result: `detail` names the signal or exit status and the job log |
+| `internal_error` | `protocol_error` | the worker could not read its job |
+| `internal_error` | none | a defect of Archiwista: details are in the job log |
+
+Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
+reason). The CLI has no job commands:
 `archiwista reindex [--store MAGAZYN]` runs a full scan in the foreground (for
 the owner at a terminal, not for an agent next to a running server: both go to
 the same queue and get a conflict, exit `4`, when they meet).

@@ -175,6 +175,44 @@ def test_footprints_refused_offline(
     assert (accepted.json()["kind"], accepted.json()["params"]) == ("footprints", {})
 
 
+def test_failed_job_has_a_registry_code_in_detail_and_stream(served: JobsApi) -> None:
+    """A job that fails reports the error of a problem: registry code and reason."""
+    # Arrange: the share is gone, an empty directory takes its place.
+    served.env.scan("full")
+    root = served.env.store.root
+    root.rename(root.with_name("data-away"))
+    root.mkdir()
+
+    # Act
+    started = served.owner.request("POST", f"/stores/{STORE}/footprints")
+    job = started.json()["id"]
+    served.env.wait(job)
+    detail = served.owner.request("GET", f"/jobs/{job}").json()
+    listed = served.owner.request("GET", "/jobs?kind=footprints").json()["items"]
+    final = _messages(_stream(served, job))[-1]
+
+    # Assert
+    error = detail["error"]
+    assert detail["state"] == "failed"
+    assert (error["code"], error["details"]) == (
+        "store_unavailable",
+        {"reason": "store_unreadable"},
+    )
+    assert error["hint"] is None and str(root) in error["detail"]
+    assert listed == [detail]
+    assert final[1:] == (
+        "state",
+        {
+            "state": "failed",
+            "error": {
+                "code": "store_unavailable",
+                "detail": error["detail"],
+                "details": {"reason": "store_unreadable"},
+            },
+        },
+    )
+
+
 def test_job_detail_has_actor(served: JobsApi) -> None:
     """A job keeps who started it: an account, also behind its agent's token."""
     # Arrange

@@ -692,11 +692,18 @@ w `sessionStorage`. Sesje żyją w pamięci serwera: koniec po 24 h bez żądań
    `result` albo `error` zapamiętuje.
 4. **Koniec** — wynik procesu (`_outcome`): `result` → `succeeded`;
    anulowanie → `cancelled`; zatrzymanie serwera → `interrupted`; komunikat
-   `error` → `failed` z jego `code`; kod 130 (`INTERRUPTED_EXIT`) albo SIGINT
+   `error` → `failed` z jego kodem; kod 130 (`INTERRUPTED_EXIT`) albo SIGINT
    → `interrupted`; każde inne zakończenie → `failed` z kodem
-   `worker_crashed` (sygnał albo kod wyjścia i ścieżka dziennika).
-   Końcowe zdarzenie `state` niesie `result` albo `error` (`code`,
-   `detail`).
+   `internal_error` i przyczyną `worker_crashed` (sygnał albo kod wyjścia
+   i ścieżka dziennika). `error` zadania (`JobError`) opisuje się tak jak
+   problem żądania: `code` z rejestru błędów Nogat, `detail`, `hint`
+   i `details` z przyczyną w `reason` (`worker_crashed`, `interrupted`,
+   `offline_mode`, `snapshot_blocked`...); worker zgłasza `ArchiwistaError`
+   przez `describe`, więc problem żądania i błąd zadania zgadzają się co do
+   przyczyny. Końcowe zdarzenie `state` niesie `result` albo `error`.
+   Wiersz zadania z 0.2.x (stary kod zadania, bez `details`) jest czytany
+   z kodem z rejestru przy każdym odczycie (`JobError.from_json`) i nie jest
+   przepisywany.
 5. **Przerwanie** — anulowanie (`cancel`: Ctrl+C w poleceniach na pierwszym
    planie, usunięcie magazynu z ustawień; API nie ma trasy anulowania)
    i zatrzymanie serwera (`close`) wysyłają SIGINT (Windows:

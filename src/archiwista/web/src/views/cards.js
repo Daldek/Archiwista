@@ -339,6 +339,10 @@ function JobEventsView({ events, summary, kind }) {
   });
   const progress = events.progress;
   const known = progress && progress.total > 0;
+  const failure = events.error;
+  const reason = failure?.details?.reason;
+  const technical = failure ? [[T.common.technical.code, failure.code]] : [];
+  if (reason) technical.push([T.common.technical.reason, reason]);
   return html`<div class=${`job ${events.state}`} aria-live="polite">
     <div class="job-head">
       ${final
@@ -366,7 +370,7 @@ function JobEventsView({ events, summary, kind }) {
     ${events.state === "succeeded" ? summary(events) : null}
     ${events.error
       ? html`<p class="job-error">
-          <${Tech} value=${events.error.code}>${t(L.job.failed, {
+          <${Tech} value=${technical}>${t(L.job.failed, {
             state: T.common.job_state[events.state] ?? events.state,
             detail: events.error.detail,
           })}</${Tech}>

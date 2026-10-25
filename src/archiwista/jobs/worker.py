@@ -41,15 +41,17 @@ from typing import IO, cast
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppPaths, StoreConfig
+from archiwista.error_document import Problem, describe
 from archiwista.errors import (
+    ArchiwistaError,
+    NotFoundError,
+    OfflineModeError,
     OwnReaderError,
-    PathOutsideRootError,
     ProducerError,
     SnapshotBlockedError,
-    SnapshotFailedError,
-    SourceIncompatibleError,
     SourceStateError,
     SourceUnavailableError,
+    UnsupportedError,
 )
 from archiwista.index import (
     IndexQueries,
@@ -68,9 +70,8 @@ from archiwista.index.scanner import (
 from archiwista.jobs.availability import unreachable_detail
 from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
-    CODE_PROTOCOL_ERROR,
-    CODE_UNSUPPORTED,
     INTERRUPTED_EXIT,
+    REASON_PROTOCOL_ERROR,
     JobKind,
     JobSpec,
     JsonObject,
@@ -117,27 +118,6 @@ FOOTPRINT_BATCH = 25
 _STDIN = 0
 
 logger = logging.getLogger("archiwista.jobs.worker")
-
-
-class JobFailure(Exception):
-    """The job cannot be done; ``code`` and the Polish ``detail`` explain why.
-
-    ``reason`` tells some codes apart (``snapshot_blocked``: why).
-    """
-
-    def __init__(
-        self,
-        code: str,
-        detail: str,
-        exception: str | None = None,
-        *,
-        reason: str | None = None,
-    ) -> None:
-        super().__init__(detail)
-        self.code = code
-        self.detail = detail
-        self.exception = exception or type(self).__name__
-        self.reason = reason
 
 
 class Emitter:
@@ -207,7 +187,10 @@ def main() -> int:
     try:
         spec = decode_spec(_read_line(_STDIN).decode("utf-8", "replace"))
     except ProtocolError as error:
-        return _report(emit, CODE_PROTOCOL_ERROR, str(error), "ProtocolError", status=2)
+        unreadable = Problem(
+            CODE_INTERNAL_ERROR, str(error), details={"reason": REASON_PROTOCOL_ERROR}
+        )
+        return _report(emit, unreadable, "ProtocolError", status=2)
     _watch_supervisor(_STDIN)
     logger.info(
         "Job %s (%s) of store %s for %s, process %d",
@@ -223,13 +206,17 @@ def main() -> int:
         logger.warning("Job %s interrupted", spec.job_id)
         return INTERRUPTED_EXIT
     except Exception as error:
-        code, detail, exception = _failure(error)
-        reason = error.reason if isinstance(error, JobFailure) else None
-        if code == CODE_INTERNAL_ERROR:
+        problem, exception = _failure(error)
+        if problem.code == CODE_INTERNAL_ERROR:
             logger.exception("Job %s failed", spec.job_id)
         else:
-            logger.error("Job %s failed (%s): %s", spec.job_id, code, detail)
-        return _report(emit, code, detail, exception, status=1, reason=reason)
+            logger.error(
+                "Job %s failed (%s): %s",
+                spec.job_id,
+                problem.details.get("reason", problem.code),
+                problem.detail,
+            )
+        return _report(emit, problem, exception, status=1)
     try:
         emit.send(WorkerMessage("result", summary))
     except OSError:  # the supervisor is gone
@@ -249,7 +236,7 @@ def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
         for producer in config.roots():
             summaries.append(
                 scan_store(
-                    _adapter(registry, producer),
+                    registry.adapter(producer),
                     writer,
                     spec.settings,
                     config.id,
@@ -270,7 +257,7 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
     rectangle, as in a scan (``outline_footprints``).
     """
     if spec.settings.offline:
-        raise JobFailure("offline_mode", MESSAGES["job_offline_mode"])
+        raise OfflineModeError(MESSAGES["job_offline_mode"])
     config = _store(spec)
     registry = load_registry(cache_dir=spec.cache_dir)
     started = time.perf_counter()
@@ -285,7 +272,7 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
             entries = [entry for entry in pending if entry.producer == producer]
             if not entries:
                 continue
-            adapter = _adapter(registry, producer)
+            adapter = registry.adapter(producer)
             _require_reachable(adapter, root, writer, config.id)
             done = 0
             emit.progress(done, len(entries), written=written, failed=failed)
@@ -328,8 +315,8 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     version its sidecar names: problem ``link_mismatch``), ``missing`` (no
     file at the standard path) or ``not_a_link`` (no version is linked).
     A standard path resolving outside the store (a symbolic link leaving
-    it, SPEC 10.1) fails the job with ``path_outside_root`` before the
-    producer reads it.
+    it, SPEC 10.1) fails the job as ``forbidden`` (reason
+    ``path_outside_root``) before the producer reads it.
     """
     config = _store(spec)
     slot = str(spec.params["slot"])
@@ -337,7 +324,7 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
         detail = queries.slot(config.id, slot, visible=ALL_PROJECTS)
     if detail is None:
         message = MESSAGES["job_slot_not_found"].format(slot=slot, store=config.id)
-        raise JobFailure("not_found", message)
+        raise NotFoundError(message)
     producer = detail.segment.producer
     expected = detail.current
     result: JsonObject = {
@@ -351,21 +338,17 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     root = config.roots().get(producer)
     if root is None:
         message = MESSAGES["job_slot_not_found"].format(slot=slot, store=config.id)
-        raise JobFailure("not_found", message)
-    adapter = _adapter(load_registry(cache_dir=spec.cache_dir), producer)
+        raise NotFoundError(message)
+    adapter = load_registry(cache_dir=spec.cache_dir).adapter(producer)
     if not isinstance(adapter, LinkCheckAdapter):
         message = MESSAGES["job_link_check_unsupported"].format(producer=producer)
-        raise JobFailure(CODE_UNSUPPORTED, message)
+        raise UnsupportedError(message)
     with IndexWriter(spec.index_path) as writer:
         _require_reachable(adapter, root, writer, config.id)
         try:
             resolve_indexed_path(root, slot)
         except (FileNotFoundError, NotADirectoryError):
             return {**result, "status": "missing"}
-        except PathOutsideRootError as error:
-            raise JobFailure(
-                "path_outside_root", str(error), type(error).__name__
-            ) from error
         segment = detail.segment.segment
         confirmed = adapter.confirm_link(
             SourceEntry(
@@ -420,7 +403,7 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
         chosen = [item for item in known if project in (None, item.key)]
         if project is not None and not chosen:
             message = MESSAGES["project_not_found"].format(project=project)
-            raise JobFailure("not_found", message)
+            raise NotFoundError(message)
         emit.progress(0, len(chosen), files=0, read=0)
 
         def progress(found: OwnScanProgress) -> None:
@@ -441,9 +424,7 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
             )
         except OwnReaderError as error:
             message = MESSAGES["own_scan_reader_failed"].format(detail=error)
-            raise JobFailure(
-                "own_reader_failed", message, type(error).__name__
-            ) from error
+            raise OwnReaderError(message) from error
     return summary.result()
 
 
@@ -469,7 +450,7 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
         project = next((item for item in known if item.key == key), None)
         if project is None:
             message = MESSAGES["project_not_found"].format(project=key)
-            raise JobFailure("not_found", message)
+            raise NotFoundError(message)
         stores, folders = folder_rules(spec.settings, known)
         folder = check_own_folder(
             spec.settings,
@@ -482,16 +463,11 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
         )
         block = folder_block(folder)
         if block is not None:
-            raise JobFailure(
-                "snapshot_blocked",
-                block.message,
-                "SnapshotBlockedError",
-                reason=block.reason,
-            )
+            raise SnapshotBlockedError(block.reason, block.message)
         file = queries.own_file(key, file_id, visible=ALL_PROJECTS)
     if file is None:
         message = MESSAGES["own_file_not_found"].format(project=key, file_id=file_id)
-        raise JobFailure("not_found", message)
+        raise NotFoundError(message)
     total = len(SNAPSHOT_PHASES)
     emit.progress(0, total, phase=None)
 
@@ -511,19 +487,9 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
                 transformer=_transformer(registry),
                 on_phase=reached,
             )
-    except SnapshotBlockedError as error:
-        raise JobFailure(
-            "snapshot_blocked", str(error), type(error).__name__, reason=error.reason
-        ) from error
-    except SnapshotFailedError as error:
-        raise JobFailure(error.job_code, str(error), type(error).__name__) from error
-    except PathOutsideRootError as error:
-        raise JobFailure(
-            "path_outside_root", str(error), type(error).__name__
-        ) from error
     except OwnReaderError as error:
         message = MESSAGES["own_scan_reader_failed"].format(detail=error)
-        raise JobFailure("own_reader_failed", message, type(error).__name__) from error
+        raise OwnReaderError(message) from error
     for warning in result.warnings:
         emit.notice("warning", warning.code, warning.message)
     if result.status == "created":
@@ -601,23 +567,8 @@ def _record_snapshot(
 def _store(spec: JobSpec) -> StoreConfig:
     config = None if spec.store is None else spec.settings.store(spec.store)
     if config is None:
-        raise JobFailure(
-            "not_found", MESSAGES["job_store_unknown"].format(store=spec.store)
-        )
+        raise NotFoundError(MESSAGES["job_store_unknown"].format(store=spec.store))
     return config
-
-
-def _adapter(registry: SourceRegistry, producer: str) -> SourceAdapter:
-    """Return the producer's adapter; an unusable plugin fails the job."""
-    try:
-        return registry.adapter(producer)
-    except SourceStateError as error:
-        code = (
-            "source_incompatible"
-            if isinstance(error, SourceIncompatibleError)
-            else "source_unavailable"
-        )
-        raise JobFailure(code, str(error), type(error).__name__) from error
 
 
 def _require_reachable(
@@ -631,7 +582,7 @@ def _require_reachable(
     detail = unreachable_detail(adapter.probe(root), root, indexed=True)
     if detail is not None:
         writer.set_store_status(store, "unavailable", detail=detail)
-        raise JobFailure("store_unavailable", detail, "SourceUnavailableError")
+        raise SourceUnavailableError(detail)
 
 
 def _batches(
@@ -695,34 +646,36 @@ def _scan_result(
     }
 
 
-def _failure(error: Exception) -> tuple[str, str, str]:
-    """``(code, detail, exception)`` of an error that ended a job."""
-    if isinstance(error, JobFailure):
-        return error.code, error.detail, error.exception
-    if isinstance(error, SourceUnavailableError):
-        return "store_unavailable", str(error), type(error).__name__
-    if isinstance(error, SourceIncompatibleError):
-        return "source_incompatible", str(error), type(error).__name__
-    if isinstance(error, ProducerError):
-        return f"{error.package}_error", error.message, error.exception
+def _failure(error: Exception) -> tuple[Problem, str]:
+    """Return the problem of an error that ended a job and its exception's name.
+
+    An ``ArchiwistaError`` is described as a request's problem is, so that a
+    job and a request agree on the code and the reason; any other exception is
+    an ``internal_error``.
+    """
+    if isinstance(error, ArchiwistaError):
+        exception = (
+            error.exception
+            if isinstance(error, ProducerError)
+            else type(error).__name__
+        )
+        return describe(error), exception
     detail = MESSAGES["job_internal_error"].format(
         detail=f"{type(error).__name__}: {error}"
     )
-    return CODE_INTERNAL_ERROR, detail, type(error).__name__
+    return Problem(CODE_INTERNAL_ERROR, detail), type(error).__name__
 
 
-def _report(
-    emit: Emitter,
-    code: str,
-    detail: str,
-    exception: str,
-    *,
-    status: int,
-    reason: str | None = None,
-) -> int:
-    data: JsonObject = {"code": code, "detail": detail, "exception": exception}
-    if reason is not None:
-        data["reason"] = reason
+def _report(emit: Emitter, problem: Problem, exception: str, *, status: int) -> int:
+    data: JsonObject = {
+        "code": problem.code,
+        "detail": problem.detail,
+        "exception": exception,
+    }
+    if problem.hint:
+        data["hint"] = problem.hint
+    if problem.details:
+        data["details"] = dict(problem.details)
     with suppress(OSError):  # the supervisor is gone
         emit.send(WorkerMessage("error", data))
     return status
