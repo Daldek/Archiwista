@@ -329,7 +329,7 @@ part of the catchment are shown next to IMGW stations (UC-20).
 ### UC-10. QGIS set (from v1.1)
 
 Ola chooses "Zestaw QGIS" (QGIS set) in the project. In the project directory
-`zestawy/<nazwa>/` is created with a `.qgz` file, a list of paths and attributions. QGIS
+`zestawy/<name>/` is created with a `.qgz` file, a list of paths and attributions. QGIS
 opens the project without asking about coordinate systems, and the layers point to exactly the pinned
 versions (section 8.4).
 
@@ -463,14 +463,14 @@ Everything it shows comes from the producers' files — Kartograf's and IMGWTool
 
 | File | Where | Mutability | How we read it |
 |---|---|---|---|
-| Version sidecar | `<segment>/versions/<hierarchia>/<etykieta>_<sha8>/<plik>.meta.json` | immutable (ADR-036) | once, when the version directory is first seen |
+| Version sidecar | `<segment>/versions/<hierarchy>/<label>_<sha8>/<file>.meta.json` | immutable (ADR-036) | once, when the version directory is first seen |
 | Version data file | next to the version sidecar | immutable | during indexing only `stat` (size); content only on demand (preview, verification) |
-| Sidecar of the standard path and `full_sheet/` | `<segment>/<hierarchia>/<plik>.meta.json`, `<segment>/full_sheet/…` | mutable (link repointed to a newer version) | on change of size or modification time; the link target only from `extra.link_target` |
+| Sidecar of the standard path and `full_sheet/` | `<segment>/<hierarchy>/<file>.meta.json`, `<segment>/full_sheet/…` | mutable (link repointed to a newer version) | on change of size or modification time; the link target only from `extra.link_target` |
 | Project manifest | `<project directory>/kartograf-project.json` and `<project directory>/imgw-project.json` | mutable | on change of modification time or file checksum; always through the producer's `open_project` (strict Kartograf validation; IMGWTools — IMGW-14) |
 | Update plan | a `kartograf-plan/1` file saved with `--plan` | one-off | on demand (import of a plan from the CLI) |
 | IMGW directory marker | `<katalog IMGW>/imgw-store.json` | changes only with the contract version | at every scan: recognition of the directory and of the `imgw-store/1` version (IMGW-13) |
-| IMGW version sidecar (archive, station catalog, dataset series) | `<katalog IMGW>/{archives,stations,series}/versions/…/<plik>.meta.json` (`imgw-meta/1`) | immutable | once, through `read_meta` (IMGW-10) |
-| Dataset series listing | `<katalog IMGW>/series/versions/<zbiór>/<etykieta>_<sha8>/series.json` | immutable | once per version: station coverage into the index (IMGW-8) |
+| IMGW version sidecar (archive, station catalog, dataset series) | `<katalog IMGW>/{archives,stations,series}/versions/…/<file>.meta.json` (`imgw-meta/1`) | immutable | once, through `read_meta` (IMGW-10) |
+| Dataset series listing | `<katalog IMGW>/series/versions/<dataset>/<label>_<sha8>/series.json` | immutable | once per version: station coverage into the index (IMGW-8) |
 | ZIP archive, station catalog (GeoJSON), station series file (Parquet) | in the version directory | immutable | archive — only `stat`; station catalog — once per version; series — on demand (chart, set) through the IMGWTools API |
 
 Leftovers and edge cases are shown, never silently skipped:
@@ -520,16 +520,16 @@ its own parser of ZIP archives, Parquet files or `imgw-meta/1` sidecars
 
 The dataset key — the `dataset` field of the sidecar (`kartograf-meta/1`, `imgw-meta/1`)
 and the key of the Kartograf source descriptor or of an IMGWTools dataset — has the form
-`<kraj>.<dostawca>.<zbiór>[_<wariant>]`:
+`<country>.<provider>.<dataset>[_<variant>]`:
 
 - lowercase ASCII letters and digits; a dot only between the three parts,
   an underscore inside a part (`pl.gugik.nmt_0_5m`, `cz.cuzk.dmr5g_laz`,
   `pl.imgw.meteo_climate_daily`);
-- `<kraj>` — an ISO 3166-1 alpha-2 code in lowercase, and for supranational
+- `<country>` — an ISO 3166-1 alpha-2 code in lowercase, and for supranational
   datasets the scope (`eu.clms.corine`, `global.isric.soilgrids`);
-- `<dostawca>` — the key prefix assigned by the producer (`gugik`,
+- `<provider>` — the key prefix assigned by the producer (`gugik`,
   `cuzk`, `imgw`, `chmi`), not the provider identifier;
-- `<zbiór>[_<wariant>]` — the dataset name and an optional variant.
+- `<dataset>[_<variant>]` — the dataset name and an optional variant.
 
 Producer commitments (KA-8, IMGW-20):
 
@@ -570,7 +570,7 @@ at any time — "Przebuduj indeks" (Rebuild index) recreates it from the stores 
 only the job history and the assistant conversations are lost.
 
 The **state database** (A-ADR-029) is a separate SQLite file
-`<katalog danych użytkownika>/state.sqlite`, also strictly local: accounts
+`<user data directory>/state.sqlite`, also strictly local: accounts
 (`users`), groups and memberships (`groups`, `memberships`), roles (`admin`,
 `store_writer`), project visibility (`project_acl`: project key —
 the directory after `realpath`, independent of the index; owner; `public` /
@@ -660,7 +660,7 @@ Rules common to all producers and products:
   (GIL). The sidecar of each entry is read once by `iter_store` itself, and writes to the
   index go in batches within transactions; a background job with progress
   (an event after each segment, when all of its parts have finished).
-- **Incremental scan:** version directories `<etykieta>_<sha8>` are immutable,
+- **Incremental scan:** version directories `<label>_<sha8>` are immutable,
   so known versions are neither read nor listed again: the index passes
   `iter_store` a mapping of version directory → file names (`skip_versions`,
   KA-1; a known directory costs 0 operations). The mapping covers only
@@ -866,7 +866,7 @@ to the project, and snapshots are made by Archiwista in that folder.
 - **Snapshot** ("Zrób migawkę" (Make a snapshot); requires `project.write`: the project owner
   or an administrator, A-ADR-029): the plan shows
   the file, size and location; the copy goes to
-  `<data folder>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/` together
+  `<data folder>/.wersje/<name>/<YYYY-MM-DD>_<sha8>/` together
   with `migawka.json` (`archiwista-snapshot/1`: source path, files with SHA-256
   checksums, size, date, author, feature count, extent, user
   description). Rules:
@@ -898,11 +898,11 @@ read API and keeps only a cache in the index (4.3). Scope of v0.5 (MVP v1.0)
 
 | Dataset (IMGWTools key) | IMGW archives | Variables | Interval, years |
 |---|---|---|---|
-| Hydro daily (`pl.imgw.hydro_daily`) | `dane_hydrologiczne/dobowe/<rok>/codz_<rok>_<mm>.zip` (up to 2022), `codz_<rok>.zip` (from 2023) | H — water level [cm], Q — discharge [m³/s], T — water temperature [°C] | day; hydrological, 1951–2025 |
-| Hydro monthly (`pl.imgw.hydro_monthly`) | `dane_hydrologiczne/miesieczne/<rok>/mies_<rok>.zip` | H, Q, T: month minimum, mean and maximum (`H_min`, `H_mean`, `H_max`, … `T_max`) | month; hydrological |
-| Hydro semiannual and annual (`pl.imgw.hydro_semiannual`) | `dane_hydrologiczne/polroczne_i_roczne/<rok>/polr_<H\|Q\|T>_<rok>.zip` | H, Q, T: min., mean and max. (`H_min` … `T_max`) with the dates of the extremes; winter half-year (XI–IV), summer half-year (V–X), year (the listing has keys with the period, e.g. `Q_max@winter`) | half-year, year; hydrological |
-| Meteo daily — climate (`pl.imgw.meteo_climate_daily`) | `dane_meteorologiczne/dobowe/klimat/<folder>/<rok>_k.zip` (up to 2000; folder = five-year period), `<rok>_<mm>_k.zip` (from 2001) | Tmax, Tmin, Tmean (`Tmean`) — air temperature [°C]; P — daily precipitation total [mm]; in 3.0.0 also `Tground` — minimum ground-level temperature [°C] and `snow_cover` — snow cover depth [cm] | day; calendar, from 1951 |
-| Meteo daily — precipitation (`pl.imgw.meteo_precip_daily`) | `dane_meteorologiczne/dobowe/opad/<folder>/<rok>_o.zip` (up to 2000), `<rok>_<mm>_o.zip` (from 2001) | P [mm]; in 3.0.0 also `snow_cover` — snow cover depth [cm] and `fresh_snow` — depth of freshly fallen snow [cm] | day; calendar, from 1950 |
+| Hydro daily (`pl.imgw.hydro_daily`) | `dane_hydrologiczne/dobowe/<year>/codz_<year>_<mm>.zip` (up to 2022), `codz_<year>.zip` (from 2023) | H — water level [cm], Q — discharge [m³/s], T — water temperature [°C] | day; hydrological, 1951–2025 |
+| Hydro monthly (`pl.imgw.hydro_monthly`) | `dane_hydrologiczne/miesieczne/<year>/mies_<year>.zip` | H, Q, T: month minimum, mean and maximum (`H_min`, `H_mean`, `H_max`, … `T_max`) | month; hydrological |
+| Hydro semiannual and annual (`pl.imgw.hydro_semiannual`) | `dane_hydrologiczne/polroczne_i_roczne/<year>/polr_<H\|Q\|T>_<year>.zip` | H, Q, T: min., mean and max. (`H_min` … `T_max`) with the dates of the extremes; winter half-year (XI–IV), summer half-year (V–X), year (the listing has keys with the period, e.g. `Q_max@winter`) | half-year, year; hydrological |
+| Meteo daily — climate (`pl.imgw.meteo_climate_daily`) | `dane_meteorologiczne/dobowe/klimat/<folder>/<year>_k.zip` (up to 2000; folder = five-year period), `<year>_<mm>_k.zip` (from 2001) | Tmax, Tmin, Tmean (`Tmean`) — air temperature [°C]; P — daily precipitation total [mm]; in 3.0.0 also `Tground` — minimum ground-level temperature [°C] and `snow_cover` — snow cover depth [cm] | day; calendar, from 1951 |
+| Meteo daily — precipitation (`pl.imgw.meteo_precip_daily`) | `dane_meteorologiczne/dobowe/opad/<folder>/<year>_o.zip` (up to 2000), `<year>_<mm>_o.zip` (from 2001) | P [mm]; in 3.0.0 also `snow_cover` — snow cover depth [cm] and `fresh_snow` — depth of freshly fallen snow [cm] | day; calendar, from 1950 |
 
 The names of variables and units in IMGWTools files (the `series.json` listing,
 Parquet metadata, CSV export) are keys, not interface texts: `H`, `Q`,
@@ -910,7 +910,7 @@ Parquet metadata, CSV export) are keys, not interface texts: `H`, `Q`,
 `degC`, `mm`; the interface shows them in Polish ([m³/s], [°C], "Tśr").
 
 Outside the scope of MVP v1.0: current data and warnings (IMGW API), alarm levels,
-ice phenomena (`zjaw_<rok>.zip`), term and monthly meteo, synop
+ice phenomena (`zjaw_<year>.zip`), term and monthly meteo, synop
 (per-station files), PMAXTP and IMGW grids (e.g. PL1GD-T). The archives are handled by
 a single mechanism, so further datasets are new IMGWTools entries, with no changes
 to the model.
@@ -921,14 +921,14 @@ to the model.
 |---|---|---|
 | **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also climatological or precipitation (`meteo_kind`: `climate` — a station in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows `null` as "rodzaj nieznany" (kind unknown), not as an error; IMGWTools `slave` in `0d98f3b` always writes `null` — filling in 3.0.0 (fix on branch fix/archiwista-compat-2)); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields) |
 | **Series** | station × dataset: variables with units, interval (day, month, half-year, year), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
-| **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<kod>].periods`) determine the known years (4.8.4) | `imgw-meta/1` sidecar and the listing (12.8) |
-| **IMGW archive** | path on the server (slot `archive:<klucz>:<ścieżka względem katalogu zbioru>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `imgw-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `imgw-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
+| **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<code>].periods`) determine the known years (4.8.4) | `imgw-meta/1` sidecar and the listing (12.8) |
+| **IMGW archive** | path on the server (slot `archive:<key>:<path relative to the dataset directory>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `imgw-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `imgw-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
 | **Station catalog** | a version of the station list with locations, separate for each provider (slots `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`); sources (URL, time, number of stations) in the sidecar | IMGW-9, IMGW-17 |
 
 **Versions.** The identity of a version is the SHA-256 of the bytes (as in Kartograf),
 and the label is only a name — a UTC date, and when on the same day
 the same bytes arrive under a different signal, with the suffix `+<8 hex>` (e.g.
-`2025-08-28+1a2b3c4d`; the version directory is `<etykieta>_<sha8>`):
+`2025-08-28+1a2b3c4d`; the version directory is `<label>_<sha8>`):
 
 - **archive** — the `Last-Modified` date of the publication (e.g. `2025-08-28`,
   `label_source = "last_modified"`), without the header — the download date
@@ -1040,7 +1040,7 @@ and a variable:
   half-year (half-year and annual).
 - **Known units** — units of R in the input periods of the current version of the
   dataset's series (`periods`); when the inventory gives station periods
-  (`stations[<kod>].periods` — datasets with station files, ČHMÚ), the units
+  (`stations[<code>].periods` — datasets with station files, ČHMÚ), the units
   known for a station are the units of R in its periods (A-ADR-021 errata 3).
   The rest are **unknown** (archive or station file not downloaded, year
   not published by ČHMÚ, series not prepared) and are not gaps.
@@ -1085,7 +1085,7 @@ dataset and range, not per station:
 
 | Badge | When |
 |---|---|
-| "pobrane" | every year of R has in the store the current versions of all parts of the dataset's archive (e.g. up to 2022 twelve `codz_<rok>_<mm>` files, from 2023 one `codz_<rok>`) |
+| "pobrane" | every year of R has in the store the current versions of all parts of the dataset's archive (e.g. up to 2022 twelve `codz_<year>_<mm>` files, from 2023 one `codz_<year>`) |
 | "pobrane 60/75 lat" | some of the years |
 | "niepobrane" | no year |
 
@@ -1118,7 +1118,7 @@ From v0.6 IMGWTools also writes ČHMÚ data to the same IMGW directory (Český 
 
 | Dataset | ČHMÚ archives | Variables | Interval, years |
 |---|---|---|---|
-| Daily hydro (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<rok>.json` — one JSON file per station and year | H [cm], Q [m³/s], T [°C] | day; archives numbered by calendar years (`year_type` `calendar`), the view — both kinds of years |
+| Daily hydro (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and year | H [cm], Q [m³/s], T [°C] | day; archives numbered by calendar years (`year_type` `calendar`), the view — both kinds of years |
 | Daily meteo (`cz.chmi.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — one CSV file per station and element, whole history | precipitation `P` [mm], air temperature `Tmean`, `Tmax`, `Tmin` [°C] | day; `year_type` `calendar`, the view — both kinds of years |
 
 Differences from IMGW, which IMGWTools handles and Archiwista only displays:
@@ -1126,8 +1126,8 @@ Differences from IMGW, which IMGWTools handles and Archiwista only displays:
 - **Provider**: the identifier `CHMI` (machine value in `provider` of sidecars, entries and filters), display name "ČHMÚ" from the IMGWTools provider descriptor; the dataset key prefix `cz.chmi.` is not the provider identifier (IMGW-15).
 - **The publication unit is the station**, not the country: there is no archive of the whole country, so the freshness check and synchronization cover selected stations (area, list of codes, project job), not "the whole dataset". A station file for a year that ČHMÚ does not publish has the state "nieopublikowany" (unpublished) (IMGWTools: `unverifiable` with `error` `"nieopublikowany"`): neutral information, not an error or a problem, and not the same as `missing` ("nowy plik u źródła" (new file at the source) — published, not downloaded). In coverage such a year is unknown, not a gap (IMGW-16). Station selection is mandatory (`stations`), years are chosen only for hydro (a meteo file covers the station's whole history); IMGW-PIB and ČHMÚ are not combined in one check.
 - **Versions and pins** (ADR-003 D6, D14, D17, D18 IMGWTools): the same bytes under a new signal = `relabeled`, as with IMGW; different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`: JSON in canonical form without the envelope fields `zaznamID` and `datumVytvoreni`; `cz.chmi.hydro_daily` and the station lists have it) = `unchanged` without a new version, and the new signal goes once to the `observations/` registry of the slot. Archiwista shows observations as the publication history of a file — they are not versions or problems. A ČHMÚ pin is restored with identical bytes or explicitly by content (`restored_by_content`, job state `content_match` — "zgodne treścią" (matching by content), not "bieżące" (current)); a project job concerns one dataset, so one provider.
-- **Identifier** of a station is WIGOS (e.g. `0-203-0-…`); identity in the index and in project jobs = provider + identifier, so PL and CZ codes do not collide. The ČHMÚ station catalog is a separate version (`stations/versions/chmi_stations/…`, slot `catalog:cz.chmi.stations`; hydro from the metadata `meta1.json` and `meta3.json`, meteo from `meta1-<RRRRMMDD>.json`, both families also from station list archives) with the same fields and rules for missing location as 4.8.1 (`meteo_kind`, `river_order`, `gauge_zero_m`, `river_km` empty), with SPA thresholds in the `thresholds` object; the hydro catchment hierarchy code is `HLGP4` (text, e.g. `1-05-03-0110`; meteo does not have it), and the prefix filter by full segments (e.g. `1-05`) works like P19.
-- **Format**: hydro — JSON in UTF-8 (missing = no row or `null`), meteo — CSV (missing = empty `VALUE`); normalization to records with a flag (4.8.3; meteo also the source `QUALITY` and `FLAG` in the columns `<V>_quality`, `<V>_source_flag`) and the `hydro_year` column (XI–X) are on the IMGWTools side; the inventory has `year_type` `calendar` and station periods (`stations[<kod>].periods`), so the labels of 4.8.4 (units known per station) and the year-kind switch work unchanged.
+- **Identifier** of a station is WIGOS (e.g. `0-203-0-…`); identity in the index and in project jobs = provider + identifier, so PL and CZ codes do not collide. The ČHMÚ station catalog is a separate version (`stations/versions/chmi_stations/…`, slot `catalog:cz.chmi.stations`; hydro from the metadata `meta1.json` and `meta3.json`, meteo from `meta1-<YYYYMMDD>.json`, both families also from station list archives) with the same fields and rules for missing location as 4.8.1 (`meteo_kind`, `river_order`, `gauge_zero_m`, `river_km` empty), with SPA thresholds in the `thresholds` object; the hydro catchment hierarchy code is `HLGP4` (text, e.g. `1-05-03-0110`; meteo does not have it), and the prefix filter by full segments (e.g. `1-05`) works like P19.
+- **Format**: hydro — JSON in UTF-8 (missing = no row or `null`), meteo — CSV (missing = empty `VALUE`); normalization to records with a flag (4.8.3; meteo also the source `QUALITY` and `FLAG` in the columns `<V>_quality`, `<V>_source_flag`) and the `hydro_year` column (XI–X) are on the IMGWTools side; the inventory has `year_type` `calendar` and station periods (`stations[<code>].periods`), so the labels of 4.8.4 (units known per station) and the year-kind switch work unchanged.
 - **License** CC BY 4.0 (`license.id` `CC-BY-4.0`, additive `terms_url`): ČHMÚ attribution in `license.attribution` of sidecars (IMGW-19; in series, catalog and export with a note about processing), in the station card and in the set — text from the sidecar, not from Archiwista's code; the IMGW regulations (4.8.5) do not apply to ČHMÚ stations.
 
 Out of scope for v0.6: current and hourly ČHMÚ data, CAP warnings, SPA states (shown at most as station attributes). Adapter: one IMGW adapter — IMGWTools 3.0.0 has ČHMÚ in the `imgwtools` package (ADR-003 IMGWTools); should the provider ever move to a separate package or the package be renamed (e.g. "Obserwator"), the decision on the adapter and extra will be made at that release (5.8, A-ADR-024; open question in the PRD).
@@ -1971,7 +1971,7 @@ POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
   [ ] Dodaj jako zadanie projektu [Raba v]  nazwa [teren-2023]
   Polecenie: kartograf elevation download --product nmt --country pl
     --bbox 561000,239000,573000,249000 --sheet-system 1992 --resolution 1m
-    --vertical-crs EVRF2007 --year 2023 -o <magazyn>              [Kopiuj]
+    --vertical-crs EVRF2007 --year 2023 -o <store>              [Kopiuj]
   [Anuluj]                                          [Pobierz 7 arkuszy]
 ```
 
@@ -2207,7 +2207,7 @@ to be confirmed in the mockup, M11):
   of each variable separately (label, full years, longest gap; no
   aggregate station label, P16), chart, versions of series and input archives
   (`sha256`, `ETag`, `Last-Modified`), IMGW formulas with "Kopiuj atrybucję" (Copy attribution)
-  and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<kod>`
+  and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<code>`
   — a plain link, no background requests). Actions: "Kopiuj ścieżkę pliku" (Copy file path),
   "Polecenie IMGWTools" (IMGWTools command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
   "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…) (IMGW-14), "Dodaj do zestawu" (Add to set).
@@ -2464,7 +2464,7 @@ is in the user documentation — the set changes faster than the spec.
 - **What goes to the provider:** user messages, descriptions of tools
   and products, tool results — store metadata (products, units,
   labels, dates, sizes), the area (coordinates), names of projects and project
-  jobs, **relative** paths within the store (`<magazyn>/nmt/…`).
+  jobs, **relative** paths within the store (`<store>/nmt/…`).
 - **What never goes:** the content of data files, absolute paths
   (home directories, server names), keys and credentials,
   job logs.
@@ -2796,16 +2796,16 @@ points of the station layer (6.8).
 
 | File | Contents |
 |---|---|
-| `<nazwa>.qgz` | QGIS project: a group per project job (or product), a layer per pinned file pointing to the **version** file (immutable bytes), layer CRS from the sidecar (`horizontal_crs`), default style by product (NMT hillshade, orthophoto RGB, CORINE palette, HSG classes), project CRS = CRS of most layers, attributions in the project metadata; the "IMGW" group: a station layer (version file of the station catalog with a filter on the selected codes) and series tables from `szeregi/` |
+| `<name>.qgz` | QGIS project: a group per project job (or product), a layer per pinned file pointing to the **version** file (immutable bytes), layer CRS from the sidecar (`horizontal_crs`), default style by product (NMT hillshade, orthophoto RGB, CORINE palette, HSG classes), project CRS = CRS of most layers, attributions in the project metadata; the "IMGW" group: a station layer (version file of the station catalog with a filter on the selected codes) and series tables from `szeregi/` |
 | `vrt/` | VRT wrappers for files without a stored CRS (ASC, JPEG with JGW) — with an explicit SRS from the sidecar; optionally VRT mosaics of jobs (references only) |
 | `pliki.csv` | project job, unit, product, version path (relative to the store and absolute), standard path, label, `sha256`, size, horizontal and height CRS, license; for IMGW: station, dataset, variables, series file in the dataset's series version with `sha256`, and the CSV path in the set |
 | `pliki.txt` | just the list of version paths (for scripts, e.g. Hydrograf) |
-| `szeregi/` | IMGW series as CSV (`<kod>_<zbiór>.csv`) from the IMGWTools export (IMGW-12) — not processed by Archiwista; units in the header, gaps as empty cells, a flag column; input for, among others, Hydrolog |
+| `szeregi/` | IMGW series as CSV (`<code>_<dataset>.csv`) from the IMGWTools export (IMGW-12) — not processed by Archiwista; units in the header, gaps as empty cells, a flag column; input for, among others, Hydrolog |
 | `ATRYBUCJE.txt` | attribution texts from sidecars (`license.attribution`) without repetitions — required by the GUGiK license (art. 40a), CC BY 4.0 CUZK and the IMGW-PIB terms (§5 para. 3 and 4; 4.8.5) |
 | `polecenia.sh` | Kartograf commands that rebuild the project jobs (`format_command`, KB-4) and `imgw project download` commands that rebuild the IMGW project jobs, and for ad hoc stations — `imgw …` commands that rebuild the archives and series (IMGW-11, IMGW-14) |
 | `zestaw.json` | description of the set (`archiwista-set/1`): project, sums of both manifests, generation time, versions of Archiwista, Kartograf and IMGWTools, list of files, and for IMGW — stations, variables, years and their kind, versions of the series and of the station catalog — allows detecting an outdated set |
 
-**Where it is saved.** By default `<project directory>/zestawy/<nazwa>/`, not
+**Where it is saved.** By default `<project directory>/zestawy/<name>/`, not
 in the store (it is not data) and without versions; regenerating replaces the
 directory atomically (new directory, then a rename). A change of pins
 in the manifest (Kartograf's or IMGW's) after generation marks the set as
@@ -2818,7 +2818,7 @@ older version as "nieaktualny" (outdated) in the same way; the versions referenc
 in the IMGW catalog (nobody deletes them).
 
 **The "with data copy" option** (from v1.3, off by default): a copy of the
-pinned files with sidecars to `dane/<zadanie projektu>/` — a package to
+pinned files with sidecars to `dane/<project task>/` — a package to
 hand over outside the team; the plan shows the size before copying.
 
 **Sidecar.** A set is not data, so it has no sidecar; `zestaw.json`
@@ -2869,7 +2869,7 @@ exported as JSON or CSV, e.g. to the project directory). Level 3 —
 the store, a derived product; the slot must point to both versions (e.g. labels
 A and B in the file name), because different pairs are different contents that cannot
 share a slot (rule 9); proposal: `nmt/pl_1992_1m_diff_evrf2007/
-<hierarchia>/<godło>_<etykieta A>_<etykieta B>.tif`.
+<hierarchy>/<sheet code>_<etykieta A>_<etykieta B>.tif`.
 
 **Result sidecar.** As in 8.2: `extra.derived = "compare"`, two `source_files`
 entries (A and B), difference statistics, significance threshold, resampling
@@ -3338,7 +3338,7 @@ Decision: A-ADR-012.
   it redacts `token=`.
 - **Opening the browser:** `archiwista serve` does not put the address with the token
   on the browser's command line (readable by other accounts through
-  `/proc`): it opens a file `open-<losowe>.html` (mode `0600`) in the private
+  `/proc`): it opens a file `open-<random>.html` (mode `0600`) in the private
   data directory, which redirects to the address; the file disappears after the token
   is used, after it expires and when the server stops. The address is also
   printed in the terminal.
@@ -3352,9 +3352,9 @@ Decision: A-ADR-012.
   `archiwista doctor` warns when the data directory is accessible to other
   accounts.
 - **CSP:** `default-src 'self'; script-src 'self'; style-src 'self';
-  worker-src 'self'; img-src 'self' data: blob: <podkłady>; connect-src
-  'self' <podkłady>; font-src 'self'; object-src 'none'; base-uri 'none';
-  form-action 'self'; frame-ancestors 'none'` — `<podkłady>` are the sources of the
+  worker-src 'self'; img-src 'self' data: blob: <basemaps>; connect-src
+  'self' <basemaps>; font-src 'self'; object-src 'none'; base-uri 'none';
+  form-action 'self'; frame-ancestors 'none'` — `<basemaps>` are the sources of the
   configured basemaps, only in online mode (MapLibre fetches tiles
   and TileJSON through `fetch`, so `connect-src` needs them too; the tiles of a
   vector basemap live in the origin of its TileJSON); the MapLibre worker
@@ -3582,7 +3582,7 @@ Decision: A-ADR-012.
   from v0.5 UC-19 (`HEAD` of the hydro archives 2023–2025, synchronisation of one
   year) and the station catalog from the public IMGW API;
   data only in `<data-dir>` outside the repo and outside `/tmp`; a report
-  in `docs/research/<RRRR-MM-DD>-<temat>/raport.md` with exact commands
+  in `docs/research/<YYYY-MM-DD>-<topic>/raport.md` with exact commands
   and results (paths as `<data-dir>`).
 - **Proof of operation for every version:** starting the application
   (`archiwista serve`), going through the version's acceptance criteria (section 13)
@@ -3620,14 +3620,14 @@ do not list known version directories (4.4).
 
 | ID | API (proposal) | Purpose | Version |
 |---|---|---|---|
-| KA-1 | `list_segments(output_dir) -> list[str]` — sorted `<produkt>/<wariant>` of all real second-level directories (without symbolic links and directories with a dot), including unrecognised ones (1 listing of the `--output` directory + 1 per product); `list_partitions(output_dir, segment, *, target=32) -> list[str]` — disjoint parts of a segment for parallel `iter_store` calls: `.` (segment level), `<katalog>[/<katalog>…]` (a hierarchy directory with the subtree under the standard path, `full_sheet/` and `versions/`) or `<katalog>/.` (the directory alone, when its subdirectories are separate parts), split by levels until there are fewer parts than `target` (cost: 3 listings + up to 3 per split directory); `iter_store(output_dir, *, segment=None, units=None, skip_versions=None, partition=None) -> Iterator[StoreEntry]` — versions, links (standard path, `full_sheet/`), leftovers (`kampanie/`, `.incoming` older than 24 h, segments outside the registry, files without a sidecar, unreadable sidecars); `units` narrows the walk to the hierarchy directories of the given units of a segment (sheet codes, TERYT, `<coords>`), without listing the whole segment; `partition` (requires `segment`, without `units`) reads one part of `list_partitions` — the sum of the parts gives the whole segment, each entry once; `skip_versions` — version directories known to the caller, relative paths `<segment>/versions/<hierarchia>/<etykieta>_<sha8>`: a set — their files are returned without opening the sidecar (`sidecar=None`, `skipped=True`; cost: a directory listing); a mapping directory → data file names — a directory present in the parent's listing is not listed, and the given names (narrowed by `units`) are returned as skipped (cost: 0; a file deleted or added in such a directory is seen only by a walk without the mapping); `StoreEntry`: kind, segment, hierarchy, name, path, version path, label, `sha8`, sidecar, problem, `skipped`. Cost per entry: directory — 1 listing; link, `full_sheet/`, new version, unreadable sidecar — 1 sidecar read; skipped version and missing sidecar — 0 opens; a data file is never opened or `stat`-ed | an index without its own copy of the `data/` rules (4.2), a parallel scan by segments and their parts, an incremental one without re-reading and listing known versions, a fast view refresh (4.4) | v0.1 |
+| KA-1 | `list_segments(output_dir) -> list[str]` — sorted `<product>/<variant>` of all real second-level directories (without symbolic links and directories with a dot), including unrecognised ones (1 listing of the `--output` directory + 1 per product); `list_partitions(output_dir, segment, *, target=32) -> list[str]` — disjoint parts of a segment for parallel `iter_store` calls: `.` (segment level), `<directory>[/<directory>…]` (a hierarchy directory with the subtree under the standard path, `full_sheet/` and `versions/`) or `<directory>/.` (the directory alone, when its subdirectories are separate parts), split by levels until there are fewer parts than `target` (cost: 3 listings + up to 3 per split directory); `iter_store(output_dir, *, segment=None, units=None, skip_versions=None, partition=None) -> Iterator[StoreEntry]` — versions, links (standard path, `full_sheet/`), leftovers (`kampanie/`, `.incoming` older than 24 h, segments outside the registry, files without a sidecar, unreadable sidecars); `units` narrows the walk to the hierarchy directories of the given units of a segment (sheet codes, TERYT, `<coords>`), without listing the whole segment; `partition` (requires `segment`, without `units`) reads one part of `list_partitions` — the sum of the parts gives the whole segment, each entry once; `skip_versions` — version directories known to the caller, relative paths `<segment>/versions/<hierarchy>/<label>_<sha8>`: a set — their files are returned without opening the sidecar (`sidecar=None`, `skipped=True`; cost: a directory listing); a mapping directory → data file names — a directory present in the parent's listing is not listed, and the given names (narrowed by `units`) are returned as skipped (cost: 0; a file deleted or added in such a directory is seen only by a walk without the mapping); `StoreEntry`: kind, segment, hierarchy, name, path, version path, label, `sha8`, sidecar, problem, `skipped`. Cost per entry: directory — 1 listing; link, `full_sheet/`, new version, unreadable sidecar — 1 sidecar read; skipped version and missing sidecar — 0 opens; a data file is never opened or `stat`-ed | an index without its own copy of the `data/` rules (4.2), a parallel scan by segments and their parts, an incremental one without re-reading and listing known versions, a fast view refresh (4.4) | v0.1 |
 | KA-2 | `read_sidecar(path) -> Sidecar` — a typed, tolerant read of `kartograf-meta/1` (also from before ADR-031 and the 0.8.0-dev developer keys): fields from ARCH 3.2, the raw `dataset` and the recognised descriptor key, normalised: data year and date, campaign, submission number, release, full sheet, coverage, unit | filters, file card, data year ≠ download date (4.3) | v0.1 |
 | KA-3 | `describe_segment(segment) -> SegmentInfo` — the inverse of `resolve_subdir`/`content_segment`: product, country, descriptor key, human-readable name (descriptor name + variant: resolution, height system, format, vintage, level), `known` | human-readable names ("NMT 1 m · PL-1992 · EVRF2007") | v0.1 |
 | KA-4 | `file_footprint(entry, *, network=False, cache=None) -> Footprint \| None` — extent in WGS84 and native with the CRS and source (`request`, `sheet`, `header`, `unit`); offline for PL and TM33 sheet codes, job bboxes and headers; for TERYT (PRG), KU (RUIAN), SM5 (CUZK index) — with a `cache` owned by the caller (`MutableMapping[tuple[str, str], BBox]`, key `("teryt" \| "ku" \| "sm5", code)`), read also without network, and filled only with `network=True`; also accepts a plan item (`PlanItem`) | map, area filter, highlighting of planned units (6.3, 7.4) | v0.1 (`PlanItem`: v0.3) |
 | KA-5 | `link_target(path) -> Path \| None` — the target of a standard path or `full_sheet/` from `extra.link_target`, confirmed by content on shares without stable inodes (it may read the whole file to compute SHA-256) | "current version" without inode logic (4.6) — on request only (the `link_check` job, 5.6); the scan takes the target from the link's sidecar (`StoreEntry.version_path`) | v0.1 |
 | KA-6 | `pinned_transform(src_crs, dst_crs) -> PinnedTransform` — public access to `transform/crs.py` (`transform(xs, ys)`, `description`, `accuracy_m`) | footprints and vectors on the map without approximate operations (S-JTSK: about 100 m) | v0.1 |
 | KA-7 | (optional, after the v0.1 measurements) store change log: a separate file per writing process (no shared file and no locks), with a list of new versions and re-pointed links | cheaper index refresh on SMB (4.4) | — |
-| KA-8 | **Dataset key convention** (4.2.1) as a contract rule in ARCH: descriptor key = the sidecar's `dataset` in the form `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (lowercase, dots between parts, underscores within); immutable after release; renaming only through an alias table (the raw `dataset` in the sidecar unchanged, a normalised `dataset_key` on read — like `_DEV_DATASETS`, `Kartograf/kartograf/store.py:186`); the provider in the sidecar's `provider` field (the descriptor's `provider_name`), not in the key | index, filters and pins based on the key without parsing the key; old sidecars readable after a rename | v0.1 (0.8.0 satisfies it in code; the rule is not written down) |
+| KA-8 | **Dataset key convention** (4.2.1) as a contract rule in ARCH: descriptor key = the sidecar's `dataset` in the form `<country>.<provider>.<dataset>[_<variant>]` (lowercase, dots between parts, underscores within); immutable after release; renaming only through an alias table (the raw `dataset` in the sidecar unchanged, a normalised `dataset_key` on read — like `_DEV_DATASETS`, `Kartograf/kartograf/store.py:186`); the provider in the sidecar's `provider` field (the descriptor's `provider_name`), not in the key | index, filters and pins based on the key without parsing the key; old sidecars readable after a rename | v0.1 (0.8.0 satisfies it in code; the rule is not written down) |
 
 Notes on KA-8 (for Kartograf to decide, not required — Archiwista does not read
 the key by parts): the supranational keys `eu.clms.corine`
@@ -3753,12 +3753,12 @@ did not repeat them.
 | IMGW-12 | **Series export**: `export_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None, year_type=None, format="csv", path=None, …) -> Path \| Iterator[str]` (`station` and `path` named only; `path=None` = row stream) — UTF-8, separator `,`, decimal point, ISO dates, one header row with units, a year column in the chosen convention (`year_type`: `hydrological` or `calendar`, for hydro and meteo, P15; `None` = the numbering convention of the dataset's archives, i.e. the `year_type` of the `series.json` index), empty cell = missing, a flag column, formulas in the columns `attribution_source` and `attribution_processed` of the first data row; all days of the station's continuous calendar, also those with gaps (P14) | set (8.4) for Excel, QGIS and Hydrolog (`daily_values`, `dates`), consumed by Archiwista from v1.1 | v0.5 (IMGWTools) |
 | IMGW-13 | **Schema versioning**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` (3.0.0 adds among others `imgw-plan/1` and `imgw-observation/1`) — within `/1` only additive changes, an incompatible change = `/2` and a reader of both versions in a transition period; read API version policy; offline contract tests on archive fixtures (CP1250, UTF-8 with BOM, quotes, both layouts of daily hydro files) | Archiwista declares the supported versions and does not read unknown ones instead of guessing | v0.5 |
 | IMGW-14 | **IMGW project manifest** (`imgw-project/1`, P18, A-ADR-023): the file `imgw-project.json` in the project directory next to `kartograf-project.json` (each file has one owner; a project can have one or both); fields: `schema`, `store_dir` (the IMGW directory; relative and absolute paths as in the Kartograf manifest), optional `extensions`, `tasks[]` — `name` (Kartograf's name rules), `command` (an IMGW command from IMGW-11, e.g. `series select`), `options` (dataset — a job concerns one dataset, so one provider; stations as an explicit list of codes — a selection by area saved after resolution, with the area file in `options.geometry`; variables, years and `year_type`), `geometry_sha256` (a job field: map path → SHA-256, only for selection by area), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — version path relative to `store_dir`; `sha256`; `station_code` for station files; for the canonical form of ČHMÚ also `content_sha256` and `content_form`); API = CLI (`imgw project init/add/remove/set-store/download/check/status/verify`): `init_project`, `open_project` (full validation, errors in Polish), `add_project_task` (validation as `validate_command`), `remove_project_task`, `set_project_store`, `download_project` (synchronization of the needed archives, series with `reused`, pinning; restoring with identical `sha256` or — ČHMÚ — explicitly by content, IMGW-19), the twin `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (no network); task states `unpinned`, `current`, `content_match`, `missing`, `changed`, `upgraded`, `failed`, `cancelled`; atomic write (`os.replace`) under the lock `.imgw-project.lock` (`mkdir`, owner, no takeover) and per-task merging | IMGW data as project tasks and pins in v1.0: "Dodaj do projektu" (Add to project) for stations, status, verification, restoring on a colleague's machine, a set from pins (4.7, 8.4) | v0.5 |
-| IMGW-15 | **Provider in the contract**: every dataset, sidecar, station catalog entry and project job carries a provider (`dataset` `cz.chmi.<zbiór>`, `country` `CZ`, `provider` `CHMI` — machine identifier; display name "ČHMÚ" from the provider descriptor); station identity = provider + identifier (WIGOS for ČHMÚ); `store_info` lists the supported providers (identifier, display name, datasets, license); `provider` filter (`IMGW-PIB` \| `CHMI`) in `iter_store`, `read_catalog` and the command catalog; ČHMÚ archive slot = file path on the server (as in IMGW-4); change only additive in `/1` or `/2` with a reader of both (IMGW-13) | one adapter and one index for PL and CZ stations, without code collisions; the "ČHMÚ" badge without translation in Archiwista's code | v0.6 |
+| IMGW-15 | **Provider in the contract**: every dataset, sidecar, station catalog entry and project job carries a provider (`dataset` `cz.chmi.<dataset>`, `country` `CZ`, `provider` `CHMI` — machine identifier; display name "ČHMÚ" from the provider descriptor); station identity = provider + identifier (WIGOS for ČHMÚ); `store_info` lists the supported providers (identifier, display name, datasets, license); `provider` filter (`IMGW-PIB` \| `CHMI`) in `iter_store`, `read_catalog` and the command catalog; ČHMÚ archive slot = file path on the server (as in IMGW-4); change only additive in `/1` or `/2` with a reader of both (IMGW-13) | one adapter and one index for PL and CZ stations, without code collisions; the "ČHMÚ" badge without translation in Archiwista's code | v0.6 |
 | IMGW-16 | **ČHMÚ archives, freshness and synchronization**: the datasets from 4.8.6 as 1:1 archives with an `imgw-meta/1` sidecar (written as in IMGW-1..IMGW-3); `check_store`/`sync_store` for `cz.chmi.*` with a required `stations` (the unit of publication is the station — no "whole country"; `years` optional for hydro, not allowed for meteo; no combining with `pl.imgw.*` in one call), signal from the server directory listing, statuses as in IMGW-5; a file not published by the source = `unverifiable` with `error` `"nieopublikowany"` (synchronization: `unchanged` without a version; flat download: `not_published`), distinct from `missing` (file published, absent locally), without a job error; the same bytes under a new signal = `relabeled`, different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`) = `unchanged` with the message `content_unchanged` and a signal observation (`observations/`, `imgw-observation/1`); an `imgw-plan/1` plan with the number of requests | freshness and "Pobierz nowsze" (Download newer) for ČHMÚ stations in the catchment; "nieopublikowany" (not published) as information, not a problem | v0.6 |
-| IMGW-17 | **ČHMÚ station catalog**: a separate version of the provider's station catalog (slot `catalog:cz.chmi.stations`, `stations/versions/chmi_stations/`; hydro from `meta1.json`, `meta3.json` and the station list archive, meteo from `meta1-<RRRRMMDD>.json` and the station list archive) with the fields and validation of 4.8.1 (WGS84 position with source and uncertainty; outside CZ or `0,0` = no position, the entry stays); name, river, catchment hierarchy code (`HLGP4`) as text in `hydrographic_code`; SPA thresholds in the `thresholds` object | ČHMÚ stations on the map, in the "Katalog" (Catalog) and in the catchment | v0.6 |
-| IMGW-18 | **ČHMÚ series and coverage**: `build_series` for `cz.chmi.*` (`imgw-series/1`: the same columns, `null` → missing with a flag, `hydro_year` XI–X for hydro and meteo; `year_type` of the listing `calendar`; station periods `stations[<kod>].periods`, so a year without a station file is unknown, not a gap; meteo also `<V>_quality` and `<V>_source_flag`); `summarize_coverage` separately for each variable (IMGW-8) written in `series.json`; `read_series`, `read_series_index` and `export_series` with unchanged signatures | coverage labels, chart and set for ČHMÚ stations the same as for IMGW | v0.6 |
+| IMGW-17 | **ČHMÚ station catalog**: a separate version of the provider's station catalog (slot `catalog:cz.chmi.stations`, `stations/versions/chmi_stations/`; hydro from `meta1.json`, `meta3.json` and the station list archive, meteo from `meta1-<YYYYMMDD>.json` and the station list archive) with the fields and validation of 4.8.1 (WGS84 position with source and uncertainty; outside CZ or `0,0` = no position, the entry stays); name, river, catchment hierarchy code (`HLGP4`) as text in `hydrographic_code`; SPA thresholds in the `thresholds` object | ČHMÚ stations on the map, in the "Katalog" (Catalog) and in the catchment | v0.6 |
+| IMGW-18 | **ČHMÚ series and coverage**: `build_series` for `cz.chmi.*` (`imgw-series/1`: the same columns, `null` → missing with a flag, `hydro_year` XI–X for hydro and meteo; `year_type` of the listing `calendar`; station periods `stations[<code>].periods`, so a year without a station file is unknown, not a gap; meteo also `<V>_quality` and `<V>_source_flag`); `summarize_coverage` separately for each variable (IMGW-8) written in `series.json`; `read_series`, `read_series_index` and `export_series` with unchanged signatures | coverage labels, chart and set for ČHMÚ stations the same as for IMGW | v0.6 |
 | IMGW-19 | **ČHMÚ commands, project and license**: ČHMÚ synchronization and series commands in `data_commands()` with `format_command` → `imgw …` (CLI = API, `cancel`); an `imgw-project/1` project with jobs of both providers (a job = one dataset, so one provider); restoring ČHMÚ pins with identical bytes or explicitly by content (`restored_by_content`, job state `content_match`); `license` CC BY 4.0 (`id` `CC-BY-4.0`, `terms_url`) with ČHMÚ attribution in archive sidecars, the catalog and series, and in the CSV export (in processed form with a note about the processing); `on_notice` messages in Polish | the "Okno planu" (Plan window), a command to copy, project jobs and attributions without Archiwista's knowledge of ČHMÚ | v0.6 |
-| IMGW-20 | **Dataset key convention** (4.2.1): dataset key = `dataset` of the `imgw-meta/1` sidecar and of the `series.json` listing in the form `<kraj>.<dostawca>.<zbiór>[_<wariant>]` (lowercase, dots between parts, underscores within: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); unchanged from the first release with the store; renaming only through the IMGWTools alias table — raw `dataset` in the sidecar unchanged, normalized `dataset_key` from `read_meta` (`None` for an unknown key, not an empty string; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; model: `_DEV_DATASETS` of Kartograf); the provider only in the `provider` field (`IMGW-PIB`, `CHMI`), and the key prefix (`imgw`, `chmi`) is not its identifier (IMGW-15) | index, filters and pins based on the key without parsing the key; the same key contract as in Kartograf (KA-8); old sidecars readable after renaming | v0.5 |
+| IMGW-20 | **Dataset key convention** (4.2.1): dataset key = `dataset` of the `imgw-meta/1` sidecar and of the `series.json` listing in the form `<country>.<provider>.<dataset>[_<variant>]` (lowercase, dots between parts, underscores within: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); unchanged from the first release with the store; renaming only through the IMGWTools alias table — raw `dataset` in the sidecar unchanged, normalized `dataset_key` from `read_meta` (`None` for an unknown key, not an empty string; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; model: `_DEV_DATASETS` of Kartograf); the provider only in the `provider` field (`IMGW-PIB`, `CHMI`), and the key prefix (`imgw`, `chmi`) is not its identifier (IMGW-15) | index, filters and pins based on the key without parsing the key; the same key contract as in Kartograf (KA-8); old sidecars readable after renaming | v0.5 |
 
 ### 12.8 IMGW format contract (recommendation, A-ADR-020)
 
@@ -3777,8 +3777,8 @@ compatibility would have given is provided by a **common envelope** — the same
 | Field | Meaning in `imgw-meta/1` |
 |---|---|
 | `schema` | `imgw-meta/1` |
-| `dataset`, `country`, `provider` | `pl.imgw.<zbiór>` (e.g. `pl.imgw.hydro_daily`; key convention 4.2.1, IMGW-20), `PL`, `IMGW-PIB`; ČHMÚ — `cz.chmi.<zbiór>`, `CZ`, `CHMI`; station catalog — `pl.imgw.stations`, `cz.chmi.stations` |
-| `request` | what produced the file: archive — `server_path`, `year`, `month` (ČHMÚ also `station_code`, `param`); dataset series — only `dataset` (the full key; the periods of the inputs are in `series.json`: `periods`, and for ČHMÚ also `stations[<kod>].periods`); station catalog — `user_locations` (the user's file name or `null`), and the sources in `extra.catalog` |
+| `dataset`, `country`, `provider` | `pl.imgw.<dataset>` (e.g. `pl.imgw.hydro_daily`; key convention 4.2.1, IMGW-20), `PL`, `IMGW-PIB`; ČHMÚ — `cz.chmi.<dataset>`, `CZ`, `CHMI`; station catalog — `pl.imgw.stations`, `cz.chmi.stations` |
+| `request` | what produced the file: archive — `server_path`, `year`, `month` (ČHMÚ also `station_code`, `param`); dataset series — only `dataset` (the full key; the periods of the inputs are in `series.json`: `periods`, and for ČHMÚ also `stations[<code>].periods`); station catalog — `user_locations` (the user's file name or `null`), and the sources in `extra.catalog` |
 | `license` | `{id, attribution, url}` with the IMGW formulas (4.8.5); `id` `IMGW-PIB` (ČHMÚ: `CC-BY-4.0` and the additive `terms_url`); in the series sidecar (and the ČHMÚ catalog) the processing formula is appended after ". ", without a trailing period |
 | `downloaded_at` | the moment the version was written (UTC, ISO 8601) |
 | `sha256`, `size_bytes` | the content of the file; for dataset series — the content of the index `series.json`, which lists the `sha256` of each station file |

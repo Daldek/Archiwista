@@ -1023,7 +1023,7 @@ the filtering and the shape of the API response, not the IMGWTools format contra
 
 **Erratum 3 (2026-10-19, compatibility audit with IMGWTools 3.0.0, answering question 11
 of ADR-003 of IMGWTools; SPEC 4.8.6):** in datasets with station files (ČHMÚ), the units known
-for a station are the units of its periods from the series index (`stations[<kod>].periods`, ADR-003 D10
+for a station are the units of its periods from the series index (`stations[<code>].periods`, ADR-003 D10
 of IMGWTools), not of the periods of the whole dataset: a year without a station file, including one not
 published by ČHMÚ, is "unknown", not a gap, while missing rows within a known period are a gap;
 K₁, K₂ and the "known year" are computed per station. For IMGW-PIB national archives nothing changes
@@ -1342,7 +1342,7 @@ directory (B), version = a snapshot of the whole file (A):
 1. The project's own-data folder — by default `<project directory>/dane/`, another one can be
    specified; the assignment is in Archiwista's configuration, not in the producer's manifest. The folder is
    indexed read-only (generic kind, PRD N8.3).
-2. "Zrób migawkę" (Make a snapshot) copies the file to `<data folder>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/`
+2. "Zrób migawkę" (Make a snapshot) copies the file to `<data folder>/.wersje/<name>/<YYYY-MM-DD>_<sha8>/`
    with `migawka.json` (`archiwista-snapshot/1`; the directory and schema names are a proposal for the
    v0.2 plan). The contract is deliberately the simplest: append only (no overwriting, deleting
    or links), atomic write (working directory `.incoming/`, publication by rename, error

@@ -308,7 +308,7 @@ and SSE streams (index reads through `asyncio.to_thread`); ordinary (`def`)
 routes and `run_in_threadpool` run in the Starlette thread pool. Uvicorn
 accepts at most `LIMIT_CONCURRENCY` (100) connections at a time, the following ones get
 `503`. The server's own threads: `archiwista-scheduler` (the `ScanScheduler` loop,
-every `TICK_S` = 60 s), `archiwista-probe-<magazyn>` (a probe of an unavailable
+every `TICK_S` = 60 s), `archiwista-probe-<store>` (a probe of an unavailable
 store, at most `PROBE_TIMEOUT_S` = 10 s), `archiwista-job-<id>` (the reader of
 stdout of one worker process in `JobSupervisor`), a `threading.Timer`
 killing an interrupted process after `STOP_TIMEOUT_S` (30 s), a timer removing the
@@ -369,11 +369,11 @@ of a person with `project.write`; the store remains unchanged.
 | `config_file` = `config.toml` | `AppSettings`: port, offline mode, store and project directories, `own_data_dirs` (an exception to `<project directory>/dane/`), `preview_cache_limit_gb` (20), `basemaps` (OpenFreeMap vector and OSM GUGiK by default) and permissions | no (wizard or Settings) | `SettingsService.update` → `ConfigStore.save` |
 | `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 6 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
 | `state_file` = `state.sqlite` | accounts, groups, roles, project access, permissions log | **no** — backup with `archiwista state export` | `StateStore` |
-| `cache_dir` = `cache/<producent>/` | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
+| `cache_dir` = `cache/<producer>/` | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock) | logs not needed for operation | `JobSupervisor`, worker processes |
-| `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<losowa>/` (file being read) | load the file again | `AreaFiles` |
-| `open-<losowa>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
-| `previews_dir` = `previews/` | `cache.sqlite`, `objects/<klucz>/<renderer>-r<wersja>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
+| `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read) | load the file again | `AreaFiles` |
+| `open-<random>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
+| `previews_dir` = `previews/` | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
 | `work_dir` = `work/` | private working directories of processes; cleaned up after shutdown or a crash | yes | `sandbox.process_work_dir`, readers and renderers |
 | `<data folder>/.wersje/` (outside `AppPaths`) | full snapshots of files, `migawka.json` with `archiwista-snapshot/1` | **no** — moves with the project | `make_snapshot`, only on the command of an authorized person |
 
@@ -776,7 +776,7 @@ with `Location`):
   1. content over `AREA_BODY_LIMIT_BYTES` (50 MB) → `413 area_too_large`
      (`check_body_size`);
   2. `read_area_file` writes the content under a random name in
-     `areas/.incoming/<losowa>/upload` (the client's path is never
+     `areas/.incoming/<random>/upload` (the client's path is never
      opened) and runs `AREA_READER_COMMAND` in the environment
      `sandbox.untrusted_env`: without GDAL/PROJ network, without proxy and credentials,
      with `GDAL_PAM_ENABLED=NO` and `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`;
@@ -986,7 +986,7 @@ unavailable — the rows are then the state as of `indexed_at`, not proof that t
 files are missing. Errors are `application/problem+json` (RFC 9457) with a stable
 `code` independent of the Polish `detail`; plugin problems have a `source`
 member with the pip requirement, a producer error has a `kartograf` member
-with the unchanged message (`<producent>_error`).
+with the unchanged message (`<producer>_error`).
 
 **CLI** (`archiwista`, `cli.main`):
 
@@ -1029,7 +1029,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session `SessionScreen` |
 | `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`; CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
-| `router.js` | state in the address `/?view=<widok>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
+| `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
 | `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView` |
 | `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`; with no store in the settings it opens the wizard |
 | `context.js` | `AppContext`, `useApp`, `useAppState`: session, settings, `/health` every 2 s during a scan or with a waiting store, otherwise every 15 s |
@@ -1051,14 +1051,14 @@ parameter and the name key in `labels/shell.js` `nav`, `icon`, `load` = dynamic
 import of the module, optionally `start`, `bottom`), an overlay is a line in
 `OVERLAYS` (`param`, `load`). The module exports by default a component
 receiving `route` (an overlay also `value` and `onClose`); it keeps its texts
-in `labels/<widok>.js` and loads its style through `loadStylesheet`. Nothing else
+in `labels/<view>.js` and loads its style through `loadStylesheet`. Nothing else
 in the shell changes. Views of 0.2.0: `map` (start), `catalog`,
 `projects`, `store`, `setup`; overlays `file`, `own`, `compare`.
 
 **Dictionary.** The interface does not put texts into components
 (`CLAUDE.md`, DEV-2.3): `labels/index.js` assembles the shared part
 `T` (`common`, `shell`, `setup`), and each view imports its own file
-`labels/<widok>.js`, so views do not edit the shared file. Texts have
+`labels/<view>.js`, so views do not edit the shared file. Texts have
 `{nazwa}` slots filled by `t(text, values)`, and plural forms
 are arrays `[one, few, many]` for `count`. Server and CLI texts
 live separately in the catalog `messages/` (`message`, keys `<area>.<name>`, English and Polish).

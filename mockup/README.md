@@ -46,7 +46,7 @@ needs internet access (CDN for libraries and fonts, the OpenFreeMap basemap).
    of the selected version, "Wachlarz migawek" (Snapshot Fan) (working file on top; green —
    added since the previous snapshot, red dashed — removed), a Catalog
    of file versions, and in the details panel "Zrób migawkę…" (Take a snapshot…) → plan (copy to
-   `dane/.wersje/<nazwa>/<data>_<sha8>/`, a consistent GeoPackage copy, increment
+   `dane/.wersje/<name>/<data>_<sha8>/`, a consistent GeoPackage copy, increment
    only) → background job → new snapshot; the same content a second time =
    "nowa migawka nie powstanie" (no new snapshot will be created).
 
