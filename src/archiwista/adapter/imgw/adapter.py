@@ -8,10 +8,13 @@ and the observation register of an archive slot (a source that republished
 the same content under a new signal) is ``observation`` entries, never
 versions. The producer's own record rides along as the entry's handle.
 
-IMGWTools has no links and no segments: a slot is the directory that holds
-its versions (``<slot>/<label>_<sha8>/<file>``) and an entry's ``segment`` is
-its dataset, so the files of IMGW-PIB and ČHMÚ never mix. The versions the
-index knows (``ScanScope.known_versions``) are the ``skip_versions`` of
+IMGWTools has no links and cannot scan one segment alone: a slot is the
+directory that holds its versions (``<slot>/<label>_<sha8>/<file>``), named
+by the producer's own slot (``slot_key``, e.g.
+``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``), and an entry's
+``segment`` is its dataset, so the files of IMGW-PIB and ČHMÚ never mix and
+``describe_segment`` names each dataset for people. The versions the index
+knows (``ScanScope.known_versions``) are the ``skip_versions`` of
 ``iter_store``: they come back ``skipped``, with no sidecar read. Exceptions
 of the producer surface as ``ProducerError`` with the message unchanged.
 """
@@ -20,7 +23,8 @@ import os
 import shlex
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
-from pathlib import Path
+from datetime import datetime
+from pathlib import Path, PurePosixPath
 
 from imgwtools import (
     IMGWError,
@@ -29,9 +33,12 @@ from imgwtools import (
     StoreEntry,
     StoreInfo,
     __version__,
+    get_dataset,
     get_project_status,
+    get_provider,
     iter_store,
     open_project,
+    providers,
     store_info,
 )
 from imgwtools import read_meta as read_sidecar
@@ -48,6 +55,8 @@ from archiwista.sources import (
     ProjectTask,
     ScanScope,
     SourceEntry,
+    SourceObservation,
+    SourceSegment,
     SourceState,
     SourceStatus,
 )
@@ -66,6 +75,9 @@ _MARKER_REFUSED = frozenset({"invalid_marker", "unsupported_store"})
 _REGISTER = "observations"
 # Kinds of a slot ``<kind>:<dataset>[:<selector>]`` (IMGWTools spec 13.7).
 _SLOT_KINDS = frozenset({"archive", "series", "catalog", "pmaxtp"})
+# The last part of the key of a provider's station catalog (``pl.imgw.stations``):
+# a slot of the store that is no dataset of the registry.
+_CATALOG = "stations"
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
 # Project and task states by increasing severity.
@@ -92,9 +104,10 @@ class ImgwAdapter:
 
     Notes
     -----
-    Implements the source interface and no optional capability. All methods
-    may run in several threads at once; one iterator of ``iter_entries``
-    belongs to one thread.
+    Implements the source interface and ``SegmentDescriptionAdapter`` (a
+    dataset is a segment that cannot be read alone); no other optional
+    capability. All methods may run in several threads at once; one iterator
+    of ``iter_entries`` belongs to one thread.
     """
 
     producer = PRODUCER
@@ -192,6 +205,28 @@ class ImgwAdapter:
         except IMGWError as error:
             raise _failure(entry.store, error) from error
         return _entry_meta(entry.store, entry.relative_path, meta)
+
+    def describe_segment(self, segment: str) -> SourceSegment:
+        """Describe a dataset for people, from the producer's registry.
+
+        No disk access. A dataset of the registry has its Polish title for a
+        name and its provider's country; a station catalog
+        (``pl.imgw.stations``, ``cz.chmi.stations``: slots of the store that
+        are no datasets of the registry) is named after its provider; any
+        other key is not recognised and is its own name.
+
+        Parameters
+        ----------
+        segment : str
+            A dataset key, the ``segment`` of an entry.
+
+        Returns
+        -------
+        SourceSegment
+            ``dataset_key`` is the current key of the dataset; ``product`` is
+            ``None``: IMGWTools has no products.
+        """
+        return _describe(segment)
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Place a file: its country for an archive or a series, else nowhere.
@@ -343,6 +378,7 @@ def _source_entry(store: str, base: Path, entry: StoreEntry) -> SourceEntry:
     path = base if entry.version is None else entry.version
     relative = path.relative_to(base)
     kind = _kind(entry)
+    slot_path = _slot_path(kind, relative, entry.slot)
     meta = None
     if kind == "version" and entry.meta is not None:
         meta = _entry_meta(store, relative, entry.meta)
@@ -352,11 +388,14 @@ def _source_entry(store: str, base: Path, entry: StoreEntry) -> SourceEntry:
         relative_path=relative,
         kind=kind,
         segment=_dataset(entry.slot),
-        slot_path=_slot_path(kind, relative, entry.slot),
-        version_path=relative if kind == "version" else None,
+        slot_path=slot_path,
+        version_path=_version_path(kind, relative, slot_path, entry),
         problem=(entry.problem_code or "unknown") if kind == "problem" else None,
         skipped=entry.skipped,
         meta=meta,
+        slot_key=entry.slot,
+        slot_name=_slot_name(entry.slot),
+        observation=_observation(entry),
         handle=entry,
     )
 
@@ -392,6 +431,85 @@ def _slot_path(kind: str, relative: Path, slot: str | None) -> Path | None:
         return None
     parent = relative.parent
     return parent.parent if parent.name == _REGISTER else parent
+
+
+def _slot_name(slot: str | None) -> str | None:
+    """Name a slot for people where the name of its directory is none.
+
+    An archive is named by its file (its directory has no extension) and a
+    station catalog by its key (the first one lies in a directory called
+    ``versions``); a series and a PMAXTP cell keep the name of their
+    directory (``None``).
+    """
+    kind, _, rest = (slot or "").partition(":")
+    if kind == "archive":
+        return PurePosixPath(rest.partition(":")[2]).name or None
+    if kind == "catalog":
+        return rest or None
+    return None
+
+
+def _version_path(
+    kind: str, relative: Path, slot_path: Path | None, entry: StoreEntry
+) -> Path | None:
+    """Return the version an entry is, or an observation repeats the content of.
+
+    A version is its own. An observation names the directory of the version
+    with the same content, whose file is the slot's (``None`` when the slot
+    has no file name).
+    """
+    if kind == "version":
+        return relative
+    record = entry.observation
+    name = _slot_name(entry.slot)
+    if kind != "observation" or record is None or slot_path is None or name is None:
+        return None
+    return slot_path / record.same_content_as / name
+
+
+def _observation(entry: StoreEntry) -> SourceObservation | None:
+    """Return the record of an observation as the producer-neutral one."""
+    record = entry.observation
+    if entry.kind != "observation" or record is None:
+        return None
+    return SourceObservation(
+        seen_at=datetime.fromisoformat(record.seen_at),
+        url=record.url,
+        etag=record.etag,
+        last_modified=record.last_modified,
+        size_bytes=record.size_bytes,
+        sha256=record.sha256,
+    )
+
+
+def _describe(segment: str) -> SourceSegment:
+    """Describe a dataset key: a registry dataset, a station catalog, or none."""
+    try:
+        dataset = get_dataset(segment)
+    except IMGWError:
+        pass
+    else:
+        country = get_provider(dataset.provider).country
+        title = _polish(dataset.title)
+        return SourceSegment(segment, None, country, dataset.key, title, True)
+    for provider in providers():
+        if segment == f"{provider.key_prefix}.{_CATALOG}":
+            name = message("source.imgw_catalog", "pl", provider=provider.short_name)
+            return SourceSegment(
+                segment, None, provider.country, segment, str(name), True
+            )
+    return SourceSegment(segment, None, None, None, segment, False)
+
+
+def _polish(text: str) -> str:
+    """Return a text of the producer's catalog in Polish.
+
+    The registry's titles are catalog messages that render again in another
+    language (a ``str`` subclass with ``localized``); the producer's type
+    says ``str``, and anything else stays as it is.
+    """
+    localized = getattr(text, "localized", None)
+    return str(localized("pl")) if callable(localized) else str(text)
 
 
 def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:

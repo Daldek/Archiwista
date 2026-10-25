@@ -337,6 +337,26 @@ class IssueRef:
 
 
 @dataclass(frozen=True, slots=True)
+class ObservationRef:
+    """A source republished the content of a version: a record of a slot's history.
+
+    ``path`` is the producer's record in the store; ``version`` the version
+    (path relative to the store) whose content the source served again, under
+    a signal (``etag``, ``last_modified``) the producer did not have before.
+    It is never a version: no count and no current version follows from it.
+    """
+
+    path: str
+    version: str | None
+    seen_at: datetime
+    url: str | None
+    etag: str | None
+    last_modified: str | None
+    size_bytes: int | None
+    sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class SlotDetail:
     """File card: every version of a slot, links, pins and problems."""
 

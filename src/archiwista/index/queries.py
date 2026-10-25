@@ -69,6 +69,7 @@ from archiwista.index.types import (
     LocationRef,
     MapFootprint,
     MapQuery,
+    ObservationRef,
     OrphanLink,
     OwnFileDetail,
     OwnFileObservation,
@@ -979,6 +980,44 @@ class IndexQueries:
         with self._read() as connection:
             stores = _stores(connection)
             return _issues(connection, "i.store_id = ?", (_store_id(stores, store),))
+
+    def observations(self, store: str, slot: str) -> tuple[ObservationRef, ...]:
+        """Return the publication history of a slot, the newest record first.
+
+        A record is a source that served the content of a version again (it
+        is never a version and changes no count). A slot the index does not
+        know has none.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        slot : str
+            Slot path relative to the store.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT o.path, o.version_path, o.seen_at, o.url, o.etag,"
+                " o.last_modified, o.size_bytes, o.sha256 FROM observations o"
+                " JOIN slots s ON s.id = o.slot_id"
+                " WHERE s.store_id = ? AND s.path = ?"
+                " ORDER BY o.seen_at DESC, o.path DESC",
+                (_store_id(stores, store), slot),
+            ).fetchall()
+        return tuple(
+            ObservationRef(
+                path=row["path"],
+                version=row["version_path"],
+                seen_at=datetime.fromisoformat(row["seen_at"]),
+                url=row["url"],
+                etag=row["etag"],
+                last_modified=row["last_modified"],
+                size_bytes=row["size_bytes"],
+                sha256=row["sha256"],
+            )
+            for row in rows
+        )
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.

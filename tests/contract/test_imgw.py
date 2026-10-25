@@ -15,6 +15,7 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import imgwtools
@@ -48,11 +49,13 @@ from archiwista.sources import (
     LinkCheckAdapter,
     PartitionedAdapter,
     ScanScope,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceAdapter,
     SourceContext,
     SourceEntry,
+    SourceSegment,
 )
 from tests.fixtures.imgw_edits import add_version, drop_sidecar, rewrite_sidecar
 
@@ -143,11 +146,12 @@ def test_installed_imgwtools_within_supported_range() -> None:
     assert SCHEMAS == ("imgw-store/1", "imgw-meta/1", "imgw-series/1", "imgw-project/1")
 
 
-def test_adapter_implements_the_source_interface_and_no_optional_capability(
+def test_adapter_implements_the_source_interface_and_describes_its_datasets(
     adapter: ImgwAdapter,
 ) -> None:
-    """The store has no segments, links, sheets or coordinate operations."""
+    """The store has no segments to scan, links, sheets or coordinate operations."""
     assert isinstance(adapter, SourceAdapter)
+    assert isinstance(adapter, SegmentDescriptionAdapter)
     assert not any(
         isinstance(adapter, capability)
         for capability in (
@@ -245,13 +249,150 @@ def test_an_observation_is_history_and_never_a_version(
         "cz.chmi.hydro_daily",
     )
     assert observation.relative_path.parent == CZ_REGISTER_SLOT / "observations"
-    assert (observation.meta, observation.version_path) == (None, None)
+    assert observation.meta is None
+    assert observation.version_path == version.relative_path
     record = getattr(observation.handle, "observation", None)
     assert (
         record is not None
         and record.same_content_as == version.relative_path.parent.name
     )
     assert adapter.footprint(observation).location == "none"
+
+
+def test_an_observation_carries_the_signal_the_producer_kept(
+    imgw_store: Stores, adapter: ImgwAdapter
+) -> None:
+    """When the source served the bytes, from where, and their size and digest."""
+    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+
+    (observation,) = [e for e in entries if e.kind == "observation"]
+
+    produced = getattr(observation.handle, "observation", None)
+    assert produced is not None and observation.observation is not None
+    seen = datetime.strptime(produced.seen_at, "%Y-%m-%dT%H:%M:%SZ")
+    assert observation.observation.seen_at == seen.replace(tzinfo=UTC)
+    assert (
+        observation.observation.url,
+        observation.observation.etag,
+        observation.observation.last_modified,
+        observation.observation.size_bytes,
+        observation.observation.sha256,
+    ) == (
+        produced.url,
+        produced.etag,
+        produced.last_modified,
+        produced.size_bytes,
+        produced.sha256,
+    )
+    assert all(e.observation is None for e in entries if e.kind != "observation")
+
+
+def test_a_slot_has_the_producers_key_and_a_name_for_people(
+    imgw_store: Stores, adapter: ImgwAdapter
+) -> None:
+    """The key is the producer's own; an archive is its file, a catalog its key."""
+    root = imgw_store("complete_pl_cz")
+
+    entries = _entries(adapter, root)
+
+    keys = {e.relative_path: e.slot_key for e in entries}
+    assert keys == {
+        e.version.relative_to(root): e.slot for e in iter_store(root) if e.version
+    }
+    names = {e.slot_key: e.slot_name for e in entries}
+    assert names["archive:pl.imgw.hydro_daily:2024/codz_2024.zip"] == "codz_2024.zip"
+    cz_file = "precipitation/dly-0-203-0-90001-SRA.csv"
+    assert (
+        names[f"archive:cz.chmi.meteo_daily:{cz_file}"] == "dly-0-203-0-90001-SRA.csv"
+    )
+    assert names["catalog:pl.imgw.stations"] == "pl.imgw.stations"
+    assert names["catalog:cz.chmi.stations"] == "cz.chmi.stations"
+    # A series is named by its directory, which says what it is.
+    assert names["series:pl.imgw.hydro_daily"] is None
+    assert {
+        e.slot_path.name
+        for e in entries
+        if e.slot_key == "series:cz.chmi.hydro_daily" and e.slot_path
+    } == {"chmi_hydro_daily"}
+
+
+def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """A stray item of the store belongs to no slot, so it has no segment."""
+    root = _copy(imgw_store, tmp_path / "store")
+    stray = root / "archives" / "versions" / "stray"
+    stray.mkdir()
+    (stray / "notes.txt").write_text("x", encoding="utf-8")
+
+    entries = _entries(adapter, root)
+
+    (found,) = [e for e in entries if e.relative_path.name == "stray"]
+    assert (found.kind, found.problem) == ("problem", "unknown_entry")
+    assert (found.slot_key, found.segment, found.slot_path) == (None, None, None)
+
+
+def test_a_dataset_of_the_registry_is_described_by_its_polish_title_and_country(
+    adapter: ImgwAdapter,
+) -> None:
+    """A segment is a dataset: the registry's name, the provider's country."""
+    assert adapter.describe_segment(HYDRO) == SourceSegment(
+        HYDRO, None, "PL", HYDRO, "Dane hydrologiczne dobowe", True
+    )
+    czech = adapter.describe_segment("cz.chmi.hydro_daily")
+    assert (czech.country, czech.dataset_key, czech.known) == (
+        "CZ",
+        "cz.chmi.hydro_daily",
+        True,
+    )
+
+
+@pytest.mark.parametrize("key", [dataset.key for dataset in imgwtools.datasets()])
+def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_country(
+    adapter: ImgwAdapter, key: str
+) -> None:
+    """The registry is the producer's own, so no dataset is left unrecognised."""
+    provider = imgwtools.get_provider(imgwtools.get_dataset(key).provider)
+
+    described = adapter.describe_segment(key)
+
+    assert (described.known, described.country, described.dataset_key) == (
+        True,
+        provider.country,
+        key,
+    )
+    assert described.product is None and described.name not in ("", key)
+
+
+def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_itself(
+    adapter: ImgwAdapter,
+) -> None:
+    """The catalogs are slots of the store but no datasets of the registry."""
+    assert adapter.describe_segment("pl.imgw.stations") == SourceSegment(
+        "pl.imgw.stations",
+        None,
+        "PL",
+        "pl.imgw.stations",
+        "Katalog stacji IMGW-PIB",
+        True,
+    )
+    assert adapter.describe_segment("cz.chmi.stations") == SourceSegment(
+        "cz.chmi.stations", None, "CZ", "cz.chmi.stations", "Katalog stacji ČHMÚ", True
+    )
+    assert adapter.describe_segment("pl.imgw.removed_dataset") == SourceSegment(
+        "pl.imgw.removed_dataset", None, None, None, "pl.imgw.removed_dataset", False
+    )
+
+
+@pytest.mark.parametrize("variant", ["complete", "complete_pl_cz", "corrupt"])
+def test_every_dataset_a_fixture_store_names_is_recognised(
+    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+) -> None:
+    """What the producer writes into a store, its registry knows."""
+    segments = {e.segment for e in _entries(adapter, imgw_store(variant)) if e.segment}
+
+    assert segments
+    assert all(adapter.describe_segment(name).known for name in segments)
 
 
 def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(

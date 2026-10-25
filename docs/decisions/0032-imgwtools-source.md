@@ -71,6 +71,28 @@ side.
    directory, so a share that is not connected does not block other edits. A store put deeper
    is found by the producer's writer when it writes. Rejected: the full walk, and the ancestors
    alone (a store below the directory is the nesting that a later write would refuse).
+7. **A slot has the producer's key, a segment is a dataset, and history stays history**
+   (plan I3, `SCHEMA_VERSION` 7). Beside what Kartograf's layout gives, the index keeps the
+   producer's own name of a slot (`slots.slot_key`, opaque to the index: for IMGWTools
+   `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `series:<dataset>`,
+   `catalog:<provider prefix>.stations`), the provider of a version (`versions.provider`)
+   and the observation register of an archive slot (table `observations`). `SourceEntry`
+   carries `slot_key`, `slot_name` (a name for people where the directory's name is none:
+   the file of an archive, the key of a catalog) and `observation`. IMGWTools has no
+   segments to scan: `iter_store` has no scope below the root, so a pass per dataset would
+   read the whole store once per dataset. Its entries still name their dataset, so the
+   optional capability `SegmentDescriptionAdapter` (`describe_segment`; `SegmentedAdapter`
+   extends it) lets the scan describe the segments the entries named, at the end of the
+   pass. A dataset is described from the producer's registry: its Polish title, the
+   country of its provider, `dataset_key` the current key, no product (IMGWTools has
+   none); the station catalogs `pl.imgw.stations` and `cz.chmi.stations`, which are slots
+   of the store but no datasets of the registry, are named after their provider; any
+   other key is not recognised and keeps its own name. An observation is history, never a
+   version, a link or a count: it is kept only when its slot is known by the end of its
+   batch (it never makes a slot), a known record costs nothing, and one that a pass does
+   not see again is forgotten. Rejected: reading the key from the layout (the layout is
+   the producer's knowledge, A-ADR-014); a list of segments for IMGWTools; observations as
+   versions (they would change every count and, for an archive, its current version).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;

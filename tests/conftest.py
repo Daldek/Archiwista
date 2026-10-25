@@ -13,11 +13,13 @@ import pytest
 if TYPE_CHECKING:
     from imgwtools.testing import FixtureVariant
 
-# The tests of the IMGW adapter import IMGWTools at module level. Without the extra
-# `imgw` (the second CI configuration, A-ADR-024) they are not collected; the rest
-# of the suite passes without it.
+# The tests of the IMGW adapter and of the index of its stores import IMGWTools at
+# module level. Without the extra `imgw` (the second CI configuration, A-ADR-024)
+# they are not collected; the rest of the suite passes without it.
 collect_ignore = (
-    [] if importlib.util.find_spec("imgwtools") else ["contract/test_imgw.py"]
+    []
+    if importlib.util.find_spec("imgwtools")
+    else ["contract/test_imgw.py", "integration/test_imgw_index.py"]
 )
 
 

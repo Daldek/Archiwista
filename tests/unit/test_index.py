@@ -26,6 +26,7 @@ from archiwista.sources import (
     ProjectPin,
     ProjectTask,
     SourceEntry,
+    SourceObservation,
     SourceSegment,
 )
 from tests.fixtures.index_data import (
@@ -859,6 +860,31 @@ def test_index_producer_without_links_or_segments(
     assert queries.slots(SlotQuery(store=STORE), visible=ALL_PROJECTS).items == ()
 
 
+def _observation(
+    slot_entry: SourceEntry,
+    name: str,
+    repeats: SourceEntry,
+    *,
+    seen_at: datetime = NOW,
+) -> SourceEntry:
+    """Return the record of a register file of the slot, repeating a version."""
+    return replace(
+        slot_entry,
+        kind="observation",
+        relative_path=Path(f"{NMT}/observations/{name}.json"),
+        version_path=repeats.version_path,
+        meta=None,
+        observation=SourceObservation(
+            seen_at=seen_at,
+            url=f"https://example.org/{name}.zip",
+            etag='"6ad58aac"',
+            last_modified="Mon, 19 Oct 2026 03:12:44 GMT",
+            size_bytes=1234,
+            sha256=sha(9),
+        ),
+    )
+
+
 def test_index_observation_is_history_and_never_a_slot_version_or_link(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
@@ -866,17 +892,22 @@ def test_index_observation_is_history_and_never_a_slot_version_or_link(
     # Arrange
     writer, queries = index
     sheet = version(SHEET_A, "2023-06-11_93763", 1)
-    history = replace(
-        sheet,
-        kind="observation",
-        relative_path=Path(f"{NMT}/observations/2024-01-01_aabbccdd.json"),
-        version_path=None,
-        meta=None,
+    history = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    elsewhere = replace(
+        history,
+        relative_path=Path(f"{NMT}/observations/2024-01-02_11223344.json"),
+        slot_path=Path(f"{NMT}/other"),
     )
-    elsewhere = replace(history, slot_path=Path(f"{NMT}/other"))
+    unrecorded = replace(
+        history,
+        relative_path=Path(f"{NMT}/observations/2024-01-03_55667788.json"),
+        observation=None,
+    )
 
     # Act
-    summary = write_pass(writer, [sheet, link(SHEET_A, sheet), history, elsewhere])
+    summary = write_pass(
+        writer, [history, sheet, link(SHEET_A, sheet), elsewhere, unrecorded]
+    )
     page = queries.slots(SlotQuery(), visible=ALL_PROJECTS)
 
     # Assert
@@ -884,8 +915,68 @@ def test_index_observation_is_history_and_never_a_slot_version_or_link(
     assert [row.version.path for row in page.items if row.version] == [
         sheet.relative_path.as_posix()
     ]
+    assert page.items[0].versions_count == 1
     assert (summary.missing, summary.unlinked, summary.issues_resolved) == (0, 0, 0)
     assert queries.issues(STORE) == ()
+    (record,) = queries.observations(STORE, SHEET_A)
+    assert (record.path, record.version, record.seen_at) == (
+        f"{NMT}/observations/2024-01-01_aabbccdd.json",
+        sheet.relative_path.as_posix(),
+        NOW,
+    )
+    assert (record.url, record.etag, record.size_bytes, record.sha256) == (
+        "https://example.org/2024-01-01_aabbccdd.zip",
+        '"6ad58aac"',
+        1234,
+        sha(9),
+    )
+    assert queries.observations(STORE, f"{NMT}/other") == ()
+
+
+def test_index_observation_is_forgotten_when_a_pass_does_not_see_it(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A register file that is gone leaves the history; the slot stays."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    history = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    write_pass(writer, [sheet, link(SHEET_A, sheet), history])
+    seen_again = write_pass(writer, [skipped(sheet), link(SHEET_A, sheet), history])
+
+    # Act
+    write_pass(writer, [skipped(sheet), link(SHEET_A, sheet)])
+
+    # Assert
+    assert (seen_again.missing, seen_again.issues_resolved) == (0, 0)
+    assert queries.observations(STORE, SHEET_A) == ()
+    assert _slots(queries) == [SHEET_A]
+
+
+def test_index_observations_come_newest_first_and_go_with_their_slot(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """The history of a slot is listed newest first and ends with the slot."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    older = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    newer = _observation(
+        sheet, "2024-02-01_11223344", sheet, seen_at=NOW.replace(year=2027)
+    )
+    write_pass(writer, [sheet, link(SHEET_A, sheet), older, newer], full=True)
+    assert [r.seen_at.year for r in queries.observations(STORE, SHEET_A)] == [
+        2027,
+        2026,
+    ]
+
+    # Act
+    write_pass(writer, [], full=True)
+    write_pass(writer, [], full=True)
+
+    # Assert
+    assert _slots(queries) == []
+    assert queries.observations(STORE, SHEET_A) == ()
 
 
 def test_index_filters_by_store_country_and_location(

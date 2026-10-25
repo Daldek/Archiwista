@@ -11,6 +11,7 @@ from archiwista.sources import (
     PartitionedAdapter,
     ProjectInfo,
     ScanScope,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceAdapter,
@@ -71,6 +72,7 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
 
     assert isinstance(adapter, SourceAdapter)
     for capability in (
+        SegmentDescriptionAdapter,
         SegmentedAdapter,
         PartitionedAdapter,
         GeoAdapter,

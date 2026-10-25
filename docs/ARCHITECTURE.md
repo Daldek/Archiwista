@@ -170,15 +170,15 @@ nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
 
 | Moduł | Rola | Kluczowe symbole |
 |---|---|---|
-| `sources/protocol.py` | protokoły adaptera (`runtime_checkable`): wymagany i zdolności opcjonalne | `SourceAdapter`, `SourceFactory`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `CoordinateTransformer` |
-| `sources/types.py` | wspólne typy niezależne od producenta | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `SourceSegment`, `SourceEntry`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
+| `sources/protocol.py` | protokoły adaptera (`runtime_checkable`): wymagany i zdolności opcjonalne | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `CoordinateTransformer` |
+| `sources/types.py` | wspólne typy niezależne od producenta | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
 | `sources/registry.py` | wtyczki z entry points grupy `archiwista.sources`, ich stany i adaptery | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | fabryka wtyczki: porównuje zainstalowanego Kartografa z przypięciem Archiwisty przed importem | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | adapter Kartografa ze wszystkimi zdolnościami opcjonalnymi | `KartografAdapter`, `UNIT_CACHE_FILE` |
 | `adapter/kartograf/unit_cache.py` | lokalna pamięć obrysów jednostek (TERYT, KU, SM5) dla `file_footprint` | `UnitBBoxCache` |
 | `sources/markers.py` | nazwy plików znaczników magazynów producentów (DEV-19.12): adapter odmawia obcego magazynu po samej nazwie pliku, bez importu innego producenta | `STORE_MARKERS`, `foreign_markers` |
 | `adapter/imgw/__init__.py` | fabryka wtyczki IMGW: porównuje zainstalowany IMGWTools z zakresem `SUPPORTED_VERSIONS` przed importem (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
-| `adapter/imgw/adapter.py` | adapter IMGWTools dla IMGW-PIB i ČHMÚ: wpisy z `iter_store` (wersje z `ScanScope.known_versions` wracają jako `skipped`, bez czytania sidecara: `skip_versions`), werdykty `probe` po znaczniku i kodach `StoreInfo.problem_codes`, metadane, kraj pliku, projekty; bez zdolności opcjonalnych; nie importuje `pyarrow` | `ImgwAdapter` |
+| `adapter/imgw/adapter.py` | adapter IMGWTools dla IMGW-PIB i ČHMÚ: wpisy z `iter_store` (wersje z `ScanScope.known_versions` wracają jako `skipped`, bez czytania sidecara: `skip_versions`) z kluczem slotu producenta, nazwą slotu dla ludzi i rekordem obserwacji, opis zbioru z rejestru IMGWTools (`SegmentDescriptionAdapter`), werdykty `probe` po znaczniku i kodach `StoreInfo.problem_codes`, metadane, kraj pliku, projekty; nie importuje `pyarrow` | `ImgwAdapter` |
 
 **Wspólne**
 
@@ -414,7 +414,7 @@ komputerami przez `path_aliases` (SPEC 4.6).
 Pamięć podręczna odbudowywana z plików producentów (A-ADR-002),
 `index/schema.py`:
 
-- **Wersja schematu** `SCHEMA_VERSION` (6 w wydaniu 0.2.0)
+- **Wersja schematu** `SCHEMA_VERSION` (6 w wydaniu 0.2.0, 7 od indeksu slotów IMGW)
   w `PRAGMA user_version`. Każde otwarcie (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) woła `initialize`: inna wersja (starsza
   albo nowsza) to przebudowa zamiast migracji — wszystkie obiekty usuwane
@@ -428,7 +428,8 @@ Pamięć podręczna odbudowywana z plików producentów (A-ADR-002),
   sesji agentów), `stores` (klucz = `StoreConfig.id`, stan `unknown` /
   `available` / `unavailable`, `indexed_at`), `segments`, `slots`,
   `versions` z 1:1 `version_sidecars` (surowy sidecar) i `version_shapes`
-  (obrysy niebędące prostokątem, obrys natywny), `footprints` (R*Tree
+  (obrysy niebędące prostokątem, obrys natywny), `observations` (historia
+  publikacji slotu IMGW: nie wersja i nie liczba), `footprints` (R*Tree
   prostokątów WGS84, tylko wersje z obrysem), `search` (FTS5, wiersz na
   slot, `unicode61 remove_diacritics 2`), `issues` (pochodzenie `scan`
   albo `check`), `projects` (z `access_key`), `project_tasks`, `pins`,
@@ -525,7 +526,10 @@ segmentem i `on_event=emit.scan_event`.
 1. `_reachable_segments`: `probe` korzenia (stan inny niż `available` →
    magazyn niedostępny) i lista segmentów (`SegmentedAdapter.segments` →
    `list_segments`, także nierozpoznanych); opisy segmentów trafiają do
-   tabeli `segments` (`describe_segment`).
+   tabeli `segments` (`describe_segment`). Producent bez listy segmentów, ale
+   z opisem (`SegmentDescriptionAdapter`, IMGWTools: segmentem jest zbiór),
+   jest czytany w całości, a opisy segmentów, które wymieniły jego wpisy
+   (`_Totals.segments_seen`), zapisuje koniec przebiegu przed `finish_pass`.
 2. `IndexWriter.begin_pass(store, producer, segment=…, full=…)` wczytuje raz
    znane wersje, sloty i problemy zakresu. Brak segmentów przy wpisach
    w indeksie to pusty punkt montowania, czyli magazyn niedostępny.
@@ -1103,11 +1107,13 @@ z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etap
   i dowiązań) przechodzi przez skaner, indeks i API bez zmian w rdzeniu
   (`tests/integration/test_second_adapter.py`). Magazyn przyjmuje katalog
   `imgw` obok katalogu `kartograf` albo zamiast niego (`StoreConfig.roots`
-  podaje oba, sekcja 4), a skan indeksuje pliki IMGW jako wersje slotów. Do
-  zrobienia: `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`, indeks
-  nie zna wersji bieżącej magazynu IMGWTools (nie ma dowiązań), a zdolności
-  stacji i szeregów (`stations`, `series_index`, `read_series` z SPEC 5.3)
-  nie ma jeszcze w `sources/protocol.py`.
+  podaje oba, sekcja 4), a skan indeksuje pliki IMGW jako wersje slotów
+  (`slot_key`, `provider`, obserwacje jako historia slotu, zbiory jako
+  segmenty opisane przez adapter). Do zrobienia: `PROJECT_MANIFESTS` zna tylko
+  `kartograf-project.json`, indeks nie zna wersji bieżącej magazynu IMGWTools
+  (nie ma dowiązań), a zdolności stacji i szeregów (`stations`,
+  `series_index`, `read_series` z SPEC 5.3) nie ma jeszcze w
+  `sources/protocol.py`.
 
 ---
 

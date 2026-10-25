@@ -189,20 +189,44 @@ class EntryMeta:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceObservation:
+    """The record of a source that republished the content of a version.
+
+    A source served other bytes (a new ``seen_at``, perhaps another ``etag``)
+    with the content of a version the producer already has, so no new
+    version was written (an ``observation`` entry). The fields are what the
+    producer kept of that publication; ``None`` is what it did not record.
+    """
+
+    seen_at: datetime
+    url: str | None = None
+    etag: str | None = None
+    last_modified: str | None = None
+    size_bytes: int | None = None
+    sha256: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SourceEntry:
     """Identify an indexed item by producer, store, and relative path.
 
     ``slot_path`` is the file's place independent of its version and
     ``version_path`` the version a link points to (a version's own path).
-    ``skipped`` marks a version listed in ``ScanScope.known_versions``
-    whose metadata was not read; ``meta`` carries metadata read in the same
-    pass. ``handle`` is the producer's own record of the entry: opaque to
-    Archiwista and passed back to the same adapter unchanged.
+    ``slot_key`` is the producer's own name of the slot (the index keeps it with
+    the slot), opaque to Archiwista; ``slot_name`` is what people call the
+    slot when the last part of ``slot_path`` is not a name (e.g. a directory
+    called ``versions``). ``skipped`` marks a version listed in
+    ``ScanScope.known_versions`` whose metadata was not read; ``meta`` carries
+    metadata read in the same pass. ``handle`` is the producer's own record of
+    the entry: opaque to Archiwista and passed back to the same adapter
+    unchanged.
 
     An ``observation`` is a record of the producer's publication history:
     the source published other bytes with the content of a version it
-    already had. It belongs to a slot and is never a version, a link or a
-    full sheet: it changes no slot, no current version and no count.
+    already had. It belongs to a slot (``observation`` holds the record,
+    ``version_path`` the version whose content it repeats) and is never a
+    version, a link or a full sheet: it changes no version, no current
+    version and no count.
     """
 
     producer: str
@@ -215,6 +239,9 @@ class SourceEntry:
     problem: str | None = None
     skipped: bool = False
     meta: EntryMeta | None = None
+    slot_key: str | None = None
+    slot_name: str | None = None
+    observation: SourceObservation | None = None
     handle: object | None = field(default=None, compare=False, repr=False)
 
 

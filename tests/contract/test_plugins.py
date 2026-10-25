@@ -20,6 +20,7 @@ from archiwista.sources import (
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceState,
@@ -78,6 +79,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert not any(
         isinstance(adapter, capability)
         for capability in (
+            SegmentDescriptionAdapter,
             SegmentedAdapter,
             PartitionedAdapter,
             GeoAdapter,

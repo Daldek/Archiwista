@@ -53,6 +53,7 @@ from archiwista.sources import (
     Footprint,
     ProjectInfo,
     SourceEntry,
+    SourceObservation,
     SourceSegment,
 )
 
@@ -67,6 +68,7 @@ _META_COLUMNS = (
     "downloaded_at",
     "dataset",
     "dataset_key",
+    "provider",
     "product",
     "country",
     "unit",
@@ -88,9 +90,10 @@ _META_PLACEHOLDERS = ", ".join("?" for _ in _META_COLUMNS)
 _META_UPDATES = ", ".join(f"{column} = excluded.{column}" for column in _META_COLUMNS)
 
 _UPSERT_SLOT = """
-INSERT INTO slots (store_id, segment_id, path, name, unit, product, country)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO slots (store_id, segment_id, path, name, slot_key, unit, product, country)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (store_id, path) DO UPDATE SET
+    slot_key = coalesce(excluded.slot_key, slot_key),
     unit = coalesce(excluded.unit, unit),
     product = coalesce(excluded.product, product),
     country = coalesce(excluded.country, country)
@@ -118,6 +121,14 @@ _INSERT_ISSUE = """
 INSERT INTO issues (store_id, segment_id, slot_id, path, code, origin, first_seen_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (store_id, path, code) DO NOTHING
+"""
+_INSERT_OBSERVATION = """
+INSERT INTO observations (
+    store_id, segment_id, slot_id, path, version_path, seen_at, url, etag,
+    last_modified, size_bytes, sha256
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (store_id, path) DO NOTHING
 """
 _UPDATE_LOCATION = """
 UPDATE versions SET
@@ -301,6 +312,7 @@ class _KnownSlot:
     unit: str | None
     product: str | None
     country: str | None
+    key: str | None
 
 
 @dataclass(slots=True)
@@ -316,6 +328,9 @@ class _PassState:
     seen_full_sheets: set[str] = field(default_factory=set)
     seen_issues: set[tuple[str, str]] = field(default_factory=set)
     reappeared: int = 0
+    # Observations of the scope the index holds, and those the pass has seen.
+    observations: set[str] = field(default_factory=set)
+    seen_observations: set[str] = field(default_factory=set)
     # Settled version directories by segment id (``known_versions``), taken
     # once per pass before anything is written.
     settled: dict[int, dict[str, tuple[str, ...]]] | None = None
@@ -327,6 +342,8 @@ class _SlotWrite:
     unit: str | None
     product: str | None
     country: str | None
+    key: str | None
+    name: str | None
 
 
 @dataclass(slots=True)
@@ -339,9 +356,18 @@ class _VersionWrite:
 
 
 @dataclass(slots=True)
+class _ObservationWrite:
+    slot: str
+    segment: str
+    version_path: str | None
+    record: SourceObservation
+
+
+@dataclass(slots=True)
 class _Batch:
     slots: dict[str, _SlotWrite] = field(default_factory=dict)
     versions: dict[str, _VersionWrite] = field(default_factory=dict)
+    observations: dict[str, _ObservationWrite] = field(default_factory=dict)
     reappeared: set[str] = field(default_factory=set)
     links: dict[str, str | None] = field(default_factory=dict)
     full_sheets: dict[str, str | None] = field(default_factory=dict)
@@ -352,6 +378,7 @@ class _Batch:
         return not (
             self.slots
             or self.versions
+            or self.observations
             or self.reappeared
             or self.links
             or self.full_sheets
@@ -574,11 +601,13 @@ class IndexWriter:
             params.append(json.dumps(sorted(scoped)))
         connection = self._connection
         known_slots = {
-            str(path): _KnownSlot(int(sid), current, full_sheet, unit, product, country)
-            for path, sid, current, full_sheet, unit, product, country in (
+            str(path): _KnownSlot(
+                int(sid), current, full_sheet, unit, product, country, key
+            )
+            for path, sid, current, full_sheet, unit, product, country, key in (
                 connection.execute(
                     "SELECT s.path, s.id, s.current_path, s.full_sheet_path, s.unit,"
-                    f" s.product, s.country FROM slots s WHERE {where}",
+                    f" s.product, s.country, s.slot_key FROM slots s WHERE {where}",
                     params,
                 ).fetchall()
             )
@@ -612,7 +641,23 @@ class IndexWriter:
                 issue_params,
             ).fetchall()
         }
-        self._pass = _PassState(info, store_id, segments, versions, known_slots, issues)
+        observations = {
+            str(path)
+            for (path,) in connection.execute(
+                "SELECT o.path FROM observations o JOIN slots s ON s.id = o.slot_id"
+                f" WHERE {where}",
+                params,
+            ).fetchall()
+        }
+        self._pass = _PassState(
+            info,
+            store_id,
+            segments,
+            versions,
+            known_slots,
+            issues,
+            observations=observations,
+        )
         return info
 
     def known_versions(
@@ -694,7 +739,10 @@ class IndexWriter:
             in any order and from any of its segments. Versions bring their
             metadata (``meta``) or come back ``skipped``; a link names its
             version (``version_path``); a plain file at a standard path
-            without ``version_path`` is its own version.
+            without ``version_path`` is its own version; an observation
+            (``SourceEntry.observation``) is kept as the history of its slot
+            when the index has the slot or the batch writes it, and is never
+            a version, a link or a count.
 
         Returns
         -------
@@ -719,6 +767,7 @@ class IndexWriter:
                     f" {state.info.producer!r}"
                 )
             self._plan(state, batch, entry)
+        self._settle_observations(state, batch)
         if batch.empty():
             return BatchResult(needs_footprint=tuple(batch.needs_footprint))
         return self._apply(state, batch)
@@ -728,9 +777,10 @@ class IndexWriter:
 
         Unseen versions become missing (with the date); versions an earlier
         pass already marked missing are removed by a full pass; unseen links
-        are cleared and unseen problems resolved; slots left with nothing
-        are removed. A pass over the whole store also drops empty segments
-        and records the store as indexed and available.
+        are cleared, unseen problems resolved and unseen observations
+        forgotten; slots left with nothing are removed. A pass over the whole
+        store also drops empty segments and records the store as indexed and
+        available.
 
         Returns
         -------
@@ -769,6 +819,7 @@ class IndexWriter:
             for key, (issue_id, slot_id) in state.issues.items()
             if key not in state.seen_issues
         ]
+        gone = sorted(state.observations - state.seen_observations)
         affected = {slot_id for _, slot_id in removed}
         affected.update(unlinked, unlinked_full)
         affected.update(slot_id for _, slot_id in resolved if slot_id is not None)
@@ -790,6 +841,10 @@ class IndexWriter:
             connection.execute(
                 f"UPDATE slots SET full_sheet_path = NULL WHERE id IN ({_IDS})",
                 (json.dumps(unlinked_full),),
+            )
+            connection.execute(
+                f"DELETE FROM observations WHERE store_id = ? AND path IN ({_IDS})",
+                (state.store_id, json.dumps(gone)),
             )
             connection.execute(
                 f"DELETE FROM issues WHERE id IN ({_IDS})",
@@ -1595,14 +1650,14 @@ class IndexWriter:
             state.seen_issues.add(key)
             slot = None if entry.slot_path is None else entry.slot_path.as_posix()
             if slot is not None:
-                self._plan_slot(state, batch, slot, segment, None)
+                self._plan_slot(state, batch, slot, segment, None, entry)
             if key not in state.issues:
                 batch.issues[key] = (slot, segment)
             return
         if kind == "version":
             path = entry.relative_path.as_posix()
             slot = path if entry.slot_path is None else entry.slot_path.as_posix()
-            self._plan_slot(state, batch, slot, segment, entry.meta)
+            self._plan_slot(state, batch, slot, segment, entry.meta, entry)
             self._plan_version(state, batch, entry, path, slot, segment)
             if path == slot:
                 # A producer without links: each file is its slot's content.
@@ -1610,10 +1665,11 @@ class IndexWriter:
             return
         if kind == "observation":
             # The publication history of a slot, never a version or a link.
+            self._plan_observation(state, batch, entry, segment)
             return
         # Paths become text only where needed: pathlib's str() is costly.
         slot = (entry.slot_path or entry.relative_path).as_posix()
-        self._plan_slot(state, batch, slot, segment, entry.meta)
+        self._plan_slot(state, batch, slot, segment, entry.meta, entry)
         target = None if entry.version_path is None else entry.version_path.as_posix()
         if target is None and kind == "link" and entry.meta is not None:
             # A plain file at the standard path (from before versions/) is
@@ -1623,6 +1679,39 @@ class IndexWriter:
             target = path
         self._plan_link(state, batch, kind, slot, target)
 
+    def _plan_observation(
+        self, state: _PassState, batch: _Batch, entry: SourceEntry, segment: str
+    ) -> None:
+        """Plan an observation the index does not know yet.
+
+        A register file never changes, so a known one costs nothing and is
+        only seen again; one without its record or its slot is not kept.
+        """
+        path = entry.relative_path.as_posix()
+        if path in state.observations:
+            state.seen_observations.add(path)
+            return
+        if entry.observation is None or entry.slot_path is None:
+            return
+        version = None if entry.version_path is None else entry.version_path.as_posix()
+        batch.observations[path] = _ObservationWrite(
+            entry.slot_path.as_posix(), segment, version, entry.observation
+        )
+
+    @staticmethod
+    def _settle_observations(state: _PassState, batch: _Batch) -> None:
+        """Keep the planned observations whose slot the index has or the batch writes.
+
+        An observation is the history of a slot and never makes one: a
+        record whose slot is unknown is left for a later pass, which sees it
+        again.
+        """
+        for path, write in list(batch.observations.items()):
+            if write.slot in state.slots or write.slot in batch.slots:
+                state.seen_observations.add(path)
+            else:
+                del batch.observations[path]
+
     def _plan_slot(
         self,
         state: _PassState,
@@ -1630,6 +1719,7 @@ class IndexWriter:
         slot: str,
         segment: str,
         meta: EntryMeta | None,
+        entry: SourceEntry,
     ) -> None:
         known = state.slots.get(slot)
         if meta is None and (known is not None or slot in batch.slots):
@@ -1642,20 +1732,25 @@ class IndexWriter:
         country = (described.country if described else None) or (
             meta.country if meta else None
         )
+        key = entry.slot_key
         pending = batch.slots.get(slot)
         if pending is not None:
             pending.unit = pending.unit or unit
             pending.product = pending.product or product
             pending.country = pending.country or country
+            pending.key = pending.key or key
             return
         if (
             known is not None
             and (unit is None or unit == known.unit)
             and (product is None or product == known.product)
             and (country is None or country == known.country)
+            and (key is None or key == known.key)
         ):
             return
-        batch.slots[slot] = _SlotWrite(segment, unit, product, country)
+        batch.slots[slot] = _SlotWrite(
+            segment, unit, product, country, key, entry.slot_name
+        )
 
     def _plan_version(
         self,
@@ -1735,7 +1830,8 @@ class IndexWriter:
                         store_id,
                         segment_id(write.segment),
                         slot,
-                        PurePosixPath(slot).name,
+                        write.name or PurePosixPath(slot).name,
+                        write.key,
                         write.unit,
                         write.product,
                         write.country,
@@ -1747,7 +1843,8 @@ class IndexWriter:
             if unknown_slots:
                 for row in connection.execute(
                     "SELECT path, id, current_path, full_sheet_path, unit, product,"
-                    f" country FROM slots WHERE store_id = ? AND path IN ({_IDS})",
+                    " country, slot_key FROM slots"
+                    f" WHERE store_id = ? AND path IN ({_IDS})",
                     (store_id, json.dumps(unknown_slots)),
                 ).fetchall():
                     fresh_slots[str(row[0])] = _KnownSlot(int(row[1]), *row[2:])
@@ -1822,6 +1919,25 @@ class IndexWriter:
                             int(issue_id),
                             None if issue_slot is None else int(issue_slot),
                         )
+            connection.executemany(
+                _INSERT_OBSERVATION,
+                [
+                    (
+                        store_id,
+                        segment_id(write.segment),
+                        slot_id(write.slot),
+                        path,
+                        write.version_path,
+                        _utc(write.record.seen_at),
+                        write.record.url,
+                        write.record.etag,
+                        write.record.last_modified,
+                        write.record.size_bytes,
+                        write.record.sha256,
+                    )
+                    for path, write in batch.observations.items()
+                ],
+            )
             affected = {slot_id(slot) for slot in batch.slots}
             affected.update(slot_id(write.slot) for write in batch.versions.values())
             affected.update(slot_id(slot) for slot in batch.links)
@@ -1840,6 +1956,7 @@ class IndexWriter:
             known_slot.unit = pending.unit or known_slot.unit
             known_slot.product = pending.product or known_slot.product
             known_slot.country = pending.country or known_slot.country
+            known_slot.key = pending.key or known_slot.key
             state.slots[slot] = known_slot
         for slot, target in batch.links.items():
             state.slots[slot].current_path = target
@@ -1847,6 +1964,7 @@ class IndexWriter:
             state.slots[slot].full_sheet_path = target
         state.versions.update(fresh_versions)
         state.issues.update(fresh_issues)
+        state.observations.update(batch.observations)
         state.reappeared += len(batch.reappeared)
         return BatchResult(
             needs_footprint=tuple(batch.needs_footprint),
@@ -1954,6 +2072,7 @@ def _meta_row(meta: EntryMeta) -> tuple[object, ...]:
         _iso(meta.downloaded_at),
         meta.dataset,
         meta.dataset_key,
+        meta.provider,
         meta.product,
         meta.country,
         meta.unit,

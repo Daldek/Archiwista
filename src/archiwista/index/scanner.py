@@ -66,6 +66,7 @@ from archiwista.sources import (
     GeoJSONGeometry,
     PartitionedAdapter,
     ScanScope,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SourceAdapter,
     SourceEntry,
@@ -210,7 +211,10 @@ def scan_store(
     producer splits them (``AppSettings.scan_threads``), those of a local
     store by one thread; batches are written by the calling thread and
     footprints computed without network. After a pass over the whole store,
-    the producer's projects are scanned too (``scan_projects``).
+    the producer's projects are scanned too (``scan_projects``). A producer
+    that lists no segments but can describe them (``SegmentDescriptionAdapter``)
+    is read whole, and the segments its entries named are described at the
+    end of the pass.
 
     Parameters
     ----------
@@ -295,6 +299,17 @@ def scan_store(
             finally:
                 readers.close()
             footprints.finish()
+            if listed is None and isinstance(adapter, SegmentDescriptionAdapter):
+                # No list of segments to describe first: describe the ones the
+                # entries named, for a producer that cannot read one alone.
+                writer.write_segments(
+                    store,
+                    adapter.producer,
+                    [
+                        adapter.describe_segment(name)
+                        for name in sorted(totals.segments_seen)
+                    ],
+                )
             # Listings of a share unmounted mid-scan end empty without an error.
             if segment is None and totals.entries == 0 and writer.holds_entries():
                 raise _empty_store(root)
@@ -517,6 +532,8 @@ class _Totals:
     links_changed: int = 0
     issues_added: int = 0
     segments: list[SegmentScan] = field(default_factory=list)
+    # Segments the entries named: for a producer that lists none.
+    segments_seen: set[str] = field(default_factory=set)
 
     def add(self, result: BatchResult) -> None:
         self.versions_written += result.versions_written
@@ -816,6 +833,7 @@ def _write_batch(
 ) -> None:
     result = writer.write_entries(batch)
     totals.add(result)
+    totals.segments_seen.update(entry.segment for entry in batch if entry.segment)
     footprints.submit(result.needs_footprint)
 
 

@@ -52,13 +52,24 @@ command-line interface may change.
   Kartograf directory of the same store is still scanned and probed, and a store whose
   every source is unavailable starts no scan; the notice does not keep a routine scan
   from being forgotten. Files of an IMGW directory are indexed as versions of their
-  slots, without a current version; the index of its archives, series and catalogs
-  follows. (SPEC 5.5, 5.8)
+  slots (the entry on the index of IMGW slots below). (SPEC 5.5, 5.8)
 - A producer directory that lies inside a store of any producer, or holds one, is refused
   as `root_nested` at its own field: an ancestor of the directory holds `kartograf-store.json`
   or `imgw-store.json`, or a directory up to two levels below it does (no link is
   followed; the producer's own writer looks at the whole tree). Only a new or a moved
   directory is looked around, so an unplugged share does not block other edits. (DEV-19.14)
+- The index of an IMGW directory keeps what IMGWTools calls things (`SCHEMA_VERSION` 7:
+  an existing index is rebuilt when it is opened and filled by the next full scan, as
+  with every schema change). The segment of an archive, a series or a station catalog
+  is its dataset, named in Polish from the producer's registry (`Dane hydrologiczne
+  dobowe`, `Katalog stacji ČHMÚ`) with the country of its provider; a slot keeps the
+  producer's own key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) and is named by
+  its file (a catalog by its key); a version keeps its provider (`IMGW-PIB`, `CHMI`).
+  The observation register of an archive (a source republished the same content under a
+  new signal) is kept as the history of its slot (`IndexQueries.observations`) and is
+  neither a version, a current version nor part of any count; a record the producer no
+  longer lists is forgotten. A producer that lists no segments can describe the ones
+  its entries name (`SegmentDescriptionAdapter`). (SPEC 4.3, ADR 0032)
 
 ### Changed
 

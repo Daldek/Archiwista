@@ -2,9 +2,9 @@
 
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
-``SourceAdapter``. Segments, their parts, coordinate operations, link
-confirmation and sheet grids are optional capabilities: a producer without
-them still satisfies ``SourceAdapter``.
+``SourceAdapter``. Segments (and the description of segments), their parts,
+coordinate operations, link confirmation and sheet grids are optional
+capabilities: a producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -86,15 +86,25 @@ class SheetGridAdapter(Protocol):
 
 
 @runtime_checkable
-class SegmentedAdapter(Protocol):
+class SegmentDescriptionAdapter(Protocol):
+    """Optional capability: the producer describes the segments its entries carry.
+
+    For a producer whose entries name a segment (a dataset, a product) but
+    that cannot read one segment on its own: the scan describes each segment
+    it met. A ``SegmentedAdapter`` has it too.
+    """
+
+    def describe_segment(self, segment: str) -> SourceSegment:
+        """Describe a segment: product, country, and a human-readable name."""
+        ...
+
+
+@runtime_checkable
+class SegmentedAdapter(SegmentDescriptionAdapter, Protocol):
     """Optional capability: a store split into independently scanned segments."""
 
     def segments(self, root: Path) -> tuple[str, ...]:
         """List the segments; their scans together equal one unscoped scan."""
-        ...
-
-    def describe_segment(self, segment: str) -> SourceSegment:
-        """Describe a segment: product, country, and a human-readable name."""
         ...
 
 

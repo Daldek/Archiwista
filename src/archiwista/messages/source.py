@@ -65,6 +65,10 @@ MESSAGES = {
             " imgw-store.json"
         ),
     ),
+    "imgw_catalog": Text(
+        "Station catalog of {provider}",
+        "Katalog stacji {provider}",
+    ),
     "schema_unknown": Text(
         "unknown",
         "nieznany",
