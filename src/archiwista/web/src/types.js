@@ -681,11 +681,14 @@
  */
 
 /**
- * A sheet of a map sheet grid with its outline.
+ * A sheet of a map sheet grid with its zone and outline.
  *
  * @typedef {object} Sheet
  * @property {string} sheet - Sheet code (godło).
- * @property {Geometry} geometry - GeoJSON polygon in WGS84.
+ * @property {number|null} zone - PL-2000 zone (5-8) of the powiats the sheet lies over;
+ *   `null` in PL-1992.
+ * @property {Geometry} geometry - GeoJSON Polygon or MultiPolygon in WGS84: the sheet, or
+ *   the part of a PL-2000 sheet inside its zone where a zone boundary cuts it.
  */
 
 /**

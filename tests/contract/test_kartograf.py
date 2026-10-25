@@ -7,6 +7,7 @@ pinned coordinate operations.
 """
 
 import inspect
+import json
 import os
 import socket
 from collections import Counter
@@ -19,6 +20,7 @@ from typing import Any, cast
 import kartograf
 import numpy as np
 import pytest
+import shapely
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
@@ -727,6 +729,37 @@ def test_sheet_grid_outlines_cover_the_area(adapter: KartografAdapter) -> None:
     )
     assert len(grid_2000.outlines) == len(grid_2000.sheets) == 1
     assert _contains(grid_2000.outlines[0], 19.0015, 50.0015)
+
+
+def test_sheet_grid_outlines_each_zone_on_its_own_side(
+    adapter: KartografAdapter,
+) -> None:
+    """Each PL-2000 zone's sheets are outlined only on its own side.
+
+    Across the zone 6/7 boundary (Kartograf ADR-055: zones of powiats) the map
+    never draws two grids over each other; a cut sheet keeps the extent of the
+    whole sheet, by which ``GET /map/sheets`` sizes a view.
+    """
+    grid = adapter.sheet_grid((19.3, 51.95, 19.7, 52.05), "2000", "1:2000")
+    shapes = [shapely.from_geojson(json.dumps(outline)) for outline in grid.outlines]
+    by_zone: dict[int | None, list[Any]] = {}
+    for zone, shape in zip(grid.zones, shapes, strict=True):
+        by_zone.setdefault(zone, []).append(shape)
+
+    overlap = shapely.intersection(
+        shapely.union_all(by_zone[6]), shapely.union_all(by_zone[7])
+    )
+    assert set(by_zone) == {6, 7}
+    assert list(grid.zones) == [int(sheet.split(".")[0]) for sheet in grid.sheets]
+    assert shapely.area(overlap) < 1e-12  # square degrees: under 0.01 m2
+    assert all(
+        shapely.covers(shapely.box(*extent), shape)
+        for extent, shape in zip(grid.extents, shapes, strict=True)
+    )
+    assert any(
+        shapely.area(shape) < 0.9 * shapely.area(shapely.box(*extent))
+        for extent, shape in zip(grid.extents, shapes, strict=True)
+    )
 
 
 def test_countries_of_a_border_area(adapter: KartografAdapter) -> None:

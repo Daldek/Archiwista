@@ -348,13 +348,19 @@ class ProjectInfo:
 class SheetGrid:
     """Report an optional grid capability or its unsupported state.
 
-    ``outlines`` holds the WGS84 polygon of each sheet, in the order of
-    ``sheets``.
+    In the order of ``sheets``: ``outlines`` holds the WGS84 polygon a map
+    draws of each sheet, ``zones`` its zone (Kartograf: the PL-2000 zone 5-8,
+    ``None`` in PL-1992) and ``extents`` the WGS84 envelope
+    ``(min_lon, min_lat, max_lon, max_lat)`` of the whole sheet. A sheet that a
+    zone boundary cuts is outlined inside its zone only, so the sheets of two
+    zones never overlap; its extent stays the whole sheet's.
     """
 
     status: Literal["available", "unsupported"]
     sheets: tuple[str, ...] = ()
     outlines: tuple[GeoJSONGeometry, ...] = ()
+    zones: tuple[int | None, ...] = ()
+    extents: tuple[tuple[float, float, float, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

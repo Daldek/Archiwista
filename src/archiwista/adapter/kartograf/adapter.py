@@ -23,13 +23,12 @@ from kartograf import (
     BBox,
     InvalidSidecarError,
     KartografError,
-    SheetParser,
     StoreEntry,
     __version__,
     countries_for_bbox,
     describe_segment,
     file_footprint,
-    find_sheets_for_bbox,
+    find_sheet_outlines,
     get_project_status,
     iter_store,
     link_target,
@@ -429,7 +428,11 @@ class KartografAdapter:
     def sheet_grid(
         self, area: tuple[float, float, float, float], system: str, scale: str
     ) -> SheetGrid:
-        """Find the sheets of a WGS84 area with their WGS84 outlines.
+        """Find the sheets of a WGS84 area with their outlines, zones and extents.
+
+        Kartograf's ``find_sheet_outlines``: a PL-2000 sheet belongs to the zone
+        of the powiats it lies over (Kartograf ADR-055), and a sheet that a zone
+        boundary cuts is outlined inside its zone only.
 
         Parameters
         ----------
@@ -446,11 +449,24 @@ class KartografAdapter:
             Kartograf does not support the system or scale.
         """
         try:
-            codes = tuple(find_sheets_for_bbox(BBox(*area, _WGS84), scale, system))
-            outlines = tuple(_sheet_outline(code, system) for code in codes)
+            found = find_sheet_outlines(BBox(*area, _WGS84), scale, system)
         except KartografError as error:
             raise _producer_error(error) from error
-        return SheetGrid(status="available", sheets=codes, outlines=outlines)
+        return SheetGrid(
+            status="available",
+            sheets=tuple(sheet.sheet for sheet in found),
+            outlines=tuple(sheet.outline for sheet in found),
+            zones=tuple(sheet.zone for sheet in found),
+            extents=tuple(
+                (
+                    float(sheet.bbox.min_x),
+                    float(sheet.bbox.min_y),
+                    float(sheet.bbox.max_x),
+                    float(sheet.bbox.max_y),
+                )
+                for sheet in found
+            ),
+        )
 
     def commands(self) -> tuple[CommandInfo, ...]:
         """Return Kartograf's catalog (``list_commands``, ``command_schema``)."""
@@ -785,23 +801,6 @@ def _severity(status: str) -> int:
     if status in _STATUS_ORDER:
         return _STATUS_ORDER.index(status)
     return len(_STATUS_ORDER)
-
-
-def _sheet_outline(code: str, system: str) -> GeoJSONGeometry:
-    """WGS84 polygon of a sheet: exact for PL-1992, pinned corners for PL-2000."""
-    parser = SheetParser(code)
-    if system == "1992":
-        return _polygon(parser.get_bbox(_WGS84))
-    native = parser.get_bbox()
-    corners = [
-        (native.min_x, native.min_y),
-        (native.max_x, native.min_y),
-        (native.max_x, native.max_y),
-        (native.min_x, native.max_y),
-    ]
-    pinned = pinned_transform(native.crs, _WGS84)
-    ring = [[float(value) for value in pinned.transform(x, y)] for x, y in corners]
-    return {"type": "Polygon", "coordinates": [[*ring, ring[0]]]}
 
 
 def _polygon(bbox: Any) -> GeoJSONGeometry:

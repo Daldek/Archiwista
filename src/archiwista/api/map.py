@@ -4,9 +4,10 @@
 outlines in the view, above that a grid of counts, and always the catalog's
 location groups (``groups.none`` is the "files without outline" counter that
 leads to the catalog). ``GET /map/sheets`` asks a producer for the sheets of
-a sheet system and scale in the view (Kartograf: PL-1992 and PL-2000); a
-view with far more sheets than ``MAP_FOOTPRINT_LIMIT`` is refused before the
-grid is drawn.
+a sheet system and scale in the view (Kartograf: PL-1992 and PL-2000), each
+with its zone and an outline that a zone boundary cuts (the sheets of two
+PL-2000 zones never overlap); a view with far more sheets than
+``MAP_FOOTPRINT_LIMIT`` is refused before the grid is drawn.
 """
 
 import math
@@ -34,7 +35,7 @@ from archiwista.api.slots import checked_project, checked_store
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import AppSettings, SettingsService
 from archiwista.index import MAP_FOOTPRINT_LIMIT, BBox, IndexQueries
-from archiwista.index.geometry import polygon_bounds, require_wgs84_bbox
+from archiwista.index.geometry import require_wgs84_bbox
 from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.sources import SheetGridAdapter
@@ -113,8 +114,10 @@ def sheet_list(registry: PluginRegistry, filters: SheetFilters) -> SheetList:
         update={
             "status": grid.status,
             "items": [
-                Sheet(sheet=sheet, geometry=outline)
-                for sheet, outline in zip(grid.sheets, grid.outlines, strict=True)
+                Sheet(sheet=sheet, zone=zone, geometry=outline)
+                for sheet, zone, outline in zip(
+                    grid.sheets, grid.zones, grid.outlines, strict=True
+                )
             ],
         }
     )
@@ -125,7 +128,9 @@ def _estimated_sheets(
 ) -> int | None:
     """Estimate the sheets of a view from the size of the sheet at its centre.
 
-    ``None`` when no sheet lies at the centre (outside the grid's extent).
+    The size is the extent of the whole sheet: the outline of a sheet that a
+    zone boundary cuts is only a part of it. ``None`` when no sheet lies at the
+    centre (outside the grid's extent).
     """
     min_lon, min_lat, max_lon, max_lat = bbox
     lon = (min_lon + max_lon) / 2
@@ -133,10 +138,10 @@ def _estimated_sheets(
     probe = adapter.sheet_grid(
         (lon, lat, lon + _PROBE_DEG, lat + _PROBE_DEG), system, scale
     )
-    bounds = polygon_bounds(probe.outlines[0]) if probe.outlines else None
-    if bounds is None:
+    if not probe.extents:
         return None
-    width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    west, south, east, north = probe.extents[0]
+    width, height = east - west, north - south
     if width <= 0 or height <= 0:
         return None
     columns = math.ceil((max_lon - min_lon) / width)

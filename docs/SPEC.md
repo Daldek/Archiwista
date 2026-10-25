@@ -680,7 +680,7 @@ Rules common to all producers and products:
 - **Refresh on demand for a view:** when the user asks about an area
   and a product, Archiwista first refreshes exactly the slots of the units of that
   area (`iter_store(segment=…, units=…)`, KA-1; units from the availability
-  report, from the sheet grid `find_sheets_for_bbox` or from footprints
+  report, from the sheet grid `find_sheet_outlines` or from footprints
   in the index), and only then shows the state of the store — the answer to
   the current question is up to date within seconds, also on SMB, independently of
   full scans. Known version directories of the area's slots and of their neighbours
@@ -3073,7 +3073,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /requests/{parent_request}` | files of one Kartograf job (also PL and CZ); `/groups` belongs to permission groups |
 | `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1) |
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
-| `GET /map/sheets` | sheet grid in the view (`system`, `scale`) |
+| `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
 | `GET /map/stations` | IMGW station points in the view (`bbox`, `zoom`, filters) as GeoJSON or clusters |
 | `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `product`, `variable` (repeatable: stations having the variable), `kind`, `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`), `min_complete_years` (repeatable, e.g. `Q:30`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`) with coverage labels separately for each variable of the station (P16), an archive badge and location groups with counters (stations without a location — after attribute filters, 6.8) |
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series and input archives, IMGW formulas |

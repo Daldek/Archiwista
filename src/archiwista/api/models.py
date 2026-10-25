@@ -1567,12 +1567,26 @@ class MapView(IndexAnswer):
 
 
 class Sheet(BaseModel):
-    """A sheet of a map sheet grid with its outline."""
+    """A sheet of a map sheet grid with its zone and outline."""
 
-    model_config = _examples({"sheet": "N-34-130-D-d-2-4", "geometry": _POLYGON})
+    model_config = _examples(
+        {"sheet": "N-34-130-D-d-2-4", "zone": None, "geometry": _POLYGON}
+    )
 
     sheet: str = Field(description="Sheet code (godło).")
-    geometry: Geometry = Field(description="GeoJSON polygon in WGS84.")
+    zone: int | None = Field(
+        description=(
+            "Zone of the sheet in its system: the PL-2000 zone (5-8) of the powiats"
+            " it lies over; `null` in a system without zones (PL-1992)."
+        )
+    )
+    geometry: Geometry = Field(
+        description=(
+            "GeoJSON Polygon or MultiPolygon in WGS84: the sheet, or the part of a"
+            " PL-2000 sheet inside its zone where a zone boundary cuts it, so the"
+            " sheets of two zones never overlap."
+        )
+    )
 
 
 class SheetList(BaseModel):
@@ -1584,7 +1598,9 @@ class SheetList(BaseModel):
             "system": "1992",
             "scale": "1:10000",
             "status": "available",
-            "items": [{"sheet": "N-34-130-D-d-2-4", "geometry": _POLYGON}],
+            "items": [
+                {"sheet": "N-34-130-D-d-2-4", "zone": None, "geometry": _POLYGON}
+            ],
         }
     )
 

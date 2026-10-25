@@ -168,6 +168,12 @@ command-line interface may change.
 
 ### Changed
 
+- `GET /map/sheets` items carry `zone`: the PL-2000 zone (5-8) of the powiats the sheet lies
+  over, `null` in PL-1992; the `geometry` of a PL-2000 sheet that a zone boundary cuts is its
+  part inside its zone (a `Polygon` or `MultiPolygon`). The adapter's `sheet_grid` takes
+  Kartograf's `find_sheet_outlines` (Kartograf pinned at `34fab30b`), and `SheetGrid` holds
+  the `zones` and the `extents` of the whole sheets; a view is sized by the extent of the
+  sheet at its centre, not by its outline.
 - The problems of a store, the problems of a file card and the pins of a project name the
   producer they belong to in their fix instructions, not the first producer of the store.
 - **Breaking:** errors follow the Nogat error registry. Every problem of the HTTP API has
@@ -286,6 +292,13 @@ command-line interface may change.
 
 ### Fixed
 
+- The PL-2000 sheet grid ("Siatka godeł") of a view across a zone boundary drew two whole
+  grids over each other: Kartograf took the zones as longitude strips and gave every zone's
+  sheets over the whole view (19.3-19.7 E x 51.95-52.05 N at 1:2000: 228 + 228 sheets, 862
+  pairs of sheets of different zones overlapping). A zone is now the area of its powiats
+  (§ 22 of the regulation on the national spatial reference system, Dz.U. 2012 poz. 1247;
+  Kartograf ADR-055), and each zone's sheets are drawn only inside it (the same view: 214
+  zone-6 and 29 zone-7 sheets, none overlapping).
 - A job worker that was interrupted ends itself `STOP_TIMEOUT_S` (30 s) after its first
   interrupt, with the stacks of its threads in the job log, wherever it waits (the
   watchdog of `faulthandler` runs in C). Before, only the supervisor's killer ended a
