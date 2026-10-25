@@ -30,7 +30,7 @@ działa.
 
 1. **Komputer odniesienia i GPU (SPEC 4.5, 13 v0.2).** Ten sam co w v0.1
    (decyzja 1 planu v0.1: i5-6400, 4 CPU, 15,6 GiB RAM, SSD `/dev/sdb`
-   z ext4; udział SMB 3 `//magazyn.local/agent-tmp`). Karta graficzna:
+   z ext4; udział SMB 3 `//<smb-host>/<scratch-dir>`). Karta graficzna:
    NVIDIA GeForce GTX 1060 6 GB (`lspci`: GP106), sterownik jądra `nouveau`,
    Mesa z `nouveau_dri.so`; węzły `/dev/dri/card0` (`root:video`)
    i `/dev/dri/renderD128` (`root:render`, `0660`). Konto, z którego biegły
