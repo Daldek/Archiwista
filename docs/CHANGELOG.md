@@ -234,6 +234,11 @@ command-line interface may change.
   the switch of `cache.sqlite` to WAL with "database is locked" at once, without the
   busy timeout, in a process that read the file's header while another one wrote it,
   and that process ended at its start; now it tries again for up to the busy timeout.
+- Archiwista declares `affine>=3,<4`. The previews transform with the `@` operator of
+  affine 3; rasterio also admits affine 2, where `@` raises `TypeError`, so in an
+  environment that resolved affine 2 every preview was unreadable (Hydrograf caps
+  affine below 3, and the environment of the ecosystem's integration run held both).
+  A resolver now refuses such an environment.
 
 ## [0.2.0] - 2026-10-20
 

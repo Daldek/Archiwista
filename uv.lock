@@ -54,6 +54,7 @@ name = "archiwista"
 version = "0.3.0.dev0"
 source = { editable = "." }
 dependencies = [
+    { name = "affine" },
     { name = "fastapi" },
     { name = "kartograf" },
     { name = "laspy", extra = ["lazrs"] },
@@ -85,6 +86,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "affine", specifier = ">=3,<4" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "imgwtools", extras = ["store"], marker = "extra == 'imgw'", git = "https://github.com/Daldek/IMGWTools?rev=3f7de36f98f1ba40d72ab5556942567cfbc55b92" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=45dedf4a155e2d2f7302459a8c383876fed98e98" },

@@ -35,6 +35,10 @@ dependencies = [
     # colours and encodes images. Below 9.1, which requires httpx2: with it
     # installed, Starlette's TestClient (and its types) switch to httpx2.
     "rio-tiler>=9.0,<9.1",
+    # The previews transform with `@` (`Affine @ Affine`, `Affine @ (x, y)`), which
+    # affine 3 brought; rasterio also admits affine 2, where `@` raises TypeError
+    # and every preview is unreadable.
+    "affine>=3,<4",
     # Point clouds: LAZ headers, CRS from VLRs and chunked reads (lazrs).
     "laspy[lazrs]>=2.7,<3",
 ]
