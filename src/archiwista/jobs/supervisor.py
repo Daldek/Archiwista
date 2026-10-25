@@ -85,6 +85,7 @@ from archiwista.jobs.protocol import (
     JOB_KINDS,
     REASON_INTERRUPTED,
     REASON_WORKER_CRASHED,
+    STOP_TIMEOUT_S,
     JobKind,
     JobSpec,
     JsonObject,
@@ -135,8 +136,6 @@ _FILE_ID = re.compile(r"[0-9a-f]{16}")
 # and of a store's version: what a job's scope is made of (``_Scope``).
 _PROJECT_REFS = ("file", "snapshot")
 _VERSION_REF = "version:"
-# Seconds an interrupted worker has to stop before it is killed.
-STOP_TIMEOUT_S = 30.0
 LOG_MAX_AGE = timedelta(days=90)
 LOG_MAX_BYTES = 1024**3
 # Routine scans (scheduled, incremental, nothing changed) older than this go.

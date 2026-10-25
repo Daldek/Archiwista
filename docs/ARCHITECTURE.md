@@ -725,7 +725,15 @@ w `sessionStorage`. Sesje żyją w pamięci serwera: koniec po 24 h bez żądań
    i zatrzymanie serwera (`close`) wysyłają SIGINT (Windows:
    `CTRL_BREAK_EVENT`) i zabijają proces po 30 s; skan porzuca wtedy
    przebieg. Proces roboczy, któremu zniknął nadzorca (koniec stdin),
-   przerywa się sam. Zadanie bez żywego nadzorcy (blokada
+   przerywa się sam. Pierwsze przerwanie uruchamia w procesie roboczym
+   zegar `faulthandler` (`_handle_interrupts`, `STOP_TIMEOUT_S` z
+   `jobs/protocol.py`): po 30 s proces zapisuje stosy wątków do dziennika
+   zadania i kończy się ze statusem 1, także gdy czeka w procedurze wyjścia
+   albo nikt już go nie zabije (zegar działa w C, więc nie zatrzyma go
+   blokada, którą trzyma kod Pythona; po przerwaniu w złym momencie zostawia
+   taką blokadę śledzenie `coverage`). Zegar nie obejmuje przerwania, które
+   przychodzi, zanim proces roboczy zaimportuje moduły i ustawi obsługę:
+   takiego zabija nadzorca. Zadanie bez żywego nadzorcy (blokada
    `owner-<pid>.lock` zwolniona przez system) dostaje `interrupted` przy
    najbliższym spotkaniu: `recover` przy starcie nadzorcy albo `submit`
    zadania piszącego indeks tego samego magazynu.

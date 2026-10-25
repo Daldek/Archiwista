@@ -106,6 +106,15 @@ command-line interface may change.
   that its types rejected are corrected and the `ignore_missing_imports`
   override is gone.
 
+### Fixed
+
+- A job worker that was interrupted ends itself `STOP_TIMEOUT_S` (30 s) after its first
+  interrupt, with the stacks of its threads in the job log, wherever it waits (the
+  watchdog of `faulthandler` runs in C). Before, only the supervisor's killer ended a
+  worker that did not stop, so one whose supervisor was gone could stay for good: under
+  `--cov` an interrupt that lands in coverage's tracer at the wrong moment leaves the
+  tracer's lock held, and the worker waits for it in its exit handler.
+
 ## [0.2.0] - 2026-10-20
 
 Release "Previews".

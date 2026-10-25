@@ -41,6 +41,10 @@ from archiwista.config import AppSettings
 PROTOCOL_VERSION = 5
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
+# Seconds an interrupted worker has to stop. The supervisor kills it then, and
+# the worker ends itself then, for the case that the supervisor is gone or the
+# stop stalls (``archiwista.jobs.worker``).
+STOP_TIMEOUT_S = 30.0
 
 # One line per kind; its rule is in ``archiwista.jobs.supervisor.JOB_RULES``.
 type JobKind = Literal[

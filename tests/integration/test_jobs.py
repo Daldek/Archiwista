@@ -842,6 +842,39 @@ def test_worker_rejects_unreadable_job() -> None:
     assert message.data["details"] == {"reason": "protocol_error"}
 
 
+# A process that is interrupted and then waits in an exit handler for good, as
+# a job worker does when the interrupt left a lock of coverage's tracer held.
+STALLED_STOP = """
+import atexit, os, signal, threading
+from archiwista.jobs.worker import _handle_interrupts
+
+_handle_interrupts(2.0)
+atexit.register(threading.Event().wait)
+try:
+    os.kill(os.getpid(), signal.SIGINT)
+    threading.Event().wait(60)
+except KeyboardInterrupt:
+    pass
+"""
+
+
+def test_interrupted_worker_that_stalls_in_an_exit_handler_ends_itself() -> None:
+    """The first interrupt arms a watchdog that ends a process stalled at exit."""
+    # Act
+    finished = subprocess.run(
+        [sys.executable, "-c", STALLED_STOP],
+        capture_output=True,
+        timeout=WAIT_S,
+        check=False,
+    )
+
+    # Assert
+    log = finished.stderr.decode("utf-8", "replace")
+    assert finished.returncode == 1
+    assert "Timeout (0:00:02)!" in log
+    assert "in wait" in log  # the stack of the thread that stalls
+
+
 def test_error_of_an_earlier_version_reads_with_a_registry_code(env: JobsEnv) -> None:
     """A stored job error of 0.2.x is read as a registry code and its reason."""
     # Arrange

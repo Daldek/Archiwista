@@ -23,10 +23,13 @@ input, runs it and reports in JSON Lines on standard output
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
 with status 130 without a message. The end of standard input means the
-supervisor is gone; the worker then interrupts itself the same way.
+supervisor is gone; the worker then interrupts itself the same way. The first
+interrupt also starts a watchdog that ends the process after ``STOP_TIMEOUT_S``
+whatever it is doing (`_handle_interrupts`).
 """
 
 import _thread
+import faulthandler
 import logging
 import os
 import signal
@@ -37,6 +40,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
+from types import FrameType
 from typing import IO, cast
 
 from archiwista.auth import ALL_PROJECTS
@@ -73,6 +77,7 @@ from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
     INTERRUPTED_EXIT,
     REASON_PROTOCOL_ERROR,
+    STOP_TIMEOUT_S,
     JobKind,
     JobSpec,
     JsonObject,
@@ -701,14 +706,38 @@ def _protocol_stream() -> IO[str]:
     return os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
 
 
-def _handle_interrupts() -> None:
-    """Turn the supervisor's interrupt into ``KeyboardInterrupt``.
+def _handle_interrupts(stop_timeout_s: float = STOP_TIMEOUT_S) -> None:
+    """Turn the supervisor's interrupt into ``KeyboardInterrupt``, for a limited time.
 
-    The default handler may be missing when the parent ignores SIGINT.
+    The first interrupt also starts the watchdog of ``faulthandler``: after
+    ``stop_timeout_s`` it writes the stacks of all threads to the job's log and
+    ends the process with status 1, as the supervisor's killer does when the
+    supervisor is alive. A process the supervisor cannot kill (it is gone, or
+    the interrupt came from the end of standard input) or one that stalls in
+    an exit handler thus stops too: the watchdog is a thread in C, so no lock
+    that Python code holds for good can stop it. The tracer of ``coverage``
+    holds such a lock when the interrupt lands in it at the wrong moment
+    (``Collector.unlock_data``). A later interrupt does not extend the limit.
+
+    Parameters
+    ----------
+    stop_timeout_s : float, default ``STOP_TIMEOUT_S``
+        Seconds from the first interrupt to the end of the process.
     """
-    signal.signal(signal.SIGINT, signal.default_int_handler)
+    armed = False
+
+    def interrupt(signum: int, frame: FrameType | None) -> None:
+        nonlocal armed
+        if not armed:
+            armed = True
+            with suppress(OSError, RuntimeError, ValueError):  # no log: no watchdog
+                faulthandler.dump_traceback_later(stop_timeout_s, exit=True)
+        raise KeyboardInterrupt
+
+    # The default handler may be missing when the parent ignores SIGINT.
+    signal.signal(signal.SIGINT, interrupt)
     if sys.platform == "win32":  # pragma: no cover - Windows
-        signal.signal(signal.SIGBREAK, signal.default_int_handler)
+        signal.signal(signal.SIGBREAK, interrupt)
 
 
 def _read_line(descriptor: int) -> bytes:

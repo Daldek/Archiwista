@@ -15,7 +15,7 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` and the error texts that follow `Accept-Language` (English by default, Polish with the header, `Content-Language` on every JSON answer; the stored texts stay Polish); deviations in CLAUDE.md: the stored texts (AGI-6.4), outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The last run took 37 minutes under a load of 8 (1206 tests); a quiet machine needs 25 to 33 minutes, so start it without other test suites running. Four flakes found under load are fixed (`3bc0482`, `876824f`, `d14f2f3`, `ebd8ef1`): the one-second limit that was every build's in `test_preview_build_item_timeout_fails_item_only` (only the slow file has one now, `build_timeout_s`), the 5 s that an expectation of the interface tests waited for the page and the server (30 s now), the race of `tests/unit/test_sandbox.py` (a `/proc` read of a process reaped meanwhile) and one hang of `tests/e2e/test_timeline.py` that did not reproduce (`faulthandler_timeout = 600` writes the stacks of a test that runs ten minutes). A job worker interrupted under `--cov` can stay alive: `patch = ["subprocess"]` measures it, and an interrupt that arrives while coverage's tracer holds its `data_lock` leaves the lock held, so the worker waits for it in its exit handler for good (1 of 200 interrupted processes in a stress run; the supervisor kills such a worker after `STOP_TIMEOUT_S`, only one whose supervisor is gone stays: Next 5) |
+| Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The last run took 37 minutes under a load of 8 (1206 tests); a quiet machine needs 25 to 33 minutes, so start it without other test suites running. Four flakes found under load are fixed (`3bc0482`, `876824f`, `d14f2f3`, `ebd8ef1`): the one-second limit that was every build's in `test_preview_build_item_timeout_fails_item_only` (only the slow file has one now, `build_timeout_s`), the 5 s that an expectation of the interface tests waited for the page and the server (30 s now), the race of `tests/unit/test_sandbox.py` (a `/proc` read of a process reaped meanwhile) and one hang of `tests/e2e/test_timeline.py` that did not reproduce (`faulthandler_timeout = 600` writes the stacks of a test that runs ten minutes). A job worker interrupted under `--cov` could stay alive: `patch = ["subprocess"]` measures it, and an interrupt that lands in coverage's tracer while it holds its `data_lock` leaves the lock held, so the worker waited for it in its exit handler for good (1 of 200 interrupted processes in a stress run). The first interrupt of a worker now starts a `faulthandler` watchdog that ends it after `STOP_TIMEOUT_S` (`_handle_interrupts` in `jobs/worker.py`, status 1, stacks in the job log); it does not cover an interrupt that arrives while the worker still imports its modules, before the handler stands (the supervisor's killer ends such a worker) |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -91,16 +91,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    `tests/fixtures/make_store.py` when Kartograf ships it.
 4. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
    weekly `live.yml`.
-5. **A worker that outlives its supervisor under coverage** (Status, Gate). Not fixed yet; the
-   design: the SIGINT handler of the worker (`_handle_interrupts` in `jobs/worker.py`) arms
-   `faulthandler.dump_traceback_later(STOP_TIMEOUT_S, exit=True)` once and then raises
-   `KeyboardInterrupt` as before; the watchdog is in C, so it also ends a process that waits in
-   an exit handler (checked: it ends with status 1 and the stacks in the log). `STOP_TIMEOUT_S`
-   moves from `jobs/supervisor.py` to `jobs/protocol.py`, for the supervisor's killer and the
-   worker. A test starts a process that blocks in an exit handler, interrupts it and expects it
-   to end within the limit. `core = "sysmon"` only lowers the chance, and dropping
-   `patch = ["subprocess"]` loses the measurement of the workers.
-6. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
+5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
 ## Open questions
