@@ -15,8 +15,10 @@ environment the test sets, which the worker inherits:
     JSON file of ``PreviewSource`` objects by ref: the ``preview`` job
     resolves refs ``test:…`` from it and builds with the test renderer
     (``tests.fixtures.render_worker``).
-``ARCHIWISTA_TEST_BUILD_TIMEOUT_S``, ``ARCHIWISTA_TEST_BUILD_PROCESSES``
-    Time limit of one build and build processes at once of that job.
+``ARCHIWISTA_TEST_BUILD_PROCESSES``
+    Build processes at once of the ``preview`` job. The time limit of a build
+    is the file's own instruction ``timeout_s`` (``tests.fixtures.render_worker``),
+    so that only the file meant to be too slow can run out of time.
 ``ARCHIWISTA_TEST_SNAPSHOT_FAULT``
     ``<phase>:<signal>``, e.g. ``rename:SIGKILL``: the worker sends itself
     the signal when a snapshot reaches the phase (``SNAPSHOT_PHASES``).
@@ -48,7 +50,6 @@ DELAY_ENV = "ARCHIWISTA_TEST_ENTRY_DELAY_S"
 CRASH_ENV = "ARCHIWISTA_TEST_CRASH_AFTER"
 NO_NETWORK_ENV = "ARCHIWISTA_TEST_NO_NETWORK"
 PREVIEW_SOURCES_ENV = "ARCHIWISTA_TEST_PREVIEW_SOURCES"
-BUILD_TIMEOUT_ENV = "ARCHIWISTA_TEST_BUILD_TIMEOUT_S"
 BUILD_PROCESSES_ENV = "ARCHIWISTA_TEST_BUILD_PROCESSES"
 SNAPSHOT_FAULT_ENV = "ARCHIWISTA_TEST_SNAPSHOT_FAULT"
 
@@ -89,6 +90,12 @@ def _refuse_network(record: Path) -> None:
     socket.getaddrinfo = refuse
 
 
+def _build_timeout(source: PreviewSource) -> float:
+    """Return the build's time limit the file's instructions give, else the real one."""
+    steps = json.loads(source.paths[0].read_text(encoding="utf-8"))
+    return float(steps.get("timeout_s", build.BUILD_TIMEOUT_S))
+
+
 def _hook_previews(sources: Path) -> None:
     """Resolve ``test:`` refs from ``sources``; build with the test renderer."""
     table = json.loads(sources.read_text(encoding="utf-8"))
@@ -103,9 +110,7 @@ def _hook_previews(sources: Path) -> None:
 
     build.RESOLVERS = {**build.RESOLVERS, "test": resolver}
     build.BUILD_COMMAND = TEST_RENDER_WORKER
-    timeout = os.environ.get(BUILD_TIMEOUT_ENV)
-    if timeout:
-        build.BUILD_TIMEOUT_S = float(timeout)
+    build.build_timeout_s = _build_timeout
     processes = os.environ.get(BUILD_PROCESSES_ENV)
     if processes:
         build.build_processes = lambda: int(processes)

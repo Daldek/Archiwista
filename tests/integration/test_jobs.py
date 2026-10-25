@@ -40,11 +40,7 @@ from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
 from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
 from tests.fixtures.cli_errors import refusal
-from tests.fixtures.job_worker import (
-    BUILD_PROCESSES_ENV,
-    BUILD_TIMEOUT_ENV,
-    PREVIEW_SOURCES_ENV,
-)
+from tests.fixtures.job_worker import BUILD_PROCESSES_ENV, PREVIEW_SOURCES_ENV
 from tests.fixtures.jobs import (
     CRASH_ENV,
     DELAY_ENV,
@@ -1036,19 +1032,22 @@ def test_preview_build_joins_running_job(
 def test_preview_build_item_timeout_fails_item_only(
     env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A build past its time limit fails that file alone; the others are built."""
+    """A build past its time limit fails that file alone; the others are built.
+
+    Only the slow file has a limit, one second: it sleeps for an hour. The
+    other files keep the real limit, so how long their processes take to
+    start (a loaded computer) cannot fail them.
+    """
     # Arrange
-    monkeypatch.setenv(BUILD_TIMEOUT_ENV, "1")
     sources = _preview_sources(
         tmp_path,
         monkeypatch,
         {
-            "slow": {"needs_cog": True, "sleep_s": {"build": 60}},
+            "slow": {"needs_cog": True, "sleep_s": {"build": 3600}, "timeout_s": 1},
             "ok1": {"needs_cog": True},
             "ok2": {"needs_cog": True},
         },
     )
-    started = time.monotonic()
 
     # Act
     job = env.jobs.submit(
@@ -1057,7 +1056,6 @@ def test_preview_build_item_timeout_fails_item_only(
         actor=LOCAL_OWNER,
     )
     record = env.wait(job.id)
-    elapsed_s = time.monotonic() - started
 
     # Assert
     assert record.state == "succeeded", record
@@ -1067,7 +1065,6 @@ def test_preview_build_item_timeout_fails_item_only(
     ]
     detail = record.result["failed"][0]["detail"]
     assert detail and "/" not in detail
-    assert elapsed_s < 30
     with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
         assert not cache.has(cache_key(sources["slow"]), COG_NAME)
         assert cache.has(cache_key(sources["ok1"]), COG_NAME)

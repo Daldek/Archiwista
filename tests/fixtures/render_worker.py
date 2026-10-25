@@ -8,6 +8,9 @@ to do in every operation:
 ``sleep_s``
     Seconds to sleep first (time limits, overlap of builds): a number for
     every operation, or an object of seconds by operation (``{"build": 3}``).
+``timeout_s``
+    Not for this process: the time limit the job worker gives the build of
+    this file, in seconds (``tests.fixtures.job_worker``).
 ``allocate_bytes``
     Bytes to allocate (the address-space limit).
 ``signal``

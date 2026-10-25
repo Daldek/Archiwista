@@ -103,6 +103,11 @@ def build_processes() -> int:
     return max(1, (os.cpu_count() or 2) // 2)
 
 
+def build_timeout_s(source: PreviewSource) -> float:
+    """Return the time limit of the build process of ``source``, in seconds."""
+    return BUILD_TIMEOUT_S
+
+
 @dataclass(frozen=True, slots=True)
 class _Outcome:
     """How the build of one content ended, for all its refs.
@@ -269,10 +274,11 @@ class _Builder:
         if probe is not None:
             params["probe"] = probe.to_json()
         request = RenderRequest(secrets.token_hex(8), "build", source, params)
+        limit_s = build_timeout_s(source)
         try:
-            answer = self._run(request)
+            answer = self._run(request, limit_s)
         except subprocess.TimeoutExpired:
-            return _failure(refs, "timeout", None)
+            return _failure(refs, "timeout", None, limit_s)
         except _Ended as ended:
             code = "memory_limit" if ended.status == -signal.SIGKILL else "unreadable"
             detail = f"build process ended without an answer ({_status(ended.status)})"
@@ -310,8 +316,8 @@ class _Builder:
         self._cache.put(key, product, out)
         return _Outcome("built", refs)
 
-    def _run(self, request: RenderRequest) -> RenderAnswer:
-        """Run one build process to its end and return its answer."""
+    def _run(self, request: RenderRequest, limit_s: float) -> RenderAnswer:
+        """Run one build process to its end, or ``limit_s``, and return its answer."""
         argv = [*BUILD_COMMAND, "--work-dir", str(self._spec.work_dir)]
         with self._lock:
             if self._stopped:
@@ -329,7 +335,7 @@ class _Builder:
         try:
             data = (encode_request(request) + "\n").encode("utf-8")
             try:
-                output, _ = process.communicate(data, timeout=BUILD_TIMEOUT_S)
+                output, _ = process.communicate(data, timeout=limit_s)
             except subprocess.TimeoutExpired:
                 kill_untrusted(process)
                 process.communicate()
@@ -366,10 +372,15 @@ def _unresolved(ref: str, detail: str | None) -> str:
     return message("preview.build_unresolved", ref=ref, detail=reason)
 
 
-def _failure(refs: tuple[str, ...], code: str, detail: str | None) -> _Outcome:
+def _failure(
+    refs: tuple[str, ...],
+    code: str,
+    detail: str | None,
+    limit_s: float = BUILD_TIMEOUT_S,
+) -> _Outcome:
     """Return a failed build with a Polish detail (the library's appended)."""
     if code == "timeout":
-        minutes = round(BUILD_TIMEOUT_S / 60)
+        minutes = round(limit_s / 60)
         text: str = message("preview.build_timeout", minutes=minutes)
     elif code == "too_large":
         text = message("preview.build_too_large")
