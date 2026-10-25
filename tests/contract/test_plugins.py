@@ -15,7 +15,7 @@ import pytest
 from archiwista.config import AppPaths
 from archiwista.doctor import run_doctor
 from archiwista.errors import SourceIncompatibleError, SourceUnavailableError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources import (
     GeoAdapter,
     LinkCheckAdapter,
@@ -112,7 +112,7 @@ def test_plugins_missing_producer_package_is_not_installed(
 
     assert (state.status, state.detail) == (
         "not_installed",
-        MESSAGES["plugin_module_missing"].format(module="external_producer"),
+        message("plugin.module_missing", module="external_producer"),
     )
     with pytest.raises(SourceUnavailableError) as raised:
         registry.adapter("external")
@@ -160,10 +160,10 @@ def test_plugins_unsupported_schema_is_incompatible(
     ("value", "detail"),
     [
         ("external_source_plugin:load_failing", "RuntimeError: uszkodzona wtyczka"),
-        ("external_source_plugin:load_not_adapter", MESSAGES["plugin_not_adapter"]),
+        ("external_source_plugin:load_not_adapter", message("plugin.not_adapter")),
         (
             "external_source_plugin:load",
-            MESSAGES["plugin_wrong_producer"].format(declared="external"),
+            message("plugin.wrong_producer", declared="external"),
         ),
         ("missing_plugin_module:load", "ModuleNotFoundError"),
     ],

@@ -48,7 +48,7 @@ from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
 from archiwista.logs import DEFAULT_LOG_LEVEL
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.paths import private_directory
 from archiwista.previews.cache import PreviewCache
 from archiwista.previews.pool import RenderPool, default_render_workers
@@ -163,7 +163,7 @@ class LaunchFile:
             '<!doctype html>\n<html lang="pl">\n<head>\n<meta charset="utf-8">\n'
             f'<meta http-equiv="refresh" content="0;url={address}">\n'
             "<title>Archiwista</title>\n</head>\n"
-            f'<body><p><a href="{address}">{MESSAGES["serve_launch_link"]}</a></p>'
+            f'<body><p><a href="{address}">{message("serve.launch_link")}</a></p>'
             "</body>\n</html>\n"
         )
         with self._lock:
@@ -306,17 +306,15 @@ def serve_main(
         error (``2`` invalid settings, ``8``, ``9``).
     """
     if host != LOOPBACK_HOST:
-        message = MESSAGES["serve_host_refused"].format(
-            host=host, loopback=LOOPBACK_HOST
-        )
-        return fail(err, "validation_error", message, reason="host_refused")
+        text = message("serve.host_refused", host=host, loopback=LOOPBACK_HOST)
+        return fail(err, "validation_error", text, reason="host_refused")
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
         initialize(paths.index_file)
         state = StateStore(paths.state_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
-            exception_problem(error, with_detail(MESSAGES["serve_failed"], str(error))),
+            exception_problem(error, with_detail(message("serve.failed"), str(error))),
             err,
         )
     if port is None:
@@ -324,10 +322,8 @@ def serve_main(
     try:
         sock = bind_loopback(port)
     except OSError as error:
-        message = MESSAGES["serve_port_unavailable"].format(
-            host=LOOPBACK_HOST, port=port
-        )
-        detail = with_detail(message, error.strerror or str(error))
+        text = message("serve.port_unavailable", host=LOOPBACK_HOST, port=port)
+        detail = with_detail(text, error.strerror or str(error))
         return fail(err, "conflict", detail, reason="port_unavailable")
     with sock:
         bound_port: int = sock.getsockname()[1]
@@ -337,7 +333,7 @@ def serve_main(
         except OSError as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["serve_failed"], str(error))
+                    error, with_detail(message("serve.failed"), str(error))
                 ),
                 err,
             )
@@ -347,7 +343,7 @@ def serve_main(
             jobs.close()
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["serve_failed"], str(error))
+                    error, with_detail(message("serve.failed"), str(error))
                 ),
                 err,
             )
@@ -391,9 +387,7 @@ def serve_main(
                 on_stop=app.state.job_streams.close,
             )
             out.write(
-                MESSAGES["serve_started"].format(
-                    url=server.url, minutes=_minutes("startup")
-                )
+                message("serve.started", url=server.url, minutes=_minutes("startup"))
                 + "\n"
             )
             out.flush()
@@ -449,12 +443,12 @@ def token_main(
         initialize(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError) as error:
         return refuse(
-            exception_problem(error, with_detail(MESSAGES["token_failed"], str(error))),
+            exception_problem(error, with_detail(message("token.failed"), str(error))),
             err,
         )
     if revoke_all:
         refused = revoke_agent_sessions(paths.index_file)
-        out.write(MESSAGES["token_revoked"].format(count=refused) + "\n")
+        out.write(message("token.revoked", count=refused) + "\n")
         return 0
     # The owner at the terminal mints a token for an agent acting for them.
     issued = issue_one_time_token(paths.index_file, "agent", minted_by=LOCAL_OWNER)
@@ -469,13 +463,14 @@ def token_main(
         return 0
     out.write(token.url + "\n")
     expires = issued.expires_at.astimezone().strftime("%H:%M")
-    message = MESSAGES["token_issued"].format(
+    text = message(
+        "token.issued",
         label=issued.label,
         minutes=_minutes("agent"),
         time=expires,
         hours=int(AGENT_SESSION_MAX_AGE.total_seconds()) // 3600,
     )
-    err.write(message + "\n")
+    err.write(text + "\n")
     return 0
 
 

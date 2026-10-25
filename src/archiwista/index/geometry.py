@@ -22,7 +22,7 @@ import shapely
 from shapely.geometry import shape
 
 from archiwista.errors import IndexQueryError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources import CoordinateTransformer, FloatArray, GeoJSONGeometry
 
 type BBox = tuple[float, float, float, float]
@@ -186,7 +186,7 @@ def outlines_wgs84(
         np.concatenate([ys for _, ys in rings]),
     )
     if not (np.isfinite(lons).all() and np.isfinite(lats).all()):
-        raise ValueError(MESSAGES["index_outline_not_finite"].format(crs=native_crs))
+        raise ValueError(message("index.outline_not_finite", crs=native_crs))
     outlines: list[GeoJSONGeometry] = []
     start = 0
     for xs, _ in rings:
@@ -229,11 +229,11 @@ def require_wgs84_area(geometry: GeoJSONGeometry) -> BBox:
     """
     bounds = polygon_bounds(geometry)
     if bounds is None:
-        raise IndexQueryError(MESSAGES["index_invalid_area"])
+        raise IndexQueryError(message("index.invalid_area"))
     min_x, min_y, max_x, max_y = bounds
     inside = -180.0 <= min_x < max_x <= 180.0 and -90.0 <= min_y < max_y <= 90.0
     if not inside:
-        raise IndexQueryError(MESSAGES["index_invalid_area"])
+        raise IndexQueryError(message("index.invalid_area"))
     return bounds
 
 
@@ -250,7 +250,7 @@ def require_wgs84_bbox(bbox: BBox) -> BBox:
     if not (
         finite and -180.0 <= min_x < max_x <= 180.0 and -90.0 <= min_y < max_y <= 90.0
     ):
-        raise IndexQueryError(MESSAGES["index_invalid_bbox"])
+        raise IndexQueryError(message("index.invalid_bbox"))
     return (min_x, min_y, max_x, max_y)
 
 

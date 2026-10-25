@@ -27,7 +27,7 @@ from archiwista.errors import (
     SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import lookup, message, with_detail
 from archiwista.sources.protocol import SourceAdapter
 from archiwista.sources.types import SourceContext, SourceState, SourceStatus
 
@@ -129,10 +129,8 @@ def source_fix(state: SourceState) -> str:
         supported version of the producer package (``install_requirement``).
     """
     if state.status == "error":
-        return MESSAGES["fix_plugin_error"].format(producer=state.producer)
-    return MESSAGES["fix_install"].format(
-        requirement=install_requirement(state.producer)
-    )
+        return message("fix.plugin_error", producer=state.producer)
+    return message("fix.install", requirement=install_requirement(state.producer))
 
 
 def check_package(
@@ -167,7 +165,7 @@ def check_package(
     try:
         installed = importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
-        detail = MESSAGES["plugin_package_missing"].format(package=package)
+        detail = message("plugin.package_missing", package=package)
         return replace(state, status="not_installed", detail=detail)
     state = replace(state, package_version=installed)
     try:
@@ -194,18 +192,19 @@ def source_error(state: SourceState) -> SourceStateError:
         ``SourceUnavailableError``; both carry ``state``.
     """
     if state.status == "incompatible":
-        unknown = MESSAGES["doctor_unknown"]
-        message = MESSAGES["source_incompatible_producer"].format(
+        unknown = message("doctor.unknown")
+        text: str = message(
+            "source.incompatible_producer",
             producer=state.producer,
             version=state.package_version or unknown,
             supported=state.supported_versions or unknown,
         )
-        return SourceIncompatibleError(with_detail(message, state.detail), state=state)
-    message = with_detail(
-        MESSAGES["source_unavailable_producer"].format(producer=state.producer),
-        MESSAGES.get(f"source_status_{state.status}"),
+        return SourceIncompatibleError(with_detail(text, state.detail), state=state)
+    text = with_detail(
+        message("source.unavailable_producer", producer=state.producer),
+        lookup(f"source.status_{state.status}", ""),
     )
-    return SourceUnavailableError(with_detail(message, state.detail), state=state)
+    return SourceUnavailableError(with_detail(text, state.detail), state=state)
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,11 +327,11 @@ class SourceRegistry:
     def _load(self, producer: str) -> _Plugin:
         points = self._points.get(producer, [])
         if not points:
-            detail = MESSAGES["plugin_unregistered"]
+            detail = message("plugin.unregistered")
             return _Plugin(SourceState(producer, "not_installed", detail=detail))
         if len(points) > 1:
             values = ", ".join(sorted(point.value for point in points))
-            detail = MESSAGES["plugin_duplicate"].format(values=values)
+            detail = message("plugin.duplicate", values=values)
             return _Plugin(SourceState(producer, "error", detail=detail))
         point = points[0]
         context = SourceContext(cache_dir=self._cache_dir / producer)
@@ -343,7 +342,7 @@ class SourceRegistry:
         except ModuleNotFoundError as error:
             if error.name is None or _within(error.name, point.module):
                 return _Plugin(SourceState(producer, "error", detail=_describe(error)))
-            detail = MESSAGES["plugin_module_missing"].format(module=error.name)
+            detail = message("plugin.module_missing", module=error.name)
             return _Plugin(SourceState(producer, "not_installed", detail=detail))
         except Exception as error:  # a faulty plugin must not stop the process
             return _Plugin(SourceState(producer, "error", detail=_describe(error)))
@@ -370,10 +369,10 @@ def load_registry(*, cache_dir: Path | None = None) -> SourceRegistry:
 def _checked(producer: str, adapter: object) -> _Plugin:
     """Accept a factory's result only as an adapter of this producer."""
     if not isinstance(adapter, SourceAdapter):
-        detail = MESSAGES["plugin_not_adapter"]
+        detail = message("plugin.not_adapter")
         return _Plugin(SourceState(producer, "error", detail=detail))
     if adapter.producer != producer:
-        detail = MESSAGES["plugin_wrong_producer"].format(declared=adapter.producer)
+        detail = message("plugin.wrong_producer", declared=adapter.producer)
         return _Plugin(SourceState(producer, "error", detail=detail))
     state = check_package(
         producer, adapter.package, adapter.supported_versions, tuple(adapter.schemas)

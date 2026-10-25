@@ -36,7 +36,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.services import access as access_service
 from archiwista.state import (
     ROLES,
@@ -71,11 +71,11 @@ def add_admin_commands(commands: _Commands) -> None:
     commands : argparse._SubParsersAction
         Subcommands of the ``archiwista`` parser.
     """
-    users = _subcommands(commands, "users", MESSAGES["cli_users_help"])
-    _parser(users, "list", MESSAGES["cli_users_list_help"])
-    add = _parser(users, "add", MESSAGES["cli_users_add_help"])
-    add.add_argument("id", metavar="ID", help=MESSAGES["cli_user_id_help"])
-    add.add_argument("--name", help=MESSAGES["cli_name_help"])
+    users = _subcommands(commands, "users", message("cli.users_help"))
+    _parser(users, "list", message("cli.users_list_help"))
+    add = _parser(users, "add", message("cli.users_add_help"))
+    add.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
+    add.add_argument("--name", help=message("cli.name_help"))
     add.add_argument(
         "--role",
         dest="roles",
@@ -83,48 +83,53 @@ def add_admin_commands(commands: _Commands) -> None:
         nargs="+",
         choices=ROLES,
         default=[],
-        help=MESSAGES["cli_role_help"],
+        help=message("cli.role_help"),
     )
-    roles = _parser(users, "roles", MESSAGES["cli_users_roles_help"])
-    roles.add_argument("id", metavar="ID", help=MESSAGES["cli_user_id_help"])
+    roles = _parser(users, "roles", message("cli.users_roles_help"))
+    roles.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
     roles.add_argument(
         "roles",
-        metavar="ROLA",
+        metavar=message("metavar.role"),
         nargs="*",
         choices=ROLES,
-        help=MESSAGES["cli_role_help"],
+        help=message("cli.role_help"),
     )
-    remove = _parser(users, "remove", MESSAGES["cli_users_remove_help"])
-    remove.add_argument("id", metavar="ID", help=MESSAGES["cli_user_id_help"])
+    remove = _parser(users, "remove", message("cli.users_remove_help"))
+    remove.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
 
-    groups = _subcommands(commands, "groups", MESSAGES["cli_groups_help"])
-    _parser(groups, "list", MESSAGES["cli_groups_list_help"])
-    add = _parser(groups, "add", MESSAGES["cli_groups_add_help"])
-    add.add_argument("id", metavar="ID", help=MESSAGES["cli_group_id_help"])
-    add.add_argument("--name", help=MESSAGES["cli_name_help"])
+    groups = _subcommands(commands, "groups", message("cli.groups_help"))
+    _parser(groups, "list", message("cli.groups_list_help"))
+    add = _parser(groups, "add", message("cli.groups_add_help"))
+    add.add_argument("id", metavar="ID", help=message("cli.group_id_help"))
+    add.add_argument("--name", help=message("cli.name_help"))
     add.add_argument(
         "--member",
         dest="members",
         action="extend",
         nargs="+",
         default=[],
-        metavar="OSOBA",
-        help=MESSAGES["cli_member_help"],
+        metavar=message("metavar.person"),
+        help=message("cli.member_help"),
     )
-    members = _parser(groups, "members", MESSAGES["cli_groups_members_help"])
-    members.add_argument("id", metavar="ID", help=MESSAGES["cli_group_id_help"])
+    members = _parser(groups, "members", message("cli.groups_members_help"))
+    members.add_argument("id", metavar="ID", help=message("cli.group_id_help"))
     members.add_argument(
-        "members", metavar="OSOBA", nargs="*", help=MESSAGES["cli_member_help"]
+        "members",
+        metavar=message("metavar.person"),
+        nargs="*",
+        help=message("cli.member_help"),
     )
-    remove = _parser(groups, "remove", MESSAGES["cli_groups_remove_help"])
-    remove.add_argument("id", metavar="ID", help=MESSAGES["cli_group_id_help"])
+    remove = _parser(groups, "remove", message("cli.groups_remove_help"))
+    remove.add_argument("id", metavar="ID", help=message("cli.group_id_help"))
 
     share = commands.add_parser(
-        "share", help=MESSAGES["cli_share_help"], description=MESSAGES["cli_share_help"]
+        "share", help=message("cli.share_help"), description=message("cli.share_help")
     )
-    share.add_argument("project", metavar="PROJEKT", help=MESSAGES["cli_project_help"])
     share.add_argument(
-        "--visibility", choices=VISIBILITIES, help=MESSAGES["cli_visibility_help"]
+        "project", metavar=message("metavar.project"), help=message("cli.project_help")
+    )
+    share.add_argument(
+        "--visibility", choices=VISIBILITIES, help=message("cli.visibility_help")
     )
     share.add_argument(
         "--user",
@@ -133,7 +138,7 @@ def add_admin_commands(commands: _Commands) -> None:
         nargs="+",
         default=[],
         metavar="ID",
-        help=MESSAGES["cli_share_user_help"],
+        help=message("cli.share_user_help"),
     )
     share.add_argument(
         "--group",
@@ -142,23 +147,27 @@ def add_admin_commands(commands: _Commands) -> None:
         nargs="+",
         default=[],
         metavar="ID",
-        help=MESSAGES["cli_share_group_help"],
+        help=message("cli.share_group_help"),
     )
-    share.add_argument("--owner", metavar="ID", help=MESSAGES["cli_owner_help"])
+    share.add_argument("--owner", metavar="ID", help=message("cli.owner_help"))
     _json_option(share)
 
-    state = _subcommands(commands, "state", MESSAGES["cli_state_help"])
-    export = _parser(
-        state, "export", MESSAGES["cli_state_export_help"], with_json=False
-    )
+    state = _subcommands(commands, "state", message("cli.state_help"))
+    export = _parser(state, "export", message("cli.state_export_help"), with_json=False)
     export.add_argument(
-        "--output", type=Path, metavar="PLIK", help=MESSAGES["cli_state_output_help"]
+        "--output",
+        type=Path,
+        metavar=message("metavar.file"),
+        help=message("cli.state_output_help"),
     )
     restore = _parser(
-        state, "import", MESSAGES["cli_state_import_help"], with_json=False
+        state, "import", message("cli.state_import_help"), with_json=False
     )
     restore.add_argument(
-        "file", type=Path, metavar="PLIK", help=MESSAGES["cli_state_file_help"]
+        "file",
+        type=Path,
+        metavar=message("metavar.file"),
+        help=message("cli.state_file_help"),
     )
 
 
@@ -193,7 +202,7 @@ def admin_main(
                 return fail(
                     err,
                     "validation_error",
-                    MESSAGES["cli_share_needs_visibility"],
+                    message("cli.share_needs_visibility"),
                     reason="share_needs_visibility",
                 )
             output = _share(args, authorizer, paths)
@@ -203,7 +212,7 @@ def admin_main(
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
             exception_problem(
-                error, with_detail(MESSAGES["cli_admin_failed"], str(error))
+                error, with_detail(message("cli.admin_failed"), str(error))
             ),
             err,
         )
@@ -227,7 +236,7 @@ def _list_users(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
         ]
     )
     lines = [_user_text(user) for user in users.items]
-    return _Output(users, "\n".join(lines) or MESSAGES["cli_no_users"])
+    return _Output(users, "\n".join(lines) or message("cli.no_users"))
 
 
 def _add_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
@@ -248,7 +257,7 @@ def _set_roles(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
 
 def _remove_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     access_service.remove_user(authorizer, LOCAL_OWNER, args.id)
-    return _Output(None, MESSAGES["cli_user_removed"].format(id=args.id))
+    return _Output(None, message("cli.user_removed", id=args.id))
 
 
 def _list_groups(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
@@ -259,7 +268,7 @@ def _list_groups(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
         ]
     )
     lines = [_group_text(group) for group in groups.items]
-    return _Output(groups, "\n".join(lines) or MESSAGES["cli_no_groups"])
+    return _Output(groups, "\n".join(lines) or message("cli.no_groups"))
 
 
 def _add_group(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
@@ -280,7 +289,7 @@ def _set_members(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
 
 def _remove_group(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     access_service.remove_group(authorizer, LOCAL_OWNER, args.id)
-    return _Output(None, MESSAGES["cli_group_removed"].format(id=args.id))
+    return _Output(None, message("cli.group_removed", id=args.id))
 
 
 _USERS: dict[str, _Command] = {
@@ -321,14 +330,15 @@ def _share(
             )
     model = ProjectAccess.of(access)
     listed = model.users if model.visibility == "users" else model.groups
-    text = MESSAGES["cli_access_line"].format(
+    text = message(
+        "cli.access_line",
         project=model.project,
-        visibility=MESSAGES[f"visibility_{model.visibility}"],
+        visibility=message(f"visibility.{model.visibility}"),
         entries=f": {_listing(listed)}" if listed else "",
-        owner=model.owner or MESSAGES["cli_none"],
+        owner=model.owner or message("cli.none"),
     )
     return _Output(
-        model, text + ("" if model.explicit else MESSAGES["cli_access_default"])
+        model, text + ("" if model.explicit else message("cli.access_default"))
     )
 
 
@@ -340,7 +350,7 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
             out.write(text)
         else:
             write_text_atomic(args.output, text)
-            err.write(MESSAGES["cli_state_exported"].format(path=args.output) + "\n")
+            err.write(message("cli.state_exported", path=args.output) + "\n")
         return 0
     try:
         data = args.file.read_bytes()
@@ -348,13 +358,14 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
         detail = error.strerror or str(error)
         missing = isinstance(error, FileNotFoundError)
         raise StateError(
-            MESSAGES["cli_state_unreadable"].format(path=args.file, detail=detail),
+            message("cli.state_unreadable", path=args.file, detail=detail),
             code="not_found" if missing else "io_error",
             reason="backup_missing" if missing else "backup_unreadable",
         ) from error
     restored = import_state(store, data)
     err.write(
-        MESSAGES["cli_state_imported"].format(
+        message(
+            "cli.state_imported",
             users=len(restored.users),
             groups=len(restored.groups),
             projects=len(restored.projects),
@@ -369,23 +380,24 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
 
 
 def _user_text(user: User) -> str:
-    text = MESSAGES["cli_user_line"].format(
+    text = message(
+        "cli.user_line",
         id=user.id,
         name=user.name,
-        roles=_listing(MESSAGES[f"role_{role}"] for role in user.roles),
+        roles=_listing(message(f"role.{role}") for role in user.roles),
         groups=_listing(user.groups),
     )
-    return text + (MESSAGES["cli_user_disabled"] if user.disabled else "")
+    return text + (message("cli.user_disabled") if user.disabled else "")
 
 
 def _group_text(group: Group) -> str:
-    return MESSAGES["cli_group_line"].format(
-        id=group.id, name=group.name, members=_listing(group.members)
+    return message(
+        "cli.group_line", id=group.id, name=group.name, members=_listing(group.members)
     )
 
 
 def _listing(values: Iterable[str]) -> str:
-    return ", ".join(values) or MESSAGES["cli_none"]
+    return ", ".join(values) or message("cli.none")
 
 
 def _json_line(data: dict[str, object]) -> str:
@@ -397,7 +409,9 @@ def _json_line(data: dict[str, object]) -> str:
 
 def _subcommands(commands: _Commands, name: str, text: str) -> _Commands:
     parser = commands.add_parser(name, help=text, description=text)
-    return parser.add_subparsers(dest="action", required=True, metavar="DZIAŁANIE")
+    return parser.add_subparsers(
+        dest="action", required=True, metavar=message("metavar.action")
+    )
 
 
 def _parser(
@@ -410,4 +424,4 @@ def _parser(
 
 
 def _json_option(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--json", action="store_true", help=MESSAGES["cli_json_help"])
+    parser.add_argument("--json", action="store_true", help=message("cli.json_help"))

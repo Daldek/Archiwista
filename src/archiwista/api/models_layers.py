@@ -24,7 +24,7 @@ from archiwista.api.models_previews import (
     THUMBNAIL_SIZES,
     PreviewJob,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.types import PreviewState
 
 type LayerKind = Literal["year", "edition", "label", "campaign", "file", "snapshot"]
@@ -75,7 +75,7 @@ _EXAMPLE: dict[str, Any] = {
             "coverage": {
                 "ratio": 0.83,
                 "percent": 83,
-                "label": "lokalnie 83% obszaru",
+                "label": message("local.coverage_percent", percent=83),
             },
             "outlines": {"type": "FeatureCollection", "features": []},
             "preview": {
@@ -175,16 +175,16 @@ _OWN_EXAMPLE: dict[str, Any] = {
     "layers": [
         _own_layer(
             "file",
-            MESSAGES["layer_title_working"],
+            message("layer.title_working"),
             _OWN_PATH,
             f"file:raba:{_OWN_PATH}",
             _OWN_URL,
         ),
         _own_layer(
             f"snapshot:{_OWN_SNAPSHOT}",
-            MESSAGES["layer_title_snapshot"].format(label=_OWN_SNAPSHOT),
-            MESSAGES["layer_subtitle_note"].format(
-                path=_OWN_PATH, note="po odbiorze przyłączy"
+            message("layer.title_snapshot", label=_OWN_SNAPSHOT),
+            message(
+                "layer.subtitle_note", path=_OWN_PATH, note="po odbiorze przyłączy"
             ),
             f"snapshot:raba:{_OWN_SNAPSHOT}:{_OWN_PATH}",
             f"{_OWN_URL}/snapshots/{_OWN_SNAPSHOT}",
@@ -257,7 +257,7 @@ class LayerThumbnailQuery(LayerImageQuery):
     @classmethod
     def _check_size(cls, value: int) -> int:
         if value not in THUMBNAIL_SIZES:
-            raise ValueError(MESSAGES["preview_size_invalid"])
+            raise ValueError(message("preview.size_invalid"))
         return value
 
 

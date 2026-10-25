@@ -14,7 +14,7 @@ import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from archiwista.errors import PathOutsideRootError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 
 # Owner only: read, write, enter.
 PRIVATE_DIRECTORY_MODE = 0o700
@@ -78,7 +78,7 @@ def indexed_path(root: Path, relative: str) -> Path:
         or ".." in posix.parts
         or ".." in windows.parts
     ):
-        raise PathOutsideRootError(MESSAGES["path_outside_root"].format(path=relative))
+        raise PathOutsideRootError(message("ref.path_outside_root", path=relative))
     return root.joinpath(*posix.parts)
 
 
@@ -111,6 +111,6 @@ def resolve_indexed_path(root: Path, relative: str) -> Path:
     real_root = root.resolve(strict=True)
     real = joined.resolve(strict=True)
     if not real.is_relative_to(real_root):
-        message = MESSAGES["path_outside_root"].format(path=relative)
-        raise PathOutsideRootError(message)
+        text = message("ref.path_outside_root", path=relative)
+        raise PathOutsideRootError(text)
     return real

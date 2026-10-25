@@ -9,7 +9,7 @@ from archiwista.auth.authorize import Action, Authorizer, principal_for
 from archiwista.config import AppSettings
 from archiwista.errors import PermissionDeniedError
 from archiwista.index.schema import initialize
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state import StateStore, Visibility
 from tests.fixtures.permissions import (
     ADMIN,
@@ -107,7 +107,7 @@ def test_project_write_matrix(
     if not allowed:
         with pytest.raises(PermissionDeniedError) as refused:
             authorizer.require(acting, "project.write", PROJECT)
-        assert str(refused.value) == MESSAGES["permission_project_write"]
+        assert str(refused.value) == message("permission.project_write")
 
 
 @pytest.mark.parametrize(

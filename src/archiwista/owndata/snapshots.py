@@ -64,7 +64,7 @@ from archiwista.errors import (
 from archiwista.formats import file_format
 from archiwista.index import OwnFileDetail, OwnSnapshotRef, TransformerFactory
 from archiwista.index.geometry import polygon_bounds
-from archiwista.messages import MESSAGES
+from archiwista.messages import lookup, message
 from archiwista.owndata.content import (
     CONTENT_METHODS,
     ContentIdentity,
@@ -226,16 +226,14 @@ def folder_block(folder: OwnFolderCheck) -> SnapshotBlock | None:
     is missing or cannot be read holds no file to copy (``file_missing``).
     """
     if folder.state == "invalid":
-        reason = MESSAGES.get(f"own_folder_reason_{folder.reason}", str(folder.reason))
-        message = MESSAGES["snapshot_blocked_folder_invalid"].format(
-            path=folder.path, reason=reason
+        reason = lookup(f"own.folder_reason_{folder.reason}", str(folder.reason))
+        text = message(
+            "snapshot.blocked_folder_invalid", path=folder.path, reason=reason
         )
-        return SnapshotBlock("folder_invalid", message)
+        return SnapshotBlock("folder_invalid", text)
     if folder.state != "ok":
-        message = MESSAGES["snapshot_blocked_folder_unavailable"].format(
-            path=folder.path
-        )
-        return SnapshotBlock("file_missing", message)
+        text = message("snapshot.blocked_folder_unavailable", path=folder.path)
+        return SnapshotBlock("file_missing", text)
     return None
 
 
@@ -420,40 +418,44 @@ def _inspect(
         return _Inspection(None, block)
     working = _working(folder, file)
     if working is None:
-        message = MESSAGES["snapshot_blocked_file_missing"].format(
-            file=file.file.path, path=folder.path
+        text = message(
+            "snapshot.blocked_file_missing", file=file.file.path, path=folder.path
         )
-        return _Inspection(None, SnapshotBlock("file_missing", message))
+        return _Inspection(None, SnapshotBlock("file_missing", text))
     warnings: tuple[SnapshotWarning, ...] = ()
     if working.editing:
-        message = MESSAGES["snapshot_editing_detected"].format(file=file.file.path)
-        warnings = (SnapshotWarning("editing_detected", message),)
+        text = message("snapshot.editing_detected", file=file.file.path)
+        warnings = (SnapshotWarning("editing_detected", text),)
     free = shutil.disk_usage(working.root).free
     versions = working.root / SNAPSHOTS_DIR
     for directory in (versions / file.disk_path, versions / INCOMING_DIR):
         refused = _not_writable(working.root, directory)
         if refused is not None:
-            message = MESSAGES["snapshot_blocked_read_only_folder"].format(path=refused)
-            block = SnapshotBlock("read_only_folder", message)
+            text = message("snapshot.blocked_read_only_folder", path=refused)
+            block = SnapshotBlock("read_only_folder", text)
             return _Inspection(working, block, free, warnings)
     needed = math.ceil(SPACE_FACTOR * working.size_bytes)
     if free < needed:
-        message = MESSAGES["snapshot_blocked_insufficient_space"].format(
-            path=folder.path, needed=_megabytes(needed), free=_megabytes(free)
+        text = message(
+            "snapshot.blocked_insufficient_space",
+            path=folder.path,
+            needed=_megabytes(needed),
+            free=_megabytes(free),
         )
-        block = SnapshotBlock("insufficient_space", message)
+        block = SnapshotBlock("insufficient_space", text)
         return _Inspection(working, block, free, warnings)
     if working.method == "sqlite":
         # In states (b) and (c) the view's copy and the backup coexist.
         local_needed = needed * (2 if working.editing else 1)
         local_free = shutil.disk_usage(work_dir).free
         if local_free < local_needed:
-            message = MESSAGES["snapshot_blocked_insufficient_work_space"].format(
+            text = message(
+                "snapshot.blocked_insufficient_work_space",
                 path=work_dir,
                 needed=_megabytes(local_needed),
                 free=_megabytes(local_free),
             )
-            block = SnapshotBlock("insufficient_space", message)
+            block = SnapshotBlock("insufficient_space", text)
             return _Inspection(working, block, free, warnings)
     return _Inspection(working, None, free, warnings)
 
@@ -655,10 +657,8 @@ class _Snapshot:
             raise self._damaged(problems)
         identity = content_identity([local], method="sqlite", work_dir=self.scratch)
         if view.state != "in_place":
-            message = MESSAGES["snapshot_editing_detected"].format(
-                file=self.file.file.path
-            )
-            self._warn("editing_detected", message)
+            text = message("snapshot.editing_detected", file=self.file.file.path)
+            self._warn("editing_detected", text)
         return _Backup(local, view.source, identity)
 
     def _files_copy(self, work: Path, work_fd: int) -> _Copy:
@@ -894,10 +894,10 @@ class _Snapshot:
                 dst_dir_fd=parent_fd,
             )
         except FileExistsError as error:
-            message = MESSAGES["snapshot_target_exists"].format(
-                label=label, file=self.file.file.path
+            text = message(
+                "snapshot.target_exists", label=label, file=self.file.file.path
             )
-            raise SnapshotFailedError("target_exists", message) from error
+            raise SnapshotFailedError("target_exists", text) from error
         return target
 
     def _chmod(self, descriptor: int, mode: int, *, published: bool = False) -> None:
@@ -911,8 +911,8 @@ class _Snapshot:
             if not published and error.errno not in _REFUSED:
                 raise
             detail = error.strerror or type(error).__name__
-            message = MESSAGES["snapshot_chmod_refused"].format(detail=detail)
-            self._warn("chmod_refused", message)
+            text = message("snapshot.chmod_refused", detail=detail)
+            self._warn("chmod_refused", text)
 
     def _sync_directory(self, descriptor: int, *, published: bool = False) -> None:
         """Sync a directory's entries; a refusal of the file system is a warning."""
@@ -922,8 +922,8 @@ class _Snapshot:
             if not published and error.errno not in _REFUSED:
                 raise
             detail = error.strerror or type(error).__name__
-            message = MESSAGES["snapshot_directory_sync_refused"].format(detail=detail)
-            self._warn("directory_sync_refused", message)
+            text = message("snapshot.directory_sync_refused", detail=detail)
+            self._warn("directory_sync_refused", text)
 
     @contextlib.contextmanager
     def _writes(self, *, access: bool = False) -> Iterator[None]:
@@ -937,18 +937,20 @@ class _Snapshot:
         except OSError as error:
             if error.errno in _NO_SPACE:
                 needed = math.ceil(SPACE_FACTOR * self.working.size_bytes)
-                message = MESSAGES["snapshot_blocked_insufficient_space"].format(
+                text = message(
+                    "snapshot.blocked_insufficient_space",
                     path=self.working.root,
                     needed=_megabytes(needed),
                     free=_megabytes(shutil.disk_usage(self.working.root).free),
                 )
-                raise SnapshotBlockedError("insufficient_space", message) from error
+                raise SnapshotBlockedError("insufficient_space", text) from error
             refused = {errno.EROFS, errno.EACCES, errno.EPERM} if access else set()
             if error.errno == errno.EROFS or error.errno in refused:
-                message = MESSAGES["snapshot_blocked_read_only_folder"].format(
-                    path=error.filename or self.working.root
+                text = message(
+                    "snapshot.blocked_read_only_folder",
+                    path=error.filename or self.working.root,
                 )
-                raise SnapshotBlockedError("read_only_folder", message) from error
+                raise SnapshotBlockedError("read_only_folder", text) from error
             raise
 
     def _reached(self, phase: SnapshotPhase) -> None:
@@ -962,20 +964,20 @@ class _Snapshot:
         return tuple(self.warnings.values())
 
     def _inconsistent(self) -> SnapshotFailedError:
-        message = MESSAGES["snapshot_inconsistent_copy"].format(
-            file=self.file.file.path
-        )
-        return SnapshotFailedError("inconsistent_copy", message)
+        text = message("snapshot.inconsistent_copy", file=self.file.file.path)
+        return SnapshotFailedError("inconsistent_copy", text)
 
     def _mismatch(self, name: str) -> SnapshotFailedError:
-        message = MESSAGES["snapshot_checksum_mismatch"].format(name=name)
-        return SnapshotFailedError("checksum_mismatch", message)
+        text = message("snapshot.checksum_mismatch", name=name)
+        return SnapshotFailedError("checksum_mismatch", text)
 
     def _damaged(self, problems: list[str]) -> SnapshotFailedError:
-        message = MESSAGES["snapshot_integrity_failed"].format(
-            file=self.file.file.path, detail="; ".join(problems[:3])[:300]
+        text = message(
+            "snapshot.integrity_failed",
+            file=self.file.file.path,
+            detail="; ".join(problems[:3])[:300],
         )
-        return SnapshotFailedError("integrity_failed", message)
+        return SnapshotFailedError("integrity_failed", text)
 
 
 def _backup(view: SqliteRead, target: Path) -> None:
@@ -1101,7 +1103,7 @@ def _copy_method(method: ContentMethod) -> CopyMethod:
 
 
 def _outside(path: str) -> PathOutsideRootError:
-    return PathOutsideRootError(MESSAGES["problem_path_outside_root"].format(path=path))
+    return PathOutsideRootError(message("problem.path_outside_root", path=path))
 
 
 def _megabytes(size: int) -> str:

@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 import rasterio
 
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.renderers import points
 from archiwista.previews.renderers.points import PointsRenderer, read_cloud
 from archiwista.previews.types import PreviewSource
@@ -140,7 +140,7 @@ def test_points_uncompressed_las_named_laz(tmp_path: Path) -> None:
     assert without_crs.points is not None
     assert _classes(without_crs.points) == {2: 9}
     assert (without_crs.reason, without_crs.needs_cog) == ("no_crs", False)
-    assert MESSAGES["preview_reason_no_crs"]
+    assert message("preview.reason_no_crs")
     assert (with_crs.crs, with_crs.reason, with_crs.needs_cog) == (
         "EPSG:2180",
         None,

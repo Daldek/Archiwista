@@ -48,7 +48,7 @@ from archiwista.index import (
     own_file_id,
 )
 from archiwista.index.geometry import box_geometry
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.document import SnapshotDocument
 from archiwista.owndata.reader import FieldInfo, LayerInfo
 from archiwista.previews.service import object_url
@@ -186,10 +186,13 @@ def _compared(
                 (item for item in detail.snapshots if item.label == label), None
             )
             if found is None:
-                message = MESSAGES["compare_snapshot_not_found"].format(
-                    project=project, path=path, label=label
+                text = message(
+                    "compare.snapshot_not_found",
+                    project=project,
+                    path=path,
+                    label=label,
                 )
-                raise NotFoundError(message)
+                raise NotFoundError(text)
             return _snapshot(detail, found, ref)
 
 
@@ -198,10 +201,8 @@ def _version(
 ) -> _Compared:
     detail = queries.version(ref.store, ref.path, visible=visible)
     if detail is None:
-        message = MESSAGES["api_version_unknown"].format(
-            version=ref.path, store=ref.store
-        )
-        raise NotFoundError(message)
+        text = message("api.version_unknown", version=ref.path, store=ref.store)
+        raise NotFoundError(text)
     summary = detail.summary
     values: dict[str, Any] = {
         "data_date": summary.data_date,
@@ -225,9 +226,10 @@ def _version(
     sha256 = summary.sha256.lower() if summary.sha256 else None
     if sha256 is not None and CONTENT_KEY.fullmatch(sha256) is None:
         sha256 = None
-    title = MESSAGES["compare_title_version"].format(
+    title = message(
+        "compare.title_version",
         name=PurePosixPath(detail.slot).name,
-        label=summary.label or MESSAGES["compare_title_no_label"],
+        label=summary.label or message("compare.title_no_label"),
     )
     side = ComparisonSide(
         ref=format_ref(ref),
@@ -258,9 +260,9 @@ def _own_file(
     if detail is not None:
         return detail
     if queries.project(project, visible=visible) is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
-    message = MESSAGES["compare_file_not_found"].format(project=project, path=path)
-    raise NotFoundError(message)
+        raise NotFoundError(message("project.not_found", project=project))
+    text = message("compare.file_not_found", project=project, path=path)
+    raise NotFoundError(text)
 
 
 def _working_file(detail: OwnFileDetail, ref: FileRef) -> _Compared:
@@ -283,7 +285,7 @@ def _working_file(detail: OwnFileDetail, ref: FileRef) -> _Compared:
     }
     return _own_side(
         ref,
-        label=MESSAGES["compare_title_working"],
+        label=message("compare.title_working"),
         outline=detail.wgs84,
         content=_identity(detail.content_method, detail.content_sha256),
         values=values,
@@ -366,8 +368,8 @@ def _own_side(
     side = ComparisonSide(
         ref=format_ref(ref),
         kind="file" if isinstance(ref, FileRef) else "snapshot",
-        title=MESSAGES["compare_title_version"].format(
-            name=PurePosixPath(ref.path).name, label=label
+        title=message(
+            "compare.title_version", name=PurePosixPath(ref.path).name, label=label
         ),
         preview=f"{object_url(ref)}/preview",
         outline=outline,
@@ -478,8 +480,8 @@ def _label(group: RowGroup, field: str) -> str:
     if group == "sidecar":
         return field
     if group == "layers":
-        return MESSAGES["compare_layer_features"].format(layer=field)
-    return MESSAGES[f"compare_field_{field}"]
+        return message("compare.layer_features", layer=field)
+    return message(f"compare.field_{field}")
 
 
 def _differs(a: CompareValue, b: CompareValue) -> bool:

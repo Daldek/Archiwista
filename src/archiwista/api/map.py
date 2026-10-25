@@ -35,7 +35,7 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import AppSettings, SettingsService
 from archiwista.index import MAP_FOOTPRINT_LIMIT, BBox, IndexQueries
 from archiwista.index.geometry import polygon_bounds, require_wgs84_bbox
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.sources import SheetGridAdapter
 from archiwista.sources.registry import PluginRegistry
@@ -145,10 +145,10 @@ def _estimated_sheets(
 
 
 def _too_many(count: int, scale: str) -> ApiError:
-    message = MESSAGES["api_too_many_sheets"].format(
-        count=count, scale=scale, limit=MAP_FOOTPRINT_LIMIT
+    text = message(
+        "api.too_many_sheets", count=count, scale=scale, limit=MAP_FOOTPRINT_LIMIT
     )
-    return ApiError("validation_error", message)
+    return ApiError("validation_error", text)
 
 
 @router.get(

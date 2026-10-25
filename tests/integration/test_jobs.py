@@ -31,11 +31,11 @@ from archiwista.errors import (
     OfflineModeError,
 )
 from archiwista.index import IndexQueries, own_file_id
-from archiwista.jobs import JobEvent, JobRecord, JobSupervisor, ScanScheduler, label
+from archiwista.jobs import JobEvent, JobRecord, JobSupervisor, ScanScheduler
 from archiwista.jobs.foreground import run_foreground
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
-from archiwista.messages import MESSAGES
+from archiwista.messages import label, message
 from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
 from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
@@ -251,7 +251,7 @@ def test_close_interrupts_running_and_waiting_jobs(
     assert (error.code, error.reason, error.detail) == (
         "cancelled",
         "interrupted",
-        MESSAGES["job_interrupted_stop"],
+        message("job.interrupted_stop"),
     )
 
 
@@ -301,7 +301,7 @@ def test_restart_marks_running_job_interrupted(
     assert (record.error.code, record.error.reason, record.error.detail) == (
         "cancelled",
         "interrupted",
-        MESSAGES["job_interrupted_restart"],
+        message("job.interrupted_restart"),
     )
     assert record.finished_at is not None
     with IndexQueries(paths.index_file) as queries:
@@ -392,7 +392,7 @@ def test_footprints_job_refused_offline(env: JobsEnv) -> None:
         env.jobs.submit("footprints", store=STORE, actor=LOCAL_OWNER)
 
     # Assert
-    assert str(raised.value) == MESSAGES["job_offline_mode"]
+    assert str(raised.value) == message("job.offline_mode")
     assert env.jobs.list().items == ()
 
 
@@ -489,9 +489,7 @@ def test_reindex_unknown_store(env: JobsEnv) -> None:
     document = refusal(out.getvalue(), err.getvalue(), status)
     assert (status, document["code"]) == (3, "not_found")
     assert document["details"]["reason"] == "unknown_store"
-    assert err.getvalue().splitlines()[0] == MESSAGES["job_store_unknown"].format(
-        store="brak"
-    )
+    assert err.getvalue().splitlines()[0] == message("job.store_unknown", store="brak")
     assert env.jobs.list().items == ()
 
 
@@ -542,9 +540,9 @@ def test_reindex_on_foreground_helper(
     assert status == 130 and out.getvalue() == ""
     assert record is not None and record.state == "cancelled"
     lines = err.getvalue().splitlines()
-    assert lines[0] == MESSAGES["reindex_started"].format(store=STORE, job=record.id)
+    assert lines[0] == message("reindex.started", store=STORE, job=record.id)
     assert any(line.startswith(f"Magazyn „{STORE}”: segmenty ") for line in lines)
-    assert MESSAGES["reindex_cancelling"].format(job=record.id) in lines
+    assert message("reindex.cancelling", job=record.id) in lines
     assert lines[-1].endswith("(kod cancelled)")
     assert env.rows() == before
 
@@ -602,8 +600,8 @@ def test_foreground_follows_joined_job_then_runs_own(
     assert record.started_at is not None and first.finished_at is not None
     assert record.started_at >= first.finished_at
     assert err.getvalue().splitlines() == [
-        MESSAGES["job_foreground_waiting"].format(
-            job=server.id, kind=label("job_kind", "preview")
+        message(
+            "job.foreground_waiting", job=server.id, kind=label("job.kind", "preview")
         ),
         f"started {record.id}",
     ]
@@ -730,9 +728,7 @@ def test_link_check_refuses_standard_path_leaving_store(
         "forbidden",
         "path_outside_root",
     )
-    assert record.error.detail == MESSAGES["path_outside_root"].format(
-        path=planted.path
-    )
+    assert record.error.detail == message("ref.path_outside_root", path=planted.path)
     assert not [i for i in env.queries.issues(STORE) if i.code == "link_mismatch"]
 
 

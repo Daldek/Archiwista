@@ -28,7 +28,7 @@ from archiwista.api.errors import PROBLEM_MEDIA_TYPE
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig, StoreKind
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import FINISHED_STATES, scheduler
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
@@ -661,7 +661,7 @@ def test_acceptance_api_requests_with_browser_session(
             401,
             "unauthorized",
             "session_required",
-            MESSAGES["api_session_required"],
+            message("api.session_required"),
         )
     finally:
         anonymous.close()
@@ -684,27 +684,27 @@ def test_acceptance_api_requests_with_browser_session(
     assert len(versions) == len(versions_of(store, slot))
     assert set(cookies) == {"archiwista_session"}
     assert_problem(
-        cookie_only, 403, "forbidden", "csrf_rejected", MESSAGES["api_csrf_missing"]
+        cookie_only, 403, "forbidden", "csrf_rejected", message("api.csrf_missing")
     )
     assert_problem(
-        refused, 403, "forbidden", "csrf_rejected", MESSAGES["api_csrf_missing"]
+        refused, 403, "forbidden", "csrf_rejected", message("api.csrf_missing")
     )
     assert started.status == 202, started.text()
     assert started.headers["location"] == f"/api/v1/jobs/{started.json()['id']}"
     assert (finished["state"], finished["actor"]) == ("succeeded", "local")
     assert finished["params"]["mode"] == "incremental"
     assert_problem(
-        cross_site, 403, "forbidden", "csrf_rejected", MESSAGES["api_cross_site"]
+        cross_site, 403, "forbidden", "csrf_rejected", message("api.cross_site")
     )
     assert_problem(
-        other_origin, 403, "forbidden", "csrf_rejected", MESSAGES["api_cross_site"]
+        other_origin, 403, "forbidden", "csrf_rejected", message("api.cross_site")
     )
     assert_problem(
         foreign_host,
         403,
         "forbidden",
         "invalid_host",
-        MESSAGES["api_invalid_host"].format(port=served.server.port),
+        message("api.invalid_host", port=served.server.port),
     )
     tab.assert_clean()
 

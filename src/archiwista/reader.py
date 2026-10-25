@@ -55,7 +55,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import label, message, with_detail
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
@@ -106,32 +106,41 @@ def add_read_commands(commands: _Commands) -> None:
     commands : argparse._SubParsersAction
         Subcommands of the ``archiwista`` parser.
     """
-    _parser(commands, "status", "cli_status_help")
-    _parser(commands, "sources", "cli_sources_help")
-    search = _parser(commands, "search", "cli_search_help")
+    _parser(commands, "status", "cli.status_help")
+    _parser(commands, "sources", "cli.sources_help")
+    search = _parser(commands, "search", "cli.search_help")
     search.add_argument(
-        _QUERY, nargs="?", metavar="ZAPYTANIE", help=MESSAGES["cli_search_q_help"]
+        _QUERY,
+        nargs="?",
+        metavar=message("metavar.query"),
+        help=message("cli.search_q_help"),
     )
     for name in CatalogFilters.model_fields:
         if name != _QUERY:
             search.add_argument(
                 "--" + name.replace("_", "-"),
                 dest=name,
-                help=MESSAGES[f"cli_search_{name}_help"],
+                help=message(f"cli.search_{name}_help"),
             )
-    entry = _parser(commands, "entry", "cli_entry_help")
-    entry.add_argument("store", metavar="MAGAZYN", help=MESSAGES["cli_store_id_help"])
-    entry.add_argument("slot", metavar="SLOT", help=MESSAGES["cli_slot_help"])
-    version = _parser(commands, "version", "cli_version_help")
-    version.add_argument("store", metavar="MAGAZYN", help=MESSAGES["cli_store_id_help"])
-    version.add_argument(
-        "version", metavar="WERSJA", help=MESSAGES["cli_version_path_help"]
+    entry = _parser(commands, "entry", "cli.entry_help")
+    entry.add_argument(
+        "store", metavar=message("metavar.store"), help=message("cli.store_id_help")
     )
-    projects = _parser(commands, "projects", "cli_projects_help")
-    projects.add_argument("--store", help=MESSAGES["cli_projects_store_help"])
-    project = _parser(commands, "project", "cli_project_card_help")
+    entry.add_argument("slot", metavar="SLOT", help=message("cli.slot_help"))
+    version = _parser(commands, "version", "cli.version_help")
+    version.add_argument(
+        "store", metavar=message("metavar.store"), help=message("cli.store_id_help")
+    )
+    version.add_argument(
+        "version",
+        metavar=message("metavar.version"),
+        help=message("cli.version_path_help"),
+    )
+    projects = _parser(commands, "projects", "cli.projects_help")
+    projects.add_argument("--store", help=message("cli.projects_store_help"))
+    project = _parser(commands, "project", "cli.project_card_help")
     project.add_argument(
-        "project", metavar="PROJEKT", help=MESSAGES["cli_project_help"]
+        "project", metavar=message("metavar.project"), help=message("cli.project_help")
     )
 
 
@@ -170,7 +179,7 @@ def read_main(
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
             exception_problem(
-                error, with_detail(MESSAGES["cli_read_failed"], str(error))
+                error, with_detail(message("cli.read_failed"), str(error))
             ),
             err,
         )
@@ -220,9 +229,10 @@ def _status(args: argparse.Namespace, reader: _Reader) -> _Output:
 def _sources(args: argparse.Namespace, reader: _Reader) -> _Output:
     sources = SourceList(items=source_infos(reader.registry))
     lines = [
-        MESSAGES["cli_source_line"].format(
+        message(
+            "cli.source_line",
             producer=item.producer,
-            version=item.package_version or MESSAGES["cli_none"],
+            version=item.package_version or message("cli.none"),
             message=item.message,
         )
         + (f" {item.fix}" if item.fix else "")
@@ -264,8 +274,9 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
     projects = read_projects(
         reader.queries, reader.settings, args.store, visible=reader.visible
     )
-    lines = [
-        MESSAGES["cli_project_line"].format(
+    lines: list[str] = [
+        message(
+            "cli.project_line",
             project=item.project,
             name=item.name,
             store=_value(item.store),
@@ -276,7 +287,7 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
         for item in projects.items
     ]
     return _Output(
-        projects, _with_stale(projects, lines or [MESSAGES["cli_no_projects"]])
+        projects, _with_stale(projects, lines or [message("cli.no_projects")])
     )
 
 
@@ -300,65 +311,67 @@ _COMMANDS: dict[str, _Command] = {
 
 
 def _health_text(health: Health) -> str:
-    lines = [
-        MESSAGES["cli_status_line"].format(
+    lines: list[str] = [
+        message(
+            "cli.status_line",
             version=health.archiwista,
             schema=health.index.schema_version,
             size=_size(health.index.size_bytes),
         )
     ]
     lines.extend(
-        MESSAGES["cli_source_line"].format(
+        message(
+            "cli.source_line",
             producer=item.producer,
-            version=item.package_version or MESSAGES["cli_none"],
+            version=item.package_version or message("cli.none"),
             message=item.message,
         )
         for item in health.sources
     )
     for item in health.stores:
         state = item.state
-        line = MESSAGES["cli_store_line"].format(
+        line: str = message(
+            "cli.store_line",
             store=item.store,
             name=item.name,
-            status=MESSAGES[f"cli_store_status_{state.status}"],
+            status=message(f"cli.store_status_{state.status}"),
             slots=state.slots,
             versions=state.versions,
             missing=state.missing_versions,
             issues=state.issues,
             indexed_at=_time(state.indexed_at),
             full_scan_at=(
-                MESSAGES["cli_none"]
+                message("cli.none")
                 if state.full_scan_at is None
                 else _time(state.full_scan_at)
             ),
         )
         if state.running_job is not None:
-            line += MESSAGES["cli_store_job"].format(
-                kind=MESSAGES.get(
-                    f"job_kind_{state.running_job.kind}", state.running_job.kind
-                ),
-                state=MESSAGES.get(
-                    f"job_state_{state.running_job.state}", state.running_job.state
-                ),
+            line += message(
+                "cli.store_job",
+                kind=label("job.kind", state.running_job.kind),
+                state=label("job.state", state.running_job.state),
             )
         lines.append(line)
     if not health.stores:
-        lines.append(MESSAGES["reindex_no_stores"])
+        lines.append(message("reindex.no_stores"))
     return "\n".join(lines)
 
 
 def _page_text(page: CatalogPage) -> str:
-    lines = [
-        MESSAGES["cli_search_row"].format(
+    lines: list[str] = [
+        message(
+            "cli.search_row",
             store=item.store,
             slot=item.slot,
             label=_value(item.version.label if item.version else None),
             year=_value(item.version.data_year if item.version else None),
         )
         for item in page.items
-    ] or [MESSAGES["cli_no_rows"]]
+    ] or [message("cli.no_rows")]
     lines.append(
-        MESSAGES["cli_search_summary"].format(
+        message(
+            "cli.search_summary",
             count=len(page.items),
             footprint=page.groups.footprint,
             country=page.groups.country,
@@ -366,16 +379,15 @@ def _page_text(page: CatalogPage) -> str:
         )
     )
     if page.next_cursor is not None:
-        lines.append(MESSAGES["cli_search_next"].format(cursor=page.next_cursor))
+        lines.append(message("cli.search_next", cursor=page.next_cursor))
     return _with_stale(page, lines)
 
 
 def _slot_text(card: SlotCard) -> str:
-    lines = [
-        MESSAGES["cli_entry_title"].format(
-            store=card.store, slot=card.slot, name=card.name
-        ),
-        MESSAGES["cli_entry_facts"].format(
+    lines: list[str] = [
+        message("cli.entry_title", store=card.store, slot=card.slot, name=card.name),
+        message(
+            "cli.entry_facts",
             segment=card.segment.label,
             unit=_value(card.unit),
             product=_value(card.product),
@@ -385,7 +397,7 @@ def _slot_text(card: SlotCard) -> str:
     ]
     lines.extend(_version_line(version) for version in card.versions)
     if card.paths is not None:
-        lines.append(MESSAGES["cli_path_line"].format(path=card.paths.local))
+        lines.append(message("cli.path_line", path=card.paths.local))
     lines.extend(_problem_lines(card.problems))
     return _with_stale(card, lines)
 
@@ -393,15 +405,16 @@ def _slot_text(card: SlotCard) -> str:
 def _version_line(version: Version) -> str:
     marks = ""
     if version.is_current:
-        marks += MESSAGES["cli_version_current"]
+        marks += message("cli.version_current")
     if version.is_full_sheet:
-        marks += MESSAGES["cli_version_full_sheet"]
+        marks += message("cli.version_full_sheet")
     if version.state == "missing":
-        marks += MESSAGES["cli_version_missing"]
+        marks += message("cli.version_missing")
     if version.pinned_by:
         names = ", ".join(pin.name for pin in version.pinned_by)
-        marks += MESSAGES["cli_version_pinned"].format(projects=names)
-    return MESSAGES["cli_version_line"].format(
+        marks += message("cli.version_pinned", projects=names)
+    return message(
+        "cli.version_line",
         path=version.path,
         label=_value(version.label),
         year=_value(version.data_year),
@@ -411,30 +424,34 @@ def _version_line(version: Version) -> str:
 
 def _version_text(card: VersionCard) -> str:
     version = card.version
-    lines = [
-        MESSAGES["cli_version_title"].format(
-            store=card.store, path=version.path, slot=card.slot
+    lines: list[str] = [
+        message(
+            "cli.version_title", store=card.store, path=version.path, slot=card.slot
         ),
         _version_line(version),
-        MESSAGES["cli_version_facts"].format(
+        message(
+            "cli.version_facts",
             label=_value(version.label),
             year=_value(version.data_year),
             size=_size(version.size_bytes),
             crs=_value(version.crs.horizontal),
             sha256=_value(version.sha256),
         ),
-        MESSAGES["cli_version_license"].format(
-            license=_value(card.license), attribution=_value(card.attribution)
+        message(
+            "cli.version_license",
+            license=_value(card.license),
+            attribution=_value(card.attribution),
         ),
     ]
     if card.paths is not None:
-        lines.append(MESSAGES["cli_path_line"].format(path=card.paths.local))
+        lines.append(message("cli.path_line", path=card.paths.local))
     return _with_stale(card, lines)
 
 
 def _project_text(card: ProjectCard) -> str:
-    lines = [
-        MESSAGES["cli_project_line"].format(
+    lines: list[str] = [
+        message(
+            "cli.project_line",
             project=card.project,
             name=card.name,
             store=_value(card.store),
@@ -444,14 +461,17 @@ def _project_text(card: ProjectCard) -> str:
         )
     ]
     lines.extend(
-        MESSAGES["cli_task_line"].format(
-            task=task.task, command=task.command, status=_value(task.status)
+        message(
+            "cli.task_line",
+            task=task.task,
+            command=task.command,
+            status=_value(task.status),
         )
         for task in card.tasks
     )
     lines.extend(
-        MESSAGES["cli_pin_line"].format(
-            version=pin.version, task=_value(pin.task), state=pin.state
+        message(
+            "cli.pin_line", version=pin.version, task=_value(pin.task), state=pin.state
         )
         for pin in card.pins
     )
@@ -461,8 +481,8 @@ def _project_text(card: ProjectCard) -> str:
 
 def _problem_lines(problems: Iterable[Issue]) -> list[str]:
     return [
-        MESSAGES["cli_problem_line"].format(
-            message=problem.message, instruction=problem.instruction
+        message(
+            "cli.problem_line", message=problem.message, instruction=problem.instruction
         )
         for problem in problems
     ]
@@ -470,27 +490,25 @@ def _problem_lines(problems: Iterable[Issue]) -> list[str]:
 
 def _with_stale(answer: IndexAnswer, lines: list[str]) -> str:
     notes = [
-        MESSAGES["cli_stale_line"].format(
-            store=item.store, indexed_at=_time(item.indexed_at)
-        )
+        message("cli.stale_line", store=item.store, indexed_at=_time(item.indexed_at))
         for item in answer.stale_stores
     ]
     return "\n".join([*lines, *notes])
 
 
 def _value(value: object) -> str:
-    return MESSAGES["cli_none"] if value is None else str(value)
+    return message("cli.none") if value is None else str(value)
 
 
 def _time(value: datetime | None) -> str:
     if value is None:
-        return MESSAGES["cli_never"]
+        return message("cli.never")
     return value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _size(size: int | None) -> str:
     if size is None:
-        return MESSAGES["cli_none"]
+        return message("cli.none")
     if size < 1_000_000:
         return f"{size / 1000:.1f} kB".replace(".", ",")
     return f"{size / 1_000_000:.1f} MB".replace(".", ",")
@@ -500,7 +518,7 @@ def _size(size: int | None) -> str:
 
 
 def _parser(commands: _Commands, name: str, help_key: str) -> argparse.ArgumentParser:
-    text = MESSAGES[help_key]
+    text = message(help_key)
     parser = commands.add_parser(name, help=text, description=text)
-    parser.add_argument("--json", action="store_true", help=MESSAGES["cli_json_help"])
+    parser.add_argument("--json", action="store_true", help=message("cli.json_help"))
     return parser

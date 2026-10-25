@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from archiwista.errors import StateError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.paths import private_directory
 
 type Migration = Callable[[sqlite3.Connection], None]
@@ -193,7 +193,7 @@ def initialize(
             for migration in migrations[version:]:
                 migration(connection)
             if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-                raise StateError(MESSAGES["state_migration_broken"].format(path=path))
+                raise StateError(message("state.migration_broken", path=path))
             connection.execute(f"PRAGMA user_version = {target}")
             connection.execute("COMMIT")
         except BaseException:
@@ -207,7 +207,7 @@ def initialize(
 def _require_known(path: Path, version: int, target: int) -> None:
     if version > target:
         raise StateError(
-            MESSAGES["state_newer"].format(path=path, version=version, supported=target)
+            message("state.newer", path=path, version=version, supported=target)
         )
 
 

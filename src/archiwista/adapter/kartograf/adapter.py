@@ -43,7 +43,7 @@ from kartograf import (
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.sources import (
     CoordinateTransformer,
     EntryMeta,
@@ -121,7 +121,7 @@ class KartografAdapter:
         except OSError as error:
             return self._state("error", root, detail=str(error))
         if segments and not any(describe_segment(name).known for name in segments):
-            detail = MESSAGES["kartograf_not_store"]
+            detail = message("source.kartograf_not_store")
             return self._state("incompatible", root, detail=detail)
         return self._state("available", root)
 
@@ -705,8 +705,8 @@ def _producer_error(error: Exception) -> ProducerError:
 
 
 def _unavailable(root: Path | str, error: OSError) -> SourceUnavailableError:
-    message = MESSAGES["store_unreadable"].format(path=root)
-    return SourceUnavailableError(with_detail(message, str(error)))
+    text = message("store.unreadable", path=root)
+    return SourceUnavailableError(with_detail(text, str(error)))
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

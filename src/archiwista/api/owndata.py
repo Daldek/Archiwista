@@ -102,7 +102,7 @@ from archiwista.errors import (
 )
 from archiwista.index import IndexQueries, OwnFileDetail, ProjectRecord
 from archiwista.jobs import JobRecord, JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.snapshots import check_snapshot
 from archiwista.previews.service import PreviewService
 from archiwista.refs import FileRef, ObjectRef, SnapshotRef, format_ref
@@ -195,7 +195,7 @@ def visible_project(
     """
     record = queries.project(project, visible=visible)
     if record is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
+        raise NotFoundError(message("project.not_found", project=project))
     return record
 
 
@@ -212,10 +212,8 @@ def own_file(
     visible_project(queries, project, visible=visible)
     detail = queries.own_file(project, file_id, visible=visible)
     if detail is None:
-        message = MESSAGES["own_file_not_found"].format(
-            project=project, file_id=file_id
-        )
-        raise NotFoundError(message)
+        text = message("own.file_not_found", project=project, file_id=file_id)
+        raise NotFoundError(text)
     return detail
 
 
@@ -448,8 +446,9 @@ _JOB_PROBLEMS: dict[int | str, dict[str, Any]] = {
                     "snapshot_blocked": {
                         "value": problem_example(
                             "conflict",
-                            MESSAGES["snapshot_blocked_read_only_folder"].format(
-                                path="/mnt/nas/raba/dane/.wersje"
+                            message(
+                                "snapshot.blocked_read_only_folder",
+                                path="/mnt/nas/raba/dane/.wersje",
                             ),
                             reason="snapshot_blocked",
                             details={"blocked_by": "read_only_folder"},
@@ -474,8 +473,10 @@ _CHANGED_PROBLEM: dict[int | str, dict[str, Any]] = {
                     "own_file_changed": {
                         "value": problem_example(
                             "conflict",
-                            MESSAGES["own_file_changed"].format(
-                                path="sieci/kanalizacja.gpkg", project="raba"
+                            message(
+                                "own.file_changed",
+                                path="sieci/kanalizacja.gpkg",
+                                project="raba",
                             ),
                             reason="own_file_changed",
                         )

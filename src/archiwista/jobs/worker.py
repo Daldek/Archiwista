@@ -82,7 +82,7 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.logs import process_log_level
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
 from archiwista.owndata.scan import (
@@ -257,7 +257,7 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
     rectangle, as in a scan (``outline_footprints``).
     """
     if spec.settings.offline:
-        raise OfflineModeError(MESSAGES["job_offline_mode"])
+        raise OfflineModeError(message("job.offline_mode"))
     config = _store(spec)
     registry = load_registry(cache_dir=spec.cache_dir)
     started = time.perf_counter()
@@ -295,8 +295,8 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
                 emit.progress(done, len(entries), written=written, failed=failed)
             total += len(entries)
     if failed:
-        message = MESSAGES["job_footprints_failed"].format(count=failed, detail=failure)
-        emit.notice("warning", "footprints_failed", message)
+        text = message("job.footprints_failed", count=failed, detail=failure)
+        emit.notice("warning", "footprints_failed", text)
     return {
         "store": config.id,
         "total": total,
@@ -323,8 +323,8 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     with IndexQueries(spec.index_path) as queries:
         detail = queries.slot(config.id, slot, visible=ALL_PROJECTS)
     if detail is None:
-        message = MESSAGES["job_slot_not_found"].format(slot=slot, store=config.id)
-        raise NotFoundError(message)
+        text = message("job.slot_not_found", slot=slot, store=config.id)
+        raise NotFoundError(text)
     producer = detail.segment.producer
     expected = detail.current
     result: JsonObject = {
@@ -337,12 +337,12 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
         return {**result, "status": "not_a_link"}
     root = config.roots().get(producer)
     if root is None:
-        message = MESSAGES["job_slot_not_found"].format(slot=slot, store=config.id)
-        raise NotFoundError(message)
+        text = message("job.slot_not_found", slot=slot, store=config.id)
+        raise NotFoundError(text)
     adapter = load_registry(cache_dir=spec.cache_dir).adapter(producer)
     if not isinstance(adapter, LinkCheckAdapter):
-        message = MESSAGES["job_link_check_unsupported"].format(producer=producer)
-        raise UnsupportedError(message)
+        text = message("job.link_check_unsupported", producer=producer)
+        raise UnsupportedError(text)
     with IndexWriter(spec.index_path) as writer:
         _require_reachable(adapter, root, writer, config.id)
         try:
@@ -371,14 +371,14 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
                 slot=slot,
             )
             problem, fix = explain("link_mismatch", path=slot, producer=producer)
-            message = MESSAGES["job_link_mismatch"].format(problem=problem, fix=fix)
-            emit.notice("warning", "link_mismatch", message)
+            text = message("job.link_mismatch", problem=problem, fix=fix)
+            emit.notice("warning", "link_mismatch", text)
             return {**result, "status": "mismatch"}
         writer.clear_issue(config.id, path=slot, code="link_mismatch")
     holds = confirmed.as_posix()
     if holds != expected:
-        message = MESSAGES["job_link_index_outdated"].format(slot=slot, version=holds)
-        emit.notice("info", "index_outdated", message)
+        text = message("job.link_index_outdated", slot=slot, version=holds)
+        emit.notice("info", "index_outdated", text)
         return {**result, "confirmed": holds, "status": "index_outdated"}
     return {**result, "confirmed": holds, "status": "confirmed"}
 
@@ -402,8 +402,8 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
         known = queries.projects(visible=ALL_PROJECTS)
         chosen = [item for item in known if project in (None, item.key)]
         if project is not None and not chosen:
-            message = MESSAGES["project_not_found"].format(project=project)
-            raise NotFoundError(message)
+            text = message("project.not_found", project=project)
+            raise NotFoundError(text)
         emit.progress(0, len(chosen), files=0, read=0)
 
         def progress(found: OwnScanProgress) -> None:
@@ -423,8 +423,8 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
                 on_progress=progress,
             )
         except OwnReaderError as error:
-            message = MESSAGES["own_scan_reader_failed"].format(detail=error)
-            raise OwnReaderError(message) from error
+            text = message("own.scan_reader_failed", detail=error)
+            raise OwnReaderError(text) from error
     return summary.result()
 
 
@@ -449,8 +449,8 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
         known = queries.projects(visible=ALL_PROJECTS)
         project = next((item for item in known if item.key == key), None)
         if project is None:
-            message = MESSAGES["project_not_found"].format(project=key)
-            raise NotFoundError(message)
+            text = message("project.not_found", project=key)
+            raise NotFoundError(text)
         stores, folders = folder_rules(spec.settings, known)
         folder = check_own_folder(
             spec.settings,
@@ -466,8 +466,8 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
             raise SnapshotBlockedError(block.reason, block.message)
         file = queries.own_file(key, file_id, visible=ALL_PROJECTS)
     if file is None:
-        message = MESSAGES["own_file_not_found"].format(project=key, file_id=file_id)
-        raise NotFoundError(message)
+        text = message("own.file_not_found", project=key, file_id=file_id)
+        raise NotFoundError(text)
     total = len(SNAPSHOT_PHASES)
     emit.progress(0, total, phase=None)
 
@@ -488,8 +488,8 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
                 on_phase=reached,
             )
     except OwnReaderError as error:
-        message = MESSAGES["own_scan_reader_failed"].format(detail=error)
-        raise OwnReaderError(message) from error
+        text = message("own.scan_reader_failed", detail=error)
+        raise OwnReaderError(text) from error
     for warning in result.warnings:
         emit.notice("warning", warning.code, warning.message)
     if result.status == "created":
@@ -560,14 +560,14 @@ def _record_snapshot(
             )
     except (OSError, sqlite3.Error, ValueError) as error:
         logger.warning("Snapshot %s not in the index: %s", result.label, error)
-        message = MESSAGES["snapshot_not_indexed"].format(label=result.label)
-        emit.notice("warning", "snapshot_not_indexed", message)
+        text = message("snapshot.not_indexed", label=result.label)
+        emit.notice("warning", "snapshot_not_indexed", text)
 
 
 def _store(spec: JobSpec) -> StoreConfig:
     config = None if spec.store is None else spec.settings.store(spec.store)
     if config is None:
-        raise NotFoundError(MESSAGES["job_store_unknown"].format(store=spec.store))
+        raise NotFoundError(message("job.store_unknown", store=spec.store))
     return config
 
 
@@ -660,9 +660,7 @@ def _failure(error: Exception) -> tuple[Problem, str]:
             else type(error).__name__
         )
         return describe(error), exception
-    detail = MESSAGES["job_internal_error"].format(
-        detail=f"{type(error).__name__}: {error}"
-    )
+    detail = message("job.internal_error", detail=f"{type(error).__name__}: {error}")
     return Problem(CODE_INTERNAL_ERROR, detail), type(error).__name__
 
 

@@ -93,7 +93,7 @@ from archiwista.jobs.protocol import (
     decode_message,
     encode_spec,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import label, message
 from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
@@ -288,9 +288,9 @@ class JobConflict:
         Key of a job in the domain from its store and parameters (``index``:
         the store); the kinds of a domain share it.
     message : str
-        Key of the ``JobConflictError`` message in ``MESSAGES``, formatted
-        with the new job's parameters and ``store`` and the active job's
-        ``job`` (id), ``kind`` and ``state`` (Polish names).
+        Catalog key of the ``JobConflictError`` message, rendered with the
+        new job's ``store`` and the active job's ``job`` (id), ``kind`` and
+        ``state``.
     """
 
     domain: str
@@ -393,12 +393,12 @@ def _join_own_scan(active: JsonObject, new: JsonObject) -> JsonObject | None:
 
 
 # Jobs writing a store's index: one of them per store at a time.
-_INDEX_CONFLICT = JobConflict("index", _store_key, "job_conflict")
+_INDEX_CONFLICT = JobConflict("index", _store_key, "job.conflict")
 _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
 # Only a waiting run takes a request: a running one may have passed the change.
 _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
 # One snapshot of a file at a time; those of other files run side by side.
-_SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job_conflict_snapshot")
+_SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
 # The rule of each kind, one line per kind of ``JobKind``.
 JOB_RULES: Mapping[JobKind, JobRule] = {
     "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
@@ -451,11 +451,6 @@ class _Run:
 def default_max_jobs() -> int:
     """Workers running at once: half the processors, at least two."""
     return max(2, (os.cpu_count() or 2) // 2)
-
-
-def label(prefix: str, value: str) -> str:
-    """Return the Polish name of a job kind or state (``job_kind``, ``job_state``)."""
-    return MESSAGES.get(f"{prefix}_{value}", value)
 
 
 class JobSupervisor:
@@ -599,7 +594,7 @@ class JobSupervisor:
             self._phase = "closing"
             if self._unsubscribe is not None:
                 self._unsubscribe()
-            stopped = _interrupted(MESSAGES["job_interrupted_stop"])
+            stopped = _interrupted(message("job.interrupted_stop"))
             while self._queue:
                 self._end_waiting(self._queue.popleft(), "interrupted", stopped)
             runs = tuple(self._running.values())
@@ -682,10 +677,10 @@ class JobSupervisor:
             raise ValueError(f"a {job_kind} job takes no store, got {store!r}")
         settings = self._settings.get()
         if store is not None and settings.store(store) is None:
-            raise NotFoundError(MESSAGES["job_store_unknown"].format(store=store))
+            raise NotFoundError(message("job.store_unknown", store=store))
         values = _job_params(job_kind, params or {})
         if rule.network and settings.offline:
-            raise OfflineModeError(MESSAGES["job_offline_mode"])
+            raise OfflineModeError(message("job.offline_mode"))
         job_id = secrets.token_hex(8)
         now = _now()
         with self._lock:
@@ -756,7 +751,7 @@ class JobSupervisor:
             )
             if waiting is not None:
                 self._queue.remove(waiting)
-                error = JobError(CODE_CANCELLED, MESSAGES["job_cancelled"])
+                error = JobError(CODE_CANCELLED, message("job.cancelled"))
                 self._end_waiting(waiting, "cancelled", error)
             run = self._running.get(job_id)
             if run is not None and not run.cancel:
@@ -989,9 +984,7 @@ class JobSupervisor:
             Limit out of range, or a cursor of other filters.
         """
         if not 1 <= limit <= MAX_PAGE_LIMIT:
-            raise IndexQueryError(
-                MESSAGES["index_invalid_limit"].format(limit=MAX_PAGE_LIMIT)
-            )
+            raise IndexQueryError(message("index.invalid_limit", limit=MAX_PAGE_LIMIT))
         fingerprint = hashlib.sha256(
             json.dumps([kind, store, state, project]).encode()
         ).hexdigest()[:16]
@@ -1033,7 +1026,7 @@ class JobSupervisor:
     def _record(self, job_id: str) -> JobRecord:
         record = self.get(job_id)
         if record is None:
-            raise NotFoundError(MESSAGES["job_not_found"].format(job=job_id))
+            raise NotFoundError(message("job.not_found", job=job_id))
         return record
 
     def _owns(self, job_id: str) -> bool:
@@ -1053,8 +1046,8 @@ class JobSupervisor:
                 self._start(waiting)
             except Exception as error:  # the job must not stay waiting
                 logger.exception("Starting job %s failed", waiting.job_id)
-                detail = MESSAGES["job_internal_error"].format(
-                    detail=f"{type(error).__name__}: {error}"
+                detail = message(
+                    "job.internal_error", detail=f"{type(error).__name__}: {error}"
                 )
                 self._end_waiting(
                     waiting, "failed", JobError(CODE_INTERNAL_ERROR, detail)
@@ -1078,12 +1071,12 @@ class JobSupervisor:
         if waiting.store is not None and settings.store(waiting.store) is None:
             error = JobError(
                 CODE_CANCELLED,
-                MESSAGES["job_store_unknown"].format(store=waiting.store),
+                message("job.store_unknown", store=waiting.store),
             )
             self._end_waiting(waiting, "cancelled", error)
             return
         if JOB_RULES[waiting.kind].network and settings.offline:
-            error = JobError.of(OfflineModeError(MESSAGES["job_offline_mode"]))
+            error = JobError.of(OfflineModeError(message("job.offline_mode")))
             self._end_waiting(waiting, "failed", error)
             return
         self._sync(settings)
@@ -1133,7 +1126,7 @@ class JobSupervisor:
             log.close()
             failed = JobError(
                 CODE_INTERNAL_ERROR,
-                MESSAGES["job_worker_not_started"].format(detail=error),
+                message("job.worker_not_started", detail=error),
                 {"reason": REASON_WORKER_CRASHED},
             )
             self._end_waiting(waiting, "failed", failed)
@@ -1290,15 +1283,15 @@ class JobSupervisor:
                 busy = row
         if busy is None:
             return None, tuple(events)
-        fields = {
-            **params,
-            "store": store,
-            "job": busy["id"],
-            "kind": label("job_kind", busy["kind"]),
-            "state": label("job_state", busy["state"]),
-        }
+        text = message(
+            rule.message,
+            store=store,
+            job=busy["id"],
+            kind=label("job.kind", busy["kind"]),
+            state=label("job.state", busy["state"]),
+        )
         error = JobConflictError(
-            MESSAGES[rule.message].format_map(fields),
+            text,
             job_id=busy["id"],
             kind=busy["kind"],
             state=busy["state"],
@@ -1353,7 +1346,7 @@ class JobSupervisor:
     def _mark_stale(
         self, db: sqlite3.Connection, job_id: str, now: datetime
     ) -> JobEvent:
-        error = _interrupted(MESSAGES["job_interrupted_restart"])
+        error = _interrupted(message("job.interrupted_restart"))
         return _finish_row(db, job_id, "interrupted", error, now)
 
     def _interrupt(self, run: _Run) -> None:
@@ -1527,20 +1520,18 @@ def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | No
     if run.result is not None:
         return "succeeded", None
     if run.cancel:
-        return "cancelled", JobError(CODE_CANCELLED, MESSAGES["job_cancelled"])
+        return "cancelled", JobError(CODE_CANCELLED, message("job.cancelled"))
     if run.stop:
-        return "interrupted", _interrupted(MESSAGES["job_interrupted_stop"])
+        return "interrupted", _interrupted(message("job.interrupted_stop"))
     if run.error is not None:
         return "failed", JobError.from_message(run.error)
     if status in (INTERRUPTED_EXIT, -signal.SIGINT):
-        return "interrupted", _interrupted(MESSAGES["job_interrupted_signal"])
+        return "interrupted", _interrupted(message("job.interrupted_signal"))
     if status < 0:
-        ending = MESSAGES["job_status_signal"].format(
-            signal=signal.Signals(-status).name
-        )
+        ending = message("job.status_signal", signal=signal.Signals(-status).name)
     else:
-        ending = MESSAGES["job_status_code"].format(code=status)
-    detail = MESSAGES["job_worker_crashed"].format(status=ending, log=log)
+        ending = message("job.status_code", code=status)
+    detail = message("job.worker_crashed", status=ending, log=log)
     return "failed", JobError(
         CODE_INTERNAL_ERROR, detail, {"reason": REASON_WORKER_CRASHED}
     )
@@ -1811,14 +1802,14 @@ def _decode_cursor(cursor: str | None, fingerprint: str) -> tuple[str, str] | No
         padded = cursor + "=" * (-len(cursor) % 4)
         data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
     except (ValueError, UnicodeDecodeError, binascii.Error):
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"]) from None
+        raise IndexQueryError(message("index.invalid_cursor")) from None
     if (
         not isinstance(data, list)
         or len(data) != 4
         or data[:2] != [_CURSOR_VERSION, fingerprint]
         or not all(isinstance(value, str) for value in data[2:])
     ):
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"])
+        raise IndexQueryError(message("index.invalid_cursor"))
     return data[2], data[3]
 
 

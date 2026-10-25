@@ -80,7 +80,7 @@ from archiwista.index import (
 )
 from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, ScanHistory
-from archiwista.messages import MESSAGES
+from archiwista.messages import message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
@@ -152,12 +152,13 @@ _VERSION_EXAMPLE = {
     "location": _LOCATION_EXAMPLE,
     "pinned_by": [_PIN_EXAMPLE],
 }
+_KARTOGRAF_FIX = message("fix.install", requirement="kartograf<0.9,>=0.8.0")
 _STALE_STORE_EXAMPLE = {
     "store": _STORE,
     "status": "unavailable",
     "status_at": "2026-10-18T13:40:00Z",
     "indexed_at": "2026-10-18T12:02:31Z",
-    "detail": "Nie można odczytać magazynu /mnt/nas/kartograf/data",
+    "detail": message("store.unreadable", path="/mnt/nas/kartograf/data"),
 }
 _JOB_EXAMPLE = {
     "id": "j-2026-10-18-0007",
@@ -171,7 +172,7 @@ _JOB_EXAMPLE = {
 }
 _JOB_FAILURE_EXAMPLE = {
     "code": "store_unavailable",
-    "detail": "Nie można odczytać magazynu /mnt/nas/kartograf/data",
+    "detail": message("store.unreadable", path="/mnt/nas/kartograf/data"),
     "hint": None,
     "details": {"reason": "store_unreadable"},
 }
@@ -290,10 +291,11 @@ _PROJECT_EXAMPLE = {
 }
 _ISSUE_EXAMPLE = {
     "code": "missing_sidecar",
-    "message": (
-        "Plik nmt/pl_1992_1m_evrf2007/versions/…/N-34-130-D-d-2-4.asc nie ma sidecara."
+    "message": message(
+        "problem.missing_sidecar",
+        path="nmt/pl_1992_1m_evrf2007/versions/…/N-34-130-D-d-2-4.asc",
     ),
-    "instruction": "Pobierz plik ponownie poleceniem kartograf.",
+    "instruction": message("fix.missing_sidecar", producer="kartograf"),
     "path": f"{_SEGMENT}/versions/N-34/130/D/d/2/4/2016_1a2b3c4d/N-34-130-D-d-2-4.asc",
     "segment": _SEGMENT,
     "slot": _SLOT,
@@ -451,7 +453,7 @@ class ProblemDetails(BaseModel):
                     "type": f"{REGISTRY_PAGE}#not_found",
                     "title": "Not found",
                     "status": 404,
-                    "detail": f"Indeks nie zna pliku „{_SLOT}” w magazynie „zespol”.",
+                    "detail": message("api.slot_unknown", slot=_SLOT, store="zespol"),
                     "instance": "/api/v1/stores/zespol/slots/…",
                     "code": "not_found",
                 },
@@ -459,16 +461,19 @@ class ProblemDetails(BaseModel):
                     "type": f"{REGISTRY_PAGE}#missing_dependency",
                     "title": "Missing optional dependency",
                     "status": 503,
-                    "detail": (
-                        "Źródło danych kartograf jest niedostępne: pakiet"
-                        " producenta nie jest zainstalowany. Naprawa: zainstaluj"
-                        ' zgodną wersję: pip install "kartograf<0.9,>=0.8.0"'
+                    "detail": message(
+                        "api.source_problem",
+                        message=with_detail(
+                            message(
+                                "source.unavailable_producer", producer="kartograf"
+                            ),
+                            message("source.status_not_installed"),
+                        ),
+                        fix=_KARTOGRAF_FIX,
                     ),
                     "instance": "/api/v1/stores",
                     "code": "missing_dependency",
-                    "hint": (
-                        'Zainstaluj zgodną wersję: pip install "kartograf<0.9,>=0.8.0"'
-                    ),
+                    "hint": _KARTOGRAF_FIX,
                     "details": {
                         "reason": "source_unavailable",
                         "source": {
@@ -603,7 +608,7 @@ def _bbox(text: str) -> BBox:
     except ValueError:
         values = []
     if len(values) != 4 or not all(math.isfinite(value) for value in values):
-        raise ValueError(MESSAGES["api_bbox_invalid"])
+        raise ValueError(message("api.bbox_invalid"))
     return values[0], values[1], values[2], values[3]
 
 
@@ -680,7 +685,7 @@ class CommonFilters(BaseModel):
     @classmethod
     def _check_years(cls, value: str | None) -> str | None:
         if value is not None and re.fullmatch(YEARS_PATTERN, value) is None:
-            raise ValueError(MESSAGES["api_years_invalid"])
+            raise ValueError(message("api.years_invalid"))
         return value
 
     def year_range(self) -> YearRange | None:
@@ -1567,12 +1572,12 @@ class SourceInfo(BaseModel):
             "package_version": None,
             "supported_versions": None,
             "schemas": [],
-            "detail": "brak modułu imgwtools",
-            "message": (
-                "Wtyczka imgw: pakiet producenta nie jest zainstalowany: brak"
-                " modułu imgwtools"
+            "detail": message("plugin.module_missing", module="imgwtools"),
+            "message": with_detail(
+                message("doctor.source_not_installed", producer="imgw"),
+                message("plugin.module_missing", module="imgwtools"),
             ),
-            "fix": 'zainstaluj zgodną wersję: pip install "archiwista[imgw]"',
+            "fix": message("fix.install", requirement="archiwista[imgw]"),
         },
     )
 
@@ -1662,8 +1667,8 @@ class JobFailure(BaseModel):
         _JOB_FAILURE_EXAMPLE,
         {
             "code": "conflict",
-            "detail": MESSAGES["snapshot_blocked_read_only_folder"].format(
-                path="/mnt/nas/raba/dane/.wersje"
+            "detail": message(
+                "snapshot.blocked_read_only_folder", path="/mnt/nas/raba/dane/.wersje"
             ),
             "hint": None,
             "details": {"reason": "snapshot_blocked", "blocked_by": "read_only_folder"},
@@ -2625,7 +2630,7 @@ _COUNTRY_COVERAGE_EXAMPLE = {
     "covered_km2": 4.297,
     "versions_count": 3,
     "reason": None,
-    "label": "lokalnie 83% obszaru",
+    "label": message("local.coverage_percent", percent=83),
 }
 
 
@@ -2740,7 +2745,7 @@ class CountryCoverage(BaseModel):
             "covered_km2": None,
             "versions_count": 1,
             "reason": "no_planar_crs",
-            "label": MESSAGES["local_coverage_no_planar_crs"],
+            "label": message("local.coverage_no_planar_crs"),
         },
     )
 
@@ -2873,12 +2878,9 @@ def _percent(ratio: float) -> int:
 
 def _coverage_label(item: LocalCoverage, percent: int | None) -> str:
     if item.ratio is None or percent is None:
-        key = (
-            "local_coverage_empty_area"
-            if item.reason == "empty_area"
-            else "local_coverage_no_planar_crs"
-        )
-        return MESSAGES[key]
+        if item.reason == "empty_area":
+            return message("local.coverage_empty_area")
+        return message("local.coverage_no_planar_crs")
     if percent == 0 and item.ratio > 0:
-        return MESSAGES["local_coverage_below_one"]
-    return MESSAGES["local_coverage_percent"].format(percent=percent)
+        return message("local.coverage_below_one")
+    return message("local.coverage_percent", percent=percent)

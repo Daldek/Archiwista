@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 from archiwista.errors import ArchiwistaError
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.sources import SourceState
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ type StoreKind = Literal["local", "share"]
 type BasemapKind = Literal["xyz", "wms", "vector"]
 type OwnFolderSource = Literal["default", "setting"]
 type OwnFolderReason = Literal["inside_store", "inside_app_data", "overlaps_project"]
+# Why a directory of the settings cannot be used; the suffix of a problem code.
+type DirectoryProblem = Literal["missing", "not_directory", "unreadable"]
 # Visibility of a project without its own access entry (A-ADR-029): everyone
 # sees it, or administrators only until someone shares it.
 type DefaultProjectVisibility = Literal["public", "private"]
@@ -144,14 +146,14 @@ class AppPaths:
 
 def _require_absolute(path: Path) -> Path:
     if not (path.is_absolute() or _is_unc(str(path))):
-        raise ValueError(MESSAGES["settings_path_not_absolute"])
+        raise ValueError(message("settings.path_not_absolute"))
     return path
 
 
 def _require_text(value: str) -> str:
     stripped = value.strip()
     if not stripped:
-        raise ValueError(MESSAGES["settings_empty_text"])
+        raise ValueError(message("settings.empty_text"))
     return stripped
 
 
@@ -205,7 +207,7 @@ class StoreConfig(BaseModel):
     @classmethod
     def _check_id(cls, value: str) -> str:
         if _STORE_ID.fullmatch(value) is None:
-            raise ValueError(MESSAGES["settings_store_id_pattern"])
+            raise ValueError(message("settings.store_id_pattern"))
         return value
 
     @field_validator("name")
@@ -325,12 +327,12 @@ class BasemapConfig(BaseModel):
     def _check_url(self) -> Self:
         parts = urlsplit(self.url)
         if parts.scheme not in ("http", "https") or not parts.netloc:
-            raise ValueError(MESSAGES["settings_basemap_url"])
+            raise ValueError(message("settings.basemap_url"))
         tokens = [token in self.url for token in ("{z}", "{x}", "{y}")]
         if self.kind == "xyz" and not all(tokens):
-            raise ValueError(MESSAGES["settings_basemap_xyz"])
+            raise ValueError(message("settings.basemap_xyz"))
         if self.kind == "vector" and any(tokens):
-            raise ValueError(MESSAGES["settings_basemap_vector"])
+            raise ValueError(message("settings.basemap_vector"))
         return self
 
     @property
@@ -430,7 +432,7 @@ class AppSettings(BaseModel):
     @classmethod
     def _check_default_visibility(cls, value: object) -> object:
         if value not in DEFAULT_PROJECT_VISIBILITIES:
-            raise ValueError(MESSAGES["settings_default_visibility"])
+            raise ValueError(message("settings.default_visibility"))
         return value
 
     @field_validator("stores")
@@ -438,7 +440,7 @@ class AppSettings(BaseModel):
     def _check_store_ids(
         cls, value: tuple[StoreConfig, ...]
     ) -> tuple[StoreConfig, ...]:
-        _require_unique([store.id for store in value], "settings_duplicate_store")
+        _require_unique([store.id for store in value], "settings.duplicate_store")
         return value
 
     @field_validator("basemaps")
@@ -447,7 +449,7 @@ class AppSettings(BaseModel):
         cls, value: tuple[BasemapConfig, ...]
     ) -> tuple[BasemapConfig, ...]:
         _require_unique(
-            [basemap.name for basemap in value], "settings_duplicate_basemap"
+            [basemap.name for basemap in value], "settings.duplicate_basemap"
         )
         return value
 
@@ -496,11 +498,11 @@ class AppSettings(BaseModel):
         return Path(project) / OWN_DATA_DIR_NAME, "default"
 
 
-def _require_unique(values: Sequence[str], message_key: str) -> None:
+def _require_unique(values: Sequence[str], key: str) -> None:
     seen: set[str] = set()
     for value in values:
         if value in seen:
-            raise ValueError(MESSAGES[message_key].format(value=value))
+            raise ValueError(message(key, value=value))
         seen.add(value)
 
 
@@ -606,17 +608,17 @@ class SettingsValidationError(ArchiwistaError):
         )
 
 
-_PYDANTIC_MESSAGES = {
-    "missing": "settings_missing",
-    "extra_forbidden": "settings_unknown_key",
-    "int_type": "settings_not_integer",
-    "int_parsing": "settings_not_integer",
-    "int_from_float": "settings_not_integer",
-    "bool_type": "settings_not_boolean",
-    "bool_parsing": "settings_not_boolean",
-    "string_type": "settings_not_text",
-    "tuple_type": "settings_not_list",
-    "list_type": "settings_not_list",
+_PYDANTIC_KEYS = {
+    "missing": "settings.missing",
+    "extra_forbidden": "settings.unknown_key",
+    "int_type": "settings.not_integer",
+    "int_parsing": "settings.not_integer",
+    "int_from_float": "settings.not_integer",
+    "bool_type": "settings.not_boolean",
+    "bool_parsing": "settings.not_boolean",
+    "string_type": "settings.not_text",
+    "tuple_type": "settings.not_list",
+    "list_type": "settings.not_list",
 }
 
 
@@ -653,19 +655,19 @@ def _problem_from_pydantic(item: Mapping[str, object]) -> SettingsProblem:
     context = item.get("ctx")
     ctx = context if isinstance(context, Mapping) else {}
     if kind == "value_error":
-        detail = str(ctx.get("error", MESSAGES["settings_bad_value"]))
+        detail = str(ctx.get("error", message("settings.bad_value")))
     elif kind in ("greater_than_equal", "greater_than"):
         limit = ctx.get("ge", ctx.get("gt"))
-        detail = MESSAGES["settings_too_small"].format(limit=limit)
+        detail = message("settings.too_small", limit=limit)
     elif kind in ("less_than_equal", "less_than"):
         limit = ctx.get("le", ctx.get("lt"))
-        detail = MESSAGES["settings_too_large"].format(limit=limit)
+        detail = message("settings.too_large", limit=limit)
     else:
-        detail = MESSAGES[_PYDANTIC_MESSAGES.get(kind, "settings_bad_value")]
+        detail = message(_PYDANTIC_KEYS.get(kind, "settings.bad_value"))
     return SettingsProblem(
         code="invalid_value",
         field=field,
-        message=MESSAGES["settings_invalid_value"].format(field=field, detail=detail),
+        message=message("settings.invalid_value", field=field, detail=detail),
     )
 
 
@@ -758,12 +760,12 @@ def check_own_data_dirs(
     problems: list[SettingsProblem] = []
     for project, folder in settings.own_data_dirs.items():
         field = f"own_data_dirs.{project}"
-        values = {"project": project, "path": folder}
         if old.get(project) != folder:
-            code = _directory_problem(Path(folder), prefix="own_data_dir")
-            if code is not None:
-                message = MESSAGES[code].format(**values)
-                problems.append(SettingsProblem(code, field, message))
+            problem = _directory_problem(Path(folder))
+            if problem is not None:
+                text = message(f"own.data_dir_{problem}", project=project, path=folder)
+                code = f"own_data_dir_{problem}"
+                problems.append(SettingsProblem(code, field, text))
                 continue
         others = [
             Path(other)
@@ -775,9 +777,11 @@ def check_own_data_dirs(
         )
         if conflict is not None:
             reason, directory = conflict
+            text = message(
+                f"own.data_dir_{reason}", project=project, path=folder, other=directory
+            )
             code = f"own_data_dir_{reason}"
-            message = MESSAGES[code].format(**values, other=directory)
-            problems.append(SettingsProblem(code, field, message))
+            problems.append(SettingsProblem(code, field, text))
     return tuple(problems)
 
 
@@ -853,33 +857,34 @@ def check_store_root(
         At most one problem; nothing is created in the directory.
     """
     root = store.roots()[producer]
-    values = {"producer": producer, "store": store.id, "path": root}
-    code = _directory_problem(root, prefix="root")
-    if code is None:
+    problem = _directory_problem(root)
+    if problem is None:
         return ()
-    return (SettingsProblem(code, field, MESSAGES[code].format(**values)),)
+    text = message(f"root.{problem}", producer=producer, store=store.id, path=root)
+    return (SettingsProblem(f"root_{problem}", field, text),)
 
 
 def check_project_dir(path: Path, field: str) -> tuple[SettingsProblem, ...]:
     """Check that a project directory exists and can be listed and read."""
-    code = _directory_problem(path, prefix="project_dir")
-    if code is None:
+    problem = _directory_problem(path)
+    if problem is None:
         return ()
-    return (SettingsProblem(code, field, MESSAGES[code].format(path=path)),)
+    text = message(f"project.dir_{problem}", path=path)
+    return (SettingsProblem(f"project_dir_{problem}", field, text),)
 
 
-def _directory_problem(path: Path, *, prefix: str) -> str | None:
+def _directory_problem(path: Path) -> DirectoryProblem | None:
     try:
         exists = path.exists()
         is_dir = path.is_dir()
     except OSError:
         exists = is_dir = False
     if not exists:
-        return f"{prefix}_missing"
+        return "missing"
     if not is_dir:
-        return f"{prefix}_not_directory"
+        return "not_directory"
     if not os.access(path, os.R_OK | os.X_OK):
-        return f"{prefix}_unreadable"
+        return "unreadable"
     return None
 
 
@@ -904,8 +909,8 @@ def check_nesting(roots: Sequence[tuple[str, Path]]) -> tuple[SettingsProblem, .
                 continue
             if real == other_real and other_index > index:
                 continue
-            message = MESSAGES["root_nested"].format(path=root, other=other)
-            problems.append(SettingsProblem("root_nested", field, message))
+            text = message("root.nested", path=root, other=other)
+            problems.append(SettingsProblem("root_nested", field, text))
             break
     return tuple(problems)
 
@@ -916,14 +921,15 @@ def _probe_root(
     state = registry.probe(producer, store.roots()[producer])
     if state.status == "available":
         return ()
-    message = MESSAGES["root_source"].format(
+    text = message(
+        "root.source",
         producer=producer,
         store=store.id,
-        status=MESSAGES[f"source_status_{state.status}"],
+        status=message(f"source.status_{state.status}"),
     )
     return (
         SettingsProblem(
-            f"source_{state.status}", field, with_detail(message, state.detail)
+            f"source_{state.status}", field, with_detail(text, state.detail)
         ),
     )
 
@@ -958,11 +964,9 @@ class ConfigStore:
         except FileNotFoundError:
             return AppSettings()
         except tomllib.TOMLDecodeError as error:
-            message = MESSAGES["settings_invalid_toml"].format(
-                path=self.path, detail=error
-            )
+            text = message("settings.invalid_toml", path=self.path, detail=error)
             raise SettingsValidationError(
-                [SettingsProblem("invalid_toml", "", message)]
+                [SettingsProblem("invalid_toml", "", text)]
             ) from error
         return parse_settings(data)
 

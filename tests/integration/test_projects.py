@@ -18,7 +18,7 @@ from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.errors import PathOutsideRootError
 from archiwista.index import IndexQueries, IndexWriter, scan_projects
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.services import project_detail, project_status, store_summary
 from archiwista.sources import ProjectInfo, SourceContext
 from archiwista.sources.registry import load_registry
@@ -335,7 +335,7 @@ def test_scan_projects_never_reads_manifest_leaving_project_dir(
 
     # Assert
     assert "obcy" not in adapter.reads
-    assert listed["obcy"].problem == MESSAGES["path_outside_root"].format(path=planted)
+    assert listed["obcy"].problem == message("ref.path_outside_root", path=planted)
     assert listed["dowiazany"].problem is None
     assert "dowiazany" in adapter.reads
     assert summary.invalid == 1 + sum(not p.valid for p in store.projects)

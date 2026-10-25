@@ -104,7 +104,7 @@ from archiwista.index.types import (
     VersionsMode,
     VersionSummary,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
 from archiwista.sources import GeoJSONGeometry, SourceEntry
@@ -611,9 +611,7 @@ class IndexQueries:
         min_lon, min_lat, max_lon, max_lat = require_wgs84_bbox(query.bbox)
         _require_limit(query.limit, MAP_FOOTPRINT_LIMIT)
         if not 1 <= query.grid_columns <= MAX_GRID_COLUMNS:
-            raise IndexQueryError(
-                MESSAGES["index_invalid_grid"].format(limit=MAX_GRID_COLUMNS)
-            )
+            raise IndexQueryError(message("index.invalid_grid", limit=MAX_GRID_COLUMNS))
         filters = _filters(query)
         columns = query.grid_columns
         cell_width = (max_lon - min_lon) / columns
@@ -1627,7 +1625,7 @@ class IndexQueries:
 
 def _require_limit(limit: int, maximum: int) -> None:
     if not 1 <= limit <= maximum:
-        raise IndexQueryError(MESSAGES["index_invalid_limit"].format(limit=maximum))
+        raise IndexQueryError(message("index.invalid_limit", limit=maximum))
 
 
 def _filters(query: SlotQuery | MapQuery) -> _Filters:
@@ -1635,9 +1633,7 @@ def _filters(query: SlotQuery | MapQuery) -> _Filters:
     if years is not None:
         start, end = years
         if start is not None and end is not None and start > end:
-            raise IndexQueryError(
-                MESSAGES["index_invalid_years"].format(start=start, end=end)
-            )
+            raise IndexQueryError(message("index.invalid_years", start=start, end=end))
         if start is None and end is None:
             years = None
     q = query.q.strip() if query.q else None
@@ -1882,7 +1878,7 @@ def _decode_cursor(
         padded = cursor + "=" * (-len(cursor) % 4)
         data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
     except (ValueError, UnicodeDecodeError, binascii.Error):
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"]) from None
+        raise IndexQueryError(message("index.invalid_cursor")) from None
     valid = (
         isinstance(data, list)
         and len(data) == size + 2
@@ -1894,7 +1890,7 @@ def _decode_cursor(
         and all(isinstance(value, str) for value in data[5:])
     )
     if not valid:
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"])
+        raise IndexQueryError(message("index.invalid_cursor"))
     return list(data[2:])
 
 
@@ -2299,7 +2295,7 @@ def _own_state(state: str) -> tuple[str, tuple[object, ...]]:
         return "f.missing_since IS NULL AND f.change = ?", (state,)
     allowed = ", ".join((*OWN_FILE_STATES, *OWN_CHANGES))
     raise IndexQueryError(
-        MESSAGES["index_invalid_own_state"].format(state=state, allowed=allowed)
+        message("index.invalid_own_state", state=state, allowed=allowed)
     )
 
 
@@ -2315,14 +2311,14 @@ def _decode_own_cursor(cursor: str | None, fingerprint: str) -> str | None:
         padded = cursor + "=" * (-len(cursor) % 4)
         data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
     except (ValueError, UnicodeDecodeError, binascii.Error):
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"]) from None
+        raise IndexQueryError(message("index.invalid_cursor")) from None
     if (
         not isinstance(data, list)
         or len(data) != 3
         or data[:2] != [_CURSOR_VERSION, fingerprint]
         or not isinstance(data[2], str)
     ):
-        raise IndexQueryError(MESSAGES["index_invalid_cursor"])
+        raise IndexQueryError(message("index.invalid_cursor"))
     return data[2]
 
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from archiwista.index import OWN_PROBLEM_CODES, IssueOrigin
-from archiwista.messages import MESSAGES
+from archiwista.messages import entry, message, placeholders
 
 # Codes with their own message and instruction; others use ``problem_other``.
 KNOWN_PROBLEMS = frozenset(
@@ -67,14 +67,15 @@ class Problem:
 
 
 def explain(code: str, **values: object) -> tuple[str, str]:
-    """Return the Polish message and instruction of a problem code.
+    """Return the message and instruction of a problem code.
 
     Parameters
     ----------
     code : str
         Problem code; an unknown one gets the generic texts.
     **values : object
-        Values of the texts' placeholders (``path``, ``producer``…).
+        Values of the texts' placeholders (``path``, ``producer``…); a missing
+        or empty one reads as ``—``.
 
     Returns
     -------
@@ -82,17 +83,11 @@ def explain(code: str, **values: object) -> tuple[str, str]:
         ``(message, instruction)``.
     """
     name = code if code in KNOWN_PROBLEMS else "other"
-    fields = _Blank(
-        {"code": code, **{key: value for key, value in values.items() if value}}
-    )
-    return (
-        MESSAGES[f"problem_{name}"].format_map(fields),
-        MESSAGES[f"fix_{name}"].format_map(fields),
-    )
+    given = {"code": code, **{key: value for key, value in values.items() if value}}
+    return _filled(f"problem.{name}", given), _filled(f"fix.{name}", given)
 
 
-class _Blank(dict[str, object]):
-    """Placeholder values; a missing or empty one reads as ``—``."""
-
-    def __missing__(self, key: str) -> object:
-        return "—"
+def _filled(key: str, given: dict[str, object]) -> str:
+    """Render ``key`` with ``given``; a placeholder without a value reads ``—``."""
+    names = placeholders(entry(key).en)
+    return message(key, **{name: given.get(name, "—") for name in names})

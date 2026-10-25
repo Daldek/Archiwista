@@ -72,9 +72,9 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError, own_file_id
-from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor, label
+from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
 from archiwista.jobs.foreground import exit_status, run_foreground
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import label, message, with_detail
 from archiwista.previews.service import PreviewService
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
@@ -92,32 +92,47 @@ def add_commands(commands: Commands) -> None:
     commands : argparse._SubParsersAction
         Subcommands of the ``archiwista`` parser.
     """
-    files = add_parser(commands, "files", "cli_files_help")
+    files = add_parser(commands, "files", "cli.files_help")
     _project(files)
-    files.add_argument("--q", metavar="TEKST", help=MESSAGES["cli_files_q_help"])
-    files.add_argument("--state", metavar="STAN", help=MESSAGES["cli_files_state_help"])
     files.add_argument(
-        "--limit", metavar="LICZBA", help=MESSAGES["cli_files_limit_help"]
+        "--q", metavar=message("metavar.text"), help=message("cli.files_q_help")
     )
     files.add_argument(
-        "--cursor", metavar="KURSOR", help=MESSAGES["cli_files_cursor_help"]
+        "--state",
+        metavar=message("metavar.state"),
+        help=message("cli.files_state_help"),
     )
-    card = add_parser(commands, "file", "cli_file_help")
+    files.add_argument(
+        "--limit",
+        metavar=message("metavar.number"),
+        help=message("cli.files_limit_help"),
+    )
+    files.add_argument(
+        "--cursor",
+        metavar=message("metavar.cursor"),
+        help=message("cli.files_cursor_help"),
+    )
+    card = add_parser(commands, "file", "cli.file_help")
     _project(card)
     _file(card)
-    snapshot = add_parser(commands, "snapshot", "cli_snapshot_help")
+    snapshot = add_parser(commands, "snapshot", "cli.snapshot_help")
     _project(snapshot)
     _file(snapshot)
     what = snapshot.add_mutually_exclusive_group()
     what.add_argument(
-        "--note", metavar="TEKST", default="", help=MESSAGES["cli_snapshot_note_help"]
+        "--note",
+        metavar=message("metavar.text"),
+        default="",
+        help=message("cli.snapshot_note_help"),
     )
     what.add_argument(
-        "--plan", action="store_true", help=MESSAGES["cli_snapshot_plan_help"]
+        "--plan", action="store_true", help=message("cli.snapshot_plan_help")
     )
-    scan = add_parser(commands, "own-scan", "cli_own_scan_help")
+    scan = add_parser(commands, "own-scan", "cli.own_scan_help")
     scan.add_argument(
-        "--project", metavar="PROJEKT", help=MESSAGES["cli_own_scan_project_help"]
+        "--project",
+        metavar=message("metavar.project"),
+        help=message("cli.own_scan_project_help"),
     )
 
 
@@ -183,7 +198,7 @@ def main(
         ) as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["cli_own_failed"], str(error))
+                    error, with_detail(message("cli.own_failed"), str(error))
                 ),
                 err,
             )
@@ -242,12 +257,16 @@ def _requests(
 
 def _project(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "project", metavar="PROJEKT", help=MESSAGES["cli_own_project_help"]
+        "project",
+        metavar=message("metavar.project"),
+        help=message("cli.own_project_help"),
     )
 
 
 def _file(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("file", metavar="PLIK", help=MESSAGES["cli_own_file_help"])
+    parser.add_argument(
+        "file", metavar=message("metavar.file"), help=message("cli.own_file_help")
+    )
 
 
 def _file_id(file: str) -> str:
@@ -326,9 +345,9 @@ def _snapshot(
             body.note,
         ),
         local.err,
-        started=lambda job: MESSAGES["cli_snapshot_started"].format(job=job.id),
+        started=lambda job: message("cli.snapshot_started", job=job.id),
         event=_snapshot_event,
-        cancelling=lambda job: MESSAGES["cli_snapshot_cancelling"].format(job=job.id),
+        cancelling=lambda job: message("cli.snapshot_cancelling", job=job.id),
     )
     return _job(local, record, _snapshot_text)
 
@@ -349,9 +368,9 @@ def _own_scan(
             visible=visible,
         ),
         local.err,
-        started=lambda job: MESSAGES["cli_own_scan_started"].format(job=job.id),
+        started=lambda job: message("cli.own_scan_started", job=job.id),
         event=_own_scan_event,
-        cancelling=lambda job: MESSAGES["cli_own_scan_cancelling"].format(job=job.id),
+        cancelling=lambda job: message("cli.own_scan_cancelling", job=job.id),
     )
     return _job(local, record, _own_scan_text)
 
@@ -372,10 +391,11 @@ def _job(local: _Local, record: JobRecord, done: Callable[[JobDetail], str]) -> 
     detail = JobDetail.of(local.jobs.get(record.id, visible=visible) or record)
     succeeded = detail.state == "succeeded"
     if not succeeded and detail.state in FINISHED_STATES:
-        failure = MESSAGES["cli_own_job_failed"].format(
+        failure = message(
+            "cli.own_job_failed",
             job=detail.id,
-            kind=label("job_kind", detail.kind),
-            state=label("job_state", detail.state),
+            kind=label("job.kind", detail.kind),
+            state=label("job.state", detail.state),
             detail="" if detail.error is None else detail.error.detail,
         )
         local.err.write(failure + "\n")
@@ -386,27 +406,29 @@ def _job(local: _Local, record: JobRecord, done: Callable[[JobDetail], str]) -> 
 def _snapshot_event(event: JobEvent) -> str | None:
     data = event.data
     if event.type == "progress" and data.get("phase") is not None:
-        return MESSAGES["cli_snapshot_progress"].format(
+        return message(
+            "cli.snapshot_progress",
             current=data["current"],
             total=data["total"],
-            phase=label("cli_snapshot_phase", data["phase"]),
+            phase=label("cli.snapshot_phase", data["phase"]),
         )
     if event.type == "notice":
-        return MESSAGES["cli_snapshot_notice"].format(message=data["message"])
+        return message("cli.snapshot_notice", message=data["message"])
     return None
 
 
 def _own_scan_event(event: JobEvent) -> str | None:
     data = event.data
     if event.type == "progress":
-        return MESSAGES["cli_own_scan_progress"].format(
+        return message(
+            "cli.own_scan_progress",
             current=data["current"],
             total=data["total"],
             files=data.get("files", 0),
             read=data.get("read", 0),
         )
     if event.type == "notice":
-        return MESSAGES["cli_own_scan_notice"].format(message=data["message"])
+        return message("cli.own_scan_notice", message=data["message"])
     return None
 
 
@@ -416,10 +438,11 @@ def _own_scan_event(event: JobEvent) -> str | None:
 def _files_text(project: str, listing: OwnFileList) -> str:
     folder = listing.folder
     lines = [
-        MESSAGES["cli_own_folder"].format(
+        message(
+            "cli.own_folder",
             project=project,
             path=folder.path.local,
-            state=label("cli_own_state", folder.state),
+            state=label("cli.own_state", folder.state),
             files=folder.files,
             size=_size(folder.size_bytes),
             snapshots=_size(folder.snapshots_bytes),
@@ -428,76 +451,80 @@ def _files_text(project: str, listing: OwnFileList) -> str:
         *_problems(folder.problems),
     ]
     lines += [
-        MESSAGES["cli_own_row"].format(
+        message(
+            "cli.own_row",
             path=item.path,
-            state=label("cli_own_state", item.state),
-            change=label("cli_own_change", item.change),
+            state=label("cli.own_state", item.state),
+            change=label("cli.own_change", item.change),
             snapshots=item.snapshots,
         )
         for item in listing.items
-    ] or [MESSAGES["cli_own_no_files"]]
+    ] or [message("cli.own_no_files")]
     if listing.next_cursor is not None:
-        lines.append(MESSAGES["cli_search_next"].format(cursor=listing.next_cursor))
+        lines.append(message("cli.search_next", cursor=listing.next_cursor))
     return "\n".join(lines)
 
 
 def _card_text(card: OwnFileCard) -> str:
     last = card.last_snapshot
     lines = [
-        MESSAGES["cli_own_card_title"].format(
+        message(
+            "cli.own_card_title",
             ref=card.ref,
             file_id=card.file_id,
             kind=card.kind,
-            format=card.format or MESSAGES["cli_none"],
+            format=card.format or message("cli.none"),
             size=_size(card.size_bytes),
         ),
-        MESSAGES["cli_own_card_state"].format(
-            state=label("cli_own_state", card.state),
-            change=label("cli_own_change", card.change),
-            last=MESSAGES["cli_none"]
+        message(
+            "cli.own_card_state",
+            state=label("cli.own_state", card.state),
+            change=label("cli.own_change", card.change),
+            last=message("cli.none")
             if last is None
             else f"{last.label} ({_time(last.created_at)})",
             modified=_time(card.modified_at),
         ),
-        MESSAGES["cli_own_card_path"].format(path=card.paths.local),
+        message("cli.own_card_path", path=card.paths.local),
     ]
     if card.crs is not None:
-        lines.append(MESSAGES["cli_own_card_crs"].format(crs=card.crs))
+        lines.append(message("cli.own_card_crs", crs=card.crs))
     lines += [
-        MESSAGES["cli_own_card_layer"].format(
+        message(
+            "cli.own_card_layer",
             name=layer["name"],
-            geometry=layer["geometry_type"] or MESSAGES["cli_none"],
-            count=MESSAGES["cli_none"]
+            geometry=layer["geometry_type"] or message("cli.none"),
+            count=message("cli.none")
             if layer["feature_count"] is None
             else layer["feature_count"],
         )
         for layer in card.layers
     ]
     if card.raster is not None:
-        lines.append(MESSAGES["cli_own_card_raster"].format(**card.raster))
+        lines.append(message("cli.own_card_raster", **card.raster))
     if card.snapshots:
-        lines.append(
-            MESSAGES["cli_own_card_snapshots"].format(count=len(card.snapshots))
-        )
+        lines.append(message("cli.own_card_snapshots", count=len(card.snapshots)))
     lines += [
-        MESSAGES["cli_own_card_snapshot"].format(
+        message(
+            "cli.own_card_snapshot",
             label=item.label,
             created=_time(item.created_at),
             size=_size(item.size_bytes),
-            state=label("cli_snapshot_state", item.state),
+            state=label("cli.snapshot_state", item.state),
             note=f"  „{item.note}”" if item.note else "",
         )
         for item in card.snapshots
     ]
     if card.preview is not None:
-        state = MESSAGES[f"preview_state_{card.preview.state}"]
-        lines.append(MESSAGES["cli_own_card_preview"].format(state=state))
+        state = message(f"preview.state_{card.preview.state}")
+        lines.append(message("cli.own_card_preview", state=state))
     return "\n".join([*lines, *_problems(card.problems)])
 
 
 def _plan_text(plan: SnapshotPlan) -> str:
     lines = [
-        MESSAGES["cli_snapshot_plan"].format(
+        message(
+            "cli.snapshot_plan",
             file=plan.file,
             size=_size(plan.size_bytes),
             destination=plan.destination.local,
@@ -508,18 +535,18 @@ def _plan_text(plan: SnapshotPlan) -> str:
     since = plan.unchanged_since
     if since is not None:
         lines.append(
-            MESSAGES["cli_snapshot_plan_unchanged"].format(
-                label=since.label, created=_time(since.created_at)
+            message(
+                "cli.snapshot_plan_unchanged",
+                label=since.label,
+                created=_time(since.created_at),
             )
         )
     if plan.blocked is not None:
-        lines.append(
-            MESSAGES["cli_snapshot_plan_blocked"].format(message=plan.blocked.message)
-        )
-    free = MESSAGES["cli_none"] if plan.free_bytes is None else _size(plan.free_bytes)
-    lines.append(MESSAGES["cli_snapshot_plan_free"].format(free=free))
+        lines.append(message("cli.snapshot_plan_blocked", message=plan.blocked.message))
+    free = message("cli.none") if plan.free_bytes is None else _size(plan.free_bytes)
+    lines.append(message("cli.snapshot_plan_free", free=free))
     lines += [
-        MESSAGES["cli_snapshot_plan_warning"].format(message=item.message)
+        message("cli.snapshot_plan_warning", message=item.message)
         for item in plan.warnings
     ]
     return "\n".join(lines)
@@ -528,10 +555,9 @@ def _plan_text(plan: SnapshotPlan) -> str:
 def _snapshot_text(detail: JobDetail) -> str:
     result = detail.result or {}
     if result.get("status") == "unchanged":
-        return MESSAGES["cli_snapshot_unchanged"].format(
-            job=detail.id, label=result["label"]
-        )
-    return MESSAGES["cli_snapshot_created"].format(
+        return message("cli.snapshot_unchanged", job=detail.id, label=result["label"])
+    return message(
+        "cli.snapshot_created",
         job=detail.id,
         label=result["label"],
         size=_size(result["size_bytes"]),
@@ -543,7 +569,8 @@ def _snapshot_text(detail: JobDetail) -> str:
 def _own_scan_text(detail: JobDetail) -> str:
     result = detail.result or {}
     counts = ("projects", "files", "new", "changed", "missing", "unreadable")
-    return MESSAGES["cli_own_scan_done"].format(
+    return message(
+        "cli.own_scan_done",
         job=detail.id,
         **{name: result.get(name, 0) for name in (*counts, "snapshots", "problems")},
         seconds=_seconds(result.get("seconds", 0)),
@@ -552,25 +579,26 @@ def _own_scan_text(detail: JobDetail) -> str:
 
 def _job_title(detail: JobDetail) -> str:
     """Return the line of a job that did not succeed (its failure went to stderr)."""
-    return MESSAGES["cli_own_job"].format(
+    return message(
+        "cli.own_job",
         job=detail.id,
-        kind=label("job_kind", detail.kind),
-        state=label("job_state", detail.state),
+        kind=label("job.kind", detail.kind),
+        state=label("job.state", detail.state),
     )
 
 
 def _problems(problems: list[Issue]) -> list[str]:
     return [
-        MESSAGES["cli_own_problem"]
-        .format(message=item.message, instruction=item.instruction)
-        .rstrip()
+        message(
+            "cli.own_problem", message=item.message, instruction=item.instruction
+        ).rstrip()
         for item in problems
     ]
 
 
 def _time(value: datetime | None) -> str:
     if value is None:
-        return MESSAGES["cli_never"]
+        return message("cli.never")
     return value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 

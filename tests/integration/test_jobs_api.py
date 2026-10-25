@@ -21,7 +21,7 @@ from archiwista.api import API_PREFIX
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
 from archiwista.jobs import JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
 from archiwista.server import LaunchFile, LocalServer, bind_loopback
 from archiwista.state import StateStore
@@ -169,7 +169,7 @@ def test_footprints_refused_offline(
 
     # Assert
     assert_problem(refused, 409, "conflict", "offline_mode")
-    assert refused.json()["detail"] == MESSAGES["job_offline_mode"]
+    assert refused.json()["detail"] == message("job.offline_mode")
     assert listed.json() == {"items": [], "next_cursor": None}
     assert accepted.status_code == 202
     assert (accepted.json()["kind"], accepted.json()["params"]) == ("footprints", {})

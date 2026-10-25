@@ -27,7 +27,7 @@ from archiwista.logs import (
     configure_logging,
     resolve_log_level,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
@@ -51,13 +51,13 @@ class _Parser(argparse.ArgumentParser):
             "--verbose",
             action="store_true",
             default=argparse.SUPPRESS,
-            help=MESSAGES["cli_verbose_help"],
+            help=message("cli.verbose_help"),
         )
         levels.add_argument(
             "--quiet",
             action="store_true",
             default=argparse.SUPPRESS,
-            help=MESSAGES["cli_quiet_help"],
+            help=message("cli.quiet_help"),
         )
 
     def error(self, message: str) -> NoReturn:
@@ -96,57 +96,57 @@ def main(
     if os.name == "posix":
         # Local data (index, state, logs, area copies) is the user's alone.
         os.umask(0o077)
-    parser = _Parser(prog="archiwista", description=MESSAGES["cli_description"])
+    parser = _Parser(prog="archiwista", description=message("cli.description"))
     commands = cast(Commands, parser.add_subparsers(dest="command"))
     commands.add_parser(
         "doctor",
-        help=MESSAGES["cli_doctor_help"],
-        description=MESSAGES["cli_doctor_help"],
+        help=message("cli.doctor_help"),
+        description=message("cli.doctor_help"),
     )
     serve = commands.add_parser(
         "serve",
-        help=MESSAGES["cli_serve_help"],
-        description=MESSAGES["cli_serve_help"],
+        help=message("cli.serve_help"),
+        description=message("cli.serve_help"),
     )
     serve.add_argument(
-        "--host", default=LOOPBACK_HOST, help=MESSAGES["cli_serve_host_help"]
+        "--host", default=LOOPBACK_HOST, help=message("cli.serve_host_help")
     )
     serve.add_argument(
-        "--port", type=_port_type(0), help=MESSAGES["cli_serve_port_help"]
+        "--port", type=_port_type(0), help=message("cli.serve_port_help")
     )
     serve.add_argument(
         "--no-browser",
         action="store_true",
-        help=MESSAGES["cli_serve_no_browser_help"],
+        help=message("cli.serve_no_browser_help"),
     )
     serve.add_argument(
         "--access-log",
         action="store_true",
-        help=MESSAGES["cli_serve_access_log_help"],
+        help=message("cli.serve_access_log_help"),
     )
     token = commands.add_parser(
         "token",
-        help=MESSAGES["cli_token_help"],
-        description=MESSAGES["cli_token_help"],
+        help=message("cli.token_help"),
+        description=message("cli.token_help"),
     )
     token.add_argument(
-        "--port", type=_port_type(1), help=MESSAGES["cli_token_port_help"]
+        "--port", type=_port_type(1), help=message("cli.token_port_help")
     )
     token_output = token.add_mutually_exclusive_group()
     token_output.add_argument(
-        "--json", action="store_true", help=MESSAGES["cli_token_json_help"]
+        "--json", action="store_true", help=message("cli.token_json_help")
     )
     token_output.add_argument(
         "--revoke-all",
         action="store_true",
-        help=MESSAGES["cli_token_revoke_all_help"],
+        help=message("cli.token_revoke_all_help"),
     )
     reindex = commands.add_parser(
         "reindex",
-        help=MESSAGES["cli_reindex_help"],
-        description=MESSAGES["cli_reindex_help"],
+        help=message("cli.reindex_help"),
+        description=message("cli.reindex_help"),
     )
-    reindex.add_argument("--store", help=MESSAGES["cli_reindex_store_help"])
+    reindex.add_argument("--store", help=message("cli.reindex_store_help"))
     add_admin_commands(commands)
     add_read_commands(commands)
     for module in COMMAND_MODULES:
@@ -158,7 +158,7 @@ def main(
     # Given before and after the command, the options contradict each other.
     verbose, quiet = hasattr(args, "verbose"), hasattr(args, "quiet")
     if verbose and quiet:
-        parser.error(MESSAGES["cli_log_options_exclusive"])
+        parser.error(message("cli.log_options_exclusive"))
     try:
         level = resolve_log_level(verbose=verbose, quiet=quiet)
     except InvalidLogLevelError as error:
@@ -170,14 +170,17 @@ def main(
     except Exception:
         # A defect: the traceback for the maintainer, the document for agents.
         traceback.print_exc()
-        problem = Problem("internal_error", MESSAGES["cli_internal_error"])
+        problem = Problem("internal_error", message("cli.internal_error"))
         return refuse(problem, sys.stderr)
 
 
 def _invalid_log_level(error: InvalidLogLevelError) -> Problem:
     """Return the refusal of an ``ARCHIWISTA_LOG_LEVEL`` that names no level."""
-    message = MESSAGES["cli_log_level_invalid"].format(
-        variable=ENV_LOG_LEVEL, value=error.value, allowed=", ".join(LOG_LEVELS)
+    text = message(
+        "cli.log_level_invalid",
+        variable=ENV_LOG_LEVEL,
+        value=error.value,
+        allowed=", ".join(LOG_LEVELS),
     )
     details = {
         "reason": "invalid_log_level",
@@ -185,7 +188,7 @@ def _invalid_log_level(error: InvalidLogLevelError) -> Problem:
         "value": error.value,
         "allowed": list(LOG_LEVELS),
     }
-    return Problem("validation_error", message, MESSAGES["cli_log_level_hint"], details)
+    return Problem("validation_error", text, message("cli.log_level_hint"), details)
 
 
 def _dispatch(
@@ -239,8 +242,8 @@ def _port_type(minimum: int) -> Callable[[str], int]:
         except ValueError:
             number = -1
         if not minimum <= number <= 65535:
-            message = MESSAGES["cli_port_invalid"].format(minimum=minimum)
-            raise argparse.ArgumentTypeError(message)
+            text = message("cli.port_invalid", minimum=minimum)
+            raise argparse.ArgumentTypeError(text)
         return number
 
     return port

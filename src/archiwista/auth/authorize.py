@@ -41,7 +41,7 @@ from archiwista.auth.principal import (
 from archiwista.auth.visibility import ALL_PROJECTS, ProjectVisibility
 from archiwista.config import AppSettings, DefaultProjectVisibility
 from archiwista.errors import PermissionDeniedError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state import ProjectAccessRecord, StateStore
 
 type Action = Literal[
@@ -209,8 +209,8 @@ class Authorizer:
             With a Polish message naming what the action needs.
         """
         if not self.can(principal, action, resource):
-            key = "permission_" + action.replace(".", "_")
-            raise PermissionDeniedError(MESSAGES[key])
+            name = action.replace(".", "_")
+            raise PermissionDeniedError(message(f"permission.{name}"))
 
     def visible_projects(self, principal: Principal) -> ProjectVisibility:
         """Return the projects ``principal`` sees.

@@ -16,7 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationErro
 
 from archiwista.auth import PrincipalKind
 from archiwista.errors import StateError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state.store import (
     ChangeAction,
     GroupRecord,
@@ -256,16 +256,14 @@ def parse_state(text: str | bytes) -> StateDocument:
         data = json.loads(text)
     except (ValueError, UnicodeDecodeError) as error:
         raise StateError(
-            MESSAGES["state_import_not_json"].format(detail=error),
+            message("state.import_not_json", detail=error),
             code="data_error",
             reason="invalid_backup",
         ) from error
     found = data.get("schema") if isinstance(data, dict) else None
     if found != STATE_DOCUMENT_SCHEMA:
         raise StateError(
-            MESSAGES["state_import_schema"].format(
-                found=found, expected=STATE_DOCUMENT_SCHEMA
-            ),
+            message("state.import_schema", found=found, expected=STATE_DOCUMENT_SCHEMA),
             code="data_error",
             reason="invalid_backup",
         )
@@ -276,7 +274,7 @@ def parse_state(text: str | bytes) -> StateDocument:
             ".".join(str(part) for part in item["loc"]) for item in error.errors()
         )
         raise StateError(
-            MESSAGES["state_import_invalid"].format(fields=fields),
+            message("state.import_invalid", fields=fields),
             code="data_error",
             reason="invalid_backup",
         ) from error

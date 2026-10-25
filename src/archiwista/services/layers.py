@@ -118,7 +118,7 @@ from archiwista.index.coverage import (
 )
 from archiwista.index.geometry import box_geometry, polygon_bounds
 from archiwista.jobs import JobRecord, JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.document import SnapshotDocument
 from archiwista.previews.cache import INFO_NAME, CacheKey, PreviewCache, cache_key
 from archiwista.previews.compose import LAYER_THUMBNAIL, LAYER_TILE, tile_wgs84_bounds
@@ -450,7 +450,7 @@ def layer_images(
             return found
     record = _area(queries, query.area_id)
     if record is None:
-        raise IndexQueryError(MESSAGES["layer_area_required"])
+        raise IndexQueryError(message("layer.area_required"))
     _require_store(settings, query.store)
     resolver = ObjectResolver(queries, lambda: settings)
     chosen = next(
@@ -462,8 +462,8 @@ def layer_images(
         None,
     )
     if chosen is None:
-        message = MESSAGES["layer_unknown"].format(layer=layer, product=query.product)
-        raise NotFoundError(message)
+        text = message("layer.unknown", layer=layer, product=query.product)
+        raise NotFoundError(text)
     frame = None
     crs = area_crs(record.countries)
     if crs is not None:
@@ -512,7 +512,7 @@ async def layer_thumbnail(
     """
     frame = images.frame
     if frame is None:
-        raise NotFoundError(MESSAGES["layer_no_frame"])
+        raise NotFoundError(message("layer.no_frame"))
     params: JsonObject = {
         "frame": {"bbox": list(frame.bbox), "crs": frame.crs},
         "style": _style(images, style),
@@ -554,13 +554,15 @@ async def layer_tile(
     """
     minzoom, bounds = images.minzoom, images.bounds
     if minzoom is None or bounds is None or z < minzoom:
-        message = MESSAGES["layer_tile_below_minzoom"].format(
-            z=z, minzoom=minzoom if minzoom is not None else "–"
+        text = message(
+            "layer.tile_below_minzoom",
+            z=z,
+            minzoom=minzoom if minzoom is not None else "–",
         )
-        raise NotFoundError(message)
+        raise NotFoundError(text)
     tile = tile_wgs84_bounds(z, x, y)
     if not _meets(tile, bounds):
-        raise NotFoundError(MESSAGES["layer_tile_outside"].format(z=z, x=x, y=y))
+        raise NotFoundError(message("layer.tile_outside", z=z, x=x, y=y))
     params: JsonObject = {"z": z, "x": x, "y": y, "style": _style(images, style)}
     items = tuple(
         item
@@ -1039,13 +1041,13 @@ def _own_layer(
     """Return the layer of one object of an own file."""
     ref = format_ref(item.ref)
     kind: LayerKind = "file"
-    key, title = "file", MESSAGES["layer_title_working"]
+    key, title = "file", message("layer.title_working")
     if isinstance(item.ref, SnapshotRef):
         kind, key = "snapshot", f"snapshot:{item.ref.label}"
-        title = MESSAGES["layer_title_snapshot"].format(label=item.ref.label)
+        title = message("layer.title_snapshot", label=item.ref.label)
     subtitle = path
     if item.note:
-        subtitle = MESSAGES["layer_subtitle_note"].format(path=path, note=item.note)
+        subtitle = message("layer.subtitle_note", path=path, note=item.note)
     preview = _own_preview(info, None if footprint is None else frame)
     placed = [] if footprint is None else [footprint]
     bounds = None if item.wgs84 is None else polygon_bounds(item.wgs84)
@@ -1191,10 +1193,10 @@ def _style(images: LayerImages, style: str | None) -> str:
             images.styles[0] if images.styles else _NO_STYLE
         )
     if images.styles and style not in images.styles:
-        message = MESSAGES["layer_style_unknown"].format(
-            style=style, styles=", ".join(images.styles)
+        text = message(
+            "layer.style_unknown", style=style, styles=", ".join(images.styles)
         )
-        raise PreviewParameterError("query.style", message)
+        raise PreviewParameterError("query.style", text)
     return style
 
 
@@ -1206,14 +1208,14 @@ def _area(queries: IndexQueries, area_id: str | None) -> AreaRecord | None:
         return None
     record = queries.area(area_id)
     if record is None:
-        raise IndexQueryError(MESSAGES["api_area_unknown"].format(area=area_id))
+        raise IndexQueryError(message("api.area_unknown", area=area_id))
     return record
 
 
 def _require_store(settings: AppSettings, store: str) -> None:
     if settings.store(store) is None:
-        message = MESSAGES["api_store_not_configured"].format(store=store)
-        raise IndexQueryError(message)
+        text = message("api.store_not_configured", store=store)
+        raise IndexQueryError(text)
 
 
 def _frame(mover: PlanarMover, record: AreaRecord) -> tuple[Any, Extent]:
@@ -1266,17 +1268,15 @@ def _newness(layer: _Layer) -> tuple[int, str, str]:
 
 def _title(layer: _Layer) -> str:
     if layer.period == "year":
-        title = MESSAGES["layer_title_year"].format(year=layer.year)
+        title = message("layer.title_year", year=layer.year)
     elif layer.period == "edition":
-        title = MESSAGES["layer_title_edition"].format(edition=layer.part)
+        title = message("layer.title_edition", edition=layer.part)
     elif layer.part:
-        title = MESSAGES["layer_title_label"].format(label=layer.part)
+        title = message("layer.title_label", label=layer.part)
     else:
-        title = MESSAGES["layer_title_undated"]
+        title = message("layer.title_undated")
     if layer.campaign:
-        return MESSAGES["layer_title_campaign"].format(
-            title=title, campaign=layer.campaign
-        )
+        return message("layer.title_campaign", title=title, campaign=layer.campaign)
     return title
 
 

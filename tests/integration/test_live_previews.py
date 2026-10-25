@@ -28,7 +28,7 @@ import pytest
 
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.types import PREVIEW_REASONS
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_store import STORE
@@ -116,8 +116,8 @@ def _previews(served: PreviewApi) -> dict[str, list[str]]:
         if reason is not None:
             code = reason["code"]
             assert code in PREVIEW_REASONS, info
-            assert reason["message"] == MESSAGES[f"preview_reason_{code}"]
-            assert reason["fix"] == MESSAGES[f"preview_fix_{code}"]
+            assert reason["message"] == message(f"preview.reason_{code}")
+            assert reason["fix"] == message(f"preview.fix_{code}")
         if info["state"] == "unavailable":
             assert reason is not None, info
         else:

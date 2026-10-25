@@ -25,7 +25,7 @@ from archiwista.config import (
 )
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries, OwnFileDetail, OwnFolderRecord, OwnProblem
-from archiwista.messages import MESSAGES
+from archiwista.messages import lookup, message
 from archiwista.owndata.scan import OwnFolderCheck, check_own_folder, folder_rules
 from archiwista.services.problems import Problem, explain
 
@@ -78,7 +78,7 @@ def set_data_dir(
     authorizer.require(principal, "settings.write")
     record = queries.project(project, visible=authorizer.visible_projects(principal))
     if record is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
+        raise NotFoundError(message("project.not_found", project=project))
     key = record.project.access_key
     current = settings.get()
     folders = dict(current.own_data_dirs)
@@ -98,9 +98,11 @@ def set_data_dir(
         if conflict is not None:
             reason, directory = conflict
             code = f"own_data_dir_{reason}"
-            message = MESSAGES[code].format(path=path, project=key, other=directory)
+            text = message(
+                f"own.data_dir_{reason}", path=path, project=key, other=directory
+            )
             field = f"own_data_dirs.{key}"
-            raise SettingsValidationError([SettingsProblem(code, field, message)])
+            raise SettingsValidationError([SettingsProblem(code, field, text)])
     settings.update(changed)
     return check_own_folder(
         changed, key, stores=stores, app_data=paths.data_dir, others=folders_of_others
@@ -168,15 +170,15 @@ def _explained(
     for problem in found:
         reason = problem.reason
         if problem.code == "own_folder_invalid" and reason is not None:
-            reason = MESSAGES[f"own_folder_reason_{reason}"]
+            reason = message(f"own.folder_reason_{reason}")
         elif problem.code == "own_file_unreadable" and reason is not None:
-            reason = MESSAGES.get(f"own_read_error_{reason}", reason)
+            reason = lookup(f"own.read_error_{reason}", reason)
         place = problem.path or str(folder)
-        message, instruction = explain(problem.code, path=place, reason=reason)
+        text, instruction = explain(problem.code, path=place, reason=reason)
         problems.append(
             Problem(
                 code=problem.code,
-                message=message,
+                message=text,
                 instruction=instruction,
                 path=problem.path,
                 project=project,

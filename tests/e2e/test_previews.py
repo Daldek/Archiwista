@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Page, expect
 
 from archiwista.config import AppSettings, StoreConfig
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import CSRF_HEADER
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.make_store import Family, StoreManifest, make_store
@@ -217,10 +217,10 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
 
     world = open_preview(page, served, store, "jgw_sheet")
     expect(world.locator(".pv-reason")).to_contain_text(
-        MESSAGES["preview_reason_auxiliary_file"]
+        message("preview.reason_auxiliary_file")
     )
     expect(world.locator(".pv-reason")).to_contain_text(
-        MESSAGES["preview_fix_auxiliary_file"]
+        message("preview.fix_auxiliary_file")
     )
     expect(fact(world, "Stan podglądu")).to_contain_text("niedostępny")
     expect(world.get_by_role("img")).to_have_count(0)
@@ -228,10 +228,10 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
     image = open_preview(page, served, store, "png_preview")
     assert_blob_image(thumbnail(image))
     expect(image.locator(".pv-reason")).to_contain_text(
-        MESSAGES["preview_reason_no_georeference"]
+        message("preview.reason_no_georeference")
     )
     expect(image.locator(".pv-reason")).to_contain_text(
-        MESSAGES["preview_fix_no_georeference"]
+        message("preview.fix_no_georeference")
     )
     expect(fact(image, "Na mapie")).to_have_text("nie")
 
@@ -244,7 +244,7 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
     for name in names:
         expect(rows.filter(has_text=name)).to_have_count(1)
     expect(archive_pane.locator(".pv-reason")).to_contain_text(
-        MESSAGES["preview_reason_archive_members_only"]
+        message("preview.reason_archive_members_only")
     )
     expect(
         archive_pane.get_by_role("heading", name=re.compile("Pliki w archiwum"))

@@ -46,7 +46,7 @@ import numpy as np
 import shapely
 from shapely.geometry import mapping
 
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 
 UPLOAD_NAME = "upload"
 COPY_STEM = "area"
@@ -136,10 +136,10 @@ def read_area(directory: Path, *, layer: str | None = None) -> dict[str, Any]:
         path = upload.rename(directory / f"{COPY_STEM}.geojson")
         kind = "geojson"
     else:
-        raise _unreadable("area_format_unknown")
+        raise _unreadable("area.format_unknown")
     crs = pyogrio.read_info(path, layer=read_layer).get("crs")
     if not crs:
-        raise _unreadable("area_crs_missing")
+        raise _unreadable("area.crs_missing")
     _, _, wkb, _ = pyogrio.raw.read(
         path, layer=read_layer, read_geometry=True, columns=[], force_2d=True
     )
@@ -175,9 +175,9 @@ def _check_geojson_crs(path: Path) -> None:
         text = path.read_bytes().removeprefix(_UTF8_BOM).decode("utf-8", "replace")
         json.loads(text, object_pairs_hook=check)
     except (ValueError, RecursionError) as error:
-        raise _unreadable("area_read_failed", detail=_describe(error)) from None
+        raise _unreadable("area.read_failed", detail=_describe(error)) from None
     if check.refused:
-        raise _unreadable("area_crs_not_named")
+        raise _unreadable("area.crs_not_named")
 
 
 class _CrsCheck:
@@ -231,18 +231,16 @@ def _union(geometries: Any) -> tuple[Any, int, int]:
         dtype=object,
     )
     if present.size == 0:
-        raise _unreadable("area_no_polygon")
+        raise _unreadable("area.no_polygon")
     other = present[~np.isin(shapely.get_type_id(present), _POLYGON_TYPE_IDS)]
     if other.size:
         types = ", ".join(sorted({item.geom_type for item in other}))
-        raise _unreadable("area_not_polygonal", types=types)
+        raise _unreadable("area.not_polygonal", types=types)
     vertices = int(shapely.get_num_coordinates(present).sum())
     if vertices > MAX_VERTICES:
         raise AreaFileError(
             "area_too_complex",
-            MESSAGES["area_too_many_vertices"].format(
-                vertices=vertices, limit=MAX_VERTICES
-            ),
+            message("area.too_many_vertices", vertices=vertices, limit=MAX_VERTICES),
         )
     parts = shapely.get_parts(shapely.get_parts(shapely.make_valid(present)))
     polygons = parts[
@@ -250,7 +248,7 @@ def _union(geometries: Any) -> tuple[Any, int, int]:
     ]
     union = shapely.union_all(polygons)
     if union.is_empty or shapely.get_type_id(union) not in _POLYGON_TYPE_IDS:
-        raise _unreadable("area_no_polygon")
+        raise _unreadable("area.no_polygon")
     return union, int(present.size), vertices
 
 
@@ -263,16 +261,16 @@ def _gpkg_layer(path: Path, layer: str | None) -> str:
     if layer is not None:
         if layer not in names:
             raise _unreadable(
-                "area_layer_unknown",
+                "area.layer_unknown",
                 layers=names,
                 layer=layer,
                 names=", ".join(names) or "—",
             )
         return layer
     if not names:
-        raise _unreadable("area_layers_none")
+        raise _unreadable("area.layers_none")
     if len(names) > 1:
-        raise _unreadable("area_layers_many", layers=names, names=", ".join(names))
+        raise _unreadable("area.layers_many", layers=names, names=", ".join(names))
     return names[0]
 
 
@@ -293,9 +291,9 @@ def _unpack_shapefile(
                 with archive.open(member) as source, target.open("xb") as copy:
                     shutil.copyfileobj(source, copy, _MIB)
     except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError) as error:
-        raise _unreadable("area_archive_broken", detail=_describe(error)) from error
+        raise _unreadable("area.archive_broken", detail=_describe(error)) from error
     except RuntimeError as error:  # e.g. a member needing a password
-        raise _unreadable("area_archive_broken", detail=_describe(error)) from error
+        raise _unreadable("area.archive_broken", detail=_describe(error)) from error
     upload.unlink()
     return directory / f"{COPY_STEM}.shp", chosen.stem
 
@@ -303,27 +301,29 @@ def _unpack_shapefile(
 def _check_members(members: Sequence[zipfile.ZipInfo]) -> None:
     """Refuse an archive before unpacking: count, declared size, names, kinds."""
     if len(members) > MAX_MEMBERS:
-        raise _unreadable("area_archive_members", count=len(members), limit=MAX_MEMBERS)
+        raise _unreadable("area.archive_members", count=len(members), limit=MAX_MEMBERS)
     declared = sum(member.file_size for member in members)
     if declared > UNPACKED_LIMIT_BYTES:
         raise AreaFileError(
             "area_too_large",
-            MESSAGES["area_archive_too_large"].format(
-                size_mb=_megabytes(declared), limit_mb=UNPACKED_LIMIT_BYTES // _MIB
+            message(
+                "area.archive_too_large",
+                size_mb=_megabytes(declared),
+                limit_mb=UNPACKED_LIMIT_BYTES // _MIB,
             ),
         )
     seen: set[str] = set()
     for member in members:
         name = member.filename
         if not _inside(name):
-            raise _unreadable("area_archive_unsafe", member=name)
+            raise _unreadable("area.archive_unsafe", member=name)
         if stat.S_ISLNK(member.external_attr >> 16):
-            raise _unreadable("area_archive_link", member=name)
+            raise _unreadable("area.archive_link", member=name)
         if member.flag_bits & 0x1:
-            raise _unreadable("area_archive_encrypted", member=name)
+            raise _unreadable("area.archive_encrypted", member=name)
         key = name.replace("\\", "/").rstrip("/").casefold()
         if key in seen:
-            raise _unreadable("area_archive_duplicate", member=name)
+            raise _unreadable("area.archive_duplicate", member=name)
         seen.add(key)
 
 
@@ -355,30 +355,28 @@ def _shapefile(members: Sequence[zipfile.ZipInfo], layer: str | None) -> _Shapef
         shapefiles = [item for item in shapefiles if item.stem == layer]
         if not shapefiles:
             raise _unreadable(
-                "area_layer_unknown",
+                "area.layer_unknown",
                 layers=names,
                 layer=layer,
                 names=", ".join(names) or "—",
             )
     if not shapefiles:
-        raise _unreadable("area_shapefile_missing")
+        raise _unreadable("area.shapefile_missing")
     if len(shapefiles) > 1:
-        raise _unreadable("area_layers_many", layers=names, names=", ".join(names))
+        raise _unreadable("area.layers_many", layers=names, names=", ".join(names))
     chosen = shapefiles[0]
     missing = [suffix for suffix in _REQUIRED_PARTS if suffix not in chosen.parts]
     if missing:
         raise _unreadable(
-            "area_shapefile_parts", layer=chosen.stem, parts=", ".join(missing)
+            "area.shapefile_parts", layer=chosen.stem, parts=", ".join(missing)
         )
     return chosen
 
 
 def _unreadable(
-    message: str, *, layers: Sequence[str] = (), **values: object
+    key: str, *, layers: Sequence[str] = (), **values: Any
 ) -> AreaFileError:
-    return AreaFileError(
-        "area_unreadable", MESSAGES[message].format(**values), layers=layers
-    )
+    return AreaFileError("area_unreadable", message(key, **values), layers=layers)
 
 
 def _megabytes(size: int) -> str:
@@ -416,7 +414,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         answer = error.answer()
     except Exception as error:  # GDAL or the archive refusing untrusted input
         text = _describe(error, directory=arguments.directory)
-        detail = MESSAGES["area_read_failed"].format(detail=text)
+        detail = message("area.read_failed", detail=text)
         answer = {"error": "area_unreadable", "detail": detail}
     sys.stdout.write(json.dumps(answer) + "\n")
     sys.stdout.flush()

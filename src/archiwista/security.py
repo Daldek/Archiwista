@@ -53,7 +53,7 @@ from archiwista.auth.authorize import session_principal
 from archiwista.config import AppSettings
 from archiwista.error_document import Problem
 from archiwista.index.schema import connect
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state import StateStore
 
 type TokenKind = Literal["startup", "agent"]
@@ -573,7 +573,7 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
     """
     origin = headers.get("origin")
     if origin is not None and origin.lower() != f"http://{host}":
-        return MESSAGES["api_cross_site"]
+        return message("api.cross_site")
     fetch_site = headers.get("sec-fetch-site")
     if fetch_site is None:
         return None
@@ -581,11 +581,11 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
     if method in SAFE_METHODS:
         if fetch_site in ("same-origin", "none"):
             return None
-        return MESSAGES["api_cross_site"]
+        return message("api.cross_site")
     if fetch_site != "same-origin":
-        return MESSAGES["api_cross_site"]
+        return message("api.cross_site")
     if origin is None:
-        return MESSAGES["api_origin_missing"]
+        return message("api.origin_missing")
     return None
 
 
@@ -605,10 +605,10 @@ def csrf_rejection(headers: Headers, session: Session) -> str | None:
     """
     header = headers.get(CSRF_HEADER)
     if not header:
-        return MESSAGES["api_csrf_missing"]
+        return message("api.csrf_missing")
     if _same(header, session.csrf_token):
         return None
-    return MESSAGES["api_csrf_mismatch"]
+    return message("api.csrf_mismatch")
 
 
 def body_limit(method: str, path: str) -> int | None:
@@ -779,7 +779,7 @@ class SecurityMiddleware:
         if not isinstance(outcome, _Rejection) and limit is not None:
             body = await _read_body(connection.headers, receive, limit)
             if body is None:
-                detail = MESSAGES["api_request_too_large"].format(limit=_size(limit))
+                detail = message("api.request_too_large", limit=_size(limit))
                 outcome = _Rejection("validation_error", "request_too_large", detail)
             else:
                 receive = _replay(body, receive)
@@ -798,7 +798,7 @@ class SecurityMiddleware:
     ) -> _Rejection | _Authorized | None:
         host = connection.headers.get("host", "").lower()
         if host not in self._hosts:
-            detail = MESSAGES["api_invalid_host"].format(port=self._port)
+            detail = message("api.invalid_host", port=self._port)
             return _Rejection("forbidden", "invalid_host", detail)
         reason = origin_rejection(method, connection.headers, host)
         if reason is not None:
@@ -807,9 +807,9 @@ class SecurityMiddleware:
             return None
         session_id = connection.cookies.get(SESSION_COOKIE)
         session = self._sessions.get(session_id)
-        hint = MESSAGES["api_hint_session_required"]
+        hint = message("api.hint_session_required")
         if session_id is None or session is None:
-            detail = MESSAGES["api_session_required"]
+            detail = message("api.session_required")
             return _Rejection("unauthorized", "session_required", detail, hint)
         reason = csrf_rejection(connection.headers, session)
         if reason is not None:
@@ -818,7 +818,7 @@ class SecurityMiddleware:
         extended = None if principal is None else self._sessions.extend(session_id)
         if principal is None or extended is None:
             self._sessions.end(session_id)
-            ended = MESSAGES["api_session_ended"]
+            ended = message("api.session_ended")
             return _Rejection("unauthorized", "session_required", ended, hint)
         return _Authorized(extended, principal)
 
@@ -861,9 +861,9 @@ async def require_session(
     if not isinstance(session, Session):
         raise ApiError(
             "unauthorized",
-            MESSAGES["api_session_required"],
+            message("api.session_required"),
             reason="session_required",
-            hint=MESSAGES["api_hint_session_required"],
+            hint=message("api.hint_session_required"),
         )
     return session
 

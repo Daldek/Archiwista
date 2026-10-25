@@ -60,7 +60,7 @@ from archiwista.errors import (
     PreviewTimeoutError,
     PreviewUnavailableError,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.cache import INFO_NAME, CacheKey, PreviewCache, cache_key
 from archiwista.previews.protocol import (
     CODE_PROTOCOL_ERROR,
@@ -329,7 +329,7 @@ class RenderPool:
             self._ready.notify_all()
             running = [slot.process for slot in self._slots if slot.process is not None]
         closed = PreviewBusyError(
-            MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S
+            message("preview.closed"), retry_after_s=RETRY_AFTER_S
         )
         for call in waiting:
             _settle(call.future, closed)
@@ -508,7 +508,7 @@ class RenderPool:
         with self._lock:
             if self._phase != "open":
                 raise PreviewBusyError(
-                    MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S
+                    message("preview.closed"), retry_after_s=RETRY_AFTER_S
                 )
             now = time.monotonic()
             failure = self._failures.get(prepared.key)
@@ -519,8 +519,8 @@ class RenderPool:
             call = self._calls.get(prepared.key)
             if call is None:
                 if len(self._queue) >= self._queue_size:
-                    message = MESSAGES["preview_busy"].format(seconds=RETRY_AFTER_S)
-                    raise PreviewBusyError(message, retry_after_s=RETRY_AFTER_S)
+                    text = message("preview.busy", seconds=RETRY_AFTER_S)
+                    raise PreviewBusyError(text, retry_after_s=RETRY_AFTER_S)
                 call = _Call(prepared)
                 self._calls[prepared.key] = call
                 self._queue.append(call)
@@ -589,7 +589,7 @@ class RenderPool:
             outcome = self._ended(call, ended.status)
         except _Closed:
             outcome = PreviewBusyError(
-                MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S
+                message("preview.closed"), retry_after_s=RETRY_AFTER_S
             )
         except Exception as error:  # cannot start a process, broken protocol
             logger.exception("Rendering %s failed", call.prepared.request.op)
@@ -676,7 +676,7 @@ class RenderPool:
             closing = self._phase != "open"
         if closing:
             return PreviewBusyError(
-                MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S
+                message("preview.closed"), retry_after_s=RETRY_AFTER_S
             )
         if status == -signal.SIGKILL:  # killed by the system, out of memory
             return self._failed(call, "memory_limit")
@@ -697,9 +697,7 @@ class RenderPool:
             self._failures[call.prepared.key] = _Failure(code, now + self._failure_s)
         if code == "timeout":
             seconds = math.ceil(call.prepared.timeout_s)
-            return PreviewTimeoutError(
-                MESSAGES["preview_timeout"].format(seconds=seconds)
-            )
+            return PreviewTimeoutError(message("preview.timeout", seconds=seconds))
         return PreviewUnavailableError("memory_limit")
 
     def _keep(self, prepared: _Prepared, data: bytes) -> None:
@@ -823,9 +821,7 @@ def _pump(stream: IO[bytes], lines: "queue.Queue[bytes | None]") -> None:
 def _remembered(failure: _Failure, now: float) -> Exception:
     if failure.code == "timeout":
         minutes = max(1, math.ceil((failure.until - now) / 60))
-        return PreviewTimeoutError(
-            MESSAGES["preview_timeout_recent"].format(minutes=minutes)
-        )
+        return PreviewTimeoutError(message("preview.timeout_recent", minutes=minutes))
     return PreviewUnavailableError("memory_limit")
 
 

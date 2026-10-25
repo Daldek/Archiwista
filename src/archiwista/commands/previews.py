@@ -54,10 +54,9 @@ from archiwista.jobs import (
     JobRecord,
     JobState,
     JobSupervisor,
-    label,
 )
 from archiwista.jobs.foreground import exit_status, run_foreground
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import label, message, with_detail
 from archiwista.previews.cache import PreviewCache
 from archiwista.previews.pool import RenderPool
 from archiwista.previews.service import PreviewService
@@ -132,26 +131,28 @@ def add_commands(commands: Commands) -> None:
     commands : argparse._SubParsersAction
         Subcommands of the ``archiwista`` parser.
     """
-    preview = add_parser(commands, "preview", "cli_preview_help")
-    preview.add_argument("ref", metavar="REF", help=MESSAGES["cli_preview_ref_help"])
+    preview = add_parser(commands, "preview", "cli.preview_help")
+    preview.add_argument("ref", metavar="REF", help=message("cli.preview_ref_help"))
     preview.add_argument(
-        "--style", metavar="STYL", help=MESSAGES["cli_preview_style_help"]
+        "--style",
+        metavar=message("metavar.style"),
+        help=message("cli.preview_style_help"),
     )
     preview.add_argument(
         "--size",
         type=int,
         default=DEFAULT_SIZE,
-        metavar="BOK",
-        help=MESSAGES["cli_preview_size_help"],
+        metavar=message("metavar.side"),
+        help=message("cli.preview_size_help"),
     )
     preview.add_argument(
         "--output",
         type=Path,
-        metavar="PLIK.png",
-        help=MESSAGES["cli_preview_output_help"],
+        metavar=message("metavar.png_file"),
+        help=message("cli.preview_output_help"),
     )
     preview.add_argument(
-        "--build", action="store_true", help=MESSAGES["cli_preview_build_help"]
+        "--build", action="store_true", help=message("cli.preview_build_help")
     )
 
 
@@ -213,7 +214,7 @@ def main(
         ) as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["cli_preview_failed"], str(error))
+                    error, with_detail(message("cli.preview_failed"), str(error))
                 ),
                 err,
             )
@@ -249,7 +250,7 @@ def _preview(
         except OSError as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["cli_preview_failed"], str(error))
+                    error, with_detail(message("cli.preview_failed"), str(error))
                 ),
                 err,
             )
@@ -257,10 +258,10 @@ def _preview(
     info = asyncio.run(service.info(ref, principal=LOCAL_OWNER))
     if written is not None:
         style = query.style or info.default_style
-        message = MESSAGES["cli_preview_written"].format(
-            path=written, size=query.size, style=style
+        text = message(
+            "cli.preview_written", path=written, size=query.size, style=style
         )
-        err.write(message + "\n")
+        err.write(text + "\n")
     out.write((info.model_dump_json() if args.json else _info_text(info)) + "\n")
     return status
 
@@ -275,11 +276,9 @@ def _build(ref: str, service: PreviewService, jobs: JobSupervisor, err: TextIO) 
         jobs,
         lambda: asyncio.run(service.build([ref], principal=LOCAL_OWNER, force=True)),
         err,
-        started=lambda job: MESSAGES["cli_preview_build_started"].format(job=job.id),
+        started=lambda job: message("cli.preview_build_started", job=job.id),
         event=_build_event,
-        cancelling=lambda job: MESSAGES["cli_preview_build_cancelling"].format(
-            job=job.id
-        ),
+        cancelling=lambda job: message("cli.preview_build_cancelling", job=job.id),
     )
     if record is None:
         return exit_status("succeeded")
@@ -292,7 +291,8 @@ def _build(ref: str, service: PreviewService, jobs: JobSupervisor, err: TextIO) 
 def _build_event(event: JobEvent) -> str | None:
     data = event.data
     if event.type == "progress":
-        return MESSAGES["cli_preview_build_progress"].format(
+        return message(
+            "cli.preview_build_progress",
             current=data["current"],
             total=data["total"],
             built=data.get("built", 0),
@@ -300,7 +300,7 @@ def _build_event(event: JobEvent) -> str | None:
             failed=data.get("failed", 0),
         )
     if event.type == "notice":
-        return MESSAGES["cli_preview_build_notice"].format(message=data["message"])
+        return message("cli.preview_build_notice", message=data["message"])
     return None
 
 
@@ -322,37 +322,40 @@ def _build_end(record: JobRecord, ref: str) -> tuple[JobState, str | None]:
     else:
         state = record.state
         detail = "" if record.error is None else record.error.detail
-    return state, MESSAGES["cli_preview_build_failed"].format(
-        job=record.id, state=label("job_state", state), detail=detail
+    return state, message(
+        "cli.preview_build_failed",
+        job=record.id,
+        state=label("job.state", state),
+        detail=detail,
     )
 
 
 def _info_text(info: PreviewInfo) -> str:
-    lines = [
-        MESSAGES["cli_preview_title"].format(
+    lines: list[str] = [
+        message(
+            "cli.preview_title",
             ref=info.ref,
-            kind=MESSAGES[f"preview_kind_{info.kind}"],
-            state=MESSAGES[f"preview_state_{info.state}"],
+            kind=message(f"preview.kind_{info.kind}"),
+            state=message(f"preview.state_{info.state}"),
         )
     ]
     if info.reason is not None:
         lines.append(
-            MESSAGES["cli_preview_reason"]
-            .format(message=info.reason.message, fix=info.reason.fix)
-            .rstrip()
+            message(
+                "cli.preview_reason", message=info.reason.message, fix=info.reason.fix
+            ).rstrip()
         )
     if info.styles:
         styles = ", ".join(
-            f"{style} ({MESSAGES[f'preview_style_{style}']})" for style in info.styles
+            f"{style} ({message(f'preview.style_{style}')})" for style in info.styles
         )
         lines.append(
-            MESSAGES["cli_preview_styles"].format(
-                styles=styles, default=info.default_style
-            )
+            message("cli.preview_styles", styles=styles, default=info.default_style)
         )
     if info.bounds is not None and info.minzoom is not None:
         lines.append(
-            MESSAGES["cli_preview_map"].format(
+            message(
+                "cli.preview_map",
                 minzoom=info.minzoom,
                 maxzoom=info.maxzoom,
                 bounds=" ".join(f"{value:.5f}" for value in info.bounds),
@@ -360,8 +363,10 @@ def _info_text(info: PreviewInfo) -> str:
         )
     if info.job is not None:
         lines.append(
-            MESSAGES["cli_preview_job"].format(
-                job=info.job.id, state=label("job_state", info.job.state)
+            message(
+                "cli.preview_job",
+                job=info.job.id,
+                state=label("job.state", info.job.state),
             )
         )
     return "\n".join(lines)

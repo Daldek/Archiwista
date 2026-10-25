@@ -59,7 +59,7 @@ from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
 from archiwista.index.types import BatchResult, IndexStatus, PassSummary
 from archiwista.index.writer import IndexWriter
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.sources import (
     Footprint,
     GeoAdapter,
@@ -319,15 +319,15 @@ def scan_store(
             stores=settings.stores,
         )
         for directory in projects.unreadable_dirs:
-            message = MESSAGES["project_dir_unreadable"].format(path=directory)
-            emit(ScanNotice("warning", "project_dir_unreadable", message))
+            text = message("project.dir_unreadable", path=directory)
+            emit(ScanNotice("warning", "project_dir_unreadable", text))
     else:
         writer.set_store_status(store, "available")
     if footprints.failed:
-        message = MESSAGES["scan_footprints_failed"].format(
-            count=footprints.failed, detail=footprints.failure
+        text = message(
+            "scan.footprints_failed", count=footprints.failed, detail=footprints.failure
         )
-        emit(ScanNotice("warning", "footprints_failed", message))
+        emit(ScanNotice("warning", "footprints_failed", text))
     return ScanSummary(
         store=store,
         producer=adapter.producer,
@@ -830,7 +830,7 @@ def _collect(
             wait = deadline - time.monotonic()
             if wait <= 0:
                 raise TimeoutError(
-                    MESSAGES["refresh_view_timeout"].format(seconds=timeout_s)
+                    message("api.refresh_view_timeout", seconds=timeout_s)
                 )
         item = readers.get(wait)
         if isinstance(item, list):
@@ -963,8 +963,8 @@ def _reachable_segments(adapter: SourceAdapter, root: Path) -> tuple[str, ...] |
     """
     state = adapter.probe(root)
     if state.status != "available":
-        message = MESSAGES["store_unreadable"].format(path=root)
-        raise SourceUnavailableError(with_detail(message, state.detail))
+        text = message("store.unreadable", path=root)
+        raise SourceUnavailableError(with_detail(text, state.detail))
     if isinstance(adapter, SegmentedAdapter):
         return tuple(adapter.segments(root))
     return None
@@ -979,7 +979,7 @@ def _indexed(queries: IndexQueries, store: str) -> bool:
 
 
 def _empty_store(root: Path) -> SourceUnavailableError:
-    return SourceUnavailableError(MESSAGES["scan_store_empty"].format(path=root))
+    return SourceUnavailableError(message("scan.store_empty", path=root))
 
 
 def _target(settings: AppSettings, store: str, producer: str) -> _Target:

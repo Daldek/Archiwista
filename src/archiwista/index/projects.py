@@ -25,7 +25,7 @@ from archiwista.config import StoreConfig
 from archiwista.errors import PathOutsideRootError, ProducerError
 from archiwista.index.types import ManifestStamp
 from archiwista.index.writer import IndexWriter
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.paths import resolve_indexed_path
 from archiwista.sources import ProjectInfo, SourceAdapter
 
@@ -119,8 +119,8 @@ def scan_projects(
         if known.get(path) == stamp:
             continue
         if path in outside:
-            refused = MESSAGES["path_outside_root"].format(
-                path=os.path.join(path, manifest)
+            refused = message(
+                "ref.path_outside_root", path=os.path.join(path, manifest)
             )
             info = _invalid(adapter, Path(path), refused)
         else:

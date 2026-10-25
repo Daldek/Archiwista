@@ -26,7 +26,7 @@ from shapely.geometry import mapping, shape
 from archiwista.area_reader import MAX_VERTICES, UNPACKED_LIMIT_BYTES
 from archiwista.areas import AREA_BODY_LIMIT_BYTES, AreaFiles
 from archiwista.auth import LOCAL_OWNER
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources.registry import load_registry
 from tests.fixtures import fetching_area_reader
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
@@ -310,7 +310,7 @@ def test_areas_geojson_crs_link_refused_without_fetching(
 
     # Assert
     assert_problem(response, 500, "data_error", "area_unreadable")
-    assert response.json()["detail"] == MESSAGES["area_crs_not_named"]
+    assert response.json()["detail"] == message("area.crs_not_named")
     assert listener.received == []
     assert _copies(api) == []
 

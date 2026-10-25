@@ -34,7 +34,7 @@ from archiwista.auth import ProjectVisibility
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError, SourceUnavailableError
 from archiwista.index import IndexQueries
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.services import project_detail, project_status
 from archiwista.sources.registry import PluginRegistry
 
@@ -78,7 +78,7 @@ def project_card(
     """
     detail = project_detail(queries, key, visible=visible)
     if detail is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=key))
+        raise NotFoundError(message("project.not_found", project=key))
     store = detail.project.store
     stores = set() if store is None else {store}
     return ProjectCard.of(detail, staleness(queries.freshness(), stores))
@@ -111,17 +111,17 @@ def check_project(
     """
     record = queries.project(key, visible=visible)
     if record is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=key))
+        raise NotFoundError(message("project.not_found", project=key))
     project = record.project
     registry.adapter(project.producer)
     if project.store is not None and _unavailable(
         queries, settings, registry, project.store, project.producer
     ):
         if project.status is None:
-            message = MESSAGES["api_project_store_unavailable"].format(
-                project=key, store=project.store
+            text = message(
+                "api.project_store_unavailable", project=key, store=project.store
             )
-            raise SourceUnavailableError(message)
+            raise SourceUnavailableError(text)
         return ProjectStatus(
             project=key,
             producer=project.producer,
@@ -139,7 +139,7 @@ def check_project(
         queries, registry, key, visible=visible, project_dirs=settings.project_dirs
     )
     if info is None:  # pragma: no cover - removed by a scan in between
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=key))
+        raise NotFoundError(message("project.not_found", project=key))
     return ProjectStatus(
         project=key,
         producer=project.producer,

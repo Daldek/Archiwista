@@ -13,7 +13,7 @@ import pytest
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import ConfigStore
 from archiwista.index import IndexQueries
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.cache import INFO_NAME, cache_key, path_key
 from archiwista.previews.types import PREVIEW_REASONS
 from archiwista.refs import ObjectResolver, VersionRef
@@ -95,8 +95,8 @@ def test_every_store_file_type_has_preview_or_reason(tmp_path: Path) -> None:
         if reason is not None:
             code = reason["code"]
             assert code in PREVIEW_REASONS, info
-            assert reason["message"] == MESSAGES[f"preview_reason_{code}"]
-            assert reason["fix"] == MESSAGES[f"preview_fix_{code}"]
+            assert reason["message"] == message(f"preview.reason_{code}")
+            assert reason["fix"] == message(f"preview.fix_{code}")
         if info["state"] == "unavailable":
             assert reason is not None, info
         else:

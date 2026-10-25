@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from archiwista.api.models import WGS84
 from archiwista.jobs import JobRecord, JobState
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.types import (
     PreviewKind,
     PreviewReason,
@@ -82,8 +82,8 @@ class PreviewReasonInfo(BaseModel):
             "examples": [
                 {
                     "code": "no_georeference",
-                    "message": MESSAGES["preview_reason_no_georeference"],
-                    "fix": MESSAGES["preview_fix_no_georeference"],
+                    "message": message("preview.reason_no_georeference"),
+                    "fix": message("preview.fix_no_georeference"),
                     "detail": None,
                 }
             ]
@@ -113,8 +113,8 @@ class PreviewReasonInfo(BaseModel):
         """Return a reason with its Polish description and fix."""
         return cls(
             code=code,
-            message=MESSAGES[f"preview_reason_{code}"],
-            fix=MESSAGES[f"preview_fix_{code}"],
+            message=message(f"preview.reason_{code}"),
+            fix=message(f"preview.fix_{code}"),
             detail=detail,
         )
 
@@ -303,7 +303,7 @@ class ThumbnailQuery(BaseModel):
     @classmethod
     def _check_size(cls, value: int) -> int:
         if value not in THUMBNAIL_SIZES:
-            raise ValueError(MESSAGES["preview_size_invalid"])
+            raise ValueError(message("preview.size_invalid"))
         return value
 
     @field_validator("bbox")
@@ -317,7 +317,7 @@ class ThumbnailQuery(BaseModel):
     @classmethod
     def _check_crs(cls, value: str) -> str:
         if _EPSG.fullmatch(value.upper()) is None:
-            raise ValueError(MESSAGES["preview_crs_invalid"])
+            raise ValueError(message("preview.crs_invalid"))
         return value.upper()
 
     def frame(self) -> dict[str, Any] | None:
@@ -382,7 +382,7 @@ class FeaturesQuery(BaseModel):
     def _check_bbox(cls, value: str) -> str:
         west, south, east, north = _numbers(value, 4, ordered=True)
         if not (west >= -180 and east <= 180 and south >= -90 and north <= 90):
-            raise ValueError(MESSAGES["api_bbox_invalid"])
+            raise ValueError(message("api.bbox_invalid"))
         return value
 
     def bbox_values(self) -> list[float]:
@@ -400,7 +400,7 @@ class BuildRequest(BaseModel):
     force: bool = Field(
         default=False,
         description=(
-            "Build also past the auto-build limits (the „Zbuduj podgląd” button):"
+            "Build also past the auto-build limits (the build button of the interface):"
             " a file over 2 GB, a raster over 1 Gpx or 8 GB unpacked."
         ),
     )
@@ -432,5 +432,5 @@ def _numbers(text: str, count: int, *, ordered: bool = False) -> tuple[float, ..
     if valid and ordered:
         valid = all(values[i] < values[i + half] for i in range(half))
     if not valid:
-        raise ValueError(MESSAGES["preview_numbers_invalid"].format(count=count))
+        raise ValueError(message("preview.numbers_invalid", count=count))
     return values

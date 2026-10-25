@@ -445,9 +445,9 @@ class PreviewUnavailableError(ArchiwistaError):
     ----------
     reason : str
         Reason code (``PreviewReason``, e.g. ``no_crs``, ``unreadable``);
-        its Polish description and fix are ``preview_reason_<code>`` and
-        ``preview_fix_<code>`` of ``MESSAGES``. The problem reports it as
-        ``details["preview_reason"]``.
+        its description and fix are ``preview.reason_<code>`` and
+        ``preview.fix_<code>`` of the message catalog. The problem reports it
+        as ``details["preview_reason"]``.
     detail : str or None, optional
         English message of the library behind it, without paths.
     """

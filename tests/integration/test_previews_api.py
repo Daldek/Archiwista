@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from archiwista.api.previews import VERSION_CACHE_CONTROL
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
 from tests.fixtures.preview_api import (
@@ -221,8 +221,8 @@ def test_preview_unavailable_carries_reason(served: PreviewApi) -> None:
     )
     assert info["reason"] == {
         "code": "document_no_preview",
-        "message": MESSAGES["preview_reason_document_no_preview"],
-        "fix": MESSAGES["preview_fix_document_no_preview"],
+        "message": message("preview.reason_document_no_preview"),
+        "fix": message("preview.fix_document_no_preview"),
         "detail": None,
     }
     assert_problem(thumbnail, 422, "unsupported", "preview_unavailable")

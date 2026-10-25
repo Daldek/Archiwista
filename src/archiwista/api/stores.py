@@ -22,7 +22,7 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.services import store_summary
 
@@ -59,7 +59,7 @@ def read_store(
     """
     config = settings.store(store)
     if config is None:
-        raise NotFoundError(MESSAGES["api_store_not_configured"].format(store=store))
+        raise NotFoundError(message("api.store_not_configured", store=store))
     return StoreDetail.of(store_summary(queries, config, visible=visible), config)
 
 

@@ -55,7 +55,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.pool import RenderPool
 from archiwista.security import (
     SecurityMiddleware,
@@ -181,7 +181,7 @@ def create_app(
     @app.get("/", include_in_schema=False)
     def interface() -> FileResponse:
         if not index_page.is_file():
-            raise ApiError("not_found", MESSAGES["api_interface_missing"])
+            raise ApiError("not_found", message("api.interface_missing"))
         return FileResponse(index_page)
 
     app.mount("/static", StaticFiles(directory=web_dir), name="static")

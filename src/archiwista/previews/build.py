@@ -50,7 +50,7 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.jobs.protocol import JobSpec, JsonObject
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import lookup, message, with_detail
 from archiwista.previews.cache import INFO_NAME, CacheKey, PreviewCache, cache_key
 from archiwista.previews.protocol import (
     RENDER_WORKER_COMMAND,
@@ -223,7 +223,7 @@ class _Builder:
             return "store_unavailable", str(error)
         except PreviewUnavailableError as error:
             reason = error.reason
-            return reason, MESSAGES.get(f"preview_reason_{reason}", reason)
+            return reason, lookup(f"preview.reason_{reason}", reason)
 
     def build(self, refs: Sequence[str], source: PreviewSource | _Outcome) -> _Outcome:
         """Build one content unless it is built already; never raise for it."""
@@ -245,7 +245,7 @@ class _Builder:
         try:
             return self._build(names, source, key, probe)
         except _Interrupted:
-            return _Outcome("failed", names, "interrupted", MESSAGES["job_cancelled"])
+            return _Outcome("failed", names, "interrupted", message("job.cancelled"))
         finally:
             self._cache.unpin(key)
 
@@ -362,19 +362,19 @@ def _groups(refs: Sequence[str], contents: Sequence[str]) -> dict[str, list[str]
 
 def _unresolved(ref: str, detail: str | None) -> str:
     """Return why a ref of the job did not resolve, in Polish."""
-    reason = detail or MESSAGES["preview_build_unknown_ref"]
-    return MESSAGES["preview_build_unresolved"].format(ref=ref, detail=reason)
+    reason = detail or message("preview.build_unknown_ref")
+    return message("preview.build_unresolved", ref=ref, detail=reason)
 
 
 def _failure(refs: tuple[str, ...], code: str, detail: str | None) -> _Outcome:
     """Return a failed build with a Polish detail (the library's appended)."""
     if code == "timeout":
         minutes = round(BUILD_TIMEOUT_S / 60)
-        text = MESSAGES["preview_build_timeout"].format(minutes=minutes)
+        text: str = message("preview.build_timeout", minutes=minutes)
     elif code == "too_large":
-        text = MESSAGES["preview_build_too_large"]
+        text = message("preview.build_too_large")
     else:
-        reason = MESSAGES.get(f"preview_reason_{code}", code)
+        reason = lookup(f"preview.reason_{code}", code)
         text = with_detail(reason, detail)
     return _Outcome("failed", refs, code, text)
 

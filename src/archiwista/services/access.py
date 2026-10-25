@@ -17,7 +17,7 @@ from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries, ProjectRef
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state import GroupRecord, Role, UserRecord, Visibility
 
 
@@ -212,7 +212,7 @@ def _managed_project(
     """Find a project the principal sees, then require ``project.share``."""
     record = queries.project(project, visible=authorizer.visible_projects(principal))
     if record is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
+        raise NotFoundError(message("project.not_found", project=project))
     authorizer.require(principal, "project.share", record.project.access_key)
     return record.project
 

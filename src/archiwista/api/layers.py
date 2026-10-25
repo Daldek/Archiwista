@@ -47,7 +47,7 @@ from archiwista.auth import Principal
 from archiwista.config import SettingsService
 from archiwista.errors import PreviewBusyError
 from archiwista.index import IndexQueries
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
 from archiwista.security import current_principal
 from archiwista.services.layers import (
@@ -82,7 +82,7 @@ def render_pool(request: Request) -> RenderPool:
     """
     pool: RenderPool | None = request.app.state.previews
     if pool is None:
-        raise PreviewBusyError(MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S)
+        raise PreviewBusyError(message("preview.closed"), retry_after_s=RETRY_AFTER_S)
     return pool
 
 
@@ -222,7 +222,7 @@ async def get_layer_tile(
     errors = [
         {
             "loc": ("path", name),
-            "msg": MESSAGES["preview_tile_range"].format(z=z, last=last),
+            "msg": message("preview.tile_range", z=z, last=last),
             "type": "value_error",
         }
         for name, value in (("x", x), ("y", y))

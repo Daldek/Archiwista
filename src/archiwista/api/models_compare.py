@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.models import Geometry
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 
 type CompareValue = str | int | float | bool | datetime | date | None
 # ``metadata``: normalized fields of a store version in the index;
@@ -59,7 +59,7 @@ _EXAMPLE: dict[str, Any] = {
         {
             "group": "metadata",
             "field": "data_date",
-            "label": MESSAGES["compare_field_data_date"],
+            "label": message("compare.field_data_date"),
             "a": "2019-07-12",
             "b": "2025-04-26",
             "differs": True,

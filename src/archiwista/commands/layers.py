@@ -42,7 +42,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError
 from archiwista.index import IndexUnsupportedError
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.services.layers import layer_images, layer_thumbnail, read_local_layers
 from archiwista.sources.registry import PluginRegistry
 
@@ -59,49 +59,55 @@ def add_commands(commands: Commands) -> None:
     commands : argparse._SubParsersAction
         Subcommands of the ``archiwista`` parser.
     """
-    layers = add_parser(commands, "layers", "cli_layers_help")
+    layers = add_parser(commands, "layers", "cli.layers_help")
     layers.add_argument(
         "--store",
         required=True,
-        metavar="MAGAZYN",
-        help=MESSAGES["cli_layers_store_help"],
+        metavar=message("metavar.store"),
+        help=message("cli.layers_store_help"),
     )
     layers.add_argument(
         "--product",
         required=True,
-        metavar="PRODUKT",
-        help=MESSAGES["cli_layers_product_help"],
+        metavar=message("metavar.product"),
+        help=message("cli.layers_product_help"),
     )
     layers.add_argument(
-        "--area-id", metavar="OBSZAR", help=MESSAGES["cli_layers_area_help"]
+        "--area-id",
+        metavar=message("metavar.area"),
+        help=message("cli.layers_area_help"),
     )
     layers.add_argument(
-        "--segment", metavar="SEGMENT", help=MESSAGES["cli_layers_segment_help"]
+        "--segment", metavar="SEGMENT", help=message("cli.layers_segment_help")
     )
     layers.add_argument(
         "--group",
         choices=("year", "campaign"),
         default="year",
-        help=MESSAGES["cli_layers_group_help"],
+        help=message("cli.layers_group_help"),
     )
     layers.add_argument(
-        "--thumbnail", metavar="KLUCZ", help=MESSAGES["cli_layers_thumbnail_help"]
+        "--thumbnail",
+        metavar=message("metavar.key"),
+        help=message("cli.layers_thumbnail_help"),
     )
     layers.add_argument(
         "--size",
         type=int,
         default=DEFAULT_SIZE,
-        metavar="BOK",
-        help=MESSAGES["cli_layers_size_help"],
+        metavar=message("metavar.side"),
+        help=message("cli.layers_size_help"),
     )
     layers.add_argument(
-        "--style", metavar="STYL", help=MESSAGES["cli_preview_style_help"]
+        "--style",
+        metavar=message("metavar.style"),
+        help=message("cli.preview_style_help"),
     )
     layers.add_argument(
         "--output",
         type=Path,
-        metavar="PLIK.png",
-        help=MESSAGES["cli_layers_output_help"],
+        metavar=message("metavar.png_file"),
+        help=message("cli.layers_output_help"),
     )
 
 
@@ -137,7 +143,7 @@ def main(
         return fail(
             err,
             "validation_error",
-            MESSAGES["cli_layers_output_required"],
+            message("cli.layers_output_required"),
             reason="usage",
         )
     try:
@@ -171,7 +177,7 @@ def main(
         ) as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["cli_layers_failed"], str(error))
+                    error, with_detail(message("cli.layers_failed"), str(error))
                 ),
                 err,
             )
@@ -220,29 +226,31 @@ def _layers(
         except OSError as error:
             return refuse(
                 exception_problem(
-                    error, with_detail(MESSAGES["cli_layers_failed"], str(error))
+                    error, with_detail(message("cli.layers_failed"), str(error))
                 ),
                 err,
             )
-        message = MESSAGES["cli_layers_written"].format(
+        text = message(
+            "cli.layers_written",
             layer=image.layer,
             path=args.output,
             size=image.size,
             style=image.style or images.default_style or "–",
         )
-        err.write(message + "\n")
+        err.write(text + "\n")
     out.write((found.model_dump_json() if args.json else _text(found)) + "\n")
     return 0
 
 
 def _text(found: LayerSet) -> str:
     area = (
-        MESSAGES["cli_layers_whole_store"]
+        message("cli.layers_whole_store")
         if found.area is None
         else (found.area.name or found.area.id)
     )
     lines = [
-        MESSAGES["cli_layers_heading"].format(
+        message(
+            "cli.layers_heading",
             store=found.store,
             product=found.product,
             count=len(found.layers),
@@ -250,10 +258,11 @@ def _text(found: LayerSet) -> str:
         )
     ]
     if found.stale_reason is not None:
-        lines.append(MESSAGES["cli_layers_stale"].format(reason=found.stale_reason))
+        lines.append(message("cli.layers_stale", reason=found.stale_reason))
     for layer in found.layers:
         lines.append(
-            MESSAGES["cli_layers_layer"].format(
+            message(
+                "cli.layers_layer",
                 key=layer.key,
                 title=layer.title,
                 subtitle=layer.subtitle,
@@ -262,26 +271,23 @@ def _text(found: LayerSet) -> str:
             )
         )
         lines.append(
-            MESSAGES["cli_layers_formats"].format(
-                formats=", ".join(layer.variant.formats)
-            )
+            message("cli.layers_formats", formats=", ".join(layer.variant.formats))
         )
         if layer.coverage is not None:
-            lines.append(
-                MESSAGES["cli_layers_coverage"].format(label=layer.coverage.label)
-            )
+            lines.append(message("cli.layers_coverage", label=layer.coverage.label))
         preview = layer.preview
         if preview is not None:
             job = (
                 ""
                 if preview.job is None
-                else MESSAGES["cli_layers_preview_job"].format(job=preview.job.id)
+                else message("cli.layers_preview_job", job=preview.job.id)
             )
             lines.append(
-                MESSAGES["cli_layers_preview"].format(
+                message(
+                    "cli.layers_preview",
                     ready=preview.ready,
                     total=preview.total,
-                    state=MESSAGES[f"preview_state_{preview.state}"],
+                    state=message(f"preview.state_{preview.state}"),
                     job=job,
                 )
             )

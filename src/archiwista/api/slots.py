@@ -48,7 +48,7 @@ from archiwista.errors import (
 )
 from archiwista.index import AreaFilter, BBox, IndexQueries, StoreFreshness
 from archiwista.index.geometry import box_geometry, require_wgs84_bbox
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.paths import indexed_path
 from archiwista.security import current_principal
 from archiwista.services import issue_problem
@@ -108,12 +108,12 @@ def search_slots(
     checked_project(queries, filters.project, visible)
     area = None
     if filters.area_id is not None and filters.bbox is not None:
-        raise IndexQueryError(MESSAGES["api_area_and_bbox"])
+        raise IndexQueryError(message("api.area_and_bbox"))
     if filters.area_id is not None:
         record = queries.area(filters.area_id)
         if record is None:
-            message = MESSAGES["api_area_unknown"].format(area=filters.area_id)
-            raise IndexQueryError(message)
+            text = message("api.area_unknown", area=filters.area_id)
+            raise IndexQueryError(text)
         area = AreaFilter(record.geometry, record.countries)
     bbox = filters.bbox_values()
     if bbox is not None:
@@ -152,8 +152,8 @@ def slot_card(
     """
     detail = queries.slot(store, slot, visible=visible)
     if detail is None:
-        message = MESSAGES["api_slot_unknown"].format(slot=slot, store=store)
-        raise NotFoundError(message)
+        text = message("api.slot_unknown", slot=slot, store=store)
+        raise NotFoundError(text)
     producer = detail.segment.producer
     problems = [issue_problem(issue, producer) for issue in detail.issues]
     paths = copy_path(settings, store, producer, detail.slot)
@@ -178,8 +178,8 @@ def version_card(
     """
     detail = queries.version(store, version, visible=visible)
     if detail is None:
-        message = MESSAGES["api_version_unknown"].format(version=version, store=store)
-        raise NotFoundError(message)
+        text = message("api.version_unknown", version=version, store=store)
+        raise NotFoundError(text)
     paths = copy_path(settings, store, detail.segment.producer, version)
     return VersionCard.of(
         detail,
@@ -231,8 +231,8 @@ def geo_adapter(registry: PluginRegistry) -> GeoAdapter:
     if failure is not None:
         raise failure
     producer = min(REQUIRED_PRODUCERS)
-    state = SourceState(producer, "error", detail=MESSAGES["api_no_geo_source"])
-    raise SourceUnavailableError(MESSAGES["api_no_geo_source"], state=state)
+    state = SourceState(producer, "error", detail=message("api.no_geo_source"))
+    raise SourceUnavailableError(message("api.no_geo_source"), state=state)
 
 
 def bbox_area(registry: PluginRegistry, bbox: BBox, crs: str) -> AreaFilter:
@@ -252,7 +252,7 @@ def bbox_area(registry: PluginRegistry, bbox: BBox, crs: str) -> AreaFilter:
     """
     min_x, min_y, max_x, max_y = bbox
     if not (min_x < max_x and min_y < max_y):
-        raise IndexQueryError(MESSAGES["api_bbox_invalid"])
+        raise IndexQueryError(message("api.bbox_invalid"))
     adapter = geo_adapter(registry)
     if crs.upper() == WGS84:
         bounds = require_wgs84_bbox(bbox)
@@ -306,7 +306,7 @@ def checked_store(
         item.store for item in freshness
     }
     if store not in known:
-        raise IndexQueryError(MESSAGES["api_store_unknown"].format(store=store))
+        raise IndexQueryError(message("api.store_unknown", store=store))
     return {store}
 
 
@@ -322,7 +322,7 @@ def checked_project(
         invisible project's existence is not revealed.
     """
     if project is not None and queries.project(project, visible=visible) is None:
-        raise NotFoundError(MESSAGES["project_not_found"].format(project=project))
+        raise NotFoundError(message("project.not_found", project=project))
 
 
 @router.get(
@@ -422,10 +422,11 @@ def get_sidecar(
     """Return the version's raw sidecar as the producer wrote it (from the index)."""
     found = queries.sidecar(store, version)
     if found is None:
-        key = "api_version_unknown"
         if queries.version(store, version, visible=_NO_PROJECTS) is not None:
-            key = "api_sidecar_missing"
-        raise NotFoundError(MESSAGES[key].format(version=version, store=store))
+            text = message("api.sidecar_missing", version=version, store=store)
+        else:
+            text = message("api.version_unknown", version=version, store=store)
+        raise NotFoundError(text)
     return found
 
 
@@ -475,8 +476,8 @@ def list_request_files(
     """List the files of one producer request, e.g. both sides of a border."""
     members = queries.group(parent_request)
     if not members:
-        message = MESSAGES["api_request_unknown"].format(parent_request=parent_request)
-        raise NotFoundError(message)
+        text = message("api.request_unknown", parent_request=parent_request)
+        raise NotFoundError(text)
     stores = {member.store for member in members}
     return RequestFiles(
         parent_request=parent_request,

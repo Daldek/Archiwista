@@ -20,7 +20,7 @@ import argparse
 from typing import Protocol, TextIO
 
 from archiwista.config import AppPaths
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources.registry import PluginRegistry
 
 type Commands = argparse._SubParsersAction[argparse.ArgumentParser]
@@ -49,7 +49,7 @@ class CommandModule(Protocol):
 
 def add_parser(commands: Commands, name: str, help_key: str) -> argparse.ArgumentParser:
     """Add a command with its help text and ``--json``; return its parser."""
-    text = MESSAGES[help_key]
+    text = message(help_key)
     parser = commands.add_parser(name, help=text, description=text)
-    parser.add_argument("--json", action="store_true", help=MESSAGES["cli_json_help"])
+    parser.add_argument("--json", action="store_true", help=message("cli.json_help"))
     return parser

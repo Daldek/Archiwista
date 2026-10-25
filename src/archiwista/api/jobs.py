@@ -56,8 +56,8 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import SettingsService
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
-from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor, label
-from archiwista.messages import MESSAGES
+from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
+from archiwista.messages import label, message
 from archiwista.security import current_principal
 
 router = APIRouter(tags=["jobs"])
@@ -229,7 +229,7 @@ def _job(jobs: JobSupervisor, job: str, visible: ProjectVisibility) -> JobRecord
     """Return a job the session sees or refuse with ``404 not_found``."""
     record = jobs.get(job, visible=visible)
     if record is None:
-        raise NotFoundError(MESSAGES["job_not_found"].format(job=job))
+        raise NotFoundError(message("job.not_found", job=job))
     return record
 
 
@@ -245,16 +245,17 @@ def _conflicts(*codes: str) -> dict[int | str, dict[str, Any]]:
     examples = {
         "conflict": problem_example(
             "conflict",
-            MESSAGES["job_conflict"].format(
+            message(
+                "job.conflict",
                 store="zespol",
-                kind=label("job_kind", running["kind"]),
-                state=label("job_state", running["state"]),
+                kind=label("job.kind", running["kind"]),
+                state=label("job.state", running["state"]),
                 job=running["id"],
             ),
             details={"job": running},
         ),
         "offline_mode": problem_example(
-            "conflict", MESSAGES["job_offline_mode"], reason="offline_mode"
+            "conflict", message("job.offline_mode"), reason="offline_mode"
         ),
     }
     return {
@@ -294,8 +295,8 @@ _SSE_EXAMPLE = "".join(
             {
                 "level": "warning",
                 "code": "project_dir_unreadable",
-                "message": MESSAGES["project_dir_unreadable"].format(
-                    path="/mnt/nas/projekty/archiwum"
+                "message": message(
+                    "project.dir_unreadable", path="/mnt/nas/projekty/archiwum"
                 ),
             },
         ),
@@ -377,8 +378,8 @@ def start_link_check(
     """
     configured = settings.get().store(store) is not None
     if configured and queries.slot(store, body.slot, visible=visible) is None:
-        message = MESSAGES["api_slot_unknown"].format(slot=body.slot, store=store)
-        raise NotFoundError(message)
+        text = message("api.slot_unknown", slot=body.slot, store=store)
+        raise NotFoundError(text)
     job = jobs.submit(
         "link_check", store=store, params={"slot": body.slot}, actor=principal
     )

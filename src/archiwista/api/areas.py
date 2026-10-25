@@ -54,7 +54,7 @@ from archiwista.index import (
     refresh_view,
 )
 from archiwista.index.geometry import polygon_bounds
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.sources.registry import PluginRegistry
 
@@ -155,7 +155,7 @@ def read_area(queries: IndexQueries, area_id: str) -> Area:
     """
     record = queries.area(area_id)
     if record is None:
-        raise NotFoundError(MESSAGES["api_area_unknown"].format(area=area_id))
+        raise NotFoundError(message("api.area_unknown", area=area_id))
     return Area.of(record)
 
 
@@ -269,10 +269,10 @@ def read_local_coverage(
     """
     record = queries.area(query.area_id)
     if record is None:
-        raise IndexQueryError(MESSAGES["api_area_unknown"].format(area=query.area_id))
+        raise IndexQueryError(message("api.area_unknown", area=query.area_id))
     if settings.store(query.store) is None:
-        message = MESSAGES["api_store_not_configured"].format(store=query.store)
-        raise IndexQueryError(message)
+        text = message("api.store_not_configured", store=query.store)
+        raise IndexQueryError(text)
     adapter = geo_adapter(registry)
     reason = refresh_area(
         queries,

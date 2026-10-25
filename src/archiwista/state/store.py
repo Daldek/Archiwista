@@ -31,7 +31,7 @@ from archiwista.errors import (
     NotFoundError,
     StateError,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.state.schema import connect, initialize
 
 type Role = Literal["admin", "store_writer"]
@@ -332,7 +332,7 @@ class StateStore:
         granted = _require_roles(roles)
         with self._write() as connection:
             if _user(connection, user_id) is not None:
-                raise ConflictError(MESSAGES["state_user_exists"].format(id=user_id))
+                raise ConflictError(message("state.user_exists", id=user_id))
             now = _now()
             connection.execute(
                 "INSERT INTO users (id, name, disabled, created_at, updated_at)"
@@ -470,7 +470,7 @@ class StateStore:
         wanted = _distinct(members)
         with self._write() as connection:
             if _group(connection, group_id) is not None:
-                raise ConflictError(MESSAGES["state_group_exists"].format(id=group_id))
+                raise ConflictError(message("state.group_exists", id=group_id))
             _require_users(connection, wanted)
             now = _now()
             connection.execute(
@@ -641,7 +641,7 @@ class StateStore:
         with self._write() as connection:
             if not _is_empty(connection):
                 raise StateError(
-                    MESSAGES["state_import_not_empty"].format(path=self.path),
+                    message("state.import_not_empty", path=self.path),
                     code="conflict",
                     reason="state_not_empty",
                 )
@@ -649,7 +649,7 @@ class StateStore:
                 _restore(connection, snapshot)
             except (sqlite3.IntegrityError, InvalidChangeError) as error:
                 raise StateError(
-                    MESSAGES["state_import_inconsistent"].format(detail=error),
+                    message("state.import_inconsistent", detail=error),
                     code="data_error",
                     reason="invalid_backup",
                 ) from error
@@ -688,22 +688,20 @@ class StateStore:
 
 def _require_user_id(user_id: str) -> None:
     if _ID.fullmatch(user_id) is None:
-        raise InvalidChangeError(MESSAGES["state_id_pattern"].format(id=user_id))
+        raise InvalidChangeError(message("state.id_pattern", id=user_id))
     if user_id in RESERVED_USER_IDS:
-        raise InvalidChangeError(MESSAGES["state_user_id_reserved"].format(id=user_id))
+        raise InvalidChangeError(message("state.user_id_reserved", id=user_id))
 
 
 def _require_group_id(group_id: str) -> None:
     if _ID.fullmatch(group_id) is None:
-        raise InvalidChangeError(MESSAGES["state_id_pattern"].format(id=group_id))
+        raise InvalidChangeError(message("state.id_pattern", id=group_id))
 
 
 def _require_name(name: str) -> str:
     stripped = name.strip()
     if not stripped or len(stripped) > NAME_MAX_LENGTH:
-        raise InvalidChangeError(
-            MESSAGES["state_name_invalid"].format(limit=NAME_MAX_LENGTH)
-        )
+        raise InvalidChangeError(message("state.name_invalid", limit=NAME_MAX_LENGTH))
     return stripped
 
 
@@ -711,7 +709,7 @@ def _require_roles(roles: Collection[str]) -> tuple[Role, ...]:
     unknown = sorted(set(roles) - set(ROLES))
     if unknown:
         raise InvalidChangeError(
-            MESSAGES["state_roles_unknown"].format(roles=", ".join(unknown))
+            message("state.roles_unknown", roles=", ".join(unknown))
         )
     return tuple(role for role in ROLES if role in roles)
 
@@ -731,31 +729,27 @@ def _require_entries(
     """
     if visibility not in VISIBILITIES:
         raise InvalidChangeError(
-            MESSAGES["state_visibility_unknown"].format(visibility=visibility)
+            message("state.visibility_unknown", visibility=visibility)
         )
     if visibility == "users" and (groups or not (users or allow_empty)):
-        raise InvalidChangeError(MESSAGES["state_entries_users"])
+        raise InvalidChangeError(message("state.entries_users"))
     if visibility == "group" and (users or not (groups or allow_empty)):
-        raise InvalidChangeError(MESSAGES["state_entries_group"])
+        raise InvalidChangeError(message("state.entries_group"))
     if visibility in ("public", "private") and (users or groups):
-        raise InvalidChangeError(
-            MESSAGES["state_entries_none"].format(visibility=visibility)
-        )
+        raise InvalidChangeError(message("state.entries_none", visibility=visibility))
 
 
 def _require_users(connection: sqlite3.Connection, ids: Iterable[str]) -> None:
     unknown = _unknown(connection, "users", ids)
     if unknown:
-        raise InvalidChangeError(
-            MESSAGES["state_users_unknown"].format(ids=", ".join(unknown))
-        )
+        raise InvalidChangeError(message("state.users_unknown", ids=", ".join(unknown)))
 
 
 def _require_groups(connection: sqlite3.Connection, ids: Iterable[str]) -> None:
     unknown = _unknown(connection, "groups", ids)
     if unknown:
         raise InvalidChangeError(
-            MESSAGES["state_groups_unknown"].format(ids=", ".join(unknown))
+            message("state.groups_unknown", ids=", ".join(unknown))
         )
 
 
@@ -813,7 +807,7 @@ def _user(connection: sqlite3.Connection, user_id: str) -> UserRecord | None:
 def _existing_user(connection: sqlite3.Connection, user_id: str) -> UserRecord:
     user = _user(connection, user_id)
     if user is None:
-        raise NotFoundError(MESSAGES["state_user_not_found"].format(id=user_id))
+        raise NotFoundError(message("state.user_not_found", id=user_id))
     return user
 
 
@@ -845,7 +839,7 @@ def _group(connection: sqlite3.Connection, group_id: str) -> GroupRecord | None:
 def _existing_group(connection: sqlite3.Connection, group_id: str) -> GroupRecord:
     group = _group(connection, group_id)
     if group is None:
-        raise NotFoundError(MESSAGES["state_group_not_found"].format(id=group_id))
+        raise NotFoundError(message("state.group_not_found", id=group_id))
     return group
 
 

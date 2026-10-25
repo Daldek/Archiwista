@@ -27,7 +27,7 @@ from archiwista.errors import (
     PreviewUnavailableError,
     SourceStateError,
 )
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import lookup, message, with_detail
 from archiwista.sources.registry import install_requirement, source_fix
 
 ERROR_SCHEMA: Final = "archiwista-error/1"
@@ -137,8 +137,8 @@ def preview_reason(code: str, detail: str | None = None) -> dict[str, str | None
     """
     return {
         "code": code,
-        "message": MESSAGES.get(f"preview_reason_{code}", code),
-        "fix": MESSAGES.get(f"preview_fix_{code}", ""),
+        "message": lookup(f"preview.reason_{code}", code),
+        "fix": lookup(f"preview.fix_{code}", ""),
         "detail": detail,
     }
 
@@ -165,7 +165,7 @@ def validation_problem(errors: Iterable[Mapping[str, Any]]) -> Problem:
     )
     return Problem(
         "validation_error",
-        MESSAGES["api_validation_error"].format(fields=fields),
+        message("api.validation_error", fields=fields),
         details={"reason": "invalid_request"},
         errors=items,
     )
@@ -190,7 +190,7 @@ def describe(error: ArchiwistaError) -> Problem:
     if isinstance(error, SourceStateError) and error.state is not None:
         state = error.state
         fix = source_fix(state)
-        detail = MESSAGES["api_source_problem"].format(message=detail, fix=fix)
+        detail = message("api.source_problem", message=detail, fix=fix)
         hint = hint or fix
         details["source"] = {
             "id": state.producer,
@@ -202,7 +202,8 @@ def describe(error: ArchiwistaError) -> Problem:
     elif isinstance(error, PreviewUnavailableError):
         reason = preview_reason(error.reason, error.detail)
         # The library's detail explains the reason; the fix closes the text.
-        detail = MESSAGES["preview_unavailable_detail"].format(
+        detail = message(
+            "preview.unavailable_detail",
             message=with_detail(str(reason["message"]), error.detail),
             fix=reason["fix"],
         )

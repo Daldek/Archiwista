@@ -56,7 +56,7 @@ from archiwista.index.coverage import (
     measure_coverage,
 )
 from archiwista.index.geometry import require_wgs84_area
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.paths import private_directory
 from archiwista.sandbox import run_untrusted
 from archiwista.sources import GeoAdapter, GeoJSONGeometry
@@ -116,9 +116,7 @@ def check_body_size(size: int) -> None:
     """
     if size > AREA_BODY_LIMIT_BYTES:
         raise AreaTooLargeError(
-            MESSAGES["area_body_too_large"].format(
-                limit_mb=AREA_BODY_LIMIT_BYTES // _MIB
-            )
+            message("area.body_too_large", limit_mb=AREA_BODY_LIMIT_BYTES // _MIB)
         )
 
 
@@ -201,25 +199,25 @@ def area_from_geometry(
     count = count_vertices(geometry) if vertices is None else vertices
     if count > MAX_VERTICES:
         raise AreaTooComplexError(
-            MESSAGES["area_too_many_vertices"].format(
-                vertices=count, limit=MAX_VERTICES
-            )
+            message("area.too_many_vertices", vertices=count, limit=MAX_VERTICES)
         )
     try:
         polygon = shapely.force_2d(shape(geometry))
     except (AttributeError, IndexError, KeyError, TypeError, ValueError) as error:
-        raise IndexQueryError(MESSAGES["index_invalid_area"]) from error
+        raise IndexQueryError(message("index.invalid_area")) from error
     length = float(shapely.length(polygon))
     if length > AREA_MAX_LENGTH_DEG:
         raise AreaTooComplexError(
-            MESSAGES["area_too_long"].format(
-                length=f"{length:.0f}", limit=f"{AREA_MAX_LENGTH_DEG:.0f}"
+            message(
+                "area.too_long",
+                length=f"{length:.0f}",
+                limit=f"{AREA_MAX_LENGTH_DEG:.0f}",
             )
         )
     if not shapely.is_valid(polygon):
         polygon = _polygons(shapely.make_valid(polygon))
     if polygon.is_empty or polygon.area <= 0:
-        raise IndexQueryError(MESSAGES["area_empty"])
+        raise IndexQueryError(message("area.empty"))
     stored = _plain(polygon)
     bounds = require_wgs84_area(stored)
     countries = tuple(adapter.countries(bounds))
@@ -269,7 +267,7 @@ def read_area_file(
         More than ``MAX_VERTICES`` positions.
     """
     if not content:
-        raise AreaUnreadableError(MESSAGES["area_format_unknown"])
+        raise AreaUnreadableError(message("area.format_unknown"))
     # Copies of the user's files: the areas directory is the user's alone.
     private_directory(files.directory)
     directory = files.directory / INCOMING_DIR / secrets.token_hex(8)
@@ -414,10 +412,10 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
     except subprocess.TimeoutExpired:
         seconds = f"{files.timeout_s:g}"
         raise AreaUnreadableError(
-            MESSAGES["area_read_timeout"].format(seconds=seconds)
+            message("area.read_timeout", seconds=seconds)
         ) from None
     crashed = AreaUnreadableError(
-        MESSAGES["area_reader_crashed"].format(code=finished.returncode)
+        message("area.reader_crashed", code=finished.returncode)
     )
     lines = finished.stdout.decode("utf-8", "replace").strip().splitlines()
     if finished.returncode != 0 or not lines:
@@ -431,7 +429,7 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
     code = answer.get("error")
     if code is None:
         return answer
-    detail = str(answer.get("detail") or MESSAGES["area_format_unknown"])
+    detail = str(answer.get("detail") or message("area.format_unknown"))
     if code == "area_too_large":
         raise AreaTooLargeError(detail)
     if code == "area_too_complex":

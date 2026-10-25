@@ -69,7 +69,7 @@ from archiwista.errors import (
     SourceIncompatibleError,
     SourceUnavailableError,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 # Service errors answered with a problem, each by its own code (the other
@@ -110,14 +110,14 @@ _HTTP_CODES = MappingProxyType(
         429: "rate_limited",
     }
 )
-# Statuses routes document: the example's code and reason, the key of its
-# Polish detail and what the status means.
+# Statuses routes document: the example's code and reason, the catalog key of
+# its detail and what the status means.
 _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
     {
         400: (
             "validation_error",
             "invalid_request",
-            "api_validation_error",
+            "api.validation_error",
             "Invalid parameters or body (`errors`: the JSON Pointer, type and"
             " message of each value), or a value over a limit (`details.reason`:"
             " `area_too_large` over 50 MB or 200 MB unpacked, `area_too_complex`,"
@@ -126,13 +126,13 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
         401: (
             "unauthorized",
             "session_required",
-            "api_session_required",
+            "api.session_required",
             "No valid session: exchange a one-time token (POST /api/v1/session).",
         ),
         403: (
             "forbidden",
             "csrf_rejected",
-            "api_csrf_missing",
+            "api.csrf_missing",
             "Refused (`details.reason`): `csrf_rejected` (no or another"
             " X-Archiwista-CSRF, a foreign `Origin` or a cross-site request),"
             " `invalid_host`, `permission_denied` (A-ADR-029) or"
@@ -141,13 +141,13 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
         404: (
             "not_found",
             None,
-            "api_route_not_found",
+            "api.route_not_found",
             "Unknown, or not visible to the session's principal.",
         ),
         409: (
             "conflict",
             "offline_mode",
-            "job_offline_mode",
+            "job.offline_mode",
             "Conflicts with the current state (`details.reason`): none (another"
             " job already writes the store's index; `details.job` names it),"
             " `offline_mode` (the job needs the network), `own_file_changed` (an"
@@ -157,7 +157,7 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
         500: (
             "data_error",
             "area_unreadable",
-            "area_format_unknown",
+            "area.format_unknown",
             "Data the server read is malformed (`details.reason`):"
             " `area_unreadable` (an area file; `details.layers` lists the layers"
             " to choose from) or `kartograf_error` (the producer refused, with"
@@ -166,7 +166,7 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
         503: (
             "missing_dependency",
             "source_unavailable",
-            "source_unavailable",
+            "source.unavailable",
             "A producer plugin is missing (`source_unavailable`) or incompatible"
             " (`source_incompatible`), with `details.source` and the fix; or"
             " (`store_unavailable`) the store cannot be read and the index has"
@@ -186,8 +186,8 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """
     responses: dict[int | str, dict[str, Any]] = {}
     for status in sorted({401, *statuses}):
-        code, reason, message, description = _DOCUMENTED[status]
-        detail = MESSAGES[message].format(path=f"{API_PREFIX}/…", fields="query.limit")
+        code, reason, key, description = _DOCUMENTED[status]
+        detail = message(key, path=f"{API_PREFIX}/…", fields="query.limit")
         responses[status] = {
             "description": description,
             "content": {
@@ -349,10 +349,10 @@ async def _http_error(request: Request, error: HTTPException) -> JSONResponse:
         status, "internal_error" if status >= 500 else "validation_error"
     )
     if code == "not_found":
-        detail = MESSAGES["api_route_not_found"].format(path=request.url.path)
+        detail: str = message("api.route_not_found")
     elif code == "method_not_allowed":
-        detail = MESSAGES["api_method_not_allowed"].format(
-            method=request.method, path=request.url.path
+        detail = message(
+            "api.method_not_allowed", method=request.method, path=request.url.path
         )
     else:
         detail = str(error.detail)
@@ -362,5 +362,5 @@ async def _http_error(request: Request, error: HTTPException) -> JSONResponse:
 
 async def _internal_error(request: Request, error: Exception) -> JSONResponse:
     # Starlette re-raises the error afterwards, so the server logs it.
-    problem = Problem("internal_error", MESSAGES["api_internal_error"])
+    problem = Problem("internal_error", message("api.internal_error"))
     return problem_response(problem, request)

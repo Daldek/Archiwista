@@ -53,7 +53,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.errors import PreviewBusyError
 from archiwista.jobs import JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
 from archiwista.previews.service import Payload, PreviewService
 from archiwista.refs import ObjectResolver, version_ref
@@ -88,7 +88,7 @@ def preview_service(request: Request) -> PreviewService:
     state = request.app.state
     pool: RenderPool | None = state.previews
     if pool is None:
-        raise PreviewBusyError(MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S)
+        raise PreviewBusyError(message("preview.closed"), retry_after_s=RETRY_AFTER_S)
     settings: SettingsService = state.settings
     decisions: Authorizer = state.authorizer
     resolver = ObjectResolver(
@@ -126,44 +126,46 @@ _IfNoneMatch = Annotated[
 
 def preview_problems(*codes: str) -> dict[int | str, dict[str, Any]]:
     """Return the OpenAPI problems of the preview routes, by reason."""
-    unavailable = MESSAGES["preview_reason_document_no_preview"]
+    unavailable = message("preview.reason_document_no_preview")
     examples: dict[str, dict[str, object]] = {
         "preview_unavailable": problem_example(
             "unsupported",
-            MESSAGES["preview_unavailable_detail"].format(
-                message=unavailable, fix=MESSAGES["preview_fix_document_no_preview"]
+            message(
+                "preview.unavailable_detail",
+                message=unavailable,
+                fix=message("preview.fix_document_no_preview"),
             ),
             reason="preview_unavailable",
             details={
                 "preview_reason": {
                     "code": "document_no_preview",
                     "message": unavailable,
-                    "fix": MESSAGES["preview_fix_document_no_preview"],
+                    "fix": message("preview.fix_document_no_preview"),
                     "detail": None,
                 }
             },
-            hint=MESSAGES["preview_fix_document_no_preview"],
+            hint=message("preview.fix_document_no_preview"),
         ),
         "preview_not_ready": problem_example(
             "conflict",
-            MESSAGES["preview_not_ready_build"],
+            message("preview.not_ready_build"),
             reason="preview_not_ready",
             details={"build_required": True},
         ),
         "preview_busy": problem_example(
             "rate_limited",
-            MESSAGES["preview_busy"].format(seconds=RETRY_AFTER_S),
+            message("preview.busy", seconds=RETRY_AFTER_S),
             reason="preview_busy",
             details={"retry_after_s": RETRY_AFTER_S},
         ),
         "store_unavailable": problem_example(
             "store_unavailable",
-            MESSAGES["preview_reason_store_unavailable"],
+            message("preview.reason_store_unavailable"),
             reason="store_unreadable",
         ),
         "preview_timeout": problem_example(
             "calculation_error",
-            MESSAGES["preview_timeout"].format(seconds=30),
+            message("preview.timeout", seconds=30),
             reason="preview_timeout",
         ),
     }
@@ -464,7 +466,7 @@ def require_tile(z: int, x: int, y: int) -> None:
     errors = [
         {
             "loc": ("path", name),
-            "msg": MESSAGES["preview_tile_range"].format(z=z, last=last),
+            "msg": message("preview.tile_range", z=z, last=last),
             "type": "value_error",
         }
         for name, value in (("x", x), ("y", y))

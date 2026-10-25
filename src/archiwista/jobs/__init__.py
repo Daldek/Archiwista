@@ -32,7 +32,6 @@ from archiwista.jobs.supervisor import (
     JobState,
     JobSupervisor,
     ScanHistory,
-    label,
 )
 
 __all__ = [
@@ -59,7 +58,6 @@ __all__ = [
     "ScanHistory",
     "ScanScheduler",
     "WorkerMessage",
-    "label",
     "plan_own_scan",
     "plan_scans",
 ]

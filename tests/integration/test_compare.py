@@ -30,7 +30,7 @@ from archiwista.auth import ALL_PROJECTS, ProjectVisibility
 from archiwista.config import AppPaths, AppSettings
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, own_file_id
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
 from archiwista.owndata.scan import check_own_folder, folder_rules, scan_own_data
@@ -137,8 +137,8 @@ def test_versions_of_one_slot_mark_differences(served: ServedStore) -> None:
         _ref(second),
     ]
     assert comparison["a"]["kind"] == "version"
-    assert comparison["a"]["title"] == MESSAGES["compare_title_version"].format(
-        name=Path(first.path).name, label=first.label
+    assert comparison["a"]["title"] == message(
+        "compare.title_version", name=Path(first.path).name, label=first.label
     )
     assert comparison["a"]["outline"] == cards[0]["footprint"]
     assert comparison["b"]["preview"] == (
@@ -148,7 +148,7 @@ def test_versions_of_one_slot_mark_differences(served: ServedStore) -> None:
     assert comparison["schema_diff"] is None
     metadata = _rows(comparison, "metadata")
     assert list(metadata) == list(VERSION_FIELDS)
-    assert metadata["campaign"]["label"] == MESSAGES["compare_field_campaign"]
+    assert metadata["campaign"]["label"] == message("compare.field_campaign")
     assert (metadata["campaign"]["a"], metadata["campaign"]["b"]) == CAMPAIGNS
     assert metadata["size_bytes"]["b"] == metadata["size_bytes"]["a"] + 1
     differing = ("data_date", "data_year", "label", "campaign", "sha256", "size_bytes")
@@ -419,7 +419,7 @@ def test_snapshot_against_edited_working_file(own: OwnData) -> None:
     # Assert
     assert (forward.a.kind, forward.b.kind) == ("snapshot", "file")
     assert forward.a.title == f"{GPKG} — {label}"
-    assert forward.b.title == f"{GPKG} — {MESSAGES['compare_title_working']}"
+    assert forward.b.title == f"{GPKG} — {message('compare.title_working')}"
     assert forward.a.preview == f"{base}/snapshots/{label}/preview"
     assert forward.b.preview == f"{base}/preview"
     assert forward.a.outline is not None
@@ -435,8 +435,8 @@ def test_snapshot_against_edited_working_file(own: OwnData) -> None:
         "studnie": (None, 2),
     }
     assert [row["differs"] for row in layers.values()] == [True, False, True]
-    assert layers["przewody"]["label"] == MESSAGES["compare_layer_features"].format(
-        layer="przewody"
+    assert layers["przewody"]["label"] == message(
+        "compare.layer_features", layer="przewody"
     )
     fields = _own_rows(forward, "own")
     assert list(fields) == list(OWN_FIELDS)
@@ -505,33 +505,34 @@ def test_own_data_not_found(own: OwnData) -> None:
         (
             own.file(GPKG),
             ProjectVisibility(),
-            MESSAGES["project_not_found"].format(project=own.project),
+            message("project.not_found", project=own.project),
         ),
         (
             own.snapshot(GPKG),
             ProjectVisibility(),
-            MESSAGES["project_not_found"].format(project=own.project),
+            message("project.not_found", project=own.project),
         ),
         (
             own.file("brak.gpkg"),
             ALL_PROJECTS,
-            MESSAGES["compare_file_not_found"].format(
-                project=own.project, path="brak.gpkg"
-            ),
+            message("compare.file_not_found", project=own.project, path="brak.gpkg"),
         ),
         (
             unknown_label,
             ALL_PROJECTS,
-            MESSAGES["compare_snapshot_not_found"].format(
-                project=own.project, path=GPKG, label="2000-01-01_00000000"
+            message(
+                "compare.snapshot_not_found",
+                project=own.project,
+                path=GPKG,
+                label="2000-01-01_00000000",
             ),
         ),
     ]
 
-    for ref, visible, message in cases:
+    for ref, visible, text in cases:
         # Act
         with pytest.raises(NotFoundError) as caught:
             compare(own.queries, ref, own.file(TIF), visible=visible)
 
         # Assert
-        assert str(caught.value) == message, ref
+        assert str(caught.value) == text, ref

@@ -1,0 +1,1204 @@
+"""Texts of the command line: help of commands and options, output and refusals."""
+
+from archiwista.messages import Text
+
+MESSAGES = {
+    "description": Text(
+        "Archiwista — a browser for a local data store.",
+        "Archiwista — przeglądarka lokalnego magazynu danych.",
+    ),
+    "internal_error": Text(
+        (
+            "Unexpected program error; the traceback is above. Report it with the"
+            " command and the Archiwista version."
+        ),
+        (
+            "Nieoczekiwany błąd programu; ślad wywołań jest wyżej. Zgłoś go z"
+            " poleceniem i wersją Archiwisty."
+        ),
+    ),
+    "doctor_help": Text(
+        "Checks the installation, data source plugins, stores and the port.",
+        "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
+    ),
+    "serve_help": Text(
+        "Starts the Archiwista server on 127.0.0.1 and opens the browser.",
+        "Uruchamia serwer Archiwisty na 127.0.0.1 i otwiera przeglądarkę.",
+    ),
+    "serve_host_help": Text(
+        "listen address; without team mode only 127.0.0.1",
+        "adres nasłuchu; bez trybu zespołu tylko 127.0.0.1",
+    ),
+    "serve_port_help": Text(
+        "port (default from settings; 0 — any free port)",
+        "port (domyślnie z ustawień; 0 — dowolny wolny)",
+    ),
+    "serve_no_browser_help": Text(
+        "do not open the browser, only print the address",
+        "nie otwieraj przeglądarki, tylko wypisz adres",
+    ),
+    "serve_access_log_help": Text(
+        "enable the access log (token= values are hidden in it)",
+        "włącz dziennik dostępu (wartości token= są w nim ukryte)",
+    ),
+    "token_help": Text(
+        (
+            "Issues a one-time agent session URL, valid for 5 min (or ends agent"
+            " sessions: --revoke-all)."
+        ),
+        (
+            "Wystawia jednorazowy adres sesji agenta, ważny 5 min (albo kończy sesje"
+            " agentów: --revoke-all)."
+        ),
+    ),
+    "token_port_help": Text(
+        "server port in the URL (default from settings)",
+        "port serwera w adresie (domyślnie z ustawień)",
+    ),
+    "token_json_help": Text(
+        "print JSON like the POST /api/v1/session/tokens response",
+        "wypisz JSON jak odpowiedź POST /api/v1/session/tokens",
+    ),
+    "token_revoke_all_help": Text(
+        "end all agent sessions and invalidate unused tokens",
+        "zakończ wszystkie sesje agentów i unieważnij niewykorzystane tokeny",
+    ),
+    "port_invalid": Text(
+        "port must be a number from {minimum} to 65535",
+        "port musi być liczbą od {minimum} do 65535",
+    ),
+    "verbose_help": Text(
+        "show diagnostic messages on stderr (debug level)",
+        "pokaż na stderr komunikaty diagnostyczne (poziom debug)",
+    ),
+    "quiet_help": Text(
+        "show only errors on stderr (error level)",
+        "pokaż na stderr tylko błędy (poziom error)",
+    ),
+    "log_options_exclusive": Text(
+        "the --verbose and --quiet options are mutually exclusive",
+        "opcje --verbose i --quiet wykluczają się",
+    ),
+    "log_level_invalid": Text(
+        (
+            'The variable {variable} has the value "{value}", which is not a log'
+            " level; allowed: {allowed}."
+        ),
+        (
+            "Zmienna {variable} ma wartość „{value}”, która nie jest poziomem"
+            " dziennika; dozwolone: {allowed}."
+        ),
+    ),
+    "log_level_hint": Text(
+        "Set the variable to one of the allowed values or remove it.",
+        "Ustaw zmienną na jedną z dozwolonych wartości albo ją usuń.",
+    ),
+    "users_help": Text(
+        "People's accounts and their roles (administrator only).",
+        "Konta osób i ich role (tylko administrator).",
+    ),
+    "users_list_help": Text(
+        "Lists accounts with roles and groups.",
+        "Wypisuje konta z rolami i grupami.",
+    ),
+    "users_add_help": Text(
+        "Creates an account (in v0.1 without a password or login).",
+        "Zakłada konto (w v0.1 bez hasła i logowania).",
+    ),
+    "users_roles_help": Text(
+        "Sets the roles of an account (no roles — regular user).",
+        "Ustawia role konta (bez ról — zwykły użytkownik).",
+    ),
+    "users_remove_help": Text(
+        "Removes the account from groups and sharing lists, then the account itself.",
+        "Usuwa konto z grup i list udostępnienia, a potem samo konto.",
+    ),
+    "user_id_help": Text(
+        "account identifier, e.g. anna.nowak",
+        "identyfikator konta, np. anna.nowak",
+    ),
+    "name_help": Text(
+        "display name (defaults to the identifier)",
+        "nazwa wyświetlana (domyślnie identyfikator)",
+    ),
+    "role_help": Text(
+        "role: admin (administrator) or store_writer (write access to the store)",
+        "rola: admin (administrator) albo store_writer (zapis do magazynu)",
+    ),
+    "groups_help": Text(
+        "Groups of people, e.g. departments (administrator only).",
+        "Grupy osób, np. działy (tylko administrator).",
+    ),
+    "groups_list_help": Text(
+        "Lists groups with their members.",
+        "Wypisuje grupy z członkami.",
+    ),
+    "groups_add_help": Text(
+        "Creates a group.",
+        "Zakłada grupę.",
+    ),
+    "groups_members_help": Text(
+        "Sets the members of a group (replaces the current ones).",
+        "Ustawia członków grupy (zastępuje dotychczasowych).",
+    ),
+    "groups_remove_help": Text(
+        "Removes a group and the project entries that refer to it.",
+        "Usuwa grupę i wpisy projektów, które ją wskazują.",
+    ),
+    "group_id_help": Text(
+        "group identifier, e.g. hydro",
+        "identyfikator grupy, np. hydro",
+    ),
+    "member_help": Text(
+        "member account identifier",
+        "identyfikator konta członka",
+    ),
+    "share_help": Text(
+        "Shows or sets who can see a project (project owner or administrator).",
+        (
+            "Pokazuje albo ustawia, kto widzi projekt (właściciel projektu albo"
+            " administrator)."
+        ),
+    ),
+    "project_help": Text(
+        "project identifier, as in /api/v1/projects/{{id}}",
+        "identyfikator projektu, jak w /api/v1/projects/{{id}}",
+    ),
+    "visibility_help": Text(
+        (
+            "public — everyone, users — selected people (--user), group — members of"
+            " groups (--group), private — owner only; without this option the command"
+            " only shows the sharing"
+        ),
+        (
+            "public — wszyscy, users — wybrane osoby (--user), group — członkowie grup"
+            " (--group), private — tylko właściciel; bez tej opcji polecenie tylko"
+            " pokazuje udostępnienie"
+        ),
+    ),
+    "share_user_help": Text(
+        "person who can see the project (with --visibility users)",
+        "osoba, która widzi projekt (z --visibility users)",
+    ),
+    "share_group_help": Text(
+        "group whose members can see the project (with --visibility group)",
+        "grupa, której członkowie widzą projekt (z --visibility group)",
+    ),
+    "owner_help": Text(
+        "new project owner (account identifier)",
+        "nowy właściciel projektu (identyfikator konta)",
+    ),
+    "share_needs_visibility": Text(
+        "Specify --visibility to change the project's sharing.",
+        "Podaj --visibility, aby zmienić udostępnienie projektu.",
+    ),
+    "json_help": Text(
+        "print JSON like the API response",
+        "wypisz JSON jak odpowiedź API",
+    ),
+    "state_help": Text(
+        "Backup of the state database (accounts, groups, sharing, log).",
+        "Kopia zapasowa bazy stanu (konta, grupy, udostępnienia, dziennik).",
+    ),
+    "state_export_help": Text(
+        "Writes the state database as JSON archiwista-state/1.",
+        "Zapisuje bazę stanu jako JSON archiwista-state/1.",
+    ),
+    "state_output_help": Text(
+        "backup file (default: standard output)",
+        "plik kopii (domyślnie standardowe wyjście)",
+    ),
+    "state_import_help": Text(
+        "Restores the state database from a backup — into an empty database only.",
+        "Odtwarza bazę stanu z kopii — tylko do pustej bazy.",
+    ),
+    "state_file_help": Text(
+        'file written by "archiwista state export"',
+        "plik zapisany przez „archiwista state export”",
+    ),
+    "state_exported": Text(
+        "State database backup saved: {path}",
+        "Zapisano kopię bazy stanu: {path}",
+    ),
+    "state_imported": Text(
+        (
+            "State database restored: accounts {users}, groups {groups}, projects"
+            " {projects}, log entries {changes}."
+        ),
+        (
+            "Odtworzono bazę stanu: konta {users}, grupy {groups}, projekty"
+            " {projects}, wpisy dziennika {changes}."
+        ),
+    ),
+    "state_unreadable": Text(
+        "Cannot read file {path}: {detail}",
+        "Nie można odczytać pliku {path}: {detail}",
+    ),
+    "admin_failed": Text(
+        "Cannot run the command",
+        "Nie można wykonać polecenia",
+    ),
+    "no_users": Text(
+        "No accounts.",
+        "Brak kont.",
+    ),
+    "no_groups": Text(
+        "No groups.",
+        "Brak grup.",
+    ),
+    "user_line": Text(
+        "{id} — {name}; roles: {roles}; groups: {groups}",
+        "{id} — {name}; role: {roles}; grupy: {groups}",
+    ),
+    "user_disabled": Text(
+        " (disabled)",
+        " (wyłączone)",
+    ),
+    "group_line": Text(
+        "{id} — {name}; members: {members}",
+        "{id} — {name}; członkowie: {members}",
+    ),
+    "user_removed": Text(
+        'Account "{id}" removed.',
+        "Usunięto konto „{id}”.",
+    ),
+    "group_removed": Text(
+        'Group "{id}" removed.',
+        "Usunięto grupę „{id}”.",
+    ),
+    "access_line": Text(
+        'Project "{project}": {visibility}{entries}; owner: {owner}',
+        "Projekt „{project}”: {visibility}{entries}; właściciel: {owner}",
+    ),
+    "access_default": Text(
+        " (default visibility — the project has no entry of its own)",
+        " (widoczność domyślna — projekt nie ma własnego wpisu)",
+    ),
+    "none": Text(
+        "none",
+        "brak",
+    ),
+    "status_help": Text(
+        (
+            "Archiwista state: versions, data sources, index and stores (like GET"
+            " /api/v1/health)."
+        ),
+        (
+            "Stan Archiwisty: wersje, źródła danych, indeks i magazyny (jak GET"
+            " /api/v1/health)."
+        ),
+    ),
+    "sources_help": Text(
+        "Data producer plugins and their state (like GET /api/v1/sources).",
+        "Wtyczki producentów danych i ich stan (jak GET /api/v1/sources).",
+    ),
+    "search_help": Text(
+        (
+            "Searches and filters the file catalog (like GET /api/v1/slots, options"
+            " with the same names); next page: --cursor."
+        ),
+        (
+            "Wyszukuje i filtruje katalog plików (jak GET /api/v1/slots, opcje o tych"
+            " samych nazwach); kolejna strona: --cursor."
+        ),
+    ),
+    "entry_help": Text(
+        (
+            "File card: all versions, current, full sheet, pins and problems (like GET"
+            " /api/v1/stores/{{store}}/slots/{{slot}})."
+        ),
+        (
+            "Karta pliku: wszystkie wersje, bieżąca, pełny arkusz, przypięcia i"
+            " problemy (jak GET /api/v1/stores/{{store}}/slots/{{slot}})."
+        ),
+    ),
+    "version_help": Text(
+        (
+            "Single version card: values from the index, raw sidecar and path (like"
+            " GET /api/v1/stores/{{store}}/versions/{{version}})."
+        ),
+        (
+            "Karta jednej wersji: wartości z indeksu, surowy sidecar i ścieżka (jak"
+            " GET /api/v1/stores/{{store}}/versions/{{version}})."
+        ),
+    ),
+    "projects_help": Text(
+        "Projects you can see (like GET /api/v1/projects).",
+        "Projekty, które widzisz (jak GET /api/v1/projects).",
+    ),
+    "project_card_help": Text(
+        (
+            "Project card: jobs, pins and problems (like GET"
+            " /api/v1/projects/{{project}})."
+        ),
+        (
+            "Karta projektu: zadania, przypięcia i problemy (jak GET"
+            " /api/v1/projects/{{project}})."
+        ),
+    ),
+    "store_id_help": Text(
+        "store identifier from the settings, e.g. zespol",
+        "identyfikator magazynu z ustawień, np. zespol",
+    ),
+    "slot_help": Text(
+        "slot path in the store, like the slot field of search results",
+        "ścieżka slotu w magazynie, jak pole slot wyników search",
+    ),
+    "version_path_help": Text(
+        "version path, like the version.path field",
+        "ścieżka wersji, jak pole version.path",
+    ),
+    "projects_store_help": Text(
+        "only projects of this store",
+        "tylko projekty tego magazynu",
+    ),
+    "search_q_help": Text(
+        (
+            "text to search for; every word must match: sheet designation, TERYT, KU,"
+            " file name, product, version label, campaign, start of SHA-256"
+        ),
+        (
+            "szukany tekst; pasować musi każde słowo: godło, TERYT, KU, nazwa pliku,"
+            " produkt, etykieta wersji, kampania, początek SHA-256"
+        ),
+    ),
+    "search_store_help": Text(
+        "store identifier",
+        "identyfikator magazynu",
+    ),
+    "search_product_help": Text(
+        "product, e.g. nmt",
+        "produkt, np. nmt",
+    ),
+    "search_country_help": Text(
+        "country code, e.g. PL",
+        "kod kraju, np. PL",
+    ),
+    "search_years_help": Text(
+        "data year: 2023, 2020-2023, 2020- or -2023",
+        "rok danych: 2023, 2020-2023, 2020- albo -2023",
+    ),
+    "search_unit_help": Text(
+        "exact unit code: sheet designation, TERYT or KU",
+        "dokładny kod jednostki: godło arkusza, TERYT albo KU",
+    ),
+    "search_versions_help": Text(
+        (
+            "rows: current (current ones, default), all, full_sheet, pinned or"
+            " noncurrent_unpinned"
+        ),
+        (
+            "wiersze: current (bieżące, domyślnie), all, full_sheet, pinned albo"
+            " noncurrent_unpinned"
+        ),
+    ),
+    "search_status_help": Text(
+        "row state: ok, missing, no_sidecar, unreadable or unrecognized",
+        "stan wiersza: ok, missing, no_sidecar, unreadable albo unrecognized",
+    ),
+    "search_project_help": Text(
+        "only versions pinned in this project (key from archiwista projects)",
+        "tylko wersje przypięte w tym projekcie (klucz z archiwista projects)",
+    ),
+    "search_location_help": Text(
+        (
+            "location: any (default), with (footprint or whole country) or none (no"
+            " location)"
+        ),
+        (
+            "położenie: any (domyślnie), with (obrys albo cały kraj) albo none (bez"
+            " położenia)"
+        ),
+    ),
+    "search_area_id_help": Text(
+        "area saved via POST /api/v1/areas",
+        "obszar zapisany przez POST /api/v1/areas",
+    ),
+    "search_bbox_help": Text(
+        "rectangle min_x,min_y,max_x,max_y in the CRS from --bbox-crs",
+        "prostokąt min_x,min_y,max_x,max_y w układzie z --bbox-crs",
+    ),
+    "search_bbox_crs_help": Text(
+        "CRS of --bbox, e.g. EPSG:2180 (default EPSG:4326)",
+        "układ współrzędnych --bbox, np. EPSG:2180 (domyślnie EPSG:4326)",
+    ),
+    "search_limit_help": Text(
+        "number of rows per page: 1–200 (default 50)",
+        "liczba wierszy na stronie: 1–200 (domyślnie 50)",
+    ),
+    "search_cursor_help": Text(
+        "next_cursor of the previous page of the same query",
+        "next_cursor poprzedniej strony tego samego zapytania",
+    ),
+    "read_failed": Text(
+        "Cannot read the index",
+        "Nie można odczytać indeksu",
+    ),
+    "status_line": Text(
+        "Archiwista {version}; index: schema {schema}, {size}.",
+        "Archiwista {version}; indeks: schemat {schema}, {size}.",
+    ),
+    "source_line": Text(
+        "Source {producer} ({version}): {message}",
+        "Źródło {producer} ({version}): {message}",
+    ),
+    "store_line": Text(
+        (
+            'Store "{store}" ({name}): {status}; slots {slots}, versions {versions},'
+            " missing {missing}, issues {issues}; index from {indexed_at}; last full"
+            " scan: {full_scan_at}."
+        ),
+        (
+            "Magazyn „{store}” ({name}): {status}; sloty {slots}, wersje {versions},"
+            " brakujące {missing}, problemy {issues}; indeks z {indexed_at}; ostatni"
+            " pełny skan: {full_scan_at}."
+        ),
+    ),
+    "store_job": Text(
+        " Job: {kind}, {state}.",
+        " Zadanie: {kind}, {state}.",
+    ),
+    "store_status_unknown": Text(
+        "not scanned yet",
+        "jeszcze nie zeskanowany",
+    ),
+    "store_status_available": Text(
+        "available",
+        "dostępny",
+    ),
+    "store_status_unavailable": Text(
+        "unavailable",
+        "niedostępny",
+    ),
+    "stale_line": Text(
+        (
+            'Note: store "{store}" is unavailable — the response is based on the'
+            " index from {indexed_at}."
+        ),
+        (
+            "Uwaga: magazyn „{store}” jest niedostępny — odpowiedź według indeksu z"
+            " {indexed_at}."
+        ),
+    ),
+    "never": Text(
+        "never",
+        "nigdy",
+    ),
+    "search_row": Text(
+        "{store}  {slot}  (version {label}, data year {year})",
+        "{store}  {slot}  (wersja {label}, rok danych {year})",
+    ),
+    "search_summary": Text(
+        (
+            "Rows: {count}. Location across the whole result — footprint: {footprint},"
+            " country: {country}, none: {none}."
+        ),
+        (
+            "Wierszy: {count}. Położenie w całym wyniku — obrys: {footprint}, kraj:"
+            " {country}, brak: {none}."
+        ),
+    ),
+    "search_next": Text(
+        "Next page: --cursor {cursor}",
+        "Następna strona: --cursor {cursor}",
+    ),
+    "no_rows": Text(
+        "No results.",
+        "Brak wyników.",
+    ),
+    "entry_title": Text(
+        "{store}/{slot} — {name}",
+        "{store}/{slot} — {name}",
+    ),
+    "entry_facts": Text(
+        (
+            "Segment: {segment}; unit: {unit}; product: {product}; country: {country};"
+            " state: {status}."
+        ),
+        (
+            "Segment: {segment}; jednostka: {unit}; produkt: {product}; kraj:"
+            " {country}; stan: {status}."
+        ),
+    ),
+    "version_line": Text(
+        "  {path} — {label}, data year {year}{marks}",
+        "  {path} — {label}, rok danych {year}{marks}",
+    ),
+    "version_current": Text(
+        ", current",
+        ", bieżąca",
+    ),
+    "version_full_sheet": Text(
+        ", full sheet",
+        ", pełny arkusz",
+    ),
+    "version_missing": Text(
+        ", file missing",
+        ", brak pliku",
+    ),
+    "version_pinned": Text(
+        "; pinned in: {projects}",
+        "; przypięta w: {projects}",
+    ),
+    "version_title": Text(
+        "{store}/{path} (slot {slot})",
+        "{store}/{path} (slot {slot})",
+    ),
+    "version_facts": Text(
+        (
+            "Label: {label}; data year: {year}; size: {size}; CRS: {crs}; SHA-256:"
+            " {sha256}."
+        ),
+        (
+            "Etykieta: {label}; rok danych: {year}; rozmiar: {size}; układ: {crs};"
+            " SHA-256: {sha256}."
+        ),
+    ),
+    "version_license": Text(
+        "License: {license}; attribution: {attribution}.",
+        "Licencja: {license}; atrybucja: {attribution}.",
+    ),
+    "path_line": Text(
+        "Path: {path}",
+        "Ścieżka: {path}",
+    ),
+    "problem_line": Text(
+        "Problem: {message} {instruction}",
+        "Problem: {message} {instruction}",
+    ),
+    "project_line": Text(
+        (
+            "{project} — {name}; store: {store}; tasks {tasks}, pins {pins}, missing"
+            " {missing}."
+        ),
+        (
+            "{project} — {name}; magazyn: {store}; zadania {tasks}, przypięcia {pins},"
+            " brakujące {missing}."
+        ),
+    ),
+    "no_projects": Text(
+        "No visible projects.",
+        "Brak widocznych projektów.",
+    ),
+    "task_line": Text(
+        "  task {task}: {command}; state: {status}",
+        "  zadanie {task}: {command}; stan: {status}",
+    ),
+    "pin_line": Text(
+        "  pin {version} (task {task}): {state}",
+        "  przypięcie {version} (zadanie {task}): {state}",
+    ),
+    "reindex_help": Text(
+        (
+            "Rebuilds the index: a full scan of the store (of all stores without"
+            " --store) run as a job in the foreground."
+        ),
+        (
+            "Przebudowuje indeks: pełny skan magazynu (bez --store — wszystkich) jako"
+            " zadanie, wykonywane na pierwszym planie."
+        ),
+    ),
+    "reindex_store_help": Text(
+        "store identifier from the settings",
+        "identyfikator magazynu z ustawień",
+    ),
+    "preview_help": Text(
+        (
+            "Describes an object's preview (--json: PreviewInfo model), writes a"
+            " thumbnail to a PNG file (--output), or builds the preview in the"
+            " foreground (--build)."
+        ),
+        (
+            "Opis podglądu obiektu (--json: model PreviewInfo), miniatura do pliku PNG"
+            " (--output) albo budowa podglądu na pierwszym planie (--build)."
+        ),
+    ),
+    "preview_ref_help": Text(
+        (
+            "Object reference copied from the API response (ref field), e.g."
+            " version:zespol:nmt/…/plik.asc."
+        ),
+        (
+            "Odwołanie do obiektu przepisane z odpowiedzi API (pole ref), np."
+            " version:zespol:nmt/…/plik.asc."
+        ),
+    ),
+    "preview_style_help": Text(
+        (
+            "Style of the thumbnail written by --output; defaults to the file's"
+            " default style."
+        ),
+        "Styl miniatury zapisywanej przez --output; domyślnie styl domyślny pliku.",
+    ),
+    "preview_size_help": Text(
+        "Side length of the thumbnail written by --output, in pixels (default 512).",
+        "Bok miniatury zapisywanej przez --output w pikselach (domyślnie 512).",
+    ),
+    "preview_output_help": Text(
+        (
+            "Writes the thumbnail to a PNG file using the same rendering process and"
+            " the same preview cache as the server."
+        ),
+        (
+            "Zapisuje miniaturę do pliku PNG tym samym procesem renderującym i przez"
+            " tę samą pamięć podglądów co serwer."
+        ),
+    ),
+    "preview_build_help": Text(
+        (
+            "Builds the preview (local COG) in the foreground, including for a file"
+            " above the automatic build thresholds, and prints the description after"
+            " the build."
+        ),
+        (
+            "Buduje podgląd (lokalny COG) na pierwszym planie, także pliku ponad progi"
+            " budowy automatycznej, i podaje opis po budowie."
+        ),
+    ),
+    "preview_failed": Text(
+        "Cannot prepare the preview",
+        "Nie można przygotować podglądu",
+    ),
+    "preview_title": Text(
+        "{ref}: {kind}, preview {state}",
+        "{ref}: {kind}, podgląd {state}",
+    ),
+    "preview_reason": Text(
+        "Reason: {message} {fix}",
+        "Powód: {message} {fix}",
+    ),
+    "preview_styles": Text(
+        "Styles: {styles} (default: {default})",
+        "Style: {styles} (domyślny: {default})",
+    ),
+    "preview_map": Text(
+        "On the map: zoom levels {minzoom}–{maxzoom}, extent {bounds}",
+        "Na mapie: powiększenia {minzoom}–{maxzoom}, zasięg {bounds}",
+    ),
+    "preview_job": Text(
+        "Build: job {job} ({state})",
+        "Budowa: zadanie {job} ({state})",
+    ),
+    "preview_written": Text(
+        "Thumbnail written to {path} ({size} px, style {style}).",
+        "Zapisano miniaturę {path} ({size} px, styl {style}).",
+    ),
+    "preview_build_started": Text(
+        "Preview build: job {job}.",
+        "Budowa podglądu: zadanie {job}.",
+    ),
+    "preview_build_progress": Text(
+        (
+            "Preview build: {current}/{total} (built {built}, from cache {cached},"
+            " failed {failed})."
+        ),
+        (
+            "Budowa podglądu: {current}/{total} (zbudowane {built}, z pamięci"
+            " {cached}, nieudane {failed})."
+        ),
+    ),
+    "preview_build_notice": Text(
+        "Preview build: {message}",
+        "Budowa podglądu: {message}",
+    ),
+    "preview_build_cancelling": Text(
+        "Cancelling the preview build (job {job})…",
+        "Przerywam budowę podglądu (zadanie {job})…",
+    ),
+    "preview_build_failed": Text(
+        "Preview build (job {job}) {state}: {detail}",
+        "Budowa podglądu (zadanie {job}) {state}: {detail}",
+    ),
+    "files_help": Text(
+        (
+            "Own data files of the project by path, with the data folder and the"
+            " change since the last snapshot (--json: OwnFileList model); next page:"
+            " --cursor."
+        ),
+        (
+            "Pliki danych własnych projektu wg ścieżki, z folderem danych i zmianą od"
+            " ostatniej migawki (--json: model OwnFileList); kolejna strona: --cursor."
+        ),
+    ),
+    "file_help": Text(
+        (
+            "Own data file card: layers, extent, state history, snapshots and preview"
+            " (--json: OwnFileCard model)."
+        ),
+        (
+            "Karta pliku danych własnych: warstwy, zasięg, historia stanów, migawki i"
+            " podgląd (--json: model OwnFileCard)."
+        ),
+    ),
+    "snapshot_help": Text(
+        (
+            "Snapshot of an own data file into .wersje/ in the foreground (--json:"
+            " JobDetail model with the result); --plan: snapshot plan without writing"
+            " (SnapshotPlan model)."
+        ),
+        (
+            "Migawka pliku danych własnych do .wersje/ na pierwszym planie (--json:"
+            " model JobDetail z wynikiem); --plan: plan migawki bez zapisu (model"
+            " SnapshotPlan)."
+        ),
+    ),
+    "own_scan_help": Text(
+        (
+            'Scan of own data in the foreground, like the "Odśwież" button (--json:'
+            " JobDetail model with the result); without --project — all projects."
+        ),
+        (
+            "Skan danych własnych na pierwszym planie, jak „Odśwież” (--json: model"
+            " JobDetail z wynikiem); bez --project — wszystkie projekty."
+        ),
+    ),
+    "own_project_help": Text(
+        "Project identifier (the project field from the API).",
+        "Identyfikator projektu (pole project z API).",
+    ),
+    "own_file_help": Text(
+        (
+            "File path in the data folder (with /, e.g. sieci/kanalizacja.gpkg) or its"
+            " file_id (16 hexadecimal characters)."
+        ),
+        (
+            "Ścieżka pliku w folderze danych (z /, np. sieci/kanalizacja.gpkg) albo"
+            " jego file_id (16 znaków szesnastkowych)."
+        ),
+    ),
+    "files_q_help": Text(
+        "Words that must appear in the path.",
+        "Słowa, które muszą wystąpić w ścieżce.",
+    ),
+    "files_state_help": Text(
+        (
+            "Only files in this state (ok, unrecognized, unreadable, missing) or with"
+            " this change (unsnapshotted, unchanged, changed)."
+        ),
+        (
+            "Tylko pliki w tym stanie (ok, unrecognized, unreadable, missing) albo o"
+            " tej zmianie (unsnapshotted, unchanged, changed)."
+        ),
+    ),
+    "files_limit_help": Text(
+        "Number of files per page (1–200, default 50).",
+        "Liczba plików na stronie (1–200, domyślnie 50).",
+    ),
+    "files_cursor_help": Text(
+        "next_cursor of the previous page with the same filters.",
+        "next_cursor poprzedniej strony tych samych filtrów.",
+    ),
+    "snapshot_note_help": Text(
+        "Note written to migawka.json.",
+        "Notatka zapisywana w migawka.json.",
+    ),
+    "snapshot_plan_help": Text(
+        (
+            "Snapshot plan only: what will be copied, where to, and whether anything"
+            " blocks it; nothing is written."
+        ),
+        (
+            "Tylko plan migawki: co zostanie skopiowane, dokąd i czy coś ją blokuje;"
+            " nic nie jest zapisywane."
+        ),
+    ),
+    "own_scan_project_help": Text(
+        "Only the data folder of this project.",
+        "Tylko folder danych tego projektu.",
+    ),
+    "own_failed": Text(
+        "Cannot read own data",
+        "Nie można odczytać danych własnych",
+    ),
+    "own_state_ok": Text(
+        "OK",
+        "w porządku",
+    ),
+    "own_state_unrecognized": Text(
+        "unrecognized",
+        "nierozpoznany",
+    ),
+    "own_state_unreadable": Text(
+        "unreadable",
+        "nieczytelny",
+    ),
+    "own_state_missing": Text(
+        "missing",
+        "nie istnieje",
+    ),
+    "own_state_invalid": Text(
+        "rejected by rules",
+        "odrzucony przez reguły",
+    ),
+    "own_change_unsnapshotted": Text(
+        "no snapshot",
+        "bez migawki",
+    ),
+    "own_change_unchanged": Text(
+        "unchanged since snapshot",
+        "bez zmian od migawki",
+    ),
+    "own_change_changed": Text(
+        "changed since snapshot",
+        "zmieniony od migawki",
+    ),
+    "own_folder": Text(
+        (
+            "{project}: data folder {path} ({state}), files: {files}, {size},"
+            " snapshots: {snapshots}; scan: {scanned}"
+        ),
+        (
+            "{project}: folder danych {path} ({state}), plików {files}, {size},"
+            " migawki {snapshots}; skan: {scanned}"
+        ),
+    ),
+    "own_problem": Text(
+        "Problem: {message} {instruction}",
+        "Problem: {message} {instruction}",
+    ),
+    "own_row": Text(
+        "{path}  {state}, {change}, snapshots: {snapshots}",
+        "{path}  {state}, {change}, migawek {snapshots}",
+    ),
+    "own_no_files": Text(
+        "No files.",
+        "Brak plików.",
+    ),
+    "own_card_title": Text(
+        "{ref} ({file_id}): {kind}, {format}, {size}",
+        "{ref} ({file_id}): {kind}, {format}, {size}",
+    ),
+    "own_card_state": Text(
+        "State: {state}, {change}; last snapshot: {last}; modified {modified}",
+        "Stan: {state}, {change}; ostatnia migawka: {last}; zmieniony {modified}",
+    ),
+    "own_card_path": Text(
+        "File: {path}",
+        "Plik: {path}",
+    ),
+    "own_card_crs": Text(
+        "CRS: {crs}",
+        "Układ: {crs}",
+    ),
+    "own_card_layer": Text(
+        "Layer {name}: {geometry}, features: {count}",
+        "Warstwa {name}: {geometry}, obiektów {count}",
+    ),
+    "own_card_raster": Text(
+        "Raster: {width}×{height}, bands: {bands}, {dtype}",
+        "Raster: {width}×{height}, kanałów {bands}, {dtype}",
+    ),
+    "own_card_snapshots": Text(
+        "Snapshots ({count}):",
+        "Migawki ({count}):",
+    ),
+    "own_card_snapshot": Text(
+        "  {label}  {created}  {size}  {state}{note}",
+        "  {label}  {created}  {size}  {state}{note}",
+    ),
+    "own_card_preview": Text(
+        "Preview: {state}",
+        "Podgląd: {state}",
+    ),
+    "snapshot_state_ok": Text(
+        "OK",
+        "w porządku",
+    ),
+    "snapshot_state_invalid": Text(
+        "no valid description",
+        "bez poprawnego opisu",
+    ),
+    "snapshot_state_modified": Text(
+        "files modified",
+        "pliki zmienione",
+    ),
+    "snapshot_plan": Text(
+        (
+            "Snapshot of {file}: {size} to {destination} (copy {copy_method}, content"
+            " {content_method})"
+        ),
+        (
+            "Migawka {file}: {size} do {destination} (kopia {copy_method}, treść"
+            " {content_method})"
+        ),
+    ),
+    "snapshot_plan_unchanged": Text(
+        (
+            "The last snapshot {label} ({created}) has this content — the new one will"
+            " duplicate it."
+        ),
+        "Ostatnia migawka {label} ({created}) ma tę treść — nowa ją powtórzy.",
+    ),
+    "snapshot_plan_blocked": Text(
+        "Snapshot not possible: {message}",
+        "Migawka niemożliwa: {message}",
+    ),
+    "snapshot_plan_free": Text(
+        "Free space: {free}",
+        "Wolne miejsce: {free}",
+    ),
+    "snapshot_plan_warning": Text(
+        "Warning: {message}",
+        "Uwaga: {message}",
+    ),
+    "snapshot_started": Text(
+        "Snapshot: job {job}.",
+        "Migawka: zadanie {job}.",
+    ),
+    "snapshot_progress": Text(
+        "Snapshot: step {current}/{total} ({phase}).",
+        "Migawka: etap {current}/{total} ({phase}).",
+    ),
+    "snapshot_phase_copy": Text(
+        "copying",
+        "kopiowanie",
+    ),
+    "snapshot_phase_checksums": Text(
+        "checksums",
+        "sumy kontrolne",
+    ),
+    "snapshot_phase_document": Text(
+        "migawka.json description",
+        "opis migawka.json",
+    ),
+    "snapshot_phase_rename": Text(
+        "moving into place",
+        "przeniesienie na miejsce",
+    ),
+    "snapshot_phase_published": Text(
+        "published",
+        "opublikowana",
+    ),
+    "snapshot_notice": Text(
+        "Snapshot: {message}",
+        "Migawka: {message}",
+    ),
+    "snapshot_cancelling": Text(
+        "Cancelling the snapshot (job {job})…",
+        "Przerywam migawkę (zadanie {job})…",
+    ),
+    "snapshot_created": Text(
+        (
+            "Snapshot {label} created (job {job}): {size}, content SHA-256 {sha256},"
+            " {seconds} s."
+        ),
+        (
+            "Migawka {label} utworzona (zadanie {job}): {size}, SHA-256 treści"
+            " {sha256}, {seconds} s."
+        ),
+    ),
+    "snapshot_unchanged": Text(
+        "No new snapshot (job {job}): the latest snapshot {label} has this content.",
+        "Bez nowej migawki (zadanie {job}): ostatnia migawka {label} ma tę treść.",
+    ),
+    "own_scan_started": Text(
+        "Own data scan: job {job}.",
+        "Skan danych własnych: zadanie {job}.",
+    ),
+    "own_scan_progress": Text(
+        "Own data scan: project {current}/{total}, files: {files}, read: {read}.",
+        (
+            "Skan danych własnych: projekt {current}/{total}, plików {files},"
+            " odczytanych {read}."
+        ),
+    ),
+    "own_scan_notice": Text(
+        "Own data scan: {message}",
+        "Skan danych własnych: {message}",
+    ),
+    "own_scan_cancelling": Text(
+        "Cancelling the own data scan (job {job})…",
+        "Przerywam skan danych własnych (zadanie {job})…",
+    ),
+    "own_scan_done": Text(
+        (
+            "Own data scan (job {job}): projects: {projects}, files: {files} (new:"
+            " {new}, changed: {changed}, missing: {missing}, unreadable: {unreadable}),"
+            " snapshots: {snapshots}, problems: {problems}; {seconds} s."
+        ),
+        (
+            "Skan danych własnych (zadanie {job}): projektów {projects}, plików"
+            " {files} (nowe {new}, zmienione {changed}, brakujące {missing},"
+            " nieczytelne {unreadable}), migawek {snapshots}, problemów {problems};"
+            " {seconds} s."
+        ),
+    ),
+    "own_job": Text(
+        "Job {job} ({kind}): {state}.",
+        "Zadanie {job} ({kind}): {state}.",
+    ),
+    "own_job_failed": Text(
+        "Job {job} ({kind}) {state}: {detail}",
+        "Zadanie {job} ({kind}) {state}: {detail}",
+    ),
+    "compare_help": Text(
+        "Comparison of the metadata of two objects (--json: Comparison model).",
+        "Porównanie metadanych dwóch obiektów (--json: model Comparison).",
+    ),
+    "compare_ref_help": Text(
+        (
+            "Object reference copied from the API response (ref field), e.g."
+            " version:zespol:nmt/…/plik.asc."
+        ),
+        (
+            "Odwołanie do obiektu przepisane z odpowiedzi API (pole ref), np."
+            " version:zespol:nmt/…/plik.asc."
+        ),
+    ),
+    "compare_schema": Text(
+        "Layer schema (changes from A to B):",
+        "Schemat warstw (zmiany z A na B):",
+    ),
+    "compare_layer_only_a": Text(
+        "  layer only in A: {layer}",
+        "  warstwa tylko w A: {layer}",
+    ),
+    "compare_layer_only_b": Text(
+        "  layer only in B: {layer}",
+        "  warstwa tylko w B: {layer}",
+    ),
+    "compare_layer": Text(
+        "  layer {layer}:",
+        "  warstwa {layer}:",
+    ),
+    "compare_field_added": Text(
+        "    + field {name} ({type})",
+        "    + pole {name} ({type})",
+    ),
+    "compare_field_removed": Text(
+        "    - field {name} ({type})",
+        "    - pole {name} ({type})",
+    ),
+    "compare_field_changed": Text(
+        "    ~ field {name}: {type_a} → {type_b}",
+        "    ~ pole {name}: {type_a} → {type_b}",
+    ),
+    "compare_failed": Text(
+        "Cannot compare the objects",
+        "Nie można porównać obiektów",
+    ),
+    "compare_true": Text(
+        "yes",
+        "tak",
+    ),
+    "compare_false": Text(
+        "no",
+        "nie",
+    ),
+    "compare_side": Text(
+        "{side}: {title} ({ref})",
+        "{side}: {title} ({ref})",
+    ),
+    "compare_same_content": Text(
+        "Same file content (SHA-256).",
+        "Ta sama treść pliku (SHA-256).",
+    ),
+    "compare_row": Text(
+        "{mark} {label}: {a} | {b}",
+        "{mark} {label}: {a} | {b}",
+    ),
+    "compare_summary": Text(
+        "Differences: {differs} of {total} fields.",
+        "Różnice: {differs} z {total} pól.",
+    ),
+    "layers_help": Text(
+        (
+            "Layers of years, campaigns and product releases in the store (--json:"
+            " LayerSet model), with the area after refreshing its slots; --thumbnail"
+            " writes the layer thumbnail to a PNG file."
+        ),
+        (
+            "Warstwy lat, kampanii i wydań produktu w magazynie (--json: model"
+            " LayerSet), z obszarem po odświeżeniu jego slotów; --thumbnail zapisuje"
+            " miniaturę warstwy do pliku PNG."
+        ),
+    ),
+    "layers_store_help": Text(
+        "Store identifier from the settings.",
+        "Identyfikator magazynu z ustawień.",
+    ),
+    "layers_product_help": Text(
+        "Product, e.g. nmt.",
+        "Produkt, np. nmt.",
+    ),
+    "layers_area_help": Text(
+        (
+            "Area identifier (POST /api/v1/areas); without it, only version counts for"
+            " the whole store."
+        ),
+        (
+            "Identyfikator obszaru (POST /api/v1/areas); bez niego tylko liczby wersji"
+            " w całym magazynie."
+        ),
+    ),
+    "layers_segment_help": Text(
+        "Only this product segment (variant).",
+        "Tylko ten segment (wariant) produktu.",
+    ),
+    "layers_group_help": Text(
+        "year (default): one layer per data year; campaign: year split into campaigns.",
+        "year (domyślnie): warstwa na rok danych; campaign: rok dzielony na kampanie.",
+    ),
+    "layers_thumbnail_help": Text(
+        "Layer key (the key field) whose thumbnail is saved via --output.",
+        "Klucz warstwy (pole key) do zapisania jej miniatury przez --output.",
+    ),
+    "layers_size_help": Text(
+        "Side of the layer thumbnail in pixels (default 512).",
+        "Bok miniatury warstwy w pikselach (domyślnie 512).",
+    ),
+    "layers_output_help": Text(
+        (
+            "PNG file for the layer thumbnail, drawn by the same rendering process and"
+            " through the same preview cache as the server."
+        ),
+        (
+            "Plik PNG miniatury warstwy, rysowanej tym samym procesem renderującym i"
+            " przez tę samą pamięć podglądów co serwer."
+        ),
+    ),
+    "layers_output_required": Text(
+        "--thumbnail requires --output FILE.png.",
+        "--thumbnail wymaga --output PLIK.png.",
+    ),
+    "layers_failed": Text(
+        "Cannot read layers",
+        "Nie można odczytać warstw",
+    ),
+    "layers_written": Text(
+        "Saved thumbnail of layer {layer} to {path} ({size} px, style {style}).",
+        "Zapisano miniaturę warstwy {layer} do {path} ({size} px, styl {style}).",
+    ),
+    "layers_heading": Text(
+        "{store} · {product}: layers: {count}, area {area}",
+        "{store} · {product}: {count} warstw, obszar {area}",
+    ),
+    "layers_whole_store": Text(
+        "whole store",
+        "cały magazyn",
+    ),
+    "layers_stale": Text(
+        "Response from the index without refresh: {reason}.",
+        "Odpowiedź z indeksu bez odświeżenia: {reason}.",
+    ),
+    "layers_layer": Text(
+        "{key}  {title} · {subtitle} · versions {versions}, units {units}",
+        "{key}  {title} · {subtitle} · wersje {versions}, jednostki {units}",
+    ),
+    "layers_formats": Text(
+        "    formats: {formats}",
+        "    formaty: {formats}",
+    ),
+    "layers_coverage": Text(
+        "    {label}",
+        "    {label}",
+    ),
+    "layers_preview": Text(
+        "    previews: {ready}/{total} ({state}){job}",
+        "    podglądy: {ready}/{total} ({state}){job}",
+    ),
+    "layers_preview_job": Text(
+        ", job {job}",
+        ", zadanie {job}",
+    ),
+}

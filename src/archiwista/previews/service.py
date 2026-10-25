@@ -60,7 +60,7 @@ from archiwista.errors import (
 from archiwista.formats import file_format
 from archiwista.index import MAX_PAGE_LIMIT, own_file_id
 from archiwista.jobs import JobRecord, JobSupervisor
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.cache import INFO_NAME, CacheKey, cache_key
 from archiwista.previews.legends import legend
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool, RenderResult
@@ -293,10 +293,10 @@ class PreviewService:
         if bounds is None or minzoom is None or maxzoom is None:
             raise PreviewUnavailableError("no_georeference")
         if not (minzoom <= z <= maxzoom and _meets(tile_bounds(z, x, y), bounds)):
-            message = MESSAGES["preview_tile_outside"].format(
-                z=z, x=x, y=y, minzoom=minzoom, maxzoom=maxzoom
+            text = message(
+                "preview.tile_outside", z=z, x=x, y=y, minzoom=minzoom, maxzoom=maxzoom
             )
-            raise NotFoundError(message)
+            raise NotFoundError(text)
         await self._require_built(located.source, probe, principal)
         if rescale is not None:
             params["rescale"] = rescale
@@ -334,10 +334,12 @@ class PreviewService:
             raise PreviewUnavailableError("no_crs")
         names = [str(item.get("name")) for item in probe.layers]
         if layer is not None and layer not in names:
-            message = MESSAGES["preview_layer_unknown"].format(
-                layer=layer, layers=", ".join(names) or MESSAGES["preview_none"]
+            text = message(
+                "preview.layer_unknown",
+                layer=layer,
+                layers=", ".join(names) or message("preview.none"),
             )
-            raise PreviewParameterError("query.layer", message)
+            raise PreviewParameterError("query.layer", text)
         await self._require_built(located.source, probe, principal)
         params: JsonObject = {
             "layer": layer,
@@ -432,7 +434,7 @@ class PreviewService:
         jobs = self._jobs
         if jobs is None:
             raise PreviewBusyError(
-                MESSAGES["preview_closed"], retry_after_s=RETRY_AFTER_S
+                message("preview.closed"), retry_after_s=RETRY_AFTER_S
             )
         return await asyncio.to_thread(
             jobs.submit, "preview", params=params, actor=principal
@@ -620,16 +622,16 @@ class PreviewService:
         )
         if job is not None:
             raise PreviewNotReadyError(
-                MESSAGES["preview_not_ready_job"].format(job=job.id),
+                message("preview.not_ready_job", job=job.id),
                 job_id=job.id,
                 kind=job.kind,
                 state=job.state,
             )
         if building:
             raise PreviewNotReadyError(
-                MESSAGES["preview_not_ready_building"], state="building"
+                message("preview.not_ready_building"), state="building"
             )
-        raise PreviewNotReadyError(MESSAGES["preview_not_ready_build"])
+        raise PreviewNotReadyError(message("preview.not_ready_build"))
 
     def _active_job(
         self, content_key: str, visible: ProjectVisibility
@@ -729,10 +731,12 @@ def _style(probe: PreviewProbe, style: str | None) -> str:
             raise PreviewUnavailableError(probe.reason or "unsupported_format")
         return chosen
     if style not in probe.styles:
-        message = MESSAGES["preview_style_unknown"].format(
-            style=style, styles=", ".join(probe.styles) or MESSAGES["preview_none"]
+        text = message(
+            "preview.style_unknown",
+            style=style,
+            styles=", ".join(probe.styles) or message("preview.none"),
         )
-        raise PreviewParameterError("query.style", message)
+        raise PreviewParameterError("query.style", text)
     return style
 
 

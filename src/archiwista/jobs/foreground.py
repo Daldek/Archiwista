@@ -33,9 +33,8 @@ from archiwista.jobs.supervisor import (
     JobRecord,
     JobState,
     JobSupervisor,
-    label,
 )
-from archiwista.messages import MESSAGES
+from archiwista.messages import label, message
 
 # Seconds between two looks at a job of another process.
 POLL_S = 0.5
@@ -107,8 +106,8 @@ def run_foreground[R: (JobRecord, JobRecord | None)](
         if record.state in FINISHED_STATES or jobs.supervises(record.id):
             # Also a job that ended at once, when its start failed.
             return _follow(jobs, record, err, started, event, cancelling)
-        kind = label("job_kind", record.kind)
-        _say(err, MESSAGES["job_foreground_waiting"].format(job=record.id, kind=kind))
+        kind = label("job.kind", record.kind)
+        _say(err, message("job.foreground_waiting", job=record.id, kind=kind))
         if not _follow_other(jobs, record, err, event, poll_s):
             return jobs.get(record.id) or record
 
@@ -163,7 +162,7 @@ def _follow_other(
             time.sleep(poll_s)
             jobs.recover()
     except KeyboardInterrupt:
-        _say(err, MESSAGES["job_foreground_stopped"].format(job=record.id))
+        _say(err, message("job.foreground_stopped", job=record.id))
         return False
 
 

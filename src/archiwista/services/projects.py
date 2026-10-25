@@ -22,7 +22,7 @@ from archiwista.index import (
     ProjectTaskRef,
 )
 from archiwista.index.projects import PROJECT_MANIFESTS
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.paths import resolve_indexed_path
 from archiwista.services.problems import Problem, explain
 from archiwista.sources import ProjectInfo
@@ -201,5 +201,5 @@ def _require_inside(
             return
         return
     raise refused or PathOutsideRootError(
-        MESSAGES["path_outside_root"].format(path=directory)
+        message("ref.path_outside_root", path=directory)
     )

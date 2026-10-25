@@ -9,7 +9,7 @@ is.
 import os
 from pathlib import Path
 
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.sources import SourceState
 
 
@@ -32,10 +32,10 @@ def unreachable_detail(state: SourceState, root: Path, *, indexed: bool) -> str 
         Polish description of the cause.
     """
     if state.status != "available":
-        message = MESSAGES["store_unreadable"].format(path=root)
-        return with_detail(message, state.detail)
+        text = message("store.unreadable", path=root)
+        return with_detail(text, state.detail)
     if indexed and _empty(root):
-        return MESSAGES["scan_store_empty"].format(path=root)
+        return message("scan.store_empty", path=root)
     return None
 
 

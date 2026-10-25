@@ -30,9 +30,8 @@ from archiwista.jobs.supervisor import (
     JobEvent,
     JobRecord,
     JobSupervisor,
-    label,
 )
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import label, message, with_detail
 
 
 def reindex_main(
@@ -75,17 +74,17 @@ def reindex_main(
     except (SettingsValidationError, IndexUnsupportedError) as error:
         return refuse(
             exception_problem(
-                error, with_detail(MESSAGES["reindex_failed"], str(error))
+                error, with_detail(message("reindex.failed"), str(error))
             ),
             err,
         )
     current = settings.get()
     if store is not None and current.store(store) is None:
-        message = MESSAGES["job_store_unknown"].format(store=store)
-        return fail(err, "not_found", message, reason="unknown_store")
+        text = message("job.store_unknown", store=store)
+        return fail(err, "not_found", text, reason="unknown_store")
     stores = [store] if store is not None else [item.id for item in current.stores]
     if not stores:
-        return fail(err, "no_data", MESSAGES["reindex_no_stores"], reason="no_stores")
+        return fail(err, "no_data", message("reindex.no_stores"), reason="no_stores")
     statuses: list[int] = []
     with JobSupervisor(paths, settings, worker_command=worker_command) as jobs:
         for store_id in stores:
@@ -107,16 +106,15 @@ def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
 
     def event(heard: JobEvent) -> str | None:
         if heard.type == "progress":
-            return MESSAGES["reindex_progress"].format(
+            return message(
+                "reindex.progress",
                 store=store,
                 current=heard.data["current"],
                 total=heard.data["total"],
                 entries=heard.data.get("entries", 0),
             )
         if heard.type == "notice":
-            return MESSAGES["reindex_notice"].format(
-                store=store, message=heard.data["message"]
-            )
+            return message("reindex.notice", store=store, message=heard.data["message"])
         return None
 
     try:
@@ -126,11 +124,9 @@ def _reindex(jobs: JobSupervisor, store: str, out: TextIO, err: TextIO) -> int:
                 "scan", store=store, params={"mode": "full"}, actor=LOCAL_OWNER
             ),
             err,
-            started=lambda job: MESSAGES["reindex_started"].format(
-                store=store, job=job.id
-            ),
+            started=lambda job: message("reindex.started", store=store, job=job.id),
             event=event,
-            cancelling=lambda job: MESSAGES["reindex_cancelling"].format(job=job.id),
+            cancelling=lambda job: message("reindex.cancelling", job=job.id),
         )
     except JobConflictError as error:
         return refuse(describe(error), err)
@@ -141,7 +137,8 @@ def _report(record: JobRecord, store: str, out: TextIO, err: TextIO) -> int:
     if record.state == "succeeded" and record.result is not None:
         result = record.result
         out.write(
-            MESSAGES["reindex_succeeded"].format(
+            message(
+                "reindex.succeeded",
                 store=store,
                 seconds=f"{result['seconds']:.1f}".replace(".", ","),
                 entries=result["entries"],
@@ -155,11 +152,12 @@ def _report(record: JobRecord, store: str, out: TextIO, err: TextIO) -> int:
     error = record.error
     detail = error.detail if error is not None else ""
     code = (error.reason or error.code) if error is not None else record.state
-    message = MESSAGES["reindex_job_failed"].format(
+    text = message(
+        "reindex.job_failed",
         store=store,
         job=record.id,
-        state=label("job_state", record.state),
+        state=label("job.state", record.state),
         detail=detail,
     )
-    err.write(MESSAGES["reindex_error"].format(message=message, code=code) + "\n")
+    err.write(message("reindex.error", message=text, code=code) + "\n")
     return exit_status(record.state)

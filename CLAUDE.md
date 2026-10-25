@@ -40,10 +40,12 @@ authoritative). Introduction: [README.md](README.md); specification:
   with `uv sync --locked` (DEV-6.3). Kartograf is pinned by commit in `pyproject.toml`
   until its release (REL-5.3); the release pull request replaces the commit with the tag.
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and
-  documents are English (DEV-2.1). The interface and the texts shown to users are
-  Polish, in the dictionaries `messages.py`, `texts/` and `web/src/labels/` only
-  (DEV-2.3). Several documents under `docs/` are still Polish; `docs/PROGRESS.md` lists
-  them. New and edited documents are English.
+  documents are English (DEV-2.1). Every text for a person has an English and a Polish
+  variant in the catalog `src/archiwista/messages/` (one module per area, key
+  `<area>.<name>`, rendered with `message`; `tests/unit/test_messages.py` checks every
+  call and that no other module holds such a text) and in `web/src/labels/` (DEV-2.3).
+  Several documents under `docs/` are still Polish; `docs/PROGRESS.md` lists them. New
+  and edited documents are English.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session
   (DEV-17.3).
@@ -81,7 +83,7 @@ src/archiwista/
 ├── owndata/        # own project data: scan, reader, snapshots
 ├── services/ auth/ state/   # services shared by API and CLI, permissions, local state database
 ├── commands/ reader.py admin.py   # CLI commands
-├── errors.py messages.py texts/   # exceptions, Polish texts
+├── errors.py messages/   # exceptions, the message catalog (English and Polish texts)
 └── web/            # the build-free interface: Preact + htm modules, vendor/ libraries
 tests/{unit,integration,contract,e2e,perf,fixtures}
 ```

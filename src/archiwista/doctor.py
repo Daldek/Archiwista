@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Any, Literal, TextIO
 
 from archiwista._errors import OUTCOMES
 from archiwista.config import (
@@ -19,7 +19,7 @@ from archiwista.config import (
     SourceRegistryView,
     validate_settings,
 )
-from archiwista.messages import MESSAGES, with_detail
+from archiwista.messages import message, with_detail
 from archiwista.security import LOOPBACK_HOST
 from archiwista.sources import SourceState
 from archiwista.sources.registry import install_requirement, source_fix
@@ -29,19 +29,19 @@ type CheckLevel = Literal["ok", "warning", "error"]
 REQUIRED_PRODUCERS = frozenset({"kartograf"})
 
 _FIX_BY_CODE = {
-    "root_missing": "fix_reconnect",
-    "root_not_directory": "fix_not_directory",
-    "root_unreadable": "fix_permissions",
-    "root_nested": "fix_nested",
-    "project_dir_missing": "fix_project_dir",
-    "project_dir_not_directory": "fix_not_directory",
-    "project_dir_unreadable": "fix_permissions",
-    "own_data_dir_missing": "fix_own_data_dir",
-    "own_data_dir_not_directory": "fix_not_directory",
-    "own_data_dir_unreadable": "fix_permissions",
-    "own_data_dir_inside_store": "fix_own_data_dir",
-    "own_data_dir_inside_app_data": "fix_own_data_dir",
-    "own_data_dir_overlaps_project": "fix_own_data_dir",
+    "root_missing": "fix.reconnect",
+    "root_not_directory": "fix.not_directory",
+    "root_unreadable": "fix.permissions",
+    "root_nested": "fix.nested",
+    "project_dir_missing": "fix.project_dir",
+    "project_dir_not_directory": "fix.not_directory",
+    "project_dir_unreadable": "fix.permissions",
+    "own_data_dir_missing": "fix.own_data_dir",
+    "own_data_dir_not_directory": "fix.not_directory",
+    "own_data_dir_unreadable": "fix.permissions",
+    "own_data_dir_inside_store": "fix.own_data_dir",
+    "own_data_dir_inside_app_data": "fix.own_data_dir",
+    "own_data_dir_overlaps_project": "fix.own_data_dir",
 }
 
 
@@ -130,8 +130,8 @@ def run_doctor(
             checks.append(
                 DoctorCheck(
                     "error",
-                    MESSAGES["doctor_source_unregistered"].format(
-                        producer=producer, store=store_id
+                    message(
+                        "doctor.source_unregistered", producer=producer, store=store_id
                     ),
                     _install_fix(producer),
                 )
@@ -147,7 +147,7 @@ def run_doctor(
 
 def _load_settings(paths: AppPaths, checks: list[DoctorCheck]) -> AppSettings:
     config = ConfigStore(paths.config_file)
-    fix = MESSAGES["fix_config"].format(path=paths.config_file)
+    fix = message("fix.config", path=paths.config_file)
     try:
         settings = config.load()
     except SettingsValidationError as error:
@@ -156,11 +156,11 @@ def _load_settings(paths: AppPaths, checks: list[DoctorCheck]) -> AppSettings:
         )
         return AppSettings()
     if config.exists():
-        message = MESSAGES["doctor_config_ok"].format(path=paths.config_file)
-        checks.append(DoctorCheck("ok", message))
+        text = message("doctor.config_ok", path=paths.config_file)
+        checks.append(DoctorCheck("ok", text))
     else:
-        message = MESSAGES["doctor_config_absent"].format(path=paths.config_file)
-        checks.append(DoctorCheck("warning", message))
+        text = message("doctor.config_absent", path=paths.config_file)
+        checks.append(DoctorCheck("warning", text))
     return settings
 
 
@@ -180,24 +180,22 @@ def source_check(state: SourceState, *, required: bool) -> DoctorCheck:
     DoctorCheck
         ``ok`` with the versions and schemas, or the problem and its fix.
     """
-    unknown = MESSAGES["doctor_unknown"]
-    values = {
+    unknown = message("doctor.unknown")
+    values: dict[str, Any] = {
         "producer": state.producer,
         "version": state.package_version or unknown,
         "supported": state.supported_versions or unknown,
         "schemas": ", ".join(state.schemas) or unknown,
     }
     if state.status == "available":
-        return DoctorCheck("ok", MESSAGES["doctor_source_available"].format(**values))
+        return DoctorCheck("ok", message("doctor.source_available", **values))
     level: CheckLevel = "error" if required else "warning"
-    message = with_detail(
-        MESSAGES[f"doctor_source_{state.status}"].format(**values), state.detail
-    )
-    return DoctorCheck(level, message, source_fix(state))
+    text = with_detail(message(f"doctor.source_{state.status}", **values), state.detail)
+    return DoctorCheck(level, text, source_fix(state))
 
 
 def _install_fix(producer: str) -> str:
-    return MESSAGES["fix_install"].format(requirement=install_requirement(producer))
+    return message("fix.install", requirement=install_requirement(producer))
 
 
 def _store_checks(
@@ -205,7 +203,7 @@ def _store_checks(
 ) -> list[DoctorCheck]:
     if not settings.stores:
         return [
-            DoctorCheck("warning", MESSAGES["doctor_no_stores"], MESSAGES["fix_wizard"])
+            DoctorCheck("warning", message("doctor.no_stores"), message("fix.wizard"))
         ]
     problems = validate_settings(settings, registry)
     failed = {problem.field for problem in problems}
@@ -216,17 +214,18 @@ def _store_checks(
         for producer, root in store.roots().items():
             if f"stores[{index}].{producer}" in failed:
                 continue
-            message = MESSAGES["doctor_store_ok"].format(
+            text = message(
+                "doctor.store_ok",
                 store=store.id,
                 producer=producer,
-                kind=MESSAGES[f"store_kind_{store.kind}"],
+                kind=message(f"store.kind_{store.kind}"),
                 path=root,
             )
-            checks.append(DoctorCheck("ok", message))
+            checks.append(DoctorCheck("ok", text))
     for index, path in enumerate(settings.project_dirs):
         if f"project_dirs[{index}]" not in failed:
-            message = MESSAGES["doctor_project_dir_ok"].format(path=path)
-            checks.append(DoctorCheck("ok", message))
+            text = message("doctor.project_dir_ok", path=path)
+            checks.append(DoctorCheck("ok", text))
     return checks
 
 
@@ -234,7 +233,7 @@ def _fix(problem: SettingsProblem) -> str:
     if problem.code == "source_not_installed":
         producer = problem.field.rpartition(".")[2]
         return _install_fix(producer)
-    return MESSAGES[_FIX_BY_CODE.get(problem.code, "fix_source")]
+    return message(_FIX_BY_CODE.get(problem.code, "fix.source"))
 
 
 def _data_dir_check(data_dir: Path) -> DoctorCheck:
@@ -242,9 +241,9 @@ def _data_dir_check(data_dir: Path) -> DoctorCheck:
     while not existing.exists() and existing.parent != existing:
         existing = existing.parent
     if existing.is_dir() and os.access(existing, os.W_OK | os.X_OK):
-        return DoctorCheck("ok", MESSAGES["doctor_data_dir_ok"].format(path=data_dir))
-    message = MESSAGES["doctor_data_dir_unwritable"].format(path=data_dir)
-    return DoctorCheck("error", message, MESSAGES["fix_data_dir"])
+        return DoctorCheck("ok", message("doctor.data_dir_ok", path=data_dir))
+    text = message("doctor.data_dir_unwritable", path=data_dir)
+    return DoctorCheck("error", text, message("fix.data_dir"))
 
 
 def _privacy_check(data_dir: Path) -> DoctorCheck | None:
@@ -257,30 +256,26 @@ def _privacy_check(data_dir: Path) -> DoctorCheck | None:
         return None
     if not mode & 0o077:
         return None
-    message = MESSAGES["doctor_data_dir_open"].format(path=data_dir, mode=f"{mode:04o}")
-    return DoctorCheck(
-        "warning", message, MESSAGES["fix_data_dir_open"].format(path=data_dir)
-    )
+    text = message("doctor.data_dir_open", path=data_dir, mode=f"{mode:04o}")
+    return DoctorCheck("warning", text, message("fix.data_dir_open", path=data_dir))
 
 
 def _port_check(port: int, port_available: Callable[[int], bool]) -> DoctorCheck:
     if port_available(port):
-        return DoctorCheck("ok", MESSAGES["doctor_port_ok"].format(port=port))
-    message = MESSAGES["doctor_port_busy"].format(port=port)
-    return DoctorCheck("warning", message, MESSAGES["fix_port"])
+        return DoctorCheck("ok", message("doctor.port_ok", port=port))
+    text = message("doctor.port_busy", port=port)
+    return DoctorCheck("warning", text, message("fix.port"))
 
 
 def format_report(report: DoctorReport) -> str:
     """Render a report as Polish text lines."""
-    lines = [MESSAGES["doctor_title"]]
+    lines: list[str] = [message("doctor.title")]
     for check in report.checks:
-        lines.append(f"[{MESSAGES[f'doctor_level_{check.level}']}] {check.message}")
+        lines.append(f"[{message(f'doctor.level_{check.level}')}] {check.message}")
         if check.fix:
-            lines.append("    " + MESSAGES["doctor_fix"].format(fix=check.fix))
+            lines.append("    " + message("doctor.fix", fix=check.fix))
     lines.append(
-        MESSAGES["doctor_summary"].format(
-            errors=report.errors, warnings=report.warnings
-        )
+        message("doctor.summary", errors=report.errors, warnings=report.warnings)
     )
     return "\n".join(lines) + "\n"
 

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.errors import PreviewUnavailableError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.renderers import archive
 from archiwista.previews.renderers.archive import ArchiveRenderer
 from archiwista.previews.types import PreviewSource
@@ -78,7 +78,7 @@ def test_archive_members_lists_names_sizes_and_formats(tmp_path: Path) -> None:
     assert (first["format"], first["kind"]) == ("unknown", "unknown")
     assert (second["format"], second["kind"]) == ("PDF", "document")
     assert third["directory"] is True
-    assert MESSAGES["preview_reason_archive_members_only"]
+    assert message("preview.reason_archive_members_only")
 
 
 def test_archive_members_truncated_past_10000(tmp_path: Path) -> None:

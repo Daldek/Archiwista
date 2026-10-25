@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from archiwista.api.errors import ApiError
 from archiwista.auth import Principal, PrincipalKind
 from archiwista.errors import PermissionDeniedError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import (
     SESSION_COOKIE,
     Session,
@@ -176,7 +176,7 @@ def exchange_token(
     grant = redeem_one_time_token(index_path, body.token)
     if grant is None:
         raise ApiError(
-            "unauthorized", MESSAGES["api_token_rejected"], reason="session_required"
+            "unauthorized", message("api.token_rejected"), reason="session_required"
         )
     sessions: SessionStore = request.app.state.sessions
     session_id, session = sessions.create(grant)
@@ -185,7 +185,7 @@ def exchange_token(
     if principal is None:
         sessions.end(session_id)
         raise ApiError(
-            "unauthorized", MESSAGES["api_token_rejected"], reason="session_required"
+            "unauthorized", message("api.token_rejected"), reason="session_required"
         )
     set_session_cookie(response, session_id)
     on_redeem(request, grant.token_kind)
@@ -232,7 +232,7 @@ def issue_token(
     permission_denied`: agents do not open further sessions.
     """
     if principal.kind == "agent":
-        raise PermissionDeniedError(MESSAGES["permission_session_tokens"])
+        raise PermissionDeniedError(message("permission.session_tokens"))
     issued = issue_one_time_token(
         request.app.state.index_path, "agent", minted_by=principal
     )

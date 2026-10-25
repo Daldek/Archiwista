@@ -62,7 +62,7 @@ from archiwista.index import (
     own_file_id,
 )
 from archiwista.jobs.protocol import JobSpec
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.owndata.content import CONTENT_METHODS, ContentMethod
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.formats import fileset_members
@@ -153,7 +153,7 @@ def parse_ref(text: str) -> ObjectRef:
         if _PROJECT.fullmatch(project) and _LABEL.fullmatch(label) and _path(path):
             found = SnapshotRef(project, label, path)
     if found is None:
-        raise InvalidRefError(MESSAGES["ref_invalid"].format(ref=text))
+        raise InvalidRefError(message("ref.invalid", ref=text))
     return found
 
 
@@ -311,10 +311,8 @@ class ObjectResolver:
     def _version(self, ref: VersionRef, *, on_disk: bool) -> PreviewSource:
         detail = self._queries.version(ref.store, ref.path, visible=_NO_PROJECTS)
         if detail is None:
-            message = MESSAGES["api_version_unknown"].format(
-                version=ref.path, store=ref.store
-            )
-            raise NotFoundError(message)
+            text = message("api.version_unknown", version=ref.path, store=ref.store)
+            raise NotFoundError(text)
         summary = detail.summary
         root = self._root(ref.store, detail.segment.producer)
         native = None
@@ -341,7 +339,7 @@ class ObjectResolver:
         config = self._settings().store(store)
         root = None if config is None else config.roots().get(producer)
         if root is None:
-            raise SourceUnavailableError(MESSAGES["preview_reason_store_unavailable"])
+            raise SourceUnavailableError(message("preview.reason_store_unavailable"))
         return root
 
     def _own_file(
@@ -359,10 +357,8 @@ class ObjectResolver:
         path = unicodedata.normalize("NFC", ref.path)
         detail = self._queries.own_file(ref.project, own_file_id(path), visible=visible)
         if detail is None or detail.file.path != path:
-            message = MESSAGES["own_file_not_found"].format(
-                project=ref.project, file_id=path
-            )
-            raise NotFoundError(message)
+            text = message("own.file_not_found", project=ref.project, file_id=path)
+            raise NotFoundError(text)
         return detail
 
     def _working(self, ref: FileRef, detail: OwnFileDetail) -> PreviewSource:
@@ -388,8 +384,8 @@ class ObjectResolver:
             raise PreviewUnavailableError("missing_file") from None
         reals = tuple(Path(os.path.realpath(member)) for member in members)
         if not all(member.is_relative_to(root) for member in reals):
-            message = MESSAGES["path_outside_root"].format(path=detail.file.path)
-            raise PathOutsideRootError(message)
+            text = message("ref.path_outside_root", path=detail.file.path)
+            raise PathOutsideRootError(text)
         if not stamp_holds(listed, detail.stamp):
             raise own_file_changed(ref)
         content = (detail.content_sha256 or "").lower()
@@ -411,8 +407,8 @@ class ObjectResolver:
 
 def own_file_changed(ref: FileRef) -> OwnFileChangedError:
     """Return the refusal of a working file that changed since its scan."""
-    message = MESSAGES["own_file_changed"].format(path=ref.path, project=ref.project)
-    return OwnFileChangedError(message)
+    text = message("own.file_changed", path=ref.path, project=ref.project)
+    return OwnFileChangedError(text)
 
 
 def job_resolver(spec: JobSpec) -> Callable[[str], PreviewSource]:
@@ -508,10 +504,13 @@ def _snapshot_source(
         (item for item in detail.snapshots if item.label == ref.label), None
     )
     if snapshot is None:
-        message = MESSAGES["own_snapshot_not_found"].format(
-            project=ref.project, path=detail.file.path, label=ref.label
+        text = message(
+            "own.snapshot_not_found",
+            project=ref.project,
+            path=detail.file.path,
+            label=ref.label,
         )
-        raise NotFoundError(message)
+        raise NotFoundError(text)
     content = (snapshot.content_sha256 or "").lower()
     files = _snapshot_files(snapshot)
     if (
@@ -612,13 +611,13 @@ def _on_disk(root: Path, relative: str) -> tuple[Path, os.stat_result]:
         if _present(root):
             raise PreviewUnavailableError("missing_file") from None
         raise SourceUnavailableError(
-            MESSAGES["preview_reason_store_unavailable"]
+            message("preview.reason_store_unavailable")
         ) from None
     except OSError as error:  # an unreadable root, a stale share
         if isinstance(error, PermissionError) and _present(root):
             raise PreviewUnavailableError("unreadable") from None
         raise SourceUnavailableError(
-            MESSAGES["preview_reason_store_unavailable"]
+            message("preview.reason_store_unavailable")
         ) from None
 
 
