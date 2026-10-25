@@ -38,6 +38,7 @@ export const common = {
     preview: "budowa podglądów",
     own_scan: "skan danych własnych",
     snapshot: "migawka",
+    availability: "dostępność u źródła",
   },
   job_state: {
     queued: "w kolejce",

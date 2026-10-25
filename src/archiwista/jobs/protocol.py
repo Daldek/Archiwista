@@ -54,6 +54,7 @@ type JobKind = Literal[
     "preview",
     "own_scan",
     "snapshot",
+    "availability",
 ]
 type MessageType = Literal["progress", "notice", "result", "error"]
 type NoticeLevel = Literal["info", "warning"]
@@ -101,16 +102,19 @@ class JobSpec:
     ----------
     job_id : str
         The job's id in the index.
-    kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
-        What to run.
+    kind : JobKind
+        What to run, one of ``JOB_KINDS``.
     store : str or None
         Configured id of the store the job works on; ``None`` for a kind
-        working on no store (``preview``, ``own_scan``, ``snapshot``).
+        working on no store (``preview``, ``own_scan``, ``snapshot``,
+        ``availability``).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
         ``refs``, their ``contents`` and ``force``; ``own_scan``: optional
-        ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``).
+        ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``;
+        ``availability``: ``area_id``, ``producer``, ``product`` and
+        ``force``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

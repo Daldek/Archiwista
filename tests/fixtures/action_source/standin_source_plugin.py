@@ -6,18 +6,21 @@ producer (``standin_producer``) takes the store root as ``options["root"]``,
 as IMGWTools does; the adapter keeps the root out of the producer-neutral
 options, in ``CommandCall.run["root"]`` and in the ``root`` of ``validate``,
 as the Kartograf adapter does with a producer that takes it by name beside
-the options. It reads no store: its stores are empty directories.
+the options. Its availability takes the area, its countries and ``refresh``
+among the options too. It reads no store: its stores are empty directories.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import standin_producer  # type: ignore[import-not-found]
 
 from archiwista.errors import ProducerError
 from archiwista.messages import current_language
 from archiwista.sources import (
+    AvailabilityNotice,
+    AvailabilityReport,
     CommandCall,
     CommandChoice,
     CommandInfo,
@@ -25,6 +28,7 @@ from archiwista.sources import (
     CommandWrites,
     EntryMeta,
     Footprint,
+    GeoJSONGeometry,
     OptionType,
     PathRole,
     ProjectInfo,
@@ -129,6 +133,34 @@ class StandinAdapter:
             return str(standin_producer.format_command(call.command, options=given))
         except standin_producer.ValidationError as error:
             raise _refusal(error) from error
+
+    def availability_products(self) -> tuple[str, ...]:
+        """Return the products the producer reports the availability of."""
+        return tuple(standin_producer.AVAILABILITY_PRODUCTS)
+
+    def availability(
+        self,
+        product: str,
+        *,
+        area: GeoJSONGeometry,
+        countries: tuple[str, ...],
+        force: bool = False,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> AvailabilityReport:
+        """Ask the fake source; the area, countries and ``force`` are options."""
+
+        def notice(level: Literal["info", "warning"], code: str, text: str) -> None:
+            if on_notice is not None:
+                on_notice(AvailabilityNotice(level, code, text))
+
+        options = {"area": area, "countries": list(countries), "refresh": force}
+        try:
+            document = standin_producer.check_availability(
+                product, options=options, on_notice=notice
+            )
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        return AvailabilityReport.from_json({**document, "producer": PRODUCER})
 
 
 def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:

@@ -1,4 +1,4 @@
-"""Write producer entries, footprints, projects and areas to the local index.
+"""Write producer entries, footprints, projects, areas and reports to the index.
 
 One ``IndexWriter`` owns one connection and is used by one thread at a time
 (the scanner's write thread, a background job, or the server's view
@@ -52,6 +52,7 @@ from archiwista.index.types import (
 )
 from archiwista.messages import STORED_LANG, localize
 from archiwista.sources import (
+    AvailabilityReport,
     EntryMeta,
     Footprint,
     ProjectInfo,
@@ -1237,6 +1238,51 @@ class IndexWriter:
                     *bounds,
                     area.created_at.astimezone(UTC).isoformat(timespec="seconds"),
                 ),
+            )
+
+    def write_availability(
+        self,
+        area_id: str,
+        report: AvailabilityReport,
+        *,
+        product: str,
+        job_id: str | None = None,
+    ) -> bool:
+        """Keep the report of an area and product, unless a newer one is kept.
+
+        One report per area, producer and product: a report replaces the one
+        it is not older than (two jobs ending in another order keep the newer).
+
+        Returns
+        -------
+        bool
+            Whether the report was kept.
+
+        Raises
+        ------
+        sqlite3.IntegrityError
+            The index keeps no area ``area_id``.
+        """
+        checked_at = report.checked_at.astimezone(UTC).isoformat(timespec="seconds")
+        with self._transaction() as connection:
+            return (
+                connection.execute(
+                    "INSERT INTO availability (area_id, producer, product, checked_at,"
+                    " report, job_id) VALUES (?, ?, ?, ?, ?, ?)"
+                    " ON CONFLICT (area_id, producer, product) DO UPDATE SET"
+                    " checked_at = excluded.checked_at, report = excluded.report,"
+                    " job_id = excluded.job_id"
+                    " WHERE excluded.checked_at >= availability.checked_at",
+                    (
+                        area_id,
+                        report.producer,
+                        product,
+                        checked_at,
+                        json.dumps(report.to_json(), separators=(",", ":")),
+                        job_id,
+                    ),
+                ).rowcount
+                > 0
             )
 
     # Own data of projects (decision 8).

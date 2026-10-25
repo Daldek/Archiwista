@@ -4,8 +4,9 @@ A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
 version of a slot, their parts, coordinate operations, link confirmation,
-sheet grids, the default store root and the producer's commands are optional
-capabilities: a producer without them still satisfies ``SourceAdapter``.
+sheet grids, the default store root and the producer's commands with the
+availability at the source are optional capabilities: a producer without them
+still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -13,11 +14,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
+    AvailabilityNotice,
+    AvailabilityReport,
     CommandCall,
     CommandInfo,
     DefaultRoot,
     EntryMeta,
     Footprint,
+    GeoJSONGeometry,
     ProjectInfo,
     ScanScope,
     SheetGrid,
@@ -233,7 +237,9 @@ class ActionAdapter(Protocol):
     before anything runs (plan of 2026-10-25, A1). None of them uses the
     network or writes. A call the producer refuses raises ``ProducerError`` with
     the producer's registry code, its text and hint, and the names it gives
-    (``details.option``, ``details.options``, ``details.allowed``).
+    (``details.option``, ``details.options``, ``details.allowed``). The
+    availability at the source (A2) asks the network and writes only the
+    producer's metadata cache, which the adapter keeps in its ``cache_dir``.
     """
 
     def commands(self) -> tuple[CommandInfo, ...]:
@@ -260,4 +266,33 @@ class ActionAdapter(Protocol):
 
     def format(self, call: CommandCall) -> str:
         """Return the producer's command line of a call; ``parse`` reads it back."""
+        ...
+
+    def availability_products(self) -> tuple[str, ...]:
+        """Return the products whose availability at the source it reports."""
+        ...
+
+    def availability(
+        self,
+        product: str,
+        *,
+        area: GeoJSONGeometry,
+        countries: tuple[str, ...],
+        force: bool = False,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> AvailabilityReport:
+        """Ask the source what it has for an area: years, variants, sheets.
+
+        Uses the network (SPEC 6.3). ``area`` is the WGS84 polygon of the area
+        and ``countries`` the countries it meets (``AreaRecord``); the adapter
+        expresses them as its producer reads an area. The producer's metadata
+        cache stands for its answers of the last days; ``force`` asks the
+        source again. ``on_notice`` receives each notice when it is said.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the request (an unknown product, an area
+            outside its countries) or the source failed.
+        """
         ...

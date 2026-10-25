@@ -10,34 +10,56 @@ the schema without what Kartograf takes by name beside them: the store root,
 Kartograf's own description of it (``error_report``): its registry code, its
 text and hint in the language of the call, and the option it names. None of
 this uses the network.
+
+``check_availability`` asks GUGiK and CUZK what they have for an area (plan of
+2026-10-25, A2; ADR-035). The area goes to Kartograf as the envelope of its
+polygon in the CRS Kartograf measures the area's first country in, with the
+country (``auto`` for both), and the metadata cache is Archiwista's own,
+``metadata.db`` in the adapter's cache directory: never ``cache=True``, which
+would be Kartograf's default cache (D5).
 """
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+import shapely
 from kartograf import (
+    BBox,
     KartografError,
+    MetadataCache,
+    check_availability,
     check_command,
     command_schema,
     error_report,
     format_command,
     list_commands,
     parse_command,
+    pinned_transform,
     run_command,
     validate_command,
 )
+from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
 from archiwista.errors import ProducerError
 from archiwista.messages import current_language
 from archiwista.sources import (
+    AvailabilityArea,
+    AvailabilityCampaign,
+    AvailabilityCombination,
+    AvailabilityFailure,
+    AvailabilityNotice,
+    AvailabilityReport,
+    AvailabilitySheet,
     CommandCall,
     CommandChoice,
     CommandInfo,
     CommandOption,
     CommandWrites,
+    GeoJSONGeometry,
     OptionType,
     PathRole,
 )
@@ -57,6 +79,18 @@ BESIDE_OPTIONS = frozenset(
 # The ``path_role`` of the store root in Kartograf's schema (DEV-19.1).
 _ROOT_ROLE = "root"
 _PATH_ROLES: frozenset[str] = frozenset({"input", "output"})
+# The file of Kartograf's metadata cache (its own name, ``metadata.db``).
+METADATA_CACHE_FILE = "metadata.db"
+# The command of ``check_availability`` in Kartograf's catalog.
+AVAILABILITY_COMMAND = "elevation availability"
+# The CRS Kartograf measures each country's part of an area in: EPSG:2180 for
+# PL, the CRS of the CZ part of its report for CZ; in the order of its report.
+_AREA_CRS = {"PL": "EPSG:2180", "CZ": "EPSG:5514"}
+_WGS84 = "EPSG:4326"
+# Longest edge of an area before it moves to the planar CRS (about 0.5 km):
+# the edges of a WGS84 polygon bend there.
+_SEGMENT_DEGREES = 0.005
+_LANGUAGES = frozenset({"en", "pl"})
 
 
 def catalog() -> tuple[CommandInfo, ...]:
@@ -148,6 +182,91 @@ def format_line(call: CommandCall) -> str:
         raise call_error(error, command=call.command, given=call.options) from error
 
 
+def availability_products() -> tuple[str, ...]:
+    """Return the products ``check_availability`` reports on, in Kartograf's order.
+
+    They are the values of the ``product`` option of its command in Kartograf's
+    catalog (``elevation availability``).
+    """
+    entry = command_schema(AVAILABILITY_COMMAND).commands[0]
+    return tuple(
+        str(choice.value)
+        for option in entry.options
+        if option.name == "product"
+        for choice in option.enum or ()
+    )
+
+
+def availability(
+    product: str,
+    *,
+    area: GeoJSONGeometry,
+    countries: tuple[str, ...],
+    cache_dir: Path,
+    force: bool,
+    on_notice: Callable[[AvailabilityNotice], None] | None,
+) -> AvailabilityReport:
+    """Ask GUGiK and CUZK what they have for an area (``check_availability``).
+
+    ``cache_dir`` holds Archiwista's own metadata cache of Kartograf
+    (``METADATA_CACHE_FILE``); ``force`` asks the services again and writes
+    the answers over the cached ones.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused the request (an unknown product, an area outside
+        PL and CZ) or a service failed, with Kartograf's code and text.
+    """
+    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
+    given: dict[str, object] = {"product": product}
+    try:
+        country, bbox = area_request(area, countries)
+        given |= {"country": country, "bbox": list(bbox[:4]), "bbox_crs": bbox.crs}
+        report = check_availability(
+            product=product,
+            country=country,
+            bbox=bbox,
+            cache=cache,
+            force=force,
+            on_notice=None if on_notice is None else _forward(on_notice),
+        )
+    except KartografError as error:
+        raise call_error(error, command=AVAILABILITY_COMMAND, given=given) from error
+    finally:
+        cache.close()
+    return _report(report)
+
+
+def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:
+    """Return Kartograf's ``country`` and ``bbox`` of an area (ADR-035).
+
+    The box is the envelope of the polygon, its edges densified, in the CRS
+    Kartograf measures the first of the area's countries in, so it is what
+    Kartograf takes of a geometry file with that polygon; the country is
+    ``pl`` or ``cz``, or ``auto`` for both. An area in neither country goes as
+    its WGS84 envelope with ``auto``, for Kartograf to refuse.
+
+    Raises
+    ------
+    KartografError
+        No pinned operation to the CRS.
+    """
+    polygon = shape(area)
+    named = {country.upper() for country in countries}
+    known = [country for country in _AREA_CRS if country in named]
+    if not known:
+        min_x, min_y, max_x, max_y = (float(value) for value in polygon.bounds)
+        return "auto", BBox(min_x, min_y, max_x, max_y, _WGS84)
+    crs = _AREA_CRS[known[0]]
+    points = shapely.get_coordinates(shapely.segmentize(polygon, _SEGMENT_DEGREES))
+    xs, ys = pinned_transform(_WGS84, crs).transform(points[:, 0], points[:, 1])
+    country = known[0].lower() if len(known) == 1 else "auto"
+    return country, BBox(
+        float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()), crs
+    )
+
+
 def call_error(
     error: KartografError,
     *,
@@ -170,6 +289,101 @@ def call_error(
         hint=report.hint,
         details=report.details,
     )
+
+
+def _forward(
+    on_notice: Callable[[AvailabilityNotice], None],
+) -> Callable[[Any], None]:
+    """Pass each of Kartograf's notices on as a producer-neutral one."""
+
+    def forward(notice: Any) -> None:
+        on_notice(_notice(notice))
+
+    return forward
+
+
+def _report(report: Any) -> AvailabilityReport:
+    """Convert ``kartograf-availability/1`` (``AvailabilityReport``)."""
+    return AvailabilityReport(
+        producer=PRODUCER,
+        schema=str(report.schema),
+        checked_at=datetime.fromisoformat(report.checked_at),
+        request=dict(report.request),
+        areas=tuple(
+            AvailabilityArea(
+                country=area.country,
+                crs=area.crs,
+                bounds=(
+                    float(area.bounds[0]),
+                    float(area.bounds[1]),
+                    float(area.bounds[2]),
+                    float(area.bounds[3]),
+                ),
+                area_m2=float(area.area_m2),
+                land_m2=float(area.land_m2),
+            )
+            for area in report.areas
+        ),
+        combinations=tuple(_combination(item) for item in report.combinations),
+        failed=tuple(
+            AvailabilityFailure(failure.unit, str(failure.error), failure.kind)
+            for failure in report.failed
+        ),
+        notices=tuple(_notice(notice) for notice in report.notices),
+        ok=bool(report.ok),
+    )
+
+
+def _combination(item: Any) -> AvailabilityCombination:
+    """Convert one ``AvailabilityCombination`` with its KD-1 and KD-2 fields."""
+    published = item.published
+    return AvailabilityCombination(
+        country=item.country,
+        product=item.product,
+        source=item.source,
+        year=item.year,
+        horizontal=item.horizontal,
+        resolution=item.resolution,
+        vertical_crs=item.vertical_crs,
+        format=item.format,
+        campaigns=tuple(item.campaigns),
+        complete=bool(item.complete),
+        sheets_full=tuple(item.sheets_full),
+        sheets_partial=tuple(item.sheets_partial),
+        sheets_missing=tuple(item.sheets_missing),
+        uncovered_m2=float(item.uncovered_m2),
+        full_m2=float(item.full_m2),
+        size_bytes=item.size_bytes,
+        published=None if published is None else (str(published[0]), str(published[1])),
+        sheet_records=tuple(
+            AvailabilitySheet(
+                sheet=record.sheet,
+                campaign=record.campaign,
+                full_sheet=record.full_sheet,
+                acquisition_date=record.acquisition_date,
+                published=record.published,
+            )
+            for record in item.sheet_records
+        ),
+        campaign_coverage=tuple(
+            AvailabilityCampaign(
+                campaign=campaign.campaign,
+                complete=bool(campaign.complete),
+                full_m2=float(campaign.full_m2),
+            )
+            for campaign in item.campaign_coverage
+        ),
+    )
+
+
+def _notice(notice: Any) -> AvailabilityNotice:
+    """Convert a ``Notice``; a text of Kartograf's catalog in the call's language."""
+    text = notice.message
+    language = current_language()
+    localized = getattr(text, "localized", None)
+    if callable(localized) and language in _LANGUAGES:
+        text = localized(language)
+    return AvailabilityNotice(notice.level, notice.code, str(text))
 
 
 def _command_info(entry: Any, *, polish: bool) -> CommandInfo:

@@ -1,0 +1,26 @@
+# ADR-035: The availability at the source, a job with a stored report
+
+**Date:** 2026-10-25
+**Status:** proposed (done on the topic branch `feature/kartograf-data-output`, step A2 of the plan `docs/plans/2026-10-25-archiwista-next.md`, whose approval is delegated; accepted when the author approves and merges the branch)
+
+**Context:** The main flow (SPEC 6.3) asks the source what it has for an area before anything is downloaded: years, variants and the completeness of sheets, which the labels of SPEC 6.4 read (A3). Kartograf delivers it for elevation as `check_availability(*, product, country, sheet | bbox | geometry, layer, year bounds, cache, force, on_notice)` with the report `kartograf-availability/1` (the KD-1 records and campaigns, the KD-2 `full_m2`). It asks the GUGiK and CUZK indexes and the PRG land mask, so it needs the network, and its metadata cache stands for those answers for seven days. Archiwista keeps an area in the index as a WGS84 polygon with its countries (`AreaRecord`; drawn, the map view, a sheet or a file). The plan names two ways of giving Kartograf the area: a box, or the copy of a geometry file in the work directory. Kartograf reads a geometry file only as SHP or GPKG and measures each of its features by its envelope in EPSG:2180 (NMT and NMPT; LAZ the envelope of all); Archiwista keeps the upload of a file area (GeoJSON, GPKG or a zipped Shapefile, under a random name) for seven days only, and a drawn, view or sheet area has no file at all.
+
+**Options:**
+- A) A box: the envelope of the area's polygon, its edges densified, in the CRS Kartograf measures the first of the area's countries in (EPSG:2180 for PL, EPSG:5514 for CZ alone), with `country` `pl`, `cz` or `auto` for both.
+- B) The WGS84 envelope with `bbox_crs` EPSG:4326. Rejected: Kartograf takes the envelope of that box in EPSG:2180 again, so the area grows twice, by up to hundreds of metres for a polygon turned against the grid, and a sheet that only touches the area counts (Kartograf's edge tolerance is 1 m).
+- C) A geometry file: the kept copy, or one Archiwista writes from the polygon. Rejected for now: the copy is no SHP or GPKG and is deleted after seven days; writing a GPKG in the worker adds a file and its cleanup to every check for what option A gives a single polygon already (the same envelope in EPSG:2180).
+- D) The sheet code of a sheet area (`sheet=`), measured by its own frame. Not now: an area keeps its name as free text, not a sheet code it was made of; a later step may keep the code.
+
+**Decision:** A.
+
+1. **Capability** (`sources/protocol.py`). `ActionAdapter` gains `availability_products()` (Kartograf: the values of `product` of its `elevation availability` command, NMT, NMPT and LAZ) and `availability(product, *, area, countries, force, on_notice)`, which returns the producer-neutral `AvailabilityReport` (`sources/types.py`: the areas, the combinations with the KD-1 sheet records and campaigns and the KD-2 `full_m2`, the failed parts, the notices, `ok`, `checked_at` and the schema of the producer's report). Kartograf's classes stay in `adapter/kartograf/actions.py`.
+2. **Archiwista's metadata cache** (D5, SPEC 5.6). The Kartograf adapter passes `MetadataCache(<cache_dir>/kartograf/metadata.db)` (the adapter's cache directory, Kartograf's own file name), never `cache=True`; `force` asks the services again and writes over the cached answers. The cache is closed after each call.
+3. **The area** (option A). The adapter densifies the polygon every 0.005° (about 0.5 km), moves it with Kartograf's pinned operation and takes the envelope; an area in neither country goes as its WGS84 envelope with `auto`, and Kartograf refuses it before the network.
+4. **The job** `availability` (`JobRule(store=False, network=True)`): parameters `area_id`, `producer`, `product`, `force`; offline mode refuses it before it is recorded (`409 offline_mode`); a check of the same area, producer and product joins an active one unless it forces and the active one does not. Everyone sees it (no store, no project). The worker reads the area from the index, calls the producer and passes its notices on as job notices.
+5. **The stored report.** The index table `availability` keeps the last report of each area, producer and product (`SCHEMA_VERSION` 8; the index is rebuilt, SPEC 4.4), with `checked_at` and the job's id; an older report never replaces a newer one, so two checks ending in the other order keep the newer.
+
+**Consequences:**
+- An area of several polygons is one box for Kartograf, where a geometry file would give one box per feature, and a sheet area includes slivers of its neighbours in the envelope, as a file with that sheet would. The labels of A3 describe that box.
+- `POST /availability` and `GET /availability` (A2 commit 2) answer from the table: a report younger than the seven days of Kartograf's cache needs no job.
+- Kartograf has no progress for `check_availability` (KC-2) and no cancel (KC-1): the job reports no progress and is stopped by SIGINT.
+- The IMGW adapter (v0.5) can answer the published years of a dataset through the same capability, as combinations without sheets.

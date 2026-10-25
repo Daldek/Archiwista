@@ -6,17 +6,99 @@ that works on a store takes the store root as an option of the call,
 takes it by name beside the options. ``validate_command`` returns the options
 as the library reads them (texts trimmed, a value of a choice in lower case),
 ``format_command`` writes the canonical line of a call and ``parse_command``
-reads a line back. Each of these three appends its call to ``CALLS`` with the
-options it received, so a test can tell what Archiwista passed.
+reads a line back. ``check_availability`` reports what a fake source has for an
+area: one sheet system of 2023 complete from one campaign, another complete
+from two, and 2022 partial, checked now. Each of these four appends its call to
+``CALLS`` with the options it received, so a test can tell what Archiwista
+passed.
 """
 
 import shlex
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 
 __version__ = "2.0.0"
 PROGRAM = "standin"
+# The products ``check_availability`` reports on.
+AVAILABILITY_PRODUCTS = ("dem",)
 
 CALLS: list[tuple[str, str, dict[str, object]]] = []
+
+
+def _combination(year: int, system: str, **fields: object) -> dict[str, object]:
+    """Return a combination of 1 m ASC files in EVRF2007 of the fake source."""
+    return {
+        "country": "PL",
+        "product": "dem",
+        "source": "standin_dem",
+        "year": year,
+        "horizontal": system,
+        "resolution": "1m",
+        "vertical_crs": "EVRF2007",
+        "format": "ASC",
+        "sheets_partial": [],
+        "sheets_missing": [],
+        "uncovered_m2": 0.0,
+        "size_bytes": None,
+        "published": None,
+        **fields,
+    }
+
+
+def _records(campaign: str, *sheets: str, full: bool = True) -> list[dict[str, object]]:
+    """Return the records of one campaign's sheets."""
+    return [
+        {
+            "sheet": sheet,
+            "campaign": campaign,
+            "full_sheet": full,
+            "acquisition_date": None,
+            "published": None,
+        }
+        for sheet in sheets
+    ]
+
+
+# The land of the fake area: 120 km².
+LAND_M2 = 120_000_000.0
+_COMBINATIONS: list[dict[str, object]] = [
+    _combination(
+        2023,
+        "PL-1992",
+        campaigns=["A", "B"],
+        complete=True,
+        sheets_full=["S1", "S2", "S3", "S4"],
+        full_m2=LAND_M2,
+        sheet_records=_records("A", "S1", "S2") + _records("B", "S3", "S4"),
+        campaign_coverage=[
+            {"campaign": "A", "complete": False, "full_m2": 60_000_000.0},
+            {"campaign": "B", "complete": False, "full_m2": 60_000_000.0},
+        ],
+    ),
+    _combination(
+        2023,
+        "PL-2000",
+        campaigns=["C"],
+        complete=True,
+        sheets_full=["T1", "T2", "T3"],
+        full_m2=LAND_M2,
+        sheet_records=_records("C", "T1", "T2", "T3"),
+        campaign_coverage=[{"campaign": "C", "complete": True, "full_m2": LAND_M2}],
+    ),
+    _combination(
+        2022,
+        "PL-1992",
+        campaigns=["D"],
+        complete=False,
+        sheets_full=["S1", "S2", "S3"],
+        sheets_partial=["S4"],
+        full_m2=69_600_000.0,
+        sheet_records=_records("D", "S1", "S2", "S3") + _records("D", "S4", full=False),
+        campaign_coverage=[
+            {"campaign": "D", "complete": False, "full_m2": 69_600_000.0}
+        ],
+    ),
+]
 
 _COMMANDS: dict[str, dict[str, object]] = {
     "series fetch": {
@@ -134,6 +216,44 @@ def parse_command(line: str) -> tuple[str, dict[str, object]]:
             raise ValidationError(f"expected --<option> <value>, got {flag!r}")
         options[flag[2:].replace("-", "_")] = flags.pop(0)
     return command, options
+
+
+def check_availability(
+    product: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    on_notice: Callable[[str, str, str], None] | None = None,
+) -> dict[str, object]:
+    """Report what the fake source has for the area of ``options``, checked now.
+
+    ``options`` holds the ``area`` (GeoJSON), its ``countries`` and
+    ``refresh``; each notice goes to ``on_notice`` as ``(level, code, text)``.
+    """
+    CALLS.append(("check_availability", product, dict(options)))
+    if product not in AVAILABILITY_PRODUCTS:
+        raise ValidationError(f"no availability of {product!r}", option="product")
+    notice = ("info", "index_cached", "The sheet index answered from the cache.")
+    if on_notice is not None:
+        on_notice(*notice)
+    return {
+        "schema": "standin-availability/1",
+        "checked_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "request": {"product": product, "countries": options["countries"]},
+        "areas": [
+            {
+                "country": "PL",
+                "crs": "EPSG:2180",
+                "bounds": [566000.0, 240000.0, 578000.0, 250000.0],
+                "area_m2": LAND_M2,
+                "land_m2": LAND_M2,
+            }
+        ],
+        "combinations": [dict(item) for item in _COMBINATIONS],
+        "failed": [],
+        "notices": [dict(zip(("level", "code", "message"), notice, strict=True))],
+        "ok": True,
+    }
 
 
 def _checked(command: str, options: Mapping[str, object]) -> dict[str, object]:

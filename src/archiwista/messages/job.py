@@ -193,6 +193,10 @@ MESSAGES = {
         "snapshot",
         "migawka",
     ),
+    "kind_availability": Text(
+        "availability at the source",
+        "dostępność u źródła",
+    ),
     "conflict_snapshot": Text(
         (
             "A snapshot of this file is already in progress: job {job} ({state}). Wait"

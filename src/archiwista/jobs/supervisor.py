@@ -18,10 +18,11 @@ offline mode, at most two network jobs run), runs alone (one ``preview``
 at a time, the next ones wait in the queue), conflicts with active jobs (one
 job writing a store's index at a time, ``scan`` or ``footprints``; another
 one is a ``JobConflictError``) or joins one (a ``preview`` of contents an
-active build already has adds its refs to that job). At most half the
-processors' worth of workers run, the rest wait in the queue. Cancelling
-interrupts the worker as Ctrl+C would (SIGINT; CTRL_BREAK_EVENT to its
-process group on Windows) and kills it after 30 s.
+active build already has adds its refs to that job; an ``availability``
+check of an area and product that an active check already asks returns that
+job). At most half the processors' worth of workers run, the rest wait in
+the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
+CTRL_BREAK_EVENT to its process group on Windows) and kills it after 30 s.
 
 A job whose supervising process is gone (a server stopped or crashed) becomes
 ``interrupted`` as soon as a supervisor meets it: every supervising process
@@ -185,8 +186,8 @@ class JobRecord:
     ----------
     id : str
         Opaque job id.
-    kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
-        What the job does.
+    kind : JobKind
+        What the job does, one of ``JOB_KINDS``.
     state : {"queued", "running", "succeeded", "failed", "interrupted", "cancelled"}
         Where the job is in its life.
     actor : str
@@ -199,12 +200,14 @@ class JobRecord:
         for the scheduler.
     store : str or None
         Configured id of the store it works on; ``None`` for a kind working
-        on no store (``preview``, ``own_scan``, ``snapshot``).
+        on no store (``preview``, ``own_scan``, ``snapshot``,
+        ``availability``).
     params : dict
         Its parameters (``scan``: ``mode``, ``segment``; ``link_check``:
         ``slot``; ``preview``: ``refs``, their ``contents`` and ``force``,
         with the refs of the requests that joined it; ``own_scan``: optional
-        ``project``; ``snapshot``: ``project``, ``file_id``, ``note``).
+        ``project``; ``snapshot``: ``project``, ``file_id``, ``note``;
+        ``availability``: ``area_id``, ``producer``, ``product``, ``force``).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
@@ -391,11 +394,25 @@ def _join_own_scan(active: JsonObject, new: JsonObject) -> JsonObject | None:
     return None
 
 
+def _join_availability(active: JsonObject, new: JsonObject) -> JsonObject | None:
+    """Answer a check of availability with an active check of the same question.
+
+    The same area, producer and product; a check that asks the source again
+    (``force``) does not wait for one that may answer from the cache.
+    """
+    same = all(active[key] == new[key] for key in ("area_id", "producer", "product"))
+    if not same or (new["force"] and not active["force"]):
+        return None
+    return active
+
+
 # Jobs writing a store's index: one of them per store at a time.
 _INDEX_CONFLICT = JobConflict("index", _store_key, "job.conflict")
 _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
 # Only a waiting run takes a request: a running one may have passed the change.
 _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
+# A running check answers the same question as a waiting one.
+_AVAILABILITY_JOIN = JobJoin(_join_availability, ACTIVE_STATES)
 # One snapshot of a file at a time; those of other files run side by side.
 _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
 # The rule of each kind, one line per kind of ``JobKind``.
@@ -406,6 +423,7 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "preview": JobRule(store=False, exclusive=True, join=_PREVIEW_JOIN),
     "own_scan": JobRule(store=False, exclusive=True, join=_OWN_SCAN_JOIN),
     "snapshot": JobRule(store=False, conflict=_SNAPSHOT_CONFLICT),
+    "availability": JobRule(store=False, network=True, join=_AVAILABILITY_JOIN),
 }
 
 
@@ -626,12 +644,13 @@ class JobSupervisor:
 
         Parameters
         ----------
-        kind : {"scan", "footprints", "link_check", "preview", "own_scan", "snapshot"}
-            What to run.
+        kind : str
+            What to run, one of ``JOB_KINDS``.
         store : str or None, optional
             Configured store id: required by a kind working on a store
             (``scan``, ``footprints``, ``link_check``), refused by one
-            working on none (``preview``, ``own_scan``, ``snapshot``).
+            working on none (``preview``, ``own_scan``, ``snapshot``,
+            ``availability``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -642,7 +661,9 @@ class JobSupervisor:
             counts once; ``own_scan``: optional ``project`` (its key);
             ``snapshot``: ``project`` (its key), ``file_id`` (16 lower-case
             hex characters) and ``note`` (at most 2000 characters, ``""`` by
-            default).
+            default); ``availability``: ``area_id``, ``producer`` and
+            ``product`` (non-empty texts) and ``force`` (ask the source
+            again, ``False`` by default).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -650,10 +671,10 @@ class JobSupervisor:
         -------
         JobRecord
             The job, ``queued`` or already ``running``. A kind that joins
-            (``preview``) returns the oldest active job of the kind that
-            takes the request instead: that job's ``params`` gain the
-            request's (a running worker keeps those it started with), and no
-            job is recorded.
+            (``preview``, ``availability``) returns the oldest active job of
+            the kind that takes the request instead: that job's ``params``
+            gain the request's (a running worker keeps those it started
+            with), and no job is recorded.
 
         Raises
         ------
@@ -1458,9 +1479,24 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         if not isinstance(slot, str) or not slot or set(params) != {"slot"}:
             raise ValueError(f"invalid link check parameters {dict(params)!r}")
         return {"slot": slot}
+    if kind == "availability":
+        return _availability_params(params)
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
+
+
+def _availability_params(params: Mapping[str, object]) -> JsonObject:
+    """Check an ``availability`` job's area, producer, product and ``force``."""
+    names = ("area_id", "producer", "product")
+    force = params.get("force", False)
+    if (
+        set(params) - {*names, "force"}
+        or not all(isinstance(params.get(name), str) and params[name] for name in names)
+        or not isinstance(force, bool)
+    ):
+        raise ValueError(f"invalid availability parameters {dict(params)!r}"[:300])
+    return {**{name: params[name] for name in names}, "force": force}
 
 
 def _snapshot_params(params: Mapping[str, object]) -> JsonObject:

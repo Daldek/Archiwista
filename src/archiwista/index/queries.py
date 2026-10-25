@@ -96,6 +96,7 @@ from archiwista.index.types import (
     SlotRow,
     SlotUnit,
     SnapshotRecord,
+    StoredAvailability,
     StoreFreshness,
     StoreIndexState,
     StoreUsage,
@@ -108,7 +109,7 @@ from archiwista.index.types import (
 from archiwista.messages import message
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
-from archiwista.sources import GeoJSONGeometry, SourceEntry
+from archiwista.sources import AvailabilityReport, GeoJSONGeometry, SourceEntry
 
 _IDS = "SELECT value FROM json_each(?)"
 _CURSOR_VERSION = 1
@@ -1366,6 +1367,27 @@ class IndexQueries:
             area_km2=row["area_km2"],
             countries=tuple(json.loads(row["countries"])),
             name=row["name"],
+        )
+
+    def availability(
+        self, area_id: str, product: str, *, producer: str
+    ) -> StoredAvailability | None:
+        """Return the last report of an area and product, ``None`` without one."""
+        with self._read() as connection:
+            row = connection.execute(
+                "SELECT checked_at, job_id, report FROM availability"
+                " WHERE area_id = ? AND producer = ? AND product = ?",
+                (area_id, producer, product),
+            ).fetchone()
+        if row is None:
+            return None
+        return StoredAvailability(
+            area_id=area_id,
+            producer=producer,
+            product=product,
+            checked_at=datetime.fromisoformat(row["checked_at"]),
+            job_id=row["job_id"],
+            report=AvailabilityReport.from_json(json.loads(row["report"])),
         )
 
     def local_coverage(

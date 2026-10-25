@@ -10,7 +10,7 @@ commit that introduced this file).
 | Component | State | Note |
 |---|---|---|
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
-| Next version v0.3 "Actions" | in progress | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3 on `feature/kartograf-data-output` (D11: M, then A, then I): **A1 done** (both commits with the reduced gate; ADR-034). Commit 1: the optional capability `ActionAdapter` with `CommandInfo`, `CommandOption`, `CommandChoice` and `CommandCall`, Kartograf's catalog from `list_commands` and `command_schema` with `parse`, `validate` (`root=` for a command on a store) and `format` (`adapter/kartograf/actions.py`), the service of both interfaces (`services/commands.py`: a command of the catalog, the configured store's root, no file path of a request), `ProducerError` with the producer's code, hint and `details.option`, the stand-in producer with IMGWTools' shape (`tests/fixtures/action_source`) and the socket guard (`tests/fixtures/network.py`). Commit 2: `GET /commands`, `POST /commands/parse`, `/commands/validate` and `/commands/format` (`api/commands.py`, `api/models_commands.py`) and `archiwista commands list\|parse\|validate\|format` (`commands/producer_commands.py`); the API answers `UnsupportedError` (`422`, `no_commands`) and `CommandRequestError`, and the OpenAPI document keeps a route's own `422`; `tests/integration/test_commands.py` runs the routes and the commands over the installed Kartograf and the stand-in under the socket guard. Next 4 gives the starting points |
+| Next version v0.3 "Actions" | in progress | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3 on `feature/kartograf-data-output` (D11: M, then A, then I): **A1 done** (both commits with the reduced gate; ADR-034). Commit 1: the optional capability `ActionAdapter` with `CommandInfo`, `CommandOption`, `CommandChoice` and `CommandCall`, Kartograf's catalog from `list_commands` and `command_schema` with `parse`, `validate` (`root=` for a command on a store) and `format` (`adapter/kartograf/actions.py`), the service of both interfaces (`services/commands.py`: a command of the catalog, the configured store's root, no file path of a request), `ProducerError` with the producer's code, hint and `details.option`, the stand-in producer with IMGWTools' shape (`tests/fixtures/action_source`) and the socket guard (`tests/fixtures/network.py`). Commit 2: `GET /commands`, `POST /commands/parse`, `/commands/validate` and `/commands/format` (`api/commands.py`, `api/models_commands.py`) and `archiwista commands list\|parse\|validate\|format` (`commands/producer_commands.py`); the API answers `UnsupportedError` (`422`, `no_commands`) and `CommandRequestError`, and the OpenAPI document keeps a route's own `422`; `tests/integration/test_commands.py` runs the routes and the commands over the installed Kartograf and the stand-in under the socket guard. **A2 commit 1 done** (ADR-035): `ActionAdapter.availability_products()` and `availability(product, *, area, countries, force, on_notice)` returning the producer-neutral `AvailabilityReport` (`sources/types.py`, with `to_json`/`from_json`); Kartograf's `check_availability` with `MetadataCache(<cache>/kartograf/metadata.db)` and the area as the envelope of its densified polygon in EPSG:2180 (EPSG:5514 for CZ alone), `country` `pl`/`cz`/`auto`; the job kind `availability` (network, joins an active check of the same question unless it forces) with `run_availability`; the index table `availability` (`SCHEMA_VERSION` 8, an older report never replaces a newer one; `IndexWriter.write_availability`, `IndexQueries.availability`, `StoredAvailability`); the stand-in's `check_availability`; tests `tests/contract/test_kartograf_actions.py` (A2 part) and `tests/integration/test_availability_job.py`. Next 4 gives the starting points |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
 | Nogat standard 2.1, documentation | done | everything is English (`docs/CLA.md`, the author's legal text, excepted; the Polish interface labels stay in quotes): README in the order of DOC-2.1 (146 lines), the project rules of the former `DEVELOPMENT_STANDARDS.md` in CLAUDE.md, the plans in `docs/plans/`, ADR-030 in `docs/decisions/` with the index in `docs/DECISIONS.md`, ARCHITECTURE, DECISIONS, SPEC, the plans, the reports and the mockup README translated, `docs/IMGWTOOLS_REQUIREMENTS.md` removed (IMGWTools 3.0.0 meets it; SPEC 12.7 keeps IMGW-1 to 20) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` and the error texts that follow `Accept-Language` (English by default, Polish with the header, `Content-Language` on every JSON answer; the stored texts stay Polish); deviations in CLAUDE.md: the stored texts (AGI-6.4), outcome statuses and no result envelope for good |
@@ -63,20 +63,19 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    `tests/fixtures/make_store.py` when Kartograf ships it.
 3. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
    weekly `live.yml`.
-4. **v0.3 "Actions" (plan Part 3).** A1 is done (Status). Next: A2, the availability job
-   and the stored report (plan Part 3 item 2, two commits): a job kind `availability`
-   (network; offline mode answers `409 offline_mode` and records nothing) that runs
-   Kartograf's `check_availability` for NMT, NMPT and LAZ (PL and CZ) over an area (a box,
-   or the copy of a geometry file in the work directory, SPEC 6.3) with Archiwista's own
-   metadata cache (`cache_dir/kartograf`, never `cache=True`, D5); a new index table
-   `availability` (area, product, `checked_at`, the document) with `SCHEMA_VERSION` 8;
-   `POST /availability` (a report younger than seven days answers without a job unless
-   `force`) and `GET /availability` (the last report and its date, never the network).
-   The capability needs an availability method on `ActionAdapter` and the stand-in of
-   `tests/fixtures/action_source` one more function (it records the keyword arguments it
-   receives). Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth
-   0-5cm`) is not its canonical line, so the contract test compares calls, not text (a
-   request to Kartograf).
+4. **v0.3 "Actions" (plan Part 3).** A1 and A2 commit 1 are done (Status). Next: A2 commit 2,
+   the routes: `POST /availability {area_id, product, producer?, force?}` answers a stored
+   report younger than seven days (Kartograf's cache TTL) with `200` and no job unless
+   `force`, else `202` with the job (`Location: /api/v1/jobs/{id}`, as `api/jobs.py`
+   `_accepted`); offline it answers `409 offline_mode` and records nothing
+   (`JobSupervisor.submit` raises `OfflineModeError`); a product outside
+   `availability_products()` and an unknown area are refused before a job. `GET
+   /availability?area_id=&product=` returns the last report with `checked_at` (`404`
+   without one) and never uses the network. Then A3 (`services/availability.py`: the
+   labels of SPEC 6.4 as structure, the ranking of variants, formats of one set as one
+   variant, the store badge). Kartograf's example of `project add` (`… soil hsg --sheet
+   N-34-130-D --depth 0-5cm`) is not its canonical line, so the contract test compares
+   calls, not text (a request to Kartograf).
 5. **The IMGWTools source (plan Part 2; branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c`; merged into `feature/kartograf-data-output`).**
    - *Done (local commits; ask git for the remote state).* I1 commit 1 `5e3fffc`; I1 commit 2 `796ee01` (gate 1246 passed,
      coverage 92.04%): the extra `archiwista[imgw]`, `sources/markers.py`, `adapter/imgw/`

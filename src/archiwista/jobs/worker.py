@@ -19,7 +19,10 @@ input, runs it and reports in JSON Lines on standard output
   (``archiwista.owndata.scan.scan_own_data``, plan v0.2 decision 8);
 - ``snapshot``: a snapshot of an own-data file in its folder's ``.wersje/``
   (``archiwista.owndata.snapshots.make_snapshot``, plan v0.2 decision 9),
-  then recorded in the index.
+  then recorded in the index;
+- ``availability``: what the source has for an area and a product (the
+  producer's ``ActionAdapter.availability``, plan of 2026-10-25 A2), kept in
+  the index as the area's last report.
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -108,6 +111,7 @@ from archiwista.owndata.snapshots import (
 from archiwista.paths import resolve_indexed_path
 from archiwista.previews.build import run_preview
 from archiwista.sandbox import process_work_dir
+from archiwista.services.commands import actions
 from archiwista.services.problems import explain
 from archiwista.sources import (
     GeoAdapter,
@@ -543,6 +547,47 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
     }
 
 
+def run_availability(spec: JobSpec, emit: Emitter) -> JsonObject:
+    """Ask the producer what the source has for an area and keep the report.
+
+    The area is the one the index keeps (``area_id``); the producer's notices
+    become the job's. The report replaces the area's last one of the product
+    unless that one is newer.
+    """
+    if spec.settings.offline:
+        raise OfflineModeError(message("job.offline_mode"))
+    area_id = str(spec.params["area_id"])
+    producer = str(spec.params["producer"])
+    product = str(spec.params["product"])
+    started = time.perf_counter()
+    with IndexQueries(spec.index_path) as queries:
+        area = queries.area(area_id)
+    if area is None:
+        raise NotFoundError(message("api.area_unknown", area=area_id))
+    adapter = actions(load_registry(cache_dir=spec.cache_dir), producer)
+    report = adapter.availability(
+        product,
+        area=area.geometry,
+        countries=area.countries,
+        force=bool(spec.params["force"]),
+        on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
+    )
+    with IndexWriter(spec.index_path) as writer:
+        kept = writer.write_availability(
+            area_id, report, product=product, job_id=spec.job_id
+        )
+    return {
+        "area_id": area_id,
+        "producer": producer,
+        "product": product,
+        "checked_at": report.checked_at.isoformat(),
+        "ok": report.ok,
+        "combinations": len(report.combinations),
+        "kept": kept,
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -550,6 +595,7 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "preview": run_preview,
     "own_scan": run_own_scan,
     "snapshot": run_snapshot,
+    "availability": run_availability,
 }
 
 

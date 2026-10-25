@@ -30,6 +30,11 @@ Version 7 (v0.5, IMGW slots): ``slots.slot_key`` (the producer's own name of a
 slot), ``versions.provider`` (the organisation that publishes the data) and
 ``observations`` (the publication history of a slot: a source served other
 bytes with the content of a version, so no version was written).
+
+Version 8 (v0.3, plan of 2026-10-25 A2): ``availability``, the last report of
+the availability at the source of each area, producer and product (the
+producer-neutral ``AvailabilityReport`` as JSON, with the time the source was
+asked and the job that asked it).
 """
 
 import sqlite3
@@ -41,7 +46,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -279,6 +284,18 @@ CREATE TABLE areas (
     max_lat REAL NOT NULL,
     created_at TEXT NOT NULL
 );
+
+-- The last report of each area, producer and product; the job is kept by id
+-- only, as jobs are pruned.
+CREATE TABLE availability (
+    area_id TEXT NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
+    producer TEXT NOT NULL,
+    product TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    report TEXT NOT NULL,
+    job_id TEXT,
+    PRIMARY KEY (area_id, producer, product)
+) WITHOUT ROWID;
 
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,

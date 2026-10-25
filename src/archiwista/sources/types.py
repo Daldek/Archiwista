@@ -10,10 +10,10 @@ directory through the store configuration.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 type SourceStatus = Literal["available", "not_installed", "incompatible", "error"]
 type EntryKind = Literal["version", "link", "full_sheet", "problem", "observation"]
@@ -497,3 +497,277 @@ class CommandCall:
     command: str
     options: Mapping[str, object] = field(default_factory=dict)
     run: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityArea:
+    """The part of a checked area in one country, as the producer measured it.
+
+    Parameters
+    ----------
+    country : str
+        Country code (``PL``, ``CZ``).
+    crs : str
+        CRS of ``bounds`` and of the measures.
+    bounds : tuple[float, float, float, float]
+        Envelope of the part in ``crs``.
+    area_m2 : float
+        Area of the part.
+    land_m2 : float
+        Its land: what every combination is measured against (SPEC 6.4).
+    """
+
+    country: str
+    crs: str
+    bounds: tuple[float, float, float, float]
+    area_m2: float
+    land_m2: float
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilitySheet:
+    """A record of the source a download of a combination takes (SPEC 12.4 KD-1).
+
+    Parameters
+    ----------
+    sheet : str
+        Sheet or tile code.
+    campaign : str or None
+        The survey work it comes from.
+    full_sheet : bool or None
+        Whether the record fills its sheet; ``None`` when the source does not say.
+    acquisition_date, published : str or None
+        Date of the survey and of the publication (ISO dates).
+    """
+
+    sheet: str
+    campaign: str | None
+    full_sheet: bool | None
+    acquisition_date: str | None = None
+    published: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityCampaign:
+    """One campaign of a combination on its own (SPEC 12.4 KD-1).
+
+    Parameters
+    ----------
+    campaign : str
+        The survey work.
+    complete : bool
+        Its full records alone cover the land of the area.
+    full_m2 : float
+        The land in their frames.
+    """
+
+    campaign: str
+    complete: bool
+    full_m2: float
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityCombination:
+    """One downloadable combination of an area: a year, a variant and a format.
+
+    Parameters
+    ----------
+    country : str
+        Country code of the area part it covers (``AvailabilityArea.country``).
+    product : str
+        Product id (``nmt``).
+    source : str
+        The producer's dataset.
+    year : int or None
+        Year of the data; ``None`` where the source publishes none (CZ).
+    horizontal : str
+        Sheet system or horizontal CRS (``PL-1992``).
+    resolution : str or None
+        Resolution label (``1m``); ``None`` for point clouds.
+    vertical_crs : str
+        Height system (``EVRF2007``).
+    format : str
+        File format (``ASC``).
+    campaigns : tuple[str, ...]
+        Every survey work among its records, complete or not.
+    complete : bool
+        The land of the area lies entirely in its full sheets.
+    sheets_full, sheets_partial, sheets_missing : tuple[str, ...]
+        Sheets with a full record, with partial records only, and without a file.
+    uncovered_m2 : float
+        Land outside every sheet of the combination.
+    full_m2 : float
+        Land in the frames of its full records (SPEC 12.4 KD-2).
+    size_bytes : int or None
+        Size of its files when the source tells it; ``None`` otherwise.
+    published : tuple[str, str] or None
+        First and last publication date of its files.
+    sheet_records : tuple[AvailabilitySheet, ...]
+        The records a download takes, by sheet (KD-1).
+    campaign_coverage : tuple[AvailabilityCampaign, ...]
+        Each campaign of ``campaigns`` on its own (KD-1).
+    """
+
+    country: str
+    product: str
+    source: str
+    year: int | None
+    horizontal: str
+    resolution: str | None
+    vertical_crs: str
+    format: str
+    campaigns: tuple[str, ...]
+    complete: bool
+    sheets_full: tuple[str, ...]
+    sheets_partial: tuple[str, ...]
+    sheets_missing: tuple[str, ...]
+    uncovered_m2: float
+    full_m2: float
+    size_bytes: int | None = None
+    published: tuple[str, str] | None = None
+    sheet_records: tuple[AvailabilitySheet, ...] = ()
+    campaign_coverage: tuple[AvailabilityCampaign, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityFailure:
+    """A part of the request the producer could not check (``ok`` is ``False``).
+
+    Parameters
+    ----------
+    part : str
+        What failed, e.g. a country code.
+    detail : str
+        The producer's text.
+    kind : str
+        The producer's kind of failure (``country``, ``download``).
+    """
+
+    part: str
+    detail: str
+    kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityNotice:
+    """Something the producer said while it checked: ``level``, ``code``, text.
+
+    Parameters
+    ----------
+    level : {"info", "warning"}
+        How much it matters.
+    code : str
+        The producer's stable code (``index_unsupported``).
+    message : str
+        The producer's text, in the language of the call when the producer has it.
+    """
+
+    level: Literal["info", "warning"]
+    code: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityReport:
+    """What the source has for an area and a product (SPEC 6.3, 6.4).
+
+    The producer's report (Kartograf: ``kartograf-availability/1``) without its
+    classes, so the index and the services read every producer's report alike.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    schema : str
+        Schema of the producer's own report.
+    checked_at : datetime
+        When the source was asked (UTC).
+    request : Mapping[str, object]
+        The request as the producer read it (product, country, area, years).
+    areas : tuple[AvailabilityArea, ...]
+        The parts of the area, one per country.
+    combinations : tuple[AvailabilityCombination, ...]
+        What can be downloaded, in the producer's order.
+    failed : tuple[AvailabilityFailure, ...]
+        Parts of the request that could not be checked.
+    notices : tuple[AvailabilityNotice, ...]
+        What the producer said meanwhile.
+    ok : bool
+        Every part of the request was checked.
+    """
+
+    producer: str
+    schema: str
+    checked_at: datetime
+    request: Mapping[str, object]
+    areas: tuple[AvailabilityArea, ...]
+    combinations: tuple[AvailabilityCombination, ...]
+    failed: tuple[AvailabilityFailure, ...] = ()
+    notices: tuple[AvailabilityNotice, ...] = ()
+    ok: bool = True
+
+    def to_json(self) -> dict[str, object]:
+        """Return the report as a JSON object (what the index keeps)."""
+        data = asdict(self)
+        data["checked_at"] = self.checked_at.isoformat()
+        data["request"] = dict(self.request)
+        return data
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> "AvailabilityReport":
+        """Read a report back from ``to_json``.
+
+        Raises
+        ------
+        KeyError, TypeError, ValueError
+            Not a report of ``to_json``.
+        """
+        return cls(
+            producer=str(data["producer"]),
+            schema=str(data["schema"]),
+            checked_at=datetime.fromisoformat(str(data["checked_at"])),
+            request=dict(data["request"]),
+            areas=tuple(
+                AvailabilityArea(
+                    country=str(area["country"]),
+                    crs=str(area["crs"]),
+                    bounds=_bounds(area["bounds"]),
+                    area_m2=float(area["area_m2"]),
+                    land_m2=float(area["land_m2"]),
+                )
+                for area in data["areas"]
+            ),
+            combinations=tuple(_combination(item) for item in data["combinations"]),
+            failed=tuple(AvailabilityFailure(**item) for item in data["failed"]),
+            notices=tuple(AvailabilityNotice(**item) for item in data["notices"]),
+            ok=bool(data["ok"]),
+        )
+
+
+def _combination(data: Mapping[str, Any]) -> AvailabilityCombination:
+    """Read one combination of ``AvailabilityReport.to_json``."""
+    published = data["published"]
+    return AvailabilityCombination(
+        **{
+            **data,
+            "campaigns": tuple(data["campaigns"]),
+            "sheets_full": tuple(data["sheets_full"]),
+            "sheets_partial": tuple(data["sheets_partial"]),
+            "sheets_missing": tuple(data["sheets_missing"]),
+            "published": None if published is None else tuple(published),
+            "sheet_records": tuple(
+                AvailabilitySheet(**item) for item in data["sheet_records"]
+            ),
+            "campaign_coverage": tuple(
+                AvailabilityCampaign(**item) for item in data["campaign_coverage"]
+            ),
+        }
+    )
+
+
+def _bounds(value: object) -> tuple[float, float, float, float]:
+    """Read four numbers of an envelope."""
+    if not isinstance(value, list | tuple) or len(value) != 4:
+        raise ValueError(f"an envelope has four numbers, not {value!r}")
+    min_x, min_y, max_x, max_y = (float(number) for number in value)
+    return (min_x, min_y, max_x, max_y)

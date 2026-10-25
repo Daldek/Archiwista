@@ -16,6 +16,7 @@ from typing import Literal
 from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
+    AvailabilityReport,
     CoordinateTransformer,
     GeoJSONGeometry,
     LocationKind,
@@ -631,6 +632,23 @@ class AreaRecord:
     area_km2: float | None = None
     countries: tuple[str, ...] = ()
     name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StoredAvailability:
+    """The last report of the availability at the source of an area and product.
+
+    ``checked_at`` is when the source was asked (``report.checked_at``) and
+    ``job_id`` the ``availability`` job that asked it; the job itself may be
+    pruned since.
+    """
+
+    area_id: str
+    producer: str
+    product: str
+    checked_at: datetime
+    job_id: str | None
+    report: AvailabilityReport
 
 
 @dataclass(frozen=True, slots=True)

@@ -1803,10 +1803,12 @@ class JobFailure(BaseModel):
             " `target_exists` (`conflict`), `checksum_mismatch` and"
             " `integrity_failed` (`data_error`); `path_outside_root`"
             " (`forbidden`); `kartograf_error` (`<package>_error`, a"
-            " producer's own error, `data_error`; `details.kartograf`);"
-            " `interrupted` (`cancelled`: the server stopped, safe to retry);"
-            " `worker_crashed` and `protocol_error` (`internal_error`). None for"
-            " `not_found`, `unsupported`, `cancelled` and `internal_error`."
+            " producer's own error, `data_error` or the producer's code;"
+            " `details.kartograf`); `no_commands` (`unsupported`: the producer"
+            " offers no actions); `interrupted` (`cancelled`: the server"
+            " stopped, safe to retry); `worker_crashed` and `protocol_error`"
+            " (`internal_error`). None for `not_found`, `cancelled` and"
+            " `internal_error`."
         )
     )
 
@@ -1828,8 +1830,9 @@ class JobDetail(BaseModel):
             "`scan` (index the store), `footprints` (unit outlines over the"
             " network), `link_check` (which version a slot's link holds),"
             " `preview` (build local previews of files), `own_scan` (scan the"
-            " projects' own data folders) or `snapshot` (a snapshot of an"
-            " own-data file)."
+            " projects' own data folders), `snapshot` (a snapshot of an"
+            " own-data file) or `availability` (what the source has for an"
+            " area and a product, over the network)."
         )
     )
     state: JobState = Field(
@@ -1858,14 +1861,17 @@ class JobDetail(BaseModel):
         )
     )
     store: str | None = Field(
-        description="Store id; `null` for `preview`, `own_scan` and `snapshot`."
+        description=(
+            "Store id; `null` for `preview`, `own_scan`, `snapshot` and `availability`."
+        )
     )
     params: dict[str, Any] = Field(
         description=(
             "`scan`: `mode` and `segment`; `link_check`: `slot`; `footprints`:"
             " none; `preview`: `refs`, their `contents` and `force`; `own_scan`:"
             " `project` (none: every project); `snapshot`: `project`, `file_id`"
-            " and `note`."
+            " and `note`; `availability`: `area_id`, `producer`, `product` and"
+            " `force`."
         )
     )
     created_at: datetime
@@ -1893,7 +1899,10 @@ class JobDetail(BaseModel):
             " `files`, `new`, `changed`, `missing`, `unreadable`, `snapshots`,"
             " `problems` and `seconds`; `snapshot`: `status` (`created` or"
             " `unchanged`), `label`, `content_sha256`, `size_bytes` and"
-            " `seconds`."
+            " `seconds`; `availability`: `area_id`, `producer`, `product`,"
+            " `checked_at` (when the source was asked), `ok` (every part"
+            " checked), `combinations`, `kept` (false: a newer report was"
+            " kept) and `seconds`."
         )
     )
     error: JobFailure | None = Field(

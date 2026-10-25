@@ -16,6 +16,13 @@ from archiwista.sources.protocol import (
     SourceFactory,
 )
 from archiwista.sources.types import (
+    AvailabilityArea,
+    AvailabilityCampaign,
+    AvailabilityCombination,
+    AvailabilityFailure,
+    AvailabilityNotice,
+    AvailabilityReport,
+    AvailabilitySheet,
     CommandCall,
     CommandChoice,
     CommandInfo,
@@ -46,6 +53,13 @@ from archiwista.sources.types import (
 
 __all__ = [
     "ActionAdapter",
+    "AvailabilityArea",
+    "AvailabilityCampaign",
+    "AvailabilityCombination",
+    "AvailabilityFailure",
+    "AvailabilityNotice",
+    "AvailabilityReport",
+    "AvailabilitySheet",
     "CommandCall",
     "CommandChoice",
     "CommandInfo",

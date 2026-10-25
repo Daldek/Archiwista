@@ -13,7 +13,7 @@ the message unchanged.
 import json
 import os
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -47,6 +47,8 @@ from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    AvailabilityNotice,
+    AvailabilityReport,
     CommandCall,
     CommandInfo,
     CoordinateTransformer,
@@ -84,7 +86,8 @@ class KartografAdapter:
     ----------
     context : SourceContext
         ``cache_dir`` holds the local memory of unit outlines
-        (``unit_bboxes.sqlite``), created when the first outline is stored.
+        (``unit_bboxes.sqlite``), created when the first outline is stored,
+        and Archiwista's own metadata cache of Kartograf (``metadata.db``).
     supported_versions : str
         Kartograf versions Archiwista supports, e.g. ``"<0.9,>=0.8.0"``.
 
@@ -93,9 +96,9 @@ class KartografAdapter:
     Besides ``SourceAdapter`` it implements every optional capability:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
     ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter`` and
-    ``ActionAdapter`` (Kartograf's commands, ``actions.py``). All methods may
-    run in several threads at once; one iterator of ``iter_entries`` belongs to
-    one thread.
+    ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
+    ``actions.py``). All methods may run in several threads at once; one
+    iterator of ``iter_entries`` belongs to one thread.
     """
 
     producer = PRODUCER
@@ -104,6 +107,7 @@ class KartografAdapter:
 
     def __init__(self, context: SourceContext, *, supported_versions: str) -> None:
         self.supported_versions = supported_versions
+        self._cache_dir = context.cache_dir
         self._unit_bboxes = UnitBBoxCache(context.cache_dir / UNIT_CACHE_FILE)
 
     def probe(self, root: Path) -> SourceState:
@@ -465,6 +469,33 @@ class KartografAdapter:
     def format(self, call: CommandCall) -> str:
         """Return the canonical ``kartograf …`` line of a call (``format_command``)."""
         return actions.format_line(call)
+
+    def availability_products(self) -> tuple[str, ...]:
+        """Return the products of ``check_availability``: NMT, NMPT and LAZ."""
+        return actions.availability_products()
+
+    def availability(
+        self,
+        product: str,
+        *,
+        area: GeoJSONGeometry,
+        countries: tuple[str, ...],
+        force: bool = False,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> AvailabilityReport:
+        """Ask GUGiK and CUZK what they have for an area (``check_availability``).
+
+        With Archiwista's own metadata cache in ``cache_dir``, never Kartograf's
+        default one (D5); ``force`` asks the services again.
+        """
+        return actions.availability(
+            product,
+            area=area,
+            countries=countries,
+            cache_dir=self._cache_dir,
+            force=force,
+            on_notice=on_notice,
+        )
 
     def _state(
         self,

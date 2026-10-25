@@ -883,16 +883,18 @@
  *
  * @typedef {object} JobDetail
  * @property {string} id
- * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"} kind
+ * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"|"availability"} kind
  * @property {"queued"|"running"|"succeeded"|"failed"|"interrupted"|"cancelled"} state
  * @property {string} actor - Who started it.
  * @property {"local_owner"|"user"|"agent"|"scheduler"} actor_kind - How: the owner, an
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
- * @property {string|null} store - Null for `preview`, `own_scan` and `snapshot`.
+ * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot` and
+ *   `availability`.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
- *   `project`, `file_id` and `note` of a snapshot.
+ *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
+ *   and `force` of an availability check.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
@@ -902,7 +904,9 @@
  * @property {Object<string, *>|null} result - Summary of a succeeded job; of an
  *   `own_scan` the counts `projects`, `files`, `new`, `changed`, `missing`,
  *   `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot `status`
- *   (`created` or `unchanged`), `label`, `content_sha256`, `size_bytes`, `seconds`.
+ *   (`created` or `unchanged`), `label`, `content_sha256`, `size_bytes`, `seconds`;
+ *   of an availability check `area_id`, `producer`, `product`, `checked_at`, `ok`,
+ *   `combinations`, `kept`, `seconds`.
  * @property {JobFailure|null} error
  */
 

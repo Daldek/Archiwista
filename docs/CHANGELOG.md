@@ -124,6 +124,19 @@ command-line interface may change.
   (`503 source_unavailable`), one without commands answers `422 unsupported`
   (`no_commands`). Nothing of this uses the network or writes. (SPEC 9.2, SPEC 12
   KB-1 to KB-4, ADR-034)
+- The availability at the source, as a background job (ADR-035): the job `availability`
+  asks the producer what the source has for a kept area and a product (Kartograf's
+  `check_availability` for NMT, NMPT and LAZ in PL and CZ: years, variants, the sheets
+  and campaigns a download takes, the land in full sheets) and keeps the report in the
+  index as the area's last one (`SCHEMA_VERSION` 8: an existing index is rebuilt when it
+  is opened and filled by the next full scan). It needs the network: offline mode refuses
+  it before a job exists (`409 conflict`, `offline_mode`). A check of the same area,
+  producer and product joins an active one, except that a forced check (asking the source
+  again) never waits for an unforced one. Kartograf's metadata cache is Archiwista's own,
+  `metadata.db` in `cache/kartograf/` of the data directory, never Kartograf's default;
+  the area goes to Kartograf as the envelope of its polygon in EPSG:2180 (EPSG:5514 for
+  an area only in CZ), with the country `pl`, `cz` or `auto`. The producer's notices
+  become the job's. (SPEC 5.6, 6.3, D5, ADR-035)
 
 ### Changed
 
