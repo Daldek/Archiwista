@@ -88,6 +88,37 @@ src/archiwista/
 tests/{unit,integration,contract,e2e,perf,fixtures}
 ```
 
+## Project rules
+
+- **Tests** (DEV §10): `unit` (the fixture `index` is an empty index over a generated
+  store), `integration` (real worker processes and HTTP: scanner, jobs, CLI equal to
+  API, agent flow), `contract` (public API of the producers, the import boundary, the
+  error registry, README examples), `e2e` (a real `archiwista serve` and Chromium),
+  `perf`, and `fixtures` (`make_store.py` generates a Kartograf store, also of 50,000
+  slots from the command line). Markers: `live` (network and real services; a real
+  store in `ARCHIWISTA_LIVE_STORE`), `perf` (the synthetic store of 50,000 slots on an
+  SSD in `ARCHIWISTA_PERF_STORE`), `smb` (that store on a real SMB 3 share in
+  `ARCHIWISTA_SMB_STORE`, the local index directory in `ARCHIWISTA_SMB_WORK`); `perf`
+  and `smb` run with `--no-cov`. Names `test_<module>_<function>_<scenario>`; arrange,
+  act, assert; a change in `src/archiwista/web/` runs `tests/e2e` too.
+- **Public surface**: Archiwista is an application, not a library. Public are the HTTP
+  API `/api/v1` (SPEC 9), the `archiwista` command and the source interface for
+  plugins (entry-point group `archiwista.sources`, A-ADR-024; `archiwista.sources`
+  `__all__`). Plugins and the layers above import that interface; the adapter imports
+  `kartograf.__all__` and never an internal module of a producer (A-ADR-014).
+- **Errors** (DEV §11): every error is an `ArchiwistaError` of `errors.py` with a code
+  of the Nogat registry, a reason, details and a hint; the API, the CLI and the jobs
+  describe it through `error_document.describe`. Producer exceptions are caught only in
+  the adapter and become `ProducerError` (package, exception, message): the producer's
+  text reaches the person unchanged (PRD N1.3). The plugin registry raises
+  `SourceUnavailableError` or `SourceIncompatibleError` with the state of the source.
+  Validate at the boundary: a path from outside is resolved and must lie inside a
+  configured root (`PathOutsideRootError`, SPEC 10.1).
+- **Before a commit** run `scripts/gate.sh`; the change also updates the documents it
+  makes untrue (SPEC, DECISIONS, CHANGELOG, PROGRESS). Code, comments and docstrings
+  are English (NumPy docstrings, enforced by ruff `D`); texts for people are in the
+  catalogs only.
+
 ## Documentation map
 
 | For | Read |
@@ -102,10 +133,6 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 | Measurements and acceptance | [docs/reports/](docs/reports/) |
 | Changes for users | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 | Formats on disk (sidecar, `data/`, manifest, plan) | Kartograf, not Archiwista: its `docs/ARCHITECTURE.md` 3.1 to 3.5 |
-
-`docs/DEVELOPMENT_STANDARDS.md` (Polish, derived from the v1 standard) is superseded
-by the Nogat standard and removed when its project-specific rules move here (see
-`docs/PROGRESS.md`).
 
 ## Session workflow
 

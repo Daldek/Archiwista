@@ -162,7 +162,6 @@ i [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md).
 | [`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |
 | [`docs/plans/2026-10-19-plan-v0.2.md`](docs/plans/2026-10-19-plan-v0.2.md), [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md) | wykonanie i pomiary v0.2 |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | stan prac i sprawy otwarte |
-| [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) | standardy kodowania: język, nazewnictwo, formatowanie, testy, git |
 | `mockup/` | klikalny mockup interfejsu do decyzji przed implementacją (uruchomienie: `mockup/README.md`) |
 
 Archiwista zastępuje podprojekt 5 roadmapy Kartografa („GUI webowe”);

@@ -1310,7 +1310,7 @@ pull requestu z polem podpisu CLA (po polsku; bez punktów o testach, dopóki ni
 **Errata 2 (2026-10-18, decyzja użytkownika):** polski w `CONTRIBUTING.md`,
 `CONTRIBUTORS.md` i szablonie pull requestu to błąd — pliki dla kontrybutorów są po
 angielsku, jak w Hydrauliku i IMGWTools (cały kod i to, co go opisuje, po angielsku;
-`docs/DEVELOPMENT_STANDARDS.md` sekcja 0). Tłumaczenie to pierwsze zadanie
+`CLAUDE.md`, DEV-2.1). Tłumaczenie to pierwsze zadanie
 implementacji (`docs/PROGRESS.md`).
 
 ---

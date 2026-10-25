@@ -5,7 +5,7 @@ Historia: [`CHANGELOG.md`](CHANGELOG.md), stan:
 [`PROGRESS.md`](PROGRESS.md), instrukcje:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
 Pomiary i odbiór: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md);
-standardy: [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md).
+standardy: [`CLAUDE.md`](../CLAUDE.md) i standard Nogat 2.1.
 
 Każde twierdzenie o zachowaniu systemu opisuje **kod** w tym repozytorium
 (`src/`, `tests/`), nie plan ani spec. Wymagania i zakres leżą
@@ -1054,7 +1054,7 @@ w powłoce się nie zmienia. Widoki 0.2.0: `map` (start), `catalog`,
 `projects`, `store`, `setup`; nakładki `file`, `own`, `compare`.
 
 **Słownik.** Interfejs nie wpisuje tekstów w komponenty
-(`DEVELOPMENT_STANDARDS.md`): `labels/index.js` składa część wspólną
+(`CLAUDE.md`, DEV-2.3): `labels/index.js` składa część wspólną
 `T` (`common`, `shell`, `setup`), a każdy widok importuje własny plik
 `labels/<widok>.js`, więc widoki nie edytują wspólnego pliku. Teksty mają
 miejsca `{nazwa}` wypełniane przez `t(text, values)`, a formy liczby
