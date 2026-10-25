@@ -68,6 +68,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Compare the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |
 | Own data of a project: files, scan, snapshots | `archiwista files`, `file`, `own-scan`, `snapshot PROJECT FILE [--plan \| --note TEXT]` | `GET /projects/{project}/files`, `POST /projects/{project}/scan`, `POST …/snapshots` |
+| Producers' commands: the catalog, a pasted line read into a call, a check without the network, the line of a call | `archiwista commands list`, `parse PRODUCER LINE`, `validate PRODUCER COMMAND`, `format PRODUCER COMMAND` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
 | Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
 | Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |

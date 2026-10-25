@@ -1205,4 +1205,131 @@ MESSAGES = {
         ", job {job}",
         ", zadanie {job}",
     ),
+    "commands_help": Text(
+        (
+            "Producers' commands: their catalog, a pasted line read into a call, a"
+            " call checked without the network and its command line (--json: the"
+            " models of /api/v1/commands)."
+        ),
+        (
+            "Polecenia producentów: ich katalog, wklejona linia odczytana jako"
+            " wywołanie, wywołanie sprawdzone bez sieci i jego linia polecenia (--json:"
+            " modele /api/v1/commands)."
+        ),
+    ),
+    "commands_list_help": Text(
+        "Lists the commands of the producers' catalogs (--json: CommandList model).",
+        "Wypisuje polecenia z katalogów producentów (--json: model CommandList).",
+    ),
+    "commands_only_producer_help": Text(
+        "Only the commands of this producer, e.g. kartograf.",
+        "Tylko polecenia tego producenta, np. kartograf.",
+    ),
+    "commands_parse_help": Text(
+        (
+            "Reads a pasted command line of a producer into a call (--json:"
+            " CommandCallItem model)."
+        ),
+        (
+            "Odczytuje wklejoną linię polecenia producenta jako wywołanie (--json:"
+            " model CommandCallItem)."
+        ),
+    ),
+    "commands_line_help": Text(
+        (
+            "The command line in quotes, e.g. "
+            '"kartograf sheet parse --sheet N-34-130-D-d-2-4".'
+        ),
+        (
+            "Linia polecenia w cudzysłowie, np. "
+            '"kartograf sheet parse --sheet N-34-130-D-d-2-4".'
+        ),
+    ),
+    "commands_validate_help": Text(
+        (
+            "Checks a call of a command of the producer's catalog without the network"
+            " (--json: CommandCallItem model)."
+        ),
+        (
+            "Sprawdza wywołanie polecenia z katalogu producenta bez sieci (--json:"
+            " model CommandCallItem)."
+        ),
+    ),
+    "commands_store_help": Text(
+        (
+            "Store identifier from the settings, whose directory of the producer a"
+            " command that works on a store is checked with."
+        ),
+        (
+            "Identyfikator magazynu z ustawień, z którego katalogiem producenta jest"
+            " sprawdzane polecenie działające na magazynie."
+        ),
+    ),
+    "commands_format_help": Text(
+        ("Writes the producer's command line of a call (--json: CommandLine model)."),
+        (
+            "Zapisuje linię polecenia producenta dla wywołania (--json: model"
+            " CommandLine)."
+        ),
+    ),
+    "commands_run_help": Text(
+        (
+            "What the line gives beside the options, as a JSON object, e.g. "
+            '\'{{"root": "./data"}}\'.'
+        ),
+        (
+            "To, co linia podaje poza opcjami, jako obiekt JSON, np. "
+            '\'{{"root": "./data"}}\'.'
+        ),
+    ),
+    "commands_producer_help": Text(
+        "Producer identifier, e.g. kartograf.",
+        "Identyfikator producenta, np. kartograf.",
+    ),
+    "commands_command_help": Text(
+        'Command of the producer\'s catalog, e.g. "sheet parse".',
+        "Polecenie z katalogu producenta, np. „sheet parse”.",
+    ),
+    "commands_options_help": Text(
+        (
+            "Options of the call as a JSON object, as the catalog names them, e.g. "
+            '\'{{"sheet": "N-34-130-D-d-2-4"}}\'.'
+        ),
+        (
+            "Opcje wywołania jako obiekt JSON, z nazwami z katalogu, np. "
+            '\'{{"sheet": "N-34-130-D-d-2-4"}}\'.'
+        ),
+    ),
+    "commands_json_object": Text(
+        "must be a JSON object",
+        "musi być obiektem JSON",
+    ),
+    "commands_failed": Text(
+        "Cannot check the command",
+        "Nie można sprawdzić polecenia",
+    ),
+    "commands_item": Text(
+        "{producer} {command}: {summary}",
+        "{producer} {command}: {summary}",
+    ),
+    "commands_none": Text(
+        "No source offers commands.",
+        "Żadne źródło nie udostępnia poleceń.",
+    ),
+    "commands_call": Text(
+        "Command: {producer} {command}",
+        "Polecenie: {producer} {command}",
+    ),
+    "commands_valid": Text(
+        "The call is valid: {producer} {command}",
+        "Wywołanie jest poprawne: {producer} {command}",
+    ),
+    "commands_options": Text(
+        "Options: {options}",
+        "Opcje: {options}",
+    ),
+    "commands_run": Text(
+        "Beside the options: {run}",
+        "Poza opcjami: {run}",
+    ),
 }

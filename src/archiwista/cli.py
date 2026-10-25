@@ -20,6 +20,7 @@ from archiwista.commands import (
     layers,
     owndata,
     previews,
+    producer_commands,
 )
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
@@ -39,7 +40,13 @@ from archiwista.server import open_in_browser, serve_main, token_main
 from archiwista.sources.registry import PluginRegistry, load_registry
 
 # Modules of commands per function (contract "CLI"): one line each.
-COMMAND_MODULES: tuple[CommandModule, ...] = (previews, owndata, compare, layers)
+COMMAND_MODULES: tuple[CommandModule, ...] = (
+    previews,
+    owndata,
+    compare,
+    layers,
+    producer_commands,
+)
 
 
 class _Parser(argparse.ArgumentParser):

@@ -77,6 +77,7 @@ _TAGS = [
     {"name": "catalog", "description": "Products, search, file cards, versions."},
     {"name": "map", "description": "Footprints in a map view and sheet grids."},
     {"name": "areas", "description": "Areas of interest and local coverage."},
+    {"name": "commands", "description": "Producers' commands: catalog, check, line."},
     {"name": "jobs", "description": "Background jobs and their events (SSE)."},
     {"name": "projects", "description": "Projects, their pins and status (read)."},
     {"name": "settings", "description": "Settings (changes: administrators)."},
@@ -144,8 +145,13 @@ def openapi_document(app: FastAPI) -> dict[str, Any]:
         for method, operation in operations.items():
             responses: dict[str, Any] = operation.setdefault("responses", {})
             # FastAPI documents invalid request data as 422; the API answers 400
-            # (``validation_error``, ERR §2), documented below.
-            if responses.pop("422", None) is not None:
+            # (``validation_error``, ERR §2), documented below. A 422 a route
+            # documents itself is a problem of its own (``unsupported``) and stays.
+            validation = responses.get("422")
+            if validation is not None and PROBLEM_MEDIA_TYPE not in validation.get(
+                "content", {}
+            ):
+                del responses["422"]
                 responses.setdefault("400", {})
             wanted = [
                 int(status)

@@ -55,6 +55,10 @@ ROUTES = {
     ("get", "/api/v1/projects/{project}/status"),
     ("get", "/api/v1/settings"),
     ("put", "/api/v1/settings"),
+    ("get", "/api/v1/commands"),
+    ("post", "/api/v1/commands/parse"),
+    ("post", "/api/v1/commands/validate"),
+    ("post", "/api/v1/commands/format"),
 }
 
 
@@ -386,6 +390,8 @@ def test_api_openapi_documents_routes_examples_and_problems(
         reference = ok.get("schema", {}).get("$ref")
         if reference is not None:
             assert schemas[reference.rsplit("/", 1)[1]]["examples"]
+    # A 422 a route documents itself stays (a producer without commands).
+    assert "422" in operations[("get", "/api/v1/commands")]["responses"]
     names = {
         item["name"] for item in operations[("get", "/api/v1/slots")]["parameters"]
     }

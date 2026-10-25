@@ -13,7 +13,8 @@ project's own cause (ERR-1): the codes of earlier versions, such as
 now. Other members of ``details`` give the context: ``source`` for an
 unavailable or incompatible producer plugin (with the pip requirement that
 fixes it), ``kartograf`` or ``imgwtools`` for a producer's own error (its
-exception and unchanged message), ``problems`` for invalid settings, ``job``
+exception and unchanged message), ``option`` for the option of a command a
+producer or Archiwista refused, ``problems`` for invalid settings, ``job``
 for the job in the way of a ``409 conflict`` (or building the preview of a
 ``preview_not_ready``, else ``building`` or ``build_required``),
 ``preview_reason`` for an ``unsupported`` preview (its code, description and
@@ -53,6 +54,7 @@ from archiwista.errors import (
     AreaTooComplexError,
     AreaTooLargeError,
     AreaUnreadableError,
+    CommandRequestError,
     ConflictError,
     IndexQueryError,
     InvalidChangeError,
@@ -71,6 +73,7 @@ from archiwista.errors import (
     SnapshotBlockedError,
     SourceIncompatibleError,
     SourceUnavailableError,
+    UnsupportedError,
 )
 from archiwista.messages import message
 
@@ -92,6 +95,8 @@ ANSWERED: tuple[type[ArchiwistaError], ...] = (
     IndexQueryError,
     SettingsValidationError,
     ProducerError,
+    CommandRequestError,
+    UnsupportedError,
     InvalidRefError,
     PreviewParameterError,
     PreviewUnavailableError,
@@ -122,9 +127,12 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             "invalid_request",
             "api.validation_error",
             "Invalid parameters or body (`errors`: the JSON Pointer, type and"
-            " message of each value), or a value over a limit (`details.reason`:"
+            " message of each value), a value over a limit (`details.reason`:"
             " `area_too_large` over 50 MB or 200 MB unpacked, `area_too_complex`,"
-            " `invalid_ref`, `request_too_large`).",
+            " `invalid_ref`, `request_too_large`), a producer's refusal of a"
+            " command (`kartograf_error`: its own text and hint, the option in"
+            " `details.option`) or a command request without what Archiwista adds"
+            " (`unknown_command`, `store_required`, `store_without_producer`).",
         ),
         401: (
             "unauthorized",

@@ -102,6 +102,28 @@ command-line interface may change.
   index does not know goes to the sources that scan by segment, as it did before. IMGWTools
   reads only its whole directory (its dataset is a label), so a job that names a segment
   it owns fails as `unsupported` before anything is scanned. (SPEC 4.4, ADR 0032)
+- The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
+  `archiwista commands list` list the commands of every producer whose plugin offers
+  them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps
+  one) with their options (JSON type, whether required, the allowed values and their
+  meanings, the default, bounds, the group of mutually exclusive options and the path
+  role of a file path), what a run does (`read_only`, `writes`, `network`, `check`,
+  `store`) and example lines, the summary and the description in the language of the
+  request. `POST /commands/parse` (`commands parse PRODUCER LINE`) reads a pasted
+  command line into a call (`options`, and `run`: the store root and the flags beside
+  them), `POST /commands/validate` (`commands validate PRODUCER COMMAND --options JSON
+  [--store ID]`) checks a call without the network, a command on a store with the
+  directory of a configured store and never with the producer's default root, and `POST
+  /commands/format` (`commands format …`) writes the producer's canonical line of a
+  call, which parses back into the same call. The producer's refusal keeps its own text
+  and hint, with the option in `details.option` (`400 validation_error`,
+  `kartograf_error`); Archiwista refuses an option that is a file path (`403
+  path_outside_root`), a command outside the catalog (`unknown_command`) and a command
+  on a store without its store (`store_required`, `store_without_producer`; `404` for an
+  unknown store). A producer whose plugin is missing refuses only its own commands
+  (`503 source_unavailable`), one without commands answers `422 unsupported`
+  (`no_commands`). Nothing of this uses the network or writes. (SPEC 9.2, SPEC 12
+  KB-1 to KB-4, ADR-034)
 
 ### Changed
 
@@ -241,6 +263,9 @@ command-line interface may change.
   environment that resolved affine 2 every preview was unreadable (Hydrograf caps
   affine below 3, and the environment of the ecosystem's integration run held both).
   A resolver now refuses such an environment.
+- The OpenAPI document keeps the `422` problems a route documents itself (`unsupported`
+  and `calculation_error` of the preview routes, `unsupported` of `/commands`): only
+  FastAPI's own `422` of invalid request data becomes the `400` the API answers.
 
 ## [0.2.0] - 2026-10-20
 

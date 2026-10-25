@@ -33,6 +33,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | files of a project and the card of a file | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
 | plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
+| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -281,7 +282,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-## 6. Previews, layers, comparison and own data (v0.2)
+## 6. Previews, layers, comparison, own data (v0.2) and producers' commands (v0.3)
 
 Take a `ref` from the answer of the card of a version, of an own file or of a
 snapshot: `version:<store>:<version-path>`, `file:<project>:<file-path>` or
@@ -358,6 +359,33 @@ data of an invisible project (`404` for a direct address); an ordinary store
 scan is shared. The SSE sends `progress`, `notice` and `state`, and a client
 resumes after `Last-Event-ID`.
 
+**The producers' commands (v0.3, ADR-034).** `GET /commands` lists the commands
+of every producer whose plugin offers them (Kartograf's catalog; `?producer=`
+keeps one producer): each with its options (JSON type, whether required, the
+allowed values and their meanings, the default, bounds, the `group` of mutually
+exclusive options and the `path_role` of a file path), what a run does
+(`read_only`, `writes`, `network`, `check`, `store`) and complete example lines;
+the summary and the description follow `Accept-Language`. `POST /commands/parse`
+reads a pasted line into a call (`command`, `options`, and `run`: the store root
+and the flags the line gives beside the options), `POST /commands/validate`
+checks a call without the network and `POST /commands/format` writes the
+producer's canonical line of a call, which parses back into the same call. A
+command that works on a store is checked with the directory of a configured
+store (`store`), never with the producer's default root, and an option that is a
+file path is refused (`403`, `path_outside_root`). The producer's own refusal is
+`400 validation_error` with its text and hint and the option in
+`details.option`. Nothing here downloads or writes.
+
+```sh
+archiwista commands list --producer=kartograf --json
+archiwista commands parse kartograf "kartograf sheet parse --sheet N-34-130-D-d-2-4" --json
+archiwista commands validate kartograf "elevation download" --store=demo --json \
+  --options='{"product": "nmt", "sheet": "N-34-130-D-d-2-4", "resolution": "1m", "vertical_crs": "EVRF2007"}'
+curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
+  -d '{"producer": "kartograf", "line": "kartograf sheet parse --sheet N-34-130-D-d-2-4"}' \
+  "$BASE/commands/parse"
+```
+
 ## 7. Errors
 
 Every HTTP error is `application/problem+json` (RFC 9457) with a code of the
@@ -402,13 +430,13 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); no reason: an unknown store, area or cursor |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); no reason: an unknown store, area or cursor |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token |
-| 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store |
+| 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
 | 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds) |
-| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`) |
+| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; wait for `Retry-After` |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
