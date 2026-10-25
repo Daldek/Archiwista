@@ -130,6 +130,13 @@ class EntryMeta:
     ``parent_request`` is a stable text key shared by the files of one
     producer request (e.g. both sides of a border). ``raw_sidecar`` keeps
     the producer's metadata unchanged for display only.
+
+    ``provider``, ``written_by`` and ``producer_version`` are the fields of
+    the sidecar core every Nogat tool writes (DEV-19.16): the organisation
+    that publishes the data (``IMGW-PIB``, ``CHMI``), the package that wrote
+    the file (the sidecar's ``producer``, e.g. ``kartograf``, ``imgwtools``;
+    not the Archiwista producer id in ``producer``) and its version. A
+    producer that does not know one leaves it ``None``.
     """
 
     producer: str
@@ -161,6 +168,9 @@ class EntryMeta:
     vertical_crs: str | None = None
     resolution: str | None = None
     nodata: float | None = None
+    provider: str | None = None
+    written_by: str | None = None
+    producer_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
