@@ -229,12 +229,13 @@ command-line interface may change.
   worker that did not stop, so one whose supervisor was gone could stay for good: under
   `--cov` an interrupt that lands in coverage's tracer at the wrong moment leaves the
   tracer's lock held, and the worker waits for it in its exit handler.
-- Processes that open a new index, state database or preview cache at the same moment
-  all open it (the server, the job workers, the build processes and the command line
-  share them). SQLite refused the switch of `index.sqlite`, `state.sqlite` or
-  `cache.sqlite` to WAL with "database is locked" at once, without the busy timeout, in
-  a process that read the file's header while another one wrote it, and that process
-  ended at its start; now it tries again for up to the busy timeout.
+- Processes that open a new index, state database, preview cache or unit cache of the
+  Kartograf adapter at the same moment all open it (the server, the job workers, the
+  build processes and the command line share them). SQLite refused the switch of
+  `index.sqlite`, `state.sqlite`, `cache.sqlite` or `unit_bboxes.sqlite` to WAL with
+  "database is locked" at once, without the busy timeout, in a process that read the
+  file's header while another one wrote it, and that process ended at its start; now
+  it tries again for up to the busy timeout.
 - Archiwista declares `affine>=3,<4`. The previews transform with the `@` operator of
   affine 3; rasterio also admits affine 2, where `@` raises `TypeError`, so in an
   environment that resolved affine 2 every preview was unreadable (Hydrograf caps

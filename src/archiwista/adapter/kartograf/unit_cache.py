@@ -16,9 +16,11 @@ from typing import Any
 
 from kartograf import BBox
 
+from archiwista.wal import use_wal
+
 type UnitKey = tuple[str, str]
 
-_BUSY_TIMEOUT_S = 30.0
+_BUSY_TIMEOUT_MS = 30_000
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS unit_bboxes (
     kind TEXT NOT NULL,
@@ -115,10 +117,14 @@ class UnitBBoxCache(MutableMapping[UnitKey, BBox]):
         if self._connection is None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             connection = sqlite3.connect(
-                self.path, timeout=_BUSY_TIMEOUT_S, check_same_thread=False
+                self.path, timeout=_BUSY_TIMEOUT_MS / 1000, check_same_thread=False
             )
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute(_SCHEMA)
+            try:
+                use_wal(connection, timeout_ms=_BUSY_TIMEOUT_MS)
+                connection.execute(_SCHEMA)
+            except BaseException:
+                connection.close()
+                raise
             # Closed with the mapping, or at exit, never left to the collector.
             self._finalizer = weakref.finalize(self, connection.close)
             self._connection = connection
