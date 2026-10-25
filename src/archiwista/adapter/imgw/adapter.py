@@ -10,8 +10,9 @@ versions. The producer's own record rides along as the entry's handle.
 
 IMGWTools has no links and no segments: a slot is the directory that holds
 its versions (``<slot>/<label>_<sha8>/<file>``) and an entry's ``segment`` is
-its dataset key, so the files of IMGW-PIB and ČHMÚ never mix. ``iter_store``
-takes no list of known versions: every scan reads every sidecar. Exceptions
+its dataset, so the files of IMGW-PIB and ČHMÚ never mix. The versions the
+index knows (``ScanScope.known_versions``) are the ``skip_versions`` of
+``iter_store``: they come back ``skipped``, with no sidecar read. Exceptions
 of the producer surface as ``ProducerError`` with the message unchanged.
 """
 
@@ -58,6 +59,9 @@ _MARKER = STORE_MARKERS[PRODUCER]
 # contract test compares them with its verdicts.
 _LAYOUT = frozenset({"archives", "series", "stations", "pmaxtp"})
 _STATE_FILES = frozenset({"api_keys.json"})
+# The codes of ``StoreInfo.problem_codes`` of a marker the producer refuses: a
+# file that is no JSON object with a schema, or one of another schema.
+_MARKER_REFUSED = frozenset({"invalid_marker", "unsupported_store"})
 # A directory beside the versions of an archive slot: its observation register.
 _REGISTER = "observations"
 # Kinds of a slot ``<kind>:<dataset>[:<selector>]`` (IMGWTools spec 13.7).
@@ -145,14 +149,15 @@ class ImgwAdapter:
             The store root.
         scope : ScanScope or None, optional
             The store has no segments, units or parts, so only an empty scope
-            is valid; ``known_versions`` is ignored (``iter_store`` reads
-            every sidecar).
+            is valid; ``known_versions`` becomes ``skip_versions``: the named
+            versions come back ``skipped`` without ``meta``, and their
+            directories are neither listed nor read.
 
         Yields
         ------
         SourceEntry
-            Versions with their metadata, problems and observations; the
-            ``handle`` is the producer's ``StoreEntry``.
+            Versions with their metadata (or ``skipped``), problems and
+            observations; the ``handle`` is the producer's ``StoreEntry``.
 
         Raises
         ------
@@ -170,7 +175,7 @@ class ImgwAdapter:
             or scope.partition is not None
         ):
             raise ValueError(f"producer {self.producer!r} has no segments")
-        return self._entries(root)
+        return self._entries(root, {} if scope is None else scope.known_versions)
 
     def read_meta(self, entry: SourceEntry) -> EntryMeta:
         """Read the metadata of one entry again, on demand.
@@ -276,9 +281,18 @@ class ImgwAdapter:
     def _unsupported(
         self, root: Path, info: StoreInfo, names: frozenset[str]
     ) -> SourceState:
-        """Judge a directory whose marker IMGWTools does not accept."""
-        marker = root / _MARKER
-        if marker.is_file() and not marker.is_symlink():
+        """Judge a directory IMGWTools does not read, by the codes of ``store_info``.
+
+        ``invalid_marker`` and ``unsupported_store`` are a marker the producer
+        refuses. ``missing_marker`` is one code for the layout of a store
+        without its marker and for a directory that is no store, and
+        ``imgw-store.json`` of another producer is a marker it does not know,
+        so the names in the directory tell those apart.
+        """
+        codes = frozenset(info.problem_codes)
+        if "missing_store" in codes:
+            return self._state("error", root, detail="; ".join(info.problems))
+        if codes & _MARKER_REFUSED:
             text = message(
                 "source.imgw_unsupported_marker",
                 found=info.schema or message("source.schema_unknown"),
@@ -309,12 +323,14 @@ class ImgwAdapter:
             )
         return self._state("available", root)
 
-    def _entries(self, root: Path) -> Iterator[SourceEntry]:
+    def _entries(
+        self, root: Path, known: Mapping[str, tuple[str, ...]]
+    ) -> Iterator[SourceEntry]:
         store = str(root)
         base = root.expanduser().absolute()
         try:
             os.listdir(root)
-            for entry in iter_store(root):
+            for entry in iter_store(root, skip_versions=known or None):
                 yield _source_entry(store, base, entry)
         except OSError as error:
             raise _unavailable(store, str(error)) from error
@@ -339,6 +355,7 @@ def _source_entry(store: str, base: Path, entry: StoreEntry) -> SourceEntry:
         slot_path=_slot_path(kind, relative, entry.slot),
         version_path=relative if kind == "version" else None,
         problem=(entry.problem_code or "unknown") if kind == "problem" else None,
+        skipped=entry.skipped,
         meta=meta,
         handle=entry,
     )
@@ -399,7 +416,8 @@ def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
         raw_sidecar=_raw_sidecar(meta),
         country=meta.country,
         provider=meta.provider,
-        written_by=PACKAGE,
+        written_by=meta.producer,
+        producer_version=meta.producer_version,
         content_sha256=meta.content_sha256,
         content_form=meta.content_form,
     )
@@ -408,12 +426,13 @@ def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
 def _raw_sidecar(meta: Meta) -> dict[str, object]:
     """Return the sidecar as IMGWTools parsed it, for display.
 
-    ``Meta`` has neither the sidecar's ``producer_version`` nor its text, so
-    this is the document of its fields, not the file.
+    ``Meta`` does not keep the text of the file, so this is the document of
+    its fields, not the file.
     """
     raw: dict[str, object] = {
         "schema": meta.schema,
-        "producer": PACKAGE,
+        "producer": meta.producer,
+        "producer_version": meta.producer_version,
         "dataset": meta.dataset,
         "provider": meta.provider,
         "country": meta.country,

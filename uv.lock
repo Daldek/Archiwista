@@ -86,7 +86,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "imgwtools", extras = ["store"], marker = "extra == 'imgw'", git = "https://github.com/Daldek/IMGWTools?rev=a30452182b01f47cc18e48466da4edf4d0c8cb6a" },
+    { name = "imgwtools", extras = ["store"], marker = "extra == 'imgw'", git = "https://github.com/Daldek/IMGWTools?rev=7e2114e1424903f1fd8fc036a2cb7aa81df44287" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=8e9bcbb058d11f06afae5a65e62f31870f69d169" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
     { name = "packaging", specifier = ">=24" },
@@ -714,7 +714,7 @@ wheels = [
 [[package]]
 name = "imgwtools"
 version = "3.0.0"
-source = { git = "https://github.com/Daldek/IMGWTools?rev=a30452182b01f47cc18e48466da4edf4d0c8cb6a#a30452182b01f47cc18e48466da4edf4d0c8cb6a" }
+source = { git = "https://github.com/Daldek/IMGWTools?rev=7e2114e1424903f1fd8fc036a2cb7aa81df44287#7e2114e1424903f1fd8fc036a2cb7aa81df44287" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },

@@ -43,7 +43,7 @@ dependencies = [
 # `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
 # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
 imgw = [
-    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@a30452182b01f47cc18e48466da4edf4d0c8cb6a",
+    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@7e2114e1424903f1fd8fc036a2cb7aa81df44287",
 ]
 
 [dependency-groups]
@@ -114,11 +114,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # jsonschema (contract tests) ships neither a py.typed marker nor bundled stubs.
 module = ["jsonschema", "jsonschema.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# imgwtools (the `imgw` extra) ships no py.typed marker.
-module = ["imgwtools", "imgwtools.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

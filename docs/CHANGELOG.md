@@ -34,7 +34,10 @@ command-line interface may change.
   and station catalogs as versions, the producer's own problems, the observation register
   of a slot as history), judges the marker `imgw-store.json` and says why it refuses a
   directory (`no_marker` with `imgw store init --root <path>`, `unsupported_marker`,
-  `foreign_store`, `not_a_store`). `GET /sources` and `archiwista doctor` list it; without
+  `foreign_store`, `not_a_store`). A marker without `created_by` is accepted, as the
+  producer accepts it. An incremental scan reads no sidecar of a version the index knows
+  (`skip_versions` of `iter_store`), and a file card shows the package and the version
+  that wrote the sidecar. `GET /sources` and `archiwista doctor` list the source; without
   the extra it is `not_installed` with `pip install "archiwista[imgw]"` as the fix, and
   Kartograf is unaffected. A store takes an IMGW directory beside or instead of its
   Kartograf one (the next entry). `uv sync --locked --all-extras` installs the extra; CI

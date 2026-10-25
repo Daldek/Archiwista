@@ -54,10 +54,13 @@ side.
    write creates the marker); a root with `archives`, `series`, `stations` or `pmaxtp` and
    no marker is `incompatible` with the reason `no_marker` and the hint
    `imgw store init --root <path>`; another schema or an unusable marker is
-   `unsupported_marker`; `kartograf-store.json` is `foreign_store`; any other directory is
-   `not_a_store`. `SourceState` carries the `reason` and the `hint`. The contract tests pin
-   every verdict to what `init_store`, `open_store` and `iter_store` of IMGWTools do with the
-   same directory, so the judgement cannot drift.
+   `unsupported_marker`, decided by the codes of `StoreInfo.problem_codes`
+   (`unsupported_store`, `invalid_marker`); `kartograf-store.json` is `foreign_store`; any
+   other directory is `not_a_store`. The producer gives a layout without its marker and a
+   directory that is no store the same code (`missing_marker`), so the names in the
+   directory tell those apart. `SourceState` carries the `reason` and the `hint`. The
+   contract tests pin every verdict to the codes of `store_info` and to what `init_store`
+   and `open_store` of IMGWTools do with the same directory, so the judgement cannot drift.
 6. **A settings change looks for nested stores two levels down.** DEV-19.14 wants the
    ancestors and the existing descendants of a store root searched for markers. The producers'
    writers walk the whole tree below a root before they write; a settings change that did the
@@ -74,17 +77,19 @@ and as a warning of `doctor`. The tests that assumed Kartograf is the only sourc
 the tests of the adapter import IMGWTools and are not collected without it. The pinned
 commit is not on GitHub yet, so the lock resolves it only where the uv git database of
 IMGWTools holds it, and CI cannot be green before IMGWTools is pushed (plan, risks); the
-release pull request replaces the commit with the tag. IMGWTools lacks four things the adapter
-works around without changing the producer, to be requested there (DEV-17.5): a machine code
-in `StoreInfo`, the `producer` and `producer_version` of a sidecar in `Meta`, a list of
-known versions for `iter_store` (every scan reads every sidecar) and one rule for a marker
-without `created_by` (the reader refuses it, `open_store` accepts it). A store takes an IMGW
-directory beside or instead of its Kartograf one (the settings step of the same plan,
-`StoreConfig.imgw`): the scan indexes its files as versions of their slots, without a
-current version; a source that is not available has its directory skipped and its entry
-kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is refused
-by the marker file names at its own field (DEV-19.14), looking two levels down because the
-producer's writer, which looks at the whole tree, is not run by a settings change. The
-current version, the index of IMGW slots, the stations and the series coverage come after it.
+release pull request replaces the commit with the tag. The four things IMGWTools lacked at
+its first commit of ADR-007 were requested there (DEV-17.5) and are met at the pinned
+commit: a machine code of each problem in `StoreInfo.problem_codes`, the `producer` and
+`producer_version` of a sidecar in `Meta`, `iter_store(skip_versions=)` in the shape of
+`ScanScope.known_versions` (an incremental scan reads no sidecar of a known version) and
+one rule for a marker (the reader needs only its `schema`, as `open_store` does). A store
+takes an IMGW directory beside or instead of its Kartograf one (the settings step of the
+same plan, `StoreConfig.imgw`): the scan indexes its files as versions of their slots,
+without a current version; a source that is not available has its directory skipped and its
+entry kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is
+refused by the marker file names at its own field (DEV-19.14), looking two levels down
+because the producer's writer, which looks at the whole tree, is not run by a settings
+change. The current version, the index of IMGW slots, the stations and the series coverage
+come after it.
 
 **Errata:** none.

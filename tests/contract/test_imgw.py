@@ -13,21 +13,23 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 import imgwtools
 import pytest
 from imgwtools import (
+    IMGWError,
     IMGWStoreConflictError,
-    IMGWStoreError,
+    Meta,
     add_project_task,
     init_project,
     init_store,
     iter_store,
     open_store,
     read_meta,
+    store_info,
 )
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -52,6 +54,7 @@ from archiwista.sources import (
     SourceContext,
     SourceEntry,
 )
+from tests.fixtures.imgw_edits import add_version, drop_sidecar, rewrite_sidecar
 
 type Stores = Callable[[str], Path]
 type Row = tuple[object, ...]
@@ -93,6 +96,18 @@ def _rows(entries: list[SourceEntry]) -> Counter[Row]:
     )
 
 
+def _produced_version(meta: Meta) -> Mapping[str, object]:
+    """Return the ``extra.version`` object of the producer's own parse of a sidecar."""
+    version = meta.extra["version"]
+    assert isinstance(version, Mapping)
+    return version
+
+
+def _produced_label(meta: Meta | None) -> object:
+    """Return the version label of the producer's own parse of a sidecar."""
+    return None if meta is None else _produced_version(meta)["label"]
+
+
 def _producer_rows(root: Path) -> Counter[Row]:
     """Return the same rows from the producer's own scan."""
     kinds = {"problem": "problem", "observation": "observation"}
@@ -101,7 +116,7 @@ def _producer_rows(root: Path) -> Counter[Row]:
             kinds.get(entry.kind, "version"),
             entry.slot,
             None if entry.version is None else entry.version.relative_to(root),
-            None if entry.meta is None else entry.meta.extra["version"]["label"],
+            _produced_label(entry.meta),
             None if entry.meta is None else entry.meta.sha256,
             entry.problem_code,
         )
@@ -309,13 +324,22 @@ def test_read_meta_carries_the_common_core_for_an_archive_a_series_and_a_catalog
         produced.license.id,
         produced.license.attribution,
     )
-    assert (meta.written_by, meta.label, meta.label_source) == (
+    assert (meta.written_by, meta.producer_version) == (
+        produced.producer,
+        produced.producer_version,
+    )
+    assert (meta.written_by, meta.producer_version) == (
         "imgwtools",
-        produced.extra["version"]["label"],
-        produced.extra["version"]["label_source"],
+        imgwtools.__version__,
+    )
+    assert (meta.label, meta.label_source) == (
+        _produced_label(produced),
+        _produced_version(produced)["label_source"],
     )
     assert meta.raw_sidecar is not None
     assert meta.raw_sidecar["schema"] == "imgw-meta/1"
+    assert meta.raw_sidecar["producer"] == "imgwtools"
+    assert meta.raw_sidecar["producer_version"] == produced.producer_version
     assert meta.raw_sidecar["request"] == produced.request
     assert meta.raw_sidecar["extra"] == produced.extra
     assert bool(meta.source_files) == (slot == HYDRO_SERIES)
@@ -380,6 +404,93 @@ def test_scan_errors_and_scopes(adapter: ImgwAdapter, tmp_path: Path) -> None:
             adapter.iter_entries(tmp_path, scope=scope)
 
 
+def _known(entries: list[SourceEntry]) -> dict[str, tuple[str, ...]]:
+    """Return the versions an index reports to a scan: directory → data files."""
+    known: dict[str, list[str]] = {}
+    for entry in entries:
+        if entry.kind == "version":
+            directory = entry.relative_path.parent.as_posix()
+            known.setdefault(directory, []).append(entry.relative_path.name)
+    return {directory: tuple(names) for directory, names in known.items()}
+
+
+def _places(entries: list[SourceEntry]) -> Counter[Row]:
+    """Return where each entry lies and what it is, not what was read of it."""
+    return Counter(
+        (e.kind, e.segment, e.slot_path, e.relative_path, e.problem) for e in entries
+    )
+
+
+@pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
+def test_known_versions_come_back_skipped_with_no_sidecar_read(
+    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+) -> None:
+    """``known_versions`` is ``skip_versions``: the same entries, no version read."""
+    root = imgw_store(variant)
+    full = _entries(adapter, root)
+
+    again = list(
+        adapter.iter_entries(root, scope=ScanScope(known_versions=_known(full)))
+    )
+
+    assert _places(again) == _places(full)
+    versions = [e for e in again if e.kind == "version"]
+    assert versions and all(e.skipped and e.meta is None for e in versions)
+    assert not any(e.skipped for e in again if e.kind != "version")
+
+
+def test_what_is_not_known_is_read_in_full(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """Read what is not known in full; a known version is not looked at.
+
+    A new version has its meta and a new broken one is a problem; the caller
+    vouches for a known one, and a scan that names none sees what broke.
+    """
+    root = _copy(imgw_store, tmp_path / "store")
+    known = _known(_entries(adapter, root))
+    fresh = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-22")
+    broken = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-23")
+    drop_sidecar(root, broken)
+    (series,) = [p for p in known if p.startswith(f"{HYDRO_SERIES}/")][:1]
+    vouched = f"{series}/series.json"
+    drop_sidecar(root, vouched)
+
+    scoped = list(adapter.iter_entries(root, scope=ScanScope(known_versions=known)))
+    unscoped = _entries(adapter, root)
+
+    by_path = {e.relative_path.as_posix(): e for e in scoped}
+    assert (by_path[fresh].skipped, by_path[fresh].meta is not None) == (False, True)
+    assert (by_path[vouched].skipped, by_path[vouched].meta) == (True, None)
+    problems = [(e.problem, e.relative_path.as_posix()) for e in scoped if e.problem]
+    assert problems == [("missing_sidecar", Path(broken).parent.as_posix())]
+    assert sorted(e.relative_path.as_posix() for e in unscoped if e.problem) == sorted(
+        [Path(broken).parent.as_posix(), series]
+    )
+
+
+def test_a_version_written_by_an_older_release_keeps_its_number(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """The sidecar's ``producer`` and ``producer_version`` are the file's own."""
+    root = _copy(imgw_store, tmp_path / "store")
+    older = next(e for e in _entries(adapter, root) if e.slot_path == ARCHIVE_SLOT)
+    rewrite_sidecar(root, older.relative_path.as_posix(), producer_version="2.9.0")
+
+    entries = {e.relative_path: e for e in _entries(adapter, root)}
+
+    meta = entries[older.relative_path].meta
+    assert meta is not None and meta.raw_sidecar is not None
+    assert (meta.written_by, meta.producer_version) == ("imgwtools", "2.9.0")
+    assert meta.raw_sidecar["producer_version"] == "2.9.0"
+    others = {
+        e.meta.producer_version
+        for path, e in entries.items()
+        if e.meta is not None and path != older.relative_path
+    }
+    assert others == {imgwtools.__version__}
+
+
 def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
     imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
 ) -> None:
@@ -402,10 +513,11 @@ def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
 class Case:
     """A directory of the probe table: how it is built, the verdict, the producer's.
 
-    ``call`` is the IMGWTools call that pins the verdict: ``init_store`` or
-    ``open_store`` (the writer's) or ``iter_store`` (the reader's problem
-    code: the reader judges a marker without ``created_by`` unsupported where
-    the writer opens it). ``refused`` says whether the producer refuses the
+    ``code`` is the first of the ``StoreInfo.problem_codes`` the reader gives
+    (``None`` for a store it reads): the adapter judges by it, and by the
+    names in the directory where one code covers several directories.
+    ``call`` is the IMGWTools writer call that pins the verdict: ``init_store``
+    or ``open_store``. ``refused`` says whether the writer refuses the
     directory and ``why`` is the ``details.reason`` of the refusal.
     """
 
@@ -413,6 +525,7 @@ class Case:
     build: Callable[[Path, Path], None]
     status: str
     reason: str | None
+    code: str | None
     call: str
     refused: bool
     why: str | None = None
@@ -486,15 +599,25 @@ def _other_files(root: Path, store: Path) -> None:
 
 
 UNSUPPORTED = ("incompatible", "unsupported_marker")
+NO_MARKER = "missing_marker"
 CASES = [
-    Case("empty", _empty, "available", None, "init_store", False),
-    Case("state_file_only", _state_file_only, "available", None, "init_store", False),
-    Case("store", _whole_store, "available", None, "open_store", False),
+    Case("empty", _empty, "available", None, NO_MARKER, "init_store", False),
+    Case(
+        "state_file_only",
+        _state_file_only,
+        "available",
+        None,
+        NO_MARKER,
+        "init_store",
+        False,
+    ),
+    Case("store", _whole_store, "available", None, None, "open_store", False),
     Case(
         "no_marker",
         _no_marker,
         "incompatible",
         "no_marker",
+        NO_MARKER,
         "open_store",
         True,
         "no_marker",
@@ -504,27 +627,44 @@ CASES = [
         _layout_only,
         "incompatible",
         "no_marker",
+        NO_MARKER,
         "open_store",
         True,
         "no_marker",
     ),
     Case(
-        "other_schema", _other_schema, *UNSUPPORTED, "open_store", True, "unsupported"
+        "other_schema",
+        _other_schema,
+        *UNSUPPORTED,
+        "unsupported_store",
+        "open_store",
+        True,
+        "unsupported",
     ),
-    Case("marker_not_json", _marker_not_json, *UNSUPPORTED, "open_store", True),
+    Case(
+        "marker_not_json",
+        _marker_not_json,
+        *UNSUPPORTED,
+        "invalid_marker",
+        "open_store",
+        True,
+        "invalid_marker",
+    ),
     Case(
         "no_created_by",
         _without_created_by,
-        *UNSUPPORTED,
-        "iter_store",
-        True,
-        "invalid_marker",
+        "available",
+        None,
+        None,
+        "open_store",
+        False,
     ),
     Case(
         "kartograf",
         _kartograf,
         "incompatible",
         "foreign_store",
+        NO_MARKER,
         "init_store",
         True,
         "nested_store",
@@ -534,6 +674,7 @@ CASES = [
         _kartograf_with_layout,
         "incompatible",
         "foreign_store",
+        NO_MARKER,
         "init_store",
         True,
         "nested_store",
@@ -543,6 +684,7 @@ CASES = [
         _parent_of_a_store,
         "incompatible",
         "not_a_store",
+        NO_MARKER,
         "init_store",
         True,
         "nested_store",
@@ -552,6 +694,7 @@ CASES = [
         _other_files,
         "incompatible",
         "not_a_store",
+        NO_MARKER,
         "init_store",
         True,
         "not_empty",
@@ -574,13 +717,12 @@ def test_probe_judges_a_directory_as_the_producer_does(
     assert (state.supported_versions, state.schemas) == (SUPPORTED_VERSIONS, SCHEMAS)
     assert (state.detail is None) == (case.status == "available")
     assert (state.hint is None) == (case.reason != "no_marker")
+    assert next(iter(store_info(root).problem_codes), None) == case.code
     calls = {"init_store": init_store, "open_store": open_store}
-    if case.call == "iter_store":
-        assert [entry.problem_code for entry in iter_store(root)] == [case.why]
-    elif not case.refused:
+    if not case.refused:
         assert calls[case.call](root).root == root
     else:
-        with pytest.raises(IMGWStoreError) as refused:
+        with pytest.raises(IMGWError) as refused:
             calls[case.call](root)
         assert refused.value.details.get("reason") == case.why
         assert isinstance(refused.value, IMGWStoreConflictError) == (
