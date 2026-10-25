@@ -58,6 +58,16 @@ MESSAGES = merge_messages(
             "zakończ wszystkie sesje agentów i unieważnij niewykorzystane tokeny"
         ),
         "cli_port_invalid": "port musi być liczbą od {minimum} do 65535",
+        "cli_verbose_help": "pokaż na stderr komunikaty diagnostyczne (poziom debug)",
+        "cli_quiet_help": "pokaż na stderr tylko błędy (poziom error)",
+        "cli_log_options_exclusive": "opcje --verbose i --quiet wykluczają się",
+        "cli_log_level_invalid": (
+            "Zmienna {variable} ma wartość „{value}”, która nie jest poziomem"
+            " dziennika; dozwolone: {allowed}."
+        ),
+        "cli_log_level_hint": (
+            "Ustaw zmienną na jedną z dozwolonych wartości albo ją usuń."
+        ),
         "serve_host_refused": (
             "Odmowa uruchomienia na adresie {host}: bez trybu zespołu Archiwista"
             " nasłuchuje wyłącznie na {loopback}."

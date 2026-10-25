@@ -23,6 +23,12 @@ command-line interface may change.
   `uv sync --locked`, the gate, the CLA and where to report security issues, and
   the pull request template is `.github/PULL_REQUEST_TEMPLATE.md` with the gate
   and CLA checkboxes. (DEV-13.7, DEV-16.2, DEV-16.4)
+- `--verbose` (debug) and `--quiet` (errors only) on every command, before or after its
+  name, and the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`;
+  default `warning`): the log goes to standard error through one handler, the server
+  and the job and render processes follow the level, and a variable that names no level
+  is a `validation_error`. Uvicorn's start-up lines show only with `--verbose` or
+  `ARCHIWISTA_LOG_LEVEL=info`. (DEV-12.2)
 
 ### Changed
 

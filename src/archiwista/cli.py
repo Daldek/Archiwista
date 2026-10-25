@@ -5,7 +5,7 @@ import os
 import sys
 import traceback
 from collections.abc import Callable
-from typing import NoReturn, cast
+from typing import Any, NoReturn, cast
 
 from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
 from archiwista.commands import (
@@ -20,6 +20,13 @@ from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
 from archiwista.error_document import Problem, refuse
 from archiwista.jobs.reindex import reindex_main
+from archiwista.logs import (
+    ENV_LOG_LEVEL,
+    LOG_LEVELS,
+    InvalidLogLevelError,
+    configure_logging,
+    resolve_log_level,
+)
 from archiwista.messages import MESSAGES
 from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
 from archiwista.security import LOOPBACK_HOST
@@ -31,7 +38,27 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (previews, owndata, compare, layers
 
 
 class _Parser(argparse.ArgumentParser):
-    """An argument parser whose usage errors end like every refusal (ERR-4)."""
+    """An argument parser whose usage errors end like every refusal (ERR-4).
+
+    Every parser, the command's too, accepts ``--verbose`` and ``--quiet``
+    (DEV-12.2): they are in the namespace only when given.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        levels = self.add_mutually_exclusive_group()
+        levels.add_argument(
+            "--verbose",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=MESSAGES["cli_verbose_help"],
+        )
+        levels.add_argument(
+            "--quiet",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=MESSAGES["cli_quiet_help"],
+        )
 
     def error(self, message: str) -> NoReturn:
         """Print the usage and the error document, then exit with status 2."""
@@ -128,9 +155,18 @@ def main(
     if args.command is None:
         parser.print_help()
         return 0
+    # Given before and after the command, the options contradict each other.
+    verbose, quiet = hasattr(args, "verbose"), hasattr(args, "quiet")
+    if verbose and quiet:
+        parser.error(MESSAGES["cli_log_options_exclusive"])
+    try:
+        level = resolve_log_level(verbose=verbose, quiet=quiet)
+    except InvalidLogLevelError as error:
+        return refuse(_invalid_log_level(error), sys.stderr)
+    configure_logging(level)
     paths = paths or AppPaths.default()
     try:
-        return _dispatch(args, paths, registry)
+        return _dispatch(args, paths, registry, level)
     except Exception:
         # A defect: the traceback for the maintainer, the document for agents.
         traceback.print_exc()
@@ -138,8 +174,25 @@ def main(
         return refuse(problem, sys.stderr)
 
 
+def _invalid_log_level(error: InvalidLogLevelError) -> Problem:
+    """Return the refusal of an ``ARCHIWISTA_LOG_LEVEL`` that names no level."""
+    message = MESSAGES["cli_log_level_invalid"].format(
+        variable=ENV_LOG_LEVEL, value=error.value, allowed=", ".join(LOG_LEVELS)
+    )
+    details = {
+        "reason": "invalid_log_level",
+        "option": ENV_LOG_LEVEL,
+        "value": error.value,
+        "allowed": list(LOG_LEVELS),
+    }
+    return Problem("validation_error", message, MESSAGES["cli_log_level_hint"], details)
+
+
 def _dispatch(
-    args: argparse.Namespace, paths: AppPaths, registry: PluginRegistry | None
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry | None,
+    log_level: str,
 ) -> int:
     """Run the command ``args`` names and return its exit status."""
     if args.command in ADMIN_COMMANDS:
@@ -164,6 +217,7 @@ def _dispatch(
             host=args.host,
             port=args.port,
             access_log=args.access_log,
+            log_level=log_level,
             on_ready=None if args.no_browser else open_in_browser,
         )
     if args.command in READ_COMMANDS:

@@ -43,6 +43,7 @@ from archiwista.errors import (
     InconsistentReadError,
     PreviewUnavailableError,
 )
+from archiwista.logs import process_log_level
 from archiwista.owndata.content import content_identity
 from archiwista.owndata.formats import fileset_members
 from archiwista.previews.cache import (
@@ -148,7 +149,7 @@ def main(
     _work_root = arguments.work_dir
     _previews_root = arguments.previews_dir
     protocol = _protocol_stream()
-    logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+    logging.basicConfig(level=process_log_level("warning"), stream=sys.stderr)
     if renderers is None:
         from archiwista.previews.renderers import RENDERERS
 

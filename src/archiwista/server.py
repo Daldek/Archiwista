@@ -47,6 +47,7 @@ from archiwista.error_document import exception_problem, fail, refuse
 from archiwista.errors import StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
+from archiwista.logs import DEFAULT_LOG_LEVEL
 from archiwista.messages import MESSAGES, with_detail
 from archiwista.paths import private_directory
 from archiwista.previews.cache import PreviewCache
@@ -71,15 +72,23 @@ LIMIT_CONCURRENCY = 100
 _REDACT_FILTER = "archiwista_redact_tokens"
 
 
-def uvicorn_log_config() -> dict[str, Any]:
-    """Return Uvicorn's logging setup with ``token=`` values hidden.
+def uvicorn_log_config(level: str = DEFAULT_LOG_LEVEL) -> dict[str, Any]:
+    """Return Uvicorn's logging setup at ``level`` with ``token=`` values hidden.
 
     The filter sits on the ``uvicorn.access`` logger, so the request line is
-    redacted before any handler sees it.
+    redacted before any handler sees it. Only the server's own messages follow
+    ``level``: the access log, when asked for, keeps writing every request.
+
+    Parameters
+    ----------
+    level : str, optional
+        A key of ``archiwista.logs.LOG_LEVELS``.
     """
     config = copy.deepcopy(LOGGING_CONFIG)
     config["filters"] = {_REDACT_FILTER: {"()": TokenRedactionFilter}}
     config["loggers"]["uvicorn.access"]["filters"] = [_REDACT_FILTER]
+    for name in ("uvicorn", "uvicorn.error"):
+        config["loggers"][name]["level"] = level.upper()
     return config
 
 
@@ -197,6 +206,8 @@ class LocalServer:
         Called as the server starts to stop, before it waits for open
         connections; ends the application's long-lived responses (event
         streams).
+    log_level : str, optional
+        Level of Uvicorn's own messages (``archiwista.logs.LOG_LEVELS``).
     """
 
     def __init__(
@@ -208,6 +219,7 @@ class LocalServer:
         launch: LaunchFile,
         access_log: bool,
         on_stop: Callable[[], None],
+        log_level: str = DEFAULT_LOG_LEVEL,
     ) -> None:
         self.url = url
         self.launch = launch
@@ -217,7 +229,7 @@ class LocalServer:
             app,
             host=LOOPBACK_HOST,
             port=self.port,
-            log_config=uvicorn_log_config(),
+            log_config=uvicorn_log_config(log_level),
             access_log=access_log,
             proxy_headers=False,
             server_header=False,
@@ -255,6 +267,7 @@ def serve_main(
     host: str = LOOPBACK_HOST,
     port: int | None = None,
     access_log: bool = False,
+    log_level: str = DEFAULT_LOG_LEVEL,
     on_ready: Callable[[LocalServer], object] | None = None,
 ) -> int:
     """Run ``archiwista serve`` and return the process exit status.
@@ -275,6 +288,9 @@ def serve_main(
         Port; the configured one when omitted, a free one for ``0``.
     access_log : bool, optional
         Write the access log (``token=`` values redacted); off by default.
+    log_level : str, optional
+        Level of Uvicorn's own messages; ``warning`` unless the command line
+        asked for another (``archiwista.logs``).
     on_ready : Callable[[LocalServer], object] or None, optional
         Called with the server after the address is printed and before it
         serves, e.g. ``open_in_browser``. The launch file goes once the
@@ -371,6 +387,7 @@ def serve_main(
                 url=fragment_url(bound_port, issued.token),
                 launch=launch,
                 access_log=access_log,
+                log_level=log_level,
                 on_stop=app.state.job_streams.close,
             )
             out.write(

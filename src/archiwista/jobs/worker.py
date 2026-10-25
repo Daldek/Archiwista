@@ -80,6 +80,7 @@ from archiwista.jobs.protocol import (
     decode_spec,
     encode_message,
 )
+from archiwista.logs import process_log_level
 from archiwista.messages import MESSAGES
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
@@ -199,7 +200,7 @@ def main() -> int:
     emit = Emitter(protocol)
     _handle_interrupts()
     logging.basicConfig(
-        level=logging.INFO,
+        level=process_log_level("info"),
         stream=sys.stderr,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )

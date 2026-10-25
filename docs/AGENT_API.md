@@ -53,7 +53,10 @@ services as the HTTP routes, as the owner of the local installation
   were scanned; `archiwista doctor` exits `10` or `11` when checks fail. These
   are outcomes, not errors: no error document follows them;
 - text for people (diagnostics, the description of an error) always goes to
-  standard error, in Polish.
+  standard error, in Polish, and so does the log; it never goes to standard
+  output. Every command takes `--verbose` (debug) or `--quiet` (errors only),
+  before or after its name, and without them the variable `ARCHIWISTA_LOG_LEVEL`
+  (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
 
 Without `--json` the commands print a short Polish text for people; an agent
 should always pass `--json`.

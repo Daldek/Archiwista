@@ -1,5 +1,6 @@
 """Shared test fixtures for Archiwista test suites."""
 
+import logging
 import os
 import signal
 from collections.abc import Iterator
@@ -26,6 +27,17 @@ def interruptible_session() -> Iterator[None]:
     yield
     if ignored:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+@pytest.fixture(autouse=True)
+def isolate_package_logger() -> Iterator[None]:
+    """Undo the handler and level a command puts on the package logger (DEV-12.1)."""
+    logger = logging.getLogger("archiwista")
+    handlers, level, propagate = list(logger.handlers), logger.level, logger.propagate
+    yield
+    logger.handlers[:] = handlers
+    logger.setLevel(level)
+    logger.propagate = propagate
 
 
 @pytest.fixture(autouse=True)

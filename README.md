@@ -104,6 +104,11 @@ stronicowanie, zadania w tle, błędy). Pełny schemat API jest pod
 `/api/v1/openapi.json`, a dokumentacja interaktywna pod `/api/docs`
 uruchomionego serwera.
 
+Dziennik (logi i postęp) idzie na stderr, nigdy na stdout. Poziom ustawia
+`--verbose` (debug) albo `--quiet` (tylko błędy), przed nazwą polecenia lub po
+niej, a bez nich zmienna `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`,
+`error`; domyślnie `warning`); czytają ją też procesy zadań i podglądów.
+
 ## Gdzie są dane
 
 Archiwista nie zapisuje niczego w magazynie Kartografa. Lokalny indeks
