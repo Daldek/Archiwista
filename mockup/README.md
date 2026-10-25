@@ -1,153 +1,153 @@
-# Mockup Archiwisty
+# Archiwista mockup
 
-Klikalny mockup interfejsu Archiwisty do decyzji przed implementacją
-(bez kroku budowania: `index.html` + moduły ES z CDN — Preact, htm,
+A clickable mockup of the Archiwista interface for decisions before
+implementation (no build step: `index.html` + ES modules from a CDN — Preact, htm,
 MapLibre GL).
 
-## Uruchomienie
+## Running
 
-Z korzenia repozytorium:
+From the repository root:
 
 ```
 python3 -m http.server 8090 --directory mockup
 ```
 
-i otwórz <http://127.0.0.1:8090/>. W sieci lokalnej (np. telefon) dodaj
-`--bind 0.0.0.0` i otwórz `http://<adres-komputera>:8090/`. Przeglądarka
-potrzebuje internetu (CDN bibliotek i fontów, podkład OpenFreeMap).
+and open <http://127.0.0.1:8090/>. On the local network (e.g. a phone) add
+`--bind 0.0.0.0` and open `http://<computer-address>:8090/`. The browser
+needs internet access (CDN for libraries and fonts, the OpenFreeMap basemap).
 
-## Przepływ
+## Flow
 
-1. **Obszar** — prostokąt, wielokąt albo „Obszar demo” (Kraków 12 × 10 km).
-2. **Produkt** — NMT, NMPT, LAZ, ortofotomapa, BDOT10k oraz **dane własne
-   projektu** (`kanalizacja.gpkg` w folderze `dane/`; przycisk „Wczytaj folder
-   danych” zamiast sprawdzania dostępności).
-3. **Dostępność** — podsumowanie sprawdzenia w panelu wyboru (lata wg
-   pokrycia, data raportu, źródło), wynik w trzech widokach (przełącznik nad
-   mapą): **Mapa** (arkusze wybranego zestawu, kolory kampanii, legenda
-   z datami nalotu, lata jako przyciski w lewym górnym rogu mapy),
-   **Wachlarz** (warstwy lat na łuku jak stos plików w docku macOS — każda
-   w całości, z rokiem, pokryciem i stanem magazynu, wybrana powiększona
-   w łuku i obok) i **Katalog** (cały zestaw: **Kafle**, **Lista** albo
-   **Oś czasu** — lata × warianty × pokrycie). Kafel, wiersz listy
-   i komórka osi czasu to zestaw: kliknięcie, `Enter` albo `Spacja` wybiera
-   go (mapa, Wachlarz i panel szczegółów idą za wyborem).
-4. **Szczegóły zestawu** (panel po prawej) — tylko wybrany zestaw: formaty
-   (wybór formatu pobrania), arkusze TAK/NIE, nalot, kampanie, polecenie
-   pobrania, „Pobierz”, „Mozaika z asystentem”, „Karta”, a poza Katalogiem
-   przełącznik wariantów roku. Panel pojawia się po sprawdzeniu dostępności
-   i można go zwinąć przyciskiem „Szczegóły” nad widokiem.
-5. **Asystent** (po MVP, v1.2; w mockupie oznaczony „po MVP”) — np.
-   „Przygotuj NMT 1 m dla tego obszaru, najnowszy pełny rok, jako jedna
-   mozaika” → plan kroków → „Zatwierdź i uruchom” / „Zmień rok” / „Odrzuć”
-   → postęp zadania (czat i „Zadania”) → wynik na mapie, w wachlarzu
-   i w „Karcie pliku”. Mozaika to również funkcja po MVP (v1.3).
-6. **Dane własne i migawki** (MVP, v0.2; A-ADR-027) — mapa przewodów
-   wybranej wersji, „Wachlarz migawek” (plik roboczy na górze; zielone —
-   dodane od poprzedniej migawki, czerwone przerywane — usunięte), Katalog
-   wersji pliku, a w panelu szczegółów „Zrób migawkę…” → plan (kopia do
-   `dane/.wersje/<nazwa>/<data>_<sha8>/`, spójna kopia GeoPackage, tylko
-   przyrost) → zadanie w tle → nowa migawka; ta sama treść drugi raz =
-   „nowa migawka nie powstanie”.
+1. **Obszar** (Area) — a rectangle, a polygon or "Obszar demo" (Demo area) (Kraków 12 × 10 km).
+2. **Produkt** (Product) — NMT, NMPT, LAZ, orthophotomap, BDOT10k and the **own data
+   of the project** (`kanalizacja.gpkg` in the `dane/` folder; the button "Wczytaj folder
+   danych" (Load the data folder) instead of an availability check).
+3. **Dostępność** (Availability) — a summary of the check in the selection panel (years by
+   coverage, report date, source), the result in three views (switch above the
+   map): **Mapa** (Map) (sheets of the selected set, campaign colours, a legend
+   with flight dates, years as buttons in the top left corner of the map),
+   **Wachlarz** (the Fan) (year layers on an arc like a stack of files in the macOS dock — each
+   shown in full, with year, coverage and store state, the selected one enlarged
+   in the arc and beside it) and **Katalog** (Catalog) (the whole set: **Kafle** (Tiles), **Lista** (List) or
+   **Oś czasu** (Timeline) — years × variants × coverage). A tile, a list row
+   and a timeline cell are a set: a click, `Enter` or `Spacja` (Space) selects
+   it (the map, the Fan and the details panel follow the selection).
+4. **Set details** (panel on the right) — only the selected set: formats
+   (choice of download format), sheets YES/NO ("TAK"/"NIE"), flight, campaigns, the download
+   command, "Pobierz" (Download), "Mozaika z asystentem" (Mosaic with the assistant), "Karta" (Card), and outside the Catalog
+   a year variant switch. The panel appears after the availability check
+   and can be collapsed with the "Szczegóły" (Details) button above the view.
+5. **Asystent** (Assistant) (after the MVP, v1.2; marked "po MVP" (after the MVP) in the mockup) — e.g.
+   "Przygotuj NMT 1 m dla tego obszaru, najnowszy pełny rok, jako jedna
+   mozaika" → step plan → "Zatwierdź i uruchom" (Approve and run) / "Zmień rok" (Change year) / "Odrzuć" (Reject)
+   → job progress (chat and "Zadania" (Jobs)) → result on the map, in the Fan
+   and in the "Karta pliku" (File card). Mosaic is also a post-MVP feature (v1.3).
+6. **Own data and snapshots** (MVP, v0.2; A-ADR-027) — a map of the lines
+   of the selected version, "Wachlarz migawek" (Snapshot Fan) (working file on top; green —
+   added since the previous snapshot, red dashed — removed), a Catalog
+   of file versions, and in the details panel "Zrób migawkę…" (Take a snapshot…) → plan (copy to
+   `dane/.wersje/<nazwa>/<data>_<sha8>/`, a consistent GeoPackage copy, increment
+   only) → background job → new snapshot; the same content a second time =
+   "nowa migawka nie powstanie" (no new snapshot will be created).
 
-Podglądy według rodzaju danych (PRD, „Widoki według rodzaju danych”):
-ortofotomapa — każdy rok z archiwalnego WMS GUGiK z wymiarem czasu
-(`StandardResolutionTime`), także lata niepobrane; NMT — rok składany
-z kafli arkuszy w magazynie: cieniowanie liczone z prawdziwych plików
-arkuszy pobranych Kartografem (2023 — 5 arkuszy, 2019 5 m, 2017 KRON86;
-2024 pojawia się arkusz po arkuszu po „Pobierz” w mockupie), arkusze
-niepobrane zostają obrysami; NMPT i LAZ — same obrysy; BDOT10k — granice powiatów
-(PRG) w kolorach „paczka jest / brak / w magazynie”; dane własne — linie
-warstwy. Wcześniejsza wersja mockupu pokazywała dla każdego roku ten sam
-bieżący obraz, przez co zmiany w terenie nie były widoczne.
+Previews by data type (PRD, "Widoki według rodzaju danych"):
+orthophotomap — every year from the archival GUGiK WMS with a time dimension
+(`StandardResolutionTime`), also years not downloaded; NMT — a year assembled
+from sheet tiles in the store: hillshade computed from real sheet files
+downloaded with Kartograf (2023 — 5 sheets, 2019 5 m, 2017 KRON86;
+2024 appears sheet by sheet after "Pobierz" in the mockup), sheets
+not downloaded remain footprints; NMPT and LAZ — footprints only; BDOT10k — county
+boundaries (PRG) in the colours "paczka jest / brak / w magazynie" (package available / missing / in the store); own data — the lines
+of the layer. An earlier version of the mockup showed the same current
+image for every year, so changes on the ground were not visible.
 
-Zasada układu: **jedna informacja — jedno miejsce**. Panel wyboru = obszar,
-produkt i podsumowanie sprawdzenia; środek = przegląd zestawów (Mapa,
-Wachlarz, Katalog); panel po prawej = szczegóły jednego, wybranego zestawu;
-Asystent = rozmowa i plany. Plakietka roku na mapie pokazuje się tylko przy
-zwiniętym panelu szczegółów, a podpisy Wachlarza nie powtarzają nalotu
-i kampanii.
+Layout principle: **one piece of information — one place**. Selection panel = area,
+product and the check summary; centre = overview of sets (Map,
+the Fan, Catalog); right panel = details of one selected set;
+Assistant = conversation and plans. The year badge on the map is shown only when
+the details panel is collapsed, and the Fan labels do not repeat the flight
+and campaigns.
 
-Wariant = produkt, rok, układ poziomy, rozdzielczość (gęstość), układ
-wysokości i zgłoszenie/kampania. Formaty plików tego samego zestawu to
-plakietki jednego wariantu (np. NMT 2019 „5 m · EVRF2007 · ASC, ASCII-NMT”);
-format wybiera się dopiero przy pobraniu (plakietki w panelu szczegółów,
-w Karcie pliku i w planie asystenta), domyślnie raster gotowy do
-mozaiki (ASC, TIF). Raport Kartografa zostaje per format — grupuje
-Archiwista.
+A variant = product, year, horizontal system, resolution (density), height
+system and submission/campaign. File formats of the same set are
+badges of one variant (e.g. NMT 2019 "5 m · EVRF2007 · ASC, ASCII-NMT");
+the format is chosen only at download (badges in the details panel,
+in the File card and in the assistant's plan), by default a raster ready for
+mosaic (ASC, TIF). The Kartograf report stays per format — Archiwista
+groups it.
 
-Etykiety pokrycia: „pełne”, „pełne · N kampanie”, „częściowe · X%”,
-„brak danych”; osobna plakietka magazynu: „pobrane”, „pobrane 5/12”,
-„niepobrane”. Daty w interfejsie: RRRR.MM.DD. Podkład: szary (OpenFreeMap
-„positron” w odcieniach szarości). Układ: desktop 1440–1920 px (panel
-wyboru i panel szczegółów można zwinąć; Asystent to przypięty panel boczny
-między mapą a „Szczegółami zestawu”, mapa się zwęża), poniżej 1280 px —
-a do 1599 px przy otwartym Asystencie — „Szczegóły zestawu” wysuwają się
-z prawej, na telefonie panele i czat są szufladami od dołu.
+Coverage labels: "pełne" (full), "pełne · N kampanie" (full · N campaigns), "częściowe · X%" (partial · X%),
+"brak danych" (no data); a separate store badge: "pobrane" (downloaded), "pobrane 5/12" (downloaded 5/12),
+"niepobrane" (not downloaded). Dates in the interface: RRRR.MM.DD. Basemap: grey (OpenFreeMap
+"positron" in shades of grey). Layout: desktop 1440–1920 px (the selection
+panel and the details panel can be collapsed; the Assistant is a pinned side panel
+between the map and "Szczegóły zestawu" (Set details), the map narrows), below 1280 px —
+and up to 1599 px with the Assistant open — "Szczegóły zestawu" slide out
+from the right, on a phone the panels and chat are drawers from the bottom.
 
-Szerokie ekrany (2560, 3440, 5120 px): domyślne szerokości paneli rosną
-z ekranem (`src/panels.js`; panel szczegółów najmniej, bo trzyma jeden
-zestaw), oś czasu Katalogu rysuje się 1:1 w szerokości widoku,
-Wachlarz powiększa miniatury, podpisy i podgląd i jest wyśrodkowany,
-Katalog układa lata w kolumnach, a gdy na środek zostaje ≥ 2000 px,
-Wachlarz albo Katalog stoi obok mapy (dwie połowy). Każdy panel boczny ma
-uchwyt na krawędzi (`role="separator"`): przeciąganie, strzałki na
-uchwycie (`Shift` — krok 64 px), `Home`/`End`, dwuklik albo `Enter` =
-szerokość domyślna; granice: wybór 260–560, Asystent 300–760,
-„Szczegóły zestawu” 340–720 px, środek co najmniej 480 px. Szerokości są
-zapamiętywane w `localStorage` (`archiwista-mockup:panel-widths`).
+Wide screens (2560, 3440, 5120 px): default panel widths grow
+with the screen (`src/panels.js`; the details panel least, because it holds one
+set), the Catalog timeline is drawn 1:1 across the view width,
+the Fan enlarges thumbnails, labels and preview and is centred,
+the Catalog arranges years in columns, and when ≥ 2000 px remain for the centre,
+the Fan or the Catalog stands next to the map (two halves). Every side panel has
+a handle on its edge (`role="separator"`): dragging, arrows on the
+handle (`Shift` — step of 64 px), `Home`/`End`, double click or `Enter` =
+default width; limits: selection 260–560, Assistant 300–760,
+"Szczegóły zestawu" 340–720 px, centre at least 480 px. Widths are
+remembered in `localStorage` (`archiwista-mockup:panel-widths`).
 
-## Co jest prawdziwe, a co symulowane
+## What is real and what is simulated
 
-- Prawdziwe: raporty dostępności NMT, NMPT i LAZ (`kartograf elevation
-  availability --json`, `kartograf-availability/1`) dla obszaru demo,
-  ramy arkuszy (godła → EPSG:2180 → WGS84), podglądy GUGiK WMS (także
-  archiwalne ortofotomapy z wymiarem czasu) i granice powiatów z PRG WFS.
-- Zestawione skryptem mockupu na bibliotekach Kartografa (Kartograf nie ma
-  jeszcze takiego raportu): ortofotomapa (skorowidz WMS) i BDOT10k
-  (pakiety powiatów); pola `full_m2`, `sheet_records`,
-  `campaigns_selected` to propozycje dla Kartografa.
-- Wygenerowane (dane przykładowe): sieć kanalizacyjna w folderze danych
-  projektu i jej migawki (`data/own/kanalizacja.json`) — nie są to
-  prawdziwe dane.
-- Symulowane: sprawdzanie dostępności (fazy i opóźnienia), stan magazynu
-  (`data/store.json`), asystent (proste reguły zamiast modelu), zadania
-  w tle, pobieranie, mozaika (wynik to podgląd przycięty do obszaru)
-  i zapis migawki, oszacowanie pokrycia dla narysowanego obszaru (z ram
-  arkuszy raportu).
+- Real: availability reports for NMT, NMPT and LAZ (`kartograf elevation
+  availability --json`, `kartograf-availability/1`) for the demo area,
+  sheet frames (sheet codes → EPSG:2180 → WGS84), GUGiK WMS previews (including
+  archival orthophotomaps with a time dimension) and county boundaries from PRG WFS.
+- Assembled by the mockup script on Kartograf libraries (Kartograf does not yet have
+  such a report): orthophotomap (WMS index) and BDOT10k
+  (county packages); the fields `full_m2`, `sheet_records`,
+  `campaigns_selected` are proposals for Kartograf.
+- Generated (sample data): a sewer network in the project's data folder
+  and its snapshots (`data/own/kanalizacja.json`) — this is not
+  real data.
+- Simulated: the availability check (phases and delays), store state
+  (`data/store.json`), the assistant (simple rules instead of a model), background
+  jobs, downloading, mosaic (the result is a preview clipped to the area)
+  and saving a snapshot, the coverage estimate for a drawn area (from the sheet
+  frames of the report).
 
-## Dane
+## Data
 
-`data/` to statyczne fixtury. Odtworzenie (z korzenia repo Kartografa, jego
-`.venv`, z siecią): `.venv/bin/python <worktree>/mockup/tools/build_fixtures.py`
-(NMT, NMPT, LAZ, arkusze), `build_orto_bdot.py` (ortofotomapa, BDOT10k)
-i `build_mvp_fixtures.py` (archiwalne ortofotomapy per rok, granice
-powiatów, przykładowe dane własne; argumenty `orto`, `powiaty`, `own`
-budują tylko wskazane części).
+`data/` holds static fixtures. Rebuilding (from the Kartograf repo root, its
+`.venv`, with network access): `.venv/bin/python <worktree>/mockup/tools/build_fixtures.py`
+(NMT, NMPT, LAZ, sheets), `build_orto_bdot.py` (orthophotomap, BDOT10k)
+and `build_mvp_fixtures.py` (archival orthophotomaps per year, county
+boundaries, sample own data; the arguments `orto`, `powiaty`, `own`
+build only the indicated parts).
 
-## Zrzuty
+## Screenshots
 
-`screenshots/` — podgląd w WebP (szerokość do 1280 px, jakość 70; łącznie
-ok. 2 MB): kolejne kroki przepływu na desktopie 1920 × 1080 (`01`–`16`;
-`05a`–`05c`: Wachlarz z wybranym rokiem najnowszym, środkowym
-i najstarszym, `14`: Wachlarz z wynikiem zadania i przypiętym Asystentem),
-Wachlarz przy 1440 px (`17`), telefon 390 px (`18`–`19`), warianty
-z formatami jako plakietki (`20`) i Wachlarz (`21-wachlarz-*`: NMT z rokiem
-najnowszym i środkowym, ortofotomapa, z przypiętym Asystentem). Szerokie
-ekrany (`22-ultrawide-*`): 1920 × 1080 (kontrola), Wachlarz przy
-2560 × 1080 i 3440 × 1440, Katalog przy 3440 × 1440, mapa z Wachlarzem
-obok siebie przy 5120 × 1440; `23-panel-resize`: przeciąganie uchwytu
-panelu Asystenta (2560 px); `24-katalog-wybor`: wybór zestawu kliknięciem
-w kafel Katalogu (2023, wariant PL-2000; 1920 px); `25-panel-szczegoly`:
-panel „Szczegóły zestawu” obok mapy z Wachlarzem (3440 × 1440). Zrzuty
-`01`–`04`, `06`–`13`, `15`–`16` i `18`–`19` pokazują stan sprzed
-przypiętego panelu Asystenta i sprzed usunięcia widoku „Stos”
-(przełącznik widoku „Mapa · Stos · Katalog”); zrzuty `01`–`23` — stan
-sprzed panelu „Szczegóły zestawu” (prawy panel „Zestawienie” z tabelą lat
-i osią czasu, lista lat w panelu wyboru). Zakres MVP i widoki według
-rodzaju danych (2026-10-18, 1920 × 1080): `26` mapa z archiwalną
-ortofotomapą 2013, `27` Wachlarz ortofotomapy z wybranym 2009, `28`
-Wachlarz NMT z kaflami arkuszy z magazynu (2017), `35` mapa NMT 2024
-złożona z 35 arkuszy po pobraniu, `29`–`30` BDOT10k —
-powiaty w Wachlarzu i na mapie, `31`–`34` dane własne: mapa, Wachlarz
-migawek, plan migawki, stan po migawce.
+`screenshots/` — preview in WebP (width up to 1280 px, quality 70; about 2 MB
+in total): successive steps of the flow on a 1920 × 1080 desktop (`01`–`16`;
+`05a`–`05c`: the Fan with the newest, middle
+and oldest year selected, `14`: the Fan with a job result and the pinned Assistant),
+the Fan at 1440 px (`17`), phone 390 px (`18`–`19`), variants
+with formats as badges (`20`) and the Fan (`21-wachlarz-*`: NMT with the newest
+and middle year, orthophotomap, with the pinned Assistant). Wide
+screens (`22-ultrawide-*`): 1920 × 1080 (control), the Fan at
+2560 × 1080 and 3440 × 1440, the Catalog at 3440 × 1440, the map with the Fan
+side by side at 5120 × 1440; `23-panel-resize`: dragging the handle of
+the Assistant panel (2560 px); `24-katalog-wybor`: selecting a set by clicking
+a Catalog tile (2023, variant PL-2000; 1920 px); `25-panel-szczegoly`:
+the "Szczegóły zestawu" panel next to the map with the Fan (3440 × 1440). Screenshots
+`01`–`04`, `06`–`13`, `15`–`16` and `18`–`19` show the state before the
+pinned Assistant panel and before the removal of the "Stos" (Stack) view
+(view switch "Mapa · Stos · Katalog"); screenshots `01`–`23` — the state
+before the "Szczegóły zestawu" panel (the right panel "Zestawienie" (Summary) with a table of years
+and a timeline, a list of years in the selection panel). MVP scope and views by
+data type (2026-10-18, 1920 × 1080): `26` map with the archival
+orthophotomap 2013, `27` orthophotomap Fan with 2009 selected, `28`
+NMT Fan with sheet tiles from the store (2017), `35` NMT 2024 map
+assembled from 35 sheets after download, `29`–`30` BDOT10k —
+counties in the Fan and on the map, `31`–`34` own data: map, snapshot
+Fan, snapshot plan, state after the snapshot.
