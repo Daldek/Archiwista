@@ -110,6 +110,22 @@ command-line interface may change.
   the key `root`: a manifest written by an earlier Kartograf, with `output_dir`, is listed
   as an invalid project with Kartograf's message until Kartograf writes it again. The
   source states `kartograf-store/1` among the schemas it reads. (ECO-051)
+- **Breaking:** a Kartograf directory needs its marker, `kartograf-store.json` (DEV-19.12,
+  DEV-19.13; ADR-031). A directory that has the layout of a store (a file below a known
+  segment) and no marker is refused: the store is `unavailable`, a scan job fails with
+  `store_unavailable`, reason `no_marker` and the hint `run once: kartograf store init
+  --root <path>`, `PUT /settings` answers `400` with the same reason and hint at
+  `stores[n].kartograf`, and `archiwista doctor` prints the command as the fix. Archiwista
+  never writes the marker: run the command once for each store an earlier Kartograf wrote.
+  It verifies the layout first and refuses a store with stray entries (`invalid_layout`, the
+  list is in `details.problems`), which you move out. A marker of another schema, or one
+  that is not JSON, is `unsupported_marker`; the root of an IMGW store (`imgw-store.json`)
+  is `foreign_store`; a directory whose segments are none of Kartograf's, such as the
+  parent of a store, is `not_a_store` and its message asks for the directory that holds
+  `kartograf-store.json` instead of the `--output` directory. An empty directory and one
+  with known segments and no file stay available: the first download of Kartograf into them
+  writes the marker. The generated stores of the tests are marked through
+  `kartograf.init_store`. (DEV-19.13)
 - The tests find the repository from the test file, never through the installed package,
   so they run against an installed wheel; the generated stores of the tests call the
   directory that holds `data/`, `projects/` and `other-data/` `base`. (REL-2.5)

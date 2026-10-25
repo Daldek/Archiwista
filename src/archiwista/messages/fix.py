@@ -46,13 +46,19 @@ MESSAGES = {
     ),
     "source": Text(
         (
-            "check that the producer's --output directory is specified and that its"
-            " version is compatible."
+            "specify the store root of the producer (the directory that holds its"
+            " marker, such as kartograf-store.json) and check that its version is"
+            " compatible."
         ),
         (
-            "sprawdź, czy wskazano katalog --output producenta i czy jego wersja jest"
+            "wskaż katalog główny magazynu producenta (ten z jego znacznikiem, na"
+            " przykład kartograf-store.json) i sprawdź, czy jego wersja jest"
             " zgodna."
         ),
+    ),
+    "store_init": Text(
+        "run once: kartograf store init --root {path}",
+        "uruchom raz: kartograf store init --root {path}",
     ),
     "project_dir": Text(
         "connect the directory or remove it from the settings.",

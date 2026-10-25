@@ -62,6 +62,7 @@ from tests.fixtures.make_store import (
     STORE_DIR,
     StoreFixtureError,
 )
+from tests.fixtures.store_marker import mark_store
 
 ORTHO_SHEET = "N-34-130-D-d-2-4"
 SM5_SHEET = "CTES96"
@@ -181,6 +182,7 @@ def make_preview_store(base: Path, *, source: Path) -> PreviewStore:
             raise StoreFixtureError(f"the source store has no {relative}")
     root = base / STORE_DIR
     root.mkdir(parents=True)
+    mark_store(root)
     (base / PROJECTS_DIR).mkdir()
     ortho_storage = FileStorage(root, resolution=None, vertical_crs=None, subdir=ORTO)
     ortho_source = source / SOURCES["ortho"]

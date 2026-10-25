@@ -177,6 +177,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities | `KartografAdapter`, `UNIT_CACHE_FILE` |
+| `adapter/kartograf/marker.py` | judges the store marker by file name and schema, no import of Kartograf (ADR-031): a marker of `kartograf-store/1`, a marker of another schema, the marker of another tool, no marker with or without a layout | `refusal`, `Refusal`, `MARKER`, `MARKER_SCHEMA`, `OTHER_MARKERS` |
 | `adapter/kartograf/unit_cache.py` | local cache of unit footprints (TERYT, KU, SM5) for `file_footprint` | `UnitBBoxCache` |
 
 **Shared**
@@ -510,9 +511,11 @@ segment and `on_event=emit.scan_event`.
 **Course of `scan_store`:**
 
 1. `_reachable_segments`: `probe` of the root (a state other than `available` →
-   store unavailable) and the list of segments (`SegmentedAdapter.segments` →
-   `list_segments`, including unrecognised ones); segment descriptions go
-   to the `segments` table (`describe_segment`).
+   store unavailable, with the probe's `reason` and `hint`: `no_marker`,
+   `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf, ADR-031) and
+   the list of segments (`SegmentedAdapter.segments` → `list_segments`, including
+   unrecognised ones); segment descriptions go to the `segments` table
+   (`describe_segment`).
 2. `IndexWriter.begin_pass(store, producer, segment=…, full=…)` loads once the
    known versions, slots and problems of the scope. No segments while the index
    has entries means an empty mount point, that is, an unavailable store.

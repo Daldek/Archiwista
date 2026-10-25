@@ -37,7 +37,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-011](#adr-011-server-side-assistant-with-human-confirmation) | Server-side assistant with human confirmation | 2026-10-17 | accepted |
 | [ADR-012](#adr-012-protecting-local-mode) | Local mode protection | 2026-10-17 | accepted (erratum 1: token in the fragment, separate CSRF token, `Origin` rule, CSP with basemaps; erratum 2: CSRF token in every request instead of a cookie, agent sessions limited) |
 | [ADR-013](#adr-013-team-mode-as-a-single-server-on-the-local-network) | Team mode as a single server on a local network | 2026-10-17 | accepted, amended by ADR-029 (roles and permissions model from v0.1; user decision 2026-10-18; SPEC 15: P1) |
-| [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) |
+| [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) and ADR-031 (erratum 3: the marker is judged by file name) |
 | [ADR-015](#adr-015-packaging-and-running) | Packaging and running | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18, no Node.js) |
 | [ADR-016](#adr-016-date-format-in-the-interface-and-the-map-basemap) | Date format in the interface and map basemap | 2026-10-17 | accepted (SPEC 15: P6; mockup: M9; erratum 2: OpenFreeMap vector basemap instead of BKG TopPlusOpen) |
 | [ADR-017](#adr-017-grouped-variants-without-file-format) | Grouped variants without file format | 2026-10-17 | accepted (amends ADR-010) |
@@ -54,6 +54,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-028](#adr-028-ui-in-preact--htm-without-a-build-step) | Interface in Preact + htm without a build step | 2026-10-18 | accepted (user decision; supersedes ADR-005) |
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4) |
 | [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
+| [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
 
 ---
 
@@ -587,7 +588,7 @@ from v0.1 (one local owner), login and account screens remain in v0.4.
 ## ADR-014: Knowledge of the store format only in Kartograf
 
 **Date:** 2026-10-17
-**Status:** accepted, amended by ADR-019 (second producer: IMGWTools)
+**Status:** accepted, amended by ADR-019 (second producer: IMGWTools) and ADR-031 (the store marker)
 
 **Context:** The layout of `data/` (rules 1-10, `versions/`, `full_sheet/`, `bbox/`, link
 sidecars, old sidecars, keys from development versions) is described
@@ -627,6 +628,14 @@ KA-5 computes SHA-256 of the whole file; KA-5 is called only on demand (the job
 `link_check`). The KA-4 `cache` is a map owned by the caller (`(kind, code) → BBox`),
 kept locally and read also without a network; missing unit footprints are filled in
 with network access by a separate `footprints` job.
+
+**Erratum 3 (2026-10-25, ADR-031):** one piece of the producer's format is judged in the
+adapter: whether a directory is a store, by the file name and the schema of its marker
+(`kartograf-store.json`, `kartograf-store/1`; `imgw-store.json` for the foreign root), because
+Kartograf's public API has no function that tells a marked, an unmarked and a foreign directory
+apart. It is a copy of producer knowledge kept until Kartograf offers `store_state(root)` (a
+request); a contract test against the producer's own writers (`kartograf.testing`,
+`kartograf.init_store`) pins it. The layout of the files below the marker stays Kartograf's.
 
 ---
 

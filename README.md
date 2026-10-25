@@ -99,7 +99,7 @@ Errors use the shared [Nogat error registry](https://github.com/Daldek/Nogat/blo
 | `not_found` | 3 | an unknown store, slot or project, or a project you may not see |
 | `conflict` | 4 | a job that writes this index already runs: follow it instead of retrying |
 | `missing_dependency` | 6 | a producer plugin is missing or has an unsupported version: run the command in `hint` |
-| `store_unavailable` | 8 | the store cannot be read (an unmounted share): connect it, then `archiwista reindex` |
+| `store_unavailable` | 8 | the store cannot be read (an unmounted share): connect it, then `archiwista reindex`; or the producer refuses the directory (for Kartograf: no `kartograf-store.json`, `reason` `no_marker`): run the command in `hint` once |
 | `forbidden` | 12 | the session or the role does not allow it |
 
 A job that does not succeed exits `11` (failed) or `130` (cancelled or interrupted), and `archiwista doctor` exits `10` or `11` when checks fail: these are outcomes, not errors, and print no error document. The texts of errors are English, and Polish for the request header `Accept-Language: pl`; the command line prints its text for people in Polish.

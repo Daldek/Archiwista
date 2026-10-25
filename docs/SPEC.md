@@ -1273,7 +1273,7 @@ which producer wrote the file:
 
 | Operation | Purpose | Kartograf adapter | IMGW adapter |
 |---|---|---|---|
-| `probe(root)` | recognition of the producer directory and contract version | `data/` layout (KA-1) | `store_info` (`imgw-store/1`; IMGW-10, IMGW-13) |
+| `probe(root)` | recognition of the producer directory and contract version; a refusal has a `reason` and a `hint` | the marker `kartograf-store.json` and the segments of `list_segments` (KA-1; A-ADR-031) | `store_info` (`imgw-store/1`; IMGW-10, IMGW-13) |
 | `iter_entries(root, *, scope)` | scan: versions, current versions, problems (4.4) | `list_segments`, `list_partitions`, `iter_store` (KA-1; on a share of segment parts in parallel; current version from the link sidecar, without `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadata in a shared envelope: dataset, label and its source, dates, `sha256`, size, license, inputs (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `imgw-meta/1` (IMGW-3) |
 | `footprint(entry)` | geometry on the map or no location with a reason (4.3, A-ADR-022) | footprint `file_footprint` (KA-4; network only in the `footprints` job); without a source — `no_source` | country for archives and series; station points from the catalog or the reason for absence (IMGW-9) |

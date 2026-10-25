@@ -1712,8 +1712,10 @@ class JobFailure(BaseModel):
     details: dict[str, Any] = Field(
         description=(
             "`reason`, the job's own cause, and the context. Reasons:"
-            " `store_unreadable` (`store_unavailable`); `source_unavailable` or"
-            " `source_incompatible` (a plugin; `details.source` and the fix),"
+            " `store_unreadable`, or the producer's refusal of the directory"
+            " (`no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store`;"
+            " the `hint` has the command) (`store_unavailable`); `source_unavailable`"
+            " or `source_incompatible` (a plugin; `details.source` and the fix),"
             " `own_reader_failed` (`missing_dependency`); `offline_mode` and"
             " `snapshot_blocked` (`conflict`; `details.blocked_by`:"
             " `folder_invalid`, `read_only_folder`, `insufficient_space` or"

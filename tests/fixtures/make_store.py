@@ -2,7 +2,8 @@
 
 ``make_store(base, slots=..., seed=...)`` writes under ``base``:
 
-- ``data/`` - a Kartograf store (its root, ARCH 3.2-3.3)
+- ``data/`` - a Kartograf store (its root, ARCH 3.2-3.3), marked first with
+  ``kartograf-store.json`` by Kartograf's ``init_store`` (``store_marker``),
   with every product family Archiwista reads: 64 x 64 rasters (ASC sheets,
   GeoTIFF sheets and cutouts, a JPEG with world files), small GeoPackages,
   ZIP packages, a point cloud, collections by TERYT, KU and country and an
@@ -81,6 +82,7 @@ from kartograf import (
 
 from tests.fixtures import store_files
 from tests.fixtures.store_files import Bounds
+from tests.fixtures.store_marker import mark_store
 
 STORE_DIR = "data"
 PROJECTS_DIR = "projects"
@@ -583,6 +585,7 @@ class _StoreWriter:
         self.base = base
         self.root = base / STORE_DIR
         self.root.mkdir(parents=True, exist_ok=True)
+        mark_store(self.root)
         self.rng = random.Random(seed)
         self.entries: list[ExpectedEntry] = []
         self.written: dict[str, list[_Written]] = {}

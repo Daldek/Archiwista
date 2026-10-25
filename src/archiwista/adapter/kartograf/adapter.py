@@ -41,6 +41,7 @@ from kartograf import (
 )
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS
+from archiwista.adapter.kartograf.marker import refusal
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
@@ -101,29 +102,43 @@ class KartografAdapter:
         self._unit_bboxes = UnitBBoxCache(context.cache_dir / UNIT_CACHE_FILE)
 
     def probe(self, root: Path) -> SourceState:
-        """Report whether ``root`` is a readable Kartograf store.
+        """Report whether ``root`` is a Kartograf store Archiwista reads.
 
         Parameters
         ----------
         root : Path
-            Kartograf's ``--output`` directory (``data/``).
+            The store root: the directory that holds ``kartograf-store.json``
+            and the product directories.
 
         Returns
         -------
         SourceState
-            ``available`` for a store with a segment Kartograf recognises or
-            with no segment yet; ``incompatible`` when no segment is
-            recognised (e.g. the parent of ``data/``); ``error`` when the
-            directory cannot be listed.
+            ``available`` for a store with its marker, for a directory with no
+            segment yet (a new store) and for known segments with no file
+            below them (no layout yet). ``incompatible`` with a ``reason``
+            when Kartograf's own writer would not use the directory:
+            ``no_marker`` (known segments with a file and no marker; the hint
+            is ``kartograf store init``), ``unsupported_marker`` (a marker that
+            is not ``kartograf-store/1``), ``foreign_store`` (the marker of
+            another tool) or ``not_a_store`` (segments but none known, e.g.
+            the parent of the store). ``error`` when the directory or a marker
+            cannot be read.
         """
         try:
             segments = list_segments(root)
+            known = [name for name in segments if describe_segment(name).known]
+            refused = refusal(root, segments, known)
         except OSError as error:
             return self._state("error", root, detail=str(error))
-        if segments and not any(describe_segment(name).known for name in segments):
-            detail = message("source.kartograf_not_store")
-            return self._state("incompatible", root, detail=detail)
-        return self._state("available", root)
+        if refused is None:
+            return self._state("available", root)
+        return self._state(
+            "incompatible",
+            root,
+            detail=refused.detail,
+            reason=refused.reason,
+            hint=refused.hint,
+        )
 
     def iter_entries(
         self, root: Path, *, scope: ScanScope | None = None
@@ -405,7 +420,13 @@ class KartografAdapter:
         return SheetGrid(status="available", sheets=codes, outlines=outlines)
 
     def _state(
-        self, status: SourceStatus, root: Path, *, detail: str | None = None
+        self,
+        status: SourceStatus,
+        root: Path,
+        *,
+        detail: str | None = None,
+        reason: str | None = None,
+        hint: str | None = None,
     ) -> SourceState:
         return SourceState(
             producer=self.producer,
@@ -415,6 +436,8 @@ class KartografAdapter:
             supported_versions=self.supported_versions,
             schemas=self.schemas,
             detail=detail,
+            reason=reason,
+            hint=hint,
         )
 
     def _entries(self, root: Path, scope: ScanScope) -> Iterator[SourceEntry]:

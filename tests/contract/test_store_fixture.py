@@ -20,6 +20,7 @@ import shapely
 from kartograf import (
     ValidationError,
     file_footprint,
+    init_store,
     iter_store,
     link_target,
     open_project,
@@ -49,6 +50,7 @@ from tests.fixtures.store_files import (
     OVERVIEW_FACTORS,
     SOIL_NODATA,
 )
+from tests.fixtures.store_marker import MARKED_AT
 
 SLOTS = MIN_SLOTS + 40
 PROJECTS = MIN_PROJECTS + 2
@@ -73,6 +75,17 @@ def test_store_fixture_iter_store_yields_exactly_the_manifest(
     assert {entry.problem for entry in entries if entry.kind == "problem"} == set(
         get_args(ProblemCode)
     )
+
+
+def test_store_fixture_root_has_the_marker_kartograf_writes(
+    store: StoreManifest,
+) -> None:
+    """The generator marks its root through ``init_store``: nothing is left to write."""
+    marked = init_store(store.root)
+
+    assert (marked.created, marked.tool) == (False, "kartograf")
+    assert marked.marker.name == "kartograf-store.json"
+    assert marked.created_at == MARKED_AT.isoformat(timespec="seconds")
 
 
 def test_store_fixture_sidecars_give_expected_metadata(store: StoreManifest) -> None:

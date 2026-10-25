@@ -597,19 +597,20 @@ def test_confirm_link_detects_link_that_moved_off_its_sidecar(
     assert adapter.confirm_link(_entry(entries, mismatch)) is None
 
 
-def test_probe_accepts_store_and_rejects_its_parent(
+def test_probe_accepts_the_generated_store_and_rejects_its_parent(
     store: StoreManifest, adapter: KartografAdapter, tmp_path: Path
 ) -> None:
-    """Only Kartograf's ``--output`` directory is a store; a new one is empty."""
+    """Only the store root is a store; the generator marked it, a new one is empty."""
     empty = tmp_path / "new-store"
     empty.mkdir()
 
     assert adapter.probe(store.root).status == "available"
     assert adapter.probe(empty).status == "available"
     parent = adapter.probe(store.base)
-    assert (parent.status, parent.detail) == (
+    assert (parent.status, parent.reason, parent.detail) == (
         "incompatible",
-        message("source.kartograf_not_store"),
+        "not_a_store",
+        message("source.kartograf_not_store", marker="kartograf-store.json"),
     )
     assert adapter.probe(tmp_path / "missing").status == "error"
 

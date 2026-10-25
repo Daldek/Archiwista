@@ -55,6 +55,7 @@ from tests.fixtures.make_store import (
 )
 from tests.fixtures.preview_api import PreviewApi, serve_previews
 from tests.fixtures.store_files import Bounds
+from tests.fixtures.store_marker import mark_store
 
 PRODUCT = "nmt"
 AREA_SHEET = "N-34-130-D-d-2"
@@ -134,6 +135,7 @@ def make_layer_store(base: Path) -> LayerStore:
     base = base.absolute()
     root = base / STORE_DIR
     root.mkdir(parents=True)
+    mark_store(root)
     (base / PROJECTS_DIR).mkdir()
     versions = [
         add_campaign(root, SHEET_NW, "2019-05-10", "41022", downloaded="2025-02-03"),
