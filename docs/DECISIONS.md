@@ -10,6 +10,8 @@ In `docs/SPEC.md`, references to these decisions take the form "A-ADR-0xx" —
 this distinguishes them from Kartograf's ADRs (e.g. "ADR-036" = Kartograf's
 versioned store).
 
+From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` (DOC-8.2); this file keeps ADR-001 to 029 and the index of all of them.
+
 **Status vocabulary** (the `**Status:**` line of each entry):
 - `accepted`: the decision is in force;
 - `proposed`: recorded in the spec, waiting for the user's decision (an open question or a mockup is indicated);
@@ -51,6 +53,7 @@ versioned store).
 | [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
 | [ADR-028](#adr-028-ui-in-preact--htm-without-a-build-step) | Interface in Preact + htm without a build step | 2026-10-18 | accepted (user decision; supersedes ADR-005) |
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4) |
+| [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
 
 ---
 
