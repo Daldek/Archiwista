@@ -337,6 +337,12 @@ def test_doctor_is_port_available_detects_listener() -> None:
         ),
         (
             DefaultRoot(
+                Path("/srv/nogat/kartograf"), "dotenv", "KARTOGRAF_ROOT", True, True
+            ),
+            "(zmienna KARTOGRAF_ROOT w pliku .env; magazyn ze znacznikiem)",
+        ),
+        (
+            DefaultRoot(
                 Path("/srv/nogat/kartograf"), "file", "[kartograf]", True, True
             ),
             "([kartograf] w pliku nogat.toml; magazyn ze znacznikiem)",

@@ -42,11 +42,11 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an IMGWTools store. The commit is the head of the IMGWTools branch
-# `feature/data-output` (REL-5.3); the release pull request replaces it with the tag
-# `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
+# `feature/data-output` (REL-5.3), which has the default root (`store_root()`); the
+# release pull request replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
 # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
 imgw = [
-    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@7e2114e1424903f1fd8fc036a2cb7aa81df44287",
+    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@3f7de36f98f1ba40d72ab5556942567cfbc55b92",
 ]
 
 [dependency-groups]

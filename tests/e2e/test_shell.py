@@ -228,6 +228,36 @@ def test_first_run_wizard_offers_the_default_root_and_enters_it_on_a_click(
     tab.assert_clean()
 
 
+def test_first_run_wizard_offers_both_default_roots_each_under_its_own_field(
+    serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf's and IMGWTools' stores are offered, each entered by its own click."""
+    imgwtools = pytest.importorskip("imgwtools")
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    imgw_root = tmp_path / "imgw"
+    imgwtools.init_store(imgw_root)
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
+    monkeypatch.setenv("IMGW_ROOT", str(imgw_root))
+    served = serve()
+    page = tab.page
+    open_shell(page, served.token_url())
+    kartograf = page.get_by_label("Katalog Kartografa")
+    imgw = page.get_by_label("Katalog IMGWTools")
+    kartograf_offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
+    imgw_offer = page.get_by_text("IMGWTools zapisuje domyślnie w katalogu")
+
+    expect(kartograf_offer).to_contain_text(str(store.root))
+    expect(imgw_offer).to_contain_text(str(imgw_root))
+    expect(imgw_offer).to_contain_text("zmienna IMGW_ROOT")
+    expect(imgw).to_have_value("")  # offered, not entered
+    page.get_by_role("button", name="Użyj tego katalogu").nth(1).click()
+    expect(imgw).to_have_value(str(imgw_root))
+    expect(kartograf).to_have_value("")
+    expect(imgw_offer).to_have_count(0)  # it is entered: nothing left to offer
+    expect(kartograf_offer).to_have_count(1)
+    tab.assert_clean()
+
+
 @pytest.mark.parametrize("exists", [True, False], ids=["no-marker", "no-directory"])
 def test_first_run_wizard_offers_no_default_root_that_is_no_store(
     serve: Serve,

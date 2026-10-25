@@ -7,10 +7,10 @@
  * limit (with the cache's usage from `/health`), saved at once with `PUT
  * /settings`. The server checks the directories and asks the producer about
  * each new or moved one; anything wrong keeps the settings in effect and
- * comes back as Polish problems per field, shown at the field. The directory Kartograf
+ * comes back as Polish problems per field, shown at the field. The directory a producer
  * itself would use for a store (`default_root` of `GET /sources`) is offered under a
- * store's empty Kartograf field when it exists and holds the marker, and is entered only
- * by the person's click. A new store's
+ * store's empty field of that producer (Kartograf, IMGWTools) when it exists and holds the
+ * marker, and is entered only by the person's click. A new store's
  * full scan is started by the server's scheduler (step 6b) and its progress
  * shows in the index banner. The step lives in the address
  * (`?view=setup&step=projects`, `&saved=1` after a save), so Back walks the
@@ -180,10 +180,15 @@ function Wizard({ initial }) {
 }
 
 function StoresStep({ draft, change, errors, problem }) {
-  const root = useDefaultRoot(draft.stores.some((store) => !store.kartograf.trim()));
-  const chosen = new Set(draft.stores.map((store) => store.kartograf.trim()));
-  const offer = root && !chosen.has(root.path) ? root : null;
   const { health } = useApp();
+  const roots = useDefaultRoots(
+    draft.stores.some((store) => !store.kartograf.trim() || !store.imgw.trim()),
+  );
+  // The offer of a producer: its default root, unless a store already has it.
+  const offered = (producer) => {
+    const root = roots[producer];
+    return root && !draft.stores.some((store) => store[producer].trim() === root.path) ? root : null;
+  };
   const update = (key, patch) =>
     change({
       stores: draft.stores.map((store) => {
@@ -211,16 +216,21 @@ function StoresStep({ draft, change, errors, problem }) {
         <${TextField} label=${L.store.kartograf} hint=${L.store.kartograf_hint} value=${store.kartograf} mono
           error=${fieldErrors.kartograf} name=${`stores[${index}].kartograf`}
           onInput=${(value) => update(store.key, { kartograf: value })}>
-          ${offer && !store.kartograf.trim()
-            ? html`<${DefaultRootOffer} root=${offer}
-                onUse=${() => update(store.key, { kartograf: offer.path })} />`
+          ${offered("kartograf") && !store.kartograf.trim()
+            ? html`<${DefaultRootOffer} producer="kartograf" root=${offered("kartograf")}
+                onUse=${() => update(store.key, { kartograf: offered("kartograf").path })} />`
             : null}
         <//>
         ${imgwOffered(store, health?.sources)
           ? html`<${TextField} label=${L.store.imgw} hint=${L.store.imgw_hint}
               value=${store.imgw} mono error=${fieldErrors.imgw}
               name=${`stores[${index}].imgw`}
-              onInput=${(value) => update(store.key, { imgw: value })} />`
+              onInput=${(value) => update(store.key, { imgw: value })}>
+              ${offered("imgw") && !store.imgw.trim()
+                ? html`<${DefaultRootOffer} producer="imgw" root=${offered("imgw")}
+                    onUse=${() => update(store.key, { imgw: offered("imgw").path })} />`
+                : null}
+            <//>`
           : null}
         <${SelectField} label=${L.store.kind} value=${store.kind} error=${fieldErrors.kind}
           name=${`stores[${index}].kind`} onChange=${(value) => update(store.key, { kind: value })}
@@ -241,36 +251,50 @@ function StoresStep({ draft, change, errors, problem }) {
 }
 
 /**
- * The directory Kartograf would use for a store when none is named, when it is a store:
- * it exists and holds the marker (`default_root` of `GET /sources`). It is asked for once,
- * and only while a store waits for its directory (ADR-033). It is an offer: nothing is saved until the person fills
- * the field and saves the settings.
+ * The directories the producers would use for a store when none is named, for those that
+ * are a store: the directory exists and holds the producer's marker (`default_root` of
+ * `GET /sources`). It is asked for once, and only while a store waits for a directory
+ * (ADR-033). It is an offer: nothing is saved until the person fills the field and saves
+ * the settings.
  *
- * @param {boolean} wanted - Whether a store has no Kartograf directory yet.
- * @returns {import("./types.js").DefaultRoot|null}
+ * @param {boolean} wanted - Whether a store has a producer field still empty.
+ * @returns {Object<string, import("./types.js").DefaultRoot>} By producer; a producer
+ *   without a store at its default root is missing.
  */
-function useDefaultRoot(wanted) {
-  const [root, setRoot] = useState(null);
+function useDefaultRoots(wanted) {
+  const [roots, setRoots] = useState({});
   const asked = useRef(false);
   useEffect(() => {
     if (!wanted || asked.current) return;
     asked.current = true;
     listSources().then(
       (answer) => {
-        const found = answer.items.find((source) => source.producer === "kartograf")?.default_root;
-        setRoot(found?.exists && found.marked ? found : null);
+        const found = {};
+        for (const source of answer.items) {
+          const root = source.default_root;
+          if (root?.exists && root.marked) found[source.producer] = root;
+        }
+        setRoots(found);
       },
-      () => setRoot(null), // an offer is optional: without an answer there is none
+      () => setRoots({}), // an offer is optional: without an answer there is none
     );
   }, [wanted]);
-  return root;
+  return roots;
 }
 
-/** The offer of a default root under a store's field: what it is and a button that enters it. */
-function DefaultRootOffer({ root, onUse }) {
+/**
+ * The offer of a default root under a store's field: what it is and a button that enters it.
+ *
+ * @param {{producer: string, root: import("./types.js").DefaultRoot, onUse: () => void}} props
+ */
+function DefaultRootOffer({ producer, root, onUse }) {
   const origin = t(L.store.default_root_origin[root.source] ?? "", { name: root.name ?? "" });
   return html`<span class="field-offer">
-    <span class="field-hint">${t(L.store.default_root, { path: root.path, origin })}</span>
+    <span class="field-hint">${t(L.store.default_root, {
+      producer: L.store.producers[producer] ?? producer,
+      path: root.path,
+      origin,
+    })}</span>
     <button type="button" class="btn sm" onClick=${onUse}>${L.store.use_default_root}</button>
   </span>`;
 }

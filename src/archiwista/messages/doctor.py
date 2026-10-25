@@ -86,6 +86,10 @@ MESSAGES = {
         "variable {name}",
         "zmienna {name}",
     ),
+    "default_root_dotenv": Text(
+        "variable {name} in a .env file",
+        "zmienna {name} w pliku .env",
+    ),
     "default_root_file": Text(
         "{name} of nogat.toml",
         "{name} w pliku nogat.toml",

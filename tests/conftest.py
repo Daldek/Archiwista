@@ -22,7 +22,11 @@ if TYPE_CHECKING:
 collect_ignore = (
     []
     if importlib.util.find_spec("imgwtools")
-    else ["contract/test_imgw.py", "integration/test_imgw_index.py"]
+    else [
+        "contract/test_imgw.py",
+        "contract/test_imgw_default_root.py",
+        "integration/test_imgw_index.py",
+    ]
 )
 
 

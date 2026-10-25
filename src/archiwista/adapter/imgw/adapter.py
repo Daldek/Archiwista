@@ -28,6 +28,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from typing import cast
 
 from imgwtools import (
     IMGWError,
@@ -43,6 +44,7 @@ from imgwtools import (
     open_project,
     providers,
     store_info,
+    store_root,
 )
 from imgwtools import current_version as current_of_slot
 from imgwtools import read_meta as read_sidecar
@@ -51,6 +53,8 @@ from archiwista.adapter.imgw import PACKAGE, PRODUCER, SCHEMAS
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    DefaultRoot,
+    DefaultRootSource,
     EntryKind,
     EntryMeta,
     Footprint,
@@ -116,9 +120,10 @@ class ImgwAdapter:
     -----
     Implements the source interface, ``SegmentDescriptionAdapter`` (a
     dataset is a segment that cannot be read alone) and
-    ``CurrentVersionAdapter`` (a slot has no link); no other optional
-    capability. All methods may run in several threads at once; one iterator
-    of ``iter_entries`` belongs to one thread.
+    ``CurrentVersionAdapter`` (a slot has no link) and ``DefaultRootAdapter``
+    (``store_root()``); no other optional capability. All methods may run in
+    several threads at once; one iterator of ``iter_entries`` belongs to one
+    thread.
     """
 
     producer = PRODUCER
@@ -161,6 +166,31 @@ class ImgwAdapter:
         if info.supported:
             return self._state("available", root)
         return self._unsupported(root, info, names)
+
+    def default_root(self) -> DefaultRoot:
+        """Report the store root IMGWTools uses when a call names none.
+
+        Read from ``imgwtools.store_root()``: ``IMGW_ROOT``, the same variable
+        in a ``.env`` file, ``[imgw] root`` of ``nogat.toml``, else
+        ``<data_dir>/imgw`` (DEV-19.2). Archiwista names the store in every
+        call, so it never uses this directory; it is an offer. The report
+        looks for one file, the marker, and reads no store.
+
+        Returns
+        -------
+        DefaultRoot
+            The directory, the layer of the settings that gave it, whether it
+            exists and whether it holds ``imgw-store.json``.
+        """
+        default = store_root()
+        return DefaultRoot(
+            path=default.root,
+            # The four layers ``StoreRoot.source`` documents.
+            source=cast(DefaultRootSource, default.source),
+            name=default.name,
+            exists=default.root.is_dir(),
+            marked=default.marker_exists,
+        )
 
     def iter_entries(
         self, root: Path, *, scope: ScanScope | None = None

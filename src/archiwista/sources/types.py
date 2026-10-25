@@ -19,7 +19,7 @@ type SourceStatus = Literal["available", "not_installed", "incompatible", "error
 type EntryKind = Literal["version", "link", "full_sheet", "problem", "observation"]
 type LocationKind = Literal["footprint", "country", "none"]
 type GeoJSONGeometry = dict[str, object]
-type DefaultRootSource = Literal["default", "env", "file"]
+type DefaultRootSource = Literal["default", "env", "dotenv", "file"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,12 +118,13 @@ class DefaultRoot:
     ----------
     path : Path
         The directory; it need not exist.
-    source : {"default", "env", "file"}
+    source : {"default", "env", "dotenv", "file"}
         Where the producer's settings found it: its own default (``<data_dir>``
-        and the producer's name), an environment variable or the settings file.
+        and the producer's name), an environment variable, the same variable in
+        a ``.env`` file (IMGWTools) or the settings file.
     name : str or None
-        The variable (``KARTOGRAF_ROOT``) or the table (``[kartograf]``) that
-        gave it; ``None`` for the default.
+        The variable (``KARTOGRAF_ROOT``, ``IMGW_ROOT``) or the table
+        (``[kartograf]``, ``[imgw]``) that gave it; ``None`` for the default.
     exists : bool
         Whether ``path`` is a directory.
     marked : bool

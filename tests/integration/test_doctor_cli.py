@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.fixtures.isolation import Canary
 
 
@@ -49,5 +51,21 @@ def test_doctor_cli_names_the_default_store_root_of_kartograf(
     assert (
         "[OK] Wtyczka kartograf: domyślny katalog główny magazynu"
         f" {producer_canary.kartograf_root} (zmienna KARTOGRAF_ROOT; nie istnieje)"
+    ) in result.stdout
+    assert producer_canary.appeared() == []
+
+
+def test_doctor_cli_names_the_default_store_root_of_imgw(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """The root IMGWTools would use, and the variable that gave it, are printed."""
+    pytest.importorskip("imgwtools")
+
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "[OK] Wtyczka imgw: domyślny katalog główny magazynu"
+        f" {producer_canary.imgw_root} (zmienna IMGW_ROOT; nie istnieje)"
     ) in result.stdout
     assert producer_canary.appeared() == []

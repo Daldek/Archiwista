@@ -1381,7 +1381,7 @@ no producer directory lies inside another one or inside a store of any producer,
 holds one (the marker `kartograf-store.json` or `imgw-store.json` in a parent
 directory or up to two levels below; the full search of the tree is done by the
 producer's writer), and creates the index.
-The wizard offers the directory Kartograf itself would use for a store (`default_root`, 5.3) under an empty Kartograf field when it exists and holds the marker; it is entered only by a click and never written by Archiwista.
+The wizard offers the directory each producer itself would use for a store (`default_root`, 5.3) under an empty field of that producer (Kartograf, IMGWTools) when it exists and holds the producer's marker; it is entered only by a click and never written by Archiwista.
 `archiwista doctor` prints diagnostics in Polish (versions and state of source
 plugins, compatibility of producer schemas, availability of
 stores and producer directories, version of the `imgw-store/1` contract,

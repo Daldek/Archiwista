@@ -27,11 +27,11 @@ line: [`README.md`](../README.md); scripts and agents:
      version of its producer has no marker: the wizard then shows the command to
      run once, `kartograf store init --root <path>` or `imgw store init --root
      <path>`. There can be several stores.
-     If the directory Kartograf itself uses when a call names no store
-     (`KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else
-     `<data_dir>/kartograf`) exists and holds the marker, the wizard offers it under
-     the empty field with the button "Użyj tego katalogu"; it is entered only by
-     your click.
+     If the directory Kartograf or IMGWTools itself uses when a call names no store
+     (`KARTOGRAF_ROOT` or `IMGW_ROOT`, `[kartograf] root` or `[imgw] root` of
+     `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/imgw`) exists and holds
+     the producer's marker, the wizard offers it under the empty field of that
+     producer with the button "Użyj tego katalogu"; it is entered only by your click.
    - **Projects** ("Projekty"): directories with Kartograf projects
      (`kartograf-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request

@@ -156,9 +156,9 @@
  *
  * @typedef {object} DefaultRoot
  * @property {string} path - The directory; it may not exist.
- * @property {"default"|"env"|"file"} source - Where the producer's settings found it:
- *   `default` (under the data directory), `env` (an environment variable) or `file`
- *   (`nogat.toml`).
+ * @property {"default"|"env"|"dotenv"|"file"} source - Where the producer's settings found it:
+ *   `default` (under the data directory), `env` (an environment variable), `dotenv` (the
+ *   same variable in a `.env` file) or `file` (`nogat.toml`).
  * @property {string|null} name - The variable or the table that gave it.
  * @property {boolean} exists - Whether it is a directory.
  * @property {boolean} marked - Whether it holds the producer's store marker.

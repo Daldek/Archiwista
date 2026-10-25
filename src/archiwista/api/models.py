@@ -1655,7 +1655,8 @@ class DefaultRootInfo(BaseModel):
     source: DefaultRootSource = Field(
         description=(
             "Where the producer's settings found it: `default` (under the data"
-            " directory), `env` (an environment variable) or `file` (`nogat.toml`)."
+            " directory), `env` (an environment variable), `dotenv` (the same"
+            " variable in a `.env` file) or `file` (`nogat.toml`)."
         )
     )
     name: str | None = Field(
