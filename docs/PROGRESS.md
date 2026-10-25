@@ -15,7 +15,7 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, nothing pushed. Done: I1 commit 1 (`EntryMeta` carries `provider`, `written_by`, `producer_version`; the Kartograf adapter fills them). Not committed: I1 commit 2 (the extra `archiwista[imgw]` on IMGWTools `a304521`, the adapter, the probe), I2 (entry point, settings), I3 (index). Next 6 gives the exact starting points |
+| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog); nothing pushed. Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]` on IMGWTools `a304521`, the adapter and its probe) and I2 commit 1 (the entry point, ADR 0032, the CI job without the extra). Open: I2 commit 2 (settings: `StoreConfig.imgw`, nesting by markers, the wizard field), I3 (index). Next 6 gives the exact starting points |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
@@ -172,61 +172,104 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    needs the reaping to fall into the read).
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
-6. **The IMGWTools source (plan Part 2; branch `feature/imgw-source`, from `plan/next-version`).**
-   - *Base.* The branch does not hold the steps of M: the Kartograf pin is still `8e9bcbb`, and
-     `SourceState` has no `reason` and `hint` yet. I1 commit 2 therefore adds only the type part
-     of M2 commit 1 (the two fields and their pass-through in `SourceRegistry.probe`); the
-     consumers (scanner, availability job, `_probe_root`, doctor, `SourceUnavailableError`)
-     stay M2's. A merge with the head of M conflicts in `sources/types.py`, `registry.py` and
-     `messages.py` (the catalog commit turns the `MESSAGES` keys into `message(...)` calls):
-     take M's side and re-add the four `imgw_*` texts.
-   - *Pin recipe.* `imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@a30452182b01f47cc18e48466da4edf4d0c8cb6a`
-     as the extra `imgw`; `uv lock` resolves it from the uv git database that already holds
-     the commit (Retman put it there with `git fetch ~/workspace/IMGWTools feature/data-output`),
-     and adds `imgwtools 3.0.0`, `pyarrow`, `pydantic-settings`, `python-dotenv`. IMGWTools ships
-     no `py.typed`: a mypy override with `ignore_missing_imports` for `imgwtools` is needed.
-   - *I1 commit 2 (built and checked on a scratch copy, not committed).* `sources/markers.py`
-     (marker file names by producer, DEV-19.12), `adapter/imgw/` (`PRODUCER` `imgw`, `PACKAGE`
-     `imgwtools`, `SUPPORTED_VERSIONS` `>=3.0.0,<4`, the four schemas, `load` through
-     `check_package`; `ImgwAdapter` implements the source interface and no optional capability,
-     imports only names of `imgwtools.__all__` and never `pyarrow`), `EntryKind` gets
-     `observation` (the writer ignores it; the Kartograf adapter returns no entry for it),
-     `EntryMeta` gets `content_sha256` and `content_form`, four `imgw_*` texts in `messages.py`,
-     the shared fixture `imgw_store(variant)` of `tests/conftest.py`, `tests/contract/test_imgw.py`
-     (36 tests over `imgwtools.testing`: entries equal `iter_store`, relabeled versions,
-     `corrupt` and `unknown_schema`, observation, the two providers, DEV-19.16 core, footprints,
-     the probe table pinned to what `init_store`, `open_store` and `iter_store` do with each
-     directory, a project read and its statuses, a subprocess without `pyarrow`), and extensions
-     of `test_imports.py`, `test_plugins.py` and `test_index.py`.
-     Rules found: an entry's `segment` is its dataset key; `slot_path` is the directory that holds
-     the versions (`<slot>/<label>_<sha8>/<file>`); a problem gets the slot only when IMGWTools
-     names one; the probe is `available` for a root with a supported marker, an empty one and one
-     holding only `api_keys.json`, `incompatible` with `no_marker` (any of `archives`, `series`,
-     `stations`, `pmaxtp` and no marker; hint `imgw store init --root <path>`),
-     `unsupported_marker`, `foreign_store` (`kartograf-store.json`) or `not_a_store`, and `error`
-     when the root cannot be listed or contains a link (IMGWTools refuses such paths); the
-     project state `content_match` is reported `missing` (the pinned file is gone), `changed`
-     `corrupt`, `unpinned` `not_downloaded`.
+6. **The IMGWTools source (plan Part 2; branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c`).**
+   - *Done, nothing pushed.* I1 commit 1 `5e3fffc`; I1 commit 2 `796ee01` (gate 1246 passed,
+     coverage 92.04%): the extra `archiwista[imgw]`, `sources/markers.py`, `adapter/imgw/`
+     (`PRODUCER` `imgw`, `PACKAGE` `imgwtools`, `SUPPORTED_VERSIONS` `>=3.0.0,<4`, the four
+     schemas, `load` through `check_package`; `ImgwAdapter` implements the source interface and
+     no optional capability, imports only names of `imgwtools.__all__` and never `pyarrow`),
+     `EntryKind` `observation` (the index writer ignores it), `SourceState.reason` and `hint`
+     with their pass-through in `SourceRegistry.probe`, `EntryMeta.content_sha256` and
+     `content_form`, the catalog entries `source.imgw_*` and `source.schema_unknown`, the shared
+     fixture `imgw_store(variant)` and `tests/contract/test_imgw.py` (36 tests over
+     `imgwtools.testing`; the probe table is pinned to what `init_store`, `open_store` and
+     `iter_store` do with each directory); I2 commit 1 `ccdb2f3` (gate 1248 passed, coverage
+     92.00%): the entry point `imgw = "archiwista.adapter.imgw:load"`, ADR 0032
+     (`docs/decisions/0032-imgwtools-source.md`, index row in `docs/DECISIONS.md`; 0030 and 0031
+     are the adoption ADR of Next 1.2 and step M2 of the plan), the job `without-extras` of
+     `ci.yml` (never run: nothing is pushed), `tests/conftest.py` does not collect
+     `contract/test_imgw.py` without IMGWTools, `tests/integration/test_sources_imgw.py`. The
+     commits `5e3fffc` and `0c4c8e7` were rebased onto `093ea8c` and got scoped tests only; the
+     gate of `796ee01` covers their tree. The environment without the extra, which the CI job
+     runs, was checked locally with `UV_PROJECT_ENVIRONMENT=<dir> uv sync --locked` and
+     `uv run --no-sync pytest tests/unit tests/integration tests/contract
+     tests/e2e/test_shell.py tests/e2e/test_acceptance.py`: 1139 passed, 2 skipped and one
+     failure, the set of sources that `tests/e2e/test_acceptance.py` asserted, which was
+     corrected and passes with and without the extra. The whole interface suite was not run
+     without the extra.
+   - *Base and merge with M.* The steps of M are not on the branch: the Kartograf pin is still
+     `8e9bcbb`, and the consumers of `SourceState.reason` and `hint` (scanner, availability job,
+     `_probe_root`, doctor, `SourceUnavailableError`) are M2's. A merge conflicts in
+     `sources/types.py` and `sources/registry.py` (the two fields and their pass-through exist
+     here) and `messages/source.py` (M2 adds `source.no_marker`, `source.foreign_store`,
+     `source.unsupported_marker`, rewords `source.kartograf_not_store` and `fix.source`): keep
+     both sides.
+   - *Pin.* `imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@a30452182b01f47cc18e48466da4edf4d0c8cb6a`;
+     `uv lock` resolved it from the uv git database that holds the commit (Retman put it there
+     with `git fetch ~/workspace/IMGWTools feature/data-output`). The branch has moved: `1a24930`
+     ships `py.typed` (then the mypy override for `imgwtools` in `pyproject.toml` goes) and
+     `7b11755` shows the nested-store refusal in every store plan; a re-pin is one commit (fetch
+     into that database, change the commit, `uv lock`, gate), after the last rewrite of the branch.
    - *Requests to file at IMGWTools (DEV-17.5).* `Meta` has no `producer`, `producer_version`
      or raw sidecar (the adapter sets `written_by` to `imgwtools`, leaves `producer_version`
      empty and shows the sidecar rebuilt from `Meta`); `StoreInfo` has no machine code;
      `iter_store` takes no list of known versions, so a scan reads every sidecar; a marker
      without `created_by` is unsupported for the reader and accepted by `open_store`.
-   - *I2.* Commit 1: the entry point `imgw = "archiwista.adapter.imgw:load"`, the CI job without
-     the extra, ADR 0032 (one adapter for IMGW-PIB and ČHMÚ, the extra, the read-first order) with
-     its index row, CHANGELOG, CLAUDE.md and ARCHITECTURE rows; tests that assume Kartograf is the
-     only source change: `tests/integration/test_api.py` (the `/sources` list),
-     `tests/integration/test_second_adapter.py` (the sources dict) and `test_plugins.py`
-     (`registry.probe("imgw", ...)` as an unknown producer). Commit 2: `StoreConfig.imgw`,
-     `kartograf` optional and at least one required, `roots()`, `dump_settings` skips `None`,
-     `StoreSettings` of the API, the wizard field shown only when `GET /sources` says `imgw` is
-     `available`, and `check_nesting` by the marker names of `sources/markers.py` (ancestors are
-     cheap; Kartograf's `store_below` walks the whole tree below, too slow for a store of 50,000
-     slots in `PUT /settings`, so bound the descent and say how). `services/stores.py` takes the
-     first producer of `roots()` for its instructions.
+   - *I2 commit 2, settings: starting points (as of `ccdb2f3`).*
+     - `StoreConfig` (`config.py:171`): `kartograf: AbsolutePath` (:193) becomes optional and
+       `imgw` is added, with one validator that wants at least one directory; `_detect_kind`
+       (:197) reads the first of them, `roots()` (:226) lists the present ones, and
+       `dump_settings` (:1019) must skip `None` members (TOML has no null); a file with only
+       `kartograf` must load and dump unchanged. `StoreSettings` (`api/models.py:2449`,
+       `_STORE_SETTINGS_EXAMPLE` :402) has `kartograf: str` and needs `imgw`; `save_settings`
+       (`api/settings.py`) validates with `exclude_unset`. The subclass `_ExternalStore` in
+       `tests/integration/test_second_adapter.py` returns `self.kartograf`.
+     - `check_nesting` (`config.py:891`, called by `validate_settings` with every root) tests
+       paths only. Add the marker names of both producers (`sources/markers.py`; add helpers
+       there, `config.py` may import it): the nearest ancestor of the real path that holds a
+       marker, and a marker below the directory. IMGWTools' `_nested_problem`
+       (`store/writer.py`) walks the whole tree below the root minus its managed trees; for
+       `PUT /settings` on a store of 50,000 slots bound the descent (two levels, no links) and
+       say so. Do the marker reads only for roots that are new or moved: `validate_settings`
+       skips unchanged roots so that a disconnected share does not block other edits. The texts
+       are `root.*` catalog entries (`root.nested` fits an ancestor; a store below needs one),
+       `fix.nested` fits both.
+     - Wizard (`web/src/setup.js`, `labels/setup.js`, JSDoc `types.js:789`): the field "Katalog
+       IMGWTools" is shown when `health.sources` has `imgw` with `status` `available` or the
+       store already holds a value (a hidden field must not drop an entry: `bodyOf` keeps it);
+       `STORE_FIELDS` (:34), `draftOf`, `emptyStore`, `bodyOf`, `storeErrors` (one of the two
+       directories is required), `problemFields` and the summary of `SaveStep` know both fields.
+       The Playwright test: the e2e server runs in a thread of the test process and `serve`
+       (`tests/e2e/conftest.py`) loads the registry at call time, so a missing package is
+       simulated with `monkeypatch.setattr(importlib.metadata, "version", ...)` as in
+       `tests/integration/test_sources_imgw.py`; `test_first_run_wizard_saves_settings` must
+       still save a store whose `imgw` is `None`.
+     - SPEC 5.8: a scan skips the directory of an unavailable source and keeps its entry in the
+       settings. Today `run_scan` (`jobs/worker.py:231`) asks `registry.adapter(producer)` for
+       every root and raises, and `ScanScheduler._probe` (`jobs/scheduler.py:283`) wants every
+       root of a store reachable, so a store with an IMGW directory and no IMGWTools stops its
+       Kartograf scans too; skip the unavailable plugin's directory there, with a test. The
+       store status is one per store (`set_store_status` in `index/scanner.py`).
+     - `services/stores.py:78` names the first producer of `roots()` in every store problem; the
+       producer is known per issue (`_issues` in `index/queries.py:2054` joins `segments g`, and
+       `IssueRef` at `index/types.py:319` has no producer yet; the slot card uses
+       `detail.segment.producer`).
+     - Acceptance of the plan: settings with only an IMGW directory validate (also `PUT
+       /settings`); a Kartograf directory inside an IMGW store is a `root_nested` problem at
+       `stores[0].kartograf` and an IMGW directory inside a Kartograf store at `stores[0].imgw`;
+       the wizard test shows and hides the field; the old settings file loads unchanged. Then
+       update the sentence of the CHANGELOG entry of I2 commit 1 ("a store takes an IMGW
+       directory in the next step"), ARCHITECTURE section 10 ("Do zrobienia: `StoreConfig.roots`
+       zwraca dziś tylko katalog `kartograf`"), the settings example of SPEC section 5.5 (line
+       1445) and ADR 0032 (consequences).
    - *I3* as in the plan; the slot key is the slot directory, `current_version` is the new
-     optional capability, and the generic scan already indexes IMGW entries without a current
-     version until then.
+     optional capability, and the generic scan already indexes IMGW entries (versions in their
+     slots, no link, so no current version) until then.
+   - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
+     that overlapped two other gates failed six timing tests that pass alone in 86 s
+     (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,
+     `test_own_data.py` twice, `tests/integration/test_render_pool.py::test_unreadable_cached_as_code_and_timeout_not_cached`);
+     the rerun was green.
 
 ## Open questions
 
