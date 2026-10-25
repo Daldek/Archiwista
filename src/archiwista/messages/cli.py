@@ -1332,6 +1332,110 @@ MESSAGES = {
         "Beside the options: {run}",
         "Poza opcjami: {run}",
     ),
+    "jobs_help": Text(
+        (
+            "Jobs of producers' commands on a store: start one and read the plan a"
+            " check kept (--json: the models of /api/v1/jobs)."
+        ),
+        (
+            "Zadania poleceń producentów na magazynie: uruchomienie i odczyt planu,"
+            " który zachowało sprawdzenie (--json: modele z /api/v1/jobs)."
+        ),
+    ),
+    "jobs_start_help": Text(
+        (
+            "Starts a job of a command of the producer's catalog on a store and"
+            " follows it to its end; check plans a run without its effects (--json:"
+            " the JobDetail model of the job as it ended)."
+        ),
+        (
+            "Uruchamia zadanie polecenia z katalogu producenta na magazynie i śledzi"
+            " je do końca; check planuje uruchomienie bez jego skutków (--json: model"
+            " JobDetail zadania po jego końcu)."
+        ),
+    ),
+    "jobs_kind_help": Text(
+        "Kind of the job: check (the plan of a run, over the network).",
+        "Rodzaj zadania: check (plan uruchomienia, przez sieć).",
+    ),
+    "jobs_command_help": Text(
+        'Command of the producer\'s catalog on a store, e.g. "elevation download".',
+        "Polecenie z katalogu producenta na magazynie, np. „elevation download”.",
+    ),
+    "jobs_store_help": Text(
+        "Store identifier from the settings: the command works on its directory.",
+        "Identyfikator magazynu z ustawień: polecenie działa na jego katalogu.",
+    ),
+    "jobs_plan_help": Text(
+        (
+            "Prints the plan a check job kept, without the network (--json:"
+            " ActionPlanInfo model)."
+        ),
+        (
+            "Wypisuje plan, który zachowało zadanie check, bez sieci (--json: model"
+            " ActionPlanInfo)."
+        ),
+    ),
+    "jobs_job_help": Text(
+        "Job identifier (the id of POST /api/v1/jobs).",
+        "Identyfikator zadania (id z POST /api/v1/jobs).",
+    ),
+    "jobs_failed": Text(
+        "Cannot run the job",
+        "Nie można uruchomić zadania",
+    ),
+    "jobs_started": Text(
+        "Job {job} started: {kind}.",
+        "Zadanie {job} uruchomione: {kind}.",
+    ),
+    "jobs_notice": Text(
+        "Job {job}: {message}",
+        "Zadanie {job}: {message}",
+    ),
+    "jobs_cancelling": Text(
+        "Cancelling job {job} ({kind})…",
+        "Przerywam zadanie {job} ({kind})…",
+    ),
+    "jobs_job": Text(
+        "Job {job} ({kind}): {state}.",
+        "Zadanie {job} ({kind}): {state}.",
+    ),
+    "jobs_job_failed": Text(
+        "Job {job} ({kind}) {state}: {detail}",
+        "Zadanie {job} ({kind}) {state}: {detail}",
+    ),
+    "jobs_counts": Text(
+        "Positions: {positions} ({counts}); to download: {todo}, {size}.",
+        "Pozycje: {positions} ({counts}); do pobrania: {todo}, {size}.",
+    ),
+    "jobs_line": Text(
+        "Command line of the run: {line}",
+        "Linia polecenia uruchomienia: {line}",
+    ),
+    "jobs_size": Text(
+        "size {size}",
+        "rozmiar {size}",
+    ),
+    "jobs_size_partial": Text(
+        "size at least {size}",
+        "rozmiar co najmniej {size}",
+    ),
+    "jobs_size_unknown": Text(
+        "size unknown",
+        "rozmiar nieznany",
+    ),
+    "jobs_plan": Text(
+        "Plan of job {job} in the store {store}, checked {checked_at}:",
+        "Plan zadania {job} w magazynie {store}, sprawdzony {checked_at}:",
+    ),
+    "jobs_plan_entry": Text(
+        "  {status}: {path} ({local} → {available})",
+        "  {status}: {path} ({local} → {available})",
+    ),
+    "jobs_no_label": Text(
+        "none",
+        "brak",
+    ),
     "availability_help": Text(
         (
             "What the source has for an area: the last report and a check at the"

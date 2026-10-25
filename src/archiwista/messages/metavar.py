@@ -9,6 +9,8 @@ MESSAGES = {
     "cursor": Text("CURSOR", "KURSOR"),
     "file": Text("FILE", "PLIK"),
     "horizontal": Text("SYSTEM", "UKŁAD"),
+    "job": Text("JOB", "ZADANIE"),
+    "kind": Text("KIND", "RODZAJ"),
     "key": Text("KEY", "KLUCZ"),
     "line": Text("LINE", "LINIA"),
     "number": Text("NUMBER", "LICZBA"),

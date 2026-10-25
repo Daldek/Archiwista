@@ -35,6 +35,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
+| a job of a producer's command on a configured store, kind `check` (the plan of a run without its effects), and the plan a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT POLECENIE --store MAGAZYN [--options JSON]` (the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -537,6 +538,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
+| `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "command": "…", "options": {…}}` | a job of a command of the producer's catalog that works on a store and has a check (v0.3): `check` plans a run in the store's directory of the producer without its effects, over the network; refused before a job exists: a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them |
 
 An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
 When a job that writes the store's index (a scan or outlines) runs already, the
@@ -544,12 +546,22 @@ answer is `409 conflict` with `details.job` (`id`, `kind`, `state`): follow that
 job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
-`link_check`, `preview`, `own_scan`, `snapshot`, `availability`), `state` (`queued`, `running`,
-`succeeded`, `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
+`link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`), `state` (`queued`, `running`,
+`succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`
 with `limit` (1–200) and `cursor`, newest first. Jobs with project data check
 the visibility of the project in a single card and in the SSE stream too.
+
+The plan of a `check` job that succeeded or ended `partial` is `GET
+/jobs/{id}/plan` (`ActionPlanInfo`, from the index, no network): the store, the
+producer's command line of the run (`line`, with the store's root), `checked_at`,
+`counts` of each status, `todo`, `size_bytes` (`null` when the producer tells no
+size, never 0) with `size_complete`, and `entries`: `path` below the store root,
+`unit`, `status` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`),
+`local_label`, `available_label`, `size_bytes`, `error`, `conflict`. A job the
+session does not see, one that is no `check`, one still running and one that
+failed are `404`.
 
 Events flow as SSE from `GET /jobs/{id}/events` (`text/event-stream`). Every
 frame has `id: <sequence number>`, `event: progress|notice|state` and
@@ -612,7 +624,9 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `internal_error` | none | a defect of Archiwista: details are in the job log |
 
 Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
-reason). The CLI has no job commands:
+reason). The CLI's job commands are `archiwista jobs start` (a job of a
+producer's command in the foreground; it prints the job's `JobDetail` as it
+ended and exits `0`, `10` for `partial`, `11` or `130`) and `jobs plan`;
 `archiwista reindex [--store MAGAZYN]` runs a full scan in the foreground (for
 the owner at a terminal, not for an agent next to a running server: both go to
 the same queue and get a conflict, exit `4`, when they meet).

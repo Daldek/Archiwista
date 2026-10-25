@@ -3,6 +3,16 @@
 from archiwista.messages import Text
 
 MESSAGES = {
+    "no_check": Text(
+        (
+            'The command "{command}" of the source {producer} has no plan without'
+            " effects: it cannot be checked."
+        ),
+        (
+            "Polecenie „{command}” źródła {producer} nie ma planu bez skutków: nie"
+            " można go sprawdzić."
+        ),
+    ),
     "no_commands": Text(
         "The source {producer} offers no commands.",
         "Źródło {producer} nie udostępnia poleceń.",
@@ -10,6 +20,16 @@ MESSAGES = {
     "no_plan": Text(
         'The source {producer} gives no plan of "{command}" in a store.',
         "Źródło {producer} nie podaje planu polecenia „{command}” w magazynie.",
+    ),
+    "no_store": Text(
+        (
+            'The command "{command}" of the source {producer} works on no store:'
+            " it is not run as a job."
+        ),
+        (
+            "Polecenie „{command}” źródła {producer} nie działa na magazynie: nie"
+            " uruchamia się go jako zadania."
+        ),
     ),
     "path_option": Text(
         (

@@ -76,7 +76,7 @@ def add_commands(commands: Commands) -> None:
     _call(written)
     written.add_argument(
         "--run",
-        type=_json_object,
+        type=json_object,
         default={},
         metavar="JSON",
         help=message("cli.commands_run_help"),
@@ -204,14 +204,14 @@ def _call(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--options",
-        type=_json_object,
+        type=json_object,
         default={},
         metavar="JSON",
         help=message("cli.commands_options_help"),
     )
 
 
-def _json_object(text: str) -> dict[str, Any]:
+def json_object(text: str) -> dict[str, Any]:
     """Read the value of ``--options`` or ``--run``: a JSON object (a usage error)."""
     try:
         value = json.loads(text)

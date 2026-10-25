@@ -51,6 +51,16 @@ MESSAGES = {
         'There is no job "{job}".',
         "Nie ma zadania „{job}”.",
     ),
+    "no_plan": Text(
+        (
+            'Job "{job}" kept no plan: only a check of a command that ended'
+            " with its plan keeps one."
+        ),
+        (
+            "Zadanie „{job}” nie zachowało planu: zachowuje go tylko sprawdzenie"
+            " polecenia zakończone planem."
+        ),
+    ),
     "conflict": Text(
         (
             'Store "{store}" already has a job writing the index: {kind}, {state}'
@@ -208,6 +218,26 @@ MESSAGES = {
     "check_failed": Text(
         "The source could be asked about none of the {count} positions of the plan.",
         "Źródła nie udało się zapytać o żadną z {count} pozycji planu.",
+    ),
+    "plan_current": Text(
+        "current",
+        "aktualne",
+    ),
+    "plan_newer": Text(
+        "newer at the source",
+        "nowsze u źródła",
+    ),
+    "plan_missing": Text(
+        "missing from the store",
+        "brak w magazynie",
+    ),
+    "plan_unverifiable": Text(
+        "cannot be verified",
+        "nie do sprawdzenia",
+    ),
+    "plan_check_failed": Text(
+        "not checked",
+        "niesprawdzone",
     ),
     "conflict_snapshot": Text(
         (

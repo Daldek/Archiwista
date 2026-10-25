@@ -183,6 +183,19 @@ command-line interface may change.
   with none of its positions checked fails the job (`source_unavailable`, reason
   `check_failed`). A client that lists the final states of a job must add `partial`.
   (ERR §1, ADR-036)
+- `POST /jobs` starts a job of a command of a producer's catalog on a configured store,
+  kind `check` for now (the plan of a run, `202` with the job), and `GET /jobs/{job}/plan`
+  returns the plan a `check` job kept (`ActionPlanInfo`: the counts, `todo`, the size or
+  `null`, the producer's command line and each position), from the index without the
+  network. Before a job exists the request is refused as the job's worker would refuse
+  it: a store that is not configured (`404`), a command outside the catalog (`400`,
+  `unknown_command`), one on no store or without a check (`422`, `no_store`,
+  `no_check`), an option that is a file path (`403`), the producer's refusal of the
+  options (`400`, its text) and offline mode (`409`); the job keeps the options as the
+  producer read them. `archiwista jobs start check PRODUCENT POLECENIE --store ID
+  [--options JSON]` runs the job in the foreground and prints it as it ended (exit 0, 10
+  for `partial`), `archiwista jobs plan ZADANIE` prints the plan; `--json` gives the
+  route's model. (SPEC 9.2, ADR-036)
 
 ### Changed
 

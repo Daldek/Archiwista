@@ -3,14 +3,18 @@
 A store's settings name only the directories of the producers Archiwista
 configures (Kartograf's, IMGW's). ``StandinStore`` gives the stand-in
 (``tests/fixtures/action_source``) the store's Kartograf directory in the test's
-own process; the settings reach a worker process as JSON, so the workers of
-``ACTION_WORKER`` (``tests.fixtures.action_worker``) do the same themselves.
+own process, and ``standin_in_settings`` does it for every store the API and
+the commands of a test load; the settings reach a worker process as JSON, so
+the workers of ``ACTION_WORKER`` (``tests.fixtures.action_worker``) do the same
+themselves.
 The stand-in is registered by ``tests.fixtures.availability.register_standin``
 and the worker imports ``tests`` through ``tests.fixtures.jobs.worker_path``.
 """
 
 import sys
 from pathlib import Path
+
+import pytest
 
 from archiwista.config import (
     AppPaths,
@@ -44,6 +48,20 @@ class StandinStore(StoreConfig):
     def roots(self) -> dict[str, Path]:
         """Return the stand-in's directory: the one given as Kartograf's."""
         return standin_roots(super().roots())
+
+
+def standin_in_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the stand-in each store's Kartograf directory in this process too.
+
+    The settings the API and the commands load hold plain ``StoreConfig``s;
+    a worker of ``ACTION_WORKER`` does the same in its own process.
+    """
+    roots = StoreConfig.roots
+
+    def standin(self: StoreConfig) -> dict[str, Path]:
+        return standin_roots(roots(self))
+
+    monkeypatch.setattr(StoreConfig, "roots", standin)
 
 
 def store_root(tmp_path: Path) -> Path:

@@ -18,6 +18,7 @@ from archiwista.commands import (
     Commands,
     availability,
     compare,
+    jobs,
     layers,
     owndata,
     previews,
@@ -48,6 +49,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     layers,
     producer_commands,
     availability,
+    jobs,
 )
 
 

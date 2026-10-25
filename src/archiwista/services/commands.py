@@ -123,7 +123,30 @@ def validate_command(
         As ``actions``.
     """
     adapter = actions(registry, call.producer)
-    info = _command(adapter, call)
+    return checked_call(
+        adapter, settings, command_info(adapter, call), call, store=store
+    )
+
+
+def checked_call(
+    adapter: ActionAdapter,
+    settings: AppSettings,
+    info: CommandInfo,
+    call: CommandCall,
+    *,
+    store: str | None,
+) -> CommandCall:
+    """Check a call of the catalog's command ``info`` (``validate_command``).
+
+    Raises
+    ------
+    PathOutsideRootError
+        An option that is a file path is given (``details.option``).
+    CommandRequestError, NotFoundError
+        As ``store_root``, for a command that works on a store.
+    ProducerError
+        The producer refused the call.
+    """
     for option in info.options:
         if option.path_role is not None and option.name in call.options:
             raise PathOutsideRootError(
@@ -167,8 +190,15 @@ def actions(registry: PluginRegistry, producer: str) -> ActionAdapter:
     return adapter
 
 
-def _command(adapter: ActionAdapter, call: CommandCall) -> CommandInfo:
-    """Return the catalog's entry of the command a call names."""
+def command_info(adapter: ActionAdapter, call: CommandCall) -> CommandInfo:
+    """Return the catalog's entry of the command a call names.
+
+    Raises
+    ------
+    CommandRequestError
+        The producer's catalog has no such command (reason
+        ``unknown_command``, the catalog's commands in ``details.allowed``).
+    """
     catalog = adapter.commands()
     for info in catalog:
         if info.command == call.command:
