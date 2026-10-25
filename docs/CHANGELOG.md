@@ -219,6 +219,16 @@ command-line interface may change.
   of the call an active download of the store runs starts with the warning notice
   `overlapping_job`. Offline mode refuses it before a job exists. (SPEC 5.6, 12.2 KB-5,
   ADR-037)
+- `POST /jobs` starts a download too (`"kind": "download"`, optionally `"plan_job"`: the
+  `check` job whose kept plan the run runs), and `archiwista jobs start download PRODUCENT
+  POLECENIE --store ID [--options JSON] [--plan ZADANIE]` runs it in the foreground and
+  prints the files by status and the units that failed. A download writes the store, so
+  it needs the role `store_writer` or the setting `store_write_for_all`: without them a
+  session or an agent token (which has the roles of the person who issued it) gets `403`
+  (`permission_denied`) and no job is recorded; a plan needs no such permission. A
+  `plan_job` the session does not see, or one that kept no plan, is `404`; one of another
+  store, command or options is `409` (`plan_mismatch`). (SPEC 9.2, 10.2, SPEC 13 v0.3
+  criterion 7, ADR-037)
 
 ### Changed
 

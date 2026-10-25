@@ -1345,18 +1345,36 @@ MESSAGES = {
     "jobs_start_help": Text(
         (
             "Starts a job of a command of the producer's catalog on a store and"
-            " follows it to its end; check plans a run without its effects (--json:"
-            " the JobDetail model of the job as it ended)."
+            " follows it to its end; check plans a run without its effects, download"
+            " runs it in the store (--json: the JobDetail model of the job as it"
+            " ended)."
         ),
         (
             "Uruchamia zadanie polecenia z katalogu producenta na magazynie i śledzi"
-            " je do końca; check planuje uruchomienie bez jego skutków (--json: model"
-            " JobDetail zadania po jego końcu)."
+            " je do końca; check planuje uruchomienie bez jego skutków, download"
+            " uruchamia je w magazynie (--json: model JobDetail zadania po jego"
+            " końcu)."
         ),
     ),
     "jobs_kind_help": Text(
-        "Kind of the job: check (the plan of a run, over the network).",
-        "Rodzaj zadania: check (plan uruchomienia, przez sieć).",
+        (
+            "Kind of the job: check (the plan of a run, over the network) or download"
+            " (the run, over the network; it writes the store)."
+        ),
+        (
+            "Rodzaj zadania: check (plan uruchomienia, przez sieć) albo download"
+            " (uruchomienie, przez sieć; zapisuje magazyn)."
+        ),
+    ),
+    "jobs_plan_job_help": Text(
+        (
+            "download only: the check job whose kept plan the run runs; only its"
+            " positions to download are fetched."
+        ),
+        (
+            "tylko download: zadanie check, którego zachowany plan uruchomić;"
+            " pobierane są tylko jego pozycje do pobrania."
+        ),
     ),
     "jobs_command_help": Text(
         'Command of the producer\'s catalog on a store, e.g. "elevation download".',
@@ -1435,6 +1453,10 @@ MESSAGES = {
     "jobs_no_label": Text(
         "none",
         "brak",
+    ),
+    "jobs_files": Text(
+        "Files: {files} ({counts}); failed units: {failed}.",
+        "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
     ),
     "availability_help": Text(
         (

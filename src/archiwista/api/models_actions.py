@@ -1,19 +1,20 @@
-"""Models of the producers' commands run as jobs (plan of 2026-10-25, A4; SPEC 9.2).
+"""Models of the producers' commands run as jobs (plan of 2026-10-25, A4, A5; SPEC 9.2).
 
 ``JobRequest`` is the body of ``POST /jobs`` and of ``archiwista jobs start``:
-the kind of the job, the producer, the configured store and the call of a
-command of the producer's catalog; the answer is the ``JobDetail`` of the job.
-``ActionPlanInfo`` answers ``GET /jobs/{job}/plan`` and ``archiwista jobs
-plan``: the plan a ``check`` job kept (ADR-036), its positions as
-``PlanEntryItem``. The store root is never an option: the store's id names it
-(ADR-034, decision 2). The request model refuses unknown members (``400
-validation_error``).
+the kind of the job, the producer, the configured store, the call of a command
+of the producer's catalog and, for a download, the ``check`` job whose plan it
+runs; the answer is the ``JobDetail`` of the job. ``ActionPlanInfo`` answers
+``GET /jobs/{job}/plan`` and ``archiwista jobs plan``: the plan a ``check``
+job kept (ADR-036), its positions as ``PlanEntryItem``. The store root is
+never an option: the store's id names it (ADR-034, decision 2). The request
+model refuses unknown members and a plan of another kind than ``download``
+(``400 validation_error``).
 """
 
 from datetime import datetime
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from archiwista.api.models_availability import AvailabilityNoticeItem
 from archiwista.index import StoredPlan
@@ -101,7 +102,13 @@ class JobRequest(BaseModel):
     """A job of a producer's command on a configured store (`POST /jobs`)."""
 
     model_config = ConfigDict(
-        extra="forbid", json_schema_extra={"examples": [_REQUEST_EXAMPLE]}
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                _REQUEST_EXAMPLE,
+                {**_REQUEST_EXAMPLE, "kind": "download", "plan_job": _JOB_ID},
+            ]
+        },
     )
 
     kind: ActionKind = Field(
@@ -109,7 +116,9 @@ class JobRequest(BaseModel):
             "`check`: plan a run of the command in the store without its effects"
             " (what it would download, the labels, the size when the producer"
             " tells it), over the network; read the plan with `GET"
-            " /jobs/{job}/plan`."
+            " /jobs/{job}/plan`. `download`: run the command in the store, over"
+            " the network; it writes the store, so it needs the role"
+            " `store_writer` or the setting `store_write_for_all`."
         )
     )
     producer: str = Field(min_length=1, description="Producer id.")
@@ -134,6 +143,27 @@ class JobRequest(BaseModel):
             " path (`path_role`)."
         ),
     )
+    plan_job: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "`download` only: the `check` job whose kept plan the run runs, a"
+            " plan of the same store, producer, command and options. The run"
+            " fetches only its positions to download; one whose source changed"
+            " since is a failed item (`conflict`, `stale_plan`). Without it the"
+            " run fetches what the source has that the store does not hold."
+        ),
+        examples=[_JOB_ID],
+    )
+
+    @field_validator("plan_job")
+    @classmethod
+    def _only_a_download_runs_a_plan(
+        cls, value: str | None, info: ValidationInfo
+    ) -> str | None:
+        if value is not None and info.data.get("kind") != "download":
+            raise ValueError("only a download runs the plan of a check job")
+        return value
 
     def call(self) -> CommandCall:
         """Return the call of the job's command."""

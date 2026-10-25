@@ -86,7 +86,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    whether LAZ, the one format of point clouds, is a default format (ADR-017 names ASC
    and GeoTIFF only, so a LAZ variant has no default format and no size); "w innym
    formacie" in the row details (A10). **A4 is done** (Status row "v0.3 A4").
-   **A5 (three commits): commits 1 and 2 are done** (ADR-037). Commit 1:
+   **A5 is done** (three commits, ADR-037). Commit 1:
    `ActionAdapter.run` returns `ActionResult` (`files[]` below the root, `items[]`,
    `status`) with `ActionProgress` counting units, and `ActionAdapter.scope(path)` names
    the segment and the unit (`<slot directory>/<stem>` for Kartograf) a scan reads a
@@ -99,15 +99,19 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    `unit`, `status`, `message`; `files[]`, `items[]` and `counts` in the result; `partial`
    with failed units, `RunFailedError` with none done; `refresh_view` of the files'
    scopes, of the units the progress named when interrupted, within `RESCAN_STOP_S`),
-   `tests/integration/test_download_job.py`. Next, commit 3: `download` in
-   `ActionKind`/`JobRequest` (the row `kind: download` of the refusal table of
-   `test_check_api.py` then needs another unknown kind), `store.write` checked in
-   `start` (`Authorizer.require`, `403` before a job row by API, CLI and agent token; the
-   route takes `Depends(authorizer)`, the CLI an `Authorizer` over `StateStore` as
-   `LOCAL_OWNER`), a download also needs `info.check` (every run goes through its plan),
-   the optional `plan_job` (visible, a finished `check` with a kept plan of the same
-   store, producer, command and options: else `404 job.no_plan` or `409`), `archiwista
-   jobs start download … --plan JOB`, AGENT_API. Then A11 (the plan window).
+   `tests/integration/test_download_job.py`. Commit 3: `download` in `ActionKind` and
+   `JobRequest` with the optional `plan_job`; `services/actions.start` asks
+   `Authorizer.require(actor, "store.write")` first for a download (`403
+   permission_denied`, no job row; the route takes `Depends(authorizer)`, the CLI an
+   `Authorizer` over `StateStore` as `LOCAL_OWNER`, who holds the role), keeps `no_check`
+   for a download, and takes `plan_job` only as a job the principal sees with a kept plan
+   (`404` `job.not_found`, `job.no_plan`) of the same store and call (`409`,
+   `plan_mismatch`, message `job.mismatched_plan`); `archiwista jobs start download …
+   [--plan JOB]` prints the files by status (`job.file_*`) and the failed units;
+   `tests/integration/test_download_api.py` (the permission matrix of role, setting and
+   agent token, the refusals of a plan by API and CLI, a hidden plan job, the foreground
+   run). The CLI always acts as the local owner, so its `403` cannot be shown; it calls
+   the same check. Next: A11 (the plan window).
    Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`)
    is not its canonical line, so the contract test compares calls, not text (a request
    to Kartograf).

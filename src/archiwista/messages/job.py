@@ -243,6 +243,18 @@ MESSAGES = {
         "download",
         "pobranie",
     ),
+    "file_new": Text(
+        "new",
+        "nowe",
+    ),
+    "file_unchanged": Text(
+        "unchanged",
+        "bez zmian",
+    ),
+    "file_relabeled": Text(
+        "relabeled",
+        "z nową etykietą",
+    ),
     "run_failed": Text(
         "None of the {count} units of the run succeeded.",
         "Żadna z {count} jednostek uruchomienia się nie powiodła.",
@@ -267,6 +279,16 @@ MESSAGES = {
         (
             "Indeks nie pokazuje jeszcze wszystkich plików uruchomienia: doda je"
             " najbliższy skan magazynu."
+        ),
+    ),
+    "mismatched_plan": Text(
+        (
+            'Job "{job}" planned another store, command or options: download what'
+            " it planned, or check this command first."
+        ),
+        (
+            "Zadanie „{job}” zaplanowało inny magazyn, polecenie albo opcje: pobierz"
+            " to, co zaplanowało, albo najpierw sprawdź to polecenie."
         ),
     ),
     "conflict_snapshot": Text(

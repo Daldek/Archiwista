@@ -1,17 +1,19 @@
-"""``archiwista jobs``: jobs of producers' commands (plan of 2026-10-25, A4).
+"""``archiwista jobs``: jobs of producers' commands (plan of 2026-10-25, A4, A5).
 
-``jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON]`` starts a
-job of a command of the producer's catalog on a configured store (``POST
-/jobs``) and follows it to its end in the foreground
+``jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan
+ZADANIE]`` starts a job of a command of the producer's catalog on a configured
+store (``POST /jobs``) and follows it to its end in the foreground
 (``archiwista.jobs.foreground``): kind ``check`` plans a run without its
-effects. It prints the job as it ended (``GET /jobs/{job}``, ``JobDetail``)
-and exits with its outcome: ``0`` succeeded, ``10`` partial, ``11`` failed,
-``130`` cancelled or interrupted (ERR §1). ``jobs plan ZADANIE`` prints the plan
-a ``check`` job kept (``GET /jobs/{job}/plan``, ``ActionPlanInfo``) without the
-network. Both call ``archiwista.services.actions`` without HTTP, as the owner
-of the installation (``LOCAL_OWNER``); ``--json`` prints the route's model, a
-refusal prints no model and ends standard error with its ``archiwista-error/1``
-document.
+effects, ``download`` runs it in the store, with ``--plan`` the plan a
+``check`` job kept. It prints the job as it ended (``GET /jobs/{job}``,
+``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
+``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs plan ZADANIE``
+prints the plan a ``check`` job kept (``GET /jobs/{job}/plan``,
+``ActionPlanInfo``) without the network. Both call
+``archiwista.services.actions`` without HTTP, as the owner of the installation
+(``LOCAL_OWNER``, who may write the stores), with the ``Authorizer`` over the
+state database; ``--json`` prints the route's model, a refusal prints no model
+and ends standard error with its ``archiwista-error/1`` document.
 """
 
 import argparse
@@ -25,6 +27,7 @@ from pydantic import ValidationError
 from archiwista.api.models import JobDetail
 from archiwista.api.models_actions import ActionPlanInfo, JobRequest
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
+from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser
 from archiwista.commands.producer_commands import json_object
 from archiwista.config import (
@@ -39,14 +42,15 @@ from archiwista.error_document import (
     refuse,
     validation_problem,
 )
-from archiwista.errors import ArchiwistaError
+from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
 from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.messages import label, message, with_detail
 from archiwista.services.actions import kept_plan, start
-from archiwista.sources import PLAN_STATUSES, PLAN_TODO, PlanStatus
+from archiwista.sources import FILE_STATUSES, PLAN_STATUSES, PLAN_TODO, PlanStatus
 from archiwista.sources.registry import PluginRegistry
+from archiwista.state import StateStore
 
 COMMANDS = frozenset({"jobs"})
 
@@ -88,6 +92,12 @@ def add_commands(commands: Commands) -> None:
         default={},
         metavar="JSON",
         help=message("cli.commands_options_help"),
+    )
+    started.add_argument(
+        "--plan",
+        dest="plan_job",
+        metavar=message("metavar.job"),
+        help=message("cli.jobs_plan_job_help"),
     )
     planned = add_parser(actions, "plan", "cli.jobs_plan_help")
     planned.add_argument(
@@ -146,6 +156,8 @@ def _start(
     }
     if args.store is not None:
         given["store"] = args.store
+    if args.plan_job is not None:
+        given["plan_job"] = args.plan_job
     try:
         request = JobRequest.model_validate(given)
     except ValidationError as error:
@@ -154,6 +166,8 @@ def _start(
     try:
         service = SettingsService(ConfigStore(paths.config_file), registry)
         settings = service.get()
+        decisions = Authorizer(StateStore(paths.state_file), service.get)
+        queries = stack.enter_context(IndexQueries(paths.index_file))
         jobs = stack.enter_context(JobSupervisor(paths, service))
     except _UNUSABLE as error:
         return _unusable(error, err)
@@ -164,10 +178,14 @@ def _start(
             registry,
             settings,
             jobs,
+            queries,
+            decisions,
             kind=request.kind,
             store=request.store,
             call=request.call(),
             actor=LOCAL_OWNER,
+            visible=ALL_PROJECTS,
+            plan_job=request.plan_job,
         )
 
     def heard(event: JobEvent) -> str | None:
@@ -227,8 +245,14 @@ def _plan(
     return 0
 
 
-# What keeps a command from opening the settings, the index or the jobs.
-_UNUSABLE = (SettingsValidationError, IndexUnsupportedError, OSError, sqlite3.Error)
+# What keeps a command from opening the settings, the state, the index or the jobs.
+_UNUSABLE = (
+    SettingsValidationError,
+    StateError,
+    IndexUnsupportedError,
+    OSError,
+    sqlite3.Error,
+)
 
 
 def _unusable(error: Exception, err: TextIO) -> int:
@@ -238,7 +262,11 @@ def _unusable(error: Exception, err: TextIO) -> int:
 
 
 def _job_text(detail: JobDetail) -> str:
-    """Return a job as it ended for a person; a plan adds its counts and its line."""
+    """Return a job as it ended for a person.
+
+    A plan adds its counts and its line, a download the files by status and
+    the units that failed.
+    """
     kind = label("job.kind", detail.kind)
     state = label("job.state", detail.state)
     lines: list[str] = [message("cli.jobs_job", kind=kind, job=detail.id, state=state)]
@@ -249,6 +277,19 @@ def _job_text(detail: JobDetail) -> str:
         size, complete = result["size_bytes"], result["size_complete"]
         lines.append(_counts(counts, todo=todo, size=size, complete=complete))
         lines.append(message("cli.jobs_line", line=result["line"]))
+    if detail.kind == "download" and result is not None:
+        files: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.file', status)} {files[status]}" for status in FILE_STATUSES
+        )
+        lines.append(
+            message(
+                "cli.jobs_files",
+                files=sum(files.values()),
+                counts=named,
+                failed=result["failed"],
+            )
+        )
     return "\n".join(lines)
 
 

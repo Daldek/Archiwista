@@ -197,7 +197,7 @@ def test_a_check_starts_with_the_options_as_the_producer_reads_them(
             "missing_dependency",
             {"reason": "source_unavailable"},
         ),
-        ({**BODY, "kind": "download"}, 400, "validation_error", {}),
+        ({**BODY, "kind": "scan"}, 400, "validation_error", {}),
         ({**BODY, "force": True}, 400, "validation_error", {}),
         ({**BODY, "command": ""}, 400, "validation_error", {}),
         (
