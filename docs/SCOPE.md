@@ -175,8 +175,7 @@ Full acceptance criteria: SPEC 13.
 
 ## Dependencies
 
-**Producers** (requirements: SPEC 12,
-[`IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md)):
+**Producers** (requirements: SPEC 12):
 
 | Archiwista version | Needs from the producers |
 | --- | --- |
@@ -213,7 +212,7 @@ The full list: SPEC 14.
 | Risk | Effect | Countermeasure |
 | --- | --- | --- |
 | The MVP depends on an IMGWTools release with a store (today Beta, IMGW-1 to IMGW-14) | v1.0 waits for IMGWTools | requirements agreed early; v0.1 to v0.4 without IMGWTools; the IMGW source is an add-on |
-| The MVP depends on ČHMÚ stations in IMGWTools (IMGW-15 to IMGW-19; today the "Observer" sketch without code) | v0.6, and with it v1.0, waits for IMGWTools; a package rename or a separate package changes the adapter | requirements reported early (`IMGWTOOLS_REQUIREMENTS.md`); the same contracts with the supplier as an additive change; one IMGW adapter, the adapter decision at the IMGWTools release |
+| The MVP depends on ČHMÚ stations in IMGWTools (IMGW-15 to IMGW-19; today the "Observer" sketch without code) | v0.6, and with it v1.0, waits for IMGWTools; a package rename or a separate package changes the adapter | requirements reported early (SPEC 12.7); the same contracts with the supplier as an additive change; one IMGW adapter, the adapter decision at the IMGWTools release |
 | Dependence on Kartograf releases (KA to KH); KF (merged surface, today R6 in the backlog) blocks the MVP | stages wait, v0.6 and v1.0 wait for KF | KA small and first; KF reported as an MVP requirement; a common schedule with the Kartograf roadmap |
 | Team mode in the MVP widens the security scope | a longer way to v1.0 | v0.4 before the IMGW data; a security review in the v1.0 gate |
 | An interface without type checking (Preact + htm without a build, A-ADR-028) | errors found late | browser tests (Playwright), JSDoc; Vite and TypeScript can be added later without a rewrite |

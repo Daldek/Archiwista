@@ -873,7 +873,7 @@ IMGW data are project jobs and pins in v1.0, in the IMGWTools manifest
 `imgw-project.json` (`imgw-project/1`) next to `kartograf-project.json`, changed
 only through the IMGWTools API (requirement IMGW-14; ADR-023). The principle of a single owner of
 the format (item 1) stays: the Kartograf manifest does not change. The requirements for
-IMGWTools are from now on IMGW-1..IMGW-14 (SPEC 12.7, `docs/IMGWTOOLS_REQUIREMENTS.md`).
+IMGWTools are from now on IMGW-1..IMGW-14 (SPEC 12.7).
 
 **Erratum 2 (2026-10-17, user decision, ADR-024):** producer adapters are
 plugins: Kartograf is a required dependency, IMGWTools the extra `archiwista[imgw]`;
@@ -1027,8 +1027,7 @@ for a station are the units of its periods from the series index (`stations[<kod
 of IMGWTools), not of the periods of the whole dataset: a year without a station file, including one not
 published by ČHMÚ, is "unknown", not a gap, while missing rows within a known period are a gap;
 K₁, K₂ and the "known year" are computed per station. For IMGW-PIB national archives nothing changes
-(the dataset's `periods`). The label definitions are unchanged (SPEC 4.8.4;
-`docs/IMGWTOOLS_REQUIREMENTS.md` 6.3).
+(the dataset's `periods`). The label definitions are unchanged (SPEC 4.8.4).
 
 ---
 
@@ -1146,7 +1145,7 @@ a project combines IMGW and ČHMÚ jobs. Restoring: identical `sha256` or — fo
 explicitly by content (`restored_by_content`, job state `content_match`, message
 `pin_restored_by_content`); Archiwista shows this state separately from "bieżące" (current), not as an
 error, and never re-pins silently. The decision (option C) is unchanged; SPEC 12.7 (IMGW-14,
-IMGW-19), 13 v0.6 criterion 7, `docs/IMGWTOOLS_REQUIREMENTS.md` 4.14, 4.19, 6.3.
+IMGW-19), 13 v0.6 criterion 7.
 
 ---
 
@@ -1243,8 +1242,8 @@ decisions). Before v0.1 comes stage 0 "Architecture and plan" (open architecture
 ADR-004..008, 015).
 
 **Consequences:** The order and scope of releases are defined by `docs/SCOPE.md`; SPEC 13 holds
-the details and acceptance criteria in the new numbering; SPEC and `docs/IMGWTOOLS_REQUIREMENTS.md`
-renumbered. Earlier entries of this log keep the numbering from the time of the decision
+the details and acceptance criteria in the new numbering; SPEC and the requirements list of IMGWTools
+(since removed, see SPEC 12.7) renumbered. Earlier entries of this log keep the numbering from the time of the decision
 (e.g. "v0.9" in ADR-019..024 = today's v0.5, "v0.8" = v0.4). The MVP depends on the release of
 IMGWTools with IMGW-1..IMGW-14; team mode enters the MVP before IMGW data.
 
@@ -1272,7 +1271,7 @@ through the IMGW adapter (the plugin from ADR-024); a separate adapter only if I
 releases ČHMÚ as a separate package (open question in the PRD). Changes: SPEC header, 2,
 3 (UC-09, UC-20), 4.8.6, 5.3, 6.7, 8.3, 8.6, 10.2, 11, 12.5, 12.7, 13, 14; PRD F12,
 F14, F17, assumptions, success measures, open decisions; SCOPE; README; plan v0.1
-(scope boundaries); `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-15..IMGW-19).
+(scope boundaries); the requirements list of IMGWTools (IMGW-15..IMGW-19; since removed, see SPEC 12.7).
 
 ---
 

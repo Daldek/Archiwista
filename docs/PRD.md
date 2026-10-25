@@ -257,7 +257,7 @@ each requirement: the SPEC section named.
 
 | Assumption | Effect | How it is communicated |
 | --- | --- | --- |
-| The producers deliver the required APIs (Kartograf KA to KH, IMGWTools IMGW-1 to 20) | Archiwista releases wait for the producers' releases | requirements in SPEC 12 and `docs/IMGWTOOLS_REQUIREMENTS.md`; the "needs" column in SCOPE |
+| The producers deliver the required APIs (Kartograf KA to KH, IMGWTools IMGW-1 to 20) | Archiwista releases wait for the producers' releases | requirements in SPEC 12; the "needs" column in SCOPE |
 | IMGWTools (2.1.1, Beta) has no store today | IMGW data (v0.5), and so the MVP, depends on IMGWTools | requirements agreed early; the IMGW source is an add-on |
 | KF (merged PL + CZ surface) is not yet in the public Kartograf API; ČHMÚ stations in IMGWTools are only in preparation | v0.6, and so the MVP, depends on both releases | requirements KF (SPEC 12.5) and IMGW-15 to IMGW-19 (SPEC 12.7) reported early; the risk in SCOPE and SPEC 14 |
 | IMGW publication lag (10 to 19 months), republished archives | an incomplete last year, changed data | published years and publication dates in the interface; new versions instead of overwriting |

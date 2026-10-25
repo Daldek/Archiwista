@@ -10,8 +10,7 @@
 `kartograf-project/1`, update plan `kartograf-plan/1`, availability report
 `kartograf-availability/1`; from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 IMGWTools (IMGW data) —
-a release with requirements IMGW-1..IMGW-14 (section 12.7, document
-[`docs/IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md); today 2.1.1, Beta,
+a release with requirements IMGW-1..IMGW-14 (section 12.7; today 2.1.1, Beta,
 no store): catalog `imgw-store/1`, sidecar `imgw-meta/1`, series
 `imgw-series/1` (12.8), project manifest `imgw-project/1` (IMGW-14), and from
 v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19)
@@ -920,7 +919,7 @@ to the model.
 
 | Entity | Attributes | Source |
 |---|---|---|
-| **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also climatological or precipitation (`meteo_kind`: `climate` — a station in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows `null` as "rodzaj nieznany" (kind unknown), not as an error; IMGWTools `slave` in `0d98f3b` always writes `null` — filling in 3.0.0 (fix on branch fix/archiwista-compat-2)); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields — `docs/IMGWTOOLS_REQUIREMENTS.md` 4.9) |
+| **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also climatological or precipitation (`meteo_kind`: `climate` — a station in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows `null` as "rodzaj nieznany" (kind unknown), not as an error; IMGWTools `slave` in `0d98f3b` always writes `null` — filling in 3.0.0 (fix on branch fix/archiwista-compat-2)); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields) |
 | **Series** | station × dataset: variables with units, interval (day, month, half-year, year), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
 | **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<kod>].periods`) determine the known years (4.8.4) | `imgw-meta/1` sidecar and the listing (12.8) |
 | **IMGW archive** | path on the server (slot `archive:<klucz>:<ścieżka względem katalogu zbioru>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `imgw-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `imgw-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
@@ -3701,7 +3700,8 @@ offline tests on archive fixtures. The core stays light (`httpx`,
 `imgwtools[store]`). IMGW-2, IMGW-4 and IMGW-11 also fix errors
 independent of Archiwista. A standalone requirements document for the IMGWTools team
 (goal, acceptance criteria, priorities, dependencies and rollout
-order): [`docs/IMGWTOOLS_REQUIREMENTS.md`](IMGWTOOLS_REQUIREMENTS.md).
+order) was kept until IMGWTools 3.0.0 met IMGW-1..IMGW-20; it is in the git
+history (`git show 345a7d8:docs/IMGWTOOLS_REQUIREMENTS.md`).
 
 ČHMÚ (CZ) stations from v0.6 (user decision 2026-10-18; 4.8.6): Archiwista
 needs IMGW-15..IMGW-19 in the same contracts (`imgw-store/1`,
@@ -3720,7 +3720,8 @@ superseded in its ČHMÚ part). A file not published by the source =
 (branch `slave` from `0d98f3b`, untagged) meets IMGW-1..IMGW-20; the table
 gives names and signatures from 3.0.0 (ADR-001..ADR-003 IMGWTools), while the goals, acceptance
 criteria, the state of each requirement and Archiwista's answers to
-the ADR-003 questions are in `docs/IMGWTOOLS_REQUIREMENTS.md` (sections 4 and 6.3).
+the ADR-003 questions were in that document (sections 4 and 6.3), which is now in the
+git history (`git show 345a7d8:docs/IMGWTOOLS_REQUIREMENTS.md`).
 Writing the IMGW catalog follows Kartograf's publication model (erratum
 ADR-001 IMGWTools of 2026-10-19, `0d98f3b`, instead of `renameat2`,
 available only on Linux): hard links from `.incoming/`, the sidecar
@@ -4216,8 +4217,8 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
 | Data license terms on handover | attribution violation | low | attributions in the file card, the set and the data copy |
-| Dependence on IMGWTools (2.1.1, Beta, no store; IMGW-1..IMGW-14); optional from A-ADR-024 (extra `[imgw]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for IMGWTools; releases v0.1–v0.4 and an installation without IMGW do not need it | medium | IMGWTools is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8, `docs/IMGWTOOLS_REQUIREMENTS.md`), source interface from v0.1, contract tests on a catalog built by IMGWTools; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
-| ČHMÚ stations in IMGWTools (IMGW-15..IMGW-19; today the "Obserwator" draft with no code, a package rename is possible) | v0.6, and with it the MVP, waits for IMGWTools; a package rename or a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (`docs/IMGWTOOLS_REQUIREMENTS.md`), the same contracts with the supplier as an additive change, one IMGW adapter; adapter decision at the IMGWTools release (4.8.6, A-ADR-024) |
+| Dependence on IMGWTools (2.1.1, Beta, no store; IMGW-1..IMGW-14); optional from A-ADR-024 (extra `[imgw]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for IMGWTools; releases v0.1–v0.4 and an installation without IMGW do not need it | medium | IMGWTools is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by IMGWTools; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
+| ČHMÚ stations in IMGWTools (IMGW-15..IMGW-19; today the "Obserwator" draft with no code, a package rename is possible) | v0.6, and with it the MVP, waits for IMGWTools; a package rename or a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one IMGW adapter; adapter decision at the IMGWTools release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
 | Version conflicts of scientific libraries between Kartograf and IMGWTools (numpy, pandas, GDAL/rasterio, pyarrow) | installation impossible or environment divergence with `[imgw]` | medium | one lock file for a consistent set, CI in two configurations (without and with `[imgw]`), contract tests against the producers' `develop` (5.8, 11, A-ADR-024) |
 | Incompatible version or schema of an installed producer (e.g. `imgw-meta/2`) | the source does not work or reads incorrectly | medium | check at startup and in `archiwista doctor`, clear message in Polish, only that source disabled (5.8) |
