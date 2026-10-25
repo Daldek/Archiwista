@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "archiwista"
 version = "0.3.0.dev0"
-description = "Local browser for spatial data stores"
+description = "Local web application for browsing the spatial-data stores that Kartograf writes: catalog, map, file previews, projects with snapshots. Web interface, HTTP API and CLI; never writes to a store."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

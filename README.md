@@ -1,181 +1,146 @@
-# Archiwista
+# Archiwista: a local web application for browsing spatial-data stores
 
-Archiwista to aplikacja webowa do pracy z magazynem danych: przestrzennych,
-które tworzy [Kartograf](https://github.com/Daldek/Kartograf), i pomiarowych
-IMGW-PIB (stany wody, przepływy, opad, temperatura), które zapisuje
-[IMGWTools](https://github.com/Daldek/IMGWTools): przegląd i wyszukiwanie
-archiwum, mapa z podglądami i stacjami, sprawdzanie dostępności
-i aktualności danych dla zaznaczonego obszaru, pobieranie i projekty
-(manifest `kartograf-project/1`) oraz przygotowanie danych do łączenia
-(mozaiki, zestawienie PL + CZ, zestaw do QGIS, porównanie wersji).
+Archiwista is a local web application for browsing the spatial-data stores that Kartograf writes (and, from v0.5, the IMGW archives that IMGWTools writes): catalog, map, file previews, version comparison, and project folders with snapshots of own data. It has a web interface, an HTTP API and a command line, and never writes to a store.
 
-Archiwista nie ma własnego mechanizmu pobierania ani obróbki: każde działanie
-na danych, także pobranie, wykonuje publiczne API producenta — Kartografa albo IMGWTools —
-a źródłem prawdy są pliki w magazynie (sidecary `kartograf-meta/1`
-i `imgw-meta/1`) i manifesty projektów. Archiwista trzyma tylko lokalny
-indeks i podglądy, które można w każdej chwili odbudować.
+## When to use
 
-**Status:** wydanie **0.2.0 „Podglądy”** (2026-10-20) — lokalny indeks,
-mapa i katalog magazynu Kartografa, podglądy plików, Wachlarz i Oś czasu,
-porównanie z kurtyną oraz dane własne projektu i migawki. Magazyn
-producenta pozostaje tylko do odczytu. Zmiany: [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
-Następne wersje: v0.3 „Działania” (dostępność u źródła, pobieranie i akcje
-projektów przez API Kartografa), v0.4 „Zespół”, v0.5 „Stacje IMGW”,
-v0.6 „PL + CZ”; MVP to v1.0 ([`docs/SCOPE.md`](docs/SCOPE.md)). Archiwista
-korzysta wyłącznie z publicznego API producenta. Architektura: Python
-i FastAPI, interfejs Preact + htm bez budowania, MapLibre GL.
+- Find out what a store holds: search by sheet code, unit (TERYT, KU), product, years, campaign or area, on a map or in a catalog.
+- Check what is on the disk and how fresh it is: file cards with the sidecar metadata, the state of each store, a local index that is rebuilt on demand.
+- Look at a file without opening a GIS: previews of rasters, vectors, point clouds and archives, the "Fan" (Wachlarz) of years of one place, the "Timeline" (Oś czasu) and a before/after "curtain".
+- Keep the data of a project (own files and their snapshots) beside the producer's data, and let scripts or AI agents read it through the same API.
 
-## Instalacja
+## When not to use
 
-Wymagania: Linux (sprawdzone na Debianie 13), Python ≥ 3.12 i [uv](https://docs.astral.sh/uv/).
-Archiwista 0.2.0 wymaga Kartografa 0.8.0 z publicznym API odczytu magazynu
-(KA-1..KA-6, [`docs/SPEC.md`](docs/SPEC.md) 12.1). To API jest na `develop`
-Kartografa, a `pyproject.toml` przypina jego commit (REL-5.3) do czasu tagu
-`v0.8.0`; `uv.lock` przypina wszystkie pakiety z sumami sha256:
-
-```bash
-uv sync --locked                      # środowisko w .venv z uv.lock
-uv run playwright install chromium    # raz: przeglądarka testów interfejsu
-uv run archiwista doctor
-```
-
-Pakiety podglądów (`rio-tiler`, rasterio, pyogrio, laspy z lazrs) są w
-`uv.lock`; pliki renderują odizolowane procesy, nie serwer.
-Pierwszy start po aktualizacji z 0.1 przebudowuje lokalny indeks
-(`SCHEMA_VERSION = 6`) i wykonuje pełny skan: przy odłączonym magazynie
-zaczekaj z aktualizacją lub udostępnij go ponownie przed skanem.
-
-## Uruchomienie
-
-```bash
-uv run archiwista serve
-```
-
-Serwer słucha wyłącznie na `127.0.0.1` (port 8090 z ustawienia `port`;
-`--port N` zmienia go na jedno uruchomienie, `--port 0` wybiera wolny),
-wypisuje jednorazowy adres `http://127.0.0.1:8090/#token=…` (ważny 10 minut,
-działa raz) i otwiera go w przeglądarce; `--no-browser` tylko go wypisuje.
-Przy pierwszym uruchomieniu otwiera się kreator: katalog Kartografa (jego
-`--output`, czyli katalog `data/`), opcjonalnie katalogi projektów i tryb
-offline. Po zapisie serwer od razu indeksuje magazyn w tle, a postęp
-pokazuje pasek nad widokami. `Ctrl+C` zatrzymuje serwer.
-
-Sesja przeglądarki wygasa po 24 godzinach bez użycia i kończy się wraz
-z zatrzymaniem serwera; nowy adres sesji wystawia `archiwista token`. Opis
-widoków: [`docs/USAGE.md`](docs/USAGE.md).
-
-## Diagnostyka
-
-`archiwista doctor` sprawdza plik ustawień, wtyczkę Kartografa (wersja
-i schematy `kartograf-meta/1`, `kartograf-project/1`), każdy magazyn
-i katalog projektów, katalog danych lokalnych (prawo zapisu, dostęp innych
-kont) i wolny port. Każdy problem ma opis naprawy po polsku, np. polecenie
-instalacji brakującego pakietu.
-
-## Wiersz poleceń
-
-| Polecenie | Co robi |
+| Need | Use instead |
 |---|---|
-| `archiwista serve` | serwer i interfejs w przeglądarce |
-| `archiwista doctor` | diagnostyka instalacji |
-| `archiwista status` | wersje, źródła danych, indeks i magazyny (jak `GET /api/v1/health`) |
-| `archiwista sources` | wtyczki producentów i ich stan |
-| `archiwista search [ZAPYTANIE] [opcje]` | wyszukiwanie w katalogu; opcje mają nazwy parametrów `GET /api/v1/slots` |
-| `archiwista entry MAGAZYN SLOT`, `archiwista version MAGAZYN WERSJA` | karta pliku i karta jednej wersji |
-| `archiwista projects`, `archiwista project PROJEKT` | projekty i karta projektu |
-| `archiwista reindex [--store MAGAZYN]` | przebudowa indeksu: pełny skan na pierwszym planie |
-| `archiwista token [--json \| --revoke-all]` | jednorazowy adres sesji (np. dla agenta) albo koniec wszystkich sesji agentów |
-| `archiwista users`, `groups`, `share`, `state export` / `state import` | konta, grupy, widoczność projektów, kopia bazy stanu |
-| `archiwista preview REF [--build] [--output PLIK.png]`, `compare REF REF` | podgląd i porównanie metadanych |
-| `archiwista layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ --output PLIK.png]` | lata i kampanie z lokalnych warstw |
-| `archiwista files PROJEKT`, `file PROJEKT PLIK`, `own-scan [--project PROJEKT]` | lista, karta i skan danych własnych |
-| `archiwista snapshot PROJEKT PLIK [--plan \| --note TEKST]` | plan i migawka w folderze projektu |
+| Download or process data | [Kartograf](https://github.com/Daldek/Kartograf) (Polish and Czech spatial data) or [IMGWTools](https://github.com/Daldek/IMGWTools) (IMGW data); Archiwista only calls their public API |
+| GIS analysis, editing data | QGIS; Archiwista is not an editor |
+| Hydrological calculations, statistics of series | [Hydrolog](https://github.com/Daldek/Hydrolog) and [Retman](https://github.com/Daldek/Retman) |
+| Current IMGW or ČHMÚ data (states, warnings) | the services of the institutes; Archiwista shows archives and series from the store |
+| Deleting versions from a store | Kartograf; Archiwista reports candidates only |
 
-Polecenia odczytu działają bez uruchomionego serwera, bo korzystają
-z lokalnego indeksu i wspólnych usług; budowa podglądu, skan danych
-własnych i migawka wykonują zadania w procesach roboczych na pierwszym
-planie w CLI, a w serwerze — jako zadania w tle. Z opcją `--json`
-wypisują na stdout wyłącznie JSON o schemacie odpowiedzi API (błąd: nic na
-stdout, ostatni wiersz stderr to dokument `archiwista-error/1`, kod wyjścia
-z rejestru błędów Nogat), a tekst po polsku — na stderr. Skrypty
-i agenci AI:
-[`docs/AGENT_API.md`](docs/AGENT_API.md) (sesja HTTP, filtry,
-stronicowanie, zadania w tle, błędy). Pełny schemat API jest pod
-`/api/v1/openapi.json`, a dokumentacja interaktywna pod `/api/docs`
-uruchomionego serwera.
+## Run
 
-Dziennik (logi i postęp) idzie na stderr, nigdy na stdout. Poziom ustawia
-`--verbose` (debug) albo `--quiet` (tylko błędy), przed nazwą polecenia lub po
-niej, a bez nich zmienna `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`,
-`error`; domyślnie `warning`); czytają ją też procesy zadań i podglądów.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.2 needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6); `pyproject.toml` pins the commit that has it until the tag `v0.8.0` exists, and `uv.lock` pins every package with its SHA-256 sum.
 
-## Gdzie są dane
+```bash
+uv sync --locked                      # the environment in .venv, from uv.lock
+uv run playwright install chromium    # once; only the interface tests need it
+uv run archiwista doctor              # checks the installation
+uv run archiwista serve               # starts the server and opens the browser
+```
 
-Archiwista nie zapisuje niczego w magazynie Kartografa. Lokalny indeks
-i pamięć podglądów leżą na koncie użytkownika; jedyny zapis poza nimi,
-na polecenie osoby z `project.write`, to migawki w folderze danych projektu
-(`<katalog projektu>/dane/.wersje/` domyślnie). Folder danych jest indeksowany
-tylko do odczytu. Ścieżki lokalne poniżej wypisuje też `archiwista doctor`:
+`archiwista doctor` checks the settings file, the Kartograf plugin (version and the schemas `kartograf-meta/1` and `kartograf-project/1`), every store and project directory, the local data directory (write access, access of other accounts) and the free port. Every problem has a line telling how to fix it, for example the command that installs a missing package.
 
-| Co | Gdzie | Odtwarzalne |
+The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N` changes it for one run, `--port 0` picks a free one). It prints a one-time address `http://127.0.0.1:8090/#token=…` (valid for 10 minutes, works once) and opens it in the browser; `--no-browser` only prints it. On the first run a wizard asks for the Kartograf directory (its `--output`, the `data/` directory), optionally the project directories and the offline mode; after saving, the server indexes the store in the background and a bar above the views shows the progress. `Ctrl+C` stops the server. A browser session ends after 24 hours without use and with the server; `archiwista token` issues a new address. The views are described in [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md).
+
+The first start after an update from 0.1 rebuilds the local index (`SCHEMA_VERSION = 6`) and runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
+
+## Deploy
+
+Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing) is planned for v0.4 (A-ADR-013); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
+
+Archiwista writes nothing in a Kartograf store. The local index and the preview cache live in the user's account; the one other write, on the command of a person with `project.write`, is a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
+
+| What | Where | Rebuildable |
 |---|---|---|
-| ustawienia `config.toml` | `~/.config/archiwista/` | kreator albo widok „Ustawienia” |
-| indeks `index.sqlite` | `~/.local/share/archiwista/` | tak — `archiwista reindex` |
-| baza stanu `state.sqlite`: konta, grupy, udostępnienia projektów, dziennik uprawnień | `~/.local/share/archiwista/` | **nie** — kopia: `archiwista state export`, odtworzenie: `state import` |
-| `cache/` — granice jednostek (TERYT, KU) pobrane przez wtyczkę | `~/.local/share/archiwista/` | tak, z sieci |
-| `jobs/` — dzienniki zadań w tle (90 dni, najwyżej 1 GB) | `~/.local/share/archiwista/` | nie są potrzebne do pracy |
-| `areas/` — kopie wczytanych plików obszarów | `~/.local/share/archiwista/` | wczytanie pliku od nowa |
-| `previews/` — miniatury, kafle, lokalne COG i rozliczenie LRU `cache.sqlite` | `~/.local/share/archiwista/` | tak, pamięć po treści, limit domyślnie 20 GB |
-| `<folder danych>/.wersje/` — spójne migawki z `migawka.json` | katalog projektu wskazany przez użytkownika | **nie** — kopiuj razem z projektem |
+| settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
+| index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
+| state database `state.sqlite`: accounts, groups, project sharing, the permission log | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export`, restore with `state import` |
+| `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/` | yes, from the network |
+| `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
+| `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |
+| `previews/`: thumbnails, tiles, local COGs and the LRU account `cache.sqlite` | `~/.local/share/archiwista/` | yes, a content-addressed cache, 20 GB by default |
+| `<data folder>/.wersje/`: consistent snapshots with `migawka.json` | the project directory the user chose | **no**: copy with the project |
 
-Katalog danych lokalnych ma prawa `0700`, a polecenia `archiwista` działają
-z `umask 077` — inne konta komputera nie czytają indeksu ani bazy stanu.
+The local data directory has mode `0700` and the `archiwista` commands run with `umask 077`: other accounts of the computer cannot read the index or the state database.
 
-## Testy i bramka
+## Capabilities
+
+| Task | CLI (`--json`) | HTTP (`/api/v1`) |
+|---|---|---|
+| State of the server, sources, index and stores | `archiwista status` | `GET /health` |
+| Producer plugins and their state | `archiwista sources` | `GET /sources` |
+| Search the catalog | `archiwista search [QUERY] [options]` | `GET /slots` |
+| Card of a file and of one version | `archiwista entry STORE SLOT`, `archiwista version STORE VERSION` | `GET /stores/{store}/slots/{slot}`, `GET /stores/{store}/versions/{version}` |
+| Projects | `archiwista projects`, `archiwista project PROJECT` | `GET /projects`, `GET /projects/{project}` |
+| Preview of a file or a version, optionally as PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET` and `POST …/preview`, `GET …/preview.png` |
+| Compare the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
+| Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |
+| Own data of a project: files, scan, snapshots | `archiwista files`, `file`, `own-scan`, `snapshot PROJECT FILE [--plan \| --note TEXT]` | `GET /projects/{project}/files`, `POST /projects/{project}/scan`, `POST …/snapshots` |
+| Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
+| One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
+| Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
+
+The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, scanning own data and making a snapshot run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
+
+## For AI agents
+
+The guide for scripts and agents is [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md): the HTTP session, filters, paging, background jobs and errors. The full schema is `/api/v1/openapi.json` of a running server (it needs a session) and the interactive documentation is `/api/docs`. With `--json` a command prints only JSON of the schema of the API answer on standard output. There is no MCP server.
+
+Archiwista never writes to a store; its only writes outside its own index and cache are snapshots, which need `project.write`, and `archiwista snapshot PROJECT FILE --plan` shows what one would do without writing. Always pass `--json`, and decide on `code` and `details.reason` of an error, never on its text.
+
+## Related tools
+
+| Tool | Relation |
+|---|---|
+| [Kartograf](https://github.com/Daldek/Kartograf) | writes the stores that Archiwista reads; the only importer of it is the adapter in `src/archiwista/adapter/kartograf/` |
+| [IMGWTools](https://github.com/Daldek/IMGWTools) | writes the IMGW measurement archives; an optional plugin (`archiwista[imgw]`) planned for v0.5 |
+| [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 2.1 that this repository follows and the error registry |
+| QGIS | analysis and editing of the files that Archiwista shows; the QGIS plugin is in the Kartograf repository |
+
+## Errors and exit codes
+
+Errors use the shared [Nogat error registry](https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md): an HTTP problem (`application/problem+json`) or, on the command line, nothing on standard output and the document `archiwista-error/1` as the last line of standard error. The most common codes:
+
+| Code | Exit | Meaning and what to do |
+|---|---|---|
+| `validation_error` | 2 | invalid input: see `errors`; a wrong use of the command line is the same |
+| `not_found` | 3 | an unknown store, slot or project, or a project you may not see |
+| `conflict` | 4 | a job that writes this index already runs: follow it instead of retrying |
+| `missing_dependency` | 6 | a producer plugin is missing or has an unsupported version: run the command in `hint` |
+| `store_unavailable` | 8 | the store cannot be read (an unmounted share): connect it, then `archiwista reindex` |
+| `forbidden` | 12 | the session or the role does not allow it |
+
+A job that does not succeed exits `11` (failed) or `130` (cancelled or interrupted), and `archiwista doctor` exits `10` or `11` when checks fail: these are outcomes, not errors, and print no error document. The texts of errors are English, and Polish for the request header `Accept-Language: pl`; the command line prints its text for people in Polish.
+
+## Data and licensing
+
+Archiwista holds no data of its own: it shows what the producers wrote, with the metadata of each file's sidecar (`kartograf-meta/1`, `imgw-meta/1`), which carries the licence of the data, and the project manifests (`kartograf-project/1`). The data sources and their terms are those of Kartograf and IMGWTools. The default basemap is OpenFreeMap vector tiles (OpenStreetMap data), with the attribution shown on the map; in offline mode the jobs that need the network are refused. The code is under the MIT licence.
+
+## Documentation
+
+| Document | Content |
+|---|---|
+| [CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md) | changes by release |
+| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the views of v0.2: previews, Fan, Timeline, comparison, projects and snapshots |
+| [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md) | the HTTP API and the CLI with `--json` for scripts and AI agents |
+| [PRD.md](https://github.com/Daldek/Archiwista/blob/main/docs/PRD.md) | product requirements: problem, users, requirements, success measures, open decisions |
+| [SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md) | scope: the MVP, what is out of it, stages with gates, dependencies on the producers, risks |
+| [SPEC.md](https://github.com/Daldek/Archiwista/blob/main/docs/SPEC.md) | the detailed specification: use cases, data model and index, architecture, interface, API, security, requirements for the producers, roadmap with acceptance criteria |
+| [ARCHITECTURE.md](https://github.com/Daldek/Archiwista/blob/main/docs/ARCHITECTURE.md) | the architecture of the code; the format of the store is in Kartograf's `docs/ARCHITECTURE.md` |
+| [DECISIONS.md](https://github.com/Daldek/Archiwista/blob/main/docs/DECISIONS.md) | decisions (ADR) |
+| [docs/plans/](https://github.com/Daldek/Archiwista/tree/main/docs/plans) | the executed plans of v0.1 and v0.2: contracts between steps, steps with acceptance, the gate |
+| [docs/reports/](https://github.com/Daldek/Archiwista/tree/main/docs/reports) | measurements and acceptance of v0.1 and v0.2 |
+| [PROGRESS.md](https://github.com/Daldek/Archiwista/blob/main/docs/PROGRESS.md) | the current state and open matters |
+| [mockup/](https://github.com/Daldek/Archiwista/tree/main/mockup) | a clickable mockup of the interface (`mockup/README.md` tells how to run it) |
+
+Archiwista replaces subproject 5 of the Kartograf roadmap ("web GUI"); the QGIS plugin (subproject 4) stays in the Kartograf repository.
+
+## Development
+
+Read [CLAUDE.md](https://github.com/Daldek/Archiwista/blob/main/CLAUDE.md) first, then [CONTRIBUTING.md](https://github.com/Daldek/Archiwista/blob/main/CONTRIBUTING.md) (it also holds the contributor licence agreement). The gate runs ruff, mypy, pytest with coverage and the commit check; contributors run it as `GATE_CHECK_AUTHOR=0 scripts/gate.sh`:
 
 ```bash
-scripts/gate.sh    # ruff format, ruff check, mypy, pytest z pokryciem, sprawdzenie commitów
+scripts/gate.sh    # ruff format, ruff check, mypy, pytest with coverage, the commit check
 ```
 
-Bramka (DEV-7.6) działa z katalogu roboczego git i stosuje `uv sync --locked`;
-współtwórcy uruchamiają ją jako `GATE_CHECK_AUTHOR=0 scripts/gate.sh`.
+By default `pytest` leaves out the tests marked `live`, `perf` and `smb` (real stores, the store of 50,000 slots, an SMB 3 share), runs the interface tests in Chromium and requires 80% coverage. The measurements and their method are in the reports of [v0.1](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.1-measurements.md) and [v0.2](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.2-measurements.md).
 
-`pytest` domyślnie pomija testy `live`, `perf` i `smb` (prawdziwe magazyny,
-magazyn 50 000 slotów, udział SMB 3), uruchamia testy interfejsu w Chromium
-i wymaga 80% pokrycia. Pomiary i ich metoda:
-[`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md)
-i [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md).
+## Status, licence, author
 
-## Dokumentacja
+Release **0.2.0 "Previews"** (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots; the store stays read-only. `develop` carries `0.3.0.dev0`. Next: v0.3 "Actions" (availability at the source, downloads and project actions through the Kartograf API), v0.4 "Team", v0.5 "IMGW stations", v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
 
-| Dokument | Zawartość |
-|---|---|
-| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | zmiany w kolejnych wydaniach |
-| [`docs/USAGE.md`](docs/USAGE.md) | widoki v0.2: podglądy, Wachlarz, Oś czasu, porównanie, projekty i migawki |
-| [`docs/AGENT_API.md`](docs/AGENT_API.md) | API HTTP i CLI `--json` dla skryptów i agentów AI |
-| [`docs/PRD.md`](docs/PRD.md) | wymagania produktu: problem, odbiorcy, wymagania funkcjonalne i niefunkcjonalne, miary sukcesu, otwarte decyzje |
-| [`docs/SCOPE.md`](docs/SCOPE.md) | zakres: MVP, poza zakresem, etapy z bramkami, zależności od producentów, ryzyka |
-| [`docs/SPEC.md`](docs/SPEC.md) | specyfikacja szczegółowa: przypadki użycia, model danych i indeks (także dane IMGW), architektura, interfejs, łączenie danych, API HTTP, bezpieczeństwo, wymagania wobec Kartografa i IMGWTools, roadmapa z kryteriami akceptacji, ryzyka, pytania otwarte |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | architektura kodu Archiwisty 0.2.0; kontrakt formatu magazynu opisuje `docs/ARCHITECTURE.md` Kartografa |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | decyzje (ADR) |
-| [`docs/plans/2026-10-18-plan-v0.1.md`](docs/plans/2026-10-18-plan-v0.1.md) | plan implementacji v0.1: umowy między krokami, kroki z odbiorem, bramka |
-| [`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |
-| [`docs/plans/2026-10-19-plan-v0.2.md`](docs/plans/2026-10-19-plan-v0.2.md), [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md) | wykonanie i pomiary v0.2 |
-| [`docs/PROGRESS.md`](docs/PROGRESS.md) | stan prac i sprawy otwarte |
-| `mockup/` | klikalny mockup interfejsu do decyzji przed implementacją (uruchomienie: `mockup/README.md`) |
+MIT licence: [LICENSE](https://github.com/Daldek/Archiwista/blob/main/LICENSE).
 
-Archiwista zastępuje podprojekt 5 roadmapy Kartografa („GUI webowe”);
-wtyczka QGIS (podprojekt 4) pozostaje w repozytorium Kartografa.
-
-## Współtworzenie
-
-Zasady i umowa licencyjna kontrybutora (CLA):
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Licencja
-
-MIT — szczegóły w pliku [`LICENSE`](LICENSE).
-
-## Autor
-
-[Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/)
+Author: [Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/).
