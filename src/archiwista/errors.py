@@ -389,6 +389,18 @@ class CheckFailedError(ArchiwistaError):
     default_reason = "check_failed"
 
 
+class BrokenContractError(ArchiwistaError):
+    """A producer answered outside its documented contract (``data_error``).
+
+    For example a run in a store that reports a plain file (``written``,
+    ``replaced``) or a file outside the store: Archiwista asked for neither,
+    so it takes nothing of that answer.
+    """
+
+    default_code = "data_error"
+    default_reason = "broken_contract"
+
+
 class StateError(ArchiwistaError):
     """The state database cannot be used or restored.
 

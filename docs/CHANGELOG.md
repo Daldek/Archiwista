@@ -196,6 +196,16 @@ command-line interface may change.
   [--options JSON]` runs the job in the foreground and prints it as it ended (exit 0, 10
   for `partial`), `archiwista jobs plan ZADANIE` prints the plan; `--json` gives the
   route's model. (SPEC 9.2, ADR-036)
+- A producer plugin that offers its commands (`ActionAdapter`) also runs them in a store:
+  `run(command, options, *, root, plan, on_progress, on_notice)` returns the
+  producer-neutral `ActionResult` (`files[]` below the store root with `path`,
+  `version_path`, `unit`, `size_bytes`, `sha256`, `label` and `status` `new`,
+  `unchanged` or `relabeled`; `items[]` with the code and reason of each unit that
+  failed), and `scope(path)` names the segment and the unit a scan reads a file's slot
+  by. The Kartograf adapter calls `run_command` with `root=` the store's directory,
+  Archiwista's metadata cache and, for the plan of a check, `update="upgrade", plan=…`;
+  a plain file (`written`, `replaced`) or one outside the store is `data_error`, reason
+  `broken_contract`. (SPEC 12.2 KB-5, ADR-037)
 
 ### Changed
 

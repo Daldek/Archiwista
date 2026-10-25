@@ -19,12 +19,17 @@ country (``auto`` for both), and the metadata cache is Archiwista's own,
 would be Kartograf's default cache (D5). ``check_command`` plans a run in the
 configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
 cache, its ``kartograf-plan/1`` read as the producer-neutral ``ActionPlan``.
+``run_command`` runs it (A5, ADR-037): ``root=``, Archiwista's cache, the
+kept plan back as ``update="upgrade", plan=…``, and ``kartograf-download/1``
+read as the producer-neutral ``ActionResult``.
 """
 
 import inspect
+import os
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 import shapely
@@ -48,10 +53,15 @@ from kartograf import (
 from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
-from archiwista.errors import ProducerError, UnsupportedError
+from archiwista.errors import BrokenContractError, ProducerError, UnsupportedError
 from archiwista.messages import current_language, message
 from archiwista.sources import (
+    FILE_STATUSES,
+    ActionFile,
+    ActionItem,
     ActionPlan,
+    ActionProgress,
+    ActionResult,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -65,9 +75,12 @@ from archiwista.sources import (
     CommandOption,
     CommandWrites,
     GeoJSONGeometry,
+    ItemStatus,
     OptionType,
     PathRole,
     PlanEntry,
+    RunStatus,
+    ScanScope,
 )
 
 # The names a call gives beside its options: the keyword arguments of
@@ -97,6 +110,24 @@ _WGS84 = "EPSG:4326"
 # the edges of a WGS84 polygon bend there.
 _SEGMENT_DEGREES = 0.005
 _LANGUAGES = frozenset({"en", "pl"})
+# Kartograf's progress events (``DownloadProgress.status``) whose ``current``
+# of ``total`` count the units of a run, and those whose ``sheet`` names a
+# unit. ``start`` counts one transfer and may name a text, ``campaigns`` and
+# ``campaign`` count the flights of one sheet.
+_UNIT_COUNTS = frozenset(
+    {"downloading", "skipped", "completed", "failed", "no_coverage", "tiles"}
+)
+_UNIT_NAMES = frozenset(
+    {
+        "downloading",
+        "skipped",
+        "completed",
+        "failed",
+        "no_coverage",
+        "campaigns",
+        "campaign",
+    }
+)
 
 
 def catalog() -> tuple[CommandInfo, ...]:
@@ -301,6 +332,79 @@ def check(
     )
 
 
+def run(
+    command: str,
+    options: Mapping[str, object],
+    *,
+    root: Path,
+    cache_dir: Path,
+    plan: ActionPlan | None,
+    on_progress: Callable[[ActionProgress], None] | None,
+    on_notice: Callable[[AvailabilityNotice], None] | None,
+) -> ActionResult:
+    """Run a command in the store at ``root`` (``run_command``).
+
+    With ``root=`` the configured store, Archiwista's own metadata cache
+    (``METADATA_CACHE_FILE`` in ``cache_dir``), never ``cache=True``, and no
+    ``output_dir``. With ``plan`` (a plan of ``check_command``) the run is
+    ``update="upgrade", plan=…``, Kartograf's ``UpdatePlan`` read back from
+    the plan's document; without one ``update`` is not given, so the versions
+    the store holds are kept. ``files[]`` of ``kartograf-download/1`` come
+    back below the root (``unchanged`` also stands for Kartograf's ``local``
+    and ``reused``); a command whose result is no download has none.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused the call or the plan, or failed as a whole.
+    BrokenContractError
+        Kartograf reported a file outside the root, or a plain one
+        (``written``, ``replaced``).
+    """
+    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
+    try:
+        result = run_command(
+            command,
+            options,
+            root=root,
+            update=None if plan is None else "upgrade",
+            plan=None if plan is None else UpdatePlan.from_dict(dict(plan.document)),
+            cache=cache,
+            on_progress=None if on_progress is None else _progress(on_progress),
+            on_notice=None if on_notice is None else _forward(on_notice),
+        )
+    except KartografError as error:
+        raise call_error(error, command=command, given=options) from error
+    finally:
+        cache.close()
+    return _run_result(result, root)
+
+
+def scope(path: str) -> ScanScope:
+    """Return the scope of ``iter_store`` that reads the file at ``path`` again.
+
+    A standard path is ``<product>/<variant>/<slot directory>/<file>``: the
+    segment is its first two parts and the unit ``<slot directory>/<stem>``
+    (the name without its last suffix), the form of a unit that ``iter_store``
+    reads as the files of that stem in that directory, whatever kind of unit
+    the slot is of (a sheet, a TERYT, a box, a country).
+
+    Raises
+    ------
+    ValueError
+        ``path`` is not relative, or has no segment and file name.
+    """
+    place = PurePosixPath(path)
+    parts = place.parts
+    if place.is_absolute() or len(parts) < 3 or {".", ".."} & set(parts):
+        raise ValueError(f"{path!r} is no place of a file in a Kartograf store")
+    product, variant, *hierarchy, name = parts
+    stem = name.rpartition(".")[0] or name
+    return ScanScope(
+        segment=f"{product}/{variant}", units=("/".join((*hierarchy, stem)),)
+    )
+
+
 def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:
     """Return Kartograf's ``country`` and ``bbox`` of an area (ADR-035).
 
@@ -363,6 +467,101 @@ def _forward(
         on_notice(_notice(notice))
 
     return forward
+
+
+def _progress(
+    on_progress: Callable[[ActionProgress], None],
+) -> Callable[[Any], None]:
+    """Pass each ``DownloadProgress`` on, counting the units of the run.
+
+    An event that counts something other than units (not ``_UNIT_COUNTS``)
+    keeps the last counts of the units, and only an event about a unit
+    (``_UNIT_NAMES``) names it.
+    """
+    counts = [0, 0]
+
+    def forward(event: Any) -> None:
+        status = str(event.status)
+        if status in _UNIT_COUNTS:
+            counts[:] = [int(event.current), int(event.total)]
+        unit = str(event.sheet) if status in _UNIT_NAMES and event.sheet else None
+        on_progress(
+            ActionProgress(counts[0], counts[1], unit, status, str(event.message))
+        )
+
+    return forward
+
+
+def _run_result(result: Any, root: Path) -> ActionResult:
+    """Convert the envelope ``kartograf-result/1`` of a run.
+
+    Read from its JSON form, the documented contract: ``files[]`` and
+    ``items[]`` of ``kartograf-download/1``.
+    """
+    envelope = result.to_dict()
+    document = envelope["result"]
+    domain: Mapping[str, Any] = document if isinstance(document, Mapping) else {}
+    return ActionResult(
+        producer=PRODUCER,
+        command=str(envelope["command"]),
+        root=str(root),
+        status=cast(RunStatus, envelope["status"]),
+        files=tuple(_file(entry, root) for entry in domain.get("files", ())),
+        items=tuple(
+            ActionItem(
+                id=str(item["id"]),
+                status=cast(ItemStatus, item["status"]),
+                code=item.get("code"),
+                reason=item.get("reason"),
+                message=item.get("message"),
+            )
+            for item in envelope["items"]
+        ),
+        notices=tuple(_notice(notice) for notice in result.notices),
+        schema=None if document is None else str(domain.get("schema")),
+    )
+
+
+def _file(entry: Mapping[str, Any], root: Path) -> ActionFile:
+    """Convert one entry of ``files[]``; a plain file breaks the contract."""
+    status = str(entry["status"])
+    path = str(entry["path"])
+    if status not in FILE_STATUSES:
+        raise _outside(path, status, root)
+    version = entry.get("version_path")
+    return ActionFile(
+        path=_below(root, path, status),
+        unit=str(entry["unit"]),
+        status=status,
+        size_bytes=int(entry["size_bytes"]),
+        sha256=str(entry["sha256"]),
+        label=entry.get("label"),
+        version_path=None if version is None else _below(root, str(version), status),
+    )
+
+
+def _below(root: Path, path: str, status: str) -> str:
+    """Return a file Kartograf reported as its place below the root."""
+    place = Path(os.path.normpath(path))
+    for base in (root, root.resolve()):
+        with suppress(ValueError):
+            relative = place.relative_to(base)
+            if relative.parts:
+                return relative.as_posix()
+    raise _outside(path, status, root)
+
+
+def _outside(path: str, status: str, root: Path) -> BrokenContractError:
+    """Return the refusal of a file that is no file of the store at ``root``."""
+    return BrokenContractError(
+        message(
+            "command.file_outside_store",
+            producer=PRODUCER,
+            path=path,
+            status=status,
+            root=root,
+        )
+    )
 
 
 def _report(report: Any) -> AvailabilityReport:

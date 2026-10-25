@@ -86,22 +86,23 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    whether LAZ, the one format of point clouds, is a default format (ADR-017 names ASC
    and GeoTIFF only, so a LAZ variant has no default format and no size); "w innym
    formacie" in the row details (A10). **A4 is done** (Status row "v0.3 A4").
-   Next: A5 (three commits). The kind `download` joins `ActionKind` of
-   `services/actions.py` and `JobRequest.kind`; `start` checks `store.write`
-   (`Authorizer.require(principal, "store.write")`, so `403` before a job row; the CLI
-   acts as `LOCAL_OWNER`, who has it) and takes an optional `plan_job`: a finished
-   `check` (`succeeded` or `partial`) of the same store, producer, command and options,
-   whose kept plan the worker passes back (`update="upgrade"`, Kartograf's
-   `UpdatePlan.from_dict(stored.plan.document)`). `ActionAdapter.run` is still to be
-   added (Kartograf `run_command(command, options, *, root=, update=, plan=, cache=,
-   on_progress=, on_notice=)` returns `kartograf-result/1`: `status`, `items` of `{id,
-   status, code, reason, message}`, `result` `kartograf-download/1` with `files[]` of
-   `{unit, country, path (absolute), size_bytes, sha256, status (new, unchanged,
-   relabeled; plain written, replaced = a broken contract), label, version_path}`,
-   `failed[]`, `stale[]`; `DownloadProgress` `current`, `total`, `sheet`, `status`,
-   `message`), the stand-in producer needs `run_command`, the worker a `run_download`
-   with a targeted rescan of the segments of `files[]` when it ends (also on cancel),
-   and `JOB_RULES` a `download` line (store, network, a conflict on the same store).
+   **A5 (three commits): commit 1 is done** (ADR-037): `ActionAdapter.run` returns
+   `ActionResult` (`files[]` below the root, `items[]`, `status`) with `ActionProgress`
+   counting units, and `ActionAdapter.scope(path)` names the segment and the unit
+   (`<slot directory>/<stem>` for Kartograf) a scan reads a file's slot by; Kartograf
+   calls `run_command` with `root=`, its cache and a kept plan as `update="upgrade"`, and a
+   plain or outside file is `BrokenContractError`; the stand-in fetches a station's
+   files into its store, waits while the store holds `.standin-hold`, and reads its
+   store (`tests/contract/test_kartograf_run.py`). Next, commit 2: the job kind
+   `download` (`JOB_RULES`: store, network; an active download of the same store and
+   call is a warning notice of the new job, SPEC 5.6), `run_download` with
+   `ActionProgress` and notices as job events, `files[]` and `items[]` in the result,
+   `RunFailedError` when no unit succeeded, and the rescan of the scopes of `files[]`
+   (of the plan's positions or the units the progress named when interrupted) with
+   `refresh_view`. Commit 3: `download` in `ActionKind`/`JobRequest`, `store.write`
+   checked in `start` (`403` before a job row; the CLI acts as `LOCAL_OWNER`), the
+   optional `plan_job` (a finished `check` of the same store, producer, command and
+   options) and `archiwista jobs start download … --plan JOB`.
    Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`)
    is not its canonical line, so the contract test compares calls, not text (a request
    to Kartograf).

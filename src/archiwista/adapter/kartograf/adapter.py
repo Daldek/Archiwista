@@ -47,6 +47,8 @@ from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
     ActionPlan,
+    ActionProgress,
+    ActionResult,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -534,6 +536,35 @@ class KartografAdapter:
             cache_dir=self._cache_dir,
             on_notice=on_notice,
         )
+
+    def run(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        plan: ActionPlan | None = None,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionResult:
+        """Run a command in the store at ``root`` (``run_command``, ``root=``).
+
+        With Archiwista's own metadata cache in ``cache_dir``, never
+        Kartograf's default one (D5); a plan runs as ``update="upgrade"``.
+        """
+        return actions.run(
+            command,
+            options,
+            root=root,
+            cache_dir=self._cache_dir,
+            plan=plan,
+            on_progress=on_progress,
+            on_notice=on_notice,
+        )
+
+    def scope(self, path: str) -> ScanScope:
+        """Return the segment and the unit that read a standard path again."""
+        return actions.scope(path)
 
     def _state(
         self,

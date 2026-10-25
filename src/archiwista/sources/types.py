@@ -24,6 +24,9 @@ type OptionType = Literal["string", "integer", "number", "boolean", "array", "ob
 type PathRole = Literal["input", "output"]
 type CommandWrites = Literal["none", "add", "replace", "delete"]
 type PlanStatus = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
+type FileStatus = Literal["new", "unchanged", "relabeled"]
+type ItemStatus = Literal["ok", "failed"]
+type RunStatus = Literal["ok", "partial", "failed"]
 
 # The statuses of a plan's positions in the order the producers define them.
 PLAN_STATUSES: tuple[PlanStatus, ...] = (
@@ -35,6 +38,9 @@ PLAN_STATUSES: tuple[PlanStatus, ...] = (
 )
 # The positions a run of a plan downloads (Kartograf's ``TODO_STATUSES``).
 PLAN_TODO: tuple[PlanStatus, ...] = ("newer", "missing")
+# The statuses of a file a run left in a store (DEV §19 Z6). A plain file
+# (``written``, ``replaced``) is no file of a store.
+FILE_STATUSES: tuple[FileStatus, ...] = ("new", "unchanged", "relabeled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -903,6 +909,140 @@ class ActionPlan:
             notices=tuple(AvailabilityNotice(**item) for item in data["notices"]),
             document=dict(data["document"]),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ActionProgress:
+    """How far a run of a command is (Kartograf: ``DownloadProgress``).
+
+    Parameters
+    ----------
+    current, total : int
+        Units of the run done so far, of the units it knows of; 0 of 0 before
+        the producer counts them. An event about a part of a unit (a flight
+        of a sheet) keeps the counts of the units.
+    unit : str or None
+        The producer's unit the event is about (a sheet, a station);
+        ``None`` for an event about no one unit.
+    status : str
+        The producer's word for what happens (``downloading``, ``completed``).
+    message : str
+        The producer's text; empty when it says nothing more.
+    """
+
+    current: int
+    total: int
+    unit: str | None
+    status: str
+    message: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ActionFile:
+    """One file a run left in the store (``files[]`` of DEV §19 Z6).
+
+    Parameters
+    ----------
+    path : str
+        Its standard path below the store root, ``/``-separated: where a
+        reader finds the current version.
+    unit : str
+        The producer's unit of the request the file belongs to.
+    status : {"new", "unchanged", "relabeled"}
+        ``new``: a new version; ``unchanged``: a version the store had (used
+        without a transfer, or a transfer of the same content);
+        ``relabeled``: the content of a version the store had, under a new
+        label.
+    size_bytes : int
+        Its size.
+    sha256 : str
+        SHA-256 of its bytes, lower-case hex, computed while it streamed.
+    label : str or None
+        The label of its version.
+    version_path : str or None
+        The immutable file of its version below the store root,
+        ``/``-separated.
+    """
+
+    path: str
+    unit: str
+    status: FileStatus
+    size_bytes: int
+    sha256: str
+    label: str | None = None
+    version_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionItem:
+    """The outcome of one unit of a run (``items[]``, AGI-4.2).
+
+    Parameters
+    ----------
+    id : str
+        The unit: a sheet, a station, a path below the store root.
+    status : {"ok", "failed"}
+        Whether the unit succeeded.
+    code : str or None
+        Registry code of a failure (``source_unavailable``, ``no_data``,
+        ``conflict``).
+    reason : str or None
+        Its finer cause when the code does not say enough (``stale_plan``:
+        the source changed the position since the plan).
+    message : str or None
+        The producer's text of the failure.
+    """
+
+    id: str
+    status: ItemStatus
+    code: str | None = None
+    reason: str | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionResult:
+    """What a run of a command did in a store (SPEC 12.2 KB-5).
+
+    The producer's result (Kartograf: the envelope ``kartograf-result/1`` of
+    ``run_command`` with ``kartograf-download/1``) without its classes, so
+    the jobs read every producer's run alike.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    command : str
+        The producer's name of the command run (``CommandInfo.command``).
+    root : str
+        The store root the run wrote to.
+    status : {"ok", "partial", "failed"}
+        ``ok``: every unit succeeded; ``partial``: some failed; ``failed``:
+        none succeeded.
+    files : tuple[ActionFile, ...]
+        The files it left in the store, in the producer's order.
+    items : tuple[ActionItem, ...]
+        The outcome of each unit; empty for a command without units.
+    notices : tuple[AvailabilityNotice, ...]
+        What the producer said meanwhile.
+    schema : str or None
+        Schema of the producer's own result (``kartograf-download/1``);
+        ``None`` when the command gave none.
+    """
+
+    producer: str
+    command: str
+    root: str
+    status: RunStatus
+    files: tuple[ActionFile, ...] = ()
+    items: tuple[ActionItem, ...] = ()
+    notices: tuple[AvailabilityNotice, ...] = ()
+    schema: str | None = None
+
+    @property
+    def failed(self) -> tuple[ActionItem, ...]:
+        """The units that failed, in the producer's order."""
+        return tuple(item for item in self.items if item.status == "failed")
 
 
 def _combination(data: Mapping[str, Any]) -> AvailabilityCombination:

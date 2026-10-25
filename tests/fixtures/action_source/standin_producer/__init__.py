@@ -12,18 +12,29 @@ from two, and 2022 partial, checked now. ``check_command`` plans a fetch of a
 station's files into the store of ``options["root"]``: one current, one newer,
 one missing of unknown size and one unverifiable; a station whose code starts
 with ``9`` cannot be asked about its missing file, station ``999`` about none.
-Each of these five appends its call to ``CALLS`` with the options it received,
-so a test can tell what Archiwista passed.
+``run_command`` fetches them into the store (``<kind>/<station>/<file>``): a
+file the store holds stays (``unchanged``), and with the plan of a check only
+the plan's files to download are fetched, a file whose source changed since
+the plan coming back as a stale item. While the store holds ``HOLD`` a run
+waits after its first new file until the file is gone. Each of these six
+appends its call to ``CALLS`` with the options it received, so a test can
+tell what Archiwista passed.
 """
 
+import hashlib
+import os
 import shlex
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 
 __version__ = "2.0.0"
 PROGRAM = "standin"
 # The products ``check_availability`` reports on.
 AVAILABILITY_PRODUCTS = ("dem",)
+# A file in the store that makes a run wait after its first new file.
+HOLD = ".standin-hold"
 
 CALLS: list[tuple[str, str, dict[str, object]]] = []
 
@@ -326,6 +337,128 @@ def plan_items(station: str, kind: str) -> list[dict[str, object]]:
             item |= {"status": "check_failed", "source": None, "bytes": None}
             item["error"] = f"The source did not answer for {item['file']}."
     return items
+
+
+def run_command(
+    command: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    plan: Mapping[str, object] | None = None,
+    on_progress: Callable[[int, int, str, str], None] | None = None,
+    on_notice: Callable[[str, str, str], None] | None = None,
+) -> dict[str, object]:
+    """Fetch a station's files into the store ``options["root"]``.
+
+    Without ``plan`` every file the source tells about is fetched unless the
+    store holds it; with the plan of ``check_command`` only its files to
+    download (``newer``, ``missing``), each failing as stale when the source
+    changed it since. A file the source could not tell about fails. Each
+    event goes to ``on_progress`` as ``(current, total, station, status)``.
+    """
+    CALLS.append(
+        (
+            "run_command",
+            command,
+            {**options, **({} if plan is None else {"plan": plan})},
+        )
+    )
+    checked = _checked(command, options)
+    root = Path(str(checked["root"]))
+    station = str(checked["station"])
+    source = plan_items(station, str(checked.get("kind", "hydro")))
+    wanted = source
+    if plan is not None:
+        planned = _items(plan["items"])
+        wanted = [item for item in planned if item["status"] in ("newer", "missing")]
+    current = {str(item["file"]): item for item in source}
+    files: list[dict[str, object]] = []
+    items: list[dict[str, object]] = []
+    held = False
+    for done, item in enumerate(wanted, start=1):
+        name = str(item["file"])
+        now = current.get(name, {"status": "check_failed", "error": "No such file."})
+        if now["status"] == "check_failed":
+            items.append(_failed(name, "source_unavailable", str(now["error"])))
+            status = "failed"
+        elif plan is not None and now["source"] != item["source"]:
+            text = "The source changed since the plan was made: make a new plan."
+            items.append(_failed(name, "conflict", text, reason="stale_plan"))
+            status = "failed"
+        else:
+            fetched = _fetch(root, name, station, str(now["source"]))
+            files.append(fetched)
+            items.append({"id": name, "status": "ok"})
+            status = "completed" if fetched["status"] == "new" else "skipped"
+        if on_progress is not None:
+            on_progress(done, len(wanted), station, status)
+        if status == "completed" and not held:
+            held = _hold(root)
+    done_any = any(item["status"] == "ok" for item in items)
+    failed_any = any(item["status"] == "failed" for item in items)
+    notice = (
+        "info",
+        "run_done",
+        f"Station {station}: {len(files)} files in the store.",
+    )
+    if on_notice is not None:
+        on_notice(*notice)
+    return {
+        "schema": "standin-run/1",
+        "root": str(root),
+        "status": ("partial" if done_any else "failed") if failed_any else "ok",
+        "files": files,
+        "items": items,
+        "notices": [dict(zip(("level", "code", "message"), notice, strict=True))],
+    }
+
+
+def _fetch(root: Path, name: str, station: str, label: str) -> dict[str, object]:
+    """Write one file whole (``os.replace``) unless the store holds it."""
+    target = root / name
+    content = f"{station},{name},{label}\n".encode()
+    status = "unchanged" if target.is_file() else "new"
+    if status == "new":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        part = target.with_name(f".{target.name}.part")
+        part.write_bytes(content)
+        os.replace(part, target)
+    content = target.read_bytes()
+    return {
+        "path": name,
+        "unit": station,
+        "status": status,
+        "size_bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "label": content.decode().strip().rpartition(",")[2],
+        "version_path": name,
+    }
+
+
+def _hold(root: Path) -> bool:
+    """Wait while the store holds ``HOLD``; whether it did."""
+    hold = root / HOLD
+    if not hold.exists():
+        return False
+    while hold.exists():
+        time.sleep(0.05)
+    return True
+
+
+def _failed(
+    name: str, code: str, message: str, *, reason: str | None = None
+) -> dict[str, object]:
+    """Return the item of a file that failed."""
+    item: dict[str, object] = {"id": name, "status": "failed", "code": code}
+    if reason is not None:
+        item["reason"] = reason
+    return item | {"message": message}
+
+
+def _items(value: object) -> list[dict[str, object]]:
+    """Return the positions of a plan document."""
+    assert isinstance(value, list)
+    return value
 
 
 def _checked(command: str, options: Mapping[str, object]) -> dict[str, object]:

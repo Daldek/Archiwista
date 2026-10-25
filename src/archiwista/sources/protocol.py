@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
     ActionPlan,
+    ActionProgress,
+    ActionResult,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -231,7 +233,7 @@ class DefaultRootAdapter(Protocol):
 
 @runtime_checkable
 class ActionAdapter(Protocol):
-    """Optional capability: the producer's commands as data (SPEC 12.2 KB-1 to KB-4).
+    """Optional capability: the producer's commands as data (SPEC 12.2 KB-1 to KB-5).
 
     The catalog, the reading of a command line, the check of a call and the
     command line of a call: what the forms, the plan window and an agent need
@@ -241,7 +243,7 @@ class ActionAdapter(Protocol):
     (``details.option``, ``details.options``, ``details.allowed``). The
     availability at the source (A2) and the plan of a run (A4) ask the network
     and write only the producer's metadata cache, which the adapter keeps in its
-    ``cache_dir``.
+    ``cache_dir``; the run itself (A5) writes the store through the producer.
     """
 
     def commands(self) -> tuple[CommandInfo, ...]:
@@ -323,5 +325,54 @@ class ActionAdapter(Protocol):
             option, a store it cannot write) or the whole check failed.
         UnsupportedError
             The command has no plan of a store (reason ``no_plan``).
+        """
+        ...
+
+    def run(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        plan: ActionPlan | None = None,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionResult:
+        """Run a command in the store at ``root`` (SPEC 12.2 KB-5).
+
+        The producer writes the store: it publishes each version whole, so an
+        interrupt (``KeyboardInterrupt``, which the run lets through) leaves no
+        part of a version. ``root`` is the configured store's root, never the
+        producer's default one, and the run writes no plain file. ``plan``, a
+        plan ``check`` made of the same call, runs that plan: only its positions
+        to download, and a position whose source changed since the plan fails
+        as ``conflict`` with the reason ``stale_plan``. Without a plan the
+        versions the store holds are kept. ``on_progress`` and ``on_notice``
+        receive each event when it happens. A unit that fails is an item of
+        the result, not an error.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the call (an unknown command, an invalid
+            option or plan, a store it cannot write) or failed as a whole.
+        BrokenContractError
+            The producer reported a file outside the store, or a plain one
+            (``written``, ``replaced``).
+        """
+        ...
+
+    def scope(self, path: str) -> ScanScope:
+        """Return what a scan reads to see the file at ``path`` again.
+
+        ``path`` is a file's standard path below the store root (``/``-
+        separated): the ``path`` of an ``ActionFile`` or a ``PlanEntry``.
+        The scope names its segment and its one unit (``ScanScope.units``),
+        so a scan of it reads that file's slot and nothing else.
+
+        Raises
+        ------
+        ValueError
+            ``path`` is not the place of a file of the producer's store.
         """
         ...

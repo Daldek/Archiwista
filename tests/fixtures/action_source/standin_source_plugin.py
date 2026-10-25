@@ -7,13 +7,14 @@ as IMGWTools does; the adapter keeps the root out of the producer-neutral
 options, in ``CommandCall.run["root"]`` and in the ``root`` of ``validate``,
 as the Kartograf adapter does with a producer that takes it by name beside
 the options. Its availability takes the area, its countries and ``refresh``
-among the options too, and so does its plan of a call the store root. It reads
-no store: its stores are empty directories.
+among the options too, and so do its plan and its run of a call the store
+root. Its store is the files a run fetched, ``<kind>/<station>/<file>``: each
+file a version of its own slot, its station the unit a scan reads it by.
 """
 
 from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 
 import standin_producer  # type: ignore[import-not-found]
@@ -21,7 +22,11 @@ import standin_producer  # type: ignore[import-not-found]
 from archiwista.errors import ProducerError
 from archiwista.messages import current_language
 from archiwista.sources import (
+    ActionFile,
+    ActionItem,
     ActionPlan,
+    ActionProgress,
+    ActionResult,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -37,6 +42,7 @@ from archiwista.sources import (
     PlanEntry,
     PlanStatus,
     ProjectInfo,
+    RunStatus,
     ScanScope,
     SourceAdapter,
     SourceContext,
@@ -54,7 +60,7 @@ ROOT = "root"
 
 
 class StandinAdapter:
-    """Commands of the stand-in producer; an empty store for every read."""
+    """Commands of the stand-in producer and the files its runs fetched."""
 
     producer = PRODUCER
     package = PACKAGE
@@ -73,8 +79,29 @@ class StandinAdapter:
     def iter_entries(
         self, root: Path, *, scope: ScanScope | None = None
     ) -> Iterator[SourceEntry]:
-        """Yield nothing: the stand-in's stores are empty."""
-        return iter(())
+        """Yield each fetched file as a version; a scope's units are stations."""
+        units = None if scope is None or scope.units is None else set(scope.units)
+        for path in sorted(root.glob("*/*/*")):
+            relative = path.relative_to(root)
+            station = relative.parts[1]
+            if not path.is_file() or (units is not None and station not in units):
+                continue
+            label = path.read_text(encoding="utf-8").strip().rpartition(",")[2]
+            meta = EntryMeta(
+                producer=self.producer,
+                store=str(root),
+                relative_path=relative,
+                label=label,
+                unit=station,
+            )
+            yield SourceEntry(
+                producer=self.producer,
+                store=str(root),
+                relative_path=relative,
+                kind="version",
+                version_path=relative,
+                meta=meta,
+            )
 
     def read_meta(self, entry: SourceEntry) -> EntryMeta:
         """Describe an entry by its path only."""
@@ -197,6 +224,54 @@ class StandinAdapter:
             notices=tuple(AvailabilityNotice(**item) for item in document["notices"]),
             document=document,
         )
+
+    def run(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        plan: ActionPlan | None = None,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionResult:
+        """Run a call; the store root is ``options["root"]``, a plan its document."""
+
+        def notice(level: Literal["info", "warning"], code: str, text: str) -> None:
+            if on_notice is not None:
+                on_notice(AvailabilityNotice(level, code, text))
+
+        def progress(current: int, total: int, unit: str, status: str) -> None:
+            if on_progress is not None:
+                on_progress(ActionProgress(current, total, unit, status))
+
+        try:
+            document = standin_producer.run_command(
+                command,
+                options={**options, ROOT: str(root)},
+                plan=None if plan is None else dict(plan.document),
+                on_progress=progress,
+                on_notice=notice,
+            )
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        return ActionResult(
+            producer=PRODUCER,
+            command=command,
+            root=str(document["root"]),
+            status=cast(RunStatus, document["status"]),
+            files=tuple(ActionFile(**item) for item in document["files"]),
+            items=tuple(ActionItem(**item) for item in document["items"]),
+            notices=tuple(AvailabilityNotice(**item) for item in document["notices"]),
+            schema=str(document["schema"]),
+        )
+
+    def scope(self, path: str) -> ScanScope:
+        """Return the station of a file ``<kind>/<station>/<file>``: its unit."""
+        parts = PurePosixPath(path).parts
+        if len(parts) != 3:
+            raise ValueError(f"{path!r} is no file of a stand-in store")
+        return ScanScope(units=(parts[1],))
 
 
 def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:

@@ -3,6 +3,16 @@
 from archiwista.messages import Text
 
 MESSAGES = {
+    "file_outside_store": Text(
+        (
+            "The source {producer} reported the file {path} ({status}) of a run in"
+            " the store {root}, which is no file of that store."
+        ),
+        (
+            "Źródło {producer} podało plik {path} ({status}) z uruchomienia w"
+            " magazynie {root}, a to nie jest plik tego magazynu."
+        ),
+    ),
     "no_check": Text(
         (
             'The command "{command}" of the source {producer} has no plan without'
