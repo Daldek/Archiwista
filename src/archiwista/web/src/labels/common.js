@@ -40,6 +40,7 @@ export const common = {
     snapshot: "migawka",
     availability: "dostępność u źródła",
     check: "plan pobrania",
+    download: "pobranie",
   },
   job_state: {
     queued: "w kolejce",

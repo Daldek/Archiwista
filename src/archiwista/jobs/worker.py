@@ -25,7 +25,11 @@ input, runs it and reports in JSON Lines on standard output
   the index as the area's last report;
 - ``check``: what a run of a producer's command would do in the store (the
   producer's ``ActionAdapter.check``, A4), its plan kept in the index with the
-  job; a plan some of whose positions could not be checked ends ``partial``.
+  job; a plan some of whose positions could not be checked ends ``partial``;
+- ``download``: a run of a producer's command in the store (the producer's
+  ``ActionAdapter.run``, A5), of the plan a ``check`` job kept when one is
+  named; the slots of the files it reports are read again into the index
+  when it ends, those of the units it named also when it is interrupted.
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -44,13 +48,14 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import FrameType
 from typing import IO, cast
 
+from archiwista._errors import BY_CODE
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppPaths, StoreConfig
 from archiwista.error_document import Problem, describe
@@ -61,6 +66,7 @@ from archiwista.errors import (
     OfflineModeError,
     OwnReaderError,
     ProducerError,
+    RunFailedError,
     SnapshotBlockedError,
     SourceStateError,
     UnsupportedError,
@@ -73,11 +79,13 @@ from archiwista.index import (
     TransformerFactory,
 )
 from archiwista.index.scanner import (
+    REFRESH_VIEW_MAX_UNITS,
     ScanEvent,
     ScanMode,
     ScanProgress,
     ScanSummary,
     outline_footprints,
+    refresh_view,
     scan_store,
 )
 from archiwista.jobs.availability import store_unreachable
@@ -127,9 +135,15 @@ from archiwista.sandbox import process_work_dir
 from archiwista.services.commands import actions, store_root
 from archiwista.services.problems import explain
 from archiwista.sources import (
+    FILE_STATUSES,
+    ActionAdapter,
+    ActionPlan,
+    ActionProgress,
+    ActionResult,
     CommandCall,
     GeoAdapter,
     LinkCheckAdapter,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SourceAdapter,
     SourceEntry,
@@ -139,6 +153,9 @@ from archiwista.sources.registry import SourceRegistry, load_registry
 # Versions whose outlines are written in one transaction and reported in one
 # progress event by the ``footprints`` job.
 FOOTPRINT_BATCH = 25
+# Seconds an interrupted download has to read the slots of its units again
+# before the watchdog of ``_handle_interrupts`` ends the process.
+RESCAN_STOP_S = STOP_TIMEOUT_S / 2
 # Standard input: the job line, then silence until the supervisor is gone.
 _STDIN = 0
 
@@ -669,6 +686,100 @@ def run_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     return summary if plan.ok else PartialResult(summary)
 
 
+def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Run a producer's command in the store, then read its files' slots again.
+
+    The producer writes the store's root (the configured directory of the
+    producer, never its default root) itself; with ``plan_job`` it runs the
+    plan that ``check`` job kept, so a position whose source changed since
+    comes back as a failed item (``conflict``, ``stale_plan``). Its progress
+    and notices become the job's. When the run ends the index learns its
+    files: the slot of each file of ``files[]`` is read again (``scope``,
+    ``refresh_view``). When it is interrupted or fails, the slots of the units
+    its progress named are read again within ``RESCAN_STOP_S``: those of the
+    plan's positions with a plan, else in every segment of the store. A run
+    some of whose units failed ends the job ``partial``; one with none done
+    fails it (``RunFailedError``, the code of its first failed unit).
+    """
+    if spec.settings.offline:
+        raise OfflineModeError(message("job.offline_mode"))
+    config = _store(spec)
+    call = CommandCall(
+        str(spec.params["producer"]),
+        str(spec.params["command"]),
+        dict(spec.params["options"]),
+    )
+    root = store_root(spec.settings, config.id, call)
+    plan_job = spec.params.get("plan_job")
+    plan = None if plan_job is None else _kept_plan(spec, str(plan_job))
+    started = time.perf_counter()
+    registry = load_registry(cache_dir=spec.cache_dir)
+    adapter = actions(registry, call.producer)
+    reader = registry.adapter(call.producer)
+    units: set[str] = set()
+
+    def progressed(event: ActionProgress) -> None:
+        if event.unit is not None:
+            units.add(event.unit)
+        emit.progress(
+            event.current,
+            event.total,
+            unit=event.unit,
+            status=event.status,
+            message=event.message,
+        )
+
+    try:
+        result = adapter.run(
+            call.command,
+            call.options,
+            root=root,
+            plan=plan,
+            on_progress=progressed,
+            on_notice=lambda notice: emit.notice(
+                notice.level, notice.code, notice.message
+            ),
+        )
+    except BaseException:
+        _rescan(
+            spec,
+            reader,
+            config.id,
+            lambda: _unit_scopes(adapter, reader, root, plan, units),
+            emit,
+            timeout_s=RESCAN_STOP_S,
+        )
+        raise
+    rescanned = _rescan(
+        spec,
+        reader,
+        config.id,
+        lambda: _scopes(adapter, (file.path for file in result.files)),
+        emit,
+        timeout_s=None,
+    )
+    if result.status == "failed":
+        raise _run_failed(result)
+    counts = dict.fromkeys(FILE_STATUSES, 0)
+    for file in result.files:
+        counts[file.status] += 1
+    summary: JsonObject = {
+        "producer": call.producer,
+        "command": result.command,
+        "store": config.id,
+        "root": result.root,
+        "plan_job": plan_job,
+        "status": result.status,
+        "counts": counts,
+        "files": [asdict(file) for file in result.files],
+        "items": [asdict(item) for item in result.items],
+        "failed": len(result.failed),
+        "rescanned": rescanned,
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+    return summary if result.status == "ok" else PartialResult(summary)
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -678,7 +789,129 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "snapshot": run_snapshot,
     "availability": run_availability,
     "check": run_check,
+    "download": run_download,
 }
+
+
+def _kept_plan(spec: JobSpec, job_id: str) -> ActionPlan:
+    """Return the plan the ``check`` job ``job_id`` kept.
+
+    Raises
+    ------
+    NotFoundError
+        The index keeps no plan of that job (``job.no_plan``): it was
+        forgotten since.
+    """
+    with IndexQueries(spec.index_path) as queries:
+        stored = queries.plan(job_id)
+    if stored is None:
+        raise NotFoundError(message("job.no_plan", job=job_id))
+    return stored.plan
+
+
+def _scopes(
+    adapter: ActionAdapter, paths: Iterable[str]
+) -> dict[str | None, tuple[str, ...]]:
+    """Return the units of each segment that read the files at ``paths`` again."""
+    found: dict[str | None, dict[str, None]] = {}
+    for path in paths:
+        scope = adapter.scope(path)
+        found.setdefault(scope.segment, {}).update(dict.fromkeys(scope.units or ()))
+    return {segment: tuple(units) for segment, units in found.items()}
+
+
+def _unit_scopes(
+    adapter: ActionAdapter,
+    reader: SourceAdapter,
+    root: Path,
+    plan: ActionPlan | None,
+    units: Collection[str],
+) -> dict[str | None, tuple[str, ...]]:
+    """Return the scopes of the units a run named before it stopped.
+
+    With a plan, those of the plan's positions to download of these units;
+    without one, the units in every segment of the store (a producer's unit
+    names no segment), each segment reading only the slots it has of them.
+    """
+    if not units:
+        return {}
+    if plan is not None:
+        return _scopes(adapter, (e.path for e in plan.todo if e.unit in units))
+    named = tuple(sorted(units))
+    if isinstance(reader, SegmentedAdapter):
+        return dict.fromkeys(reader.segments(root), named)
+    return {None: named}
+
+
+def _rescan(
+    spec: JobSpec,
+    reader: SourceAdapter,
+    store: str,
+    scopes: Callable[[], Mapping[str | None, Sequence[str]]],
+    emit: Emitter,
+    *,
+    timeout_s: float | None,
+) -> int:
+    """Read the slots of a run's units again into the index; return the units read.
+
+    ``refresh_view`` of the units of each segment, in batches, the segments
+    described first (a run may have made one). A store found unavailable, a
+    failure or the end of ``timeout_s`` stops it with the notice
+    ``rescan_failed``: the next scan of the store reads the rest.
+    """
+    deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    read = 0
+    try:
+        found = scopes()
+        if not found:
+            return 0
+        with IndexWriter(spec.index_path) as writer:
+            if isinstance(reader, SegmentDescriptionAdapter):
+                named = [segment for segment in found if segment is not None]
+                described = [reader.describe_segment(name) for name in named]
+                writer.write_segments(store, reader.producer, described)
+            with IndexQueries(spec.index_path) as queries:
+                for segment, units in found.items():
+                    for batch in _batches(units, REFRESH_VIEW_MAX_UNITS):
+                        left = None if deadline is None else deadline - time.monotonic()
+                        status = refresh_view(
+                            reader,
+                            writer,
+                            queries,
+                            spec.settings,
+                            store,
+                            segment,
+                            batch,
+                            timeout_s=None if left is None else max(left, 0.0),
+                        )
+                        if any(
+                            item.store == store and item.stale for item in status.stores
+                        ):
+                            emit.notice(
+                                "warning", "rescan_failed", message("job.rescan_failed")
+                            )
+                            return read
+                        read += len(batch)
+    except (TimeoutError, ArchiwistaError, OSError, sqlite3.Error, ValueError) as error:
+        logger.warning(
+            "Job %s: the rescan of its units stopped: %s", spec.job_id, error
+        )
+        text = with_detail(message("job.rescan_failed"), str(error))
+        emit.notice("warning", "rescan_failed", text)
+    return read
+
+
+def _run_failed(result: ActionResult) -> RunFailedError:
+    """Return the error of a run no unit of which succeeded."""
+    failed = result.failed
+    first = failed[0] if failed else None
+    text = message("job.run_failed", count=len(result.items))
+    code = None if first is None or first.code not in BY_CODE else first.code
+    return RunFailedError(
+        with_detail(text, None if first is None else first.message),
+        code=code,
+        details=None if first is None else {"unit": first.id},
+    )
 
 
 def _transformer(registry: SourceRegistry) -> TransformerFactory | None:
@@ -753,11 +986,9 @@ def _require_reachable(
         raise error
 
 
-def _batches(
-    entries: Sequence[SourceEntry], size: int
-) -> Iterator[Sequence[SourceEntry]]:
-    for start in range(0, len(entries), size):
-        yield entries[start : start + size]
+def _batches[T](items: Sequence[T], size: int) -> Iterator[Sequence[T]]:
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
 
 
 def _segment_scanners(

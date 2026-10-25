@@ -206,6 +206,19 @@ command-line interface may change.
   Archiwista's metadata cache and, for the plan of a check, `update="upgrade", plan=…`;
   a plain file (`written`, `replaced`) or one outside the store is `data_error`, reason
   `broken_contract`. (SPEC 12.2 KB-5, ADR-037)
+- The download, as a background job (ADR-037): the job `download` runs a command of a
+  producer's catalog in a configured store (Kartograf's `run_command` with `root=` the
+  store's directory), with `plan_job` the plan a `check` job kept (`update="upgrade"`: only
+  its positions to download; one whose source changed since is a failed item,
+  `conflict`, `stale_plan`). Its progress events carry the producer's `unit`, `status`
+  and `message`, its notices are the producer's, and its result keeps `files[]` and
+  `items[]` with the counts of `new`, `unchanged` and `relabeled` files. When it ends the
+  index shows the new versions without a scan (the slots of its files are read again);
+  cancelled or stopped, it reads the slots of the units it named again first. A run with
+  failed units ends `partial`, one with none done fails (reason `run_failed`). A download
+  of the call an active download of the store runs starts with the warning notice
+  `overlapping_job`. Offline mode refuses it before a job exists. (SPEC 5.6, 12.2 KB-5,
+  ADR-037)
 
 ### Changed
 

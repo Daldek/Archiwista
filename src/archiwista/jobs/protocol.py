@@ -7,7 +7,8 @@ data: its end tells the worker that the supervisor is gone. The worker
 answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
 
 - ``progress``: how far the job is, with integers ``current`` and ``total``
-  and counts of the job's kind (a scan adds ``segment`` and ``entries``);
+  and counts of the job's kind (a scan adds ``segment`` and ``entries``, a
+  download the ``unit``, ``status`` and ``message`` of the producer's event);
 - ``notice``: something the person should know: ``level`` (``info`` or
   ``warning``), a stable ``code`` and a ``message`` in Polish, the language of
   the texts a worker stores;
@@ -41,7 +42,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 6
+PROTOCOL_VERSION = 7
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -59,6 +60,7 @@ type JobKind = Literal[
     "snapshot",
     "availability",
     "check",
+    "download",
 ]
 type MessageType = Literal["progress", "notice", "result", "partial", "error"]
 type NoticeLevel = Literal["info", "warning"]
@@ -118,7 +120,8 @@ class JobSpec:
         ``refs``, their ``contents`` and ``force``; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``;
         ``availability``: ``area_id``, ``producer``, ``product`` and
-        ``force``; ``check``: ``producer``, ``command`` and ``options``).
+        ``force``; ``check``: ``producer``, ``command`` and ``options``;
+        ``download``: those of ``check`` and ``plan_job``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

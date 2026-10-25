@@ -239,6 +239,36 @@ MESSAGES = {
         "not checked",
         "niesprawdzone",
     ),
+    "kind_download": Text(
+        "download",
+        "pobranie",
+    ),
+    "run_failed": Text(
+        "None of the {count} units of the run succeeded.",
+        "Żadna z {count} jednostek uruchomienia się nie powiodła.",
+    ),
+    "overlapping": Text(
+        (
+            "Job {job} ({state}) downloads the same into this store. The source"
+            " writes each version once, so this job mostly finds what that one"
+            " wrote."
+        ),
+        (
+            "Zadanie {job} ({state}) pobiera to samo do tego magazynu. Źródło"
+            " zapisuje każdą wersję raz, więc to zadanie głównie zastanie to, co"
+            " zapisało tamto."
+        ),
+    ),
+    "rescan_failed": Text(
+        (
+            "The index does not show all files of the run yet: the next scan of the"
+            " store adds them."
+        ),
+        (
+            "Indeks nie pokazuje jeszcze wszystkich plików uruchomienia: doda je"
+            " najbliższy skan magazynu."
+        ),
+    ),
     "conflict_snapshot": Text(
         (
             "A snapshot of this file is already in progress: job {job} ({state}). Wait"

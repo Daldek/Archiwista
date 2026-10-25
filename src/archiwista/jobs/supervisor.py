@@ -19,10 +19,12 @@ whether it works on a configured store, needs the network (refused in
 offline mode, at most two network jobs run), runs alone (one ``preview``
 at a time, the next ones wait in the queue), conflicts with active jobs (one
 job writing a store's index at a time, ``scan`` or ``footprints``; another
-one is a ``JobConflictError``) or joins one (a ``preview`` of contents an
+one is a ``JobConflictError``), joins one (a ``preview`` of contents an
 active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
-job). At most half the processors' worth of workers run, the rest wait in
+job) or overlaps one (a ``download`` of a call an active download of the
+store runs too starts with a warning notice naming that job). At most half
+the processors' worth of workers run, the rest wait in
 the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
 CTRL_BREAK_EVENT to its process group on Windows) and kills it after 30 s.
 
@@ -97,7 +99,7 @@ from archiwista.jobs.protocol import (
     decode_message,
     encode_spec,
 )
-from archiwista.messages import label, message
+from archiwista.messages import STORED_LANG, label, localize, message
 from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
@@ -208,7 +210,8 @@ class JobRecord:
         with the refs of the requests that joined it; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id``, ``note``;
         ``availability``: ``area_id``, ``producer``, ``product``, ``force``;
-        ``check``: ``producer``, ``command``, ``options``).
+        ``check``: ``producer``, ``command``, ``options``; ``download``: those
+        and ``plan_job``).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
@@ -320,6 +323,25 @@ class JobJoin:
 
 
 @dataclass(frozen=True, slots=True)
+class JobOverlap:
+    """Active jobs a new one repeats: a warning, not a refusal (SPEC 5.6).
+
+    Attributes
+    ----------
+    key : Callable[[str or None, dict], object]
+        ``key(store, params)``: the jobs of the kind with the new job's key
+        do the same work; the producer writes each version once, so the
+        later one mostly finds what the earlier wrote.
+    message : str
+        Catalog key of the notice, with ``job`` and ``state`` of the oldest
+        such job.
+    """
+
+    key: Callable[[str | None, JsonObject], object]
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class JobRule:
     """How the supervisor treats the jobs of one kind (``JOB_RULES``).
 
@@ -339,6 +361,8 @@ class JobRule:
         Active jobs that refuse a new one (``JobConflictError``).
     join : JobJoin or None, default None
         Active jobs a new one joins instead of being recorded.
+    overlap : JobOverlap or None, default None
+        Active jobs that the new one starts with a warning notice about.
     """
 
     store: bool
@@ -346,6 +370,7 @@ class JobRule:
     exclusive: bool = False
     conflict: JobConflict | None = None
     join: JobJoin | None = None
+    overlap: JobOverlap | None = None
 
 
 def _store_key(store: str | None, params: JsonObject) -> object:
@@ -356,6 +381,12 @@ def _store_key(store: str | None, params: JsonObject) -> object:
 def _snapshot_key(store: str | None, params: JsonObject) -> object:
     """Return the key of a ``snapshot`` job: its project and file."""
     return (params["project"], params["file_id"])
+
+
+def _call_key(store: str | None, params: JsonObject) -> object:
+    """Return the key of a job of a producer's command: its store and its call."""
+    options = json.dumps(params["options"], sort_keys=True, ensure_ascii=False)
+    return (store, params["producer"], params["command"], options)
 
 
 def _join_preview(active: JsonObject, new: JsonObject) -> JsonObject | None:
@@ -416,6 +447,8 @@ _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
 _AVAILABILITY_JOIN = JobJoin(_join_availability, ACTIVE_STATES)
 # One snapshot of a file at a time; those of other files run side by side.
 _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
+# A download of the call an active download of the store runs (SPEC 5.6).
+_DOWNLOAD_OVERLAP = JobOverlap(_call_key, "job.overlapping")
 # The rule of each kind, one line per kind of ``JobKind``.
 JOB_RULES: Mapping[JobKind, JobRule] = {
     "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
@@ -426,6 +459,7 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "snapshot": JobRule(store=False, conflict=_SNAPSHOT_CONFLICT),
     "availability": JobRule(store=False, network=True, join=_AVAILABILITY_JOIN),
     "check": JobRule(store=True, network=True),
+    "download": JobRule(store=True, network=True, overlap=_DOWNLOAD_OVERLAP),
 }
 
 
@@ -651,9 +685,9 @@ class JobSupervisor:
             What to run, one of ``JOB_KINDS``.
         store : str or None, optional
             Configured store id: required by a kind working on a store
-            (``scan``, ``footprints``, ``link_check``, ``check``), refused by
-            one working on none (``preview``, ``own_scan``, ``snapshot``,
-            ``availability``).
+            (``scan``, ``footprints``, ``link_check``, ``check``,
+            ``download``), refused by one working on none (``preview``,
+            ``own_scan``, ``snapshot``, ``availability``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -668,7 +702,9 @@ class JobSupervisor:
             ``product`` (non-empty texts) and ``force`` (ask the source
             again, ``False`` by default); ``check``: ``producer`` and
             ``command`` (non-empty texts) and ``options`` (a JSON object, the
-            call's options; ``{}`` by default).
+            call's options; ``{}`` by default); ``download``: those of
+            ``check`` and ``plan_job`` (the ``check`` job whose kept plan the
+            run runs, ``None`` by default).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -679,7 +715,9 @@ class JobSupervisor:
             (``preview``, ``availability``) returns the oldest active job of
             the kind that takes the request instead: that job's ``params``
             gain the request's (a running worker keeps those it started
-            with), and no job is recorded.
+            with), and no job is recorded. A job of a kind that overlaps
+            (``download``) gets a warning notice ``overlapping_job`` naming
+            the oldest active job it repeats, ``job`` its id.
 
         Raises
         ------
@@ -743,6 +781,11 @@ class JobSupervisor:
                                 db, job_id, 1, "state", {"state": "queued"}, now
                             )
                         )
+                        overlap = self._overlap(db, job_kind, store, values, job_id)
+                        if overlap is not None:
+                            events.append(
+                                _insert_event(db, job_id, 2, "notice", overlap, now)
+                            )
             except BaseException:
                 _set_active(job_id, active=False)
                 raise
@@ -1369,6 +1412,45 @@ class JobSupervisor:
                         )
         return joined, tuple(events)
 
+    def _overlap(
+        self,
+        db: sqlite3.Connection,
+        kind: JobKind,
+        store: str | None,
+        params: JsonObject,
+        job_id: str,
+    ) -> JsonObject | None:
+        """Return the notice of a new job about the oldest live job it repeats.
+
+        Looks at the other active jobs of the kind with the new job's overlap
+        key (``JobOverlap.key``); a job whose supervisor is gone is no one's
+        work any more. ``None`` without such a job.
+        """
+        rule = JOB_RULES[kind].overlap
+        if rule is None:
+            return None
+        key = rule.key(store, params)
+        rows = db.execute(
+            "SELECT id, state, pid, store, params FROM jobs"
+            f" WHERE kind = ? AND id != ? AND state IN {_ACTIVE_SQL}"
+            " ORDER BY created_at, id",
+            (kind, job_id),
+        ).fetchall()
+        for row in rows:
+            if rule.key(row["store"], json.loads(row["params"])) != key:
+                continue
+            if self._owner_alive(row["id"], row["pid"]):
+                text = message(
+                    rule.message, job=row["id"], state=label("job.state", row["state"])
+                )
+                return {
+                    "level": "warning",
+                    "code": "overlapping_job",
+                    "message": localize(text, STORED_LANG),
+                    "job": row["id"],
+                }
+        return None
+
     def _mark_stale(
         self, db: sqlite3.Connection, job_id: str, now: datetime
     ) -> JobEvent:
@@ -1489,6 +1571,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return _availability_params(params)
     if kind == "check":
         return _check_params(params)
+    if kind == "download":
+        return _download_params(params)
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
@@ -1518,6 +1602,15 @@ def _check_params(params: Mapping[str, object]) -> JsonObject:
     ):
         raise ValueError(f"invalid check parameters {dict(params)!r}"[:300])
     return {**{name: params[name] for name in names}, "options": dict(options)}
+
+
+def _download_params(params: Mapping[str, object]) -> JsonObject:
+    """Check a ``download`` job's call (as of ``check``) and its ``plan_job``."""
+    plan_job = params.get("plan_job")
+    if not (plan_job is None or (isinstance(plan_job, str) and plan_job)):
+        raise ValueError(f"invalid download plan job {plan_job!r}"[:300])
+    call = {name: value for name, value in params.items() if name != "plan_job"}
+    return {**_check_params(call), "plan_job": plan_job}
 
 
 def _snapshot_params(params: Mapping[str, object]) -> JsonObject:

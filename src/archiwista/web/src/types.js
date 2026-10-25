@@ -886,7 +886,7 @@
  *
  * @typedef {object} JobDetail
  * @property {string} id
- * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"|"availability"|"check"} kind
+ * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"|"availability"|"check"|"download"} kind
  * @property {"queued"|"running"|"succeeded"|"partial"|"failed"|"interrupted"|"cancelled"} state -
  *   `partial`: part of its units failed, `result` names them.
  * @property {string} actor - Who started it.

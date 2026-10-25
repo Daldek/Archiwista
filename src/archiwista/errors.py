@@ -389,6 +389,18 @@ class CheckFailedError(ArchiwistaError):
     default_reason = "check_failed"
 
 
+class RunFailedError(ArchiwistaError):
+    """No unit of a run of a producer's command succeeded.
+
+    The code of the first unit that failed (``source_unavailable`` when the
+    producer gave none or one outside the registry), reason ``run_failed``; a
+    run with at least one unit done is a job that ended ``partial`` instead.
+    """
+
+    default_code = "source_unavailable"
+    default_reason = "run_failed"
+
+
 class BrokenContractError(ArchiwistaError):
     """A producer answered outside its documented contract (``data_error``).
 

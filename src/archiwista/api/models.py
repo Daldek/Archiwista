@@ -1848,8 +1848,10 @@ class JobDetail(BaseModel):
             " `preview` (build local previews of files), `own_scan` (scan the"
             " projects' own data folders), `snapshot` (a snapshot of an"
             " own-data file), `availability` (what the source has for an"
-            " area and a product, over the network) or `check` (what a run of"
-            " a producer's command would do in the store, over the network)."
+            " area and a product, over the network), `check` (what a run of"
+            " a producer's command would do in the store, over the network) or"
+            " `download` (a run of a producer's command in the store, over the"
+            " network)."
         )
     )
     state: JobState = Field(
@@ -1889,7 +1891,9 @@ class JobDetail(BaseModel):
             " none; `preview`: `refs`, their `contents` and `force`; `own_scan`:"
             " `project` (none: every project); `snapshot`: `project`, `file_id`"
             " and `note`; `availability`: `area_id`, `producer`, `product` and"
-            " `force`; `check`: `producer`, `command` and `options`."
+            " `force`; `check`: `producer`, `command` and `options`; `download`:"
+            " those and `plan_job` (the `check` job whose plan it runs, or"
+            " `null`)."
         )
     )
     created_at: datetime
@@ -1902,7 +1906,8 @@ class JobDetail(BaseModel):
             " of `own_scan`, phases of `snapshot`); a scan adds `segment` and"
             " `entries`, `footprints` adds `written` and `failed`, `preview`"
             " adds `built`, `cached` and `failed`, `own_scan` adds `files` and"
-            " `read`, `snapshot` adds `phase`."
+            " `read`, `snapshot` adds `phase`; a `download` counts units and"
+            " adds the producer's `unit` (or `null`), `status` and `message`."
         )
     )
     result: dict[str, Any] | None = Field(
@@ -1925,7 +1930,14 @@ class JobDetail(BaseModel):
             " `checked_at`, `ok`, `positions`, `counts` (of each status),"
             " `size_bytes` (of the positions to download as far as the producer"
             " tells them; `null` when it tells none), `size_complete`, `failed`"
-            " (`path`, `error` of the positions not checked) and `seconds`."
+            " (`path`, `error` of the positions not checked) and `seconds`;"
+            " `download`: `producer`, `command`, `store`, `root`, `plan_job`,"
+            " `status` (`ok`, `partial`), `counts` (files `new`, `unchanged`,"
+            " `relabeled`), `files` (`path` and `version_path` below the root,"
+            " `unit`, `status`, `size_bytes`, `sha256`, `label`), `items` (`id`,"
+            " `status`, `code`, `reason`, `message` of each unit; a position the"
+            " source changed since the plan: `conflict`, `stale_plan`), `failed`,"
+            " `rescanned` (units read again into the index) and `seconds`."
         )
     )
     error: JobFailure | None = Field(
