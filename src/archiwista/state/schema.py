@@ -25,6 +25,7 @@ from typing import Literal
 from archiwista.errors import StateError
 from archiwista.messages import message
 from archiwista.paths import private_directory
+from archiwista.wal import use_wal
 
 type Migration = Callable[[sqlite3.Connection], None]
 type StateSchemaState = Literal["created", "current", "migrated"]
@@ -179,7 +180,7 @@ def initialize(
     target = len(migrations)
     connection = connect(path)
     try:
-        connection.execute("PRAGMA journal_mode = WAL")
+        use_wal(connection, timeout_ms=BUSY_TIMEOUT_MS)
         version = _user_version(connection)
         if version == target:
             return "current"

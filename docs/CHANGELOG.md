@@ -172,7 +172,7 @@ command-line interface may change.
   lock. Development tools are the `dev` dependency group, and the extra `dev` is
   gone. (DEV-6.2, DEV-6.3, DEV-6.5)
 - Kartograf is pinned by commit in `pyproject.toml` instead of being installed editable
-  from a sibling checkout: `45dedf4a`, the head of its branch `feature/data-output` (the
+  from a sibling checkout: `c31ca04c`, the head of its branch `feature/data-output` (the
   data-output convention, ADR-054; the commit is on GitHub). The release pull request
   replaces the commit with the tag. The range of Kartograf versions the adapter reads is
   `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`, `>=0.8.0.dev0,<0.9` while the
@@ -229,11 +229,12 @@ command-line interface may change.
   worker that did not stop, so one whose supervisor was gone could stay for good: under
   `--cov` an interrupt that lands in coverage's tracer at the wrong moment leaves the
   tracer's lock held, and the worker waits for it in its exit handler.
-- Processes that open a new preview cache at the same moment all open it (the server,
-  the job workers, the build processes and the command line share it). SQLite refused
-  the switch of `cache.sqlite` to WAL with "database is locked" at once, without the
-  busy timeout, in a process that read the file's header while another one wrote it,
-  and that process ended at its start; now it tries again for up to the busy timeout.
+- Processes that open a new index, state database or preview cache at the same moment
+  all open it (the server, the job workers, the build processes and the command line
+  share them). SQLite refused the switch of `index.sqlite`, `state.sqlite` or
+  `cache.sqlite` to WAL with "database is locked" at once, without the busy timeout, in
+  a process that read the file's header while another one wrote it, and that process
+  ended at its start; now it tries again for up to the busy timeout.
 - Archiwista declares `affine>=3,<4`. The previews transform with the `@` operator of
   affine 3; rasterio also admits affine 2, where `@` raises `TypeError`, so in an
   environment that resolved affine 2 every preview was unreadable (Hydrograf caps

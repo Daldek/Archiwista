@@ -39,6 +39,7 @@ from typing import Literal
 
 from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
+from archiwista.wal import use_wal
 
 SCHEMA_VERSION = 7
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
@@ -506,7 +507,7 @@ def initialize(path: Path) -> SchemaState:
     private_directory(path.parent)
     connection = connect(path)
     try:
-        connection.execute("PRAGMA journal_mode = WAL")
+        use_wal(connection, timeout_ms=BUSY_TIMEOUT_MS)
         if _user_version(connection) == SCHEMA_VERSION:
             return "current"
         # Dropping tables with foreign keys enabled runs checked deletes; a
