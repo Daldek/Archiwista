@@ -14,6 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import kartograf
+import pytest
 
 import archiwista
 
@@ -103,6 +104,23 @@ def test_kartograf_adapter_uses_only_public_api() -> None:
     assert imports
     for place, module, names in imports:
         assert module == "kartograf" and names, f"{place}: import {module}"
+        assert set(names) <= public, f"{place}: {sorted(set(names) - public)}"
+
+
+def test_imgw_adapter_uses_only_public_api_and_never_pyarrow() -> None:
+    """The adapter imports public names of ``imgwtools`` and never ``pyarrow``."""
+    imgwtools = pytest.importorskip("imgwtools")
+    public = set(imgwtools.__all__)
+    imports = [
+        (f"{path.name}:{line}", module, names)
+        for path in sorted(ADAPTER_DIRS["imgwtools"].rglob("*.py"))
+        for line, module, names in _imports(path)
+        if module.partition(".")[0] in {"imgwtools", "pyarrow"}
+    ]
+
+    assert imports
+    for place, module, names in imports:
+        assert module == "imgwtools" and names, f"{place}: import {module}"
         assert set(names) <= public, f"{place}: {sorted(set(names) - public)}"
 
 

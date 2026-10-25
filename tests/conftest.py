@@ -3,9 +3,14 @@
 import logging
 import os
 import signal
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
+
+if TYPE_CHECKING:
+    from imgwtools.testing import FixtureVariant
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -47,3 +52,27 @@ def restore_umask() -> Iterator[None]:
     os.umask(mask)
     yield
     os.umask(mask)
+
+
+@pytest.fixture(scope="session")
+def imgw_store(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Callable[[str], Path]:
+    """Return ``store(variant)``, an offline IMGWTools store built once per variant.
+
+    The producer's own builder (``imgwtools.testing.build_fixture_store``) writes it
+    with its public writers and recorded answers, so no request leaves the process.
+    Tests share a store read-only and copy it to change it.
+    """
+    built: dict[str, Path] = {}
+
+    def store(variant: str = "complete") -> Path:
+        if variant not in built:
+            from imgwtools.testing import build_fixture_store
+
+            root = tmp_path_factory.mktemp(f"imgw-{variant}") / "store"
+            build_fixture_store(root, variant=cast("FixtureVariant", variant))
+            built[variant] = root
+        return built[variant]
+
+    return store

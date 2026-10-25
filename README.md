@@ -137,7 +137,7 @@ z `umask 077` — inne konta komputera nie czytają indeksu ani bazy stanu.
 scripts/gate.sh    # ruff format, ruff check, mypy, pytest z pokryciem, sprawdzenie commitów
 ```
 
-Bramka (DEV-7.6) działa z katalogu roboczego git i stosuje `uv sync --locked`;
+Bramka (DEV-7.6) działa z katalogu roboczego git i stosuje `uv sync --locked --all-extras`;
 współtwórcy uruchamiają ją jako `GATE_CHECK_AUTHOR=0 scripts/gate.sh`.
 
 `pytest` domyślnie pomija testy `live`, `perf` i `smb` (prawdziwe magazyny,

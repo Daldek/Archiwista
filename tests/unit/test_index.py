@@ -859,6 +859,35 @@ def test_index_producer_without_links_or_segments(
     assert queries.slots(SlotQuery(store=STORE), visible=ALL_PROJECTS).items == ()
 
 
+def test_index_observation_is_history_and_never_a_slot_version_or_link(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A producer's observation changes no slot, version, link or issue."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    history = replace(
+        sheet,
+        kind="observation",
+        relative_path=Path(f"{NMT}/observations/2024-01-01_aabbccdd.json"),
+        version_path=None,
+        meta=None,
+    )
+    elsewhere = replace(history, slot_path=Path(f"{NMT}/other"))
+
+    # Act
+    summary = write_pass(writer, [sheet, link(SHEET_A, sheet), history, elsewhere])
+    page = queries.slots(SlotQuery(), visible=ALL_PROJECTS)
+
+    # Assert
+    assert [(row.slot, row.status) for row in page.items] == [(SHEET_A, "ok")]
+    assert [row.version.path for row in page.items if row.version] == [
+        sheet.relative_path.as_posix()
+    ]
+    assert (summary.missing, summary.unlinked, summary.issues_resolved) == (0, 0, 0)
+    assert queries.issues(STORE) == ()
+
+
 def test_index_filters_by_store_country_and_location(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:

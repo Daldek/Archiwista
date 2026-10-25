@@ -298,7 +298,8 @@ class SourceRegistry:
         -------
         SourceState
             The plugin's versions and schemas with the adapter's verdict on
-            ``root``; ``error`` when the adapter's probe raised.
+            ``root`` (``status``, ``detail``, ``reason`` and ``hint``);
+            ``error`` when the adapter's probe raised.
         """
         plugin = self._plugin(producer)
         store = str(root)
@@ -315,6 +316,8 @@ class SourceRegistry:
             status=found.status,
             store=found.store or store,
             detail=found.detail,
+            reason=found.reason,
+            hint=found.hint,
         )
 
     def _plugin(self, producer: str) -> _Plugin:

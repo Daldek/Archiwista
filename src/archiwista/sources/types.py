@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 type SourceStatus = Literal["available", "not_installed", "incompatible", "error"]
-type EntryKind = Literal["version", "link", "full_sheet", "problem"]
+type EntryKind = Literal["version", "link", "full_sheet", "problem", "observation"]
 type LocationKind = Literal["footprint", "country", "none"]
 type GeoJSONGeometry = dict[str, object]
 
@@ -84,7 +84,12 @@ class SourceState:
     """Report a producer's availability and supported version information.
 
     ``store`` is the probed producer directory as text, ``None`` for the
-    state of the plugin itself.
+    state of the plugin itself. ``reason`` and ``hint`` say why a probed
+    directory is not usable and what fixes it: a machine code
+    (``no_marker``, ``unsupported_marker``, ``foreign_store``,
+    ``not_a_store``) and, where one exists, the command that does (e.g.
+    ``imgw store init --root <path>``, DEV-19.13); ``detail`` is the same
+    for a person.
     """
 
     producer: str
@@ -94,6 +99,8 @@ class SourceState:
     supported_versions: str | None = None
     schemas: tuple[str, ...] = ()
     detail: str | None = None
+    reason: str | None = None
+    hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +144,12 @@ class EntryMeta:
     the file (the sidecar's ``producer``, e.g. ``kartograf``, ``imgwtools``;
     not the Archiwista producer id in ``producer``) and its version. A
     producer that does not know one leaves it ``None``.
+
+    ``content_sha256`` and ``content_form`` identify the content of a file
+    apart from its bytes, when the producer defines a canonical form of it
+    (a file republished with other bytes but the same content): the digest
+    of that form and its name. Both are ``None`` when the producer has none;
+    they are never computed here.
     """
 
     producer: str
@@ -171,6 +184,8 @@ class EntryMeta:
     provider: str | None = None
     written_by: str | None = None
     producer_version: str | None = None
+    content_sha256: str | None = None
+    content_form: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +198,11 @@ class SourceEntry:
     whose metadata was not read; ``meta`` carries metadata read in the same
     pass. ``handle`` is the producer's own record of the entry: opaque to
     Archiwista and passed back to the same adapter unchanged.
+
+    An ``observation`` is a record of the producer's publication history:
+    the source published other bytes with the content of a version it
+    already had. It belongs to a slot and is never a version, a link or a
+    full sheet: it changes no slot, no current version and no count.
     """
 
     producer: str

@@ -36,6 +36,16 @@ dependencies = [
     "laspy[lazrs]>=2.7,<3",
 ]
 
+[project.optional-dependencies]
+# The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
+# catalogs of an IMGWTools store. The commit is the head of the IMGWTools branch
+# `feature/data-output` (REL-5.3); the release pull request replaces it with the tag
+# `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
+# adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
+imgw = [
+    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@a30452182b01f47cc18e48466da4edf4d0c8cb6a",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8,<10",
@@ -102,6 +112,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # jsonschema (contract tests) ships neither a py.typed marker nor bundled stubs.
 module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# imgwtools (the `imgw` extra) ships no py.typed marker.
+module = ["imgwtools", "imgwtools.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

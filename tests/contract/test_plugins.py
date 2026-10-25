@@ -88,6 +88,28 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))
 
 
+def test_plugins_probe_reason_and_hint_reach_the_state(tmp_path: Path) -> None:
+    """A probe says why a directory is refused and what fixes it; else neither."""
+    unmarked = tmp_path / "unmarked"
+    unmarked.mkdir()
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    refused = registry.probe("external", unmarked)
+    accepted = registry.probe("external", tmp_path)
+
+    assert (refused.status, refused.reason, refused.hint) == (
+        "incompatible",
+        "no_marker",
+        f"external init --root {unmarked}",
+    )
+    assert refused.detail == "brak znacznika"
+    assert (accepted.status, accepted.reason, accepted.hint) == (
+        "available",
+        None,
+        None,
+    )
+
+
 def test_plugins_second_plugin_shown_by_doctor(tmp_path: Path) -> None:
     """The diagnostics list the second plugin without changes in the doctor."""
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")

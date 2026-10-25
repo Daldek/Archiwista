@@ -1608,6 +1608,9 @@ class IndexWriter:
                 # A producer without links: each file is its slot's content.
                 self._plan_link(state, batch, "link", slot, path)
             return
+        if kind == "observation":
+            # The publication history of a slot, never a version or a link.
+            return
         # Paths become text only where needed: pathlib's str() is costly.
         slot = (entry.slot_path or entry.relative_path).as_posix()
         self._plan_slot(state, batch, slot, segment, entry.meta)

@@ -612,7 +612,12 @@ def _entry_meta(
 
 
 def _rebuilt(entry: SourceEntry) -> Any | None:
-    """Kartograf's entry for one rebuilt from the index; ``None`` if unreadable."""
+    """Kartograf's entry for one rebuilt from the index; ``None`` if unreadable.
+
+    An ``observation`` is no Kartograf entry: Kartograf has none.
+    """
+    if entry.kind == "observation":
+        return None
     path = Path(entry.store) / entry.relative_path
     sidecar = _readable_sidecar(path)
     if sidecar is None:
