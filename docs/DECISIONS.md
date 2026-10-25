@@ -374,7 +374,7 @@ a raster przeliczany na mapę używa przypiętej operacji
 `COORDINATE_OPERATION` przez `rasterio.warp.reproject`, nie `WarpedVRT`
 (który zmienia wielkość liter pipeline'u PROJ). Obrazy i kafle dostarcza
 API z nagłówkiem CSRF; przed odczytem pamięci po treści `ObjectResolver`
-sprawdza widoczność `ref`. Szczegóły: `docs/PLAN_v0.2.md`, decyzje 3–4.
+sprawdza widoczność `ref`. Szczegóły: `docs/plans/2026-10-19-plan-v0.2.md`, decyzje 3–4.
 
 ---
 

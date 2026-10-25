@@ -98,7 +98,7 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 | Code architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (A-ADR-001 to 029) |
 | Views for users; API and CLI for scripts and agents | [docs/USAGE.md](docs/USAGE.md), [docs/AGENT_API.md](docs/AGENT_API.md) |
-| Plans of v0.1 and v0.2 (executed) | [docs/PLAN_v0.1.md](docs/PLAN_v0.1.md), [docs/PLAN_v0.2.md](docs/PLAN_v0.2.md) |
+| Plans (v0.1 and v0.2 executed) | [docs/plans/](docs/plans/) |
 | Measurements and acceptance | [docs/reports/](docs/reports/) |
 | Changes for users | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 | Formats on disk (sidecar, `data/`, manifest, plan) | Kartograf, not Archiwista: its `docs/ARCHITECTURE.md` 3.1 to 3.5 |

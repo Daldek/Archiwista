@@ -1,6 +1,6 @@
 /**
  * The first-run wizard, and later the settings it edits (docs/SPEC.md 5.5,
- * docs/PLAN_v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's `--output`
+ * docs/plans/2026-10-18-plan-v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's `--output`
  * directory), project directories, offline mode and the preview cache
  * limit (with the cache's usage from `/health`), saved at once with `PUT
  * /settings`. The server checks the directories and asks the producer about

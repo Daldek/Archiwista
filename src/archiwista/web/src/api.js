@@ -1,6 +1,6 @@
 /**
  * Client of the Archiwista HTTP API (`/api/v1`): the only way the interface
- * talks to the server (docs/PLAN_v0.1.md, WWW contract). One function per
+ * talks to the server (docs/plans/2026-10-18-plan-v0.1.md, WWW contract). One function per
  * route, named after its OpenAPI `operationId` in camelCase (`list_slots` →
  * `listSlots`); answers are typed in `types.js`. Addresses the API gives in
  * its answers (`thumbnail_url`, `members_url` of `PreviewInfo`) are never

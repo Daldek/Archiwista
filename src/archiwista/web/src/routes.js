@@ -1,5 +1,5 @@
 /**
- * Views and overlays of the shell (docs/PLAN_v0.1.md, WWW contract): a view
+ * Views and overlays of the shell (docs/plans/2026-10-18-plan-v0.1.md, WWW contract): a view
  * adds one line to `VIEWS`, an overlay shown over the current view (e.g. the
  * file card, with its own address) one line to `OVERLAYS`. Nothing else in
  * the shell changes.

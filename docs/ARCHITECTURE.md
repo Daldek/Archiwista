@@ -11,7 +11,7 @@ Każde twierdzenie o zachowaniu systemu opisuje **kod** w tym repozytorium
 (`src/`, `tests/`), nie plan ani spec. Wymagania i zakres leżą
 w [`PRD.md`](PRD.md), [`SCOPE.md`](SCOPE.md) i [`SPEC.md`](SPEC.md), decyzje
 (A-ADR-0xx) w [`DECISIONS.md`](DECISIONS.md), umowy między krokami v0.1
-w [`PLAN_v0.1.md`](PLAN_v0.1.md). Gdzie kod odbiega od specu albo planu,
+w [`plans/2026-10-18-plan-v0.1.md`](plans/2026-10-18-plan-v0.1.md). Gdzie kod odbiega od specu albo planu,
 dokument opisuje kod i mówi o tym wprost. Odwołania wskazują moduł i symbol
 (do odszukania `grep`), nigdy numer linii.
 

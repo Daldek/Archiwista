@@ -158,9 +158,9 @@ i [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md).
 | [`docs/SPEC.md`](docs/SPEC.md) | specyfikacja szczegółowa: przypadki użycia, model danych i indeks (także dane IMGW), architektura, interfejs, łączenie danych, API HTTP, bezpieczeństwo, wymagania wobec Kartografa i IMGWTools, roadmapa z kryteriami akceptacji, ryzyka, pytania otwarte |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | architektura kodu Archiwisty 0.2.0; kontrakt formatu magazynu opisuje `docs/ARCHITECTURE.md` Kartografa |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | decyzje (ADR) |
-| [`docs/PLAN_v0.1.md`](docs/PLAN_v0.1.md) | plan implementacji v0.1: umowy między krokami, kroki z odbiorem, bramka |
+| [`docs/plans/2026-10-18-plan-v0.1.md`](docs/plans/2026-10-18-plan-v0.1.md) | plan implementacji v0.1: umowy między krokami, kroki z odbiorem, bramka |
 | [`docs/reports/v0.1-measurements.md`](docs/reports/v0.1-measurements.md) | pomiary wydajności, odbiór v0.1 i bramka wydania |
-| [`docs/PLAN_v0.2.md`](docs/PLAN_v0.2.md), [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md) | wykonanie i pomiary v0.2 |
+| [`docs/plans/2026-10-19-plan-v0.2.md`](docs/plans/2026-10-19-plan-v0.2.md), [`docs/reports/v0.2-measurements.md`](docs/reports/v0.2-measurements.md) | wykonanie i pomiary v0.2 |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | stan prac i sprawy otwarte |
 | [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) | standardy kodowania: język, nazewnictwo, formatowanie, testy, git |
 | `mockup/` | klikalny mockup interfejsu do decyzji przed implementacją (uruchomienie: `mockup/README.md`) |

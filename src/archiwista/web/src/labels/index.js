@@ -5,7 +5,7 @@
  * The shared part is composed here: `common` (actions, states, units),
  * `shell` and `setup`. Each view keeps its own file `labels/<view>.js`
  * exporting one object and imports it directly, so views never edit a shared
- * file (docs/PLAN_v0.1.md, WWW contract). Texts are strings with `{name}`
+ * file (docs/plans/2026-10-18-plan-v0.1.md, WWW contract). Texts are strings with `{name}`
  * placeholders filled by `t`; plural forms are `[one, few, many]` arrays
  * used with `count` of `format.js`.
  */

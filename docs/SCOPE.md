@@ -117,7 +117,7 @@ Full acceptance criteria: SPEC 13.
    step, MapLibre GL, worker processes, rio-tiler, a Python package, team mode
    as one server (A-ADR-004, 006, 007, 008, 013, 015, 028). The reference
    computer and the v0.1 implementation plan are in
-   [`PLAN_v0.1.md`](PLAN_v0.1.md).
+   [`plans/2026-10-18-plan-v0.1.md`](plans/2026-10-18-plan-v0.1.md).
    - Gate: architecture ADRs accepted (met), the v0.1 plan approved by the user
      (met: the plan after the review of 2026-10-18, executed in steps 0 to 14).
 2. **v0.1 "Browser"**, **released as 0.1.0 (2026-10-19)**. Index, "Map",
