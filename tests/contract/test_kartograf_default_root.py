@@ -1,6 +1,6 @@
 """The adapter reports the store root Kartograf uses when a call names none (M5).
 
-The root comes from ``kartograf.get_config()``, which gives the layer of the
+The root comes from ``kartograf.store_root()``, which gives the layer of the
 settings that chose it (``KARTOGRAF_ROOT``, ``[kartograf] root`` of
 ``nogat.toml``, else ``<data_dir>/kartograf``, DEV-19.2), so these tests set
 those layers themselves (the canary of ``tests/conftest.py`` points all of them
@@ -56,6 +56,26 @@ def test_default_root_variable_names_a_marked_store(
 
     # Assert
     assert root == DefaultRoot(built.root, "env", "KARTOGRAF_ROOT", True, True)
+
+
+def test_default_root_reads_no_store(
+    adapter: KartografAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The report is two ``stat`` calls: ``get_config()`` would size the whole store."""
+    # Arrange
+    built = build_fixture_store(tmp_path / "store")
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(built.root))
+
+    def sized(*args: object, **kwargs: object) -> int:
+        raise AssertionError("the default root must not size the store")
+
+    monkeypatch.setattr("kartograf.config._tree_size", sized)
+
+    # Act
+    root = adapter.default_root()
+
+    # Assert
+    assert (root.path, root.exists, root.marked) == (built.root, True, True)
 
 
 def test_default_root_without_settings_lies_under_the_data_directory(

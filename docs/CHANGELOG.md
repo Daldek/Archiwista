@@ -36,8 +36,8 @@ command-line interface may change.
   until the person clicks and saves, and Archiwista never uses that directory for a call.
   `GET /sources` and `archiwista sources` report it as `default_root` (`path`, `source`
   `default`, `env` or `file`, `name`, `exists`, `marked`, `message`; `null` for a source
-  without one); `/health` leaves it out, because Kartograf sizes the directory while it
-  reports it. `archiwista doctor` prints the root, the layer of the settings that gave it
+  without one); `/health` leaves it out (it is polled; the report is on demand). Kartograf
+  gives the root with `store_root()`, which reads no store. `archiwista doctor` prints the root, the layer of the settings that gave it
   and whether it exists and is a store. (DEV-19.2, ADR-032)
 
 ### Changed
@@ -107,8 +107,8 @@ command-line interface may change.
   lock. Development tools are the `dev` dependency group, and the extra `dev` is
   gone. (DEV-6.2, DEV-6.3, DEV-6.5)
 - Kartograf is pinned by commit in `pyproject.toml` instead of being installed editable
-  from a sibling checkout: `8a36e977`, the head of its branch `feature/data-output` (the
-  data-output convention, ADR-054; the commit is not pushed). The release pull request
+  from a sibling checkout: `45dedf4a`, the head of its branch `feature/data-output` (the
+  data-output convention, ADR-054; the commit is on GitHub). The release pull request
   replaces the commit with the tag. The range of Kartograf versions the adapter reads is
   `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`, `>=0.8.0.dev0,<0.9` while the
   commit is pinned, because PEP 440 sorts the development version `0.8.0.dev0` below

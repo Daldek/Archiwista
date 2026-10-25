@@ -235,8 +235,7 @@ function StoresStep({ draft, change, errors, problem }) {
 /**
  * The directory Kartograf would use for a store when none is named, when it is a store:
  * it exists and holds the marker (`default_root` of `GET /sources`). It is asked for once,
- * and only while a store waits for its directory, because the producer sizes the
- * directory while it reports it. It is an offer: nothing is saved until the person fills
+ * and only while a store waits for its directory (ADR-032). It is an offer: nothing is saved until the person fills
  * the field and saves the settings.
  *
  * @param {boolean} wanted - Whether a store has no Kartograf directory yet.

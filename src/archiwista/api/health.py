@@ -9,8 +9,8 @@ status --json`` prints the same model (``read_health``; without previews and
 own data: the command runs no render pool and no jobs).
 ``/sources`` lists the producer plugins with a description of their state and
 of its fix, and the directory a producer uses for a store when a call names
-none (``default_root``): the first-run wizard offers it. Producers size that
-directory while they report it, so ``/health``, which is polled, leaves it out.
+none (``default_root``): the first-run wizard offers it. It is asked for on
+demand only, so ``/health``, which is polled, leaves it out.
 """
 
 from importlib.metadata import version
@@ -63,8 +63,8 @@ def source_list(registry: PluginRegistry) -> SourceList:
     """Return every producer plugin with its state, fix and default store root.
 
     The root is asked of each available plugin that has one: unlike
-    ``source_infos``, which the polled ``/health`` uses, this may walk the
-    whole directory (the producer sizes it).
+    ``source_infos``, which the polled ``/health`` uses, this asks the
+    producer for one more report (Kartograf: ``store_root()``, two ``stat`` calls).
     """
     items = []
     for info in source_infos(registry):

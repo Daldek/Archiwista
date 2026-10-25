@@ -135,7 +135,7 @@ What the producers changed and where Archiwista meets it (read at Kartograf
 | Version string | `0.8.0` | `0.8.0.dev0` (Kartograf commit `51fb3128`, REL-1.1) | `adapter/kartograf/__init__.py:17`; `test_kartograf.py:271` |
 | Sidecar `kartograf-meta/1` | no producer fields | optional `producer`, `producer_version`; `Sidecar` has both | not read yet (I1 reads them for both producers) |
 | Marker | none | `kartograf-store.json`, schema `kartograf-store/1` with `schema`, `tool`, `created_at`, `producer_version`; the first write and `kartograf store init` (public `init_store`) create it | `probe` and the fixtures (M2) |
-| Default root | none | `KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf`; `get_config()` reports it with its source | never used for a call (Decision 1); suggested in the wizard (M5) |
+| Default root | none | `KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf`; `store_root()` reports it with its source | never used for a call (Decision 1); suggested in the wizard (M5) |
 | Builders for tests | hand-made `tests/fixtures/make_store.py` | `kartograf.testing`: `build_fixture_store`, `build_project`, `make_sidecar` (real writers, marker included) | contract tests of M2; the generator stays for scale (M2) |
 | `run_command`, `check_command` (first called by A4 and A5) | `output_dir` required; they return the report and the bare plan | `root` optional (default root); they return the envelope `kartograf-result/1` (`status`, `items`, `notices`, `result`); no `cancel` | none today |
 | Plan document `kartograf-plan/1` | key `store` | key `root`, plus `mode` (`store` or `plain`) and `output_dir`; a plan file of 0.8.0-dev is refused | none today; A4 and A5 read it |
@@ -269,7 +269,7 @@ States of a configured Kartograf directory (the table M2 implements):
    the canary untouched; a deliberate write to `kartograf.get_config().store.root` in a
    throwaway test makes the fixture fail.
 5. **M5. The default root in the wizard** (one commit; D7). The Kartograf adapter gets an
-   optional capability `default_root()` from `kartograf.get_config()` (`store.root`,
+   optional capability `default_root()` from `kartograf.store_root()` (`root`,
    `source` `default`, `env` or `file`, `exists`, and whether it carries the marker);
    `GET /sources` reports it; the first-run wizard suggests it as the Kartograf directory
    when it exists and is marked, and never writes it. `archiwista doctor` prints the root
@@ -622,7 +622,7 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | KB-7: `find_admin_units` | A15 |
 | Kartograf | KH-1 as `set_project_root(project_dir, *, root)` (the SPEC called it `set_project_output_dir`) | a later "change store" action (A13 explains) |
 | Kartograf | a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too) | M2, I1 (removes the copy) |
-| Kartograf | a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`: `get_config()` sizes the root by walking all of it, so every report of the default root of the wizard costs that walk (ADR-032) | M5 (removes the walk) |
+| Kartograf | ~~a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`~~ **done** (Kartograf `45dedf4a`: `store_root()` returns `StoreRoot(root, source, name, marker_exists)` and reads no store; the adapter uses it, ADR-032) | M5 (removed the walk) |
 | IMGWTools | a machine code in `StoreInfo` (today only `problems` texts; `missing_marker` covers a layout without a marker and a foreign directory) | I1 |
 | Nogat | registry: the edge to Kartograf gets `uses` and `exchange` for the command layer (`kartograf-commands/1`, `kartograf-result/1`, `kartograf-download/1`, `kartograf-availability/1`, `kartograf-testing`); the edge to IMGWTools becomes `active` with I2 and gets `imgw-plan/1`, `imgw-result/1`, `imgw-testing` | I2, A1 |
 
@@ -666,7 +666,7 @@ the amendment.
 - **D6. Store of a new project in the API.** One member `root` for both producers (it is
   `root` of Kartograf and `store_dir` of IMGWTools underneath).
 - **D7. The default root in the wizard.** A suggestion read through Kartograf's
-  `get_config()`, never written. It touches the open question about `nogat.toml`
+  `store_root()` (first `get_config()`, which sizes the root), never written. It touches the open question about `nogat.toml`
   (PROGRESS): Archiwista itself still reads and writes only its `config.toml`.
 - **D8. This plan.** Approved by delegated approval (the first lines of this document);
   the author confirms or amends it, and the approval line stays "delegated" until then.
