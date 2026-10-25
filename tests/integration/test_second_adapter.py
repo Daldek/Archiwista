@@ -27,7 +27,7 @@ class _ExternalStore(StoreConfig):
 
     def roots(self) -> dict[str, Path]:
         """Return the test producer's directory."""
-        return {"external": self.kartograf}
+        return {"external": super().roots()["kartograf"]}
 
 
 def test_second_adapter_indexes_and_browses_without_core_changes(
@@ -65,10 +65,9 @@ def test_second_adapter_indexes_and_browses_without_core_changes(
         card = owner.request("GET", "/stores/pomiary/slots/opady.csv").json()
 
     # Assert
-    assert {item["producer"]: item["status"] for item in sources} == {
-        "external": "available",
-        "kartograf": "available",
-    }
+    states = {item["producer"]: item["status"] for item in sources}
+    assert set(states) == {"external", "imgw", "kartograf"}
+    assert (states["external"], states["kartograf"]) == ("available", "available")
     assert [row["slot"] for row in page["items"]] == ["opady.csv", "stany.csv"]
     assert page["items"][0]["segment"]["producer"] == "external"
     assert page["groups"] == {"footprint": 0, "country": 0, "none": 2}

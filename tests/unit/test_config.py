@@ -2,6 +2,7 @@
 
 import os
 import stat
+import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,7 @@ from archiwista.config import (
     SettingsValidationError,
     StoreConfig,
     detect_store_kind,
+    dump_settings,
     parse_settings,
     validate_settings,
 )
@@ -41,8 +43,8 @@ class ProbeRegistry:
         )
 
 
-def make_store(store_id: str, root: Path, **values: object) -> StoreConfig:
-    """Build a valid local store pointing at ``root``."""
+def make_store(store_id: str, root: Path | None, **values: object) -> StoreConfig:
+    """Build a valid local store with the Kartograf directory ``root`` (or none)."""
     return StoreConfig.model_validate(
         {"id": store_id, "name": store_id.title(), "kartograf": root, **values}
     )
@@ -378,6 +380,227 @@ def test_config_validate_skips_unchanged_disconnected_store(tmp_path: Path) -> N
     changed = previous.model_copy(update={"offline": True})
 
     assert validate_settings(changed, ProbeRegistry(), previous=previous) == ()
+
+
+def _mark(directory: Path, marker: str) -> Path:
+    """Create ``directory`` holding the marker file of a producer's store."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / marker).write_text("{}", encoding="utf-8")
+    return directory
+
+
+def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
+    tmp_path: Path,
+) -> None:
+    """Stores of one or both directories round-trip; an old file is unchanged."""
+    # Arrange
+    old = tmp_path / "old.toml"
+    old.write_text(
+        "[[stores]]\n"
+        'id = "zespol"\n'
+        'name = "Zespół"\n'
+        'kartograf = "/mnt/nas/kartograf"\n',
+        encoding="utf-8",
+    )
+    settings = AppSettings(
+        stores=(
+            make_store("kart", tmp_path / "k"),
+            make_store("imgw", None, imgw=tmp_path / "i"),
+            make_store("both", tmp_path / "b", imgw=tmp_path / "bi"),
+        )
+    )
+    config = ConfigStore(tmp_path / "config.toml")
+
+    # Act
+    loaded = ConfigStore(old).load().stores[0]
+    config.save(settings)
+    text = config.path.read_text(encoding="utf-8")
+
+    # Assert
+    assert config.load() == settings
+    assert [store.roots() for store in settings.stores] == [
+        {"kartograf": tmp_path / "k"},
+        {"imgw": tmp_path / "i"},
+        {"kartograf": tmp_path / "b", "imgw": tmp_path / "bi"},
+    ]
+    assert (text.count("kartograf = "), text.count("imgw = ")) == (2, 2)
+    assert loaded.imgw is None and loaded.roots() == {
+        "kartograf": Path("/mnt/nas/kartograf")
+    }
+    again = AppSettings(stores=(loaded,))
+    assert "imgw" not in dump_settings(again)
+    assert parse_settings(tomllib.loads(dump_settings(again))) == again
+
+
+@pytest.mark.parametrize("store", [{}, {"kartograf": None, "imgw": None}])
+def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
+    store: dict[str, None],
+) -> None:
+    """A store with no directory is refused as a whole; IMGW's gives the kind."""
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"stores": [{"id": "a", "name": "A", **store}]})
+    share = parse_settings(
+        {"stores": [{"id": "a", "name": "A", "imgw": "\\\\nas\\dane\\imgw"}]}
+    )
+
+    problem = error.value.problems[0]
+    assert (problem.code, problem.field) == ("invalid_value", "stores[0]")
+    assert "kartograf albo imgw" in problem.message
+    assert share.stores[0].kind == "share"
+
+
+def test_config_validate_checks_each_directory_of_a_store_at_its_own_field(
+    tmp_path: Path,
+) -> None:
+    """The IMGW directory is checked like the Kartograf one and named by its field."""
+    # Arrange
+    kartograf = tmp_path / "kartograf"
+    kartograf.mkdir()
+    both = AppSettings(stores=(make_store("a", kartograf, imgw=tmp_path / "brak"),))
+    imgw = tmp_path / "imgw"
+    imgw.mkdir()
+    only = AppSettings(stores=(make_store("a", None, imgw=imgw),))
+    failing = ProbeRegistry(
+        failing={imgw: SourceState(producer="imgw", status="not_installed")}
+    )
+
+    # Act
+    missing = validate_settings(both, ProbeRegistry())
+    accepted = validate_settings(only, ProbeRegistry())
+    refused = validate_settings(only, failing)
+
+    # Assert
+    assert [(p.code, p.field) for p in missing] == [("root_missing", "stores[0].imgw")]
+    assert "imgw" in missing[0].message
+    assert accepted == ()
+    assert [(p.code, p.field) for p in refused] == [
+        ("source_not_installed", "stores[0].imgw")
+    ]
+
+
+def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
+    tmp_path: Path,
+) -> None:
+    """A marker of either producer in an ancestor nests the directory under it."""
+    # Arrange
+    imgw_store = _mark(tmp_path / "imgw", "imgw-store.json")
+    kartograf_store = _mark(tmp_path / "kartograf", "kartograf-store.json")
+    inside_imgw = imgw_store / "kartograf"
+    inside_kartograf = kartograf_store / "nmt" / "imgw"
+    inside_imgw.mkdir()
+    inside_kartograf.mkdir(parents=True)
+    settings = AppSettings(
+        stores=(make_store("a", inside_imgw, imgw=inside_kartograf),)
+    )
+
+    # Act
+    problems = validate_settings(settings, ProbeRegistry())
+
+    # Assert
+    assert [(p.code, p.field) for p in problems] == [
+        ("root_nested", "stores[0].kartograf"),
+        ("root_nested", "stores[0].imgw"),
+    ]
+    assert str(imgw_store) in problems[0].message
+    assert "imgw-store.json" in problems[0].message
+    assert str(kartograf_store) in problems[1].message
+    assert "kartograf-store.json" in problems[1].message
+
+
+@pytest.mark.parametrize(
+    ("below", "found"),
+    [
+        (("segment",), True),
+        (("product", "segment"), True),
+        (("product", "segment", "slot"), False),
+    ],
+)
+def test_config_validate_looks_two_levels_below_a_directory_for_a_store(
+    tmp_path: Path, below: tuple[str, ...], found: bool
+) -> None:
+    """A store down in the tree is found to the bounded depth, not deeper."""
+    # Arrange
+    root = _mark(tmp_path / "kartograf", "kartograf-store.json")
+    folder = _mark(root.joinpath(*below), "imgw-store.json")
+
+    # Act
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", root),)), ProbeRegistry()
+    )
+
+    # Assert
+    assert [(p.code, p.field) for p in problems] == (
+        [("root_nested", "stores[0].kartograf")] if found else []
+    )
+    if found:
+        assert str(folder) in problems[0].message
+
+
+def test_config_validate_accepts_stores_beside_each_other_with_their_own_markers(
+    tmp_path: Path,
+) -> None:
+    """A marker in the directory itself, or in a sibling's, nests nothing."""
+    kartograf = _mark(tmp_path / "data" / "kartograf", "kartograf-store.json")
+    imgw = _mark(tmp_path / "data" / "imgw", "imgw-store.json")
+
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", kartograf, imgw=imgw),)), ProbeRegistry()
+    )
+
+    assert problems == ()
+
+
+def test_config_validate_judges_by_the_real_path_and_enters_no_link(
+    tmp_path: Path,
+) -> None:
+    """A link into a store nests; a link out of a directory is not followed."""
+    # Arrange
+    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    inner = store / "kartograf"
+    inner.mkdir()
+    shortcut = tmp_path / "shortcut"
+    shortcut.symlink_to(inner, target_is_directory=True)
+    elsewhere = _mark(tmp_path / "elsewhere", "kartograf-store.json")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "link").symlink_to(elsewhere, target_is_directory=True)
+
+    # Act
+    linked = validate_settings(
+        AppSettings(stores=(make_store("a", shortcut),)), ProbeRegistry()
+    )
+    entered = validate_settings(
+        AppSettings(stores=(make_store("b", root),)), ProbeRegistry()
+    )
+
+    # Assert
+    assert [(p.code, p.field) for p in linked] == [
+        ("root_nested", "stores[0].kartograf")
+    ]
+    assert entered == ()
+
+
+def test_config_validate_reads_markers_only_around_new_or_moved_directories(
+    tmp_path: Path,
+) -> None:
+    """Markers are read around new or moved directories only: a share may be gone."""
+    # Arrange
+    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    (store / "kartograf").mkdir()
+    (store / "other").mkdir()
+    saved = AppSettings(stores=(make_store("a", store / "kartograf"),))
+    edited = saved.model_copy(update={"offline": True})
+    moved = AppSettings(stores=(make_store("a", store / "other"),))
+
+    # Act
+    unchanged = validate_settings(edited, ProbeRegistry(), previous=saved)
+    first = validate_settings(saved, ProbeRegistry())
+    relocated = validate_settings(moved, ProbeRegistry(), previous=saved)
+
+    # Assert
+    assert unchanged == ()
+    assert [p.code for p in first] == ["root_nested"]
+    assert [p.code for p in relocated] == ["root_nested"]
 
 
 def test_config_store_aliases_translate_between_computers() -> None:

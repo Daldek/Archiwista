@@ -2,9 +2,10 @@
 
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
-``SourceAdapter``. Segments, their parts, coordinate operations, link
-confirmation, sheet grids and the default store root are optional
-capabilities: a producer without them still satisfies ``SourceAdapter``.
+``SourceAdapter``. Segments (and the description of segments), the current
+version of a slot, their parts, coordinate operations, link confirmation,
+sheet grids and the default store root are optional capabilities: a
+producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -87,15 +88,53 @@ class SheetGridAdapter(Protocol):
 
 
 @runtime_checkable
-class SegmentedAdapter(Protocol):
+class SegmentDescriptionAdapter(Protocol):
+    """Optional capability: the producer describes the segments its entries carry.
+
+    For a producer whose entries name a segment (a dataset, a product) but
+    that cannot read one segment on its own: the scan describes each segment
+    it met, and a job that asks for one segment of it is refused
+    (``unsupported``). A ``SegmentedAdapter`` has it too.
+    """
+
+    def describe_segment(self, segment: str) -> SourceSegment:
+        """Describe a segment: product, country, and a human-readable name."""
+        ...
+
+
+@runtime_checkable
+class SegmentedAdapter(SegmentDescriptionAdapter, Protocol):
     """Optional capability: a store split into independently scanned segments."""
 
     def segments(self, root: Path) -> tuple[str, ...]:
         """List the segments; their scans together equal one unscoped scan."""
         ...
 
-    def describe_segment(self, segment: str) -> SourceSegment:
-        """Describe a segment: product, country, and a human-readable name."""
+
+@runtime_checkable
+class CurrentVersionAdapter(Protocol):
+    """Optional capability: the producer names the current version of a slot.
+
+    For a producer without links, whose slots carry its own key
+    (``SourceEntry.slot_key``): which version of a slot is the current one is
+    the producer's decision, taken by reading the slot's versions. The scan
+    asks for the slots it touched, once at the end of a pass.
+    """
+
+    def current_version(self, root: Path, slot_key: str) -> Path | None:
+        """Return the current version of a slot, relative to the store.
+
+        ``None`` when the slot has no current version: it has no version, or
+        one of its versions is broken (an older one is never chosen in its
+        place).
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the store.
+        ProducerError
+            The producer rejected the store or the key.
+        """
         ...
 
 

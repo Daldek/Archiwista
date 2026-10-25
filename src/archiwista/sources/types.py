@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 type SourceStatus = Literal["available", "not_installed", "incompatible", "error"]
-type EntryKind = Literal["version", "link", "full_sheet", "problem"]
+type EntryKind = Literal["version", "link", "full_sheet", "problem", "observation"]
 type LocationKind = Literal["footprint", "country", "none"]
 type GeoJSONGeometry = dict[str, object]
 type DefaultRootSource = Literal["default", "env", "file"]
@@ -87,10 +87,12 @@ class SourceState:
 
     ``store`` is the probed producer directory as text, ``None`` for the
     state of the plugin itself. For a store the producer refuses, ``detail``
-    says what is wrong, ``reason`` is the machine code of the cause (a
-    missing or foreign marker, for example) and ``hint`` one line that tells
-    how to fix it; ``detail`` and ``hint`` are catalog messages, and the
-    three stay ``None`` for a state that has nothing to add.
+    says what is wrong, ``reason`` is the machine code of the cause
+    (``no_marker``, ``unsupported_marker``, ``foreign_store`` or
+    ``not_a_store``) and ``hint`` one line that tells how to fix it, the
+    command where one exists (e.g. ``imgw store init --root <path>``,
+    DEV-19.13); ``detail`` and ``hint`` are catalog messages, and the three
+    stay ``None`` for a state that has nothing to add.
     """
 
     producer: str
@@ -170,6 +172,19 @@ class EntryMeta:
     ``parent_request`` is a stable text key shared by the files of one
     producer request (e.g. both sides of a border). ``raw_sidecar`` keeps
     the producer's metadata unchanged for display only.
+
+    ``provider``, ``written_by`` and ``producer_version`` are the fields of
+    the sidecar core every Nogat tool writes (DEV-19.16): the organisation
+    that publishes the data (``IMGW-PIB``, ``CHMI``), the package that wrote
+    the file (the sidecar's ``producer``, e.g. ``kartograf``, ``imgwtools``;
+    not the Archiwista producer id in ``producer``) and its version. A
+    producer that does not know one leaves it ``None``.
+
+    ``content_sha256`` and ``content_form`` identify the content of a file
+    apart from its bytes, when the producer defines a canonical form of it
+    (a file republished with other bytes but the same content): the digest
+    of that form and its name. Both are ``None`` when the producer has none;
+    they are never computed here.
     """
 
     producer: str
@@ -201,6 +216,29 @@ class EntryMeta:
     vertical_crs: str | None = None
     resolution: str | None = None
     nodata: float | None = None
+    provider: str | None = None
+    written_by: str | None = None
+    producer_version: str | None = None
+    content_sha256: str | None = None
+    content_form: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceObservation:
+    """The record of a source that republished the content of a version.
+
+    A source served other bytes (a new ``seen_at``, perhaps another ``etag``)
+    with the content of a version the producer already has, so no new
+    version was written (an ``observation`` entry). The fields are what the
+    producer kept of that publication; ``None`` is what it did not record.
+    """
+
+    seen_at: datetime
+    url: str | None = None
+    etag: str | None = None
+    last_modified: str | None = None
+    size_bytes: int | None = None
+    sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,10 +247,21 @@ class SourceEntry:
 
     ``slot_path`` is the file's place independent of its version and
     ``version_path`` the version a link points to (a version's own path).
-    ``skipped`` marks a version listed in ``ScanScope.known_versions``
-    whose metadata was not read; ``meta`` carries metadata read in the same
-    pass. ``handle`` is the producer's own record of the entry: opaque to
-    Archiwista and passed back to the same adapter unchanged.
+    ``slot_key`` is the producer's own name of the slot (the index keeps it with
+    the slot), opaque to Archiwista; ``slot_name`` is what people call the
+    slot when the last part of ``slot_path`` is not a name (e.g. a directory
+    called ``versions``). ``skipped`` marks a version listed in
+    ``ScanScope.known_versions`` whose metadata was not read; ``meta`` carries
+    metadata read in the same pass. ``handle`` is the producer's own record of
+    the entry: opaque to Archiwista and passed back to the same adapter
+    unchanged.
+
+    An ``observation`` is a record of the producer's publication history:
+    the source published other bytes with the content of a version it
+    already had. It belongs to a slot (``observation`` holds the record,
+    ``version_path`` the version whose content it repeats) and is never a
+    version, a link or a full sheet: it changes no version, no current
+    version and no count.
     """
 
     producer: str
@@ -225,6 +274,9 @@ class SourceEntry:
     problem: str | None = None
     skipped: bool = False
     meta: EntryMeta | None = None
+    slot_key: str | None = None
+    slot_name: str | None = None
+    observation: SourceObservation | None = None
     handle: object | None = field(default=None, compare=False, repr=False)
 
 

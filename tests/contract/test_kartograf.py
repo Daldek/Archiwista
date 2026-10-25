@@ -37,6 +37,7 @@ from archiwista.sources import (
     SourceEntry,
 )
 from tests.fixtures.make_store import (
+    LEGACY_KARTOGRAF,
     MIN_SLOTS,
     ExpectedEntry,
     StoreManifest,
@@ -97,6 +98,8 @@ STORE_RECORDS: dict[str, set[str]] = {
         "country",
         "product",
         "request",
+        "provider",
+        "kartograf_version",
         "license",
         "downloaded_at",
         "extra",
@@ -313,6 +316,36 @@ def test_adapter_entries_match_iter_store(
             sidecar.unit,
             by_path[entry.relative_path].label,
         )
+
+
+def test_adapter_carries_the_common_core_of_the_sidecar(
+    store: StoreManifest, adapter: KartografAdapter
+) -> None:
+    """Provider, writing package and its version come from the sidecar (DEV-19.16)."""
+    raw = {
+        Path(e.path).relative_to(store.root): e
+        for e in kartograf.iter_store(store.root)
+    }
+
+    found = {
+        entry.relative_path: entry.meta
+        for entry in adapter.iter_entries(store.root)
+        if entry.meta is not None
+    }
+
+    for path, meta in found.items():
+        sidecar = raw[path].sidecar
+        assert sidecar is not None
+        assert (meta.provider, meta.producer_version) == (
+            sidecar.provider,
+            sidecar.kartograf_version,
+        )
+        assert meta.written_by == ("kartograf" if sidecar.kartograf_version else None)
+    assert {meta.provider for meta in found.values()} >= {"GUGiK", "CUZK"}
+    assert {meta.producer_version for meta in found.values()} >= {
+        kartograf.__version__,
+        LEGACY_KARTOGRAF,
+    }
 
 
 def test_adapter_link_and_its_version_share_the_slot(

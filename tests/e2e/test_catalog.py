@@ -388,7 +388,7 @@ def test_second_adapter_entries_in_catalog(
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
-            return {"external": config.kartograf}
+            return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
     monkeypatch.setattr(StoreConfig, "roots", roots)

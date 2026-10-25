@@ -802,14 +802,18 @@
 // Settings (9a) --------------------------------------------------------------
 
 /**
- * A configured store: a short id and the producer's directory.
+ * A configured store: a short id and the producers' directories.
  *
  * @typedef {object} StoreSettings
  * @property {string} id - Short id in the API: lowercase letters, digits, '_', '-' (≤
  *   32).
  * @property {string} name
- * @property {string} kartograf - Kartograf's store root: the directory that holds
- *   `kartograf-store.json` and the product directories (usually called `data`).
+ * @property {string|null} [kartograf] - Kartograf's store root: the directory that holds
+ *   `kartograf-store.json` and the product directories (usually called `data`); null when
+ *   the store has only `imgw`.
+ * @property {string|null} [imgw] - IMGWTools' store root, the directory with
+ *   `imgw-store.json`; null when the store has only `kartograf`. One of the two is
+ *   required.
  * @property {StoreKind|null} [kind] - `local` or `share`; detected from the file system
  *   when omitted.
  * @property {Object<string, string>} [path_aliases] - Local path prefix → the same
@@ -928,7 +932,9 @@
  *
  * @typedef {object} ScanRequest
  * @property {"incremental"|"full"} [mode] - Default `incremental`.
- * @property {string} [segment] - Only this segment.
+ * @property {string} [segment] - Only this segment (Kartograf: `<product>/<variant>`);
+ *   a data source that reads only its whole directory (IMGWTools) fails the job as
+ *   `unsupported`.
  */
 
 /**

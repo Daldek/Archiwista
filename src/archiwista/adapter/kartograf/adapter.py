@@ -651,11 +651,22 @@ def _entry_meta(
         vertical_crs=sidecar.vertical_crs,
         resolution=sidecar.resolution,
         nodata=sidecar.nodata,
+        provider=_text(sidecar.provider),
+        # A sidecar names the Kartograf version that wrote it and, before the
+        # data-output convention (DEV-19.16), no ``producer``: only Kartograf
+        # writes ``kartograf-meta/1``, so the writer is its package.
+        written_by=PACKAGE if sidecar.kartograf_version else None,
+        producer_version=_text(sidecar.kartograf_version),
     )
 
 
 def _rebuilt(entry: SourceEntry) -> Any | None:
-    """Kartograf's entry for one rebuilt from the index; ``None`` if unreadable."""
+    """Kartograf's entry for one rebuilt from the index; ``None`` if unreadable.
+
+    An ``observation`` is no Kartograf entry: Kartograf has none.
+    """
+    if entry.kind == "observation":
+        return None
     path = Path(entry.store) / entry.relative_path
     sidecar = _readable_sidecar(path)
     if sidecar is None:

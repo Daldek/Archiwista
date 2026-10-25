@@ -628,14 +628,22 @@ def test_job_list_pages_with_cursor_of_its_filters(env: JobsEnv) -> None:
 
 
 def test_server_scans_configured_store_at_start(tmp_path: Path) -> None:
-    """``archiwista serve`` fully scans a store it never indexed, as ``local``."""
+    """``archiwista serve`` fully scans a store it never indexed, as ``local``.
+
+    The scheduler asks the server's registry which sources can scan a store's
+    directories (SPEC 5.8), so the server has the real plugins.
+    """
     # Arrange
     store = make_store(tmp_path / "store", slots=24, seed=7)
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
     ConfigStore(paths.config_file).save(store_settings(store))
+    registry = load_registry(cache_dir=paths.cache_dir)
 
     # Act
-    with serving(paths), IndexQueries(paths.index_file) as queries:
+    with (
+        serving(paths, registry=registry),
+        IndexQueries(paths.index_file) as queries,
+    ):
         _await(lambda: _last_scan(queries) == "succeeded")
         state = next(s for s in queries.status().stores if s.store == STORE)
 
@@ -984,16 +992,20 @@ def test_prune_forgets_routine_scans_after_48_hours_but_newest(env: JobsEnv) -> 
             " VALUES (?, 1000, 'notice', '{}', ?)",
             (noticed.id, now.isoformat()),
         )
-        # Outlines failing again are retried by every scan: no change, no alert.
+        # Outlines failing again are retried by every scan, and an unavailable source
+        # is said so at every scan: no change, no alert.
         db.execute(
             "UPDATE jobs SET summary = json_set(summary, '$.footprints_failed', 2)"
             " WHERE id = ?",
             (oldest.id,),
         )
-        db.execute(
+        db.executemany(
             "INSERT INTO job_events (job_id, seq, type, data, at)"
-            " VALUES (?, 1000, 'notice', ?, ?)",
-            (oldest.id, '{"code": "footprints_failed"}', now.isoformat()),
+            " VALUES (?, ?, 'notice', ?, ?)",
+            [
+                (oldest.id, 1000, '{"code": "footprints_failed"}', now.isoformat()),
+                (oldest.id, 1001, '{"code": "source_skipped"}', now.isoformat()),
+            ],
         )
     db.close()
     log = env.paths.jobs_dir / f"{oldest.id}.log"

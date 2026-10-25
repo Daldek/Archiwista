@@ -1,7 +1,7 @@
 """Local index: writing passes and reading the catalog (plan v0.1, step 5)."""
 
 import sqlite3
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from archiwista.index import (
     IndexWriter,
     ManifestStamp,
     SlotQuery,
+    SlotRow,
     initialize,
 )
 from archiwista.sources import (
@@ -26,6 +27,7 @@ from archiwista.sources import (
     ProjectPin,
     ProjectTask,
     SourceEntry,
+    SourceObservation,
     SourceSegment,
 )
 from tests.fixtures.index_data import (
@@ -34,6 +36,7 @@ from tests.fixtures.index_data import (
     NMT,
     ORTO,
     PRG,
+    PRODUCER,
     ROOT,
     SEGMENTS,
     STORE,
@@ -45,6 +48,7 @@ from tests.fixtures.index_data import (
     skipped,
     slot_path,
     version,
+    version_path,
     write_pass,
 )
 
@@ -858,6 +862,384 @@ def test_index_producer_without_links_or_segments(
     # Each file is its own slot: no version directory to trust.
     assert paths == {}
     assert queries.slots(SlotQuery(store=STORE), visible=ALL_PROJECTS).items == ()
+
+
+def _observation(
+    slot_entry: SourceEntry,
+    name: str,
+    repeats: SourceEntry,
+    *,
+    seen_at: datetime = NOW,
+) -> SourceEntry:
+    """Return the record of a register file of the slot, repeating a version."""
+    return replace(
+        slot_entry,
+        kind="observation",
+        relative_path=Path(f"{NMT}/observations/{name}.json"),
+        version_path=repeats.version_path,
+        meta=None,
+        observation=SourceObservation(
+            seen_at=seen_at,
+            url=f"https://example.org/{name}.zip",
+            etag='"6ad58aac"',
+            last_modified="Mon, 19 Oct 2026 03:12:44 GMT",
+            size_bytes=1234,
+            sha256=sha(9),
+        ),
+    )
+
+
+def test_index_observation_is_history_and_never_a_slot_version_or_link(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A producer's observation changes no slot, version, link or issue."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    history = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    elsewhere = replace(
+        history,
+        relative_path=Path(f"{NMT}/observations/2024-01-02_11223344.json"),
+        slot_path=Path(f"{NMT}/other"),
+    )
+    unrecorded = replace(
+        history,
+        relative_path=Path(f"{NMT}/observations/2024-01-03_55667788.json"),
+        observation=None,
+    )
+
+    # Act
+    summary = write_pass(
+        writer, [history, sheet, link(SHEET_A, sheet), elsewhere, unrecorded]
+    )
+    page = queries.slots(SlotQuery(), visible=ALL_PROJECTS)
+
+    # Assert
+    assert [(row.slot, row.status) for row in page.items] == [(SHEET_A, "ok")]
+    assert [row.version.path for row in page.items if row.version] == [
+        sheet.relative_path.as_posix()
+    ]
+    assert page.items[0].versions_count == 1
+    assert (summary.missing, summary.unlinked, summary.issues_resolved) == (0, 0, 0)
+    assert queries.issues(STORE) == ()
+    (record,) = queries.observations(STORE, SHEET_A)
+    assert (record.path, record.version, record.seen_at) == (
+        f"{NMT}/observations/2024-01-01_aabbccdd.json",
+        sheet.relative_path.as_posix(),
+        NOW,
+    )
+    assert (record.url, record.etag, record.size_bytes, record.sha256) == (
+        "https://example.org/2024-01-01_aabbccdd.zip",
+        '"6ad58aac"',
+        1234,
+        sha(9),
+    )
+    assert queries.observations(STORE, f"{NMT}/other") == ()
+
+
+def test_index_observation_is_forgotten_when_a_pass_does_not_see_it(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A register file that is gone leaves the history; the slot stays."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    history = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    write_pass(writer, [sheet, link(SHEET_A, sheet), history])
+    seen_again = write_pass(writer, [skipped(sheet), link(SHEET_A, sheet), history])
+
+    # Act
+    write_pass(writer, [skipped(sheet), link(SHEET_A, sheet)])
+
+    # Assert
+    assert (seen_again.missing, seen_again.issues_resolved) == (0, 0)
+    assert queries.observations(STORE, SHEET_A) == ()
+    assert _slots(queries) == [SHEET_A]
+
+
+def test_index_observations_come_newest_first_and_go_with_their_slot(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """The history of a slot is listed newest first and ends with the slot."""
+    # Arrange
+    writer, queries = index
+    sheet = version(SHEET_A, "2023-06-11_93763", 1)
+    older = _observation(sheet, "2024-01-01_aabbccdd", sheet)
+    newer = _observation(
+        sheet, "2024-02-01_11223344", sheet, seen_at=NOW.replace(year=2027)
+    )
+    write_pass(writer, [sheet, link(SHEET_A, sheet), older, newer], full=True)
+    assert [r.seen_at.year for r in queries.observations(STORE, SHEET_A)] == [
+        2027,
+        2026,
+    ]
+
+    # Act
+    write_pass(writer, [], full=True)
+    write_pass(writer, [], full=True)
+
+    # Assert
+    assert _slots(queries) == []
+    assert queries.observations(STORE, SHEET_A) == ()
+
+
+def _keyed(entry: SourceEntry, key: str) -> SourceEntry:
+    """Return an entry of a producer that names its slots itself and has no links."""
+    return replace(entry, slot_key=key)
+
+
+@dataclass
+class _Producer:
+    """A producer's current versions of its slots, and what it was asked."""
+
+    answers: dict[str, SourceEntry | None]
+    asked: list[str] = field(default_factory=list)
+
+    def __call__(self, key: str) -> Path | None:
+        self.asked.append(key)
+        found = self.answers[key]
+        return None if found is None else found.relative_path
+
+
+def _rows(queries: IndexQueries) -> dict[str, SlotRow]:
+    page = queries.slots(SlotQuery(limit=200), visible=ALL_PROJECTS)
+    return {row.slot: row for row in page.items}
+
+
+def _current(queries: IndexQueries) -> dict[str, tuple[str, str | None]]:
+    """Return each slot's status and the path of its current version."""
+    return {
+        slot: (row.status, row.version.path if row.version else None)
+        for slot, row in _rows(queries).items()
+    }
+
+
+def _keyed_slots() -> tuple[SourceEntry, SourceEntry, SourceEntry]:
+    """Return two versions of a slot and the only version of another."""
+    return (
+        _keyed(version(SHEET_A, "2023-06-11_93763", 1), "a"),
+        _keyed(version(SHEET_A, "2024-05-21_92288", 2), "a"),
+        _keyed(version(SHEET_B, "2022-01-01_1", 3), "b"),
+    )
+
+
+def test_index_a_slot_with_a_key_takes_the_producers_current_version(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """No link names it: the producer is asked once, at the end of the pass."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+
+    # Act
+    summary = write_pass(writer, [old, new, lone], current=producer)
+
+    # Assert
+    assert sorted(producer.asked) == ["a", "b"]
+    assert (summary.current, summary.unlinked) == (2, 0)
+    assert _current(queries) == {
+        SHEET_A: ("ok", new.relative_path.as_posix()),
+        SHEET_B: ("ok", lone.relative_path.as_posix()),
+    }
+    assert _rows(queries)[SHEET_A].versions_count == 2
+
+
+def test_index_a_pass_that_changed_nothing_asks_for_no_slot_and_keeps_the_answers(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """An unchanged incremental pass reads nothing; no link seen is no link gone."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    write_pass(writer, [old, new, lone], current=producer)
+    before = _current(queries)
+    producer.asked.clear()
+    known = [skipped(old), skipped(new), skipped(lone)]
+
+    # Act
+    asked = write_pass(writer, known, current=producer)
+    without = write_pass(writer, known)
+
+    # Assert
+    assert producer.asked == []
+    assert (asked.current, asked.unlinked, asked.missing) == (0, 0, 0)
+    assert (without.current, without.unlinked) == (0, 0)
+    assert _current(queries) == before
+
+
+def test_index_a_new_version_asks_for_its_slot_only_and_moves_its_current_version(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """What a pass wrote is what it asks about: a slot it did not touch is left."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    write_pass(writer, [old, new, lone], current=producer)
+    producer.asked.clear()
+    newest = _keyed(version(SHEET_A, "2025-01-01_3", 4), "a")
+    producer.answers["a"] = newest
+
+    # Act
+    summary = write_pass(
+        writer, [skipped(old), skipped(new), newest, skipped(lone)], current=producer
+    )
+
+    # Assert
+    assert producer.asked == ["a"]
+    assert summary.current == 1
+    assert _current(queries)[SHEET_A] == ("ok", newest.relative_path.as_posix())
+    assert _current(queries)[SHEET_B] == ("ok", lone.relative_path.as_posix())
+
+
+def test_index_a_current_version_that_is_gone_gives_way_to_the_producers_next_choice(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A version that goes missing makes its slot asked, and the slot moves on."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    write_pass(writer, [old, new, lone], current=producer)
+    producer.asked.clear()
+    producer.answers["a"] = old
+
+    # Act
+    summary = write_pass(writer, [skipped(old), skipped(lone)], current=producer)
+    versions = queries.slots(SlotQuery(versions="all", limit=200), visible=ALL_PROJECTS)
+
+    # Assert
+    assert producer.asked == ["a"]
+    assert (summary.missing, summary.current) == (1, 1)
+    assert _current(queries)[SHEET_A] == ("ok", old.relative_path.as_posix())
+    assert {
+        row.version.path: row.version.state for row in versions.items if row.version
+    } == {
+        old.relative_path.as_posix(): "present",
+        new.relative_path.as_posix(): "missing",
+        lone.relative_path.as_posix(): "present",
+    }
+
+
+def test_index_a_slot_the_producer_names_no_version_of_has_none_and_no_older_one(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A broken version in a slot: its problem shows, no older version stands in."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    write_pass(writer, [old, new, lone], current=producer)
+    broken_dir = version_path(SHEET_A, "2025-02-02_9", sha(9)).rpartition("/")[0]
+    broken = _keyed(problem(broken_dir, "invalid_json", segment=NMT, slot=SHEET_A), "a")
+    producer.answers["a"] = None
+
+    # Act
+    summary = write_pass(
+        writer, [skipped(old), skipped(new), broken, skipped(lone)], current=producer
+    )
+
+    # Assert
+    assert summary.current == 1
+    assert _current(queries)[SHEET_A] == ("unreadable", None)
+    assert _rows(queries)[SHEET_A].versions_count == 2
+    assert [(i.code, i.path, i.slot) for i in queries.issues(STORE)] == [
+        ("invalid_json", broken_dir, SHEET_A)
+    ]
+
+
+def test_index_an_answer_the_pass_did_not_see_waits_for_the_pass_that_does(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """A version published since the listing is no current version the index lacks."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    write_pass(writer, [old, new, lone], current=producer)
+    fresh = _keyed(version(SHEET_A, "2025-01-01_3", 4), "a")
+    published_since = _keyed(version(SHEET_A, "2025-03-03_8", 8), "a")
+    producer.answers["a"] = published_since
+
+    # Act
+    early = write_pass(
+        writer, [skipped(old), skipped(new), fresh, skipped(lone)], current=producer
+    )
+    kept = _current(queries)[SHEET_A]
+    later = write_pass(
+        writer,
+        [skipped(old), skipped(new), skipped(fresh), published_since, skipped(lone)],
+        current=producer,
+    )
+
+    # Assert
+    assert early.current == 0
+    assert kept == ("ok", new.relative_path.as_posix())
+    assert later.current == 1
+    assert _current(queries)[SHEET_A] == (
+        "ok",
+        published_since.relative_path.as_posix(),
+    )
+
+
+def test_index_slots_a_killed_pass_left_without_a_current_version_are_asked_again(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """The batches are written before ``finish_pass``: nothing else would heal them."""
+    # Arrange
+    writer, queries = index
+    old, new, lone = _keyed_slots()
+    producer = _Producer({"a": new, "b": lone})
+    writer.write_segments(STORE, PRODUCER, list(SEGMENTS.values()))
+    writer.begin_pass(STORE, PRODUCER)
+    writer.write_entries([old, new, lone])
+    writer.abandon_pass()
+    assert _current(queries)[SHEET_A] == ("missing", None)
+    known = [skipped(old), skipped(new), skipped(lone)]
+
+    # Act
+    healed = write_pass(writer, known, current=producer)
+    asked = sorted(producer.asked)
+    producer.asked.clear()
+    again = write_pass(writer, known, current=producer)
+
+    # Assert
+    assert (asked, healed.current) == (["a", "b"], 2)
+    assert _current(queries) == {
+        SHEET_A: ("ok", new.relative_path.as_posix()),
+        SHEET_B: ("ok", lone.relative_path.as_posix()),
+    }
+    assert (producer.asked, again.current) == ([], 0)
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        ("missing_sidecar", "no_sidecar"),
+        ("invalid_sidecar", "unreadable"),
+        ("invalid_json", "unreadable"),
+        ("invalid_meta", "unreadable"),
+        ("unknown_schema", "unreadable"),
+        ("unreadable", "unreadable"),
+        ("size_mismatch", "missing"),
+    ],
+)
+def test_index_a_problem_of_a_version_directory_gives_its_slot_the_status_of_its_code(
+    index: tuple[IndexWriter, IndexQueries], code: str, status: str
+) -> None:
+    """The problem belongs to the slot, not to a path equal to the slot's."""
+    # Arrange
+    writer, queries = index
+    directory = version_path(SHEET_A, "2025-02-02_9", sha(9)).rpartition("/")[0]
+    found = _keyed(problem(directory, code, segment=NMT, slot=SHEET_A), "a")
+
+    # Act
+    write_pass(writer, [found])
+
+    # Assert
+    assert _current(queries) == {SHEET_A: (status, None)}
 
 
 def test_index_filters_by_store_country_and_location(

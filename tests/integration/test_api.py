@@ -125,8 +125,9 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     assert footprints["aggregated"] and footprints["total"] > 1
     assert sheets["status"] == "available" and sheets["items"][0]["geometry"]
     assert project["tasks"] and project["project"] == projects["items"][0]["project"]
-    assert [item["producer"] for item in sources["items"]] == ["kartograf"]
-    assert sources["items"][0]["status"] == "available"
+    producers = {item["producer"]: item["status"] for item in sources["items"]}
+    assert list(producers) == ["imgw", "kartograf"]
+    assert producers["kartograf"] == "available"
     assert not page["stale"] and page["stale_stores"] == []
 
 

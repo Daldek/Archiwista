@@ -2,11 +2,13 @@
 
 from archiwista.sources.protocol import (
     CoordinateTransformer,
+    CurrentVersionAdapter,
     DefaultRootAdapter,
     FloatArray,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceAdapter,
@@ -27,6 +29,7 @@ from archiwista.sources.types import (
     SheetGrid,
     SourceContext,
     SourceEntry,
+    SourceObservation,
     SourcePartition,
     SourceSegment,
     SourceState,
@@ -35,6 +38,7 @@ from archiwista.sources.types import (
 
 __all__ = [
     "CoordinateTransformer",
+    "CurrentVersionAdapter",
     "DefaultRoot",
     "DefaultRootAdapter",
     "DefaultRootSource",
@@ -51,6 +55,7 @@ __all__ = [
     "ProjectPin",
     "ProjectTask",
     "ScanScope",
+    "SegmentDescriptionAdapter",
     "SegmentedAdapter",
     "SheetGrid",
     "SheetGridAdapter",
@@ -58,6 +63,7 @@ __all__ = [
     "SourceContext",
     "SourceEntry",
     "SourceFactory",
+    "SourceObservation",
     "SourcePartition",
     "SourceSegment",
     "SourceState",

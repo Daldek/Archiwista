@@ -31,6 +31,26 @@ MESSAGES = {
             " mogą być zagnieżdżone"
         ),
     ),
+    "in_store": Text(
+        (
+            "Directory {path} is located inside the store {other} (it holds"
+            " {marker}) — a store cannot be nested in another store"
+        ),
+        (
+            "Katalog {path} leży wewnątrz magazynu {other} (jest w nim {marker}) —"
+            " magazyn nie może być zagnieżdżony w innym magazynie"
+        ),
+    ),
+    "holds_store": Text(
+        (
+            "Directory {path} contains the store {other} (it holds {marker}) — a"
+            " store cannot be nested in another store"
+        ),
+        (
+            "Katalog {path} zawiera magazyn {other} (jest w nim {marker}) — magazyn"
+            " nie może być zagnieżdżony w innym magazynie"
+        ),
+    ),
     "source": Text(
         (
             'The {producer} directory of store "{store}" is not a compatible store'

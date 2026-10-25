@@ -22,11 +22,13 @@ authoritative). Introduction: [README.md](README.md); specification:
   interface or across modules starts with a plan in `docs/plans/YYYY-MM-DD-slug.md`
   (DEV-17.4) that the author approves (`Approved:` line); decisions with alternatives
   are ADRs (DEV-17.2).
-- Kartograf is a dependency, public API only (`kartograf.__all__`). Archiwista has no
-  downloading or processing of its own; a missing function is a requirement for the
-  producer (SPEC section 12), reported as a GitHub issue labelled `request` in the
-  producer's repository (DEV-17.5), never a workaround here. Only the Kartograf
-  adapter (`src/archiwista/adapter/kartograf/`) imports `kartograf` (a contract test checks it).
+- Kartograf and IMGWTools are dependencies, public API only (`kartograf.__all__`,
+  `imgwtools.__all__`). Archiwista has no downloading or processing of its own; a
+  missing function is a requirement for the producer (SPEC section 12), reported as a
+  GitHub issue labelled `request` in the producer's repository (DEV-17.5), never a
+  workaround here. Only a producer's adapter (`src/archiwista/adapter/kartograf/`,
+  `src/archiwista/adapter/imgw/`) imports its package, and the IMGW adapter never
+  imports `pyarrow` (contract tests check it).
 - The producer's store is read-only for Archiwista: writes only through the producer's
   API. No SQLite or Archiwista files on a network share or in the store; the index,
   the preview cache and the job history are local and rebuildable. The one exception
@@ -37,8 +39,9 @@ authoritative). Introduction: [README.md](README.md); specification:
 - Data downloaded while working goes outside the repository and outside `/tmp`, into
   an explicit directory; documents write data paths as `<data-dir>`.
 - Python only from `.venv`, through `uv` (DEV-6.2). `uv.lock` is committed; install
-  with `uv sync --locked` (DEV-6.3). Kartograf is pinned by commit in `pyproject.toml`
-  until its release (REL-5.3); the release pull request replaces the commit with the tag.
+  with `uv sync --locked --all-extras` (DEV-6.3; the extra `imgw` is the IMGWTools
+  source). Kartograf and IMGWTools are pinned by commit in `pyproject.toml` until their
+  releases (REL-5.3); the release pull request replaces each commit with the tag.
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and
   documents are English (DEV-2.1). Every text for a person has an English and a Polish
   variant in the catalog `src/archiwista/messages/` (one module per area, key
@@ -53,7 +56,7 @@ authoritative). Introduction: [README.md](README.md); specification:
 ## Environment and commands
 
 ```bash
-uv sync --locked                       # environment in .venv (DEV-6.2, DEV-6.3)
+uv sync --locked --all-extras          # environment in .venv (DEV-6.2, DEV-6.3)
 uv run playwright install chromium     # once, for the interface tests
 scripts/gate.sh                        # ruff format, ruff check, mypy, pytest + coverage, commits
 uv run pytest tests/unit -q           # a part of the tests (coverage is measured by the gate)
@@ -75,7 +78,7 @@ disk: a network share breaks SQLite and hard links. The full gate takes about 25
 src/archiwista/
 ├── app.py cli.py server.py config.py doctor.py   # application, CLI entry, server, settings
 ├── api/            # HTTP routes /api/v1, models, problems (errors.py), OpenAPI (docs.py)
-├── adapter/kartograf/  # the Kartograf source plugin: the only importer of kartograf
+├── adapter/kartograf/ adapter/imgw/  # the source plugins: the only importers of kartograf and imgwtools
 ├── sources/        # plugin protocol, registry, shared types (archiwista.sources entry points)
 ├── index/          # local SQLite index: schema, scanner, writer, queries
 ├── jobs/           # background jobs: supervisor, worker processes, scheduler
@@ -151,8 +154,8 @@ before the last commit. Change only this repository (DEV-17.5).
 Registry entry:
 [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml)
 (Archiwista). Kartograf is a runtime dependency (library and store read API,
-contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer, planned for v0.5
-(`archiwista[imgw]`).
+contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer behind the extra
+`archiwista[imgw]` (read side: `adapter/imgw/`; the actions are planned for v0.5).
 
 ## Deviations
 

@@ -135,7 +135,7 @@ Read [CLAUDE.md](https://github.com/Daldek/Archiwista/blob/main/CLAUDE.md) first
 scripts/gate.sh    # ruff format, ruff check, mypy, pytest with coverage, the commit check
 ```
 
-By default `pytest` leaves out the tests marked `live`, `perf` and `smb` (real stores, the store of 50,000 slots, an SMB 3 share), runs the interface tests in Chromium and requires 80% coverage. The measurements and their method are in the reports of [v0.1](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.1-measurements.md) and [v0.2](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.2-measurements.md).
+The gate (DEV-7.6) runs from a git working directory and applies `uv sync --locked --all-extras`. By default `pytest` leaves out the tests marked `live`, `perf` and `smb` (real stores, the store of 50,000 slots, an SMB 3 share), runs the interface tests in Chromium and requires 80% coverage. The measurements and their method are in the reports of [v0.1](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.1-measurements.md) and [v0.2](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.2-measurements.md).
 
 ## Status, licence, author
 

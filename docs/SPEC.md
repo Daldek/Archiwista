@@ -591,9 +591,10 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | Table | What it holds |
 |---|---|
 | `stores` | stores: identifier (a short name given by the user, e.g. `zespol`), producer directories (Kartograf, IMGW) and path aliases, availability, scan times and statistics |
-| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for IMGW the dataset name), recognized / unrecognized |
-| `slots` | slots: segment, hierarchy, name, unit kind and code, current version, `full_sheet/` version, number of versions; in the IMGW catalog a slot is an archive file (path on the server), a station directory or the dataset series |
-| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
+| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for IMGW the name of the dataset from the IMGWTools registry in Polish, for a station catalog the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `pmaxtp` or `stations`, because IMGWTools has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like IMGWTools, describes the segments that its entries named, after the pass), recognized / unrecognized |
+| `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the IMGW catalog a slot is an archive file (path on the server), a station directory or the dataset series — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the IMGWTools key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
+| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW-PIB`, `CHMI`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
+| `observations` | the publication history of a slot (IMGW only): a source served other bytes with the content of a version the producer already has — time, address, `ETag`, `Last-Modified`, size, `sha256` and the version with that content; it is neither a version nor a current version and enters no count; a record the pass did not see disappears |
 | `footprints` | R*Tree: version extent in WGS84 (area filter and map) — only versions with a footprint |
 | `stations` | stations from the current version of the station catalog: code, kind, name, river, hydrographic code (with a prefix index, P19) and order, location (WGS84) with source and uncertainty, or no location with the reason from the catalog (IMGW-9), 1° square from the code, active or historical, year established, gauge zero elevation, river kilometre |
 | `station_points` | R*Tree: station points (degenerate rectangles) — area filter and station layer |
@@ -692,7 +693,24 @@ Rules common to all producers and products:
   version of a station catalog or of a dataset's series rebuilds the tables
   `stations`, `station_series` and `series_years` from a single file (the catalog
   or the `series.json` listing), without reading Parquet files; the station view
-  needs neither the network nor reading the series.
+  needs neither the network nor reading the series. `iter_store` has no scope
+  below the directory, so an IMGW scan always covers the whole directory, and the
+  dataset (segment) is only a label: the job that scans one segment is taken by the
+  producer that has it in the index (`segments.producer`; a name the index does not
+  know is taken by the producers that scan by segments, that is, Kartograf), and for
+  an IMGW dataset it ends with the error `unsupported` before anything is scanned
+  (ADR 0032, decision 9).
+- **The current version of an IMGW slot** does not follow from a link (IMGWTools has
+  none), so at the end of the pass Archiwista asks the producer (`current_version`,
+  the capability `CurrentVersionAdapter`) about the slots the pass touched: a version
+  written, returning or gone, a problem found or resolved, and the slots without a
+  current version although the pass saw a version of them (an interrupted scan
+  leaves such slots). A scan with no changes asks for nothing; an answer that names
+  a version the pass did not see (one published after the listing) waits for the
+  next scan. A slot with a damaged version has no current version (an older one does
+  not take its place) and is "nieczytelny" (unreadable) with the problem from
+  `iter_store`; a version directory without a sidecar (`missing_sidecar`) is not a
+  version and does not change the current version.
 - **Triggers:** application start (incremental, if the last one is older than
   15 min), interval (by default 15 min for a share, 5 min for a local
   disk), the "Odśwież" (Refresh) button (store, segment, view), end of a background
@@ -945,8 +963,10 @@ the same bytes arrive under a different signal, with the suffix `+<8 hex>` (e.g.
 - **station catalog** — the download date (`"downloaded"`); current = the newest.
 
 The current version is computed by the IMGWTools API (`current_version`, IMGW-10), not
-by Archiwista; a damaged version in a slot yields an error instead of silently choosing
-an older one, so Archiwista then shows the slot with problems from `iter_store`
+by Archiwista: the index stores the answer after a scan of the slots the scan
+touched (4.4). A damaged version in a slot yields an error instead of silently choosing
+an older one, so the slot then has no current version, and Archiwista shows it as
+unreadable with the problems from `iter_store`
 (12.7, IMGW-10). A version directory without the main file's sidecar is not
 a version, but an interrupted or ongoing publication (IMGW-2): `current_version`
 skips it without an error, and Archiwista shows the current version and next to it the problem
@@ -1281,7 +1301,7 @@ which producer wrote the file:
 | `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_store` (IMGW-5) |
 | `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store`, `build_series` (IMGW-5, IMGW-7, IMGW-11) |
 | `project(…)` | producer project manifest: reading, adding and removing a job, download with pinning, check, verification, status (4.7) | `open_project`, `add_project_task`, `remove_project_task`, `download_project`, `check_project`, `verify_project`, `get_project_status` | the same IMGWTools project functions (IMGW-14) |
-| `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-032) | `store_root()` | `store_root()` of `imgwtools.config` (`IMGW_ROOT`, else `<data_dir>/imgw`) |
+| `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `imgwtools.config` (`IMGW_ROOT`, else `<data_dir>/imgw`) |
 
 The IMGW adapter also has a "stations and series" capability, which the Kartograf adapter
 does not implement: `stations(version)` (IMGW-9), `series_index(version)`
@@ -1353,10 +1373,14 @@ ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 `archiwista serve` starts the server on `127.0.0.1` (port from the configuration),
 opens the browser with a one-time token in the address (section 10.1)
 and prints the address in the terminal. On first run the wizard asks
-for the store — Kartograf's store root (the directory with `kartograf-store.json`) and, optionally (only when the IMGW source
-is available, 5.8), the IMGW directory (an IMGWTools store, A-ADR-019) — and for the project
+for the store — Kartograf's store root (the directory with `kartograf-store.json`) and/or
+(only when the IMGW source is available, 5.8) the IMGW directory (an IMGWTools store,
+A-ADR-019), at least one of them — and for the project
 directories, checks the versions and schemas of the producers (5.8; ranges compatible with the requirements from section 12) and that
-no producer directory lies inside another, and creates the index.
+no producer directory lies inside another one or inside a store of any producer, or
+holds one (the marker `kartograf-store.json` or `imgw-store.json` in a parent
+directory or up to two levels below; the full search of the tree is done by the
+producer's writer), and creates the index.
 The wizard offers the directory Kartograf itself would use for a store (`default_root`, 5.3) under an empty Kartograf field when it exists and holds the marker; it is entered only by a click and never written by Archiwista.
 `archiwista doctor` prints diagnostics in Polish (versions and state of source
 plugins, compatibility of producer schemas, availability of
@@ -1368,10 +1392,17 @@ in the configuration (the schema will be set by the implementation plan):
 [[stores]]
 id = "zespol"                          # short name in the API and interface
 name = "Zespół"
-kartograf = "/mnt/nas/kartograf"       # Kartograf store root (kartograf-store.json)
-imgw = "/mnt/nas/imgw"                 # IMGW directory (imgw-store/1); optional
+kartograf = "/mnt/nas/kartograf"       # Kartograf store root (kartograf-store.json); optional when imgw is there
+imgw = "/mnt/nas/imgw"                 # IMGW directory (imgw-store/1); optional when kartograf is there
 path_aliases = { "/mnt/nas/" = 'Z:\' }  # the same share on another computer (4.6)
 ```
+
+An entry has at least one of the directories `kartograf` and `imgw` (neither is a
+settings error); an entry with `kartograf` alone, as in the versions before the IMGW
+source, works unchanged. Saving the settings does not decide on the availability of
+a source: a new or moved `imgw` directory requires the source `imgw` in the state
+`available`, and an entry saved earlier stays even when the IMGWTools package has
+disappeared (5.8).
 
 ### 5.6 Background jobs
 
@@ -3023,7 +3054,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `DELETE /session` | logout: ends the session and removes the cookie |
 | `POST /session/tokens` | one-time agent session token, valid for 5 min (10.1); an agent session gets `403 permission_denied` |
 | `GET /stores` | stores, availability, statistics |
-| `GET /sources` | data sources (plugins): producer, state (`available`, `not_installed`, `incompatible`, `error`), library version, supported scope, schemas, message in Polish (5.8), and `default_root` (the directory the producer uses when a call names no store: path, layer of the settings, existence, marker; `null` without one; not in `/health`, A-ADR-032) |
+| `GET /sources` | data sources (plugins): producer, state (`available`, `not_installed`, `incompatible`, `error`), library version, supported scope, schemas, message in Polish (5.8), and `default_root` (the directory the producer uses when a call names no store: path, layer of the settings, existence, marker; `null` without one; not in `/health`, A-ADR-033) |
 | `GET /stores/{store}` | store state: occupancy by product, problems, last scan |
 | `POST /stores/{store}/scan` | scan (`mode`: `incremental` or `full`, optionally `segment`) → background job; `409 conflict` when a job writing the store index is running |
 | `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); in offline mode `409 offline_mode` |

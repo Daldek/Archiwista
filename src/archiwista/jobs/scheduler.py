@@ -244,6 +244,9 @@ class ScanScheduler:
             config = settings.store(planned.store)
             if config is None:  # pragma: no cover - planned from these settings
                 continue
+            if not self._available_roots(config):
+                logger.debug("Store %s: no source is available, no scan", config.id)
+                continue
             state = states.get(planned.store)
             indexed = state is not None and bool(state.slots or state.versions)
             if planned.probe and not self._probe(config, indexed=indexed):
@@ -278,11 +281,30 @@ class ScanScheduler:
             logger.info("Scheduled scan of store %s not submitted: %s", store, error)
             return None
 
+    def _available_roots(self, config: StoreConfig) -> dict[str, Path]:
+        """Return the store's directories whose source can scan them (SPEC 5.8).
+
+        A directory of a source that is not available (not installed,
+        incompatible, failed to load) is left out: it neither stops the scans
+        of the store's other directories nor starts a job of its own.
+        """
+        available = {
+            state.producer
+            for state in self._registry.states()
+            if state.status == "available"
+        }
+        return {
+            producer: root
+            for producer, root in config.roots().items()
+            if producer in available
+        }
+
     def _probe(self, config: StoreConfig, *, indexed: bool) -> bool:
         """Probe a store in a thread of its own, waiting ``probe_timeout_s``.
 
         A probe of a hung share does not stop the planning; the store is not
-        probed again until that probe returns.
+        probed again until that probe returns. Only the directories of
+        available sources are probed.
         """
         with self._probing_lock:
             if config.id in self._probing:
@@ -298,7 +320,7 @@ class ScanScheduler:
                             self._registry.probe(producer, root), root, indexed=indexed
                         )
                         is None
-                        for producer, root in config.roots().items()
+                        for producer, root in self._available_roots(config).items()
                     )
                 )
             except Exception:  # a faulty plugin counts as unavailable

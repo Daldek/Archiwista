@@ -25,6 +25,11 @@ key), ``own_files`` (a folder's files by path, with what the reader found
 and the content identity), ``own_file_states`` (observed states, at most
 200 per file), ``snapshots`` (``.wersje/`` of a folder, with the full
 ``migawka.json``) and ``own_problems``.
+
+Version 7 (v0.5, IMGW slots): ``slots.slot_key`` (the producer's own name of a
+slot), ``versions.provider`` (the organisation that publishes the data) and
+``observations`` (the publication history of a slot: a source served other
+bytes with the content of a version, so no version was written).
 """
 
 import sqlite3
@@ -35,7 +40,7 @@ from typing import Literal
 from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -82,6 +87,9 @@ CREATE TABLE slots (
     segment_id INTEGER NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
     path TEXT NOT NULL,
     name TEXT NOT NULL,
+    -- The producer's own name of the slot (opaque to the index); NULL where the
+    -- slot is the standard path.
+    slot_key TEXT,
     unit TEXT,
     product TEXT,
     country TEXT,
@@ -118,6 +126,7 @@ CREATE TABLE versions (
     downloaded_at TEXT,
     dataset TEXT,
     dataset_key TEXT,
+    provider TEXT,
     product TEXT,
     country TEXT,
     unit TEXT,
@@ -159,6 +168,27 @@ CREATE INDEX versions_group ON versions (parent_request)
     WHERE parent_request IS NOT NULL;
 CREATE INDEX versions_missing ON versions (store_id) WHERE state = 'missing';
 CREATE INDEX versions_unlocated ON versions (store_id) WHERE location = 'none';
+
+-- The publication history of a slot: a source served other bytes with the
+-- content of the version ``version_path``, so the producer wrote no version.
+-- Never a version: no count, no current version and no usage follows from it.
+CREATE TABLE observations (
+    id INTEGER PRIMARY KEY,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    segment_id INTEGER NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+    slot_id INTEGER NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    version_path TEXT,
+    seen_at TEXT NOT NULL,
+    url TEXT,
+    etag TEXT,
+    last_modified TEXT,
+    size_bytes INTEGER,
+    sha256 TEXT,
+    UNIQUE (store_id, path)
+);
+CREATE INDEX observations_slot ON observations (slot_id, seen_at);
+CREATE INDEX observations_segment ON observations (segment_id);
 
 CREATE TABLE version_sidecars (
     version_id INTEGER PRIMARY KEY REFERENCES versions(id) ON DELETE CASCADE,

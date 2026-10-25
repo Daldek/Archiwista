@@ -42,12 +42,12 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-016](#adr-016-date-format-in-the-interface-and-the-map-basemap) | Date format in the interface and map basemap | 2026-10-17 | accepted (SPEC 15: P6; mockup: M9; erratum 2: OpenFreeMap vector basemap instead of BKG TopPlusOpen) |
 | [ADR-017](#adr-017-grouped-variants-without-file-format) | Grouped variants without file format | 2026-10-17 | accepted (amends ADR-010) |
 | [ADR-018](#adr-018-interface-patterns-after-the-mockup-chat-stack-previews) | Interface patterns after the mockup: chat, Stack, previews | 2026-10-17 | accepted (erratum 1: "the Fan" replaces "Stack", M4/P12 resolved) |
-| [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024) |
+| [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024; the IMGW source: ADR-032) |
 | [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | proposed (IMGWTools ADR; SPEC 12.8) |
 | [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station); proposed (mockup: M11) |
 | [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
 | [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted (IMGW data in a project in v1.0 and two manifest files: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0) |
-| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`) |
+| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032) |
 | [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations) |
 | [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
 | [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
@@ -55,7 +55,8 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4) |
 | [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
 | [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
-| [ADR-032](decisions/0032-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted (amends ADR-019 and ADR-024; the plan's approval is delegated) |
+| [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 
 ---
 
@@ -816,7 +817,7 @@ Mentions of the "Stos" (Stack) in ADR-005, ADR-006 and ADR-017 describe the stat
 ## ADR-019: Two store producers: Kartograf and IMGWTools
 
 **Date:** 2026-10-17
-**Status:** accepted (user decision 2026-10-17); partly supersedes ADR-003, amends ADR-014; amended by ADR-024 (adapters as plugins)
+**Status:** accepted (user decision 2026-10-17); partly supersedes ADR-003, amends ADR-014; amended by ADR-024 (adapters as plugins) and ADR-032 (the IMGW source: one plugin, the extra, read first)
 
 **Context:** The user wants IMGW-PIB measurement data in Archiwista v1.0: daily
 hydro (H, Q, T), monthly and half-year characteristics, and meteo (precipitation,
@@ -1162,7 +1163,7 @@ IMGW-19), 13 v0.6 criterion 7.
 ## ADR-024: Data sources as plugins: Kartograf required, IMGWTools optional
 
 **Date:** 2026-10-17
-**Status:** accepted (user decision 2026-10-17); amends ADR-001 and ADR-019
+**Status:** accepted (user decision 2026-10-17); amends ADR-001 and ADR-019; amended by ADR-032 (the IMGW source)
 
 **Context:** ADR-001 adopted Kartograf as a dependency, and ADR-019 added a second
 producer, IMGWTools, behind a common source interface. They did not settle how

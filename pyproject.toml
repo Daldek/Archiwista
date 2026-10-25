@@ -39,6 +39,16 @@ dependencies = [
     "laspy[lazrs]>=2.7,<3",
 ]
 
+[project.optional-dependencies]
+# The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
+# catalogs of an IMGWTools store. The commit is the head of the IMGWTools branch
+# `feature/data-output` (REL-5.3); the release pull request replaces it with the tag
+# `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
+# adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
+imgw = [
+    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@7e2114e1424903f1fd8fc036a2cb7aa81df44287",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8,<10",
@@ -54,9 +64,11 @@ dev = [
 [project.scripts]
 archiwista = "archiwista.cli:main"
 
-# Producer adapters (plugins): factories load(context) -> SourceAdapter.
+# Producer adapters (plugins): factories load(context) -> SourceAdapter. The `imgw`
+# adapter reports `not_installed` until the extra `imgw` is installed.
 [project.entry-points."archiwista.sources"]
 kartograf = "archiwista.adapter.kartograf:load"
+imgw = "archiwista.adapter.imgw:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -456,6 +456,42 @@ def test_queries_products_and_slots_for_a_view_refresh(index: Index) -> None:
     assert without[0].store == "/mnt/nas/kartograf/data"
 
 
+def test_queries_segment_producers_name_the_owners_of_a_segment(index: Index) -> None:
+    """A segment belongs to the producers whose scans described it, in its store."""
+    # Arrange
+    writer, queries = index
+    dataset = "pl.imgw.hydro_daily"
+    roots = {"kartograf": "/mnt/nas/kartograf/data", "imgw": "/mnt/nas/imgw"}
+    writer.sync_stores({STORE: roots, "inny": roots})
+    named = SourceSegment(dataset, "hydro", "PL", dataset, "Dane hydrologiczne", True)
+    writer.write_segments(STORE, "kartograf", [SEGMENTS[NMT], named])
+    writer.write_segments(STORE, "imgw", [named])
+    writer.write_segments("inny", "imgw", [named])
+
+    # Act
+    owners = {
+        (store, name): queries.segment_producers(store, name)
+        for store, name in (
+            (STORE, NMT),
+            (STORE, dataset),
+            (STORE, ORTO),
+            ("inny", NMT),
+            ("inny", dataset),
+            ("nieznany", NMT),
+        )
+    }
+
+    # Assert
+    assert owners == {
+        (STORE, NMT): ("kartograf",),
+        (STORE, dataset): ("imgw", "kartograf"),
+        (STORE, ORTO): (),
+        ("inny", NMT): (),
+        ("inny", dataset): ("imgw",),
+        ("nieznany", NMT): (),
+    }
+
+
 def test_queries_status_reports_jobs_and_areas_are_kept(
     index: Index, tmp_path: Path
 ) -> None:

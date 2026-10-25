@@ -42,9 +42,21 @@ class ExternalAdapter:
         self.cache_dir = context.cache_dir
 
     def probe(self, root: Path) -> SourceState:
-        """Accept an existing directory; fail loudly on a missing one."""
+        """Accept an existing directory; fail loudly on a missing one.
+
+        A directory named ``unmarked`` is refused with a reason and a hint.
+        """
         if not root.is_dir():
             raise FileNotFoundError(root)
+        if root.name == "unmarked":
+            return SourceState(
+                self.producer,
+                "incompatible",
+                store=str(root),
+                detail="brak znacznika",
+                reason="no_marker",
+                hint=f"external init --root {root}",
+            )
         return SourceState(self.producer, "available", store=str(root))
 
     def iter_entries(

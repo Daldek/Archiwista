@@ -172,13 +172,16 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities | `SourceAdapter`, `SourceFactory`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `CoordinateTransformer` |
-| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
-| `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the default root of a producer that has one (ADR-032) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
+| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `CoordinateTransformer` |
+| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
+| `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the default root of a producer that has one (ADR-033) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities | `KartografAdapter`, `UNIT_CACHE_FILE` |
 | `adapter/kartograf/marker.py` | judges the store marker by file name and schema, no import of Kartograf (ADR-031): a marker of `kartograf-store/1`, a marker of another schema, the marker of another tool, no marker with or without a layout | `refusal`, `Refusal`, `MARKER`, `MARKER_SCHEMA`, `OTHER_MARKERS` |
 | `adapter/kartograf/unit_cache.py` | local cache of unit footprints (TERYT, KU, SM5) for `file_footprint` | `UnitBBoxCache` |
+| `sources/markers.py` | file names of the producers' store markers (DEV-19.12): an adapter refuses a foreign store by the file name alone, importing no other producer | `STORE_MARKERS`, `foreign_markers` |
+| `adapter/imgw/__init__.py` | IMGW plugin factory: compares the installed IMGWTools with the range `SUPPORTED_VERSIONS` before the import (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
+| `adapter/imgw/adapter.py` | IMGWTools adapter for IMGW-PIB and ČHMÚ: the entries of `iter_store` (versions of `ScanScope.known_versions` come back as `skipped`, with no sidecar read: `skip_versions`) with the producer's slot key, a slot name for people and an observation record; the description of a dataset from the IMGWTools registry (a Polish name, the country of its provider and the family of the dataset as a product; `SegmentDescriptionAdapter`); the current version of a slot from IMGWTools (`current_version`: `CurrentVersionAdapter`; a slot with a damaged version has none); the verdicts of `probe` by the marker and the codes of `StoreInfo.problem_codes`; metadata, the country of a file, projects; it never imports `pyarrow` | `ImgwAdapter` |
 
 **Shared**
 
@@ -261,7 +264,8 @@ an adapter with a public API.
   from `kartograf.__all__` —
   `test_imports.py::test_kartograf_adapter_uses_only_public_api`;
 - every module outside `archiwista.adapter` imports without IMGWTools and
-  without loading Kartograf, and the Kartograf plugin has the state `available` —
+  without loading Kartograf, the Kartograf plugin has the state `available` and the
+  IMGW plugin `not_installed` —
   `test_imports.py::test_archiwista_starts_without_imgwtools`;
 - a producer without optional capabilities satisfies `SourceAdapter`
   (`test_source_protocol.py`); plugin states (`not_installed`,
@@ -388,10 +392,22 @@ data directory is open to other accounts.
 **Settings.** `ConfigStore.load` reads TOML or returns default
 values; `SettingsService.update` validates the whole (`validate_settings`:
 existence and readability of directories, plugin `probe` for a new or moved
-directory, `check_nesting` — no producer directory inside another), writes
+directory, `check_nesting` — no producer directory inside another one or
+inside a store of any producer: the marker `kartograf-store.json` or
+`imgw-store.json` in a parent directory or up to two levels below, no
+links, `sources/markers.py`, DEV-19.14), writes
 atomically (`write_text_atomic`: temporary file, `fsync`, `os.replace`)
 and notifies listeners (`SettingsService.subscribe`): the job supervisor synchronizes
 the index stores, the scheduler plans a full scan of the new store.
+A store (`StoreConfig`) has a `kartograf` directory, an `imgw` directory or
+both (at least one; the missing one is `None`, which `dump_settings` does not
+write), and `roots()` gives the present directories by producer. The search
+for markers covers only new or moved directories: an unchanged one is not
+read, so an unplugged share does not block other changes. A scan and the
+scheduler skip the directory of a source that is not available (`not_installed`,
+`incompatible`, `error`; SPEC 5.8) and leave its entry in the settings:
+`run_scan` reports the notice `source_skipped`, and `ScanScheduler` does not
+order a scan of a store with no available source.
 `StoreConfig.kind` without a value is detected by `detect_store_kind` from
 `/proc/self/mountinfo` (`SHARE_FILESYSTEMS`: `cifs`, `smb3`, `smbfs`, `nfs`,
 `nfs4`). `StoreConfig.local_path` and `foreign_paths` translate paths between
@@ -402,8 +418,8 @@ computers through `path_aliases` (SPEC 4.6).
 A cache rebuilt from the producers' files (A-ADR-002),
 `index/schema.py`:
 
-- **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0)
-  in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
+- **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
+  IMGW slots) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
@@ -416,8 +432,9 @@ A cache rebuilt from the producers' files (A-ADR-002),
   session generation), `stores` (key = `StoreConfig.id`, state `unknown` /
   `available` / `unavailable`, `indexed_at`), `segments`, `slots`,
   `versions` with 1:1 `version_sidecars` (raw sidecar) and `version_shapes`
-  (footprints that are not rectangles, native footprint), `footprints` (R*Tree
-  of WGS84 rectangles, only versions with a footprint), `search` (FTS5, one row per
+  (footprints that are not rectangles, native footprint), `observations` (the
+  publication history of an IMGW slot: not a version and not a count), `footprints`
+  (R*Tree of WGS84 rectangles, only versions with a footprint), `search` (FTS5, one row per
   slot, `unicode61 remove_diacritics 2`), `issues` (origin `scan`
   or `check`), `projects` (with `access_key`), `project_tasks`, `pins`,
   `areas`, `jobs`, `job_events`, `session_tokens`. Triggers delete
@@ -504,18 +521,33 @@ sequenceDiagram
 executor = session principal) or `archiwista reindex` (`LOCAL_OWNER`) —
 always through `JobSupervisor.submit("scan", …)` and a worker process.
 `run_scan` loads the plugin registry in the worker process
-(`load_registry(cache_dir=spec.cache_dir)`) and for each producer directory
-of the store (`StoreConfig.roots`) calls `scan_store` with the mode,
-segment and `on_event=emit.scan_event`.
+(`load_registry(cache_dir=spec.cache_dir)`) and for each available producer
+directory of the store (`StoreConfig.roots`) calls `scan_store` with the mode,
+segment and `on_event=emit.scan_event`. A job with a `segment` scans only the
+owners of the segment: the producers whose description of the segment the
+index holds (`IndexQueries.segment_producers`, the column `segments.producer`)
+and, for a name the index does not know, the producers that scan by segments
+(`SegmentedAdapter`, Kartograf), so a store of Kartograf alone works as
+before. A producer that reads only a whole directory (IMGWTools: `iter_store`
+has no scope below the directory, and a pass per dataset would read the whole
+store as many times as there are datasets) refuses: the job ends with the
+error `unsupported` (`job.segment_scan_unsupported`) before anything is
+scanned, and the segment is only a label for it.
 
 **Course of `scan_store`:**
 
 1. `_reachable_segments`: `probe` of the root (a state other than `available` →
    store unavailable, with the probe's `reason` and `hint`: `no_marker`,
-   `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf, ADR-031) and
+   `unsupported_marker`, `foreign_store` or `not_a_store`, ADR-031 for Kartograf,
+   ADR 0032 for IMGWTools) and
    the list of segments (`SegmentedAdapter.segments` → `list_segments`, including
    unrecognised ones); segment descriptions go to the `segments` table
-   (`describe_segment`).
+   (`describe_segment`). A producer without a list of segments but with a
+   description (`SegmentDescriptionAdapter`, IMGWTools: the segment is a
+   dataset) is read as a whole (`scan_store` rejects `segment` for it as a
+   `ValueError`, and `run_scan` refuses earlier), and the descriptions of the
+   segments that its entries named (`_Totals.segments_seen`) are written at the
+   end of the pass, before `finish_pass`.
 2. `IndexWriter.begin_pass(store, producer, segment=…, full=…)` loads once the
    known versions, slots and problems of the scope. No segments while the index
    has entries means an empty mount point, that is, an unavailable store.
@@ -549,8 +581,19 @@ segment and `on_event=emit.scan_event`.
    with a date, a `full` pass removes versions already marked so earlier and still
    absent; both clear unseen links, resolve problems
    and remove empty slots, and a pass over the whole store also removes empty
-   segments and sets `indexed_at` and the `available` state. An unavailable
-   store (`SourceUnavailableError`) or a producer error
+   segments and sets `indexed_at` and the `available` state. A producer
+   without links whose slots have their own key (`CurrentVersionAdapter`,
+   IMGWTools) is asked for the current version — `current_version(root,
+   slot_key)` before the transaction, once per slot — of the slots the pass
+   touched (a version written, back or gone, a problem found or resolved) and
+   of those without a current version although the pass saw a version of them
+   (an interrupted pass leaves such slots, and nothing else will touch them);
+   a scan with no changes asks for nothing. The answer is written as
+   `slots.current_path` only for a version the pass saw — one published after
+   the listing is seen by the next scan — and no answer (a damaged version in
+   the slot) clears the current version: an older one does not take its
+   place. An unavailable store
+   (`SourceUnavailableError`) or a producer error
    (`ProducerError`) ends the pass with `abandon_pass` — nothing is
    marked — and an unavailable store gets the state `unavailable` with a description.
 7. After a pass over the whole store (without `segment`), `scan_projects` discovers
@@ -1106,18 +1149,27 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   every request, `permission_log` with the kind of actor and the session. Missing are
   login and passwords, and `serve_main` refuses any address other than `127.0.0.1`;
   sessions live in the memory of a single server (`SessionStore`).
-- **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024).**
-  The plugin registers in the `archiwista.sources` entry points group
-  (extra `archiwista[imgw]`, `install_requirement`); the import test already
-  reserves `src/archiwista/adapter/imgw/` for it, and errors have the code
-  `imgwtools_error` (`PRODUCER_CODES`). The test plugin
-  `tests/fixtures/second_source/` (a flat store without segments, sheets
-  and links) passes through the scanner, index and API with no changes in the core
-  (`tests/integration/test_second_adapter.py`). To do:
-  `StoreConfig.roots` today returns only the `kartograf` directory,
-  `PROJECT_MANIFESTS` knows only `kartograf-project.json`, and the capabilities
-  of stations and series (`stations`, `series_index`, `read_series` from SPEC 5.3)
-  are not yet in `sources/protocol.py`.
+- **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
+  ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
+  entry points group (extra `archiwista[imgw]`, `install_requirement`):
+  `src/archiwista/adapter/imgw/` reads the IMGWTools store of both providers
+  through `iter_store`, judges a directory by the marker `imgw-store.json` and
+  never imports `pyarrow`; without the package the source has the state
+  `not_installed`, and the producer's errors have the code `imgwtools_error`
+  (`PRODUCER_CODES`). The test plugin `tests/fixtures/second_source/` (a flat
+  store without segments, sheets and links) passes through the scanner, index
+  and API with no changes in the core
+  (`tests/integration/test_second_adapter.py`). A store accepts an `imgw`
+  directory beside the `kartograf` directory or instead of it
+  (`StoreConfig.roots` gives both, section 4), and a scan indexes IMGW files
+  as versions of slots (`slot_key`, `provider`, observations as the history of
+  a slot, datasets as segments described by the adapter) and asks the
+  producer for the current version of the slots it touched
+  (`CurrentVersionAdapter`: IMGWTools has no links, so its `current_version`
+  chooses the current version). To do: `PROJECT_MANIFESTS` knows only
+  `kartograf-project.json`, and the capabilities of stations and series
+  (`stations`, `series_index`, `read_series` from SPEC 5.3) are not yet in
+  `sources/protocol.py`.
 
 ---
 

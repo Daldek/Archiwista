@@ -18,7 +18,10 @@ incremental scan passes the settled version directories the index knows
 are not listed again, so only the full scan (scheduled daily by default)
 notices a file removed from or added to one of them. A link names its
 version itself (``SourceEntry.version_path``); the scanner never confirms
-links, which is an on-demand job.
+links, which is an on-demand job. A producer without links (its slots carry
+its own key) names the current version of a slot itself
+(``CurrentVersionAdapter``): the pass asks for the slots it touched when it
+finishes.
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -57,15 +60,22 @@ from archiwista.index.geometry import (
 )
 from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
-from archiwista.index.types import BatchResult, IndexStatus, PassSummary
+from archiwista.index.types import (
+    BatchResult,
+    CurrentVersionLookup,
+    IndexStatus,
+    PassSummary,
+)
 from archiwista.index.writer import IndexWriter
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    CurrentVersionAdapter,
     Footprint,
     GeoAdapter,
     GeoJSONGeometry,
     PartitionedAdapter,
     ScanScope,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SourceAdapter,
     SourceEntry,
@@ -210,7 +220,12 @@ def scan_store(
     producer splits them (``AppSettings.scan_threads``), those of a local
     store by one thread; batches are written by the calling thread and
     footprints computed without network. After a pass over the whole store,
-    the producer's projects are scanned too (``scan_projects``).
+    the producer's projects are scanned too (``scan_projects``). A producer
+    that lists no segments but can describe them (``SegmentDescriptionAdapter``)
+    is read whole, and the segments its entries named are described at the
+    end of the pass. A producer that names the current version of a slot
+    itself (``CurrentVersionAdapter``) is asked for the slots the pass touched
+    when it finishes.
 
     Parameters
     ----------
@@ -295,12 +310,23 @@ def scan_store(
             finally:
                 readers.close()
             footprints.finish()
+            if listed is None and isinstance(adapter, SegmentDescriptionAdapter):
+                # No list of segments to describe first: describe the ones the
+                # entries named, for a producer that cannot read one alone.
+                writer.write_segments(
+                    store,
+                    adapter.producer,
+                    [
+                        adapter.describe_segment(name)
+                        for name in sorted(totals.segments_seen)
+                    ],
+                )
             # Listings of a share unmounted mid-scan end empty without an error.
             if segment is None and totals.entries == 0 and writer.holds_entries():
                 raise _empty_store(root)
             if _reachable_segments(adapter, root) == () and writer.holds_entries():
                 raise _empty_store(root)
-            finished = writer.finish_pass()
+            finished = writer.finish_pass(current=_current_lookup(adapter, root))
         except SourceUnavailableError as error:
             writer.abandon_pass()
             writer.set_store_status(store, "unavailable", detail=str(error))
@@ -517,6 +543,8 @@ class _Totals:
     links_changed: int = 0
     issues_added: int = 0
     segments: list[SegmentScan] = field(default_factory=list)
+    # Segments the entries named: for a producer that lists none.
+    segments_seen: set[str] = field(default_factory=set)
 
     def add(self, result: BatchResult) -> None:
         self.versions_written += result.versions_written
@@ -816,6 +844,7 @@ def _write_batch(
 ) -> None:
     result = writer.write_entries(batch)
     totals.add(result)
+    totals.segments_seen.update(entry.segment for entry in batch if entry.segment)
     footprints.submit(result.needs_footprint)
 
 
@@ -856,7 +885,7 @@ def _write_view(
             batch = entries[start : start + BATCH_ENTRIES]
             _write_batch(writer, batch, footprints, totals)
         footprints.finish()
-        writer.finish_pass()
+        writer.finish_pass(current=_current_lookup(adapter, target.root))
     except BaseException:
         writer.abandon_pass()
         raise
@@ -971,6 +1000,18 @@ def _reachable_segments(adapter: SourceAdapter, root: Path) -> tuple[str, ...] |
     if isinstance(adapter, SegmentedAdapter):
         return tuple(adapter.segments(root))
     return None
+
+
+def _current_lookup(adapter: SourceAdapter, root: Path) -> CurrentVersionLookup | None:
+    """Return the producer's answer for a slot's current version, if it gives one."""
+    if not isinstance(adapter, CurrentVersionAdapter):
+        return None
+    producer: CurrentVersionAdapter = adapter
+
+    def lookup(key: str) -> Path | None:
+        return producer.current_version(root, key)
+
+    return lookup
 
 
 def _indexed(queries: IndexQueries, store: str) -> bool:

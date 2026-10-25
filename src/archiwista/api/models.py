@@ -428,6 +428,7 @@ _STORE_SETTINGS_EXAMPLE = {
     "id": _STORE,
     "name": "Zespół",
     "kartograf": "/mnt/nas/kartograf/data",
+    "imgw": "/mnt/nas/imgw",
     "kind": "share",
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
@@ -2000,7 +2001,9 @@ class ScanRequest(BaseModel):
         min_length=1,
         description=(
             "Only this segment (`<product>/<variant>`, see /products); the"
-            " whole store and its projects when omitted."
+            " whole store and its projects when omitted. A data source that reads"
+            " only its whole directory (IMGWTools: a segment is a dataset, a label)"
+            " cannot scan one segment: the job fails with `unsupported`."
         ),
     )
 
@@ -2554,7 +2557,7 @@ class ProjectStatus(BaseModel):
 
 
 class StoreSettings(BaseModel):
-    """A configured store: a short id and the producer's directory."""
+    """A configured store: a short id and the producers' directories."""
 
     model_config = _examples(_STORE_SETTINGS_EXAMPLE)
 
@@ -2562,11 +2565,21 @@ class StoreSettings(BaseModel):
         description="Short id in the API: lowercase letters, digits, '_', '-' (≤ 32)."
     )
     name: str
-    kartograf: str = Field(
+    kartograf: str | None = Field(
+        default=None,
         description=(
             "Kartograf's store root: the directory that holds kartograf-store.json"
-            " and the product directories (usually called data)."
-        )
+            " and the product directories (usually called data). Left out when the"
+            " store has only `imgw`; one of the two is required."
+        ),
+    )
+    imgw: str | None = Field(
+        default=None,
+        description=(
+            "IMGWTools' store root, the directory that holds `imgw-store.json`. Left"
+            " out when the store has only `kartograf`; a new or moved directory needs"
+            " the source `imgw` to be available (`GET /sources`)."
+        ),
     )
     kind: StoreKind | None = Field(
         default=None,
@@ -2583,7 +2596,8 @@ class StoreSettings(BaseModel):
         return cls(
             id=store.id,
             name=store.name,
-            kartograf=str(store.kartograf),
+            kartograf=None if store.kartograf is None else str(store.kartograf),
+            imgw=None if store.imgw is None else str(store.imgw),
             kind=store.kind,
             path_aliases=dict(store.path_aliases),
         )

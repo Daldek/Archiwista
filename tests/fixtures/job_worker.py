@@ -22,8 +22,12 @@ environment the test sets, which the worker inherits:
 ``ARCHIWISTA_TEST_SNAPSHOT_FAULT``
     ``<phase>:<signal>``, e.g. ``rename:SIGKILL``: the worker sends itself
     the signal when a snapshot reaches the phase (``SNAPSHOT_PHASES``).
+``ARCHIWISTA_TEST_MISSING_PACKAGES``
+    Comma separated distributions that look not installed to the plugin
+    registry (``tests.fixtures.missing_package``).
 """
 
+import importlib.metadata
 import json
 import os
 import signal
@@ -44,6 +48,7 @@ from archiwista.owndata.snapshots import SnapshotPhase, SnapshotResult
 from archiwista.previews import build
 from archiwista.previews.types import PreviewSource
 from archiwista.sources import ScanScope, SourceEntry
+from tests.fixtures.missing_package import MISSING_PACKAGES_ENV, hiding
 from tests.fixtures.render_worker import TEST_RENDER_WORKER
 
 DELAY_ENV = "ARCHIWISTA_TEST_ENTRY_DELAY_S"
@@ -153,6 +158,9 @@ def main() -> int:
     fault = os.environ.get(SNAPSHOT_FAULT_ENV)
     if fault:
         _hook_snapshots(fault)
+    missing = os.environ.get(MISSING_PACKAGES_ENV)
+    if missing:
+        importlib.metadata.version = hiding(missing.split(","))  # type: ignore[assignment]
     return worker.main()
 
 

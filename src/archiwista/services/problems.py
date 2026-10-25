@@ -15,6 +15,7 @@ KNOWN_PROBLEMS = frozenset(
     {
         "missing_sidecar",
         "invalid_sidecar",
+        "unknown_schema",
         "unknown_segment",
         "legacy_campaigns",
         "stale_incoming",
@@ -27,6 +28,11 @@ KNOWN_PROBLEMS = frozenset(
         *OWN_PROBLEM_CODES,
     }
 )
+# Codes whose text depends on the producer, as ``(producer, code)``: their
+# entries are ``problem.<producer>_<code>`` and ``fix.<producer>_<code>``.
+# IMGWTools' ``missing_sidecar`` is a download in progress or an interrupted
+# one, not the file Kartograf's code means.
+PRODUCER_TEXTS = frozenset({("imgw", "missing_sidecar")})
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,14 +81,18 @@ def explain(code: str, **values: object) -> tuple[str, str]:
         Problem code; an unknown one gets the generic texts.
     **values : object
         Values of the texts' placeholders (``path``, ``producer``…); a missing
-        or empty one reads as ``—``.
+        or empty one reads as ``—``. The ``producer`` also chooses the texts of
+        a code that has its own for it (``PRODUCER_TEXTS``).
 
     Returns
     -------
     tuple[str, str]
         ``(message, instruction)``.
     """
-    name = code if code in KNOWN_PROBLEMS else "other"
+    if (values.get("producer"), code) in PRODUCER_TEXTS:
+        name = f"{values['producer']}_{code}"
+    else:
+        name = code if code in KNOWN_PROBLEMS else "other"
     given = {"code": code, **{key: value for key, value in values.items() if value}}
     return _filled(f"problem.{name}", given), _filled(f"fix.{name}", given)
 

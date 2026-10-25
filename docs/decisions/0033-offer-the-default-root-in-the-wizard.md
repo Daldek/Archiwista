@@ -1,4 +1,4 @@
-# ADR-032: Offer the producer's default root in the wizard, and never use it
+# ADR-033: Offer the producer's default root in the wizard, and never use it
 
 **Date:** 2026-10-25
 **Status:** proposed (done on the topic branch `feature/kartograf-data-output`; decision D7 of the plan `docs/plans/2026-10-25-archiwista-next.md` was accepted by delegated approval; accepted when the author approves and merges the branch)

@@ -100,6 +100,30 @@ MESSAGES = {
             " poleceniem {producer}."
         ),
     ),
+    "imgw_missing_sidecar": Text(
+        (
+            "Not critical and usually temporary: wait until the download ends. If"
+            " it was interrupted, run the same {producer} download again; it"
+            " completes the version with its sidecar and nothing needs deleting."
+        ),
+        (
+            "Niekrytyczne i zwykle przejściowe: poczekaj, aż pobieranie się skończy."
+            " Jeśli zostało przerwane, powtórz to samo pobieranie poleceniem"
+            " {producer}; uzupełni wersję o sidecar i niczego nie trzeba usuwać."
+        ),
+    ),
+    "unknown_schema": Text(
+        (
+            "The file was written in a schema this version of the {producer} package"
+            " does not read (probably by a newer version): update the package or"
+            " download this data again with the version in use."
+        ),
+        (
+            "Plik zapisano w schemacie, którego ta wersja pakietu {producer} nie"
+            " czyta (zapewne przez nowszą wersję): zaktualizuj pakiet albo pobierz"
+            " te dane ponownie używaną wersją."
+        ),
+    ),
     "unknown_segment": Text(
         (
             "This is usually data from a development or newer version of the"

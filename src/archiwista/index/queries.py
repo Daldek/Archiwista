@@ -69,6 +69,7 @@ from archiwista.index.types import (
     LocationRef,
     MapFootprint,
     MapQuery,
+    ObservationRef,
     OrphanLink,
     OwnFileDetail,
     OwnFileObservation,
@@ -920,6 +921,30 @@ class IndexQueries:
             for product, segments in products.items()
         )
 
+    def segment_producers(self, store: str, segment: str) -> tuple[str, ...]:
+        """Return the producers that own a segment of a store, by name.
+
+        A segment belongs to the producer whose scan described it
+        (``segments.producer``), so a scan of one segment goes to its owner.
+        A name the index does not know, and a store it does not know, have
+        no owner.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        segment : str
+            Segment name, as ``SegmentRef.segment``.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT producer FROM segments WHERE store_id = ? AND segment = ?"
+                " ORDER BY producer",
+                (_store_id(stores, store), segment),
+            ).fetchall()
+        return tuple(str(row["producer"]) for row in rows)
+
     def usage(self, store: str) -> StoreUsage | None:
         """Return the disk usage of a store's present versions, per product.
 
@@ -979,6 +1004,44 @@ class IndexQueries:
         with self._read() as connection:
             stores = _stores(connection)
             return _issues(connection, "i.store_id = ?", (_store_id(stores, store),))
+
+    def observations(self, store: str, slot: str) -> tuple[ObservationRef, ...]:
+        """Return the publication history of a slot, the newest record first.
+
+        A record is a source that served the content of a version again (it
+        is never a version and changes no count). A slot the index does not
+        know has none.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        slot : str
+            Slot path relative to the store.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT o.path, o.version_path, o.seen_at, o.url, o.etag,"
+                " o.last_modified, o.size_bytes, o.sha256 FROM observations o"
+                " JOIN slots s ON s.id = o.slot_id"
+                " WHERE s.store_id = ? AND s.path = ?"
+                " ORDER BY o.seen_at DESC, o.path DESC",
+                (_store_id(stores, store), slot),
+            ).fetchall()
+        return tuple(
+            ObservationRef(
+                path=row["path"],
+                version=row["version_path"],
+                seen_at=datetime.fromisoformat(row["seen_at"]),
+                url=row["url"],
+                etag=row["etag"],
+                last_modified=row["last_modified"],
+                size_bytes=row["size_bytes"],
+                sha256=row["sha256"],
+            )
+            for row in rows
+        )
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.
@@ -1048,13 +1111,13 @@ class IndexQueries:
             store_id = _store_id(stores, store)
             rows = connection.execute(
                 "SELECT s.path AS slot, g.segment, 'link' AS kind,"
-                " s.current_path AS version FROM slots s"
+                " s.current_path AS version, g.producer FROM slots s"
                 " JOIN segments g ON g.id = s.segment_id"
                 " LEFT JOIN versions v ON v.id = s.current_version_id"
                 " WHERE s.store_id = ? AND s.current_path IS NOT NULL"
                 " AND (v.id IS NULL OR v.state = 'missing')"
                 " UNION ALL"
-                " SELECT s.path, g.segment, 'full_sheet', s.full_sheet_path"
+                " SELECT s.path, g.segment, 'full_sheet', s.full_sheet_path, g.producer"
                 " FROM slots s JOIN segments g ON g.id = s.segment_id"
                 " LEFT JOIN versions v ON v.id = s.full_sheet_version_id"
                 " WHERE s.store_id = ? AND s.full_sheet_path IS NOT NULL"
@@ -1066,6 +1129,7 @@ class IndexQueries:
             OrphanLink(
                 slot=row["slot"],
                 segment=row["segment"] or None,
+                producer=row["producer"],
                 kind=row["kind"],
                 version=row["version"],
             )
@@ -1171,7 +1235,8 @@ class IndexQueries:
         with self._read() as connection:
             stores = _stores(connection)
             rows = connection.execute(
-                "SELECT pr.name, pr.key, p.task_id, p.version_path, p.sha256,"
+                "SELECT pr.name, pr.key, pr.producer, p.task_id, p.version_path,"
+                " p.sha256,"
                 f" {_PIN_STATE} AS state FROM {_PIN_SOURCE}"
                 " JOIN projects pr ON pr.id = p.project_id"
                 f" WHERE p.store_id = ? AND {_PIN_STATE} <> 'ok' AND {condition}"
@@ -1182,6 +1247,7 @@ class IndexQueries:
             PinRef(
                 project=row["name"],
                 project_key=row["key"],
+                producer=row["producer"],
                 task=row["task_id"],
                 version=row["version_path"],
                 sha256=row["sha256"],
@@ -2022,7 +2088,8 @@ def _pins(
     seen, params = _visible(visible)
     rows = connection.execute(
         "SELECT p.store_id, p.version_path, p.task_id, p.sha256, pr.name, pr.key,"
-        " v.sha256 AS version_sha256, v.state AS version_state FROM pins p"
+        " pr.producer, v.sha256 AS version_sha256, v.state AS version_state"
+        " FROM pins p"
         " JOIN projects pr ON pr.id = p.project_id"
         " LEFT JOIN versions v ON v.store_id = p.store_id AND v.path = p.version_path"
         f" WHERE p.version_path IN ({_IDS}) AND {seen} ORDER BY pr.key, p.task_id",
@@ -2042,6 +2109,7 @@ def _pins(
             PinRef(
                 project=row[4],
                 project_key=row[5],
+                producer=row[6],
                 task=row[2],
                 version=row[1],
                 sha256=row[3],
@@ -2055,7 +2123,8 @@ def _issues(
     connection: sqlite3.Connection, condition: str, params: tuple[object, ...]
 ) -> tuple[IssueRef, ...]:
     rows = connection.execute(
-        "SELECT i.code, i.path, g.segment, s.path AS slot, i.origin, i.first_seen_at"
+        "SELECT i.code, i.path, g.segment, g.producer, s.path AS slot, i.origin,"
+        " i.first_seen_at"
         " FROM issues i JOIN segments g ON g.id = i.segment_id"
         " LEFT JOIN slots s ON s.id = i.slot_id"
         f" WHERE {condition} ORDER BY g.segment, i.path, i.code",
@@ -2066,6 +2135,7 @@ def _issues(
             code=row["code"],
             path=row["path"],
             segment=row["segment"] or None,
+            producer=row["producer"],
             slot=row["slot"],
             origin=row["origin"],
             first_seen_at=datetime.fromisoformat(row["first_seen_at"]),

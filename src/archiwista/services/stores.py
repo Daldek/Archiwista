@@ -75,19 +75,15 @@ def store_summary(
     visible : ProjectVisibility
         Projects the principal sees (``Authorizer.visible_projects``).
     """
-    producer = next(iter(store.roots()))
     state = next(
         (item for item in queries.status().stores if item.store == store.id), None
     )
     usage = queries.usage(store.id) or StoreUsage(store.id, (), 0, 0)
     unused = queries.unused_versions(store.id) or UnusedVersions(store.id, (), 0, 0, 0)
     problems = (
-        *(issue_problem(issue, producer) for issue in queries.issues(store.id)),
-        *(_orphan(link, producer) for link in queries.orphan_links(store.id)),
-        *(
-            _pin(pin, producer)
-            for pin in queries.pin_problems(store.id, visible=visible)
-        ),
+        *map(issue_problem, queries.issues(store.id)),
+        *map(_orphan, queries.orphan_links(store.id)),
+        *map(_pin, queries.pin_problems(store.id, visible=visible)),
     )
     return StoreSummary(
         store=store.id,
@@ -101,17 +97,16 @@ def store_summary(
     )
 
 
-def issue_problem(issue: IssueRef, producer: str) -> Problem:
+def issue_problem(issue: IssueRef) -> Problem:
     """Return a store problem the index holds with its fix instruction.
 
     Parameters
     ----------
     issue : IssueRef
-        A problem a scan or a check job recorded.
-    producer : str
-        Producer of the store directory, named in the instruction.
+        A problem a scan or a check job recorded; the instruction names the
+        producer of its segment.
     """
-    message, instruction = explain(issue.code, path=issue.path, producer=producer)
+    message, instruction = explain(issue.code, path=issue.path, producer=issue.producer)
     return Problem(
         issue.code,
         message,
@@ -124,9 +119,9 @@ def issue_problem(issue: IssueRef, producer: str) -> Problem:
     )
 
 
-def _orphan(link: OrphanLink, producer: str) -> Problem:
+def _orphan(link: OrphanLink) -> Problem:
     message, instruction = explain(
-        "orphan_sidecar", path=link.slot, version=link.version, producer=producer
+        "orphan_sidecar", path=link.slot, version=link.version, producer=link.producer
     )
     return Problem(
         "orphan_sidecar",
@@ -138,14 +133,14 @@ def _orphan(link: OrphanLink, producer: str) -> Problem:
     )
 
 
-def _pin(pin: PinRef, producer: str) -> Problem:
+def _pin(pin: PinRef) -> Problem:
     code = "missing_pin" if pin.state == "missing" else "pin_sha256_mismatch"
     message, instruction = explain(
         code,
         version=pin.version,
         project=pin.project,
         task=pin.task,
-        producer=producer,
+        producer=pin.producer,
     )
     return Problem(
         code,

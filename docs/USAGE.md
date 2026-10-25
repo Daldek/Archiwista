@@ -19,8 +19,13 @@ line: [`README.md`](../README.md); scripts and agents:
      addresses and in the API), the full path of the Kartograf store root (the
      directory that holds `kartograf-store.json` and the product directories,
      usually called `data/`) and the kind: local disk or network share (detected
-     by default). A store written by an earlier Kartograf has no marker: the
-     wizard then shows the command to run once, `kartograf store init --root
+     by default). A store needs the Kartograf store root, the root of an IMGWTools
+     store (the directory with `imgw-store.json`, field "Katalog IMGWTools") or
+     both. The IMGW field is offered while the IMGW source is installed (`pip
+     install "archiwista[imgw]"`) or the store already has such a directory; a
+     directory inside another store is refused. A store written by an earlier
+     version of its producer has no marker: the wizard then shows the command to
+     run once, `kartograf store init --root <path>` or `imgw store init --root
      <path>`. There can be several stores.
      If the directory Kartograf itself uses when a call names no store
      (`KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else

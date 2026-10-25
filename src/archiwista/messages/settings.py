@@ -55,6 +55,10 @@ MESSAGES = {
         ('identifier: lower-case letters, digits, "-" and "_", at most 32 characters'),
         "identyfikator: małe litery, cyfry, „-” i „_”, najwyżej 32 znaki",
     ),
+    "store_needs_directory": Text(
+        "a store needs at least one producer directory: kartograf or imgw",
+        "magazyn wymaga co najmniej jednego katalogu producenta: kartograf albo imgw",
+    ),
     "empty_text": Text(
         "the value must not be empty",
         "wartość nie może być pusta",

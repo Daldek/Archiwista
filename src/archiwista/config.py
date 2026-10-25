@@ -7,7 +7,7 @@ import sys
 import tempfile
 import threading
 import tomllib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Annotated, Literal, Protocol, Self
@@ -27,6 +27,7 @@ from pydantic import (
 from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
 from archiwista.sources import SourceState
+from archiwista.sources.markers import store_around, store_below
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,9 @@ DEFAULT_PROJECT_VISIBILITIES: tuple[DefaultProjectVisibility, ...] = (
 )
 
 _STORE_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
+# Producers whose directory a store can name, in the order of its settings: the
+# first one found decides the detected kind and the order of ``roots()``.
+STORE_PRODUCERS = ("kartograf", "imgw")
 
 
 class SourceRegistryView(Protocol):
@@ -177,9 +181,13 @@ class StoreConfig(BaseModel):
         Short name used in the API and interface, e.g. ``"zespol"``.
     name : str
         Human-readable store name.
-    kartograf : Path
+    kartograf : Path or None
         Store root of Kartograf: the directory that holds ``kartograf-store.json``
         and the product directories (usually called ``data``).
+    imgw : Path or None
+        IMGWTools store root, the directory that holds ``imgw-store.json``.
+        At least one of the two directories is required; one of them left out
+        is ``None``, never an empty path.
     kind : {"local", "share"}
         Detected from the file system when omitted; editable afterwards.
     path_aliases : dict[str, str]
@@ -191,17 +199,29 @@ class StoreConfig(BaseModel):
 
     id: str
     name: str
-    kartograf: AbsolutePath
+    kartograf: AbsolutePath | None = None
+    imgw: AbsolutePath | None = None
     kind: StoreKind
     path_aliases: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
+    def _require_a_directory(cls, data: object) -> object:
+        # Before the kind is looked for: a store without a directory has none.
+        if isinstance(data, Mapping) and all(
+            data.get(producer) is None for producer in STORE_PRODUCERS
+        ):
+            raise ValueError(message("settings.store_needs_directory"))
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
     def _detect_kind(cls, data: object) -> object:
         if isinstance(data, Mapping) and data.get("kind") is None:
-            root = data.get("kartograf")
-            if isinstance(root, str | Path):
-                return {**data, "kind": detect_store_kind(Path(root))}
+            for producer in STORE_PRODUCERS:
+                root = data.get(producer)
+                if isinstance(root, str | Path):
+                    return {**data, "kind": detect_store_kind(Path(root))}
         return data
 
     @field_validator("id")
@@ -225,8 +245,9 @@ class StoreConfig(BaseModel):
         return value
 
     def roots(self) -> dict[str, Path]:
-        """Return producer directories keyed by producer id."""
-        return {"kartograf": self.kartograf}
+        """Return the configured producer directories keyed by producer id."""
+        found = {"kartograf": self.kartograf, "imgw": self.imgw}
+        return {producer: root for producer, root in found.items() if root is not None}
 
     def local_path(self, path: str) -> Path:
         r"""Translate a path written on another computer to this computer.
@@ -721,8 +742,9 @@ def validate_settings(
         Producer plugins; each new or moved store directory is probed for
         a supported producer version and schema.
     previous : AppSettings, optional
-        Settings in effect; directories unchanged since then are not checked
-        again, so a disconnected share does not block unrelated edits.
+        Settings in effect; directories unchanged since then are neither
+        probed nor searched for store markers, so a disconnected share does
+        not block unrelated edits.
 
     Returns
     -------
@@ -737,17 +759,19 @@ def validate_settings(
     old_project_dirs = set(previous.project_dirs) if previous else set()
     problems: list[SettingsProblem] = []
     labelled: list[tuple[str, Path]] = []
+    unchanged: set[str] = set()
     for index, store in enumerate(settings.stores):
         for producer, root in store.roots().items():
             field = f"stores[{index}].{producer}"
             labelled.append((field, root))
             if old_roots.get((store.id, producer)) == root:
+                unchanged.add(field)
                 continue
             root_problems = check_store_root(store, producer, field)
             problems.extend(
                 root_problems or _probe_root(store, producer, field, registry)
             )
-    problems.extend(check_nesting(labelled))
+    problems.extend(check_nesting(labelled, skip_markers=unchanged))
     for index, path in enumerate(settings.project_dirs):
         if path not in old_project_dirs:
             problems.extend(check_project_dir(path, f"project_dirs[{index}]"))
@@ -912,13 +936,28 @@ def _directory_problem(path: Path) -> DirectoryProblem | None:
     return None
 
 
-def check_nesting(roots: Sequence[tuple[str, Path]]) -> tuple[SettingsProblem, ...]:
-    """Reject producer directories that are equal to or inside another one.
+def check_nesting(
+    roots: Sequence[tuple[str, Path]], *, skip_markers: Collection[str] = ()
+) -> tuple[SettingsProblem, ...]:
+    """Reject producer directories that are nested in a store (DEV-19.14).
+
+    A directory is nested when it is equal to or inside another directory of
+    the settings, which is judged by the paths alone, or when it lies inside a
+    store that the settings do not name or holds one: an ancestor holds the
+    marker file of a producer (``sources/markers.py``), or a directory within
+    ``NESTING_DEPTH`` levels below it does (no link is followed). The
+    producer's own writer looks at the whole tree below a directory, which
+    holds tens of thousands of slots in a large store; this check stays
+    bounded, so a store deeper down is found there.
 
     Parameters
     ----------
     roots : Sequence[tuple[str, Path]]
         Settings location and producer directory pairs of all stores.
+    skip_markers : Collection[str], optional
+        Settings locations of the directories whose surroundings are not
+        searched for markers (unchanged directories: a share that is not
+        connected must not block other edits).
 
     Returns
     -------
@@ -936,7 +975,26 @@ def check_nesting(roots: Sequence[tuple[str, Path]]) -> tuple[SettingsProblem, .
             text = message("root.nested", path=root, other=other)
             problems.append(SettingsProblem("root_nested", field, text))
             break
+        else:
+            if field not in skip_markers:
+                problems.extend(_nested_by_markers(field, root, real))
     return tuple(problems)
+
+
+def _nested_by_markers(
+    field: str, root: Path, real: Path
+) -> tuple[SettingsProblem, ...]:
+    around = store_around(real)
+    if around is not None:
+        ancestor, marker = around
+        text = message("root.in_store", path=root, other=ancestor, marker=marker)
+        return (SettingsProblem("root_nested", field, text),)
+    below = store_below(real)
+    if below is not None:
+        folder, marker = below
+        text = message("root.holds_store", path=root, other=folder, marker=marker)
+        return (SettingsProblem("root_nested", field, text),)
+    return ()
 
 
 def _probe_root(
@@ -1064,7 +1122,7 @@ def dump_settings(settings: AppSettings) -> str:
     for key, value in data.items():
         if isinstance(value, list) and value and isinstance(value[0], dict):
             tables.append((key, value))
-        else:
+        elif value is not None:
             lines.append(f"{_toml_key(key)} = {_toml_value(value)}")
     for key, rows in tables:
         for row in rows:
@@ -1072,6 +1130,7 @@ def dump_settings(settings: AppSettings) -> str:
             lines.extend(
                 f"{_toml_key(name)} = {_toml_value(value)}"
                 for name, value in row.items()
+                if value is not None
             )
     return "\n".join(lines) + "\n"
 

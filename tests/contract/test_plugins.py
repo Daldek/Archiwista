@@ -18,11 +18,13 @@ from archiwista.doctor import run_doctor
 from archiwista.errors import SourceIncompatibleError, SourceUnavailableError
 from archiwista.messages import message
 from archiwista.sources import (
+    CurrentVersionAdapter,
     DefaultRoot,
     DefaultRootAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceState,
@@ -82,6 +84,8 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert not any(
         isinstance(adapter, capability)
         for capability in (
+            CurrentVersionAdapter,
+            SegmentDescriptionAdapter,
             SegmentedAdapter,
             PartitionedAdapter,
             GeoAdapter,
@@ -116,6 +120,28 @@ def test_plugins_probe_carries_the_reason_and_hint_of_the_adapter(
         "give another directory",
     )
     assert (state.store, state.supported_versions) == (str(tmp_path), ">=1,<2")
+
+
+def test_plugins_probe_reason_and_hint_reach_the_state(tmp_path: Path) -> None:
+    """A probe says why a directory is refused and what fixes it; else neither."""
+    unmarked = tmp_path / "unmarked"
+    unmarked.mkdir()
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    refused = registry.probe("external", unmarked)
+    accepted = registry.probe("external", tmp_path)
+
+    assert (refused.status, refused.reason, refused.hint) == (
+        "incompatible",
+        "no_marker",
+        f"external init --root {unmarked}",
+    )
+    assert refused.detail == "brak znacznika"
+    assert (accepted.status, accepted.reason, accepted.hint) == (
+        "available",
+        None,
+        None,
+    )
 
 
 @pytest.mark.usefixtures("polish")
@@ -240,7 +266,7 @@ def test_plugins_failing_probe_and_unknown_producer_are_states(
     registry = load_registry(cache_dir=tmp_path)
 
     failed = registry.probe("external", tmp_path / "missing")
-    unknown = registry.probe("imgw", tmp_path)
+    unknown = registry.probe("unregistered", tmp_path)
 
     assert (failed.status, failed.store) == ("error", str(tmp_path / "missing"))
     assert failed.detail is not None and "FileNotFoundError" in failed.detail

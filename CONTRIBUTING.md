@@ -6,8 +6,9 @@ specification, fixes, features, and documentation are welcome.
 ## Getting started
 
 ```bash
-# Install the locked development environment (uv: https://docs.astral.sh/uv/)
-uv sync --locked
+# Install the locked development environment with the optional sources
+# (uv: https://docs.astral.sh/uv/)
+uv sync --locked --all-extras
 
 # Chromium for the interface tests (once)
 uv run playwright install chromium

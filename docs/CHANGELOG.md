@@ -38,10 +38,74 @@ command-line interface may change.
   `default`, `env` or `file`, `name`, `exists`, `marked`, `message`; `null` for a source
   without one); `/health` leaves it out (it is polled; the report is on demand). Kartograf
   gives the root with `store_root()`, which reads no store. `archiwista doctor` prints the root, the layer of the settings that gave it
-  and whether it exists and is a store. (DEV-19.2, ADR-032)
+  and whether it exists and is a store. (DEV-19.2, ADR-033)
+- The IMGWTools source behind the extra `archiwista[imgw]`: one plugin, `imgw`, reads a
+  store root of IMGWTools for both of its providers, IMGW-PIB and ČHMÚ (archives, series
+  and station catalogs as versions, the producer's own problems, the observation register
+  of a slot as history), judges the marker `imgw-store.json` and says why it refuses a
+  directory (`no_marker` with `imgw store init --root <path>`, `unsupported_marker`,
+  `foreign_store`, `not_a_store`). A marker without `created_by` is accepted, as the
+  producer accepts it. An incremental scan reads no sidecar of a version the index knows
+  (`skip_versions` of `iter_store`), and a file card shows the package and the version
+  that wrote the sidecar. `GET /sources` and `archiwista doctor` list the source; without
+  the extra it is `not_installed` with `pip install "archiwista[imgw]"` as the fix, and
+  Kartograf is unaffected. A store takes an IMGW directory beside or instead of its
+  Kartograf one (the next entry). `uv sync --locked --all-extras` installs the extra; CI
+  also runs the suite without it. (ADR 0032, DEV-19.12, DEV-19.13)
+- A store can name an IMGWTools directory, `imgw` in the settings (`GET` and `PUT
+  /settings`, `config.toml`), beside the Kartograf one or instead of it: one of the two
+  is required, and a settings file with only `kartograf` loads and saves as before. The
+  wizard and the settings offer the field "Katalog IMGWTools" while the source `imgw` is
+  available or the store already has such a directory (a saved directory is never dropped
+  by a form that cannot offer it). A scan skips the directory of a source that is not
+  available, with the notice `source_skipped`, and keeps its entry in the settings: the
+  Kartograf directory of the same store is still scanned and probed, and a store whose
+  every source is unavailable starts no scan; the notice does not keep a routine scan
+  from being forgotten. Files of an IMGW directory are indexed as versions of their
+  slots (the entry on the index of IMGW slots below). (SPEC 5.5, 5.8)
+- A producer directory that lies inside a store of any producer, or holds one, is refused
+  as `root_nested` at its own field: an ancestor of the directory holds `kartograf-store.json`
+  or `imgw-store.json`, or a directory up to two levels below it does (no link is
+  followed; the producer's own writer looks at the whole tree). Only a new or a moved
+  directory is looked around, so an unplugged share does not block other edits. (DEV-19.14)
+- The index of an IMGW directory keeps what IMGWTools calls things (`SCHEMA_VERSION` 7:
+  an existing index is rebuilt when it is opened and filled by the next full scan, as
+  with every schema change). The segment of an archive, a series or a station catalog
+  is its dataset, named in Polish from the producer's registry (`Dane hydrologiczne
+  dobowe`, `Katalog stacji ČHMÚ`) with the country of its provider and, as its product,
+  the family the producer declares for it (`hydro`, `meteo`, `pmaxtp`; `stations` for a
+  catalog), so the store view and the Map group the datasets instead of listing them as
+  unrecognised segments; a slot keeps the producer's own key
+  (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) and is named by its file (a catalog
+  by its key); a version keeps its provider (`IMGW-PIB`, `CHMI`).
+  The observation register of an archive (a source republished the same content under a
+  new signal) is kept as the history of its slot (`IndexQueries.observations`) and is
+  neither a version, a current version nor part of any count; a record the producer no
+  longer lists is forgotten. A producer that lists no segments can describe the ones
+  its entries name (`SegmentDescriptionAdapter`). (SPEC 4.3, ADR 0032)
+- The index knows the current version of an IMGW slot, which no link names: at the end of
+  a scan IMGWTools is asked (`current_version`; the capability `CurrentVersionAdapter`)
+  for the slots the scan touched (a version written, back or gone, a problem found or
+  resolved) and for those a scan that did not finish left without one; a scan that
+  changed nothing asks for none. A slot with a damaged version (an invalid sidecar,
+  another schema, a size that differs) has no current version and no older one stands in
+  its place: it is `unreadable` with its problem. The catalog and the card show the
+  current version and the clean-up report counts only the versions before it as unused.
+  A version directory without its sidecar (`missing_sidecar`, a download in progress or an
+  interrupted one) is no version and is explained as a non-critical, usually temporary
+  problem; a sidecar of another schema (`unknown_schema`) has its own text. (SPEC 4.4,
+  4.8.1, ADR 0032)
+- A scan of one segment (`segment` of `POST /stores/{store}/scan`) goes only to the data
+  source that owns the segment in the index (`IndexQueries.segment_producers`), so a
+  Kartograf segment is never offered to the IMGW directory of the same store; a name the
+  index does not know goes to the sources that scan by segment, as it did before. IMGWTools
+  reads only its whole directory (its dataset is a label), so a job that names a segment
+  it owns fails as `unsupported` before anything is scanned. (SPEC 4.4, ADR 0032)
 
 ### Changed
 
+- The problems of a store, the problems of a file card and the pins of a project name the
+  producer they belong to in their fix instructions, not the first producer of the store.
 - **Breaking:** errors follow the Nogat error registry. Every problem of the HTTP API has
   the registry's `code` (`validation_error`, `not_found`, `conflict`, `forbidden`,
   `unauthorized`, `missing_dependency`, `store_unavailable`, `data_error`,
