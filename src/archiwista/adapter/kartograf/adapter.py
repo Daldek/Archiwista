@@ -41,12 +41,14 @@ from kartograf import (
     store_root,
 )
 
-from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS
+from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS, actions
 from archiwista.adapter.kartograf.marker import refusal
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    CommandCall,
+    CommandInfo,
     CoordinateTransformer,
     DefaultRoot,
     EntryMeta,
@@ -90,9 +92,10 @@ class KartografAdapter:
     -----
     Besides ``SourceAdapter`` it implements every optional capability:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
-    ``LinkCheckAdapter``, ``SheetGridAdapter`` and ``DefaultRootAdapter``. All
-    methods may run in several threads at once; one iterator of ``iter_entries``
-    belongs to one thread.
+    ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter`` and
+    ``ActionAdapter`` (Kartograf's commands, ``actions.py``). All methods may
+    run in several threads at once; one iterator of ``iter_entries`` belongs to
+    one thread.
     """
 
     producer = PRODUCER
@@ -444,6 +447,24 @@ class KartografAdapter:
         except KartografError as error:
             raise _producer_error(error) from error
         return SheetGrid(status="available", sheets=codes, outlines=outlines)
+
+    def commands(self) -> tuple[CommandInfo, ...]:
+        """Return Kartograf's catalog (``list_commands``, ``command_schema``)."""
+        return actions.catalog()
+
+    def parse(self, line: str) -> CommandCall:
+        """Read a ``kartograf …`` line with Kartograf's parser (``parse_command``)."""
+        return actions.parse(line)
+
+    def validate(
+        self, command: str, options: Mapping[str, object], *, root: Path | None
+    ) -> Mapping[str, object]:
+        """Check a call with ``validate_command``, ``root=`` for a store command."""
+        return actions.validate(command, options, root=root)
+
+    def format(self, call: CommandCall) -> str:
+        """Return the canonical ``kartograf …`` line of a call (``format_command``)."""
+        return actions.format_line(call)
 
     def _state(
         self,

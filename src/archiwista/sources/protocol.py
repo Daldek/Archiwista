@@ -1,11 +1,11 @@
-"""Read-only, producer-neutral source adapter interfaces.
+"""Producer-neutral source adapter interfaces: reads, and commands as data.
 
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
 version of a slot, their parts, coordinate operations, link confirmation,
-sheet grids and the default store root are optional capabilities: a
-producer without them still satisfies ``SourceAdapter``.
+sheet grids, the default store root and the producer's commands are optional
+capabilities: a producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
+    CommandCall,
+    CommandInfo,
     DefaultRoot,
     EntryMeta,
     Footprint,
@@ -219,4 +221,43 @@ class DefaultRootAdapter(Protocol):
         uses this directory itself. The producer may read the whole directory
         to size it, so ask for an answer a person waits for, never on a poll.
         """
+        ...
+
+
+@runtime_checkable
+class ActionAdapter(Protocol):
+    """Optional capability: the producer's commands as data (SPEC 12.2 KB-1 to KB-4).
+
+    The catalog, the reading of a command line, the check of a call and the
+    command line of a call: what the forms, the plan window and an agent need
+    before anything runs (plan of 2026-10-25, A1). None of them uses the
+    network or writes. A call the producer refuses raises ``ProducerError`` with
+    the producer's registry code, its text and hint, and the names it gives
+    (``details.option``, ``details.options``, ``details.allowed``).
+    """
+
+    def commands(self) -> tuple[CommandInfo, ...]:
+        """Return the producer's catalog in its order, texts in the call's language."""
+        ...
+
+    def parse(self, line: str) -> CommandCall:
+        """Read a command line as the producer's own command line reads it."""
+        ...
+
+    def validate(
+        self, command: str, options: Mapping[str, object], *, root: Path | None
+    ) -> Mapping[str, object]:
+        """Check a call without network and without writing.
+
+        ``root`` is the store root of a command that works on a store
+        (``CommandInfo.store``): the configured store's, given to the producer
+        in the call; such a command with ``None`` is a program error
+        (``ValueError``) and never reaches the producer, whose default root
+        would stand in. A command on no store ignores it. Returns the options
+        as the producer reads them.
+        """
+        ...
+
+    def format(self, call: CommandCall) -> str:
+        """Return the producer's command line of a call; ``parse`` reads it back."""
         ...

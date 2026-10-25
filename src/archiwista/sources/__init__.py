@@ -1,6 +1,7 @@
 """Public source interface for store producer plugins."""
 
 from archiwista.sources.protocol import (
+    ActionAdapter,
     CoordinateTransformer,
     CurrentVersionAdapter,
     DefaultRootAdapter,
@@ -15,6 +16,11 @@ from archiwista.sources.protocol import (
     SourceFactory,
 )
 from archiwista.sources.types import (
+    CommandCall,
+    CommandChoice,
+    CommandInfo,
+    CommandOption,
+    CommandWrites,
     DefaultRoot,
     DefaultRootSource,
     EntryKind,
@@ -22,6 +28,8 @@ from archiwista.sources.types import (
     Footprint,
     GeoJSONGeometry,
     LocationKind,
+    OptionType,
+    PathRole,
     ProjectInfo,
     ProjectPin,
     ProjectTask,
@@ -37,6 +45,12 @@ from archiwista.sources.types import (
 )
 
 __all__ = [
+    "ActionAdapter",
+    "CommandCall",
+    "CommandChoice",
+    "CommandInfo",
+    "CommandOption",
+    "CommandWrites",
     "CoordinateTransformer",
     "CurrentVersionAdapter",
     "DefaultRoot",
@@ -50,7 +64,9 @@ __all__ = [
     "GeoJSONGeometry",
     "LinkCheckAdapter",
     "LocationKind",
+    "OptionType",
     "PartitionedAdapter",
+    "PathRole",
     "ProjectInfo",
     "ProjectPin",
     "ProjectTask",

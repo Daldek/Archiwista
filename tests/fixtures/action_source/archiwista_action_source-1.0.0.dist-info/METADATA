@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: archiwista-action-source
+Version: 1.0.0
+Summary: Stand-in producer plugin of the Archiwista action tests.

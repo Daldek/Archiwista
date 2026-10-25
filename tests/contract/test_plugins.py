@@ -18,6 +18,7 @@ from archiwista.doctor import run_doctor
 from archiwista.errors import SourceIncompatibleError, SourceUnavailableError
 from archiwista.messages import message
 from archiwista.sources import (
+    ActionAdapter,
     CurrentVersionAdapter,
     DefaultRoot,
     DefaultRootAdapter,
@@ -84,6 +85,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert not any(
         isinstance(adapter, capability)
         for capability in (
+            ActionAdapter,
             CurrentVersionAdapter,
             SegmentDescriptionAdapter,
             SegmentedAdapter,

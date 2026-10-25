@@ -57,6 +57,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
 | [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted (amends ADR-019 and ADR-024; the plan's approval is delegated) |
 | [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 
 ---
 

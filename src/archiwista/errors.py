@@ -181,7 +181,9 @@ class SourceIncompatibleError(SourceStateError):
 class ProducerError(ArchiwistaError):
     """A producer library rejected an operation; its own message is kept.
 
-    Default code ``data_error``; the reason is ``<package>_error``.
+    Default code ``data_error``; the reason is ``<package>_error``, and
+    ``details[package]`` holds the producer's ``exception``, ``message`` and
+    its own ``reason`` when it gave one.
 
     Parameters
     ----------
@@ -191,15 +193,39 @@ class ProducerError(ArchiwistaError):
         Class name of the producer's exception, e.g. ``"ValidationError"``.
     message : str
         The producer's message, unchanged.
+    code : str or None, optional
+        The producer's registry code (a refused call: ``validation_error``);
+        ``data_error`` when omitted or when Archiwista's registry lacks it.
+    hint : str or None, optional
+        The producer's hint, unchanged.
+    details : Mapping[str, object] or None, optional
+        The producer's details: what it names besides its message (``option``,
+        ``options``, ``allowed``) stays beside ``reason``; its ``reason`` goes
+        into ``details[package]``.
     """
 
     default_code = "data_error"
 
-    def __init__(self, package: str, exception: str, message: str) -> None:
+    def __init__(
+        self,
+        package: str,
+        exception: str,
+        message: str,
+        *,
+        code: str | None = None,
+        hint: str | None = None,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        named = dict(details or {})
+        own: dict[str, object] = {"exception": exception, "message": message}
+        if "reason" in named:
+            own["reason"] = named.pop("reason")
         super().__init__(
             message,
+            code=code if code in BY_CODE else None,
             reason=PRODUCER_REASONS.get(package, "producer_error"),
-            details={package: {"exception": exception, "message": message}},
+            details={**named, package: own},
+            hint=hint,
         )
         self.package = package
         self.exception = exception
@@ -334,6 +360,18 @@ class InvalidChangeError(ArchiwistaError):
 
     For example unknown people or groups, entries that do not fit the
     project's visibility, or a reserved account id.
+    """
+
+    default_code = "validation_error"
+
+
+class CommandRequestError(ArchiwistaError):
+    """A request about a producer's command that misses what Archiwista adds.
+
+    ``400 validation_error``: the store of a command that works on a store is
+    not named (reason ``store_required``) or has no directory of the producer
+    (``store_without_producer``); ``details.option`` names the request's field.
+    The producer's own refusals of a call are ``ProducerError``.
     """
 
     default_code = "validation_error"

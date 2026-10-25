@@ -20,6 +20,9 @@ type EntryKind = Literal["version", "link", "full_sheet", "problem", "observatio
 type LocationKind = Literal["footprint", "country", "none"]
 type GeoJSONGeometry = dict[str, object]
 type DefaultRootSource = Literal["default", "env", "dotenv", "file"]
+type OptionType = Literal["string", "integer", "number", "boolean", "array", "object"]
+type PathRole = Literal["input", "output"]
+type CommandWrites = Literal["none", "add", "replace", "delete"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,3 +355,145 @@ class SheetGrid:
     status: Literal["available", "unsupported"]
     sheets: tuple[str, ...] = ()
     outlines: tuple[GeoJSONGeometry, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CommandChoice:
+    """A value an option of a producer command allows, with what it means.
+
+    Parameters
+    ----------
+    value : str or int
+        The value in the JSON form of a call.
+    meaning : str
+        What it stands for, in the producer's words.
+    """
+
+    value: str | int
+    meaning: str
+
+
+@dataclass(frozen=True, slots=True)
+class CommandOption:
+    """One option of a producer command, as a call gives it (``CommandCall.options``).
+
+    Parameters
+    ----------
+    name : str
+        The key of the option in a call, ``snake_case`` (``vertical_crs``).
+    type : {"string", "integer", "number", "boolean", "array", "object"}
+        The JSON type of its value.
+    required : bool
+        A call without it is refused.
+    description : str
+        What it is, in the producer's words: in the language of the call when the
+        producer has that language, else in English.
+    choices : tuple[CommandChoice, ...]
+        The values it allows; empty when it takes any.
+    default : object
+        The JSON value the producer uses when a call leaves it out; ``None`` for
+        none.
+    minimum, maximum : int or float or None
+        Bounds of a number.
+    items : {"string", "integer", "number", "boolean", "array", "object"} or None
+        The type of the items of an ``array``.
+    group : str or None
+        The group of mutually exclusive options it belongs to (``area``: a sheet, a
+        box or a geometry file); the description says whether one is required.
+    path_role : {"input", "output"} or None
+        Its value is a path the command reads (``input``) or writes (``output``).
+        Archiwista accepts no such path from a request (SPEC 10.1).
+    """
+
+    name: str
+    type: OptionType
+    required: bool
+    description: str
+    choices: tuple[CommandChoice, ...] = ()
+    default: object = None
+    minimum: int | float | None = None
+    maximum: int | float | None = None
+    items: OptionType | None = None
+    group: str | None = None
+    path_role: PathRole | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CommandInfo:
+    """One command of a producer's catalog (SPEC 12.2 KB-1, IMGW-11).
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    command : str
+        The producer's name of the command, ``<group> <verb>`` (``elevation
+        download``).
+    group : str
+        Its group (``elevation``).
+    summary : str
+        One sentence on what it does: in the language of the call when the
+        producer has that language, else in English.
+    description : str
+        When to use it, when not and its main limit; in the same language.
+    options : tuple[CommandOption, ...]
+        The options of a call, in the producer's order. The store root and the
+        flags of a run are none of them: Archiwista names the store itself
+        (``store``), and a command line gives the flags beside the options
+        (``CommandCall.run``).
+    read_only : bool
+        A run changes nothing outside the process: no store, project or cache.
+    writes : {"none", "add", "replace", "delete"}
+        What a run does to files.
+    network : bool
+        A run uses the network.
+    check : bool
+        The producer plans a run without effects (its ``check_command``).
+    store : bool
+        The command works on a store, so every call names the store root;
+        Archiwista takes it from the configured store, never from a request
+        (Decision 1 of the plan of 2026-10-25).
+    examples : tuple[str, ...]
+        Complete command lines of the producer, as ``parse`` reads them.
+    """
+
+    producer: str
+    command: str
+    group: str
+    summary: str
+    description: str
+    options: tuple[CommandOption, ...]
+    read_only: bool
+    writes: CommandWrites
+    network: bool
+    check: bool
+    store: bool
+    examples: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CommandCall:
+    """A producer command with the options of one call (SPEC 12.2 KB-2).
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    command : str
+        The producer's name of the command (``CommandInfo.command``).
+    options : Mapping[str, object]
+        The options in the JSON form of the producer's catalog
+        (``CommandInfo.options``): Kartograf's ``bbox`` as four numbers with
+        ``bbox_crs``, a list as a list.
+    run : Mapping[str, object]
+        What a command line gives beside the options: the store root and the
+        flags of a run, by the names of the data-output convention where it has
+        them (DEV §19: ``root``, ``output_dir``, ``check``, ``force``,
+        ``upgrade``, ``plan``) and by the producer's otherwise (``workers``,
+        ``details``); a text, a number or ``True``.
+    """
+
+    producer: str
+    command: str
+    options: Mapping[str, object] = field(default_factory=dict)
+    run: Mapping[str, object] = field(default_factory=dict)

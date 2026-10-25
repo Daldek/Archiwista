@@ -1,0 +1,189 @@
+"""Stand-in producer plugin of the action tests: commands called as IMGWTools'.
+
+Tests register it the way production plugins are registered: they put this
+directory, holding its ``*.dist-info/entry_points.txt``, on ``sys.path``. Its
+producer (``standin_producer``) takes the store root as ``options["root"]``,
+as IMGWTools does; the adapter keeps the root out of the producer-neutral
+options, in ``CommandCall.run["root"]`` and in the ``root`` of ``validate``,
+as the Kartograf adapter does with a producer that takes it by name beside
+the options. It reads no store: its stores are empty directories.
+"""
+
+from collections.abc import Iterator, Mapping
+from pathlib import Path
+from typing import cast
+
+import standin_producer  # type: ignore[import-not-found]
+
+from archiwista.errors import ProducerError
+from archiwista.messages import current_language
+from archiwista.sources import (
+    CommandCall,
+    CommandChoice,
+    CommandInfo,
+    CommandOption,
+    CommandWrites,
+    EntryMeta,
+    Footprint,
+    OptionType,
+    PathRole,
+    ProjectInfo,
+    ScanScope,
+    SourceAdapter,
+    SourceContext,
+    SourceEntry,
+    SourceState,
+)
+from archiwista.sources.registry import check_package, source_error
+
+PRODUCER = "standin"
+PACKAGE = "standin-producer"
+SUPPORTED_VERSIONS = ">=2,<3"
+SCHEMAS = ("standin-meta/1",)
+# The path role of the store root among the producer's options (DEV-19.1).
+ROOT = "root"
+
+
+class StandinAdapter:
+    """Commands of the stand-in producer; an empty store for every read."""
+
+    producer = PRODUCER
+    package = PACKAGE
+    supported_versions = SUPPORTED_VERSIONS
+    schemas: tuple[str, ...] = SCHEMAS
+
+    def __init__(self, context: SourceContext) -> None:
+        self.cache_dir = context.cache_dir
+
+    def probe(self, root: Path) -> SourceState:
+        """Accept an existing directory."""
+        if root.is_dir():
+            return SourceState(self.producer, "available", store=str(root))
+        return SourceState(self.producer, "error", store=str(root))
+
+    def iter_entries(
+        self, root: Path, *, scope: ScanScope | None = None
+    ) -> Iterator[SourceEntry]:
+        """Yield nothing: the stand-in's stores are empty."""
+        return iter(())
+
+    def read_meta(self, entry: SourceEntry) -> EntryMeta:
+        """Describe an entry by its path only."""
+        return EntryMeta(
+            producer=self.producer, store=entry.store, relative_path=entry.relative_path
+        )
+
+    def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
+        """Report that the producer has no location for its files."""
+        return Footprint(location="none", reason="no_source")
+
+    def read_project(self, path: Path) -> ProjectInfo:
+        """Describe a project directory without a manifest."""
+        return ProjectInfo(
+            producer=self.producer, store=str(path), path=path, name=path.name
+        )
+
+    def project_status(self, path: Path) -> ProjectInfo:
+        """Report the project as read."""
+        return self.read_project(path)
+
+    def commands(self) -> tuple[CommandInfo, ...]:
+        """Return the producer's catalog; the root is no option of a call."""
+        polish = current_language() == "pl"
+        return tuple(
+            _info(name, standin_producer.command_schema(name), polish=polish)
+            for name in standin_producer.list_commands()
+        )
+
+    def parse(self, line: str) -> CommandCall:
+        """Read a line; its ``--root`` goes beside the options."""
+        try:
+            command, options = standin_producer.parse_command(line)
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        run = {ROOT: options.pop(ROOT)} if ROOT in options else {}
+        return CommandCall(PRODUCER, str(command), options, run)
+
+    def validate(
+        self, command: str, options: Mapping[str, object], *, root: Path | None
+    ) -> Mapping[str, object]:
+        """Check a call, the store root as ``options["root"]`` of a store command."""
+        given = dict(options)
+        try:
+            if _works_on_store(standin_producer.command_schema(command)):
+                if root is None:
+                    raise ValueError(f"{command} works on a store: give its root")
+                given[ROOT] = str(root)
+            checked = dict(standin_producer.validate_command(command, options=given))
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        checked.pop(ROOT, None)
+        return cast(Mapping[str, object], checked)
+
+    def format(self, call: CommandCall) -> str:
+        """Return the producer's line; the root of ``run`` is its ``--root``."""
+        given = dict(call.options)
+        if ROOT in call.run:
+            given[ROOT] = call.run[ROOT]
+        try:
+            return str(standin_producer.format_command(call.command, options=given))
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+
+
+def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:
+    """Return the producer-neutral description of one command."""
+    options = cast(list[dict[str, object]], spec["options"])
+    return CommandInfo(
+        producer=PRODUCER,
+        command=name,
+        group=name.partition(" ")[0],
+        summary=str(spec["summary_pl" if polish else "summary"]),
+        description=str(spec["summary_pl" if polish else "summary"]),
+        options=tuple(_option(option) for option in options if option["name"] != ROOT),
+        read_only=spec["writes"] == "none",
+        writes=cast(CommandWrites, spec["writes"]),
+        network=bool(spec["network"]),
+        check=bool(spec["check"]),
+        store=_works_on_store(spec),
+        examples=tuple(cast(list[str], spec["examples"])),
+    )
+
+
+def _option(option: dict[str, object]) -> CommandOption:
+    """Return the producer-neutral description of one option."""
+    choices = cast(list[str], option.get("enum", []))
+    return CommandOption(
+        name=str(option["name"]),
+        type=cast(OptionType, option["type"]),
+        required=bool(option["required"]),
+        description=str(option["description"]),
+        choices=tuple(CommandChoice(value, value) for value in choices),
+        path_role=cast(PathRole | None, option.get("path_role")),
+    )
+
+
+def _works_on_store(spec: object) -> bool:
+    """Whether a command takes the store root among its options."""
+    options = cast(list[dict[str, object]], cast(dict[str, object], spec)["options"])
+    return any(option.get("path_role") == ROOT for option in options)
+
+
+def _refusal(error: Exception) -> ProducerError:
+    """Return the producer's refusal of a call as Archiwista's error."""
+    option = getattr(error, "option", None)
+    return ProducerError(
+        PACKAGE,
+        type(error).__name__,
+        str(error),
+        code=str(getattr(error, "code", "validation_error")),
+        details={} if option is None else {"option": option},
+    )
+
+
+def load(context: SourceContext) -> SourceAdapter:
+    """Create the adapter of an installed, supported stand-in producer."""
+    state = check_package(PRODUCER, PACKAGE, SUPPORTED_VERSIONS, SCHEMAS)
+    if state.status != "available":
+        raise source_error(state)
+    return StandinAdapter(context)

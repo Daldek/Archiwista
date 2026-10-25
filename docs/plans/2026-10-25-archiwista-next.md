@@ -623,7 +623,9 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | KH-1 as `set_project_root(project_dir, *, root)` (the SPEC called it `set_project_output_dir`) | a later "change store" action (A13 explains) |
 | Kartograf | a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too) | M2, I1 (removes the copy) |
 | Kartograf | ~~a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`~~ **done** (Kartograf `45dedf4a`: `store_root()` returns `StoreRoot(root, source, name, marker_exists)` and reads no store; the adapter uses it, ADR-033) | M5 (removed the walk) |
+| Kartograf | the examples of `kartograf-commands/1` as the lines `format_command` writes: the second example of `project add` (`kartograf project add gleby soil hsg --sheet N-34-130-D --depth 0-5cm`) gives `--sheet` before `--depth`, and the canonical line has `--depth` first; a test of Kartograf that formats every example back would keep them canonical (found in A1, whose contract test therefore compares the calls read back, not the text) | A1 |
 | IMGWTools | a machine code in `StoreInfo` (today only `problems` texts; `missing_marker` covers a layout without a marker and a foreign directory) | I1 |
+| IMGWTools | `parse_command(line)` beside `format_command`, as Kartograf's KB-2, so that a pasted `imgw …` line becomes a call | the IMGW actions (v0.5; ADR-034) |
 | Nogat | registry: the edge to Kartograf gets `uses` and `exchange` for the command layer (`kartograf-commands/1`, `kartograf-result/1`, `kartograf-download/1`, `kartograf-availability/1`, `kartograf-testing`); the edge to IMGWTools becomes `active` with I2 and gets `imgw-plan/1`, `imgw-result/1`, `imgw-testing` | I2, A1 |
 
 ## Risks

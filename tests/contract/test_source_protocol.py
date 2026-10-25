@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from archiwista.sources import (
+    ActionAdapter,
     CurrentVersionAdapter,
     DefaultRootAdapter,
     EntryMeta,
@@ -74,6 +75,7 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
 
     assert isinstance(adapter, SourceAdapter)
     for capability in (
+        ActionAdapter,
         CurrentVersionAdapter,
         SegmentDescriptionAdapter,
         SegmentedAdapter,
