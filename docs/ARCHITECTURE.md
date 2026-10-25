@@ -146,7 +146,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `jobs/protocol.py` | JSON Lines protocol supervisor ↔ worker process | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `INTERRUPTED_EXIT`, `CODE_WORKER_CRASHED` |
 | `jobs/scheduler.py` | periodic scans of the store and own data | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
 | `jobs/reindex.py` | `archiwista reindex`: full foreground scan | `reindex_main` |
-| `jobs/availability.py` | whether the store can be read now (an empty mount point of a known store = unavailable) | `unreachable_detail` |
+| `jobs/availability.py` | whether the store can be read now (an empty mount point of a known store = unavailable), as the error a job raises: `store_unavailable` with the reason and the hint of the probe | `store_unreachable` |
 | `jobs/foreground.py` | tracking foreground CLI jobs | `run_foreground` |
 
 **Areas**
@@ -572,7 +572,7 @@ interval after the end of the last scan, for any store that would not otherwise 
 `scan_interval_s`: 5 min on a local disk, 15 min on a share. A store
 with a job writing the index is skipped. An `unavailable` store is only
 probed, and scanned when the probe finds it and its directory is not
-an empty mount point (`unreachable_detail`). A store added or
+an empty mount point (`store_unreachable`). A store added or
 moved in settings gets a full scan immediately. Once an hour
 (`PRUNE_INTERVAL`) the tick prunes the job history (`JobSupervisor.prune`).
 

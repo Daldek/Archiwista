@@ -9,11 +9,14 @@ is.
 import os
 from pathlib import Path
 
+from archiwista.errors import SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import SourceState
 
 
-def unreachable_detail(state: SourceState, root: Path, *, indexed: bool) -> str | None:
+def store_unreachable(
+    state: SourceState, root: Path, *, indexed: bool
+) -> SourceUnavailableError | None:
     """Return why a store directory cannot be read now, ``None`` when it can.
 
     Parameters
@@ -28,14 +31,18 @@ def unreachable_detail(state: SourceState, root: Path, *, indexed: bool) -> str 
 
     Returns
     -------
-    str or None
-        Description of the cause, a catalog message.
+    SourceUnavailableError or None
+        ``store_unavailable`` whose message is a catalog message and whose
+        reason and hint are the probe's (``store_unreadable`` without a
+        reason); ``None`` for a store that can be read.
     """
     if state.status != "available":
         text = message("store.unreadable", path=root)
-        return with_detail(text, state.detail)
+        return SourceUnavailableError(
+            with_detail(text, state.detail), reason=state.reason, hint=state.hint
+        )
     if indexed and _empty(root):
-        return message("scan.store_empty", path=root)
+        return SourceUnavailableError(message("scan.store_empty", path=root))
     return None
 
 

@@ -42,6 +42,7 @@ from archiwista.sources import (
     ScanScope,
     SourceAdapter,
     SourceEntry,
+    SourceState,
 )
 from archiwista.sources.registry import load_registry
 from tests.fixtures.make_store import (
@@ -463,6 +464,38 @@ def test_empty_mount_point_keeps_index(env: _Env) -> None:
     assert unavailable.missing_versions == 0
     assert back.finished.missing == 0
     assert (env.state().status, env.state().stale) == ("available", False)
+    assert _rows(env.queries) == rows
+
+
+def test_store_refused_by_the_probe_keeps_its_reason_and_hint(
+    env: _Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store the producer refuses is unavailable with the producer's reason."""
+    # Arrange
+    env.scan("full")
+    rows = _rows(env.queries)
+    refused = SourceState(
+        producer="kartograf",
+        status="incompatible",
+        detail="no marker here",
+        reason="no_marker",
+        hint="run the init command",
+    )
+    monkeypatch.setattr(env.adapter, "probe", lambda root: refused)
+
+    # Act
+    with pytest.raises(SourceUnavailableError) as raised:
+        env.scan("incremental")
+
+    # Assert
+    error = raised.value
+    assert (error.code, error.details["reason"], error.hint) == (
+        "store_unavailable",
+        "no_marker",
+        "run the init command",
+    )
+    assert "no marker here" in str(error)
+    assert (env.state().status, env.state().stale) == ("unavailable", True)
     assert _rows(env.queries) == rows
 
 

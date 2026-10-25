@@ -80,8 +80,9 @@
  *   area_too_complex, area_unreadable, request_too_large, source_unavailable,
  *   source_incompatible, kartograf_error, store_unreadable…; the page adds
  *   network_error, http_error and stream_closed.
- * @property {Array<{code: string, field: string, message: string}>} [problems] -
- *   Invalid settings, field by field (`field` like `stores[0].kartograf`).
+ * @property {Array<{code: string, field: string, message: string, reason?: string,
+ *   hint?: string}>} [problems] - Invalid settings, field by field (`field` like
+ *   `stores[0].kartograf`); `reason` and `hint` when a producer refuses a directory.
  * @property {{id: string, state: string, package_version: string|null,
  *   supported_versions: string|null, requirement: string}} [source] - An unavailable
  *   producer plugin and the pip requirement fixing it.

@@ -578,18 +578,26 @@ class SettingsProblem:
         Settings location, e.g. ``"stores[0].kartograf"``.
     message : str
         Description for the user, a catalog message.
+    reason : str or None, optional
+        Machine code of the cause a producer gave for a directory it refuses
+        (``SourceState.reason``, e.g. ``"no_marker"``).
+    hint : str or None, optional
+        One line telling how to fix it, a catalog message, when it is known.
     """
 
     code: str
     field: str
     message: str
+    reason: str | None = None
+    hint: str | None = None
 
 
 class SettingsValidationError(ArchiwistaError):
     """Settings are malformed or point at unusable directories.
 
     A ``validation_error`` with the reason ``invalid_settings``; the problems
-    are ``details["problems"]``.
+    are ``details["problems"]``: ``code``, ``field`` and ``message`` of each,
+    and its ``reason`` and ``hint`` when it has them.
     """
 
     default_code = "validation_error"
@@ -599,13 +607,22 @@ class SettingsValidationError(ArchiwistaError):
         self.problems = tuple(problems)
         super().__init__(
             join([problem.message for problem in self.problems]),
-            details={
-                "problems": [
-                    {"code": item.code, "field": item.field, "message": item.message}
-                    for item in self.problems
-                ]
-            },
+            details={"problems": [_problem_details(item) for item in self.problems]},
         )
+
+
+def _problem_details(problem: SettingsProblem) -> dict[str, object]:
+    """Return a problem as the JSON of ``details["problems"]``."""
+    details: dict[str, object] = {
+        "code": problem.code,
+        "field": problem.field,
+        "message": problem.message,
+    }
+    if problem.reason is not None:
+        details["reason"] = problem.reason
+    if problem.hint is not None:
+        details["hint"] = problem.hint
+    return details
 
 
 _PYDANTIC_KEYS = {
@@ -935,7 +952,11 @@ def _probe_root(
     )
     return (
         SettingsProblem(
-            f"source_{state.status}", field, with_detail(text, state.detail)
+            f"source_{state.status}",
+            field,
+            with_detail(text, state.detail),
+            reason=state.reason,
+            hint=state.hint,
         ),
     )
 

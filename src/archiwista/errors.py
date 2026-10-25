@@ -115,6 +115,8 @@ class SourceStateError(ArchiwistaError):
         State of the producer plugin when the plugin itself is the cause.
     code, reason : str or None, optional
         Registry code and reason instead of the class defaults.
+    hint : str or None, optional
+        One line telling how to fix it.
     """
 
     default_code = "missing_dependency"
@@ -127,8 +129,9 @@ class SourceStateError(ArchiwistaError):
         state: SourceState | None = None,
         code: str | None = None,
         reason: str | None = None,
+        hint: str | None = None,
     ) -> None:
-        super().__init__(message, code=code, reason=reason)
+        super().__init__(message, code=code, reason=reason, hint=hint)
         self.state = state
 
 
@@ -136,13 +139,34 @@ class SourceUnavailableError(SourceStateError):
     """Producer package or configured store cannot be reached.
 
     Without a plugin state the store itself cannot be read: the code is then
-    ``store_unavailable`` (reason ``store_unreadable``).
+    ``store_unavailable`` (reason ``store_unreadable``), or the ``reason`` and
+    the ``hint`` of a store the producer refuses (``SourceState.reason`` and
+    ``SourceState.hint``: ``no_marker``, ``foreign_store``, ...).
+
+    Parameters
+    ----------
+    message : str
+        Description for the user.
+    state : SourceState or None, optional
+        State of the producer plugin when the plugin itself is the cause.
+    reason, hint : str or None, optional
+        Cause and fix of a refused store; used without ``state`` only.
     """
 
-    def __init__(self, message: str, *, state: SourceState | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        state: SourceState | None = None,
+        reason: str | None = None,
+        hint: str | None = None,
+    ) -> None:
         if state is None:
             super().__init__(
-                message, code="store_unavailable", reason="store_unreadable"
+                message,
+                code="store_unavailable",
+                reason=reason or "store_unreadable",
+                hint=hint,
             )
         else:
             super().__init__(message, state=state)

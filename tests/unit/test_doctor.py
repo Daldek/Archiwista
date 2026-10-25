@@ -185,6 +185,28 @@ def test_doctor_wrong_version_shows_installed_supported_and_fix(
     assert 'Naprawa: zainstaluj zgodną wersję: pip install "kartograf' in out
 
 
+def test_doctor_refused_store_shows_the_fix_the_producer_gave(
+    paths: AppPaths, store_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hint of a store the producer refuses is the fix the person is shown."""
+    configure(paths, store_root)
+    refused = replace(
+        KARTOGRAF,
+        status="incompatible",
+        store=str(store_root),
+        detail="to nie jest magazyn",
+        reason="no_marker",
+        hint="uruchom raz: kartograf store init",
+    )
+
+    status, out = run_cli(paths, FakeRegistry(failing={store_root: refused}), capsys)
+
+    assert status == 10
+    assert "to nie jest magazyn" in out
+    assert "Naprawa: uruchom raz: kartograf store init" in out
+    assert out.count("Naprawa:") == 1  # the hint replaces the generic fix
+
+
 def test_doctor_optional_plugin_missing_is_only_a_warning(
     paths: AppPaths, store_root: Path
 ) -> None:

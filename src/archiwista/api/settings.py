@@ -65,8 +65,10 @@ def put_settings(
 ) -> Settings:
     """Replace all settings (administrator); answer those now in effect.
 
-    Invalid values or unusable directories answer `422 validation_error`
-    with `problems` (`code`, `field`, `message`) and change nothing.
-    Changing offline mode or basemaps changes the CSP of later responses.
+    Invalid values or unusable directories answer `400 validation_error`
+    with `problems` (`code`, `field`, `message`, and `reason` and `hint` of a
+    directory the producer refuses, e.g. a store without its marker) and
+    change nothing. Changing offline mode or basemaps changes the CSP of later
+    responses.
     """
     return save_settings(service, body)

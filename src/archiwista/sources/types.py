@@ -84,7 +84,11 @@ class SourceState:
     """Report a producer's availability and supported version information.
 
     ``store`` is the probed producer directory as text, ``None`` for the
-    state of the plugin itself.
+    state of the plugin itself. For a store the producer refuses, ``detail``
+    says what is wrong, ``reason`` is the machine code of the cause (a
+    missing or foreign marker, for example) and ``hint`` one line that tells
+    how to fix it; ``detail`` and ``hint`` are catalog messages, and the
+    three stay ``None`` for a state that has nothing to add.
     """
 
     producer: str
@@ -94,6 +98,8 @@ class SourceState:
     supported_versions: str | None = None
     schemas: tuple[str, ...] = ()
     detail: str | None = None
+    reason: str | None = None
+    hint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

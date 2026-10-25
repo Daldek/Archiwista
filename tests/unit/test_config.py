@@ -315,6 +315,63 @@ def test_config_validate_reports_incompatible_store(roots: tuple[Path, Path]) ->
     assert "schema x/2" in problems[0].message
 
 
+def test_config_validate_carries_reason_and_hint_of_a_refused_store(
+    roots: tuple[Path, Path],
+) -> None:
+    """What a producer says about a directory it refuses reaches the problem."""
+    refused = SourceState(
+        producer="kartograf",
+        status="incompatible",
+        detail="no marker",
+        reason="no_marker",
+        hint="run the init command",
+    )
+    settings = AppSettings(
+        stores=(make_store("a", roots[0]), make_store("b", roots[1]))
+    )
+    registry = ProbeRegistry(failing={roots[0]: refused})
+
+    problems = validate_settings(settings, registry)
+    error = SettingsValidationError(problems)
+
+    assert [(p.code, p.field, p.reason, p.hint) for p in problems] == [
+        (
+            "source_incompatible",
+            "stores[0].kartograf",
+            "no_marker",
+            "run the init command",
+        )
+    ]
+    assert error.details["problems"] == [
+        {
+            "code": "source_incompatible",
+            "field": "stores[0].kartograf",
+            "message": problems[0].message,
+            "reason": "no_marker",
+            "hint": "run the init command",
+        }
+    ]
+
+
+def test_config_problem_without_reason_has_only_code_field_and_message(
+    roots: tuple[Path, Path],
+) -> None:
+    """A probe with nothing to add leaves the members of the problem as they were."""
+    failing = SourceState(producer="kartograf", status="error", detail="boom")
+    registry = ProbeRegistry(failing={roots[0]: failing})
+
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", roots[0]),)), registry
+    )
+
+    assert (problems[0].reason, problems[0].hint) == (None, None)
+    assert set(SettingsValidationError(problems).details["problems"][0]) == {
+        "code",
+        "field",
+        "message",
+    }
+
+
 def test_config_validate_skips_unchanged_disconnected_store(tmp_path: Path) -> None:
     """Changing offline mode works while an existing share is unplugged."""
     previous = AppSettings(stores=(make_store("a", tmp_path / "unplugged"),))

@@ -230,6 +230,8 @@ def _store_checks(
 
 
 def _fix(problem: SettingsProblem) -> str:
+    if problem.hint is not None:
+        return problem.hint
     if problem.code == "source_not_installed":
         producer = problem.field.rpartition(".")[2]
         return _install_fix(producer)

@@ -37,7 +37,7 @@ from archiwista.config import (
 )
 from archiwista.errors import JobConflictError, NotFoundError, OfflineModeError
 from archiwista.index import IndexQueries, ScanMode
-from archiwista.jobs.availability import unreachable_detail
+from archiwista.jobs.availability import store_unreachable
 from archiwista.jobs.supervisor import JobRecord, JobSupervisor, ScanHistory
 
 logger = logging.getLogger(__name__)
@@ -294,7 +294,7 @@ class ScanScheduler:
             try:
                 found.append(
                     all(
-                        unreachable_detail(
+                        store_unreachable(
                             self._registry.probe(producer, root), root, indexed=indexed
                         )
                         is None

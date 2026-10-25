@@ -88,6 +88,31 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))
 
 
+def test_plugins_probe_carries_the_reason_and_hint_of_the_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verdict of an adapter on a directory reaches the caller whole."""
+    registry = load_registry(cache_dir=tmp_path / "cache")
+    refused = SourceState(
+        "external",
+        "incompatible",
+        detail="not a store of mine",
+        reason="foreign_store",
+        hint="give another directory",
+    )
+    monkeypatch.setattr(registry.adapter("external"), "probe", lambda root: refused)
+
+    state = registry.probe("external", tmp_path)
+
+    assert (state.status, state.detail, state.reason, state.hint) == (
+        "incompatible",
+        "not a store of mine",
+        "foreign_store",
+        "give another directory",
+    )
+    assert (state.store, state.supported_versions) == (str(tmp_path), ">=1,<2")
+
+
 @pytest.mark.usefixtures("polish")
 def test_plugins_second_plugin_shown_by_doctor(tmp_path: Path) -> None:
     """The diagnostics list the second plugin without changes in the doctor."""

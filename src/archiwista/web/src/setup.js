@@ -489,22 +489,26 @@ function cacheSize(bytes) {
   return `${CACHE_SIZE.format(bytes / MIB)} MB`;
 }
 
-/** Problems of `PUT /settings` by the draft entry and field they concern. */
+/**
+ * Problems of `PUT /settings` by the draft entry and field they concern: the message of a
+ * problem, followed by its hint when the producer gave one (the command that fixes it).
+ */
 function problemFields(problem, draft, projectKeys) {
   const fields = { stores: {}, projects: {}, preview: null, general: [] };
   for (const item of problem.details?.problems ?? []) {
     const match = FIELD.exec(item.field ?? "");
     const index = match ? Number(match[2]) : -1;
+    const text = item.hint ? `${item.message} — ${item.hint}` : item.message;
     if (match?.[1] === "stores" && draft.stores[index]) {
       const name = STORE_FIELDS.has(match[3]) ? match[3] : "kartograf";
       const entry = (fields.stores[draft.stores[index].key] ??= {});
-      entry[name] = entry[name] ? `${entry[name]} ${item.message}` : item.message;
+      entry[name] = entry[name] ? `${entry[name]} ${text}` : text;
     } else if (match?.[1] === "project_dirs" && projectKeys[index] !== undefined) {
-      fields.projects[projectKeys[index]] = item.message;
+      fields.projects[projectKeys[index]] = text;
     } else if (item.field === "preview_cache_limit_gb") {
-      fields.preview = item.message;
+      fields.preview = text;
     } else {
-      fields.general.push(item.message);
+      fields.general.push(text);
     }
   }
   return fields;

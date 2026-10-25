@@ -54,7 +54,6 @@ from archiwista.errors import (
     ProducerError,
     SnapshotBlockedError,
     SourceStateError,
-    SourceUnavailableError,
     UnsupportedError,
 )
 from archiwista.index import (
@@ -71,7 +70,7 @@ from archiwista.index.scanner import (
     outline_footprints,
     scan_store,
 )
-from archiwista.jobs.availability import unreachable_detail
+from archiwista.jobs.availability import store_unreachable
 from archiwista.jobs.error import JobError
 from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
@@ -596,10 +595,10 @@ def _require_reachable(
     The job works on versions the index holds, so an empty store directory
     is a share that is not mounted. The store is recorded ``unavailable``.
     """
-    detail = unreachable_detail(adapter.probe(root), root, indexed=True)
-    if detail is not None:
-        writer.set_store_status(store, "unavailable", detail=detail)
-        raise SourceUnavailableError(detail)
+    error = store_unreachable(adapter.probe(root), root, indexed=True)
+    if error is not None:
+        writer.set_store_status(store, "unavailable", detail=str(error))
+        raise error
 
 
 def _batches(

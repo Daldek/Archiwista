@@ -959,12 +959,15 @@ def _reachable_segments(adapter: SourceAdapter, root: Path) -> tuple[str, ...] |
     Raises
     ------
     SourceUnavailableError
-        The probe is not ``available`` or the store cannot be listed.
+        The probe is not ``available`` (with its reason and hint when the
+        producer gave them) or the store cannot be listed.
     """
     state = adapter.probe(root)
     if state.status != "available":
         text = message("store.unreadable", path=root)
-        raise SourceUnavailableError(with_detail(text, state.detail))
+        raise SourceUnavailableError(
+            with_detail(text, state.detail), reason=state.reason, hint=state.hint
+        )
     if isinstance(adapter, SegmentedAdapter):
         return tuple(adapter.segments(root))
     return None
