@@ -229,6 +229,11 @@ command-line interface may change.
   worker that did not stop, so one whose supervisor was gone could stay for good: under
   `--cov` an interrupt that lands in coverage's tracer at the wrong moment leaves the
   tracer's lock held, and the worker waits for it in its exit handler.
+- Processes that open a new preview cache at the same moment all open it (the server,
+  the job workers, the build processes and the command line share it). SQLite refused
+  the switch of `cache.sqlite` to WAL with "database is locked" at once, without the
+  busy timeout, in a process that read the file's header while another one wrote it,
+  and that process ended at its start; now it tries again for up to the busy timeout.
 
 ## [0.2.0] - 2026-10-20
 

@@ -100,6 +100,8 @@ RENDERER_VERSIONS: Mapping[RendererName, int] = {
 # Version of the tables of cache.sqlite: another one is dropped and rebuilt.
 SCHEMA_VERSION = 1
 BUSY_TIMEOUT_MS = 10_000
+# Pause before the switch to WAL is tried again after SQLite refused it at once.
+_WAL_RETRY_S = 0.01
 
 # An object as its rows name it: content key, renderer, renderer version.
 type _Columns = tuple[str, str, int]
@@ -1172,7 +1174,7 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 def _initialize(connection: sqlite3.Connection) -> _SchemaState:
     """Create the tables, keep current ones, or rebuild those of another version."""
-    connection.execute("PRAGMA journal_mode = WAL")
+    _use_wal(connection)
     if _user_version(connection) == SCHEMA_VERSION:
         return "current"
     # Dropping tables with foreign keys on runs checked deletes; a rebuild
@@ -1196,6 +1198,33 @@ def _initialize(connection: sqlite3.Connection) -> _SchemaState:
     finally:
         connection.execute("PRAGMA foreign_keys = ON")
     return "rebuilt" if existed else "created"
+
+
+def _use_wal(connection: sqlite3.Connection) -> None:
+    """Switch ``cache.sqlite`` to WAL, also while other processes open it.
+
+    The switch reads the header and then writes it. SQLite answers a process
+    that read the header while another one writes it with ``SQLITE_BUSY`` at
+    once, without the busy timeout, because waiting could deadlock. Processes
+    that open a new cache together therefore try again until
+    ``BUSY_TIMEOUT_MS``; after one has switched, the others only read.
+
+    Raises
+    ------
+    sqlite3.OperationalError
+        The database stayed busy for ``BUSY_TIMEOUT_MS``, or another error.
+    """
+    deadline = time.monotonic() + BUSY_TIMEOUT_MS / 1000
+    while True:
+        try:
+            connection.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.OperationalError as error:
+            busy = error.sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY
+            if not busy or time.monotonic() >= deadline:
+                raise
+            time.sleep(_WAL_RETRY_S)
+        else:
+            return
 
 
 def _user_version(connection: sqlite3.Connection) -> int:

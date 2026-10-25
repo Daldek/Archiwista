@@ -3,10 +3,10 @@
 Objects are real files under ``tmp_path``. A test that orders uses injects
 its clock and moves it past ``TOUCH_INTERVAL_S``, so that hits are written.
 Other processes are real ones (``python -c`` with the repository on
-``PYTHONPATH``): they put and read at the same time, evict right after this
-process's hit, or end while holding a pin. ``test_same_content_rendered_once``
-serves a generated store with real render processes
-(``tests.fixtures.preview_api``).
+``PYTHONPATH``): they open a new cache together, put and read at the same
+time, evict right after this process's hit, or end while holding a pin.
+``test_same_content_rendered_once`` serves a generated store with real render
+processes (``tests.fixtures.preview_api``).
 """
 
 import hashlib
@@ -134,6 +134,20 @@ cache = PreviewCache(Path(sys.argv[1]), limit_bytes=int(sys.argv[2]))
 cache.pin(CacheKey(sys.argv[3], "raster", RENDERER_VERSIONS["raster"]))
 os._exit(0)
 """
+# Processes opening new caches together: before each open every one says
+# "ready" and waits for a line on its standard input, so that all of them
+# open the same new cache at once; one cache per argument.
+OPENING = """
+import sys
+from pathlib import Path
+from archiwista.previews.cache import PreviewCache
+
+for root in sys.argv[1:]:
+    print("ready", flush=True)
+    sys.stdin.readline()
+    with PreviewCache(Path(root), limit_bytes=1_000_000):
+        pass
+"""
 
 
 class Clock:
@@ -185,6 +199,42 @@ def _python(script: str, *args: object) -> subprocess.CompletedProcess[str]:
         timeout=CHILD_TIMEOUT_S,
         check=False,
     )
+
+
+def _spawn(stack: ExitStack, script: str, *args: object) -> subprocess.Popen[str]:
+    """Start a child with pipes; leaving ``stack`` kills it, so a hang fails."""
+    child = stack.enter_context(
+        subprocess.Popen(
+            [sys.executable, "-c", script, *(str(arg) for arg in args)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_child_env(),
+        )
+    )
+    stack.callback(child.kill)
+    return child
+
+
+def _start_together(children: list[subprocess.Popen[str]]) -> bool:
+    """Wait for "ready" from every child, then give each its line to go on.
+
+    Returns ``False``, writing nothing, when a child ended instead: its return
+    code and standard error say why, where a write would raise
+    ``BrokenPipeError``.
+    """
+    lines = []
+    for child in children:
+        assert child.stdout is not None
+        lines.append(child.stdout.readline())
+    if lines != ["ready\n"] * len(children):
+        return False
+    for child in children:
+        assert child.stdin is not None
+        child.stdin.write("go\n")
+        child.stdin.flush()
+    return True
 
 
 def _on_disk(root: Path) -> tuple[int, int]:
@@ -340,27 +390,8 @@ def test_cache_safe_across_processes(tmp_path: Path) -> None:
 
     # Act
     with ExitStack() as stack:
-        children: list[subprocess.Popen[str]] = []
-        for seed in range(4):
-            child = stack.enter_context(
-                subprocess.Popen(
-                    [sys.executable, "-c", SHARING, str(root), str(limit), str(seed)],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=_child_env(),
-                )
-            )
-            stack.callback(child.kill)  # a hanging child fails, not hangs
-            children.append(child)
-        for child in children:
-            assert child.stdout is not None
-            child.stdout.readline()
-        for child in children:
-            assert child.stdin is not None
-            child.stdin.write("go\n")
-            child.stdin.flush()
+        children = [_spawn(stack, SHARING, root, limit, seed) for seed in range(4)]
+        _start_together(children)  # a child that ended fails at its return code
         finished = [child.communicate(timeout=CHILD_TIMEOUT_S) for child in children]
     with PreviewCache(root, limit_bytes=limit) as cache:
         before = cache.usage()
@@ -376,6 +407,29 @@ def test_cache_safe_across_processes(tmp_path: Path) -> None:
     assert before.used_bytes <= limit
     assert (before.used_bytes, before.objects) == on_disk
     assert after == before
+
+
+def test_cache_opened_by_processes_at_once(tmp_path: Path) -> None:
+    """Processes that open a new cache at the same moment all open it.
+
+    The first open switches ``cache.sqlite`` to WAL, writing its header;
+    SQLite refuses a process that read the header meanwhile at once, without
+    the busy timeout ("database is locked"). Eight processes open each of five
+    new caches together.
+    """
+    # Arrange
+    roots = [tmp_path / f"previews-{round_}" for round_ in range(5)]
+
+    # Act
+    with ExitStack() as stack:
+        children = [_spawn(stack, OPENING, *roots) for _ in range(8)]
+        for _ in roots:
+            if not _start_together(children):
+                break
+        finished = [child.communicate(timeout=CHILD_TIMEOUT_S) for child in children]
+
+    # Assert
+    assert [child.returncode for child in children] == [0] * 8, finished
 
 
 def test_hit_survives_eviction_by_other_process(tmp_path: Path) -> None:
