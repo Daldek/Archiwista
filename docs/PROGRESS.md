@@ -15,7 +15,7 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog). Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra), I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem), the re-pin to IMGWTools `7e2114e` (`30175c1`: machine codes, producer fields, `skip_versions`, `py.typed`) and I3 commit 1 (`3568ba3`, `SCHEMA_VERSION` 7: slot keys and names, provider, observations as history, segments described by the adapter). Open: I3 commits 2 (current version) and 3 (segment ownership), then I4 to I7. Next 6 gives the exact starting points |
+| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog). Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra), I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem), the re-pin to IMGWTools `7e2114e` (`30175c1`: machine codes, producer fields, `skip_versions`, `py.typed`), I3 commit 1 (`3568ba3`, `SCHEMA_VERSION` 7: slot keys and names, provider, observations as history, segments described by the adapter) and I3 commit 2 (`b4c07df`: the current version of a slot from the producer). Open: I3 commit 3 (segment ownership), then I4 to I7. Next 6 gives the exact starting points |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
@@ -245,7 +245,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `ARCHIWISTA_TEST_MISSING_PACKAGES`), `tests/e2e/test_setup_imgw.py` (the wizard indexes a store
      of only IMGW files through the scheduler), `test_store_summary.py`. The CHANGELOG, ARCHITECTURE
      4 and 10, SPEC 5.5, USAGE and ADR 0032 are updated.
-   - *I3 (commit 1 `3568ba3` is done: gate 1307 passed, coverage 92.48%, 36 min 45 s, load about 3; commits 2 and 3 are open).* Facts: the generic scan already indexes
+   - *I3 (commit 1 `3568ba3` is done: gate 1307 passed, coverage 92.48%, 36 min 45 s, load about 3; commit 2 `b4c07df` is done: gate 1341 passed, coverage 92.13%, 34 min 10 s, load about 2; commit 3 is open).* Facts: the generic scan already indexes
      IMGW entries (`complete` fixture: 11 versions in 8 slots, none current; slots
      `archives/versions/<server dir>/<file stem>`, `series/versions/<slug>`, `stations/versions`, and
      the ČHMÚ catalog in `stations/versions/chmi_stations`); `imgwtools.current_version(root, slot=)`
@@ -341,6 +341,28 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      takes an IMGW index, drops `observations`, `slots.slot_key` and `versions.provider`, sets
      `user_version` to `SCHEMA_VERSION - 1`, expects `initialize` to say `rebuilt` with the digest of
      `state.sqlite` unchanged (as `test_index_rebuild_leaves_state_untouched` does), and a scan to fill it.
+   - *I3 commit 2 `b4c07df` as built (the current version; code and tests as designed above, with these differences).*
+     (1) An answer is written only when it names a version the pass saw (`state.seen_versions`), not
+     merely one the index holds: a version published between the listing and the end of the pass is
+     taken by the next scan, and a version this same pass marks missing is never current. (2) The
+     adapter answers `None` for every IMGWTools error whose code is `data_error` or `validation_error`
+     (`_SLOT_UNREADABLE`), not only for `IMGWDataError`: a slot whose directory is a link, or whose key
+     the installed IMGWTools no longer knows, has no current version instead of raising a
+     `ProducerError`, because a slot an earlier pass indexed is asked when its versions go missing and
+     would fail every scan for ever; `io_error` (and an `OSError`) is `SourceUnavailableError` and
+     `store_unavailable` (the marker is gone) stays a `ProducerError`. (3) Names: `CurrentVersionAdapter`
+     (`sources/protocol.py`), `CurrentVersionLookup` (`index/types.py`, exported by `archiwista.index`),
+     `PassSummary.current`, `_PassState.touched` and `_current_versions` (`index/writer.py`),
+     `_current_lookup` (`index/scanner.py`; the view refresh passes it too, which no test exercises:
+     no producer has both units and keys), `PRODUCER_TEXTS` (`services/problems.py`), the catalog entries
+     `problem.imgw_missing_sidecar`, `fix.imgw_missing_sidecar`, `problem.unknown_schema` and
+     `fix.unknown_schema`, and `write_pass(current=)` in `tests/fixtures/index_data.py`. (4) Tests: the
+     contract tests of the adapter, the writer's rules in `test_index.py` (a keyed slot, only touched
+     slots asked, a version gone, no answer, an answer the pass did not see, a pass killed after its
+     batches, the status of each code), the fixtures in `test_imgw_index.py` and the texts in
+     `test_store_summary.py`. ADR 0032 decision 8, SPEC 4.4 and 4.8.1, ARCHITECTURE 2.1, 5.1 and 10 and
+     the CHANGELOG are written. The current version of a store with 11 versions in 8 slots makes 3 of
+     them "unused" in the clean-up report (before it, all 11 were).
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,
