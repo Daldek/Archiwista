@@ -1,11 +1,12 @@
 """Producer-neutral values exchanged between adapters and the index.
 
 Every ``store`` field holds the producer directory of a store as text: the
-``root`` given to the adapter (Kartograf's ``--output`` directory) or, for a
-project, the store directory its manifest names. Adapters resolve relative
-paths against it, so ``read_meta``, ``footprint`` and ``confirm_link`` locate
-an entry from the entry alone. The index keys rows by the configured store id
-instead and maps the id to this directory through the store configuration.
+``root`` given to the adapter (Kartograf's store root, the directory that holds
+``kartograf-store.json``) or, for a project, the store directory its manifest
+names. Adapters resolve relative paths against it, so ``read_meta``,
+``footprint`` and ``confirm_link`` locate an entry from the entry alone. The
+index keys rows by the configured store id instead and maps the id to this
+directory through the store configuration.
 """
 
 from collections.abc import Mapping

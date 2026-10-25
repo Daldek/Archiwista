@@ -118,7 +118,7 @@ STORE_RECORDS: dict[str, set[str]] = {
     },
     "SegmentInfo": {"segment", "product", "country", "dataset_key", "name", "known"},
     "Footprint": {"native", "wgs84", "source"},
-    # The store of a project is its ``root`` (ADR-054); it was ``output_dir``.
+    # The store of a project is its ``root`` (ADR-054).
     "Project": {"directory", "root", "tasks"},
     "ProjectTask": {"name", "command", "options", "files"},
     "PinnedFile": {"version", "sha256"},

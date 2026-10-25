@@ -16,9 +16,12 @@ line: [`README.md`](../README.md); scripts and agents:
    the terminal.
 2. The wizard "Pierwsze uruchomienie" (first run) has four steps:
    - **Stores** ("Magazyny"): a name for people, a short identifier (used in
-     addresses and in the API), the full path of the Kartograf directory (its
-     `--output` directory, that is the `data/` directory) and the kind: local
-     disk or network share (detected by default). There can be several stores.
+     addresses and in the API), the full path of the Kartograf store root (the
+     directory that holds `kartograf-store.json` and the product directories,
+     usually called `data/`) and the kind: local disk or network share (detected
+     by default). A store written by an earlier Kartograf has no marker: the
+     wizard then shows the command to run once, `kartograf store init --root
+     <path>`. There can be several stores.
    - **Projects** ("Projekty"): directories with Kartograf projects
      (`kartograf-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request

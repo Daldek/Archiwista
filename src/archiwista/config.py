@@ -178,7 +178,8 @@ class StoreConfig(BaseModel):
     name : str
         Human-readable store name.
     kartograf : Path
-        Kartograf ``--output`` directory (the ``data/`` directory itself).
+        Store root of Kartograf: the directory that holds ``kartograf-store.json``
+        and the product directories (usually called ``data``).
     kind : {"local", "share"}
         Detected from the file system when omitted; editable afterwards.
     path_aliases : dict[str, str]

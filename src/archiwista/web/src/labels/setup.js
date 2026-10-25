@@ -27,7 +27,8 @@ export const setup = {
     id_hint: "Krótka nazwa w adresach i API: małe litery, cyfry, „-” i „_”, najwyżej 32 znaki.",
     kartograf: "Katalog Kartografa",
     kartograf_hint:
-      "Pełna ścieżka katalogu --output Kartografa (samego katalogu data/), np. /mnt/nas/kartograf/data albo Z:\\kartograf\\data.",
+      "Pełna ścieżka katalogu głównego magazynu Kartografa, czyli katalogu z plikiem " +
+      "kartograf-store.json i katalogami produktów, np. /mnt/nas/kartograf albo Z:\\kartograf.",
     kind: "Rodzaj",
     kind_auto: "wykryj automatycznie",
     add: "Dodaj magazyn",

@@ -76,8 +76,9 @@ and schema, after `list_segments`:
   store of an existing installation is `unavailable` at the first start on the new pin, until
   `kartograf store init --root <path>` has run once for it (D9). That command verifies the layout
   first and refuses a store with stray entries (`invalid_layout`, the list in
-  `details.problems`), which the author moves out: the live-test store and the large stores of
-  the `perf` and `smb` runs are among them.
+  `details.problems`), which the author moves out. That is for the live-test store; the large
+  synthetic stores of the `perf` and `smb` runs have deliberate defects that `init` refuses,
+  so they are generated again (the generator marks first).
 - A directory that is not a store and has no segments (a new mount point) is `available` and
   empty, as before; a directory with segments none of which is Kartograf's is `not_a_store`
   with a text that names the marker instead of `--output`.

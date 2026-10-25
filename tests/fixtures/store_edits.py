@@ -4,7 +4,7 @@ A download adds an immutable ``<label>_<sha8>`` version directory next to
 the slot's other versions and points the standard path at it: a hard link
 with a sidecar naming the version (``extra.link_target``). Tests use these
 helpers to change a store after a scan; paths are relative to the store root
-(Kartograf's ``--output`` directory) with ``/``.
+(the directory that holds ``kartograf-store.json``) with ``/``.
 """
 
 import hashlib

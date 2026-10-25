@@ -2485,7 +2485,10 @@ class StoreSettings(BaseModel):
     )
     name: str
     kartograf: str = Field(
-        description="Kartograf's --output directory (the data/ directory itself)."
+        description=(
+            "Kartograf's store root: the directory that holds kartograf-store.json"
+            " and the product directories (usually called data)."
+        )
     )
     kind: StoreKind | None = Field(
         default=None,

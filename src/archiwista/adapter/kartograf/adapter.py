@@ -74,7 +74,7 @@ _STATUS_ORDER = ("ok", "not_downloaded", "missing", "corrupt")
 
 
 class KartografAdapter:
-    """Read a Kartograf store (its ``--output`` directory) for Archiwista.
+    """Read a Kartograf store (its root, the directory with the marker) for Archiwista.
 
     Parameters
     ----------
@@ -148,7 +148,7 @@ class KartografAdapter:
         Parameters
         ----------
         root : Path
-            Kartograf's ``--output`` directory.
+            The store root, the directory that holds ``kartograf-store.json``.
         scope : ScanScope or None, optional
             ``segment`` and ``units`` or ``partition`` narrow the scan;
             ``known_versions`` becomes the ``skip_versions`` mapping: the
@@ -179,7 +179,7 @@ class KartografAdapter:
         Parameters
         ----------
         root : Path
-            Kartograf's ``--output`` directory.
+            The store root, the directory that holds ``kartograf-store.json``.
         segment : str
             ``<product>/<variant>`` of ``segments``.
         known_versions : Mapping[str, tuple[str, ...]]

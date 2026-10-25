@@ -787,8 +787,8 @@
  * @property {string} id - Short id in the API: lowercase letters, digits, '_', '-' (≤
  *   32).
  * @property {string} name
- * @property {string} kartograf - Kartograf's --output directory (the data/ directory
- *   itself).
+ * @property {string} kartograf - Kartograf's store root: the directory that holds
+ *   `kartograf-store.json` and the product directories (usually called `data`).
  * @property {StoreKind|null} [kind] - `local` or `share`; detected from the file system
  *   when omitted.
  * @property {Object<string, string>} [path_aliases] - Local path prefix → the same

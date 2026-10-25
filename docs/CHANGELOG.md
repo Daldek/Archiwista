@@ -126,6 +126,15 @@ command-line interface may change.
   with known segments and no file stay available: the first download of Kartograf into them
   writes the marker. The generated stores of the tests are marked through
   `kartograf.init_store`. (DEV-19.13)
+- The texts for people call the Kartograf directory the store root, the directory that holds
+  `kartograf-store.json` and the product directories (usually `data`), and no longer "its
+  `--output` directory": the hint of the wizard (its example, `/mnt/nas/kartograf`, no longer
+  ends in `/data`), the description of the `kartograf` setting in the OpenAPI document, the
+  README, USAGE and the SPEC. The SPEC also has the names of the data-output convention:
+  the argument and manifest key `root`, `set_project_root`, the envelope `kartograf-result/1`
+  of `run_command` (it has no `cancel` yet), and for IMGWTools `IMGW_REFERENCE_DIR`, the
+  statuses `new` and `unchanged` and the marker fields `tool`, `created_at` and
+  `producer_version`. (ECO-051)
 - The tests find the repository from the test file, never through the installed package,
   so they run against an installed wheel; the generated stores of the tests call the
   directory that holds `data/`, `projects/` and `other-data/` `base`. (REL-2.5)
