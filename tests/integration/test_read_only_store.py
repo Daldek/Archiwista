@@ -5,45 +5,25 @@ scans; every read route is then called through the API, and the tree must
 be identical afterwards: names, sizes, modification times and inodes.
 """
 
-import os
 from pathlib import Path
 
 import pytest
 
 from tests.fixtures.api_store import STORE, served_store
 from tests.fixtures.make_store import StoreManifest
+from tests.fixtures.read_only_mount import Snapshot, set_read_only, tree
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
-
-
-def _tree(directory: Path) -> dict[str, tuple[int, int, int]]:
-    found = {}
-    for top, dirnames, filenames in os.walk(directory):
-        for name in [*dirnames, *filenames]:
-            info = os.lstat(os.path.join(top, name))
-            found[os.path.relpath(os.path.join(top, name), directory)] = (
-                info.st_size,
-                info.st_mtime_ns,
-                info.st_ino,
-            )
-    return found
-
-
-def _read_only(directory: Path, *, read_only: bool) -> None:
-    for top, _, filenames in os.walk(directory):
-        os.chmod(top, 0o555 if read_only else 0o755)
-        for name in filenames:
-            os.chmod(os.path.join(top, name), 0o444 if read_only else 0o644)
 
 
 def test_read_only_store_scan_and_browse(tmp_path: Path) -> None:
     """Full and incremental scans and every read route leave the tree as it was."""
     # Arrange
-    snapshots: list[dict[str, tuple[int, int, int]]] = []
+    snapshots: list[Snapshot] = []
 
     def lock(store: StoreManifest) -> None:
-        _read_only(store.output_dir, read_only=True)
-        snapshots.append(_tree(store.output_dir))
+        set_read_only(store.output_dir, read_only=True)
+        snapshots.append(tree(store.output_dir))
 
     try:
         with served_store(tmp_path, before_scan=lock) as served:
@@ -70,9 +50,9 @@ def test_read_only_store_scan_and_browse(tmp_path: Path) -> None:
 
             # Act
             statuses = {path: owner.request("GET", path).status_code for path in paths}
-            after = _tree(served.store.output_dir)
+            after = tree(served.store.output_dir)
     finally:
-        _read_only(tmp_path / "store", read_only=False)
+        set_read_only(tmp_path / "store", read_only=False)
 
     # Assert
     assert statuses == dict.fromkeys(paths, 200)

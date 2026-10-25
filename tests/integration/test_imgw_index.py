@@ -6,11 +6,13 @@ with ``IndexQueries``: what it holds must be what ``imgwtools.iter_store``
 yields, with the datasets named from the producer's registry.
 """
 
+import hashlib
+import os
 import shutil
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -18,11 +20,20 @@ from imgwtools import StoreEntry, current_version, iter_store
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppSettings, StoreConfig
-from archiwista.index import IndexQueries, IndexWriter, SlotQuery
+from archiwista.index import (
+    SCHEMA_VERSION,
+    IndexQueries,
+    IndexWriter,
+    SlotQuery,
+    initialize,
+)
 from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
 from archiwista.sources import CurrentVersionAdapter, SourceAdapter
 from archiwista.sources.registry import load_registry
+from archiwista.state import StateStore
 from tests.fixtures.imgw_edits import META_SUFFIX, add_version, drop_sidecar
+from tests.fixtures.permissions import add_people
+from tests.fixtures.read_only_mount import set_read_only, tree
 
 STORE = "dane"
 HYDRO_SLOT = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
@@ -550,3 +561,96 @@ def test_an_interrupted_publication_is_a_problem_until_its_sidecar_makes_it_curr
     assert older[0] == "ok" and older[1] != newest
     assert env.current()[HYDRO_SLOT] == ("ok", newest)
     assert env.issues() == set()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a read-only directory")
+def test_a_store_without_write_permission_is_scanned_and_read_unchanged(
+    open_env: Callable[[str], _Env],
+) -> None:
+    """SPEC 13.3: scans and reads of the producer's files write nothing below it."""
+    # Arrange
+    env = open_env("complete_pl_cz")
+    versions, problems = _produced(env.root)
+    set_read_only(env.root, read_only=True)
+    try:
+        locked = tree(env.root)
+
+        # Act
+        entries = list(env.adapter.iter_entries(env.root))
+        first = env.scan("full")
+        after_full = tree(env.root)
+        again = env.scan()
+        after_incremental = tree(env.root)
+        entry = next(found for found in entries if found.slot_key == HYDRO_KEY)
+        meta = env.adapter.read_meta(replace(entry, meta=None, handle=None))
+        after_read = tree(env.root)
+    finally:
+        set_read_only(env.root, read_only=False)
+
+    # Assert
+    assert versions and env.versions() == versions
+    assert env.issues() == problems
+    assert first.versions_written == len(versions)
+    assert again.versions_written == 0
+    assert meta == entry.meta
+    assert locked == after_full == after_incremental == after_read
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _held(env: _Env) -> dict[str, object]:
+    """Return what the index holds of the store that its last schema added."""
+    return {
+        "versions": env.versions(),
+        "current": env.current(),
+        "keys": env.sql("SELECT path, slot_key FROM slots ORDER BY path"),
+        "providers": env.sql("SELECT path, provider FROM versions ORDER BY path"),
+        "observations": env.sql(
+            "SELECT path, version_path, seen_at, url, etag, last_modified,"
+            " size_bytes, sha256 FROM observations ORDER BY path"
+        ),
+    }
+
+
+def test_an_index_of_the_previous_schema_is_rebuilt_and_a_scan_fills_it_again(
+    open_env: Callable[[str], _Env], tmp_path: Path
+) -> None:
+    """The slot keys, the providers and the observations are no migration: a scan."""
+    # Arrange
+    env = open_env("complete_pl_cz")
+    state_file = tmp_path / "state.sqlite"
+    state = StateStore(state_file)
+    add_people(state)
+    env.scan("full")
+    before = _held(env)
+    kept = (_digest(state_file), state.snapshot())
+    env.queries.close()
+    env.writer.close()
+    with closing(sqlite3.connect(env.index)) as connection:
+        connection.execute("DROP TABLE observations")
+        connection.execute("ALTER TABLE slots DROP COLUMN slot_key")
+        connection.execute("ALTER TABLE versions DROP COLUMN provider")
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+
+    # Act
+    rebuilt = initialize(env.index)
+    origin = env.sql("SELECT value FROM index_info WHERE key = 'rebuilt_from'")
+    emptied = env.sql(
+        "SELECT (SELECT count(*) FROM stores), (SELECT count(*) FROM slots),"
+        " (SELECT count(*) FROM versions), (SELECT count(*) FROM observations)"
+    )
+    with IndexWriter(env.index) as writer, IndexQueries(env.index) as queries:
+        writer.sync_stores({STORE: env.settings.stores[0].roots()})
+        fresh = replace(env, writer=writer, queries=queries)
+        fresh.scan("full")
+        after = _held(fresh)
+
+    # Assert
+    assert all(before.values())
+    assert rebuilt == "rebuilt"
+    assert origin == [(str(SCHEMA_VERSION - 1),)]
+    assert emptied == [(0, 0, 0, 0)]
+    assert after == before
+    assert (_digest(state_file), state.snapshot()) == kept
