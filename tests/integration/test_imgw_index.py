@@ -14,17 +14,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from imgwtools import StoreEntry, iter_store
+from imgwtools import StoreEntry, current_version, iter_store
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.index import IndexQueries, IndexWriter, SlotQuery
 from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
-from archiwista.sources import SourceAdapter
+from archiwista.sources import CurrentVersionAdapter, SourceAdapter
 from archiwista.sources.registry import load_registry
+from tests.fixtures.imgw_edits import META_SUFFIX, add_version, drop_sidecar
 
 STORE = "dane"
 HYDRO_SLOT = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
+HYDRO_KEY = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+SERIES_KEY = "series:pl.imgw.hydro_daily"
 
 type Stores = Callable[[str], Path]
 
@@ -60,6 +63,27 @@ class _Env:
     def issues(self) -> set[tuple[str, str]]:
         """Return ``(code, path)`` of every problem of the store."""
         return {(issue.code, issue.path) for issue in self.queries.issues(STORE)}
+
+    def current(self) -> dict[str, tuple[str, str | None]]:
+        """Return each slot's status and the path of its current version."""
+        page = self.queries.slots(SlotQuery(limit=200), visible=ALL_PROJECTS)
+        return {
+            row.slot: (row.status, row.version.path if row.version else None)
+            for row in page.items
+        }
+
+    def watch(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Record the keys of the slots the index asks the producer about."""
+        assert isinstance(self.adapter, CurrentVersionAdapter)
+        asked: list[str] = []
+        original = self.adapter.current_version
+
+        def watched(root: Path, slot_key: str) -> Path | None:
+            asked.append(slot_key)
+            return original(root, slot_key)
+
+        monkeypatch.setattr(self.adapter, "current_version", watched)
+        return asked
 
     def sql(self, statement: str) -> list[tuple[object, ...]]:
         """Return the rows of a statement on the index file."""
@@ -305,3 +329,180 @@ def test_an_observation_the_producer_no_longer_lists_is_forgotten(
     detail = env.queries.slot(STORE, slot, visible=ALL_PROJECTS)
     assert detail is not None
     assert [v.path for v in detail.versions] == [_relative(env.root, repeated)]
+
+
+def _slot_keys(root: Path) -> set[str]:
+    """Return the key of every slot the producer lists."""
+    return {entry.slot for entry in iter_store(root) if entry.slot}
+
+
+@pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
+def test_the_current_version_of_each_slot_is_the_one_the_producer_names(
+    open_env: Callable[[str], _Env], variant: str
+) -> None:
+    """No link says which version is current: IMGWTools does, and the index agrees."""
+    # Arrange
+    env = open_env(variant)
+    keys = _slot_keys(env.root)
+    produced: dict[str, str] = {}
+    for key in keys:
+        found = current_version(env.root, slot=key)
+        assert found is not None and found.version is not None
+        produced[key] = found.version.relative_to(env.root).as_posix()
+
+    # Act
+    env.scan("full")
+    held = {
+        str(key): (str(status), str(path))
+        for key, path, status in env.sql(
+            "SELECT slot_key, current_path, status FROM slots"
+        )
+    }
+    unused = env.queries.unused_versions(STORE)
+
+    # Assert
+    assert keys and held == {key: ("ok", path) for key, path in produced.items()}
+    assert {path for _, path in env.current().values()} == set(produced.values())
+    assert {status for status, _ in env.current().values()} == {"ok"}
+    # Only the versions before the current ones are left to clean up.
+    assert unused is not None
+    assert unused.versions == len(env.versions()) - len(keys) > 0
+
+
+@pytest.mark.parametrize(
+    ("variant", "key", "code"),
+    [
+        ("corrupt", HYDRO_KEY, "invalid_json"),
+        ("unknown_schema", SERIES_KEY, "unknown_schema"),
+    ],
+)
+def test_a_damaged_version_is_reported_and_an_older_one_is_not_chosen_silently(
+    open_env: Callable[[str], _Env], variant: str, key: str, code: str
+) -> None:
+    """The slot has no current version and its problem is shown with the others."""
+    # Arrange
+    env = open_env(variant)
+
+    # Act
+    env.scan("full")
+    env.scan()
+    (slot,) = [
+        str(path)
+        for path, slot_key in env.sql("SELECT path, slot_key FROM slots")
+        if slot_key == key
+    ]
+    detail = env.queries.slot(STORE, slot, visible=ALL_PROJECTS)
+
+    # Assert
+    assert detail is not None
+    assert (detail.status, detail.current) == ("unreadable", None)
+    assert [issue.code for issue in detail.issues] == [code]
+    assert len(detail.versions) == 2
+    assert not any(found.is_current for found in detail.versions)
+    others = {path: state for path, state in env.current().items() if path != slot}
+    assert others and {status for status, _ in others.values()} == {"ok"}
+
+
+def test_an_incremental_scan_that_changed_nothing_asks_for_no_slot(
+    open_env: Callable[[str], _Env], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unchanged store is scanned without a question to the producer."""
+    # Arrange
+    env = open_env("complete_pl_cz")
+    asked = env.watch(monkeypatch)
+    first = env.scan("full")
+    before = env.current()
+    keys = _slot_keys(env.root)
+    assert sorted(asked) == sorted(keys)
+    asked.clear()
+
+    # Act
+    again = env.scan()
+
+    # Assert
+    assert asked == []
+    assert first.finished.current == len(keys)
+    assert (again.finished.current, again.finished.unlinked) == (0, 0)
+    assert env.current() == before
+
+
+def test_a_new_version_asks_for_its_slot_only_and_becomes_its_current_version(
+    open_env: Callable[[str], _Env], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A download that published a version moves the current one at the next scan."""
+    # Arrange
+    env = open_env("complete")
+    env.scan("full")
+    before = env.current()
+    asked = env.watch(monkeypatch)
+    newest = add_version(env.root, HYDRO_SLOT, label="2026-10-30")
+
+    # Act
+    summary = env.scan()
+
+    # Assert
+    assert asked == [HYDRO_KEY]
+    assert summary.versions_written == 1 and summary.finished.current == 1
+    assert env.current()[HYDRO_SLOT] == ("ok", newest)
+    assert before[HYDRO_SLOT] != env.current()[HYDRO_SLOT]
+    assert {
+        slot: found for slot, found in env.current().items() if slot != HYDRO_SLOT
+    } == {slot: found for slot, found in before.items() if slot != HYDRO_SLOT}
+
+
+def test_slots_a_scan_left_without_a_current_version_are_given_one_by_the_next(
+    open_env: Callable[[str], _Env], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan that stopped after its batches left versions nothing else asks about."""
+    # Arrange
+    env = open_env("complete")
+
+    def refuse(root: Path, slot_key: str) -> Path | None:
+        raise RuntimeError("the scan stopped before it asked")
+
+    with monkeypatch.context() as stopping:
+        stopping.setattr(env.adapter, "current_version", refuse)
+        with pytest.raises(RuntimeError, match="stopped"):
+            env.scan("full")
+    stopped = env.current()
+    asked = env.watch(monkeypatch)
+
+    # Act
+    env.scan()
+    after = env.current()
+    healed = list(asked)
+    env.scan()
+
+    # Assert
+    assert {status for status, _ in stopped.values()} == {"missing"}
+    assert {path for _, path in stopped.values()} == {None}
+    assert sorted(healed) == sorted(_slot_keys(env.root))
+    assert {status for status, _ in after.values()} == {"ok"}
+    assert asked == healed
+
+
+def test_an_interrupted_publication_is_a_problem_until_its_sidecar_makes_it_current(
+    open_env: Callable[[str], _Env],
+) -> None:
+    """A version without its sidecar is no version; completing it makes it current."""
+    # Arrange
+    env = open_env("complete")
+    env.scan("full")
+    older = env.current()[HYDRO_SLOT]
+    newest = add_version(env.root, HYDRO_SLOT, label="2026-10-30")
+    sidecar = env.root / f"{newest}{META_SUFFIX}"
+    kept = sidecar.read_text(encoding="utf-8")
+    drop_sidecar(env.root, newest)
+    directory = Path(newest).parent.as_posix()
+
+    # Act
+    env.scan()
+    during = (env.current()[HYDRO_SLOT], env.issues())
+    sidecar.write_text(kept, encoding="utf-8")
+    env.scan()
+
+    # Assert
+    assert during == (older, {("missing_sidecar", directory)})
+    assert older[0] == "ok" and older[1] != newest
+    assert env.current()[HYDRO_SLOT] == ("ok", newest)
+    assert env.issues() == set()

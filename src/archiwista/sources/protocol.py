@@ -2,9 +2,10 @@
 
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
-``SourceAdapter``. Segments (and the description of segments), their parts,
-coordinate operations, link confirmation and sheet grids are optional
-capabilities: a producer without them still satisfies ``SourceAdapter``.
+``SourceAdapter``. Segments (and the description of segments), the current
+version of a slot, their parts, coordinate operations, link confirmation and
+sheet grids are optional capabilities: a producer without them still
+satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -105,6 +106,33 @@ class SegmentedAdapter(SegmentDescriptionAdapter, Protocol):
 
     def segments(self, root: Path) -> tuple[str, ...]:
         """List the segments; their scans together equal one unscoped scan."""
+        ...
+
+
+@runtime_checkable
+class CurrentVersionAdapter(Protocol):
+    """Optional capability: the producer names the current version of a slot.
+
+    For a producer without links, whose slots carry its own key
+    (``SourceEntry.slot_key``): which version of a slot is the current one is
+    the producer's decision, taken by reading the slot's versions. The scan
+    asks for the slots it touched, once at the end of a pass.
+    """
+
+    def current_version(self, root: Path, slot_key: str) -> Path | None:
+        """Return the current version of a slot, relative to the store.
+
+        ``None`` when the slot has no current version: it has no version, or
+        one of its versions is broken (an older one is never chosen in its
+        place).
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the store.
+        ProducerError
+            The producer rejected the store or the key.
+        """
         ...
 
 

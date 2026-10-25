@@ -6,6 +6,7 @@ from pathlib import Path
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, ProductUsage
+from archiwista.messages import language
 from archiwista.services import store_summary
 from archiwista.sources import ProjectInfo, ProjectPin, SourceSegment
 from tests.fixtures.index_data import (
@@ -217,3 +218,45 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
     assert "imgw" in by_path[other.relative_path.as_posix()].message
     assert "kartograf" not in by_path[other.relative_path.as_posix()].message
     assert "imgw project download pomiary" in by_path[absent].instruction
+
+
+def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """In IMGWTools it is a download in progress; its other codes keep their texts."""
+    # Arrange
+    writer, queries = index
+    leftover = slot_path(NMT, "M-34-1-C")
+    write_pass(
+        writer, [problem(leftover, "missing_sidecar", segment=NMT, slot=leftover)]
+    )
+    folder = "pl.imgw.hydro_daily"
+    writer.write_segments(
+        STORE, "imgw", [SourceSegment(folder, None, "PL", folder, "Dane", True)]
+    )
+    writer.begin_pass(STORE, "imgw")
+    writer.write_entries(
+        [
+            replace(
+                problem(f"archives/{code}", code, segment=folder, slot=None),
+                producer="imgw",
+            )
+            for code in ("missing_sidecar", "unknown_schema", "invalid_json")
+        ]
+    )
+    writer.finish_pass()
+
+    # Act
+    with language("en"):
+        problems = store_summary(queries, CONFIG, visible=ALL_PROJECTS).problems
+
+    # Assert
+    by_path = {p.path: p for p in problems}
+    kartograf = by_path[leftover]
+    assert "delete the leftover" in kartograf.instruction
+    imgw = by_path["archives/missing_sidecar"]
+    assert "download in progress" in imgw.message
+    assert "temporary" in imgw.instruction and "delete" not in imgw.instruction
+    schema = by_path["archives/unknown_schema"]
+    assert "schema" in schema.message and "newer version" in schema.instruction
+    assert "Store problem (invalid_json)" in by_path["archives/invalid_json"].message

@@ -2,6 +2,7 @@
 
 from archiwista.sources.protocol import (
     CoordinateTransformer,
+    CurrentVersionAdapter,
     FloatArray,
     GeoAdapter,
     LinkCheckAdapter,
@@ -34,6 +35,7 @@ from archiwista.sources.types import (
 
 __all__ = [
     "CoordinateTransformer",
+    "CurrentVersionAdapter",
     "EntryKind",
     "EntryMeta",
     "FloatArray",

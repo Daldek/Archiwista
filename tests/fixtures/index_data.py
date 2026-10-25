@@ -14,7 +14,7 @@ from pathlib import Path, PurePosixPath
 
 import pyproj
 
-from archiwista.index import IndexWriter, PassSummary
+from archiwista.index import CurrentVersionLookup, IndexWriter, PassSummary
 from archiwista.sources import (
     EntryKind,
     EntryMeta,
@@ -241,11 +241,14 @@ def write_pass(
     slots: Iterable[str] | None = None,
     store: str = STORE,
     segments: Iterable[SourceSegment] | None = None,
+    current: CurrentVersionLookup | None = None,
 ) -> PassSummary:
     """Run one complete pass: segments, entries, footprints, finish.
 
     ``footprints`` maps a version path to its location; versions without
     one get ``none`` (``no_source``) when the writer asks for them.
+    ``current`` is the producer's answer for the current version of a slot
+    with a key, as ``finish_pass`` takes it.
     """
     described = list(SEGMENTS.values()) if segments is None else list(segments)
     writer.write_segments(store, PRODUCER, described)
@@ -271,7 +274,7 @@ def write_pass(
             for entry in result.needs_footprint
         ],
     )
-    return writer.finish_pass()
+    return writer.finish_pass(current=current)
 
 
 def _year(label: str) -> int | None:

@@ -70,6 +70,18 @@ command-line interface may change.
   neither a version, a current version nor part of any count; a record the producer no
   longer lists is forgotten. A producer that lists no segments can describe the ones
   its entries name (`SegmentDescriptionAdapter`). (SPEC 4.3, ADR 0032)
+- The index knows the current version of an IMGW slot, which no link names: at the end of
+  a scan IMGWTools is asked (`current_version`; the capability `CurrentVersionAdapter`)
+  for the slots the scan touched (a version written, back or gone, a problem found or
+  resolved) and for those a scan that did not finish left without one; a scan that
+  changed nothing asks for none. A slot with a damaged version (an invalid sidecar,
+  another schema, a size that differs) has no current version and no older one stands in
+  its place: it is `unreadable` with its problem. The catalog and the card show the
+  current version and the clean-up report counts only the versions before it as unused.
+  A version directory without its sidecar (`missing_sidecar`, a download in progress or an
+  interrupted one) is no version and is explained as a non-critical, usually temporary
+  problem; a sidecar of another schema (`unknown_schema`) has its own text. (SPEC 4.4,
+  4.8.1, ADR 0032)
 
 ### Changed
 

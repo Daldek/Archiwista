@@ -700,6 +700,17 @@ Zasady wspólne dla wszystkich producentów i produktów:
   `stations`, `station_series` i `series_years` z jednego pliku (katalogu
   albo spisu `series.json`), bez czytania plików Parquet; widok stacji
   nie wymaga sieci ani odczytu szeregów.
+- **Wersja bieżąca slotu IMGW** nie wynika z dowiązania (IMGWTools ich nie ma),
+  więc na końcu przejścia Archiwista pyta producenta (`current_version`,
+  zdolność `CurrentVersionAdapter`) o sloty, których przejście dotknęło:
+  wersja zapisana, powracająca albo zaginiona, problem znaleziony albo
+  rozwiązany, oraz sloty bez wersji bieżącej, choć przejście widziało ich
+  wersję (przerwany skan zostawia takie sloty). Skan bez zmian o nic nie
+  pyta; odpowiedź wskazująca wersję, której przejście nie widziało
+  (opublikowaną po przeglądzie), czeka na następny skan. Slot z uszkodzoną
+  wersją nie ma wersji bieżącej (starsza nie zajmuje jej miejsca) i jest
+  „nieczytelny” z problemem z `iter_store`; katalog wersji bez sidecara
+  (`missing_sidecar`) nie jest wersją i nie zmienia wersji bieżącej.
 - **Wyzwalacze:** start aplikacji (przyrostowy, jeśli ostatni starszy niż
   15 min), interwał (domyślnie 15 min dla udziału, 5 min dla dysku
   lokalnego), przycisk „Odśwież” (magazyn, segment, widok), koniec zadania
@@ -952,9 +963,11 @@ te same bajty pod innym sygnałem, z przyrostkiem `+<8 hex>` (np.
 - **katalog stacji** — data pobrania (`"downloaded"`); bieżąca = najnowsza.
 
 Bieżącą wersję wylicza API IMGWTools (`current_version`, IMGW-10), nie
-Archiwista; uszkodzona wersja w slocie daje błąd zamiast cichego wyboru
-starszej, więc Archiwista pokazuje wtedy slot z problemami z `iter_store`
-(12.7, IMGW-10). Katalog wersji bez sidecara pliku głównego nie jest
+Archiwista: indeks zapisuje odpowiedź po skanie slotów, których skan
+dotknął (4.4). Uszkodzona wersja w slocie daje błąd zamiast cichego wyboru
+starszej, więc slot nie ma wtedy wersji bieżącej, a Archiwista pokazuje go
+jako nieczytelny z problemami z `iter_store` (12.7, IMGW-10). Katalog
+wersji bez sidecara pliku głównego nie jest
 wersją, tylko przerwaną albo trwającą publikacją (IMGW-2): `current_version`
 go pomija bez błędu, a Archiwista pokazuje wersję bieżącą i obok problem
 `missing_sidecar` (4.4). Starych wersji nikt nie usuwa: zestaw wskazujący starsze

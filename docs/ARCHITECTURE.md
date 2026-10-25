@@ -170,7 +170,7 @@ nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
 
 | Moduł | Rola | Kluczowe symbole |
 |---|---|---|
-| `sources/protocol.py` | protokoły adaptera (`runtime_checkable`): wymagany i zdolności opcjonalne | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `CoordinateTransformer` |
+| `sources/protocol.py` | protokoły adaptera (`runtime_checkable`): wymagany i zdolności opcjonalne | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `CoordinateTransformer` |
 | `sources/types.py` | wspólne typy niezależne od producenta | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
 | `sources/registry.py` | wtyczki z entry points grupy `archiwista.sources`, ich stany i adaptery | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | fabryka wtyczki: porównuje zainstalowanego Kartografa z przypięciem Archiwisty przed importem | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
@@ -178,7 +178,7 @@ nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
 | `adapter/kartograf/unit_cache.py` | lokalna pamięć obrysów jednostek (TERYT, KU, SM5) dla `file_footprint` | `UnitBBoxCache` |
 | `sources/markers.py` | nazwy plików znaczników magazynów producentów (DEV-19.12): adapter odmawia obcego magazynu po samej nazwie pliku, bez importu innego producenta | `STORE_MARKERS`, `foreign_markers` |
 | `adapter/imgw/__init__.py` | fabryka wtyczki IMGW: porównuje zainstalowany IMGWTools z zakresem `SUPPORTED_VERSIONS` przed importem (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
-| `adapter/imgw/adapter.py` | adapter IMGWTools dla IMGW-PIB i ČHMÚ: wpisy z `iter_store` (wersje z `ScanScope.known_versions` wracają jako `skipped`, bez czytania sidecara: `skip_versions`) z kluczem slotu producenta, nazwą slotu dla ludzi i rekordem obserwacji, opis zbioru z rejestru IMGWTools (`SegmentDescriptionAdapter`), werdykty `probe` po znaczniku i kodach `StoreInfo.problem_codes`, metadane, kraj pliku, projekty; nie importuje `pyarrow` | `ImgwAdapter` |
+| `adapter/imgw/adapter.py` | adapter IMGWTools dla IMGW-PIB i ČHMÚ: wpisy z `iter_store` (wersje z `ScanScope.known_versions` wracają jako `skipped`, bez czytania sidecara: `skip_versions`) z kluczem slotu producenta, nazwą slotu dla ludzi i rekordem obserwacji, opis zbioru z rejestru IMGWTools (`SegmentDescriptionAdapter`), wersja bieżąca slotu od IMGWTools (`current_version`: `CurrentVersionAdapter`; slot z uszkodzoną wersją jej nie ma), werdykty `probe` po znaczniku i kodach `StoreInfo.problem_codes`, metadane, kraj pliku, projekty; nie importuje `pyarrow` | `ImgwAdapter` |
 
 **Wspólne**
 
@@ -563,8 +563,19 @@ segmentem i `on_event=emit.scan_event`.
    z datą, przebieg `full` usuwa wersje oznaczone tak już wcześniej i nadal
    nieobecne; oba czyszczą niewidziane dowiązania, rozwiązują problemy
    i usuwają puste sloty, a przebieg całego magazynu usuwa też puste
-   segmenty i ustawia `indexed_at` oraz stan `available`. Niedostępny
-   magazyn (`SourceUnavailableError`) albo błąd producenta
+   segmenty i ustawia `indexed_at` oraz stan `available`. Producent bez
+   dowiązań, którego sloty mają własny klucz (`CurrentVersionAdapter`,
+   IMGWTools), jest pytany o wersję bieżącą — `current_version(root,
+   slot_key)` przed transakcją, raz na slot — slotów, których przebieg
+   dotknął (wersja zapisana, wróciła albo zniknęła, problem znaleziony
+   albo rozwiązany), i tych bez wersji bieżącej, choć przebieg widział
+   ich wersję (przerwany przebieg zostawia takie sloty, a nic innego ich
+   nie dotknie); skan bez zmian o nic nie pyta. Odpowiedź zapisuje się
+   jako `slots.current_path` tylko dla wersji, którą przebieg widział —
+   opublikowaną po przeglądzie widzi następny skan — a brak odpowiedzi
+   (uszkodzona wersja w slocie) czyści wersję bieżącą: starsza nie
+   zajmuje jej miejsca. Niedostępny magazyn
+   (`SourceUnavailableError`) albo błąd producenta
    (`ProducerError`) kończy przebieg `abandon_pass` — nic nie zostaje
    oznaczone — a niedostępny magazyn dostaje stan `unavailable` z opisem.
 7. Po przejściu całego magazynu (bez `segment`) `scan_projects` odkrywa
@@ -1109,11 +1120,12 @@ z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etap
   `imgw` obok katalogu `kartograf` albo zamiast niego (`StoreConfig.roots`
   podaje oba, sekcja 4), a skan indeksuje pliki IMGW jako wersje slotów
   (`slot_key`, `provider`, obserwacje jako historia slotu, zbiory jako
-  segmenty opisane przez adapter). Do zrobienia: `PROJECT_MANIFESTS` zna tylko
-  `kartograf-project.json`, indeks nie zna wersji bieżącej magazynu IMGWTools
-  (nie ma dowiązań), a zdolności stacji i szeregów (`stations`,
-  `series_index`, `read_series` z SPEC 5.3) nie ma jeszcze w
-  `sources/protocol.py`.
+  segmenty opisane przez adapter) i pyta producenta o wersję bieżącą
+  slotów, których dotknął (`CurrentVersionAdapter`: IMGWTools nie ma
+  dowiązań, więc wersję bieżącą wybiera jego `current_version`). Do
+  zrobienia: `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`,
+  a zdolności stacji i szeregów (`stations`, `series_index`, `read_series`
+  z SPEC 5.3) nie ma jeszcze w `sources/protocol.py`.
 
 ---
 

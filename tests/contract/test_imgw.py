@@ -9,6 +9,7 @@ is pinned to what the producer itself does with the same directory.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from pathlib import Path
 import imgwtools
 import pytest
 from imgwtools import (
+    IMGWDataError,
     IMGWError,
     IMGWStoreConflictError,
     Meta,
@@ -45,6 +47,7 @@ from archiwista.adapter.imgw import (
 from archiwista.adapter.imgw.adapter import ImgwAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import (
+    CurrentVersionAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
@@ -64,6 +67,8 @@ type Row = tuple[object, ...]
 
 HYDRO = "pl.imgw.hydro_daily"
 ARCHIVE_SLOT = Path("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024")
+ARCHIVE_KEY = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+SERIES_KEY = "series:pl.imgw.hydro_daily"
 HYDRO_SERIES = Path("series/versions/hydro_daily")
 PL_CATALOG = Path("stations/versions")
 CZ_CATALOG = Path("stations/versions/chmi_stations")
@@ -152,6 +157,7 @@ def test_adapter_implements_the_source_interface_and_describes_its_datasets(
     """The store has no segments to scan, links, sheets or coordinate operations."""
     assert isinstance(adapter, SourceAdapter)
     assert isinstance(adapter, SegmentDescriptionAdapter)
+    assert isinstance(adapter, CurrentVersionAdapter)
     assert not any(
         isinstance(adapter, capability)
         for capability in (
@@ -648,6 +654,143 @@ def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
     )
     state = adapter.probe(link)
     assert (state.status, state.detail) == ("error", raised.value.message)
+
+
+@pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
+def test_the_current_version_of_every_slot_is_the_producers_relative_to_the_store(
+    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+) -> None:
+    """The adapter asks IMGWTools and answers with the path of a version it lists."""
+    root = imgw_store(variant)
+    entries = _entries(adapter, root)
+    keys = sorted({e.slot_key for e in entries if e.slot_key})
+
+    answers = {key: adapter.current_version(root, key) for key in keys}
+
+    produced = {key: imgwtools.current_version(root, slot=key) for key in keys}
+    assert keys and all(answers.values())
+    assert answers == {
+        key: found.version.relative_to(root)
+        for key, found in produced.items()
+        if found is not None and found.version is not None
+    }
+    listed = {e.relative_path for e in entries if e.kind == "version"}
+    assert {answer for answer in answers.values() if answer} <= listed
+    # Of the three versions of an archive, the newest is the current one.
+    by_label = {
+        _label(e): e.relative_path for e in entries if e.slot_path == ARCHIVE_SLOT
+    }
+    assert answers[ARCHIVE_KEY] == by_label[max(map(str, by_label))]
+
+
+def test_a_version_without_its_sidecar_is_skipped_and_the_older_one_answers(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """An interrupted publication is no version: the version before it is current."""
+    root = _copy(imgw_store, tmp_path / "store")
+    before = adapter.current_version(root, ARCHIVE_KEY)
+    newest = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-30")
+    assert adapter.current_version(root, ARCHIVE_KEY) == Path(newest)
+
+    drop_sidecar(root, newest)
+
+    assert before is not None and before != Path(newest)
+    assert adapter.current_version(root, ARCHIVE_KEY) == before
+
+
+@pytest.mark.parametrize(
+    ("variant", "key"), [("corrupt", ARCHIVE_KEY), ("unknown_schema", SERIES_KEY)]
+)
+def test_a_broken_version_leaves_its_slot_without_a_current_version(
+    imgw_store: Stores, adapter: ImgwAdapter, variant: str, key: str
+) -> None:
+    """The producer refuses to choose, and an older version is not chosen instead."""
+    root = imgw_store(variant)
+    older = [e for e in _entries(adapter, root) if e.slot_key == key and e.meta]
+
+    with pytest.raises(IMGWDataError):
+        imgwtools.current_version(root, slot=key)
+
+    assert older
+    assert adapter.current_version(root, key) is None
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        lambda root, version: rewrite_sidecar(root, version, size_bytes=7),
+        lambda root, version: rewrite_sidecar(root, version, dataset="no dataset"),
+        lambda root, version: (root / version).with_name("notes.txt").write_text("x"),
+    ],
+    ids=["size_mismatch", "invalid_meta", "stray_file"],
+)
+def test_every_way_a_version_is_broken_leaves_the_slot_without_a_current_version(
+    imgw_store: Stores,
+    adapter: ImgwAdapter,
+    tmp_path: Path,
+    damage: Callable[[Path, str], object],
+) -> None:
+    """A size that differs, an invalid field and a stray file are all refused."""
+    root = _copy(imgw_store, tmp_path / "store")
+    version = adapter.current_version(root, ARCHIVE_KEY)
+    assert version is not None
+
+    damage(root, version.as_posix())
+
+    with pytest.raises(IMGWDataError):
+        imgwtools.current_version(root, slot=ARCHIVE_KEY)
+    assert adapter.current_version(root, ARCHIVE_KEY) is None
+
+
+def test_a_slot_the_producer_cannot_read_has_no_current_version_and_no_error(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """A slot an earlier scan indexed must not fail the scan that finds it gone."""
+    root = _copy(imgw_store, tmp_path / "store")
+    directory = root / ARCHIVE_SLOT
+    moved = directory.with_name("codz_2024_moved")
+    directory.rename(moved)
+    directory.symlink_to(moved, target_is_directory=True)
+
+    assert adapter.current_version(root, ARCHIVE_KEY) is None
+    assert adapter.current_version(root, "series:pl.imgw.removed_dataset") is None
+    assert adapter.current_version(root, "no grammar of the producer") is None
+    absent = "archive:pl.imgw.hydro_daily:1999/codz_1999.zip"
+    assert adapter.current_version(root, absent) is None
+
+
+def test_a_root_that_is_no_store_anymore_is_the_producers_refusal(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """The store, not the slot, is the problem: the error of IMGWTools is kept."""
+    root = _copy(imgw_store, tmp_path / "store")
+    (root / "imgw-store.json").unlink()
+
+    with pytest.raises(ProducerError) as raised:
+        adapter.current_version(root, ARCHIVE_KEY)
+
+    assert (raised.value.package, raised.value.exception) == (
+        "imgwtools",
+        "IMGWStoreError",
+    )
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
+def test_a_sidecar_the_system_cannot_read_is_an_unavailable_store(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """A file that cannot be read is the system's problem, as in a scan."""
+    root = _copy(imgw_store, tmp_path / "store")
+    version = adapter.current_version(root, ARCHIVE_KEY)
+    assert version is not None
+    sidecar = root / f"{version.as_posix()}.meta.json"
+    sidecar.chmod(0)
+
+    try:
+        with pytest.raises(SourceUnavailableError):
+            adapter.current_version(root, ARCHIVE_KEY)
+    finally:
+        sidecar.chmod(0o644)
 
 
 @dataclass(frozen=True)

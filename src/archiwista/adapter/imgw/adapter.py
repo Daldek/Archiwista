@@ -15,8 +15,10 @@ by the producer's own slot (``slot_key``, e.g.
 ``segment`` is its dataset, so the files of IMGW-PIB and ČHMÚ never mix and
 ``describe_segment`` names each dataset for people. The versions the index
 knows (``ScanScope.known_versions``) are the ``skip_versions`` of
-``iter_store``: they come back ``skipped``, with no sidecar read. Exceptions
-of the producer surface as ``ProducerError`` with the message unchanged.
+``iter_store``: they come back ``skipped``, with no sidecar read. A slot has
+no link, so ``current_version`` asks IMGWTools which version of a slot is the
+current one. Exceptions of the producer surface as ``ProducerError`` with the
+message unchanged.
 """
 
 import os
@@ -41,6 +43,7 @@ from imgwtools import (
     providers,
     store_info,
 )
+from imgwtools import current_version as current_of_slot
 from imgwtools import read_meta as read_sidecar
 
 from archiwista.adapter.imgw import PACKAGE, PRODUCER, SCHEMAS
@@ -80,6 +83,12 @@ _SLOT_KINDS = frozenset({"archive", "series", "catalog", "pmaxtp"})
 _CATALOG = "stations"
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
+# The codes of an IMGWTools error that say a slot has no current version, not that
+# the store is unusable: a version of the slot is broken (``data_error``) or the
+# producer cannot read the slot (``validation_error``: a link in its path, a key it
+# does not know). ``io_error`` is a file the system cannot read and
+# ``store_unavailable`` a root that is no store anymore.
+_SLOT_UNREADABLE = frozenset({"data_error", "validation_error"})
 # Project and task states by increasing severity.
 _STATUS_ORDER = ("ok", "not_downloaded", "missing", "corrupt")
 # The state IMGWTools gives a task, as one of the states above: a pin whose
@@ -104,8 +113,9 @@ class ImgwAdapter:
 
     Notes
     -----
-    Implements the source interface and ``SegmentDescriptionAdapter`` (a
-    dataset is a segment that cannot be read alone); no other optional
+    Implements the source interface, ``SegmentDescriptionAdapter`` (a
+    dataset is a segment that cannot be read alone) and
+    ``CurrentVersionAdapter`` (a slot has no link); no other optional
     capability. All methods may run in several threads at once; one iterator
     of ``iter_entries`` belongs to one thread.
     """
@@ -227,6 +237,53 @@ class ImgwAdapter:
             ``None``: IMGWTools has no products.
         """
         return _describe(segment)
+
+    def current_version(self, root: Path, slot_key: str) -> Path | None:
+        """Return the current version of a slot, as IMGWTools chooses it.
+
+        IMGWTools reads every sidecar of the slot: the newest ``Last-Modified``
+        of an archive and the newest download of a series, a catalog or a PMAXTP
+        cell win. A version directory without its sidecar is an interrupted
+        publication and is skipped.
+
+        Parameters
+        ----------
+        root : Path
+            The store root.
+        slot_key : str
+            The producer's own key of the slot (``SourceEntry.slot_key``), e.g.
+            ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``.
+
+        Returns
+        -------
+        Path or None
+            The version's file relative to ``root``. ``None`` when the slot has
+            no version, when one of its versions is broken (an invalid
+            sidecar, another schema, a size that differs from the sidecar's;
+            a stray file; IMGWTools never chooses an older version in its
+            place, and ``iter_entries`` reports the broken one) and when the
+            producer cannot read the slot at all (a link in its path, a key it
+            no longer knows): a slot the index still holds from an earlier
+            pass must not fail the scan that finds it gone.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read a file of the slot.
+        ProducerError
+            IMGWTools refused the store itself (it is no longer a store).
+        """
+        try:
+            found = current_of_slot(root, slot=slot_key)
+        except OSError as error:
+            raise _unavailable(str(root), str(error)) from error
+        except IMGWError as error:
+            if error.code in _SLOT_UNREADABLE:
+                return None
+            raise _failure(str(root), error) from error
+        if found is None or found.version is None:
+            return None
+        return found.version.relative_to(root.expanduser().absolute())
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Place a file: its country for an archive or a series, else nowhere.

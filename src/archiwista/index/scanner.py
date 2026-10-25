@@ -18,7 +18,10 @@ incremental scan passes the settled version directories the index knows
 are not listed again, so only the full scan (scheduled daily by default)
 notices a file removed from or added to one of them. A link names its
 version itself (``SourceEntry.version_path``); the scanner never confirms
-links, which is an on-demand job.
+links, which is an on-demand job. A producer without links (its slots carry
+its own key) names the current version of a slot itself
+(``CurrentVersionAdapter``): the pass asks for the slots it touched when it
+finishes.
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -57,10 +60,16 @@ from archiwista.index.geometry import (
 )
 from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
-from archiwista.index.types import BatchResult, IndexStatus, PassSummary
+from archiwista.index.types import (
+    BatchResult,
+    CurrentVersionLookup,
+    IndexStatus,
+    PassSummary,
+)
 from archiwista.index.writer import IndexWriter
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    CurrentVersionAdapter,
     Footprint,
     GeoAdapter,
     GeoJSONGeometry,
@@ -214,7 +223,9 @@ def scan_store(
     the producer's projects are scanned too (``scan_projects``). A producer
     that lists no segments but can describe them (``SegmentDescriptionAdapter``)
     is read whole, and the segments its entries named are described at the
-    end of the pass.
+    end of the pass. A producer that names the current version of a slot
+    itself (``CurrentVersionAdapter``) is asked for the slots the pass touched
+    when it finishes.
 
     Parameters
     ----------
@@ -315,7 +326,7 @@ def scan_store(
                 raise _empty_store(root)
             if _reachable_segments(adapter, root) == () and writer.holds_entries():
                 raise _empty_store(root)
-            finished = writer.finish_pass()
+            finished = writer.finish_pass(current=_current_lookup(adapter, root))
         except SourceUnavailableError as error:
             writer.abandon_pass()
             writer.set_store_status(store, "unavailable", detail=str(error))
@@ -874,7 +885,7 @@ def _write_view(
             batch = entries[start : start + BATCH_ENTRIES]
             _write_batch(writer, batch, footprints, totals)
         footprints.finish()
-        writer.finish_pass()
+        writer.finish_pass(current=_current_lookup(adapter, target.root))
     except BaseException:
         writer.abandon_pass()
         raise
@@ -986,6 +997,18 @@ def _reachable_segments(adapter: SourceAdapter, root: Path) -> tuple[str, ...] |
     if isinstance(adapter, SegmentedAdapter):
         return tuple(adapter.segments(root))
     return None
+
+
+def _current_lookup(adapter: SourceAdapter, root: Path) -> CurrentVersionLookup | None:
+    """Return the producer's answer for a slot's current version, if it gives one."""
+    if not isinstance(adapter, CurrentVersionAdapter):
+        return None
+    producer: CurrentVersionAdapter = adapter
+
+    def lookup(key: str) -> Path | None:
+        return producer.current_version(root, key)
+
+    return lookup
 
 
 def _indexed(queries: IndexQueries, store: str) -> bool:

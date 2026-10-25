@@ -11,7 +11,8 @@ an incremental scan of an unchanged store writes nothing. Each
 (current versions, slot states and search rows of the touched slots), so
 readers never wait for a pass to end. Only ``finish_pass`` acts on what the
 pass has *not* seen; abandoning a pass (e.g. the store became unavailable)
-changes nothing else.
+changes nothing else. A producer without links names the current version of
+its slots itself: ``finish_pass`` asks it for the slots the pass touched.
 """
 
 import hashlib
@@ -35,6 +36,7 @@ from archiwista.index.types import (
     MAX_OWN_FILE_STATES,
     AreaRecord,
     BatchResult,
+    CurrentVersionLookup,
     KnownOwnFile,
     ManifestStamp,
     OwnFilesWritten,
@@ -185,16 +187,22 @@ UPDATE slots SET
     )
 WHERE id IN ({_IDS})
 """
+# A slot without a current version is ``no_sidecar`` while a version of it is an
+# interrupted publication, ``unreadable`` while one of its files cannot be read
+# (the codes of both producers; ``size_mismatch`` leaves it ``missing``).
 _SLOT_STATUS = f"""
 UPDATE slots SET status = CASE
     WHEN current_version_id IS NOT NULL THEN 'ok'
     WHEN EXISTS (
-        SELECT 1 FROM issues i WHERE i.store_id = slots.store_id
-        AND i.path = slots.path AND i.code = 'missing_sidecar'
+        SELECT 1 FROM issues i WHERE i.slot_id = slots.id
+        AND i.code = 'missing_sidecar'
     ) THEN 'no_sidecar'
     WHEN EXISTS (
-        SELECT 1 FROM issues i WHERE i.store_id = slots.store_id
-        AND i.path = slots.path AND i.code = 'invalid_sidecar'
+        SELECT 1 FROM issues i WHERE i.slot_id = slots.id
+        AND i.code IN (
+            'invalid_sidecar', 'invalid_json', 'invalid_meta', 'unknown_schema',
+            'unreadable'
+        )
     ) THEN 'unreadable'
     ELSE 'missing'
 END
@@ -331,6 +339,9 @@ class _PassState:
     # Observations of the scope the index holds, and those the pass has seen.
     observations: set[str] = field(default_factory=set)
     seen_observations: set[str] = field(default_factory=set)
+    # Slots (ids) whose versions, links or problems the pass wrote or brought
+    # back: the ones a producer is asked the current version of at the end.
+    touched: set[int] = field(default_factory=set)
     # Settled version directories by segment id (``known_versions``), taken
     # once per pass before anything is written.
     settled: dict[int, dict[str, tuple[str, ...]]] | None = None
@@ -772,7 +783,7 @@ class IndexWriter:
             return BatchResult(needs_footprint=tuple(batch.needs_footprint))
         return self._apply(state, batch)
 
-    def finish_pass(self) -> PassSummary:
+    def finish_pass(self, current: CurrentVersionLookup | None = None) -> PassSummary:
         """End the active pass: act on what it has not seen within its scope.
 
         Unseen versions become missing (with the date); versions an earlier
@@ -781,6 +792,22 @@ class IndexWriter:
         forgotten; slots left with nothing are removed. A pass over the whole
         store also drops empty segments and records the store as indexed and
         available.
+
+        A producer without links names the current version of a slot itself
+        (``current``), asked by the slot's key before anything is written: for
+        the slots the pass touched (a version written, back or gone, a problem
+        found or resolved) and for the slots that have none while the pass saw a
+        version of them (a pass that did not finish leaves such slots), so a
+        pass that changed nothing asks for none. A version the pass did not see
+        is not taken: the next pass sees it. A slot with a key keeps its current
+        version through a pass: no link is seen for it.
+
+        Parameters
+        ----------
+        current : CurrentVersionLookup or None, optional
+            The producer's answer for a slot key
+            (``CurrentVersionAdapter.current_version``). Without it the
+            current version of a slot with a key stays as it is.
 
         Returns
         -------
@@ -791,23 +818,33 @@ class IndexWriter:
         ------
         RuntimeError
             No pass is active.
+
+        Notes
+        -----
+        What ``current`` raises ends the call and leaves the pass active: the
+        caller abandons it.
         """
         state = self._active()
         info = state.info
         now = _now()
         missing: list[int] = []
         removed: list[tuple[int, int]] = []
+        touched = set(state.touched)
         for path, version in state.versions.items():
             if path in state.seen_versions:
                 continue
             if version.state == "present":
                 missing.append(version.id)
+                touched.add(version.slot_id)
             elif info.full:
                 removed.append((version.id, version.slot_id))
+                touched.add(version.slot_id)
         unlinked = [
             slot.id
             for path, slot in state.slots.items()
-            if slot.current_path is not None and path not in state.seen_links
+            if slot.current_path is not None
+            and slot.key is None
+            and path not in state.seen_links
         ]
         unlinked_full = [
             slot.id
@@ -820,9 +857,12 @@ class IndexWriter:
             if key not in state.seen_issues
         ]
         gone = sorted(state.observations - state.seen_observations)
+        touched.update(slot_id for _, slot_id in resolved if slot_id is not None)
+        answers = {} if current is None else _current_versions(state, touched, current)
         affected = {slot_id for _, slot_id in removed}
         affected.update(unlinked, unlinked_full)
         affected.update(slot_id for _, slot_id in resolved if slot_id is not None)
+        affected.update(answers)
         whole_store = info.segment is None and info.slots is None
         with self._transaction() as connection:
             connection.execute(
@@ -833,6 +873,10 @@ class IndexWriter:
             connection.execute(
                 f"DELETE FROM versions WHERE id IN ({_IDS})",
                 (json.dumps([version_id for version_id, _ in removed]),),
+            )
+            connection.executemany(
+                "UPDATE slots SET current_path = ? WHERE id = ?",
+                [(target, slot_id) for slot_id, target in answers.items()],
             )
             connection.execute(
                 f"UPDATE slots SET current_path = NULL WHERE id IN ({_IDS})",
@@ -878,6 +922,7 @@ class IndexWriter:
             slots_removed=max(slots_removed, 0),
             unlinked=len(unlinked) + len(unlinked_full),
             issues_resolved=len(resolved),
+            current=len(answers),
         )
 
     def abandon_pass(self) -> None:
@@ -1946,6 +1991,9 @@ class IndexWriter:
                 slot_id(slot) for slot, _ in batch.issues.values() if slot is not None
             )
             self._refresh_slots(connection, affected)
+            slots_touched = affected | {
+                state.versions[path].slot_id for path in batch.reappeared
+            }
         # The transaction is committed: the pass state follows the index.
         for segment, new_id in new_segments.items():
             state.segments[segment] = _Segment(new_id, None, None)
@@ -1965,6 +2013,7 @@ class IndexWriter:
         state.versions.update(fresh_versions)
         state.issues.update(fresh_issues)
         state.observations.update(batch.observations)
+        state.touched.update(slots_touched)
         state.reappeared += len(batch.reappeared)
         return BatchResult(
             needs_footprint=tuple(batch.needs_footprint),
@@ -2012,6 +2061,49 @@ def _settled_directories(state: _PassState) -> dict[int, dict[str, tuple[str, ..
         }
         for segment_id, directories in found.items()
     }
+
+
+def _current_versions(
+    state: _PassState, touched: Collection[int], current: CurrentVersionLookup
+) -> dict[int, str | None]:
+    """Ask the producer for the current version of the slots it keys.
+
+    Asked are the slots with a key that the pass touched, and those with a key
+    and no current version of which the pass saw a version: a pass that did
+    not finish (its batches are written, ``finish_pass`` is not) leaves such
+    slots, and nothing touches them again, so every scan asks for them until
+    they have one. A slot the producer cannot name a version of (a broken
+    version in it) is asked every scan, and costs the producer a read of its
+    few versions. An answer that is not a version this pass saw is left for
+    the next pass, which sees it: a version published since the listing is not
+    written as a current one the index does not hold.
+
+    Returns
+    -------
+    dict[int, str | None]
+        The new ``current_path`` of each slot (by id) whose answer differs
+        from the index's; ``None`` clears it.
+    """
+    keyed = [(slot, slot.key) for slot in state.slots.values() if slot.key is not None]
+    if not keyed:
+        return {}
+    seen = {
+        version.slot_id
+        for path in state.seen_versions
+        if (version := state.versions.get(path)) is not None
+    }
+    changes: dict[int, str | None] = {}
+    for slot, key in keyed:
+        unnamed = slot.current_path is None and slot.id in seen
+        if slot.id not in touched and not unnamed:
+            continue
+        found = current(key)
+        target = None if found is None else found.as_posix()
+        if target is not None and target not in state.seen_versions:
+            continue
+        if target != slot.current_path:
+            changes[slot.id] = target
+    return changes
 
 
 def _now() -> str:

@@ -40,8 +40,8 @@ side.
    or not IMGWTools is installed. Without it the state is `not_installed` and the fix is
    `pip install "archiwista[imgw]"`; for a source that no store uses, `doctor` reports a
    warning and its exit status stays 0. Kartograf and everything else are unaffected.
-4. **Read first (e is rejected).** The adapter implements the source interface and no
-   optional capability: it probes a directory, scans the entries of `iter_store`, reads
+4. **Read first (e is rejected).** The adapter implements the source interface and two optional
+   capabilities (decisions 7 and 8): it probes a directory, scans the entries of `iter_store`, reads
    the metadata of a file again, places a file by its country and reads a project and its
    status. It writes nothing and uses no network; the store stays read-only for Archiwista.
    Archives, series, station catalogs and PMAXTP cells are versions; what the producer cannot
@@ -93,6 +93,32 @@ side.
    not see again is forgotten. Rejected: reading the key from the layout (the layout is
    the producer's knowledge, A-ADR-014); a list of segments for IMGWTools; observations as
    versions (they would change every count and, for an archive, its current version).
+8. **IMGWTools names the current version of a slot, and the index only asks** (plan I3,
+   commit 2). IMGWTools has no links, so no entry says which version of a slot is current.
+   The optional capability `CurrentVersionAdapter` (`current_version(root, slot_key)`) asks
+   the producer, which reads every sidecar of the slot: the newest `Last-Modified` of an
+   archive, the newest download of a series, a catalog or a PMAXTP cell. The index asks once,
+   at the end of a pass (`IndexWriter.finish_pass(current=...)`), before its transaction: for
+   the slots with a key that the pass touched (a version written, back or gone, a problem
+   found or resolved) and for those with a key and no current version of which the pass saw
+   a version (the batches are written before `finish_pass`, so a pass that did not finish
+   would leave them with none for ever). An unchanged incremental scan asks for no slot; a
+   slot with a damaged version is asked at every scan, which costs the producer a read of its
+   few sidecars. The answer becomes `slots.current_path` only for a version the pass saw (a
+   version published since the listing is taken by the next scan, and the index never holds a
+   current path it has no version for, which would read as an orphan link); a slot with a key
+   is not unlinked for want of a link. A damaged version in a slot (an invalid sidecar,
+   another schema, a size that differs, a stray file) gives no answer: the slot has no
+   current version, an older one is not chosen in its place, and the slot is `unreadable`
+   with its problem. So does a slot the producer cannot read at all (a link in its path, a
+   key it no longer knows), because a slot an earlier pass indexed must not fail the scan
+   that finds it gone. A file the system cannot read is an unavailable store, as in a
+   listing, and a root that is no store anymore is the producer's error. `missing_sidecar` is
+   an interrupted or a running publication, not a version: the older version stays current
+   and the problem is explained as non-critical and usually temporary; `unknown_schema` has
+   its own text. Rejected: choosing the newest version in Archiwista (the producer's rule,
+   A-ADR-014); asking at every scan (a read of every slot, on a share); a current version
+   for a version the pass did not see.
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -107,11 +133,10 @@ commit: a machine code of each problem in `StoreInfo.problem_codes`, the `produc
 one rule for a marker (the reader needs only its `schema`, as `open_store` does). A store
 takes an IMGW directory beside or instead of its Kartograf one (the settings step of the
 same plan, `StoreConfig.imgw`): the scan indexes its files as versions of their slots,
-without a current version; a source that is not available has its directory skipped and its
+with the current version IMGWTools names (decision 8); a source that is not available has its directory skipped and its
 entry kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is
 refused by the marker file names at its own field (DEV-19.14), looking two levels down
 because the producer's writer, which looks at the whole tree, is not run by a settings
-change. The current version, the index of IMGW slots, the stations and the series coverage
-come after it.
+change. The stations and the series coverage come after the index of IMGW slots.
 
 **Errata:** none.

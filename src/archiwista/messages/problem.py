@@ -11,6 +11,20 @@ MESSAGES = {
         "Unreadable file sidecar: {path}",
         "Nieczytelny sidecar pliku: {path}",
     ),
+    "imgw_missing_sidecar": Text(
+        (
+            "Version directory without a sidecar, a download in progress or an"
+            " interrupted one (it is not a version): {path}"
+        ),
+        (
+            "Katalog wersji bez sidecara, pobieranie w toku albo przerwane (to nie"
+            " jest wersja): {path}"
+        ),
+    ),
+    "unknown_schema": Text(
+        "File in a schema this version does not read: {path}",
+        "Plik w schemacie, którego ta wersja nie czyta: {path}",
+    ),
     "unknown_segment": Text(
         "Directory not recognized by the {producer} plugin: {path}",
         "Katalog nierozpoznany przez wtyczkę {producer}: {path}",

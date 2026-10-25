@@ -10,6 +10,7 @@ import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import Literal
 
 from archiwista.config import OwnFolderReason, OwnFolderSource
@@ -32,6 +33,10 @@ type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
+# A producer's current version of a slot, asked by the slot's key at the end of
+# a pass: a path relative to the store, ``None`` without one
+# (``CurrentVersionAdapter.current_version``).
+type CurrentVersionLookup = Callable[[str], Path | None]
 # Own data of projects (plan v0.2, decision 8).
 type OwnFolderState = Literal["ok", "missing", "unreadable", "invalid"]
 type OwnReadState = Literal["ok", "unrecognized", "unreadable"]
@@ -713,7 +718,8 @@ class PassSummary:
     ``missing``: versions newly marked missing; ``reappeared``: missing
     versions seen again; ``removed``: versions dropped after a second full
     pass without them; ``unlinked``: links (standard or ``full_sheet``)
-    gone; ``issues_resolved``: problems no longer reported.
+    gone; ``issues_resolved``: problems no longer reported; ``current``: slots
+    whose current version the producer's answer changed.
     """
 
     missing: int = 0
@@ -722,6 +728,7 @@ class PassSummary:
     slots_removed: int = 0
     unlinked: int = 0
     issues_resolved: int = 0
+    current: int = 0
 
 
 @dataclass(frozen=True, slots=True)

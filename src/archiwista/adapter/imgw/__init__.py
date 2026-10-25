@@ -37,8 +37,8 @@ def load(context: SourceContext) -> SourceAdapter:
     Returns
     -------
     SourceAdapter
-        The adapter; it implements the source interface and no optional
-        capability.
+        The adapter; it implements the source interface, the description of
+        the segments its entries name and the current version of a slot.
 
     Raises
     ------
