@@ -403,6 +403,7 @@ _STORE_SETTINGS_EXAMPLE = {
     "id": _STORE,
     "name": "Zespół",
     "kartograf": "/mnt/nas/kartograf/data",
+    "imgw": "/mnt/nas/imgw",
     "kind": "share",
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
@@ -2448,7 +2449,7 @@ class ProjectStatus(BaseModel):
 
 
 class StoreSettings(BaseModel):
-    """A configured store: a short id and the producer's directory."""
+    """A configured store: a short id and the producers' directories."""
 
     model_config = _examples(_STORE_SETTINGS_EXAMPLE)
 
@@ -2456,8 +2457,20 @@ class StoreSettings(BaseModel):
         description="Short id in the API: lowercase letters, digits, '_', '-' (≤ 32)."
     )
     name: str
-    kartograf: str = Field(
-        description="Kartograf's --output directory (the data/ directory itself)."
+    kartograf: str | None = Field(
+        default=None,
+        description=(
+            "Kartograf's --output directory (the data/ directory itself). Left out"
+            " when the store has only `imgw`; one of the two is required."
+        ),
+    )
+    imgw: str | None = Field(
+        default=None,
+        description=(
+            "IMGWTools' store root, the directory that holds `imgw-store.json`. Left"
+            " out when the store has only `kartograf`; a new or moved directory needs"
+            " the source `imgw` to be available (`GET /sources`)."
+        ),
     )
     kind: StoreKind | None = Field(
         default=None,
@@ -2474,7 +2487,8 @@ class StoreSettings(BaseModel):
         return cls(
             id=store.id,
             name=store.name,
-            kartograf=str(store.kartograf),
+            kartograf=None if store.kartograf is None else str(store.kartograf),
+            imgw=None if store.imgw is None else str(store.imgw),
             kind=store.kind,
             path_aliases=dict(store.path_aliases),
         )

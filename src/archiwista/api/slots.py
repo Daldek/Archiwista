@@ -155,7 +155,7 @@ def slot_card(
         text = message("api.slot_unknown", slot=slot, store=store)
         raise NotFoundError(text)
     producer = detail.segment.producer
-    problems = [issue_problem(issue, producer) for issue in detail.issues]
+    problems = [issue_problem(issue) for issue in detail.issues]
     paths = copy_path(settings, store, producer, detail.slot)
     freshness = staleness(queries.freshness(), {store})
     return SlotCard.of(detail, problems, paths, freshness)

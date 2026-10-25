@@ -27,7 +27,7 @@ class _ExternalStore(StoreConfig):
 
     def roots(self) -> dict[str, Path]:
         """Return the test producer's directory."""
-        return {"external": self.kartograf}
+        return {"external": super().roots()["kartograf"]}
 
 
 def test_second_adapter_indexes_and_browses_without_core_changes(

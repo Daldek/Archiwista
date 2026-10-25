@@ -1,7 +1,8 @@
 /**
  * The first-run wizard, and later the settings it edits (docs/SPEC.md 5.5,
  * docs/PLAN_v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's `--output`
- * directory), project directories, offline mode and the preview cache
+ * directory, and the IMGWTools store root while the source `imgw` is available or the
+ * store already has one, SPEC 5.8), project directories, offline mode and the preview cache
  * limit (with the cache's usage from `/health`), saved at once with `PUT
  * /settings`. The server checks the directories and asks the producer about
  * each new or moved one; anything wrong keeps the settings in effect and
@@ -24,9 +25,9 @@ import { html, Icon, ProblemView, Spinner, useEffect, useId, useRef, useState } 
 const L = T.setup;
 const STEPS = ["stores", "projects", "mode", "save"];
 const STORE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-/** Settings fields of problems: `stores[0].kartograf`, `project_dirs[1]`. */
+/** Settings fields of problems: `stores[0].kartograf`, `stores[0].imgw`, `project_dirs[1]`. */
 const FIELD = /^(stores|project_dirs)\[(\d+)\](?:\.(\w+))?$/;
-const STORE_FIELDS = new Set(["id", "name", "kartograf", "kind"]);
+const STORE_FIELDS = new Set(["id", "name", "kartograf", "imgw", "kind"]);
 const NO_ERRORS = { stores: {}, projects: {}, preview: null, general: [] };
 const LIMIT_GB = { min: 1, max: 10_000 };
 const GIB = 1024 ** 3;
@@ -72,7 +73,7 @@ function Wizard({ initial }) {
 
   const next = () => {
     if (step === "stores") {
-      const found = storeErrors(draft.stores);
+      const found = storeErrors(draft.stores, app.health?.sources);
       setErrors({ ...NO_ERRORS, stores: found });
       if (Object.keys(found).length) return;
     }
@@ -85,7 +86,7 @@ function Wizard({ initial }) {
   };
 
   const save = async () => {
-    const found = storeErrors(draft.stores);
+    const found = storeErrors(draft.stores, app.health?.sources);
     if (Object.keys(found).length) {
       setErrors({ ...NO_ERRORS, stores: found });
       go("stores");
@@ -203,6 +204,12 @@ function StoresStep({ draft, change, errors, problem }) {
         <${TextField} label=${L.store.kartograf} hint=${L.store.kartograf_hint} value=${store.kartograf} mono
           error=${fieldErrors.kartograf} name=${`stores[${index}].kartograf`}
           onInput=${(value) => update(store.key, { kartograf: value })} />
+        ${imgwOffered(store, health?.sources)
+          ? html`<${TextField} label=${L.store.imgw} hint=${L.store.imgw_hint}
+              value=${store.imgw} mono error=${fieldErrors.imgw}
+              name=${`stores[${index}].imgw`}
+              onInput=${(value) => update(store.key, { imgw: value })} />`
+          : null}
         <${SelectField} label=${L.store.kind} value=${store.kind} error=${fieldErrors.kind}
           name=${`stores[${index}].kind`} onChange=${(value) => update(store.key, { kind: value })}
           options=${[
@@ -304,7 +311,8 @@ function SaveStep({ draft, problem, saving }) {
         <dd>${draft.stores.map(
           (store) => html`<div class="summary-store">
             <b>${store.name}</b> <code>${store.id}</code>
-            <div class="mono path">${store.kartograf}</div>
+            <${SummaryPath} label=${L.summary.kartograf} path=${store.kartograf} />
+            <${SummaryPath} label=${L.summary.imgw} path=${store.imgw} />
             <div class="muted">${store.kind ? T.common.store_kind[store.kind] : L.summary.kind_auto}</div>
           </div>`,
         )}</dd>
@@ -319,6 +327,12 @@ function SaveStep({ draft, problem, saving }) {
       </dl>
     </fieldset>
   </section>`;
+}
+
+/** A store directory of the summary, named by its producer; nothing when the store has none. */
+function SummaryPath({ label, path }) {
+  if (!path.trim()) return null;
+  return html`<div class="mono path"><span class="muted">${label}</span> ${path}</div>`;
 }
 
 function Saved({ stores, onEdit }) {
@@ -418,7 +432,8 @@ function draftOf(settings) {
     key: nextKey(),
     id: store.id,
     name: store.name,
-    kartograf: store.kartograf,
+    kartograf: store.kartograf ?? "",
+    imgw: store.imgw ?? "",
     kind: store.kind ?? "",
     idEdited: true,
     original: store,
@@ -432,7 +447,16 @@ function draftOf(settings) {
 }
 
 function emptyStore() {
-  return { key: nextKey(), id: "", name: "", kartograf: "", kind: "", idEdited: false, original: null };
+  return {
+    key: nextKey(),
+    id: "",
+    name: "",
+    kartograf: "",
+    imgw: "",
+    kind: "",
+    idEdited: false,
+    original: null,
+  };
 }
 
 /**
@@ -450,7 +474,8 @@ function bodyOf(initial, draft) {
       stores: draft.stores.map((store) => ({
         id: store.id.trim(),
         name: store.name.trim(),
-        kartograf: store.kartograf.trim(),
+        kartograf: store.kartograf.trim() || null,
+        imgw: store.imgw.trim() || null,
         kind: store.kind || null,
         path_aliases: store.original?.path_aliases ?? {},
       })),
@@ -459,14 +484,27 @@ function bodyOf(initial, draft) {
   };
 }
 
-function storeErrors(stores) {
+/**
+ * Whether a store's IMGW field is offered: the source `imgw` is available (SPEC 5.8), or the
+ * store has a directory already (saved, or typed): a hidden entry would be dropped silently.
+ */
+function imgwOffered(store, sources) {
+  const imgw = (sources ?? []).find((source) => source.producer === "imgw");
+  const held = [store.original?.imgw, store.imgw].some((path) => path?.trim());
+  return imgw?.status === "available" || held;
+}
+
+function storeErrors(stores, sources) {
   const errors = {};
   const ids = new Set();
   for (const store of stores) {
     const found = {};
     const id = store.id.trim();
     if (!store.name.trim()) found.name = L.store.name_required;
-    if (!store.kartograf.trim()) found.kartograf = L.store.kartograf_required;
+    if (!store.kartograf.trim() && !store.imgw.trim()) {
+      const either = imgwOffered(store, sources);
+      found.kartograf = either ? L.store.directory_required : L.store.kartograf_required;
+    }
     if (!STORE_ID.test(id)) found.id = L.store.id_invalid;
     else if (ids.has(id)) found.id = t(L.store.id_duplicate, { id });
     ids.add(id);

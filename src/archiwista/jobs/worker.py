@@ -226,7 +226,12 @@ def main() -> int:
 
 
 def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
-    """Scan every producer directory of the store (``mode``, ``segment``)."""
+    """Scan every producer directory of the store (``mode``, ``segment``).
+
+    A directory whose source is not available (not installed, incompatible,
+    failed to load) is skipped with a notice, and its entry stays in the
+    settings (SPEC 5.8); the store's other directories are scanned.
+    """
     config = _store(spec)
     mode = cast(ScanMode, spec.params["mode"])
     segment = spec.params.get("segment")
@@ -234,9 +239,17 @@ def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
     summaries: list[ScanSummary] = []
     with IndexWriter(spec.index_path) as writer:
         for producer in config.roots():
+            try:
+                adapter = registry.adapter(producer)
+            except SourceStateError as error:
+                text = message(
+                    "job.source_skipped", producer=producer, detail=error.message
+                )
+                emit.notice("warning", "source_skipped", text)
+                continue
             summaries.append(
                 scan_store(
-                    registry.adapter(producer),
+                    adapter,
                     writer,
                     spec.settings,
                     config.id,

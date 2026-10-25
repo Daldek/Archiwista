@@ -1428,10 +1428,14 @@ pilnuje, że warstwy wyżej nie zależą od Kartografa (sekcje 11 i 13).
 `archiwista serve` uruchamia serwer na `127.0.0.1` (port z konfiguracji),
 otwiera przeglądarkę z jednorazowym tokenem w adresie (sekcja 10.1)
 i wypisuje adres w terminalu. Przy pierwszym uruchomieniu kreator pyta
-o magazyn — katalog `--output` Kartografa i, opcjonalnie (tylko gdy źródło IMGW
-jest dostępne, 5.8), katalog IMGW (magazyn IMGWTools, A-ADR-019) — i o katalogi
+o magazyn — katalog `--output` Kartografa i/lub (tylko gdy źródło IMGW jest
+dostępne, 5.8) katalog IMGW (magazyn IMGWTools, A-ADR-019), co najmniej jeden
+z nich — i o katalogi
 projektów, sprawdza wersje i schematy producentów (5.8; zakresy zgodne z wymaganiami z sekcji 12) oraz to,
-że żaden katalog producenta nie leży wewnątrz drugiego, i zakłada indeks.
+że żaden katalog producenta nie leży wewnątrz drugiego ani w magazynie
+jakiegokolwiek producenta, ani go nie zawiera (znacznik `kartograf-store.json`
+albo `imgw-store.json` w katalogu nadrzędnym lub do dwóch poziomów niżej;
+pełne przeszukanie drzewa robi zapis producenta), i zakłada indeks.
 `archiwista doctor` wypisuje diagnostykę po polsku (wersje i stan wtyczek
 źródeł, zgodność schematów producentów, dostępność
 magazynów i katalogów producentów, wersja kontraktu `imgw-store/1`,
@@ -1442,10 +1446,16 @@ w konfiguracji (schemat ustali plan implementacji):
 [[stores]]
 id = "zespol"                          # krótka nazwa w API i interfejsie
 name = "Zespół"
-kartograf = "/mnt/nas/kartograf"       # katalog --output Kartografa
-imgw = "/mnt/nas/imgw"                 # katalog IMGW (imgw-store/1); opcjonalny
+kartograf = "/mnt/nas/kartograf"       # katalog --output Kartografa; opcjonalny, gdy jest imgw
+imgw = "/mnt/nas/imgw"                 # katalog IMGW (imgw-store/1); opcjonalny, gdy jest kartograf
 path_aliases = { "/mnt/nas/" = 'Z:\' }  # ten sam udział na innym komputerze (4.6)
 ```
+
+Wpis ma co najmniej jeden z katalogów `kartograf` i `imgw` (brak obu to błąd
+ustawień); wpis z samym `kartograf`, jak w wersjach sprzed źródła IMGW, działa
+bez zmian. Zapis ustawień nie rozstrzyga o dostępności źródła: nowy albo
+przeniesiony katalog `imgw` wymaga źródła `imgw` w stanie `available`, a wpis
+zapisany wcześniej zostaje także wtedy, gdy pakiet IMGWTools zniknął (5.8).
 
 ### 5.6 Zadania w tle
 

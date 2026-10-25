@@ -1876,8 +1876,9 @@ def _prune_routine_scans(
     A routine scan is an incremental scan of a whole store that the
     scheduler started and that succeeded without changing the index
     (``_UNCHANGED_SQL``; a summary lacking a count is kept) and without a
-    notice but ``footprints_failed`` (outlines every scan tries again). The
-    newest routine scan of each store stays.
+    notice but ``footprints_failed`` (outlines every scan tries again) and
+    ``source_skipped`` (every scan says so while a source stays unavailable).
+    The newest routine scan of each store stays.
 
     Returns
     -------
@@ -1894,7 +1895,8 @@ def _prune_routine_scans(
             " AND json_extract(params, '$.segment') IS NULL"
             f" AND {_UNCHANGED_SQL} AND NOT EXISTS (SELECT 1 FROM job_events e"
             " WHERE e.job_id = jobs.id AND e.type = 'notice'"
-            " AND json_extract(e.data, '$.code') IS NOT 'footprints_failed'))"
+            " AND json_extract(e.data, '$.code') IS NOT 'footprints_failed'"
+            " AND json_extract(e.data, '$.code') IS NOT 'source_skipped'))"
             " WHERE place > 1 AND finished_at < ?",
             (_iso(now - ROUTINE_SCAN_MAX_AGE),),
         ).fetchall()

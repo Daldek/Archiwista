@@ -388,10 +388,22 @@ katalog danych jest otwarty dla innych kont.
 **Ustawienia.** `ConfigStore.load` czyta TOML albo zwraca wartości
 domyślne; `SettingsService.update` waliduje całość (`validate_settings`:
 istnienie i odczyt katalogów, `probe` wtyczki dla nowego albo przeniesionego
-katalogu, `check_nesting` — żaden katalog producenta w drugim), zapisuje
+katalogu, `check_nesting` — żaden katalog producenta w drugim ani w magazynie
+jakiegokolwiek producenta: znacznik `kartograf-store.json` albo
+`imgw-store.json` w katalogu nadrzędnym lub do dwóch poziomów niżej, bez
+dowiązań, `sources/markers.py`, DEV-19.14), zapisuje
 atomowo (`write_text_atomic`: plik tymczasowy, `fsync`, `os.replace`)
 i powiadamia słuchaczy (`SettingsService.subscribe`): nadzorca synchronizuje
 magazyny indeksu, harmonogram planuje pełny skan nowego magazynu.
+Magazyn (`StoreConfig`) ma katalog `kartograf` albo `imgw` albo oba (co
+najmniej jeden; brakujący to `None`, którego `dump_settings` nie zapisuje),
+a `roots()` podaje obecne katalogi wg producenta. Przeszukanie znaczników
+obejmuje tylko nowe albo przeniesione katalogi: niezmieniony nie jest
+czytany, więc odłączony udział nie blokuje innych zmian. Skan i
+harmonogram pomijają katalog źródła, które nie jest dostępne (`not_installed`,
+`incompatible`, `error`; SPEC 5.8), i zostawiają jego wpis w ustawieniach:
+`run_scan` zgłasza uwagę `source_skipped`, a `ScanScheduler` nie zleca skanu
+magazynu bez żadnego dostępnego źródła.
 `StoreConfig.kind` bez wartości wykrywa `detect_store_kind` z
 `/proc/self/mountinfo` (`SHARE_FILESYSTEMS`: `cifs`, `smb3`, `smbfs`, `nfs`,
 `nfs4`). `StoreConfig.local_path` i `foreign_paths` tłumaczą ścieżki między
@@ -1089,10 +1101,11 @@ z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etap
   kod `imgwtools_error` (`PRODUCER_CODES`). Testowa wtyczka
   `tests/fixtures/second_source/` (płaski magazyn bez segmentów, arkuszy
   i dowiązań) przechodzi przez skaner, indeks i API bez zmian w rdzeniu
-  (`tests/integration/test_second_adapter.py`). Do zrobienia:
-  `StoreConfig.roots` zwraca dziś tylko katalog `kartograf`,
-  `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`, indeks nie zna
-  wersji bieżącej magazynu IMGWTools (nie ma dowiązań), a zdolności
+  (`tests/integration/test_second_adapter.py`). Magazyn przyjmuje katalog
+  `imgw` obok katalogu `kartograf` albo zamiast niego (`StoreConfig.roots`
+  podaje oba, sekcja 4), a skan indeksuje pliki IMGW jako wersje slotów. Do
+  zrobienia: `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`, indeks
+  nie zna wersji bieżącej magazynu IMGWTools (nie ma dowiązań), a zdolności
   stacji i szeregów (`stations`, `series_index`, `read_series` z SPEC 5.3)
   nie ma jeszcze w `sources/protocol.py`.
 

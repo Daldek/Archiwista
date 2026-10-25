@@ -845,7 +845,7 @@ def test_acceptance_second_plugin_beside_kartograf(
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
-            return {"external": config.kartograf}
+            return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
     monkeypatch.setattr(StoreConfig, "roots", roots)

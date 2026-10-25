@@ -19,6 +19,10 @@ line: [`README.md`](../README.md); scripts and agents:
      addresses and in the API), the full path of the Kartograf directory (its
      `--output` directory, that is the `data/` directory) and the kind: local
      disk or network share (detected by default). There can be several stores.
+     A store needs the Kartograf directory, the directory of an IMGWTools store (the
+     one with `imgw-store.json`, field "Katalog IMGWTools") or both. The IMGW field is
+     offered while the IMGW source is installed (`pip install "archiwista[imgw]"`) or
+     the store already has such a directory; a directory inside another store is refused.
    - **Projects** ("Projekty"): directories with Kartograf projects
      (`kartograf-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request

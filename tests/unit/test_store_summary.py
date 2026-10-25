@@ -1,12 +1,13 @@
 """Store summary: usage without link inflation, cleanup report, problems."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
 from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, ProductUsage
 from archiwista.services import store_summary
-from archiwista.sources import ProjectInfo, ProjectPin
+from archiwista.sources import ProjectInfo, ProjectPin, SourceSegment
 from tests.fixtures.index_data import (
     NMT,
     ORTO,
@@ -166,3 +167,53 @@ def test_store_summary_problems_carry_fix_instructions(
     assert by_code["missing_pin"].project == "raba"
     assert "project download teren" in by_code["missing_pin"].instruction
     assert all(p.path and p.path in p.message and p.instruction for p in problems)
+
+
+def test_store_summary_names_the_producer_each_problem_belongs_to(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """With a directory of each producer, an instruction names the producer at fault."""
+    # Arrange
+    writer, queries = index
+    stray = f"{NMT}/stray"
+    write_pass(writer, [problem(stray, "unknown_segment", segment=NMT, slot=None)])
+    folder = "archives/stray"
+    writer.write_segments(
+        STORE, "imgw", [SourceSegment(folder, None, None, None, folder, False)]
+    )
+    writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+    other = replace(
+        problem(f"{folder}/x", "unknown_segment", segment=folder, slot=None),
+        producer="imgw",
+    )
+    writer.write_entries([other])
+    writer.finish_pass()
+    absent = version_path(SHEET_A, "2010-01-01_1", sha(9))
+    writer.write_project(
+        ProjectInfo(
+            "imgw",
+            ROOT,
+            Path("/projekty/Wisla"),
+            "Wisła",
+            pins=(ProjectPin(ROOT, Path(absent), sha(9), "pomiary"),),
+        ),
+        store=STORE,
+        stamp=ManifestStamp(1, 1),
+    )
+    config = StoreConfig(
+        id=STORE,
+        name="Zespół",
+        kartograf=Path(ROOT),
+        imgw=Path("/mnt/nas/imgw"),
+        kind="share",
+    )
+
+    # Act
+    problems = store_summary(queries, config, visible=ALL_PROJECTS).problems
+
+    # Assert
+    by_path = {p.path: p for p in problems}
+    assert "kartograf" in by_path[stray].message
+    assert "imgw" in by_path[other.relative_path.as_posix()].message
+    assert "kartograf" not in by_path[other.relative_path.as_posix()].message
+    assert "imgw project download pomiary" in by_path[absent].instruction

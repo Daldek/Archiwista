@@ -58,6 +58,16 @@ side.
    `not_a_store`. `SourceState` carries the `reason` and the `hint`. The contract tests pin
    every verdict to what `init_store`, `open_store` and `iter_store` of IMGWTools do with the
    same directory, so the judgement cannot drift.
+6. **A settings change looks for nested stores two levels down.** DEV-19.14 wants the
+   ancestors and the existing descendants of a store root searched for markers. The producers'
+   writers walk the whole tree below a root before they write; a settings change that did the
+   same would list the 50,000 slots of a large store, on a share, at every new or moved
+   directory. `check_nesting` looks in the ancestors of the real path, and in the directories
+   up to two levels below it (the products and segments of Kartograf, the trees and datasets
+   of IMGWTools: a few dozen), never through a link, and only around a new or a moved
+   directory, so a share that is not connected does not block other edits. A store put deeper
+   is found by the producer's writer when it writes. Rejected: the full walk, and the ancestors
+   alone (a store below the directory is the nesting that a later write would refuse).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -69,8 +79,12 @@ works around without changing the producer, to be requested there (DEV-17.5): a 
 in `StoreInfo`, the `producer` and `producer_version` of a sidecar in `Meta`, a list of
 known versions for `iter_store` (every scan reads every sidecar) and one rule for a marker
 without `created_by` (the reader refuses it, `open_store` accepts it). A store takes an IMGW
-directory with the settings step that follows, and the index of IMGW slots, the stations
-and the series coverage come after it; until then the source is registered and probed but
-indexes nothing.
+directory beside or instead of its Kartograf one (the settings step of the same plan,
+`StoreConfig.imgw`): the scan indexes its files as versions of their slots, without a
+current version; a source that is not available has its directory skipped and its entry
+kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is refused
+by the marker file names at its own field (DEV-19.14), looking two levels down because the
+producer's writer, which looks at the whole tree, is not run by a settings change. The
+current version, the index of IMGW slots, the stations and the series coverage come after it.
 
 **Errata:** none.

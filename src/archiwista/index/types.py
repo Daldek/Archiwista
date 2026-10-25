@@ -239,10 +239,12 @@ class PinRef:
 
     ``state`` is ``missing`` when the version is not in the index or no
     longer on disk, ``sha256_mismatch`` when the index holds other content.
+    ``producer`` is the producer of the project's manifest.
     """
 
     project: str
     project_key: str
+    producer: str
     task: str | None
     version: str
     sha256: str | None
@@ -322,11 +324,13 @@ class IssueRef:
     ``code`` is the producer's problem code (``missing_sidecar``,
     ``invalid_sidecar``, ``unknown_segment``, ``legacy_campaigns``,
     ``stale_incoming``) or one found by a check job (``link_mismatch``).
+    ``producer`` is the producer of the segment the problem belongs to.
     """
 
     code: str
     path: str
     segment: str | None
+    producer: str
     slot: str | None
     origin: IssueOrigin
     first_seen_at: datetime
@@ -794,11 +798,13 @@ class UnusedVersions:
 class OrphanLink:
     """A link whose sidecar names a version that is not present.
 
-    ``kind`` is ``link`` (the standard path) or ``full_sheet``.
+    ``kind`` is ``link`` (the standard path) or ``full_sheet``;
+    ``producer`` is the producer of the slot's segment.
     """
 
     slot: str
     segment: str | None
+    producer: str
     kind: Literal["link", "full_sheet"]
     version: str
 

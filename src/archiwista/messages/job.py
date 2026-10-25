@@ -125,6 +125,16 @@ MESSAGES = {
             " później. Komunikat producenta: {detail}"
         ),
     ),
+    "source_skipped": Text(
+        (
+            "The {producer} directory was not scanned and stays in the settings: the"
+            " data source is unavailable. {detail}"
+        ),
+        (
+            "Katalog {producer} nie został przeskanowany i zostaje w ustawieniach:"
+            " źródło danych jest niedostępne. {detail}"
+        ),
+    ),
     "slot_not_found": Text(
         'Slot "{slot}" of store "{store}" is not in the index.',
         "Slotu „{slot}” magazynu „{store}” nie ma w indeksie.",

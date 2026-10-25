@@ -36,12 +36,31 @@ command-line interface may change.
   directory (`no_marker` with `imgw store init --root <path>`, `unsupported_marker`,
   `foreign_store`, `not_a_store`). `GET /sources` and `archiwista doctor` list it; without
   the extra it is `not_installed` with `pip install "archiwista[imgw]"` as the fix, and
-  Kartograf is unaffected. A store takes an IMGW directory in the next step and nothing
-  of it is indexed yet. `uv sync --locked --all-extras` installs the extra; CI also runs
-  the suite without it. (ADR 0032, DEV-19.12, DEV-19.13)
+  Kartograf is unaffected. A store takes an IMGW directory beside or instead of its
+  Kartograf one (the next entry). `uv sync --locked --all-extras` installs the extra; CI
+  also runs the suite without it. (ADR 0032, DEV-19.12, DEV-19.13)
+- A store can name an IMGWTools directory, `imgw` in the settings (`GET` and `PUT
+  /settings`, `config.toml`), beside the Kartograf one or instead of it: one of the two
+  is required, and a settings file with only `kartograf` loads and saves as before. The
+  wizard and the settings offer the field "Katalog IMGWTools" while the source `imgw` is
+  available or the store already has such a directory (a saved directory is never dropped
+  by a form that cannot offer it). A scan skips the directory of a source that is not
+  available, with the notice `source_skipped`, and keeps its entry in the settings: the
+  Kartograf directory of the same store is still scanned and probed, and a store whose
+  every source is unavailable starts no scan; the notice does not keep a routine scan
+  from being forgotten. Files of an IMGW directory are indexed as versions of their
+  slots, without a current version; the index of its archives, series and catalogs
+  follows. (SPEC 5.5, 5.8)
+- A producer directory that lies inside a store of any producer, or holds one, is refused
+  as `root_nested` at its own field: an ancestor of the directory holds `kartograf-store.json`
+  or `imgw-store.json`, or a directory up to two levels below it does (no link is
+  followed; the producer's own writer looks at the whole tree). Only a new or a moved
+  directory is looked around, so an unplugged share does not block other edits. (DEV-19.14)
 
 ### Changed
 
+- The problems of a store, the problems of a file card and the pins of a project name the
+  producer they belong to in their fix instructions, not the first producer of the store.
 - **Breaking:** errors follow the Nogat error registry. Every problem of the HTTP API has
   the registry's `code` (`validation_error`, `not_found`, `conflict`, `forbidden`,
   `unauthorized`, `missing_dependency`, `store_unavailable`, `data_error`,
