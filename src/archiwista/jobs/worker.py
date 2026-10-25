@@ -5,7 +5,8 @@ input, runs it and reports in JSON Lines on standard output
 (``archiwista.jobs.protocol``); its log goes to standard error. Kinds:
 
 - ``scan``: ``scan_store`` of each producer directory of the store (6a; the
-  projects follow a pass over the whole store);
+  projects follow a pass over the whole store); a ``segment`` is scanned only
+  by the producers that own it (ADR 0032, decision 9);
 - ``footprints``: unit outlines with the network (``footprint(entry,
   network=True)``) for versions still without an outline, with the
   producer's local memory of unit outlines (decision 4);
@@ -34,7 +35,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import IO, cast
@@ -106,6 +107,7 @@ from archiwista.services.problems import explain
 from archiwista.sources import (
     GeoAdapter,
     LinkCheckAdapter,
+    SegmentedAdapter,
     SourceAdapter,
     SourceEntry,
 )
@@ -230,23 +232,32 @@ def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
 
     A directory whose source is not available (not installed, incompatible,
     failed to load) is skipped with a notice, and its entry stays in the
-    settings (SPEC 5.8); the store's other directories are scanned.
+    settings (SPEC 5.8); the store's other directories are scanned. A
+    ``segment`` is scanned by the producers that own it in the index (or by
+    those that scan by segment, for a name it does not know); a producer that
+    reads only its whole directory (IMGWTools) refuses the job as
+    ``unsupported`` before anything is scanned.
     """
     config = _store(spec)
     mode = cast(ScanMode, spec.params["mode"])
     segment = spec.params.get("segment")
     registry = load_registry(cache_dir=spec.cache_dir)
+    adapters: dict[str, SourceAdapter] = {}
+    for producer in config.roots():
+        try:
+            adapters[producer] = registry.adapter(producer)
+        except SourceStateError as error:
+            text = message(
+                "job.source_skipped", producer=producer, detail=error.message
+            )
+            emit.notice("warning", "source_skipped", text)
+    if segment is not None:
+        with IndexQueries(spec.index_path) as queries:
+            owners = queries.segment_producers(config.id, segment)
+        adapters = _segment_scanners(adapters, owners, segment)
     summaries: list[ScanSummary] = []
     with IndexWriter(spec.index_path) as writer:
-        for producer in config.roots():
-            try:
-                adapter = registry.adapter(producer)
-            except SourceStateError as error:
-                text = message(
-                    "job.source_skipped", producer=producer, detail=error.message
-                )
-                emit.notice("warning", "source_skipped", text)
-                continue
+        for adapter in adapters.values():
             summaries.append(
                 scan_store(
                     adapter,
@@ -603,6 +614,56 @@ def _batches(
 ) -> Iterator[Sequence[SourceEntry]]:
     for start in range(0, len(entries), size):
         yield entries[start : start + size]
+
+
+def _segment_scanners(
+    adapters: Mapping[str, SourceAdapter], owners: Collection[str], segment: str
+) -> dict[str, SourceAdapter]:
+    """Return the producers that scan ``segment``, or refuse the job.
+
+    A segment belongs to the producers that own it in the index. A name the
+    index does not know belongs to those that scan by segment
+    (``SegmentedAdapter``), so a store of only Kartograf behaves as it always
+    did; when none of the store's available producers does, they are all asked
+    and refuse.
+
+    Parameters
+    ----------
+    adapters : Mapping[str, SourceAdapter]
+        The available producers of the store's directories, by name.
+    owners : Collection[str]
+        Producers that own ``segment`` (``IndexQueries.segment_producers``).
+    segment : str
+        The segment the job names.
+
+    Returns
+    -------
+    dict[str, SourceAdapter]
+        The producers to scan, by name; empty when the ones asked are not
+        available.
+
+    Raises
+    ------
+    UnsupportedError
+        A producer asked to scan ``segment`` reads only its whole directory
+        (IMGWTools: a segment is a label there).
+    """
+    if owners:
+        asked = {name: found for name, found in adapters.items() if name in owners}
+    else:
+        asked = {
+            name: found
+            for name, found in adapters.items()
+            if isinstance(found, SegmentedAdapter)
+        }
+        asked = asked or dict(adapters)
+    for name, found in asked.items():
+        if not isinstance(found, SegmentedAdapter):
+            text = message(
+                "job.segment_scan_unsupported", producer=name, segment=segment
+            )
+            raise UnsupportedError(text)
+    return asked
 
 
 def _scan_result(

@@ -82,6 +82,12 @@ command-line interface may change.
   interrupted one) is no version and is explained as a non-critical, usually temporary
   problem; a sidecar of another schema (`unknown_schema`) has its own text. (SPEC 4.4,
   4.8.1, ADR 0032)
+- A scan of one segment (`segment` of `POST /stores/{store}/scan`) goes only to the data
+  source that owns the segment in the index (`IndexQueries.segment_producers`), so a
+  Kartograf segment is never offered to the IMGW directory of the same store; a name the
+  index does not know goes to the sources that scan by segment, as it did before. IMGWTools
+  reads only its whole directory (its dataset is a label), so a job that names a segment
+  it owns fails as `unsupported` before anything is scanned. (SPEC 4.4, ADR 0032)
 
 ### Changed
 

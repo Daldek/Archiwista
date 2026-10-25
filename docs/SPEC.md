@@ -699,7 +699,13 @@ Zasady wspólne dla wszystkich producentów i produktów:
   wersja katalogu stacji albo szeregów zbioru przebudowuje tabele
   `stations`, `station_series` i `series_years` z jednego pliku (katalogu
   albo spisu `series.json`), bez czytania plików Parquet; widok stacji
-  nie wymaga sieci ani odczytu szeregów.
+  nie wymaga sieci ani odczytu szeregów. `iter_store` nie ma zakresu
+  poniżej katalogu, więc skan IMGW obejmuje zawsze cały katalog, a zbiór
+  (segment) jest tylko etykietą: zadanie skanu jednego segmentu bierze
+  producent, który ma go w indeksie (`segments.producer`; nazwę, której
+  indeks nie zna, biorą producenci skanujący segmentami, czyli Kartograf),
+  a dla zbioru IMGW kończy się ono błędem `unsupported`, zanim cokolwiek
+  zostanie przeskanowane (ADR 0032, decyzja 9).
 - **Wersja bieżąca slotu IMGW** nie wynika z dowiązania (IMGWTools ich nie ma),
   więc na końcu przejścia Archiwista pyta producenta (`current_version`,
   zdolność `CurrentVersionAdapter`) o sloty, których przejście dotknęło:

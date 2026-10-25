@@ -92,7 +92,8 @@ class SegmentDescriptionAdapter(Protocol):
 
     For a producer whose entries name a segment (a dataset, a product) but
     that cannot read one segment on its own: the scan describes each segment
-    it met. A ``SegmentedAdapter`` has it too.
+    it met, and a job that asks for one segment of it is refused
+    (``unsupported``). A ``SegmentedAdapter`` has it too.
     """
 
     def describe_segment(self, segment: str) -> SourceSegment:

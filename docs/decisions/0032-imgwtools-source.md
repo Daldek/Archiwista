@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25
 **Status:** Accepted. Supplements A-ADR-019 and A-ADR-024. Decided by the plan
-`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 and I2), whose approval is
+`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I3), whose approval is
 delegated; the author may still amend it (D8).
 
 **Context:** A-ADR-019 gave Archiwista two producers behind one source interface, and
@@ -119,6 +119,22 @@ side.
    its own text. Rejected: choosing the newest version in Archiwista (the producer's rule,
    A-ADR-014); asking at every scan (a read of every slot, on a share); a current version
    for a version the pass did not see.
+9. **A segment is scanned by the producer that owns it** (plan I3, commit 3). A job that
+   scans one segment (`ScanRequest.segment`) asks the index which producers described it
+   (`segments.producer`, `IndexQueries.segment_producers`) and scans only their directories,
+   so a Kartograf segment is never offered to the IMGW directory of the same store. A name
+   the index does not know belongs to the producers that scan by segment
+   (`SegmentedAdapter`: Kartograf), so a store of only Kartograf behaves as it did before
+   the IMGW source. IMGWTools cannot scan one segment (decision 7: `iter_store` has no scope
+   below the root, and a pass per dataset would read the whole store once per dataset), so
+   for it a segment is a label and a job that names one fails as `unsupported` (message
+   `job.segment_scan_unsupported`) before anything is scanned, as the link check does for a
+   producer without links; so does a name nobody owns in a store without a producer that
+   scans by segment. The IMGW directory is always scanned whole, and an incremental scan of
+   it costs only what is new. Rejected: the `ValueError` of `scan_store` (an internal error
+   for a valid request that the producer cannot serve); a pass per dataset (above); the
+   whole directory for a job that names a segment (the caller asked for less than it gets,
+   and the result would name a segment that was not scanned).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;

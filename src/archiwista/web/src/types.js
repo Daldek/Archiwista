@@ -909,7 +909,9 @@
  *
  * @typedef {object} ScanRequest
  * @property {"incremental"|"full"} [mode] - Default `incremental`.
- * @property {string} [segment] - Only this segment.
+ * @property {string} [segment] - Only this segment (Kartograf: `<product>/<variant>`);
+ *   a data source that reads only its whole directory (IMGWTools) fails the job as
+ *   `unsupported`.
  */
 
 /**

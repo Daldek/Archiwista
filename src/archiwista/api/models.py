@@ -1900,7 +1900,9 @@ class ScanRequest(BaseModel):
         min_length=1,
         description=(
             "Only this segment (`<product>/<variant>`, see /products); the"
-            " whole store and its projects when omitted."
+            " whole store and its projects when omitted. A data source that reads"
+            " only its whole directory (IMGWTools: a segment is a dataset, a label)"
+            " cannot scan one segment: the job fails with `unsupported`."
         ),
     )
 

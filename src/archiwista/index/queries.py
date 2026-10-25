@@ -921,6 +921,30 @@ class IndexQueries:
             for product, segments in products.items()
         )
 
+    def segment_producers(self, store: str, segment: str) -> tuple[str, ...]:
+        """Return the producers that own a segment of a store, by name.
+
+        A segment belongs to the producer whose scan described it
+        (``segments.producer``), so a scan of one segment goes to its owner.
+        A name the index does not know, and a store it does not know, have
+        no owner.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        segment : str
+            Segment name, as ``SegmentRef.segment``.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT producer FROM segments WHERE store_id = ? AND segment = ?"
+                " ORDER BY producer",
+                (_store_id(stores, store), segment),
+            ).fetchall()
+        return tuple(str(row["producer"]) for row in rows)
+
     def usage(self, store: str) -> StoreUsage | None:
         """Return the disk usage of a store's present versions, per product.
 

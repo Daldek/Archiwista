@@ -143,6 +143,16 @@ MESSAGES = {
         "The data source {producer} does not confirm links.",
         "Źródło {producer} nie potwierdza dowiązań.",
     ),
+    "segment_scan_unsupported": Text(
+        (
+            "The data source {producer} scans only its whole directory, so it cannot"
+            " scan one segment ({segment}); scan the store without a segment."
+        ),
+        (
+            "Źródło {producer} skanuje tylko cały swój katalog, więc nie przeskanuje"
+            " pojedynczego segmentu ({segment}); przeskanuj magazyn bez segmentu."
+        ),
+    ),
     "link_mismatch": Text(
         "{problem}. {fix}",
         "{problem}. {fix}",

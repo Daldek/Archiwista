@@ -210,7 +210,11 @@ class MapQuery:
 class SegmentRef:
     """A segment of a store with the producer's human-readable name.
 
-    ``segment`` is ``None`` for a producer that does not split its store.
+    ``segment`` is ``None`` for a producer that does not split its store. For
+    Kartograf it is a directory of the store (``<product>/<variant>``), which a
+    scan can take alone; for IMGWTools it is the key of a dataset
+    (``pl.imgw.hydro_daily``), a label the entries carry: that producer reads
+    only its whole directory.
     """
 
     segment: str | None

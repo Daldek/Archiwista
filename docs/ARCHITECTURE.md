@@ -517,9 +517,18 @@ sequenceDiagram
 wykonawca = principal sesji) albo `archiwista reindex` (`LOCAL_OWNER`) —
 zawsze przez `JobSupervisor.submit("scan", …)` i proces roboczy.
 `run_scan` ładuje rejestr wtyczek w procesie roboczym
-(`load_registry(cache_dir=spec.cache_dir)`) i dla każdego katalogu
+(`load_registry(cache_dir=spec.cache_dir)`) i dla każdego dostępnego katalogu
 producenta magazynu (`StoreConfig.roots`) woła `scan_store` z trybem,
-segmentem i `on_event=emit.scan_event`.
+segmentem i `on_event=emit.scan_event`. Zadanie z `segment` skanuje tylko
+właścicieli segmentu: producentów, których opis segmentu ma indeks
+(`IndexQueries.segment_producers`, kolumna `segments.producer`), a dla
+nazwy, której indeks nie zna — producentów skanujących segmentami
+(`SegmentedAdapter`, Kartograf), więc magazyn samego Kartografa działa
+jak dawniej. Producent, który czyta tylko cały katalog (IMGWTools:
+`iter_store` nie ma zakresu poniżej katalogu, a przebieg na zbiór czytałby
+cały magazyn tyle razy, ile jest zbiorów), odmawia: zadanie kończy się
+błędem `unsupported` (`job.segment_scan_unsupported`), zanim cokolwiek
+zostanie przeskanowane, a segment jest dla niego tylko etykietą.
 
 **Przebieg `scan_store`:**
 
@@ -528,8 +537,10 @@ segmentem i `on_event=emit.scan_event`.
    `list_segments`, także nierozpoznanych); opisy segmentów trafiają do
    tabeli `segments` (`describe_segment`). Producent bez listy segmentów, ale
    z opisem (`SegmentDescriptionAdapter`, IMGWTools: segmentem jest zbiór),
-   jest czytany w całości, a opisy segmentów, które wymieniły jego wpisy
-   (`_Totals.segments_seen`), zapisuje koniec przebiegu przed `finish_pass`.
+   jest czytany w całości (`scan_store` odrzuca dla niego `segment` jako
+   `ValueError`, a `run_scan` odmawia wcześniej), a opisy segmentów, które
+   wymieniły jego wpisy (`_Totals.segments_seen`), zapisuje koniec przebiegu
+   przed `finish_pass`.
 2. `IndexWriter.begin_pass(store, producer, segment=…, full=…)` wczytuje raz
    znane wersje, sloty i problemy zakresu. Brak segmentów przy wpisach
    w indeksie to pusty punkt montowania, czyli magazyn niedostępny.

@@ -443,7 +443,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 
 | Request | Body | Notes |
 |---|---|---|
-| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index |
+| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index; a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (IMGWTools: a segment is a dataset) ends the job as `unsupported` |
 | `POST /stores/{store}/footprints` | none | unit outlines (TERYT, KU) from the network; offline → `409 conflict` (`offline_mode`) |
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link; an unknown slot → `404` |
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
@@ -510,7 +510,7 @@ holds the job's own cause as `reason` and the context. Base decisions on `code` 
 | `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
 | `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
 | `not_found` | none | the store, slot, project or file is unknown |
-| `unsupported` | none | the producer cannot do it (a link check without link support) |
+| `unsupported` | none | the producer cannot do it (a link check without link support; a scan of one segment of a directory the producer reads whole, as IMGWTools does) |
 | `cancelled` | none | cancelled by the person, or the store was removed |
 | `cancelled` | `interrupted` | the server stopped or the worker was interrupted; safe to try again |
 | `internal_error` | `worker_crashed` | the worker ended without a result: `detail` names the signal or exit status and the job log |
