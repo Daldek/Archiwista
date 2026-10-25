@@ -217,10 +217,10 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
 
     world = open_preview(page, served, store, "jgw_sheet")
     expect(world.locator(".pv-reason")).to_contain_text(
-        message("preview.reason_auxiliary_file")
+        message("preview.reason_auxiliary_file", "pl")
     )
     expect(world.locator(".pv-reason")).to_contain_text(
-        message("preview.fix_auxiliary_file")
+        message("preview.fix_auxiliary_file", "pl")
     )
     expect(fact(world, "Stan podglądu")).to_contain_text("niedostępny")
     expect(world.get_by_role("img")).to_have_count(0)
@@ -228,10 +228,10 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
     image = open_preview(page, served, store, "png_preview")
     assert_blob_image(thumbnail(image))
     expect(image.locator(".pv-reason")).to_contain_text(
-        message("preview.reason_no_georeference")
+        message("preview.reason_no_georeference", "pl")
     )
     expect(image.locator(".pv-reason")).to_contain_text(
-        message("preview.fix_no_georeference")
+        message("preview.fix_no_georeference", "pl")
     )
     expect(fact(image, "Na mapie")).to_have_text("nie")
 
@@ -244,7 +244,7 @@ def test_card_shows_reason_for_jgw_png_and_zip_members(
     for name in names:
         expect(rows.filter(has_text=name)).to_have_count(1)
     expect(archive_pane.locator(".pv-reason")).to_contain_text(
-        message("preview.reason_archive_members_only")
+        message("preview.reason_archive_members_only", "pl")
     )
     expect(
         archive_pane.get_by_role("heading", name=re.compile("Pliki w archiwum"))

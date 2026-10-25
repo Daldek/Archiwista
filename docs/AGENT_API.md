@@ -9,9 +9,9 @@ chat tool and no MCP server.
 Until v1.0 the API may change. The full schema with examples is always at
 `/api/v1/openapi.json` (it needs a session) and the interactive documentation
 at `/api/docs` (it uses the session of an open Archiwista tab). Field names,
-parameter names and codes are English; texts for people (`detail`, `hint`,
-`message`) are Polish, and the `title` of an error is English, or Polish for
-`Accept-Language: pl`.
+parameter names and codes are English; texts for people (`title`, `detail`,
+`hint`, `message`) are English, and Polish for the request header
+`Accept-Language: pl` (section 7), except the few that are stored in Polish.
 
 ## 1. Two ways: the CLI or HTTP
 
@@ -39,7 +39,8 @@ services as the HTTP routes, as the owner of the local installation
 (`LOCAL_OWNER`, roles `admin` and `store_writer`). With `--json`:
 
 - standard output carries nothing but JSON of the route's response schema, the
-  same as over HTTP, including the fields `stale` and `stale_stores`;
+  same as over HTTP, including the fields `stale` and `stale_stores`; its texts
+  are English, as over HTTP without `Accept-Language`;
 - an error prints nothing on standard output. The last line of standard error
   is the error document `archiwista-error/1` as compact JSON (section 7), and
   the exit status is the registry's exit code of its `code`: `2` invalid input
@@ -53,8 +54,9 @@ services as the HTTP routes, as the owner of the local installation
   were scanned; `archiwista doctor` exits `10` or `11` when checks fail. These
   are outcomes, not errors: no error document follows them;
 - text for people (diagnostics, the description of an error) always goes to
-  standard error, in Polish, and so does the log; it never goes to standard
-  output. Every command takes `--verbose` (debug) or `--quiet` (errors only),
+  standard error, in Polish, and the log, in English, goes there too; none of it
+  goes to standard output. Every command takes `--verbose` (debug) or `--quiet`
+  (errors only),
   before or after its name, and without them the variable `ARCHIWISTA_LOG_LEVEL`
   (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
 
@@ -290,7 +292,8 @@ a snapshot `403`.
 
 `GET /stores/{store}/versions/{version}/preview` returns `PreviewInfo`: `state`
 (`ready`, `needs_build`, `building`, `unavailable`), `kind`, `reason` (`code`,
-a Polish `message`, `fix`), `styles`, `default_style` and the addresses
+a `message` and a `fix` in the language of the request), `styles`,
+`default_style` and the addresses
 `thumbnail_url`, `tiles_url`, `features_url`, `members_url`. For `needs_build`
 call `POST …/preview`: `202` returns a job, `200` means the preview is ready.
 Fetch the image with `GET …/preview.png?size=512` (`--style` in the CLI, the
@@ -365,7 +368,7 @@ shared Nogat error registry (ERR §2). For `GET /slots?limit=201`:
   "type": "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md#validation_error",
   "title": "Invalid input",
   "status": 400,
-  "detail": "Niepoprawne dane żądania: query.limit.",
+  "detail": "Invalid request data: query.limit.",
   "instance": "/api/v1/slots",
   "code": "validation_error",
   "details": {"reason": "invalid_request"},
@@ -375,12 +378,24 @@ shared Nogat error registry (ERR §2). For `GET /slots?limit=201`:
 ```
 
 Members: `type` is the page of the registry and the anchor of the code; `title`
-is the title of the code in English, in Polish for the request header
-`Accept-Language: pl` (with `Content-Language: pl` in the answer); `status` is
-the HTTP status of the code; `detail` and `hint` (one line telling how to fix
-it, when a fix is known) are always Polish; `instance` is the path of the
-request; `details` holds the project's own cause in `reason` and the context
-(below); `errors[]` lists invalid values with a JSON Pointer.
+is the title of the code; `status` is the HTTP status of the code; `detail` and
+`hint` (one line telling how to fix it, when a fix is known) say what happened
+and what to do; `instance` is the path of the request; `details` holds the
+project's own cause in `reason` and the context (below); `errors[]` lists
+invalid values with a JSON Pointer.
+
+The texts follow the request header `Accept-Language`: `title`, `detail`,
+`hint`, the texts inside `details` (the `message` and `fix` of
+`preview_reason`, the `message` of `problems[]`) and the `message` of the
+`errors[]` that Archiwista's own validators make are English, and Polish when
+Polish has the highest quality in the header; any other language, a malformed
+header and no header give English (the `message` that pydantic makes itself
+is English always). Every JSON answer under `/api/v1`, a problem and an event
+stream have `Content-Language` (`en` or `pl`) and `Vary: Accept-Language`;
+images, `/api/v1/openapi.json` (English always) and the files of the interface
+have neither. What is written when it happens, and not when it is read, stays
+Polish whatever the request says: the `detail` of a store that is not
+`available`, and the `message` of the `notice` events of a job (section 9).
 
 Base decisions on `status`, `code` and `details.reason`, never on the text of
 `detail`.
@@ -406,14 +421,15 @@ The command line gives the same information as the error document
 standard output), for example for `archiwista search --limit=201 --json`:
 
 ```json
-{"schema":"archiwista-error/1","code":"validation_error","title":"Invalid input","message":"Niepoprawne dane żądania: query.limit.","details":{"reason":"invalid_request","errors":[{"pointer":"/query/limit","type":"less_than_equal","message":"Input should be less than or equal to 200"}]},"exit_code":2}
+{"schema":"archiwista-error/1","code":"validation_error","title":"Invalid input","message":"Invalid request data: query.limit.","details":{"reason":"invalid_request","errors":[{"pointer":"/query/limit","type":"less_than_equal","message":"Input should be less than or equal to 200"}]},"exit_code":2}
 ```
 
 `exit_code` is the registry's exit code of `code` (`null` for the codes that
 exist only in REST: `unauthorized`, `method_not_allowed`, `rate_limited`; the
-command then exits `1`); `message` and `hint` are Polish; `command` is the
-`<group> <verb>` of the command when it has that shape. The schema is
-`schemas/nogat/error-1.schema.json`.
+command then exits `1`); `message` and `hint` are English, as the document is
+machine output, and the line before it, for a person, says the same in Polish;
+`command` is the `<group> <verb>` of the command when it has that shape. The
+schema is `schemas/nogat/error-1.schema.json`.
 
 ## 8. Recommended workflow of an agent
 
@@ -469,8 +485,9 @@ frame has `id: <sequence number>`, `event: progress|notice|state` and
 
 - `progress`: `current`, `total`; a scan adds `segment` and `entries`, outlines
   `written` and `failed`;
-- `notice`: `level`, `code`, `message`;
-- `state`: `state`; the last one carries `result` (success) or `error`.
+- `notice`: `level`, `code`, `message` (Polish, as written when the job ran);
+- `state`: `state`; the last one carries `result` (success; its texts are
+  Polish) or `error` (in the language of the request, below).
 
 The stream ends after the final state; for a finished job without new events
 the answer is `204`. After 15 s of silence the server sends the comment
@@ -494,8 +511,12 @@ curl -sf -b "$JAR" -H "$H" "$BASE/jobs/$JOB" | jq '{state, error}'
 
 The `error` of a job that did not succeed (`failed`, `interrupted`, `cancelled`) is
 described as a problem is (section 7): `code` is a code of the error registry,
-`detail` is Polish, `hint` tells how to fix it when a fix is known, and `details`
-holds the job's own cause as `reason` and the context. Base decisions on `code` and
+`detail` says what happened and `hint` tells how to fix it when a fix is known
+(both in the language of the request, also in the final `state` event: the job
+keeps the key and the values of each text and renders them when it is read), and
+`details` holds the job's own cause as `reason` and the context, whose texts are
+Polish, as is the `message` of a `notice` and as is the `detail` of a job
+recorded before the texts followed the request. Base decisions on `code` and
 `details.reason`, never on the text of `detail`:
 
 | `code` | `details.reason` | What it means |

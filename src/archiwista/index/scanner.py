@@ -119,7 +119,7 @@ class ScanProgress:
 class ScanNotice:
     """Something the person should know about a scan.
 
-    ``code`` is stable for programs; ``message`` is Polish.
+    ``code`` is stable for programs; ``message`` is a catalog message.
     """
 
     level: NoticeLevel

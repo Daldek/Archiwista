@@ -83,6 +83,10 @@ MESSAGES = {
         "Invalid request data: {fields}.",
         "Niepoprawne dane żądania: {fields}.",
     ),
+    "value_error": Text(
+        "Value error, {detail}",
+        "Błąd wartości, {detail}",
+    ),
     "interface_missing": Text(
         "The interface files are not installed.",
         "Pliki interfejsu nie są zainstalowane.",

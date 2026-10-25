@@ -59,7 +59,7 @@ _EXAMPLE: dict[str, Any] = {
         {
             "group": "metadata",
             "field": "data_date",
-            "label": message("compare.field_data_date"),
+            "label": message("compare.field_data_date", "en"),
             "a": "2019-07-12",
             "b": "2025-04-26",
             "differs": True,

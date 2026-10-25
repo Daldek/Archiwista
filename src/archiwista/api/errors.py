@@ -1,10 +1,13 @@
 """RFC 9457 problem responses of the HTTP API (SPEC 9.1, AGI-6.3).
 
 Every error is ``application/problem+json`` with ``type`` (the entry of its
-code on the registry page), ``title`` (the registry title: English, Polish
-with ``Accept-Language: pl``), ``status`` (the registry's HTTP status), a
-Polish ``detail``, ``instance`` (the request path), the registry ``code``, a
-``hint`` when a fix is known and ``details``. ``details.reason`` is the
+code on the registry page), ``title`` (the registry title), ``status`` (the
+registry's HTTP status), a ``detail``, ``instance`` (the request path), the
+registry ``code``, a ``hint`` when a fix is known and ``details``. The texts
+(``title``, ``detail``, ``hint``, the texts in ``details`` and ``errors``) are in
+the language of the request's ``Accept-Language``, English without it
+(AGI-6.4); the response says so with ``Content-Language`` and ``Vary``.
+``details.reason`` is the
 project's own cause (ERR-1): the codes of earlier versions, such as
 ``session_required``, ``preview_busy`` or ``area_too_large``, are reasons
 now. Other members of ``details`` give the context: ``source`` for an
@@ -13,8 +16,8 @@ fixes it), ``kartograf`` or ``imgwtools`` for a producer's own error (its
 exception and unchanged message), ``problems`` for invalid settings, ``job``
 for the job in the way of a ``409 conflict`` (or building the preview of a
 ``preview_not_ready``, else ``building`` or ``build_required``),
-``preview_reason`` for an ``unsupported`` preview (its code, Polish
-description and fix), ``blocked_by`` for a ``snapshot_blocked`` (why the
+``preview_reason`` for an ``unsupported`` preview (its code, description and
+fix), ``blocked_by`` for a ``snapshot_blocked`` (why the
 snapshot cannot be made now) and ``layers`` for an area file with several
 layers to choose from. Invalid request data adds ``errors``: a JSON Pointer,
 the type and the message of each value. ``rate_limited`` carries
@@ -187,7 +190,7 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     responses: dict[int | str, dict[str, Any]] = {}
     for status in sorted({401, *statuses}):
         code, reason, key, description = _DOCUMENTED[status]
-        detail = message(key, path=f"{API_PREFIX}/…", fields="query.limit")
+        detail = message(key, "en", path=f"{API_PREFIX}/…", fields="query.limit")
         responses[status] = {
             "description": description,
             "content": {
@@ -208,11 +211,11 @@ class ApiError(ArchiwistaError):
     code : str
         Registry code, e.g. ``unauthorized``.
     message : str
-        Polish description for the user.
+        Description for the user, a catalog text.
     reason : str or None, optional
         The project's cause, e.g. ``session_required`` (``details.reason``).
     hint : str or None, optional
-        Polish line telling how to fix it.
+        Line telling how to fix it, a catalog text.
     """
 
     def __init__(
@@ -238,7 +241,8 @@ def problem_body(
     instance : str or None, optional
         The request path that failed.
     lang : {"en", "pl"}, optional
-        Language of the ``title``.
+        Language of the texts: the ``title``, the ``detail``, the ``hint`` and
+        the catalog messages in ``details`` and ``errors``.
 
     Returns
     -------
@@ -247,21 +251,22 @@ def problem_body(
         ``detail``, ``instance`` when known, ``code``, ``hint`` when known,
         ``details`` when not empty and ``errors`` for invalid values.
     """
+    shown = problem.localized(lang)
     body: dict[str, object] = {
-        "type": f"{REGISTRY_PAGE}#{problem.code}",
-        "title": title_of(problem.code, lang),
-        "status": problem.status,
-        "detail": problem.detail,
+        "type": f"{REGISTRY_PAGE}#{shown.code}",
+        "title": title_of(shown.code, lang),
+        "status": shown.status,
+        "detail": shown.detail,
     }
     if instance is not None:
         body["instance"] = instance
-    body["code"] = problem.code
-    if problem.hint:
-        body["hint"] = problem.hint
-    if problem.details:
-        body["details"] = dict(problem.details)
-    if problem.errors:
-        body["errors"] = list(problem.errors)
+    body["code"] = shown.code
+    if shown.hint:
+        body["hint"] = shown.hint
+    if shown.details:
+        body["details"] = dict(shown.details)
+    if shown.errors:
+        body["errors"] = list(shown.errors)
     return body
 
 
@@ -280,13 +285,13 @@ def problem_example(
     code : str
         Registry code.
     detail : str
-        Polish description.
+        Description, a catalog text.
     reason : str or None, optional
         ``details.reason``.
     details : Mapping[str, object] or None, optional
         Further members of ``details``.
     hint : str or None, optional
-        Polish line telling how to fix it.
+        Line telling how to fix it, a catalog text.
     """
     members = {**({"reason": reason} if reason else {}), **(details or {})}
     return problem_body(
@@ -302,19 +307,18 @@ def problem_response(
 ) -> JSONResponse:
     """Return the ``application/problem+json`` response of ``problem``.
 
-    The ``title`` follows the request's ``Accept-Language`` (English without
-    it); a Polish request also gets ``Content-Language: pl``, for its
-    ``detail`` and ``hint`` are always Polish.
+    Its texts follow the request's ``Accept-Language`` (English without it)
+    whatever language the running context is in: the answer to an unexpected
+    failure is made outside the middleware that sets it. ``Content-Language``
+    and ``Vary`` say so (AGI-6.4).
     """
     lang = language_of(request.headers.get("accept-language"))
-    sent = dict(headers or {})
-    if lang == "pl":
-        sent["Content-Language"] = "pl"
+    sent = {**(headers or {}), "Content-Language": lang, "Vary": "Accept-Language"}
     return JSONResponse(
         problem_body(problem, instance=request.url.path, lang=lang),
         status_code=problem.status,
         media_type=PROBLEM_MEDIA_TYPE,
-        headers=sent or None,
+        headers=sent,
     )
 
 

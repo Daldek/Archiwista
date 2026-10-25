@@ -294,15 +294,15 @@ def cards_with_previews_and_reasons(
 
     world = open_preview(page, base, store, "jgw_sheet")
     reason = world.locator(".pv-reason")
-    expect(reason).to_contain_text(message("preview.reason_auxiliary_file"))
-    expect(reason).to_contain_text(message("preview.fix_auxiliary_file"))
+    expect(reason).to_contain_text(message("preview.reason_auxiliary_file", "pl"))
+    expect(reason).to_contain_text(message("preview.fix_auxiliary_file", "pl"))
     expect(fact(world, "Stan podglądu")).to_contain_text("niedostępny")
     shot(page, "02-karta-pliku-powod")
 
     archive = open_preview(page, base, store, "zip_citygml")
     expect(archive.locator(".pv-members tbody tr").first).to_be_visible()
     expect(archive.locator(".pv-reason")).to_contain_text(
-        message("preview.reason_archive_members_only")
+        message("preview.reason_archive_members_only", "pl")
     )
 
 
@@ -440,7 +440,7 @@ def snapshot_from_card(page: Page, card: Locator, path: str, note: str) -> str:
     plan = page.locator("dialog.own-plan")
     expect(plan).to_contain_text("Zrobić migawkę?")
     expect(plan).to_contain_text("kopia zapasowa SQLite")
-    expect(plan).to_contain_text(message("snapshot.editing_detected", file=path))
+    expect(plan).to_contain_text(message("snapshot.editing_detected", "pl", file=path))
     plan.get_by_label("Opis migawki").fill(note)
     with page.expect_response(
         lambda response: (
@@ -727,8 +727,10 @@ def test_acceptance_v02_disconnected_share_serves_cached_previews(
         cached_tile = map_tile(page, base, info)
         unseen = open_preview(page, base, store, "tif_classes")
         reason = unseen.locator(".pv-reason")
-        expect(reason).to_contain_text(message("preview.reason_store_unavailable"))
-        expect(reason).to_contain_text(message("preview.fix_store_unavailable"))
+        expect(reason).to_contain_text(
+            message("preview.reason_store_unavailable", "pl")
+        )
+        expect(reason).to_contain_text(message("preview.fix_store_unavailable", "pl"))
         expect(unseen.get_by_role("img")).to_have_count(0)
     finally:
         store.root.rmdir()

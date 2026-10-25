@@ -3,6 +3,10 @@
 from archiwista.messages import Text
 
 MESSAGES = {
+    "joined": Text(
+        "{head}; {tail}",
+        "{head}; {tail}",
+    ),
     "with_detail": Text(
         "{message}: {detail}",
         "{message}: {detail}",

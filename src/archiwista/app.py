@@ -1,8 +1,9 @@
 """FastAPI application: local-mode security, API routers and interface files.
 
-``create_app`` wraps every request in ``SecurityMiddleware`` (``Host``,
-``Origin``/``Sec-Fetch-Site``, session cookie and CSRF token rules, body
-limits, CSP and other
+``create_app`` wraps every request in ``LanguageMiddleware`` (the language of
+its texts from ``Accept-Language``), outermost, and ``SecurityMiddleware``
+(``Host``, ``Origin``/``Sec-Fetch-Site``, session cookie and CSRF token rules,
+body limits, CSP and other
 headers), answers errors with RFC 9457 problems, mounts the routers under
 ``/api/v1`` (with the OpenAPI document and the local ``/api/docs``) and
 serves the build-free interface from ``archiwista/web`` (``/`` and
@@ -33,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 
 from archiwista.api import (
     API_PREFIX,
+    OPENAPI_PATH,
     admin,
     health,
     projects,
@@ -50,6 +52,7 @@ from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api.docs import install_docs, operation_id
 from archiwista.api.errors import ApiError, install_error_handlers
+from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
@@ -135,7 +138,7 @@ def create_app(
     app = FastAPI(
         title="Archiwista",
         version=version(APP_DISTRIBUTION),
-        openapi_url=f"{API_PREFIX}/openapi.json",
+        openapi_url=OPENAPI_PATH,
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
@@ -192,4 +195,5 @@ def create_app(
         settings=settings.get,
         principals=app.state.principals,
     )
+    app.add_middleware(LanguageMiddleware)
     return app

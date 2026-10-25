@@ -2,7 +2,8 @@
 
 Each model carries an example, so ``/api/v1/openapi.json`` shows agents a
 complete answer. Field names are English ``snake_case``; texts for people
-(problem messages and instructions) are Polish. Stores are named by their
+(problem messages and instructions) are English, and Polish for a request
+that says ``Accept-Language: pl``. Stores are named by their
 configured id and files by paths relative to the store; the only absolute
 paths are the file card's "copy path" (``CopyPath``), given for this
 computer and for every alias of the store (SPEC 4.6), and the settings.
@@ -80,7 +81,7 @@ from archiwista.index import (
 )
 from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, ScanHistory
-from archiwista.messages import message, with_detail
+from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
@@ -152,13 +153,13 @@ _VERSION_EXAMPLE = {
     "location": _LOCATION_EXAMPLE,
     "pinned_by": [_PIN_EXAMPLE],
 }
-_KARTOGRAF_FIX = message("fix.install", requirement="kartograf<0.9,>=0.8.0")
+_KARTOGRAF_FIX = message("fix.install", "en", requirement="kartograf<0.9,>=0.8.0")
 _STALE_STORE_EXAMPLE = {
     "store": _STORE,
     "status": "unavailable",
     "status_at": "2026-10-18T13:40:00Z",
     "indexed_at": "2026-10-18T12:02:31Z",
-    "detail": message("store.unreadable", path="/mnt/nas/kartograf/data"),
+    "detail": message("store.unreadable", "en", path="/mnt/nas/kartograf/data"),
 }
 _JOB_EXAMPLE = {
     "id": "j-2026-10-18-0007",
@@ -172,7 +173,7 @@ _JOB_EXAMPLE = {
 }
 _JOB_FAILURE_EXAMPLE = {
     "code": "store_unavailable",
-    "detail": message("store.unreadable", path="/mnt/nas/kartograf/data"),
+    "detail": message("store.unreadable", "en", path="/mnt/nas/kartograf/data"),
     "hint": None,
     "details": {"reason": "store_unreadable"},
 }
@@ -293,9 +294,10 @@ _ISSUE_EXAMPLE = {
     "code": "missing_sidecar",
     "message": message(
         "problem.missing_sidecar",
+        "en",
         path="nmt/pl_1992_1m_evrf2007/versions/…/N-34-130-D-d-2-4.asc",
     ),
-    "instruction": message("fix.missing_sidecar", producer="kartograf"),
+    "instruction": message("fix.missing_sidecar", "en", producer="kartograf"),
     "path": f"{_SEGMENT}/versions/N-34/130/D/d/2/4/2016_1a2b3c4d/N-34-130-D-d-2-4.asc",
     "segment": _SEGMENT,
     "slot": _SLOT,
@@ -435,7 +437,7 @@ class ProblemDetails(BaseModel):
     ``code`` is a code of the shared error registry; ``status`` is the HTTP
     status of that code. ``details.reason`` names the project's own cause
     (the machine codes of earlier versions, e.g. ``session_required``,
-    ``preview_busy``) and does not depend on the Polish ``detail``. Other
+    ``preview_busy``) and does not depend on the language of the ``detail``. Other
     members of ``details`` give the context: ``source`` (an unavailable
     producer plugin and the pip requirement fixing it), ``kartograf`` or
     ``imgwtools`` (the producer's exception and its unchanged message),
@@ -453,7 +455,9 @@ class ProblemDetails(BaseModel):
                     "type": f"{REGISTRY_PAGE}#not_found",
                     "title": "Not found",
                     "status": 404,
-                    "detail": message("api.slot_unknown", slot=_SLOT, store="zespol"),
+                    "detail": message(
+                        "api.slot_unknown", "en", slot=_SLOT, store="zespol"
+                    ),
                     "instance": "/api/v1/stores/zespol/slots/…",
                     "code": "not_found",
                 },
@@ -463,11 +467,14 @@ class ProblemDetails(BaseModel):
                     "status": 503,
                     "detail": message(
                         "api.source_problem",
+                        "en",
                         message=with_detail(
                             message(
-                                "source.unavailable_producer", producer="kartograf"
+                                "source.unavailable_producer",
+                                "en",
+                                producer="kartograf",
                             ),
-                            message("source.status_not_installed"),
+                            message("source.status_not_installed", "en"),
                         ),
                         fix=_KARTOGRAF_FIX,
                     ),
@@ -500,7 +507,12 @@ class ProblemDetails(BaseModel):
         )
     )
     status: int = Field(description="HTTP status of the code (the registry's).")
-    detail: str = Field(description="Polish description: what and how to fix.")
+    detail: str = Field(
+        description=(
+            "Description: what and how to fix. English, Polish with"
+            " `Accept-Language: pl`."
+        )
+    )
     instance: str | None = Field(
         default=None, description="The request path that failed."
     )
@@ -513,7 +525,10 @@ class ProblemDetails(BaseModel):
         )
     )
     hint: str | None = Field(
-        default=None, description="Polish line telling how to fix it, when known."
+        default=None,
+        description=(
+            "Line telling how to fix it, when known; in the language of `detail`."
+        ),
     )
     details: dict[str, Any] | None = Field(
         default=None,
@@ -1087,7 +1102,7 @@ class CopyPath(BaseModel):
 
 
 class Issue(BaseModel):
-    """A visible store or project problem with a Polish fix instruction."""
+    """A visible store or project problem with a fix instruction."""
 
     model_config = _examples(_ISSUE_EXAMPLE)
 
@@ -1098,8 +1113,8 @@ class Issue(BaseModel):
             " missing_pin, pin_sha256_mismatch, invalid_manifest, unknown_store…"
         )
     )
-    message: str = Field(description="What is wrong, in Polish.")
-    instruction: str = Field(description="How a person fixes it, in Polish.")
+    message: str = Field(description="What is wrong.")
+    instruction: str = Field(description="How a person fixes it.")
     path: str | None = Field(description="Store-relative path concerned.")
     segment: str | None
     slot: str | None
@@ -1572,12 +1587,12 @@ class SourceInfo(BaseModel):
             "package_version": None,
             "supported_versions": None,
             "schemas": [],
-            "detail": message("plugin.module_missing", module="imgwtools"),
+            "detail": message("plugin.module_missing", "en", module="imgwtools"),
             "message": with_detail(
-                message("doctor.source_not_installed", producer="imgw"),
-                message("plugin.module_missing", module="imgwtools"),
+                message("doctor.source_not_installed", "en", producer="imgw"),
+                message("plugin.module_missing", "en", module="imgwtools"),
             ),
-            "fix": message("fix.install", requirement="archiwista[imgw]"),
+            "fix": message("fix.install", "en", requirement="archiwista[imgw]"),
         },
     )
 
@@ -1589,8 +1604,8 @@ class SourceInfo(BaseModel):
     supported_versions: str | None = Field(description="Supported range (PEP 440).")
     schemas: list[str] = Field(description="Schemas the plugin reads.")
     detail: str | None
-    message: str = Field(description="Polish description of the state.")
-    fix: str | None = Field(description="Polish fix; null when available.")
+    message: str = Field(description="Description of the state.")
+    fix: str | None = Field(description="Fix; null when available.")
 
     @classmethod
     def of(cls, state: SourceState, message: str, fix: str | None) -> Self:
@@ -1661,14 +1676,16 @@ class Job(BaseModel):
 
 
 class JobFailure(BaseModel):
-    """Why a job did not succeed: a registry code, a Polish detail, the reason."""
+    """Why a job did not succeed: a registry code, a detail, the reason."""
 
     model_config = _examples(
         _JOB_FAILURE_EXAMPLE,
         {
             "code": "conflict",
             "detail": message(
-                "snapshot.blocked_read_only_folder", path="/mnt/nas/raba/dane/.wersje"
+                "snapshot.blocked_read_only_folder",
+                "en",
+                path="/mnt/nas/raba/dane/.wersje",
             ),
             "hint": None,
             "details": {"reason": "snapshot_blocked", "blocked_by": "read_only_folder"},
@@ -1684,10 +1701,13 @@ class JobFailure(BaseModel):
         )
     )
     detail: str = Field(
-        description="Polish description; for a crashed worker it names the job log."
+        description=(
+            "Description in the language of the request; for a crashed worker it"
+            " names the job log."
+        )
     )
     hint: str | None = Field(
-        description="Polish line telling how to fix it; null when no fix is known."
+        description="Line telling how to fix it; null when no fix is known."
     )
     details: dict[str, Any] = Field(
         description=(
@@ -1800,7 +1820,8 @@ class JobDetail(BaseModel):
 
     @classmethod
     def of(cls, job: JobRecord) -> Self:
-        """Return the model of a job."""
+        """Return the model of a job, its error in the language of the request."""
+        error = None if job.error is None else job.error.localized(current_language())
         return cls(
             id=job.id,
             kind=job.kind,
@@ -1816,12 +1837,12 @@ class JobDetail(BaseModel):
             progress=job.progress,
             result=job.result,
             error=None
-            if job.error is None
+            if error is None
             else JobFailure(
-                code=job.error.code,
-                detail=job.error.detail,
-                hint=job.error.hint,
-                details=dict(job.error.details),
+                code=error.code,
+                detail=error.detail,
+                hint=error.hint,
+                details=dict(error.details),
             ),
         )
 
@@ -1923,7 +1944,12 @@ class StoreState(BaseModel):
         description="`unknown` (not scanned yet), `available` or `unavailable`."
     )
     status_at: datetime | None
-    detail: str | None = Field(description="Why the store is unavailable.")
+    detail: str | None = Field(
+        description=(
+            "Why the store is unavailable, as written when it was found (in Polish,"
+            " whatever the language of the request)."
+        )
+    )
     indexed_at: datetime | None = Field(
         description="End of the last complete pass over the store."
     )
@@ -2630,7 +2656,7 @@ _COUNTRY_COVERAGE_EXAMPLE = {
     "covered_km2": 4.297,
     "versions_count": 3,
     "reason": None,
-    "label": message("local.coverage_percent", percent=83),
+    "label": message("local.coverage_percent", "en", percent=83),
 }
 
 
@@ -2745,7 +2771,7 @@ class CountryCoverage(BaseModel):
             "covered_km2": None,
             "versions_count": 1,
             "reason": "no_planar_crs",
-            "label": message("local.coverage_no_planar_crs"),
+            "label": message("local.coverage_no_planar_crs", "en"),
         },
     )
 
@@ -2770,7 +2796,7 @@ class CountryCoverage(BaseModel):
     reason: str | None = Field(
         description="Why there is no share: `no_planar_crs` or `empty_area`."
     )
-    label: str = Field(description="Polish text, e.g. „lokalnie 83% obszaru”.")
+    label: str = Field(description="Text for a person, e.g. `locally 83% of the area`.")
 
     @classmethod
     def of(cls, item: LocalCoverage) -> Self:

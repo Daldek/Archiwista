@@ -1,15 +1,17 @@
 """One description of an error for every interface (AGI-1.2, AGI-6.3, ERR-4).
 
 ``describe`` reduces an ``ArchiwistaError`` to a ``Problem``: its registry
-``code`` (``archiwista._errors``), a Polish ``detail``, an optional ``hint``
-and the JSON ``details`` whose ``reason`` is the project's own cause (ERR-1).
-The HTTP API answers with it as ``application/problem+json``
+``code`` (``archiwista._errors``), a ``detail``, an optional ``hint`` and the
+JSON ``details`` whose ``reason`` is the project's own cause (ERR-1). The
+HTTP API answers with it as ``application/problem+json``
 (``archiwista.api.errors``); the command line prints the ``archiwista-error/1``
 document as the last line of standard error and exits with the registry's exit
-code (``refuse``). The ``detail`` and the ``hint`` are Polish whatever the
-language of the request (a deviation from AGI-9.2, see ``CLAUDE.md``); codes,
-reasons, keys and the registry ``title`` (English, or Polish on request) are
-not.
+code (``refuse``). The texts of a problem are catalog messages
+(``archiwista.messages``): each interface renders them where they leave the
+process, in the language of its reader (``Problem.localized``) - the API in the
+``Accept-Language`` of the request, English without one, the document in
+English and the line for a person on the command line in Polish. Codes,
+reasons and keys are not texts.
 """
 
 import json
@@ -17,7 +19,7 @@ import re
 import sqlite3
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal, TextIO
+from typing import Any, Final, Self, TextIO
 
 from archiwista._errors import BY_CODE
 from archiwista.errors import (
@@ -27,7 +29,15 @@ from archiwista.errors import (
     PreviewUnavailableError,
     SourceStateError,
 )
-from archiwista.messages import lookup, message, with_detail
+from archiwista.messages import (
+    Lang,
+    Message,
+    localize,
+    localize_json,
+    lookup,
+    message,
+    with_detail,
+)
 from archiwista.sources.registry import install_requirement, source_fix
 
 ERROR_SCHEMA: Final = "archiwista-error/1"
@@ -40,7 +50,7 @@ REGISTRY_PAGE: Final = (
 # The exit status of a code that has no exit code (the REST-only codes).
 FALLBACK_EXIT_STATUS: Final = 1
 
-type Language = Literal["en", "pl"]
+type Language = Lang
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,11 +62,12 @@ class Problem:
     code : str
         Registry code.
     detail : str
-        Polish description of what happened.
+        Description of what happened, a catalog message when it has a key.
     hint : str or None
-        Polish line telling how to fix it.
+        Line telling how to fix it.
     details : Mapping[str, Any]
-        JSON object: ``reason`` and the context of the error.
+        JSON object: ``reason`` and the context of the error; a catalog
+        message may be among its values.
     errors : tuple[Mapping[str, object], ...]
         Invalid values of a request: ``pointer`` (JSON Pointer), ``type``,
         ``message``.
@@ -77,6 +88,21 @@ class Problem:
     def exit_code(self) -> int | None:
         """Int or None: the exit code of the code (``None`` for REST-only codes)."""
         return BY_CODE[self.code].exit_code
+
+    def localized(self, lang: Language) -> Self:
+        """Return the problem with every catalog message in it rendered in ``lang``.
+
+        The ``detail``, the ``hint``, the values of the ``details`` and of the
+        ``errors`` become plain strings; a text that is no catalog message
+        (a library's own, a name) is as it is.
+        """
+        return type(self)(
+            self.code,
+            localize(self.detail, lang),
+            None if self.hint is None else localize(self.hint, lang),
+            localize_json(self.details, lang),
+            tuple(localize_json(item, lang) for item in self.errors),
+        )
 
 
 def title_of(code: str, lang: Language = "en") -> str:
@@ -125,8 +151,8 @@ def pointer(location: str | Iterable[object]) -> str:
     return "".join(f"/{part}" for part in escaped)
 
 
-def preview_reason(code: str, detail: str | None = None) -> dict[str, str | None]:
-    """Return why a file has no preview: its code, Polish description and fix.
+def preview_reason(code: str, detail: str | None = None) -> dict[str, Any]:
+    """Return why a file has no preview: its code, description and fix.
 
     Parameters
     ----------
@@ -143,6 +169,22 @@ def preview_reason(code: str, detail: str | None = None) -> dict[str, str | None
     }
 
 
+def _error_message(item: Mapping[str, Any]) -> object:
+    """Return the text of a pydantic error, as a catalog message when it is one.
+
+    A validator that raised ``ValueError(message(…))`` keeps its message,
+    which pydantic turns into the text ``Value error, …``; it is rendered
+    again in the language of the reader.
+    """
+    text = item.get("msg")
+    context = item.get("ctx")
+    error = context.get("error") if isinstance(context, Mapping) else None
+    first = error.args[0] if isinstance(error, ValueError) and error.args else None
+    if isinstance(first, Message) and isinstance(text, str) and text.endswith(first):
+        return message("api.value_error", detail=first)
+    return text
+
+
 def validation_problem(errors: Iterable[Mapping[str, Any]]) -> Problem:
     """Return the ``validation_error`` of invalid request data.
 
@@ -156,7 +198,7 @@ def validation_problem(errors: Iterable[Mapping[str, Any]]) -> Problem:
         {
             "pointer": pointer(item.get("loc", ())),
             "type": item.get("type"),
-            "message": item.get("msg"),
+            "message": _error_message(item),
         }
         for item in errors
     )
@@ -183,7 +225,7 @@ def describe(error: ArchiwistaError) -> Problem:
     (an area file with several layers) and ``<package>`` (a producer's own
     exception and message).
     """
-    detail = str(error)
+    detail = error.message
     hint = error.hint
     details: dict[str, Any] = dict(error.details)
     errors: tuple[Mapping[str, object], ...] = ()
@@ -204,10 +246,10 @@ def describe(error: ArchiwistaError) -> Problem:
         # The library's detail explains the reason; the fix closes the text.
         detail = message(
             "preview.unavailable_detail",
-            message=with_detail(str(reason["message"]), error.detail),
+            message=with_detail(reason["message"], error.detail),
             fix=reason["fix"],
         )
-        hint = hint or str(reason["fix"]) or None
+        hint = hint or reason["fix"] or None
         details["preview_reason"] = reason
     elif isinstance(error, PreviewNotReadyError):
         if error.state == "building":
@@ -244,7 +286,8 @@ def error_document(
         The command line's command as ``<group> <verb>``, e.g. ``preview
         thumbnail``; left out when it has another shape.
     lang : {"en", "pl"}, optional
-        Language of the ``title``; machine output is English (AGI-9.2).
+        Language of the ``title`` and of every catalog message in the
+        document; machine output is English (AGI-9.2).
 
     Returns
     -------
@@ -253,19 +296,20 @@ def error_document(
         one, ``details`` (with ``errors`` for invalid values), ``exit_code``
         and ``command`` when known.
     """
-    details = dict(problem.details)
-    if problem.errors:
-        details["errors"] = list(problem.errors)
+    shown = problem.localized(lang)
+    details = dict(shown.details)
+    if shown.errors:
+        details["errors"] = list(shown.errors)
     document: dict[str, Any] = {
         "schema": ERROR_SCHEMA,
-        "code": problem.code,
-        "title": title_of(problem.code, lang),
-        "message": problem.detail,
+        "code": shown.code,
+        "title": title_of(shown.code, lang),
+        "message": shown.detail,
     }
-    if problem.hint:
-        document["hint"] = problem.hint
+    if shown.hint:
+        document["hint"] = shown.hint
     document["details"] = details
-    document["exit_code"] = problem.exit_code
+    document["exit_code"] = shown.exit_code
     if command and _COMMAND_NAME.match(command):
         document["command"] = command
     return document
@@ -274,9 +318,9 @@ def error_document(
 def refuse(problem: Problem, err: TextIO, *, command: str | None = None) -> int:
     """Report a refusal of a command and return its exit status (ERR-4).
 
-    The Polish ``detail`` goes to ``err`` for the person, then the error
-    document as one compact JSON line, the last one (AGI-3.3). Nothing goes
-    to standard output (AGI-3.2), with or without ``--json``.
+    The ``detail`` in Polish goes to ``err`` for the person, then the English
+    error document as one compact JSON line, the last one (AGI-3.3). Nothing
+    goes to standard output (AGI-3.2), with or without ``--json``.
 
     Parameters
     ----------
@@ -292,7 +336,7 @@ def refuse(problem: Problem, err: TextIO, *, command: str | None = None) -> int:
     int
         The registry's exit code; ``1`` for a REST-only code.
     """
-    err.write(f"{problem.detail}\n")
+    err.write(f"{localize(problem.detail, 'pl')}\n")
     document = error_document(problem, command=command)
     err.write(json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n")
     exit_code = problem.exit_code
@@ -309,7 +353,7 @@ def exception_problem(error: BaseException, message: str) -> Problem:
         hint; an ``OSError`` is ``io_error``, an SQLite error
         ``store_unavailable``, anything else ``internal_error``.
     message : str
-        The Polish description to show.
+        The description to show.
     """
     if isinstance(error, ArchiwistaError):
         return Problem(error.code, message, error.hint, error.details)
@@ -340,11 +384,11 @@ def fail(
     code : str
         Registry code.
     message : str
-        Polish description.
+        Description.
     reason : str or None, optional
         The project's cause (``details["reason"]``).
     hint : str or None, optional
-        Polish line telling how to fix it.
+        Line telling how to fix it.
     command : str or None, optional
         The command, for the document.
     """

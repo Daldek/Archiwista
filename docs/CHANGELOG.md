@@ -36,7 +36,7 @@ command-line interface may change.
   the registry's `code` (`validation_error`, `not_found`, `conflict`, `forbidden`,
   `unauthorized`, `missing_dependency`, `store_unavailable`, `data_error`,
   `unsupported`, ...), its HTTP status and the members `type` (the registry page and
-  `#<code>`), `title` (Polish with `Accept-Language: pl`), `detail` and `hint` (Polish),
+  `#<code>`), `title`, `detail` and `hint`,
   `instance`, `details` and `errors[]` with JSON Pointers. The old codes are
   `details.reason` (`session_required`, `csrf_rejected`, `preview_busy`,
   `area_too_large`, ...); the extra members moved into `details` (`job`, `source`,
@@ -67,6 +67,22 @@ command-line interface may change.
   problem of a request does. Jobs recorded by 0.2.0 are read with the new codes on
   every read and are not rewritten; the history needs no migration. The command
   line and the interface show the reason where they showed the code. (ERR-1)
+- **Breaking:** the texts of errors and answers follow `Accept-Language` (before, `detail`
+  and `hint` were Polish always, and `title` alone followed the header). `title`,
+  `detail`, `hint`, the texts inside `details`, the `message` of `errors[]` that
+  Archiwista's own checks make, and the texts of the answers (the `reason` of a preview,
+  the `error` of a job) are English, and Polish when the header prefers Polish; another
+  language, a malformed header and no header give English. Every JSON answer under
+  `/api/v1`, every problem and every event stream has `Content-Language` and `Vary:
+  Accept-Language`. The interface sends `Accept-Language: pl`, so its texts stay Polish.
+  The `error` of a job keeps the key and values of its `detail` and `hint`, and renders
+  them in the language of the request whenever it is read, in the final `state` event
+  too. The command line prints text for a person (the help, the diagnostics, the line
+  before an error document) in Polish, and its `--json` answers and the `message` and
+  `hint` of the `archiwista-error/1` document in English; the log is English. What is
+  written when it happens stays Polish: the `detail` of a store that is not available,
+  and the `message` of the notices of a job (deviation AGI-6.4 of `CLAUDE.md`).
+  (AGI-6.4, AGI-9.2)
 - `docs/PRD.md`, `docs/SCOPE.md`, `docs/USAGE.md`, `CLAUDE.md` and `docs/PROGRESS.md` are
   English; the Polish interface labels stay in quotes. `docs/PROGRESS.md` has the three
   sections of the standard and lists the documents still to translate. (DEV-2.1, ECO-005,

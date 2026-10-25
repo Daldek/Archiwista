@@ -461,9 +461,13 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
 def test_areas_malformed_file_refused_with_reason(
     api: Api, owner: Caller, tmp_path: Path, make: Any, query: str, fragment: str
 ) -> None:
-    """A file that cannot be an area says why, in Polish, and leaves no copy."""
+    """A file that cannot be an area says why, in the language asked, no copy kept.
+
+    The reader is a process of its own that words the refusal in English; the
+    server words it again in Polish from the key and values of its answer.
+    """
     # Act
-    response = upload(owner, make(tmp_path), query=query)
+    response = upload(owner, make(tmp_path), query=query, accept_language="pl")
 
     # Assert
     assert_problem(response, 500, "data_error", "area_unreadable")

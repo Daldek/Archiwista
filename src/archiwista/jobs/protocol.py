@@ -9,14 +9,18 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
 - ``progress``: how far the job is, with integers ``current`` and ``total``
   and counts of the job's kind (a scan adds ``segment`` and ``entries``);
 - ``notice``: something the person should know: ``level`` (``info`` or
-  ``warning``), a stable ``code`` and a Polish ``message``;
+  ``warning``), a stable ``code`` and a ``message`` in Polish, the language of
+  the texts a worker stores;
 - ``result``: the job's summary, a JSON object; the last line of a job
   that succeeded;
-- ``error``: why the job failed: a registry ``code`` (ERR §2), a Polish
+- ``error``: why the job failed: a registry ``code`` (ERR §2), a
   ``detail``, the ``exception`` class behind it, and when there are any a
   ``hint`` and the JSON ``details`` (``reason``, the project's own cause,
   and the context), as ``archiwista.error_document.describe`` reports an
-  error of a request.
+  error of a request. The texts are in Polish and, when they are catalog
+  messages, come with their ``key`` and ``values`` (``hint_key`` and
+  ``hint_values`` for the hint) to be rendered again in the language of
+  whoever reads the job (``archiwista.jobs.error.JobError``).
 
 Everything else the worker or a library writes goes to standard error, the
 job's log. The supervisor keeps ``progress`` and ``notice`` as job events
@@ -34,7 +38,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 
@@ -55,6 +59,10 @@ JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
 MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error")
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 _PRINCIPAL_KINDS: tuple[PrincipalKind, ...] = get_args(PrincipalKind.__value__)
+# The members of an ``error`` message besides ``code`` and ``detail``, when it
+# has them: texts, and objects (the keys and values of the texts).
+_ERROR_TEXTS = ("hint", "key", "hint_key")
+_ERROR_OBJECTS = ("details", "values", "hint_values")
 
 # What a job that did not succeed reports as its ``error``: a code of the
 # shared registry (ERR §2) and its own cause as ``details["reason"]`` (ERR-1).
@@ -267,8 +275,8 @@ def _check(kind: MessageType, data: JsonObject) -> None:
         valid = (
             all(isinstance(data.get(name), str) for name in ("code", "detail"))
             and data["code"] in BY_CODE
-            and isinstance(data.get("hint", ""), str)
-            and isinstance(data.get("details", {}), dict)
+            and all(isinstance(data.get(name, ""), str) for name in _ERROR_TEXTS)
+            and all(isinstance(data.get(name, {}), dict) for name in _ERROR_OBJECTS)
         )
     else:
         valid = True

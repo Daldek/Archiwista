@@ -37,6 +37,7 @@ from shapely.geometry import box, mapping, shape
 
 from archiwista.api.owndata import OWN_CACHE_CONTROL
 from archiwista.api.previews import VERSION_CACHE_CONTROL
+from archiwista.messages import message
 from archiwista.owndata.content import content_identity
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
@@ -123,6 +124,11 @@ def _layer(answer: dict[str, Any], part: str, *, by_segment: bool = False) -> An
     return found
 
 
+def _campaign_title(campaign: str) -> str:
+    """Return the title of the layer of a campaign of 2023."""
+    return message("layer.title_campaign", title="2023", campaign=campaign)
+
+
 def _path(ref: str) -> str:
     """Return the store path a version's ``ref`` names."""
     return ref.split(":", 2)[2]
@@ -187,15 +193,18 @@ def test_layers_by_data_year_never_download_year(
 
 
 def test_layers_by_edition_without_year(served: ServedLayers, area: str) -> None:
-    """Versions without a data year group by their edition (``wydanie``)."""
+    """Versions without a data year group by their edition."""
     # Act
     answer = _layers(served.api, area, product="bdot10k")
 
     # Assert
     layers = {layer["title"]: layer for layer in answer["layers"]}
-    assert layers.keys() == {f"wydanie {edition}" for edition in EDITIONS}
+    titles = {
+        edition: message("layer.title_edition", edition=edition) for edition in EDITIONS
+    }
+    assert layers.keys() == set(titles.values())
     for edition in EDITIONS:
-        layer = layers[f"wydanie {edition}"]
+        layer = layers[titles[edition]]
         assert (layer["kind"], layer["year"], layer["data_dates"]) == (
             "edition",
             None,
@@ -215,8 +224,8 @@ def test_group_by_campaign(served: ServedLayers, area: str) -> None:
     # Assert
     split = [_layer(by_campaign, f"2023:{flight}") for flight in ("83501", "82710")]
     assert [(layer["kind"], layer["title"], layer["campaigns"]) for layer in split] == [
-        ("campaign", "2023 · kampania 83501", ["83501"]),
-        ("campaign", "2023 · kampania 82710", ["82710"]),
+        ("campaign", _campaign_title("83501"), ["83501"]),
+        ("campaign", _campaign_title("82710"), ["82710"]),
     ]
     for layer in split:
         flights = {served.store.by_path(path).campaign for path in _paths(layer)}
@@ -322,7 +331,10 @@ def test_layer_coverage_planar(served: ServedLayers) -> None:
     coverage = _layer(answer, "2019")["coverage"]
     assert coverage["ratio"] == pytest.approx(share, rel=1e-5)
     assert abs(coverage["ratio"] - in_degrees) > 0.01 * in_degrees
-    assert (coverage["percent"], coverage["label"]) == (0, "lokalnie <1% obszaru")
+    assert (coverage["percent"], coverage["label"]) == (
+        0,
+        message("local.coverage_below_one"),
+    )
 
 
 def test_outlines_in_frame_crs(served: ServedLayers, area: str) -> None:
@@ -700,9 +712,17 @@ def test_own_file_layers_current_first(tmp_path: Path) -> None:
     body = answer.json()
     layers = body["layers"]
     assert [(layer["key"], layer["kind"], layer["title"]) for layer in layers] == [
-        ("file", "file", "plik roboczy"),
-        (f"snapshot:{newer.label}", "snapshot", f"migawka {newer.label}"),
-        (f"snapshot:{older.label}", "snapshot", f"migawka {older.label}"),
+        ("file", "file", message("layer.title_working")),
+        (
+            f"snapshot:{newer.label}",
+            "snapshot",
+            message("layer.title_snapshot", label=newer.label),
+        ),
+        (
+            f"snapshot:{older.label}",
+            "snapshot",
+            message("layer.title_snapshot", label=older.label),
+        ),
     ]
     assert [[version["ref"] for version in layer["versions"]] for layer in layers] == [
         [project.ref(path)],

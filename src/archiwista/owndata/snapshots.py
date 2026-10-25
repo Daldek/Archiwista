@@ -135,7 +135,7 @@ _RENAME_NOREPLACE = 1
 
 @dataclass(frozen=True, slots=True)
 class SnapshotBlock:
-    """Why a snapshot cannot be made now: the reason and a Polish message."""
+    """Why a snapshot cannot be made now: the reason and its message."""
 
     reason: SnapshotBlockReason
     message: str
@@ -148,7 +148,7 @@ class SnapshotWarning:
     ``code`` is ``editing_detected`` (the file is open in an editor, or one
     left it so: only committed changes are copied), ``chmod_refused`` (the
     file system keeps the snapshot writable) or ``directory_sync_refused``
-    (it does not sync directories); ``message`` is Polish.
+    (it does not sync directories); ``message`` is a catalog message.
     """
 
     code: str

@@ -79,6 +79,10 @@ MESSAGES = {
         "the --verbose and --quiet options are mutually exclusive",
         "opcje --verbose i --quiet wykluczają się",
     ),
+    "usage_error": Text(
+        "{prog}: {text}",
+        "{prog}: {text}",
+    ),
     "log_level_invalid": Text(
         (
             'The variable {variable} has the value "{value}", which is not a log'

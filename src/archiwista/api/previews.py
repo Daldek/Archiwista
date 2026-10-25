@@ -177,7 +177,7 @@ def preview_problems(*codes: str) -> dict[int | str, dict[str, Any]]:
         ),
         422: (
             "`unsupported` (reason `preview_unavailable`: `details.preview_reason`"
-            " has the code, Polish description and fix) or `calculation_error`"
+            " has the code, the description and the fix) or `calculation_error`"
             " (reason `preview_timeout`: the render ran past its time limit)."
         ),
         429: (

@@ -434,6 +434,7 @@ def test_link_check_reports_mismatch(env: JobsEnv) -> None:
     assert issues == [("link_mismatch", "check")]
 
 
+@pytest.mark.usefixtures("polish")
 def test_reindex_runs_full_scan_in_foreground(env: JobsEnv) -> None:
     """``archiwista reindex`` records a full scan by ``local`` and reports it."""
     # Arrange
@@ -485,10 +486,12 @@ def test_reindex_unknown_store(env: JobsEnv) -> None:
     document = refusal(out.getvalue(), err.getvalue(), status)
     assert (status, document["code"]) == (3, "not_found")
     assert document["details"]["reason"] == "unknown_store"
-    assert err.getvalue().splitlines()[0] == message("job.store_unknown", store="brak")
+    first = err.getvalue().splitlines()[0]
+    assert first == message("job.store_unknown", "pl", store="brak")
     assert env.jobs.list().items == ()
 
 
+@pytest.mark.usefixtures("polish")
 def test_reindex_on_foreground_helper(
     env: JobsEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:

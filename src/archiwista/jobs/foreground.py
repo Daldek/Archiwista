@@ -34,7 +34,7 @@ from archiwista.jobs.supervisor import (
     JobState,
     JobSupervisor,
 )
-from archiwista.messages import label, message
+from archiwista.messages import current_language, label, language, message
 
 # Seconds between two looks at a job of another process.
 POLL_S = 0.5
@@ -122,9 +122,13 @@ def _follow(
 ) -> JobRecord:
     """Follow the command's own job to its end; Ctrl+C cancels it."""
     _say(err, started(record))
-    unsubscribe = jobs.subscribe(
-        lambda heard: _say(err, event(heard)), job_id=record.id
-    )
+    lang = current_language()  # the listener runs in a thread of the supervisor
+
+    def heard_in_language(heard: JobEvent) -> None:
+        with language(lang):
+            _say(err, event(heard))
+
+    unsubscribe = jobs.subscribe(heard_in_language, job_id=record.id)
     try:
         try:
             return jobs.wait(record.id)

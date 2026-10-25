@@ -602,6 +602,7 @@ def test_queries_map_rejects_invalid_views(index: Index, query: MapQuery) -> Non
         queries.footprints(query, visible=ALL_PROJECTS)
 
 
+@pytest.mark.usefixtures("polish")
 def test_queries_area_must_be_a_polygon(index: Index) -> None:
     """An area that is not a polygon in WGS84 is refused."""
     # Arrange

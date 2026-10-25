@@ -54,7 +54,13 @@ def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[JobsApi]
         yield created
 
 
-def _stream(served: JobsApi, job: str, last_event_id: str | None = None) -> Any:
+def _stream(
+    served: JobsApi,
+    job: str,
+    last_event_id: str | None = None,
+    *,
+    accept_language: str | None = None,
+) -> Any:
     """Read a job's event stream (to its end) with the owner's session."""
     headers = {
         "cookie": f"{SESSION_COOKIE}={served.owner.session_id}",
@@ -62,6 +68,8 @@ def _stream(served: JobsApi, job: str, last_event_id: str | None = None) -> Any:
     }
     if last_event_id is not None:
         headers["Last-Event-ID"] = last_event_id
+    if accept_language is not None:
+        headers["accept-language"] = accept_language
     return served.api.client.get(f"{API_PREFIX}/jobs/{job}/events", headers=headers)
 
 
@@ -211,6 +219,35 @@ def test_failed_job_has_a_registry_code_in_detail_and_stream(served: JobsApi) ->
             },
         },
     )
+
+
+def test_error_of_a_job_is_in_the_language_of_the_request(served: JobsApi) -> None:
+    """The worker stores the error in Polish with its key; each reader gets its own."""
+    # Arrange: the share is gone, an empty directory takes its place.
+    served.env.scan("full")
+    root = served.env.store.root
+    root.rename(root.with_name("data-away"))
+    root.mkdir()
+    job = served.owner.request("POST", f"/stores/{STORE}/footprints").json()["id"]
+    served.env.wait(job)
+
+    # Act
+    english = served.owner.request("GET", f"/jobs/{job}")
+    polish = served.owner.request("GET", f"/jobs/{job}", accept_language="pl")
+    streamed = _messages(_stream(served, job, accept_language="pl"))[-1][2]
+    store = served.owner.request("GET", f"/stores/{STORE}", accept_language="en")
+
+    # Assert
+    assert english.json()["error"]["detail"] == message(
+        "scan.store_empty", "en", path=root
+    )
+    assert polish.json()["error"]["detail"] == message(
+        "scan.store_empty", "pl", path=root
+    )
+    assert streamed["error"]["detail"] == polish.json()["error"]["detail"]
+    assert polish.json()["error"]["code"] == "store_unavailable"
+    # What is stored when it is found stays Polish for every reader.
+    assert store.json()["state"]["detail"] == polish.json()["error"]["detail"]
 
 
 def test_job_detail_has_actor(served: JobsApi) -> None:

@@ -19,6 +19,7 @@ from shapely.geometry import box, mapping, shape
 
 from archiwista.api.areas import read_local_coverage
 from archiwista.api.models import CoverageQuery
+from archiwista.messages import message
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE, ServedStore, served_store
 from tests.fixtures.area_files import gdal_file, upload
@@ -100,7 +101,9 @@ def test_local_coverage_refreshes_area_slots_before_answering(
 
     # Assert
     assert before["results"][0]["percent"] == 100
-    assert before["results"][0]["label"] == "lokalnie 100% obszaru"
+    assert before["results"][0]["label"] == message(
+        "local.coverage_percent", percent=100
+    )
     assert (before["stale"], after["stale"], after["stale_reason"]) == (
         False,
         False,

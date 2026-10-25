@@ -79,7 +79,7 @@ def get_store(
 ) -> StoreDetail:
     """Return one store: usage per product, clean-up report, projects, problems.
 
-    Problems come with a Polish instruction and never with a delete action;
+    Problems come with an instruction and never with a delete action;
     only projects the session's principal sees are named.
     """
     return read_store(settings.get(), queries, store, visible=visible)

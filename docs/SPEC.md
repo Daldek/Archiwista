@@ -3044,8 +3044,8 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
   ostatniego zdarzenia `state`.
 - **Błędy:** RFC 9457 (`application/problem+json`) z polami `type` (wpis kodu
   w rejestrze błędów Nogat: `…/ERROR_REGISTRY.md#<code>`), `title` (tytuł
-  z rejestru: po angielsku, po polsku przy `Accept-Language: pl`), `status`
-  (z rejestru), `detail` i `hint` (po polsku), `instance` (ścieżka żądania),
+  z rejestru), `status`
+  (z rejestru), `detail` i `hint`, `instance` (ścieżka żądania),
   `code` (kod z rejestru: `validation_error`, `not_found`, `conflict`,
   `forbidden`, `unauthorized`, `method_not_allowed`, `rate_limited`,
   `missing_dependency`, `store_unavailable`, `data_error`, `unsupported`,
@@ -3061,8 +3061,23 @@ ryzyko w 14), a KE i KG przychodzą po MVP.
   zainstalowany (`missing_dependency`, przyczyna `source_unavailable`, stan
   `not_installed`) albo którego wersja lub schemat jest niezgodny
   (`source_incompatible`), zwraca `503` z polem `details.source` (`id`,
-  `state`, komunikat po polsku z poleceniem instalacji albo wspieranym
-  zakresem); `GET /sources` podaje stan każdego źródła (5.8).
+  `state`, wersje) i poleceniem instalacji albo wspieranym zakresem w `hint`;
+  `GET /sources` podaje stan każdego źródła (5.8).
+- **Język tekstów (AGI-6.4, AGI-9.2):** `title`, `detail`, `hint`, teksty
+  w `details` (`preview_reason`, `problems`) i `message` w `errors[]` są po
+  angielsku, a po polsku, gdy `Accept-Language` woli polski (najwyższa
+  waga; inny język, błędny nagłówek i brak nagłówka dają angielski). Każda
+  odpowiedź JSON pod `/api/v1`, problem i strumień zdarzeń ma
+  `Content-Language` i `Vary: Accept-Language`; obrazy, `openapi.json`
+  (zawsze po angielsku) i pliki interfejsu ich nie mają. Interfejs wysyła
+  `Accept-Language: pl`. Teksty zapisywane w chwili zdarzenia zostają po
+  polsku: `detail` stanu magazynu (kolumna `stores.detail`), `message`
+  zdarzeń `notice` zadania, teksty w `result` i `error.details` zadania;
+  `detail` i `hint` błędu zadania pamiętają klucz i wartości komunikatu i są
+  renderowane w języku żądania przy odczycie (wiersz sprzed tej zmiany
+  zostaje po polsku). Polecenia: tekst dla osoby (pomoc, diagnostyka, wiersz
+  przed dokumentem błędu) po polsku, wynik `--json` i dokument
+  `archiwista-error/1` po angielsku.
 - **Stronicowanie:** `limit` (do 200) i nieprzezroczysty `cursor`.
 - **Filtry** w zapytaniu mają nazwy filtrów interfejsu (6.6); obszar
   w zapytaniu jako `bbox` + `bbox_crs`, w treści jako GeoJSON (WGS84) albo

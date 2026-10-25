@@ -1,4 +1,4 @@
-"""Store and project problems with a Polish explanation and fix instruction.
+"""Store and project problems with an explanation and fix instruction.
 
 Every problem is shown, never hidden, and none comes with a delete action:
 the instruction tells a person what to do (SPEC 4.6, UC-13).
@@ -39,9 +39,9 @@ class Problem:
         Stable code (``missing_sidecar``, ``orphan_sidecar``,
         ``missing_pin``, ``unknown_store``…); does not depend on the text.
     message : str
-        Polish description naming the place.
+        Description naming the place.
     instruction : str
-        Polish fix instruction; never a delete action of Archiwista.
+        Fix instruction; never a delete action of Archiwista.
     path : str or None
         Store-relative path the problem is about.
     segment, slot : str or None

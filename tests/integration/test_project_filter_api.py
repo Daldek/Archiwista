@@ -15,6 +15,7 @@ import pytest
 
 from archiwista.auth import access_key
 from archiwista.index import IndexWriter, ManifestStamp
+from archiwista.messages import message
 from archiwista.sources import ProjectInfo, ProjectPin, SourceEntry
 from tests.fixtures.api_session import Api, assert_problem, running_api
 from tests.fixtures.index_data import (
@@ -150,5 +151,5 @@ def test_hidden_and_unknown_project_filter_is_not_found(api: Api, route: str) ->
     # Assert
     assert_problem(hidden, 404, "not_found")
     assert_problem(missing, 404, "not_found")
-    assert hidden.json()["detail"] == "Nie ma projektu „raba”."
+    assert hidden.json()["detail"] == message("project.not_found", project="raba")
     assert seen.status_code == 200, seen.text

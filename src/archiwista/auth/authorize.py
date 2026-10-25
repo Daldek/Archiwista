@@ -206,7 +206,7 @@ class Authorizer:
         Raises
         ------
         PermissionDeniedError
-            With a Polish message naming what the action needs.
+            With a message naming what the action needs.
         """
         if not self.can(principal, action, resource):
             name = action.replace(".", "_")

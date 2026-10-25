@@ -55,7 +55,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import label, message, with_detail
+from archiwista.messages import label, language, message, with_detail
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
@@ -208,7 +208,8 @@ def search_filters(args: argparse.Namespace) -> CatalogFilters:
         if getattr(args, name) is not None
     }
     try:
-        return CatalogFilters.model_validate(values)
+        with language("en"):  # the error document that reports a refusal is English
+            return CatalogFilters.model_validate(values)
     except ValidationError as error:
         located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
         raise _InvalidQuery(validation_problem(located)) from None

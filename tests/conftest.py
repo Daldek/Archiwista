@@ -7,6 +7,8 @@ from collections.abc import Iterator
 
 import pytest
 
+from archiwista.messages import language
+
 
 @pytest.fixture(scope="session", autouse=True)
 def interruptible_session() -> Iterator[None]:
@@ -47,3 +49,14 @@ def restore_umask() -> Iterator[None]:
     os.umask(mask)
     yield
     os.umask(mask)
+
+
+@pytest.fixture
+def polish() -> Iterator[None]:
+    """Make the texts the test provokes Polish, the language of the interface.
+
+    The default is English; the API answers in Polish for ``Accept-Language:
+    pl`` and the command line speaks Polish to a person.
+    """
+    with language("pl"):
+        yield

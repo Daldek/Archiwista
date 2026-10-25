@@ -36,14 +36,18 @@ class Caller:
         *,
         json: object = None,
         csrf: bool = True,
+        accept_language: str | None = None,
     ) -> httpx.Response:
         """Send ``method path`` under ``/api/v1`` with the session cookie.
 
-        Every request carries the session's CSRF token unless ``csrf`` is off.
+        Every request carries the session's CSRF token unless ``csrf`` is off,
+        and the ``Accept-Language`` header when ``accept_language`` is given.
         """
         headers = {"cookie": f"{SESSION_COOKIE}={self.session_id}"}
         if csrf:
             headers[CSRF_HEADER] = self.csrf
+        if accept_language is not None:
+            headers["accept-language"] = accept_language
         response: httpx.Response = self.client.request(
             method, f"/api/v1{path}", json=json, headers=headers
         )

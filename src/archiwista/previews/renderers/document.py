@@ -1,7 +1,7 @@
 """Renderer of documents, auxiliary files and unknown files (plan v0.2, decision 5).
 
 None of these has a thumbnail or map tiles: the probe only confirms the file
-can be read and gives the reason, which the interface shows with its Polish
+can be read and gives the reason, which the interface shows with its
 description and fix (``preview_reason_<code>``, ``preview_fix_<code>``):
 
 - a document (PDF, TXT) → ``document_no_preview``: showing a PDF in the

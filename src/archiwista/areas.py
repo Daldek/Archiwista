@@ -56,7 +56,7 @@ from archiwista.index.coverage import (
     measure_coverage,
 )
 from archiwista.index.geometry import require_wgs84_area
-from archiwista.messages import message
+from archiwista.messages import load, message
 from archiwista.paths import private_directory
 from archiwista.sandbox import run_untrusted
 from archiwista.sources import GeoAdapter, GeoJSONGeometry
@@ -429,7 +429,8 @@ def _run_reader(files: AreaFiles, directory: Path, layer: str | None) -> dict[st
     code = answer.get("error")
     if code is None:
         return answer
-    detail = str(answer.get("detail") or message("area.format_unknown"))
+    text = str(answer.get("detail") or message("area.format_unknown"))
+    detail = load(answer.get("key"), answer.get("values"), text)
     if code == "area_too_large":
         raise AreaTooLargeError(detail)
     if code == "area_too_complex":

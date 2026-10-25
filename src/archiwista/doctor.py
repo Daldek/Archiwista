@@ -54,9 +54,9 @@ class DoctorCheck:
     level : {"ok", "warning", "error"}
         Errors make ``archiwista doctor`` exit with a non-zero status.
     message : str
-        Polish description of what was found.
+        Description of what was found.
     fix : str or None
-        Polish instruction how to repair the problem.
+        Instruction how to repair the problem.
     """
 
     level: CheckLevel
@@ -165,7 +165,7 @@ def _load_settings(paths: AppPaths, checks: list[DoctorCheck]) -> AppSettings:
 
 
 def source_check(state: SourceState, *, required: bool) -> DoctorCheck:
-    """Describe a producer plugin's state in Polish, with a fix when needed.
+    """Describe a producer plugin's state, with a fix when needed.
 
     Parameters
     ----------
@@ -268,7 +268,7 @@ def _port_check(port: int, port_available: Callable[[int], bool]) -> DoctorCheck
 
 
 def format_report(report: DoctorReport) -> str:
-    """Render a report as Polish text lines."""
+    """Render a report as text lines."""
     lines: list[str] = [message("doctor.title")]
     for check in report.checks:
         lines.append(f"[{message(f'doctor.level_{check.level}')}] {check.message}")

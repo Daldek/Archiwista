@@ -77,7 +77,8 @@ import { T, t } from "./labels/index.js";
 
 export const API_PREFIX = "/api/v1";
 const CSRF_HEADER = "X-Archiwista-CSRF";
-// The language of a problem's `title` (AGI-6.4): the interface is Polish.
+// The language of the texts the server makes for a request (AGI-6.4, AGI-9.2):
+// the interface is Polish; the server answers in English without the header.
 const LANGUAGE = "pl";
 // `sessionStorage` key of the session's CSRF token (this origin, this tab).
 export const TOKEN_KEY = "archiwista_csrf";
@@ -252,16 +253,18 @@ export function apiTemplate(template, query = {}) {
 }
 
 /**
- * The session's CSRF header for a request the page does not send itself
- * (MapLibre's tiles, `transformRequest`): only for an address of this
- * server's API, never for a basemap or any other origin.
+ * The headers for a request the page does not send itself (MapLibre's tiles,
+ * `transformRequest`): the session's CSRF header and the language, only for
+ * an address of this server's API, never for a basemap or any other origin.
  *
  * @param {string} address - The address about to be requested.
- * @returns {Object<string, string>|null} The header, or `null` to send none.
+ * @returns {Object<string, string>|null} The headers, or `null` to send none.
  */
 export function apiHeaders(address) {
   const token = storedToken();
-  return token !== null && isApiUrl(new URL(address, location.origin)) ? { [CSRF_HEADER]: token } : null;
+  return token !== null && isApiUrl(new URL(address, location.origin))
+    ? { [CSRF_HEADER]: token, "Accept-Language": LANGUAGE }
+    : null;
 }
 
 /**
@@ -632,7 +635,7 @@ export function watchJob(job, { onProgress, onNotice, onState, onError } = {}) {
   let ended = false;
   const follow = async () => {
     while (!ended) {
-      const headers = { Accept: "text/event-stream" };
+      const headers = { Accept: "text/event-stream", "Accept-Language": LANGUAGE };
       const token = storedToken();
       if (token !== null) headers[CSRF_HEADER] = token;
       if (last !== null) headers["Last-Event-ID"] = last;

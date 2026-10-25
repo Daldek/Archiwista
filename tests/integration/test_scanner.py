@@ -35,6 +35,7 @@ from archiwista.index.scanner import (
     refresh_view,
     scan_store,
 )
+from archiwista.messages import localize
 from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
@@ -453,7 +454,8 @@ def test_empty_mount_point_keeps_index(env: _Env) -> None:
     # Assert
     assert all(str(root) in message for message in errors)
     assert (unavailable.status, unavailable.stale) == ("unavailable", True)
-    assert unavailable.detail == errors[-1]
+    # The status is stored in Polish, whatever language the caller works in.
+    assert unavailable.detail == localize(errors[-1], "pl")
     assert unavailable.status_at is not None
     assert next(s for s in view.stores if s.store == STORE).stale is True
     assert unchanged == rows

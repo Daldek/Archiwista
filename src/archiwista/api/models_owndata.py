@@ -400,7 +400,7 @@ class PlanBlock(BaseModel):
             " than 1.1 times the file free) or `file_missing`."
         )
     )
-    message: str = Field(description="Polish description.")
+    message: str = Field(description="Description.")
 
 
 class PlanWarning(BaseModel):
@@ -409,7 +409,7 @@ class PlanWarning(BaseModel):
     code: str = Field(
         description="`editing_detected`: open in an editor, committed changes only."
     )
-    message: str = Field(description="Polish description.")
+    message: str = Field(description="Description.")
 
 
 class SnapshotPlan(BaseModel):

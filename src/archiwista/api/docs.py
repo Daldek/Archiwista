@@ -65,7 +65,11 @@ read in a process killed after 30 s); its `id` is used by `GET /slots` and
 share in the planar CRS of each country.
 
 **Errors** are RFC 9457 problems (`application/problem+json`) with a stable
-`code` and a Polish `detail`; see the `ProblemDetails` schema.
+`code` and a `detail`; see the `ProblemDetails` schema. The texts for a person
+(`title`, `detail`, `hint`, the messages of invalid values) are English, and
+Polish when the request says `Accept-Language: pl`; `Content-Language` names
+the language of the answer. The texts a job or a scan stores while it runs
+(notices, a store's status) are Polish.
 """
 _TAGS = [
     {"name": "health", "description": "Versions, producer plugins, index state."},

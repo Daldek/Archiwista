@@ -75,7 +75,7 @@ _EXAMPLE: dict[str, Any] = {
             "coverage": {
                 "ratio": 0.83,
                 "percent": 83,
-                "label": message("local.coverage_percent", percent=83),
+                "label": message("local.coverage_percent", "en", percent=83),
             },
             "outlines": {"type": "FeatureCollection", "features": []},
             "preview": {
@@ -175,16 +175,19 @@ _OWN_EXAMPLE: dict[str, Any] = {
     "layers": [
         _own_layer(
             "file",
-            message("layer.title_working"),
+            message("layer.title_working", "en"),
             _OWN_PATH,
             f"file:raba:{_OWN_PATH}",
             _OWN_URL,
         ),
         _own_layer(
             f"snapshot:{_OWN_SNAPSHOT}",
-            message("layer.title_snapshot", label=_OWN_SNAPSHOT),
+            message("layer.title_snapshot", "en", label=_OWN_SNAPSHOT),
             message(
-                "layer.subtitle_note", path=_OWN_PATH, note="po odbiorze przyłączy"
+                "layer.subtitle_note",
+                "en",
+                path=_OWN_PATH,
+                note="po odbiorze przyłączy",
             ),
             f"snapshot:raba:{_OWN_SNAPSHOT}:{_OWN_PATH}",
             f"{_OWN_URL}/snapshots/{_OWN_SNAPSHOT}",
@@ -302,7 +305,7 @@ class LayerCoverage(BaseModel):
     percent: int | None = Field(
         description="`ratio` in whole percent, rounded down: 100 only if fully covered."
     )
-    label: str = Field(description="Polish text, e.g. „lokalnie 83% obszaru”.")
+    label: str = Field(description="Text for a person, e.g. `locally 83% of the area`.")
 
     @classmethod
     def of(cls, coverage: CountryCoverage) -> "LayerCoverage":
@@ -387,8 +390,8 @@ class Layer(BaseModel):
     year: int | None = Field(description="Data year, never the download's.")
     title: str = Field(
         description=(
-            "Polish, e.g. `2023`, `wydanie 2021`, `plik roboczy` or"
-            " `migawka 2026-10-18_471d37c0`."
+            "Text for a person, e.g. `2023`, `edition 2021`, `working file` or"
+            " `snapshot 2026-10-18_471d37c0`."
         )
     )
     subtitle: str = Field(

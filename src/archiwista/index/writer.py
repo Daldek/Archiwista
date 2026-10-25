@@ -48,6 +48,7 @@ from archiwista.index.types import (
     StoreStatus,
     own_file_id,
 )
+from archiwista.messages import STORED_LANG, localize
 from archiwista.sources import (
     EntryMeta,
     Footprint,
@@ -443,12 +444,18 @@ class IndexWriter:
             ``unavailable`` keeps every indexed row: answers come from the
             index, marked stale.
         detail : str or None, optional
-            Polish description of the cause, shown with the status.
+            Description of the cause, shown with the status; a catalog message
+            is written in the language of the stored texts.
         """
         with self._transaction() as connection:
             connection.execute(
                 "UPDATE stores SET status = ?, status_at = ?, detail = ? WHERE id = ?",
-                (status, _now(), detail, self._store_id(store)),
+                (
+                    status,
+                    _now(),
+                    None if detail is None else localize(detail, STORED_LANG),
+                    self._store_id(store),
+                ),
             )
 
     def write_segments(

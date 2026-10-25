@@ -7,7 +7,7 @@ and whether answers about the store are stale, the preview cache with the
 render processes and the last scan of every project's own data. ``archiwista
 status --json`` prints the same model (``read_health``; without previews and
 own data: the command runs no render pool and no jobs).
-``/sources`` lists the producer plugins with a Polish description of their
+``/sources`` lists the producer plugins with a description of their
 state and of its fix.
 """
 

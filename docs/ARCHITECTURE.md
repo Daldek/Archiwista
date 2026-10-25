@@ -612,6 +612,14 @@ Odświeżenie na żądanie wykonuje `GET /api/v1/local-coverage?area_id&product&
 
 ### 5.3 Cykl życia żądania HTTP
 
+Najbardziej zewnętrzny jest `LanguageMiddleware` (`api/language.py`): z nagłówka
+`Accept-Language` (`language_of`: polski, gdy ma najwyższą wagę, inaczej
+angielski, także bez nagłówka) ustawia język katalogu komunikatów
+(`messages.language`) na czas całego żądania, więc także odmowy
+`SecurityMiddleware` i teksty modeli odpowiedzi powstają w tym języku, a
+odpowiedzi JSON, problemy i strumienie zdarzeń pod `/api/v1` (poza
+`openapi.json`) dostają `Content-Language` i `Vary: Accept-Language`.
+
 Kolejność kontroli w `SecurityMiddleware` (opis w jej docstringu; to stan
 kodu):
 
@@ -649,8 +657,9 @@ kodu):
    principala przez `visible_projects` (`Authorizer.visible_projects`,
    sekcja 7), które przekazuje zapytaniom i usługom.
 10. Błędy usług zamienia na problemy RFC 9457 `install_error_handlers`
-    (`PROBLEMS`: wyjątek → status i stabilny `code`; `title` z
-    `MESSAGES["api_title_<code>"]`, `detail` po polsku).
+    (`describe`: wyjątek → `Problem` ze stabilnym `code` z rejestru;
+    `problem_body` renderuje `title`, `detail`, `hint`, teksty w `details`
+    i `errors[]` w języku żądania, `Problem.localized`).
 
 Sesja zaczyna się od tokenu jednorazowego: `archiwista serve` wystawia
 token startowy (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,
@@ -687,7 +696,8 @@ w `sessionStorage`. Sesje żyją w pamięci serwera: koniec po 24 h bez żądań
    i pamięci) i ustawia `running`.
 3. **Przebieg** — wątek czytający dekoduje linie (`decode_message`):
    `progress` (`current`, `total`; skan także `segment`, `entries`; obrysy
-   `written`, `failed`) i `notice` (`level`, `code`, polski `message`)
+   `written`, `failed`) i `notice` (`level`, `code`, `message` po polsku:
+   tekst zapisywany w chwili zdarzenia, `STORED_LANG`)
    zapisuje jako numerowane `job_events` (`seq` od 1) i podaje słuchaczom;
    `result` albo `error` zapamiętuje.
 4. **Koniec** — wynik procesu (`_outcome`): `result` → `succeeded`;
@@ -700,7 +710,13 @@ w `sessionStorage`. Sesje żyją w pamięci serwera: koniec po 24 h bez żądań
    i `details` z przyczyną w `reason` (`worker_crashed`, `interrupted`,
    `offline_mode`, `snapshot_blocked`...); worker zgłasza `ArchiwistaError`
    przez `describe`, więc problem żądania i błąd zadania zgadzają się co do
-   przyczyny. Końcowe zdarzenie `state` niesie `result` albo `error`.
+   przyczyny. `detail` i `hint` pamiętają klucz i wartości komunikatu (`key`,
+   `values`, `hint_key`, `hint_values` obok polskiego tekstu), bo zadanie
+   kończy się w innym procesie, a czytane bywa w innym języku:
+   `JobError.localized` renderuje je w języku żądania przy odczycie
+   (`JobDetail.of`, końcowe zdarzenie `state` strumienia); teksty w `details`
+   i `result` zostają po polsku. Końcowe zdarzenie `state` niesie `result`
+   albo `error`.
    Wiersz zadania z 0.2.x (stary kod zadania, bez `details`) jest czytany
    z kodem z rejestru przy każdym odczycie (`JobError.from_json`) i nie jest
    przepisywany.

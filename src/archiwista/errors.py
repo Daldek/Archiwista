@@ -6,6 +6,8 @@ ERR-1), a ``message``, JSON-compatible ``details`` and an optional ``hint``.
 Each class selects a default ``code`` and a default ``reason``, the finer
 cause that ERR-1 keeps in ``details["reason"]``. The HTTP API and the command
 line report them alike (``archiwista.api.errors``, ``archiwista.error_document``).
+A message and a hint are catalog texts (``archiwista.messages``): they stay
+translatable, so each interface renders them in the language of its reader.
 """
 
 import copy
@@ -28,7 +30,7 @@ class ArchiwistaError(Exception):
     Parameters
     ----------
     message : str, optional
-        Description for the user; Polish unless a class says otherwise.
+        Description for the user, a catalog text (`archiwista.messages.message`).
     code : str or None, optional
         Registry code; the class default (``default_code``) when omitted.
     reason : str or None, optional
@@ -48,7 +50,7 @@ class ArchiwistaError(Exception):
     code : str
         Registry code of the instance.
     message : str
-        The message, also ``str(error)``.
+        The message, also ``str(error)`` (the catalog text itself, not a copy).
     details : dict[str, Any]
         Context; ``details["reason"]`` holds the reason.
     hint : str or None
@@ -84,6 +86,10 @@ class ArchiwistaError(Exception):
             self.details["reason"] = chosen
         self.hint = hint
 
+    def __str__(self) -> str:
+        """Return the message itself, so that a catalog text stays translatable."""
+        return self.message
+
     @property
     def exit_code(self) -> int | None:
         """Int or None: the command-line exit code of ``code`` (ERR §2)."""
@@ -104,7 +110,7 @@ class SourceStateError(ArchiwistaError):
     Parameters
     ----------
     message : str
-        Polish description for the user.
+        Description for the user.
     state : SourceState or None, optional
         State of the producer plugin when the plugin itself is the cause.
     code, reason : str or None, optional
@@ -194,8 +200,8 @@ class SnapshotBlockedError(SnapshotError):
 
     ``reason`` is ``folder_invalid`` (the data folder breaks the rules of
     plan v0.2 decision 8), ``read_only_folder``, ``insufficient_space`` or
-    ``file_missing``, also ``details["blocked_by"]``; the message is Polish
-    and says what to do.
+    ``file_missing``, also ``details["blocked_by"]``; the message says what
+    to do.
     """
 
     default_code = "conflict"
@@ -213,7 +219,7 @@ class SnapshotFailedError(SnapshotError):
     copied), ``checksum_mismatch`` (written bytes differ from those read),
     ``integrity_failed`` (the SQLite copy fails ``PRAGMA integrity_check``) and
     ``target_exists`` (another process published the label first); the code
-    follows from the reason (``_CODES``). The message is Polish.
+    follows from the reason (``_CODES``).
     """
 
     _CODES: ClassVar[Mapping[str, str]] = {
@@ -257,7 +263,7 @@ class OwnReaderError(ArchiwistaError):
 class IndexQueryError(ArchiwistaError):
     """A query of the local index has invalid parameters.
 
-    The message is Polish and names the parameter (cursor, limit, years,
+    The message names the parameter (cursor, limit, years,
     area or view); the HTTP API answers ``400 validation_error``.
     """
 
@@ -267,7 +273,7 @@ class IndexQueryError(ArchiwistaError):
 class PermissionDeniedError(ArchiwistaError):
     """The principal may not perform an action (A-ADR-029).
 
-    The message is Polish and says what is missing; the HTTP API answers
+    The message says what is missing; the HTTP API answers
     ``403 forbidden`` with the reason ``permission_denied``. A project the
     principal does not see is ``NotFoundError`` instead, so that its
     existence stays hidden.
@@ -293,7 +299,7 @@ class UnsupportedError(ArchiwistaError):
     """A request is valid but this combination is not supported (``422``).
 
     For example a link check of a store whose producer cannot confirm links;
-    the message is Polish.
+    the message says why.
     """
 
     default_code = "unsupported"
@@ -303,7 +309,7 @@ class InvalidChangeError(ArchiwistaError):
     """A requested change is invalid (``400 validation_error``).
 
     For example unknown people or groups, entries that do not fit the
-    project's visibility, or a reserved account id; the message is Polish.
+    project's visibility, or a reserved account id.
     """
 
     default_code = "validation_error"
@@ -313,7 +319,7 @@ class StateError(ArchiwistaError):
     """The state database cannot be used or restored.
 
     For example a database written by a newer Archiwista, or a backup
-    imported into a database that is not empty; the message is Polish.
+    imported into a database that is not empty.
     """
 
     default_code = "store_unavailable"
@@ -326,7 +332,7 @@ class JobConflictError(ConflictError):
     Parameters
     ----------
     message : str
-        Polish description naming the job in the way.
+        Description naming the job in the way.
     job_id, kind, state : str
         That job, for the problem's ``details["job"]``.
     """
@@ -351,7 +357,7 @@ class AreaTooLargeError(ArchiwistaError):
     """An area file is over its size limit (``400 validation_error``).
 
     The body is over 50 MB, or an archive declares more than 200 MB once
-    unpacked; the message is Polish and gives the size and the limit.
+    unpacked; the message gives the size and the limit.
     """
 
     default_code = "validation_error"
@@ -363,12 +369,12 @@ class AreaUnreadableError(ArchiwistaError):
 
     For example an unknown format, an archive member leaving its directory,
     a missing CRS, no polygon, or a read killed after its time limit; the
-    message is Polish.
+    message says why.
 
     Parameters
     ----------
     message : str
-        Polish description of what is wrong with the file.
+        Description of what is wrong with the file.
     layers : tuple[str, ...], optional
         Layers to choose from when the file has several (``layer=``).
     """
@@ -384,8 +390,8 @@ class AreaUnreadableError(ArchiwistaError):
 class AreaTooComplexError(ArchiwistaError):
     """An area has more vertices than allowed (``400 validation_error``).
 
-    Archiwista never simplifies an area silently; the message is Polish and
-    gives the count and the limit.
+    Archiwista never simplifies an area silently; the message gives the count
+    and the limit.
     """
 
     default_code = "validation_error"
@@ -411,7 +417,7 @@ class PreviewBusyError(ArchiwistaError):
     Parameters
     ----------
     message : str
-        Polish description.
+        Description of the full queue.
     retry_after_s : int
         Seconds after which asking again is likely to succeed.
     """
@@ -427,9 +433,8 @@ class PreviewBusyError(ArchiwistaError):
 class PreviewTimeoutError(ArchiwistaError):
     """A render process ran past the time limit of its operation.
 
-    ``422 calculation_error``, reason ``preview_timeout``; the message is
-    Polish. The process was killed, and the same request fails at once for 10
-    minutes (decision 3).
+    ``422 calculation_error``, reason ``preview_timeout``. The process was
+    killed, and the same request fails at once for 10 minutes (decision 3).
     """
 
     default_code = "calculation_error"
@@ -465,8 +470,8 @@ class InvalidRefError(ArchiwistaError):
     """A reference to an object is not one (``400 validation_error``).
 
     References are ``version:<store>:<path>``, ``file:<project>:<path>`` and
-    ``snapshot:<project>:<label>:<path>`` (decision 10); the message is
-    Polish and quotes the reference.
+    ``snapshot:<project>:<label>:<path>`` (decision 10); the message quotes the
+    reference.
     """
 
     default_code = "validation_error"
@@ -478,8 +483,8 @@ class OwnFileChangedError(ArchiwistaError):
 
     Its preview would show content the index does not know (decision 8):
     the sizes and times of its files differ from what the last ``own_scan``
-    recorded, before or after a render. The message is Polish and says to
-    refresh the project's own data (``POST /projects/{project}/scan``).
+    recorded, before or after a render. The message says to refresh the
+    project's own data (``POST /projects/{project}/scan``).
     """
 
     default_code = "conflict"
@@ -497,7 +502,7 @@ class PreviewParameterError(ArchiwistaError):
     field : str
         Where the value came from, e.g. ``query.style``.
     message : str
-        Polish description naming the value and what is allowed.
+        Description naming the value and what is allowed.
     """
 
     default_code = "validation_error"
@@ -518,7 +523,7 @@ class PreviewNotReadyError(ArchiwistaError):
     Parameters
     ----------
     message : str
-        Polish description.
+        Description of what is not ready.
     job_id, kind, state : str or None, optional
         The job building the preview, if any.
     """

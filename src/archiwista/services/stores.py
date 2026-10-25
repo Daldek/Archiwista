@@ -102,7 +102,7 @@ def store_summary(
 
 
 def issue_problem(issue: IssueRef, producer: str) -> Problem:
-    """Return a store problem the index holds with its Polish fix instruction.
+    """Return a store problem the index holds with its fix instruction.
 
     Parameters
     ----------

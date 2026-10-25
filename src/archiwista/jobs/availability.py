@@ -29,7 +29,7 @@ def unreachable_detail(state: SourceState, root: Path, *, indexed: bool) -> str 
     Returns
     -------
     str or None
-        Polish description of the cause.
+        Description of the cause, a catalog message.
     """
     if state.status != "available":
         text = message("store.unreadable", path=root)

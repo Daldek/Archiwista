@@ -2,10 +2,12 @@
 
 import ast
 import copy
+import json
 import pickle
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,14 +17,19 @@ from archiwista.error_document import describe
 from archiwista.errors import PreviewUnavailableError
 from archiwista.messages import (
     LANGS,
+    STORED_LANG,
     Message,
     Text,
     catalogs,
     current_language,
+    dump,
     entry,
+    join,
     label,
     language,
+    load,
     localize,
+    localize_json,
     lookup,
     message,
     placeholders,
@@ -81,14 +88,6 @@ _DATA = frozenset(
         ("api/models.py", "Sheet code (godło)."),
         ("api/models_layers.py", "Kraków"),
         ("api/models_layers.py", "po odbiorze przyłączy"),
-        # Descriptions that say which language a text is in.
-        ("api/models.py", "Polish text, e.g. „lokalnie 83% obszaru”."),
-        ("api/models_layers.py", "Polish text, e.g. „lokalnie 83% obszaru”."),
-        (
-            "api/models_layers.py",
-            "Polish, e.g. `2023`, `wydanie 2021`, `plik roboczy` or"
-            " `migawka 2026-10-18_471d37c0`.",
-        ),
         ("config.py", "OSM GUGiK szary (tylko Polska)"),
         ("index/queries.py", "ł"),
         ("index/queries.py", "Ł"),
@@ -359,6 +358,77 @@ def test_localize_changes_only_catalog_messages() -> None:
     assert type(localize(text, "pl")) is str
     assert localize("Nie znaleziono", "en") == "Nie znaleziono"
     assert localize("plain text", "pl") == "plain text"
+
+
+def test_a_message_outside_any_language_context_is_english() -> None:
+    """English is the language of the API without a header and of ``--json``."""
+    assert message("job.state_queued") == "queued"
+    assert STORED_LANG == "pl"
+
+
+def test_localize_json_renders_every_message_inside_a_json_value() -> None:
+    """The details of a problem hold messages among names and numbers."""
+    queued = message("job.state_queued", "en")
+    value: dict[str, Any] = {
+        "reason": "x",
+        "items": [
+            {"message": queued, "count": 2},
+            (message("job.state_running", "en"), None),
+        ],
+    }
+
+    shown = localize_json(value, "pl")
+
+    assert shown == {
+        "reason": "x",
+        "items": [{"message": "w kolejce", "count": 2}, ["trwa", None]],
+    }
+    assert type(shown["items"][0]["message"]) is str
+    assert value["items"][0]["message"] is queued  # the argument is not changed
+
+
+def test_dump_and_load_keep_a_message_translatable_through_json() -> None:
+    """A job's error keeps key and values, nested messages and a path included."""
+    text = message(
+        "cli.store_job", "en", kind="scan", state=message("job.state_queued", "en")
+    )
+    dumped = dump(text)
+    assert dumped is not None
+    key, values = dumped
+
+    stored = json.loads(json.dumps({"key": key, "values": values}))
+    restored = load(stored["key"], stored["values"], str(text))
+
+    assert key == "cli.store_job"
+    assert values == {
+        "kind": "scan",
+        "state": {"key": "job.state_queued", "values": {}},
+    }
+    assert isinstance(restored, Message) and restored == text
+    assert restored.localized("pl") == " Zadanie: scan, w kolejce."
+    unreadable = dump(message("store.unreadable", "en", path=Path("/mnt/nas")))
+    assert unreadable is not None and unreadable[1] == {"path": "/mnt/nas"}
+    assert dump("plain text") is None
+
+
+def test_load_gives_the_stored_text_back_when_the_catalog_forgot_the_message() -> None:
+    """A message of an older version or a damaged row never raises."""
+    assert load("job.no_such_message", {}, "Stary tekst.") == "Stary tekst."
+    assert load("api.version_unknown", {"version": "1"}, "Stary.") == "Stary."
+    assert load(None, None, "Stary tekst.") == "Stary tekst."
+    assert load("job.state_queued", ["a", "list"], "Stary tekst.") == "Stary tekst."
+
+
+def test_join_keeps_messages_translatable_and_plain_texts_as_they_are() -> None:
+    """Several texts become one, rendered together in one language."""
+    queued = message("job.state_queued", "en")
+
+    text = join([queued, "plain", message("job.state_running", "en")])
+
+    assert (join([]), join(["alone"])) == ("", "alone")
+    assert text == "queued; plain; running"
+    assert isinstance(text, Message)
+    assert text.localized("pl") == "w kolejce; plain; trwa"
 
 
 def test_the_language_of_a_call_is_its_argument_else_its_context() -> None:

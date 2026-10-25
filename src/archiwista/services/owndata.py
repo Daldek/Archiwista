@@ -6,7 +6,7 @@
 then the settings' own checks. ``folder_check`` checks a project's folder
 now against the rules, as the ``snapshot`` job does before it writes.
 ``own_problems``, ``file_problems`` and ``folder_problems`` explain the
-problems a scan recorded (or a folder's state now), in Polish, without paths
+problems a scan recorded (or a folder's state now), without paths
 of other projects.
 """
 
@@ -165,7 +165,7 @@ def own_problems(record: OwnFolderRecord) -> tuple[Problem, ...]:
 def _explained(
     found: Iterable[OwnProblem], *, project: str, folder: Path
 ) -> tuple[Problem, ...]:
-    """Return problems of a project's folder in Polish, with their fixes."""
+    """Return problems of a project's folder, with their fixes."""
     problems: list[Problem] = []
     for problem in found:
         reason = problem.reason

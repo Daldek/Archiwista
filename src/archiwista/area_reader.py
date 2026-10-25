@@ -21,8 +21,10 @@ The answer is one JSON line on stdout. Either the union of the file's
 polygons in the file's CRS — ``geometry``, ``crs``, ``geographic``,
 ``format``, ``layer``, ``features``, ``vertices`` (coordinate positions of
 the polygons as read, at most ``MAX_VERTICES``) — or a refusal: ``error``
-(``area_unreadable``, ``area_too_large`` or ``area_too_complex``), a Polish
-``detail`` and, for a file with several layers, ``layers``.
+(``area_unreadable``, ``area_too_large`` or ``area_too_complex``), a
+``detail`` with its ``key`` and ``values`` (catalog message, so that the
+server words it in the language of the request) and, for a file with
+several layers, ``layers``.
 
 GDAL (``pyogrio``) and PROJ (``pyproj``) are imported only when a file is
 read, so the server and the command line, which share the limits of this
@@ -46,7 +48,7 @@ import numpy as np
 import shapely
 from shapely.geometry import mapping
 
-from archiwista.messages import message
+from archiwista.messages import dump, message
 
 UPLOAD_NAME = "upload"
 COPY_STEM = "area"
@@ -69,7 +71,7 @@ _MIB = 1024**2
 
 
 class AreaFileError(Exception):
-    """A refusal of the file: problem code, Polish detail, layers to choose."""
+    """A refusal of the file: problem code, detail, layers to choose."""
 
     def __init__(self, code: str, detail: str, *, layers: Sequence[str] = ()) -> None:
         super().__init__(detail)
@@ -79,10 +81,19 @@ class AreaFileError(Exception):
 
     def answer(self) -> dict[str, Any]:
         """Return the refusal as the worker prints it."""
-        answer: dict[str, Any] = {"error": self.code, "detail": self.detail}
+        answer = _refusal(self.code, self.detail)
         if self.layers:
             answer["layers"] = list(self.layers)
         return answer
+
+
+def _refusal(code: str, detail: str) -> dict[str, Any]:
+    """Return the answer of a refusal: ``error``, ``detail`` and its message."""
+    answer: dict[str, Any] = {"error": code, "detail": detail}
+    dumped = dump(detail)
+    if dumped is not None:
+        answer["key"], answer["values"] = dumped
+    return answer
 
 
 @dataclass
@@ -415,7 +426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as error:  # GDAL or the archive refusing untrusted input
         text = _describe(error, directory=arguments.directory)
         detail = message("area.read_failed", detail=text)
-        answer = {"error": "area_unreadable", "detail": detail}
+        answer = _refusal("area_unreadable", detail)
     sys.stdout.write(json.dumps(answer) + "\n")
     sys.stdout.flush()
     return 0

@@ -10,8 +10,12 @@ language of its caller (`Message.localized`, `localize`) instead of parsing
 text.
 
 The language of a call is its ``lang`` argument, else the language of the
-running context (`language`, `current_language`); it is Polish until a
-context chooses another one.
+running context (`language`, `current_language`); it is English until a
+context chooses another one. The API chooses the language of a request from
+its ``Accept-Language`` (English without it), the command line Polish for the
+person and English under ``--json`` (machine output, AGI-9.2). A text that is
+stored (the status of a store, the notices and the error of a job) is written
+in `STORED_LANG`, and a job keeps the key and values of its error beside it.
 
 A template is ``str.format`` text with named placeholders; a brace that is text
 is written ``{{`` or ``}}``, and the spec ``:sentence`` of a field drops a
@@ -25,13 +29,19 @@ call against its catalog entry (the key exists and the keywords are the
 placeholders), both languages of every entry and the absence of Polish
 literals outside this package. A key that is chosen at run time is built as
 ``f"<area>.<prefix>_{value}"`` (`label`, `lookup`).
+
+Texts leave the process or the request in two ways that keep them
+translatable: `localize` and `localize_json` render a `Message`, or every one
+inside a JSON-like value, in the language of the receiver (an error document,
+a problem), and `dump` and `load` write the key and values of a `Message` into
+a JSON document and read them back (a job's error, a worker's answer).
 """
 
 import importlib
 import pkgutil
 import re
 import string
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import cache
@@ -43,12 +53,18 @@ __all__ = [
     "LANGS",
     "Lang",
     "Message",
+    "STORED_LANG",
     "Text",
     "catalogs",
     "current_language",
+    "dump",
+    "entry",
+    "join",
     "label",
     "language",
+    "load",
     "localize",
+    "localize_json",
     "lookup",
     "message",
     "placeholders",
@@ -59,8 +75,10 @@ __all__ = [
 type Lang = Literal["en", "pl"]
 LANGS: tuple[Lang, ...] = ("en", "pl")
 """The languages of the catalogs."""
-DEFAULT_LANG: Lang = "pl"
+DEFAULT_LANG: Lang = "en"
 """Language of a call that no context gave another one."""
+STORED_LANG: Lang = "pl"
+"""Language of the texts that are stored, which are read later by anyone."""
 
 _KEY = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+")
 _AREA = re.compile(r"[a-z][a-z0-9_]*")
@@ -291,6 +309,26 @@ def label(prefix: str, value: str, /) -> str:
     return lookup(f"{prefix}_{value}", value)
 
 
+def join(texts: Sequence[str]) -> str:
+    """Join texts with ``; ``; a `Message` among them stays translatable.
+
+    Parameters
+    ----------
+    texts : Sequence[str]
+        The texts, `Message` or any string.
+
+    Returns
+    -------
+    str
+        The first text for one, a message that holds the rest as values for
+        several (rendered together, in one language), ``""`` for none.
+    """
+    joined = texts[0] if texts else ""
+    for text in texts[1:]:
+        joined = message("common.joined", head=joined, tail=text)
+    return joined
+
+
 def localize(text: str, lang: Lang) -> str:
     """Return ``text`` in ``lang`` when it is a catalog message.
 
@@ -309,6 +347,105 @@ def localize(text: str, lang: Lang) -> str:
         unchanged.
     """
     return str(text.localized(lang)) if isinstance(text, Message) else text
+
+
+def localize_json(value: object, lang: Lang) -> Any:
+    """Return ``value`` with every catalog message inside it rendered in ``lang``.
+
+    Parameters
+    ----------
+    value : object
+        A JSON-like value: a `Message` or another string, a number, ``None``, a
+        mapping or a list or tuple of such values (the ``details`` of a
+        problem).
+    lang : {"en", "pl"}
+        Target language.
+
+    Returns
+    -------
+    Any
+        A copy: a mapping is a dict, a list or tuple a list and a message a
+        plain string in ``lang``; anything else is returned as it is.
+    """
+    if isinstance(value, Message):
+        return str(value.localized(lang))
+    if isinstance(value, Mapping):
+        return {key: localize_json(item, lang) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [localize_json(item, lang) for item in value]
+    return value
+
+
+def dump(text: str) -> tuple[str, dict[str, object]] | None:
+    """Return the key and values of a `Message` as JSON, to keep it translatable.
+
+    Parameters
+    ----------
+    text : str
+        A `Message`, or any other string.
+
+    Returns
+    -------
+    tuple[str, dict[str, object]] or None
+        The key and the values of the message, with a message among them as
+        ``{"key": …, "values": …}`` and any other value that JSON has no type
+        for as its text; ``None`` for a string that is no `Message`.
+    """
+    if not isinstance(text, Message):
+        return None
+    return text.key, _dump_values(text.params)
+
+
+def _dump_values(params: Mapping[str, object]) -> dict[str, object]:
+    return {name: _dump_value(value) for name, value in params.items()}
+
+
+def _dump_value(value: object) -> object:
+    if isinstance(value, Message):
+        return {"key": value.key, "values": _dump_values(value.params)}
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    return str(value)
+
+
+def load(key: object, values: object, text: str) -> str:
+    """Return the `Message` that `dump` made ``key`` and ``values`` of.
+
+    Parameters
+    ----------
+    key, values : object
+        What `dump` returned (as read from JSON, so not checked).
+    text : str
+        The text that was stored with them: what is returned when they do not
+        name a message of the catalogs any more (a text of an older version).
+
+    Returns
+    -------
+    str
+        The message, in the language of the running context; it renders in
+        another language with `localize`.
+    """
+    if not isinstance(key, str) or not isinstance(values, Mapping):
+        return text
+    try:
+        return message(key, **_load_values(values))
+    except (KeyError, ValueError, IndexError):
+        return text
+
+
+def _load_values(values: Mapping[str, object]) -> dict[str, object]:
+    return {name: _load_value(value) for name, value in values.items()}
+
+
+def _load_value(value: object) -> object:
+    if (
+        isinstance(value, Mapping)
+        and value.keys() == {"key", "values"}
+        and isinstance(value["key"], str)
+        and isinstance(value["values"], Mapping)
+    ):
+        return message(value["key"], **_load_values(value["values"]))
+    return value
 
 
 def with_detail(text: str, detail: str | None) -> str:

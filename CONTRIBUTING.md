@@ -41,9 +41,10 @@ develop it.
   to Archiwista; writes to that store go through Kartograf's public API.
 - **Language.** Code, identifiers, docstrings, comments, logs, tests,
   documentation, commit messages and contributor-facing files are in English.
-  The user interface and the texts it shows are in Polish, in the text
-  dictionaries only. Some documents under `docs/` are still Polish and are
-  being translated.
+  Every text for a person has an English and a Polish variant in the message
+  catalog (`src/archiwista/messages/`) or, for the interface, in
+  `src/archiwista/web/src/labels/`; no other module holds such a text. Some
+  documents under `docs/` are still Polish and are being translated.
 - **Commits.** Use [Conventional Commits](https://www.conventionalcommits.org/)
   in English, for example `docs(spec): clarify the coverage labels`. Messages
   carry no AI attribution.

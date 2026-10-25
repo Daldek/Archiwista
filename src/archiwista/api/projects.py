@@ -186,7 +186,7 @@ def get_project(project: _Project, visible: _Visible, queries: _Queries) -> Proj
     """Return a project: tasks with commands and options, pins and problems.
 
     Pins carry their state in the index (`ok`, `missing`, `sha256_mismatch`,
-    `unknown`); problems carry Polish fix instructions.
+    `unknown`); problems carry fix instructions.
     """
     return project_card(queries, project, visible=visible)
 

@@ -26,6 +26,7 @@ from archiwista.errors import (
     ArchiwistaError,
     AreaUnreadableError,
     JobConflictError,
+    NotFoundError,
     PathOutsideRootError,
     PreviewBusyError,
     PreviewNotReadyError,
@@ -37,6 +38,7 @@ from archiwista.errors import (
     SourceIncompatibleError,
     SourceUnavailableError,
 )
+from archiwista.messages import message
 from archiwista.sources.types import SourceState, SourceStatus
 from tests.contract import _nogat
 
@@ -206,6 +208,54 @@ def test_a_rest_only_code_exits_with_one_and_a_null_exit_code() -> None:
 
     assert status == 1
     assert json.loads(err.getvalue().splitlines()[-1])["exit_code"] is None
+
+
+def test_a_refusal_is_polish_for_the_person_and_english_in_the_document() -> None:
+    """The line before the document is for a person, the document is for programs."""
+    err = StringIO()
+    problem = describe(NotFoundError(message("job.store_unknown", "en", store="alfa")))
+
+    status = refuse(problem, err)
+
+    lines = err.getvalue().splitlines()
+    document = json.loads(lines[-1])
+    assert status == 3
+    assert lines[0] == "Magazyn „alfa” nie jest skonfigurowany."
+    assert document["message"] == 'Store "alfa" is not configured.'
+    assert document["title"] == title_of("not_found", "en")
+    _nogat.validator("error-1").validate(document)
+    polish = error_document(problem, lang="pl")
+    assert polish["message"] == lines[0]
+    assert polish["title"] == title_of("not_found", "pl")
+
+
+def test_a_problem_renders_every_message_inside_it_in_the_language_asked() -> None:
+    """The detail, the hint, the details and the invalid values follow the reader."""
+    queued = message("job.state_queued", "en")
+    problem = Problem(
+        "validation_error",
+        message("api.validation_error", "en", fields="query.limit"),
+        message("fix.install", "en", requirement="kartograf"),
+        {"reason": "invalid_request", "problems": [{"field": "port", "text": queued}]},
+        (
+            {
+                "pointer": "/query/limit",
+                "type": "value_error",
+                "message": message("api.value_error", "en", detail=queued),
+            },
+        ),
+    )
+
+    shown = problem.localized("pl")
+
+    assert shown.detail == "Niepoprawne dane żądania: query.limit."
+    assert shown.hint == 'zainstaluj zgodną wersję: pip install "kartograf"'
+    assert shown.details == {
+        "reason": "invalid_request",
+        "problems": [{"field": "port", "text": "w kolejce"}],
+    }
+    assert [item["message"] for item in shown.errors] == ["Błąd wartości, w kolejce"]
+    assert problem.localized("en").detail == problem.detail
 
 
 @pytest.mark.parametrize(

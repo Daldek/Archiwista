@@ -42,7 +42,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError
 from archiwista.index import IndexUnsupportedError
-from archiwista.messages import message, with_detail
+from archiwista.messages import language, message, with_detail
 from archiwista.services.layers import layer_images, layer_thumbnail, read_local_layers
 from archiwista.sources.registry import PluginRegistry
 
@@ -147,21 +147,22 @@ def main(
             reason="usage",
         )
     try:
-        query = LayersQuery(
-            store=args.store,
-            product=args.product,
-            area_id=args.area_id,
-            segment=args.segment,
-            group=args.group,
-        )
-        image = None
-        if args.thumbnail is not None:
-            image = LayerThumbnailQuery(
-                **query.model_dump(),
-                layer=args.thumbnail,
-                size=args.size,
-                style=args.style,
+        with language("en"):  # the error document that reports a refusal is English
+            query = LayersQuery(
+                store=args.store,
+                product=args.product,
+                area_id=args.area_id,
+                segment=args.segment,
+                group=args.group,
             )
+            image = None
+            if args.thumbnail is not None:
+                image = LayerThumbnailQuery(
+                    **query.model_dump(),
+                    layer=args.thumbnail,
+                    size=args.size,
+                    style=args.style,
+                )
     except ValidationError as error:
         located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
         return refuse(validation_problem(located), err)

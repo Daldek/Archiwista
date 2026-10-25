@@ -245,7 +245,7 @@ def import_state(store: StateStore, text: str | bytes) -> StateSnapshot:
 
 
 def parse_state(text: str | bytes) -> StateDocument:
-    """Read a backup document, explaining in Polish what is wrong with it.
+    """Read a backup document, explaining what is wrong with it.
 
     Raises
     ------

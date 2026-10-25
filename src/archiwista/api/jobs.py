@@ -56,8 +56,14 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.config import SettingsService
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
-from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
-from archiwista.messages import label, message
+from archiwista.jobs import (
+    FINISHED_STATES,
+    JobError,
+    JobEvent,
+    JobRecord,
+    JobSupervisor,
+)
+from archiwista.messages import current_language, label, message
 from archiwista.security import current_principal
 
 router = APIRouter(tags=["jobs"])
@@ -136,9 +142,24 @@ def sse_message(seq: int, event: str, data: Mapping[str, object]) -> str:
     return f"id: {seq}\nevent: {event}\ndata: {text}\n\n"
 
 
+def _event_data(event: JobEvent) -> Mapping[str, object]:
+    """Return an event's data as it is sent.
+
+    The stored error of a final ``state`` becomes the error of the API: its
+    texts in the language of the request, without the keys and values.
+    """
+    error = event.data.get("error")
+    if event.type != "state" or not isinstance(error, Mapping):
+        return event.data
+    shown = JobError.from_json(error).public_json(current_language())
+    return {**event.data, "error": shown}
+
+
 def _messages(events: Sequence[JobEvent]) -> str:
     # One write per read: a client gone mid-replay costs one failed write.
-    return "".join(sse_message(event.seq, event.type, event.data) for event in events)
+    return "".join(
+        sse_message(event.seq, event.type, _event_data(event)) for event in events
+    )
 
 
 def _final(events: Sequence[JobEvent]) -> bool:
@@ -296,7 +317,7 @@ _SSE_EXAMPLE = "".join(
                 "level": "warning",
                 "code": "project_dir_unreadable",
                 "message": message(
-                    "project.dir_unreadable", path="/mnt/nas/projekty/archiwum"
+                    "project.dir_unreadable", "en", path="/mnt/nas/projekty/archiwum"
                 ),
             },
         ),
@@ -468,9 +489,11 @@ def get_job_events(
     Each message's `id` is the event's number (from 1), `event` its type and
     `data` one line of JSON: `progress` has `current` and `total` (a scan
     adds `segment` and `entries`, footprints `written` and `failed`),
-    `notice` has `level` (`info`, `warning`), `code` and a Polish `message`,
-    `state` has `state` and, at the end, `result` (succeeded) or `error`
-    (`code`, `detail`, `reason` for some codes). The stream ends after the
+    `notice` has `level` (`info`, `warning`), `code` and a `message` (Polish: a
+    notice is written as the job runs), `state` has `state` and, at the end,
+    `result` (succeeded) or `error` (`code`, `detail`, `hint` and `details`
+    with the `reason`; the texts in the language of the request). The stream
+    ends after the
     final state; stop reconnecting then. A `: keepalive` comment comes after
     15 s of silence. A job only of projects the session does not see answers
     `404`; a `preview` job's final state lists the failures of visible refs.

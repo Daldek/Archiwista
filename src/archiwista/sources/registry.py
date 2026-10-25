@@ -115,7 +115,7 @@ def install_requirement(producer: str) -> str:
 
 
 def source_fix(state: SourceState) -> str:
-    """Return the Polish instruction that makes an unavailable source work.
+    """Return the instruction that makes an unavailable source work.
 
     Parameters
     ----------

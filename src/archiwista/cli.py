@@ -1,4 +1,9 @@
-"""Command-line entry point for Archiwista."""
+"""Command-line entry point for Archiwista.
+
+The text for a person (help, usage errors, the output of a command and the
+line before an error document) is Polish; ``--json`` output and the error
+document on the last line of standard error are English (AGI-9.2).
+"""
 
 import argparse
 import os
@@ -27,7 +32,7 @@ from archiwista.logs import (
     configure_logging,
     resolve_log_level,
 )
-from archiwista.messages import message
+from archiwista.messages import language, message
 from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
@@ -64,9 +69,16 @@ class _Parser(argparse.ArgumentParser):
         """Print the usage and the error document, then exit with status 2."""
         self.print_usage(sys.stderr)
         problem = Problem(
-            "validation_error", f"{self.prog}: {message}", details={"reason": "usage"}
+            "validation_error",
+            _usage_error(self.prog, message),
+            details={"reason": "usage"},
         )
         raise SystemExit(refuse(problem, sys.stderr))
+
+
+def _usage_error(prog: str, text: str) -> str:
+    """Return a usage error: argparse's own text, or a catalog message."""
+    return message("cli.usage_error", prog=prog, text=text)
 
 
 def main(
@@ -96,6 +108,19 @@ def main(
     if os.name == "posix":
         # Local data (index, state, logs, area copies) is the user's alone.
         os.umask(0o077)
+    with language("pl"):  # the help and the usage errors are for a person
+        parser = _parser()
+        args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
+    # The model of a command is printed as JSON under --json: machine output.
+    with language("en" if getattr(args, "json", False) else "pl"):
+        return _run(parser, args, registry, paths)
+
+
+def _parser() -> argparse.ArgumentParser:
+    """Return the parser of the command line, its texts in the running language."""
     parser = _Parser(prog="archiwista", description=message("cli.description"))
     commands = cast(Commands, parser.add_subparsers(dest="command"))
     commands.add_parser(
@@ -151,10 +176,16 @@ def main(
     add_read_commands(commands)
     for module in COMMAND_MODULES:
         module.add_commands(commands)
-    args = parser.parse_args(argv)
-    if args.command is None:
-        parser.print_help()
-        return 0
+    return parser
+
+
+def _run(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    registry: PluginRegistry | None,
+    paths: AppPaths | None,
+) -> int:
+    """Run the parsed command and return its exit status."""
     # Given before and after the command, the options contradict each other.
     verbose, quiet = hasattr(args, "verbose"), hasattr(args, "quiet")
     if verbose and quiet:

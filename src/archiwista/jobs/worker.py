@@ -68,6 +68,7 @@ from archiwista.index.scanner import (
     scan_store,
 )
 from archiwista.jobs.availability import unreachable_detail
+from archiwista.jobs.error import JobError
 from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
     INTERRUPTED_EXIT,
@@ -82,7 +83,7 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.logs import process_log_level
-from archiwista.messages import message
+from archiwista.messages import STORED_LANG, language, localize, localize_json, message
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
 from archiwista.owndata.scan import (
@@ -146,9 +147,10 @@ class Emitter:
         )
 
     def notice(self, level: NoticeLevel, code: str, message: str) -> None:
-        """Report something the person should know."""
+        """Report something the person should know, in `STORED_LANG`."""
+        text = localize(message, STORED_LANG)
         self.send(
-            WorkerMessage("notice", {"level": level, "code": code, "message": message})
+            WorkerMessage("notice", {"level": level, "code": code, "message": text})
         )
 
     def scan_event(self, event: ScanEvent) -> None:
@@ -170,12 +172,21 @@ type Runner = Callable[[JobSpec, Emitter], JsonObject]
 def main() -> int:
     """Run the job given on standard input; return the exit status.
 
+    The texts the job makes (its notices and its error) are in `STORED_LANG`,
+    the language of what is stored; the log is English.
+
     Returns
     -------
     int
         ``0`` with a ``result`` message, ``1`` with an ``error`` message,
         ``2`` for an unreadable job, ``130`` when interrupted.
     """
+    with language(STORED_LANG):
+        return _run()
+
+
+def _run() -> int:
+    """Run the job of standard input (see `main`)."""
     protocol = _protocol_stream()
     emit = Emitter(protocol)
     _handle_interrupts()
@@ -214,11 +225,12 @@ def main() -> int:
                 "Job %s failed (%s): %s",
                 spec.job_id,
                 problem.details.get("reason", problem.code),
-                problem.detail,
+                localize(problem.detail, "en"),
             )
         return _report(emit, problem, exception, status=1)
     try:
-        emit.send(WorkerMessage("result", summary))
+        # Texts made in a thread of the job are in the default language.
+        emit.send(WorkerMessage("result", localize_json(summary, STORED_LANG)))
     except OSError:  # the supervisor is gone
         return 1
     logger.info("Job %s succeeded", spec.job_id)
@@ -665,15 +677,13 @@ def _failure(error: Exception) -> tuple[Problem, str]:
 
 
 def _report(emit: Emitter, problem: Problem, exception: str, *, status: int) -> int:
-    data: JsonObject = {
-        "code": problem.code,
-        "detail": problem.detail,
-        "exception": exception,
-    }
-    if problem.hint:
-        data["hint"] = problem.hint
-    if problem.details:
-        data["details"] = dict(problem.details)
+    """Send the ``error`` message of a job that failed; return ``status``.
+
+    The message is the stored form of the error (``JobError.to_json``: texts
+    in `STORED_LANG` with their keys and values) and the ``exception``.
+    """
+    data = JobError.from_problem(problem).to_json()
+    data["exception"] = exception
     with suppress(OSError):  # the supervisor is gone
         emit.send(WorkerMessage("error", data))
     return status

@@ -336,6 +336,7 @@ def test_index_cursor_pages_cover_the_result_once(
     assert pages == (3 if versions == "current" else 5)
 
 
+@pytest.mark.usefixtures("polish")
 def test_index_cursor_of_another_query_is_rejected(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:

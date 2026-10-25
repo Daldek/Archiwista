@@ -585,6 +585,7 @@ def test_same_content_makes_no_second_snapshot(env: SnapshotEnv) -> None:
     assert _leftovers(root) == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_fileset_changing_during_copy_retries_then_fails(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -671,6 +672,7 @@ def test_read_only_folder_blocked(env: SnapshotEnv, locked: str) -> None:
 
 
 @pytest.mark.parametrize("tight", ["folder", "work"])
+@pytest.mark.usefixtures("polish")
 def test_insufficient_space_blocked(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch, tight: str
 ) -> None:
@@ -708,6 +710,7 @@ def test_insufficient_space_blocked(
     assert not (root / ".wersje").exists()
 
 
+@pytest.mark.usefixtures("polish")
 def test_default_folder_inside_store_is_refused(env: SnapshotEnv) -> None:
     """A project with its manifest in a store: the job is ``snapshot_blocked``.
 
@@ -738,6 +741,7 @@ def test_default_folder_inside_store_is_refused(env: SnapshotEnv) -> None:
     assert not (directory / "dane" / ".wersje").exists()
 
 
+@pytest.mark.usefixtures("polish")
 def test_second_snapshot_of_file_conflicts(env: SnapshotEnv) -> None:
     """One snapshot of a file at a time; another file's snapshot runs alongside.
 

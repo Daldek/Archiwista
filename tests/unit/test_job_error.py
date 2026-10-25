@@ -1,10 +1,13 @@
 """The error of a job: a registry code with the job's own cause as the reason."""
 
+import json
+
 import pytest
 
 from archiwista._errors import BY_CODE
 from archiwista.error_document import describe
 from archiwista.errors import (
+    NotFoundError,
     OfflineModeError,
     ProducerError,
     SnapshotBlockedError,
@@ -12,6 +15,7 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.jobs import JobError
+from archiwista.messages import language, message
 from archiwista.sources.types import SourceState
 
 
@@ -140,3 +144,66 @@ def test_message_of_the_worker_becomes_an_error_whatever_its_code() -> None:
 
     assert error == JobError("source_unavailable", "Zły.")
     assert error.hint is None
+
+
+def test_error_keeps_the_keys_of_its_texts_beside_the_stored_polish_text() -> None:
+    """A job ends in another process and is read in another language."""
+    written = JobError(
+        "not_found",
+        message("job.store_unknown", "en", store="alfa"),
+        hint=message("fix.install", "en", requirement="kartograf"),
+    )
+
+    stored = written.to_json()
+    with language("en"):
+        read = JobError.from_json(json.loads(json.dumps(stored)))
+
+    assert stored == {
+        "code": "not_found",
+        "detail": "Magazyn „alfa” nie jest skonfigurowany.",
+        "key": "job.store_unknown",
+        "values": {"store": "alfa"},
+        "hint": 'zainstaluj zgodną wersję: pip install "kartograf"',
+        "hint_key": "fix.install",
+        "hint_values": {"requirement": "kartograf"},
+        "details": {},
+    }
+    assert read == written
+    assert read.public_json("pl") == {
+        "code": "not_found",
+        "detail": "Magazyn „alfa” nie jest skonfigurowany.",
+        "hint": 'zainstaluj zgodną wersję: pip install "kartograf"',
+        "details": {},
+    }
+    assert read.public_json("en") == {
+        "code": "not_found",
+        "detail": 'Store "alfa" is not configured.',
+        "hint": 'install a compatible version: pip install "kartograf"',
+        "details": {},
+    }
+
+
+def test_error_whose_message_the_catalog_forgot_is_read_as_it_was_stored() -> None:
+    """A text of an older version stays what it was, in the language it had."""
+    stored = JobError(
+        "not_found", message("job.store_unknown", "en", store="alfa")
+    ).to_json()
+    stored["key"] = "job.no_such_message"
+
+    with language("en"):
+        read = JobError.from_json(stored)
+
+    assert read.detail == "Magazyn „alfa” nie jest skonfigurowany."
+    assert read.localized("en").detail == "Magazyn „alfa” nie jest skonfigurowany."
+
+
+def test_error_a_worker_sends_is_the_stored_error_and_its_exception() -> None:
+    """The supervisor reads the worker's message with the texts still translatable."""
+    error = JobError.of(NotFoundError(message("job.store_unknown", "en", store="alfa")))
+
+    sent = {**error.to_json(), "exception": "NotFoundError"}
+    with language("en"):
+        received = JobError.from_message(json.loads(json.dumps(sent)))
+
+    assert received == error
+    assert received.localized("pl").detail == "Magazyn „alfa” nie jest skonfigurowany."

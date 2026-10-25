@@ -567,7 +567,7 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
     Returns
     -------
     str or None
-        Polish reason, or ``None`` when the rule lets the request through.
+        The reason, or ``None`` when the rule lets the request through.
         A client without ``Origin`` and ``Sec-Fetch-Site`` (curl, an agent's
         script) passes here; the session and its CSRF token still apply.
     """
@@ -601,7 +601,7 @@ def csrf_rejection(headers: Headers, session: Session) -> str | None:
     Returns
     -------
     str or None
-        Polish reason, or ``None`` when the request carries the token.
+        The reason, or ``None`` when the request carries the token.
     """
     header = headers.get(CSRF_HEADER)
     if not header:

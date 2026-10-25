@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 from archiwista.errors import ArchiwistaError
-from archiwista.messages import message, with_detail
+from archiwista.messages import join, message, with_detail
 from archiwista.sources import SourceState
 
 logger = logging.getLogger(__name__)
@@ -577,7 +577,7 @@ class SettingsProblem:
     field : str
         Settings location, e.g. ``"stores[0].kartograf"``.
     message : str
-        Polish description for the user.
+        Description for the user, a catalog message.
     """
 
     code: str
@@ -598,7 +598,7 @@ class SettingsValidationError(ArchiwistaError):
     def __init__(self, problems: Sequence[SettingsProblem]) -> None:
         self.problems = tuple(problems)
         super().__init__(
-            "; ".join(problem.message for problem in self.problems),
+            join([problem.message for problem in self.problems]),
             details={
                 "problems": [
                     {"code": item.code, "field": item.field, "message": item.message}
@@ -623,7 +623,7 @@ _PYDANTIC_KEYS = {
 
 
 def parse_settings(data: Mapping[str, object]) -> AppSettings:
-    """Validate raw settings data, reporting problems in Polish.
+    """Validate raw settings data, describing the problems in catalog messages.
 
     Parameters
     ----------
@@ -655,7 +655,7 @@ def _problem_from_pydantic(item: Mapping[str, object]) -> SettingsProblem:
     context = item.get("ctx")
     ctx = context if isinstance(context, Mapping) else {}
     if kind == "value_error":
-        detail = str(ctx.get("error", message("settings.bad_value")))
+        detail = _validator_text(ctx.get("error", message("settings.bad_value")))
     elif kind in ("greater_than_equal", "greater_than"):
         limit = ctx.get("ge", ctx.get("gt"))
         detail = message("settings.too_small", limit=limit)
@@ -669,6 +669,12 @@ def _problem_from_pydantic(item: Mapping[str, object]) -> SettingsProblem:
         field=field,
         message=message("settings.invalid_value", field=field, detail=detail),
     )
+
+
+def _validator_text(error: object) -> str:
+    """Return what a validator said: its catalog message, else the error's text."""
+    first = error.args[0] if isinstance(error, BaseException) and error.args else None
+    return first if isinstance(first, str) else str(error)
 
 
 def _format_location(loc: tuple[object, ...]) -> str:

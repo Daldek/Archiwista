@@ -144,6 +144,7 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     assert settings.default_project_visibility == "public"
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_store_invalid_toml_reported_in_polish(tmp_path: Path) -> None:
     """A syntax error names the file instead of raising a parser traceback."""
     path = tmp_path / "config.toml"
@@ -156,6 +157,7 @@ def test_config_store_invalid_toml_reported_in_polish(tmp_path: Path) -> None:
     assert "nie jest poprawnym TOML" in error.value.problems[0].message
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_parse_reports_every_invalid_field() -> None:
     """Each bad value is reported with its location and a Polish reason."""
     with pytest.raises(SettingsValidationError) as error:
@@ -204,6 +206,7 @@ def test_config_full_scan_interval_rejects_out_of_range(hours: int) -> None:
         ("vector", "https://tiles.example/{z}/{x}/{y}.pbf", "adres TileJSON"),
     ],
 )
+@pytest.mark.usefixtures("polish")
 def test_config_basemap_url_fits_its_kind(kind: str, url: str, reason: str) -> None:
     """XYZ needs a tile template; a vector basemap its TileJSON, not a template."""
     with pytest.raises(SettingsValidationError) as error:
@@ -260,6 +263,7 @@ def test_config_validate_rejects_unreadable_root(roots: tuple[Path, Path]) -> No
     assert registry.probed == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_validate_rejects_missing_root(tmp_path: Path) -> None:
     """A disconnected share is reported, not silently accepted."""
     problems = validate_settings(
@@ -401,6 +405,7 @@ def test_settings_service_rejected_change_keeps_file_and_state(tmp_path: Path) -
     assert calls == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_own_data_dir_validation(tmp_path: Path, roots: tuple[Path, Path]) -> None:
     """A data folder in a store, nested with another project's or absent is refused.
 

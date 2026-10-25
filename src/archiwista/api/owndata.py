@@ -448,6 +448,7 @@ _JOB_PROBLEMS: dict[int | str, dict[str, Any]] = {
                             "conflict",
                             message(
                                 "snapshot.blocked_read_only_folder",
+                                "en",
                                 path="/mnt/nas/raba/dane/.wersje",
                             ),
                             reason="snapshot_blocked",
@@ -475,6 +476,7 @@ _CHANGED_PROBLEM: dict[int | str, dict[str, Any]] = {
                             "conflict",
                             message(
                                 "own.file_changed",
+                                "en",
                                 path="sieci/kanalizacja.gpkg",
                                 project="raba",
                             ),

@@ -3,7 +3,7 @@
 ``GET`` answers any session (the interface needs the basemaps and offline
 mode). ``PUT`` replaces all settings: it needs ``settings.write`` (an
 administrator; the local owner is one, A-ADR-029), and validates like the
-configuration file (Polish problems per field) and then
+configuration file (problems per field) and then
 the directories: they exist and can be read, producer directories are not
 nested, the producer accepts each new or moved one. A rejected change keeps
 the file and the settings in effect. A saved change reaches subscribers
@@ -66,7 +66,7 @@ def put_settings(
     """Replace all settings (administrator); answer those now in effect.
 
     Invalid values or unusable directories answer `422 validation_error`
-    with `problems` (`code`, `field`, Polish `message`) and change nothing.
+    with `problems` (`code`, `field`, `message`) and change nothing.
     Changing offline mode or basemaps changes the CSP of later responses.
     """
     return save_settings(service, body)

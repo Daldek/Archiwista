@@ -2,7 +2,7 @@
 
 ``PreviewInfo`` describes the preview of one object (``GET …/preview``):
 what it shows and in which state, why something is missing (a code with a
-Polish description and fix), its styles and legend, and the addresses of its
+description and fix), its styles and legend, and the addresses of its
 images, which the server builds and the client never composes (it only adds
 the documented query parameters). The query models of ``preview.png``,
 ``tiles/…`` and ``features`` refuse unknown parameters (``422``), as do the
@@ -82,8 +82,8 @@ class PreviewReasonInfo(BaseModel):
             "examples": [
                 {
                     "code": "no_georeference",
-                    "message": message("preview.reason_no_georeference"),
-                    "fix": message("preview.fix_no_georeference"),
+                    "message": message("preview.reason_no_georeference", "en"),
+                    "fix": message("preview.fix_no_georeference", "en"),
                     "detail": None,
                 }
             ]
@@ -99,8 +99,8 @@ class PreviewReasonInfo(BaseModel):
             " `timeout`, `memory_limit` or `changed_since_scan`."
         )
     )
-    message: str = Field(description="What is missing and why, in Polish.")
-    fix: str = Field(description="What a person can do about it, in Polish.")
+    message: str = Field(description="What is missing and why.")
+    fix: str = Field(description="What a person can do about it.")
     detail: str | None = Field(
         default=None,
         description=(
@@ -110,7 +110,7 @@ class PreviewReasonInfo(BaseModel):
 
     @classmethod
     def of(cls, code: PreviewReason, detail: str | None = None) -> Self:
-        """Return a reason with its Polish description and fix."""
+        """Return a reason with its description and fix."""
         return cls(
             code=code,
             message=message(f"preview.reason_{code}"),

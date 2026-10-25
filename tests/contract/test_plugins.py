@@ -88,6 +88,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))
 
 
+@pytest.mark.usefixtures("polish")
 def test_plugins_second_plugin_shown_by_doctor(tmp_path: Path) -> None:
     """The diagnostics list the second plugin without changes in the doctor."""
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")

@@ -229,6 +229,7 @@ def test_doctor_without_config_warns_but_passes(paths: AppPaths) -> None:
     assert not paths.data_dir.exists()
 
 
+@pytest.mark.usefixtures("polish")
 def test_doctor_busy_port_is_a_warning(paths: AppPaths, store_root: Path) -> None:
     """A port in use (possibly by a running server) is reported, not fatal."""
     configure(paths, store_root, port=8123)
@@ -245,6 +246,7 @@ def test_doctor_busy_port_is_a_warning(paths: AppPaths, store_root: Path) -> Non
 @pytest.mark.parametrize(
     ("mode", "warned"), [(0o755, True), (0o750, True), (0o700, False)]
 )
+@pytest.mark.usefixtures("polish")
 def test_doctor_warns_when_local_data_open_to_others(
     paths: AppPaths, store_root: Path, mode: int, warned: bool
 ) -> None:

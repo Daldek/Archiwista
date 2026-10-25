@@ -145,5 +145,8 @@ contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer, planned for 
 - AGI-3.2, AGI-4.1, AGI-4.2: `--json` output and API responses are the routes' models,
   with no `schema` member and no result envelope; the error document alone is
   `archiwista-error/1`.
-- AGI-6.4, AGI-9.2: the `detail`, `hint` and `message` of errors are Polish whatever
-  `Accept-Language` says; only `title` follows it (English without the header).
+- AGI-6.4, AGI-9.2: the texts that are stored when they happen stay Polish whatever
+  `Accept-Language` says: the `detail` of a store's status (the `stores.detail` column
+  of the index), and the `message` of a job's notices, with the texts inside a job's
+  `result` and `error.details` (a job's `detail` and `hint` keep their key and values
+  and follow the header). Every other text of the API follows it, English by default.

@@ -12,8 +12,8 @@ commit that introduced this file).
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
-| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1; started on the local branch `step2`, not finished); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
+| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1) |
+| Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` and the error texts that follow `Accept-Language` (English by default, Polish with the header, `Content-Language` on every JSON answer; the stored texts stay Polish); deviations in CLAUDE.md: the stored texts (AGI-6.4), outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The last run took 37 minutes under a load of 8 (1206 tests); a quiet machine needs 25 to 33 minutes, so start it without other test suites running. Four flakes found under load are fixed (`3bc0482`, `876824f`, `d14f2f3`, `ebd8ef1`): the one-second limit that was every build's in `test_preview_build_item_timeout_fails_item_only` (only the slow file has one now, `build_timeout_s`), the 5 s that an expectation of the interface tests waited for the page and the server (30 s now), the race of `tests/unit/test_sandbox.py` (a `/proc` read of a process reaped meanwhile) and one hang of `tests/e2e/test_timeline.py` that did not reproduce (`faulthandler_timeout = 600` writes the stacks of a test that runs ten minutes). A job worker interrupted under `--cov` can stay alive: `patch = ["subprocess"]` measures it, and an interrupt that arrives while coverage's tracer holds its `data_lock` leaves the lock held, so the worker waits for it in its exit handler for good (1 of 200 interrupted processes in a stress run; the supervisor kills such a worker after `STOP_TIMEOUT_S`, only one whose supervisor is gone stays: Next 5) |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
@@ -31,103 +31,32 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
 ## Next
 
-1. **Finish the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per step, gate
-   green before each; the source of the rules is the Nogat branch `feature/data-output`,
-   `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`; Hydrolog and
-   Retman have the same branch name as worked examples):
-   1. **Error texts follow `Accept-Language`** (AGI-6.4, AGI-9.2; decided by the coordinator
-      for the author; then shrink the AGI-6.4 line of the deviations to the stored texts).
-      `detail`, `hint`, `errors[].message` and the texts inside `details` (`preview_reason`,
-      `problems`) are English by default and Polish with `Accept-Language: pl` (the interface
-      sends it), with `Content-Language` on every problem; `message` and `hint` of the
-      `archiwista-error/1` document are English (machine output), the line before it for the
-      person stays Polish. One catalog shape, as in IMGWTools
-      (`src/imgwtools/messages/__init__.py`): `Text(en, pl)`, a `Message(str)` that keeps its
-      key and values, `message(key, lang, **params)`, `localize`, keys `<area>.<name>`,
-      modules `messages/<area>.py`, and a test that checks every call against its entry.
-      Found out: pydantic turns a `str` subclass in a `str` field into a plain `str`, and so
-      does `str(error)` (use `error.message`), so a `Message` survives in exceptions,
-      `Problem` and dicts only; texts of response models need the language when they are
-      made. Use a context variable for the language, the default of `lang`: the API
-      middleware sets it from the header, the CLI sets `pl` for text and `en` under `--json`,
-      otherwise `en`; `localize` at the boundaries (`problem_body`, `refuse`,
-      `error_document`, a walk over `details` and `errors`). Texts that are stored (the
-      `detail` column of the index, job notices) stay Polish through an explicit `"pl"` and
-      remain an AGI-6.4 deviation until they keep key and values; the `detail` of a job error
-      (`jobs/error.py`, `JobError`) keeps them. Other starting points: `error_document.py`
-      (`Problem`, `describe`, `refuse`, `validation_problem`, `preview_reason`),
-      `api/errors.py` (`problem_body`, `problem_response`, `_DOCUMENTED`), `errors.py`,
-      `services/problems.py`, `config.py` (settings problems).
-      **Step 1 is done** (`refactor(messages)`, the catalog without a change of behavior).
-      `src/archiwista/messages/` has `__init__.py` (`Text`, `Message`, `message`, `entry`,
-      `lookup`, `label`, `localize`, `with_detail`, `language`, `current_language`,
-      `placeholders`, `catalogs`, `valid_key`; the language is `pl` until step 2; the spec
-      `:sentence` of a field drops a closing full stop) and one module per area (the prefix
-      of the old key, but `with` is `common`, `path` is `ref`, `kartograf` is `source`,
-      `refresh` is `api`; `metavar` holds the placeholders of the options in `--help`). The
-      language of a call is the positional `lang` after the key, else the context
-      (`with language("pl"):`). `message` returns a `Message`, a `str` that keeps its key and
-      values (`.key`, `.params`, `.lang`, `.localized(lang)`; copies and pickles keep it); a
-      `Message` among the values is rendered in the language of its parent. Tables hold keys
-      as literals (`api/errors.py` `_DOCUMENTED`, `config.py` `_PYDANTIC_KEYS`, `doctor.py`
-      `_FIX_BY_CODE`, `JobConflict.message`), computed keys are f-strings of a known prefix
-      (`lookup`, `label("job.state", value)`). `tests/unit/test_messages.py` checks both
-      languages of every entry, every call against its entry, unused entries, entries that
-      are read without values, and that no module outside the catalog holds Polish text;
-      its `_DATA` and `_NAME_TABLES` list what is Polish by design (names, example values of
-      the OpenAPI document, the legend names of the class tables); the entries that quote a
-      description saying "Polish" go with step 2.
-      **Step 2, the behavior, is one more commit and nearly done** on the local branch `step2`
-      (two WIP commits on `chore/nogat-2.1` at `ebd8ef1`; **the gate has not run on them**,
-      squash them into one commit when it is green). Done there: `DEFAULT_LANG` is `"en"` and
-      `STORED_LANG` is `"pl"`; `messages.localize_json`, `dump`, `load` and `join`;
-      `Problem.localized` and the localization in `error_document`, `refuse` (the person's line
-      Polish, the document English) and `problem_body`; `Content-Language` and `Vary` of every
-      problem; `ArchiwistaError.__str__` keeps the message; `api/language.py` (the pure ASGI
-      `LanguageMiddleware`, outermost in `app.py`); the CLI (text and parser Polish, English under
-      `--json`, the queries of `reader.py` and `commands/layers.py` validated under English, the
-      progress lines of `jobs/foreground.py` in the language of the command); `SettingsValidationError`;
-      `JobError` with `key`, `values`, `hint_key` and `hint_values` (texts stored in `STORED_LANG`),
-      `from_problem`, `localized`, `public_json` and the protocol 5 check; the worker (`main` under
-      `language(STORED_LANG)`, the notices, the error and the result localized to it, `_report`
-      through `JobError.to_json`, an English log); `IndexWriter.set_store_status` localizes `detail`;
-      `JobDetail.of` and the `state` events of the stream render the error of a job in the language of
-      the request; `area_reader` answers with `key` and `values` and `areas.py` loads them; the front
-      end sends `Accept-Language: pl` in `watchJob` and `apiHeaders`; the descriptions that said
-      "Polish" are reworded (what stays Polish is a name, a stored text or the command line). Tests:
-      the fixture `polish` (`tests/conftest.py`), the tests that read Polish text marked with it or
-      given `accept_language`, and new tests of the middleware, `JobError`, `localize_json`, `dump`,
-      `load`, `join`, `Problem.localized`, the refusal and the error of a job in both languages. The
-      whole unit suite and the contract and integration tests that read texts passed on the last
-      edits (ruff and mypy too); the e2e tests and the other integration tests have not run on
-      this code. **Open:** `scripts/gate.sh` and what it shows; the documents
-      (AGENT_API 9, SPEC 9.1, USAGE, CHANGELOG, ARCHITECTURE 5.4, and the deviation line of CLAUDE.md,
-      which shrinks to the stored texts: the `detail` column of `stores` and the notices of jobs);
-      then squash, `git merge --ff-only` into `chore/nogat-2.1`, delete `step2` and its worktree.
-   2. **Documents.** README in English in the order of DOC-2.1 (profile `app`: Run and
-      Deploy replace Install and Quick start), absolute links (DOC-1.4), at most 400 lines,
-      summary at most 400 characters and `pyproject` `description` at most 200 (DOC-2.3);
-      move the project-specific rules of `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8
-      and 10) into CLAUDE.md and delete the file (DEV-1.3); `git mv docs/PLAN_v0.1.md
-      docs/plans/2026-10-18-plan-v0.1.md` and `docs/PLAN_v0.2.md
-      docs/plans/2026-10-19-plan-v0.2.md` (DEV-17.4); an ADR `docs/decisions/0030-...md`
-      with the index entry in `docs/DECISIONS.md` (DOC-8.2): `src/` layout, uv and the
-      commit pin, the gate, Linux-only CI, the deviations of CLAUDE.md. Translate the Polish
-      documents (ECO-005), most useful first (`docs/AGENT_API.md` is done):
-      `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses
-      of DOC-8.1), `docs/SPEC.md` (326 KB), the two plans (377 KB), `docs/reports/` (57 KB);
-      `docs/IMGWTOOLS_REQUIREMENTS.md` (105 KB) is met by IMGWTools 3.0.0 (IMGW-1 to 20):
-      decided (the author delegated it): delete it, keep the IMGW-n identifiers of SPEC 12.7
-      and fix the references (SPEC 12.7, 12.8 and 14, SCOPE, PRD, DECISIONS A-ADR-019, 021 and
-      025). `<katalog-danych>` becomes `<data-dir>` in what is translated. A model-assisted
-      pipeline (code blocks masked, chunks at headings, checks of structure, code spans,
-      links, identifiers and numbers, retry) translated all of them in about ten minutes in
-      a trial; redo it from the committed text once the error texts (item 1; the job error
-      commit has changed SPEC 9.1, ARCHITECTURE 5.4 and AGENT_API already) have changed
-      them again. Terms as in the English documents (the Fan, the Timeline,
-      the curtain, store, own data, the release names of SCOPE). The code blocks with Polish
-      prose (ARCHITECTURE 0 and 1, DECISIONS 0, SPEC 0 to 3, 17, 19 and 29) are translated;
-      the ASCII mock-ups and the JSON examples with Polish labels stay.
+1. **Documents, the rest of the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per
+   step, gate green before each; the source of the rules is the Nogat branch
+   `feature/data-output`, `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
+   Hydrolog and Retman have the same branch name as worked examples). README in English in
+   the order of DOC-2.1 (profile `app`: Run and Deploy replace Install and Quick start),
+   absolute links (DOC-1.4), at most 400 lines, summary at most 400 characters and
+   `pyproject` `description` at most 200 (DOC-2.3); move the project-specific rules of
+   `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8 and 10) into CLAUDE.md and delete the
+   file (DEV-1.3); `git mv docs/PLAN_v0.1.md docs/plans/2026-10-18-plan-v0.1.md` and
+   `docs/PLAN_v0.2.md docs/plans/2026-10-19-plan-v0.2.md` (DEV-17.4); an ADR
+   `docs/decisions/0030-...md` with the index entry in `docs/DECISIONS.md` (DOC-8.2): `src/`
+   layout, uv and the commit pin, the gate, Linux-only CI, the deviations of CLAUDE.md.
+   Translate the Polish documents (ECO-005), most useful first (`docs/AGENT_API.md` is
+   done): `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses of DOC-8.1),
+   `docs/SPEC.md` (326 KB), the two plans (377 KB), `docs/reports/` (57 KB);
+   `docs/IMGWTOOLS_REQUIREMENTS.md` (105 KB) is met by IMGWTools 3.0.0 (IMGW-1 to 20):
+   decided (the author delegated it): delete it, keep the IMGW-n identifiers of SPEC 12.7
+   and fix the references (SPEC 12.7, 12.8 and 14, SCOPE, PRD, DECISIONS A-ADR-019, 021 and
+   025). `<katalog-danych>` becomes `<data-dir>` in what is translated. A model-assisted
+   pipeline (code blocks masked, chunks at headings, checks of structure, code spans,
+   links, identifiers and numbers, retry) translated all of them in about ten minutes in
+   a trial; run it on the committed text (the error texts are final: they changed SPEC 9.1,
+   ARCHITECTURE 5.3 and 5.4 and AGENT_API). Terms as in the English documents (the Fan,
+   the Timeline, the curtain, store, own data, the release names of SCOPE). The code blocks
+   with Polish prose (ARCHITECTURE 0 and 1, DECISIONS 0, SPEC 0 to 3, 17, 19 and 29) are
+   translated; the ASCII mock-ups and the JSON examples with Polish labels stay.
 2. **Data output (DEV §19, ECO-051): migrate the calls to Kartograf after Kartograf has the
    change on its development head** (not before; plan `docs/plans/2026-10-24-data-output.md`
    of Nogat, step 4). Re-pin Kartograf to that commit in `pyproject.toml` (`uv lock`).

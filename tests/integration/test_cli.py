@@ -242,8 +242,12 @@ class _Reader:
         captured = self._capsys.readouterr()
         return refusal(captured.out, captured.err, code)
 
-    def http(self, path: str, status: int = 200) -> Any:
-        response = self._served.owner.request("GET", path)
+    def http(
+        self, path: str, status: int = 200, *, accept_language: str | None = None
+    ) -> Any:
+        response = self._served.owner.request(
+            "GET", path, accept_language=accept_language
+        )
         assert response.status_code == status, response.text
         return response.json()
 
@@ -546,10 +550,12 @@ def test_compare_cli_equals_http(
         "validation_error",
         "invalid_ref",
     )
-    differs = [row for row in compared["rows"] if row["differs"]]
+    # The text is for a person, in Polish; the model of ``--json`` is English.
+    polish = run.http("/compare?" + urlencode({"a": a, "b": b}), accept_language="pl")
+    differs = [row for row in polish["rows"] if row["differs"]]
     assert code == 0 and differs
     assert f"* {differs[0]['label']}: " in text
-    assert f"A: {compared['a']['title']} ({a})" in text
+    assert f"A: {polish['a']['title']} ({a})" in text
 
 
 # Previews (plan v0.2, step 6).
