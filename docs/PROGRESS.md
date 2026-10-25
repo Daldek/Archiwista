@@ -15,7 +15,7 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog); nothing pushed. Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]` on IMGWTools `a304521`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra) and I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem). Open: the re-pin of IMGWTools to `cc9a596`, I3 (index of archives, series and catalogs). Next 6 gives the exact starting points |
+| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog). Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra), I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem) and the re-pin to IMGWTools `7e2114e` (`30175c1`: machine codes, producer fields, `skip_versions`, `py.typed`). Open: I3 (index of archives, series and catalogs, three commits; the design is decided in Next 6, no code of it is committed), then I4 to I7. Next 6 gives the exact starting points |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
@@ -173,7 +173,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 6. **The IMGWTools source (plan Part 2; branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c`).**
-   - *Done, nothing pushed.* I1 commit 1 `5e3fffc`; I1 commit 2 `796ee01` (gate 1246 passed,
+   - *Done (local commits; ask git for the remote state).* I1 commit 1 `5e3fffc`; I1 commit 2 `796ee01` (gate 1246 passed,
      coverage 92.04%): the extra `archiwista[imgw]`, `sources/markers.py`, `adapter/imgw/`
      (`PRODUCER` `imgw`, `PACKAGE` `imgwtools`, `SUPPORTED_VERSIONS` `>=3.0.0,<4`, the four
      schemas, `load` through `check_package`; `ImgwAdapter` implements the source interface and
@@ -204,27 +204,26 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      here) and `messages/source.py` (M2 adds `source.no_marker`, `source.foreign_store`,
      `source.unsupported_marker`, rewords `source.kartograf_not_store` and `fix.source`): keep
      both sides.
-   - *Pin.* `imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@a30452182b01f47cc18e48466da4edf4d0c8cb6a`;
-     `uv lock` resolved it from the uv git database that holds the commit (Retman put it there
-     with `git fetch ~/workspace/IMGWTools feature/data-output`). **Next: re-pin to `cc9a596`**,
-     the head of `feature/data-output` after the requests of Archiwista (the coordinator's note of
-     2026-10-25; not done yet): fetch it into that database, change the commit, `uv lock`, and use
-     what the commits add. `1a24930` ships `py.typed` (the mypy override for `imgwtools` in
-     `pyproject.toml` goes); `72d3f12` lets the reader accept a marker without `created_by` (the
-     probe table of `adapter/imgw` and `tests/contract/test_imgw.py` pin the old behaviour);
-     `b030631` gives `StoreInfo.problem_codes` (`missing_store`, `missing_marker`, `invalid_marker`,
-     `unsupported_store`, at the index of each text; the adapter decides by the code, but a layout
-     without a marker and a directory that is no store both report `missing_marker`, so the adapter
-     keeps its own layout check); `55c5433` gives `Meta.producer` and `Meta.producer_version`
-     (`EntryMeta.written_by` and `producer_version` come from them instead of the constant
-     `imgwtools` and an empty value); `3ec91ab` gives `iter_store(skip_versions=)`, the version
-     directory path with `/` mapped to the names of its data files, the shape of
-     `ScanScope.known_versions`: pass it and a skipped version comes back with `skipped=True` and no
-     meta, so an incremental scan reads no sidecar of a known version; `7b11755` shows the
-     nested-store refusal in every store plan. One commit, then the gate.
+   - *Pin (done, `30175c1`; gate 1272 passed, coverage 92.05%).* `imgwtools[store] @
+     git+https://github.com/Daldek/IMGWTools@7e2114e1424903f1fd8fc036a2cb7aa81df44287`, the head of
+     `feature/data-output` on 2026-10-25: one commit after `cc9a596`, and it changes the output
+     rules of IMGWTools only, nothing a reader reads. `uv lock --offline` resolves a commit only from
+     the uv git database of this URL, here `~/.cache/uv/git-v1/db/a7524ceee79a212b` (`dda4ecb8d2e4e42d`
+     is another URL form and unused; uv names its database in the error of a failed fetch, and the
+     `https` transport is not allowed here, so a commit the database lacks is not fetched): `git -C
+     <that database>/.git fetch --no-tags ~/workspace/IMGWTools feature/data-output`, change the
+     commit in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`. Used:
+     `StoreInfo.problem_codes` (a refused marker is `invalid_marker` or `unsupported_store`;
+     `missing_marker` covers a layout without its marker, a directory that is no store and the marker
+     of another producer, so the names in the directory still decide), `Meta.producer` and
+     `Meta.producer_version` (the sidecar's own, also in the raw sidecar of a file card),
+     `iter_store(skip_versions=)` fed with `ScanScope.known_versions`, the reader that needs only the
+     `schema` of the marker (a marker without `created_by` is available), `py.typed` (the mypy
+     override is gone). A marker that is no JSON is a `data_error` of `open_store` now
+     (`IMGWDataError`, reason `invalid_marker`), not an `IMGWStoreError`.
    - *Requests to IMGWTools (DEV-17.5).* The four (a machine code in `StoreInfo`, `producer` and
      `producer_version` in `Meta`, known versions for `iter_store`, a marker without `created_by`)
-     are met at `cc9a596`; what remains is the registry edge Archiwista to IMGWTools, `planned` to
+     are met at the pin; what remains is the registry edge Archiwista to IMGWTools, `planned` to
      `active`, a request to Nogat.
    - *I2 commit 2 `eafd687` (done; gate 1268 passed, coverage 92.05%).* `StoreConfig.kartograf` is
      optional and `imgw` is new (`STORE_PRODUCERS`; a before-validator wants one of them:
@@ -246,14 +245,53 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `ARCHIWISTA_TEST_MISSING_PACKAGES`), `tests/e2e/test_setup_imgw.py` (the wizard indexes a store
      of only IMGW files through the scheduler), `test_store_summary.py`. The CHANGELOG, ARCHITECTURE
      4 and 10, SPEC 5.5, USAGE and ADR 0032 are updated.
-   - *I3* as in the plan; the slot key is the slot directory, `current_version` is the new
-     optional capability, and the generic scan already indexes IMGW entries (checked on the
-     `complete` fixture: 11 versions in 8 slots, none current, in the slots
-     `archives/versions/<server path>`, `series/versions/<dataset>` and `stations/versions`). Mind
-     `run_scan`: it passes the job's `segment` to `scan_store` of every producer of the store, and the
-     IMGW adapter has no segments, so a segment scan of a store with both directories raises
-     `ValueError` after the Kartograf part; when the IMGW segment becomes its dataset, decide which
-     producer owns a segment (the `segments` table knows it).
+   - *I3 (the design is decided; no code is committed).* Facts: the generic scan already indexes
+     IMGW entries (`complete` fixture: 11 versions in 8 slots, none current; slots
+     `archives/versions/<server dir>/<file stem>`, `series/versions/<slug>`, `stations/versions`, and
+     the ČHMÚ catalog in `stations/versions/chmi_stations`); `imgwtools.current_version(root, slot=)`
+     reads every sidecar of the slot and raises `IMGWDataError` while any version of it is broken (an
+     older one is never chosen; `missing_sidecar` is skipped), so ask it only for slots that changed.
+     *Commit 1, the data model and the scan* (`SCHEMA_VERSION` 7, every schema change of I3 in it, so
+     the step is +1): `SourceEntry.slot_key` (IMGWTools' `StoreEntry.slot`), `slot_name` (a name for
+     people: the file name of an archive, the catalog key for a catalog, else the directory) and
+     `observation: SourceObservation` (`seen_at`, `url`, `etag`, `last_modified`, `size_bytes`,
+     `sha256`; `version_path` is `<slot>/<same_content_as>/<file>`); the columns `slots.slot_key` and
+     `versions.provider` (`_META_COLUMNS`) and the table `observations` (seen by every pass, deleted
+     when unseen, never a count; `IndexQueries.observations(store, slot)`); the optional capability
+     `SegmentDescriptionAdapter` (`describe_segment` without `segments`; `SegmentedAdapter` extends
+     it), and `scan_store` writes the description of each segment the entries named for a producer
+     that lists none (`_Totals.segments_seen`); the IMGW adapter describes a dataset from the registry
+     (`get_dataset(key).title.localized("pl")`, the country of `get_provider(dataset.provider)`,
+     `dataset_key` the key; the catalogs `pl.imgw.stations` and `cz.chmi.stations` are no registry
+     datasets: known, named after the provider's `short_name`; any other key is `known=False`, named
+     by itself). *Commit 2, the current version:* the optional capability
+     `CurrentVersionAdapter.current_version(root, slot_key) -> Path | None` (the version path relative
+     to the store); `IndexWriter.finish_pass(current=...)` asks it, outside the transaction, for the
+     slots with a `slot_key` that the pass touched (a new or changed version, a new issue, a version
+     that reappeared; at the end a version gone missing or removed, an issue resolved), so an
+     unchanged incremental scan asks for none, and writes `current_path` only for a version the index
+     holds (a dangling one would show as `orphan_sidecar`); the unlinked rule of `finish_pass` skips
+     slots with a key; the adapter gives `None` for a slot without a version or with a broken one (an
+     `IMGWDataError` that is not `io_error`), and `io_error` stays `SourceUnavailableError`;
+     `_SLOT_STATUS` reads the slot's issues by `slot_id` (`no_sidecar` for `missing_sidecar`,
+     `unreadable` for the other sidecar codes of both producers), so a slot without a current version
+     because of a damaged one is `unreadable`; texts for the IMGW codes in `explain` (`missing_sidecar`
+     is an interrupted or running publication, non-critical and usually temporary; `unknown_schema` a
+     file of another schema; the others generic); contract and integration tests over `complete`,
+     `complete_pl_cz`, `corrupt` and `unknown_schema`. *Commit 3:* the segment ownership below, ADR
+     0032 decisions 7 to 9, SPEC 4.3 and 4.4, a read-only store test (chmod 555/444 as
+     `test_read_only_store.py`, the tree identical afterwards) and a test that an index of the
+     previous schema is rebuilt while `state.sqlite` stays byte for byte. *Segment ownership
+     (decided):* `run_scan` finds the producers that own the job's `segment` in the `segments`
+     table (a new `IndexQueries` method over `segments.producer`) and scans only their directories;
+     a name the index does not know belongs to the producers that scan by segment
+     (`SegmentedAdapter`: Kartograf today, so a Kartograf-only store behaves as before); a producer
+     that cannot scan one segment (IMGW: `iter_store` has no scope below the directory, and a pass per
+     dataset would walk the whole store once per dataset) refuses with `UnsupportedError`, as the
+     link check does, instead of the `ValueError` of `scan_store`; there the segment is a label only.
+     An unfinished first version of commit 1 (types, protocol, schema, writer, queries and scanner; not
+     the adapter, the tests or the documents; never run) was kept as a patch outside the repository
+     and given to the coordinator.
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,
@@ -264,7 +302,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      now) and two timing tests (`test_file_projects_store.py::test_link_check_result_on_file_card`
      and one more); the second failed `tests/e2e/test_map_previews.py::
      test_year_buttons_select_layer_and_tiles` (16 footprints within 5 s; it passes alone in 38 s);
-     the third was green.
+     the third was green. The gate of the re-pin `30175c1` was green at the first run (1272 passed,
+     36 min 15 s, load about 3.7).
 
 ## Open questions
 
