@@ -11,17 +11,19 @@ availability`` call them.
 ``rows`` reads a report as the summary of SPEC 6.3 and 6.4, without I/O: a
 row for each year of a country, the year's variants ranked (the formats of
 one set are one variant, ADR-017) and the coverage label of each as
-structure (`CoverageLabel`); the interfaces write its text.
+structure (`CoverageLabel`); the interfaces write its text. ``summary`` adds
+the store badge of each variant from the index (`StoreBadge`).
 """
 
 import math
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from archiwista.auth import Principal
+from archiwista.config import AppSettings
 from archiwista.errors import NotFoundError, UnsupportedError
 from archiwista.index import AreaRecord, IndexQueries, StoredAvailability
 from archiwista.jobs import JobRecord, JobSupervisor
@@ -42,6 +44,7 @@ REPORT_TTL = timedelta(days=7)
 DEFAULT_FORMATS = ("ASC", "TIFF")
 
 type CoverageKind = Literal["full", "full_campaigns", "partial", "no_data"]
+type BadgeState = Literal["all", "some", "none"]
 
 # A resolution label of the producer in metres (``1m``, ``0.5m``).
 _RESOLUTION = re.compile(r"(\d+(?:\.\d+)?)m")
@@ -239,6 +242,32 @@ class VariantFilter:
 
 
 @dataclass(frozen=True, slots=True)
+class StoreBadge:
+    """How much of a variant's set a store holds (SPEC 6.4, the store badge).
+
+    Parameters
+    ----------
+    store : str
+        Store id.
+    units : int
+        The set's units of which the store holds a version of the set.
+    of : int
+        The set's units: its full and partial sheets.
+    """
+
+    store: str
+    units: int
+    of: int
+
+    @property
+    def state(self) -> BadgeState:
+        """``all`` ("pobrane"), ``some`` ("pobrane 5/12") or ``none``."""
+        if self.units == 0:
+            return "none"
+        return "all" if self.units == self.of else "some"
+
+
+@dataclass(frozen=True, slots=True)
 class AvailabilityVariant:
     """One set of the source in each of its formats: a row or a card (ADR-017).
 
@@ -256,11 +285,14 @@ class AvailabilityVariant:
         when it has none, so the plan asks for an explicit choice.
     label : CoverageLabel
         What the source has of the set for the area.
+    local : StoreBadge or None
+        How much of it a store holds; ``None`` until `summary` counts it.
     """
 
     combinations: tuple[AvailabilityCombination, ...]
     default_format: str | None
     label: CoverageLabel
+    local: StoreBadge | None = None
 
     @property
     def combination(self) -> AvailabilityCombination:
@@ -310,6 +342,11 @@ class AvailabilityRow:
         """How many more variants the year has ("+N warianty")."""
         return max(len(self.variants) - 1, 0)
 
+    @property
+    def local(self) -> StoreBadge | None:
+        """The badge of the variant the row shows; ``None`` without one."""
+        return self.variants[0].local if self.variants else None
+
 
 def rows(
     report: AvailabilityReport, *, fixed: VariantFilter | None = None
@@ -339,6 +376,69 @@ def rows(
         )
         for (country, year), found in years.items()
     )
+
+
+def summary(
+    queries: IndexQueries,
+    report: AvailabilityReport,
+    *,
+    store: str | None = None,
+    fixed: VariantFilter | None = None,
+) -> tuple[AvailabilityRow, ...]:
+    """Return the rows of a report, each variant with its badge in ``store``.
+
+    A unit of a variant, a full or partial sheet of its shown combination,
+    counts when the store holds a present version of that combination's
+    dataset (so of its format), of its year and of one of its campaigns; a
+    combination without a year or campaigns asks for none. The height system
+    is not compared: a combination names it as the source does (``EVRF2007``),
+    a version's sidecar by its EPSG code, and the producer names no store
+    segment of a combination (a request to Kartograf), so a version of the
+    same sheet, year and campaign in another height system counts too.
+    Without ``store`` no variant has a badge.
+    """
+    found = rows(report, fixed=fixed)
+    if store is None:
+        return found
+    return tuple(
+        replace(
+            row,
+            variants=tuple(
+                replace(item, local=_badge(queries, store, item.combination))
+                for item in row.variants
+            ),
+        )
+        for row in found
+    )
+
+
+def known_store(settings: AppSettings, store: str | None) -> None:
+    """Refuse a store the settings do not name.
+
+    Raises
+    ------
+    NotFoundError
+        ``store`` is not configured.
+    """
+    if store is not None and settings.store(store) is None:
+        raise NotFoundError(message("api.store_not_configured", store=store))
+
+
+def _badge(
+    queries: IndexQueries, store: str, combination: AvailabilityCombination
+) -> StoreBadge:
+    """Count the units of a combination that ``store`` holds a version of."""
+    units = tuple(
+        dict.fromkeys((*combination.sheets_full, *combination.sheets_partial))
+    )
+    held = queries.held_units(
+        store,
+        dataset=combination.source,
+        units=units,
+        year=combination.year,
+        campaigns=combination.campaigns,
+    )
+    return StoreBadge(store=store, units=len(held), of=len(units))
 
 
 def variants(report: AvailabilityReport) -> tuple[AvailabilityVariant, ...]:

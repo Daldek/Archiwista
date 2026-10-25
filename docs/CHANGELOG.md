@@ -151,6 +151,20 @@ command-line interface may change.
   plugin is missing `503`, a product the producer does not check `422 unsupported`
   (`no_availability`, the products it checks in `details.allowed`). (SPEC 6.3, 9.2,
   ADR-035)
+- The rows of an availability report (SPEC 6.3, 6.4, ADR-010, ADR-017): every
+  `AvailabilityInfo` of `GET` and `POST /availability` and of `archiwista availability`
+  has `rows`, one per year of each country, with the coverage label of its best variant
+  as text in the language of the request ("pełne", "pełne · 2 kampanie", "częściowe ·
+  58% · 1 ark. niepełny", "brak danych", with the Polish plural forms) and as structure
+  (`coverage`), `other_variants` and the `variants` ranked complete, larger full share,
+  fewer campaigns, finer resolution, the report's order; the formats of one set are one
+  variant with its default format (ASC, then TIFF) and its size. `store` (`--store`)
+  adds the store badge ("pobrane", "pobrane 5/12", "niepobrane") from the index;
+  `horizontal`, `resolution` and `vertical_crs` (`--horizontal`, `--resolution`,
+  `--vertical-crs`) fix those dimensions, and a year without such a variant is "brak
+  danych". The command's text prints a line per year. A store that is not configured is
+  `404`. The badge does not tell height systems apart (Kartograf names no store segment
+  of a combination; a request in the plan).
 
 ### Changed
 

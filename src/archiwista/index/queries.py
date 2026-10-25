@@ -1390,6 +1390,41 @@ class IndexQueries:
             report=AvailabilityReport.from_json(json.loads(row["report"])),
         )
 
+    def held_units(
+        self,
+        store: str,
+        *,
+        dataset: str,
+        units: Sequence[str],
+        year: int | None,
+        campaigns: Sequence[str],
+    ) -> frozenset[str]:
+        """Return the units of which a store holds a version of a dataset.
+
+        A present version counts when its dataset is ``dataset``, its slot's
+        unit one of ``units``, its data year ``year`` and its campaign one of
+        ``campaigns``; ``None`` and an empty ``campaigns`` ask for any (the
+        store badge of an availability combination, SPEC 6.4).
+        """
+        if not units:
+            return frozenset()
+        with self._read() as connection:
+            where = _Where()
+            where.add("s.store_id = ?", _store_id(_stores(connection), store))
+            where.add(f"s.unit IN ({_IDS})", json.dumps(list(units)))
+            where.add("v.state = 'present'")
+            where.add("v.dataset = ?", dataset)
+            if year is not None:
+                where.add("v.data_year = ?", year)
+            if campaigns:
+                where.add(f"v.campaign IN ({_IDS})", json.dumps(list(campaigns)))
+            found = connection.execute(
+                "SELECT DISTINCT s.unit FROM slots s"
+                f" JOIN versions v ON v.slot_id = s.id WHERE {where.sql()}",
+                where.params,
+            ).fetchall()
+        return frozenset(str(row[0]) for row in found)
+
     def local_coverage(
         self,
         area: GeoJSONGeometry,

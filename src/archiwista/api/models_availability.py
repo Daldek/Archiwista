@@ -1,4 +1,4 @@
-"""Models of the availability at the source (plan of 2026-10-25, A2; SPEC 9.2).
+"""Models of the availability at the source (plan of 2026-10-25, A2, A3; SPEC 9.2).
 
 ``AvailabilityRequest`` asks ``POST /availability`` what the source has for an
 area and a product, and ``AvailabilityQuery`` names the report ``GET
@@ -7,8 +7,11 @@ it: the area, when the source was asked and by which job, and the producer's
 report without its classes (ADR-035): the parts of the area by country, the
 combinations (a year, a variant and a format, with the sheet records and the
 campaigns of KD-1 and the full land of KD-2), the parts that failed and what
-the producer said. The request models refuse unknown members (``400
-validation_error``).
+the producer said. Its rows read the report for a person (SPEC 6.3, 6.4): a
+row for each year of a country with its variants ranked, the coverage label
+as structure and as text in the language of the request, and the store
+badge in the store a request names. The request models refuse unknown
+members (``400 validation_error``).
 """
 
 from datetime import datetime
@@ -17,7 +20,16 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.models import AreaRef
-from archiwista.services.availability import AreaAvailability
+from archiwista.messages import message, plural_form
+from archiwista.services.availability import (
+    AreaAvailability,
+    AvailabilityRow,
+    AvailabilityVariant,
+    CoverageKind,
+    CoverageLabel,
+    StoreBadge,
+    VariantFilter,
+)
 from archiwista.sources import (
     AvailabilityArea,
     AvailabilityCampaign,
@@ -99,6 +111,44 @@ _REPORT_EXAMPLE: dict[str, Any] = {
     "notices": [_NOTICE_EXAMPLE],
     "ok": True,
 }
+_LABEL_EXAMPLE = message("availability.label_full", "en")
+_COVERAGE_EXAMPLE: dict[str, Any] = {
+    "kind": "full",
+    "campaigns": 1,
+    "full_share": 1.0,
+    "percent": 100,
+    "below_one": False,
+    "partial_sheets": 0,
+    "missing_sheets": 0,
+}
+_BADGE_EXAMPLE: dict[str, Any] = {
+    "store": "zespol",
+    "state": "all",
+    "units": 1,
+    "of": 1,
+    "label": message("availability.local_all", "en"),
+}
+_VARIANT_EXAMPLE: dict[str, Any] = {
+    "horizontal": "PL-2000",
+    "resolution": "1m",
+    "vertical_crs": "EVRF2007",
+    "campaigns": ["DFT.7211.1.2023"],
+    "formats": ["ASC"],
+    "default_format": "ASC",
+    "size_bytes": None,
+    "label": _LABEL_EXAMPLE,
+    "coverage": _COVERAGE_EXAMPLE,
+    "local": _BADGE_EXAMPLE,
+}
+_ROW_EXAMPLE: dict[str, Any] = {
+    "country": "PL",
+    "year": 2023,
+    "label": _LABEL_EXAMPLE,
+    "coverage": _COVERAGE_EXAMPLE,
+    "local": _BADGE_EXAMPLE,
+    "other_variants": 0,
+    "variants": [_VARIANT_EXAMPLE],
+}
 AVAILABILITY_EXAMPLE: dict[str, Any] = {
     "area": {
         "id": _AREA_ID,
@@ -110,6 +160,9 @@ AVAILABILITY_EXAMPLE: dict[str, Any] = {
     "product": "nmt",
     "checked_at": _CHECKED_AT,
     "job_id": "3f9c1a7e5b2d4c60",
+    "store": "zespol",
+    "variant": {"horizontal": None, "resolution": "1m", "vertical_crs": None},
+    "rows": [_ROW_EXAMPLE],
     "report": _REPORT_EXAMPLE,
 }
 """An answer of ``GET /availability``, also of ``POST /availability`` (``200``)."""
@@ -137,28 +190,77 @@ AVAILABILITY_JOB_EXAMPLE: dict[str, Any] = {
 """The job of ``POST /availability`` (``202``) that asks the source."""
 
 
-class AvailabilityRequest(BaseModel):
-    """What to ask the source: an area and a product (`POST /availability`)."""
+class AvailabilityQuery(BaseModel):
+    """The kept report to return and how to read its rows (`GET /availability`)."""
 
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {"area_id": _AREA_ID, "product": "nmt"},
-                {"area_id": _AREA_ID, "product": "laz", "force": True},
-            ]
-        },
+    model_config = ConfigDict(extra="forbid")
+
+    area_id: str = Field(
+        min_length=1, description="Area id (`POST /areas`).", examples=[_AREA_ID]
     )
-
-    area_id: str = Field(min_length=1, description="Area id (`POST /areas`).")
     product: str = Field(
         min_length=1,
         description=(
             "Product whose availability the producer checks (Kartograf: `nmt`,"
             " `nmpt`, `laz`)."
         ),
+        examples=["nmt"],
     )
     producer: str = Field(default="kartograf", min_length=1, description="Producer id.")
+    store: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "A configured store: each variant gets the badge of its units with a"
+            " version in it; without it no variant has one."
+        ),
+        examples=["zespol"],
+    )
+    horizontal: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Only variants of this sheet system or horizontal CRS (`PL-1992`); a"
+            " year without one is `no_data`. Null: the ranking chooses per year."
+        ),
+    )
+    resolution: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only variants of this resolution (`1m`).",
+    )
+    vertical_crs: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only variants of this height system (`EVRF2007`).",
+    )
+
+    def fixed(self) -> VariantFilter:
+        """Return the dimensions the request fixes."""
+        return VariantFilter(
+            horizontal=self.horizontal,
+            resolution=self.resolution,
+            vertical_crs=self.vertical_crs,
+        )
+
+
+class AvailabilityRequest(AvailabilityQuery):
+    """What to ask the source: an area and a product (`POST /availability`).
+
+    The store and the fixed dimensions read the rows of a report that answers
+    at once (`200`); a check that starts a job ignores them.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"area_id": _AREA_ID, "product": "nmt", "store": "zespol"},
+                {"area_id": _AREA_ID, "product": "laz", "force": True},
+            ]
+        },
+    )
+
     force: bool = Field(
         default=False,
         description=(
@@ -166,18 +268,6 @@ class AvailabilityRequest(BaseModel):
             " the producer does not answer from its metadata cache either."
         ),
     )
-
-
-class AvailabilityQuery(BaseModel):
-    """The kept report to return (`GET /availability`)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    area_id: str = Field(
-        min_length=1, description="Area id (`POST /areas`).", examples=[_AREA_ID]
-    )
-    product: str = Field(min_length=1, description="Product.", examples=["nmt"])
-    producer: str = Field(default="kartograf", min_length=1, description="Producer id.")
 
 
 class AvailabilityAreaItem(BaseModel):
@@ -403,6 +493,176 @@ class AvailabilityReportItem(BaseModel):
         )
 
 
+class CoverageItem(BaseModel):
+    """The coverage label of a year in a variant, as structure (SPEC 6.4)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_COVERAGE_EXAMPLE]})
+
+    kind: CoverageKind = Field(
+        description=(
+            "`full`: complete, one campaign covers the land alone; `full_campaigns`:"
+            " complete from `campaigns` campaigns together; `partial`; `no_data`:"
+            " no variant of the year has the fixed dimensions."
+        )
+    )
+    campaigns: int = Field(
+        description="The distinct campaigns of the sheet records a download takes."
+    )
+    full_share: float | None = Field(
+        description=(
+            "Land in the frames of full sheets over the area's land, 0-1 (the lower"
+            " bound of what has data); null without land or a variant."
+        )
+    )
+    percent: int | None = Field(
+        description="`full_share` in whole percent rounded down, at most 99 if partial."
+    )
+    below_one: bool = Field(
+        description="A partial share above zero that is below 1% (`<1%`)."
+    )
+    partial_sheets: int = Field(description="Sheets with partial records only.")
+    missing_sheets: int = Field(description="Sheets without a file (CZ).")
+
+    @classmethod
+    def of(cls, label: CoverageLabel) -> Self:
+        """Return the model of a label."""
+        return cls(
+            kind=label.kind,
+            campaigns=label.campaigns,
+            full_share=label.share,
+            percent=label.percent,
+            below_one=label.below_one,
+            partial_sheets=label.partial_sheets,
+            missing_sheets=label.missing_sheets,
+        )
+
+
+class StoreBadgeItem(BaseModel):
+    """How much of a variant's set a store holds (SPEC 6.4, the store badge)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_BADGE_EXAMPLE]})
+
+    store: str = Field(description="Store id.")
+    state: Literal["all", "some", "none"] = Field(
+        description="Every unit, some of them or none has a version of the set."
+    )
+    units: int = Field(
+        description=(
+            "Units with a present version of the set's dataset (its default format),"
+            " year and campaigns."
+        )
+    )
+    of: int = Field(description="The set's units: its full and partial sheets.")
+    label: str = Field(
+        description="Text for a person, e.g. `downloaded 5/12`, `not downloaded`."
+    )
+
+    @classmethod
+    def of_badge(cls, badge: StoreBadge) -> Self:
+        """Return the model of a badge with its text."""
+        return cls(
+            store=badge.store,
+            state=badge.state,
+            units=badge.units,
+            of=badge.of,
+            label=_badge_text(badge),
+        )
+
+
+class AvailabilityVariantItem(BaseModel):
+    """One set of the source in each of its formats (ADR-017)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_VARIANT_EXAMPLE]})
+
+    horizontal: str = Field(description="Sheet system or horizontal CRS (`PL-1992`).")
+    resolution: str | None = Field(description="Resolution (`1m`); null for LAZ.")
+    vertical_crs: str = Field(description="Height system (`EVRF2007`).")
+    campaigns: list[str] = Field(description="The campaigns of the set.")
+    formats: list[str] = Field(
+        description="The set's formats (its badges), in the report's order."
+    )
+    default_format: str | None = Field(
+        description=(
+            "The format a download takes unless another is chosen: ASC, then"
+            " TIFF; null when the set has neither, so the plan asks for a choice."
+        )
+    )
+    size_bytes: int | None = Field(
+        description="Size of the default format's files; null when unknown."
+    )
+    label: str = Field(
+        description="The coverage label for a person, e.g. `partial · 58%`."
+    )
+    coverage: CoverageItem = Field(description="The coverage label as structure.")
+    local: StoreBadgeItem | None = Field(
+        description="The store badge; null without a store in the request."
+    )
+
+    @classmethod
+    def of(cls, variant: AvailabilityVariant) -> Self:
+        """Return the model of a variant with its texts."""
+        combination = variant.combination
+        return cls(
+            horizontal=combination.horizontal,
+            resolution=combination.resolution,
+            vertical_crs=combination.vertical_crs,
+            campaigns=list(combination.campaigns),
+            formats=list(variant.formats),
+            default_format=variant.default_format,
+            size_bytes=variant.size_bytes,
+            label=coverage_text(variant.label),
+            coverage=CoverageItem.of(variant.label),
+            local=None
+            if variant.local is None
+            else StoreBadgeItem.of_badge(variant.local),
+        )
+
+
+class AvailabilityRowItem(BaseModel):
+    """One year of one country: its best variant and the others (SPEC 6.3, 6.4)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_ROW_EXAMPLE]})
+
+    country: str = Field(description="Country code.")
+    year: int | None = Field(description="Year of the data; null for CZ.")
+    label: str = Field(
+        description="The label of the first variant, else `no data`, for a person."
+    )
+    coverage: CoverageItem = Field(description="The same label as structure.")
+    local: StoreBadgeItem | None = Field(description="The first variant's badge.")
+    other_variants: int = Field(
+        description="How many more variants the year has (the chip `+N variants`)."
+    )
+    variants: list[AvailabilityVariantItem] = Field(
+        description=(
+            "The year's variants with the fixed dimensions, best first: complete,"
+            " larger full share, fewer campaigns, finer resolution, the report's"
+            " order; empty for `no_data`."
+        )
+    )
+
+    @classmethod
+    def of(cls, row: AvailabilityRow) -> Self:
+        """Return the model of a row with its texts."""
+        return cls(
+            country=row.country,
+            year=row.year,
+            label=coverage_text(row.label),
+            coverage=CoverageItem.of(row.label),
+            local=None if row.local is None else StoreBadgeItem.of_badge(row.local),
+            other_variants=row.other_variants,
+            variants=[AvailabilityVariantItem.of(item) for item in row.variants],
+        )
+
+
+class VariantFilterItem(BaseModel):
+    """The dimensions the rows are fixed to; null: chosen per year by the ranking."""
+
+    horizontal: str | None = Field(description="Sheet system or horizontal CRS.")
+    resolution: str | None = Field(description="Resolution.")
+    vertical_crs: str | None = Field(description="Height system.")
+
+
 class AvailabilityInfo(BaseModel):
     """The last report of what the source has for an area and a product."""
 
@@ -420,11 +680,23 @@ class AvailabilityInfo(BaseModel):
     job_id: str | None = Field(
         description="The `availability` job that asked; it may be pruned since."
     )
+    store: str | None = Field(description="The store of the badges, if requested.")
+    variant: VariantFilterItem = Field(description="The dimensions of the request.")
+    rows: list[AvailabilityRowItem] = Field(
+        description="A row for each year of each country, in the report's order."
+    )
     report: AvailabilityReportItem = Field(description="The producer's report.")
 
     @classmethod
-    def of(cls, found: AreaAvailability) -> Self:
-        """Return the model of a kept report with its area."""
+    def of(
+        cls,
+        found: AreaAvailability,
+        rows: tuple[AvailabilityRow, ...],
+        *,
+        store: str | None,
+        fixed: VariantFilter,
+    ) -> Self:
+        """Return the model of a kept report with its area and its rows."""
         stored = found.stored
         return cls(
             area=AreaRef.of(found.area),
@@ -432,5 +704,54 @@ class AvailabilityInfo(BaseModel):
             product=stored.product,
             checked_at=stored.checked_at,
             job_id=stored.job_id,
+            store=store,
+            variant=VariantFilterItem(
+                horizontal=fixed.horizontal,
+                resolution=fixed.resolution,
+                vertical_crs=fixed.vertical_crs,
+            ),
+            rows=[AvailabilityRowItem.of(row) for row in rows],
             report=AvailabilityReportItem.of(stored.report),
         )
+
+
+def coverage_text(label: CoverageLabel) -> str:
+    """Return a coverage label for a person, in the language of the context.
+
+    "pełne", "pełne · 2 kampanie", "częściowe · 58% · 1 ark. niepełny" and
+    "brak danych" in Polish (SPEC 6.4); a partial label names its partial
+    sheets and its sheets without a file.
+    """
+    if label.kind == "no_data":
+        return message("availability.label_no_data")
+    if label.kind == "full":
+        return message("availability.label_full")
+    if label.kind == "full_campaigns":
+        count = label.campaigns
+        campaigns = message(f"availability.campaigns_{plural_form(count)}", count=count)
+        return message("availability.label_full_campaigns", campaigns=campaigns)
+    if label.percent is None:
+        text = message("availability.label_partial_unmeasured")
+    elif label.below_one:
+        text = message("availability.label_partial_below_one")
+    else:
+        text = message("availability.label_partial", percent=label.percent)
+    if count := label.partial_sheets:
+        part = message(f"availability.partial_sheets_{plural_form(count)}", count=count)
+        text = message("availability.label_part", label=text, part=part)
+    if count := label.missing_sheets:
+        part = message(f"availability.missing_sheets_{plural_form(count)}", count=count)
+        text = message("availability.label_part", label=text, part=part)
+    return text
+
+
+def other_variants_text(count: int) -> str:
+    """Return the chip of a year's other variants ("+1 wariant", "+2 warianty")."""
+    return message(f"availability.other_variants_{plural_form(count)}", count=count)
+
+
+def _badge_text(badge: StoreBadge) -> str:
+    """Return a store badge for a person ("pobrane", "pobrane 5/12", "niepobrane")."""
+    if badge.state == "some":
+        return message("availability.local_some", units=badge.units, of=badge.of)
+    return message(f"availability.local_{badge.state}")

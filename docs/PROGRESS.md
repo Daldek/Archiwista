@@ -63,19 +63,36 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    `tests/fixtures/make_store.py` when Kartograf ships it.
 3. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
    weekly `live.yml`.
-4. **v0.3 "Actions" (plan Part 3).** A1, A2 and A3 commit 1 are done (Status). Next: A3
-   commit 2: the store badge from the index (`pobrane`, `pobrane N/M`, `niepobrane` over
-   the units, `sheets_full` and `sheets_partial`, of the row's chosen variant in its
-   default format that have a version of that year and variant in the store; offline the
-   local coverage of `IndexQueries.local_coverage`), wired into `AvailabilityInfo` of both
-   routes and of `archiwista availability` (`rows` and the active variant as in the SPEC
-   9.3 example, the label texts rendered in the request's language with the Polish plural
-   forms of SPEC 6.4 in the message catalog). The rows are structure only until then
-   (`services/availability.py`, `rows`). Undecided: whether LAZ, the one format of the
-   point clouds, is a default format; ADR-017 names the raster formats ASC and GeoTIFF
-   only, so a LAZ variant has no default format and no size today. Kartograf's example of
-   `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`) is not its canonical
-   line, so the contract test compares calls, not text (a request to Kartograf).
+4. **v0.3 "Actions" (plan Part 3).** A1, A2 and A3 are done. A3 commit 1 is in Status.
+   *A3 commit 2 (reduced gate):* `AvailabilityInfo` of `GET`/`POST /availability` and of
+   `archiwista availability` has `store`, `variant` (the fixed `horizontal`,
+   `resolution`, `vertical_crs`) and `rows` (`AvailabilityRowItem`: `label` in the
+   request's language, `coverage`, `local`, `other_variants`, `variants` with `formats`,
+   `default_format`, `size_bytes`); `services/availability.py` `summary` adds the
+   `StoreBadge` (`all`, `some`, `none`; `units` of `of`) from `IndexQueries.held_units`
+   (present versions of the shown combination's dataset, its full and partial sheets, its
+   year and campaigns) and `known_store` refuses a store that is not configured (`404`,
+   before a job); `messages.plural_form` and the catalog entries `availability.label_*`,
+   `campaigns_*`, `partial_sheets_*`, `missing_sheets_*`, `other_variants_*`, `local_*`;
+   the CLI options `--store`, `--horizontal`, `--resolution`, `--vertical-crs` and a text
+   line per year. Tests: `tests/unit/test_availability_labels.py`,
+   `tests/unit/test_availability_badges.py`, `tests/integration/test_availability_rows_api.py`
+   (the extra member of the refusal table in `test_availability_api.py` is `segment` now:
+   `store` is a member). Open: the badge does not tell height systems apart (the plan's
+   new request: Kartograf names no store segment of a combination); offline without a
+   report the interface shows `GET /local-coverage` ("lokalnie 83% obszaru", A10);
+   whether LAZ, the one format of point clouds, is a default format (ADR-017 names ASC
+   and GeoTIFF only, so a LAZ variant has no default format and no size); "w innym
+   formacie" in the row details (A10). Next: A4, two commits: the job kind `check`
+   (`check_command`, kartograf-result/1) and `ActionAdapter.check(...) -> ActionPlan` in
+   `sources/types.py` (entries `current`, `newer`, `missing`, `unverifiable`,
+   `check_failed`; an unknown size is `None`, never 0; `root=` from the configured store
+   as validate does); `JobState` `partial` (protocol, supervisor, `_FINISHED_SQL`, the
+   jobs schema CHECK, `web/src/types.js`), `SCHEMA_VERSION` 9, a `JOB_RULES` line, a
+   worker runner, a stand-in check that records its kwargs; `POST /jobs` (SPEC 9.2) for
+   `check`, `download`, `project`. Kartograf's example of `project add` (`… soil hsg
+   --sheet N-34-130-D --depth 0-5cm`) is not its canonical line, so the contract test
+   compares calls, not text (a request to Kartograf).
 5. **The IMGWTools source (plan Part 2; branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c`; merged into `feature/kartograf-data-output`).**
    - *Done (local commits; ask git for the remote state).* I1 commit 1 `5e3fffc`; I1 commit 2 `796ee01` (gate 1246 passed,
      coverage 92.04%): the extra `archiwista[imgw]`, `sources/markers.py`, `adapter/imgw/`

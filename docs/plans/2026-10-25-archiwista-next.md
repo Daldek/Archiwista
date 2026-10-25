@@ -620,6 +620,7 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | KD-3 and KD-4: availability of images and of releases of unit products | A2, A10 |
 | Kartograf | KA-4: `file_footprint` for a `PlanItem` | A11 |
 | Kartograf | KB-7: `find_admin_units` | A15 |
+| Kartograf | the store segment of an availability combination (`AvailabilityCombination.segment`, or a function from a source key, a sheet system and a height system to it): the report names the height system as the source does (`EVRF2007`), a sidecar by its EPSG code, so the store badge of A3 cannot tell the versions of two height systems apart (interim: dataset, sheet, year and campaign) | A3, A10 |
 | Kartograf | KH-1 as `set_project_root(project_dir, *, root)` (the SPEC called it `set_project_output_dir`) | a later "change store" action (A13 explains) |
 | Kartograf | a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too) | M2, I1 (removes the copy) |
 | Kartograf | ~~a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`~~ **done** (Kartograf `45dedf4a`: `store_root()` returns `StoreRoot(root, source, name, marker_exists)` and reads no store; the adapter uses it, ADR-033) | M5 (removed the walk) |

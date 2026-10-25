@@ -1,4 +1,4 @@
-"""``archiwista availability``: what the source has for an area (plan 2026-10-25, A2).
+"""``archiwista availability``: what the source has for an area (plan 2026-10-25, A3).
 
 ``availability show OBSZAR --product PRODUKT [--producer ID]`` prints the last
 report of an area and a product from the index (``GET /availability``)
@@ -7,9 +7,11 @@ without the network. ``availability check OBSZAR --product PRODUKT
 report younger than seven days answers at once unless ``--force`` is given;
 otherwise the ``availability`` job runs in the foreground
 (``archiwista.jobs.foreground``) and the command prints the report it kept,
-as ``GET /availability`` returns it. Both call
-``archiwista.services.availability`` without HTTP, as the owner of the
-installation (``LOCAL_OWNER``); ``--json`` prints the route's model,
+as ``GET /availability`` returns it. Both print a row for each year with its
+coverage label; ``--store ID`` adds the store badges, and ``--horizontal``,
+``--resolution`` and ``--vertical-crs`` fix those dimensions of the variants.
+Both call ``archiwista.services.availability`` without HTTP, as the owner of
+the installation (``LOCAL_OWNER``); ``--json`` prints the route's model,
 ``AvailabilityInfo``. A check that does not succeed prints its ``JobDetail``
 and exits with the outcome (``11`` failed, ``130`` cancelled or
 interrupted); a refusal prints no model, its ``archiwista-error/1`` document
@@ -28,6 +30,8 @@ from archiwista.api.models_availability import (
     AvailabilityInfo,
     AvailabilityQuery,
     AvailabilityRequest,
+    AvailabilityVariantItem,
+    other_variants_text,
 )
 from archiwista.auth import LOCAL_OWNER
 from archiwista.commands import Commands, add_parser
@@ -48,7 +52,13 @@ from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
 from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.messages import label, message, with_detail
-from archiwista.services.availability import AreaAvailability, check, stored
+from archiwista.services.availability import (
+    AreaAvailability,
+    check,
+    known_store,
+    stored,
+    summary,
+)
 from archiwista.sources.registry import PluginRegistry
 
 COMMANDS = frozenset({"availability"})
@@ -112,10 +122,14 @@ def main(
     with ExitStack() as stack:
         try:
             queries = stack.enter_context(IndexQueries(paths.index_file))
+            config = ConfigStore(paths.config_file)
             jobs = None
             if isinstance(request, AvailabilityRequest):
-                settings = SettingsService(ConfigStore(paths.config_file), registry)
-                jobs = stack.enter_context(JobSupervisor(paths, settings))
+                service = SettingsService(config, registry)
+                settings = service.get()
+                jobs = stack.enter_context(JobSupervisor(paths, service))
+            else:
+                settings = config.load()
         except (
             SettingsValidationError,
             IndexUnsupportedError,
@@ -129,6 +143,7 @@ def main(
                 err,
             )
         try:
+            known_store(settings, request.store)
             if isinstance(request, AvailabilityRequest):
                 assert jobs is not None  # started for a check
                 record = _check(queries, registry, jobs, request, err)
@@ -140,15 +155,19 @@ def main(
                 product=request.product,
                 producer=request.producer,
             )
+            fixed = request.fixed()
+            rows = summary(
+                queries, found.stored.report, store=request.store, fixed=fixed
+            )
         except ArchiwistaError as error:
             return refuse(describe(error), err)
-    info = AvailabilityInfo.of(found)
+    info = AvailabilityInfo.of(found, rows, store=request.store, fixed=fixed)
     _print(args, out, info, _report_text(info))
     return 0
 
 
 def _request(parser: argparse.ArgumentParser) -> None:
-    """Add the area, ``--product`` and ``--producer`` of both actions."""
+    """Add the area, the product, the producer, the store and the fixed dimensions."""
     parser.add_argument(
         "area_id",
         metavar=message("metavar.area"),
@@ -166,6 +185,26 @@ def _request(parser: argparse.ArgumentParser) -> None:
         metavar=message("metavar.producer"),
         help=message("cli.availability_producer_help"),
     )
+    parser.add_argument(
+        "--store",
+        metavar=message("metavar.store"),
+        help=message("cli.availability_store_help"),
+    )
+    parser.add_argument(
+        "--horizontal",
+        metavar=message("metavar.horizontal"),
+        help=message("cli.availability_horizontal_help"),
+    )
+    parser.add_argument(
+        "--resolution",
+        metavar=message("metavar.resolution"),
+        help=message("cli.availability_resolution_help"),
+    )
+    parser.add_argument(
+        "--vertical-crs",
+        metavar=message("metavar.vertical_crs"),
+        help=message("cli.availability_vertical_crs_help"),
+    )
 
 
 def _validated(args: argparse.Namespace) -> AvailabilityRequest | AvailabilityQuery:
@@ -180,6 +219,10 @@ def _validated(args: argparse.Namespace) -> AvailabilityRequest | AvailabilityQu
         "area_id": args.area_id,
         "product": args.product,
         "producer": args.producer,
+        "store": args.store,
+        "horizontal": args.horizontal,
+        "resolution": args.resolution,
+        "vertical_crs": args.vertical_crs,
     }
     if args.action == "check":
         return AvailabilityRequest.model_validate({**given, "force": args.force})
@@ -262,8 +305,11 @@ def _print(args: argparse.Namespace, out: TextIO, model: BaseModel, text: str) -
 
 
 def _report_text(info: AvailabilityInfo) -> str:
-    """Return a report for a person: when it was checked, then each combination."""
-    report = info.report
+    """Return a report for a person: when it was checked, then a row per year.
+
+    A row gives its year and country, the coverage label, the variant it shows
+    with the chip of the others and, with a store, the store badge.
+    """
     lines = [
         message(
             "cli.availability_report",
@@ -273,30 +319,37 @@ def _report_text(info: AvailabilityInfo) -> str:
             checked_at=info.checked_at.astimezone().strftime("%Y-%m-%d %H:%M"),
         )
     ]
-    for item in report.combinations:
-        variant = (
-            item.year,
-            item.horizontal,
-            item.resolution,
-            item.vertical_crs,
-            item.format,
+    for row in info.rows:
+        year = message("cli.availability_no_year") if row.year is None else row.year
+        line = message(
+            "cli.availability_row", year=year, country=row.country, label=row.label
         )
-        lines.append(
-            message(
-                "cli.availability_combination",
-                variant=" · ".join(str(part) for part in variant if part is not None),
-                state=label(
-                    "cli.availability_state", "complete" if item.complete else "partial"
-                ),
-                full=len(item.sheets_full),
-                partial=len(item.sheets_partial),
-                missing=len(item.sheets_missing),
+        if row.variants:
+            shown = _variant_text(row.variants[0])
+            line = message("cli.availability_row_variant", row=line, variant=shown)
+        if row.other_variants:
+            more = other_variants_text(row.other_variants)
+            line = message("cli.availability_row_more", row=line, more=more)
+        if row.local is not None:
+            line = message(
+                "cli.availability_row_local", row=line, local=row.local.label
             )
-        )
-    if not report.combinations:
+        lines.append(line)
+    if not info.rows:
         lines.append(message("cli.availability_nothing"))
     lines.extend(
         message("cli.availability_not_checked", part=item.part, detail=item.detail)
-        for item in report.failed
+        for item in info.report.failed
     )
     return "\n".join(lines)
+
+
+def _variant_text(variant: AvailabilityVariantItem) -> str:
+    """Return a variant's dimensions and its formats (``PL-2000 · 1m · ASC``)."""
+    parts = (
+        variant.horizontal,
+        variant.resolution,
+        variant.vertical_crs,
+        ", ".join(variant.formats),
+    )
+    return " · ".join(part for part in parts if part)

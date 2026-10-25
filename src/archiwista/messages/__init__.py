@@ -28,7 +28,9 @@ and one keyword per placeholder; ``tests/unit/test_messages.py`` checks every
 call against its catalog entry (the key exists and the keywords are the
 placeholders), both languages of every entry and the absence of Polish
 literals outside this package. A key that is chosen at run time is built as
-``f"<area>.<prefix>_{value}"`` (`label`, `lookup`).
+``f"<area>.<prefix>_{value}"`` (`label`, `lookup`). A counted word has an
+entry per form, ``<name>_one``, ``<name>_few`` and ``<name>_many``, and
+`plural_form` chooses one for a count by the Polish rule.
 
 Texts leave the process or the request in two ways that keep them
 translatable: `localize` and `localize_json` render a `Message`, or every one
@@ -68,6 +70,7 @@ __all__ = [
     "lookup",
     "message",
     "placeholders",
+    "plural_form",
     "valid_key",
     "with_detail",
 ]
@@ -307,6 +310,25 @@ def label(prefix: str, value: str, /) -> str:
         The value; it is the name itself when no entry has one.
     """
     return lookup(f"{prefix}_{value}", value)
+
+
+def plural_form(count: int, /) -> Literal["one", "few", "many"]:
+    """Return the form of a counted word for ``count`` by the Polish rule.
+
+    ``one`` for 1, ``few`` for 2-4 without 12-14 (also 22-24), ``many`` for
+    the rest ("1 kampania", "2 kampanie", "5 kampanii"). An English entry
+    writes its singular in ``<name>_one`` and its plural in the other two.
+
+    Parameters
+    ----------
+    count : int
+        How many there are.
+    """
+    if count == 1:
+        return "one"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "few"
+    return "many"
 
 
 def join(texts: Sequence[str]) -> str:

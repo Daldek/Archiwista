@@ -1381,6 +1381,22 @@ MESSAGES = {
         "Ask the source even when a report younger than seven days is kept.",
         "Zapytaj źródło także wtedy, gdy jest raport młodszy niż siedem dni.",
     ),
+    "availability_store_help": Text(
+        "Configured store whose versions the badge of each variant counts.",
+        "Skonfigurowany magazyn, którego wersje liczy plakietka każdego wariantu.",
+    ),
+    "availability_horizontal_help": Text(
+        "Only variants of this sheet system or horizontal CRS (e.g. PL-1992).",
+        "Tylko warianty tego układu arkuszy lub układu poziomego (np. PL-1992).",
+    ),
+    "availability_resolution_help": Text(
+        "Only variants of this resolution (e.g. 1m).",
+        "Tylko warianty tej rozdzielczości (np. 1m).",
+    ),
+    "availability_vertical_crs_help": Text(
+        "Only variants of this height system (e.g. EVRF2007).",
+        "Tylko warianty tego układu wysokości (np. EVRF2007).",
+    ),
     "availability_failed": Text(
         "Cannot check the availability",
         "Nie można sprawdzić dostępności",
@@ -1415,23 +1431,25 @@ MESSAGES = {
             " {checked_at}:"
         ),
     ),
-    "availability_combination": Text(
-        (
-            "  {variant}: {state}; full sheets: {full}, partial: {partial}, without a"
-            " file: {missing}"
-        ),
-        (
-            "  {variant}: {state}; arkuszy pełnych {full}, niepełnych {partial}, bez"
-            " pliku {missing}"
-        ),
+    "availability_row": Text(
+        "  {year} {country}: {label}",
+        "  {year} {country}: {label}",
     ),
-    "availability_state_complete": Text(
-        "complete",
-        "pełne",
+    "availability_row_variant": Text(
+        "{row}; variant {variant}",
+        "{row}; wariant {variant}",
     ),
-    "availability_state_partial": Text(
-        "partial",
-        "częściowe",
+    "availability_row_more": Text(
+        "{row} ({more})",
+        "{row} ({more})",
+    ),
+    "availability_row_local": Text(
+        "{row}; {local}",
+        "{row}; {local}",
+    ),
+    "availability_no_year": Text(
+        "no year",
+        "bez roku",
     ),
     "availability_nothing": Text(
         "  The source has nothing for the area.",

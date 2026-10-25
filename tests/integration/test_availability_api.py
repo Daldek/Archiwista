@@ -186,7 +186,7 @@ def test_offline_mode_refuses_a_check_of_the_source_and_records_nothing(
             {"reason": "source_unavailable"},
         ),
         ({**PARAMS, "product": ""}, 400, "validation_error", {}),
-        ({**PARAMS, "store": "zespol"}, 400, "validation_error", {}),
+        ({**PARAMS, "segment": "nmt/pl_1992_1m_evrf2007"}, 400, "validation_error", {}),
     ],
 )
 def test_a_request_the_check_cannot_take_is_refused_before_a_job(

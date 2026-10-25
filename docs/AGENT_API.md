@@ -34,7 +34,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
-| what the source has for an area and a product: the last report kept, a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `GET /availability`, `POST /availability` |
+| what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -406,11 +406,27 @@ recorded. `archiwista availability check` runs the job in the foreground and
 prints the `AvailabilityInfo` it kept (`--json`); a check that does not succeed
 prints its `JobDetail` and exits `11` or `130`.
 
+Every `AvailabilityInfo` also reads the report for a person (SPEC 6.3, 6.4):
+`rows`, one per year of each country in the report's order, each with the
+`label` of its best variant (`complete`, `complete · 2 campaigns`,
+`partial · 58% · 1 partial sheet`, `no data`; Polish with `Accept-Language: pl`),
+the same as structure in `coverage` (`kind`, `campaigns`, `full_share`,
+`percent` rounded down and at most 99 when partial, `below_one`,
+`partial_sheets`, `missing_sheets`), `other_variants` and `variants`, best
+first (complete, larger full share, fewer campaigns, finer resolution, the
+report's order; the formats of one set are one variant with its
+`default_format`, ASC then TIFF, and its size). `store` (a configured store,
+else `404`) gives every variant its store badge `local` (`state` `all`, `some`
+or `none`, `units` of `of`, `label` `downloaded 5/12`); `horizontal`,
+`resolution` and `vertical_crs` fix those dimensions, and a year without such
+a variant is `no_data`. The command takes them as `--store`, `--horizontal`,
+`--resolution` and `--vertical-crs`, and its text prints a line per year.
+
 ```sh
 curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   -d "{\"area_id\": \"$AREA\", \"product\": \"nmt\"}" "$BASE/availability"
 archiwista availability check "$AREA" --product=nmt --json
-archiwista availability show "$AREA" --product=nmt --json
+archiwista availability show "$AREA" --product=nmt --store=zespol --json
 ```
 
 ## 7. Errors
@@ -520,7 +536,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
-| `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`) |
+| `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
 
 An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
 When a job that writes the store's index (a scan or outlines) runs already, the
