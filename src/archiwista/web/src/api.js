@@ -87,7 +87,13 @@ const CHANNEL = "archiwista-session";
 const HANDOFF_MS = 300;
 // Pause before an event stream that broke off resumes.
 const RESUME_MS = 1000;
-const FINAL_JOB_STATES = new Set(["succeeded", "failed", "interrupted", "cancelled"]);
+const FINAL_JOB_STATES = new Set([
+  "succeeded",
+  "partial",
+  "failed",
+  "interrupted",
+  "cancelled",
+]);
 const JSON_ANSWERS = "application/json, application/problem+json";
 const IMAGE_ANSWERS = "image/png, application/problem+json";
 

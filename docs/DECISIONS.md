@@ -59,6 +59,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 
 ---
 

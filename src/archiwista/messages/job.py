@@ -27,6 +27,10 @@ MESSAGES = {
         "completed",
         "zakończone",
     ),
+    "state_partial": Text(
+        "partly completed",
+        "zakończone częściowo",
+    ),
     "state_failed": Text(
         "error",
         "błąd",
@@ -196,6 +200,14 @@ MESSAGES = {
     "kind_availability": Text(
         "availability at the source",
         "dostępność u źródła",
+    ),
+    "kind_check": Text(
+        "plan of a download",
+        "plan pobrania",
+    ),
+    "check_failed": Text(
+        "The source could be asked about none of the {count} positions of the plan.",
+        "Źródła nie udało się zapytać o żadną z {count} pozycji planu.",
     ),
     "conflict_snapshot": Text(
         (

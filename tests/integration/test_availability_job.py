@@ -21,7 +21,7 @@ import pytest
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths
 from archiwista.errors import OfflineModeError
-from archiwista.index import SCHEMA_VERSION, IndexQueries, IndexWriter, initialize
+from archiwista.index import IndexQueries, IndexWriter, initialize
 from archiwista.jobs import JobSupervisor, worker
 from archiwista.messages import message
 from tests.fixtures.availability import (
@@ -220,7 +220,7 @@ def test_an_index_of_the_previous_schema_is_rebuilt_with_the_reports(
     """Version 7 had no ``availability``: the index is rebuilt, not migrated."""
     with closing(sqlite3.connect(paths.index_file)) as connection:
         connection.execute("DROP TABLE availability")
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+        connection.execute("PRAGMA user_version = 7")
         connection.commit()
 
     rebuilt = initialize(paths.index_file)
@@ -232,6 +232,6 @@ def test_an_index_of_the_previous_schema_is_rebuilt_with_the_reports(
     with IndexQueries(paths.index_file) as queries:
         stored = queries.availability(AREA.id, "dem", producer="standin")
 
-    assert (SCHEMA_VERSION, rebuilt) == (8, "rebuilt")
+    assert rebuilt == "rebuilt"
     assert stored is not None
     assert len(stored.report.combinations) == 3

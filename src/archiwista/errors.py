@@ -377,6 +377,18 @@ class CommandRequestError(ArchiwistaError):
     default_code = "validation_error"
 
 
+class CheckFailedError(ArchiwistaError):
+    """The source could be asked about none of the positions of a plan.
+
+    ``source_unavailable`` (reason ``check_failed``), the code the producers
+    give a position they could not check; a plan with at least one position
+    checked is a job that ended ``partial`` instead.
+    """
+
+    default_code = "source_unavailable"
+    default_reason = "check_failed"
+
+
 class StateError(ArchiwistaError):
     """The state database cannot be used or restored.
 

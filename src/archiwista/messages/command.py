@@ -7,6 +7,10 @@ MESSAGES = {
         "The source {producer} offers no commands.",
         "Źródło {producer} nie udostępnia poleceń.",
     ),
+    "no_plan": Text(
+        'The source {producer} gives no plan of "{command}" in a store.',
+        "Źródło {producer} nie podaje planu polecenia „{command}” w magazynie.",
+    ),
     "path_option": Text(
         (
             "Archiwista passes no file path of a request to a producer, which would"

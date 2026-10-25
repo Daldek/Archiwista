@@ -16,6 +16,9 @@ from archiwista.sources.protocol import (
     SourceFactory,
 )
 from archiwista.sources.types import (
+    PLAN_STATUSES,
+    PLAN_TODO,
+    ActionPlan,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -37,6 +40,8 @@ from archiwista.sources.types import (
     LocationKind,
     OptionType,
     PathRole,
+    PlanEntry,
+    PlanStatus,
     ProjectInfo,
     ProjectPin,
     ProjectTask,
@@ -52,7 +57,10 @@ from archiwista.sources.types import (
 )
 
 __all__ = [
+    "PLAN_STATUSES",
+    "PLAN_TODO",
     "ActionAdapter",
+    "ActionPlan",
     "AvailabilityArea",
     "AvailabilityCampaign",
     "AvailabilityCombination",
@@ -81,6 +89,8 @@ __all__ = [
     "OptionType",
     "PartitionedAdapter",
     "PathRole",
+    "PlanEntry",
+    "PlanStatus",
     "ProjectInfo",
     "ProjectPin",
     "ProjectTask",

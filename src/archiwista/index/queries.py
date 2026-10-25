@@ -97,6 +97,7 @@ from archiwista.index.types import (
     SlotUnit,
     SnapshotRecord,
     StoredAvailability,
+    StoredPlan,
     StoreFreshness,
     StoreIndexState,
     StoreUsage,
@@ -109,7 +110,12 @@ from archiwista.index.types import (
 from archiwista.messages import message
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
-from archiwista.sources import AvailabilityReport, GeoJSONGeometry, SourceEntry
+from archiwista.sources import (
+    ActionPlan,
+    AvailabilityReport,
+    GeoJSONGeometry,
+    SourceEntry,
+)
 
 _IDS = "SELECT value FROM json_each(?)"
 _CURSOR_VERSION = 1
@@ -1388,6 +1394,21 @@ class IndexQueries:
             checked_at=datetime.fromisoformat(row["checked_at"]),
             job_id=row["job_id"],
             report=AvailabilityReport.from_json(json.loads(row["report"])),
+        )
+
+    def plan(self, job_id: str) -> StoredPlan | None:
+        """Return the plan of a ``check`` job, ``None`` without one."""
+        with self._read() as connection:
+            row = connection.execute(
+                "SELECT store, line, plan FROM plans WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return StoredPlan(
+            job_id=job_id,
+            store=row["store"],
+            line=row["line"],
+            plan=ActionPlan.from_json(json.loads(row["plan"])),
         )
 
     def held_units(

@@ -25,7 +25,13 @@ import {
 } from "../ui.js";
 
 /** States after which a job changes no more. */
-export const FINAL_STATES = new Set(["succeeded", "failed", "interrupted", "cancelled"]);
+export const FINAL_STATES = new Set([
+  "succeeded",
+  "partial",
+  "failed",
+  "interrupted",
+  "cancelled",
+]);
 const SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
 const SHORT_SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
 const COPIED_MS = 1500;

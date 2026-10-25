@@ -165,6 +165,24 @@ command-line interface may change.
   danych". The command's text prints a line per year. A store that is not configured is
   `404`. The badge does not tell height systems apart (Kartograf names no store segment
   of a combination; a request in the plan).
+- The plan of a download, as a background job (ADR-036): the job `check` asks the
+  producer what a run of a command of its catalog would do in a configured store
+  (Kartograf's `check_command` with `root=` the store's directory, never its default
+  root, and Archiwista's metadata cache): each position with its status (`current`,
+  `newer`, `missing`, `unverifiable`, `check_failed`), the labels of the local and of the
+  available version, its path below the store root and its size when the producer tells
+  it, else `null`, never 0 (Kartograf tells none yet, KC-3). The plan is kept in the index
+  with its job (`SCHEMA_VERSION` 9: an existing index is rebuilt when it is opened), and
+  the job's result has the counts, the size of the positions to download with
+  `size_complete`, the producer's command line of the run (`kartograf … --root …`) and the
+  store. It needs the network: offline mode refuses it before a job exists (`409
+  conflict`, `offline_mode`). (SPEC 5.6, 6.5, 12.2 KB-5, ADR-036)
+- A job may end `partial`: it did part of its work, and its `result` names what failed (a
+  plan some of whose positions the source could not tell about: `result.failed`). It is a
+  final state with a result and no error; a command following such a job exits 10. A plan
+  with none of its positions checked fails the job (`source_unavailable`, reason
+  `check_failed`). A client that lists the final states of a job must add `partial`.
+  (ERR §1, ADR-036)
 
 ### Changed
 

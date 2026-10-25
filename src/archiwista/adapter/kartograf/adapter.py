@@ -46,6 +46,7 @@ from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    ActionPlan,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -510,6 +511,27 @@ class KartografAdapter:
             countries=countries,
             cache_dir=self._cache_dir,
             force=force,
+            on_notice=on_notice,
+        )
+
+    def check(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionPlan:
+        """Plan a run in the store at ``root`` (``check_command``, ``root=``).
+
+        With Archiwista's own metadata cache in ``cache_dir``, never
+        Kartograf's default one (D5).
+        """
+        return actions.check(
+            command,
+            options,
+            root=root,
+            cache_dir=self._cache_dir,
             on_notice=on_notice,
         )
 

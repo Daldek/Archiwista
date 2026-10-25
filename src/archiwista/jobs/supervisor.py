@@ -8,9 +8,11 @@ process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
 reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
 (SSE, SPEC 9.2): ``progress``, ``notice`` and ``state``. A job is
-``queued``, then ``running``, then ``succeeded``, ``failed``, ``interrupted``
-or ``cancelled``; one that did not succeed has an ``error`` (``JobError``: a
-registry ``code``, ``detail``, ``details`` with the ``reason``).
+``queued``, then ``running``, then ``succeeded``, ``partial`` (part of its
+units failed; its summary names them), ``failed``, ``interrupted`` or
+``cancelled``; one that ended without a summary has an ``error``
+(``JobError``: a registry ``code``, ``detail``, ``details`` with the
+``reason``).
 
 Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
 whether it works on a configured store, needs the network (refused in
@@ -66,7 +68,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Any, Literal, Self, cast
+from typing import IO, Any, Literal, Self, cast, get_args
 
 from archiwista.auth import ALL_PROJECTS, Principal, PrincipalKind, ProjectVisibility
 from archiwista.config import AppPaths, AppSettings, SettingsService
@@ -108,25 +110,21 @@ else:
 logger = logging.getLogger(__name__)
 
 type JobState = Literal[
-    "queued", "running", "succeeded", "failed", "interrupted", "cancelled"
+    "queued", "running", "succeeded", "partial", "failed", "interrupted", "cancelled"
 ]
 type EventType = Literal["progress", "notice", "state"]
 
-JOB_STATES: tuple[JobState, ...] = (
-    "queued",
-    "running",
-    "succeeded",
-    "failed",
-    "interrupted",
-    "cancelled",
-)
+JOB_STATES: tuple[JobState, ...] = get_args(JobState.__value__)
 ACTIVE_STATES: tuple[JobState, ...] = ("queued", "running")
 FINISHED_STATES: tuple[JobState, ...] = (
     "succeeded",
+    "partial",
     "failed",
     "interrupted",
     "cancelled",
 )
+# States of a job that ended with its summary (``result``).
+SUMMARY_STATES: tuple[JobState, ...] = ("succeeded", "partial")
 # Network jobs (``JobRule.network``) running at once.
 MAX_NETWORK_JOBS = 2
 # Refs of one ``preview`` job, also once others joined it.
@@ -151,7 +149,7 @@ WORKER_COMMAND: tuple[str, ...] = (
 SCAN_MODES: tuple[str, ...] = ("incremental", "full")
 
 _ACTIVE_SQL = "('queued', 'running')"
-_FINISHED_SQL = "('succeeded', 'failed', 'interrupted', 'cancelled')"
+_FINISHED_SQL = "('succeeded', 'partial', 'failed', 'interrupted', 'cancelled')"
 _JOB_COLUMNS = (
     "id, kind, state, actor, actor_kind, session, store, params, created_at,"
     " started_at, finished_at, summary, error"
@@ -188,8 +186,10 @@ class JobRecord:
         Opaque job id.
     kind : JobKind
         What the job does, one of ``JOB_KINDS``.
-    state : {"queued", "running", "succeeded", "failed", "interrupted", "cancelled"}
-        Where the job is in its life.
+    state : JobState
+        Where the job is in its life: ``queued``, ``running``, ``succeeded``,
+        ``partial`` (part of its units failed), ``failed``, ``interrupted`` or
+        ``cancelled``.
     actor : str
         Who asked for it (``Principal.id``; ``local`` in local mode).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}
@@ -207,13 +207,14 @@ class JobRecord:
         ``slot``; ``preview``: ``refs``, their ``contents`` and ``force``,
         with the refs of the requests that joined it; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id``, ``note``;
-        ``availability``: ``area_id``, ``producer``, ``product``, ``force``).
+        ``availability``: ``area_id``, ``producer``, ``product``, ``force``;
+        ``check``: ``producer``, ``command``, ``options``).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
         Data of its last ``progress`` event (``current``, ``total``…).
     result : dict or None
-        Summary of a job that succeeded.
+        Summary of a job that succeeded or ended ``partial``.
     error : JobError or None
         Why a job did not succeed (a registry code and the reason).
     """
@@ -424,6 +425,7 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "own_scan": JobRule(store=False, exclusive=True, join=_OWN_SCAN_JOIN),
     "snapshot": JobRule(store=False, conflict=_SNAPSHOT_CONFLICT),
     "availability": JobRule(store=False, network=True, join=_AVAILABILITY_JOIN),
+    "check": JobRule(store=True, network=True),
 }
 
 
@@ -458,6 +460,7 @@ class _Run:
     log: IO[bytes]
     seq: int
     result: JsonObject | None = None
+    partial: bool = False
     error: JsonObject | None = None
     cancel: bool = False
     stop: bool = False
@@ -648,8 +651,8 @@ class JobSupervisor:
             What to run, one of ``JOB_KINDS``.
         store : str or None, optional
             Configured store id: required by a kind working on a store
-            (``scan``, ``footprints``, ``link_check``), refused by one
-            working on none (``preview``, ``own_scan``, ``snapshot``,
+            (``scan``, ``footprints``, ``link_check``, ``check``), refused by
+            one working on none (``preview``, ``own_scan``, ``snapshot``,
             ``availability``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
@@ -663,7 +666,9 @@ class JobSupervisor:
             hex characters) and ``note`` (at most 2000 characters, ``""`` by
             default); ``availability``: ``area_id``, ``producer`` and
             ``product`` (non-empty texts) and ``force`` (ask the source
-            again, ``False`` by default).
+            again, ``False`` by default); ``check``: ``producer`` and
+            ``command`` (non-empty texts) and ``options`` (a JSON object, the
+            call's options; ``{}`` by default).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -1195,8 +1200,9 @@ class JobSupervisor:
             self._finish(run, run.process.wait())
 
     def _receive(self, run: _Run, message: WorkerMessage) -> None:
-        if message.type == "result":
+        if message.type == "result" or message.type == "partial":
             run.result = message.data
+            run.partial = message.type == "partial"
             return
         if message.type == "error":
             run.error = message.data
@@ -1220,7 +1226,7 @@ class JobSupervisor:
                 if run.killer is not None:
                     run.killer.cancel()
                 data: JsonObject = {"state": state}
-                if run.result is not None and state == "succeeded":
+                if run.result is not None and state in SUMMARY_STATES:
                     data["result"] = run.result
                 if error is not None:
                     data["error"] = error.to_json()
@@ -1233,7 +1239,7 @@ class JobSupervisor:
                         (
                             state,
                             _iso(now),
-                            None if state != "succeeded" else _json(run.result),
+                            _json(run.result) if state in SUMMARY_STATES else None,
                             None if error is None else _json(data["error"]),
                             run.job_id,
                         ),
@@ -1481,6 +1487,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return {"slot": slot}
     if kind == "availability":
         return _availability_params(params)
+    if kind == "check":
+        return _check_params(params)
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
@@ -1497,6 +1505,19 @@ def _availability_params(params: Mapping[str, object]) -> JsonObject:
     ):
         raise ValueError(f"invalid availability parameters {dict(params)!r}"[:300])
     return {**{name: params[name] for name in names}, "force": force}
+
+
+def _check_params(params: Mapping[str, object]) -> JsonObject:
+    """Check a ``check`` job's producer, command and the call's options."""
+    names = ("producer", "command")
+    options = params.get("options", {})
+    if (
+        set(params) - {*names, "options"}
+        or not all(isinstance(params.get(name), str) and params[name] for name in names)
+        or not isinstance(options, Mapping)
+    ):
+        raise ValueError(f"invalid check parameters {dict(params)!r}"[:300])
+    return {**{name: params[name] for name in names}, "options": dict(options)}
 
 
 def _snapshot_params(params: Mapping[str, object]) -> JsonObject:
@@ -1553,7 +1574,7 @@ def _interrupted(detail: str) -> JobError:
 def _outcome(run: _Run, status: int, log: Path) -> tuple[JobState, JobError | None]:
     """Return the final state of a job whose worker ended with ``status``."""
     if run.result is not None:
-        return "succeeded", None
+        return ("partial" if run.partial else "succeeded"), None
     if run.cancel:
         return "cancelled", JobError(CODE_CANCELLED, message("job.cancelled"))
     if run.stop:

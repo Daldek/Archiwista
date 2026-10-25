@@ -131,7 +131,7 @@ def validate_command(
                 hint=message("command.path_option_hint"),
                 details={"option": option.name},
             )
-    root = _store_root(settings, store, call) if info.store else None
+    root = store_root(settings, store, call) if info.store else None
     checked = adapter.validate(call.command, call.options, root=root)
     return CommandCall(call.producer, call.command, checked)
 
@@ -180,8 +180,17 @@ def _command(adapter: ActionAdapter, call: CommandCall) -> CommandInfo:
     )
 
 
-def _store_root(settings: AppSettings, store: str | None, call: CommandCall) -> Path:
-    """Return the producer directory of the configured store a call names."""
+def store_root(settings: AppSettings, store: str | None, call: CommandCall) -> Path:
+    """Return the producer directory of the configured store a call names.
+
+    Raises
+    ------
+    CommandRequestError
+        ``store`` is ``None`` (reason ``store_required``) or has no directory
+        of the call's producer (``store_without_producer``).
+    NotFoundError
+        ``store`` is not configured.
+    """
     if store is None:
         raise CommandRequestError(
             message("command.store_required", command=call.command),

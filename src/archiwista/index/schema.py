@@ -35,6 +35,11 @@ Version 8 (v0.3, plan of 2026-10-25 A2): ``availability``, the last report of
 the availability at the source of each area, producer and product (the
 producer-neutral ``AvailabilityReport`` as JSON, with the time the source was
 asked and the job that asked it).
+
+Version 9 (v0.3, A4): a job may end ``partial``, and ``plans`` keeps the plan
+of each ``check`` job (the producer-neutral ``ActionPlan`` as JSON, with the
+store it is of and the producer's command line of the run it plans); a plan
+goes with its job.
 """
 
 import sqlite3
@@ -46,7 +51,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -309,7 +314,8 @@ CREATE TABLE jobs (
     params TEXT NOT NULL DEFAULT '{}',
     state TEXT NOT NULL CHECK (
         state IN (
-            'queued', 'running', 'succeeded', 'failed', 'interrupted', 'cancelled'
+            'queued', 'running', 'succeeded', 'partial', 'failed', 'interrupted',
+            'cancelled'
         )
     ),
     created_at TEXT NOT NULL,
@@ -331,6 +337,14 @@ CREATE TABLE job_events (
     data TEXT NOT NULL DEFAULT '{}',
     at TEXT NOT NULL,
     PRIMARY KEY (job_id, seq)
+) WITHOUT ROWID;
+
+-- The plan of a ``check`` job: what a run of its command would do in a store.
+CREATE TABLE plans (
+    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    store TEXT NOT NULL,
+    line TEXT NOT NULL,
+    plan TEXT NOT NULL
 ) WITHOUT ROWID;
 
 -- One-time session tokens (SHA-256 only) with who minted each (JSON: id and

@@ -16,6 +16,7 @@ from typing import Literal
 from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
+    ActionPlan,
     AvailabilityReport,
     CoordinateTransformer,
     GeoJSONGeometry,
@@ -649,6 +650,20 @@ class StoredAvailability:
     checked_at: datetime
     job_id: str | None
     report: AvailabilityReport
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPlan:
+    """The plan a ``check`` job made, kept as long as the job (plan of 2026-10-25, A4).
+
+    ``store`` is the configured store the plan is of and ``line`` the
+    producer's command line of the run it plans, with the store's root.
+    """
+
+    job_id: str
+    store: str
+    line: str
+    plan: ActionPlan
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,10 +7,12 @@ as IMGWTools does; the adapter keeps the root out of the producer-neutral
 options, in ``CommandCall.run["root"]`` and in the ``root`` of ``validate``,
 as the Kartograf adapter does with a producer that takes it by name beside
 the options. Its availability takes the area, its countries and ``refresh``
-among the options too. It reads no store: its stores are empty directories.
+among the options too, and so does its plan of a call the store root. It reads
+no store: its stores are empty directories.
 """
 
 from collections.abc import Callable, Iterator, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
 
@@ -19,6 +21,7 @@ import standin_producer  # type: ignore[import-not-found]
 from archiwista.errors import ProducerError
 from archiwista.messages import current_language
 from archiwista.sources import (
+    ActionPlan,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -31,6 +34,8 @@ from archiwista.sources import (
     GeoJSONGeometry,
     OptionType,
     PathRole,
+    PlanEntry,
+    PlanStatus,
     ProjectInfo,
     ScanScope,
     SourceAdapter,
@@ -162,6 +167,37 @@ class StandinAdapter:
             raise _refusal(error) from error
         return AvailabilityReport.from_json({**document, "producer": PRODUCER})
 
+    def check(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionPlan:
+        """Plan a call of the fake source; the store root is ``options["root"]``."""
+
+        def notice(level: Literal["info", "warning"], code: str, text: str) -> None:
+            if on_notice is not None:
+                on_notice(AvailabilityNotice(level, code, text))
+
+        try:
+            document = standin_producer.check_command(
+                command, options={**options, ROOT: str(root)}, on_notice=notice
+            )
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        return ActionPlan(
+            producer=PRODUCER,
+            command=command,
+            schema=str(document["schema"]),
+            root=str(document["root"]),
+            checked_at=datetime.fromisoformat(str(document["checked_at"])),
+            entries=tuple(_plan_entry(item) for item in document["items"]),
+            notices=tuple(AvailabilityNotice(**item) for item in document["notices"]),
+            document=document,
+        )
+
 
 def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:
     """Return the producer-neutral description of one command."""
@@ -199,6 +235,20 @@ def _works_on_store(spec: object) -> bool:
     """Whether a command takes the store root among its options."""
     options = cast(list[dict[str, object]], cast(dict[str, object], spec)["options"])
     return any(option.get("path_role") == ROOT for option in options)
+
+
+def _plan_entry(item: dict[str, object]) -> PlanEntry:
+    """Return the producer-neutral position of one item of the fake plan."""
+    size = item["bytes"]
+    return PlanEntry(
+        path=str(item["file"]),
+        unit=str(item["station"]),
+        status=cast(PlanStatus, item["status"]),
+        local_label=cast(str | None, item["local"]),
+        available_label=cast(str | None, item["source"]),
+        size_bytes=None if size is None else int(cast(int, size)),
+        error=cast(str | None, item.get("error")),
+    )
 
 
 def _refusal(error: Exception) -> ProducerError:

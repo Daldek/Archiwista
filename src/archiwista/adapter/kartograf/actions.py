@@ -16,7 +16,9 @@ this uses the network.
 polygon in the CRS Kartograf measures the area's first country in, with the
 country (``auto`` for both), and the metadata cache is Archiwista's own,
 ``metadata.db`` in the adapter's cache directory: never ``cache=True``, which
-would be Kartograf's default cache (D5).
+would be Kartograf's default cache (D5). ``check_command`` plans a run in the
+configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
+cache, its ``kartograf-plan/1`` read as the producer-neutral ``ActionPlan``.
 """
 
 import inspect
@@ -30,6 +32,8 @@ from kartograf import (
     BBox,
     KartografError,
     MetadataCache,
+    PlanItem,
+    UpdatePlan,
     check_availability,
     check_command,
     command_schema,
@@ -44,9 +48,10 @@ from kartograf import (
 from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
-from archiwista.errors import ProducerError
-from archiwista.messages import current_language
+from archiwista.errors import ProducerError, UnsupportedError
+from archiwista.messages import current_language, message
 from archiwista.sources import (
+    ActionPlan,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -62,6 +67,7 @@ from archiwista.sources import (
     GeoJSONGeometry,
     OptionType,
     PathRole,
+    PlanEntry,
 )
 
 # The names a call gives beside its options: the keyword arguments of
@@ -238,6 +244,63 @@ def availability(
     return _report(report)
 
 
+def check(
+    command: str,
+    options: Mapping[str, object],
+    *,
+    root: Path,
+    cache_dir: Path,
+    on_notice: Callable[[AvailabilityNotice], None] | None,
+) -> ActionPlan:
+    """Plan a run of a command in the store at ``root`` (``check_command``).
+
+    With Archiwista's own metadata cache (``METADATA_CACHE_FILE`` in
+    ``cache_dir``), never ``cache=True``. A root a run would refuse as a
+    conflict (``nested_store``, ``not_empty``) is the one position of
+    Kartograf's plan, its reason in ``conflict``. Kartograf's plan names no size
+    of a position (KC-3), so every ``size_bytes`` is ``None``.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused the call: an unknown command or option, a command
+        without a check (``details.kartograf.reason`` ``no_check``), a root
+        without its marker (``store_unavailable``).
+    UnsupportedError
+        The check of the command is no plan of a store (``no_plan``):
+        ``project download`` answers with the check of a project.
+    """
+    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
+    try:
+        result = check_command(
+            command,
+            options,
+            root=root,
+            cache=cache,
+            on_notice=None if on_notice is None else _forward(on_notice),
+        )
+    except KartografError as error:
+        raise call_error(error, command=command, given=options) from error
+    finally:
+        cache.close()
+    plan = result.result
+    if not isinstance(plan, UpdatePlan):
+        raise UnsupportedError(
+            message("command.no_plan", producer=PRODUCER, command=command),
+            reason="no_plan",
+        )
+    return ActionPlan(
+        producer=PRODUCER,
+        command=result.command,
+        schema=UpdatePlan.SCHEMA,
+        root=plan.target,
+        checked_at=datetime.fromisoformat(plan.checked_at),
+        entries=tuple(_plan_entry(item) for item in plan.items),
+        notices=tuple(_notice(notice) for notice in plan.notices),
+        document=plan.to_dict(),
+    )
+
+
 def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:
     """Return Kartograf's ``country`` and ``bbox`` of an area (ADR-035).
 
@@ -384,6 +447,19 @@ def _notice(notice: Any) -> AvailabilityNotice:
     if callable(localized) and language in _LANGUAGES:
         text = localized(language)
     return AvailabilityNotice(notice.level, notice.code, str(text))
+
+
+def _plan_entry(item: PlanItem) -> PlanEntry:
+    """Convert one position of ``kartograf-plan/1`` (``PlanItem``)."""
+    return PlanEntry(
+        path=item.store_path,
+        unit=item.unit,
+        status=item.status,
+        local_label=item.local_label,
+        available_label=item.available_label,
+        error=item.error,
+        conflict=item.reason if item.action == "conflict" else None,
+    )
 
 
 def _command_info(entry: Any, *, polish: bool) -> CommandInfo:

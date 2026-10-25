@@ -35,9 +35,11 @@
 .job-status { display: grid; gap: 8px; }
 .job { border: 1px solid #c7d2fe; background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; display: grid; gap: 6px; font-size: 12.5px; }
 .job.succeeded { border-color: #bbf7d0; background: #f0fdf4; }
+.job.partial { border-color: #fde68a; background: #fffbeb; }
 .job.failed, .job.interrupted, .job.cancelled { border-color: #fecaca; background: #fff7f7; }
 .job-head { display: flex; align-items: center; gap: 8px; }
 .job.succeeded .job-head > svg { color: var(--ok); }
+.job.partial .job-head > svg { color: var(--warn); }
 .job.failed .job-head > svg, .job.interrupted .job-head > svg { color: var(--bad); }
 .job-progress { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .job-progress progress { width: 200px; max-width: 100%; }

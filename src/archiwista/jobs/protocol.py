@@ -13,6 +13,9 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
   the texts a worker stores;
 - ``result``: the job's summary, a JSON object; the last line of a job
   that succeeded;
+- ``partial``: the summary of a job that did only part of its work (a plan
+  some of whose positions could not be checked), the units that failed named
+  in it; its last line, in place of ``result``;
 - ``error``: why the job failed: a registry ``code`` (ERR §2), a
   ``detail``, the ``exception`` class behind it, and when there are any a
   ``hint`` and the JSON ``details`` (``reason``, the project's own cause,
@@ -24,7 +27,7 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
 
 Everything else the worker or a library writes goes to standard error, the
 job's log. The supervisor keeps ``progress`` and ``notice`` as job events
-and turns ``result`` and ``error`` into the job's final state.
+and turns ``result``, ``partial`` and ``error`` into the job's final state.
 """
 
 import json
@@ -38,7 +41,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -55,13 +58,14 @@ type JobKind = Literal[
     "own_scan",
     "snapshot",
     "availability",
+    "check",
 ]
-type MessageType = Literal["progress", "notice", "result", "error"]
+type MessageType = Literal["progress", "notice", "result", "partial", "error"]
 type NoticeLevel = Literal["info", "warning"]
 type JsonObject = dict[str, Any]
 
 JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
-MESSAGE_TYPES: tuple[MessageType, ...] = ("progress", "notice", "result", "error")
+MESSAGE_TYPES: tuple[MessageType, ...] = get_args(MessageType.__value__)
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 _PRINCIPAL_KINDS: tuple[PrincipalKind, ...] = get_args(PrincipalKind.__value__)
 # The members of an ``error`` message besides ``code`` and ``detail``, when it
@@ -114,7 +118,7 @@ class JobSpec:
         ``refs``, their ``contents`` and ``force``; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``;
         ``availability``: ``area_id``, ``producer``, ``product`` and
-        ``force``).
+        ``force``; ``check``: ``producer``, ``command`` and ``options``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

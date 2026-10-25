@@ -51,11 +51,14 @@ def exit_status(state: JobState) -> int:
     Returns
     -------
     int
-        ``0`` for ``succeeded``, ``11`` for ``failed``, ``130`` for
-        ``cancelled``, ``interrupted`` and a job still active after Ctrl+C.
+        ``0`` for ``succeeded``, ``10`` for ``partial``, ``11`` for
+        ``failed``, ``130`` for ``cancelled``, ``interrupted`` and a job still
+        active after Ctrl+C.
     """
     if state == "succeeded":
         return OUTCOMES["ok"]
+    if state == "partial":
+        return OUTCOMES["partial"]
     return OUTCOMES["failed"] if state == "failed" else OUTCOMES["cancelled"]
 
 

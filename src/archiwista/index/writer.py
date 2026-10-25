@@ -47,6 +47,7 @@ from archiwista.index.types import (
     PassSummary,
     ScanPass,
     SnapshotWrite,
+    StoredPlan,
     StoreStatus,
     own_file_id,
 )
@@ -1283,6 +1284,27 @@ class IndexWriter:
                     ),
                 ).rowcount
                 > 0
+            )
+
+    def write_plan(self, stored: StoredPlan) -> None:
+        """Keep the plan of a ``check`` job; it goes when the job is forgotten.
+
+        Raises
+        ------
+        sqlite3.IntegrityError
+            The index keeps no job ``stored.job_id``.
+        """
+        with self._transaction() as connection:
+            connection.execute(
+                "INSERT INTO plans (job_id, store, line, plan) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (job_id) DO UPDATE SET store = excluded.store,"
+                " line = excluded.line, plan = excluded.plan",
+                (
+                    stored.job_id,
+                    stored.store,
+                    stored.line,
+                    json.dumps(stored.plan.to_json(), separators=(",", ":")),
+                ),
             )
 
     # Own data of projects (decision 8).

@@ -8,9 +8,12 @@ as the library reads them (texts trimmed, a value of a choice in lower case),
 ``format_command`` writes the canonical line of a call and ``parse_command``
 reads a line back. ``check_availability`` reports what a fake source has for an
 area: one sheet system of 2023 complete from one campaign, another complete
-from two, and 2022 partial, checked now. Each of these four appends its call to
-``CALLS`` with the options it received, so a test can tell what Archiwista
-passed.
+from two, and 2022 partial, checked now. ``check_command`` plans a fetch of a
+station's files into the store of ``options["root"]``: one current, one newer,
+one missing of unknown size and one unverifiable; a station whose code starts
+with ``9`` cannot be asked about its missing file, station ``999`` about none.
+Each of these five appends its call to ``CALLS`` with the options it received,
+so a test can tell what Archiwista passed.
 """
 
 import shlex
@@ -254,6 +257,75 @@ def check_availability(
         "notices": [dict(zip(("level", "code", "message"), notice, strict=True))],
         "ok": True,
     }
+
+
+def check_command(
+    command: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    on_notice: Callable[[str, str, str], None] | None = None,
+) -> dict[str, object]:
+    """Plan a call without running it: the files of a station in the store.
+
+    The plan names the store ``options["root"]``; each notice goes to
+    ``on_notice`` as ``(level, code, text)``.
+    """
+    CALLS.append(("check_command", command, dict(options)))
+    checked = _checked(command, options)
+    if not _COMMANDS[command]["check"]:
+        raise ValidationError(f"{command} has no check", option="check")
+    notice = ("info", "plan_cached", "The station index answered from the cache.")
+    if on_notice is not None:
+        on_notice(*notice)
+    return {
+        "schema": "standin-plan/1",
+        "checked_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "root": checked["root"],
+        "items": plan_items(str(checked["station"]), str(checked.get("kind", "hydro"))),
+        "notices": [dict(zip(("level", "code", "message"), notice, strict=True))],
+    }
+
+
+def plan_items(station: str, kind: str) -> list[dict[str, object]]:
+    """Return the positions of the plan of a station's files, in the plan's order."""
+    folder = f"{kind}/{station}"
+    items: list[dict[str, object]] = [
+        {
+            "file": f"{folder}/2023.csv",
+            "status": "current",
+            "local": "2023-12-31",
+            "source": "2023-12-31",
+            "bytes": 1200,
+        },
+        {
+            "file": f"{folder}/2024.csv",
+            "status": "newer",
+            "local": "2024-06-30",
+            "source": "2024-12-31",
+            "bytes": 5400,
+        },
+        {
+            "file": f"{folder}/2025.csv",
+            "status": "missing",
+            "local": None,
+            "source": "2025-10-20",
+            "bytes": None,
+        },
+        {
+            "file": f"{folder}/stations.json",
+            "status": "unverifiable",
+            "local": "v3",
+            "source": None,
+            "bytes": None,
+        },
+    ]
+    for place, item in enumerate(items):
+        item["station"] = station
+        if station == "999" or (station.startswith("9") and place == 2):
+            item |= {"status": "check_failed", "source": None, "bytes": None}
+            item["error"] = f"The source did not answer for {item['file']}."
+    return items
 
 
 def _checked(command: str, options: Mapping[str, object]) -> dict[str, object]:

@@ -22,7 +22,10 @@ input, runs it and reports in JSON Lines on standard output
   then recorded in the index;
 - ``availability``: what the source has for an area and a product (the
   producer's ``ActionAdapter.availability``, plan of 2026-10-25 A2), kept in
-  the index as the area's last report.
+  the index as the area's last report;
+- ``check``: what a run of a producer's command would do in the store (the
+  producer's ``ActionAdapter.check``, A4), its plan kept in the index with the
+  job; a plan some of whose positions could not be checked ends ``partial``.
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -43,6 +46,7 @@ import threading
 import time
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import suppress
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import FrameType
 from typing import IO, cast
@@ -52,6 +56,7 @@ from archiwista.config import AppPaths, StoreConfig
 from archiwista.error_document import Problem, describe
 from archiwista.errors import (
     ArchiwistaError,
+    CheckFailedError,
     NotFoundError,
     OfflineModeError,
     OwnReaderError,
@@ -64,6 +69,7 @@ from archiwista.index import (
     IndexQueries,
     IndexWriter,
     SnapshotWrite,
+    StoredPlan,
     TransformerFactory,
 )
 from archiwista.index.scanner import (
@@ -91,7 +97,14 @@ from archiwista.jobs.protocol import (
     encode_message,
 )
 from archiwista.logs import process_log_level
-from archiwista.messages import STORED_LANG, language, localize, localize_json, message
+from archiwista.messages import (
+    STORED_LANG,
+    language,
+    localize,
+    localize_json,
+    message,
+    with_detail,
+)
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
 from archiwista.owndata.scan import (
@@ -111,9 +124,10 @@ from archiwista.owndata.snapshots import (
 from archiwista.paths import resolve_indexed_path
 from archiwista.previews.build import run_preview
 from archiwista.sandbox import process_work_dir
-from archiwista.services.commands import actions
+from archiwista.services.commands import actions, store_root
 from archiwista.services.problems import explain
 from archiwista.sources import (
+    CommandCall,
     GeoAdapter,
     LinkCheckAdapter,
     SegmentedAdapter,
@@ -176,7 +190,14 @@ class Emitter:
             self.notice(event.level, event.code, event.message)
 
 
-type Runner = Callable[[JobSpec, Emitter], JsonObject]
+@dataclass(frozen=True, slots=True)
+class PartialResult:
+    """The summary of a job that did only part of its work (it ends ``partial``)."""
+
+    summary: JsonObject
+
+
+type Runner = Callable[[JobSpec, Emitter], JsonObject | PartialResult]
 
 
 def main() -> int:
@@ -188,8 +209,9 @@ def main() -> int:
     Returns
     -------
     int
-        ``0`` with a ``result`` message, ``1`` with an ``error`` message,
-        ``2`` for an unreadable job, ``130`` when interrupted.
+        ``0`` with a ``result`` or ``partial`` message, ``1`` with an
+        ``error`` message, ``2`` for an unreadable job, ``130`` when
+        interrupted.
     """
     with language(STORED_LANG):
         return _run()
@@ -222,7 +244,7 @@ def _run() -> int:
         os.getpid(),
     )
     try:
-        summary = RUNNERS[spec.kind](spec, emit)
+        outcome = RUNNERS[spec.kind](spec, emit)
     except KeyboardInterrupt:
         logger.warning("Job %s interrupted", spec.job_id)
         return INTERRUPTED_EXIT
@@ -238,12 +260,19 @@ def _run() -> int:
                 localize(problem.detail, "en"),
             )
         return _report(emit, problem, exception, status=1)
+    partial = isinstance(outcome, PartialResult)
+    summary = outcome.summary if isinstance(outcome, PartialResult) else outcome
     try:
         # Texts made in a thread of the job are in the default language.
-        emit.send(WorkerMessage("result", localize_json(summary, STORED_LANG)))
+        emit.send(
+            WorkerMessage(
+                "partial" if partial else "result",
+                localize_json(summary, STORED_LANG),
+            )
+        )
     except OSError:  # the supervisor is gone
         return 1
-    logger.info("Job %s succeeded", spec.job_id)
+    logger.info("Job %s %s", spec.job_id, "ended partly" if partial else "succeeded")
     return 0
 
 
@@ -588,6 +617,58 @@ def run_availability(spec: JobSpec, emit: Emitter) -> JsonObject:
     }
 
 
+def run_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Plan a run of a producer's command in the store and keep the plan.
+
+    The producer compares the store's root (the configured directory of the
+    producer, never its default root) with the source; its notices become the
+    job's. The plan is kept with the job, with the producer's command line of
+    the run it plans. A plan some of whose positions could not be checked ends
+    the job ``partial``; one with none of them checked fails it
+    (``check_failed``) and is not kept.
+    """
+    if spec.settings.offline:
+        raise OfflineModeError(message("job.offline_mode"))
+    config = _store(spec)
+    call = CommandCall(
+        str(spec.params["producer"]),
+        str(spec.params["command"]),
+        dict(spec.params["options"]),
+    )
+    root = store_root(spec.settings, config.id, call)
+    started = time.perf_counter()
+    adapter = actions(load_registry(cache_dir=spec.cache_dir), call.producer)
+    plan = adapter.check(
+        call.command,
+        call.options,
+        root=root,
+        on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
+    )
+    failed = [entry for entry in plan.entries if entry.status == "check_failed"]
+    if failed and len(failed) == len(plan.entries):
+        text = message("job.check_failed", count=len(failed))
+        raise CheckFailedError(with_detail(text, failed[0].error))
+    line = adapter.format(replace(call, run={"root": str(root)}))
+    with IndexWriter(spec.index_path) as writer:
+        writer.write_plan(StoredPlan(spec.job_id, config.id, line, plan))
+    summary: JsonObject = {
+        "producer": call.producer,
+        "command": plan.command,
+        "store": config.id,
+        "root": plan.root,
+        "line": line,
+        "checked_at": plan.checked_at.isoformat(),
+        "ok": plan.ok,
+        "positions": len(plan.entries),
+        "counts": plan.counts(),
+        "size_bytes": plan.size_bytes,
+        "size_complete": plan.size_complete,
+        "failed": [{"path": entry.path, "error": entry.error} for entry in failed],
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+    return summary if plan.ok else PartialResult(summary)
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -596,6 +677,7 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "own_scan": run_own_scan,
     "snapshot": run_snapshot,
     "availability": run_availability,
+    "check": run_check,
 }
 
 

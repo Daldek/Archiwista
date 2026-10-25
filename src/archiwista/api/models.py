@@ -1847,14 +1847,16 @@ class JobDetail(BaseModel):
             " network), `link_check` (which version a slot's link holds),"
             " `preview` (build local previews of files), `own_scan` (scan the"
             " projects' own data folders), `snapshot` (a snapshot of an"
-            " own-data file) or `availability` (what the source has for an"
-            " area and a product, over the network)."
+            " own-data file), `availability` (what the source has for an"
+            " area and a product, over the network) or `check` (what a run of"
+            " a producer's command would do in the store, over the network)."
         )
     )
     state: JobState = Field(
         description=(
-            "`queued`, `running`, then `succeeded`, `failed`, `interrupted`"
-            " (the server stopped meanwhile; safe to retry) or `cancelled`."
+            "`queued`, `running`, then `succeeded`, `partial` (part of its"
+            " units failed: `result` names them), `failed`, `interrupted` (the"
+            " server stopped meanwhile; safe to retry) or `cancelled`."
         )
     )
     actor: str = Field(
@@ -1887,7 +1889,7 @@ class JobDetail(BaseModel):
             " none; `preview`: `refs`, their `contents` and `force`; `own_scan`:"
             " `project` (none: every project); `snapshot`: `project`, `file_id`"
             " and `note`; `availability`: `area_id`, `producer`, `product` and"
-            " `force`."
+            " `force`; `check`: `producer`, `command` and `options`."
         )
     )
     created_at: datetime
@@ -1905,20 +1907,25 @@ class JobDetail(BaseModel):
     )
     result: dict[str, Any] | None = Field(
         description=(
-            "Summary of a job that succeeded. `scan`: counts (`entries`,"
-            " `versions_written`, `links_changed`, `missing`, `removed`…),"
-            " `segments` and `projects`; `footprints`: `total`, `written`,"
-            " `failed`; `link_check`: `status` (`confirmed`, `index_outdated`,"
-            " `mismatch`, `missing` or `not_a_link`) with the `expected` and"
-            " `confirmed` versions; `preview`: `built`, `cached`, `failed`"
-            " (`ref`, `code`, `detail`) and `seconds`; `own_scan`: `projects`,"
-            " `files`, `new`, `changed`, `missing`, `unreadable`, `snapshots`,"
-            " `problems` and `seconds`; `snapshot`: `status` (`created` or"
-            " `unchanged`), `label`, `content_sha256`, `size_bytes` and"
-            " `seconds`; `availability`: `area_id`, `producer`, `product`,"
-            " `checked_at` (when the source was asked), `ok` (every part"
-            " checked), `combinations`, `kept` (false: a newer report was"
-            " kept) and `seconds`."
+            "Summary of a job that succeeded or ended `partial`. `scan`: counts"
+            " (`entries`, `versions_written`, `links_changed`, `missing`,"
+            " `removed`…), `segments` and `projects`; `footprints`: `total`,"
+            " `written`, `failed`; `link_check`: `status` (`confirmed`,"
+            " `index_outdated`, `mismatch`, `missing` or `not_a_link`) with the"
+            " `expected` and `confirmed` versions; `preview`: `built`, `cached`,"
+            " `failed` (`ref`, `code`, `detail`) and `seconds`; `own_scan`:"
+            " `projects`, `files`, `new`, `changed`, `missing`, `unreadable`,"
+            " `snapshots`, `problems` and `seconds`; `snapshot`: `status`"
+            " (`created` or `unchanged`), `label`, `content_sha256`,"
+            " `size_bytes` and `seconds`; `availability`: `area_id`,"
+            " `producer`, `product`, `checked_at` (when the source was asked),"
+            " `ok` (every part checked), `combinations`, `kept` (false: a newer"
+            " report was kept) and `seconds`; `check`: `producer`, `command`,"
+            " `store`, `root`, `line` (the producer's command line of the run),"
+            " `checked_at`, `ok`, `positions`, `counts` (of each status),"
+            " `size_bytes` (of the positions to download as far as the producer"
+            " tells them; `null` when it tells none), `size_complete`, `failed`"
+            " (`path`, `error` of the positions not checked) and `seconds`."
         )
     )
     error: JobFailure | None = Field(

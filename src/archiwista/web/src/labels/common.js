@@ -39,11 +39,13 @@ export const common = {
     own_scan: "skan danych własnych",
     snapshot: "migawka",
     availability: "dostępność u źródła",
+    check: "plan pobrania",
   },
   job_state: {
     queued: "w kolejce",
     running: "trwa",
     succeeded: "zakończone",
+    partial: "zakończone częściowo",
     failed: "błąd",
     interrupted: "przerwane",
     cancelled: "anulowane",

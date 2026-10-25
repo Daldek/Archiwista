@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
+    ActionPlan,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -238,8 +239,9 @@ class ActionAdapter(Protocol):
     network or writes. A call the producer refuses raises ``ProducerError`` with
     the producer's registry code, its text and hint, and the names it gives
     (``details.option``, ``details.options``, ``details.allowed``). The
-    availability at the source (A2) asks the network and writes only the
-    producer's metadata cache, which the adapter keeps in its ``cache_dir``.
+    availability at the source (A2) and the plan of a run (A4) ask the network
+    and write only the producer's metadata cache, which the adapter keeps in its
+    ``cache_dir``.
     """
 
     def commands(self) -> tuple[CommandInfo, ...]:
@@ -294,5 +296,32 @@ class ActionAdapter(Protocol):
         ProducerError
             The producer refused the request (an unknown product, an area
             outside its countries) or the source failed.
+        """
+        ...
+
+    def check(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionPlan:
+        """Plan a run of a command on a store without its effects (SPEC 12.2 KB-5).
+
+        The producer compares what the store at ``root`` holds with what the
+        source has now: nothing is downloaded or written but the producer's
+        metadata cache. ``root`` is the configured store's root, never the
+        producer's default one; ``on_notice`` receives each notice when it is
+        said. A position the source could not tell about is ``check_failed``,
+        the others are planned all the same.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the call (an unknown command, an invalid
+            option, a store it cannot write) or the whole check failed.
+        UnsupportedError
+            The command has no plan of a store (reason ``no_plan``).
         """
         ...

@@ -23,6 +23,18 @@ type DefaultRootSource = Literal["default", "env", "dotenv", "file"]
 type OptionType = Literal["string", "integer", "number", "boolean", "array", "object"]
 type PathRole = Literal["input", "output"]
 type CommandWrites = Literal["none", "add", "replace", "delete"]
+type PlanStatus = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
+
+# The statuses of a plan's positions in the order the producers define them.
+PLAN_STATUSES: tuple[PlanStatus, ...] = (
+    "current",
+    "newer",
+    "missing",
+    "unverifiable",
+    "check_failed",
+)
+# The positions a run of a plan downloads (Kartograf's ``TODO_STATUSES``).
+PLAN_TODO: tuple[PlanStatus, ...] = ("newer", "missing")
 
 
 @dataclass(frozen=True, slots=True)
@@ -747,6 +759,149 @@ class AvailabilityReport:
             failed=tuple(AvailabilityFailure(**item) for item in data["failed"]),
             notices=tuple(AvailabilityNotice(**item) for item in data["notices"]),
             ok=bool(data["ok"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PlanEntry:
+    """One position of a plan: a file of a run, local and at the source (SPEC 6.5).
+
+    Parameters
+    ----------
+    path : str
+        Its place below the store root, ``/``-separated
+        (``nmt/pl_1992_1m_evrf2007/N-34-130-D-d-1-1.asc``): the subject of the
+        producer's own status lines.
+    unit : str
+        The producer's unit of the position (a sheet, a tile, a country).
+    status : {"current", "newer", "missing", "unverifiable", "check_failed"}
+        ``current``: the store holds the newest version; ``newer``: the source
+        has a newer one; ``missing``: the store holds none; ``unverifiable``:
+        the source gives no cheap sign of its version; ``check_failed``: the
+        source could not be asked (``error``).
+    local_label, available_label : str or None
+        The label of the version the store holds and of the one at the source.
+    size_bytes : int or None
+        Size of the file at the source when the producer tells it; ``None``
+        when it does not, never 0 for an unknown size.
+    error : str or None
+        The producer's text of a failed check or of a refused write.
+    conflict : str or None
+        Why a run would refuse to write the position, the producer's reason
+        (``nested_store``, ``not_empty``); ``None`` for one a run may write.
+    """
+
+    path: str
+    unit: str
+    status: PlanStatus
+    local_label: str | None = None
+    available_label: str | None = None
+    size_bytes: int | None = None
+    error: str | None = None
+    conflict: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionPlan:
+    """What a run of a command would do in a store, checked without effects.
+
+    The producer's plan (Kartograf: ``kartograf-plan/1`` of ``check_command``)
+    without its classes, so the jobs, the index and the interfaces read every
+    producer's plan alike (SPEC 6.5, 12.2 KB-5).
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    command : str
+        The producer's name of the command planned (``CommandInfo.command``).
+    schema : str
+        Schema of the producer's own plan.
+    root : str
+        The store root the plan is of, as the producer resolved it.
+    checked_at : datetime
+        When the source was asked.
+    entries : tuple[PlanEntry, ...]
+        Its positions, in the producer's order.
+    notices : tuple[AvailabilityNotice, ...]
+        What the producer said meanwhile.
+    document : Mapping[str, object]
+        The producer's plan itself, as JSON: a run of the plan takes it back
+        (Kartograf's ``update="upgrade", plan=…``).
+    """
+
+    producer: str
+    command: str
+    schema: str
+    root: str
+    checked_at: datetime
+    entries: tuple[PlanEntry, ...]
+    notices: tuple[AvailabilityNotice, ...] = ()
+    document: Mapping[str, object] = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        """Every position was checked: none is ``check_failed``."""
+        return all(entry.status != "check_failed" for entry in self.entries)
+
+    @property
+    def todo(self) -> tuple[PlanEntry, ...]:
+        """The positions a run of the plan downloads (``PLAN_TODO``)."""
+        return tuple(entry for entry in self.entries if entry.status in PLAN_TODO)
+
+    @property
+    def size_bytes(self) -> int | None:
+        """Bytes a run downloads as far as the producer tells their sizes.
+
+        The sum of the known sizes of ``todo``; ``None`` when the plan has
+        positions to download and the producer tells none of their sizes, so
+        an unknown size is never 0. ``size_complete`` says whether the sum is
+        the whole.
+        """
+        known = [
+            entry.size_bytes for entry in self.todo if entry.size_bytes is not None
+        ]
+        if self.todo and not known:
+            return None
+        return sum(known)
+
+    @property
+    def size_complete(self) -> bool:
+        """Every position a run downloads has its size (``size_bytes`` is whole)."""
+        return all(entry.size_bytes is not None for entry in self.todo)
+
+    def counts(self) -> dict[PlanStatus, int]:
+        """Return the number of positions of each status, every status named."""
+        counted = dict.fromkeys(PLAN_STATUSES, 0)
+        for entry in self.entries:
+            counted[entry.status] += 1
+        return counted
+
+    def to_json(self) -> dict[str, object]:
+        """Return the plan as a JSON object (what the index keeps)."""
+        data = asdict(self)
+        data["checked_at"] = self.checked_at.isoformat()
+        data["document"] = dict(self.document)
+        return data
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> "ActionPlan":
+        """Read a plan back from ``to_json``.
+
+        Raises
+        ------
+        KeyError, TypeError, ValueError
+            Not a plan of ``to_json``.
+        """
+        return cls(
+            producer=str(data["producer"]),
+            command=str(data["command"]),
+            schema=str(data["schema"]),
+            root=str(data["root"]),
+            checked_at=datetime.fromisoformat(str(data["checked_at"])),
+            entries=tuple(PlanEntry(**entry) for entry in data["entries"]),
+            notices=tuple(AvailabilityNotice(**item) for item in data["notices"]),
+            document=dict(data["document"]),
         )
 
 
