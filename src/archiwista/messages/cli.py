@@ -1332,4 +1332,113 @@ MESSAGES = {
         "Beside the options: {run}",
         "Poza opcjami: {run}",
     ),
+    "availability_help": Text(
+        (
+            "What the source has for an area: the last report and a check at the"
+            " source (--json: the AvailabilityInfo model of /api/v1/availability)."
+        ),
+        (
+            "Co źródło ma dla obszaru: ostatni raport i sprawdzenie u źródła (--json:"
+            " model AvailabilityInfo z /api/v1/availability)."
+        ),
+    ),
+    "availability_show_help": Text(
+        (
+            "Prints the last report of an area and a product from the index, without"
+            " the network (--json: AvailabilityInfo model)."
+        ),
+        (
+            "Wypisuje ostatni raport obszaru i produktu z indeksu, bez sieci (--json:"
+            " model AvailabilityInfo)."
+        ),
+    ),
+    "availability_check_help": Text(
+        (
+            "Asks the source what it has for an area and a product: a report younger"
+            " than seven days answers at once, otherwise a job asks the source"
+            " (--json: AvailabilityInfo model; a check that does not succeed:"
+            " JobDetail)."
+        ),
+        (
+            "Pyta źródło, co ma dla obszaru i produktu: raport młodszy niż siedem dni"
+            " odpowiada od razu, w przeciwnym razie zadanie pyta źródło (--json: model"
+            " AvailabilityInfo; sprawdzenie, które się nie udało: JobDetail)."
+        ),
+    ),
+    "availability_area_help": Text(
+        "Area identifier (the id of POST /api/v1/areas).",
+        "Identyfikator obszaru (id z POST /api/v1/areas).",
+    ),
+    "availability_product_help": Text(
+        "Product, e.g. nmt.",
+        "Produkt, np. nmt.",
+    ),
+    "availability_producer_help": Text(
+        "Producer identifier (default: kartograf).",
+        "Identyfikator producenta (domyślnie: kartograf).",
+    ),
+    "availability_force_help": Text(
+        "Ask the source even when a report younger than seven days is kept.",
+        "Zapytaj źródło także wtedy, gdy jest raport młodszy niż siedem dni.",
+    ),
+    "availability_failed": Text(
+        "Cannot check the availability",
+        "Nie można sprawdzić dostępności",
+    ),
+    "availability_started": Text(
+        "Availability check: job {job}.",
+        "Sprawdzenie dostępności: zadanie {job}.",
+    ),
+    "availability_notice": Text(
+        "Availability check: {message}",
+        "Sprawdzenie dostępności: {message}",
+    ),
+    "availability_cancelling": Text(
+        "Cancelling the availability check (job {job})…",
+        "Przerywam sprawdzenie dostępności (zadanie {job})…",
+    ),
+    "availability_job": Text(
+        "Availability check (job {job}): {state}.",
+        "Sprawdzenie dostępności (zadanie {job}): {state}.",
+    ),
+    "availability_job_failed": Text(
+        "Availability check (job {job}) {state}: {detail}",
+        "Sprawdzenie dostępności (zadanie {job}) {state}: {detail}",
+    ),
+    "availability_report": Text(
+        (
+            "Availability of {product} for the area {area} ({producer}), checked"
+            " {checked_at}:"
+        ),
+        (
+            "Dostępność {product} dla obszaru {area} ({producer}), sprawdzona"
+            " {checked_at}:"
+        ),
+    ),
+    "availability_combination": Text(
+        (
+            "  {variant}: {state}; full sheets: {full}, partial: {partial}, without a"
+            " file: {missing}"
+        ),
+        (
+            "  {variant}: {state}; arkuszy pełnych {full}, niepełnych {partial}, bez"
+            " pliku {missing}"
+        ),
+    ),
+    "availability_state_complete": Text(
+        "complete",
+        "pełne",
+    ),
+    "availability_state_partial": Text(
+        "partial",
+        "częściowe",
+    ),
+    "availability_nothing": Text(
+        "  The source has nothing for the area.",
+        "  Źródło nie ma nic dla obszaru.",
+    ),
+    "availability_not_checked": Text(
+        "  Not checked: {part}: {detail}",
+        "  Nie sprawdzono: {part}: {detail}",
+    ),
 }

@@ -81,6 +81,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, plugins, stores and project directories, data directory, port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `is_port_available`, `REQUIRED_PRODUCERS` |
 | `commands/previews.py`, `commands/layers.py`, `commands/compare.py`, `commands/owndata.py` | v0.2 CLI shared with the API services: `preview`, `layers`, `compare`, `files`, `file`, `snapshot`, `own-scan` | `add_commands`, `main` in each module |
 | `commands/producer_commands.py` | v0.3 CLI of the producers' commands over `services/commands.py` (ADR-034): `commands list`, `parse`, `validate`, `format` | `add_commands`, `main` |
+| `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -108,6 +109,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
 | `api/compare.py`, `api/models_compare.py` | comparison of two `ref`s | `get_comparison`, `CompareQuery` |
 | `api/commands.py`, `api/models_commands.py` | the producers' commands (ADR-034): their catalog, a pasted line read into a call, a call checked without the network, the line of a call; a `422 unsupported` of a producer without commands | `list_commands`, `parse_command`, `validate_command`, `format_command`, `CommandList`, `CommandCallItem`, `CommandLine`, `ValidateRequest` |
+| `api/availability.py`, `api/models_availability.py` | the availability at the source (ADR-035): `POST /availability` answers a kept report younger than seven days (`200`) or starts the `availability` job (`202`; `job_router`, served with the supervisor), `GET /availability` returns the kept report without the network | `check_availability`, `get_availability`, `AvailabilityInfo`, `AvailabilityRequest`, `AvailabilityQuery` |
 
 **Services, permissions, state**
 
@@ -121,6 +123,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
 | `services/compare.py` | comparison of metadata and schema, not of object data | `compare` |
 | `services/commands.py` | producers' commands for HTTP and the CLI (ADR-034): the catalogs of the producers that offer them, `parse`, `validate` (a command of the catalog, the configured store's root, no file path of a request) and `format` | `list_commands`, `parse_command`, `validate_command`, `format_command`, `actions` |
+| `services/availability.py` | the availability at the source for HTTP and the CLI (ADR-035): the area, the products the producer checks, a kept report younger than `REPORT_TTL` (seven days, Kartograf's metadata cache TTL) unless `force`, else the `availability` job; the kept report without the network | `check`, `stored`, `AreaAvailability`, `REPORT_TTL` |
 | `auth/principal.py` | who acts | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
@@ -1027,10 +1030,11 @@ apart from it, it reads only its own static files from the server.
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
 | `api/commands.py` (`commands`) | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` (a session; no network, no writes) |
+| `api/availability.py` (`availability`) | `GET /availability` (the kept report, no network); with `jobs`: `POST /availability` (`200` with a fresh report or `202` with the `availability` job; offline `409`) |
 | `api/owndata.py` (`own_data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; previews, tiles, features and ZIP of a file and of a snapshot |
 
 Rules in the code: Pydantic models (`api/models.py`, `models_previews.py`,
-`models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`; session
+`models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`, `models_availability.py`; session
 and administration next to the routers) also produce the OpenAPI schema
 with examples; `operationId` = the name of the route function
 (`operation_id`); `/api/v1/openapi.json` requires a session, and `/api/docs` is
@@ -1057,6 +1061,7 @@ with the unchanged message (`<producer>_error`).
 | `preview REF [--build] [--output PLIK.png]`, `layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ]`, `compare REF REF` | `commands/previews.py`, `commands/layers.py`, `commands/compare.py` | the same services as the API, images saved on request |
 | `files PROJEKT`, `file PROJEKT PLIK`, `snapshot PROJEKT PLIK [--plan \| --note TEKST]`, `own-scan [--project PROJEKT]` | `commands/owndata.py` | list and card from the index; snapshot and scan are jobs with progress |
 | `commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE [--options JSON] [--store ID]`, `commands format PRODUCENT POLECENIE [--options JSON] [--run JSON]` | `commands/producer_commands.py` | the producers' catalogs and calls through `services/commands.py`, as `/commands`; no network, no writes; `--options` and `--run` take a JSON object |
+| `availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `commands/availability.py` | the kept report and a check at the source through `services/availability.py`, as `/availability`; `check` runs the `availability` job in the foreground and prints the report it kept |
 
 ---
 

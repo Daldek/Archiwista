@@ -60,9 +60,12 @@ header too, so read it with an HTTP client or `fetch`, not `EventSource`.
 **Areas.** `POST /areas` keeps an area: GeoJSON in WGS84 as
 `application/json`, or a GeoJSON, GeoPackage or zipped Shapefile as the raw
 body (at most 50 MB, an archive at most 200 MB unpacked, 100 000 vertices,
-read in a process killed after 30 s); its `id` is used by `GET /slots` and
+read in a process killed after 30 s); its `id` is used by `GET /slots`,
 `GET /local-coverage`, which rescans the area's slots first and measures the
-share in the planar CRS of each country.
+share in the planar CRS of each country, and `/availability`: `POST` asks the
+source what it has for the area and a product (a report younger than seven
+days answers at once with `200`, else the job with `202`; offline `409`), and
+`GET` returns the last report without the network.
 
 **Errors** are RFC 9457 problems (`application/problem+json`) with a stable
 `code` and a `detail`; see the `ProblemDetails` schema. The texts for a person
@@ -77,6 +80,7 @@ _TAGS = [
     {"name": "catalog", "description": "Products, search, file cards, versions."},
     {"name": "map", "description": "Footprints in a map view and sheet grids."},
     {"name": "areas", "description": "Areas of interest and local coverage."},
+    {"name": "availability", "description": "What the source has for an area."},
     {"name": "commands", "description": "Producers' commands: catalog, check, line."},
     {"name": "jobs", "description": "Background jobs and their events (SSE)."},
     {"name": "projects", "description": "Projects, their pins and status (read)."},

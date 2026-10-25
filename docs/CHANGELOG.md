@@ -137,6 +137,20 @@ command-line interface may change.
   the area goes to Kartograf as the envelope of its polygon in EPSG:2180 (EPSG:5514 for
   an area only in CZ), with the country `pl`, `cz` or `auto`. The producer's notices
   become the job's. (SPEC 5.6, 6.3, D5, ADR-035)
+- The availability at the source over HTTP and the command line (ADR-035): `POST
+  /availability` (`{area_id, product, producer?, force?}`; `archiwista availability check
+  AREA --product PRODUCT [--producer ID] [--force]`) answers a kept report younger than
+  seven days at once (`200`, the model `AvailabilityInfo`: the area, `checked_at`, the
+  job that asked and the producer's report), else starts the `availability` job (`202`
+  with `Location: /api/v1/jobs/{job}`; the command runs it in the foreground and then
+  prints the report it kept); `force` asks the source even with a fresh report. Offline
+  mode refuses a check that needs the source (`409 conflict`, `offline_mode`; exit 4) and
+  records nothing, while a fresh report still answers. `GET /availability`
+  (`archiwista availability show …`) returns the last report of an area and a product
+  without the network, `404` without one. An unknown area is `404`, a producer whose
+  plugin is missing `503`, a product the producer does not check `422 unsupported`
+  (`no_availability`, the products it checks in `details.allowed`). (SPEC 6.3, 9.2,
+  ADR-035)
 
 ### Changed
 

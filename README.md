@@ -69,11 +69,12 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |
 | Own data of a project: files, scan, snapshots | `archiwista files`, `file`, `own-scan`, `snapshot PROJECT FILE [--plan \| --note TEXT]` | `GET /projects/{project}/files`, `POST /projects/{project}/scan`, `POST …/snapshots` |
 | Producers' commands: the catalog, a pasted line read into a call, a check without the network, the line of a call | `archiwista commands list`, `parse PRODUCER LINE`, `validate PRODUCER COMMAND`, `format PRODUCER COMMAND` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
+| What the source has for a kept area and a product: the last report, a check at the source | `archiwista availability show AREA --product PRODUCT`, `availability check AREA --product PRODUCT [--force]` | `GET /availability`, `POST /availability` (a report younger than seven days, else a background job) |
 | Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
 | Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
 
-The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, scanning own data and making a snapshot run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
+The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
 
 ## For AI agents
 

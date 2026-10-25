@@ -16,6 +16,7 @@ from archiwista.admin import ADMIN_COMMANDS, add_admin_commands, admin_main
 from archiwista.commands import (
     CommandModule,
     Commands,
+    availability,
     compare,
     layers,
     owndata,
@@ -46,6 +47,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     compare,
     layers,
     producer_commands,
+    availability,
 )
 
 

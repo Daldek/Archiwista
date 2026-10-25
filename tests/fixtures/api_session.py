@@ -12,6 +12,7 @@ from archiwista.app import create_app
 from archiwista.auth import Principal
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.index.schema import initialize
+from archiwista.jobs import JobSupervisor
 from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
@@ -81,11 +82,15 @@ class Api:
 
 @contextmanager
 def running_api(
-    paths: AppPaths, registry: PluginRegistry | None = None
+    paths: AppPaths,
+    registry: PluginRegistry | None = None,
+    *,
+    jobs: JobSupervisor | None = None,
 ) -> Iterator[Api]:
     """Serve the application over ``paths`` (index and state database).
 
-    ``registry`` holds the producer plugins; none when omitted.
+    ``registry`` holds the producer plugins; none when omitted. ``jobs``, a
+    started supervisor, serves the routes of jobs; none when omitted.
     """
     initialize(paths.index_file)
     state = StateStore(paths.state_file)
@@ -98,6 +103,7 @@ def running_api(
         state=state,
         registry=plugins,
         areas_dir=paths.areas_dir,
+        jobs=jobs,
     )
     with TestClient(app, base_url=BASE_URL) as client:
         yield Api(client, paths, state)

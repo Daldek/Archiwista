@@ -1,119 +1,58 @@
 """The availability job and the stored report (plan 2026-10-25, A2).
 
-The stand-in producer (``tests/fixtures/action_source``) is registered by its
-entry point on ``sys.path``, and on ``PYTHONPATH`` for worker processes. It
-records the options its ``check_availability`` receives
-(``standin_producer.CALLS``) and reports two variants of 2023 and one of 2022,
-checked now. Kartograf's side of the call (its metadata cache, the area as a
-box) is the contract test ``tests/contract/test_kartograf_actions.py``.
+The stand-in producer (``tests/fixtures/availability.py``) records the options
+its ``check_availability`` receives and reports two variants of 2023 and one
+of 2022, checked now. Kartograf's side of the call (its metadata cache, the
+area as a box) is the contract test ``tests/contract/test_kartograf_actions.py``.
 """
 
-import importlib
 import io
 import json
-import os
 import sqlite3
-import sys
 from collections.abc import Iterator
 from contextlib import closing
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
 from archiwista.auth import LOCAL_OWNER
-from archiwista.config import AppPaths, AppSettings, ConfigStore, SettingsService
+from archiwista.config import AppPaths
 from archiwista.errors import OfflineModeError
-from archiwista.index import (
-    SCHEMA_VERSION,
-    AreaRecord,
-    IndexQueries,
-    IndexWriter,
-    initialize,
-)
+from archiwista.index import SCHEMA_VERSION, IndexQueries, IndexWriter, initialize
 from archiwista.jobs import JobSupervisor, worker
-from archiwista.jobs.protocol import JobSpec
 from archiwista.messages import message
-from archiwista.sources.registry import load_registry
-
-FIXTURES = Path(__file__).parents[1] / "fixtures"
-ACTION_SOURCE = FIXTURES / "action_source"
-FIXTURE_MODULES = ("standin_source_plugin", "standin_producer")
-JOB_TIMEOUT_S = 90.0
-AREA = AreaRecord(
-    id="5f2b9c0e7d41a3b6",
-    source="drawn",
-    geometry={
-        "type": "Polygon",
-        "coordinates": [
-            [[19.9, 50.0], [20.0, 50.0], [20.0, 50.05], [19.9, 50.05], [19.9, 50.0]]
-        ],
-    },
-    created_at=datetime(2026, 10, 25, 8, 0, tzinfo=UTC),
-    area_km2=39.8,
-    countries=("PL",),
-    name="Kraków",
+from tests.fixtures.availability import (
+    AREA,
+    PARAMS,
+    area_paths,
+    availability_spec,
+    availability_supervisor,
+    register_standin,
 )
-PARAMS = {"area_id": AREA.id, "producer": "standin", "product": "dem"}
+
+JOB_TIMEOUT_S = 90.0
 
 
 @pytest.fixture
 def standin(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     """Register the stand-in here and in workers; return its producer library."""
-    for name in FIXTURE_MODULES:
-        monkeypatch.delitem(sys.modules, name, raising=False)
-    monkeypatch.syspath_prepend(str(ACTION_SOURCE))
-    paths = [str(ACTION_SOURCE), os.environ.get("PYTHONPATH", "")]
-    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(path for path in paths if path))
-    return importlib.import_module("standin_producer")
+    return register_standin(monkeypatch)
 
 
 @pytest.fixture
 def paths(tmp_path: Path) -> AppPaths:
     """Return a fresh installation whose index keeps the area ``AREA``."""
-    created = AppPaths(
-        config_file=tmp_path / "config" / "config.toml", data_dir=tmp_path / "data"
-    )
-    with IndexWriter(created.index_file) as writer:
-        writer.write_area(AREA)
-    return created
-
-
-def _supervisor(
-    paths: AppPaths, *, offline: bool = False, max_network_jobs: int = 2
-) -> JobSupervisor:
-    """Return a supervisor of real workers with settings of no store."""
-    ConfigStore(paths.config_file).save(AppSettings(offline=offline))
-    registry = load_registry(cache_dir=paths.cache_dir)
-    settings = SettingsService(ConfigStore(paths.config_file), registry)
-    return JobSupervisor(paths, settings, max_network_jobs=max_network_jobs)
+    return area_paths(tmp_path)
 
 
 @pytest.fixture
 def held(paths: AppPaths) -> Iterator[JobSupervisor]:
     """Yield a supervisor that runs no network job: they stay queued."""
-    with _supervisor(paths, max_network_jobs=0) as jobs:
+    with availability_supervisor(paths, max_network_jobs=0) as jobs:
         yield jobs
-
-
-def _spec(paths: AppPaths, *, force: bool) -> JobSpec:
-    """Return the job a worker of ``availability`` receives."""
-    return JobSpec(
-        job_id="0123456789abcdef",
-        kind="availability",
-        store=None,
-        params={**PARAMS, "force": force},
-        actor="local",
-        actor_kind="local_owner",
-        session=None,
-        index_path=paths.index_file,
-        cache_dir=paths.cache_dir,
-        previews_dir=paths.previews_dir,
-        work_dir=paths.work_dir,
-        settings=AppSettings(),
-    )
 
 
 def test_the_job_asks_the_producer_and_keeps_the_report(
@@ -122,7 +61,9 @@ def test_the_job_asks_the_producer_and_keeps_the_report(
     """The producer gets the area as the index keeps it; the report is kept whole."""
     stream = io.StringIO()
 
-    summary = worker.run_availability(_spec(paths, force=True), worker.Emitter(stream))
+    summary = worker.run_availability(
+        availability_spec(paths, force=True), worker.Emitter(stream)
+    )
     with IndexQueries(paths.index_file) as queries:
         stored = queries.availability(AREA.id, "dem", producer="standin")
     received = standin.CALLS
@@ -172,7 +113,9 @@ def test_an_older_report_never_replaces_a_newer_one(
     paths: AppPaths, standin: ModuleType
 ) -> None:
     """Two checks ending in the other order keep the newer report."""
-    worker.run_availability(_spec(paths, force=False), worker.Emitter(io.StringIO()))
+    worker.run_availability(
+        availability_spec(paths, force=False), worker.Emitter(io.StringIO())
+    )
     with IndexQueries(paths.index_file) as queries:
         newer = queries.availability(AREA.id, "dem", producer="standin")
     assert newer is not None
@@ -191,7 +134,7 @@ def test_offline_mode_refuses_the_job_and_records_nothing(
     paths: AppPaths, standin: ModuleType
 ) -> None:
     """The check needs the network: ``409 offline_mode`` before a job exists."""
-    with _supervisor(paths, offline=True) as jobs:
+    with availability_supervisor(paths, offline=True) as jobs:
         with pytest.raises(OfflineModeError) as raised:
             jobs.submit("availability", params=PARAMS, actor=LOCAL_OWNER)
         listed = jobs.list().items
@@ -248,7 +191,7 @@ def test_a_worker_process_runs_the_check_and_its_notice_becomes_an_event(
     paths: AppPaths, standin: ModuleType
 ) -> None:
     """The job ends ``succeeded`` with the report in the index."""
-    with _supervisor(paths) as jobs:
+    with availability_supervisor(paths) as jobs:
         job = jobs.submit("availability", params=PARAMS, actor=LOCAL_OWNER)
         record = jobs.wait(job.id, timeout=JOB_TIMEOUT_S)
         notices = [
@@ -283,7 +226,9 @@ def test_an_index_of_the_previous_schema_is_rebuilt_with_the_reports(
     rebuilt = initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.write_area(AREA)
-    worker.run_availability(_spec(paths, force=False), worker.Emitter(io.StringIO()))
+    worker.run_availability(
+        availability_spec(paths, force=False), worker.Emitter(io.StringIO())
+    )
     with IndexQueries(paths.index_file) as queries:
         stored = queries.availability(AREA.id, "dem", producer="standin")
 

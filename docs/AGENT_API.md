@@ -34,6 +34,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
+| what the source has for an area and a product: the last report kept, a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `GET /availability`, `POST /availability` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -282,7 +283,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-## 6. Previews, layers, comparison, own data (v0.2) and producers' commands (v0.3)
+## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
 
 Take a `ref` from the answer of the card of a version, of an own file or of a
 snapshot: `version:<store>:<version-path>`, `file:<project>:<file-path>` or
@@ -386,6 +387,32 @@ curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   "$BASE/commands/parse"
 ```
 
+**The availability at the source (v0.3, ADR-035).** `POST /availability` with
+`{"area_id": "…", "product": "nmt"}` (`producer` is `kartograf` by default; the
+products a producer checks are listed in the `422` that refuses another one) asks
+what the source has for a kept area. A report the index keeps that is younger
+than seven days answers at once: `200` with `AvailabilityInfo`, the area,
+`checked_at` (when the source was asked), `job_id` and `report` (the producer's
+report: the parts of the area by country with their land, the combinations of a
+year, a variant and a format with their full, partial and missing sheets, the
+sheet records and campaigns a download takes and `full_m2`, the parts that
+failed, the producer's notices, `ok`). Otherwise, or with `"force": true`, the
+answer is `202` with the `availability` job (`Location`); a request that asks
+what an active check asks gets that job. When the job succeeded, `GET
+/availability?area_id=…&product=…` returns its report; it reads only the index,
+never the network, and answers `404` without a report. In offline mode a check
+that needs the source is `409 conflict` (`offline_mode`) and nothing is
+recorded. `archiwista availability check` runs the job in the foreground and
+prints the `AvailabilityInfo` it kept (`--json`); a check that does not succeed
+prints its `JobDetail` and exits `11` or `130`.
+
+```sh
+curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
+  -d "{\"area_id\": \"$AREA\", \"product\": \"nmt\"}" "$BASE/availability"
+archiwista availability check "$AREA" --product=nmt --json
+archiwista availability show "$AREA" --product=nmt --json
+```
+
 ## 7. Errors
 
 Every HTTP error is `application/problem+json` (RFC 9457) with a code of the
@@ -436,7 +463,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
 | 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds) |
-| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands |
+| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; wait for `Retry-After` |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
@@ -493,6 +520,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
+| `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`) |
 
 An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
 When a job that writes the store's index (a scan or outlines) runs already, the
@@ -500,7 +528,7 @@ answer is `409 conflict` with `details.job` (`id`, `kind`, `state`): follow that
 job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
-`link_check`, `preview`, `own_scan`, `snapshot`), `state` (`queued`, `running`,
+`link_check`, `preview`, `own_scan`, `snapshot`, `availability`), `state` (`queued`, `running`,
 `succeeded`, `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`

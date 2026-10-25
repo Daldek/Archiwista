@@ -59,6 +59,7 @@ ROUTES = {
     ("post", "/api/v1/commands/parse"),
     ("post", "/api/v1/commands/validate"),
     ("post", "/api/v1/commands/format"),
+    ("get", "/api/v1/availability"),
 }
 
 
