@@ -1,1531 +1,1531 @@
-# Rejestr decyzji — Archiwista
+# Decision log — Archiwista
 
-Każda decyzja architektoniczna lub projektowa jest opisana poniżej w formacie
-rejestru Kartografa: numer, data, status, kontekst, rozważone opcje, decyzja,
-konsekwencje. Treść decyzji opisuje stan w chwili jej podjęcia; późniejsze
-zmiany faktów i ustalenia dodatkowe dopisujemy na końcu wpisu jako erraty
-`**Errata N (RRRR-MM-DD, źródło/powód):**`. Plik ma końce linii LF.
+Each architectural or design decision is described below in the format of
+the Kartograf log: number, date, status, context, options considered, decision,
+consequences. The text of a decision describes the state at the time it was made; later
+changes of facts and additional findings are appended at the end of the entry as errata
+`**Erratum N (YYYY-MM-DD, source/reason):**`. The file uses LF line endings.
 
-W `docs/SPEC.md` odwołania do tych decyzji mają postać „A-ADR-0xx” —
-odróżnia je to od ADR Kartografa (np. „ADR-036” = magazyn wersjonowany
-Kartografa).
+In `docs/SPEC.md`, references to these decisions take the form "A-ADR-0xx" —
+this distinguishes them from Kartograf's ADRs (e.g. "ADR-036" = Kartograf's
+versioned store).
 
-**Słownik statusów** (linia `**Status:**` każdego wpisu):
-- `Przyjęta` — decyzja obowiązuje;
-- `Proponowana` — zapisana w specu, czeka na decyzję użytkownika (wskazane pytanie otwarte albo mockup);
-- `Przyjęta — częściowo zastąpiona przez ADR-x (zakres)` — wskazana część nie obowiązuje;
-- `Przyjęta — uzupełniona przez ADR-x (zakres)` — obowiązuje, późniejsza decyzja ją rozszerza;
-- `Zastąpiona przez ADR-x` — nie obowiązuje;
-- `Odrzucona` — rozważona i nieprzyjęta.
+**Status vocabulary** (the `**Status:**` line of each entry):
+- `accepted`: the decision is in force;
+- `proposed`: recorded in the spec, waiting for the user's decision (an open question or a mockup is indicated);
+- `accepted, partly superseded by ADR-x (scope)`: the indicated part is not in force;
+- `accepted, amended by ADR-x (scope)`: in force, a later decision extends it;
+- `superseded by ADR-x`: not in force;
+- `rejected`: considered and not accepted.
 
-## Indeks
+## Index
 
-| ADR | Tytuł | Data | Status |
+| ADR | Title | Date | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-osobny-projekt-kartograf-jako-zależność) | Osobny projekt, Kartograf jako zależność | 2026-10-17 | Przyjęta (uzupełniona przez ADR-024; errata 2: `kartograf>=0.8.0,<0.9`) |
-| [ADR-002](#adr-002-źródło-prawdy-na-dysku-lokalny-indeks-jako-pamięć-podręczna) | Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (osobna lokalna baza stanu nieodtwarzalnego) |
-| [ADR-003](#adr-003-magazyn-tylko-do-odczytu-zapisy-wyłącznie-przez-kartografa) | Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa | 2026-10-17 | Przyjęta — częściowo zastąpiona przez ADR-019 |
-| [ADR-004](#adr-004-serwer-w-pythonie-z-fastapi) | Serwer w Pythonie z FastAPI | 2026-10-17 | Przyjęta (errata 2: potwierdzona po otwarciu architektury, 2026-10-18) |
-| [ADR-005](#adr-005-interfejs-jako-spa-w-svelte-api-najpierw) | Interfejs jako SPA w Svelte, API najpierw | 2026-10-17 | Zastąpiona przez ADR-028 (Preact + htm bez budowania; zasada „API najpierw” zostaje) |
-| [ADR-006](#adr-006-mapa-w-maplibre-gl-js) | Mapa w MapLibre GL JS | 2026-10-17 | Przyjęta (errata 3: potwierdzona 2026-10-18; errata 1: „Stos” zastąpiony „Wachlarzem”, bez 3D) |
-| [ADR-007](#adr-007-zadania-w-tle-w-osobnych-procesach) | Zadania w tle w osobnych procesach | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18) |
-| [ADR-008](#adr-008-podglądy-przez-rio-tiler-z-pamięcią-po-sumie-wersji) | Podglądy przez rio-tiler z pamięcią po sumie wersji | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, podgląd roku z kafli arkuszy; errata 3: klucz pamięci wersji bez `sha256`) |
-| [ADR-009](#adr-009-łączenie-danych-obróbka-w-kartografie-opakowanie-w-archiwiście) | Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście | 2026-10-17 | Proponowana (SPEC 15: P2, P3) |
-| [ADR-010](#adr-010-etykiety-pokrycia-roku-i-plakietka-magazynu) | Etykiety pokrycia roku i plakietka magazynu | 2026-10-17 | Proponowana (mockup: M2) |
-| [ADR-011](#adr-011-asystent-po-stronie-serwera-z-potwierdzeniem-człowieka) | Asystent po stronie serwera z potwierdzeniem człowieka | 2026-10-17 | Przyjęta |
-| [ADR-012](#adr-012-ochrona-trybu-lokalnego) | Ochrona trybu lokalnego | 2026-10-17 | Przyjęta (errata 1: token we fragmencie, osobny token CSRF, reguła `Origin`, CSP z podkładami; errata 2: token CSRF w każdym żądaniu zamiast ciasteczka, sesje agentów ograniczone) |
-| [ADR-013](#adr-013-tryb-zespołu-jako-jeden-serwer-w-sieci-lokalnej) | Tryb zespołu jako jeden serwer w sieci lokalnej | 2026-10-17 | Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1; decyzja użytkownika 2026-10-18; SPEC 15: P1) |
-| [ADR-014](#adr-014-wiedza-o-formacie-magazynu-tylko-w-kartografie) | Wiedza o formacie magazynu tylko w Kartografie | 2026-10-17 | Przyjęta — uzupełniona przez ADR-019 (errata 2: KA w Kartografie 0.8.0, `skip_versions`, `list_segments`, KA-5 na żądanie) |
-| [ADR-015](#adr-015-pakowanie-i-uruchamianie) | Pakowanie i uruchamianie | 2026-10-17 | Przyjęta (errata 2: potwierdzona 2026-10-18, bez Node.js) |
-| [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9; errata 2: podkład wektorowy OpenFreeMap zamiast BKG TopPlusOpen) |
-| [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
-| [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (errata 1: „Wachlarz” zastępuje „Stos”, M4/P12 rozstrzygnięte) |
-| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024) |
-| [ADR-020](#adr-020-format-danych-imgw-własny-sidecar-parquet-geojson) | Format danych IMGW: własny sidecar, Parquet, GeoJSON | 2026-10-17 | Proponowana (ADR IMGWTools; SPEC 12.8) |
-| [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2; errata 3: jednostki znane per stacja ČHMÚ); Proponowana (mockup: M11) |
-| [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
-| [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18; errata 2: kształt `imgw-project/1` z IMGWTools 3.0.0) |
-| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
-| [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika; errata 3: „PL + CZ” jako v0.6 w MVP, ze stacjami ČHMÚ) |
-| [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
-| [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika; errata 1: migawkę w zespole robi właściciel projektu albo administrator, ADR-029) |
-| [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
-| [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Przyjęta (decyzja użytkownika; uzupełnia ADR-013; model uprawnień od v0.1; errata 1: folder danych własnych ustawia administrator do v0.4) |
+| [ADR-001](#adr-001-separate-project-kartograf-as-a-dependency) | Separate project, Kartograf as a dependency | 2026-10-17 | accepted (amended by ADR-024; erratum 2: `kartograf>=0.8.0,<0.9`) |
+| [ADR-002](#adr-002-source-of-truth-on-disk-local-index-as-a-cache) | Source of truth on disk, local index as a cache | 2026-10-17 | accepted, amended by ADR-029 (separate local database for state that is not rebuildable) |
+| [ADR-003](#adr-003-read-only-store-writes-only-through-kartograf) | Read-only store, writes only through Kartograf | 2026-10-17 | accepted, partly superseded by ADR-019 |
+| [ADR-004](#adr-004-python-server-with-fastapi) | Python server with FastAPI | 2026-10-17 | accepted (erratum 2: confirmed after the architecture review, 2026-10-18) |
+| [ADR-005](#adr-005-interface-as-a-spa-in-svelte-api-first) | Interface as a SPA in Svelte, API first | 2026-10-17 | superseded by ADR-028 (Preact + htm without a build step; the "API first" principle stays) |
+| [ADR-006](#adr-006-map-in-maplibre-gl-js) | Map in MapLibre GL JS | 2026-10-17 | accepted (erratum 3: confirmed 2026-10-18; erratum 1: "Stack" replaced by "the Fan", no 3D) |
+| [ADR-007](#adr-007-background-jobs-in-separate-processes) | Background jobs in separate processes | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18) |
+| [ADR-008](#adr-008-previews-via-rio-tiler-with-a-cache-keyed-by-version-hash) | Previews through rio-tiler with a cache keyed by version checksum | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18, year preview from sheet tiles; erratum 3: version cache key without `sha256`) |
+| [ADR-009](#adr-009-data-merging-processing-in-kartograf-packaging-in-archiwista) | Combining data: processing in Kartograf, packaging in Archiwista | 2026-10-17 | proposed (SPEC 15: P2, P3) |
+| [ADR-010](#adr-010-year-coverage-labels-and-the-store-badge) | Year coverage labels and store badge | 2026-10-17 | proposed (mockup: M2) |
+| [ADR-011](#adr-011-server-side-assistant-with-human-confirmation) | Server-side assistant with human confirmation | 2026-10-17 | accepted |
+| [ADR-012](#adr-012-protecting-local-mode) | Local mode protection | 2026-10-17 | accepted (erratum 1: token in the fragment, separate CSRF token, `Origin` rule, CSP with basemaps; erratum 2: CSRF token in every request instead of a cookie, agent sessions limited) |
+| [ADR-013](#adr-013-team-mode-as-a-single-server-on-the-local-network) | Team mode as a single server on a local network | 2026-10-17 | accepted, amended by ADR-029 (roles and permissions model from v0.1; user decision 2026-10-18; SPEC 15: P1) |
+| [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) |
+| [ADR-015](#adr-015-packaging-and-running) | Packaging and running | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18, no Node.js) |
+| [ADR-016](#adr-016-date-format-in-the-interface-and-the-map-basemap) | Date format in the interface and map basemap | 2026-10-17 | accepted (SPEC 15: P6; mockup: M9; erratum 2: OpenFreeMap vector basemap instead of BKG TopPlusOpen) |
+| [ADR-017](#adr-017-grouped-variants-without-file-format) | Grouped variants without file format | 2026-10-17 | accepted (amends ADR-010) |
+| [ADR-018](#adr-018-interface-patterns-after-the-mockup-chat-stack-previews) | Interface patterns after the mockup: chat, Stack, previews | 2026-10-17 | accepted (erratum 1: "the Fan" replaces "Stack", M4/P12 resolved) |
+| [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024) |
+| [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | proposed (IMGWTools ADR; SPEC 12.8) |
+| [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station); proposed (mockup: M11) |
+| [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
+| [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted (IMGW data in a project in v1.0 and two manifest files: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0) |
+| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`) |
+| [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations) |
+| [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
+| [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
+| [ADR-028](#adr-028-ui-in-preact--htm-without-a-build-step) | Interface in Preact + htm without a build step | 2026-10-18 | accepted (user decision; supersedes ADR-005) |
+| [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4) |
 
 ---
 
-## ADR-001: Osobny projekt, Kartograf jako zależność
+## ADR-001: Separate project, Kartograf as a dependency
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełniona przez ADR-024 (Kartograf wymagany, IMGWTools opcjonalny)
+**Date:** 2026-10-17
+**Status:** accepted (user decision 2026-10-17); amended by ADR-024 (Kartograf required, IMGWTools optional)
 
-**Kontekst:** Roadmapa Kartografa (SCOPE 3.3) przewidywała podprojekt 5 „GUI webowe”
-(lokalny manager danych) jako nakładkę na bibliotekę. Użytkownik chce
-pełnego managera: przegląd i wyszukiwanie archiwum, mapa i podglądy,
-działania przez API Kartografa (pobieranie, aktualność, projekty),
-przygotowanie danych do łączenia i asystent.
+**Context:** Kartograf's roadmap (SCOPE 3.3) provided for subproject 5 "web GUI"
+(a local data manager) as an overlay on the library. The user wants
+a full manager: browsing and searching the archive, a map and previews,
+actions through the Kartograf API (downloading, freshness, projects),
+preparing data for merging, and an assistant.
 
-**Opcje:**
-- A) GUI w repozytorium Kartografa (np. pakiet `kartograf.web`).
-- B) Osobny projekt i repozytorium; Kartograf jako zależność (publiczne API i formaty na dysku).
-- C) Rozbudowa CLI Kartografa o interfejs tekstowy (TUI).
+**Options:**
+- A) The GUI in the Kartograf repository (e.g. a `kartograf.web` package).
+- B) A separate project and repository; Kartograf as a dependency (public API and on-disk formats).
+- C) Extending the Kartograf CLI with a text interface (TUI).
 
-**Decyzja:** B. Repozytorium `Archiwista` (gałęzie `main` i `develop`, bez remote)
-zależy od publicznego API Kartografa (`kartograf.__all__`) i jego formatów
-(`kartograf-meta/1`, układ `data/`, `kartograf-project/1`, `kartograf-plan/1`,
-`kartograf-availability/1`). Archiwista zastępuje podprojekt 5 roadmapy
-Kartografa; wtyczka QGIS (podprojekt 4) zostaje w Kartografie. Opcja A
-dokładałaby do biblioteki zależności webowe i drugi cykl wydań; opcja C nie
-daje mapy ani podglądów.
+**Decision:** B. The `Archiwista` repository (branches `main` and `develop`, no remote)
+depends on Kartograf's public API (`kartograf.__all__`) and its formats
+(`kartograf-meta/1`, the `data/` layout, `kartograf-project/1`, `kartograf-plan/1`,
+`kartograf-availability/1`). Archiwista replaces subproject 5 of Kartograf's
+roadmap; the QGIS plugin (subproject 4) stays in Kartograf. Option A
+would add web dependencies and a second release cycle to the library; option C does not
+provide a map or previews.
 
-**Konsekwencje:** Kartograf nie zależy od Archiwisty i nie dostaje zależności webowych.
-Archiwista deklaruje wspierany zakres wersji Kartografa i testuje się
-przeciw jego gałęzi `develop`. Brakujące funkcje Kartografa są wymaganiami
-wobec niego (ADR-014, SPEC 12); roadmapę Kartografa aktualizuje
-koordynator.
+**Consequences:** Kartograf does not depend on Archiwista and gets no web dependencies.
+Archiwista declares a supported range of Kartograf versions and is tested
+against its `develop` branch. Missing Kartograf features are requirements
+placed on it (ADR-014, SPEC 12); the coordinator updates Kartograf's
+roadmap.
 
-**Errata 1 (2026-10-17, decyzja użytkownika — ADR-024):** Kartograf zostaje wymaganą
-zależnością (`kartograf>=0.9,<0.10`, zakres ustala się przy wydaniu); IMGWTools jest
-opcjonalny (extra `archiwista[imgw]`), a adaptery źródeł są wtyczkami rejestrowanymi
-przez entry points.
+**Erratum 1 (2026-10-17, user decision — ADR-024):** Kartograf becomes a required
+dependency (`kartograf>=0.9,<0.10`, the range is set at release); IMGWTools is
+optional (extra `archiwista[imgw]`), and source adapters are plugins registered
+through entry points.
 
-**Errata 2 (2026-10-18, decyzja użytkownika — ADR-024 errata 1):** zakres wersji z errata 1
-nie obowiązuje: publiczny odczyt magazynu (KA-1..KA-6) wchodzi do Kartografa 0.8.0, więc
-zależność to `kartograf>=0.8.0,<0.9`.
-
----
-
-## ADR-002: Źródło prawdy na dysku, lokalny indeks jako pamięć podręczna
-
-**Data:** 2026-10-17
-**Status:** Przyjęta — uzupełniona przez ADR-029 (osobna lokalna baza stanu nieodtwarzalnego); zasady SCOPE 3.3 Kartografa i decyzja użytkownika 2026-10-17
-
-**Kontekst:** Magazyn może leżeć na udziale SMB bez blokad zakresów bajtów, więc nie
-może tam być bazy SQLite; źródłem prawdy są sidecary i manifesty, a indeks
-„które projekty używają pliku” buduje się lokalnie z manifestów (SCOPE 3.3).
-Magazyn ma dziesiątki tysięcy plików — czytanie dysku przy każdym widoku
-jest za wolne, zwłaszcza na udziale.
-
-**Opcje:**
-- A) Bez indeksu: czytanie magazynu przy każdym widoku.
-- B) Lokalny indeks SQLite (WAL, R*Tree, FTS5) odbudowywalny z plików Kartografa.
-- C) Baza serwerowa (PostgreSQL/PostGIS).
-- D) Indeks wspólny na udziale.
-
-**Decyzja:** B. Indeks leży w katalogu danych użytkownika, nigdy na udziale, i można
-go w każdej chwili usunąć i odbudować. Wersje (niezmienne) są czytane raz,
-sidecary dowiązań i manifesty — przy zmianie; przed odpowiedzią na pytanie
-o obszar odświeżane są sloty tego obszaru; dobowy skan kontrolny wyłapuje
-zmiany, których nie widać po czasach katalogów (SPEC 4.4).
-
-**Konsekwencje:** Dwie instancje mogą chwilowo widzieć różny stan — interfejs zawsze
-pokazuje czas indeksu. Zmiana schematu indeksu oznacza przebudowę, bez
-migracji. Cele wydajności: SPEC 4.5.
-
-**Errata 1 (2026-10-18, decyzja użytkownika, ADR-029):** konta, grupy, role i widoczność
-projektów nie wynikają z plików na dysku, więc nie trafiają do indeksu, tylko do
-osobnej lokalnej bazy stanu (`<user_data_dir>/state.sqlite`, nigdy na udziale), którą
-przebudowa indeksu omija; jej schemat zmienia się migracjami, a kopia zapasowa to
-`archiwista state export` (odtworzenie: `archiwista state import`).
+**Erratum 2 (2026-10-18, user decision — ADR-024 erratum 1):** the version range from erratum 1
+no longer applies: public store reading (KA-1..KA-6) enters Kartograf 0.8.0, so the
+dependency is `kartograf>=0.8.0,<0.9`.
 
 ---
 
-## ADR-003: Magazyn tylko do odczytu, zapisy wyłącznie przez Kartografa
+## ADR-002: Source of truth on disk, local index as a cache
 
-**Data:** 2026-10-17
-**Status:** Przyjęta — częściowo zastąpiona przez ADR-019 (pisarze magazynu: Kartograf i IMGWTools)
+**Date:** 2026-10-17
+**Status:** accepted, amended by ADR-029 (a separate local database for state that is not rebuildable); Kartograf's SCOPE 3.3 principles and the user decision of 2026-10-17
 
-**Kontekst:** Zasada nakładek (SCOPE 3.3): nakładki wołają wyłącznie publiczne API
-biblioteki i nie mają własnej logiki pobierania ani obróbki. Magazyn
-Kartografa nigdy nie nadpisuje danych po cichu (ADR-036 Kartografa),
-a Kartograf niczego nie usuwa.
+**Context:** A store may sit on an SMB share without byte-range locks, so a SQLite database
+cannot live there; the source of truth is the sidecars and manifests, and the
+"which projects use a file" index is built locally from the manifests (SCOPE 3.3).
+A store has tens of thousands of files — reading the disk on every view
+is too slow, especially on a share.
 
-**Opcje:**
-- A) Archiwista zapisuje w magazynie własne pliki (indeks, miniatury, notatki).
-- B) Magazyn tylko do odczytu; wersje, dowiązania i manifesty zmienia wyłącznie API Kartografa.
-- C) Jak B, ale z usuwaniem wersji przez Archiwistę.
+**Options:**
+- A) No index: reading the store on every view.
+- B) A local SQLite index (WAL, R*Tree, FTS5) rebuildable from Kartograf's files.
+- C) A server database (PostgreSQL/PostGIS).
+- D) A shared index on the share.
 
-**Decyzja:** B. Poza lokalnymi plikami (indeks, podglądy, dzienniki) Archiwista
-zapisuje tylko katalog zestawu w projekcie (SPEC 8.4) i plik geometrii
-narysowanego obszaru dla nowego zadania projektu (`obszary/`). Usuwania nie
-ma (SPEC 15, P4).
+**Decision:** B. The index lives in the user's data directory, never on the share, and can
+be deleted and rebuilt at any time. Versions (immutable) are read once,
+link sidecars and manifests — on change; before answering a question
+about an area, the slots of that area are refreshed; a daily control scan catches
+changes that are not visible from directory times (SPEC 4.4).
 
-**Konsekwencje:** v0.1 jest sprawdzana na magazynie zamontowanym tylko do odczytu. Każda
-nowa operacja tworząca dane wymaga funkcji Kartografa (ADR-009).
+**Consequences:** Two instances may briefly see different states — the interface always
+shows the index time. A change of the index schema means a rebuild, without
+migrations. Performance targets: SPEC 4.5.
 
-**Errata 1 (2026-10-17, przegląd specu):** „plik geometrii narysowanego obszaru”
-obejmuje też obszar wczytany z pliku (GPKG, SHP, GeoJSON): przy zadaniu
-projektu jego kopia trafia do `obszary/` projektu, a nie do lokalnego katalogu
-roboczego, żeby manifest nie wskazywał ścieżki spoza katalogu projektu
+**Erratum 1 (2026-10-18, user decision, ADR-029):** accounts, groups, roles and project
+visibility do not come from files on disk, so they do not go into the index but into
+a separate local state database (`<user_data_dir>/state.sqlite`, never on the share), which
+an index rebuild skips; its schema changes through migrations, and the backup is
+`archiwista state export` (restore: `archiwista state import`).
+
+---
+
+## ADR-003: Read-only store, writes only through Kartograf
+
+**Date:** 2026-10-17
+**Status:** accepted, partly superseded by ADR-019 (store writers: Kartograf and IMGWTools)
+
+**Context:** The overlay principle (SCOPE 3.3): overlays call only the library's public API
+and have no download or processing logic of their own. Kartograf's store
+never silently overwrites data (Kartograf's ADR-036),
+and Kartograf deletes nothing.
+
+**Options:**
+- A) Archiwista writes its own files in the store (index, thumbnails, notes).
+- B) Read-only store; versions, links and manifests are changed only by the Kartograf API.
+- C) Like B, but with deletion of versions by Archiwista.
+
+**Decision:** B. Apart from local files (index, previews, logs), Archiwista
+writes only the set directory in a project (SPEC 8.4) and the geometry file of
+the drawn area for a new project job (`obszary/`). There is no
+deletion (SPEC 15, P4).
+
+**Consequences:** v0.1 is verified on a store mounted read-only. Every
+new operation that creates data requires a Kartograf function (ADR-009).
+
+**Erratum 1 (2026-10-17, spec review):** "the geometry file of the drawn area"
+also covers an area loaded from a file (GPKG, SHP, GeoJSON): for a project
+job its copy goes to the project's `obszary/`, not to a local
+working directory, so that the manifest does not point to a path outside the project directory
 (SPEC 4.1, 6.3, 10.1).
 
-**Errata 2 (2026-10-17, ADR-019):** magazyn ma dwóch producentów — Kartografa (katalog
-`--output` z układem `data/`) i IMGWTools (osobny katalog IMGW, `imgw-store/1`).
-„Zapisy wyłącznie przez Kartografa” dotyczy katalogu Kartografa; katalog IMGW
-zmienia wyłącznie API IMGWTools. Część „magazyn tylko do odczytu” obowiązuje bez
-zmian dla obu katalogów, podobnie dozwolone zapisy Archiwisty (pliki lokalne,
-katalog zestawu, `obszary/`); zestaw może zawierać szeregi IMGW w CSV wyeksportowane
-funkcją IMGWTools (SPEC 8.4).
+**Erratum 2 (2026-10-17, ADR-019):** the store has two producers — Kartograf (the `--output`
+directory with the `data/` layout) and IMGWTools (a separate IMGW directory, `imgw-store/1`).
+"Writes only through Kartograf" applies to the Kartograf directory; the IMGW directory
+is changed only by the IMGWTools API. The "read-only store" part applies unchanged to
+both directories, as do Archiwista's permitted writes (local files, the set directory,
+`obszary/`); a set may contain IMGW series in CSV exported
+by an IMGWTools function (SPEC 8.4).
 
 ---
 
-## ADR-004: Serwer w Pythonie z FastAPI
+## ADR-004: Python server with FastAPI
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18; wcześniej ponownie otwarta — errata 1)
+**Date:** 2026-10-17
+**Status:** accepted (erratum 2, user decision 2026-10-18; previously reopened — erratum 1)
 
-**Kontekst:** Kartograf jest biblioteką Pythona; Archiwista musi wywoływać jego funkcje,
-a nie parsować wynik CLI. Potrzebne jest jedno API HTTP dla interfejsu,
-asystenta i skryptów, z typowanym schematem.
+**Context:** Kartograf is a Python library; Archiwista must call its functions
+rather than parse CLI output. One HTTP API is needed for the interface,
+the assistant and scripts, with a typed schema.
 
-**Opcje:**
+**Options:**
 - A) Python + FastAPI + Uvicorn + Pydantic 2.
 - B) Python + Flask.
 - C) Python + Django.
-- D) Python z frameworkiem UI (NiceGUI, Streamlit, Panel, Dash).
-- E) Inny język (Node.js, Go, Rust) z wołaniem CLI Kartografa.
+- D) Python with a UI framework (NiceGUI, Streamlit, Panel, Dash).
+- E) Another language (Node.js, Go, Rust) calling the Kartograf CLI.
 
-**Decyzja:** A. Typowane modele dają schemat OpenAPI (typy interfejsu, opisy narzędzi
-asystenta); ten sam wybór co w Hydrografie (jego ADR-002). Flask nie daje
-schematów bez dodatków, Django wnosi zbędny ORM i panel, frameworki UI wiążą
-interfejs z procesem Pythona (Streamlit przelicza skrypt przy każdej
-interakcji) i nie dają czystego API, a inny język oznaczałby parsowanie
-tekstu CLI — to odrzucił już ADR-037 Kartografa (opcja C).
+**Decision:** A. Typed models give an OpenAPI schema (interface types, assistant
+tool descriptions); the same choice as in Hydrograf (its ADR-002). Flask does not provide
+schemas without add-ons, Django brings an unnecessary ORM and admin panel, UI frameworks tie
+the interface to the Python process (Streamlit reruns the script on every
+interaction) and do not provide a clean API, and another language would mean parsing
+CLI text — which Kartograf's ADR-037 (option C) already rejected.
 
-**Konsekwencje:** Python 3.12+, jak Kartograf. Kartograf jest importowany tylko w module
-adaptera (`archiwista/adapter/`), co pilnuje test importów.
+**Consequences:** Python 3.12+, like Kartograf. Kartograf is imported only in the adapter
+module (`archiwista/adapter/`), which an import test enforces.
 
-**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
-wyjścia do decyzji.
+**Erratum 1 (2026-10-17, user decision — open architecture):** the architecture is
+reopened; the decision returns to the proposed status and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above is the assessment so far, the starting
+point for the decision.
 
-**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona bez zmian
-po porównaniu wariantów architektury; wybór jest praktycznie wymuszony, bo Kartograf
-i IMGWTools to biblioteki Pythona.
+**Erratum 2 (2026-10-18, user decision — stage 0):** decision confirmed unchanged
+after comparing architecture variants; the choice is practically forced, because Kartograf
+and IMGWTools are Python libraries.
 
 ---
 
-## ADR-005: Interfejs jako SPA w Svelte, API najpierw
+## ADR-005: Interface as a SPA in Svelte, API first
 
-**Data:** 2026-10-17
-**Status:** Zastąpiona przez ADR-028 (decyzja użytkownika 2026-10-18); zasada „API najpierw” i stan widoku w adresie URL zostają
+**Date:** 2026-10-17
+**Status:** superseded by ADR-028 (user decision 2026-10-18); the "API first" principle and the view state in the URL remain
 
-**Kontekst:** Główny ekran to aplikacja mapowa ze wspólnym stanem: obszar, produkt,
-warstwy lat, widoki „Mapa”, „Stos” i „Katalog”, panel „Zestawienie”, czat
-asystenta, postęp zadań. Użytkownik zostawił wolną rękę co do nowoczesnych
-wzorców interfejsu, ale chce zobaczyć mockup przed decyzjami o wzorcach.
+**Context:** The main screen is a map application with shared state: area, product,
+year layers, the "Mapa" (Map), "Stos" (Stack) and "Katalog" (Catalog) views, the "Zestawienie" (Summary) panel, the assistant
+chat, job progress. The user left a free hand regarding modern interface
+patterns, but wants to see a mockup before decisions on patterns.
 
-**Opcje:**
-- A) Szablony serwerowe + htmx.
+**Options:**
+- A) Server templates + htmx.
 - B) SPA: Svelte 5 + TypeScript + Vite.
 - C) SPA: React.
 - D) SPA: Vue 3.
-- E) Czysty JavaScript bez frameworka (jak Hydrograf).
+- E) Plain JavaScript without a framework (like Hydrograf).
 
-**Decyzja:** B. Jedno API HTTP obsługuje interfejs, asystenta i skrypty; interfejs jest
-budowany do plików statycznych w pakiecie Pythona (użytkownik nie potrzebuje
-Node.js), stan widoku jest w adresie URL, typy API generowane z OpenAPI.
-htmx dobrze obsługuje listy i formularze, ale stan mapy i paneli rozpadałby
-się na fragmenty HTML i ręczny JS; React i Vue są porównywalne, Svelte daje
-najmniej kodu; czysty JS przy tylu widokach rośnie w nieuporządkowany kod.
+**Decision:** B. A single HTTP API serves the interface, the assistant and scripts; the interface is
+built into static files in the Python package (the user does not need
+Node.js), the view state is in the URL, API types are generated from OpenAPI.
+htmx handles lists and forms well, but the state of the map and panels would break up
+into HTML fragments and manual JS; React and Vue are comparable, Svelte gives the
+least code; plain JS with this many views grows into disorganised code.
 
-**Konsekwencje:** Dwa ekosystemy w repozytorium (Python i Node.js dla deweloperów). Mockup
-(SPEC 16) rozstrzyga wzorce interfejsu, nie framework.
+**Consequences:** Two ecosystems in the repository (Python and Node.js for developers). The mockup
+(SPEC 16) settles the interface patterns, not the framework.
 
-**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
-wyjścia do decyzji.
+**Erratum 1 (2026-10-17, user decision — architecture reopened):** the architecture is
+reopened; the decision returns to the proposed status and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above is the current
+assessment, the starting point for the decision.
 
-**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** zastąpiona przez ADR-028:
-interfejs w Preact + htm bez kroku budowania (jak mockup) zamiast Svelte z Vite; z tej
-decyzji zostają: jedno API HTTP dla interfejsu, skryptów i asystenta oraz stan widoku
-w adresie URL.
+**Erratum 2 (2026-10-18, user decision — stage 0):** superseded by ADR-028:
+the interface in Preact + htm without a build step (like the mockup) instead of Svelte with Vite; what remains from this
+decision: a single HTTP API for the interface, scripts and the assistant, and the view state
+in the URL.
 
 ---
 
-## ADR-006: Mapa w MapLibre GL JS
+## ADR-006: Map in MapLibre GL JS
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (errata 3, decyzja użytkownika 2026-10-18; errata 1: „Stos” zastąpiony „Wachlarzem”, bez 3D)
+**Date:** 2026-10-17
+**Status:** accepted (erratum 3, user decision 2026-10-18; erratum 1: "Stos" (Stack) replaced by "Wachlarz" (the Fan), no 3D)
 
-**Kontekst:** Mapa musi płynnie pokazać dziesiątki tysięcy obrysów, podkłady XYZ i WMS
-(GUGiK, CUZK) oraz widok „Stos” — warstwy lat nad mapą w rzucie
-izometrycznym (wymaganie użytkownika 2026-10-17).
+**Context:** The map must smoothly display tens of thousands of footprints, XYZ and WMS basemaps
+(GUGiK, CUZK) and the "Stos" (Stack) view — year layers above the map in an
+isometric projection (user requirement 2026-10-17).
 
-**Opcje:**
-- A) Leaflet (wybór Hydrografa, jego ADR-003).
+**Options:**
+- A) Leaflet (Hydrograf's choice, its ADR-003).
 - B) OpenLayers.
 - C) MapLibre GL JS.
 - D) CesiumJS.
-- E) deck.gl jako główna biblioteka.
+- E) deck.gl as the main library.
 
-**Decyzja:** C. WebGL, nachylenie kamery i `fill-extrusion` z wysokością bazową dają
-„Stos” bez osobnego silnika 3D. Leaflet nie ma nachylenia ani 3D, OpenLayers
-— widoku 3D, CesiumJS to ciężki silnik globu, deck.gl może dojść później
-(chmury punktów, tekstury w „Stosie”).
+**Decision:** C. WebGL, camera tilt and `fill-extrusion` with a base height give
+the "Stos" (Stack) without a separate 3D engine. Leaflet has no tilt or 3D, OpenLayers
+no 3D view, CesiumJS is a heavy globe engine, deck.gl may come later
+(point clouds, textures in the "Stos" (Stack)).
 
-**Konsekwencje:** Wyświetlanie w EPSG:3857; przeliczenia do wyświetlania wykonuje serwer
-przypiętą transformacją Kartografa (KA-6). Wymagana przeglądarka z WebGL.
+**Consequences:** Display in EPSG:3857; conversions for display are done by the server
+with Kartograf's pinned transformation (KA-6). A browser with WebGL is required.
 
-**Errata 1 (2026-10-17, decyzja użytkownika po mockupie — ADR-018 errata 1):** widok
-„Stos” usunięto; zastąpił go „Wachlarz” — komponent SVG interfejsu z miniaturami lat,
-nie warstwa mapy. Argumenty „nachylenie kamery i `fill-extrusion` dają Stos” oraz
-„tekstury w Stosie przez deck.gl” nie obowiązują. Wybór C zostaje: o MapLibre
-przesądzają WebGL przy dziesiątkach tysięcy obrysów i punktów stacji, style wektorowe
-i źródła XYZ/WMS (SPEC 5.2, 5.4).
+**Erratum 1 (2026-10-17, user decision after the mockup — ADR-018 erratum 1):** the
+"Stos" (Stack) view was removed; it was replaced by the "Wachlarz" (the Fan), an SVG interface component with year thumbnails,
+not a map layer. The arguments "camera tilt and `fill-extrusion` give the Stack" and
+"textures in the Stack via deck.gl" no longer apply. Choice C remains: MapLibre is
+decided by WebGL with tens of thousands of footprints and station points, vector styles
+and XYZ/WMS sources (SPEC 5.2, 5.4).
 
-**Errata 2 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej (z errata 1) to dotychczasowa
-ocena, punkt wyjścia do decyzji.
+**Erratum 2 (2026-10-17, user decision — architecture reopened):** the architecture is
+reopened; the decision returns to the proposed status and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above (with erratum 1) is the current
+assessment, the starting point for the decision.
 
-**Errata 3 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona; MapLibre
-sprawdził się w mockupie (tysiące obrysów, obrazy roku na mapie, warstwy liniowe
-danych własnych).
+**Erratum 3 (2026-10-18, user decision — stage 0):** decision confirmed; MapLibre
+proved itself in the mockup (thousands of footprints, year images on the map, line layers
+of own data).
 
 ---
 
-## ADR-007: Zadania w tle w osobnych procesach
+## ADR-007: Background jobs in separate processes
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
+**Date:** 2026-10-17
+**Status:** accepted (erratum 2, user decision 2026-10-18)
 
-**Kontekst:** Pobrania, sprawdzenia, weryfikacje i łączenie trwają od sekund do godzin,
-korzystają z bibliotek natywnych (GDAL) i muszą dać się anulować. Kartograf
-jest synchroniczny i nie ma dziś parametru anulowania.
+**Context:** Downloads, checks, verifications and merging take from seconds to hours,
+use native libraries (GDAL) and must be cancellable. Kartograf
+is synchronous and currently has no cancellation parameter.
 
-**Opcje:**
-- A) Wątki w procesie serwera.
+**Options:**
+- A) Threads in the server process.
 - B) asyncio.
-- C) Celery albo RQ z Redisem.
-- D) Procesy robocze uruchamiane przez nadzorcę w serwerze, kolejka w indeksie.
+- C) Celery or RQ with Redis.
+- D) Worker processes launched by the job supervisor in the server, queue in the index.
 
-**Decyzja:** D. Proces roboczy wywołuje funkcję Kartografa i wysyła zdarzenia JSON Lines
-(postęp, komunikaty, wynik, błąd); nadzorca zapisuje je w indeksie
-i przekazuje przez SSE. Limity: 2 zadania sieciowe, 1 zadanie na projekt.
-Anulowanie docelowo kooperacyjne (KC-1), do tego czasu sygnał przerwania,
-a po 30 s zakończenie procesu. Restart serwera oznacza zadania „przerwane”.
-Procesy robocze dostają lokalny `MetadataCache` (nigdy w bieżącym katalogu
-ani na udziale).
+**Decision:** D. A worker process calls a Kartograf function and sends JSON Lines events
+(progress, messages, result, error); the supervisor records them in the index
+and relays them via SSE. Limits: 2 network jobs, 1 job per project.
+Cancellation is ultimately cooperative (KC-1); until then an interrupt signal,
+and after 30 s the process is terminated. A server restart marks jobs as "interrupted" ("przerwane").
+Worker processes get a local `MetadataCache` (never in the current directory
+or on a share).
 
-**Konsekwencje:** Awaria biblioteki natywnej nie kładzie serwera; koszt startu procesu
-(ok. 1 s) jest pomijalny przy tych operacjach. Pełne anulowanie bez ryzyka
-pozostawionej blokady manifestu wymaga KC-1.
+**Consequences:** A native library crash does not take down the server; the process start cost
+(about 1 s) is negligible for these operations. Full cancellation without the risk of a
+left-over manifest lock requires KC-1.
 
-**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
-wyjścia do decyzji.
+**Erratum 1 (2026-10-17, user decision — architecture reopened):** the architecture is
+reopened; the decision returns to the proposed status and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above is the current
+assessment, the starting point for the decision.
 
-**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona; procesy
-robocze obsługują też migawki danych własnych (A-ADR-027). Zachowanie na Windows
-(sygnały, `CTRL_BREAK_EVENT`) testowane przed v1.0.
-
----
-
-## ADR-008: Podglądy przez rio-tiler z pamięcią po sumie wersji
-
-**Data:** 2026-10-17
-**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18; errata 3: klucz pamięci wersji bez `sha256`)
-
-**Kontekst:** Podglądy mają objąć rastry (ASC, GeoTIFF, JPEG z JGW), GeoPackage, paczki
-ZIP i chmury LAZ, bez ciężkich serwerów map. Pliki ASC nie mają
-kafelkowania, a wersje w magazynie są niezmienne.
-
-**Opcje:**
-- A) rio-tiler jako biblioteka w serwerze, lokalne COG dla plików bez kafelkowania.
-- B) TiTiler jako osobna usługa.
-- C) GeoServer albo MapServer.
-- D) Kafle z góry (`gdal2tiles`).
-
-**Decyzja:** A. Kafle na żądanie; pamięć podglądów po `sha256` wersji i stylu (wersja
-się nie zmienia, więc pamięć nigdy nie jest nieaktualna), limit 20 GB (LRU),
-bez automatycznych podglądów dla plików większych niż 2 GB. Wektory przez
-pyogrio (GeoJSON obiektów w widoku), LAZ przez laspy (nagłówek, obraz 2D).
-
-**Konsekwencje:** Pierwszy podgląd pliku ASC trwa dłużej (budowa COG w tle). rio-tiler
-korzysta z rasterio i GDAL, które instaluje już Kartograf.
-
-**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
-wyjścia do decyzji.
-
-**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona.
-Podgląd roku produktu z arkuszy (NMT, NMPT, LAZ) składa się z podglądów
-poszczególnych arkuszy w magazynie — kafel na wersję pliku, pamięć po `sha256`;
-arkusze niepobrane zostają obrysami (PRD, „Widoki według rodzaju danych”; mockup:
-kafle z prawdziwych plików).
-
-**Errata 3 (2026-10-19, plan v0.2 po przeglądzie — SPEC 5.7):** wersja magazynu bez
-`sha256` w sidecarze (starsze sidecary, wersja bez sidecara) ma klucz pamięci podglądów
-`sha256("path:" + magazyn + ":" + ścieżka wersji + ":" + rozmiar + ":" + czas
-modyfikacji)` w osobnej przestrzeni kluczy. Wersje są niezmienne, więc pamięć dalej nigdy
-nie jest nieaktualna, ale takie wersje nie dzielą podglądów z kopiami tej samej treści.
-Wersje z `sha256` — bez zmian.
-
-**Errata 4 (2026-10-20, wykonanie v0.2):** rio-tiler i GDAL nie otwierają
-plików magazynu ani projektu w procesie serwera. `RenderPool` zarządza
-procesami `archiwista.previews.worker` z limitami kolejki, czasu i pamięci;
-`run_preview` buduje COG w zadaniu. Kafel roku składa się z kafli wersji,
-a raster przeliczany na mapę używa przypiętej operacji
-`COORDINATE_OPERATION` przez `rasterio.warp.reproject`, nie `WarpedVRT`
-(który zmienia wielkość liter pipeline'u PROJ). Obrazy i kafle dostarcza
-API z nagłówkiem CSRF; przed odczytem pamięci po treści `ObjectResolver`
-sprawdza widoczność `ref`. Szczegóły: `docs/plans/2026-10-19-plan-v0.2.md`, decyzje 3–4.
+**Erratum 2 (2026-10-18, user decision — stage 0):** decision confirmed; worker
+processes also handle own-data snapshots (A-ADR-027). Behaviour on Windows
+(signals, `CTRL_BREAK_EVENT`) is tested before v1.0.
 
 ---
 
-## ADR-009: Łączenie danych: obróbka w Kartografie, opakowanie w Archiwiście
+## ADR-008: Previews via rio-tiler with a cache keyed by version hash
 
-**Data:** 2026-10-17
-**Status:** Proponowana — czeka na decyzję użytkownika i koordynatora roadmapy Kartografa (SPEC 15: P2, P3)
+**Date:** 2026-10-17
+**Status:** accepted (erratum 2, user decision 2026-10-18; erratum 3: version cache key without `sha256`)
 
-**Kontekst:** Cztery tryby przygotowania do łączenia (decyzja użytkownika 2026-10-17):
-mozaika, PL + CZ, zestaw do projektu i QGIS, porównanie wersji. Zasada
-nakładek (SCOPE 3.3) wyklucza obróbkę w nakładkach; polityka transformacji
-Kartografa (ADR-022, ADR-024, ADR-027) trzyma przypięte operacje w jednym
-miejscu; CLI = API (ADR-037); HSG (ADR-036 D33) jest wzorem produktu
-pochodnego w magazynie.
+**Context:** Previews are to cover rasters (ASC, GeoTIFF, JPEG with JGW), GeoPackage, ZIP
+packages and LAZ point clouds, without heavy map servers. ASC files have no
+tiling, and versions in the store are immutable.
 
-**Opcje:**
-- A) Wszystko w Archiwiście (własna mozaika, reprojekcja, różnice).
-- B) Obróbka w Kartografie jako komendy grup danych (np. `elevation mosaic`, jak `soil hsg`) z produktami pochodnymi w magazynie; wybór, plan, prezentacja i zestaw QGIS w Archiwiście.
-- C) Obróbka w Kartografie, ale wyniki w osobnym katalogu poza magazynem.
+**Options:**
+- A) rio-tiler as a library in the server, local COG for files without tiling.
+- B) TiTiler as a separate service.
+- C) GeoServer or MapServer.
+- D) Pre-generated tiles (`gdal2tiles`).
 
-**Decyzja:** B (SPEC 8.6). Mozaika, scalanie PL + CZ i model różnic są funkcjami
-Kartografa z bliźniakami `check_*`; wyniki to wersje w magazynie z sidecarem,
-`extra.derived` i `extra.source_files[]`; operacje mogą być zadaniami
-projektu (wejścia `input`, wynik `output`). Zestaw do QGIS, porównanie
-metadanych i porównanie wizualne zostają w Archiwiście. Opcja A powielałaby
-politykę transformacji (ryzyko błędów klasy „135 m obok prawdy”, ADR-024)
-i omijała CLI = API; opcja C traci wersjonowanie, współdzielenie
-i przypinanie.
+**Decision:** A. Tiles on demand; the preview cache is keyed by the version's `sha256` and style (a version
+does not change, so the cache is never stale), limit 20 GB (LRU),
+no automatic previews for files larger than 2 GB. Vectors via
+pyogrio (GeoJSON of the objects in view), LAZ via laspy (header, 2D image).
 
-**Konsekwencje:** Wymagania KE, KF, KG (SPEC 12.5); tryby 1, 2 (scalona powierzchnia) i 4
-(różnice obliczone) czekają na wydania Kartografa, więc roadmapa daje
-najpierw zestaw QGIS, zestaw PL + CZ bez scalania i porównanie wizualne.
-Układ `data/` rozszerza ADR Kartografa (tokeny `mosaic`, `diff`, kraj
-`pl-cz` — propozycje SPEC 8.2-8.5).
+**Consequences:** The first preview of an ASC file takes longer (COG built in the background). rio-tiler
+uses rasterio and GDAL, which Kartograf already installs.
 
----
+**Erratum 1 (2026-10-17, user decision — architecture reopened):** the architecture is
+reopened; the decision returns to the proposed status and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above is the current
+assessment, the starting point for the decision.
 
-## ADR-010: Etykiety pokrycia roku i plakietka magazynu
+**Erratum 2 (2026-10-18, user decision — stage 0):** decision confirmed.
+The preview of a product's year from sheets (NMT, NMPT, LAZ) is composed of the previews
+of individual sheets in the store — one tile per file version, cache keyed by `sha256`;
+sheets not downloaded remain footprints (PRD, "Widoki według rodzaju danych"; mockup:
+tiles from real files).
 
-**Data:** 2026-10-17
-**Status:** Proponowana — do potwierdzenia na mockupie (SPEC 16, M2)
+**Erratum 3 (2026-10-19, v0.2 plan after review — SPEC 5.7):** a store version without
+`sha256` in the sidecar (older sidecars, a version without a sidecar) has the preview cache key
+`sha256("path:" + store + ":" + version path + ":" + size + ":" + modification
+time)` in a separate key space. Versions are immutable, so the cache is still never
+stale, but such versions do not share previews with copies of the same content.
+Versions with `sha256` — unchanged.
 
-**Kontekst:** Użytkownik chce przy każdym roku etykiety pokrycia: pełne, niepełne,
-niepełne, ale do uzupełnienia z innej kampanii tego roku — krótkich,
-eleganckich i opartych na danych Kartografa (arkusze `TAK`/`NIE`,
-`full_sheet`, raport dostępności).
-
-**Opcje:**
-- A) Same liczby (procent pokrycia, liczba arkuszy).
-- B) Trzy stany z samego `complete` (pełne, częściowe, brak).
-- C) Cztery etykiety z definicjami (pełne, pełne z N kampanii, częściowe z udziałem pełnych arkuszy, brak danych) i osobna plakietka stanu magazynu.
-
-**Decyzja:** C (definicje: SPEC 6.4). „pełne” — jedna kampania sama pokrywa ląd pełnymi
-arkuszami; „pełne · N kampanie” — dopiero N kampanii razem; „częściowe ·
-58%” — udział lądu w ramkach pełnych arkuszy (dolna granica), z dopiskiem
-o arkuszach niepełnych; „brak danych”. Osobno plakietka: „pobrane”,
-„pobrane 5/12”, „niepobrane”. Wariant roku wybiera ranking: pełna, udział
-pełnych arkuszy, mniej kampanii, drobniejsza rozdzielczość, kolejność
-Kartografa. Etykiety liczy serwer — interfejs, asystent i API mają jedno
-słownictwo (uzgodnione z mockupem).
-
-**Konsekwencje:** Wymaga rozszerzeń raportu dostępności Kartografa: arkusz → kampania
-(KD-1) i `full_m2` (KD-2); `len(campaigns)` nie wystarcza, bo liczy też
-rekordy niepełne. Definicje dla CZ (bez lat) i produktów jednostkowych są
-osobne (SPEC 6.4).
-
-**Errata 1 (2026-10-17, A-ADR-017):** etykiety i plakietka dotyczą wariantu
-grupowanego bez formatu plików: formaty tego samego zestawu (np. `ASC`
-i `ASCII-NMT`) dzielą jedną etykietę pokrycia; plakietka magazynu liczy
-jednostki w wybranym formacie.
-
-**Errata 2 (2026-10-17, A-ADR-021):** etykiety tej decyzji opisują pokrycie obszaru;
-pokrycie w czasie dla szeregów stacji IMGW („ciągły”, „luki N%”, „częściowy”,
-„brak danych”, „nieznane”) definiuje ADR-021 (SPEC 4.8.4) według tych samych zasad:
-liczy serwer, zaokrąglenie ostrożne, nigdy sam kolor.
+**Erratum 4 (2026-10-20, v0.2 implementation):** rio-tiler and GDAL do not open
+store or project files in the server process. `RenderPool` manages
+`archiwista.previews.worker` processes with queue, time and memory limits;
+`run_preview` builds the COG in a job. A year tile is composed of version
+tiles, and a raster reprojected for the map uses the pinned operation
+`COORDINATE_OPERATION` via `rasterio.warp.reproject`, not `WarpedVRT`
+(which changes the letter case of the PROJ pipeline). Images and tiles are served by the
+API with a CSRF header; before reading the content-keyed cache `ObjectResolver`
+checks the visibility of `ref`. Details: `docs/plans/2026-10-19-plan-v0.2.md`, decisions 3–4.
 
 ---
 
-## ADR-011: Asystent po stronie serwera z potwierdzeniem człowieka
+## ADR-009: Data merging: processing in Kartograf, packaging in Archiwista
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (granice uprawnień: decyzja użytkownika 2026-10-17)
+**Date:** 2026-10-17
+**Status:** proposed, awaiting a decision from the user and the Kartograf roadmap coordinator (SPEC 15: P2, P3)
 
-**Kontekst:** Użytkownik chce okna czatu z agentem LLM, któremu można zlecić
-przygotowanie danych językiem naturalnym; agent nie może niczego pobrać ani
-usunąć bez potwierdzenia; dostawca modelu ma być konfigurowalny,
-z uwzględnieniem prywatności i kosztów.
+**Context:** Four modes of preparation for merging (user decision 2026-10-17):
+mosaic, PL + CZ, set for a project and QGIS, version comparison. The overlay
+principle (SCOPE 3.3) rules out processing in overlays; Kartograf's
+transformation policy (ADR-022, ADR-024, ADR-027) keeps pinned operations in one
+place; CLI = API (ADR-037); HSG (ADR-036 D33) is the model of a
+derived product in the store.
 
-**Opcje:**
-- A) Agent w przeglądarce z kluczem API.
-- B) Agent na serwerze: narzędzia = operacje API Archiwisty; działania tylko jako propozycje zatwierdzane przez człowieka.
-- C) Wyłącznie zewnętrzny agent przez MCP.
-- D) Agent autonomiczny wykonujący działania sam.
+**Options:**
+- A) Everything in Archiwista (its own mosaic, reprojection, differences).
+- B) Processing in Kartograf as data group commands (e.g. `elevation mosaic`, like `soil hsg`) with derived products in the store; selection, plan, presentation and the QGIS set in Archiwista.
+- C) Processing in Kartograf, but results in a separate directory outside the store.
 
-**Decyzja:** B (SPEC 7). Narzędzia tylko do odczytu działają same; działania są
-propozycjami (dane strukturalne z poleceniami Kartografa i planem),
-wykonywanymi wyłącznie z interfejsu z tokenem CSRF użytkownika; narzędzi
-usuwania ani zmiany ustawień nie ma. Dostawcy: Anthropic, API zgodne
-z OpenAI (także modele lokalne); domyślnie brak (asystent wyłączony).
-Do dostawcy trafiają tylko metadane ze ścieżkami względnymi; limit
-miesięczny kosztów.
+**Decision:** B (SPEC 8.6). Mosaic, PL + CZ merging and the difference model are
+Kartograf functions with `check_*` twins; the results are versions in the store with a sidecar,
+`extra.derived` and `extra.source_files[]`; operations can be project
+jobs (inputs `input`, result `output`). The QGIS set, metadata
+comparison and visual comparison stay in Archiwista. Option A would duplicate
+the transformation policy (risk of errors of the "135 m off the truth" class, ADR-024)
+and bypass CLI = API; option C loses versioning, sharing
+and pinning.
 
-**Konsekwencje:** Zestaw ewaluacyjny i testy poleceń wrogich w bramce; MCP może być
-dodatkowym wejściem do tych samych narzędzi po v1.0.
-
----
-
-## ADR-012: Ochrona trybu lokalnego
-
-**Data:** 2026-10-17
-**Status:** Przyjęta
-
-**Kontekst:** Lokalna aplikacja webowa bez logowania jest osiągalna dla każdej strony
-otwartej w tej samej przeglądarce (CSRF, DNS rebinding) i dla innych
-użytkowników tego samego komputera.
-
-**Opcje:**
-- A) Bez ochrony („localhost jest bezpieczny”).
-- B) Tylko `127.0.0.1`, kontrola `Host`, token startowy, nagłówek CSRF, brak CORS, CSP.
-- C) Pełne logowanie także lokalnie.
-
-**Decyzja:** B (SPEC 10.1). Token startowy w adresie otwieranym przez `archiwista serve`
-zamienia się w ciasteczko sesji; start na innym adresie wymaga trybu
-zespołu z logowaniem.
-
-**Konsekwencje:** Pierwsze otwarcie zawsze przez adres z terminala albo automatycznie
-otwartą przeglądarkę; token można wyłączyć w konfiguracji (niezalecane).
-
-**Errata 1 (2026-10-18, plan v0.1 po przeglądzie — SPEC 10.1):** doprecyzowanie opcji B
-bez zmiany decyzji:
-- token startowy jest we fragmencie adresu (`http://127.0.0.1:<port>/#token=…`), więc nie
-  trafia do serwera, dziennika dostępu ani nagłówka `Referer`; jest jednorazowy (10 min),
-  a interfejs wymienia go przez `POST /api/v1/session` i usuwa z adresu;
-- sesja to ciasteczko `HttpOnly`, `SameSite=Strict`, a token CSRF jest osobną 128-bitową
-  wartością sesji (ciasteczko `archiwista_csrf` bez `HttpOnly` i odpowiedź
-  `POST`/`GET /api/v1/session`): JavaScript nie przeczyta ciasteczka `HttpOnly`, więc
-  nagłówek `X-Archiwista-CSRF` nie może nieść wartości sesji; serwer porównuje nagłówek
-  z tokenem sesji i ciasteczkiem (double-submit);
-- obecny `Origin` musi być adresem serwera; żądanie zmieniające stan z `Sec-Fetch-Site`
-  (przeglądarka) musi mieć `Sec-Fetch-Site: same-origin` i `Origin`, a odczyt
-  z `cross-site` jest odrzucany (`none` — adres wpisany albo otwarty z terminala —
-  przechodzi); klient bez tych nagłówków (curl, skrypt agenta) przechodzi wyłącznie
-  z sesją i, przy zmianie stanu, z nagłówkiem CSRF;
-- kolejne sesje (agent zewnętrzny): jednorazowy token ważny 5 min z
-  `POST /api/v1/session/tokens` (sesja i CSRF) albo z `archiwista token` w terminalu
-  właściciela; w indeksie leży tylko skrót SHA-256 tokenu;
-- CSP ma `worker-src 'self'` (worker MapLibre z pakietu, moduł z tego samego pochodzenia) oraz źródła
-  skonfigurowanych podkładów w `connect-src` i `img-src` — tylko w trybie online, bo
-  MapLibre pobiera kafle przez `fetch`;
-- dziennik dostępu serwera jest domyślnie wyłączony, a włączony redaguje `token=`.
-
-**Errata 2 (2026-10-19, przegląd bezpieczeństwa v0.1, ARCH-SEC-001..005, 008 — SPEC 10.1):**
-ciasteczka są związane z hostem, nie z portem (RFC 6265 8.5), więc przeglądarka wysyła
-`archiwista_session` i `archiwista_csrf` także do innego programu na
-`127.0.0.1:<inny port>` (np. innego konta na wspólnym komputerze), a `SameSite=Strict`
-tego nie blokuje. Zmiany bez zmiany opcji B:
-- uwierzytelnieniem jest ciasteczko sesji **i** token CSRF sesji w nagłówku
-  `X-Archiwista-CSRF` w **każdym** żądaniu `/api` (także odczytach); token zwraca wyłącznie
-  `POST /api/v1/session`, interfejs trzyma go w `sessionStorage` swojego pochodzenia,
-  nowa karta dostaje go od otwartej karty (`BroadcastChannel`), zdarzenia zadań idą
-  przez `fetch` zamiast `EventSource`; ciasteczka `archiwista_csrf` nie ma, `GET
-  /api/v1/session` nie zwraca tokenu; double-submit z errata 1 nie obowiązuje;
-- `archiwista serve` otwiera przeglądarkę przez prywatny plik przekierowania (`0600`,
-  usuwany po użyciu albo wygaśnięciu tokenu), nie przez adres z tokenem w wierszu
-  poleceń;
-- tokeny i sesje przechowują tylko `id` i `kind` wystawcy; role i grupy są czytane przy
-  każdym żądaniu; sesja agenta nie wystawia tokenów (`403`), kończy się najpóźniej po
-  12 h, a `archiwista token --revoke-all` kończy wszystkie sesje agentów; `DELETE
-  /api/v1/session` wylogowuje; zadania i dziennik uprawnień zapisują rodzaj wykonawcy
-  i etykietę sesji;
-- treść żądań jest ograniczona (4 KiB wymiana tokenu, 1 MiB pozostałe), dane lokalne
-  mają tryb `0700` i `umask 077`.
+**Consequences:** Requirements KE, KF, KG (SPEC 12.5); modes 1, 2 (merged surface) and 4
+(computed differences) wait for Kartograf releases, so the roadmap provides
+first the QGIS set, the PL + CZ set without merging and visual comparison.
+The `data/` layout extends Kartograf's ADR (tokens `mosaic`, `diff`, country
+`pl-cz`, proposals SPEC 8.2-8.5).
 
 ---
 
-## ADR-013: Tryb zespołu jako jeden serwer w sieci lokalnej
+## ADR-010: Year coverage labels and the store badge
 
-**Data:** 2026-10-17
-**Status:** Przyjęta — uzupełniona przez ADR-029 (role i model uprawnień od v0.1); decyzja użytkownika 2026-10-18; SPEC 15, P1
+**Date:** 2026-10-17
+**Status:** proposed, to be confirmed on the mockup (SPEC 16, M2)
 
-**Kontekst:** Zespół ma pracować później na wspólnym magazynie na udziale SMB bez
-blokad zakresów bajtów. Kartograf gwarantuje bezpieczne równoległe zapisy
-(wersje wyłączne, blokada manifestu), ale nie koordynuje, kto co pobiera.
+**Context:** The user wants a coverage label for each year: complete, incomplete,
+incomplete but can be filled in from another campaign of the same year. The labels should be short,
+elegant and based on Kartograf data (sheets `TAK`/`NIE`,
+`full_sheet`, availability report).
 
-**Opcje:**
-- A) Każda osoba uruchamia własną instancję na wspólnym udziale.
-- B) Jeden serwer Archiwisty w sieci lokalnej z logowaniem, rolami i wspólną kolejką.
+**Options:**
+- A) Numbers only (coverage percentage, number of sheets).
+- B) Three states from `complete` alone (complete, partial, none).
+- C) Four labels with definitions (complete, complete with N campaigns, partial with the share of full sheets, no data) and a separate store state badge.
 
-**Decyzja:** B jako docelowy tryb zespołu (v0.8); A pozostaje wspierana (jedna osoba,
-praca bez serwera). Wspólna kolejka nie pobiera tego samego dwa razy, jest
-jedna historia i jeden indeks, a ścieżki są po stronie serwera.
+**Decision:** C (definitions: SPEC 6.4). "pełne" (complete): one campaign alone covers the land with full
+sheets; "pełne · N kampanie" (complete · N campaigns): only N campaigns together; "częściowe ·
+58%" (partial · 58%): the share of land within the frames of full sheets (a lower bound), with a note
+about incomplete sheets; "brak danych" (no data). Separately the badge: "pobrane" (downloaded),
+"pobrane 5/12" (downloaded 5/12), "niepobrane" (not downloaded). The variant of a year is chosen by ranking: complete, share of
+full sheets, fewer campaigns, finer resolution, Kartograf's
+order. The server computes the labels, so the interface, the assistant and the API share one
+vocabulary (agreed with the mockup).
 
-**Konsekwencje:** Od v0.1: dostęp do plików tylko przez API (bez założenia wspólnego
-systemu plików przeglądarki i serwera), wykonawca przy każdym działaniu,
-aliasy ścieżek. Tryb zespołu wymaga TLS, ról i dziennika działań (SPEC 10.2).
+**Consequences:** Requires extensions to Kartograf's availability report: sheet → campaign
+(KD-1) and `full_m2` (KD-2); `len(campaigns)` is not enough, because it also counts
+incomplete records. Definitions for CZ (without years) and single-unit products are
+separate (SPEC 6.4).
 
-**Errata 1 (2026-10-18, decyzja użytkownika):** B przyjęte; po zmianie numeracji
-(ADR-025) tryb zespołu to v0.4, w MVP.
+**Erratum 1 (2026-10-17, A-ADR-017):** the labels and the badge apply to the variant
+grouped without file format: formats of the same set (e.g. `ASC`
+and `ASCII-NMT`) share one coverage label; the store badge counts
+units in the selected format.
 
-**Errata 2 (2026-10-18, decyzja użytkownika, ADR-029):** role „czytelnik”, „operator”,
-„administrator” zastępują „administrator” (`admin`), „zapis do magazynu”
-(`store_writer`) i zwykły „użytkownik”; model uprawnień i widoczność projektów działają
-od v0.1 (jeden lokalny właściciel), logowanie i ekrany kont zostają w v0.4.
-
----
-
-## ADR-014: Wiedza o formacie magazynu tylko w Kartografie
-
-**Data:** 2026-10-17
-**Status:** Przyjęta — uzupełniona przez ADR-019 (drugi producent: IMGWTools)
-
-**Kontekst:** Układ `data/` (reguły 1-10, `versions/`, `full_sheet/`, `bbox/`, sidecary
-dowiązań, stare sidecary, klucze z wersji deweloperskich) jest opisany
-w ARCH 3.3 Kartografa, ale się rozwija. Ta sama wiedza jest potrzebna
-wtyczce QGIS i Hydrografowi (backlog Kartografa: `find_downloaded`).
-
-**Opcje:**
-- A) Własny czytnik `data/` w Archiwiście według dokumentacji.
-- B) Tymczasowy własny czytnik, zastąpiony później API Kartografa.
-- C) Czytnik w Kartografie (pakiet KA) jako warunek v0.1.
-
-**Decyzja:** C. Archiwista czyta magazyn przez `iter_store`, `read_sidecar`,
-`describe_segment`, `file_footprint`, `link_target` i `pinned_transform`
-(SPEC 12.1). Opcja A rozjedzie się z Kartografem przy pierwszej zmianie
-układu; opcja B to obejście, które trzeba później usuwać.
-
-**Konsekwencje:** v0.1 czeka na wydanie Kartografa z KA; KA jest mały i może być pierwszy
-w roadmapie Kartografa. Test kontraktu: `iter_store` na magazynie testowym
-Archiwisty.
-
-**Errata 1 (2026-10-17, ADR-019):** zasada brzmi teraz: wiedza o formacie każdego
-producenta tylko u tego producenta. Układ `data/` i `kartograf-meta/1` zna Kartograf
-(pakiet KA, bez zmian); katalog IMGW (`imgw-store/1`, `imgw-meta/1`,
-`imgw-series/1`), kody braków i kodowania archiwów IMGW zna wyłącznie IMGWTools,
-a adapter IMGW czyta przez jego API odczytu (SPEC 12.7, IMGW-10). Test kontraktu:
-`iter_store` IMGWTools na katalogu testowym zbudowanym przez IMGWTools.
-
-**Errata 2 (2026-10-18, ADR-045 Kartografa i plan v0.1 po przeglądzie — SPEC 4.4, 5.3,
-5.6, 12.1):** KA-1..KA-6 przyjęte w Kartografie 0.8.0 (ADR-045, ARCH 3.3.1). KA-1
-rozszerzono o `list_segments(output_dir)` (lista segmentów do skanu równoległego; wywołania
-`iter_store` dla różnych segmentów albo rozłącznych paczek jednostek mogą biec naraz)
-i `iter_store(..., skip_versions=...)` (znane katalogi wersji wracają bez otwierania
-sidecara: `sidecar=None`, `skipped=True`) — skan przyrostowy nie czyta ponownie
-niezmiennych wersji. Skan nie woła `link_target` (KA-5): bieżącą wersję bierze
-z `StoreEntry.version_path` (sidecar dowiązania), bo na udziale bez stabilnych i-węzłów
-KA-5 liczy SHA-256 całego pliku; KA-5 jest wywoływane tylko na żądanie (zadanie
-`link_check`). `cache` KA-4 to mapa należąca do wywołującego (`(rodzaj, kod) → BBox`),
-trzymana lokalnie i czytana także bez sieci; brakujące obrysy jednostek uzupełnia
-z siecią osobne zadanie `footprints`.
+**Erratum 2 (2026-10-17, A-ADR-021):** the labels of this decision describe area coverage;
+coverage over time for IMGW station series ("ciągły", "luki N%", "częściowy",
+"brak danych", "nieznane") is defined by ADR-021 (SPEC 4.8.4) by the same rules:
+the server computes, rounding is cautious, never color alone.
 
 ---
 
-## ADR-015: Pakowanie i uruchamianie
+## ADR-011: Server-side assistant with human confirmation
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (errata 2, decyzja użytkownika 2026-10-18)
+**Date:** 2026-10-17
+**Status:** accepted (permission boundaries: user decision 2026-10-17)
 
-**Kontekst:** Najpierw jedna osoba lokalnie, później serwer zespołu. Użytkownicy mają
-środowisko Pythona z Kartografem.
+**Context:** The user wants a chat window with an LLM agent to which data
+preparation can be delegated in natural language; the agent must not download or
+delete anything without confirmation; the model provider must be configurable,
+with privacy and cost taken into account.
 
-**Opcje:**
-- A) Pakiet Pythona `archiwista` z wbudowanym, zbudowanym interfejsem (`pipx`, `uv tool`).
-- B) Wyłącznie obraz Dockera.
-- C) Aplikacja desktopowa (Electron, Tauri).
+**Options:**
+- A) Agent in the browser with an API key.
+- B) Agent on the server: tools = Archiwista API operations; actions only as proposals approved by a human.
+- C) Only an external agent via MCP.
+- D) Autonomous agent performing actions on its own.
 
-**Decyzja:** A. Komenda `archiwista serve` (oraz `reindex` i `doctor`); konfiguracja
-w pliku TOML w katalogu konfiguracji użytkownika, indeks i pamięć
-w katalogu danych użytkownika. Obraz Dockera opcjonalnie dla serwera
-zespołu.
+**Decision:** B (SPEC 7). Read-only tools work on their own; actions are
+proposals (structured data with Kartograf commands and a plan),
+executed only from the interface with the user's CSRF token; there are no
+deletion or settings-change tools. Providers: Anthropic, OpenAI-compatible
+API (including local models); the default is none (assistant disabled).
+Only metadata with relative paths goes to the provider; a monthly
+cost limit applies.
 
-**Konsekwencje:** Node.js potrzebny tylko do rozwoju interfejsu. Docker nie jest wymagany
-dla jednej osoby (montowanie SMB w kontenerze komplikuje instalację).
-
-**Errata 1 (2026-10-17, decyzja użytkownika — architektura otwarta):** architektura jest
-ponownie otwarta; decyzja wraca do statusu Proponowana i zostanie potwierdzona albo
-zmieniona przed v0.1 (SCOPE, etap 0). Treść powyżej to dotychczasowa ocena, punkt
-wyjścia do decyzji.
-
-**Errata 2 (2026-10-18, decyzja użytkownika — etap 0):** decyzja potwierdzona. Po
-ADR-028 Node.js nie jest potrzebny także do rozwoju interfejsu: biblioteki interfejsu
-są dołączone do pakietu jako pliki ES modules.
+**Consequences:** An evaluation set and hostile-prompt tests in the gate; MCP can be
+an additional entry point to the same tools after v1.0.
 
 ---
 
-## ADR-016: Format dat w interfejsie i podkład mapy
+## ADR-012: Protecting local mode
 
-**Data:** 2026-10-17
-**Status:** Przyjęta
+**Date:** 2026-10-17
+**Status:** accepted
 
-**Kontekst:** Pytania M9 (format dat w interfejsie) i P6 (podkłady online ujawniają
-obszar zainteresowania zewnętrznym serwerom) wymagały decyzji użytkownika po przeglądzie
-mockupu.
+**Context:** A local web application without login is reachable by every page
+opened in the same browser (CSRF, DNS rebinding) and by other
+users of the same computer.
 
-**Opcje:**
-- A) Daty `RRRR.MM.DD` w interfejsie, ISO `RRRR-MM-DD` w API i plikach; podkład OSM
-  w wersji monochromatycznej, online domyślnie, z trybem offline.
-- B) Daty `DD.MM.RRRR` jak w mockupie; kolorowy OSM.
-- C) Wyłącznie podkłady lokalne (offline).
+**Options:**
+- A) No protection ("localhost is safe").
+- B) `127.0.0.1` only, `Host` check, startup token, CSRF header, no CORS, CSP.
+- C) Full login also locally.
 
-**Decyzja:** A. Format `RRRR.MM.DD` daje łatwe sortowanie w tabelach i na osi czasu;
-API, manifest, sidecary i nazwy plików zostają w ISO `RRRR-MM-DD`. Etykiety wersji
-(np. `2025-04-26_82710`) to identyfikatory i nie są przeformatowywane. Podkład
-domyślny to szara wersja OSM (neutralne tło dla obrysów i etykiet pokrycia), pobierana
-online; tryb offline wyłącza zewnętrzne zapytania przeglądarki; w zespole decyduje
-administrator (SPEC 5.4, 15: P6).
+**Decision:** B (SPEC 10.1). The startup token in the address opened by `archiwista serve`
+is exchanged for a session cookie; starting on a different address requires team
+mode with login.
 
-**Konsekwencje:** Interfejs formatuje daty z ISO na poziomie prezentacji (jedna funkcja
-pomocnicza); szkice ekranów w SPEC używają `RRRR.MM.DD`. Szary styl podkładu wymaga
-własnego stylu kafli lub filtra przeglądarki; w trybie offline zostaje „bez podkładu”
-albo podkład lokalny.
+**Consequences:** The first opening is always through the address from the terminal or through the automatically
+opened browser; the token can be disabled in the configuration (not recommended).
 
-**Errata 1 (2026-10-18, decyzja użytkownika — etap 10b planu v0.1):** podkład domyślny
-to szary BKG TopPlusOpen („web_grau”, licencja dl-de/by-2-0, atrybucja
-„© BKG (2026), dl-de/by-2-0”) zamiast szarej wersji OSM. Archiwista wysyła
-`Referrer-Policy: no-referrer`, a tile.openstreetmap.org bez nagłówka `Referer` zwraca
-zamiast kafla obraz „Access blocked” (sprawdzone na żywo); zasady korzystania z jego
-kafli nie pasują też do pracy zespołu. Polityka `Referer` zostaje bez zmian. Kafle BKG
-są szare z natury, więc filtr przeglądarki nie jest potrzebny; OSM zostaje podkładem,
-który użytkownik może dodać w ustawieniach. Test `-m live`:
+**Erratum 1 (2026-10-18, v0.1 plan after review — SPEC 10.1):** clarification of option B
+without changing the decision:
+- the startup token is in the fragment of the address (`http://127.0.0.1:<port>/#token=…`), so it does not
+  reach the server, the access log or the `Referer` header; it is single-use (10 min),
+  and the interface exchanges it through `POST /api/v1/session` and removes it from the address;
+- the session is an `HttpOnly`, `SameSite=Strict` cookie, and the CSRF token is a separate 128-bit
+  session value (the `archiwista_csrf` cookie without `HttpOnly` and the response of
+  `POST`/`GET /api/v1/session`): JavaScript cannot read an `HttpOnly` cookie, so
+  the `X-Archiwista-CSRF` header cannot carry the session value; the server compares the header
+  with the session token and the cookie (double-submit);
+- an `Origin`, if present, must be the server address; a state-changing request with `Sec-Fetch-Site`
+  (browser) must have `Sec-Fetch-Site: same-origin` and `Origin`, and a read
+  with `cross-site` is rejected (`none` — an address typed in or opened from the terminal —
+  passes); a client without these headers (curl, an agent script) passes only
+  with a session and, for a state change, with the CSRF header;
+- further sessions (external agent): a single-use token valid for 5 min from
+  `POST /api/v1/session/tokens` (session and CSRF) or from `archiwista token` in the terminal
+  of the owner; only the SHA-256 hash of the token is stored in the index;
+- CSP has `worker-src 'self'` (the MapLibre worker from the package, a module from the same origin) and the sources
+  of the configured basemaps in `connect-src` and `img-src` — only in online mode, because
+  MapLibre fetches tiles through `fetch`;
+- the server access log is disabled by default, and when enabled it redacts `token=`.
+
+**Erratum 2 (2026-10-19, v0.1 security review, ARCH-SEC-001..005, 008 — SPEC 10.1):**
+cookies are bound to the host, not to the port (RFC 6265 8.5), so the browser sends
+`archiwista_session` and `archiwista_csrf` also to another program on
+`127.0.0.1:<other port>` (e.g. another account on a shared computer), and `SameSite=Strict`
+does not block this. Changes without changing option B:
+- authentication is the session cookie **and** the session CSRF token in the header
+  `X-Archiwista-CSRF` in **every** `/api` request (reads too); the token is returned only by
+  `POST /api/v1/session`, the interface keeps it in `sessionStorage` of its own origin,
+  a new tab gets it from an open tab (`BroadcastChannel`), job events go
+  through `fetch` instead of `EventSource`; there is no `archiwista_csrf` cookie, `GET
+  /api/v1/session` does not return the token; the double-submit from Erratum 1 no longer applies;
+- `archiwista serve` opens the browser through a private redirect file (`0600`,
+  removed after use or after the token expires), not through an address with the token on the command
+  line;
+- tokens and sessions store only the `id` and `kind` of the issuer; roles and groups are read on
+  every request; an agent session does not issue tokens (`403`), ends after 12 h at the latest,
+  and `archiwista token --revoke-all` ends all agent sessions; `DELETE
+  /api/v1/session` logs out; jobs and the permissions log record the kind of executor
+  and the session label;
+- request body size is limited (4 KiB for token exchange, 1 MiB for the rest), local data
+  has mode `0700` and `umask 077`.
+
+---
+
+## ADR-013: Team mode as a single server on the local network
+
+**Date:** 2026-10-17
+**Status:** accepted, amended by ADR-029 (roles and permission model from v0.1); user decision 2026-10-18; SPEC 15, P1
+
+**Context:** The team is to work later on a shared store on an SMB share without
+byte-range locks. Kartograf guarantees safe concurrent writes
+(exclusive versions, manifest lock), but does not coordinate who downloads what.
+
+**Options:**
+- A) Each person runs their own instance on the shared share.
+- B) One Archiwista server on the local network with login, roles and a shared queue.
+
+**Decision:** B as the target team mode (v0.8); A remains supported (one person,
+work without a server). The shared queue does not download the same thing twice, there is
+one history and one index, and paths are on the server side.
+
+**Consequences:** From v0.1: file access only through the API (without assuming a shared
+file system of the browser and the server), an executor on every action,
+path aliases. Team mode requires TLS, roles and an action log (SPEC 10.2).
+
+**Erratum 1 (2026-10-18, user decision):** B accepted; after the numbering change
+(ADR-025) team mode is v0.4, in the MVP.
+
+**Erratum 2 (2026-10-18, user decision, ADR-029):** the roles "czytelnik" (reader), "operator" (operator),
+"administrator" (administrator) replace "administrator" (`admin`), "zapis do magazynu" (store write)
+(`store_writer`) and the plain "użytkownik" (user); the permission model and project visibility work
+from v0.1 (one local owner), login and account screens remain in v0.4.
+
+---
+
+## ADR-014: Knowledge of the store format only in Kartograf
+
+**Date:** 2026-10-17
+**Status:** accepted, amended by ADR-019 (second producer: IMGWTools)
+
+**Context:** The layout of `data/` (rules 1-10, `versions/`, `full_sheet/`, `bbox/`, link
+sidecars, old sidecars, keys from development versions) is described
+in Kartograf's ARCH 3.3, but it is evolving. The same knowledge is needed by
+the QGIS plugin and Hydrograf (Kartograf backlog: `find_downloaded`).
+
+**Options:**
+- A) Archiwista's own `data/` reader according to the documentation.
+- B) A temporary own reader, later replaced by the Kartograf API.
+- C) A reader in Kartograf (the KA package) as a condition for v0.1.
+
+**Decision:** C. Archiwista reads the store through `iter_store`, `read_sidecar`,
+`describe_segment`, `file_footprint`, `link_target` and `pinned_transform`
+(SPEC 12.1). Option A will diverge from Kartograf at the first layout
+change; option B is a workaround that has to be removed later.
+
+**Consequences:** v0.1 waits for the Kartograf release with KA; KA is small and can be first
+in Kartograf's roadmap. Contract test: `iter_store` on Archiwista's
+test store.
+
+**Erratum 1 (2026-10-17, ADR-019):** the principle now reads: knowledge of the format of each
+producer only at that producer. The `data/` layout and `kartograf-meta/1` are known by Kartograf
+(the KA package, unchanged); the IMGW catalog (`imgw-store/1`, `imgw-meta/1`,
+`imgw-series/1`), missing-value codes and encodings of IMGW archives are known only by IMGWTools,
+and the IMGW adapter reads through its read API (SPEC 12.7, IMGW-10). Contract test:
+IMGWTools' `iter_store` on a test catalog built by IMGWTools.
+
+**Erratum 2 (2026-10-18, Kartograf ADR-045 and the v0.1 plan after review — SPEC 4.4, 5.3,
+5.6, 12.1):** KA-1..KA-6 accepted in Kartograf 0.8.0 (ADR-045, ARCH 3.3.1). KA-1
+extended with `list_segments(output_dir)` (a list of segments for a parallel scan; calls of
+`iter_store` for different segments or disjoint batches of units can run at the same time)
+and `iter_store(..., skip_versions=...)` (known version directories are returned without opening
+the sidecar: `sidecar=None`, `skipped=True`) — an incremental scan does not reread
+unchanged versions. The scan does not call `link_target` (KA-5): the current version is taken
+from `StoreEntry.version_path` (link sidecar), because on a share without stable inodes
+KA-5 computes SHA-256 of the whole file; KA-5 is called only on demand (the job
+`link_check`). The KA-4 `cache` is a map owned by the caller (`(kind, code) → BBox`),
+kept locally and read also without a network; missing unit footprints are filled in
+with network access by a separate `footprints` job.
+
+---
+
+## ADR-015: Packaging and running
+
+**Date:** 2026-10-17
+**Status:** accepted (erratum 2, user decision 2026-10-18)
+
+**Context:** First a single person locally, later a team server. Users have a
+Python environment with Kartograf.
+
+**Options:**
+- A) A Python package `archiwista` with a built-in, pre-built interface (`pipx`, `uv tool`).
+- B) A Docker image only.
+- C) A desktop application (Electron, Tauri).
+
+**Decision:** A. The command `archiwista serve` (and `reindex` and `doctor`); configuration
+in a TOML file in the user's configuration directory, index and cache
+in the user's data directory. A Docker image is optional for a team
+server.
+
+**Consequences:** Node.js is needed only for developing the interface. Docker is not required
+for a single person (mounting SMB in a container complicates the installation).
+
+**Erratum 1 (2026-10-17, user decision — open architecture):** the architecture is
+open again; the decision returns to the status proposed and will be confirmed or
+changed before v0.1 (SCOPE, stage 0). The text above is the previous assessment, the
+starting point for the decision.
+
+**Erratum 2 (2026-10-18, user decision — stage 0):** decision confirmed. After
+ADR-028 Node.js is not needed even for developing the interface: the interface
+libraries are bundled with the package as ES modules files.
+
+---
+
+## ADR-016: Date format in the interface and the map basemap
+
+**Date:** 2026-10-17
+**Status:** accepted
+
+**Context:** Questions M9 (date format in the interface) and P6 (online basemaps reveal
+the area of interest to external servers) required a user decision after reviewing the
+mockup.
+
+**Options:**
+- A) Dates `RRRR.MM.DD` in the interface, ISO `RRRR-MM-DD` in the API and files; OSM basemap
+  in a monochrome version, online by default, with an offline mode.
+- B) Dates `DD.MM.RRRR` as in the mockup; colour OSM.
+- C) Local basemaps only (offline).
+
+**Decision:** A. The format `RRRR.MM.DD` gives easy sorting in tables and on the Timeline;
+the API, manifest, sidecars and file names stay in ISO `RRRR-MM-DD`. Version labels
+(e.g. `2025-04-26_82710`) are identifiers and are not reformatted. The default
+basemap is a grey OSM version (a neutral background for footprints and coverage labels), fetched
+online; offline mode disables external browser requests; in a team the
+administrator decides (SPEC 5.4, 15: P6).
+
+**Consequences:** The interface formats dates from ISO at the presentation level (one helper
+function); the screen sketches in SPEC use `RRRR.MM.DD`. The grey basemap style requires
+a custom tile style or a browser filter; in offline mode "bez podkładu" (no basemap)
+or a local basemap remains.
+
+**Erratum 1 (2026-10-18, user decision — stage 10b of the v0.1 plan):** the default basemap
+is the grey BKG TopPlusOpen ("web_grau", licence dl-de/by-2-0, attribution
+"© BKG (2026), dl-de/by-2-0") instead of the grey OSM version. Archiwista sends
+`Referrer-Policy: no-referrer`, and tile.openstreetmap.org without a `Referer` header returns
+an "Access blocked" image instead of a tile (checked live); the terms of use for its
+tiles also do not suit team work. The `Referer` policy stays unchanged. BKG tiles
+are grey by nature, so a browser filter is not needed; OSM remains a basemap
+that the user can add in the settings. `-m live` test:
 `tests/integration/test_basemap_live.py`.
 
-**Errata 2 (2026-10-19, decyzja użytkownika — uwagi przed wydaniem v0.2):** podkład
-domyślny to kafle wektorowe OpenFreeMap (`kind = "vector"`, TileJSON
-`https://tiles.openfreemap.org/planet`, schemat OpenMapTiles z danych OpenStreetMap,
-atrybucja „OpenFreeMap © OpenMapTiles Data from OpenStreetMap”) we własnym jasnoszarym
-stylu Archiwisty zamiast BKG TopPlusOpen. TopPlusOpen to produkt niemiecki: obok
-polskich nazw drukuje niemieckie egzonimy („Gdańsk / Danzig”, „Wrocław / Breslau”,
-„Rixhöft” przy Rozewiu — sprawdzone na żywo) i żaden jego wariant ich nie pomija.
-OpenFreeMap działa bez klucza i rejestracji, pozwala na użycie komercyjne, odpowiada bez
-nagłówka `Referer` i z CORS `*`, a jego kafle mają `name:pl` na całym świecie (Praga,
-Drezno, Wilno, Lwów, Królewiec). Styl podpisuje tylko miejscowości i wody (`name:pl`,
-potem `name:latin`, potem `name`) glifami z pakietu, do których doszły zakresy
-U+0200–U+02FF i cyrylica U+0400–U+04FF; nie używa zewnętrznych sprite'ów ani fontów.
-Drugi wbudowany podkład to rastrowa OSM BaseMap GUGiK (`grayscale = true`, atrybucja
-„© OpenStreetMap contributors, GUGiK”) — polskie nazwy, ale tylko na obszarze Polski.
-Odrzucone: VersaTiles (ten sam kod, ale inny schemat i nazwy bez wersji łacińskiej, więc
-więcej glifów), EOX (nazwy angielskie bez polskich znaków), CARTO (wymaga klucza),
-Wikimedia (tylko dla projektów Wikimedia), mapy GUGiK TOPO i G2 (bez EPSG:3857).
-Konfiguracja zapisana wcześniej (kreator zapisuje też listę podkładów) zachowuje swoje
-podkłady; nowe wbudowane daje usunięcie tabel `[[basemaps]]` z `config.toml`. Test
-`-m live`: `tests/integration/test_basemap_live.py`.
+**Erratum 2 (2026-10-19, user decision — comments before the v0.2 release):** the default basemap
+is OpenFreeMap vector tiles (`kind = "vector"`, TileJSON
+`https://tiles.openfreemap.org/planet`, OpenMapTiles schema from OpenStreetMap data,
+attribution "OpenFreeMap © OpenMapTiles Data from OpenStreetMap") in Archiwista's own
+light grey style instead of BKG TopPlusOpen. TopPlusOpen is a German product: next to
+Polish names it prints German exonyms ("Gdańsk / Danzig", "Wrocław / Breslau",
+"Rixhöft" at Rozewie — checked live) and none of its variants omits them.
+OpenFreeMap works without a key or registration, allows commercial use, responds without a
+`Referer` header and with CORS `*`, and its tiles have `name:pl` worldwide (Prague,
+Dresden, Vilnius, Lviv, Königsberg). The style labels only towns and waters (`name:pl`,
+then `name:latin`, then `name`) with glyphs from the package, to which the ranges
+U+0200–U+02FF and Cyrillic U+0400–U+04FF were added; it uses no external sprites or fonts.
+The second built-in basemap is the raster OSM BaseMap of GUGiK (`grayscale = true`, attribution
+"© OpenStreetMap contributors, GUGiK") — Polish names, but only in the area of Poland.
+Rejected: VersaTiles (the same code, but a different schema and names without a Latin version, so
+more glyphs), EOX (English names without Polish characters), CARTO (requires a key),
+Wikimedia (only for Wikimedia projects), GUGiK TOPO and G2 maps (no EPSG:3857).
+A configuration saved earlier (the wizard also saves the list of basemaps) keeps its
+basemaps; the new built-in ones are obtained by removing the `[[basemaps]]` tables from `config.toml`. `-m live`
+test: `tests/integration/test_basemap_live.py`.
 
 ---
 
-## ADR-017: Warianty grupowane bez formatu plików
+## ADR-017: Grouped variants without file format
 
-**Data:** 2026-10-17
-**Status:** Przyjęta
+**Date:** 2026-10-17
+**Status:** accepted
 
-**Kontekst:** Raport dostępności Kartografa zwraca kombinacje z formatem, więc ten
-sam zestaw arkuszy w dwóch formatach wygląda jak dwa warianty. Przykład: NMT 2019,
-5 m, EVRF2007, zgłoszenie DFT.7201.003.2019 jest dostępny jako `ASC` i `ASCII-NMT`.
-Dwie karty o tym samym roku, pokryciu i arkuszach mylą i zawyżają liczniki
-(„N wariantów”), a format nie zmienia tego, co obszar ma z danych.
+**Context:** The Kartograf availability report returns combinations with a format, so the same
+set of sheets in two formats looks like two variants. Example: NMT 2019,
+5 m, EVRF2007, submission DFT.7201.003.2019 is available as `ASC` and `ASCII-NMT`.
+Two cards with the same year, coverage and sheets are confusing and inflate the counters
+("N variants"), and the format does not change what data the area has.
 
-**Opcje:**
-- A) Wariant = kombinacja raportu 1:1 (format w kluczu), jak do tej pory.
-- B) Wariant = (produkt, rok, układ poziomy, rozdzielczość, układ wysokości,
-  zgłoszenie/kampania); formaty tego samego zestawu to plakietki jednej karty,
-  wybór formatu przy pobieraniu.
-- C) Zmiana raportu Kartografa tak, by sam grupował formaty.
+**Options:**
+- A) Variant = a report combination 1:1 (format in the key), as so far.
+- B) Variant = (product, year, horizontal system, resolution, height system,
+  submission/campaign); formats of the same set are badges on one card,
+  the format is chosen at download.
+- C) Change the Kartograf report so that it groups formats itself.
 
-**Decyzja:** B (decyzja użytkownika 2026-10-17). Karta nosi plakietki, np. „5 m ·
-EVRF2007 · ASC, ASCII-NMT”. Grupowanie robi Archiwista; `check_availability`
-zostaje bez zmian (C odrzucona: raport opisuje to, co publikuje źródło).
-Liczniki, tabela, oś czasu, „Stos”, „Katalog”, karta pliku, ranking roku
-i plan asystenta liczą warianty, nie formaty (SPEC 6.3, 6.4, 7.4). Format
-wybiera się dopiero w „Pobierz…” i „Oknie planu”, domyślnie pierwszy
-rastrowy gotowy do mozaiki (ASC, GeoTIFF); gdy takiego brak, wybór jest
-jawny. Mozaika przyjmuje wersje jednego formatu rastrowego (SPEC 8.2).
-Plakietka magazynu liczy jednostki w wybranym formacie.
+**Decision:** B (user decision 2026-10-17). The card carries badges, e.g. "5 m ·
+EVRF2007 · ASC, ASCII-NMT". Archiwista does the grouping; `check_availability`
+stays unchanged (C rejected: the report describes what the source publishes).
+The counters, table, Timeline, "Stos" (Stack), "Katalog" (Catalog), file card, year ranking
+and assistant plan count variants, not formats (SPEC 6.3, 6.4, 7.4). The format
+is chosen only in "Pobierz…" (Download…) and "Oknie planu" (Plan window), by default the first
+raster format ready for a mosaic (ASC, GeoTIFF); when there is none, the choice is
+explicit. A mosaic accepts versions of a single raster format (SPEC 8.2).
+The store badge counts units in the chosen format.
 
-**Konsekwencje:** Klucz grupy to krotka wyliczana z kombinacji raportu i sidecarów
-(format jest pomijany, zgłoszenie zostaje); różne zgłoszenia z tego samego roku to
-osobne warianty. Plan pobrania musi przenosić format do polecenia Kartografa.
-Rozszerza ADR-010 (etykiety dotyczą wariantu, nie formatu).
-
----
-
-## ADR-018: Wzorce interfejsu po mockupie: czat, Stos, podglądy
-
-**Data:** 2026-10-17
-**Status:** Przyjęta (czat, podglądy; „Wachlarz” zastępuje „Stos” — errata 1, decyzja użytkownika 2026-10-17)
-
-**Kontekst:** Po obejrzeniu mockupu użytkownik rozstrzygnął pytanie M6 (położenie
-czatu), sformułował wymaganie dla „Stosu” (M4, P12) i ustalił zasadę wagi
-zrzutów i podglądów.
-
-**Opcje:**
-- Czat: A) przypięty panel boczny na komputerze, szuflada na telefonie;
-  B) panel dolny; C) pływające okno.
-- „Stos”: A) płyty pod kątem jak dotąd; B) wachlarz warstw jak stos plików
-  w docku macOS (każdy rok widoczny, wybrany powiększony); C) zniesienie widoku.
-- Podglądy: A) pełne dane i PNG; B) niska rozdzielczość z nakładek przeglądowych,
-  zrzuty WebP/JPEG ok. 1280 px.
-
-**Decyzja:**
-1. Czat: A. Na komputerze przypięty panel boczny (mapa się zwęża), na telefonie
-   szuflada (SPEC 6.2, 7.5).
-2. „Stos”: wymaganie — wybrany rok widoczny w całości (SPEC 5.4, 6.5 c). Kierunek:
-   B (wachlarz); to, czy B jest ostatecznym wariantem, rozstrzygnie sprawdzenie
-   w mockupie (M4, P12) — decyzja otwarta.
-3. Podglądy: B. Podglądy rastrów w aplikacji są niskiej rozdzielczości, generowane
-   z nakładek przeglądowych, nie z pełnych danych (SPEC 5.7; uzupełnia ADR-008).
-   Zrzuty i podglądy w repozytorium to WebP albo JPEG, szerokość ok. 1280 px.
-
-**Konsekwencje:** Rozstrzyga M6 (położenie) i zawęża M4/P12 do wyboru wariantu
-układu; układ „Stosu” z szablonu pochylonych płyt może się zmienić. Podglądy
-służą rozpoznaniu, nie analizie; pełne dane otwiera się w QGIS.
-
-**Errata 1 (2026-10-17, decyzja użytkownika po sprawdzeniu mockupu):** „Wachlarz”
-**całkowicie zastępuje „Stos”** — pkt 2 decyzji rozstrzygnięty wariantem B, a widok
-„Stos” (płyty pod kątem, opcja A) usunięty ze specu i z mockupu wraz z przełącznikiem
-„Wachlarz / Stos”. Widok nazywa się „Wachlarz” (przełącznik „Mapa / Wachlarz /
-Katalog”): warstwy lat (kampanii, wydań) jako miniatury obszaru na łuku jak stos
-plików w docku macOS, najnowszy rok na górze, każda miniatura w całości we własnym
-miejscu, wybrana powiększona w łuku i duża obok; miniatury pokazują obrysy arkuszy
-w kolorach pokrycia, a arkusze w magazynie — z lekkim podglądem (pkt 3). To komponent
-SVG interfejsu, nie warstwa mapy: odpadają `fill-extrusion`, nachylenie kamery
-i tekstury w deck.gl (errata 1 ADR-006). Rozstrzyga M4 i P12 (SPEC 5.4, 6.5 c, 15, 16).
-Wzmianki o „Stosie” w ADR-005, ADR-006 i ADR-017 opisują stan z chwili decyzji;
-obowiązuje „Wachlarz”.
+**Consequences:** The group key is a tuple computed from the report combination and sidecars
+(the format is omitted, the submission stays); different submissions from the same year are
+separate variants. The download plan must carry the format to the Kartograf command.
+Extends ADR-010 (labels concern the variant, not the format).
 
 ---
 
-## ADR-019: Dwóch producentów magazynu: Kartograf i IMGWTools
+## ADR-018: Interface patterns after the mockup: chat, Stack, previews
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014; uzupełniona przez ADR-024 (adaptery jako wtyczki)
+**Date:** 2026-10-17
+**Status:** accepted (chat, previews; "Wachlarz" (the Fan) replaces "Stos" (Stack), erratum 1, user decision 2026-10-17)
 
-**Kontekst:** Użytkownik chce w Archiwiście v1.0 danych pomiarowych IMGW-PIB: hydro
-dobowych (H, Q, T), charakterystyk miesięcznych i półrocznych oraz meteo (opad,
-temperatura), bez danych bieżących. ADR-003 („zapisy wyłącznie przez Kartografa”)
-i ADR-014 („wiedza o formacie tylko w Kartografie”) zakładały jednego producenta
-magazynu. IMGWTools 2.1.1 (Beta) zna format IMGW (URL-e, parsery, listy stacji), ale
-nie ma magazynu: zapisuje płasko i nieatomowo, bez sidecarów, sum i wersji, a nazwy
-dobowych i terminowych archiwów meteo się zderzają. Analiza z 2026-10-17
-rekomendowała IMGW jako źródło Kartografa; użytkownik wybrał adapter IMGW
-w Archiwiście — Kartograf zostaje przy danych przestrzennych.
+**Context:** After reviewing the mockup, the user decided open question M6 (chat
+position), formulated the requirement for the "Stos" (Stack) (M4, P12) and set the rule
+for the weight of screenshots and previews.
 
-**Opcje:**
-- A) Archiwista czyta płaski katalog `imgw fetch` albo cache SQLite IMGWTools własnym czytnikiem.
-- B) IMGW jako źródło Kartografa: Kartograf jedynym pisarzem, IMGWTools jego opcjonalną zależnością.
-- C) IMGWTools zapisuje w drzewie i formacie Kartografa (`data/`, `kartograf-meta/1`).
-- D) Dwóch producentów, każdy we własnym katalogu i z własnym, udokumentowanym
-  kontraktem formatu; Archiwista czyta każdego przez osobny adapter za wspólnym
-  interfejsem źródła.
-- E) Wspólna biblioteka kontraktu magazynu dla obu producentów.
+**Options:**
+- Chat: A) pinned side panel on desktop, drawer on phone;
+  B) bottom panel; C) floating window.
+- "Stos" (Stack): A) tilted slabs as before; B) a fan of layers like a stack of files
+  in the macOS dock (every year visible, the selected one enlarged); C) removal of the view.
+- Previews: A) full data and PNG; B) low resolution from overview overlays,
+  screenshots WebP/JPEG about 1280 px.
 
-**Decyzja:** D (decyzja użytkownika 2026-10-17):
-1. Magazyn w Archiwiście to nazwany zestaw katalogów producentów: katalog Kartografa
-   (`output_dir`, układ `data/`) i katalog IMGW (IMGWTools, `imgw-store/1`); żaden nie
-   leży wewnątrz drugiego. Każdy producent pisze tylko swój katalog i jest jedynym
-   właścicielem jego formatu.
-2. Archiwista nadal nigdy nie pisze do magazynu; indeks jest lokalny i odbudowywalny,
-   bez SQLite na udziale (ADR-002 i część „tylko odczyt” ADR-003 bez zmian).
-3. Osobny adapter na producenta (`archiwista/adapter/kartograf/`,
-   `archiwista/adapter/imgw/`) jest jedynym miejscem importu jego biblioteki (test
-   importów jak w ADR-004); adaptery implementują wspólny interfejs źródła
-   (SPEC 5.3), a reszta Archiwisty zna tylko ten interfejs.
-4. Adapter IMGW nie parsuje plików: czyta przez publiczne API odczytu IMGWTools
-   (IMGW-10), tak jak adapter Kartografa przez KA.
-5. Działania na danych IMGW (synchronizacja archiwów, szeregi, eksport) wykonuje
-   IMGWTools w procesach roboczych; Archiwista pokazuje plan i polecenie `imgw …`.
-6. IMGWTools zapisuje surowe archiwa IMGW 1:1 jako niezmienne wersje z sidecarem,
-   `sha256`, `ETag` i `Last-Modified` oraz szeregi stacji jako produkt pochodny;
-   kontrakt to wymagania IMGW-1..IMGW-13 (SPEC 12.7) i format z ADR-020.
-7. Dane IMGW nie są zadaniami projektu Kartografa (manifest przyjmuje tylko jego
-   komendy); odtwarzalność dają niezmienne wersje i zestaw (SPEC 4.7, 8.4; P18).
+**Decision:**
+1. Chat: A. On desktop a pinned side panel (the map narrows), on phone a
+   drawer (SPEC 6.2, 7.5).
+2. "Stos" (Stack): requirement: the selected year is fully visible (SPEC 5.4, 6.5 c). Direction:
+   B (fan); whether B is the final variant will be decided by checking
+   in the mockup (M4, P12): open decision.
+3. Previews: B. Raster previews in the application are low resolution, generated
+   from overview overlays, not from full data (SPEC 5.7; amends ADR-008).
+   Screenshots and previews in the repository are WebP or JPEG, width about 1280 px.
 
-A daje brak wersji i odtwarzalności, połowiczne pliki i SQLite (WAL) wykluczony na
-udziale, a wiedzę o formacie IMGW przenosi do Archiwisty (łamie ADR-014). B rozszerza
-zakres Kartografa poza dane przestrzenne, czego użytkownik nie chce. C to dwie
-implementacje jednego formatu w jednym drzewie: `iter_store` Kartografa widziałby
-obce segmenty, `kartograf_version` i pola przestrzenne nic by nie znaczyły, a pierwsza
-rozbieżność łamie gwarancje Kartografa. E wymaga refaktoru świeżo wydanego magazynu
-Kartografa i trzech repozytoriów w kroku; przy dwóch producentach to przedwczesne
-(zostaje drogą, gdy dojdzie trzeci).
+**Consequences:** Resolves M6 (position) and narrows M4/P12 to the choice of a layout
+variant; the layout of the "Stos" (Stack) from the template of tilted slabs may change. Previews
+serve recognition, not analysis; full data is opened in QGIS.
 
-**Konsekwencje:** Errata ADR-003 (pisarze: Kartograf albo IMGWTools, każdy we
-własnym katalogu) i ADR-014 (wiedza o formacie u każdego producenta). Wymagania
-IMGW-1..IMGW-13 wobec IMGWTools; dane IMGW wchodzą w v0.9 (SPEC 13) i zależą od
-wydania IMGWTools z kontraktem. Semantykę wersji implementują dwa repozytoria
-(ADR-036 Kartografa i katalog IMGW) — ograniczeniem jest prostszy kontrakt IMGW
-(tylko przyrost, bez dowiązań i plików zmiennych) i testy kontraktu po obu stronach
-(SPEC 11, 14). Interfejs źródła powstaje w v0.1 z jednym adapterem, a test z atrapą
-drugiego pilnuje, że warstwy wyżej nie zależą od Kartografa. Konfiguracja magazynu
-wskazuje katalogi producentów; zadania w tle i propozycje asystenta niosą polecenia
-obu producentów (`producer`, SPEC 9.1).
-
-**Errata 1 (2026-10-17, decyzja użytkownika — SPEC 15, P18):** pkt 7 nie obowiązuje:
-dane IMGW są zadaniami projektu i przypięciami w v1.0 — w manifeście IMGWTools
-`imgw-project.json` (`imgw-project/1`) obok `kartograf-project.json`, zmienianym
-wyłącznie przez API IMGWTools (wymaganie IMGW-14; ADR-023). Zasada jednego właściciela
-formatu (pkt 1) zostaje: manifest Kartografa się nie zmienia. Wymagania wobec
-IMGWTools to odtąd IMGW-1..IMGW-14 (SPEC 12.7, `docs/IMGWTOOLS_REQUIREMENTS.md`).
-
-**Errata 2 (2026-10-17, decyzja użytkownika — ADR-024):** adaptery producentów są
-wtyczkami: Kartograf jest wymaganą zależnością, IMGWTools extra `archiwista[imgw]`;
-brak IMGWTools oznacza źródło niedostępne, nie awarię (SPEC 5.3).
-
-**Errata 3 (2026-10-19, decyzja użytkownika — model zapisu IMGWTools 3.0.0):**
-w Konsekwencjach „bez dowiązań” znaczy: bez trwałych dowiązań twardych w katalogu
-IMGW (po publikacji każdy plik ma jedną nazwę). IMGWTools 3.0.0 publikuje wersje
-według modelu Kartografa (errata ADR-001 IMGWTools z 2026-10-19; ADR-036 D18, D21,
-D22 Kartografa): pliki z `.incoming/` trafiają do katalogu wersji dowiązaniami
-twardymi `os.link`, sidecar pliku głównego, dowiązywany ostatni, zatwierdza wersję,
-a znacznik `imgw-store.json` też powstaje przez dowiązanie twarde. Udział
-z magazynem musi więc obsługiwać dowiązania twarde dla obu producentów (SPEC 4.6
-pkt 1 i 9, sprawdza to `archiwista doctor`); bez nich zapis IMGWTools kończy się
-`IMGWStoreConflictError` (`not_atomic`). Katalog wersji bez sidecara to przerwana
-albo trwająca publikacja, nie wersja: `current_version` go pomija, `iter_store`
-zgłasza `missing_sidecar`, a adapter IMGW traktuje to jako problem niekrytyczny
-i możliwie przejściowy (SPEC 4.4, IMGW-2, IMGW-10). Prostszy kontrakt IMGW (tylko
-przyrost, bez nadpisywania i plików zmiennych) zostaje; model publikacji jest
-teraz wspólny z Kartografem, co zmniejsza rozbieżność dwóch implementacji (SPEC 14).
+**Erratum 1 (2026-10-17, user decision after checking the mockup):** "Wachlarz" (the Fan)
+**completely replaces "Stos"** (Stack): item 2 of the decision is resolved with variant B, and the
+"Stos" (Stack) view (tilted slabs, option A) is removed from the spec and from the mockup together with the
+"Wachlarz / Stos" switch. The view is called "Wachlarz" (the Fan) (the "Mapa / Wachlarz /
+Katalog" switch, i.e. Map / Fan / Catalog): layers of years (campaigns, releases) as thumbnails of the area on an arc like a stack
+of files in the macOS dock, the newest year on top, each thumbnail whole in its own
+place, the selected one enlarged in the arc and large beside it; thumbnails show sheet footprints
+in coverage colours, and sheets in the store, with a light preview (item 3). It is an
+SVG interface component, not a map layer: `fill-extrusion`, camera tilt
+and textures in deck.gl are dropped (erratum 1 of ADR-006). Resolves M4 and P12 (SPEC 5.4, 6.5 c, 15, 16).
+Mentions of the "Stos" (Stack) in ADR-005, ADR-006 and ADR-017 describe the state at the time of the decision;
+"Wachlarz" (the Fan) applies.
 
 ---
 
-## ADR-020: Format danych IMGW: własny sidecar, Parquet, GeoJSON
+## ADR-019: Two store producers: Kartograf and IMGWTools
 
-**Data:** 2026-10-17
-**Status:** Proponowana — wymaganie wobec IMGWTools; ostateczny kształt ustali ADR IMGWTools (SPEC 12.7–12.8)
+**Date:** 2026-10-17
+**Status:** accepted (user decision 2026-10-17); partly supersedes ADR-003, amends ADR-014; amended by ADR-024 (adapters as plugins)
 
-**Kontekst:** ADR-019 oddaje zapis danych IMGW IMGWTools z własnym kontraktem
-formatu. Trzeba wybrać schemat sidecara (własny czy zgodny z `kartograf-meta/1`),
-format szeregów stacji i format katalogu stacji. Szereg dobowy stacji 1951–2025 to
-ok. 27 tys. dni z kilkoma zmiennymi i flagami; stacji jest ok. 1 300 hydro i ok.
-2 150 meteo. Katalog może leżeć na SMB bez blokad zakresów bajtów, a rdzeń IMGWTools
-jest lekki (`httpx`, `pydantic`).
+**Context:** The user wants IMGW-PIB measurement data in Archiwista v1.0: daily
+hydro (H, Q, T), monthly and half-year characteristics, and meteo (precipitation,
+temperature), without current data. ADR-003 ("writes only through Kartograf")
+and ADR-014 ("knowledge of the format only in Kartograf") assumed a single store
+producer. IMGWTools 2.1.1 (Beta) knows the IMGW format (URLs, parsers, station lists), but
+has no store: it writes flat and non-atomically, without sidecars, sums and versions, and the names
+of daily and term meteo archives collide. The analysis of 2026-10-17
+recommended IMGW as a Kartograf source; the user chose an IMGW adapter
+in Archiwista, and Kartograf stays with spatial data.
 
-**Opcje:**
-- Sidecar: A) zgodność z `kartograf-meta/1`; B) własny `imgw-meta/1` ze wspólną kopertą pól.
-- Szeregi: C) GeoPackage (punkty, obserwacje i pokrycie w jednym pliku na obszar albo
-  kraj); D) Parquet — plik na stację w niezmiennej wersji szeregów zbioru, ze spisem
+**Options:**
+- A) Archiwista reads the flat directory of `imgw fetch` or the IMGWTools SQLite cache with its own reader.
+- B) IMGW as a Kartograf source: Kartograf the only writer, IMGWTools its optional dependency.
+- C) IMGWTools writes in Kartograf's tree and format (`data/`, `kartograf-meta/1`).
+- D) Two producers, each in its own directory and with its own documented
+  format contract; Archiwista reads each through a separate adapter behind a common
+  source interface.
+- E) A common store contract library for both producers.
+
+**Decision:** D (user decision 2026-10-17):
+1. A store in Archiwista is a named set of producer directories: the Kartograf directory
+   (`output_dir`, `data/` layout) and the IMGW directory (IMGWTools, `imgw-store/1`); neither
+   lies inside the other. Each producer writes only its own directory and is the sole
+   owner of its format.
+2. Archiwista still never writes to the store; the index is local and rebuildable,
+   with no SQLite on the share (ADR-002 and the "read-only" part of ADR-003 unchanged).
+3. A separate adapter per producer (`archiwista/adapter/kartograf/`,
+   `archiwista/adapter/imgw/`) is the only place that imports its library (import
+   test as in ADR-004); the adapters implement a common source interface
+   (SPEC 5.3), and the rest of Archiwista knows only that interface.
+4. The IMGW adapter does not parse files: it reads through the public read API of IMGWTools
+   (IMGW-10), just as the Kartograf adapter does through KA.
+5. Actions on IMGW data (archive synchronisation, series, export) are performed by
+   IMGWTools in worker processes; Archiwista shows the plan and the `imgw …` command.
+6. IMGWTools writes raw IMGW archives 1:1 as immutable versions with a sidecar,
+   `sha256`, `ETag` and `Last-Modified`, and station series as a derived product;
+   the contract is requirements IMGW-1..IMGW-13 (SPEC 12.7) and the format from ADR-020.
+7. IMGW data are not jobs of a Kartograf project (the manifest accepts only its
+   commands); reproducibility is provided by immutable versions and the set (SPEC 4.7, 8.4; P18).
+
+A gives no versions and no reproducibility, half-written files and SQLite (WAL) ruled out on a
+share, and moves knowledge of the IMGW format into Archiwista (breaks ADR-014). B extends the
+scope of Kartograf beyond spatial data, which the user does not want. C is two
+implementations of one format in one tree: Kartograf's `iter_store` would see
+foreign segments, `kartograf_version` and spatial fields would mean nothing, and the first
+divergence breaks Kartograf's guarantees. E requires refactoring Kartograf's freshly released store
+and three repositories in a step; with two producers that is premature
+(it remains an option when a third arrives).
+
+**Consequences:** Erratum to ADR-003 (writers: Kartograf or IMGWTools, each in its
+own directory) and ADR-014 (knowledge of the format at each producer). Requirements
+IMGW-1..IMGW-13 for IMGWTools; IMGW data enter in v0.9 (SPEC 13) and depend on the
+release of IMGWTools with the contract. The version semantics are implemented by two repositories
+(Kartograf's ADR-036 and the IMGW directory); the limitation is the simpler IMGW contract
+(append-only, no links and no mutable files) and contract tests on both sides
+(SPEC 11, 14). The source interface is created in v0.1 with one adapter, and a test with a stub
+of the second ensures that the layers above do not depend on Kartograf. The store configuration
+points to the producer directories; background jobs and assistant proposals carry the commands
+of both producers (`producer`, SPEC 9.1).
+
+**Erratum 1 (2026-10-17, user decision, SPEC 15, P18):** item 7 no longer applies:
+IMGW data are project jobs and pins in v1.0, in the IMGWTools manifest
+`imgw-project.json` (`imgw-project/1`) next to `kartograf-project.json`, changed
+only through the IMGWTools API (requirement IMGW-14; ADR-023). The principle of a single owner of
+the format (item 1) stays: the Kartograf manifest does not change. The requirements for
+IMGWTools are from now on IMGW-1..IMGW-14 (SPEC 12.7, `docs/IMGWTOOLS_REQUIREMENTS.md`).
+
+**Erratum 2 (2026-10-17, user decision, ADR-024):** producer adapters are
+plugins: Kartograf is a required dependency, IMGWTools the extra `archiwista[imgw]`;
+a missing IMGWTools means an unavailable source, not a failure (SPEC 5.3).
+
+**Erratum 3 (2026-10-19, user decision, IMGWTools 3.0.0 write model):**
+in the Consequences "no links" means: no permanent hard links in the IMGW
+directory (after publication every file has one name). IMGWTools 3.0.0 publishes versions
+according to the Kartograf model (erratum to IMGWTools ADR-001 of 2026-10-19; Kartograf's ADR-036 D18, D21,
+D22): files from `.incoming/` go into the version directory by hard
+links `os.link`, the sidecar of the main file, linked last, commits the version,
+and the `imgw-store.json` marker is also created by a hard link. A share
+with the store must therefore support hard links for both producers (SPEC 4.6
+items 1 and 9, checked by `archiwista doctor`); without them an IMGWTools write ends with
+`IMGWStoreConflictError` (`not_atomic`). A version directory without a sidecar is an interrupted
+or ongoing publication, not a version: `current_version` skips it, `iter_store`
+reports `missing_sidecar`, and the IMGW adapter treats this as a non-critical
+and possibly transient problem (SPEC 4.4, IMGW-2, IMGW-10). The simpler IMGW contract (append-only,
+no overwriting and no mutable files) stays; the publication model is
+now shared with Kartograf, which reduces the divergence between the two implementations (SPEC 14).
+
+---
+
+## ADR-020: IMGW data format: own sidecar, Parquet, GeoJSON
+
+**Date:** 2026-10-17
+**Status:** proposed, a requirement for IMGWTools; the final shape will be set by an IMGWTools ADR (SPEC 12.7–12.8)
+
+**Context:** ADR-019 leaves the writing of IMGW data to IMGWTools with its own
+format contract. A choice is needed for the sidecar schema (own or compatible with `kartograf-meta/1`),
+the format of station series and the format of the station catalog. A station's daily series for 1951–2025 is
+about 27 thousand days with several variables and flags; there are about 1,300 hydro and about
+2,150 meteo stations. The catalog may sit on SMB without byte-range locks, and the IMGWTools core
+is lightweight (`httpx`, `pydantic`).
+
+**Options:**
+- Sidecar: A) compatibility with `kartograf-meta/1`; B) own `imgw-meta/1` with a shared field envelope.
+- Series: C) GeoPackage (points, observations and coverage in one file per area or
+  country); D) Parquet, one file per station in an immutable version of the dataset's series, with an index
   `series.json`; E) CSV.
-- Katalog stacji: F) GeoPackage; G) GeoJSON (RFC 7946).
+- Station catalog: F) GeoPackage; G) GeoJSON (RFC 7946).
 
-**Decyzja:** B, D i G.
-- B: format zna i rozwija tylko jego producent (ADR-019), a nazwa schematu mówi, kto
-  zapisał plik — `kartograf-meta/1` od IMGWTools myliłby `read_sidecar` Kartografa,
-  wtyczkę QGIS i Hydrografa (np. polem `kartograf_version`). Pola przestrzenne
-  (`horizontal_crs`, `vertical_crs`, `resolution`, `nodata`, `transform`) nic nie
-  znaczą dla archiwów i szeregów, a potrzebne są jednostki, kody braków, okresy
-  i stacje. Wspólna koperta (te same nazwy i znaczenia `schema`, `dataset`,
+**Decision:** B, D and G.
+- B: only its producer knows and develops the format (ADR-019), and the schema name says who
+  wrote the file; `kartograf-meta/1` written by IMGWTools would confuse Kartograf's `read_sidecar`, the QGIS
+  plugin and Hydrograf (e.g. through the `kartograf_version` field). The spatial fields
+  (`horizontal_crs`, `vertical_crs`, `resolution`, `nodata`, `transform`) mean nothing
+  for archives and series, while units, missing-value codes, periods
+  and stations are needed. A shared envelope (the same names and meanings of `schema`, `dataset`,
   `country`, `provider`, `request`, `license`, `downloaded_at`, `sha256`,
   `size_bytes`, `extra.version`, `extra.http`, `extra.derived`,
-  `extra.source_files[]`) daje to, co dałaby zgodność — wspólne kolumny indeksu,
-  tę samą logikę wersji i wejść, kształt HSG — bez sprzęgania producentów.
-- D: typowane kolumny (data, wartości, flagi) z kompresją; plik niezmienny i bez
-  blokad, więc bezpieczny do czytania na SMB; czytany wprost przez pandas, polars,
-  pyarrow, DuckDB i R (Hydrolog, Retman, skrypty); plik na stację daje mały odczyt
-  do wykresu i zestawu, a spis `series.json` z listami przerw — indeks pokrycia
-  z jednego pliku. GeoPackage to SQLite: zapis na udziale wymaga budowy lokalnie
-  i kopii, plik obszaru dubluje stacje między zadaniami, a plik krajowy trzeba
-  czytać przez zapytania; CSV nie niesie typów ani metadanych — zostaje formatem
-  eksportu do zestawu (IMGW-12).
-- G: kilka tysięcy punktów; zapis bez GDAL (lekki rdzeń IMGWTools), plik czytelny
-  i porównywalny między wersjami, otwierany wprost w QGIS; brak położenia wyrażony
-  jawnie (`geometry: null`).
+  `extra.source_files[]`) gives what compatibility would give: shared index columns,
+  the same logic of versions and inputs, the HSG shape, without coupling the producers.
+- D: typed columns (date, values, flags) with compression; the file is immutable and without
+  locks, so it is safe to read on SMB; read directly by pandas, polars,
+  pyarrow, DuckDB and R (Hydrolog, Retman, scripts); a file per station gives a small read
+  for a chart and a set, and the `series.json` index with gap lists gives a coverage index
+  from a single file. GeoPackage is SQLite: writing on a share requires building locally
+  and copying, an area file duplicates stations between jobs, and a country file has to be
+  read through queries; CSV carries neither types nor metadata, so it remains the export format
+  for the set (IMGW-12).
+- G: a few thousand points; written without GDAL (lightweight IMGWTools core), the file is readable
+  and comparable between versions, and opens directly in QGIS; a missing location is expressed
+  explicitly (`geometry: null`).
 
-**Konsekwencje:** Zapis i odczyt Parquet idą do dodatku IMGWTools (np.
-`imgwtools[store]` z pyarrow); rdzeń zostaje lekki. Excel nie czyta Parquet, a QGIS
-— tylko z GDAL z obsługą Arrow, więc zestaw dostaje szeregi w CSV z eksportu
-IMGWTools. Wersja szeregów zbioru to migawka wszystkich stacji (prosta tożsamość
-i lata znane z jednego spisu) za cenę pełnej kopii plików przy każdej nowej wersji
-— ograniczeniem jest `reused` przy tym samym zestawie `sha256` wejść i tej samej
-wersji schematu (wzór HSG, ADR-036 D33), co chroni też przed wersjami różnymi tylko
-bajtami zapisu biblioteki Parquet. Koperta jest kandydatem na wspólny `store-meta/1`,
-gdyby doszedł trzeci producent.
+**Consequences:** Parquet writing and reading go into an IMGWTools extra (e.g.
+`imgwtools[store]` with pyarrow); the core stays lightweight. Excel does not read Parquet, and QGIS
+only with GDAL built with Arrow support, so the set gets series as CSV from the IMGWTools
+export. A dataset's series version is a snapshot of all stations (simple identity
+and years known from a single index) at the price of a full copy of the files with every new version;
+the limit is `reused` when the set of input `sha256` values and the schema version are the same
+(the HSG pattern, ADR-036 D33), which also protects against versions that differ only in the
+bytes written by the Parquet library. The envelope is a candidate for a shared `store-meta/1`
+if a third producer appears.
 
-**Errata 1 (2026-10-17, decyzje użytkownika — SPEC 15, P13–P15, P18):** kolumna
-`hydro_year` jest w plikach szeregów wszystkich zbiorów, także meteo (oba rodzaje lat
-dla obu rodzajów danych, P15); szeregi zbioru obejmują wszystkie stacje, także
-z lukami (P14); stacja bez położenia jest w `stations.geojson` z `geometry: null`
-i powodem braku (P13, ADR-022); dochodzi schemat `imgw-project/1` (ADR-023), objęty tą
-samą polityką wersji (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
+**Erratum 1 (2026-10-17, user decisions — SPEC 15, P13–P15, P18):** the column
+`hydro_year` is in the series files of all datasets, including meteo (both kinds of years
+for both kinds of data, P15); a dataset's series cover all stations, including those
+with gaps (P14); a station without a location is in `stations.geojson` with `geometry: null`
+and the reason for the missing location (P13, ADR-022); the schema `imgw-project/1` is added (ADR-023), covered by the
+same version policy (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
 
 ---
 
-## ADR-021: Etykiety pokrycia szeregów IMGW
+## ADR-021: Coverage labels of IMGW series
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (P14, P15 — errata 1; P16 — errata 2; decyzje użytkownika 2026-10-17; errata 3: jednostki znane per stacja ČHMÚ); Proponowana (mockup: M11)
+**Date:** 2026-10-17
+**Status:** accepted (P14, P15 — erratum 1; P16 — erratum 2; user decisions 2026-10-17; erratum 3: units known per ČHMÚ station); proposed (mockup: M11)
 
-**Kontekst:** Użytkownik chce etykiet pokrycia szeregów stacji w czasie, np. „ciągły
-1951–2024”, „luki 3%”, zdefiniowanych precyzyjnie. Pokrycie stacji znane jest
-dopiero z archiwów w magazynie (IMGW nie publikuje indeksu stacji); archiwa hydro
-są numerowane rokiem hydrologicznym, meteo — kalendarzowym; brak Q nie oznacza
-braku H; Hydrolog ostrzega przy szeregach krótszych niż 30 lat.
+**Context:** The user wants labels for the coverage of station series over time, e.g. "ciągły
+1951–2024", "luki 3%", defined precisely. A station's coverage is known
+only from the archives in the store (IMGW does not publish a station index); hydro archives
+are numbered by hydrological year, meteo by calendar year; a missing Q does not mean
+a missing H; Hydrolog warns for series shorter than 30 years.
 
-**Opcje:**
-- A) Same liczby (procent dni z wartością).
-- B) „Ciągły” z tolerancją (np. do 0,1% braków).
-- C) Pięć etykiet z definicjami: „ciągły” (zero braków), „luki N%” (zaokrąglenie
-  w górę, „<1%”) z najdłuższą przerwą, „częściowy” (stacja zaczyna albo kończy
-  w trakcie zakresu), „brak danych”, „nieznane” (bez archiwów); osobno dla każdej
-  zmiennej; rodzaj lat wg zbioru z przełącznikiem.
+**Options:**
+- A) Numbers only (percentage of days with a value).
+- B) "Ciągły" (continuous) with a tolerance (e.g. up to 0.1% of gaps).
+- C) Five labels with definitions: "ciągły" (continuous; zero gaps), "luki N%" (gaps N%; rounded
+  up, "<1%") with the longest gap, "częściowy" (partial; the station starts or ends
+  within the range), "brak danych" (no data), "nieznane" (unknown; without archives); separately for each
+  variable; the kind of years according to the dataset with a switch.
 
-**Decyzja:** C (definicje: SPEC 4.8.4). „Ciągły” to fakt, nie ocena — tolerancja
-ukrywałaby braki, które Hydrolog i tak napotka; przydatność mówi osobno liczba lat
-pełnych i filtr „≥ 30 lat pełnych”. Zaokrąglenie braków w górę jest ostrożne jak
-„nigdy 100%” w ADR-010. Lata nieznane (archiwa niepobrane, szeregi nieprzygotowane)
-nie są lukami i dostają dopisek „· nieznane”. Etykiety liczy serwer z list przerw
-w spisie szeregów (IMGW-8), więc zmiana zakresu i rodzaju lat nie wymaga czytania
-szeregów.
+**Decision:** C (definitions: SPEC 4.8.4). "Ciągły" is a fact, not an assessment; a tolerance
+would hide gaps that Hydrolog will encounter anyway; suitability is expressed separately by the number of full years
+and the filter "≥ 30 lat pełnych" (≥ 30 full years). Rounding gaps up is cautious, like
+"never 100%" in ADR-010. Unknown years (archives not downloaded, series not prepared)
+are not gaps and get the suffix "· nieznane". The server computes the labels from the gap lists
+in the series index (IMGW-8), so changing the range and the kind of years does not require reading
+the series.
 
-**Konsekwencje:** IMGWTools zapisuje w spisie szeregów pierwszą i ostatnią datę oraz
-listę przerw dla każdej zmiennej; Archiwista liczy etykiety, lata pełne i oś czasu
-(indeks `series_years`), a interfejs, API i asystent mają jedno słownictwo.
-Uzupełnia ADR-010 (etykiety obszaru) o wymiar czasu.
+**Consequences:** IMGWTools writes the first and last date and the
+gap list for each variable in the series index; Archiwista computes the labels, full years and the timeline
+(the `series_years` index), and the interface, API and assistant share one vocabulary.
+It extends ADR-010 (area labels) with the time dimension.
 
-**Errata 1 (2026-10-17, decyzje użytkownika — SPEC 15, P14, P15):**
-- P14: „ciągły” = zero braków (potwierdzone). Pobiera się i pokazuje **wszystkie**
-  dane, także z brakami, z etykietą; nic nie jest odfiltrowywane z powodu braków —
-  mapa, „Zestawienie”, „Katalog”, zestaw, eksport i propozycje asystenta obejmują
-  każdą stację, a filtry pokrycia („≥ 30 lat pełnych”) działają tylko jawnie
+**Erratum 1 (2026-10-17, user decisions — SPEC 15, P14, P15):**
+- P14: "ciągły" = zero gaps (confirmed). **All** data is downloaded and shown,
+  including data with gaps, with a label; nothing is filtered out because of gaps:
+  the map, "Zestawienie" (Summary), "Katalog" (Catalog), the set, export and assistant proposals cover
+  every station, and coverage filters ("≥ 30 lat pełnych") work only when explicitly applied
   (SPEC 4.8.4).
-- P15: oba rodzaje lat dla **obu** rodzajów danych (hydro i meteo) z przełącznikiem
-  (wcześniej: „rodzaj lat wg zbioru z przełącznikiem”). Domyślnie hydro —
-  hydrologiczny, meteo — kalendarzowy; wybór zapamiętywany osobno dla hydro i meteo
-  w ustawieniach użytkownika (w zespole — przy koncie), `year_type` w adresie URL ma
-  pierwszeństwo; widok mieszany używa wyboru dla hydro; charakterystyki półroczne
-  i roczne zostają w latach hydrologicznych, bo IMGW liczy je w półroczach XI–IV
-  i V–X (SPEC 4.8.2, 6.7). Potwierdzone przez użytkownika 2026-10-17:
-  charakterystyki półroczne i roczne IMGW są tylko w latach hydrologicznych,
-  a przełącznik rodzaju lat ich nie dotyczy.
-- P16: patrz errata 2.
+- P15: both kinds of years for **both** kinds of data (hydro and meteo) with a switch
+  (previously: "the kind of years according to the dataset with a switch"). By default hydro is
+  hydrological and meteo is calendar; the choice is remembered separately for hydro and meteo
+  in the user settings (in the team, with the account), `year_type` in the URL
+  takes precedence; the mixed view uses the choice for hydro; half-year and annual
+  characteristics stay in hydrological years, because IMGW computes them in the half-years XI–IV
+  and V–X (SPEC 4.8.2, 6.7). Confirmed by the user on 2026-10-17:
+  IMGW half-year and annual characteristics exist only in hydrological years,
+  and the year-type switch does not apply to them.
+- P16: see erratum 2.
 
-**Errata 2 (2026-10-17, decyzja użytkownika — SPEC 15, P16):** P16 rozstrzygnięte —
-etykiety pokrycia są liczone i pokazywane **osobno dla każdej wielkości**, nie jedna
-na stację: hydro — H, Q i T; meteo — opad, temperatura powietrza (Tmax, Tmin, Tśr)
-i inne zmienne zbioru. Stacja nie ma etykiety zbiorczej. Zmienia wcześniejszą
-rekomendację („jedna zmienna naraz”): panel stacji, „Zestawienie”, „Katalog”
-i karta stacji pokazują etykiety wszystkich zmiennych stacji razem; mapa koloruje
-punkt według jednej zmiennej wybranej chipem („Kolor punktów”), ale podpowiedź
-punktu podaje wszystkie; filtry pokrycia (lata pełne, etykieta) dotyczą wskazanej
-zmiennej i łączą się spójnikiem „i”, więc brak Q nie ukrywa H; API zwraca
-`coverage` osobno dla każdej zmiennej (SPEC 9, `GET /stations`). Model (SPEC 4.8.4,
-indeks `series_years`) i IMGW-8 liczyły już pokrycie per zmienna — zmienia się
-prezentacja, filtrowanie i kształt odpowiedzi API, nie kontrakt formatu IMGWTools
-(wymagania IMGWTools: IMGW-8).
+**Erratum 2 (2026-10-17, user decision — SPEC 15, P16):** P16 resolved:
+coverage labels are computed and shown **separately for each quantity**, not one
+per station: hydro: H, Q and T; meteo: precipitation, air temperature (Tmax, Tmin, Tśr)
+and other variables of the dataset. A station has no summary label. This changes the earlier
+recommendation ("one variable at a time"): the station panel, "Zestawienie", "Katalog"
+and the station card show the labels of all the station's variables together; the map colors
+a point by one variable chosen with a chip ("Kolor punktów", Point color), but the point tooltip lists
+all of them; coverage filters (full years, label) apply to the selected
+variable and are combined with "and", so a missing Q does not hide H; the API returns
+`coverage` separately for each variable (SPEC 9, `GET /stations`). The model (SPEC 4.8.4,
+the `series_years` index) and IMGW-8 already computed coverage per variable, so what changes is the presentation,
+the filtering and the shape of the API response, not the IMGWTools format contract
+(IMGWTools requirements: IMGW-8).
 
-**Errata 3 (2026-10-19, audyt zgodności z IMGWTools 3.0.0 — odpowiedź na pytanie 11
-ADR-003 IMGWTools; SPEC 4.8.6):** w zbiorach z plikami stacji (ČHMÚ) jednostkami znanymi
-stacji są jednostki jej okresów ze spisu szeregów (`stations[<kod>].periods`, ADR-003 D10
-IMGWTools), a nie okresów całego zbioru: rok bez pliku stacji — także nieopublikowany
-przez ČHMÚ — jest „nieznany”, nie luką, a brak wierszy w znanym okresie jest luką;
-K₁, K₂ i „rok znany” liczy się per stacja. Dla archiwów krajowych IMGW-PIB bez zmian
-(`periods` zbioru). Definicje etykiet bez zmian (SPEC 4.8.4;
+**Erratum 3 (2026-10-19, compatibility audit with IMGWTools 3.0.0, answering question 11
+of ADR-003 of IMGWTools; SPEC 4.8.6):** in datasets with station files (ČHMÚ), the units known
+for a station are the units of its periods from the series index (`stations[<kod>].periods`, ADR-003 D10
+of IMGWTools), not of the periods of the whole dataset: a year without a station file, including one not
+published by ČHMÚ, is "unknown", not a gap, while missing rows within a known period are a gap;
+K₁, K₂ and the "known year" are computed per station. For IMGW-PIB national archives nothing changes
+(the dataset's `periods`). The label definitions are unchanged (SPEC 4.8.4;
 `docs/IMGWTOOLS_REQUIREMENTS.md` 6.3).
 
 ---
 
-## ADR-022: Dane bez położenia: Katalog zamiast mapy
+## ADR-022: Data without location: Catalog instead of the map
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17; SPEC 15, P13)
+**Date:** 2026-10-17
+**Status:** accepted (user decision 2026-10-17; SPEC 15, P13)
 
-**Kontekst:** Część danych nie ma położenia: z 2 149 kodów listy meteo IMGWTools
-publiczne API IMGW ma współrzędne 562 stacji, 32 stacje API hydro mają zastępcze
-`0,0`, stacje zamknięte często nie mają współrzędnych w żadnym źródle; po stronie
-Kartografa są pliki, dla których `file_footprint` nie znajduje zasięgu („bez
-obrysu”), a archiwa i szeregi IMGW mają zasięg całego kraju. Pytanie P13 dotyczyło
-źródła współrzędnych stacji meteo; użytkownik rozstrzygnął, że stacji bez
-współrzędnych nie pokazuje się na mapie, a Archiwista potrzebuje drugiego sposobu
-prezentacji danych bez odniesienia przestrzennego — ogólnie, nie tylko dla IMGW.
+**Context:** Part of the data has no location: of the 2,149 codes on the IMGWTools meteo list,
+the public IMGW API has coordinates for 562 stations, 32 stations of the hydro API have placeholder
+`0,0`, closed stations often have no coordinates in any source; on the Kartograf side
+there are files for which `file_footprint` finds no extent ("no
+footprint"), and IMGW archives and series have the extent of the whole country. Question P13 concerned the
+source of meteo station coordinates; the user decided that stations without
+coordinates are not shown on the map, and that Archiwista needs a second way of
+presenting data with no spatial reference — in general, not only for IMGW.
 
-**Opcje:**
-- A) Przybliżone położenie na mapie (np. środek kwadratu 1° z kodu stacji) z oznaczeniem.
-- B) Osobna lista „Bez położenia” tylko dla stacji IMGW, obok mapy.
-- C) Ogólna zasada dla wszystkich producentów: mapa pokazuje wyłącznie obiekty
-  z położeniem, a wszystkie obiekty — także bez położenia — pokazuje widok bez mapy
-  („Katalog”: lista i karty z wyszukiwaniem i filtrami atrybutów); mapa ma licznik
-  obiektów bez położenia z przejściem do „Katalogu”.
+**Options:**
+- A) Approximate location on the map (e.g. the centre of a 1° square from the station code) with a marker.
+- B) A separate "Bez położenia" (No location) list only for IMGW stations, next to the map.
+- C) A general rule for all producers: the map shows only objects
+  with a location, and all objects — including those without a location — are shown by a view without a map
+  (the "Katalog" (Catalog): a list and cards with search and attribute filters); the map has a counter
+  of objects without a location with a link to the "Katalog" (Catalog).
 
-**Decyzja:** C (decyzja użytkownika 2026-10-17). A zgaduje położenie (kwadrat 1° to
-dziesiątki kilometrów) i łamie zasadę „nigdy zgadywanie”; B rozwiązuje jeden
-przypadek i zostawia pliki „bez obrysu” Kartografa bez widoku. Zasady (SPEC 4.3,
+**Decision:** C (user decision 2026-10-17). A guesses the location (a 1° square is
+tens of kilometres) and breaks the "never guess" rule; B solves one
+case and leaves Kartograf's files "without footprint" without a view. Rules (SPEC 4.3,
 6.8):
-1. Każdy obiekt indeksu ma rodzaj położenia: `footprint`, `point`, `country` albo
-   `none` z powodem (pliki: `no_source`, `unreadable`; stacje: powód z katalogu stacji
+1. Every index object has a location kind: `footprint`, `point`, `country` or
+   `none` with a reason (files: `no_source`, `unreadable`; stations: the reason from the station catalog of
    IMGWTools — `none`, `zero`, `outside_country`).
-2. Mapa rysuje tylko `footprint` i `point`; położenie nigdy nie jest zgadywane.
-3. „Katalog” (pozycja nawigacji i tryb „Mapy”) pokazuje wszystkie rodzaje położenia;
-   filtr obszaru dzieli wynik na grupy „w obszarze”, „na granicy obszaru”, „cały
-   kraj”, „bez położenia” z licznikami, a grupy „bez położenia” nigdy nie dołącza do
-   obszaru ani z niego nie usuwa po cichu. Obiekty bez położenia wybiera się filtrami
-   atrybutów (rzeka i kod hydrograficzny z dopływami — P19, nazwa, kod, kraj,
-   jednostka); kwadrat 1° z kodu stacji jest tylko zgrubną wskazówką.
-4. Każdy widok mapy z wynikiem podaje licznik obiektów bez położenia z przejściem do
-   „Katalogu” z tymi samymi filtrami.
-5. Położenie uzupełnia producent (np. nowa wersja katalogu stacji IMGWTools z plikiem
-   współrzędnych użytkownika); Archiwista go nie zapisuje.
+2. The map draws only `footprint` and `point`; location is never guessed.
+3. The "Katalog" (Catalog) (a navigation item and a mode of the "Mapy" (Maps) view) shows all location kinds;
+   the area filter splits the result into the groups "w obszarze" (in the area), "na granicy obszaru" (on the area boundary), "cały
+   kraj" (whole country), "bez położenia" (no location) with counters, and the "bez położenia" group is never added to
+   the area nor silently removed from it. Objects without a location are selected with
+   attribute filters (river and hydrographic code with tributaries — P19, name, code, country,
+   unit); the 1° square from the station code is only a rough hint.
+4. Every map view with a result shows a counter of objects without a location with a link to
+   the "Katalog" (Catalog) with the same filters.
+5. The producer supplies the location (e.g. a new version of the IMGWTools station catalog with a
+   user coordinates file); Archiwista does not write it.
 
-**Konsekwencje:** Indeks trzyma rodzaj położenia i powód braku (`versions`,
-`stations`); API `GET /slots` i `GET /stations` przyjmują `location` i zwracają grupy
-z licznikami; katalog stacji IMGWTools zapisuje stacje bez położenia jako pełnoprawne
-wpisy (`geometry: null` z powodem, IMGW-9). Stacje bez położenia trafiają do zadań
-projektu i zestawów tylko jawnie, a w zestawie są tabelą, nie warstwą mapy. „Katalog”
-jest w v0.1 (pliki „bez obrysu”) i w v0.9 (stacje). Źródła współrzędnych z P13 (API
-IMGW, plik użytkownika, wniosek do IMGW-PIB o wykaz) pozostają uzupełnieniem.
+**Consequences:** The index stores the location kind and the reason for its absence (`versions`,
+`stations`); the API `GET /slots` and `GET /stations` accept `location` and return groups
+with counters; the IMGWTools station catalog stores stations without a location as full
+entries (`geometry: null` with a reason, IMGW-9). Stations without a location go into project
+jobs and sets only explicitly, and in a set they are a table, not a map layer. The "Katalog" (Catalog)
+is in v0.1 (files "without footprint") and in v0.9 (stations). The coordinate sources from P13 (IMGW
+API, user file, a request to IMGW-PIB for a list) remain a supplement.
 
 ---
 
-## ADR-023: Dane IMGW w projektach: manifest IMGWTools
+## ADR-023: IMGW data in projects: the IMGWTools manifest
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (dane IMGW w manifeście projektu w v1.0 i dwa pliki manifestu, `kartograf-project.json` i `imgw-project.json` — decyzja użytkownika 2026-10-17, potwierdzona; SPEC 15, P18; errata 2: kształt `imgw-project/1` z IMGWTools 3.0.0)
+**Date:** 2026-10-17
+**Status:** accepted (IMGW data in the project manifest in v1.0 and two manifest files, `kartograf-project.json` and `imgw-project.json` — user decision 2026-10-17, confirmed; SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0)
 
-**Kontekst:** ADR-019 pkt 7 i dotychczasowa rekomendacja P18 wyłączały dane IMGW
-z projektów w v1.0, bo manifest `kartograf-project/1` przyjmuje tylko komendy
-Kartografa; odtwarzalność dawał sam zestaw (`zestaw.json`). Użytkownik zdecydował, że
-dane IMGW mają być w manifeście projektu już w v1.0: zadania (stacje, zmienne, lata)
-i przypięte wersje, z „Statusem”, „Weryfikuj”, aktualizacją i odtwarzaniem u kolegi
-— tak jak dane Kartografa. Zadanie IMGW ma trafiać do projektu przez API IMGWTools.
+**Context:** ADR-019 point 7 and the previous recommendation for P18 excluded IMGW data
+from projects in v1.0, because the `kartograf-project/1` manifest accepts only Kartograf
+commands; rebuildability was provided by the set itself (`zestaw.json`). The user decided that
+IMGW data should be in the project manifest already in v1.0: jobs (stations, variables, years)
+and pinned versions, with "Status" (Status), "Weryfikuj" (Verify), update and restoring on a colleague's machine
+— just like Kartograf data. An IMGW job is to get into the project through the IMGWTools API.
 
-**Opcje:**
-- A) Zadania IMGW w `kartograf-project.json` (Kartograf przyjmuje obce komendy albo
-  woła IMGWTools).
-- B) Wspólny manifest producentów (np. `store-project/1`) i wspólna biblioteka
-  projektu dla obu producentów.
-- C) Manifest IMGWTools `imgw-project.json` (`imgw-project/1`) w tym samym katalogu
-  projektu obok `kartograf-project.json`; każdy manifest ma jednego właściciela,
-  a Archiwista pokazuje projekt jako sumę obu.
-- D) Bez manifestu: wybór IMGW tylko w zestawie (dotychczasowa rekomendacja).
+**Options:**
+- A) IMGW jobs in `kartograf-project.json` (Kartograf accepts foreign commands or
+  calls IMGWTools).
+- B) A shared producer manifest (e.g. `store-project/1`) and a shared
+  project library for both producers.
+- C) An IMGWTools manifest `imgw-project.json` (`imgw-project/1`) in the same project
+  directory next to `kartograf-project.json`; each manifest has one owner,
+  and Archiwista shows the project as the sum of both.
+- D) No manifest: IMGW selection only in the set (the previous recommendation).
 
-**Decyzja:** C. Zgodna z ADR-019 (każdy producent jest jedynym właścicielem swojego
-formatu, żadnej zależności między Kartografem a IMGWTools) i z ADR-014 (Archiwista nie
-pisze formatów producentów). A łamie oba: Kartograf musiałby znać komendy IMGW albo je
-uruchamiać, a `kartograf-project/1` zmieniłby się poza rozszerzenia addytywne. B to
-refaktor świeżo wydanego manifestu Kartografa i trzech repozytoriów w kroku —
-przedwczesny przy dwóch producentach (jak opcja E w ADR-019). D nie spełnia decyzji
-użytkownika. Kształt (SPEC 12.7, IMGW-14): `schema`, `store_dir`, `tasks[]` (`name`,
-`command`, `options` — zbiór, stacje jako jawna lista kodów, zmienne, lata,
-`year_type`; przy wyborze obszarem także `geometry` i `geometry_sha256`), `pinned_at`,
-`imgwtools_version`, `files[]` (`role`, `path` wersji względna do `store_dir`,
+**Decision:** C. Consistent with ADR-019 (each producer is the sole owner of its
+format, no dependency between Kartograf and IMGWTools) and with ADR-014 (Archiwista does not
+write producers' formats). A breaks both: Kartograf would have to know IMGW commands or run them,
+and `kartograf-project/1` would change beyond additive extensions. B is a
+refactor of Kartograf's freshly released manifest and of three repositories in one step —
+premature with two producers (like option E in ADR-019). D does not meet the user's
+decision. Shape (SPEC 12.7, IMGW-14): `schema`, `store_dir`, `tasks[]` (`name`,
+`command`, `options` — a dataset, stations as an explicit list of codes, variables, years,
+`year_type`; for area selection also `geometry` and `geometry_sha256`), `pinned_at`,
+`imgwtools_version`, `files[]` (`role`, version `path` relative to `store_dir`,
 `sha256`, `station`); API = CLI (`init_project`, `open_project`, `add_project_task`,
 `remove_project_task`, `download_project`, `check_project`, `verify_project`,
-`get_project_status`; `imgw project …`); zapis atomowy pod blokadą
-`.imgw-project.lock` — wzorem manifestu Kartografa.
+`get_project_status`; `imgw project …`); atomic write under the lock
+`.imgw-project.lock` — following Kartograf's manifest.
 
-**Konsekwencje:** Nowe wymaganie IMGW-14 (v0.9, potrzebne do v1.0). Archiwista
-odkrywa projekty po obu plikach, pokazuje zadania obu producentów z kolumną
-producenta, a „Dodaj do projektu…” dla stacji otwiera „Okno planu” z poleceniem
-`imgw project add` i woła API IMGWTools w procesie roboczym (SPEC 4.7). Zestaw bierze
-wersje IMGW z przypięć, `zestaw.json` zapisuje sumy obu manifestów, `polecenia.sh` —
-`imgw project download` (SPEC 8.4). Ryzyko niespójności dwóch manifestów (np. ta sama
-nazwa zadania) ogranicza widok projektu z ostrzeżeniem (SPEC 14). Gdy dojdzie trzeci
-producent, wraca opcja B. Zmienia pkt 7 ADR-019 (errata 1).
+**Consequences:** New requirement IMGW-14 (v0.9, needed for v1.0). Archiwista
+discovers projects by both files, shows the jobs of both producers with a producer
+column, and "Dodaj do projektu…" (Add to project…) for stations opens the "Okno planu" (Plan window) with the command
+`imgw project add` and calls the IMGWTools API in a worker process (SPEC 4.7). The set takes
+IMGW versions from the pins, `zestaw.json` stores the sums of both manifests, `polecenia.sh` —
+`imgw project download` (SPEC 8.4). The risk of inconsistency between the two manifests (e.g. the same
+job name) is limited by a project view with a warning (SPEC 14). When a third
+producer appears, option B returns. Changes point 7 of ADR-019 (erratum 1).
 
-**Errata 1 (2026-10-17, decyzja użytkownika — SPEC 15, P18):** potwierdzone dwa pliki
-manifestu (opcja C): `kartograf-project.json` i `imgw-project.json`; status
-zmieniony z „Proponowana” na „Przyjęta”. Nazwy pól `imgw-project/1` zapisane
-w wymaganiu IMGW-14 pozostają nazwami z wymagań dla IMGWTools (tak jak w
-wszystkich wymaganiach IMGW-n), bez wpływu na status decyzji.
+**Erratum 1 (2026-10-17, user decision — SPEC 15, P18):** two manifest files
+confirmed (option C): `kartograf-project.json` and `imgw-project.json`; status
+changed from "Proponowana" (proposed) to "Przyjęta" (accepted). The field names of `imgw-project/1` recorded
+in requirement IMGW-14 remain the names from the requirements for IMGWTools (as in
+all IMGW-n requirements), with no effect on the status of the decision.
 
-**Errata 2 (2026-10-19, audyt zgodności z IMGWTools 3.0.0 — odpowiedź na pytanie 13
-ADR-003 IMGWTools):** kształt `imgw-project/1` w IMGWTools 3.0.0 (ADR-001 i ADR-003
-IMGWTools) różni się od nazw z wymagania IMGW-14: w `files[]` stacja to `station_code`,
-a pin zbioru z formą kanoniczną (ČHMÚ) ma też `content_sha256` i `content_form`; plik
-wyboru obszarem jest w `options.geometry`, a `geometry_sha256` to pole zadania (mapa
-ścieżka → SHA-256); manifest może mieć `extensions`; doszło `set_project_store`
-(`imgw project set-store`). Zadanie dotyczy jednego zbioru, a więc jednego dostawcy —
-projekt łączy zadania IMGW i ČHMÚ. Odtwarzanie: identyczne `sha256` albo — dla ČHMÚ —
-jawnie treścią (`restored_by_content`, stan zadania `content_match`, komunikat
-`pin_restored_by_content`); Archiwista pokazuje ten stan osobno od „bieżące”, nie jako
-błąd, i nigdy nie przepina po cichu. Decyzja (opcja C) bez zmian; SPEC 12.7 (IMGW-14,
-IMGW-19), 13 v0.6 kryt. 7, `docs/IMGWTOOLS_REQUIREMENTS.md` 4.14, 4.19, 6.3.
-
----
-
-## ADR-024: Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny
-
-**Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełnia ADR-001 i ADR-019
-
-**Kontekst:** ADR-001 przyjął Kartografa jako zależność, a ADR-019 dodał drugiego
-producenta, IMGWTools, za wspólnym interfejsem źródła. Nie rozstrzygnęły one, jak
-Archiwista deklaruje obie biblioteki w pakiecie. IMGWTools 2.1.1 jest w wersji Beta,
-jeszcze bez kontraktu magazynu (IMGW-1..IMGW-14), a Kartograf jest podstawą v0.1..v0.8.
-Wydania Archiwisty nie mogą czekać na IMGWTools, a konflikty wersji bibliotek
-naukowych obu producentów nie mogą uniemożliwiać instalacji osobom, które IMGW nie
-interesuje. Użytkownik zdecydował o modelu wtyczek.
-
-**Opcje:**
-- A) Obie biblioteki wymagane.
-- B) Kartograf wymagany, IMGWTools opcjonalny (extra), adaptery źródeł rejestrowane
-  jako wtyczki przez entry points.
-- C) Bez zależności od producentów: Archiwista czyta formaty plików i wywołuje CLI.
-- D) Producenci jako usługi HTTP.
-
-**Decyzja:** B (decyzja użytkownika 2026-10-17):
-1. Kartograf jest wymaganą zależnością pakietu `archiwista` (`kartograf>=0.9,<0.10`;
-   dokładny zakres ustala się przy wydaniu Archiwisty).
-2. IMGWTools jest extra `archiwista[imgw]`; instalacja: `pip install archiwista`
-   albo `pip install "archiwista[imgw]"`.
-3. Adaptery źródeł (ADR-019 pkt 3) są rejestrowane przez entry points, np. w grupie
-   `archiwista.sources`. Brak pakietu producenta oznacza „źródło niedostępne”,
-   a nie awarię aplikacji:
-   - interfejs ukrywa widoki stacji IMGW (warstwę stacji, „Zestawienie” i „Kartę
-     stacji”);
-   - API zwraca jasny błąd źródła niedostępnego (kod i komunikat po polsku, SPEC 9.1);
-   - asystent nie oferuje narzędzi IMGW (SPEC 7.3).
-4. Przy starcie (i w `archiwista doctor`) Archiwista sprawdza wersje producentów
-   i schematy, które czyta: `kartograf-meta/1`, `kartograf-project/1`, `imgw-meta/1`,
-   `imgw-project/…`; niezgodność kończy się czytelnym komunikatem po polsku (co jest
-   zainstalowane, jaki zakres jest wspierany, co zrobić) i dotyczy tylko źródła,
-   którego dotyczy.
-5. Jeden plik blokady zależności (lock) dla spójnego zestawu bibliotek naukowych
-   (z extra `[imgw]` włącznie), żeby oba źródła działały w jednym środowisku.
-6. CI w dwóch konfiguracjach: bez `[imgw]` i z `[imgw]`, plus testy kontraktu
-   względem gałęzi `develop` producentów (wczesne wykrycie zmian łamiących).
-7. Trzeci producent to nowa wtyczka (nowy adapter i entry point) bez zmian
-   w warstwach wyżej.
-
-Odrzucone: A — IMGWTools w wersji Beta blokowałby wydania Archiwisty, a konflikty
-wersji bibliotek naukowych utrudniałyby instalację; C — bez zależności, z czytaniem
-formatów i wywoływaniem CLI, łamie ADR-014 (wiedza o formacie tylko u producenta);
-D — usługi HTTP: koszt (dodatkowe procesy, uwierzytelnianie, wdrożenie).
-
-**Konsekwencje:** Zmiany w SPEC: 5.1–5.3 i 5.5 (interfejs źródła, rejestracja
-wtyczek, instalacja i konfiguracja), 7.3 (narzędzia zależne od dostępnych źródeł),
-9.1 (błąd źródła niedostępnego), 11 (dwie konfiguracje CI, testy kontraktu), 13
-(v0.1: mechanizm wtyczek z atrapą drugiego adaptera; v0.9: extra `[imgw]`), 14
-(zależność od IMGWTools jest teraz opcjonalna). Test importów z ADR-019 zostaje,
-a Archiwista bez IMGWTools przechodzi pełny zestaw testów poza testami IMGW.
-Zależność od IMGWTools ogranicza już tylko v0.9, nie wydania v0.1..v0.8.
-
-**Errata 1 (2026-10-18, decyzja użytkownika):** pkt 1 — zakres to `kartograf>=0.8.0,<0.9`,
-nie `>=0.9,<0.10`: publiczny odczyt magazynu (KA-1..KA-6) wchodzi do Kartografa 0.8.0
-(przygotowane, jeszcze nieotagowane wydanie; `__version__` = `0.8.0`). Test kontraktu
-sprawdza obecność KA w `kartograf.__all__` i to, że zainstalowany `kartograf.__version__`
-mieści się w zakresie z `pyproject.toml`; przed wydaniem Archiwisty powtarza się go
-przeciw otagowanemu Kartografowi 0.8.0. SPEC 5.8.
+**Erratum 2 (2026-10-19, compliance audit with IMGWTools 3.0.0 — answer to question 13
+of ADR-003 of IMGWTools):** the shape of `imgw-project/1` in IMGWTools 3.0.0 (ADR-001 and ADR-003
+of IMGWTools) differs from the names in requirement IMGW-14: in `files[]` the station is `station_code`,
+and a dataset pin with a canonical form (ČHMÚ) also has `content_sha256` and `content_form`; the file
+of area selection is in `options.geometry`, and `geometry_sha256` is a job field (a map
+path → SHA-256); the manifest may have `extensions`; `set_project_store`
+(`imgw project set-store`) was added. A job concerns one dataset, and so one provider —
+a project combines IMGW and ČHMÚ jobs. Restoring: identical `sha256` or — for ČHMÚ —
+explicitly by content (`restored_by_content`, job state `content_match`, message
+`pin_restored_by_content`); Archiwista shows this state separately from "bieżące" (current), not as an
+error, and never re-pins silently. The decision (option C) is unchanged; SPEC 12.7 (IMGW-14,
+IMGW-19), 13 v0.6 criterion 7, `docs/IMGWTOOLS_REQUIREMENTS.md` 4.14, 4.19, 6.3.
 
 ---
 
-## ADR-025: Zakres MVP i kolejność wydań
+## ADR-024: Data sources as plugins: Kartograf required, IMGWTools optional
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17)
+**Date:** 2026-10-17
+**Status:** accepted (user decision 2026-10-17); amends ADR-001 and ADR-019
 
-**Kontekst:** Roadmapa SPEC 13 miała dziesięć wersji, a v1.0 obejmowało wszystko:
-przeglądanie, podglądy, działania, zestaw do QGIS, asystenta, łączenie, tryb zespołu
-i dane IMGW. Przed planem implementacji użytkownik chce dokładnie ustalić wymagania
-produktu i zakres (nowe dokumenty `docs/PRD.md` i `docs/SCOPE.md`, wzór rodziny
-projektów: Hydraulik, Kartograf, Hydrolog).
+**Context:** ADR-001 adopted Kartograf as a dependency, and ADR-019 added a second
+producer, IMGWTools, behind a common source interface. They did not settle how
+Archiwista declares both libraries in the package. IMGWTools 2.1.1 is in Beta,
+still without a store contract (IMGW-1..IMGW-14), while Kartograf is the basis of v0.1..v0.8.
+Archiwista releases cannot wait for IMGWTools, and version conflicts between the
+scientific libraries of the two producers must not prevent installation for people who
+are not interested in IMGW. The user decided on the plugin model.
 
-**Opcje:**
-- A) Zostawić v1.0 jako całość roadmapy.
-- B) Wydzielić MVP z wybranych obszarów, resztę przenieść za MVP.
+**Options:**
+- A) Both libraries required.
+- B) Kartograf required, IMGWTools optional (extra), source adapters registered
+  as plugins through entry points.
+- C) No dependency on producers: Archiwista reads file formats and calls the CLI.
+- D) Producers as HTTP services.
 
-**Decyzja:** B (decyzja użytkownika 2026-10-17). MVP = v1.0 i obejmuje: Przeglądarkę,
-Podglądy i Wachlarz, Działania, Tryb zespołu, Dane IMGW. Po MVP: Zestaw do QGIS,
-Asystent, Łączenie. Nowa numeracja (stara → nowa): v0.1, v0.2, v0.3 bez zmian;
-v0.8 „Zespół” → v0.4; v0.9 „Stacje IMGW” → v0.5; v1.0 „Wydanie” → v1.0 „Wydanie
-(MVP)”; v0.4 „Zestaw” → v1.1; v0.5 „Asystent” → v1.2; v0.6 „Mozaika i porównanie”
-→ v1.3; v0.7 „PL + CZ” → v1.4. Części dawnego v0.9 zależne od zestawu i asystenta
-(zestaw z danymi IMGW, narzędzia asystenta IMGW, UC-18) przechodzą do v1.1 i v1.2.
-Wymagania KB-6, KD-3, KD-4 idą z „Zestawem” (v1.1) — do potwierdzenia (PRD, otwarte
-decyzje). Przed v0.1 dochodzi etap 0 „Architektura i plan” (architektura otwarta:
+**Decision:** B (user decision 2026-10-17):
+1. Kartograf is a required dependency of the `archiwista` package (`kartograf>=0.9,<0.10`;
+   the exact range is set at the Archiwista release).
+2. IMGWTools is the extra `archiwista[imgw]`; installation: `pip install archiwista`
+   or `pip install "archiwista[imgw]"`.
+3. Source adapters (ADR-019 item 3) are registered through entry points, e.g. in the group
+   `archiwista.sources`. A missing producer package means "source unavailable",
+   not an application failure:
+   - the interface hides the IMGW station views (the station layer, "Zestawienie" (Summary) and the "Karta
+     stacji" (Station card));
+   - the API returns a clear source-unavailable error (code and message in Polish, SPEC 9.1);
+   - the assistant does not offer IMGW tools (SPEC 7.3).
+4. At startup (and in `archiwista doctor`) Archiwista checks the versions of the producers
+   and the schemas it reads: `kartograf-meta/1`, `kartograf-project/1`, `imgw-meta/1`,
+   `imgw-project/…`; a mismatch ends with a readable message in Polish (what is
+   installed, what range is supported, what to do) and affects only the source
+   concerned.
+5. One dependency lock file for a consistent set of scientific libraries
+   (including the `[imgw]` extra), so that both sources work in one environment.
+6. CI in two configurations: without `[imgw]` and with `[imgw]`, plus contract tests
+   against the producers' `develop` branches (early detection of breaking changes).
+7. A third producer is a new plugin (a new adapter and entry point) with no changes
+   in the layers above.
+
+Rejected: A — IMGWTools in Beta would block Archiwista releases, and version conflicts
+between the scientific libraries would make installation harder; C — no dependency, reading
+formats and calling the CLI, breaks ADR-014 (knowledge of the format only at the producer);
+D — HTTP services: cost (additional processes, authentication, deployment).
+
+**Consequences:** Changes in SPEC: 5.1–5.3 and 5.5 (source interface, plugin
+registration, installation and configuration), 7.3 (tools depending on available sources),
+9.1 (source-unavailable error), 11 (two CI configurations, contract tests), 13
+(v0.1: plugin mechanism with a mock second adapter; v0.9: the `[imgw]` extra), 14
+(the dependency on IMGWTools is now optional). The import test from ADR-019 stays,
+and Archiwista without IMGWTools passes the full test suite except the IMGW tests.
+The dependency on IMGWTools now limits only v0.9, not releases v0.1..v0.8.
+
+**Erratum 1 (2026-10-18, user decision):** item 1 — the range is `kartograf>=0.8.0,<0.9`,
+not `>=0.9,<0.10`: public store reading (KA-1..KA-6) enters Kartograf 0.8.0
+(a prepared, not yet tagged release; `__version__` = `0.8.0`). The contract test
+checks the presence of KA in `kartograf.__all__` and that the installed `kartograf.__version__`
+falls within the range from `pyproject.toml`; before the Archiwista release it is repeated
+against the tagged Kartograf 0.8.0. SPEC 5.8.
+
+---
+
+## ADR-025: MVP scope and release order
+
+**Date:** 2026-10-17
+**Status:** accepted (user decision 2026-10-17)
+
+**Context:** The SPEC 13 roadmap had ten versions, and v1.0 covered everything:
+browsing, previews, actions, the QGIS set, the assistant, merging, team mode
+and IMGW data. Before the implementation plan, the user wants to establish exactly the product
+requirements and scope (new documents `docs/PRD.md` and `docs/SCOPE.md`, the pattern of the project
+family: Hydraulik, Kartograf, Hydrolog).
+
+**Options:**
+- A) Leave v1.0 as the whole roadmap.
+- B) Separate the MVP from selected areas, move the rest beyond the MVP.
+
+**Decision:** B (user decision 2026-10-17). MVP = v1.0 and covers: the Browser, 
+Previews and the Fan, Actions, Team mode, IMGW data. After the MVP: the QGIS set,
+the Assistant, Merging. New numbering (old → new): v0.1, v0.2, v0.3 unchanged;
+v0.8 "Zespół" (Team) → v0.4; v0.9 "Stacje IMGW" (IMGW stations) → v0.5; v1.0 "Wydanie" (Release) → v1.0 "Wydanie
+(MVP)" (Release (MVP)); v0.4 "Zestaw" (Set) → v1.1; v0.5 "Asystent" (Assistant) → v1.2; v0.6 "Mozaika i porównanie" (Mosaic and comparison)
+→ v1.3; v0.7 "PL + CZ" → v1.4. The parts of the former v0.9 that depend on the set and the assistant
+(the set with IMGW data, the assistant's IMGW tools, UC-18) move to v1.1 and v1.2.
+Requirements KB-6, KD-3, KD-4 go with the "Zestaw" (Set) (v1.1) — to be confirmed (PRD, open
+decisions). Before v0.1 comes stage 0 "Architecture and plan" (open architecture:
 ADR-004..008, 015).
 
-**Konsekwencje:** Kolejność i zakres wydań określa `docs/SCOPE.md`; SPEC 13 trzyma
-szczegóły i kryteria akceptacji w nowej numeracji; SPEC i `docs/IMGWTOOLS_REQUIREMENTS.md`
-przenumerowane. Wcześniejsze wpisy tego rejestru zachowują numerację z chwili decyzji
-(np. „v0.9” w ADR-019..024 = dzisiejsze v0.5, „v0.8” = v0.4). MVP zależy od wydania
-IMGWTools z IMGW-1..IMGW-14; tryb zespołu wchodzi do MVP przed danymi IMGW.
+**Consequences:** The order and scope of releases are defined by `docs/SCOPE.md`; SPEC 13 holds
+the details and acceptance criteria in the new numbering; SPEC and `docs/IMGWTOOLS_REQUIREMENTS.md`
+renumbered. Earlier entries of this log keep the numbering from the time of the decision
+(e.g. "v0.9" in ADR-019..024 = today's v0.5, "v0.8" = v0.4). The MVP depends on the release of
+IMGWTools with IMGW-1..IMGW-14; team mode enters the MVP before IMGW data.
 
-**Errata 1 (2026-10-18, decyzja użytkownika):** KD-4 (dostępność wydań produktów
-jednostkowych, np. BDOT10k) przechodzi z v1.1 do v0.3, żeby produkty bez arkuszy miały
-w MVP etykiety pokrycia i pełne widoki (PRD F6.3, „Widoki według rodzaju danych”).
-KD-3 i KB-6 zostają w v1.1 — nadal do decyzji.
+**Erratum 1 (2026-10-18, user decision):** KD-4 (availability of releases of single-sheet
+products, e.g. BDOT10k) moves from v1.1 to v0.3, so that products without sheets have in the
+MVP coverage labels and full views (PRD F6.3, "Widoki według rodzaju danych" (Views by data type)).
+KD-3 and KB-6 stay in v1.1 — still to be decided.
 
-**Errata 2 (2026-10-18, decyzja użytkownika):** KD-3 (dostępność obrazów PL: lata
-i pełność arkuszy ortofotomapy, true orto i intensywności) przechodzi do v0.3 — bez
-niego ortofotomapa w MVP nie ma lat z etykietami pokrycia (PRD F6.4). KB-6 („Polecenie
-Kartografa” i „Dodaj do projektu” z karty pliku) zostaje w v1.1: w MVP do projektu
-dodaje się dane z wyniku dostępności.
+**Erratum 2 (2026-10-18, user decision):** KD-3 (availability of PL images: years
+and sheet completeness of orthophotomap, true ortho and intensity) moves to v0.3 — without
+it the orthophotomap in the MVP has no years with coverage labels (PRD F6.4). KB-6 ("Polecenie
+Kartografa" (Kartograf command) and "Dodaj do projektu" (Add to project) from the file card) stays in v1.1: in the MVP data is added to the project
+from the availability result.
 
-**Errata 3 (2026-10-18, decyzja użytkownika):** wydanie „PL + CZ” zmienia numer
-z v1.4 na v0.6 i wchodzi do MVP (między v0.5 „Stacje IMGW” a v1.0). Zakres v0.6:
-zestawienie PL + CZ bez scalania (grupa `parent_request`, kontrola zgodności),
-scalona powierzchnia przygraniczna przez KF Kartografa (SPEC 8.3) oraz stacje ČHMÚ
-przez IMGWTools w widokach v0.5 (SPEC 4.8.6, wymagania IMGW-15..IMGW-19). Eksport
-PL + CZ bez scalania do zestawu QGIS zostaje w v1.1. Po MVP: v1.1 „Zestaw”, v1.2
-„Asystent”, v1.3 „Mozaika i porównanie”. Konsekwencje: KF (dziś R6 w backlogu
-Kartografa, poza publicznym API 0.8.0) i dostawca ČHMÚ w IMGWTools (dziś szkic
-„Obserwator”, bez kodu) blokują MVP — ryzyka w SCOPE i SPEC 14. Stacje ČHMÚ idą
-przez adapter IMGW (wtyczka z ADR-024); osobny adapter tylko wtedy, gdy IMGWTools
-wyda ČHMÚ jako osobny pakiet (pytanie otwarte w PRD). Zmiany: SPEC nagłówek, 2,
+**Erratum 3 (2026-10-18, user decision):** the "PL + CZ" release changes its number
+from v1.4 to v0.6 and enters the MVP (between v0.5 "Stacje IMGW" (IMGW stations) and v1.0). Scope of v0.6:
+PL + CZ summary without merging (the `parent_request` group, consistency check),
+merged border-area surface through KF of Kartograf (SPEC 8.3) and ČHMÚ stations
+through IMGWTools in the v0.5 views (SPEC 4.8.6, requirements IMGW-15..IMGW-19). Export
+of PL + CZ without merging to the QGIS set stays in v1.1. After the MVP: v1.1 "Zestaw" (Set), v1.2
+"Asystent" (Assistant), v1.3 "Mozaika i porównanie" (Mosaic and comparison). Consequences: KF (today R6 in the Kartograf
+backlog, outside the public API 0.8.0) and the ČHMÚ provider in IMGWTools (today a draft
+"Obserwator", without code) block the MVP — risks in SCOPE and SPEC 14. ČHMÚ stations go
+through the IMGW adapter (the plugin from ADR-024); a separate adapter only if IMGWTools
+releases ČHMÚ as a separate package (open question in the PRD). Changes: SPEC header, 2,
 3 (UC-09, UC-20), 4.8.6, 5.3, 6.7, 8.3, 8.6, 10.2, 11, 12.5, 12.7, 13, 14; PRD F12,
-F14, F17, założenia, miary sukcesu, otwarte decyzje; SCOPE; README; plan v0.1
-(granice zakresu); `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-15..IMGW-19).
+F14, F17, assumptions, success measures, open decisions; SCOPE; README; plan v0.1
+(scope boundaries); `docs/IMGWTOOLS_REQUIREMENTS.md` (IMGW-15..IMGW-19).
 
 ---
 
-## ADR-026: Licencja MIT i kontrybucje z CLA
+## ADR-026: MIT license and contributions with a CLA
 
-**Data:** 2026-10-17
-**Status:** Przyjęta (licencja MIT — SPEC 15, P8; CLA — errata 1, decyzja użytkownika 2026-10-18)
+**Date:** 2026-10-17
+**Status:** accepted (MIT license — SPEC 15, P8; CLA — Erratum 1, user decision 2026-10-18)
 
-**Kontekst:** Repozytorium nie miało pliku licencji ani zasad kontrybucji. Wszystkie
-projekty autora (Kartograf, Hydraulik, Hydrograf, Hydrolog, IMGWTools, Retman) są na
-licencji MIT; Hydraulik ma dodatkowo `CONTRIBUTING.md`, `CONTRIBUTORS.md` (rejestr
-podpisów) i `docs/CLA.md` — adaptację Apache ICLA 2.2 z odbiorcą wskazanym osobą
-(Piotr de Bever), nie projektem.
+**Context:** The repository had no license file and no contribution rules. All of the author's
+projects (Kartograf, Hydraulik, Hydrograf, Hydrolog, IMGWTools, Retman) are under the
+MIT license; Hydraulik additionally has `CONTRIBUTING.md`, `CONTRIBUTORS.md` (a register
+of signatures) and `docs/CLA.md` — an adaptation of the Apache ICLA 2.2 with the recipient named as a person
+(Piotr de Bever), not as a project.
 
-**Opcje:**
-- A) MIT, kontrybucje z CLA jak w Hydrauliku (podpis komentarzem w pull requeście).
-- B) MIT, DCO (`Signed-off-by`) bez przeniesienia praw.
-- C) MIT bez CLA (wkład na tej samej licencji, inbound = outbound).
+**Options:**
+- A) MIT, contributions with a CLA as in Hydraulik (signature as a comment in the pull request).
+- B) MIT, DCO (`Signed-off-by`) without transfer of rights.
+- C) MIT without a CLA (contribution under the same license, inbound = outbound).
 
-**Decyzja:** A — wzór rodziny projektów. Pliki: `LICENSE` (MIT, Copyright (c) 2026
-Piotr de Bever), `CONTRIBUTING.md` i `CONTRIBUTORS.md` po polsku (zasada językowa
-Archiwisty), `docs/CLA.md` bez zmian względem Hydraulika (tekst prawny po angielsku;
-odbiorca to osoba, więc ten sam tekst obowiązuje w każdym projekcie autora). Wybór CLA
-zamiast B i C czeka na potwierdzenie użytkownika.
+**Decision:** A — the pattern of the project family. Files: `LICENSE` (MIT, Copyright (c) 2026
+Piotr de Bever), `CONTRIBUTING.md` and `CONTRIBUTORS.md` in Polish (Archiwista's language
+rule), `docs/CLA.md` unchanged from Hydraulik (legal text in English;
+the recipient is a person, so the same text applies in every project of the author). The choice of the CLA
+over B and C awaits the user's confirmation.
 
-**Konsekwencje:** CLA zachowuje możliwość zmiany licencji w przyszłości; wymaga
-ręcznego prowadzenia `CONTRIBUTORS.md` przy scalaniu. Zależności Archiwisty muszą mieć
-licencje zgodne z MIT; zależność copyleft wymaga osobnej decyzji (PRD N7.2). CLA nie
-był przeglądany przez prawnika (zastrzeżenie w `docs/CLA.md`).
+**Consequences:** The CLA preserves the option of changing the license in the future; it requires
+manual maintenance of `CONTRIBUTORS.md` when merging. Archiwista's dependencies must have
+licenses compatible with MIT; a copyleft dependency requires a separate decision (PRD N7.2). The CLA was not
+reviewed by a lawyer (disclaimer in `docs/CLA.md`).
 
-**Errata 1 (2026-10-18, decyzja użytkownika):** CLA przyjęte („korzystamy z tego, co
-już mamy”). Ten sam proces ma już IMGWTools (commit `999c8a7`: `docs/CLA.md` identyczny
-z Hydraulikiem, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, szablon pull requestu
-`.github/pull_request_template.md`); pozostałe projekty (Kartograf, Hydrograf, Hydrolog,
-Retman) mają tylko `LICENSE` MIT, żaden nie używa DCO. Archiwista dostaje też szablon
-pull requestu z polem podpisu CLA (po polsku; bez punktów o testach, dopóki nie ma kodu).
+**Erratum 1 (2026-10-18, user decision):** the CLA is accepted ("we use what we
+already have"). IMGWTools already has the same process (commit `999c8a7`: `docs/CLA.md` identical
+to Hydraulik's, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, the pull request template
+`.github/pull_request_template.md`); the other projects (Kartograf, Hydrograf, Hydrolog,
+Retman) have only the MIT `LICENSE`, and none uses the DCO. Archiwista also gets a pull request
+template with a CLA signature field (in Polish; without items about tests until there is code).
 
-**Errata 2 (2026-10-18, decyzja użytkownika):** polski w `CONTRIBUTING.md`,
-`CONTRIBUTORS.md` i szablonie pull requestu to błąd — pliki dla kontrybutorów są po
-angielsku, jak w Hydrauliku i IMGWTools (cały kod i to, co go opisuje, po angielsku;
-`CLAUDE.md`, DEV-2.1). Tłumaczenie to pierwsze zadanie
-implementacji (`docs/PROGRESS.md`).
+**Erratum 2 (2026-10-18, user decision):** Polish in `CONTRIBUTING.md`,
+`CONTRIBUTORS.md` and the pull request template is an error — files for contributors are in
+English, as in Hydraulik and IMGWTools (all code and everything that describes it is in English;
+`CLAUDE.md`, DEV-2.1). The translation is the first job of the
+implementation (`docs/PROGRESS.md`).
 
 ---
 
-## ADR-027: Dane własne w katalogu projektu i migawki Archiwisty
+## ADR-027: Own data in the project directory and Archiwista snapshots
 
-**Data:** 2026-10-18
-**Status:** Przyjęta (decyzja użytkownika 2026-10-18)
+**Date:** 2026-10-18
+**Status:** accepted (user decision 2026-10-18)
 
-**Kontekst:** Użytkownicy mają własne zbiory (np. warstwę liniową sieci kanalizacyjnej),
-które chcą widzieć na mapie razem z danymi projektu i wersjonować. Archiwista indeksował
-dotąd tylko katalogi producentów (Kartograf, IMGWTools), a plik bez sidecara był
-„problemem” magazynu; Kartograf nie zna plików, których nie pobrał. Użytkownik wybrał
-folder tylko do odczytu w MVP, wersjonowanie migawkami całych plików i zdecydował, że
-migawki robi Archiwista, bo użytkownicy sami nie będą ich robić konsekwentnie.
+**Context:** Users have their own datasets (e.g. a linear layer of a sewer network)
+that they want to see on the map together with the project data and to version. Until now Archiwista indexed
+only the producers' directories (Kartograf, IMGWTools), and a file without a sidecar was
+a store "problem"; Kartograf does not know files it did not download. The user chose a
+read-only folder in the MVP, versioning by snapshots of whole files, and decided that
+Archiwista makes the snapshots, because users will not make them consistently themselves.
 
-**Opcje:**
-- Gdzie dane własne: A) folder przypisany do projektu; B) foldery w ustawieniach magazynu,
-  niezależne od projektów; C) oba.
-- Kto robi migawki: A) użytkownik (kopie z datą w nazwie), Archiwista je rozpoznaje;
-  B) Archiwista w katalogu projektu; C) Kartograf przez API (dane własne w magazynie);
-  D) osobny mały producent jako wtyczka.
-- Co jest wersją: A) migawka całego pliku; B) historia pojedynczych obiektów.
+**Options:**
+- Where own data lives: A) a folder assigned to the project; B) folders in the store settings,
+  independent of projects; C) both.
+- Who makes snapshots: A) the user (copies with a date in the name), Archiwista recognizes them;
+  B) Archiwista in the project directory; C) Kartograf through the API (own data in the store);
+  D) a separate small producer as a plugin.
+- What a version is: A) a snapshot of the whole file; B) the history of individual objects.
 
-**Decyzja:** folder przypisany do projektu (A), migawki robi Archiwista w katalogu
-projektu (B), wersja = migawka całego pliku (A):
-1. Folder danych własnych projektu — domyślnie `<katalog projektu>/dane/`, można wskazać
-   inny; przypisanie w konfiguracji Archiwisty, nie w manifeście producenta. Folder jest
-   indeksowany tylko do odczytu (rodzaj ogólny, PRD N8.3).
-2. „Zrób migawkę” kopiuje plik do `<folder danych>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/`
-   z `migawka.json` (`archiwista-snapshot/1`; nazwy katalogów i schematu — propozycja do
-   planu v0.2). Kontrakt celowo najprostszy: tylko przyrost (bez nadpisywania, usuwania
-   i dowiązań), zapis atomowy (katalog roboczy `.incoming/`, publikacja zmianą nazwy, błąd
-   gdy cel istnieje), spójna kopia pliku w użyciu (GeoPackage przez kopię zapasową
-   SQLite, formaty wieloplikowe jako komplet), ta sama treść = brak nowej migawki.
-3. Migawki to wersje pliku w interfejsie (oś wersji, „Wachlarz”, kurtyna, porównanie
-   metadanych); zmiana pliku od ostatniej migawki jest wykrywana skanem.
-4. Zakres: v0.2 (MVP); w zespole migawkę robi „operator”.
+**Decision:** a folder assigned to the project (A), snapshots made by Archiwista in the project
+directory (B), version = a snapshot of the whole file (A):
+1. The project's own-data folder — by default `<project directory>/dane/`, another one can be
+   specified; the assignment is in Archiwista's configuration, not in the producer's manifest. The folder is
+   indexed read-only (generic kind, PRD N8.3).
+2. "Zrób migawkę" (Make a snapshot) copies the file to `<data folder>/.wersje/<nazwa>/<RRRR-MM-DD>_<sha8>/`
+   with `migawka.json` (`archiwista-snapshot/1`; the directory and schema names are a proposal for the
+   v0.2 plan). The contract is deliberately the simplest: append only (no overwriting, deleting
+   or links), atomic write (working directory `.incoming/`, publication by rename, error
+   if the target exists), a consistent copy of a file in use (GeoPackage through the SQLite
+   backup, multi-file formats as a complete set), the same content = no new snapshot.
+3. Snapshots are file versions in the interface (version axis, "Wachlarz" (the Fan), curtain, comparison of
+   metadata); a change to the file since the last snapshot is detected by a scan.
+4. Scope: v0.2 (MVP); in a team the snapshot is made by the "operator".
 
-Odrzucone: rozpoznawanie kopii robionych ręcznie — użytkownicy nie będą ich robić
-konsekwentnie; Kartograf — dane prywatne w magazynie danych publicznych, nowa rola
-Kartografa i zależność MVP od jego wydania; osobny producent — trzecia biblioteka do
-utrzymania; historia obiektów — klasa narzędzia edycyjnego, poza granicami Archiwisty.
+Rejected: recognizing manually made copies — users will not make them
+consistently; Kartograf — private data in a public-data store, a new role for
+Kartograf and an MVP dependency on its release; a separate producer — a third library to
+maintain; object history — a class of editing tool, outside Archiwista's boundaries.
 
-**Konsekwencje:** Archiwista po raz pierwszy zapisuje dane (kopie plików użytkownika),
-ale wyłącznie w katalogu projektu i na polecenie użytkownika — jak pliki obszarów
-i zestawy; magazyn producentów pozostaje tylko do odczytu (ADR-003, ADR-019 bez zmian).
-Migawki nie są stanem Archiwisty: nie da się ich odbudować, więc są w otwartym formacie,
-czytelne bez Archiwisty, i przenoszą się z katalogiem projektu. To trzecia implementacja
-semantyki wersji (obok ADR-036 Kartografa i katalogu IMGW) — stąd minimalny kontrakt
-i testy przerwania. Dane własne nie trafiają do manifestu projektu (brak przypięć,
-„Weryfikuj” i odtworzenia u kolegi). Zmiany w SPEC: 1.3, 2, 4.7.1, 10.1, 13 (v0.2);
+**Consequences:** Archiwista writes data for the first time (copies of user files),
+but only in the project directory and on the user's command — like area files
+and sets; the producers' store remains read-only (ADR-003, ADR-019 unchanged).
+Snapshots are not Archiwista state: they cannot be rebuilt, so they are in an open format,
+readable without Archiwista, and move with the project directory. This is the third implementation
+of version semantics (besides Kartograf's ADR-036 and the IMGW catalog) — hence the minimal contract
+and the interruption tests. Own data does not go into the project manifest (no pins,
+"Weryfikuj" (Verify) and no reproduction on a colleague's machine). Changes in SPEC: 1.3, 2, 4.7.1, 10.1, 13 (v0.2);
 PRD F15, N2.5; SCOPE.
 
-**Errata 1 (2026-10-18, decyzja użytkownika, ADR-029):** w zespole migawkę robi
-właściciel projektu albo administrator (rola „operator” zniknęła); widoczność danych
-własnych i migawek wynika z widoczności projektu.
+**Erratum 1 (2026-10-18, user decision, ADR-029):** in a team the snapshot is made by
+the project owner or an administrator (the "operator" role is gone); the visibility of own data and snapshots
+follows the project's visibility.
 
-**Errata 2 (2026-10-20, wykonanie v0.2):** nazwy `.wersje/`,
-`migawka.json` i `archiwista-snapshot/1` są przyjęte. Folder inny
-niż domyślny ustawia administrator, także domyślny jest sprawdzany
-przeciw korzeniom magazynów i katalogowi lokalnych danych; problem
-folderu lub niedokończonej migawki jest przy projekcie, nie w „Magazynie”.
-Odczyt GeoPackage rozróżnia trzy stany plików SQLite i nie zapisuje
-przy pliku źródłowym; tożsamość treści to skrót logiczny SQLite
-z pominięciem pochodnych indeksów przestrzennych. Uprawnienie do
-migawki to `project.write` (właściciel albo administrator).
+**Erratum 2 (2026-10-20, v0.2 implementation):** the names `.wersje/`,
+`migawka.json` and `archiwista-snapshot/1` are accepted. A folder other
+than the default is set by the administrator, and the default one is also checked
+against the store roots and the local data directory; a problem
+with the folder or an unfinished snapshot is shown at the project, not in "Magazyn" (Store).
+The GeoPackage reader distinguishes three states of SQLite files and does not write
+next to the source file; content identity is a logical SQLite hash
+that omits derived spatial indexes. The permission for
+a snapshot is `project.write` (the owner or an administrator).
 
 ---
 
-## ADR-028: Interfejs w Preact + htm bez kroku budowania
+## ADR-028: UI in Preact + htm without a build step
 
-**Data:** 2026-10-18
-**Status:** Przyjęta (decyzja użytkownika 2026-10-18); zastępuje ADR-005
+**Date:** 2026-10-18
+**Status:** accepted (user decision 2026-10-18); supersedes ADR-005
 
-**Kontekst:** Etap 0 (SCOPE) ponownie rozstrzyga architekturę. ADR-005 wybrał Svelte
-z Vite, co wprowadza drugi ekosystem (Node.js, krok budowania) — ryzyko kosztu
-utrzymania (SPEC 14). Tymczasem mockup (SPEC 16) działa w Preact + htm bez budowania
-i sprawdził główny ekran: mapę, Wachlarz, Katalog, panele, zadania, dane własne.
+**Context:** Stage 0 (SCOPE) settles the architecture again. ADR-005 chose Svelte
+with Vite, which introduces a second ecosystem (Node.js, a build step) — a maintenance-cost
+risk (SPEC 14). Meanwhile the mockup (SPEC 16) works in Preact + htm without a build
+and has tested the main screen: the map, the Fan, the Catalog, panels, jobs, own data.
 
-**Opcje:**
+**Options:**
 - A) Svelte 5 + TypeScript + Vite (ADR-005).
-- B) Preact + htm, moduły ES bez kroku budowania, biblioteki dołączone do pakietu.
-- C) Szablony serwerowe + htmx.
+- B) Preact + htm, ES modules without a build step, libraries bundled in the package.
+- C) Server templates + htmx.
 
-**Decyzja:** B. Jeden ekosystem narzędzi (Python); mockup jest punktem wyjścia
-interfejsu; biblioteki (Preact, htm, MapLibre) leżą w pakiecie jako pliki ES modules —
-bez CDN, działa offline i spełnia CSP z SPEC 10.1. Zasady z ADR-005 zostają: jedno API
-HTTP („API najpierw”), stan widoku w adresie URL.
+**Decision:** B. One tooling ecosystem (Python); the mockup is the starting point of the
+interface; the libraries (Preact, htm, MapLibre) sit in the package as ES module files —
+no CDN, works offline and satisfies the CSP from SPEC 10.1. The principles from ADR-005 stay: one HTTP
+API ("API first"), view state in the URL.
 
-Odrzucone: A — drugi ekosystem do utrzymania i przepisanie mockupu; C — główny ekran to
-aplikacja mapowa ze wspólnym stanem, który w htmx rozpada się na fragmenty HTML
-i ręczny JS.
+Rejected: A — a second ecosystem to maintain and a rewrite of the mockup; C — the main screen is
+a map application with shared state, which in htmx falls apart into HTML fragments
+and hand-written JS.
 
-**Konsekwencje:** Brak kontroli typów w interfejsie — ograniczają to testy w przeglądarce
-(Playwright) i adnotacje JSDoc. Odwracalność: dodanie Vite i TypeScriptu później nie
-wymaga przepisania komponentów. Zmiany w SPEC: 5.1, 5.2, 14 (ryzyko „dwa ekosystemy”),
+**Consequences:** No type checking in the interface — limited by browser tests
+(Playwright) and JSDoc annotations. Reversibility: adding Vite and TypeScript later does not
+require rewriting the components. Changes in SPEC: 5.1, 5.2, 14 (the "two ecosystems" risk),
 15 (P11).
 
 ---
 
-## ADR-029: Rola zapisu do magazynu i udostępnianie projektów
+## ADR-029: Store write role and project sharing
 
-**Data:** 2026-10-18
-**Status:** Przyjęta (decyzja użytkownika 2026-10-18); uzupełnia ADR-013; errata 1: folder danych własnych ustawia administrator do v0.4
+**Date:** 2026-10-18
+**Status:** accepted (user decision 2026-10-18); amends ADR-013; erratum 1: the own-data folder is set by the administrator until v0.4
 
-**Kontekst:** Firma wdraża Archiwistę z jednym centralnym magazynem Kartografa.
-Użytkownicy mają też własne projekty z wersjonowanymi danymi własnymi (ADR-027) i chcą
-decydować, kto je widzi: projekt publiczny (cała firma), wybrane osoby, wybrana grupa
-(np. dział) albo prywatny (tylko właściciel). Tryb zespołu (ADR-013, v0.4) przewidywał
-logowanie i role „czytelnik”, „operator”, „administrator” (SPEC 10.2), ale nie mówił,
-kto może zapisywać w magazynie centralnym ani jak dzielić projekty. Trzeba też ustalić,
-gdzie kończy się odpowiedzialność Archiwisty za bezpieczeństwo. Użytkownik chce tych
-wymagań wcześnie, a nie jako dodatku po MVP.
+**Context:** A company deploys Archiwista with one central Kartograf store.
+Users also have their own projects with versioned own data (ADR-027) and want to
+decide who sees them: a public project (the whole company), selected people, a selected group
+(e.g. a department) or a private one (the owner only). Team mode (ADR-013, v0.4) provided
+login and the roles "czytelnik" (reader), "operator" (operator), "administrator" (administrator) (SPEC 10.2), but did not say
+who may write to the central store or how to share projects. It must also be decided
+where Archiwista's responsibility for security ends. The user wants these
+requirements early, not as an add-on after the MVP.
 
-**Opcje:**
-- Granica uprawnień: A) Archiwista egzekwuje uprawnienia tylko we własnej powierzchni;
-  B) Archiwista zarządza też prawami do plików na serwerze i udziale.
-- Zapis do magazynu: A) każdy „operator”; B) osobne uprawnienie dla administratora
-  Archiwisty i wybranych osób, z ustawieniem „wszyscy”.
-- Kiedy model uprawnień: A) razem z logowaniem w v0.4; B) model i egzekwowanie od v0.1
-  (jeden lokalny właściciel), logowanie i ekrany w v0.4; C) po MVP.
+**Options:**
+- Permission boundary: A) Archiwista enforces permissions only within its own surface;
+  B) Archiwista also manages file permissions on the server and the share.
+- Writing to the store: A) any "operator"; B) a separate permission for the Archiwista
+  administrator and selected people, with a setting "everyone".
+- When the permission model: A) together with login in v0.4; B) model and enforcement from v0.1
+  (one local owner), login and screens in v0.4; C) after the MVP.
 
-**Decyzja:** granica A, zapis B, model B:
-1. **Granica odpowiedzialności.** Archiwista egzekwuje uprawnienia wyłącznie we własnej
-   powierzchni: interfejs, API HTTP, CLI, tokeny agentów i pamięć podglądów.
-   Bezpieczeństwo serwera i udziału oraz to, kto ma dostęp do systemu plików, należą do
-   administratora serwera, nie do Archiwisty. Osoba z dostępem do udziału widzi pliki
-   niezależnie od ustawień projektu w Archiwiście — dokumentacja wdrożenia mówi to
-   wprost.
-2. **Role:** „administrator” (`admin`; administrator systemu Archiwista, nie serwera:
-   ustawienia, magazyny, konta, grupy, uprawnienia), „zapis do magazynu”
-   (`store_writer`) i zwykły „użytkownik” (bez ról). Zastępują role „czytelnik”,
-   „operator”, „administrator” z SPEC 10.2. Zapis do magazynu centralnego wyłącznie
-   przez API Kartografa (i IMGWTools) i tylko z `store_writer`; ustawienie
-   `store_write_for_all` nadaje je wszystkim. Zmiany projektu (manifest, migawki,
-   udostępnianie) — właściciel i administrator; pobranie do magazynu wymaga dodatkowo
+**Decision:** boundary A, writing B, model B:
+1. **Responsibility boundary.** Archiwista enforces permissions only within its own
+   surface: the interface, the HTTP API, the CLI, agent tokens and the preview cache.
+   The security of the server and the share, and who has access to the file system, belong to the
+   server administrator, not to Archiwista. A person with access to the share sees the files
+   regardless of the project settings in Archiwista; the deployment documentation says this
+   explicitly.
+2. **Roles:** "administrator" (`admin`; the administrator of the Archiwista system, not of the server:
+   settings, stores, accounts, groups, permissions), "zapis do magazynu" (store write)
+   (`store_writer`) and an ordinary "użytkownik" (user) (no roles). They replace the roles "czytelnik" (reader),
+   "operator" (operator), "administrator" (administrator) from SPEC 10.2. Writing to the central store only
+   through the Kartograf API (and IMGWTools) and only with `store_writer`; the setting
+   `store_write_for_all` grants it to everyone. Project changes (manifest, snapshots,
+   sharing) are for the owner and the administrator; downloading into the store additionally requires
    `store_writer`.
-3. **Widoczność projektu:** `public` (wszyscy), `users` (wybrane osoby), `group`
-   (wybrana grupa, np. dział), `private` (tylko właściciel); administrator widzi
-   wszystkie projekty (zarządzanie, przekazanie własności). Projekt bez wpisu (znaleziony
-   skanem) ma widoczność z ustawienia `default_project_visibility` (domyślnie `public`).
-   Magazyn centralny widzą wszyscy; widoczność dotyczy projektów, ich danych własnych,
-   migawek i przypięć. Zapytania indeksu (lista projektów, „Przypięta w:”, wyszukiwanie)
-   i pamięć podglądów danych własnych filtrują według widoczności; projekt niewidoczny
-   = `404`, brak uprawnienia do działania = `403`.
-4. **Kolejność:** v0.1 — model, egzekwowanie w API, CLI i zapytaniach dla jednego
-   lokalnego właściciela, sprawdzone testami z wieloma tożsamościami na poziomie usług
-   i API; administracyjne API i CLI kont, grup i udostępniania; dziennik zmian
-   uprawnień. v0.3 — `store_writer` sprawdzane przy działaniach (pobieranie przez
-   Kartografa). v0.4 — logowanie, zarządzanie kontami w interfejsie, ekran
-   udostępniania, opcjonalnie grupy z LDAP/AD.
-5. **`Principal`** (`id`, `kind`, `roles`, `groups`) przyjmuje każda usługa i każde zapytanie.
-   W trybie lokalnym to właściciel z rolami `admin` i `store_writer` (zależność
-   `current_principal`, krok 8 planu v0.1); autoryzacja: `can(principal, action,
-   resource)` i filtr `visible_projects(principal)`.
-6. **Stan nieodtwarzalny osobno od indeksu.** Konta, grupy, członkostwa, role, wpisy
-   widoczności projektów i dziennik zmian uprawnień nie wynikają z plików na dysku,
-   więc leżą w osobnej lokalnej bazie stanu (`<user_data_dir>/state.sqlite`), nigdy na
-   udziale ani w magazynie. Przebudowa indeksu jej nie dotyka; kopia zapasowa przez
-   `archiwista state export`, odtworzenie przez `archiwista state import` do pustej
-   bazy. Klucz projektu w bazie stanu nie zależy od indeksu
-   (katalog projektu po `realpath`).
+3. **Project visibility:** `public` (everyone), `users` (selected people), `group`
+   (a selected group, e.g. a department), `private` (the owner only); the administrator sees
+   all projects (management, ownership transfer). A project without an entry (found
+   by a scan) has the visibility from the setting `default_project_visibility` (default `public`).
+   Everyone sees the central store; visibility applies to projects, their own data,
+   snapshots and pins. Index queries (project list, "Przypięta w:" (Pinned in:), search)
+   and the preview cache of own data filter by visibility; an invisible project
+   = `404`, lack of permission for an action = `403`.
+4. **Order:** v0.1: the model, enforcement in the API, CLI and queries for one
+   local owner, verified by tests with multiple identities at the service and API level;
+   administrative API and CLI for accounts, groups and sharing; a log of permission changes.
+   v0.3: `store_writer` checked for actions (downloading through
+   Kartograf). v0.4: login, account management in the interface, the sharing
+   screen, optionally groups from LDAP/AD.
+5. **`Principal`** (`id`, `kind`, `roles`, `groups`) is accepted by every service and every query.
+   In local mode it is the owner with the roles `admin` and `store_writer` (the dependency
+   `current_principal`, step 8 of the v0.1 plan); authorization: `can(principal, action,
+   resource)` and the filter `visible_projects(principal)`.
+6. **State that is not rebuildable, separate from the index.** Accounts, groups, memberships, roles, project
+   visibility entries and the permission change log do not result from files on disk,
+   so they live in a separate local state database (`<user_data_dir>/state.sqlite`), never on
+   the share or in the store. Rebuilding the index does not touch it; backup through
+   `archiwista state export`, restore through `archiwista state import` into an empty
+   database. The project key in the state database does not depend on the index
+   (the project directory after `realpath`).
 
-Odrzucone: zarządzanie prawami plików na serwerze — wymaga uprawnień systemowych, dubluje
-administrację serwera i daje fałszywe poczucie ochrony; zapis dla każdego „operatora” —
-w firmie magazyn centralny jest wspólny i jego rozrost ma kontrolować wskazana osoba;
-model razem z logowaniem albo po MVP — filtry dopisywane do gotowych warstw łatwo
-pominąć (wyciek przez wyszukiwanie, „Przypięta w:”, podglądy), a model od v0.1 jest
-tani, gdy usługi od początku przyjmują `Principal`.
+Rejected: managing file permissions on the server, because it requires system privileges, duplicates
+server administration and gives a false sense of protection; writing for every "operator",
+because in a company the central store is shared and its growth should be controlled by a designated person;
+the model together with login or after the MVP, because filters added to finished layers are easy to
+miss (a leak through search, "Przypięta w:", previews), while a model from v0.1 is
+cheap when services accept `Principal` from the start.
 
-**Konsekwencje:** Archiwista ma od v0.1 drugą lokalną bazę: indeks (odtwarzalny)
-i stan (nieodtwarzalny: migracje schematu zamiast przebudowy, eksport). Zasada „stan
-Archiwisty można odbudować” dotyczy indeksu, podglądów i historii zadań, nie bazy stanu.
-Tryb lokalny działa jak dotąd (jeden właściciel ze wszystkimi uprawnieniami); konta
-tworzone w v0.1 nie mogą się logować przed v0.4. Raporty zbiorcze (np. „nieużywane przez
-żaden projekt”) liczą wszystkie projekty, ale nazwy podają tylko widocznych. Zmiany:
+**Consequences:** From v0.1 Archiwista has a second local database: the index (rebuildable)
+and the state (not rebuildable: schema migrations instead of rebuilding, export). The principle "Archiwista's
+state can be rebuilt" applies to the index, previews and job history, not to the state database.
+Local mode works as before (one owner with all permissions); accounts
+created in v0.1 cannot log in before v0.4. Aggregate reports (e.g. "not used by
+any project") count all projects, but give names only for visible ones. Changes:
 SPEC 1.3, 1.4, 3 (UC-14), 4.3, 4.7.1, 5.3, 9.1, 9.2, 10.2, 11, 13 (v0.1, v0.3, v0.4,
-v0.5), 14; PRD F10, F16, N2.3, N5.2; SCOPE; plan v0.1 (krok 8b, kroki 9a, 11, 12,
-bramka).
+v0.5), 14; PRD F10, F16, N2.3, N5.2; SCOPE; v0.1 plan (step 8b, steps 9a, 11, 12,
+gate).
 
-**Errata 1 (2026-10-19, plan v0.2 po przeglądzie — SPEC 4.7.1):** pkt 2 („zmiany
-projektu — właściciel i administrator”) w v0.2 i v0.3 nie obejmuje folderu danych
-własnych: folder inny niż domyślny (`<katalog projektu>/dane/`) ustawia tylko
-administrator (`settings.write`, `PUT /projects/{project}/data-dir`), bo folder jest
-miejscem zapisu migawek i musi leżeć poza magazynami, katalogami Archiwisty i folderami
-innych projektów; ustawianie przez właściciela projektu — decyzja w v0.4 razem z ekranem
-udostępniania. Migawki (`project.write`: właściciel albo administrator) — zgodnie
-z pkt 2. Skan folderu danych to odczyt, nie zmiana projektu: zleca go każdy, kto widzi
-projekt (tylko folder tego projektu), a przebieg przez foldery wszystkich projektów —
-wyłącznie harmonogram; wyniki filtruje widoczność (pkt 3).
+**Erratum 1 (2026-10-19, v0.2 plan after review — SPEC 4.7.1):** item 2 ("project
+changes: the owner and the administrator") in v0.2 and v0.3 does not cover the own-data
+folder: a folder other than the default (`<project directory>/dane/`) is set only by the
+administrator (`settings.write`, `PUT /projects/{project}/data-dir`), because the folder is
+the place where snapshots are written and must lie outside the stores, Archiwista directories and the folders
+of other projects; setting it by the project owner is a decision for v0.4 together with the sharing screen.
+Snapshots (`project.write`: the owner or the administrator) follow
+item 2. Scanning the data folder is a read, not a project change: anyone who sees the
+project may request it (only that project's folder), while a pass through the folders of all projects
+is done only by the scheduler; the results are filtered by visibility (item 3).
 
 ---
 
-## Szablon nowego ADR
+## New ADR template
 
-Kopiuj poniższy blok przy dodawaniu decyzji: kolejny numer, status ze
-słownika na początku pliku, nowy wiersz w indeksie i odsyłacze po obu
-stronach relacji. Erraty dopisuj na końcu wpisu.
+Copy the block below when adding a decision: the next number, a status from the
+vocabulary at the beginning of the file, a new row in the index and cross-references on both
+sides of the relation. Add errata at the end of the entry.
 
 ```markdown
-## ADR-XXX: Tytuł
+## ADR-XXX: Title
 
-**Data:** RRRR-MM-DD
-**Status:** Przyjęta | Proponowana | Przyjęta — częściowo zastąpiona przez ADR-YYY (zakres) | Przyjęta — uzupełniona przez ADR-YYY (zakres) | Zastąpiona przez ADR-YYY | Odrzucona
+**Date:** YYYY-MM-DD
+**Status:** accepted | proposed | accepted, partly superseded by ADR-YYY (scope) | accepted, amended by ADR-YYY (scope) | superseded by ADR-YYY | rejected
 
-**Kontekst:** Dlaczego temat powstał.
+**Context:** Why the topic arose.
 
-**Opcje:**
+**Options:**
 - A) ...
 - B) ...
 
-**Decyzja:** Która opcja i dlaczego.
+**Decision:** Which option and why.
 
-**Konsekwencje:** Co z tego wynika.
+**Consequences:** What follows from this.
 
-**Errata 1 (RRRR-MM-DD, źródło/powód):** Dopisywane później.
+**Erratum 1 (YYYY-MM-DD, source/reason):** Added later.
 ```
