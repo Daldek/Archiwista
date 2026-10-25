@@ -231,7 +231,7 @@ def test_plugins_failing_probe_and_unknown_producer_are_states(
     registry = load_registry(cache_dir=tmp_path)
 
     failed = registry.probe("external", tmp_path / "missing")
-    unknown = registry.probe("imgw", tmp_path)
+    unknown = registry.probe("unregistered", tmp_path)
 
     assert (failed.status, failed.store) == ("error", str(tmp_path / "missing"))
     assert failed.detail is not None and "FileNotFoundError" in failed.detail

@@ -99,7 +99,7 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 | Product requirements, scope and stages | [docs/PRD.md](docs/PRD.md), [docs/SCOPE.md](docs/SCOPE.md) |
 | Details, use cases, API, requirements for the producers | [docs/SPEC.md](docs/SPEC.md) (13: scope and acceptance of each version; 12: producers) |
 | Code architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (A-ADR-001 to 029) |
+| Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (A-ADR-001 to 029, and the index of the ADR files in [docs/decisions/](docs/decisions/)) |
 | Views for users; API and CLI for scripts and agents | [docs/USAGE.md](docs/USAGE.md), [docs/AGENT_API.md](docs/AGENT_API.md) |
 | Plans of v0.1 and v0.2 (executed) | [docs/PLAN_v0.1.md](docs/PLAN_v0.1.md), [docs/PLAN_v0.2.md](docs/PLAN_v0.2.md) |
 | Measurements and acceptance | [docs/reports/](docs/reports/) |

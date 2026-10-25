@@ -61,9 +61,11 @@ dev = [
 [project.scripts]
 archiwista = "archiwista.cli:main"
 
-# Producer adapters (plugins): factories load(context) -> SourceAdapter.
+# Producer adapters (plugins): factories load(context) -> SourceAdapter. The `imgw`
+# adapter reports `not_installed` until the extra `imgw` is installed.
 [project.entry-points."archiwista.sources"]
 kartograf = "archiwista.adapter.kartograf:load"
+imgw = "archiwista.adapter.imgw:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]

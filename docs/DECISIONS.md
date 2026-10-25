@@ -18,6 +18,10 @@ Kartografa).
 - `Zastąpiona przez ADR-x` — nie obowiązuje;
 - `Odrzucona` — rozważona i nieprzyjęta.
 
+ADRs from 0030 on are separate files in [`docs/decisions/`](decisions/) (DOC-8.2), written in
+English with the statuses of DOC-8.1 (`accepted`, `amended by …`, `superseded by …`); the
+index below lists them with a link to the file.
+
 ## Indeks
 
 | ADR | Tytuł | Data | Status |
@@ -40,17 +44,18 @@ Kartografa).
 | [ADR-016](#adr-016-format-dat-w-interfejsie-i-podkład-mapy) | Format dat w interfejsie i podkład mapy | 2026-10-17 | Przyjęta (SPEC 15: P6; mockup: M9; errata 2: podkład wektorowy OpenFreeMap zamiast BKG TopPlusOpen) |
 | [ADR-017](#adr-017-warianty-grupowane-bez-formatu-plików) | Warianty grupowane bez formatu plików | 2026-10-17 | Przyjęta (uzupełnia ADR-010) |
 | [ADR-018](#adr-018-wzorce-interfejsu-po-mockupie-czat-stos-podglądy) | Wzorce interfejsu po mockupie: czat, Stos, podglądy | 2026-10-17 | Przyjęta (errata 1: „Wachlarz” zastępuje „Stos”, M4/P12 rozstrzygnięte) |
-| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024) |
+| [ADR-019](#adr-019-dwóch-producentów-magazynu-kartograf-i-imgwtools) | Dwóch producentów magazynu: Kartograf i IMGWTools | 2026-10-17 | Przyjęta (zmienia ADR-003, uzupełnia ADR-014; pkt 7 zmieniony przez ADR-023; adaptery jako wtyczki: ADR-024; źródło IMGW: ADR 0032) |
 | [ADR-020](#adr-020-format-danych-imgw-własny-sidecar-parquet-geojson) | Format danych IMGW: własny sidecar, Parquet, GeoJSON | 2026-10-17 | Proponowana (ADR IMGWTools; SPEC 12.8) |
 | [ADR-021](#adr-021-etykiety-pokrycia-szeregów-imgw) | Etykiety pokrycia szeregów IMGW | 2026-10-17 | Przyjęta (P14, P15 — errata 1; P16 — errata 2; errata 3: jednostki znane per stacja ČHMÚ); Proponowana (mockup: M11) |
 | [ADR-022](#adr-022-dane-bez-położenia-katalog-zamiast-mapy) | Dane bez położenia: Katalog zamiast mapy | 2026-10-17 | Przyjęta (SPEC 15: P13) |
 | [ADR-023](#adr-023-dane-imgw-w-projektach-manifest-imgwtools) | Dane IMGW w projektach: manifest IMGWTools | 2026-10-17 | Przyjęta (dane IMGW w projekcie w v1.0 i dwa pliki manifestu: SPEC 15, P18; errata 2: kształt `imgw-project/1` z IMGWTools 3.0.0) |
-| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`) |
+| [ADR-024](#adr-024-źródła-danych-jako-wtyczki-kartograf-wymagany-imgwtools-opcjonalny) | Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny | 2026-10-17 | Przyjęta (uzupełnia ADR-001 i ADR-019; errata 1: `kartograf>=0.8.0,<0.9`; uzupełniona przez ADR 0032) |
 | [ADR-025](#adr-025-zakres-mvp-i-kolejność-wydań) | Zakres MVP i kolejność wydań | 2026-10-17 | Przyjęta (decyzja użytkownika; errata 3: „PL + CZ” jako v0.6 w MVP, ze stacjami ČHMÚ) |
 | [ADR-026](#adr-026-licencja-mit-i-kontrybucje-z-cla) | Licencja MIT i kontrybucje z CLA | 2026-10-17 | Przyjęta (MIT; CLA — errata 1, decyzja użytkownika 2026-10-18) |
 | [ADR-027](#adr-027-dane-własne-w-katalogu-projektu-i-migawki-archiwisty) | Dane własne w katalogu projektu i migawki Archiwisty | 2026-10-18 | Przyjęta (decyzja użytkownika; errata 1: migawkę w zespole robi właściciel projektu albo administrator, ADR-029) |
 | [ADR-028](#adr-028-interfejs-w-preact--htm-bez-kroku-budowania) | Interfejs w Preact + htm bez kroku budowania | 2026-10-18 | Przyjęta (decyzja użytkownika; zastępuje ADR-005) |
 | [ADR-029](#adr-029-rola-zapisu-do-magazynu-i-udostępnianie-projektów) | Rola zapisu do magazynu i udostępnianie projektów | 2026-10-18 | Przyjęta (decyzja użytkownika; uzupełnia ADR-013; model uprawnień od v0.1; errata 1: folder danych własnych ustawia administrator do v0.4) |
+| [ADR 0032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | Accepted (supplements ADR-019 and ADR-024; the plan's approval is delegated) |
 
 ---
 
@@ -803,7 +808,7 @@ obowiązuje „Wachlarz”.
 ## ADR-019: Dwóch producentów magazynu: Kartograf i IMGWTools
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014; uzupełniona przez ADR-024 (adaptery jako wtyczki)
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); częściowo zastępuje ADR-003, uzupełnia ADR-014; uzupełniona przez ADR-024 (adaptery jako wtyczki) i ADR 0032 (źródło IMGW: jedna wtyczka, extra, odczyt najpierw)
 
 **Kontekst:** Użytkownik chce w Archiwiście v1.0 danych pomiarowych IMGW-PIB: hydro
 dobowych (H, Q, T), charakterystyk miesięcznych i półrocznych oraz meteo (opad,
@@ -1150,7 +1155,7 @@ IMGW-19), 13 v0.6 kryt. 7, `docs/IMGWTOOLS_REQUIREMENTS.md` 4.14, 4.19, 6.3.
 ## ADR-024: Źródła danych jako wtyczki: Kartograf wymagany, IMGWTools opcjonalny
 
 **Data:** 2026-10-17
-**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełnia ADR-001 i ADR-019
+**Status:** Przyjęta (decyzja użytkownika 2026-10-17); uzupełnia ADR-001 i ADR-019; uzupełniona przez ADR 0032 (źródło IMGW)
 
 **Kontekst:** ADR-001 przyjął Kartografa jako zależność, a ADR-019 dodał drugiego
 producenta, IMGWTools, za wspólnym interfejsem źródła. Nie rozstrzygnęły one, jak

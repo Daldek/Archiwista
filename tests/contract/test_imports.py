@@ -125,7 +125,7 @@ def test_imgw_adapter_uses_only_public_api_and_never_pyarrow() -> None:
 
 
 def test_archiwista_starts_without_imgwtools(tmp_path: Path) -> None:
-    """Without IMGWTools every module imports and Kartograf stays available."""
+    """Without IMGWTools every module imports and only the IMGW source is lost."""
     result = subprocess.run(
         [sys.executable, "-c", START_WITHOUT_IMGWTOOLS, str(tmp_path)],
         capture_output=True,
@@ -137,7 +137,7 @@ def test_archiwista_starts_without_imgwtools(tmp_path: Path) -> None:
     report = json.loads(result.stdout)
     assert "archiwista.sources.registry" in report["modules"]
     assert report["kartograf_in_upper_layers"] == []
-    assert report["states"]["kartograf"] == "available"
+    assert report["states"] == {"imgw": "not_installed", "kartograf": "available"}
 
 
 def test_server_start_imports_no_preview_library(tmp_path: Path) -> None:

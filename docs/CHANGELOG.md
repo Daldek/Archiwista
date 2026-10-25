@@ -29,6 +29,16 @@ command-line interface may change.
   and the job and render processes follow the level, and a variable that names no level
   is a `validation_error`. Uvicorn's start-up lines show only with `--verbose` or
   `ARCHIWISTA_LOG_LEVEL=info`. (DEV-12.2)
+- The IMGWTools source behind the extra `archiwista[imgw]`: one plugin, `imgw`, reads a
+  store root of IMGWTools for both of its providers, IMGW-PIB and ČHMÚ (archives, series
+  and station catalogs as versions, the producer's own problems, the observation register
+  of a slot as history), judges the marker `imgw-store.json` and says why it refuses a
+  directory (`no_marker` with `imgw store init --root <path>`, `unsupported_marker`,
+  `foreign_store`, `not_a_store`). `GET /sources` and `archiwista doctor` list it; without
+  the extra it is `not_installed` with `pip install "archiwista[imgw]"` as the fix, and
+  Kartograf is unaffected. A store takes an IMGW directory in the next step and nothing
+  of it is indexed yet. `uv sync --locked --all-extras` installs the extra; CI also runs
+  the suite without it. (ADR 0032, DEV-19.12, DEV-19.13)
 
 ### Changed
 

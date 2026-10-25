@@ -176,6 +176,9 @@ nie są już wyczerpującą listą plików pomocniczych. Metody `IndexWriter`,
 | `adapter/kartograf/__init__.py` | fabryka wtyczki: porównuje zainstalowanego Kartografa z przypięciem Archiwisty przed importem | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | adapter Kartografa ze wszystkimi zdolnościami opcjonalnymi | `KartografAdapter`, `UNIT_CACHE_FILE` |
 | `adapter/kartograf/unit_cache.py` | lokalna pamięć obrysów jednostek (TERYT, KU, SM5) dla `file_footprint` | `UnitBBoxCache` |
+| `sources/markers.py` | nazwy plików znaczników magazynów producentów (DEV-19.12): adapter odmawia obcego magazynu po samej nazwie pliku, bez importu innego producenta | `STORE_MARKERS`, `foreign_markers` |
+| `adapter/imgw/__init__.py` | fabryka wtyczki IMGW: porównuje zainstalowany IMGWTools z zakresem `SUPPORTED_VERSIONS` przed importem (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
+| `adapter/imgw/adapter.py` | adapter IMGWTools dla IMGW-PIB i ČHMÚ: wpisy z `iter_store`, werdykty `probe` po znaczniku, metadane, kraj pliku, projekty; bez zdolności opcjonalnych; nie importuje `pyarrow` | `ImgwAdapter` |
 
 **Wspólne**
 
@@ -257,7 +260,8 @@ adapter z publicznym API.
   z `kartograf.__all__` —
   `test_imports.py::test_kartograf_adapter_uses_only_public_api`;
 - każdy moduł poza `archiwista.adapter` importuje się bez IMGWTools i bez
-  ładowania Kartografa, a wtyczka Kartografa ma stan `available` —
+  ładowania Kartografa, wtyczka Kartografa ma stan `available`, a wtyczka IMGW
+  `not_installed` —
   `test_imports.py::test_archiwista_starts_without_imgwtools`;
 - producent bez zdolności opcjonalnych spełnia `SourceAdapter`
   (`test_source_protocol.py`); stany wtyczek (`not_installed`,
@@ -1076,16 +1080,19 @@ z migawkami są już wdrożone (sekcje 2–9); poniżej granice następnych etap
   każdym żądaniu, `permission_log` z rodzajem wykonawcy i sesją. Brakuje
   logowania i haseł, a `serve_main` odmawia adresu innego niż `127.0.0.1`;
   sesje żyją w pamięci jednego serwera (`SessionStore`).
-- **Drugi producent: IMGWTools i ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024).**
-  Wtyczka rejestruje się w grupie entry points `archiwista.sources`
-  (extra `archiwista[imgw]`, `install_requirement`); test importów już
-  rezerwuje dla niej `src/archiwista/adapter/imgw/`, a błędy mają kod
-  `imgwtools_error` (`PRODUCER_CODES`). Testowa wtyczka
+- **Drugi producent: IMGWTools i ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
+  ADR 0032).** Wtyczka `imgw` jest zarejestrowana w grupie entry points
+  `archiwista.sources` (extra `archiwista[imgw]`, `install_requirement`):
+  `src/archiwista/adapter/imgw/` czyta magazyn IMGWTools obu dostawców przez
+  `iter_store`, sądzi katalog po znaczniku `imgw-store.json` i nie importuje
+  `pyarrow`; bez pakietu źródło ma stan `not_installed`, a błędy producenta
+  kod `imgwtools_error` (`PRODUCER_CODES`). Testowa wtyczka
   `tests/fixtures/second_source/` (płaski magazyn bez segmentów, arkuszy
   i dowiązań) przechodzi przez skaner, indeks i API bez zmian w rdzeniu
   (`tests/integration/test_second_adapter.py`). Do zrobienia:
   `StoreConfig.roots` zwraca dziś tylko katalog `kartograf`,
-  `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`, a zdolności
+  `PROJECT_MANIFESTS` zna tylko `kartograf-project.json`, indeks nie zna
+  wersji bieżącej magazynu IMGWTools (nie ma dowiązań), a zdolności
   stacji i szeregów (`stations`, `series_index`, `read_series` z SPEC 5.3)
   nie ma jeszcze w `sources/protocol.py`.
 

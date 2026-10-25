@@ -1,7 +1,9 @@
 # CI (DEV-7.7), from Nogat standards/ci/ci.yml. Runs scripts/gate.sh on Linux,
 # on Python 3.12 (required) and the newest stable Python (reported, not
 # blocking: wheels of geospatial dependencies often lag), and audits the
-# locked PyPI dependencies (DEV-13.6; informative, not a required check).
+# locked PyPI dependencies (DEV-13.6; informative, not a required check), and runs
+# the offline suite once more without the extra `imgw`: the optional IMGWTools source
+# is a state of its own and the rest passes without it (A-ADR-024, SPEC 5.8).
 # Archiwista is an `app` that runs on Linux until its Windows and macOS port
 # (v1.0), so the platform matrix of DEV-7.7 is not run (an `app` MAY run it).
 # The interface tests need Chromium for Playwright.
@@ -75,6 +77,25 @@ jobs:
                  && github.event.pull_request.head.repo.full_name == github.repository
                  && github.event.pull_request.user.login != 'dependabot[bot]') && '1' || '0' }}
         run: bash scripts/gate.sh
+
+  without-extras:
+    if: github.event_name != 'schedule'
+    name: tests without the extra imgw (ubuntu-latest, Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Environment without the extras, Chromium for the interface tests
+        run: |
+          uv sync --locked
+          uv run --no-sync playwright install --with-deps chromium
+      - name: Tests
+        # The marker expression of scripts/gate.sh (DEV-10.1).
+        run: uv run --no-sync pytest tests -m "not live and not perf and not smb" -q
 
   audit:
     name: dependency audit

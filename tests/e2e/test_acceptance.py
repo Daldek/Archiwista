@@ -909,10 +909,10 @@ def test_acceptance_second_plugin_beside_kartograf(
     expect(card).to_be_visible()
     expect(axis(card)).to_have_count(1)
 
-    assert {producer: item["status"] for producer, item in sources.items()} == {
-        "external": "available",
-        "kartograf": "available",
-    }
+    assert set(sources) == {"external", "imgw", "kartograf"}
+    assert (
+        sources["external"]["status"] == sources["kartograf"]["status"] == "available"
+    )
     assert shown == [card_of(item) for item in rows]
     assert {item["store"] for item in rows} == {STORE, "pomiary"}
     assert address(page) == {

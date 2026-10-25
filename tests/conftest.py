@@ -1,5 +1,6 @@
 """Shared test fixtures for Archiwista test suites."""
 
+import importlib.util
 import logging
 import os
 import signal
@@ -11,6 +12,13 @@ import pytest
 
 if TYPE_CHECKING:
     from imgwtools.testing import FixtureVariant
+
+# The tests of the IMGW adapter import IMGWTools at module level. Without the extra
+# `imgw` (the second CI configuration, A-ADR-024) they are not collected; the rest
+# of the suite passes without it.
+collect_ignore = (
+    [] if importlib.util.find_spec("imgwtools") else ["contract/test_imgw.py"]
+)
 
 
 @pytest.fixture(scope="session", autouse=True)

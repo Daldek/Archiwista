@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
-    """A fresh installation finds the Kartograf entry point and passes."""
+    """A fresh installation finds both entry points and passes, installed or not."""
     env = {
         **os.environ,
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
@@ -29,4 +29,5 @@ def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "[OK] Wtyczka kartograf: wersja 0.8.0" in result.stdout
+    assert "] Wtyczka imgw: " in result.stdout
     assert not (tmp_path / "config").exists()
