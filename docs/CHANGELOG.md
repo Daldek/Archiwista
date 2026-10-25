@@ -83,10 +83,14 @@ command-line interface may change.
   written when it happens stays Polish: the `detail` of a store that is not available,
   and the `message` of the notices of a job (deviation AGI-6.4 of `CLAUDE.md`).
   (AGI-6.4, AGI-9.2)
-- `docs/PRD.md`, `docs/SCOPE.md`, `docs/USAGE.md`, `CLAUDE.md` and `docs/PROGRESS.md` are
-  English; the Polish interface labels stay in quotes. `docs/PROGRESS.md` has the three
-  sections of the standard and lists the documents still to translate. (DEV-2.1, ECO-005,
-  DOC-3.1, DOC-6.1)
+- All documents are English (`docs/CLA.md`, the author's legal text, excepted); the Polish
+  interface labels stay in quotes with the English meaning beside them. The README follows
+  the order of DOC-2.1 for an app, `docs/PROGRESS.md` has the three sections of the
+  standard, `docs/DEVELOPMENT_STANDARDS.md` is gone (the project rules are in `CLAUDE.md`),
+  the plans of v0.1 and v0.2 are in `docs/plans/`, ADR-030 is the first decision in
+  `docs/decisions/` and `docs/IMGWTOOLS_REQUIREMENTS.md` is removed (IMGWTools 3.0.0 meets
+  it; SPEC 12.7 keeps the identifiers). (DEV-2.1, DEV-1.3, DEV-17.4, ECO-005, DOC-2.1,
+  DOC-3.1, DOC-6.1, DOC-8.2)
 - **Breaking for developers:** the environment is managed by uv. `uv sync --locked`
   replaces the pip installation from `requirements.lock`, which is removed;
   `uv.lock` pins every package with SHA-256 sums at the versions of the 0.2.0

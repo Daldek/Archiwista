@@ -12,9 +12,9 @@ commit that introduced this file).
 | Release 0.2.0 "Previews" | done | released on `develop` (`chore(release): wydanie 0.2.0`), not tagged and not merged into `main` (author's decision); `develop` carries `0.3.0.dev0` |
 | Next version v0.3 "Actions" | planned | spec and plan first, then code (PRD F5.3 pre-building of previews included); producer needs: SPEC 12, SCOPE stage 4 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
-| Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1) |
+| Nogat standard 2.1, documentation | done | everything is English (`docs/CLA.md`, the author's legal text, excepted; the Polish interface labels stay in quotes): README in the order of DOC-2.1 (147 lines), the project rules of the former `DEVELOPMENT_STANDARDS.md` in CLAUDE.md, the plans in `docs/plans/`, ADR-030 in `docs/decisions/` with the index in `docs/DECISIONS.md`, ARCHITECTURE, DECISIONS, SPEC, the plans, the reports and the mockup README translated, `docs/IMGWTOOLS_REQUIREMENTS.md` removed (IMGWTools 3.0.0 meets it; SPEC 12.7 keeps IMGW-1 to 20) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` and the error texts that follow `Accept-Language` (English by default, Polish with the header, `Content-Language` on every JSON answer; the stored texts stay Polish); deviations in CLAUDE.md: the stored texts (AGI-6.4), outcome statuses and no result envelope for good |
-| Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
+| Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 1 |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The last run took 37 minutes under a load of 8 (1206 tests); a quiet machine needs 25 to 33 minutes, so start it without other test suites running. Four flakes found under load are fixed (`3bc0482`, `876824f`, `d14f2f3`, `ebd8ef1`): the one-second limit that was every build's in `test_preview_build_item_timeout_fails_item_only` (only the slow file has one now, `build_timeout_s`), the 5 s that an expectation of the interface tests waited for the page and the server (30 s now), the race of `tests/unit/test_sandbox.py` (a `/proc` read of a process reaped meanwhile) and one hang of `tests/e2e/test_timeline.py` that did not reproduce (`faulthandler_timeout = 600` writes the stacks of a test that runs ten minutes). A job worker interrupted under `--cov` could stay alive: `patch = ["subprocess"]` measures it, and an interrupt that lands in coverage's tracer while it holds its `data_lock` leaves the lock held, so the worker waited for it in its exit handler for good (1 of 200 interrupted processes in a stress run). The first interrupt of a worker now starts a `faulthandler` watchdog that ends it after `STOP_TIMEOUT_S` (`_handle_interrupts` in `jobs/worker.py`, status 1, stacks in the job log); it does not cover an interrupt that arrives while the worker still imports its modules, before the handler stands (the supervisor's killer ends such a worker) |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
 
@@ -31,33 +31,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
 ## Next
 
-1. **Documents, the rest of the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per
-   step, gate green before each; the source of the rules is the Nogat branch
-   `feature/data-output`, `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
-   Hydrolog and Retman have the same branch name as worked examples). README in English in
-   the order of DOC-2.1 (profile `app`: Run and Deploy replace Install and Quick start),
-   absolute links (DOC-1.4), at most 400 lines, summary at most 400 characters and
-   `pyproject` `description` at most 200 (DOC-2.3); move the project-specific rules of
-   `docs/DEVELOPMENT_STANDARDS.md` (sections 5.1, 7, 8 and 10) into CLAUDE.md and delete the
-   file (DEV-1.3); `git mv docs/PLAN_v0.1.md docs/plans/2026-10-18-plan-v0.1.md` and
-   `docs/PLAN_v0.2.md docs/plans/2026-10-19-plan-v0.2.md` (DEV-17.4); an ADR
-   `docs/decisions/0030-...md` with the index entry in `docs/DECISIONS.md` (DOC-8.2): `src/`
-   layout, uv and the commit pin, the gate, Linux-only CI, the deviations of CLAUDE.md.
-   Translate the Polish documents (ECO-005), most useful first (`docs/AGENT_API.md` is
-   done): `docs/ARCHITECTURE.md` (77 KB), `docs/DECISIONS.md` (93 KB, statuses of DOC-8.1),
-   `docs/SPEC.md` (326 KB), the two plans (377 KB), `docs/reports/` (57 KB);
-   `docs/IMGWTOOLS_REQUIREMENTS.md` (105 KB) is met by IMGWTools 3.0.0 (IMGW-1 to 20):
-   decided (the author delegated it): delete it, keep the IMGW-n identifiers of SPEC 12.7
-   and fix the references (SPEC 12.7, 12.8 and 14, SCOPE, PRD, DECISIONS A-ADR-019, 021 and
-   025). `<katalog-danych>` becomes `<data-dir>` in what is translated. A model-assisted
-   pipeline (code blocks masked, chunks at headings, checks of structure, code spans,
-   links, identifiers and numbers, retry) translated all of them in about ten minutes in
-   a trial; run it on the committed text (the error texts are final: they changed SPEC 9.1,
-   ARCHITECTURE 5.3 and 5.4 and AGENT_API). Terms as in the English documents (the Fan,
-   the Timeline, the curtain, store, own data, the release names of SCOPE). The code blocks
-   with Polish prose (ARCHITECTURE 0 and 1, DECISIONS 0, SPEC 0 to 3, 17, 19 and 29) are
-   translated; the ASCII mock-ups and the JSON examples with Polish labels stay.
-2. **Data output (DEV §19, ECO-051): migrate the calls to Kartograf after Kartograf has the
+1. **Data output (DEV §19, ECO-051): migrate the calls to Kartograf after Kartograf has the
    change on its development head** (not before; plan `docs/plans/2026-10-24-data-output.md`
    of Nogat, step 4). Re-pin Kartograf to that commit in `pyproject.toml` (`uv lock`).
    Archiwista keeps calling Kartograf in store mode, so the names change to `root`, not the
@@ -81,17 +55,17 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `tests/unit/test_own_data_fixture.py:246`, and the `store.output_dir` uses in
      `tests/integration/test_read_only_store.py`, `test_preview_security.py`,
      `test_agent_flow.py`, `test_projects.py`, `test_scanner.py`.
-   - `docs/SPEC.md`: section 12 KB-5 (line 3684, `run_command(..., output_dir, ...)`), KA-1
-     (3659), KH-1 (3717, `set_project_output_dir`), and the passages that call the
-     `--output` directory the store (lines 174, 783 to 785, 813, 1431, 1445, 1458, 1459,
-     3118, 3723); the same names in `docs/ARCHITECTURE.md` and `docs/USAGE.md` ("its
-     `--output` directory, that is the `data/` directory").
-3. Replace the Kartograf commit pin by the tag `v0.8.0` in the release pull request
+   - `docs/SPEC.md`: section 12 KB-5 (`run_command(..., output_dir, ...)`), KA-1 and KH-1
+     (`set_project_output_dir`), and the passages that call the `--output` directory the
+     store (`grep -n "\-\-output" docs/SPEC.md`: the translation moved the lines); the same
+     names in `docs/ARCHITECTURE.md` and `docs/USAGE.md` ("its `--output` directory, that is
+     the `data/` directory").
+2. Replace the Kartograf commit pin by the tag `v0.8.0` in the release pull request
    (REL-5.3, REL-2.1); use `kartograf.testing` (DEV-10.6) instead of the hand-made
    `tests/fixtures/make_store.py` when Kartograf ships it.
-4. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
+3. **CI proof.** The first CI run needs the push: check the Chromium step of `ci.yml` and the
    weekly `live.yml`.
-5. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
+4. v0.3 "Actions": spec and plan to be approved before implementation (`docs/SPEC.md` 12 and
    13, SCOPE stage 4).
 
 ## Open questions
