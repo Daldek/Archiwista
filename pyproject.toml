@@ -108,6 +108,9 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--strict-markers -m 'not live and not perf and not smb'"
+# A test that runs longer than this (seconds) writes the stacks of all threads
+# into the log, so a hang shows where it hangs (the run goes on).
+faulthandler_timeout = 600
 markers = [
     "live: requires real network services or data",
     "db: needs a database server (none in this project: SQLite is embedded)",
