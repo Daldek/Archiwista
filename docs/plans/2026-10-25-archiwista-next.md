@@ -622,6 +622,7 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | KB-7: `find_admin_units` | A15 |
 | Kartograf | KH-1 as `set_project_root(project_dir, *, root)` (the SPEC called it `set_project_output_dir`) | a later "change store" action (A13 explains) |
 | Kartograf | a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too) | M2, I1 (removes the copy) |
+| Kartograf | a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`: `get_config()` sizes the root by walking all of it, so every report of the default root of the wizard costs that walk (ADR-032) | M5 (removes the walk) |
 | IMGWTools | a machine code in `StoreInfo` (today only `problems` texts; `missing_marker` covers a layout without a marker and a foreign directory) | I1 |
 | Nogat | registry: the edge to Kartograf gets `uses` and `exchange` for the command layer (`kartograf-commands/1`, `kartograf-result/1`, `kartograf-download/1`, `kartograf-availability/1`, `kartograf-testing`); the edge to IMGWTools becomes `active` with I2 and gets `imgw-plan/1`, `imgw-result/1`, `imgw-testing` | I2, A1 |
 

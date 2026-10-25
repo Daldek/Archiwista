@@ -29,6 +29,16 @@ command-line interface may change.
   and the job and render processes follow the level, and a variable that names no level
   is a `validation_error`. Uvicorn's start-up lines show only with `--verbose` or
   `ARCHIWISTA_LOG_LEVEL=info`. (DEV-12.2)
+- The first-run wizard offers the directory Kartograf uses when a call names no store
+  (`KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf`,
+  DEV-19.2) under an empty Kartograf field, with the button "Użyj tego katalogu", when it
+  exists and holds `kartograf-store.json`. It is only offered: nothing is entered or saved
+  until the person clicks and saves, and Archiwista never uses that directory for a call.
+  `GET /sources` and `archiwista sources` report it as `default_root` (`path`, `source`
+  `default`, `env` or `file`, `name`, `exists`, `marked`, `message`; `null` for a source
+  without one); `/health` leaves it out, because Kartograf sizes the directory while it
+  reports it. `archiwista doctor` prints the root, the layer of the settings that gave it
+  and whether it exists and is a store. (DEV-19.2, ADR-032)
 
 ### Changed
 

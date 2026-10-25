@@ -71,6 +71,37 @@ MESSAGES = {
         'Plugin {producer} is not registered, but store "{store}" uses it',
         "Wtyczka {producer} nie jest zarejestrowana, a używa jej magazyn „{store}”",
     ),
+    "default_root": Text(
+        "Plugin {producer}: default store root {path} ({origin}; {state})",
+        (
+            "Wtyczka {producer}: domyślny katalog główny magazynu {path}"
+            " ({origin}; {state})"
+        ),
+    ),
+    "default_root_default": Text(
+        "under the data directory",
+        "w katalogu danych",
+    ),
+    "default_root_env": Text(
+        "variable {name}",
+        "zmienna {name}",
+    ),
+    "default_root_file": Text(
+        "{name} of nogat.toml",
+        "{name} w pliku nogat.toml",
+    ),
+    "default_root_absent": Text(
+        "does not exist",
+        "nie istnieje",
+    ),
+    "default_root_unmarked": Text(
+        "exists, without a store marker",
+        "istnieje, bez znacznika magazynu",
+    ),
+    "default_root_marked": Text(
+        "a store with its marker",
+        "magazyn ze znacznikiem",
+    ),
     "store_ok": Text(
         'Store "{store}" ({producer}, {kind}): {path}',
         "Magazyn „{store}” ({producer}, {kind}): {path}",

@@ -22,6 +22,11 @@ line: [`README.md`](../README.md); scripts and agents:
      by default). A store written by an earlier Kartograf has no marker: the
      wizard then shows the command to run once, `kartograf store init --root
      <path>`. There can be several stores.
+     If the directory Kartograf itself uses when a call names no store
+     (`KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else
+     `<data_dir>/kartograf`) exists and holds the marker, the wizard offers it under
+     the empty field with the button "Użyj tego katalogu"; it is entered only by
+     your click.
    - **Projects** ("Projekty"): directories with Kartograf projects
      (`kartograf-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request

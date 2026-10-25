@@ -19,6 +19,7 @@ type SourceStatus = Literal["available", "not_installed", "incompatible", "error
 type EntryKind = Literal["version", "link", "full_sheet", "problem"]
 type LocationKind = Literal["footprint", "country", "none"]
 type GeoJSONGeometry = dict[str, object]
+type DefaultRootSource = Literal["default", "env", "file"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +102,38 @@ class SourceState:
     detail: str | None = None
     reason: str | None = None
     hint: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultRoot:
+    """The directory a producer uses for a store when a call names none.
+
+    Archiwista names the store in every call it makes (Decision 1 of the plan of
+    2026-10-25), so it never uses this directory for a call; it only reports it,
+    so that the wizard can offer it and ``archiwista doctor`` can show it.
+
+    Parameters
+    ----------
+    path : Path
+        The directory; it need not exist.
+    source : {"default", "env", "file"}
+        Where the producer's settings found it: its own default (``<data_dir>``
+        and the producer's name), an environment variable or the settings file.
+    name : str or None
+        The variable (``KARTOGRAF_ROOT``) or the table (``[kartograf]``) that
+        gave it; ``None`` for the default.
+    exists : bool
+        Whether ``path`` is a directory.
+    marked : bool
+        Whether it holds the producer's store marker: a store the producer has
+        written to or initialised.
+    """
+
+    path: Path
+    source: DefaultRootSource
+    name: str | None
+    exists: bool
+    marked: bool
 
 
 @dataclass(frozen=True, slots=True)

@@ -23,7 +23,7 @@ from typing import TextIO
 
 from pydantic import BaseModel, ValidationError
 
-from archiwista.api.health import read_health, source_infos
+from archiwista.api.health import read_health, source_list
 from archiwista.api.models import (
     CatalogFilters,
     CatalogPage,
@@ -32,7 +32,6 @@ from archiwista.api.models import (
     Issue,
     ProjectCard,
     SlotCard,
-    SourceList,
     Version,
     VersionCard,
 )
@@ -228,17 +227,18 @@ def _status(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 
 def _sources(args: argparse.Namespace, reader: _Reader) -> _Output:
-    sources = SourceList(items=source_infos(reader.registry))
-    lines = [
-        message(
+    sources = source_list(reader.registry)
+    lines: list[str] = []
+    for item in sources.items:
+        line = message(
             "cli.source_line",
             producer=item.producer,
             version=item.package_version or message("cli.none"),
             message=item.message,
         )
-        + (f" {item.fix}" if item.fix else "")
-        for item in sources.items
-    ]
+        lines.append(f"{line} {item.fix}" if item.fix else line)
+        if item.default_root is not None:
+            lines.append(f"  {item.default_root.message}")
     return _Output(sources, "\n".join(lines))
 
 

@@ -6,6 +6,7 @@ on ``sys.path``, discovered by ``load_registry``.
 """
 
 import importlib
+import logging
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,8 @@ from archiwista.doctor import run_doctor
 from archiwista.errors import SourceIncompatibleError, SourceUnavailableError
 from archiwista.messages import message
 from archiwista.sources import (
+    DefaultRoot,
+    DefaultRootAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
@@ -24,7 +27,8 @@ from archiwista.sources import (
     SheetGridAdapter,
     SourceState,
 )
-from archiwista.sources.registry import load_registry
+from archiwista.sources.registry import load_registry, read_default_root
+from tests.fixtures.isolation import Canary
 
 SECOND_SOURCE = Path(__file__).parents[1] / "fixtures" / "second_source"
 FIXTURE_MODULES = ("external_source_plugin", "external_producer")
@@ -83,6 +87,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
             GeoAdapter,
             LinkCheckAdapter,
             SheetGridAdapter,
+            DefaultRootAdapter,
         )
     )
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))
@@ -240,3 +245,44 @@ def test_plugins_failing_probe_and_unknown_producer_are_states(
     assert (failed.status, failed.store) == ("error", str(tmp_path / "missing"))
     assert failed.detail is not None and "FileNotFoundError" in failed.detail
     assert (unknown.status, unknown.store) == ("not_installed", str(tmp_path))
+
+
+def test_plugins_default_root_comes_from_the_source_that_has_one(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """Kartograf reports its root; a source without the capability has none."""
+    # Arrange
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    # Act
+    kartograf = read_default_root(registry, "kartograf")
+    external = read_default_root(registry, "external")
+    unregistered = read_default_root(registry, "imgw")
+
+    # Assert
+    assert kartograf == DefaultRoot(
+        producer_canary.kartograf_root, "env", "KARTOGRAF_ROOT", False, False
+    )
+    assert (external, unregistered) == (None, None)
+
+
+def test_plugins_default_root_that_fails_is_none_and_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An offer must not stop its caller: a failing plugin has no root, and a log."""
+    # Arrange
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    def broken() -> DefaultRoot:
+        raise RuntimeError("no home directory")
+
+    monkeypatch.setattr(registry.adapter("kartograf"), "default_root", broken)
+
+    # Act
+    with caplog.at_level(logging.ERROR, logger="archiwista.sources.registry"):
+        root = read_default_root(registry, "kartograf")
+
+    # Assert
+    assert root is None
+    assert "Reading the default root of producer kartograf failed" in caplog.text
+    assert "no home directory" in caplog.text

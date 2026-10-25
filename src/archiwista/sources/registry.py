@@ -10,6 +10,7 @@ process and the other plugins keep working.
 """
 
 import importlib.metadata
+import logging
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -28,8 +29,15 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.messages import lookup, message, with_detail
-from archiwista.sources.protocol import SourceAdapter
-from archiwista.sources.types import SourceContext, SourceState, SourceStatus
+from archiwista.sources.protocol import DefaultRootAdapter, SourceAdapter
+from archiwista.sources.types import (
+    DefaultRoot,
+    SourceContext,
+    SourceState,
+    SourceStatus,
+)
+
+logger = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "archiwista.sources"
 APP_DISTRIBUTION = "archiwista"
@@ -205,6 +213,37 @@ def source_error(state: SourceState) -> SourceStateError:
         lookup(f"source.status_{state.status}", ""),
     )
     return SourceUnavailableError(with_detail(text, state.detail), state=state)
+
+
+def read_default_root(registry: PluginRegistry, producer: str) -> DefaultRoot | None:
+    """Return a producer's default store root, ``None`` when it has none to report.
+
+    Parameters
+    ----------
+    registry : PluginRegistry
+        Producer plugins.
+    producer : str
+        Producer id, e.g. ``"kartograf"``.
+
+    Returns
+    -------
+    DefaultRoot or None
+        What the adapter's ``default_root`` reports. ``None`` when the plugin is
+        not available, its adapter has no such capability
+        (``DefaultRootAdapter``) or reading it failed (logged): the root is an
+        offer, so a faulty plugin must not stop the caller.
+    """
+    try:
+        adapter = registry.adapter(producer)
+    except SourceStateError:
+        return None
+    if not isinstance(adapter, DefaultRootAdapter):
+        return None
+    try:
+        return adapter.default_root()
+    except Exception:  # an offer only: a faulty plugin must not stop the caller
+        logger.exception("Reading the default root of producer %s failed", producer)
+        return None
 
 
 @dataclass(frozen=True, slots=True)

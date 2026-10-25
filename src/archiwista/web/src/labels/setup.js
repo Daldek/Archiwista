@@ -29,6 +29,15 @@ export const setup = {
     kartograf_hint:
       "Pełna ścieżka katalogu głównego magazynu Kartografa, czyli katalogu z plikiem " +
       "kartograf-store.json i katalogami produktów, np. /mnt/nas/kartograf albo Z:\\kartograf.",
+    default_root:
+      "Kartograf zapisuje domyślnie w katalogu {path} ({origin}); jest tam magazyn " +
+      "ze znacznikiem. Archiwista niczego w nim nie zapisze.",
+    default_root_origin: {
+      default: "w katalogu danych",
+      env: "zmienna {name}",
+      file: "{name} w pliku nogat.toml",
+    },
+    use_default_root: "Użyj tego katalogu",
     kind: "Rodzaj",
     kind_auto: "wykryj automatycznie",
     add: "Dodaj magazyn",

@@ -5,14 +5,17 @@
  * the preview cache limit (with the cache's usage from `/health`), saved at once with
  * `PUT /settings`. The server checks the directories and asks the producer about
  * each new or moved one; anything wrong keeps the settings in effect and
- * comes back as Polish problems per field, shown at the field. A new store's
+ * comes back as Polish problems per field, shown at the field. The directory Kartograf
+ * itself would use for a store (`default_root` of `GET /sources`) is offered under a
+ * store's empty Kartograf field when it exists and holds the marker, and is entered only
+ * by the person's click. A new store's
  * full scan is started by the server's scheduler (step 6b) and its progress
  * shows in the index banner. The step lives in the address
  * (`?view=setup&step=projects`, `&saved=1` after a save), so Back walks the
  * steps and a reload keeps them.
  */
 
-import { putSettings } from "./api.js";
+import { listSources, putSettings } from "./api.js";
 import { storeLine } from "./banner.js";
 import { useApp } from "./context.js";
 import { int, plural } from "./format.js";
@@ -175,6 +178,9 @@ function Wizard({ initial }) {
 }
 
 function StoresStep({ draft, change, errors, problem }) {
+  const root = useDefaultRoot(draft.stores.some((store) => !store.kartograf.trim()));
+  const chosen = new Set(draft.stores.map((store) => store.kartograf.trim()));
+  const offer = root && !chosen.has(root.path) ? root : null;
   const { health } = useApp();
   const update = (key, patch) =>
     change({
@@ -202,7 +208,12 @@ function StoresStep({ draft, change, errors, problem }) {
           onInput=${(value) => update(store.key, { id: value })} />
         <${TextField} label=${L.store.kartograf} hint=${L.store.kartograf_hint} value=${store.kartograf} mono
           error=${fieldErrors.kartograf} name=${`stores[${index}].kartograf`}
-          onInput=${(value) => update(store.key, { kartograf: value })} />
+          onInput=${(value) => update(store.key, { kartograf: value })}>
+          ${offer && !store.kartograf.trim()
+            ? html`<${DefaultRootOffer} root=${offer}
+                onUse=${() => update(store.key, { kartograf: offer.path })} />`
+            : null}
+        <//>
         <${SelectField} label=${L.store.kind} value=${store.kind} error=${fieldErrors.kind}
           name=${`stores[${index}].kind`} onChange=${(value) => update(store.key, { kind: value })}
           options=${[
@@ -219,6 +230,42 @@ function StoresStep({ draft, change, errors, problem }) {
     <button type="button" class="btn" onClick=${() => change({ stores: [...draft.stores, emptyStore()] })}>
       <${Icon} name="plus" />${L.store.add}</button>
   </section>`;
+}
+
+/**
+ * The directory Kartograf would use for a store when none is named, when it is a store:
+ * it exists and holds the marker (`default_root` of `GET /sources`). It is asked for once,
+ * and only while a store waits for its directory, because the producer sizes the
+ * directory while it reports it. It is an offer: nothing is saved until the person fills
+ * the field and saves the settings.
+ *
+ * @param {boolean} wanted - Whether a store has no Kartograf directory yet.
+ * @returns {import("./types.js").DefaultRoot|null}
+ */
+function useDefaultRoot(wanted) {
+  const [root, setRoot] = useState(null);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!wanted || asked.current) return;
+    asked.current = true;
+    listSources().then(
+      (answer) => {
+        const found = answer.items.find((source) => source.producer === "kartograf")?.default_root;
+        setRoot(found?.exists && found.marked ? found : null);
+      },
+      () => setRoot(null), // an offer is optional: without an answer there is none
+    );
+  }, [wanted]);
+  return root;
+}
+
+/** The offer of a default root under a store's field: what it is and a button that enters it. */
+function DefaultRootOffer({ root, onUse }) {
+  const origin = t(L.store.default_root_origin[root.source] ?? "", { name: root.name ?? "" });
+  return html`<span class="field-offer">
+    <span class="field-hint">${t(L.store.default_root, { path: root.path, origin })}</span>
+    <button type="button" class="btn sm" onClick=${onUse}>${L.store.use_default_root}</button>
+  </span>`;
 }
 
 function ProjectsStep({ draft, change, errors, problem }) {
@@ -385,7 +432,7 @@ function General({ errors, problem }) {
   </div>`;
 }
 
-function TextField({ label, hint, error, value, onInput, name, mono, short, type = "text", min, max }) {
+function TextField({ label, hint, error, value, onInput, name, mono, short, type = "text", min, max, children }) {
   const id = useId();
   const described = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ");
   const classes = [mono ? "mono" : null, short ? "short" : null].filter(Boolean).join(" ");
@@ -396,6 +443,7 @@ function TextField({ label, hint, error, value, onInput, name, mono, short, type
       aria-describedby=${described || null} onInput=${(event) => onInput(event.currentTarget.value)} />
     ${error ? html`<span class="field-error" id=${`${id}-error`}>${error}</span>` : null}
     ${hint ? html`<span class="field-hint" id=${`${id}-hint`}>${hint}</span>` : null}
+    ${children}
   </div>`;
 }
 

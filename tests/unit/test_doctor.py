@@ -5,13 +5,14 @@ import socket
 import stat
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.doctor import is_port_available, run_doctor
-from archiwista.sources import SourceAdapter, SourceState
+from archiwista.sources import DefaultRoot, SourceAdapter, SourceState
 from archiwista.sources.registry import install_requirement, source_error
 
 KARTOGRAF = SourceState(
@@ -23,12 +24,27 @@ KARTOGRAF = SourceState(
 )
 
 
+@dataclass(frozen=True)
+class DefaultRootOnly:
+    """An adapter that reports one default root and can do nothing else."""
+
+    root: DefaultRoot
+
+    def default_root(self) -> DefaultRoot:
+        """Return the root it was given."""
+        return self.root
+
+
 @dataclass
 class FakeRegistry:
-    """Plugin registry with fixed states; probes mirror the plugin state."""
+    """Plugin registry with fixed states; probes mirror the plugin state.
+
+    ``roots`` gives the available plugins the capability ``default_root``.
+    """
 
     source_states: tuple[SourceState, ...] = (KARTOGRAF,)
     failing: dict[Path, SourceState] = field(default_factory=dict)
+    roots: dict[str, DefaultRoot] = field(default_factory=dict)
 
     def producers(self) -> tuple[str, ...]:
         """Return the producers of the configured states."""
@@ -44,7 +60,9 @@ class FakeRegistry:
         return next(found, SourceState(producer=producer, status="not_installed"))
 
     def adapter(self, producer: str) -> SourceAdapter:
-        """Refuse every producer: the doctor never reads a store."""
+        """Refuse every producer but one with a root: the doctor reads no store."""
+        if self.state(producer).status == "available" and producer in self.roots:
+            return cast(SourceAdapter, DefaultRootOnly(self.roots[producer]))
         raise source_error(self.state(producer))
 
     def probe(self, producer: str, root: Path) -> SourceState:
@@ -302,3 +320,68 @@ def test_doctor_is_port_available_detects_listener() -> None:
         port = listener.getsockname()[1]
 
         assert is_port_available(port) is False
+
+
+@pytest.mark.parametrize(
+    ("root", "described"),
+    [
+        (
+            DefaultRoot(Path("/srv/nogat/kartograf"), "default", None, False, False),
+            "(w katalogu danych; nie istnieje)",
+        ),
+        (
+            DefaultRoot(
+                Path("/srv/nogat/kartograf"), "env", "KARTOGRAF_ROOT", True, False
+            ),
+            "(zmienna KARTOGRAF_ROOT; istnieje, bez znacznika magazynu)",
+        ),
+        (
+            DefaultRoot(
+                Path("/srv/nogat/kartograf"), "file", "[kartograf]", True, True
+            ),
+            "([kartograf] w pliku nogat.toml; magazyn ze znacznikiem)",
+        ),
+    ],
+)
+def test_doctor_shows_the_default_store_root_with_its_source_and_state(
+    paths: AppPaths,
+    store_root: Path,
+    capsys: pytest.CaptureFixture[str],
+    root: DefaultRoot,
+    described: str,
+) -> None:
+    """The root a producer would use is reported next to its plugin, not judged."""
+    # Arrange
+    configure(paths, store_root)
+
+    # Act
+    status, out = run_cli(paths, FakeRegistry(roots={"kartograf": root}), capsys)
+
+    # Assert
+    plugin, default_root = [
+        line for line in out.splitlines() if "Wtyczka kartograf" in line
+    ]
+    assert status == 0
+    assert plugin.startswith("[OK] Wtyczka kartograf: wersja")
+    assert default_root == (
+        "[OK] Wtyczka kartograf: domyślny katalog główny magazynu"
+        f" /srv/nogat/kartograf {described}"
+    )
+
+
+def test_doctor_shows_no_default_root_of_a_plugin_that_is_not_available(
+    paths: AppPaths, store_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A plugin that cannot be loaded or used has no root to report."""
+    # Arrange
+    configure(paths, store_root)
+    root = DefaultRoot(Path("/srv/nogat/kartograf"), "default", None, False, False)
+    broken = replace(KARTOGRAF, status="incompatible", package_version="0.7.2")
+    registry = FakeRegistry(source_states=(broken,), roots={"kartograf": root})
+
+    # Act
+    status, out = run_cli(paths, registry, capsys)
+
+    # Assert
+    assert status == 10
+    assert "domyślny katalog główny" not in out

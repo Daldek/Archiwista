@@ -3,8 +3,8 @@
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments, their parts, coordinate operations, link
-confirmation and sheet grids are optional capabilities: a producer without
-them still satisfies ``SourceAdapter``.
+confirmation, sheet grids and the default store root are optional
+capabilities: a producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from archiwista.sources.types import (
+    DefaultRoot,
     EntryMeta,
     Footprint,
     ProjectInfo,
@@ -165,4 +166,18 @@ class LinkCheckAdapter(Protocol):
 
     def confirm_link(self, entry: SourceEntry) -> Path | None:
         """Return the confirmed version path relative to the store, or ``None``."""
+        ...
+
+
+@runtime_checkable
+class DefaultRootAdapter(Protocol):
+    """Optional capability: the directory the producer uses when no store is named."""
+
+    def default_root(self) -> DefaultRoot:
+        """Return the producer's default store root and where it comes from.
+
+        A report only: Archiwista names the store in every call, so it never
+        uses this directory itself. The producer may read the whole directory
+        to size it, so ask for an answer a person waits for, never on a poll.
+        """
         ...

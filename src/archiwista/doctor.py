@@ -21,8 +21,13 @@ from archiwista.config import (
 )
 from archiwista.messages import message, with_detail
 from archiwista.security import LOOPBACK_HOST
-from archiwista.sources import SourceState
-from archiwista.sources.registry import install_requirement, source_fix
+from archiwista.sources import DefaultRoot, SourceState
+from archiwista.sources.registry import (
+    PluginRegistry,
+    install_requirement,
+    read_default_root,
+    source_fix,
+)
 
 type CheckLevel = Literal["ok", "warning", "error"]
 
@@ -95,7 +100,7 @@ def is_port_available(port: int) -> bool:
 
 def run_doctor(
     paths: AppPaths,
-    registry: SourceRegistryView,
+    registry: PluginRegistry,
     *,
     port_available: Callable[[int], bool] = is_port_available,
 ) -> DoctorReport:
@@ -105,8 +110,9 @@ def run_doctor(
     ----------
     paths : AppPaths
         Configuration file and local data directory.
-    registry : SourceRegistryView
-        Producer plugins and their states.
+    registry : PluginRegistry
+        Producer plugins, their states and, for a producer that has one, its
+        default store root.
     port_available : callable, optional
         Port check, replaceable in tests.
 
@@ -125,6 +131,9 @@ def run_doctor(
     for producer in sorted(states):
         required = producer in REQUIRED_PRODUCERS or producer in used
         checks.append(source_check(states[producer], required=required))
+        root = read_default_root(registry, producer)
+        if root is not None:
+            checks.append(default_root_check(producer, root))
     for producer, store_id in sorted(used.items()):
         if producer not in states:
             checks.append(
@@ -192,6 +201,34 @@ def source_check(state: SourceState, *, required: bool) -> DoctorCheck:
     level: CheckLevel = "error" if required else "warning"
     text = with_detail(message(f"doctor.source_{state.status}", **values), state.detail)
     return DoctorCheck(level, text, source_fix(state))
+
+
+def default_root_check(producer: str, root: DefaultRoot) -> DoctorCheck:
+    """Describe the default store root of a producer; it is a report, no problem.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    root : DefaultRoot
+        What the producer's adapter reports.
+
+    Returns
+    -------
+    DoctorCheck
+        ``ok`` with the directory, the layer of the settings that gave it and
+        what is there (nothing, a directory, a store with its marker); it has
+        no fix.
+    """
+    state = "marked" if root.marked else "unmarked" if root.exists else "absent"
+    text = message(
+        "doctor.default_root",
+        producer=producer,
+        path=root.path,
+        origin=message(f"doctor.default_root_{root.source}", name=root.name),
+        state=message(f"doctor.default_root_{state}"),
+    )
+    return DoctorCheck("ok", text)
 
 
 def _install_fix(producer: str) -> str:
@@ -282,7 +319,7 @@ def format_report(report: DoctorReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def doctor_main(paths: AppPaths, registry: SourceRegistryView, out: TextIO) -> int:
+def doctor_main(paths: AppPaths, registry: PluginRegistry, out: TextIO) -> int:
     """Print the diagnostics and return the process exit status.
 
     A failed check is an outcome, not an error (ERR §1): the report is the

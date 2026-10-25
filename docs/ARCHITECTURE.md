@@ -92,7 +92,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/models.py` | Pydantic models of requests and responses (except the session and administration models, which live next to their routers) — also the OpenAPI schema | `CatalogFilters`, `MapFilters`, `IndexAnswer`, `CatalogPage`, `SlotCard`, `VersionCard`, `MapView`, `Health`, `StoreDetail`, `ProjectCard`, `JobDetail`, `Area`, `AreaCoverage`, `Settings`, `ProblemDetails` |
 | `api/docs.py` | OpenAPI (`operationId` = route function name) and local Swagger UI from `api/swagger/` | `install_docs`, `operation_id`, `openapi_document` |
 | `api/session.py` | `/session`: token exchange, session state, logout, agent tokens | `exchange_token`, `read_session`, `end_session`, `issue_token`, models `SessionExchange`, `NewSession`, `SessionState`, `OneTimeToken` |
-| `api/health.py` | `/health`, `/sources` | `read_health`, `source_infos` |
+| `api/health.py` | `/health`, `/sources` | `read_health`, `source_infos`, `source_list` |
 | `api/stores.py` | `/stores`, `/stores/{store}` | `read_stores`, `read_store` |
 | `api/slots.py` | catalog and cards: `/slots`, `/products`, `/stores/{store}/slots/{slot}`, `/stores/{store}/versions/{version}` (with `/sidecar`), `/requests/{parent_request}` | `search_slots`, `read_products`, `slot_card`, `version_card`, `copy_path`, `geo_adapter`, `checked_store` |
 | `api/map.py` | `/map/footprints`, `/map/sheets` | `map_view`, `sheet_list` |
@@ -172,9 +172,9 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities | `SourceAdapter`, `SourceFactory`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `CoordinateTransformer` |
-| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `SourceSegment`, `SourceEntry`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
-| `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
+| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities | `SourceAdapter`, `SourceFactory`, `SegmentedAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `CoordinateTransformer` |
+| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus` |
+| `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the default root of a producer that has one (ADR-032) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities | `KartografAdapter`, `UNIT_CACHE_FILE` |
 | `adapter/kartograf/marker.py` | judges the store marker by file name and schema, no import of Kartograf (ADR-031): a marker of `kartograf-store/1`, a marker of another schema, the marker of another tool, no marker with or without a layout | `refusal`, `Refusal`, `MARKER`, `MARKER_SCHEMA`, `OTHER_MARKERS` |

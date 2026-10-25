@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from archiwista.sources import (
+    DefaultRootAdapter,
     EntryMeta,
     Footprint,
     GeoAdapter,
@@ -75,6 +76,7 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
         PartitionedAdapter,
         GeoAdapter,
         LinkCheckAdapter,
+        DefaultRootAdapter,
         SheetGridAdapter,
     ):
         assert not isinstance(adapter, capability)

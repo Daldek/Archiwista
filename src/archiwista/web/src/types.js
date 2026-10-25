@@ -151,10 +151,31 @@
  */
 
 /**
+ * The directory a producer uses for a store when a call names none (`GET /sources`).
+ * Archiwista never uses it; the wizard offers it when it is a store.
+ *
+ * @typedef {object} DefaultRoot
+ * @property {string} path - The directory; it may not exist.
+ * @property {"default"|"env"|"file"} source - Where the producer's settings found it:
+ *   `default` (under the data directory), `env` (an environment variable) or `file`
+ *   (`nogat.toml`).
+ * @property {string|null} name - The variable or the table that gave it.
+ * @property {boolean} exists - Whether it is a directory.
+ * @property {boolean} marked - Whether it holds the producer's store marker.
+ * @property {string} message - Description of the root, in the language of the request.
+ */
+
+/**
+ * A producer plugin of `GET /sources`: its state and its default store root.
+ *
+ * @typedef {SourceInfo & {default_root: DefaultRoot|null}} SourceListItem
+ */
+
+/**
  * Every registered producer plugin, ordered by producer.
  *
  * @typedef {object} SourceList
- * @property {SourceInfo[]} items
+ * @property {SourceListItem[]} items
  */
 
 /**

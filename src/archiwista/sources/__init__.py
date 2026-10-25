@@ -2,6 +2,7 @@
 
 from archiwista.sources.protocol import (
     CoordinateTransformer,
+    DefaultRootAdapter,
     FloatArray,
     GeoAdapter,
     LinkCheckAdapter,
@@ -12,6 +13,8 @@ from archiwista.sources.protocol import (
     SourceFactory,
 )
 from archiwista.sources.types import (
+    DefaultRoot,
+    DefaultRootSource,
     EntryKind,
     EntryMeta,
     Footprint,
@@ -32,6 +35,9 @@ from archiwista.sources.types import (
 
 __all__ = [
     "CoordinateTransformer",
+    "DefaultRoot",
+    "DefaultRootAdapter",
+    "DefaultRootSource",
     "EntryKind",
     "EntryMeta",
     "FloatArray",

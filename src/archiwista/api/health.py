@@ -7,8 +7,10 @@ and whether answers about the store are stale, the preview cache with the
 render processes and the last scan of every project's own data. ``archiwista
 status --json`` prints the same model (``read_health``; without previews and
 own data: the command runs no render pool and no jobs).
-``/sources`` lists the producer plugins with a description of their
-state and of its fix.
+``/sources`` lists the producer plugins with a description of their state and
+of its fix, and the directory a producer uses for a store when a call names
+none (``default_root``): the first-run wizard offers it. Producers size that
+directory while they report it, so ``/health``, which is polled, leaves it out.
 """
 
 from importlib.metadata import version
@@ -19,20 +21,26 @@ from fastapi import APIRouter, Depends, Request
 from archiwista.api.dependencies import index_queries, plugin_registry, settings_service
 from archiwista.api.errors import problem_responses
 from archiwista.api.models import (
+    DefaultRootInfo,
     Health,
     OwnDataState,
     PreviewsState,
     SourceInfo,
     SourceList,
+    SourceListItem,
 )
 from archiwista.auth import Principal
 from archiwista.config import AppSettings, SettingsService
-from archiwista.doctor import source_check
+from archiwista.doctor import default_root_check, source_check
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.previews.pool import RenderPool
 from archiwista.security import current_principal
-from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
+from archiwista.sources.registry import (
+    APP_DISTRIBUTION,
+    PluginRegistry,
+    read_default_root,
+)
 
 router = APIRouter(tags=["health"])
 
@@ -49,6 +57,27 @@ def source_infos(registry: PluginRegistry) -> list[SourceInfo]:
         check = source_check(state, required=False)
         infos.append(SourceInfo.of(state, check.message, check.fix))
     return infos
+
+
+def source_list(registry: PluginRegistry) -> SourceList:
+    """Return every producer plugin with its state, fix and default store root.
+
+    The root is asked of each available plugin that has one: unlike
+    ``source_infos``, which the polled ``/health`` uses, this may walk the
+    whole directory (the producer sizes it).
+    """
+    items = []
+    for info in source_infos(registry):
+        root = read_default_root(registry, info.producer)
+        shown = (
+            None
+            if root is None
+            else DefaultRootInfo.of(
+                root, default_root_check(info.producer, root).message
+            )
+        )
+        items.append(SourceListItem.listed(info, shown))
+    return SourceList(items=items)
 
 
 def read_health(
@@ -115,5 +144,8 @@ def list_sources(principal: _Principal, registry: _Registry) -> SourceList:
 
     A source other than `available` is a state, not a failure: requests
     needing it answer `503 source_unavailable` or `503 source_incompatible`.
+    `default_root` is the directory the producer uses for a store when a call
+    names none (path, where its settings found it, whether it exists and holds
+    the store marker): the first-run wizard offers it, Archiwista never uses it.
     """
-    return SourceList(items=source_infos(registry))
+    return source_list(registry)

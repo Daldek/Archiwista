@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
+import pytest
 from playwright.sync_api import Browser, Page, expect
 
 import archiwista.web
@@ -192,6 +193,67 @@ def test_first_run_wizard_saves_settings(
     assert saved.project_dirs == (store.projects_dir,)
     query = dict(parse_qsl(urlsplit(page.url).query))
     assert query == {"view": "setup", "step": "save", "saved": "1"}
+    tab.assert_clean()
+
+
+def test_first_run_wizard_offers_the_default_root_and_enters_it_on_a_click(
+    serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf's own store is offered under the empty field, entered by a click."""
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
+    served = serve()
+    page = tab.page
+    open_shell(page, served.token_url())
+    field = page.get_by_label("Katalog Kartografa")
+    offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
+    use = page.get_by_role("button", name="Użyj tego katalogu")
+
+    expect(offer).to_contain_text(str(store.root))
+    expect(offer).to_contain_text("zmienna KARTOGRAF_ROOT")
+    expect(field).to_have_value("")  # offered, not entered
+    page.get_by_label("Nazwa", exact=True).fill("Zespół")
+    use.click()
+    expect(field).to_have_value(str(store.root))
+    expect(use).to_have_count(0)  # it is entered: nothing left to offer
+    for _ in range(3):
+        page.get_by_role("button", name="Dalej").click()
+    page.get_by_role("button", name="Zapisz i zindeksuj").click()
+    expect(page.get_by_text("Zapisano ustawienia.")).to_be_visible()
+    expect(page.get_by_text("Magazyn „Zespół” zindeksowany")).to_be_visible(
+        timeout=60_000
+    )
+
+    assert served.settings().stores == (zespol(store.root),)
+    tab.assert_clean()
+
+
+@pytest.mark.parametrize("exists", [True, False], ids=["no-marker", "no-directory"])
+def test_first_run_wizard_offers_no_default_root_that_is_no_store(
+    serve: Serve,
+    tab: Tab,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exists: bool,
+) -> None:
+    """A default root without the marker, or that is not there, is not offered."""
+    root = tmp_path / "kartograf"
+    if exists:
+        root.mkdir()
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(root))
+    served = serve()
+    page = tab.page
+    with page.expect_response(re.compile(r"/api/v1/sources$")):
+        open_shell(page, served.token_url())
+    # Two frames after the answer, the page has drawn what it made of it.
+    page.evaluate(
+        "() => new Promise((done) => requestAnimationFrame(()"
+        " => requestAnimationFrame(done)))"
+    )
+
+    expect(page.get_by_label("Katalog Kartografa")).to_be_visible()
+    expect(page.get_by_role("button", name="Użyj tego katalogu")).to_have_count(0)
+    assert root.exists() == exists  # looking at it created nothing
     tab.assert_clean()
 
 

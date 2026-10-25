@@ -30,6 +30,7 @@ from kartograf import (
     describe_segment,
     file_footprint,
     find_sheets_for_bbox,
+    get_config,
     get_project_status,
     iter_store,
     link_target,
@@ -41,12 +42,13 @@ from kartograf import (
 )
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS
-from archiwista.adapter.kartograf.marker import refusal
+from archiwista.adapter.kartograf.marker import MARKER, refusal
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
     CoordinateTransformer,
+    DefaultRoot,
     EntryMeta,
     FloatArray,
     Footprint,
@@ -88,9 +90,9 @@ class KartografAdapter:
     -----
     Besides ``SourceAdapter`` it implements every optional capability:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
-    ``LinkCheckAdapter`` and ``SheetGridAdapter``. All methods may run in
-    several threads at once; one iterator of ``iter_entries`` belongs to one
-    thread.
+    ``LinkCheckAdapter``, ``SheetGridAdapter`` and ``DefaultRootAdapter``. All
+    methods may run in several threads at once; one iterator of ``iter_entries``
+    belongs to one thread.
     """
 
     producer = PRODUCER
@@ -138,6 +140,30 @@ class KartografAdapter:
             detail=refused.detail,
             reason=refused.reason,
             hint=refused.hint,
+        )
+
+    def default_root(self) -> DefaultRoot:
+        """Report the store root Kartograf uses when a call names none.
+
+        Read from ``get_config().store``: ``KARTOGRAF_ROOT``, ``[kartograf]
+        root`` of ``nogat.toml``, else ``<data_dir>/kartograf`` (DEV-19.2).
+        Archiwista names the store in every call, so it never uses this
+        directory; it is an offer. Kartograf sizes the root while it reports
+        it, which walks all of it, so ask for an answer a person waits for.
+
+        Returns
+        -------
+        DefaultRoot
+            The directory, the layer of the settings that gave it, whether it
+            exists and whether it holds ``kartograf-store.json``.
+        """
+        store = get_config().store
+        return DefaultRoot(
+            path=store.root,
+            source=store.source,
+            name=store.name,
+            exists=store.exists,
+            marked=store.exists and os.path.isfile(store.root / MARKER),
         )
 
     def iter_entries(

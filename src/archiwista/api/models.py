@@ -6,7 +6,8 @@ complete answer. Field names are English ``snake_case``; texts for people
 that says ``Accept-Language: pl``. Stores are named by their
 configured id and files by paths relative to the store; the only absolute
 paths are the file card's "copy path" (``CopyPath``), given for this
-computer and for every alias of the store (SPEC 4.6), and the settings.
+computer and for every alias of the store (SPEC 4.6), the settings and the
+default store root of a producer that ``/sources`` reports.
 
 Answers from the index carry ``stale`` and ``stale_stores``: a store that is
 unavailable (a disconnected share) is still answered from the index as it
@@ -85,7 +86,13 @@ from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
-from archiwista.sources import LocationKind, SourceState, SourceStatus
+from archiwista.sources import (
+    DefaultRoot,
+    DefaultRootSource,
+    LocationKind,
+    SourceState,
+    SourceStatus,
+)
 
 type Geometry = dict[str, Any]
 type YearRange = tuple[int | None, int | None]
@@ -278,6 +285,22 @@ _SOURCE_EXAMPLE = {
     ),
     "fix": None,
 }
+_DEFAULT_ROOT_EXAMPLE = {
+    "path": "/home/anna/.local/share/nogat/kartograf",
+    "source": "default",
+    "name": None,
+    "exists": True,
+    "marked": True,
+    "message": message(
+        "doctor.default_root",
+        "en",
+        producer="kartograf",
+        path="/home/anna/.local/share/nogat/kartograf",
+        origin=message("doctor.default_root_default", "en"),
+        state=message("doctor.default_root_marked", "en"),
+    ),
+}
+_LISTED_SOURCE_EXAMPLE = {**_SOURCE_EXAMPLE, "default_root": _DEFAULT_ROOT_EXAMPLE}
 _PROJECT_EXAMPLE = {
     "project": "raba",
     "name": "Raba",
@@ -1622,12 +1645,67 @@ class SourceInfo(BaseModel):
         )
 
 
+class DefaultRootInfo(BaseModel):
+    """The directory a producer uses for a store when a call names none."""
+
+    model_config = _examples(_DEFAULT_ROOT_EXAMPLE)
+
+    path: str = Field(description="The directory; it may not exist.")
+    source: DefaultRootSource = Field(
+        description=(
+            "Where the producer's settings found it: `default` (under the data"
+            " directory), `env` (an environment variable) or `file` (`nogat.toml`)."
+        )
+    )
+    name: str | None = Field(
+        description="The variable or the table that gave it; null for the default."
+    )
+    exists: bool = Field(description="Whether it is a directory.")
+    marked: bool = Field(
+        description="Whether it holds the producer's store marker (a store)."
+    )
+    message: str = Field(description="Description of the root.")
+
+    @classmethod
+    def of(cls, root: DefaultRoot, message: str) -> Self:
+        """Return the model of a producer's default root with its description."""
+        return cls(
+            path=str(root.path),
+            source=root.source,
+            name=root.name,
+            exists=root.exists,
+            marked=root.marked,
+            message=message,
+        )
+
+
+class SourceListItem(SourceInfo):
+    """A producer plugin of ``GET /sources``: its state and its default store root."""
+
+    model_config = _examples(_LISTED_SOURCE_EXAMPLE)
+
+    default_root: DefaultRootInfo | None = Field(
+        description=(
+            "The directory the producer uses for a store when a call names none:"
+            " nothing in it is ever used by Archiwista, it is an offer for the"
+            " first-run wizard. Null when the plugin is not available or the"
+            " producer has no such directory. Reading it may take as long as"
+            " the producer needs to size it."
+        )
+    )
+
+    @classmethod
+    def listed(cls, info: SourceInfo, root: DefaultRootInfo | None) -> Self:
+        """Return the listing of a plugin: its state and its default root."""
+        return cls(**info.model_dump(), default_root=root)
+
+
 class SourceList(BaseModel):
     """Every registered producer plugin, ordered by producer."""
 
-    model_config = _examples({"items": [_SOURCE_EXAMPLE]})
+    model_config = _examples({"items": [_LISTED_SOURCE_EXAMPLE]})
 
-    items: list[SourceInfo]
+    items: list[SourceListItem]
 
 
 class Progress(BaseModel):
