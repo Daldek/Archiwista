@@ -15,9 +15,9 @@ commit that introduced this file).
 | Nogat standard 2.1, documentation | in progress | English and current: CHANGELOG, CLAUDE.md, CONTRIBUTING, SECURITY, USAGE, AGENT_API, PRD, SCOPE, this file; open: README, ARCHITECTURE, DECISIONS, SPEC, plans, reports (Next 1.2) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | in progress | done: vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` (step 1 of Next 1.1); open: error texts that follow `Accept-Language` (step 2 of Next 1.1); deviations in CLAUDE.md: AGI-6.4 until then, outcome statuses and no result envelope for good |
 | Data output (DEV §19) | planned | waits for the producers' development heads; call sites in Next 2 |
-| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog). Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra), I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem), the re-pin to IMGWTools `7e2114e` (`30175c1`: machine codes, producer fields, `skip_versions`, `py.typed`), I3 commit 1 (`3568ba3`, `SCHEMA_VERSION` 7: slot keys and names, provider, observations as history, segments described by the adapter) and I3 commit 2 (`b4c07df`: the current version of a slot from the producer). Open: I3 commit 3 (segment ownership), then I4 to I7. Next 6 gives the exact starting points |
+| IMGWTools source (plan `docs/plans/2026-10-25-archiwista-next.md`, Part 2) | in progress | local branch `feature/imgw-source`, from `plan/next-version`, both on `chore/nogat-2.1` at `093ea8c` (the message catalog). Done, each with a green gate: I1 (`EntryMeta` core, the extra `archiwista[imgw]`, the adapter and its probe), I2 commit 1 (the entry point, ADR 0032, the CI job without the extra), I2 commit 2 (`StoreConfig.imgw`, nesting by markers, the wizard field, the scan that skips an unavailable source, the producer of each problem), the re-pin to IMGWTools `7e2114e` (`30175c1`: machine codes, producer fields, `skip_versions`, `py.typed`), I3 commit 1 (`3568ba3`, `SCHEMA_VERSION` 7: slot keys and names, provider, observations as history, segments described by the adapter), I3 commit 2 (`b4c07df`: the current version of a slot from the producer), I3 commit 3 part 1 (`0bf1071`: a scan of one segment goes to the producer that owns it; full gate) and part 2 (`3340b12`: an IMGW dataset has its family for a product; reduced gate). Open: I3 commit 3 part 3 (the read-only store test and the previous-schema rebuild test), then I4 to I7. Next 6 gives the exact starting points |
 | Gate | green | `scripts/gate.sh` passes on every commit of `chore/nogat-2.1`: ruff format, ruff check, mypy, pytest with coverage, `scripts/check-commits.sh`. The full run takes 25 to 33 minutes; start it on a machine without other test suites running: while others ran, one run each failed `tests/integration/test_jobs.py::test_preview_build_item_timeout_fails_item_only` (a build limit of 1 s) and `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (expectations of 5 s), and one run hung in `tests/e2e/test_timeline.py`; each of them passes alone and the rerun of the gate passed |
-| CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; nothing is pushed |
+| CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; `feature/imgw-source` is on GitHub, and no run of either workflow is known |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
@@ -245,7 +245,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `ARCHIWISTA_TEST_MISSING_PACKAGES`), `tests/e2e/test_setup_imgw.py` (the wizard indexes a store
      of only IMGW files through the scheduler), `test_store_summary.py`. The CHANGELOG, ARCHITECTURE
      4 and 10, SPEC 5.5, USAGE and ADR 0032 are updated.
-   - *I3 (commit 1 `3568ba3` is done: gate 1307 passed, coverage 92.48%, 36 min 45 s, load about 3; commit 2 `b4c07df` is done: gate 1341 passed, coverage 92.13%, 34 min 10 s, load about 2; commit 3 is open).* Facts: the generic scan already indexes
+   - *I3 (commit 1 `3568ba3` is done: gate 1307 passed, coverage 92.48%, 36 min 45 s, load about 3; commit 2 `b4c07df` is done: gate 1341 passed, coverage 92.13%, 34 min 10 s, load about 2; commit 3 is under way: part 1 `0bf1071` and part 2 `3340b12` are done, part 3 is open).* Facts: the generic scan already indexes
      IMGW entries (`complete` fixture: 11 versions in 8 slots, none current; slots
      `archives/versions/<server dir>/<file stem>`, `series/versions/<slug>`, `stations/versions`, and
      the ČHMÚ catalog in `stations/versions/chmi_stations`); `imgwtools.current_version(root, slot=)`
@@ -291,9 +291,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      dataset would walk the whole store once per dataset) refuses with `UnsupportedError`, as the
      link check does, instead of the `ValueError` of `scan_store`; there the segment is a label only.
      ADR 0032 decision 7, the SPEC 4.3 tables, ARCHITECTURE 4 and the CHANGELOG went with commit 1;
-     decisions 8 and 9 and SPEC 4.4 go with commits 2 and 3. IMGW segments have no product
-     (`segments.product` is NULL, IMGWTools has none), so the store view lists them under "unknown
-     product" until the interface step names products (I8).
+     decisions 8, 9 and 10 and SPEC 4.4 go with commits 2 and 3. An IMGW dataset has its family for
+     a product (decided by the coordinator, ADR 0032 decision 10), so the store view groups the
+     datasets instead of listing them under "unknown product".
    - *I3 commits 2 and 3: what building commit 1 added to the design.* `imgwtools.current_version` on the
      fixtures: every slot of `complete` and `complete_pl_cz` answers its newest version (the hydro
      archive `2026-10-19_b6a19f65`, the series `2026-10-19_9a64f921`); in `corrupt` (`invalid_json`) and
@@ -363,6 +363,43 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `test_store_summary.py`. ADR 0032 decision 8, SPEC 4.4 and 4.8.1, ARCHITECTURE 2.1, 5.1 and 10 and
      the CHANGELOG are written. The current version of a store with 11 versions in 8 slots makes 3 of
      them "unused" in the clean-up report (before it, all 11 were).
+   - *I3 commit 3 as built (part 1 `0bf1071`, part 2 `3340b12`; part 3 is not started).* Part 1 (full gate:
+     1345 passed, coverage 92.16%, 31 min 26 s): `IndexQueries.segment_producers(store, segment)` (the
+     owners, sorted, from `segments.producer`); `run_scan` loads the adapters of the available directories
+     first (so the notices `source_skipped` now come before the scans), then for a `segment` takes the
+     owners, or for a name nobody owns the producers that scan by segment (`_segment_scanners` in
+     `jobs/worker.py`), and refuses with `UnsupportedError` (`job.segment_scan_unsupported`, no reason)
+     before anything is scanned when an asked producer is no `SegmentedAdapter`, which includes a name
+     nobody owns in a store with no such producer (an IMGW-only store). `ScanRequest.segment`, `types.js`,
+     `SegmentRef` and the protocol doc say so. Tests: `test_queries_segment_producers_name_the_owners_of_a_segment`
+     and `tests/integration/test_segment_scan.py` (Kartograf-only store: a name the index knows and one it
+     does not; IMGW-only store: a known and an unknown name refused, the index unchanged; mixed store: the
+     Kartograf segment scanned alone, the IMGW dataset refused with no progress event). ADR 0032 decision 9,
+     SPEC 4.4, ARCHITECTURE 5.1, AGENT_API and the CHANGELOG are written.
+   - *Part 2 and the product of an IMGW dataset.* The coordinator's wording was "the dataset family label
+     derived from the dataset key"; SPEC 4.2.1 says Archiwista never derives a product from a key, so the
+     adapter reads the family from the registry entry the key names (`DatasetDescriptor.kind`: `hydro`,
+     `meteo`; the dataset without a kind, PMAXTP, has its slug `pmaxtp`; a station catalog `stations`; an
+     unrecognised key none): the same four labels, and the producer's own word for them. Tests: the contract
+     of `describe_segment` over every dataset of the registry and
+     `test_the_store_view_groups_the_datasets_of_both_providers_by_their_family`; ADR 0032 decision 10 (and
+     decision 7 amended), SPEC 4.3, ARCHITECTURE and the CHANGELOG. Part 2 was checked with the reduced gate
+     (`ruff format --check`, `ruff check`, `mypy`, `scripts/check-commits.sh`: on 2026-10-25 the coordinator
+     dropped pytest and the full gate before commits); the 93 tests of `tests/contract/test_imgw.py` and
+     `tests/integration/test_imgw_index.py` had passed before that, and the full gate of part 2 was stopped.
+   - *Part 3 (open).* Move `_tree` and `_read_only` of `tests/integration/test_read_only_store.py` to
+     `tests/fixtures/read_only_mount.py` (it has an identical `tree()`; add `set_read_only(directory, *,
+     read_only)`; `tests/integration/test_scanner.py` and `tests/e2e/test_acceptance.py` keep their own
+     copies). Read-only test in `tests/integration/test_imgw_index.py`: `open_env("complete_pl_cz")`, modes
+     555/444, `tree` equal after a full and an incremental scan, the modes restored in a `finally`, the
+     versions and problems equal to `iter_store`, a `read_meta` of one entry. Previous-schema test in the
+     same file: scan, close the writer and the queries of the `_Env`, on the index file `DROP TABLE
+     observations`, `ALTER TABLE slots DROP COLUMN slot_key`, `ALTER TABLE versions DROP COLUMN provider`
+     (no index or trigger names them) and `PRAGMA user_version = SCHEMA_VERSION - 1`; `initialize` says
+     `rebuilt` with `index_info.rebuilt_from` `6` and the tables empty; a new `IndexWriter`, `sync_stores`
+     and `scan_store(mode="full")` give back the same versions, current versions, keys, providers and
+     observations; a `StateStore` filled with `tests.fixtures.permissions.add_people` keeps its file digest
+     and `snapshot()` (as `test_index_rebuild_leaves_state_untouched` does). Then I4 to I7.
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,
