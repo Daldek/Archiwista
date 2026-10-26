@@ -301,6 +301,50 @@ MESSAGES = {
             " koniec."
         ),
     ),
+    "conflict_project": Text(
+        (
+            "The project already has a job: {kind}, {state} (job {job}). Wait for"
+            " it to finish."
+        ),
+        (
+            "Projekt ma już zadanie: {kind}, {state} (zadanie {job}). Poczekaj na"
+            " jego koniec."
+        ),
+    ),
+    "kind_project_download": Text(
+        "project download",
+        "pobranie projektu",
+    ),
+    "kind_project_repin": Text(
+        "repin of a project task",
+        "ponowne przypięcie zadania projektu",
+    ),
+    "kind_project_check": Text(
+        "project check at the source",
+        "sprawdzenie projektu u źródła",
+    ),
+    "kind_project_verify": Text(
+        "project verification",
+        "weryfikacja projektu",
+    ),
+    "project_failed": Text(
+        "None of the {count} tasks of the project succeeded.",
+        "Żadne z {count} zadań projektu się nie powiodło.",
+    ),
+    "project_check_failed": Text(
+        "The source could be asked about none of the {count} pinned files.",
+        "Źródła nie udało się zapytać o żaden z {count} przypiętych plików.",
+    ),
+    "project_not_indexed": Text(
+        (
+            "The index does not show the project's new pins yet: the next scan of"
+            " the project directories reads them."
+        ),
+        (
+            "Indeks nie pokazuje jeszcze nowych przypięć projektu: odczyta je"
+            " najbliższy skan katalogów projektów."
+        ),
+    ),
     "cancel_finished": Text(
         'Job "{job}" has already ended ({state}); there is nothing to cancel.',
         "Zadanie „{job}” już się zakończyło ({state}); nie ma czego anulować.",

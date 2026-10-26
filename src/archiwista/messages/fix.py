@@ -64,6 +64,18 @@ MESSAGES = {
         "connect the directory or remove it from the settings.",
         "podłącz katalog albo usuń go z ustawień.",
     ),
+    "project_locked": Text(
+        (
+            "If no program is changing the project now, an interrupted change left"
+            " the lock: remove the directory {lock} and try again. Archiwista does"
+            " not remove it."
+        ),
+        (
+            "Jeśli żaden program nie zmienia teraz projektu, blokadę zostawiła"
+            " przerwana zmiana: usuń katalog {lock} i spróbuj ponownie. Archiwista"
+            " jej nie usuwa."
+        ),
+    ),
     "data_dir": Text(
         "grant write permission to the local data directory.",
         "nadaj prawo zapisu do katalogu danych lokalnych.",

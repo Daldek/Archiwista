@@ -5,12 +5,12 @@ factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
 version of a slot, their parts, coordinate operations, link confirmation,
 sheet grids, the default store root, the producer's commands with the
-availability at the source and the changes of a project's manifest are
+availability at the source, and the changes and runs of a project are
 optional capabilities: a producer without them still satisfies
 ``SourceAdapter``.
 """
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -26,7 +26,9 @@ from archiwista.sources.types import (
     EntryMeta,
     Footprint,
     GeoJSONGeometry,
+    ProjectCheck,
     ProjectInfo,
+    ProjectRun,
     ScanScope,
     SheetGrid,
     SourceContext,
@@ -381,14 +383,18 @@ class ActionAdapter(Protocol):
 
 @runtime_checkable
 class ProjectActionAdapter(Protocol):
-    """Optional capability: change a project's manifest (SPEC 4.7, 9.2; ADR-039).
+    """Optional capability: change and run a project (SPEC 4.7, 9.2; ADR-039, 040).
 
     Create a project bound to a store, add a task (a data command of the
-    producer's catalog with its options) and remove one. Each call is the
-    producer's own: it writes the manifest under the producer's lock and
-    refuses what the producer's command line refuses, as ``ProducerError``
-    with the producer's code, text and ``details.option``. None uses the
-    network or writes the store; the store's files of a removed task stay.
+    producer's catalog with its options) and remove one; download, pin and
+    restore its tasks, compare its pins with the source and verify them in
+    the store. Each call is the producer's own: it writes the manifest under
+    the producer's lock and refuses what the producer's command line refuses,
+    as ``ProducerError`` with the producer's code, text and
+    ``details.option``; a lock that stays past the producer's wait is
+    ``ProjectLockedError``, and nothing of Archiwista removes it. Only the
+    download writes the store, the one the manifest names; only it and the
+    check use the network. The store's files of a removed task stay.
     """
 
     def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
@@ -419,4 +425,75 @@ class ProjectActionAdapter(Protocol):
 
     def remove_project_task(self, directory: Path, *, name: str) -> None:
         """Remove the task ``name`` with its pins; its files stay in the store."""
+        ...
+
+    def download_project(
+        self,
+        directory: Path,
+        *,
+        tasks: Sequence[str] | None = None,
+        upgrade: bool = False,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ProjectRun:
+        """Download, pin and restore the tasks ``tasks`` (``None``: every task).
+
+        Without ``upgrade`` a task not downloaded yet is downloaded and pinned,
+        a pinned task whose versions the store holds is left as it is without
+        the network, and a missing pinned version is restored only with the
+        same SHA-256. With ``upgrade`` the source's newer versions are
+        downloaded and the task is pinned anew. The producer writes the store
+        the manifest names and the manifest after each task; a task that fails
+        keeps its pins and the others run. An interrupt
+        (``KeyboardInterrupt``) is let through. ``on_progress`` and
+        ``on_notice`` receive each event when it happens.
+
+        Raises
+        ------
+        ProjectLockedError
+            The manifest's lock stayed past the producer's wait: left by an
+            interrupted change, or held by another process.
+        ProducerError
+            The producer refused: an invalid manifest, an unknown task, a
+            missing store directory, a store it may not write.
+        """
+        ...
+
+    def check_project(
+        self,
+        directory: Path,
+        *,
+        tasks: Sequence[str] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ProjectCheck:
+        """Compare the pins of the tasks ``tasks`` with what the source has now.
+
+        Uses the network; nothing is downloaded or written but the producer's
+        metadata cache. A task without pins is ``not_downloaded``; a pin the
+        source could not be asked about is ``check_failed``, the others are
+        checked all the same; a store a run would refuse gives one
+        ``conflict`` per task.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused: an invalid manifest, an unknown task, a
+            missing store directory.
+        """
+        ...
+
+    def verify_project(
+        self, directory: Path, *, tasks: Sequence[str] | None = None
+    ) -> ProjectCheck:
+        """Verify the pinned files of the tasks ``tasks`` in the store.
+
+        SHA-256, size and sidecar of each pinned version: ``ok``, ``missing``
+        or ``corrupt``. No network; nothing is written.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused: an invalid manifest, an unknown task, a
+            missing store directory.
+        """
         ...

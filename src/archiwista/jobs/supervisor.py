@@ -18,8 +18,9 @@ Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
 whether it works on a configured store, needs the network (refused in
 offline mode, at most two network jobs run), runs alone (one ``preview``
 at a time, the next ones wait in the queue), conflicts with active jobs (one
-job writing a store's index at a time, ``scan`` or ``footprints``; another
-one is a ``JobConflictError``), joins one (a ``preview`` of contents an
+job writing a store's index at a time, ``scan`` or ``footprints``; one job of
+a project at a time, of the ``project_*`` kinds; another one is a
+``JobConflictError``), joins one (a ``preview`` of contents an
 active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
 job) or overlaps one (a ``download`` of a call an active download of the
@@ -49,10 +50,10 @@ What a principal sees of the jobs follows their scope (plan v0.2 "Zadania"),
 read from ``store`` and ``params``: a store or versions (``version:`` refs)
 everyone sees, and so a job of no project (the ``own_scan`` of every
 project); a job of projects only (``params.project``, ``file:`` and
-``snapshot:`` refs) is seen by whoever sees one of them. ``list``, ``get``
-and ``events`` take the principal's ``visible`` projects (every project by
-default); a ``preview`` job then shows only the refs and failures of visible
-projects, its counts staying whole (A-ADR-029).
+``snapshot:`` refs; the ``project_*`` kinds) is seen by whoever sees one of
+them. ``list``, ``get`` and ``events`` take the principal's ``visible``
+projects (every project by default); a ``preview`` job then shows only the
+refs and failures of visible projects, its counts staying whole (A-ADR-029).
 """
 
 import base64
@@ -94,6 +95,7 @@ from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
     INTERRUPTED_EXIT,
     JOB_KINDS,
+    PROJECT_KINDS,
     REASON_INTERRUPTED,
     REASON_WORKER_CRASHED,
     STOP_TIMEOUT_S,
@@ -420,6 +422,11 @@ def _call_key(store: str | None, params: JsonObject) -> object:
     return (store, params["producer"], params["command"], options)
 
 
+def _project_key(store: str | None, params: JsonObject) -> object:
+    """Return the key of a job of a project's manifest: the project."""
+    return params["project"]
+
+
 def _join_preview(active: JsonObject, new: JsonObject) -> JsonObject | None:
     """Add a ``preview`` request's refs to an active build of all its contents.
 
@@ -478,6 +485,9 @@ _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
 _AVAILABILITY_JOIN = JobJoin(_join_availability, ACTIVE_STATES)
 # One snapshot of a file at a time; those of other files run side by side.
 _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
+# One job of a project at a time (SPEC 5.6): its producer writes the manifest
+# under a lock that a second one would wait for.
+_PROJECT_CONFLICT = JobConflict("project", _project_key, "job.conflict_project")
 # A download of the call an active download of the store runs (SPEC 5.6).
 _DOWNLOAD_OVERLAP = JobOverlap(_call_key, "job.overlapping")
 # The rule of each kind, one line per kind of ``JobKind``.
@@ -491,6 +501,10 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "availability": JobRule(store=False, network=True, join=_AVAILABILITY_JOIN),
     "check": JobRule(store=True, network=True),
     "download": JobRule(store=True, network=True, overlap=_DOWNLOAD_OVERLAP),
+    "project_download": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
+    "project_repin": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
+    "project_check": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
+    "project_verify": JobRule(store=False, conflict=_PROJECT_CONFLICT),
 }
 
 
@@ -730,7 +744,7 @@ class JobSupervisor:
             Configured store id: required by a kind working on a store
             (``scan``, ``footprints``, ``link_check``, ``check``,
             ``download``), refused by one working on none (``preview``,
-            ``own_scan``, ``snapshot``, ``availability``).
+            ``own_scan``, ``snapshot``, ``availability``, ``project_*``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -747,7 +761,11 @@ class JobSupervisor:
             ``command`` (non-empty texts) and ``options`` (a JSON object, the
             call's options; ``{}`` by default); ``download``: those of
             ``check`` and ``plan_job`` (the ``check`` job whose kept plan the
-            run runs, ``None`` by default).
+            run runs, ``None`` by default); ``project_download``,
+            ``project_check``, ``project_verify``: ``project`` (its key) and
+            ``tasks`` (a list of task names, ``None`` for every task, the
+            default); ``project_repin``: ``project`` and ``tasks`` with one
+            task.
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -769,8 +787,9 @@ class JobSupervisor:
         OfflineModeError
             A network job while offline mode is on; nothing is recorded.
         JobConflictError
-            Another job writes the store's index (``scan``, ``footprints``);
-            it names that job.
+            Another job writes the store's index (``scan``, ``footprints``),
+            or the project has an active job (``project_*``); it names that
+            job.
         ValueError
             An unknown kind, a store missing or given against the kind's
             rule, or invalid parameters.
@@ -1692,6 +1711,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return _check_params(params)
     if kind == "download":
         return _download_params(params)
+    if kind in PROJECT_KINDS:
+        return _project_params(kind, params)
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
@@ -1708,6 +1729,33 @@ def _availability_params(params: Mapping[str, object]) -> JsonObject:
     ):
         raise ValueError(f"invalid availability parameters {dict(params)!r}"[:300])
     return {**{name: params[name] for name in names}, "force": force}
+
+
+def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
+    """Check a project job's project and tasks; a repin takes exactly one task.
+
+    ``tasks`` is a list of task names, a name given twice kept once, or
+    ``None``, every task of the project.
+    """
+    project = params.get("project")
+    tasks = params.get("tasks")
+    if (
+        set(params) - {"project", "tasks"}
+        or not (isinstance(project, str) and project)
+        or not (
+            (tasks is None and kind != "project_repin")
+            or (
+                isinstance(tasks, list | tuple)
+                and tasks
+                and all(isinstance(name, str) and name for name in tasks)
+            )
+        )
+    ):
+        raise ValueError(f"invalid {kind} parameters {dict(params)!r}"[:300])
+    names = None if tasks is None else list(dict.fromkeys(cast(list[str], tasks)))
+    if kind == "project_repin" and (names is None or len(names) != 1):
+        raise ValueError(f"a project_repin job takes one task, got {tasks!r}"[:300])
+    return {"project": project, "tasks": names}
 
 
 def _check_params(params: Mapping[str, object]) -> JsonObject:

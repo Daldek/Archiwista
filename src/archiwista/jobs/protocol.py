@@ -8,7 +8,8 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
 
 - ``progress``: how far the job is, with integers ``current`` and ``total``
   and counts of the job's kind (a scan adds ``segment`` and ``entries``, a
-  download the ``unit``, ``status`` and ``message`` of the producer's event);
+  download and a project's download the ``unit``, ``status`` and ``message``
+  of the producer's event);
 - ``notice``: something the person should know: ``level`` (``info`` or
   ``warning``), a stable ``code`` and a ``message`` in Polish, the language of
   the texts a worker stores;
@@ -42,7 +43,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -61,12 +62,25 @@ type JobKind = Literal[
     "availability",
     "check",
     "download",
+    "project_download",
+    "project_repin",
+    "project_check",
+    "project_verify",
 ]
 type MessageType = Literal["progress", "notice", "result", "partial", "error"]
 type NoticeLevel = Literal["info", "warning"]
 type JsonObject = dict[str, Any]
 
 JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
+# The kinds of a job of a project's manifest (``params.project``, no store):
+# a download (pin or restore), a repin of one task, a check of the pins
+# against the source and a verification of the pinned files (ADR-040).
+PROJECT_KINDS: tuple[JobKind, ...] = (
+    "project_download",
+    "project_repin",
+    "project_check",
+    "project_verify",
+)
 MESSAGE_TYPES: tuple[MessageType, ...] = get_args(MessageType.__value__)
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
 _PRINCIPAL_KINDS: tuple[PrincipalKind, ...] = get_args(PrincipalKind.__value__)
@@ -113,7 +127,8 @@ class JobSpec:
     store : str or None
         Configured id of the store the job works on; ``None`` for a kind
         working on no store (``preview``, ``own_scan``, ``snapshot``,
-        ``availability``).
+        ``availability``, the ``project_*`` kinds: a project's store is the
+        one its manifest names).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
@@ -121,7 +136,8 @@ class JobSpec:
         ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``;
         ``availability``: ``area_id``, ``producer``, ``product`` and
         ``force``; ``check``: ``producer``, ``command`` and ``options``;
-        ``download``: those of ``check`` and ``plan_job``).
+        ``download``: those of ``check`` and ``plan_job``; the ``project_*``
+        kinds: ``project`` and ``tasks``, one task for ``project_repin``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

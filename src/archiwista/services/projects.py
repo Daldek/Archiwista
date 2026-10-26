@@ -12,6 +12,8 @@ may change the project (``project.write``), then record the project in the
 index at once, as a scan reads it. A new project lies where a scan finds it,
 below a configured project directory, and names a configured store, never
 the producer's default root. None of them uses the network or writes a store.
+``project_directory`` and ``project_store`` give the jobs of a project
+(ADR-040) its directory and the configured store its manifest names.
 """
 
 import os
@@ -24,6 +26,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import (
     CommandRequestError,
+    ConflictError,
     NotFoundError,
     PathOutsideRootError,
     UnsupportedError,
@@ -396,7 +399,7 @@ def add_project_task(
     refuse_path_options(
         command_info(actions(registry, project.producer), call), options
     )
-    directory = _manifest_directory(project, settings)
+    directory = project_directory(project, settings)
     adapter.add_project_task(directory, name=name, command=command, options=options)
     return _record(registry, settings, index_path, project.producer, directory)
 
@@ -435,7 +438,7 @@ def remove_project_task(
     """
     project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
     adapter = project_actions(registry, project.producer)
-    directory = _manifest_directory(project, settings)
+    directory = project_directory(project, settings)
     adapter.remove_project_task(directory, name=name)
     return _record(registry, settings, index_path, project.producer, directory)
 
@@ -475,13 +478,45 @@ def _changed_project(
     return record.project
 
 
-def _manifest_directory(project: ProjectRef, settings: AppSettings) -> Path:
-    """Return a project's directory, refused when it left the project directories."""
+def project_directory(project: ProjectRef, settings: AppSettings) -> Path:
+    """Return a project's directory, refused when it left the project directories.
+
+    Raises
+    ------
+    PathOutsideRootError
+        The directory or its manifest resolves outside every configured
+        project directory (e.g. through a symbolic link planted after the
+        scan), or no longer lies below one.
+    """
     directory = Path(project.path)
     _require_inside(
         directory, PROJECT_MANIFESTS.get(project.producer), settings.project_dirs
     )
     return directory
+
+
+def project_store(project: ProjectRef, settings: AppSettings) -> Path:
+    """Return the producer's directory of the configured store a project names.
+
+    Archiwista writes only configured stores (plan of 2026-10-25, rule 1): a
+    project whose manifest names another store is refused before its producer
+    writes there.
+
+    Raises
+    ------
+    ConflictError
+        The manifest names no configured store with a directory of the
+        project's producer (reason ``unknown_store``).
+    """
+    config = None if project.store is None else settings.store(project.store)
+    root = None if config is None else config.roots().get(project.producer)
+    if root is None:
+        raise ConflictError(
+            message("problem.unknown_store", store_dir=project.store_dir),
+            reason="unknown_store",
+            hint=message("fix.unknown_store", store_dir=project.store_dir),
+        )
+    return root
 
 
 def _record(

@@ -444,6 +444,31 @@ class JobConflictError(ConflictError):
         self.state = state
 
 
+class ProjectLockedError(ConflictError):
+    """A project's manifest lock stayed past its producer's wait (``409 conflict``).
+
+    The lock was left by a change of the manifest that was interrupted, or
+    another process holds it. Reason ``project_locked``; ``details["lock"]``
+    names the lock and the hint says how to remove it: Archiwista never
+    removes it itself (SPEC 5.6, 14).
+
+    Parameters
+    ----------
+    message : str
+        Description naming the lock, with the producer's own text.
+    lock : str
+        The lock's path.
+    hint : str
+        How to remove a lock that no process holds.
+    """
+
+    default_reason = "project_locked"
+
+    def __init__(self, message: str, *, lock: str, hint: str) -> None:
+        super().__init__(message, details={"lock": lock}, hint=hint)
+        self.lock = lock
+
+
 class OfflineModeError(ArchiwistaError):
     """An action needs the network while offline mode is on (``409 conflict``)."""
 

@@ -29,7 +29,15 @@ input, runs it and reports in JSON Lines on standard output
 - ``download``: a run of a producer's command in the store (the producer's
   ``ActionAdapter.run``, A5), of the plan a ``check`` job kept when one is
   named; the slots of the files it reports are read again into the index
-  when it ends, those of the units it named also when it is interrupted.
+  when it ends, those of the units it named also when it is interrupted;
+- ``project_download`` and ``project_repin``: a download of a project's tasks
+  into the configured store its manifest names (``download_project`` of the
+  producer's ``ProjectActionAdapter``, A8), a repin with the source's newer
+  versions; the manifest is read again before and after, and the slots of the
+  pinned files are read again into the index;
+- ``project_check`` and ``project_verify``: the project's pins compared with
+  the source (``check_project``) or verified in the store
+  (``verify_project``), their states in the job's result.
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -74,10 +82,12 @@ from archiwista.errors import (
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
+    ProjectRef,
     SnapshotWrite,
     StoredPlan,
     TransformerFactory,
 )
+from archiwista.index.projects import record_project
 from archiwista.index.scanner import (
     REFRESH_VIEW_MAX_UNITS,
     ScanEvent,
@@ -134,6 +144,11 @@ from archiwista.previews.build import run_preview
 from archiwista.sandbox import process_work_dir
 from archiwista.services.commands import actions, store_root
 from archiwista.services.problems import explain
+from archiwista.services.projects import (
+    project_actions,
+    project_directory,
+    project_store,
+)
 from archiwista.sources import (
     FILE_STATUSES,
     ActionAdapter,
@@ -143,6 +158,8 @@ from archiwista.sources import (
     CommandCall,
     GeoAdapter,
     LinkCheckAdapter,
+    ProjectCheck,
+    ProjectRun,
     SegmentDescriptionAdapter,
     SegmentedAdapter,
     SourceAdapter,
@@ -780,6 +797,66 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     return summary if result.status == "ok" else PartialResult(summary)
 
 
+def run_project_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Download, pin and restore a project's tasks; then read their slots again.
+
+    See ``_project_download``: a task not downloaded yet is downloaded and
+    pinned, a missing pinned version restored with the same SHA-256, and a
+    task whose pins the store holds is left as it is, without the network.
+    """
+    return _project_download(spec, emit, upgrade=False)
+
+
+def run_project_repin(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Pin one task of a project anew, to the source's newer versions.
+
+    See ``_project_download``, with the producer's ``upgrade``.
+    """
+    return _project_download(spec, emit, upgrade=True)
+
+
+def run_project_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Compare a project's pins with what the source has now (no effects).
+
+    The producer's notices become the job's; the state of each pin is in the
+    result. A check some of whose pins could not be asked about ends
+    ``partial``; one with none of them asked fails (``check_failed``).
+    """
+    if spec.settings.offline:
+        raise OfflineModeError(message("job.offline_mode"))
+    registry = load_registry(cache_dir=spec.cache_dir)
+    project = _project(spec)
+    directory = project_directory(project, spec.settings)
+    started = time.perf_counter()
+    checked = project_actions(registry, project.producer).check_project(
+        directory,
+        tasks=_tasks(spec),
+        on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
+    )
+    failed = [item for item in checked.files if item.status == "check_failed"]
+    if failed and len(failed) == len(checked.files):
+        text = message("job.project_check_failed", count=len(failed))
+        raise CheckFailedError(with_detail(text, failed[0].detail))
+    summary = _check_summary(project, checked, started)
+    return summary if checked.ok else PartialResult(summary)
+
+
+def run_project_verify(spec: JobSpec, emit: Emitter) -> JsonObject:
+    """Verify a project's pinned files in its store: SHA-256, size, sidecar.
+
+    No network and no write. A missing or corrupt file is a state of the
+    result (``ok`` false), not a failure of the job.
+    """
+    registry = load_registry(cache_dir=spec.cache_dir)
+    project = _project(spec)
+    directory = project_directory(project, spec.settings)
+    started = time.perf_counter()
+    checked = project_actions(registry, project.producer).verify_project(
+        directory, tasks=_tasks(spec)
+    )
+    return _check_summary(project, checked, started)
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -790,7 +867,184 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "availability": run_availability,
     "check": run_check,
     "download": run_download,
+    "project_download": run_project_download,
+    "project_repin": run_project_repin,
+    "project_check": run_project_check,
+    "project_verify": run_project_verify,
 }
+
+
+def _project_download(
+    spec: JobSpec, emit: Emitter, *, upgrade: bool
+) -> JsonObject | PartialResult:
+    """Download a project's tasks into its store; then read their slots again.
+
+    The manifest is read again first (another process may have changed it):
+    its store must be a configured store (``unknown_store``) that can be read
+    now. The producer writes that store and the manifest; its progress and
+    notices become the job's. Afterwards the index holds the project as the
+    manifest reads then and the slots of the files pinned or unpinned are
+    read again (``scope``, ``refresh_view``); when the run is interrupted or
+    fails, the slots of the units its progress named are read again within
+    ``RESCAN_STOP_S``. A run some of whose tasks failed ends ``partial``, one
+    with every task failed fails (``RunFailedError``, the code of its first
+    failed task); a lock of the manifest that stays fails it as
+    ``project_locked``.
+    """
+    if spec.settings.offline:
+        raise OfflineModeError(message("job.offline_mode"))
+    registry = load_registry(cache_dir=spec.cache_dir)
+    project = _project(spec)
+    directory = project_directory(project, spec.settings)
+    adapter = project_actions(registry, project.producer)
+    reader = registry.adapter(project.producer)
+    project = _record_project(spec, reader, directory, project.key)
+    root: Path | None = None
+    if project.problem is None:
+        root = project_store(project, spec.settings)
+        refused = store_unreachable(
+            registry.probe(project.producer, root), root, indexed=True
+        )
+        if refused is not None:
+            raise refused
+    commands = actions(registry, project.producer)
+    started = time.perf_counter()
+    units: set[str] = set()
+
+    def progressed(event: ActionProgress) -> None:
+        if event.unit is not None:
+            units.add(event.unit)
+        emit.progress(
+            event.current,
+            event.total,
+            unit=event.unit,
+            status=event.status,
+            message=event.message,
+        )
+
+    try:
+        run = adapter.download_project(
+            directory,
+            tasks=_tasks(spec),
+            upgrade=upgrade,
+            on_progress=progressed,
+            on_notice=lambda notice: emit.notice(
+                notice.level, notice.code, notice.message
+            ),
+        )
+    except BaseException:
+        if root is not None and project.store is not None:
+            store_dir = root
+            _rescan(
+                spec,
+                reader,
+                project.store,
+                lambda: _unit_scopes(commands, reader, store_dir, None, units),
+                emit,
+                timeout_s=RESCAN_STOP_S,
+            )
+        raise
+    try:
+        _record_project(spec, reader, directory, project.key)
+    except (ArchiwistaError, OSError, sqlite3.Error, ValueError) as error:
+        logger.warning("Job %s: the project was not indexed: %s", spec.job_id, error)
+        text = with_detail(message("job.project_not_indexed"), str(error))
+        emit.notice("warning", "project_not_indexed", text)
+    rescanned = 0
+    if project.store is not None:
+        rescanned = _rescan(
+            spec,
+            reader,
+            project.store,
+            lambda: _scopes(commands, _pinned_paths(run)),
+            emit,
+            timeout_s=None,
+        )
+    if run.failed and len(run.failed) == len(run.tasks):
+        raise _project_failed(run)
+    summary: JsonObject = {
+        "producer": run.producer,
+        "project": project.key,
+        "store": project.store,
+        "root": run.root,
+        "upgrade": upgrade,
+        "ok": run.ok,
+        "counts": run.counts(),
+        "tasks": [asdict(task) for task in run.tasks],
+        "failed": len(run.failed),
+        "rescanned": rescanned,
+        "seconds": round(time.perf_counter() - started, 3),
+    }
+    return summary if run.ok else PartialResult(summary)
+
+
+def _project(spec: JobSpec) -> ProjectRef:
+    """Return the project of a job as the index holds it.
+
+    Raises
+    ------
+    NotFoundError
+        The index no longer holds the project (a scan dropped it).
+    """
+    key = str(spec.params["project"])
+    with IndexQueries(spec.index_path) as queries:
+        record = queries.project(key, visible=ALL_PROJECTS)
+    if record is None:
+        raise NotFoundError(message("project.not_found", project=key))
+    return record.project
+
+
+def _record_project(
+    spec: JobSpec, reader: SourceAdapter, directory: Path, key: str
+) -> ProjectRef:
+    """Read a project's manifest again into the index; return it as recorded."""
+    with IndexWriter(spec.index_path) as writer:
+        record_project(reader, writer, directory, stores=spec.settings.stores)
+    with IndexQueries(spec.index_path) as queries:
+        record = queries.project(key, visible=ALL_PROJECTS)
+    if record is None:
+        raise NotFoundError(message("project.not_found", project=key))
+    return record.project
+
+
+def _tasks(spec: JobSpec) -> list[str] | None:
+    """Return the tasks a project job names; ``None`` for every task."""
+    tasks = spec.params.get("tasks")
+    return None if tasks is None else [str(name) for name in tasks]
+
+
+def _pinned_paths(run: ProjectRun) -> Iterator[str]:
+    """Yield the standard paths of the files a run pinned or unpinned."""
+    for task in run.tasks:
+        for pin in (*task.pinned, *task.unpinned):
+            yield pin.path
+
+
+def _project_failed(run: ProjectRun) -> RunFailedError:
+    """Return the error of a project's download none of whose tasks succeeded."""
+    first = run.failed[0]
+    text = message("job.project_failed", count=len(run.tasks))
+    return RunFailedError(
+        with_detail(text, first.errors[0] if first.errors else None),
+        code=first.code if first.code in BY_CODE else None,
+        details={"task": first.name},
+    )
+
+
+def _check_summary(
+    project: ProjectRef, checked: ProjectCheck, started: float
+) -> JsonObject:
+    """Return the summary of a check or a verification of a project's pins."""
+    return {
+        "producer": checked.producer,
+        "project": project.key,
+        "root": checked.root,
+        "ok": checked.ok,
+        "counts": checked.counts(),
+        "files": [asdict(item) for item in checked.files],
+        "not_downloaded": list(checked.not_downloaded),
+        "seconds": round(time.perf_counter() - started, 3),
+    }
 
 
 def _kept_plan(spec: JobSpec, job_id: str) -> ActionPlan:

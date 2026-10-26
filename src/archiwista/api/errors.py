@@ -160,10 +160,13 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             "offline_mode",
             "job.offline_mode",
             "Conflicts with the current state (`details.reason`): none (another"
-            " job already writes the store's index; `details.job` names it),"
-            " `offline_mode` (the job needs the network), `own_file_changed` (an"
-            " own-data file changed since its scan: refresh the project's own"
-            " data) or `snapshot_blocked` (`details.blocked_by`).",
+            " job already writes the store's index, or the project has a job;"
+            " `details.job` names it), `offline_mode` (the job needs the"
+            " network), `own_file_changed` (an own-data file changed since its"
+            " scan: refresh the project's own data), `snapshot_blocked`"
+            " (`details.blocked_by`) or `project_locked` (the lock of a"
+            " project's manifest stays, `details.lock`: remove it when no program"
+            " is changing the project).",
         ),
         500: (
             "data_error",

@@ -13,7 +13,7 @@ the message unchanged.
 import json
 import os
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -59,8 +59,10 @@ from archiwista.sources import (
     FloatArray,
     Footprint,
     GeoJSONGeometry,
+    ProjectCheck,
     ProjectInfo,
     ProjectPin,
+    ProjectRun,
     ProjectTask,
     ScanScope,
     SheetGrid,
@@ -100,7 +102,8 @@ class KartografAdapter:
     ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter``,
     ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
     ``actions.py``) and ``ProjectActionAdapter`` (``init_project``,
-    ``add_project_task``, ``remove_project_task``, ``actions.py``). All methods
+    ``add_project_task``, ``remove_project_task``, ``download_project``,
+    ``check_project``, ``verify_project``, ``actions.py``). All methods
     may run in several threads at once; one iterator of ``iter_entries``
     belongs to one thread.
     """
@@ -586,6 +589,47 @@ class KartografAdapter:
     def remove_project_task(self, directory: Path, *, name: str) -> None:
         """Remove a task with ``remove_project_task``; its store files stay."""
         actions.remove_task(directory, name=name)
+
+    def download_project(
+        self,
+        directory: Path,
+        *,
+        tasks: Sequence[str] | None = None,
+        upgrade: bool = False,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ProjectRun:
+        """Download, pin and restore tasks with ``download_project``.
+
+        With Archiwista's own metadata cache in ``cache_dir``, never
+        Kartograf's default one (D5); ``upgrade`` is ``update="upgrade"``.
+        """
+        return actions.project_download(
+            directory,
+            tasks=tasks,
+            upgrade=upgrade,
+            cache_dir=self._cache_dir,
+            on_progress=on_progress,
+            on_notice=on_notice,
+        )
+
+    def check_project(
+        self,
+        directory: Path,
+        *,
+        tasks: Sequence[str] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ProjectCheck:
+        """Compare pins with the source (``check_project``), Archiwista's cache."""
+        return actions.project_check(
+            directory, tasks=tasks, cache_dir=self._cache_dir, on_notice=on_notice
+        )
+
+    def verify_project(
+        self, directory: Path, *, tasks: Sequence[str] | None = None
+    ) -> ProjectCheck:
+        """Verify pinned files with ``verify_project`` (no network)."""
+        return actions.project_verify(directory, tasks=tasks)
 
     def _state(
         self,

@@ -1,4 +1,4 @@
-"""Background jobs in worker processes: scans, unit outlines, link checks, previews.
+"""Background jobs in worker processes: scans, previews, producers' runs, projects.
 
 ``JobSupervisor`` records jobs in the local index and runs each in a worker
 process (``archiwista.jobs.worker``) that reports in JSON Lines
@@ -8,7 +8,13 @@ the configured stores (SPEC 4.4, 5.6; A-ADR-007).
 """
 
 from archiwista.jobs.error import JobError
-from archiwista.jobs.protocol import JOB_KINDS, JobKind, JobSpec, WorkerMessage
+from archiwista.jobs.protocol import (
+    JOB_KINDS,
+    PROJECT_KINDS,
+    JobKind,
+    JobSpec,
+    WorkerMessage,
+)
 from archiwista.jobs.scheduler import (
     PlannedScan,
     ScanScheduler,
@@ -42,6 +48,7 @@ __all__ = [
     "JOB_RULES",
     "JOB_STATES",
     "MAX_PREVIEW_REFS",
+    "PROJECT_KINDS",
     "EventType",
     "JobConflict",
     "JobError",

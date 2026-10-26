@@ -27,6 +27,19 @@ type PlanStatus = Literal["current", "newer", "missing", "unverifiable", "check_
 type FileStatus = Literal["new", "unchanged", "relabeled"]
 type ItemStatus = Literal["ok", "failed"]
 type RunStatus = Literal["ok", "partial", "failed"]
+type ProjectFileStatus = Literal[
+    "ok",
+    "missing",
+    "corrupt",
+    "current",
+    "newer",
+    "added",
+    "removed",
+    "unverifiable",
+    "check_failed",
+    "conflict",
+]
+type TaskOutcome = Literal["pinned", "unchanged", "restored", "updated", "failed"]
 
 # The statuses of a plan's positions in the order the producers define them.
 PLAN_STATUSES: tuple[PlanStatus, ...] = (
@@ -41,6 +54,29 @@ PLAN_TODO: tuple[PlanStatus, ...] = ("newer", "missing")
 # The statuses of a file a run left in a store (DEV §19 Z6). A plain file
 # (``written``, ``replaced``) is no file of a store.
 FILE_STATUSES: tuple[FileStatus, ...] = ("new", "unchanged", "relabeled")
+# The states of a project's file in the order the producers define them: of a
+# pin in the store (``ok``, ``missing``, ``corrupt``), and of a pin or a
+# position compared with the source (the others).
+PROJECT_FILE_STATUSES: tuple[ProjectFileStatus, ...] = (
+    "ok",
+    "missing",
+    "corrupt",
+    "current",
+    "newer",
+    "added",
+    "removed",
+    "unverifiable",
+    "check_failed",
+    "conflict",
+)
+# The outcomes of a task of a project's download.
+TASK_OUTCOMES: tuple[TaskOutcome, ...] = (
+    "pinned",
+    "unchanged",
+    "restored",
+    "updated",
+    "failed",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1048,6 +1084,187 @@ class ActionResult:
     def failed(self) -> tuple[ActionItem, ...]:
         """The units that failed, in the producer's order."""
         return tuple(item for item in self.items if item.status == "failed")
+
+
+@dataclass(frozen=True, slots=True)
+class PinnedVersion:
+    """One version a task of a project pinned (a pin of its manifest).
+
+    Parameters
+    ----------
+    path : str
+        The file's standard path below the store root, ``/``-separated: which
+        file.
+    version_path : str
+        The pinned version's file below the store root, ``/``-separated:
+        which bytes.
+    unit : str
+        The producer's unit of the file (a sheet, a tile, a TERYT).
+    label : str
+        The label of the version.
+    sha256 : str
+        SHA-256 of its bytes, lower-case hex.
+    size_bytes : int
+        Its size.
+    """
+
+    path: str
+    version_path: str
+    unit: str
+    label: str
+    sha256: str
+    size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectTaskRun:
+    """What a download of a project did with one of its tasks.
+
+    Parameters
+    ----------
+    name : str
+        The task's name in the manifest.
+    outcome : {"pinned", "unchanged", "restored", "updated", "failed"}
+        ``pinned``: downloaded and pinned for the first time; ``unchanged``:
+        its pins kept, nothing to do; ``restored``: missing pinned versions
+        back with the same SHA-256; ``updated``: pinned anew (a repin);
+        ``failed``: its pins as they were (``errors``).
+    pinned, unpinned : tuple[PinnedVersion, ...]
+        The new pins, and the pins they replaced or dropped.
+    errors : tuple[str, ...]
+        The producer's texts of a failure.
+    code, reason : str or None
+        Registry code of a failure and its finer cause where the code does not
+        say enough; ``None`` otherwise.
+    """
+
+    name: str
+    outcome: TaskOutcome
+    pinned: tuple[PinnedVersion, ...] = ()
+    unpinned: tuple[PinnedVersion, ...] = ()
+    errors: tuple[str, ...] = ()
+    code: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRun:
+    """What a download of a project's tasks did (SPEC 4.7, 5.6).
+
+    The producer's report (Kartograf: ``kartograf-project-report/1`` of
+    ``download_project``) without its classes, so the jobs read every
+    producer's project alike.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    root : str
+        The store the manifest names, as the producer resolved it.
+    tasks : tuple[ProjectTaskRun, ...]
+        One result per task of the run, in the manifest's order.
+    notices : tuple[AvailabilityNotice, ...]
+        What the producer said meanwhile (its texts name the task).
+    """
+
+    producer: str
+    root: str
+    tasks: tuple[ProjectTaskRun, ...]
+    notices: tuple[AvailabilityNotice, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        """No task failed."""
+        return all(task.outcome != "failed" for task in self.tasks)
+
+    @property
+    def failed(self) -> tuple[ProjectTaskRun, ...]:
+        """The tasks that failed, in the manifest's order."""
+        return tuple(task for task in self.tasks if task.outcome == "failed")
+
+    def counts(self) -> dict[TaskOutcome, int]:
+        """Return the number of tasks of each outcome, every outcome named."""
+        counted = dict.fromkeys(TASK_OUTCOMES, 0)
+        for task in self.tasks:
+            counted[task.outcome] += 1
+        return counted
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFileState:
+    """The state of one pinned file of a project, or of a position without a pin.
+
+    Parameters
+    ----------
+    task : str
+        The task the file belongs to.
+    unit : str
+        The producer's unit of the file; empty for ``conflict``.
+    path : str
+        The file's standard path below the store root, ``/``-separated; empty
+        for ``conflict``.
+    status : ProjectFileStatus
+        A verification: ``ok``, ``missing`` or ``corrupt``. A check against the
+        source: ``current`` (the pin is the newest), ``newer`` (the source has
+        a newer version), ``added`` (a position the source has and the task
+        did not pin), ``removed`` (a pin the source no longer has),
+        ``missing`` (a pin the store lost), ``unverifiable`` (the source gives
+        no cheap sign of its version), ``check_failed`` (the source could not
+        be asked) or ``conflict`` (a write to the store would be refused, so
+        nothing of the task was checked).
+    pinned_label, available_label : str or None
+        The label of the pinned version and of the one at the source.
+    detail : str or None
+        The producer's text of the reason with its remedy; ``None`` when
+        there is nothing to do.
+    """
+
+    task: str
+    unit: str
+    path: str
+    status: ProjectFileStatus
+    pinned_label: str | None = None
+    available_label: str | None = None
+    detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectCheck:
+    """A check of a project's pins: in its store, or against the source.
+
+    The producer's check (Kartograf: ``kartograf-project-check/1`` of
+    ``verify_project`` and ``check_project``) without its classes.
+
+    Parameters
+    ----------
+    producer : str
+        Producer id.
+    root : str
+        The store the manifest names, as the producer resolved it.
+    files : tuple[ProjectFileState, ...]
+        The state of each file checked, in the producer's order.
+    not_downloaded : tuple[str, ...]
+        The tasks checked that have no pins yet.
+    notices : tuple[AvailabilityNotice, ...]
+        What the producer said meanwhile.
+    ok : bool
+        A verification: every task checked is pinned and every file ``ok``;
+        a check against the source: no file is ``check_failed``.
+    """
+
+    producer: str
+    root: str
+    files: tuple[ProjectFileState, ...]
+    not_downloaded: tuple[str, ...] = ()
+    notices: tuple[AvailabilityNotice, ...] = ()
+    ok: bool = True
+
+    def counts(self) -> dict[ProjectFileStatus, int]:
+        """Return the number of files of each state, every state named."""
+        counted = dict.fromkeys(PROJECT_FILE_STATUSES, 0)
+        for item in self.files:
+            counted[item.status] += 1
+        return counted
 
 
 def _combination(data: Mapping[str, Any]) -> AvailabilityCombination:

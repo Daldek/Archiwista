@@ -297,6 +297,12 @@ command-line interface may change.
   `project-add PROJECT NAME COMMAND [--options JSON] [--producer PRODUCER]`,
   `project-remove PROJECT NAME` and `project-status PROJECT` give the routes' models with
   `--json`. (SPEC 4.7, 9.2; plan A7)
+- A lock of a project's manifest that stays past the producer's wait (Kartograf's
+  `.kartograf-project.lock`, left by a change that was interrupted while it wrote) is
+  named: creating a project and adding or removing a task answer `409 conflict` with the
+  reason `project_locked`, the lock's path in `details.lock`, the producer's own text and
+  the instruction to remove the directory when no program is changing the project.
+  Archiwista never removes it. (SPEC 5.6, 14; plan A8, ADR-040)
 
 ### Changed
 

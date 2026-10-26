@@ -233,7 +233,10 @@ def list_projects(
     "",
     response_model=ProjectCard,
     status_code=201,
-    responses={**problem_responses(400, 403, 404, 503), **_unsupported(commands=False)},
+    responses={
+        **problem_responses(400, 403, 404, 409, 503),
+        **_unsupported(commands=False),
+    },
 )
 def create_project(
     body: ProjectRequest,
@@ -262,8 +265,9 @@ def create_project(
     is not configured (`404`), has no directory of the producer (`400`,
     `store_without_producer`) or cannot be read now (`503
     store_unavailable`), a producer that creates no projects (`422`,
-    `no_project_actions`) and the producer's refusal (`400` with its text,
-    e.g. a project that is there already). Nothing uses the network.
+    `no_project_actions`), the producer's refusal (`400` with its text,
+    e.g. a project that is there already) and a lock of the manifest that
+    stays (`409`, `project_locked`, `details.lock`). Nothing uses the network.
     """
     key = project_service.create_project(
         registry,
@@ -314,7 +318,10 @@ def get_project_status(
     "/{project}/tasks",
     response_model=ProjectCard,
     status_code=201,
-    responses={**problem_responses(400, 403, 404, 503), **_unsupported(commands=True)},
+    responses={
+        **problem_responses(400, 403, 404, 409, 503),
+        **_unsupported(commands=True),
+    },
 )
 def add_project_task(
     project: _Project,
@@ -337,9 +344,10 @@ def add_project_task(
     a producer other than the project's (`400`, `other_producer`), a command
     outside its catalog (`400`, `unknown_command`), an option that is a file
     path (`403`, `path_outside_root`, `details.option`), a producer that
-    changes no projects or has no commands (`422`) and the producer's refusal
+    changes no projects or has no commands (`422`), the producer's refusal
     (`400` with its text and `details.option`: an invalid or taken name, an
-    invalid option).
+    invalid option) and a lock of the manifest that stays (`409`,
+    `project_locked`, `details.lock`: Archiwista never removes it).
     """
     key = project_service.add_project_task(
         registry,
@@ -361,7 +369,10 @@ def add_project_task(
 @router.delete(
     "/{project}/tasks/{name}",
     response_model=ProjectCard,
-    responses={**problem_responses(400, 403, 404, 503), **_unsupported(commands=False)},
+    responses={
+        **problem_responses(400, 403, 404, 409, 503),
+        **_unsupported(commands=False),
+    },
 )
 def remove_project_task(
     project: _Project,
@@ -380,7 +391,8 @@ def remove_project_task(
     index holds the change at once: the answer is the project's card. A
     project the session does not see is `404`, one it may not change `403
     permission_denied`; a task the manifest does not hold is the producer's
-    refusal (`400`, `details.option` `name`).
+    refusal (`400`, `details.option` `name`); a lock of the manifest that
+    stays is `409` (`project_locked`, `details.lock`).
     """
     key = project_service.remove_project_task(
         registry,

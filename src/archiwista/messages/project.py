@@ -19,6 +19,10 @@ MESSAGES = {
         "The source {producer} does not create or change projects.",
         "Źródło {producer} nie tworzy ani nie zmienia projektów.",
     ),
+    "locked": Text(
+        "The project's manifest is locked ({lock})",
+        "Manifest projektu jest zablokowany ({lock})",
+    ),
     "not_discoverable": Text(
         (
             "A scan finds a project at most {depth} levels below a project"
