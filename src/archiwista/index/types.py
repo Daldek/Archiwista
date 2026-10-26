@@ -847,6 +847,23 @@ class StationCatalogRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SeriesCatalogRecord:
+    """The series version a dataset's coverage in the index was read from.
+
+    ``slot`` is the series' slot and ``version`` the ``series.json`` of the
+    version read, relative to the store; ``read_at`` is when it was read
+    (UTC).
+    """
+
+    dataset: str
+    producer: str
+    provider: str
+    slot: str
+    version: str
+    read_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class StationQuery:
     """Filters and page of a station query (``GET /stations``).
 

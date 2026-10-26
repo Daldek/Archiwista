@@ -114,6 +114,19 @@ command-line interface may change.
   provider's stations at once. A catalog IMGWTools refuses leaves its provider without
   stations and the scan says so (notice `stations_unreadable`). (SPEC 4.3, 4.4, 4.8.1,
   ADR 0032)
+- The index keeps the coverage of each dataset's current series of stations
+  (`SCHEMA_VERSION` 11: an existing index is rebuilt when it is opened and filled by the
+  next full scan): after a scan of the whole store the `series.json` listing of each
+  dataset (`read_series_index`; the capability `SeriesIndexAdapter`) is read when its
+  current version is not the one the coverage came from, and a full scan reads every
+  listing again; no Parquet file is read. Every variable of every station keeps its
+  first and last date with a value, its gaps, its accumulated sums and the station's
+  own known periods (ČHMÚ), and each of its years is counted in hydrological and
+  calendar years (half-year characteristics: hydrological only) from the gap lists:
+  its units, the known ones and those with a value, so a year without a station file
+  is unknown, never a gap. A listing IMGWTools refuses leaves its dataset without
+  coverage and the scan says so (notice `series_unreadable`). (SPEC 4.3, 4.4, 4.8.4,
+  ADR 0032)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps

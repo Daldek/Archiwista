@@ -598,8 +598,8 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | `footprints` | R*Tree: version extent in WGS84 (area filter and map) — only versions with a footprint |
 | `stations` | stations from the current version of the station catalog: code, kind, name, river, hydrographic code (with a prefix index, P19) and order, location (WGS84) with source and uncertainty, or no location with the reason from the catalog (IMGW-9), 1° square from the code, active or historical, year established, gauge zero elevation, river kilometre |
 | `station_points` | R*Tree: station points (degenerate rectangles) — area filter and station layer |
-| `station_series` | a station's series in a dataset series version: file, `sha256`, variables with units, first and last date, list of gaps, number of aggregate sums (from the `series.json` listing, IMGW-8) and the periods known to the version |
-| `series_years` | variable coverage by hydrological and calendar years (units, units with a value, longest gap) — computed during indexing from the gap lists; the Timeline and filters |
+| `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value, list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit, kind of years of its archives, first year and the periods known to the version |
+| `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
 | `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and project tasks, station codes and names, river names |
 | `projects`, `project_tasks`, `pins` | known projects, their tasks and pins linked to versions, with the manifest producer (Kartograf, IMGWTools) — the "which projects use the file" index (SCOPE 3.3) |
 | `availability` | latest availability reports per area and product, with a date (visible without a network); for IMGW datasets — published years with publication dates |
@@ -722,6 +722,16 @@ Rules common to all producers and products:
   keeps the catalog's reason (P13). A provider whose catalog has no current
   version has no stations; a version IMGWTools refuses leaves it none, with the
   scan notice `stations_unreadable`, and is read again by the next scan.
+- **The coverage of a dataset's series** (v0.5, plan 2026-10-25 I5) comes from the
+  current version of each dataset's series (slots `series:<dataset key>`; the
+  capability `SeriesIndexAdapter`): after a pass over the whole store the index reads
+  the `series.json` listing with `read_series_index`, never a Parquet file, only when
+  its current version is not the one the coverage was read from (a full scan reads
+  every listing again), and replaces the dataset's rows in one transaction, counting
+  each year of each variable in both kinds of years from the gap lists against the
+  known periods (4.8.4). A dataset whose series has no current version has no
+  coverage; a version IMGWTools refuses leaves it none, with the scan notice
+  `series_unreadable`, and is read again by the next scan.
 - **Triggers:** application start (incremental, if the last one is older than
   15 min), interval (by default 15 min for a share, 5 min for a local
   disk), the "Odśwież" (Refresh) button (store, segment, view), end of a background
@@ -1314,10 +1324,12 @@ which producer wrote the file:
 | `project(…)` | producer project manifest: reading, adding and removing a job, download with pinning, check, verification, status (4.7) | `open_project`, `add_project_task`, `remove_project_task`, `download_project`, `check_project`, `verify_project`, `get_project_status` | the same IMGWTools project functions (IMGW-14) |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `imgwtools.config` (`IMGW_ROOT`, else `<data_dir>/imgw`) |
 
-The IMGW adapter also has a "stations and series" capability, which the Kartograf adapter
-does not implement: `stations(version)` (IMGW-9), `series_index(version)`
-(index with coverage, IMGW-8), `read_series(version, station, …)` (IMGW-10)
-and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
+The IMGW adapter also has the "stations and series" capabilities, which the Kartograf
+adapter does not implement: `StationCatalogAdapter` (`station_catalog(slot_key)`,
+`read_stations(root, version)`: the stations of a provider's catalog version, IMGW-9),
+`SeriesIndexAdapter` (`series_dataset(slot_key)`, `read_series_index(root, version)`:
+the `series.json` listing with the coverage, IMGW-8), and later `read_series(version,
+station, …)` (IMGW-10, the chart) and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
 the Kartograf adapter and a plugin mechanism with a stub of a second adapter, and a test
 ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 

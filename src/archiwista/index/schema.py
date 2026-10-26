@@ -47,6 +47,15 @@ code as text), with the R*Tree ``station_points`` of the located ones (a
 station without a location keeps the catalog's reason), and
 ``station_catalogs``, the catalog version each provider's rows were read from:
 a new current version replaces the provider's rows.
+
+Version 11 (v0.5, plan I5): ``series_catalogs``, the series version each
+dataset's coverage in a store was read from (with its unit, year numbering,
+first year and known periods), ``station_series``, each variable of each
+station's series in that version (first and last date with a value, gaps,
+accumulated sums, the station's own periods, its file), and ``series_years``,
+each year of a variable in both year types (units, known units, units with a
+value), computed when the index is written: a new current version replaces
+the dataset's rows.
 """
 
 import sqlite3
@@ -58,7 +67,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -401,6 +410,68 @@ CREATE INDEX stations_unlocated ON stations (store_id) WHERE location = 'none';
 CREATE VIRTUAL TABLE station_points USING rtree (
     id, min_lon, max_lon, min_lat, max_lat
 );
+
+-- The series version each dataset's coverage was read from (SPEC 4.4, 4.8.4),
+-- with what the labels need of it: the unit, the numbering of its archives,
+-- the first year the source publishes and the known periods (JSON
+-- [[from, to], ...], ISO dates). The rows are replaced when the current
+-- version of the series' slot changes.
+CREATE TABLE series_catalogs (
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    dataset TEXT NOT NULL,
+    producer TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    kind TEXT,
+    time_unit TEXT NOT NULL CHECK (time_unit IN ('day', 'month', 'half_year')),
+    year_type TEXT NOT NULL CHECK (year_type IN ('hydrological', 'calendar')),
+    first_year INTEGER,
+    periods TEXT NOT NULL,
+    slot_path TEXT NOT NULL,
+    version_path TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (store_id, dataset)
+) WITHOUT ROWID;
+
+-- A variable of a station's series in the current version of a dataset's
+-- series (IMGW-8): ``variable_key`` names it in the series index (``Q``,
+-- ``Q_max@winter``); the first and last date with a value, the gaps between
+-- them and the station's own known periods (JSON, NULL: the version's) as the
+-- index gives them, and the station's series file relative to the store.
+CREATE TABLE station_series (
+    id INTEGER PRIMARY KEY,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    dataset TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    code TEXT NOT NULL,
+    variable_key TEXT NOT NULL,
+    variable TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    period TEXT,
+    first_date TEXT,
+    last_date TEXT,
+    with_value INTEGER NOT NULL,
+    accumulated INTEGER NOT NULL,
+    gaps TEXT NOT NULL,
+    periods TEXT,
+    file TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    UNIQUE (store_id, dataset, code, variable_key)
+);
+CREATE INDEX station_series_station ON station_series (provider, code);
+
+-- Each year of a variable in both year types (one for half-year
+-- characteristics): its units, the known ones and those with a value, from the
+-- first year with a known unit to the last (SPEC 4.8.4).
+CREATE TABLE series_years (
+    series_id INTEGER NOT NULL REFERENCES station_series(id) ON DELETE CASCADE,
+    year_type TEXT NOT NULL CHECK (year_type IN ('hydrological', 'calendar')),
+    year INTEGER NOT NULL,
+    units INTEGER NOT NULL,
+    known INTEGER NOT NULL,
+    with_value INTEGER NOT NULL,
+    PRIMARY KEY (series_id, year_type, year)
+) WITHOUT ROWID;
 
 -- One-time session tokens (SHA-256 only) with who minted each (JSON: id and
 -- kind; roles and groups are read for every request) and the label of the

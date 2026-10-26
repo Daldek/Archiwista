@@ -34,4 +34,16 @@ MESSAGES = {
             " {detail}"
         ),
     ),
+    "series_unreadable": Text(
+        (
+            "The series index of {dataset} ({path}) cannot be read; the coverage of"
+            " its stations is not in the index until a scan reads it. Producer"
+            " message: {detail}"
+        ),
+        (
+            "Nie można odczytać indeksu szeregów {dataset} ({path}); pokrycia jego"
+            " stacji nie ma w indeksie, dopóki skan go nie odczyta. Komunikat"
+            " producenta: {detail}"
+        ),
+    ),
 }

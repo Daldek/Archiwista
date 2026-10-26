@@ -22,8 +22,9 @@ links, which is an on-demand job. A producer without links (its slots carry
 its own key) names the current version of a slot itself
 (``CurrentVersionAdapter``): the pass asks for the slots it touched when it
 finishes. After a pass over the whole store, the stations of each provider's
-station catalog (``StationCatalogAdapter``) are read again when the current
-version of the catalog changed.
+station catalog (``StationCatalogAdapter``) and the coverage of each
+dataset's series (``SeriesIndexAdapter``) are read again when the current
+version of the catalog or the series changed.
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -80,6 +81,7 @@ from archiwista.sources import (
     ScanScope,
     SegmentDescriptionAdapter,
     SegmentedAdapter,
+    SeriesIndexAdapter,
     SourceAdapter,
     SourceEntry,
     SourcePartition,
@@ -231,7 +233,9 @@ def scan_store(
     itself (``CurrentVersionAdapter``) is asked for the slots the pass touched
     when it finishes. A producer with station catalogs
     (``StationCatalogAdapter``) has the stations of each provider's current
-    catalog read after a pass over the whole store, when that version changed.
+    catalog read after a pass over the whole store, when that version changed,
+    and one with series of stations (``SeriesIndexAdapter``) the coverage of
+    each dataset's current series version likewise.
 
     Parameters
     ----------
@@ -335,6 +339,10 @@ def scan_store(
             finished = writer.finish_pass(current=_current_lookup(adapter, root))
             if segment is None and isinstance(adapter, StationCatalogAdapter):
                 _index_stations(
+                    adapter, adapter.producer, writer, store, root, full=full, emit=emit
+                )
+            if segment is None and isinstance(adapter, SeriesIndexAdapter):
+                _index_series(
                     adapter, adapter.producer, writer, store, root, full=full, emit=emit
                 )
         except SourceUnavailableError as error:
@@ -1083,6 +1091,64 @@ def _index_stations(
             slot=slot.path,
             version=version,
             stations=stations,
+        )
+
+
+def _index_series(
+    series: SeriesIndexAdapter,
+    producer: str,
+    writer: IndexWriter,
+    store: str,
+    root: Path,
+    *,
+    full: bool,
+    emit: ScanListener,
+) -> None:
+    """Keep each dataset's coverage that of the current version of its series.
+
+    Run after the pass, outside its transaction, as ``_index_stations``: a
+    series index is read only when the current version of its slot is not the
+    one its coverage was read from (a full scan reads every one again). A
+    dataset whose series has no slot or no current version anymore has no
+    coverage; one whose current version the producer refuses has none
+    either, and the scan says so.
+
+    Raises
+    ------
+    SourceUnavailableError
+        The system cannot read a series index.
+    """
+    current: dict[str, tuple[KeyedSlot, str]] = {}
+    for slot in writer.keyed_slots(store, producer):
+        dataset = series.series_dataset(slot.key)
+        if dataset is not None and slot.current is not None:
+            current[dataset] = (slot, slot.current)
+    read = writer.series_catalogs(store, producer)
+    for dataset in sorted(read.keys() - current.keys()):
+        writer.drop_series(store, dataset)
+    for dataset in sorted(current):
+        slot, version = current[dataset]
+        known = read.get(dataset)
+        unchanged = known is not None and (known.slot, known.version) == (
+            slot.path,
+            version,
+        )
+        if unchanged and not full:
+            continue
+        try:
+            listing = series.read_series_index(root, Path(version))
+        except ProducerError as error:
+            writer.drop_series(store, dataset)
+            text = message(
+                "scan.series_unreadable",
+                dataset=dataset,
+                path=version,
+                detail=str(error),
+            )
+            emit(ScanNotice("warning", "series_unreadable", text))
+            continue
+        writer.replace_series(
+            store, producer, slot=slot.path, version=version, listing=listing
         )
 
 

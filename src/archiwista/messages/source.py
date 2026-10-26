@@ -97,6 +97,16 @@ MESSAGES = {
         "Station catalog of {provider}",
         "Katalog stacji {provider}",
     ),
+    "imgw_series_unit": Text(
+        (
+            "The series of {dataset} are kept by the unit {unit}, which Archiwista"
+            " cannot measure (day, month or half-year)."
+        ),
+        (
+            "Szeregi {dataset} mają jednostkę {unit}, której Archiwista nie umie"
+            " zmierzyć (dzień, miesiąc albo półrocze)."
+        ),
+    ),
     "schema_unknown": Text(
         "unknown",
         "nieznany",

@@ -18,9 +18,10 @@ producer declares for it as a product (``hydro``, ``meteo``), which only groups
 the datasets. The versions the index knows (``ScanScope.known_versions``) are
 the ``skip_versions`` of ``iter_store``: they come back ``skipped``, with no
 sidecar read. A slot has no link, so ``current_version`` asks IMGWTools which
-version of a slot is the current one, and ``read_stations`` reads a provider's
-station catalog version with ``read_catalog``. Exceptions of the producer
-surface as ``ProducerError`` with the message unchanged.
+version of a slot is the current one, ``read_stations`` reads a provider's
+station catalog version with ``read_catalog`` and ``read_series_index`` the
+index of a dataset's series version with ``read_series_index``. Exceptions of
+the producer surface as ``ProducerError`` with the message unchanged.
 """
 
 import os
@@ -32,10 +33,14 @@ from pathlib import Path, PurePosixPath
 from typing import cast
 
 from imgwtools import (
+    DatasetDescriptor,
     IMGWError,
     Meta,
     Project,
+    SeriesIndex,
+    StationCoverage,
     StationFeature,
+    StationSeriesIndex,
     StoreEntry,
     StoreInfo,
     __version__,
@@ -46,6 +51,7 @@ from imgwtools import (
     open_project,
     providers,
     read_catalog,
+    read_series_index,
     store_info,
     store_root,
 )
@@ -65,12 +71,16 @@ from archiwista.sources import (
     ProjectPin,
     ProjectTask,
     ScanScope,
+    SeriesListing,
     SourceEntry,
     SourceObservation,
     SourceSegment,
     SourceState,
     SourceStatus,
     Station,
+    StationSeries,
+    TimeUnit,
+    VariableCoverage,
 )
 from archiwista.sources.markers import STORE_MARKERS, foreign_markers
 
@@ -90,6 +100,14 @@ _SLOT_KINDS = frozenset({"archive", "series", "catalog", "pmaxtp"})
 # The last part of the key of a provider's station catalog (``pl.imgw.stations``):
 # a slot of the store that is no dataset of the registry.
 _CATALOG = "stations"
+# The slot of a dataset's series: ``series:<dataset key>``.
+_SERIES = "series"
+# The unit of each series a dataset builds, by the registry's time unit.
+_SERIES_UNITS: Mapping[str, TimeUnit] = {
+    "day": "day",
+    "month": "month",
+    "half_year": "half_year",
+}
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
 # The codes of an IMGWTools error that say a slot has no current version, not that
@@ -125,9 +143,10 @@ class ImgwAdapter:
     Implements the source interface, ``SegmentDescriptionAdapter`` (a
     dataset is a segment that cannot be read alone), ``CurrentVersionAdapter``
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
-    catalog) and ``DefaultRootAdapter`` (``store_root()``); no other optional
-    capability. All methods may run in several threads at once; one iterator
-    of ``iter_entries`` belongs to one thread.
+    catalog), ``SeriesIndexAdapter`` (the index of each dataset's series) and
+    ``DefaultRootAdapter`` (``store_root()``); no other optional capability.
+    All methods may run in several threads at once; one iterator of
+    ``iter_entries`` belongs to one thread.
     """
 
     producer = PRODUCER
@@ -386,6 +405,77 @@ class ImgwAdapter:
         except IMGWError as error:
             raise _failure(str(path), error) from error
         return tuple(_station(feature) for feature in features)
+
+    def series_dataset(self, slot_key: str) -> str | None:
+        """Return the dataset whose series a slot is.
+
+        A dataset's series is the slot ``series:<dataset key>`` of a dataset
+        of the producer's registry; no disk access.
+
+        Parameters
+        ----------
+        slot_key : str
+            The producer's key of a slot (``SourceEntry.slot_key``).
+
+        Returns
+        -------
+        str or None
+            The dataset key (``pl.imgw.hydro_daily``); ``None`` for any other
+            slot.
+        """
+        kind, _, dataset = slot_key.partition(":")
+        if kind != _SERIES:
+            return None
+        try:
+            return str(get_dataset(dataset).key)
+        except IMGWError:
+            return None
+
+    def read_series_index(self, root: Path, version: Path) -> SeriesListing:
+        """Read the index of a series version with ``read_series_index``.
+
+        IMGWTools checks ``series.json`` against its sidecar and that every
+        station's series file is there, without reading one. The dataset's
+        provider, family, unit and first year come from the registry entry
+        the index names.
+
+        Parameters
+        ----------
+        root : Path
+            The store root.
+        version : Path
+            The version's ``series.json``, relative to ``root``.
+
+        Returns
+        -------
+        SeriesListing
+            The stations in the index's order, each file relative to
+            ``root``.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the file.
+        ProducerError
+            IMGWTools refused the version: broken, unlike its sidecar, or no
+            series index.
+        """
+        path = root / version
+        try:
+            index = read_series_index(path)
+            dataset = get_dataset(index.dataset)
+        except OSError as error:
+            raise _unavailable(str(path), str(error)) from error
+        except IMGWError as error:
+            raise _failure(str(path), error) from error
+        unit = _SERIES_UNITS.get(dataset.time_unit)
+        if unit is None:
+            text = message(
+                "source.imgw_series_unit", dataset=dataset.key, unit=dataset.time_unit
+            )
+            raise ProducerError(PACKAGE, "IMGWDataError", text)
+        directory = PurePosixPath(version.as_posix()).parent
+        return _series_listing(index, dataset, directory, unit)
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Place a file: its country for an archive or a series, else nowhere.
@@ -781,6 +871,60 @@ def _station(feature: StationFeature) -> Station:
         gauge_zero_m=_number(properties.get("gauge_zero_m")),
         river_km=_number(properties.get("river_km")),
         elevation_m=_number(properties.get("elevation_m")),
+    )
+
+
+def _series_listing(
+    index: SeriesIndex,
+    dataset: DatasetDescriptor,
+    directory: PurePosixPath,
+    unit: TimeUnit,
+) -> SeriesListing:
+    """Convert a series index; each station's file relative to the store."""
+    return SeriesListing(
+        dataset=index.dataset,
+        provider=dataset.provider,
+        kind=dataset.kind,
+        time_unit=unit,
+        year_type=index.year_type,
+        first_year=dataset.first_year,
+        periods=tuple(index.periods),
+        stations=tuple(
+            _station_series(code, station, directory)
+            for code, station in index.stations.items()
+        ),
+    )
+
+
+def _station_series(
+    code: str, station: StationSeriesIndex, directory: PurePosixPath
+) -> StationSeries:
+    """Convert a station's entry of ``series.json``."""
+    return StationSeries(
+        code=code,
+        file=(directory / station.file.as_posix()).as_posix(),
+        sha256=station.sha256,
+        rows=station.rows,
+        variables=tuple(
+            _variable_coverage(key, coverage)
+            for key, coverage in station.variables.items()
+        ),
+        periods=None if station.periods is None else tuple(station.periods),
+    )
+
+
+def _variable_coverage(key: str, coverage: StationCoverage) -> VariableCoverage:
+    """Convert the coverage of one key (``Q``, ``Q_max@winter``) of a station."""
+    return VariableCoverage(
+        key=key,
+        variable=coverage.variable,
+        unit=coverage.unit,
+        period=coverage.period,
+        first=coverage.first,
+        last=coverage.last,
+        with_value=coverage.with_value,
+        accumulated=coverage.accumulated,
+        gaps=tuple(coverage.gaps),
     )
 
 

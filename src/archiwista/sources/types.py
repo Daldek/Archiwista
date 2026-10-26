@@ -40,6 +40,12 @@ type ProjectFileStatus = Literal[
     "conflict",
 ]
 type TaskOutcome = Literal["pinned", "unchanged", "restored", "updated", "failed"]
+# The year numbering of a series: hydrological (1 XI to 31 X) or calendar.
+type YearType = Literal["hydrological", "calendar"]
+# The unit of a series: a day, a month, or a half-year characteristic (one
+# value of each key in a hydrological year).
+type TimeUnit = Literal["day", "month", "half_year"]
+type DateRange = tuple[date, date]
 
 # The statuses of a plan's positions in the order the producers define them.
 PLAN_STATUSES: tuple[PlanStatus, ...] = (
@@ -332,6 +338,69 @@ class Station:
     gauge_zero_m: float | None = None
     river_km: float | None = None
     elevation_m: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VariableCoverage:
+    """Coverage of one variable of a station's series (SPEC 4.8.4; IMGW-8).
+
+    ``key`` names it in the producer's series index: the variable (``Q``,
+    ``Tmax``) and, for half-year characteristics, its ``period`` (``winter``,
+    ``summer``, ``annual``; ``Q_max@winter``). ``first`` and ``last`` are the
+    first and last unit with a value (``None``: no value at all), ``gaps`` the
+    maximal closed ranges of units without a value between them, a unit given
+    by a date in it. ``with_value`` counts the units with a value and
+    ``accumulated`` those holding an accumulated sum of the days before them.
+    """
+
+    key: str
+    variable: str
+    unit: str
+    period: str | None
+    first: date | None
+    last: date | None
+    with_value: int
+    accumulated: int
+    gaps: tuple[DateRange, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class StationSeries:
+    """A station's series in a version of a dataset's series.
+
+    ``file`` is the station's series file relative to the store, with its
+    ``sha256`` and ``rows``. ``periods`` are the station's own known periods
+    (a dataset of per-station files, ČHMÚ); ``None`` when the periods of the
+    version are the station's.
+    """
+
+    code: str
+    file: str
+    sha256: str
+    rows: int
+    variables: tuple[VariableCoverage, ...]
+    periods: tuple[DateRange, ...] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesListing:
+    """The index of a version of a dataset's series, without its series files.
+
+    ``provider`` and ``kind`` (``hydro``, ``meteo``) are the dataset's;
+    ``time_unit`` its unit and ``year_type`` the numbering of its archives;
+    ``first_year`` the first year the source publishes (``None``: not
+    declared). ``periods`` are the known periods of the version: the union of
+    its inputs' periods (SPEC 4.8.4).
+    """
+
+    dataset: str
+    provider: str
+    kind: str | None
+    time_unit: TimeUnit
+    year_type: YearType
+    first_year: int | None
+    periods: tuple[DateRange, ...]
+    stations: tuple[StationSeries, ...]
 
 
 @dataclass(frozen=True, slots=True)

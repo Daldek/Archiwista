@@ -151,13 +151,14 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | Module | Role | Key symbols |
 |---|---|---|
 | `index/schema.py` | SQLite schema, connection settings, rebuild on version change | `SCHEMA_VERSION`, `initialize`, `connect`, `IndexUnsupportedError`, `MIN_SQLITE_VERSION` |
-| `index/writer.py` | writing the index from source interface types (never from Kartograf objects); the stations of a provider's catalog replaced in one transaction | `IndexWriter` (`replace_stations`, `drop_stations`, `keyed_slots`, `station_catalogs`) |
+| `index/writer.py` | writing the index from source interface types (never from Kartograf objects); the stations of a provider's catalog, and the coverage of a dataset's series with its years, replaced in one transaction | `IndexWriter` (`replace_stations`, `drop_stations`, `keyed_slots`, `station_catalogs`, `replace_series`, `drop_series`, `series_catalogs`) |
 | `index/queries.py` | catalog, map, products, own data and snapshots, projects, state; stations by attributes, a box over `station_points` (located ones only) and a river with or without its tributaries (a range over the hydrographic code, whole parts of a ČHMÚ code), with the counts of the located and the unlocated | `IndexQueries` (`stations`, `station`) |
 | `index/scanner.py` | store scan and view refresh | `scan_store`, `refresh_view`, `ScanProgress`, `ScanNotice`, `ScanSummary`, `SegmentScan`, `BATCH_ENTRIES`, `BATCH_SECONDS`, `FOOTPRINT_THREADS`, `REFRESH_VIEW_MAX_UNITS` |
 | `index/projects.py` | discovering and indexing project manifests; one project read again after Archiwista changed it | `scan_projects`, `record_project`, `ProjectScanSummary`, `PROJECT_MANIFESTS`, `MAX_PROJECT_DEPTH` |
+| `index/series.py` | the years of a variable of a series from its gap list and the known periods, in units of the series (day, month, half-year); interval arithmetic, no I/O | `series_years`, `SeriesYear`, `year_types`, `year_span`, `unit_of`, `hydrological_year` |
 | `index/coverage.py` | local coverage in a planar coordinate system | `measure_coverage`, `planar_crs`, `PLANAR_CRS`, `CoverageShape`, `CoverageMeasure` |
 | `index/geometry.py` | helper GeoJSON functions in WGS84 | `polygon_bounds`, `is_box`, `box_geometry`, `require_wgs84_area`, `require_wgs84_bbox` |
-| `index/types.py` | index query and response types, limits | `SlotQuery`, `MapQuery`, `SlotPage`, `SlotDetail`, `VersionDetail`, `FootprintPage`, `IndexStatus`, `StoreIndexState`, `StoreFreshness`, `AreaRecord`, `SlotUnit`, `ScanPass`, `BatchResult`, `PassSummary`, `KeyedSlot`, `StationCatalogRecord`, `StationQuery`, `StationRow`, `StationPage`, `StationCounts`, `RIVER_SCOPES`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`, `MAP_FOOTPRINT_LIMIT`, `MAX_GRID_COLUMNS` |
+| `index/types.py` | index query and response types, limits | `SlotQuery`, `MapQuery`, `SlotPage`, `SlotDetail`, `VersionDetail`, `FootprintPage`, `IndexStatus`, `StoreIndexState`, `StoreFreshness`, `AreaRecord`, `SlotUnit`, `ScanPass`, `BatchResult`, `PassSummary`, `KeyedSlot`, `StationCatalogRecord`, `SeriesCatalogRecord`, `StationQuery`, `StationRow`, `StationPage`, `StationCounts`, `RIVER_SCOPES`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`, `MAP_FOOTPRINT_LIMIT`, `MAX_GRID_COLUMNS` |
 
 **Background jobs**
 
@@ -195,8 +196,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities, the producer's commands as data, the availability at the source, the plan of a run and the run with the scope that reads its files again among them (`ActionAdapter`, ADR-034, ADR-035, ADR-036, ADR-037), the changes and runs of a project (`ProjectActionAdapter`, ADR-039, ADR-040) | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `StationCatalogAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `ActionAdapter`, `ProjectActionAdapter`, `CoordinateTransformer` |
-| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `Station`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus`, `CommandInfo`, `CommandOption`, `CommandChoice`, `CommandCall`, `OptionType`, `PathRole`, `CommandWrites`, `AvailabilityReport` (with `to_json`, `from_json`), `AvailabilityArea`, `AvailabilityCombination`, `AvailabilitySheet`, `AvailabilityCampaign`, `AvailabilityFailure`, `AvailabilityNotice`, `ActionPlan` (with `to_json`, `from_json`, `counts`, `todo`, `size_bytes`, `size_complete`), `PlanEntry`, `PlanStatus`, `PLAN_STATUSES`, `PLAN_TODO`, `ActionResult` (with `failed`), `ActionFile`, `ActionItem`, `ActionProgress`, `FileStatus`, `ItemStatus`, `RunStatus`, `FILE_STATUSES`, `ProjectRun` (with `ok`, `failed`, `counts`), `ProjectTaskRun`, `PinnedVersion`, `TaskOutcome`, `TASK_OUTCOMES`, `ProjectCheck` (with `counts`), `ProjectFileState`, `ProjectFileStatus`, `PROJECT_FILE_STATUSES` |
+| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities, the producer's commands as data, the availability at the source, the plan of a run and the run with the scope that reads its files again among them (`ActionAdapter`, ADR-034, ADR-035, ADR-036, ADR-037), the changes and runs of a project (`ProjectActionAdapter`, ADR-039, ADR-040) | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `StationCatalogAdapter`, `SeriesIndexAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `ActionAdapter`, `ProjectActionAdapter`, `CoordinateTransformer` |
+| `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `Station`, `SeriesListing`, `StationSeries`, `VariableCoverage`, `DateRange`, `TimeUnit`, `YearType`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus`, `CommandInfo`, `CommandOption`, `CommandChoice`, `CommandCall`, `OptionType`, `PathRole`, `CommandWrites`, `AvailabilityReport` (with `to_json`, `from_json`), `AvailabilityArea`, `AvailabilityCombination`, `AvailabilitySheet`, `AvailabilityCampaign`, `AvailabilityFailure`, `AvailabilityNotice`, `ActionPlan` (with `to_json`, `from_json`, `counts`, `todo`, `size_bytes`, `size_complete`), `PlanEntry`, `PlanStatus`, `PLAN_STATUSES`, `PLAN_TODO`, `ActionResult` (with `failed`), `ActionFile`, `ActionItem`, `ActionProgress`, `FileStatus`, `ItemStatus`, `RunStatus`, `FILE_STATUSES`, `ProjectRun` (with `ok`, `failed`, `counts`), `ProjectTaskRun`, `PinnedVersion`, `TaskOutcome`, `TASK_OUTCOMES`, `ProjectCheck` (with `counts`), `ProjectFileState`, `ProjectFileStatus`, `PROJECT_FILE_STATUSES` |
 | `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the default root of a producer that has one (ADR-033) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities | `KartografAdapter`, `UNIT_CACHE_FILE` |
@@ -205,7 +206,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `adapter/kartograf/unit_cache.py` | local cache of unit footprints (TERYT, KU, SM5) for `file_footprint` | `UnitBBoxCache` |
 | `sources/markers.py` | file names of the producers' store markers (DEV-19.12): an adapter refuses a foreign store by the file name alone, importing no other producer | `STORE_MARKERS`, `foreign_markers` |
 | `adapter/imgw/__init__.py` | IMGW plugin factory: compares the installed IMGWTools with the range `SUPPORTED_VERSIONS` before the import (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
-| `adapter/imgw/adapter.py` | IMGWTools adapter for IMGW-PIB and ČHMÚ: the entries of `iter_store` (versions of `ScanScope.known_versions` come back as `skipped`, with no sidecar read: `skip_versions`) with the producer's slot key, a slot name for people and an observation record; the description of a dataset from the IMGWTools registry (a Polish name, the country of its provider and the family of the dataset as a product; `SegmentDescriptionAdapter`); the current version of a slot from IMGWTools (`current_version`: `CurrentVersionAdapter`; a slot with a damaged version has none); the stations of a provider's catalog version from `read_catalog` (`StationCatalogAdapter`: `station_catalog`, `read_stations`); the default store root from `store_root()` (`DefaultRootAdapter`, ADR-033); the verdicts of `probe` by the marker and the codes of `StoreInfo.problem_codes`; metadata, the country of a file, projects; it never imports `pyarrow` | `ImgwAdapter` |
+| `adapter/imgw/adapter.py` | IMGWTools adapter for IMGW-PIB and ČHMÚ: the entries of `iter_store` (versions of `ScanScope.known_versions` come back as `skipped`, with no sidecar read: `skip_versions`) with the producer's slot key, a slot name for people and an observation record; the description of a dataset from the IMGWTools registry (a Polish name, the country of its provider and the family of the dataset as a product; `SegmentDescriptionAdapter`); the current version of a slot from IMGWTools (`current_version`: `CurrentVersionAdapter`; a slot with a damaged version has none); the stations of a provider's catalog version from `read_catalog` (`StationCatalogAdapter`: `station_catalog`, `read_stations`); the index of a dataset's series version from `read_series_index`, with the dataset's provider, family, unit and first year from the registry and each station's file relative to the store (`SeriesIndexAdapter`: `series_dataset`, `read_series_index`); the default store root from `store_root()` (`DefaultRootAdapter`, ADR-033); the verdicts of `probe` by the marker and the codes of `StoreInfo.problem_codes`; metadata, the country of a file, projects; it never imports `pyarrow` | `ImgwAdapter` |
 
 **Shared**
 
@@ -447,7 +448,7 @@ A cache rebuilt from the producers' files (A-ADR-002),
 
 - **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
   IMGW slots, 8 since the availability reports, 9 since the plans of `check` jobs
-  and the job state `partial`, 10 since the stations of the station catalogs) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
+  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
@@ -473,9 +474,15 @@ A cache rebuilt from the producers' files (A-ADR-002),
   each provider's stations of a store were read from), `stations` (the stations
   of that version: identity store, provider and code as text; a point, or none
   with the catalog's reason; the hydrographic code indexed for a prefix range),
-  `station_points` (R*Tree of the located stations), `session_tokens`. Triggers
-  delete `footprints`, `search` and `station_points` rows together with the
-  version, the slot and the station.
+  `station_points` (R*Tree of the located stations), `series_catalogs` (the series
+  version each dataset's coverage of a store was read from, with the dataset's unit,
+  kind of years, first year and known periods), `station_series` (each variable of
+  each station of that version: first and last date with a value, gaps and the
+  station's own periods as JSON, accumulated sums, the series file) and
+  `series_years` (each year of a variable in both kinds of years: units, known
+  units, units with a value; deleted with its variable), `session_tokens`.
+  Triggers delete `footprints`, `search` and `station_points` rows together with
+  the version, the slot and the station.
 - **Public keys** are the store identifier from the settings and the relative
   paths of slots and versions; numeric `id`s do not leave the index.
 - **Connections** (`connect`): WAL, `synchronous = NORMAL`,
@@ -644,6 +651,17 @@ scanned, and the segment is only a label for it.
    (`drop_stations`); a version the producer refuses (`ProducerError`) leaves it
    none too, with `ScanNotice` `stations_unreadable`, and a catalog the system
    cannot read (`SourceUnavailableError`) makes the store `unavailable`.
+   Then, for a producer with series of stations (`SeriesIndexAdapter`,
+   IMGWTools), `_index_series` finds each dataset's series the same way
+   (`series_dataset(slot_key)`) and reads its current version with
+   `read_series_index` (the `series.json` listing, never a series file) when it
+   is not the version its rows came from (`series_catalogs`); `replace_series`
+   replaces the dataset's rows in one transaction and computes each year of
+   each variable on the way (`index/series.py`: in units of the series, the
+   known units within the station's own periods or else the version's, those
+   with a value from the gap lists). A dataset whose series has no current
+   version has no coverage (`drop_series`); a refused version leaves it none,
+   with `ScanNotice` `series_unreadable`.
 8. After a pass over the whole store (without `segment`), `scan_projects` discovers
    `PROJECT_MANIFESTS` manifests (`kartograf-project.json`) down to depth
    `MAX_PROJECT_DEPTH` (4) in `project_dirs`, reads the changed ones
@@ -1250,10 +1268,11 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   producer for the current version of the slots it touched
   (`CurrentVersionAdapter`: IMGWTools has no links, so its `current_version`
   chooses the current version) and keeps the stations of each provider's current
-  station catalog (`StationCatalogAdapter`: `station_catalog`, `read_stations`).
-  To do: `PROJECT_MANIFESTS` knows only `kartograf-project.json`, and the
-  capabilities of series (`series_index`, `read_series` from SPEC 5.3) are not
-  yet in `sources/protocol.py`.
+  station catalog (`StationCatalogAdapter`: `station_catalog`, `read_stations`)
+  and the coverage of each dataset's current series (`SeriesIndexAdapter`:
+  `series_dataset`, `read_series_index`). To do: `PROJECT_MANIFESTS` knows only
+  `kartograf-project.json`, and reading a series for the chart (`read_series`
+  from SPEC 5.3) is not yet in `sources/protocol.py`.
 
 ---
 

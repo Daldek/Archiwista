@@ -3,11 +3,11 @@
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
-version of a slot, station catalogs, their parts, coordinate operations, link
-confirmation, sheet grids, the default store root, the producer's commands
-with the availability at the source, and the changes and runs of a project
-are optional capabilities: a producer without them still satisfies
-``SourceAdapter``.
+version of a slot, station catalogs, the series indexes of stations, their
+parts, coordinate operations, link confirmation, sheet grids, the default
+store root, the producer's commands with the availability at the source, and
+the changes and runs of a project are optional capabilities: a producer
+without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -30,6 +30,7 @@ from archiwista.sources.types import (
     ProjectInfo,
     ProjectRun,
     ScanScope,
+    SeriesListing,
     SheetGrid,
     SourceContext,
     SourceEntry,
@@ -169,6 +170,35 @@ class StationCatalogAdapter(Protocol):
         """Read every station of a catalog version (relative to the store).
 
         Stations without a location are included, with the reason.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the version.
+        ProducerError
+            The producer refused the version: it is broken or unlike its
+            sidecar.
+        """
+        ...
+
+
+@runtime_checkable
+class SeriesIndexAdapter(Protocol):
+    """Optional capability: the producer keeps series of stations with their index.
+
+    A dataset's series is a slot with the producer's key whose versions each
+    hold the series of every station of the dataset and an index of their
+    coverage (IMGW-8). The index keeps the coverage of the current version of
+    each dataset's series and reads it again only when that version changed;
+    the series files themselves are never read for it.
+    """
+
+    def series_dataset(self, slot_key: str) -> str | None:
+        """Return the dataset whose series a slot is; ``None``: no series."""
+        ...
+
+    def read_series_index(self, root: Path, version: Path) -> SeriesListing:
+        """Read the index of a series version (relative to the store).
 
         Raises
         ------

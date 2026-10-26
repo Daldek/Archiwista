@@ -185,6 +185,33 @@ side.
     station by code alone (the codes of two providers could meet); `LIKE` or `GLOB` for the
     prefix (their wildcards are characters a code may hold, and a range uses the plain
     index).
+12. **The coverage is that of each dataset's current series, counted by year when it
+    is written** (plan I5). The optional capability `SeriesIndexAdapter` names the
+    dataset whose series a slot is (`series_dataset(slot_key)`: `series:<dataset key>`
+    of a dataset of the registry, no disk access) and reads a series version
+    (`read_series_index(root, version)`: IMGWTools' `read_series_index`, which checks
+    the listing against its sidecar and the presence of every station's file, never
+    reading one; the dataset's provider, family, unit and first year come from the
+    registry entry, and each station's file is made relative to the store). After the
+    stations, as in decision 11, the index reads a dataset's listing only when its
+    current version is not the one its coverage came from (`series_catalogs`), and
+    replaces the dataset's rows (`station_series`: one per variable key of a station,
+    `Q` or `Q_max@winter`, with the first and last date with a value, the gaps, the
+    accumulated sums and the station's own periods) in one transaction. Each year of a
+    variable is counted then (`series_years`, `index/series.py`), in hydrological and
+    calendar years (half-year characteristics: hydrological only, SPEC 4.8.2), in units
+    of the series (a day, a month, one half-year value per hydrological year): its
+    units, the known ones (within the station's own periods for a dataset of station
+    files, else the version's; A-ADR-021 erratum 3) and those with a value (the known
+    units from the first to the last value outside the gaps). The gap lists decide, not
+    the producer's count of units with a value, which the fixture shows can differ; a
+    year without a known unit between two known ones has a row with nothing known, so
+    an unknown year is never a gap. A version IMGWTools refuses leaves the dataset no
+    coverage, with the scan notice `series_unreadable`; a unit the index cannot count
+    is refused the same way. Rejected: reading the Parquet series (the labels must
+    follow from the listing, SPEC 4.8.4); counting the years when a label is asked for
+    (every range and year type of every station would walk the gap lists again);
+    trusting `with_value` of the listing (it disagrees with its own gaps).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -203,7 +230,7 @@ with the current version IMGWTools names (decision 8); a source that is not avai
 entry kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is
 refused by the marker file names at its own field (DEV-19.14), looking two levels down
 because the producer's writer, which looks at the whole tree, is not run by a settings
-change. The index keeps the stations of each provider's current catalog (decision 11);
-the series coverage comes after them.
+change. The index keeps the stations of each provider's current catalog (decision 11)
+and the coverage of each dataset's current series with its years (decision 12).
 
 **Errata:** none.

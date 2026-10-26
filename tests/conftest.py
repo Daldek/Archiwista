@@ -25,8 +25,10 @@ collect_ignore = (
     else [
         "contract/test_imgw.py",
         "contract/test_imgw_default_root.py",
+        "contract/test_imgw_series.py",
         "contract/test_imgw_stations.py",
         "integration/test_imgw_index.py",
+        "integration/test_imgw_series.py",
         "integration/test_imgw_stations.py",
     ]
 )

@@ -15,7 +15,9 @@ changes nothing else. A producer without links names the current version of
 its slots itself: ``finish_pass`` asks it for the slots the pass touched. The
 stations of a provider's station catalog are replaced together, in one
 transaction, by those of the catalog version the scan read
-(``replace_stations``).
+(``replace_stations``), and the coverage of a dataset's series by that of the
+series version it read, with each year of each variable computed on the way
+(``replace_series``).
 """
 
 import hashlib
@@ -35,6 +37,7 @@ from archiwista.auth import access_key
 from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.index.geometry import is_box, polygon_bounds
 from archiwista.index.schema import connect, initialize
+from archiwista.index.series import SeriesYear, series_years
 from archiwista.index.types import (
     MAX_OWN_FILE_STATES,
     AreaRecord,
@@ -50,6 +53,7 @@ from archiwista.index.types import (
     OwnProblem,
     PassSummary,
     ScanPass,
+    SeriesCatalogRecord,
     SnapshotWrite,
     StationCatalogRecord,
     StoredPlan,
@@ -59,13 +63,17 @@ from archiwista.index.types import (
 from archiwista.messages import STORED_LANG, localize
 from archiwista.sources import (
     AvailabilityReport,
+    DateRange,
     EntryMeta,
     Footprint,
     ProjectInfo,
+    SeriesListing,
     SourceEntry,
     SourceObservation,
     SourceSegment,
     Station,
+    StationSeries,
+    VariableCoverage,
 )
 
 # Columns of a version's metadata, in the order of ``_meta_row``.
@@ -159,6 +167,20 @@ INSERT INTO stations (
     lon, lat, active, established_year, gauge_zero_m, river_km, elevation_m
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (store_id, provider, code) DO NOTHING
+"""
+# A station's variable met again in one series index keeps its first row.
+_INSERT_SERIES = """
+INSERT INTO station_series (
+    store_id, dataset, provider, code, variable_key, variable, unit, period,
+    first_date, last_date, with_value, accumulated, gaps, periods, file, sha256,
+    row_count
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (store_id, dataset, code, variable_key) DO NOTHING
+RETURNING id
+"""
+_INSERT_SERIES_YEAR = """
+INSERT INTO series_years (series_id, year_type, year, units, known, with_value)
+VALUES (?, ?, ?, ?, ?, ?)
 """
 _IDS = "SELECT value FROM json_each(?)"
 
@@ -1173,6 +1195,148 @@ class IndexWriter:
             removed = connection.execute(
                 "DELETE FROM stations WHERE store_id = ? AND provider = ?",
                 (store_id, provider),
+            ).rowcount
+        return max(removed, 0)
+
+    # Coverage of the producers' series of stations.
+
+    def series_catalogs(
+        self, store: str, producer: str
+    ) -> dict[str, SeriesCatalogRecord]:
+        """Return the series version each dataset's coverage was read from.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose series they are.
+
+        Returns
+        -------
+        dict[str, SeriesCatalogRecord]
+            By dataset.
+        """
+        store_id = self._store_id(store)
+        return {
+            str(dataset): SeriesCatalogRecord(
+                dataset=str(dataset),
+                producer=producer,
+                provider=str(provider),
+                slot=str(slot),
+                version=str(version),
+                read_at=datetime.fromisoformat(str(read_at)),
+            )
+            for dataset, provider, slot, version, read_at in self._connection.execute(
+                "SELECT dataset, provider, slot_path, version_path, read_at"
+                " FROM series_catalogs WHERE store_id = ? AND producer = ?",
+                (store_id, producer),
+            ).fetchall()
+        }
+
+    def replace_series(
+        self,
+        store: str,
+        producer: str,
+        *,
+        slot: str,
+        version: str,
+        listing: SeriesListing,
+    ) -> int:
+        """Make a dataset's coverage in a store that of one series version.
+
+        One transaction: the dataset's rows and their years are replaced, and
+        the version is recorded as the one they were read from. Each year of
+        each variable is computed from the gap lists, in both year types (one
+        for half-year characteristics), against the station's own known
+        periods or else the version's (``series_years``); a variable met
+        again for a station keeps its first row.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose series it is.
+        slot, version : str
+            The series' slot and the ``series.json`` of the version read,
+            relative to the store.
+        listing : SeriesListing
+            ``SeriesIndexAdapter.read_series_index`` of the version.
+
+        Returns
+        -------
+        int
+            Variables of stations written.
+        """
+        store_id = self._store_id(store)
+        unit = listing.time_unit
+        written = 0
+        with self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM station_series WHERE store_id = ? AND dataset = ?",
+                (store_id, listing.dataset),
+            )
+            for station in listing.stations:
+                periods = (
+                    listing.periods if station.periods is None else station.periods
+                )
+                for coverage in station.variables:
+                    row = connection.execute(
+                        _INSERT_SERIES,
+                        _series_row(store_id, listing, station, coverage),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    written += 1
+                    years = series_years(coverage, periods=periods, time_unit=unit)
+                    connection.executemany(
+                        _INSERT_SERIES_YEAR, [_year_row(row[0], year) for year in years]
+                    )
+            connection.execute(
+                "INSERT INTO series_catalogs (store_id, dataset, producer, provider,"
+                " kind, time_unit, year_type, first_year, periods, slot_path,"
+                " version_path, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (store_id, dataset) DO UPDATE SET"
+                " producer = excluded.producer, provider = excluded.provider,"
+                " kind = excluded.kind, time_unit = excluded.time_unit,"
+                " year_type = excluded.year_type, first_year = excluded.first_year,"
+                " periods = excluded.periods, slot_path = excluded.slot_path,"
+                " version_path = excluded.version_path, read_at = excluded.read_at",
+                (
+                    store_id,
+                    listing.dataset,
+                    producer,
+                    listing.provider,
+                    listing.kind,
+                    unit,
+                    listing.year_type,
+                    listing.first_year,
+                    _ranges_json(listing.periods),
+                    slot,
+                    version,
+                    _now(),
+                ),
+            )
+        return written
+
+    def drop_series(self, store: str, dataset: str) -> int:
+        """Forget a dataset's coverage in a store and the version it came from.
+
+        Returns
+        -------
+        int
+            Variables of stations removed.
+        """
+        store_id = self._store_id(store)
+        with self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM series_catalogs WHERE store_id = ? AND dataset = ?",
+                (store_id, dataset),
+            )
+            removed = connection.execute(
+                "DELETE FROM station_series WHERE store_id = ? AND dataset = ?",
+                (store_id, dataset),
             ).rowcount
         return max(removed, 0)
 
@@ -2412,6 +2576,51 @@ def _station_row(store_id: int, provider: str, station: Station) -> tuple[object
         station.river_km,
         station.elevation_m,
     )
+
+
+def _series_row(
+    store_id: int,
+    listing: SeriesListing,
+    station: StationSeries,
+    coverage: VariableCoverage,
+) -> tuple[object, ...]:
+    """Values of ``_INSERT_SERIES``: dates in ISO, ranges as JSON."""
+    return (
+        store_id,
+        listing.dataset,
+        listing.provider,
+        station.code,
+        coverage.key,
+        coverage.variable,
+        coverage.unit,
+        coverage.period,
+        None if coverage.first is None else coverage.first.isoformat(),
+        None if coverage.last is None else coverage.last.isoformat(),
+        coverage.with_value,
+        coverage.accumulated,
+        _ranges_json(coverage.gaps),
+        None if station.periods is None else _ranges_json(station.periods),
+        station.file,
+        station.sha256,
+        station.rows,
+    )
+
+
+def _year_row(series_id: int, year: SeriesYear) -> tuple[object, ...]:
+    """Values of ``_INSERT_SERIES_YEAR``."""
+    return (
+        series_id,
+        year.year_type,
+        year.year,
+        year.units,
+        year.known,
+        year.with_value,
+    )
+
+
+def _ranges_json(ranges: Iterable[DateRange]) -> str:
+    """Ranges of days as JSON: ``[["2001-01-01", "2001-01-31"], ...]``."""
+    return _json([[start.isoformat(), end.isoformat()] for start, end in ranges])
 
 
 def _meta_row(meta: EntryMeta) -> tuple[object, ...]:
