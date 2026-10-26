@@ -37,7 +37,7 @@ Both producers are untagged, so no data is migrated and no old name stays (ECO-0
 | B. Build v0.3 on the current pin `8e9bcbb` and migrate at the release | Rejected: at the pin `run_command(command, options, *, output_dir, ...)` takes the store root as `output_dir`, required, and returns the bare report; ADR-054 gives that keyword the meaning "plain directory", makes the store `root` optional (a forgotten one falls back to the default root without an error) and wraps the result in the envelope `kartograf-result/1`. A call written now becomes a plain write into the store root when the pin moves, and only a root that already has its marker stops it (`output_in_store`). The reports and plans v0.3 reads change too (`files[].file.path` becomes `files[].path`, the `store` of `kartograf-plan/1` becomes `root`), so v0.3 would be written twice |
 | C. Wait for the tags `v0.8.0` and `v3.0.0` and pin them | Rejected: the tags need the author (DEV-3.3), and REL-5.3 allows the commit pin that the Nogat plan names |
 | D. Accept both names of the store root in the adapter for a transition | Rejected: no aliases or shims (ECO-020); both producers are untagged, so one window of development heads is supported |
-| E. Bring all of v0.5 (stations views, charts, synchronisation) forward with the source | Rejected: stations, charts and synchronisation need the mockup answers (SPEC 16, M5 and M11) and the v0.3 action layer; only the read side is planned (Part 2) |
+| E. Bring all of v0.5 (stations views, charts, synchronisation) forward with the source | Rejected: stations, charts and synchronisation need the mockup answer M11 (SPEC 16; M5 answered 2026-10-26) and the v0.3 action layer; only the read side is planned (Part 2) |
 | F. Let Archiwista write the marker of the author's existing stores (`kartograf store init`) | Not now: the store is read-only for Archiwista (CLAUDE.md), so the interface shows the command to copy; the author decides (D2) |
 
 ## Decision
@@ -405,8 +405,9 @@ What the adapter must know about IMGWTools after ADR-007 (read at `a304521`):
    producer-neutral and v0.5 adds the IMGW commands).
 8. **I8. Stations on the map and in the Catalog (blocked).** The interface of stations
    (symbols and clusters, the group "without position", coverage labels and their
-   patterns, the station card, the chart) waits for the mockup answers M5 and M11 of
-   SPEC 16, which are the author's. It is planned as a separate plan when they exist.
+   patterns, the station card, the chart) waits for the mockup answer M11 of SPEC 16,
+   which is the author's (M5, the Catalog layout and the "without position" group, was
+   answered 2026-10-26, SPEC 6.8). It is planned as a separate plan when they exist.
 
 After A8 and I7 the IMGW actions (check and synchronise archives, build series, project
 tasks of IMGWTools, export of a series, the card and comparison of stations) reuse the

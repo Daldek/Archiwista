@@ -597,6 +597,6 @@ Open since the previous PROGRESS (Polish, in git):
 - Basemap: one default provider (OpenFreeMap) is an availability risk outside offline mode.
 - PRD "Open decisions" (coverage labels before v0.3, the IMGW data format before v0.5, merge
   results as Kartograf products before v0.6, the ČHMÚ adapter) and the mockup questions M3,
-  M5 to M8, M10, M11 (SPEC 16).
+  M6 to M8, M10, M11 (SPEC 16; M5 resolved 2026-10-26).
 - The mockup (`mockup/`) is a clickable prototype, not production code; its working data
   directory is outside the repository and can be removed with the author's consent.

@@ -1979,9 +1979,10 @@ mockup: screenshots `05a`–`05c`, `14`, `17`, `21-wachlarz-*`)
  #### arkusz pełny  // kampanie roku  .... niepełny  [=] pobrane (podgląd)
 ```
 
-**d) "Katalog" (Catalog)** (the whole set as cards; thumbnail from previews when the data
-is local, otherwise a sheet schema; list mode and objects without a location —
-6.8, sketch m)
+**d) "Katalog" (Catalog), "Karty" (Cards)** (an option for products with a footprint or a
+thumbnail, the "Lista" (List) is the default; a card: year, thumbnail from previews when the
+data is local, otherwise a sheet schema, coverage label, formats, sheet count and size,
+store badge; list mode and objects without a location — 6.8, sketch m; M5)
 
 ```text
 +--------------------+ +--------------------+ +--------------------+
@@ -2163,7 +2164,7 @@ without a location replaced by a description — the sketch shows the layout; 6.
 | KATALOG  Stany i przepływy dobowe (IMGW)   [Szukaj: nazwa, kod, rzeka]      |
 | Zakres: [obszar: Zlewnia Raby v]   Rzeka: [2138 · Raba z dopływami v]       |
 | Położenie: [x] w obszarze [x] na granicy [x] bez położenia   Lata: [r.h. v] |
-| Widok: (Lista) Karty                  Pokrycie: H, Q i T osobno [Filtr +]   |
+| Widok: (Lista)                        Pokrycie: H, Q i T osobno [Filtr +]   |
 +-----------------------------------------------------------------------------+
 | W OBSZARZE (9)                                             [Pokaż na mapie] |
 | Stacja      Kod        Rzeka (kod)  Pokrycie                     Położenie  |
@@ -2173,7 +2174,7 @@ without a location replaced by a description — the sketch shows the layout; 6.
 |                                     Q luki 3% · najdł. …                    |
 |                                     T częściowy · od 1972                   |
 | …                                                                           |
-| BEZ POŁOŻENIA (2) — pasują do filtrów atrybutów; nie ma ich na mapie        |
+| v BEZ POŁOŻENIA (2) — pasują do filtrów atrybutów; nie ma ich na mapie      |
 | (nazwa)     (kod)      (dopływ)     H ciągły · 1951–1990         brak: 0,0  |
 |                        (2138…)      Q częściowy · do 1990                   |
 | (nazwa)     (kod)      (dopływ)     H ciągły · 1951–2025         brak       |
@@ -2326,13 +2327,15 @@ and product, not only IMGW (sketches 6.5 d, m).
 
 - **Entry.** The "Katalog" navigation item (6.2), the "Katalog" mode
   in the "Mapa" (Map) (the same state: product, area, filters, URL), the counter
-  "N stations without a location" or "N files without a footprint" on the map and in
+  "N stacji bez położenia" (N stations without a location) or "N files without a footprint" on the map and in
   the "Zestawienie" (Summary) (it opens the "Katalog" with the same product and filters
   and with the "bez położenia" (without location) group expanded), search (`Ctrl+K`).
 - **Scope.** With an area or without one. With an area, the result is divided into the groups
   from 4.3 (item 3): "w obszarze" (in the area), "na granicy obszaru" (on the area boundary), "cały kraj" (whole country), "bez
-  położenia" (without location), each with a counter, none hidden by default,
-  and objects without a location are never assigned to an area. Without
+  położenia" (without location), each with a counter in its heading,
+  and objects without a location are never assigned to an area. "Bez położenia" is
+  the last group of the list and collapsible; it is collapsed by default when the area has
+  many located objects, and the map counter opens it expanded (M5). Without
   an area, all objects of the product or dataset.
 - **Search and filters** as in 6.6 (chips, URL), including filters
   independent of geometry: name, code and identifier (station code, sheet code,
@@ -2340,8 +2343,12 @@ and product, not only IMGW (sketches 6.5 d, m).
   country, product and variant, state, project; for stations also type,
   variable, label and full years of the indicated variable (P16), active or
   historical.
-- **Layout.** "Lista" (List) (rows with sorting, virtualized, the goal from 4.5)
-  or "Karty" (Cards) (sketch 6.5 d; M5). Columns: name, identifier,
+- **Layout.** "Lista" (List) (rows with sorting, virtualized, the goal from 4.5) is
+  the default for every producer. "Karty" (Cards) (sketch 6.5 d) is an option only for
+  products with a footprint or a thumbnail (Kartograf rasters), and the choice is
+  remembered per product kind (M5). A card shows the year, the thumbnail from the
+  previews when the data is local (otherwise a sheet schema), the coverage label, the
+  formats, the sheet count and size, and the store badge. Columns: name, identifier,
   producer and product, location (source or reason for absence with a hint,
   4.3), coverage labels separately for each variable (in the "Lista" consecutive
   variable rows, in the "Karty" a list of variables; P16) and store badge,
@@ -4393,7 +4400,7 @@ Decisions the mockup is meant to help make:
 | M2 | Are the labels "pełne" (full), "pełne · 2 kampanie" (full · 2 campaigns), "częściowe · 58%" (partial · 58%), "brak danych" (no data) and the store badge understandable without instructions; colors and patterns (6.4) |
 | M3 | "Zestawienie" (Summary): default "Tabela" (Table) or "Oś czasu" (Timeline); how much information per row |
 | M4 | ~~"Stos" (Stack): does the isometric view help choose a year (stays as a mode or goes away); plates with footprints or with textures (P12); layout variant~~ **Resolved 2026-10-17 (user decision, A-ADR-018 erratum 1):** "Wachlarz" (the Fan) completely replaces "Stos" — year layers as thumbnails on an arc like a stack of files in the macOS dock, each shown in full, the selected one enlarged; the isometric "Stos" and the "Wachlarz / Stos" switch removed from the mockup (screenshots `05a`–`05c`, `14`, `17`, `21-wachlarz-*`) |
-| M5 | "Katalog" (Catalog): cards or list; what the card shows; the "bez położenia" (no location) group and the counter on the map (6.8, P13) |
+| M5 | ~~"Katalog" (Catalog): cards or list; what the card shows; the "bez położenia" (no location) group and the counter on the map (6.8, P13)~~ **Resolved 2026-10-26 (user decision):** the "Lista" (List) is the default layout for every producer; "Karty" (Cards) is an option only for products with a footprint or a thumbnail (Kartograf rasters), remembered per product kind; a card shows what sketch 6.5 d shows (year, thumbnail from previews when local, else a sheet schema, coverage label, formats, sheet count and size, store badge); objects without a location form a collapsible group "Bez położenia" at the end of the list with its count in the heading (collapsed by default when the area has many located objects), and the map counter "N stacji bez położenia" opens the "Katalog" with the same filters and the group expanded (P13, A-ADR-022; 6.8) |
 | M6 | "Asystent" (Assistant): ~~side or bottom panel~~ **resolved 2026-10-17 (A-ADR-018):** desktop — pinned side panel (the map narrows), phone — drawer; open: the look of the proposal card and of highlights on the map |
 | M7 | Job progress: on the map (units change color) and in the "Zadania" (Jobs) bar |
 | M8 | "Karta pliku" (File card): version axis, pins, order and names of actions |
