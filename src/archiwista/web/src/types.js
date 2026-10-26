@@ -1055,6 +1055,8 @@
  *   1–10 000; the least recently used previews go first.
  * @property {boolean} [preview_warm_after_scan] - After a scan that indexed new versions
  *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
+ * @property {number} [action_log_retention_days] - Days the action log keeps an entry;
+ *   the server deletes older ones (v0.4, 365 by default).
  */
 
 // Background jobs (9b) -------------------------------------------------------
@@ -1127,7 +1129,8 @@
  *   `size_bytes`, `sha256`, `label`, `call`), `items` (`id`, `status`, `code`,
  *   `reason`, `message`, `call`), `failed`, `calls` (per call: `command`, `line`,
  *   `status` `ok`, `partial`, `failed` or `skipped`, `reason` of a skipped one
- *   `not_planned` or `nothing_to_download`, `files`, `failed`, `error`),
+ *   `not_planned`, `nothing_to_download` or `taken`, `files`, `failed`, `error`),
+ *   `taken` (positions another download fetches: `path`, `unit`, `job`, `actor`),
  *   `rescanned`, `seconds`; of a `project_download` or `project_repin`
  *   `producer`, `project`, `store`, `root`, `upgrade`, `ok`, `counts` of the tasks
  *   (`pinned`, `unchanged`, `restored`, `updated`, `failed`), `tasks` (`name`,
@@ -1140,6 +1143,9 @@
  *   `detail`), `skipped`, `stopped` (`cache_full` or null), `room_bytes`,
  *   `seconds`.
  * @property {JobFailure|null} error
+ * @property {boolean} hidden - A job only of projects the session does not see, as
+ *   `GET /jobs` lists it: empty `params`, null `session`, `result` and `error`,
+ *   `progress` with `current` and `total` only (ADR-047).
  */
 
 /**
@@ -1148,6 +1154,17 @@
  * @typedef {object} JobList
  * @property {JobDetail[]} items
  * @property {string|null} next_cursor
+ */
+
+/**
+ * The end of a job's log (`GET /jobs/{job}/log`): its worker's standard error,
+ * in English.
+ *
+ * @typedef {object} JobLog
+ * @property {string} job
+ * @property {number} size_bytes - Size of the whole log.
+ * @property {boolean} truncated - Only its last MiB is given.
+ * @property {string} text
  */
 
 /**
@@ -1185,6 +1202,55 @@
  *   => void} [onState] - A new state; the stream ends after a final one.
  * @property {(problem: Problem) => void} [onError] - The stream broke off before a
  *   final state.
+ */
+
+// The action log (v0.4) ------------------------------------------------------
+
+/**
+ * An entry of the action log (`GET /log`; a line of its JSON Lines export).
+ *
+ * @typedef {object} ActionEntry
+ * @property {number} id - Order of the entries: a later one has a greater id.
+ * @property {string} at - When (UTC).
+ * @property {string} actor - Who: an account id; `local`, the owner of a local
+ *   installation, also for the server's scheduler; `-` before a sign-in.
+ * @property {"local_owner"|"user"|"agent"|"scheduler"|"anonymous"|null} actor_kind -
+ *   How; `agent` acts for `actor`; null for an entry written before v0.4.
+ * @property {string|null} session - Label of the session; null at the terminal and
+ *   for the scheduler.
+ * @property {string|null} client - Client address of the request; null at the
+ *   terminal.
+ * @property {string} action - What, e.g. `user.add`, `job.start`,
+ *   `permission.denied`, `log.export`.
+ * @property {string} target - What it was about: an account, a group, a project key,
+ *   a job id, a ref, `settings` or `log`.
+ * @property {"ok"|"denied"|"failed"} outcome
+ * @property {Object<string, *>|null} before - The state before a change.
+ * @property {Object<string, *>|null} after - The state after a change.
+ * @property {Object<string, *>|null} details - What else the action tells, e.g. the
+ *   `action` and `route` of a refusal.
+ */
+
+/**
+ * A page of the action log, newest entry first.
+ *
+ * @typedef {object} ActionPage
+ * @property {ActionEntry[]} items
+ * @property {number} total - How many entries the filters select, all pages together.
+ * @property {number|null} next_cursor - `cursor` of the next page; null on the last.
+ */
+
+/**
+ * Filters of `GET /log` and `GET /log/export`; unknown ones are refused (`400`).
+ *
+ * @typedef {object} ActionFilters
+ * @property {string} [actor] - An account id, `local` or `-`.
+ * @property {string} [action] - An action (`session.login`) or a group by its prefix
+ *   (`session.`).
+ * @property {"ok"|"denied"|"failed"} [outcome]
+ * @property {string} [target]
+ * @property {string} [since] - At or after this time (ISO 8601 with a zone).
+ * @property {string} [until] - Before this time (ISO 8601 with a zone).
  */
 
 // Areas and local coverage (9c) ----------------------------------------------
@@ -1681,6 +1747,8 @@
  *   Of the copy: in its CRS and as a WGS84 box (west, south, east, north).
  * @property {"ok"|"invalid"|"modified"} state - `invalid`: no valid `migawka.json`;
  *   `modified`: its files differ from the document.
+ * @property {string[]} members - Names of its files, the main file first: the `member`
+ *   of `GET …/snapshots/{label}/file`.
  * @property {CopyPath} paths - The snapshot directory.
  */
 
@@ -1721,6 +1789,8 @@
  * @property {SnapshotItem[]} snapshots - Newest first.
  * @property {PreviewInfo|null} preview - Null without render processes.
  * @property {CopyPath} paths - The main file.
+ * @property {string[]} members - Names of the files of its set, the main file first
+ *   (its name alone for a single file): the `member` of `GET …/files/{file_id}/file`.
  * @property {Issue[]} problems
  */
 

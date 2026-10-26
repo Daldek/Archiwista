@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from archiwista.auth import LOCAL_OWNER, access_key
+from archiwista.auth import LOCAL_OWNER, SCHEDULER, access_key
 from archiwista.auth.authorize import Authorizer
 from archiwista.cli import main
 from archiwista.config import AppSettings
@@ -364,7 +364,7 @@ def test_action_log_refuses_to_change_an_entry(tmp_path: Path) -> None:
 
 
 def test_pruning_deletes_only_entries_older_than_the_limit(tmp_path: Path) -> None:
-    """Entries before the limit go; one at the limit and later ones stay."""
+    """Entries before the limit go and the pruning is logged; later ones stay."""
     # Arrange
     state = StateStore(tmp_path / "state.sqlite")
     times = ["2026-01-31T23:59:59Z", "2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z"]
@@ -374,13 +374,25 @@ def test_pruning_deletes_only_entries_older_than_the_limit(tmp_path: Path) -> No
             _backup(actions=[_action(i, at) for i, at in enumerate(times, start=1)])
         ),
     )
+    limit = datetime(2026, 2, 1, tzinfo=UTC)
 
     # Act
-    deleted = state.prune_actions(datetime(2026, 2, 1, tzinfo=UTC))
+    deleted = state.prune_actions(limit, actor=SCHEDULER)
+    again = state.prune_actions(limit, actor=SCHEDULER)
 
-    # Assert
-    assert deleted == 1
-    assert [entry.id for entry in log_entries(state)] == [2, 3]
+    # Assert: the second pruning deleted nothing and logged nothing.
+    assert (deleted, again) == (1, 0)
+    entries = log_entries(state)
+    assert [entry.id for entry in entries] == [2, 3, 4]
+    pruned = entries[-1]
+    assert (pruned.actor, pruned.actor_kind, pruned.session, pruned.client) == (
+        "local",
+        "scheduler",
+        None,
+        None,
+    )
+    assert (pruned.action, pruned.target, pruned.outcome) == ("log.prune", "log", "ok")
+    assert pruned.details == {"before": "2026-02-01T00:00:00+00:00", "count": 1}
 
 
 def test_export_import_gives_the_same_matrix(

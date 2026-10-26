@@ -16,9 +16,11 @@ with a job writing its index is left alone. The data folders of every
 project get an ``own_scan`` the same way (``plan_own_scan``): at the start
 when the last one ended more than 15 minutes ago, then every
 ``scan_interval_local_min``. Scheduled jobs act as the ``scheduler`` for
-the owner; once an hour a tick also prunes old jobs
-(``JobSupervisor.prune``: routine scans and routine ``own_scan`` runs after
-48 hours). With the setting ``preview_warm_after_scan`` on, a store whose
+the owner; once an hour, the first time at the start, a tick also prunes old
+jobs (``JobSupervisor.prune``: routine scans and routine ``own_scan`` runs
+after 48 hours) and the entries of the action log older than
+``action_log_retention_days`` (``StateStore.prune_actions``, logged as
+``log.prune``). With the setting ``preview_warm_after_scan`` on, a store whose
 newest succeeded scan indexed new versions gets a ``preview_warm`` job of
 those versions (``since`` the scan's start), once per scan and only while
 no job writes the store's index (ADR-041).
@@ -42,6 +44,7 @@ from archiwista.errors import JobConflictError, NotFoundError, OfflineModeError
 from archiwista.index import IndexQueries, ScanMode
 from archiwista.jobs.availability import store_unreachable
 from archiwista.jobs.supervisor import JobRecord, JobSupervisor, ScanHistory
+from archiwista.state import StateStore
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,7 @@ logger = logging.getLogger(__name__)
 STARTUP_STALE = timedelta(minutes=15)
 # Seconds between two plannings (and probes of unavailable stores).
 TICK_S = 60.0
-# Time between two prunings of old jobs from a tick.
+# Time between two prunings of old jobs and log entries from a tick.
 PRUNE_INTERVAL = timedelta(hours=1)
 # Seconds a probe of an unavailable store may take (a hung share).
 PROBE_TIMEOUT_S = 10.0
@@ -168,6 +171,9 @@ class ScanScheduler:
         Seconds between two plannings.
     probe_timeout_s : float, default 10.0
         Seconds a probe may take before the store counts as unavailable.
+    state : StateStore or None, optional
+        The state database whose action log a tick prunes; none pruned
+        without it.
     """
 
     def __init__(
@@ -179,6 +185,7 @@ class ScanScheduler:
         index_path: Path,
         tick_s: float = TICK_S,
         probe_timeout_s: float = PROBE_TIMEOUT_S,
+        state: StateStore | None = None,
     ) -> None:
         self._jobs = jobs
         self._settings = settings
@@ -186,6 +193,7 @@ class ScanScheduler:
         self._queries = IndexQueries(index_path)
         self._tick_s = tick_s
         self._probe_timeout_s = probe_timeout_s
+        self._state = state
         self._started_at = datetime.now(UTC)
         self._pruned_at: datetime | None = None
         self._stop = threading.Event()
@@ -217,7 +225,7 @@ class ScanScheduler:
         self._queries.close()
 
     def tick(self, now: datetime | None = None) -> tuple[JobRecord, ...]:
-        """Plan once and submit the scans and warm-ups due; prune old jobs hourly.
+        """Plan once and submit the scans and warm-ups due; prune hourly.
 
         Parameters
         ----------
@@ -234,6 +242,9 @@ class ScanScheduler:
         self._jobs.recover()
         if self._pruned_at is None or moment - self._pruned_at >= PRUNE_INTERVAL:
             self._jobs.prune(now=moment)
+            if self._state is not None:
+                kept = timedelta(days=settings.action_log_retention_days)
+                self._state.prune_actions(moment - kept, actor=SCHEDULER)
             self._pruned_at = moment
         states = {state.store: state for state in self._queries.status().stores}
         history = {

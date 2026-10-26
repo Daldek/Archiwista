@@ -1,0 +1,26 @@
+/* „Zadania” (views/jobs.js): the queue and history of the background jobs.
+   Tokens and shared controls come from styles.css, the job pieces from cards.css. */
+
+.jobs-page { max-width: 1100px; }
+.jobs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.jobs-head h1 { font-size: 20px; }
+.jobs-page > .hint { margin: 0; }
+.jobs-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.jobs-item { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 10px 12px; display: grid; gap: 8px; min-width: 0; }
+.jobs-item[data-state="running"] { border-color: #c7d2fe; }
+.jobs-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; }
+.jobs-row > .state-badge { justify-self: start; margin-top: 1px; }
+.jobs-main { display: grid; gap: 4px; min-width: 0; }
+.jobs-main p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.jobs-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--text-2); }
+.jobs-error { color: var(--bad-ink); font-size: 12.5px; }
+.jobs-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.jobs-details, .jobs-log { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; min-width: 0; }
+.jobs-log .hint { margin: 0; }
+.jobs-log-text { margin: 0; max-height: 320px; overflow: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.jobs-more { justify-self: start; }
+
+@media (max-width: 860px) {
+  .jobs-row { grid-template-columns: minmax(0, 1fr); }
+  .jobs-actions { justify-content: flex-start; }
+}

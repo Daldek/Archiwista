@@ -54,30 +54,42 @@ class FileFormat:
     driver : str or None, optional
         The only GDAL driver allowed to open the file; ``None`` when GDAL
         never opens it.
+    media_type : str or None, optional
+        Its registered media type, the ``Content-Type`` of a download of it
+        (``archiwista.services.files``); ``None`` when it has none.
     """
 
     name: str
     kind: FormatKind
     extensions: tuple[str, ...]
     driver: str | None = None
+    media_type: str | None = None
 
 
 FORMATS: tuple[FileFormat, ...] = (
-    FileFormat("GeoTIFF", "raster", (".tif", ".tiff"), "GTiff"),
+    FileFormat(
+        "GeoTIFF",
+        "raster",
+        (".tif", ".tiff"),
+        "GTiff",
+        "image/tiff; application=geotiff",
+    ),
     FileFormat("ASCII Grid", "raster", (".asc",), "AAIGrid"),
     FileFormat("XYZ", "raster", (".xyz",), "XYZ"),
-    FileFormat("JPEG", "image", (".jpg", ".jpeg"), "JPEG"),
-    FileFormat("PNG", "image", (".png",), "PNG"),
-    FileFormat("GeoPackage", "vector", (".gpkg",), "GPKG"),
+    FileFormat("JPEG", "image", (".jpg", ".jpeg"), "JPEG", "image/jpeg"),
+    FileFormat("PNG", "image", (".png",), "PNG", "image/png"),
+    FileFormat(
+        "GeoPackage", "vector", (".gpkg",), "GPKG", "application/geopackage+sqlite3"
+    ),
     FileFormat("Shapefile", "vector", (".shp",), "ESRI Shapefile"),
-    FileFormat("GeoJSON", "vector", (".geojson",), "GeoJSON"),
+    FileFormat("GeoJSON", "vector", (".geojson",), "GeoJSON", "application/geo+json"),
     FileFormat("FlatGeobuf", "vector", (".fgb",), "FlatGeobuf"),
     FileFormat("MapInfo TAB", "vector", (".tab",), "MapInfo File"),
-    FileFormat("LAZ", "points", (".laz",)),
-    FileFormat("LAS", "points", (".las",)),
-    FileFormat("ZIP", "archive", (".zip",)),
-    FileFormat("PDF", "document", (".pdf",)),
-    FileFormat("TXT", "document", (".txt",)),
+    FileFormat("LAZ", "points", (".laz",), media_type="application/vnd.laszip"),
+    FileFormat("LAS", "points", (".las",), media_type="application/vnd.las"),
+    FileFormat("ZIP", "archive", (".zip",), media_type="application/zip"),
+    FileFormat("PDF", "document", (".pdf",), media_type="application/pdf"),
+    FileFormat("TXT", "document", (".txt",), media_type="text/plain"),
     FileFormat("world file", "auxiliary", (".jgw", ".pgw", ".tfw", ".wld")),
 )
 UNKNOWN_FORMAT = FileFormat("unknown", "unknown", ())

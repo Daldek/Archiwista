@@ -1562,7 +1562,7 @@ proxy_autocreate = false                        # create a missing account on it
 | GeoPackage (BDOT10k, PRG, EGiB, ZABAGED, RUIAN…) | layers, feature count, features in view (GeoJSON, up to 5,000), attribute sample | opened with `immutable=1`; above the limit "Przybliż albo otwórz w QGIS" |
 | ZIP (SHP, GML, CityGML, XLS, PDF, OBJ) | list of members with sizes and recognised format | SHP and GML preview via `/vsizip/` later |
 | LAZ | header (extent, point count, classes, density) and a 2D image from a sample | 3D view after v1.0 (section 15, P5) |
-| TXT, PDF | metadata and the reason `document_no_preview` | PDF without delivering the file to the browser (v0.4); XYZ grids like ASC |
+| TXT, PDF | metadata and the reason `document_no_preview` | never shown in the browser, a PDF neither: "Pobierz plik" downloads it (v0.4, A-ADR-047 decision 5); XYZ grids like ASC |
 | IMGW series (Parquet in the dataset's series version) | variable chart (up to 2,000 points per series: min./avg./max. in intervals), first and last rows | read through `read_series` (IMGW-10); cache keyed by the `sha256` of the station file (6.7) |
 | IMGW archives (ZIP), station catalog (GeoJSON) | list of members with sizes; points and attribute table | the contents of the archives are read only by IMGWTools |
 
@@ -3847,7 +3847,8 @@ over TLS.
   answers `404` at its own address. A planned download (`plan_job`) claims the positions it
   fetches when it starts; a position another active download of the store has claimed is not
   fetched again but reported as `taken` with that job and person ("pobierane przez Marka"),
-  and a retry fetches it if that job failed it. A download without a plan of the same call as
+  the download then ending `partial`, and a retry fetches it if that job failed it. A
+  download without a plan of the same call as
   a running download of the store waits in the queue until that one ends. The warning about
   overlapping jobs stays (5.6). Downloads of projects stay one per project; two projects that
   share a unit may both fetch it (the producer writes it once).
@@ -4449,8 +4450,8 @@ thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of 
 and of a pasted command; whether the project card's download and repin need the window
 too is open (ADR-042). Criteria 1, 2 and 6 are the `live` test
 `tests/integration/test_live_actions.py` and criterion 8 on a share the `smb` run, both
-run by the user. Area selection by unit name waits for KB-7, and the interface has no
-list of jobs yet (cancel, retry and the log are in the API and the CLI). Evidence:
+run by the user. Area selection by unit name waits for KB-7; the list of jobs with
+cancel, retry and the log ("Zadania", A12) came with v0.4 (plan T9). Evidence:
 [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
 
 ### v0.4 "Team"

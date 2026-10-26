@@ -69,7 +69,15 @@ export const cards = {
       failed: "Polecenie {place} z {count} nie powiodło się:",
       not_planned: "Polecenie {place} z {count} pominięte, bo jego sprawdzenie nie dało planu:",
       nothing_to_download: "Polecenie {place} z {count} pominięte, bo nie ma nic do pobrania:",
+      taken: "Polecenie {place} z {count} pominięte, bo wszystkie jego pozycje pobierają inne zadania:",
     },
+    /**
+     * Positions to download another active download fetches (`result.taken`,
+     * ADR-047), one line per such job: „2 pozycje pobiera marek (zadanie 3f9c1a7e)”.
+     */
+    download_taken_title: "Pobierane przez inne zadania",
+    download_taken: "{count} {positions} pobiera {actor} (zadanie {job})",
+    positions: ["pozycję", "pozycje", "pozycji"],
     /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
     project_tasks: "Zadania projektu: {tasks} ({counts}).",
     project_tasks_title: "Wynik dla zadań projektu",
@@ -111,6 +119,19 @@ export const cards = {
   },
   stale: "Magazyn „{store}” jest niedostępny — stan z indeksu z {indexed_at}, nie dowód, że plików nie ma.",
   stale_never: "Magazyn „{store}” jest niedostępny i nie ma pełnego przejścia indeksu.",
+  /** „Pobierz plik” (views/cards.js `DownloadLink`; ADR-047 decision 5). */
+  download: {
+    action: "Pobierz plik",
+    title: "Zapisz plik na tym komputerze",
+    member_title: "Zapisz plik „{name}” na tym komputerze",
+    /** Why a file cannot be downloaded now (the disabled action's description). */
+    why: {
+      store_unavailable: "Magazyn jest niedostępny, więc pliku nie można teraz pobrać.",
+      version_missing: "Tej wersji nie ma już w magazynie.",
+      file_missing: "Pliku nie ma na dysku.",
+      snapshot_invalid: "Migawka jest nieważna, więc nie można jej pobrać.",
+    },
+  },
   /** Human names of coordinate systems of Polish and Czech data (Kartograf's names). */
   crs: {
     "EPSG:2180": "PL-1992",

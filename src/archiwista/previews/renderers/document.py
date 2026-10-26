@@ -4,9 +4,9 @@ None of these has a thumbnail or map tiles: the probe only confirms the file
 can be read and gives the reason, which the interface shows with its
 description and fix (``preview_reason_<code>``, ``preview_fix_<code>``):
 
-- a document (PDF, TXT) → ``document_no_preview``: showing a PDF in the
-  browser needs the files served (team mode, v0.4); the file card gives
-  its path to copy;
+- a document (PDF, TXT) → ``document_no_preview``: nothing is shown in the
+  browser, a PDF neither (A-ADR-047 decision 5); its fix points to "Pobierz
+  plik" of the file card and of an own file's card, and to the path to copy;
 - an auxiliary file (world files ``.jgw .tfw .pgw .wld``, ``.prj``,
   ``.aux.xml``) → ``auxiliary_file``: the preview is with the file it
   serves;

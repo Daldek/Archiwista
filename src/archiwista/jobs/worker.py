@@ -30,7 +30,8 @@ input, runs it and reports in JSON Lines on standard output
   checked ends ``partial``;
 - ``download``: a run of each of a job's calls in the store (the producer's
   ``ActionAdapter.run``, A5), of the plans a ``check`` job kept when one is
-  named; the slots of the files it reports are read again into the index
+  named, narrowed to the positions the job claimed (``ActionAdapter.narrow``,
+  ADR-047); the slots of the files it reports are read again into the index
   when it ends, those of the units it named also when it is interrupted;
 - ``project_download`` and ``project_repin``: a download of a project's tasks
   into the configured store its manifest names (``download_project`` of the
@@ -68,6 +69,7 @@ import sqlite3
 import sys
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
@@ -739,17 +741,24 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     that ``check`` job kept of it, so a position whose source changed since
     comes back as a failed item (``conflict``, ``stale_plan``); a call
     without a kept plan (its check failed) or whose plan has nothing to
-    download is skipped. The progress (with the ``call`` and the number of
-    ``calls``) and the notices become the job's. When the calls end the index
-    learns their files: the slot of each file of ``files[]`` is read again
-    (``scope``, ``refresh_view``), and those of the units a call that failed
-    named. When the job is interrupted, the slots of what its calls wrote or
-    named are read again within ``RESCAN_STOP_S``: those of the plan's
-    positions with a plan, else in every segment of the store. A call the
-    producer refuses, or none of whose units succeeded, failed; a job some of
-    whose calls or units failed ends ``partial``, one none of whose calls run
-    succeeded fails with the error of its first (``RunFailedError``, the code
-    of the first failed unit, when the producer reported the units).
+    download is skipped. A plan runs narrowed to the positions the job
+    claimed when it started (``JobSpec.claimed``): those another active
+    download of the store fetches (``JobSpec.taken``) are left to it, one
+    notice ``taken_by_job`` per such job, and the summary lists them
+    (``taken``: ``path``, ``unit``, ``job``, ``actor``); a call all of whose
+    positions to download are taken is skipped (``taken``). The progress (with
+    the ``call`` and the number of ``calls``) and the notices become the
+    job's. When the calls end the index learns their files: the slot of each
+    file of ``files[]`` is read again (``scope``, ``refresh_view``), and those
+    of the units a call that failed named. When the job is interrupted, the
+    slots of what its calls wrote or named are read again within
+    ``RESCAN_STOP_S``: those of the plan's positions with a plan, else in
+    every segment of the store. A call the producer refuses, or none of whose
+    units succeeded, failed; a job some of whose calls or units failed, or
+    some of whose positions were taken (a retry fetches what the other job
+    failed), ends ``partial``; one none of whose calls run succeeded fails
+    with the error of its first (``RunFailedError``, the code of the first
+    failed unit, when the producer reported the units).
     """
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
@@ -764,12 +773,29 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     reader = registry.adapter(calls[0].producer)
     runs: list[_CallRun] = []
     sections: list[JsonObject] = []
+    for (job, actor), count in Counter(
+        (str(item["job"]), str(item["actor"])) for item in spec.taken
+    ).items():
+        text = message("job.taken_by_job", count=count, actor=actor, job=job)
+        emit.notice("info", "taken_by_job", text)
     try:
         for place, call in enumerate(calls):
-            plan = None if plans is None else plans.get(place)
+            kept = None if plans is None else plans.get(place)
+            plan = (
+                kept
+                if kept is None or spec.claimed is None
+                else adapter.narrow(kept, spec.claimed)
+            )
             line = adapter.format(replace(call, run={"root": str(root)}))
-            if plans is not None and (plan is None or not plan.todo):
-                reason = "not_planned" if plan is None else "nothing_to_download"
+            if kept is None and plans is not None:
+                sections.append(
+                    _run_section(call, line, "skipped", reason="not_planned")
+                )
+                continue
+            if plan is not None and not plan.todo:
+                reason = (
+                    "taken" if kept is not None and kept.todo else "nothing_to_download"
+                )
                 sections.append(_run_section(call, line, "skipped", reason=reason))
                 continue
             run = _CallRun(place, plan)
@@ -806,7 +832,9 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     for _, result in results:
         for file in result.files:
             counts[file.status] += 1
-    ok = all(run.status() == "ok" for run in runs)
+    # Positions another job fetches are no part of this job's success: a retry
+    # fetches what that job failed (ADR-047).
+    ok = all(run.status() == "ok" for run in runs) and not spec.taken
     summary: JsonObject = {
         "producer": calls[0].producer,
         "store": config.id,
@@ -826,6 +854,7 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
         ],
         "failed": sum(len(result.failed) for _, result in results),
         "calls": sections,
+        "taken": list(spec.taken),
         "rescanned": rescanned,
         "seconds": round(time.perf_counter() - started, 3),
     }

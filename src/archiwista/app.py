@@ -22,8 +22,9 @@ without background jobs, which leaves out their routes), ``job_streams``
 ``area_files`` (``AreaFiles``: copies of area files and their reader),
 ``area_refreshes`` (``AreaRefreshes``: the areas' slots rescanned in the
 last minute), ``layer_memo`` (``LayerMemo``: the local layers of the last
-answers, for their images) and ``on_redeem`` (told when a one-time token
-starts a session).
+answers, for their images), ``file_streams`` (``FileStreams``: the file
+downloads each person streams), ``denials`` (``DenialLog``: refusals in the
+action log) and ``on_redeem`` (told when a one-time token starts a session).
 """
 
 import os
@@ -53,8 +54,10 @@ from archiwista.api import areas as area_routes
 from archiwista.api import availability as availability_routes
 from archiwista.api import commands as command_routes
 from archiwista.api import compare as compare_routes
+from archiwista.api import files as file_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import layers as layer_routes
+from archiwista.api import log as log_routes
 from archiwista.api import map as map_routes
 from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
@@ -62,7 +65,7 @@ from archiwista.api import sessions as session_list_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api import stations as station_routes
 from archiwista.api.docs import install_docs, install_openapi, operation_id
-from archiwista.api.errors import ApiError, install_error_handlers
+from archiwista.api.errors import ApiError, DenialLog, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
 from archiwista.auth.authorize import Authorizer
@@ -80,6 +83,7 @@ from archiwista.security import (
     Transport,
     session_principals,
 )
+from archiwista.services.files import FileStreams
 from archiwista.services.layers import LayerMemo
 from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
 from archiwista.state import StateStore
@@ -205,6 +209,8 @@ def create_app(
     app.state.on_redeem = on_redeem
     app.state.area_refreshes = area_routes.AreaRefreshes()
     app.state.layer_memo = LayerMemo()
+    app.state.file_streams = FileStreams()
+    app.state.denials = DenialLog(state)
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(session_list_routes.router, prefix=API_PREFIX)
@@ -213,11 +219,13 @@ def create_app(
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(stores.router, prefix=API_PREFIX)
     app.include_router(preview_routes.router, prefix=API_PREFIX)
+    app.include_router(file_routes.router, prefix=API_PREFIX)
     app.include_router(slots.router, prefix=API_PREFIX)
     app.include_router(map_routes.router, prefix=API_PREFIX)
     app.include_router(station_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
+    app.include_router(log_routes.router, prefix=API_PREFIX)
     app.include_router(area_routes.router, prefix=API_PREFIX)
     app.include_router(availability_routes.router, prefix=API_PREFIX)
     app.include_router(compare_routes.router, prefix=API_PREFIX)

@@ -11,11 +11,13 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   ``cancelled`` at once, a running one when its worker has stopped, within
   the stop timeout; a job another process supervises (a server's job
   cancelled at the terminal, or the reverse) ends the same way through its
-  own supervisor (``JobSupervisor.cancel``).
+  own supervisor (``JobSupervisor.cancel``). The request is logged
+  (``job.cancel``, A-ADR-047).
 - ``retry`` submits a new job of the principal with the kind, store and
   parameters of a job that did not succeed (``RETRY_STATES``), as the
-  principal sees that job; a job that succeeded is a ``409 conflict``
-  (``job_succeeded``), so is one still active (``job_active``). What the
+  principal sees that job, logged as ``job.retry`` of that job; a job that
+  succeeded is a ``409 conflict`` (``job_succeeded``), so is one still
+  active (``job_active``). What the
   kind needs at its start is asked again: a ``download`` needs
   ``store.write``, a ``snapshot`` ``project.write`` of its project, a
   ``project_download`` or ``project_repin`` both (``project_jobs.require``),
@@ -46,6 +48,7 @@ from archiwista.jobs import (
     JobSupervisor,
     LogTail,
 )
+from archiwista.jobs.supervisor import action_details
 from archiwista.messages import label, message
 from archiwista.services import project_jobs
 from archiwista.services.owndata import scan_limits
@@ -114,7 +117,7 @@ def cancel(
         The job has ended (reason ``job_finished``, ``details.job``).
     """
     record = visible_job(jobs, job_id, visible)
-    authorizer.require(actor, "job.cancel", record.actor)
+    authorizer.require(actor, "job.cancel", record.actor, target=job_id)
     if record.state in FINISHED_STATES:
         state = label("job.state", record.state)
         raise ConflictError(
@@ -123,6 +126,12 @@ def cancel(
             details={"job": _named(record)},
         )
     jobs.cancel(job_id)
+    authorizer.state.record(
+        actor,
+        "job.cancel",
+        job_id,
+        details=action_details(record.kind, record.store, record.params),
+    )
     return visible_job(jobs, job_id, visible)
 
 
@@ -198,7 +207,7 @@ def retry(
             details={"job": _named(record)},
         )
     if record.kind == "download":
-        authorizer.require(actor, "store.write")
+        authorizer.require(actor, "store.write", target=record.store)
     if record.kind in STORE_SCAN_KINDS:
         authorizer.require(actor, "store.scan")
     admit: Callable[[], None] | None = None
@@ -223,6 +232,7 @@ def retry(
         params=record.params,
         actor=actor,
         admit=admit,
+        retry_of=record.id,
     )
     return jobs.get(submitted.id, visible=visible) or submitted
 
@@ -240,7 +250,9 @@ def log(jobs: JobSupervisor, *, job_id: str, visible: ProjectVisibility) -> LogT
     """
     visible_job(jobs, job_id, visible)
     if not jobs.sees_whole(job_id, visible=visible):
-        raise PermissionDeniedError(message("permission.job_log"))
+        raise PermissionDeniedError(
+            message("permission.job_log"), action="project.view", target=job_id
+        )
     tail = jobs.log(job_id)
     if tail is None:
         raise NotFoundError(message("job.no_log", job=job_id))

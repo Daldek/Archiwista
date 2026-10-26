@@ -8,6 +8,7 @@
 .own-card .fc-product .mono { font-size: 12px; }
 .own-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 .own-actions .btn.active { background: var(--accent-soft); border-color: #c7d2fe; color: var(--accent); }
+.own-set-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
 .own-rescan { display: grid; gap: 6px; justify-items: start; margin-top: 8px; }
 .own-rescan .hint { margin: 0; }
 .own-note { grid-column: 2 / -1; margin: 0 0 4px 8px; font-size: 12px; line-height: 1.45; color: var(--text-2); overflow-wrap: anywhere; }

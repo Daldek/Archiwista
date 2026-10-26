@@ -153,7 +153,7 @@ def start(
     if not calls or len({call.producer for call in calls}) != 1:
         raise ValueError(f"a job takes calls of one producer, got {len(calls)} calls")
     if kind == "download":
-        authorizer.require(actor, "store.write")
+        authorizer.require(actor, "store.write", target=store)
     elif plan_job is not None:
         raise ValueError(f"a {kind} job runs no plan, got plan job {plan_job!r}")
     if settings.store(store) is None:

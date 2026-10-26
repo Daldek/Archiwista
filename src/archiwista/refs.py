@@ -512,7 +512,7 @@ def _snapshot_source(
         )
         raise NotFoundError(text)
     content = (snapshot.content_sha256 or "").lower()
-    files = _snapshot_files(snapshot)
+    files = snapshot_files(snapshot)
     if (
         snapshot.state != "ok"
         or not files
@@ -546,8 +546,11 @@ def _snapshot_source(
     )
 
 
-def _snapshot_files(snapshot: SnapshotRecord) -> list[tuple[str, int]]:
-    """Return the names and sizes of a snapshot's files from its document."""
+def snapshot_files(snapshot: SnapshotRecord) -> list[tuple[str, int]]:
+    """Return the names and sizes of a snapshot's files from its document.
+
+    The main file comes first; an invalid list of files gives none.
+    """
     files = (snapshot.document or {}).get("files")
     found: list[tuple[str, int]] = []
     for item in files if isinstance(files, list) else ():

@@ -19,7 +19,7 @@ import pytest
 
 from archiwista.api import API_PREFIX
 from archiwista.app import create_app
-from archiwista.auth import LOCAL_OWNER
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.security import (
@@ -41,7 +41,7 @@ from tests.fixtures.jobs import (
 )
 from tests.fixtures.jobs_api import JobsApi, jobs_api
 from tests.fixtures.local_server import NoSources
-from tests.fixtures.permissions import ADMIN, add_people, principal
+from tests.fixtures.permissions import ADMIN, add_people, principal, share
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -299,6 +299,53 @@ def test_job_detail_has_actor(served: JobsApi) -> None:
     assert {job["id"]: job["actor"] for job in listed} == {
         detail["id"]: detail["actor"] for detail in details.values()
     }
+
+
+def test_a_job_of_a_hidden_project_is_listed_without_its_details(
+    served: JobsApi,
+) -> None:
+    """Everyone sees the queue; a job of a project igor does not see stays bare.
+
+    Olga's scan of her private project's data folder is listed for igor as
+    `hidden`, with its kind, store, who, state, times and progress counts,
+    and nothing else; its address, events and log are `404` as for an
+    unknown job (ADR-047 decision 3).
+    """
+    # Arrange
+    served.env.scan("full")
+    add_people(served.api.state)
+    project = served.env.queries.projects(visible=ALL_PROJECTS)[0]
+    share(served.api.state, project.access_key, "private")
+    owner = served.api.session(principal(served.api.state, "owner"))
+    other = served.api.session(principal(served.api.state, "other"))
+    started = owner.request("POST", f"/projects/{project.key}/scan")
+    assert started.status_code == 202, started.text
+    job = started.json()["id"]
+    served.env.wait(job)
+
+    # Act
+    shown = owner.request("GET", f"/jobs/{job}").json()
+    listed = other.request("GET", "/jobs?kind=own_scan").json()["items"]
+    answers = [
+        other.request("GET", f"/jobs/{job}{tail}") for tail in ("", "/events", "/log")
+    ]
+
+    # Assert
+    assert shown["hidden"] is False and shown["session"] is not None
+    assert shown["progress"].keys() > {"current", "total"}
+    assert listed == [
+        {
+            **shown,
+            "params": {},
+            "session": None,
+            "progress": {key: shown["progress"][key] for key in ("current", "total")},
+            "result": None,
+            "error": None,
+            "hidden": True,
+        }
+    ]
+    for answer in answers:
+        assert_problem(answer, 404, "not_found")
 
 
 def test_sse_resume_from_last_event_id(served: JobsApi) -> None:

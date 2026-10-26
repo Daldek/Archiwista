@@ -90,6 +90,7 @@ _TAGS = [
     {"name": "settings", "description": "Settings (changes: administrators)."},
     {"name": "session", "description": "One-time tokens and the session."},
     {"name": "permissions", "description": "Accounts, groups, project access."},
+    {"name": "log", "description": "The action log and its export (administrators)."},
 ]
 _PAGE = """\
 <!doctype html>

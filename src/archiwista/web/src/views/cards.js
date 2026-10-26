@@ -3,9 +3,9 @@
  * problems with their fixes, a background job started here and followed
  * through its event stream (SSE), with the summaries of its result that the
  * plan window and the downloads of the top bar show too, links opening the
- * file card over the current view, labelled copy buttons, the stale-answer
- * note and the human names of statuses and coordinate systems (docs/SPEC.md
- * 6.1 „Przejrzystość”).
+ * file card over the current view, labelled copy buttons, „Pobierz plik”,
+ * the stale-answer note and the human names of statuses and coordinate
+ * systems (docs/SPEC.md 6.1 „Przejrzystość”).
  */
 
 import { watchJob } from "../api.js";
@@ -22,6 +22,7 @@ import {
   Tech,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "../ui.js";
@@ -186,6 +187,30 @@ export function CopyAction({ text, label, primary }) {
     </button>
     <span class="copy-state" role="status">${copied ? T.common.actions.copied : ""}</span>
   </span>`;
+}
+
+/**
+ * „Pobierz plik”: a link that downloads a file of the index (api.js
+ * `fileAddress`; ADR-047 decision 5), or the same action disabled with the
+ * reason the file cannot be fetched now.
+ *
+ * @param {{address: string, reason?: "store_unavailable"|"version_missing"|
+ *   "file_missing"|"snapshot_invalid"|null, member?: string|null}} props
+ *   `member`: one file of a set, named by its name instead of „Pobierz plik”.
+ */
+export function DownloadLink({ address, reason = null, member = null }) {
+  const id = useId();
+  const label = member ?? L.download.action;
+  const title = member === null ? L.download.title : t(L.download.member_title, { name: member });
+  if (reason !== null) {
+    const why = L.download.why[reason];
+    return html`<button type="button" class="btn sm" disabled title=${why} aria-describedby=${id}>
+        <${Icon} name="download" size=${13} />${label}
+      </button>
+      <span class="visually-hidden" id=${id}>${why}</span>`;
+  }
+  return html`<a class="btn sm" href=${address} download title=${title}>
+    <${Icon} name="download" size=${13} />${label}</a>`;
 }
 
 /**
@@ -568,6 +593,7 @@ export function downloadSummary(events) {
     .filter((call) => call.status === "failed" || call.status === "skipped");
   return html`<div class="job-download">
     <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
+    <${TakenList} taken=${result.taken ?? []} />
     ${result.files.length
       ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
           (file) => html`<li key=${`${file.call}/${file.path}`}>
@@ -595,6 +621,33 @@ export function downloadSummary(events) {
         </div>`
       : null}
   </div>`;
+}
+
+/**
+ * The positions of a download that other active downloads of the store
+ * fetch (`result.taken`, ADR-047), one line per such job with its person:
+ * „2 pozycje pobiera marek (zadanie 3f9c1a7e)”; nothing without any.
+ *
+ * @param {{taken: Array<{path: string, unit: string|null, job: string, actor: string}>}} props
+ */
+export function TakenList({ taken }) {
+  if (!taken.length) return null;
+  const jobs = new Map();
+  for (const item of taken) {
+    const holder = jobs.get(item.job) ?? { job: item.job, actor: item.actor, count: 0 };
+    holder.count += 1;
+    jobs.set(item.job, holder);
+  }
+  return html`<ul class="job-taken" aria-label=${L.job.download_taken_title}>${[...jobs.values()].map(
+    (holder) => html`<li key=${holder.job}>
+      <${Tech} value=${[["job", holder.job], ["actor", holder.actor]]}>${t(L.job.download_taken, {
+        count: int(holder.count),
+        positions: plural(holder.count, L.job.positions),
+        actor: actorName(holder.actor),
+        job: holder.job,
+      })}</${Tech}>
+    </li>`,
+  )}</ul>`;
 }
 
 /** A line of a download of a row that failed or was skipped, and why. */

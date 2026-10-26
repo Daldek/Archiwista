@@ -19,10 +19,18 @@ the command line prints the same models (``--json``).
 import math
 import re
 from collections.abc import Collection, Iterable, Sequence
+from dataclasses import replace
 from datetime import date, datetime
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from archiwista.areas import area_crs
 from archiwista.auth import PrincipalKind, WritableProjects
@@ -87,6 +95,7 @@ from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
+from archiwista.services.log import ExportFormat, LogPage, entry_document
 from archiwista.services.project_jobs import ProjectJobKind
 from archiwista.sources import (
     DefaultRoot,
@@ -95,6 +104,7 @@ from archiwista.sources import (
     SourceState,
     SourceStatus,
 )
+from archiwista.state import ActionEntry, ActionQuery, ActorKind, Outcome
 
 type Geometry = dict[str, Any]
 type YearRange = tuple[int | None, int | None]
@@ -236,6 +246,7 @@ _JOB_DETAIL_EXAMPLE = {
         },
     },
     "error": None,
+    "hidden": False,
 }
 _JOB_FAILED_EXAMPLE = {
     "id": "9b2e44d01c7f3a85",
@@ -252,6 +263,7 @@ _JOB_FAILED_EXAMPLE = {
     "progress": None,
     "result": None,
     "error": _JOB_FAILURE_EXAMPLE,
+    "hidden": False,
 }
 _STORE_STATE_EXAMPLE = {
     "status": "available",
@@ -1891,8 +1903,9 @@ class JobDetail(BaseModel):
 
     Its events (progress, notices, changes of state) stream from
     `GET /jobs/{job}/events`. A job only of projects the session does not
-    see is not shown; a `preview` job lists only the refs (and failures) of
-    visible projects, with whole counts.
+    see is listed `hidden` with its kind, store, who, state, times and
+    progress counts, and answers `404` at its own address; a `preview` job
+    lists only the refs (and failures) of visible projects, with whole counts.
     """
 
     model_config = _examples(_JOB_DETAIL_EXAMPLE, _JOB_FAILED_EXAMPLE)
@@ -2019,7 +2032,10 @@ class JobDetail(BaseModel):
             " `conflict`, `stale_plan`), `failed` (units), `calls` (per call:"
             " `command`, `line`, `status` (`ok`, `partial`, `failed` or"
             " `skipped`), `reason` of a skipped one (`not_planned`: its check"
-            " failed; `nothing_to_download`), `files`, `failed`, `error`),"
+            " failed; `nothing_to_download`; `taken`: other downloads fetch all"
+            " its positions to download), `files`, `failed`, `error`), `taken`"
+            " (the positions to download another active download of the store"
+            " fetches, left out of this one: `path`, `unit`, `job`, `actor`),"
             " `rescanned` (units read again into the index) and `seconds`;"
             " `project_download` and `project_repin`: `producer`, `project`,"
             " `store`, `root`, `upgrade` (true for a repin), `ok`, `counts`"
@@ -2044,6 +2060,16 @@ class JobDetail(BaseModel):
     )
     error: JobFailure | None = Field(
         description="Why a job ended without success (`null` otherwise)."
+    )
+    hidden: bool = Field(
+        default=False,
+        description=(
+            "True for a job only of projects the session does not see, as"
+            " `GET /jobs` lists it (ADR-047): its `params` are empty, its"
+            " `session`, `result` and `error` `null`, its `progress` has"
+            " `current` and `total` only; `GET /jobs/{job}`, its events and its"
+            " log answer `404`."
+        ),
     )
 
     @classmethod
@@ -2072,6 +2098,7 @@ class JobDetail(BaseModel):
                 hint=error.hint,
                 details=dict(error.details),
             ),
+            hidden=job.hidden,
         )
 
 
@@ -3149,6 +3176,216 @@ class Settings(BaseModel):
             network_jobs_per_person=settings.network_jobs_per_person,
             action_log_retention_days=settings.action_log_retention_days,
         )
+
+
+# The action log --------------------------------------------------------------
+
+_ACTION_ENTRY_EXAMPLE = {
+    "id": 1204,
+    "at": "2026-10-26T13:02:11Z",
+    "actor": "marek.lis",
+    "actor_kind": "user",
+    "session": "b7e3c1d94a",
+    "client": "10.0.0.31",
+    "action": "job.start",
+    "target": "3f9c1a7e5b2d4c60",
+    "outcome": "ok",
+    "before": None,
+    "after": None,
+    "details": {"kind": "download", "store": _STORE},
+}
+_ACTION_DENIED_EXAMPLE = {
+    "id": 1203,
+    "at": "2026-10-26T12:39:40Z",
+    "actor": "kasia.wrona",
+    "actor_kind": "user",
+    "session": "51d0e8c2f7",
+    "client": "10.0.0.22",
+    "action": "permission.denied",
+    "target": _STORE,
+    "outcome": "denied",
+    "before": None,
+    "after": None,
+    "details": {"action": "store.write", "route": "POST /jobs"},
+}
+# An action's name (``session.login``) or a group's prefix (``session.``).
+ACTION_FILTER_PATTERN = r"^[a-z][a-z_]*\.(?:[a-z][a-z_]*)?$"
+
+
+class ActionEntryModel(BaseModel):
+    """An entry of the action log: who did what, when, from where, how it ended."""
+
+    model_config = _examples(_ACTION_ENTRY_EXAMPLE, _ACTION_DENIED_EXAMPLE)
+
+    id: int = Field(description="Order of the entries: a later one has a greater id.")
+    at: datetime = Field(description="When (UTC).")
+    actor: str = Field(
+        description=(
+            "Who: an account id; `local`, the owner of a local installation, also"
+            " for the server's scheduler; `-` before a sign-in."
+        )
+    )
+    actor_kind: ActorKind | None = Field(
+        description=(
+            "How: `local_owner`, `user`, `agent` (acting for `actor`), `scheduler`"
+            " or `anonymous`; null for an entry written before v0.4."
+        )
+    )
+    session: str | None = Field(
+        description=(
+            "Label of the session the action came from; null at the terminal and"
+            " for the scheduler."
+        )
+    )
+    client: str | None = Field(
+        description="Client address of the request; null at the terminal."
+    )
+    action: str = Field(
+        description=(
+            "What, e.g. `user.add`, `job.start`, `permission.denied`, `log.export`"
+            " (the names of SPEC 10.2)."
+        )
+    )
+    target: str = Field(
+        description=(
+            "What the action was about: an account, a group, a project key, a job"
+            " id, a ref, `settings` or `log`."
+        )
+    )
+    outcome: Outcome = Field(description="`ok`, `denied` or `failed`.")
+    before: dict[str, Any] | None = Field(
+        description=(
+            "The state before a change; null before an addition and for an action"
+            " that changes no state."
+        )
+    )
+    after: dict[str, Any] | None = Field(
+        description=(
+            "The state after a change; null after a removal and for an action that"
+            " changes no state."
+        )
+    )
+    details: dict[str, Any] | None = Field(
+        description="What else the action tells, e.g. a job's `kind` and `store`."
+    )
+
+    @classmethod
+    def of(cls, entry: ActionEntry) -> Self:
+        """Return the model of an entry, as an export writes it too."""
+        return cls.model_validate(entry_document(entry))
+
+
+class ActionPage(BaseModel):
+    """A page of the action log, newest entry first; `next_cursor` continues it."""
+
+    model_config = _examples(
+        {
+            "items": [_ACTION_ENTRY_EXAMPLE, _ACTION_DENIED_EXAMPLE],
+            "total": 1204,
+            "next_cursor": 1203,
+        }
+    )
+
+    items: list[ActionEntryModel]
+    total: int = Field(
+        ge=0, description="How many entries the filters select, all pages together."
+    )
+    next_cursor: int | None = Field(
+        description="`cursor` of the next page; null on the last page."
+    )
+
+    @classmethod
+    def of(cls, found: LogPage) -> Self:
+        """Return the model of a page of the log."""
+        return cls(
+            items=[ActionEntryModel.of(entry) for entry in found.page.entries],
+            total=found.total,
+            next_cursor=found.page.next_cursor,
+        )
+
+
+class ActionFilters(BaseModel):
+    """Which entries of the action log; unknown parameters are refused (`400`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    actor: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="Only the entries of this actor: an account id, `local` or `-`.",
+        examples=["marek.lis"],
+    )
+    action: str | None = Field(
+        default=None,
+        max_length=64,
+        pattern=ACTION_FILTER_PATTERN,
+        description=(
+            "Only this action (`session.login`), or every action of a group by its"
+            " prefix ending with a dot (`session.`)."
+        ),
+        examples=["job."],
+    )
+    outcome: Outcome | None = Field(
+        default=None, description="Only the entries with this outcome."
+    )
+    target: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=1024,
+        description="Only the entries about this target.",
+        examples=["settings"],
+    )
+    since: AwareDatetime | None = Field(
+        default=None,
+        description="Only the entries at or after this time (ISO 8601 with a zone).",
+        examples=["2026-10-01T00:00:00+02:00"],
+    )
+    until: AwareDatetime | None = Field(
+        default=None,
+        description="Only the entries before this time (ISO 8601 with a zone).",
+        examples=["2026-10-27T00:00:00+01:00"],
+    )
+
+    def query(self) -> ActionQuery:
+        """Return the query of the state database for these filters."""
+        return ActionQuery(
+            actor=self.actor,
+            action=self.action,
+            outcome=self.outcome,
+            target=self.target,
+            since=self.since,
+            until=self.until,
+        )
+
+
+class ActionPageQuery(ActionFilters):
+    """Filters and page of `GET /log`, newest entry first."""
+
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT, description="Page size."
+    )
+    cursor: int | None = Field(
+        default=None,
+        ge=1,
+        description="`next_cursor` of the previous page of the same filters.",
+    )
+
+    def query(self) -> ActionQuery:
+        """Return the query of the state database for this page."""
+        return replace(super().query(), limit=self.limit, cursor=self.cursor)
+
+
+class ActionExportQuery(ActionFilters):
+    """Filters and format of `GET /log/export`."""
+
+    format: ExportFormat = Field(
+        default="jsonl",
+        description=(
+            "`jsonl`: JSON Lines, an `ActionEntryModel` per line; `csv`: a column per"
+            " field of `ActionEntryModel`, objects as JSON text."
+        ),
+    )
 
 
 # Areas and local coverage ---------------------------------------------------

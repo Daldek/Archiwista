@@ -45,7 +45,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 10
+PROTOCOL_VERSION = 11
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -171,6 +171,14 @@ class JobSpec:
         (``AppPaths.work_dir``).
     settings : AppSettings
         Settings in effect when the job started.
+    claimed : tuple of str or None, optional
+        The positions to download (``PlanEntry.path``) a ``download`` with a
+        plan claimed when it started (ADR-047): its plans run narrowed to
+        them. ``None`` for every other job, whose plans are not narrowed.
+    taken : tuple of dict, optional
+        The positions to download of its plans that another active download
+        of the store had claimed: each ``path``, ``unit``, ``job`` (that
+        download's id) and ``actor`` (who started it).
     """
 
     job_id: str
@@ -185,6 +193,8 @@ class JobSpec:
     previews_dir: Path
     work_dir: Path
     settings: AppSettings
+    claimed: tuple[str, ...] | None = None
+    taken: tuple[JsonObject, ...] = ()
 
 
 def encode_message(message: WorkerMessage) -> str:
@@ -233,6 +243,8 @@ def encode_spec(spec: JobSpec) -> str:
                 "actor": spec.actor,
                 "actor_kind": spec.actor_kind,
                 "session": spec.session,
+                "claimed": None if spec.claimed is None else list(spec.claimed),
+                "taken": list(spec.taken),
             },
             "index_path": str(spec.index_path),
             "cache_dir": str(spec.cache_dir),
@@ -273,6 +285,14 @@ def decode_spec(line: str) -> JobSpec:
         session = job["session"]
         if session is not None and not isinstance(session, str):
             raise TypeError("session")
+        claimed = job["claimed"]
+        if claimed is not None and not (
+            isinstance(claimed, list) and all(isinstance(p, str) for p in claimed)
+        ):
+            raise TypeError("claimed")
+        taken = job["taken"]
+        if not (isinstance(taken, list) and all(isinstance(t, dict) for t in taken)):
+            raise TypeError("taken")
         return JobSpec(
             job_id=str(job["id"]),
             kind=kind,
@@ -286,6 +306,8 @@ def decode_spec(line: str) -> JobSpec:
             previews_dir=Path(value["previews_dir"]),
             work_dir=Path(value["work_dir"]),
             settings=AppSettings.model_validate(value["settings"]),
+            claimed=None if claimed is None else tuple(claimed),
+            taken=tuple(taken),
         )
     except (KeyError, TypeError, ValueError, ValidationError) as error:
         raise ProtocolError(f"invalid job: {error}") from error

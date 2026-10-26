@@ -14,8 +14,8 @@ takes and asserts the criteria on it:
 - criterion 4: nothing is downloaded before the plan window's confirmation;
   the window's own work is a ``check`` job, which writes nothing;
 - criterion 5: a server stopped during the download leaves the job
-  ``interrupted``, and its retry (``POST /jobs/{job}/retry``: the interface
-  has no jobs panel yet, plan A12) fetches only what the stopped run had not;
+  ``interrupted``, and its retry (``POST /jobs/{job}/retry``; „Ponów” of
+  „Zadania” is ``test_jobs_view.py``) fetches only what the stopped run had not;
 - criterion 7: without ``store_writer`` (and without ``store_write_for_all``)
   a download and a project's download are disabled with the reason, and the
   API answers ``403 permission_denied`` with no job.

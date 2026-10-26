@@ -161,6 +161,87 @@ command-line interface may change.
   projekt…" is every person's. Without the role `admin` the Store view's "Odśwież",
   "Pełny skan" and "Uzupełnij obrysy jednostek" and the file card's "Potwierdź bieżącą
   wersję" are disabled with the reason.
+- The shared queue (v0.4, ADR-047): a download with a plan claims the positions it
+  downloads when it starts, and a download of another person (or another job) that
+  planned some of them leaves them to that job: its result lists them as `taken`
+  (`path`, `unit`, `job`, `actor`), a notice `taken_by_job` names the job and the
+  person ("Pozycje do pobrania (2) pobiera już marek w zadaniu …"), a call all of whose
+  positions are taken is skipped (`taken`), and the job ends `partial`, so "Ponów"
+  fetches what the other job failed. Claims end with their job. A download without a
+  plan of a call a running download runs waits in the queue (notice
+  `waiting_for_job`) and then finds the files in the store. The index is rebuilt
+  (`SCHEMA_VERSION` 14: `job_claims`), the job protocol is `PROTOCOL_VERSION` 11, and
+  a plugin that offers its commands (`ActionAdapter`) also narrows a plan
+  (`narrow(plan, paths)`).
+- Limits per person in the queue (v0.4, ADR-047): a person, with the jobs of their
+  agents, runs at most `network_jobs_per_person` network jobs at once (2 by default;
+  the scheduler is no person); further ones wait in the queue and none is refused.
+  When a network place frees, the oldest waiting job of the person with the fewest
+  running network jobs takes it, and a change of the setting takes effect at once.
+  The server's limit of two network jobs stays.
+- The view "Zadania" (v0.4, ADR-047; sketch f of SPEC 6.5): the queue and history of
+  everyone's background jobs, newest first, with the filters "Wszystkie", "Trwa",
+  "Błędy" and "Moje" kept in the address. Each job shows its state, kind and what it
+  works on, who started it ("Ty", a person, "… (agent)", "harmonogram"), its progress
+  ("3 z 7") or when it ended, why it failed and the positions another download
+  fetched for it ("2 pozycje pobiera olga (zadanie …)", also in the list "Pobrania w
+  tle"); "Anuluj" for whoever started it and administrators, "Ponów" for a job that
+  did not succeed, also one "przerwane" by a restart (disabled with the reason for a
+  download without "zapis do magazynu"), "Szczegóły" (its events) and "Dziennik" (the
+  end of its log). A job of a project the session does not see shows its kind, "bez
+  dostępu", who and its progress only. The list is read every 2 s while a job waits
+  or runs, else every 15 s, only while the page is visible, up to the 200 newest
+  jobs; the navigation shows the number of running jobs next to "Zadania".
+- File download over HTTP (v0.4, ADR-047): `GET /stores/{store}/versions/{version}/file`,
+  `GET /projects/{project}/files/{file_id}/file` and `GET
+  …/files/{file_id}/snapshots/{label}/file` (also `HEAD`) send the file of a version,
+  of an own file and of a snapshot, one file of a set by `?member=` (the new `members`
+  of the file card and of each snapshot). Only a file the index knows and the session
+  sees, inside its root; streamed with `Range` (`206`), as an attachment with its name
+  and the type of its format, `Cache-Control: private, no-store`, never inline (a PDF
+  neither). A person streams at most two files at once (`429 rate_limited`,
+  `too_many_downloads`, `Retry-After: 10`), and a download from its first byte is
+  logged (`file.download` with `size_bytes`). A working file changed since its scan is
+  `409 own_file_changed`, one its scan could not read and a snapshot that is not valid
+  `409 file_unreadable`, a file gone from the disk `404 missing_file`. A link of the
+  interface passes without `X-Archiwista-CSRF` (`Sec-Fetch-Site` `same-origin` or
+  `none`); every other request keeps the header.
+- "Pobierz plik" (v0.4, ADR-047): next to a version's title in the file card it saves
+  the version's file, in the card of an own file the working file or the snapshot
+  chosen on its timeline, and "Pliki zestawu" in the metadata saves each file of a
+  Shapefile or a MapInfo TAB by its name: the browser's download of a plain link,
+  nothing opens in the browser. It is disabled with the reason while the store is
+  unavailable, for a version gone from the store, a working file missing from the disk
+  and a snapshot that is not valid. The fix of a document without a preview (PDF, TXT)
+  points to it.
+- The action log records more (v0.4, A-ADR-047): who started, retried or cancelled a
+  job (`job.start`, `job.retry` with `retry_of`, `job.cancel`; the job's kind, store
+  and project; a request that joined an active job has `joined`; never the
+  scheduler's jobs), changed the settings (`settings.update` with the settings that
+  changed, before and after), added or removed a project's task (`project.task_add`,
+  `project.task_remove` with `producer` and `task`) and was refused a request
+  (`permission.denied`, outcome `denied`, with the refused `action` and the `route`;
+  at most one entry per person and action a minute). Jobs started at the command line
+  are logged as the local owner's. Every hour, the first time at the server's start,
+  entries older than `action_log_retention_days` are deleted and the deletion is
+  logged (`log.prune` with `before` and `count`).
+- Reading and exporting the action log (v0.4, A-ADR-047), for administrators only
+  (`log.read`; a refusal is logged): `GET /log` and `archiwista log list` give a page
+  newest first with `total` and `next_cursor`, filtered by `actor`, `action` (a name
+  or a group's prefix such as `session.`), `outcome`, `target`, `since` and `until`
+  (ISO 8601 with a zone); `GET /log/export` and `archiwista log export` stream every
+  entry they select as JSON Lines or CSV (UTF-8 with a BOM; a cell that could start a
+  formula begins with `'`), the command to standard output or to `--output` (mode
+  `0600`). An export is logged first (`log.export` with its filters, format and
+  count) and holds the entries before it.
+- The view "Dziennik" (v0.4, A-ADR-047; sketch s of SPEC 6.5), at the bottom of the
+  navigation of administrators only (`ViewRoute.admin`; anyone else who opens it gets
+  the `403` of `GET /log`): the action log 50 entries a page, newest first, with when,
+  who, the action, its target, the outcome and the client's address; the filters
+  "Kto", "Działanie" (a group of actions), "Wynik" and the days "Od dnia" and "Do
+  dnia" kept in the address; "Dalej" and "Wstecz"; a row opens the state before and
+  after, the details, the session and the kind of actor; "Eksportuj CSV" and
+  "Eksportuj JSON Lines" save the entries the filters select as a file.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
@@ -645,6 +726,11 @@ command-line interface may change.
   the scan of every project's data folder need the role `admin` (the new action
   `store.scan`; `403 permission_denied` otherwise); the scheduler scans on its own.
   (v0.4, A-ADR-029 erratum 2)
+- `GET /jobs` lists every job of the queue (v0.4, ADR-047 decision 3): a job only of
+  projects the session does not see, left out before, is listed with `hidden: true`
+  (a new field of `JobDetail`), its kind, store, who, state, times and progress
+  counts, and empty `params`, `session`, `result` and `error`; its own address, its
+  events and its log still answer `404`.
 - **Breaking:** `archiwista state export` writes `archiwista-state/2`: the password
   hashes (`passwords`), the preferences (`preferences`) and the action log (`actions`,
   instead of `permission_log`), and each account's `sessions_revoked_at`. The copy is

@@ -17,10 +17,13 @@ with ``9`` cannot be asked about its missing file, station ``999`` about none.
 ``run_command`` fetches them into the store (``<kind>/<station>/<file>``): a
 file the store holds stays (``unchanged``), and with the plan of a check only
 the plan's files to download are fetched, a file whose source changed since
-the plan coming back as a stale item. While the store holds ``HOLD`` a run
-waits after its first new file until the file is gone. Each of these six
-appends its call to ``CALLS`` with the options it received, so a test can
-tell what Archiwista passed.
+the plan coming back as a stale item. A run with a plan trusts it: each of its
+files to download is transferred, also one the store came to hold meanwhile
+(the same content, ``unchanged``). Each transfer appends the file's path to
+``FETCHES`` in the store, so a test can tell what was fetched twice. While
+the store holds ``HOLD`` a run waits after its first new file until the file
+is gone. Each of these six appends its call to ``CALLS`` with the options it
+received, so a test can tell what Archiwista passed.
 """
 
 import hashlib
@@ -37,6 +40,8 @@ PROGRAM = "standin"
 AVAILABILITY_PRODUCTS = ("dem",)
 # A file in the store that makes a run wait after its first new file.
 HOLD = ".standin-hold"
+# A file in the store with one line per transfer: the path of the file fetched.
+FETCHES = ".standin-fetches"
 
 CALLS: list[tuple[str, str, dict[str, object]]] = []
 
@@ -394,7 +399,9 @@ def run_command(
             items.append(_failed(name, "conflict", text, reason="stale_plan"))
             status = "failed"
         else:
-            fetched = _fetch(root, name, station, str(now["source"]))
+            fetched = _fetch(
+                root, name, station, str(now["source"]), planned=plan is not None
+            )
             files.append(fetched)
             items.append({"id": name, "status": "ok"})
             status = "completed" if fetched["status"] == "new" else "skipped"
@@ -421,11 +428,20 @@ def run_command(
     }
 
 
-def _fetch(root: Path, name: str, station: str, label: str) -> dict[str, object]:
-    """Write one file whole (``os.replace``) unless the store holds it."""
+def _fetch(
+    root: Path, name: str, station: str, label: str, *, planned: bool
+) -> dict[str, object]:
+    """Write one file whole (``os.replace``) unless the store holds it.
+
+    A file written, or any file of a plan's run, is a transfer: one line of
+    ``FETCHES``.
+    """
     target = root / name
     content = f"{station},{name},{label}\n".encode()
     status = "unchanged" if target.is_file() else "new"
+    if status == "new" or planned:
+        with (root / FETCHES).open("a", encoding="utf-8") as fetches:
+            fetches.write(f"{name}\n")
     if status == "new":
         target.parent.mkdir(parents=True, exist_ok=True)
         part = target.with_name(f".{target.name}.part")

@@ -54,6 +54,7 @@
 .job-download { display: grid; gap: 6px; }
 .job-files, .job-failed ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
 .job-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.job-taken { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--local); }
 .job-summary.link-confirmed { color: var(--ok-ink); font-weight: 500; }
 .job-summary.link-mismatch, .job-summary.link-missing { color: var(--bad-ink); font-weight: 500; }
 .job-summary.link-index_outdated { color: var(--warn-ink); font-weight: 500; }
@@ -93,6 +94,8 @@
 .fc-version-title { font-size: 13.5px; }
 /* „Porównaj z…” next to the version's title: other versions of the slot */
 .fc-version-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+/* „Porównaj z…” and „Pobierz plik” together on the right */
+.fc-version-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .fc-compare { position: relative; }
 .fc-compare > summary { list-style: none; cursor: pointer; }
 .fc-compare > summary::-webkit-details-marker { display: none; }

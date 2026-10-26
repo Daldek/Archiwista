@@ -24,21 +24,27 @@ layers to choose from. Invalid request data adds ``errors``: a JSON Pointer,
 the type and the message of each value. ``rate_limited`` carries
 ``Retry-After``. Unknown routes answer ``404 not_found``, other methods
 ``405 method_not_allowed`` (with ``Allow``) and unexpected failures ``500
-internal_error``. Errors of the services map to codes in the services
+internal_error``. A ``403 permission_denied`` is logged as ``permission.denied``
+(``DenialLog``: at most one entry per person and action a minute). Errors of
+the services map to codes in the services
 themselves (``archiwista.errors``), which the command line shares
 (``archiwista.error_document``).
 """
 
-from collections.abc import Mapping
+import threading
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from archiwista.api import API_PREFIX
+from archiwista.auth import Principal
 from archiwista.config import SettingsValidationError
 from archiwista.error_document import (
     REGISTRY_PAGE,
@@ -76,8 +82,11 @@ from archiwista.errors import (
     UnsupportedError,
 )
 from archiwista.messages import message
+from archiwista.state import StateStore
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
+# One ``permission.denied`` entry per person and action within this time.
+DENIAL_LOG_INTERVAL = timedelta(minutes=1)
 # Service errors answered with a problem, each by its own code (the other
 # errors of ``archiwista.errors`` are not part of the API: 500).
 ANSWERED: tuple[type[ArchiwistaError], ...] = (
@@ -353,6 +362,86 @@ def problem_response(
     )
 
 
+class DenialLog:
+    """Refusals of requests in the action log (A-ADR-047, plan v0.4 C8).
+
+    A ``PermissionDeniedError`` of a request writes ``permission.denied``
+    (outcome ``denied``) with what was refused (the error's target, else the
+    request's path), the action and the route; at most one entry per person
+    and action within ``DENIAL_LOG_INTERVAL``, so a client asking again and
+    again does not flood the log. Kept in memory; thread-safe.
+
+    Parameters
+    ----------
+    state : StateStore
+        The state database with the action log.
+    clock : Callable[[], datetime], optional
+        Source of the current time (aware).
+    """
+
+    def __init__(
+        self, state: StateStore, *, clock: Callable[[], datetime] | None = None
+    ) -> None:
+        self._state = state
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._logged: dict[tuple[str, str | None], datetime] = {}
+        self._lock = threading.Lock()
+
+    def denied(
+        self,
+        principal: Principal | None,
+        error: PermissionDeniedError,
+        *,
+        route: str,
+        path: str,
+        client: str | None,
+    ) -> bool:
+        """Log a refusal, unless one of the person's action was logged lately.
+
+        Parameters
+        ----------
+        principal : Principal or None
+            Who was refused; ``None`` for a request without a session.
+        error : PermissionDeniedError
+            The refusal, with its action and target.
+        route : str
+            The method and the route's path below ``/api/v1``, e.g. ``POST
+            /jobs/{job}/cancel``.
+        path : str
+            The request's path below ``/api/v1``: the target of a refusal
+            that names none.
+        client : str or None
+            The client address of a request without a principal.
+
+        Returns
+        -------
+        bool
+            Whether an entry was written.
+        """
+        who = principal.id if principal is not None else client or "-"
+        key = (who, error.action)
+        now = self._clock()
+        with self._lock:
+            last = self._logged.get(key)
+            if last is not None and now - last < DENIAL_LOG_INTERVAL:
+                return False
+            self._logged = {
+                other: at
+                for other, at in self._logged.items()
+                if now - at < DENIAL_LOG_INTERVAL
+            }
+            self._logged[key] = now
+        self._state.record(
+            principal,
+            "permission.denied",
+            error.target or path,
+            outcome="denied",
+            details={"action": error.action, "route": route},
+            client=client,
+        )
+        return True
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Answer every failure of a request with a problem (see the module)."""
     app.exception_handler(ApiError)(_service_error)
@@ -369,7 +458,27 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
     headers = None
     if isinstance(error, RateLimitedError):
         headers = {"Retry-After": str(error.retry_after_s)}
+    if isinstance(error, PermissionDeniedError):
+        await run_in_threadpool(_log_denial, request, error)
     return problem_response(describe(error), request, headers=headers)
+
+
+def _log_denial(request: Request, error: PermissionDeniedError) -> None:
+    """Hand a refusal of a request to the application's ``DenialLog``.
+
+    The route and the path are named as SPEC 9.2 names them, below
+    ``/api/v1``: ``PUT /settings``.
+    """
+    path = request.url.path.removeprefix(API_PREFIX)
+    template = getattr(request.scope.get("route"), "path", None) or path
+    denials: DenialLog = request.app.state.denials
+    denials.denied(
+        getattr(request.state, "principal", None),
+        error,
+        route=f"{request.method} {template.removeprefix(API_PREFIX)}",
+        path=path,
+        client=getattr(request.state, "client", None),
+    )
 
 
 async def _validation_error(

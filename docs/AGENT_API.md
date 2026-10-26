@@ -46,6 +46,8 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 | a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
+| a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
+| the action log: a page newest first, an export of every entry the filters select (v0.4, administrators) | `archiwista log list [filters] [--limit N] [--cursor ID]`, `log export [filters] [--format jsonl\|csv] [--output FILE]` (section 10) | `GET /log`, `GET /log/export` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -495,7 +497,7 @@ archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
 archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 ```
 
-## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
+## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)
 
 Take a `ref` from the answer of the card of a version, of an own file or of a
 snapshot: `version:<store>:<version-path>`, `file:<project>:<file-path>` or
@@ -588,9 +590,11 @@ curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   -d '{"note":"przed zmianą"}' "$BASE/projects/projekt-01/files/$FILE_ID/snapshots"
 ```
 
-`GET /jobs?project=projekt-01` filters the jobs of a project. The list, the
-details `/jobs/{job}` and the SSE `/jobs/{job}/events` do not reveal jobs with
-data of an invisible project (`404` for a direct address); an ordinary store
+`GET /jobs?project=projekt-01` filters the jobs of a project. The details
+`/jobs/{job}`, the SSE `/jobs/{job}/events` and the log do not reveal jobs with
+data of an invisible project (`404` for a direct address); the list holds every
+job of the queue, such a job with `hidden: true` and nothing but its kind,
+store, who, state, times and progress counts (v0.4, ADR-047). An ordinary store
 scan is shared. The SSE sends `progress`, `notice` and `state`, and a client
 resumes after `Last-Event-ID`.
 
@@ -663,6 +667,38 @@ archiwista availability check "$AREA" --product=nmt --json
 archiwista availability show "$AREA" --product=nmt --store=zespol --json
 ```
 
+**File download (v0.4, ADR-047).** `GET /stores/{store}/versions/{version}/file`,
+`GET /projects/{project}/files/{file_id}/file` and `GET
+…/files/{file_id}/snapshots/{label}/file` send the file itself: only a version
+the index knows, or an own file or a snapshot of a project the session sees
+(else `404`), resolved inside its root (a symbolic link out of it is `403
+path_outside_root`). One file of a set (a Shapefile, a MapInfo TAB, or a
+snapshot of one) is `?member=<name>`, a name from `members` of the file card or
+of the snapshot (another name is `404`); without it the main file. A working file
+changed since its scan is `409 own_file_changed`; one its last scan could not
+read and a snapshot that is not valid are `409 file_unreadable`; a file gone
+from the disk is `404 missing_file`. The answer is an attachment
+(`Content-Disposition: attachment` with the file's name, `filename*` for a name
+that is not ASCII), the media type of its format or extension (else
+`application/octet-stream`), `Cache-Control: private, no-store` and
+`X-Content-Type-Options: nosniff`; nothing is shown inline, a PDF neither.
+`Range` answers `206` with `Content-Range` (`curl -C -` resumes), and `HEAD`
+answers the headers only (`Content-Length`). A person, with their agents,
+streams at most two files at once: a third is `429 rate_limited`, reason
+`too_many_downloads`, with `Retry-After: 10`. A `GET` without `Range` or from
+byte 0 is logged (`file.download` with `size_bytes`). These routes need
+`X-Archiwista-CSRF` as every other; only a link of the interface
+(`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes with
+the session cookie alone.
+
+```sh
+# VERSION_PATH is version.path of a row of /slots; FILE_ID is file_id of the file list.
+curl -sf -b "$JAR" -H "$H" --output-dir <data-dir> -OJ \
+  "$BASE/projects/projekt-01/files/$FILE_ID/file?member=dzialki.dbf"
+curl -sf -b "$JAR" -H "$H" -C - -o <data-dir>/N-34-130-D-d-2-4.asc \
+  "$BASE/stores/zespol/versions/$VERSION_PATH/file"
+```
+
 ## 7. Errors
 
 Every HTTP error is `application/problem+json` (RFC 9457) with a code of the
@@ -710,12 +746,12 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name) or `common` (a common password); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; `login_failed` (team mode): the account and password do not sign in, one answer for every cause, or the reverse proxy names no enabled account (`POST /session/proxy`); `password_expired`: a correct temporary password past its end, an administrator gives a new one |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
-| 404 | `not_found` | an unknown resource, or a project invisible to the actor |
+| 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
-| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
+| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, or of a snapshot that is not valid; `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
-| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; wait for `Retry-After` (also `details.retry_after_s`) |
+| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail` |
@@ -789,9 +825,26 @@ A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 `project_download`, `project_repin`, `project_check`, `project_verify`, `preview_warm`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
-`progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`
-with `limit` (1–200) and `cursor`, newest first. Jobs with project data check
-the visibility of the project in a single card and in the SSE stream too.
+`progress`, `result`, `error` and `hidden` (v0.4: a job only of projects the
+session does not see, listed with empty `params`, `null` `session`, `result` and
+`error`, and `progress` with `current` and `total` only). The list: `GET
+/jobs?kind=&store=&state=&project=` with `limit` (1–200) and `cursor`, newest
+first. Jobs with project data check the visibility of the project in a single
+card and in the SSE stream too.
+
+**The shared queue (v0.4, ADR-047).** A `download` with `plan_job` claims the
+positions to download of its plans when it starts; a position another active
+download of the store claimed first is left to that job: `result.taken` lists it
+(`path`, `unit`, `job`, `actor`), a notice `taken_by_job` names each such job and
+its person, a call all of whose positions are taken is skipped (`reason`
+`taken`), and the job ends `partial`, so `POST /jobs/{id}/retry` fetches what
+the other job failed. A `download` without `plan_job` of a call (store, producer,
+command, options) that a running download runs stays `queued` with a notice
+`waiting_for_job` naming that job, and runs when it ends, finding the files in
+the store. A person (with their agents; the scheduler is no person) runs at most
+`network_jobs_per_person` network jobs at once (`GET`/`PUT /settings`, 2 by
+default); further ones stay `queued`, none is refused, and a free place goes to
+the oldest waiting job of the person with the fewest running ones.
 
 The plans of a `check` job that succeeded or ended `partial` are `GET
 /jobs/{id}/plan` (`ActionPlanInfo`, from the index, no network): the store, the
@@ -912,7 +965,42 @@ full scan in the foreground (for the owner at a terminal, not for an agent next
 to a running server: both go to the same queue and get a conflict, exit `4`,
 when they meet).
 
-## 10. Limits of v0.3
+## 10. The action log (v0.4, administrators)
+
+The log says who did what, when and from where (A-ADR-047, SPEC 10.2): changes of
+accounts, groups, sharing and settings, the jobs people start, cancel or retry, file
+downloads, refusals (`403`), the pruning of old entries and the exports of the log
+itself (on a team server also sign-ins and sessions). Only an administrator reads it
+(`log.read`); anyone else gets `403 permission_denied`, which is logged too. The CLI
+acts as the owner of the installation, who is one.
+
+- **Filters** of `GET /log`, `GET /log/export` and both commands (`--actor` …):
+  `actor` (an account id, `local`, or `-` before a sign-in), `action` (a name such
+  as `job.start`, or a group by its prefix ending with a dot: `session.`),
+  `outcome` (`ok`, `denied`, `failed`), `target`, `since` (inclusive) and `until`
+  (exclusive), ISO 8601 with a zone; a time without a zone is `400`.
+- **A page** (`ActionPage`, newest first): `items` (`ActionEntryModel`: `id`, `at`
+  in UTC, `actor`, `actor_kind`, `session`, `client`, `action`, `target`,
+  `outcome`, `before`, `after`, `details`), `total` (the entries of all pages of
+  the filters) and `next_cursor`, paged as in section 4 (`limit` 1–200, 50 by
+  default). Reading is not logged.
+- **An export** is logged first (`log.export` with its `filters`, `format` and
+  `count`) and holds every entry older than that one, newest first, as an
+  attachment: JSON Lines (`format=jsonl`, the default; `application/jsonl`, an
+  `ActionEntryModel` per line) or CSV (`format=csv`; UTF-8 with a BOM, CRLF, a
+  header of the field names, the objects as JSON text, null as an empty cell). A
+  CSV cell that starts with `=`, `+`, `-`, `@`, a tab, CR or LF begins with `'`, so
+  a spreadsheet shows it as text: drop that `'` to read the value. `archiwista log
+  export` writes the same bytes to standard output, or replaces `--output FILE`
+  (mode `0600`).
+
+```sh
+curl -sf -b "$JAR" -H "$H" "$BASE/log?action=permission.&since=2026-10-01T00:00:00%2B02:00"
+archiwista log list --actor marek.lis --json
+archiwista log export --format csv --since 2026-10-01T00:00:00+02:00 --output dziennik.csv
+```
+
+## 11. Limits of v0.3
 
 - Local mode only: one person on `127.0.0.1`, no login; accounts and groups
   serve the visibility of projects (A-ADR-029).

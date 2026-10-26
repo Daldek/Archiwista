@@ -11,7 +11,7 @@ The request models refuse unknown parameters and members (``422``).
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,7 +33,7 @@ from archiwista.index import (
 from archiwista.owndata.document import MAX_NOTE_CHARS, SNAPSHOTS_DIR
 from archiwista.owndata.scan import OwnFolderCheck
 from archiwista.owndata.snapshots import SnapshotPlan as PlannedSnapshot
-from archiwista.refs import FileRef, SnapshotRef, format_ref
+from archiwista.refs import FileRef, SnapshotRef, format_ref, snapshot_files
 from archiwista.services.problems import Problem
 
 
@@ -299,6 +299,12 @@ class SnapshotItem(BaseModel):
     feature_count: int | None
     extent: dict[str, Any] | None
     state: Literal["ok", "invalid", "modified"]
+    members: list[str] = Field(
+        description=(
+            "Names of its files, the main file first: the `member` of"
+            " `GET …/snapshots/{label}/file`."
+        )
+    )
     paths: CopyPath = Field(description="The snapshot directory.")
 
     @classmethod
@@ -324,6 +330,7 @@ class SnapshotItem(BaseModel):
             feature_count=_count(document.get("feature_count")),
             extent=_object(document.get("extent")),
             state=item.state,
+            members=[name for name, _ in snapshot_files(item)],
             paths=copy_path(settings, directory),
         )
 
@@ -348,6 +355,13 @@ class OwnFileCard(_OwnFileFields):
         )
     )
     paths: CopyPath = Field(description="The main file.")
+    members: list[str] = Field(
+        description=(
+            "Names of the files of its set (a Shapefile, a MapInfo TAB), the main"
+            " file first; its name alone for a single file. The `member` of"
+            " `GET …/files/{file_id}/file`."
+        )
+    )
     problems: list[Issue]
 
     @classmethod
@@ -384,6 +398,7 @@ class OwnFileCard(_OwnFileFields):
             ],
             preview=preview,
             paths=copy_path(settings, folder / detail.disk_path),
+            members=[PurePosixPath(member).name for member in detail.members],
             problems=[Issue.of(problem) for problem in problems],
         )
 

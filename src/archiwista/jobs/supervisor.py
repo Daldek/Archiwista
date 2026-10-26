@@ -3,7 +3,9 @@
 ``JobSupervisor`` lives in the server and in the commands running a job in
 the foreground (``archiwista.jobs.foreground``: ``reindex``, ``preview
 --build``). It records every job in the index (``jobs``, with its
-``actor``: the principal's id, kind and session label), starts one worker
+``actor``: the principal's id, kind and session label), logs each job a
+person (not the scheduler) starts or retries in the action log (``job.start``,
+``job.retry``; A-ADR-047), starts one worker
 process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
 reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
@@ -16,7 +18,10 @@ units failed; its summary names them), ``failed``, ``interrupted`` or
 
 Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
 whether it works on a configured store, needs the network (refused in
-offline mode, at most two network jobs run), runs alone (one ``preview``
+offline mode, at most two network jobs run, of them at most
+``network_jobs_per_person`` of one person: an agent counts as its account,
+the scheduler as no one; a free network place goes to the oldest waiting job
+of the person with the fewest running ones, ADR-047), runs alone (one ``preview``
 at a time, one ``preview_warm``; the next ones wait in the queue), conflicts
 with active jobs (one job writing a store's index at a time, ``scan`` or
 ``footprints``; one job of a project at a time, of the ``project_*`` kinds;
@@ -25,7 +30,15 @@ an active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
 job; a ``preview_warm`` of the filters of a waiting one returns it) or
 overlaps one (a ``download`` of a call an active download of the
-store runs too starts with a warning notice naming that job). At most half
+store runs too starts with a warning notice naming that job). A ``download``
+with a plan claims, when it starts, the positions to download of its kept
+plans (``job_claims`` of the index, in the transaction that starts it, so
+two processes never claim one position); a position another active download
+of the store claimed is left to that job and handed to the worker as
+``taken`` (ADR-047). Claims go when their job ends, and at every start
+those of jobs no longer active. A ``download`` without a plan of a call a
+running download of the store runs waits in the queue until that one ends
+(a notice ``waiting_for_job``). At most half
 the processors' worth of workers run, the rest wait in
 the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
 CTRL_BREAK_EVENT to its process group on Windows) and kills it after 30 s.
@@ -52,9 +65,12 @@ read from ``store`` and ``params``: a store or versions (``version:`` refs)
 everyone sees, and so a job of no project (the ``own_scan`` of every
 project); a job of projects only (``params.project``, ``file:`` and
 ``snapshot:`` refs; the ``project_*`` kinds) is seen by whoever sees one of
-them. ``list``, ``get`` and ``events`` take the principal's ``visible``
-projects (every project by default); a ``preview`` job then shows only the
-refs and failures of visible projects, its counts staying whole (A-ADR-029).
+them. ``get`` and ``events`` take the principal's ``visible`` projects
+(every project by default) and know no job the principal does not see;
+``list`` gives every job of the queue, one the principal does not see marked
+``hidden`` with its kind, store, actor, state, times and progress counts only
+(ADR-047 decision 3); a ``preview`` job shows only the refs and failures of
+visible projects, its counts staying whole (A-ADR-029).
 """
 
 import base64
@@ -71,7 +87,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
@@ -113,6 +129,8 @@ from archiwista.messages import STORED_LANG, label, localize, message
 from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
+from archiwista.sources import PLAN_TODO
+from archiwista.state import ActionRecorder, StateStore
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -237,6 +255,10 @@ class JobRecord:
         Summary of a job that succeeded or ended ``partial``.
     error : JobError or None
         Why a job did not succeed (a registry code and the reason).
+    hidden : bool, default False
+        A job of projects the principal does not see, as ``list`` gives it:
+        without ``params``, ``session``, ``result`` and ``error``, its
+        ``progress`` with ``current`` and ``total`` only.
     """
 
     id: str
@@ -253,6 +275,7 @@ class JobRecord:
     progress: JsonObject | None = None
     result: JsonObject | None = None
     error: JobError | None = None
+    hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,6 +458,22 @@ def _call_keys(store: str | None, params: JsonObject) -> frozenset[object]:
     )
 
 
+def _waiting_keys(
+    kind: JobKind, store: str | None, params: JsonObject
+) -> frozenset[object]:
+    """Return the calls a new job waits for: those of a ``download`` without a plan."""
+    if kind != "download" or params["plan_job"] is not None:
+        return frozenset()
+    return _call_keys(store, params)
+
+
+def _running_keys(
+    kind: JobKind, store: str | None, params: JsonObject
+) -> frozenset[object]:
+    """Return the calls a running job runs: those of a ``download``."""
+    return _call_keys(store, params) if kind == "download" else frozenset()
+
+
 def _project_key(store: str | None, params: JsonObject) -> object:
     """Return the key of a job of a project's manifest: the project."""
     return params["project"]
@@ -548,9 +587,42 @@ _INDEX_KINDS = _domain_kinds(_INDEX_CONFLICT.domain)
 
 @dataclass(slots=True)
 class _Waiting:
+    """A job waiting in this supervisor's queue.
+
+    ``actor`` and ``actor_kind`` are who asked (``person``: whose network
+    limit it counts against). ``keys`` are the calls of a ``download``
+    without a plan (``_call_keys``): it waits while a running download
+    shares one; ``noticed`` says whether its notice ``waiting_for_job`` is
+    recorded.
+    """
+
     job_id: str
     kind: JobKind
     store: str | None
+    actor: str
+    actor_kind: PrincipalKind
+    keys: frozenset[object] = frozenset()
+    noticed: bool = False
+
+    @property
+    def person(self) -> str | None:
+        """Return the person the job counts for: ``None`` for the scheduler."""
+        return None if self.actor_kind == "scheduler" else self.actor
+
+
+@dataclass(frozen=True, slots=True)
+class _Claims:
+    """What a starting job claimed (``JobSupervisor._claim``).
+
+    ``claimed`` are the paths of the positions it claimed (``None``: a job
+    that claims nothing), ``taken`` the positions other jobs hold (``path``,
+    ``unit``, ``job``, ``actor``), ``stale`` the state events of holders whose
+    supervisor was gone.
+    """
+
+    claimed: tuple[str, ...] | None = None
+    taken: tuple[JsonObject, ...] = ()
+    stale: tuple[JobEvent, ...] = ()
 
 
 @dataclass(slots=True)
@@ -560,6 +632,8 @@ class _Run:
     job_id: str
     kind: JobKind
     store: str | None
+    person: str | None
+    keys: frozenset[object]
     process: subprocess.Popen[bytes]
     log: IO[bytes]
     seq: int
@@ -577,6 +651,23 @@ def default_max_jobs() -> int:
     return max(2, (os.cpu_count() or 2) // 2)
 
 
+def action_details(
+    kind: str, store: str | None, params: Mapping[str, object]
+) -> dict[str, object]:
+    """Return what the action log keeps of a job: its kind, store and project.
+
+    The details of the entries ``job.start``, ``job.retry`` and ``job.cancel``
+    (A-ADR-047); a store or a project the job has not is left out.
+    """
+    details: dict[str, object] = {"kind": kind}
+    if store is not None:
+        details["store"] = store
+    project = params.get("project")
+    if project is not None:
+        details["project"] = project
+    return details
+
+
 class JobSupervisor:
     """Start, follow and record background jobs.
 
@@ -586,7 +677,8 @@ class JobSupervisor:
         The local index and the jobs directory (logs, owner locks); workers
         get the index and the cache, preview and scratch directories.
     settings : SettingsService
-        Settings in effect: stores, offline mode. The index's stores follow
+        Settings in effect: stores, offline mode, the network jobs of one
+        person (``network_jobs_per_person``). The index's stores follow
         them (``IndexWriter.sync_stores``) before every job starts and after
         every change; jobs of a removed store are cancelled.
     worker_command : Sequence[str], optional
@@ -596,9 +688,14 @@ class JobSupervisor:
         Workers running at once; half the processors (at least two) by
         default.
     max_network_jobs : int, default 2
-        Network jobs running at once.
+        Network jobs running at once, of all people and the scheduler.
     stop_timeout_s : float, default 30.0
         Seconds an interrupted worker has before it is killed.
+    record : ActionRecorder or None, optional
+        Writes the action log's entries of the jobs people start
+        (``job.start``) or retry (``job.retry``), e.g. the server's
+        ``StateStore.record``; that of the state database of ``paths``,
+        opened by ``start``, when omitted.
 
     Notes
     -----
@@ -618,6 +715,7 @@ class JobSupervisor:
         max_jobs: int | None = None,
         max_network_jobs: int = MAX_NETWORK_JOBS,
         stop_timeout_s: float = STOP_TIMEOUT_S,
+        record: ActionRecorder | None = None,
     ) -> None:
         self._paths = paths
         self._settings = settings
@@ -625,6 +723,7 @@ class JobSupervisor:
         self._max_jobs = default_max_jobs() if max_jobs is None else max_jobs
         self._max_network_jobs = max_network_jobs
         self._stop_timeout_s = stop_timeout_s
+        self._recorder = record
         self._lock = threading.RLock()
         self._changed = threading.Condition(self._lock)
         self._queue: deque[_Waiting] = deque()
@@ -670,6 +769,8 @@ class JobSupervisor:
             if self._phase != "new":
                 raise RuntimeError("a supervisor starts once")
             initialize(self._paths.index_file)
+            if self._recorder is None:
+                self._recorder = StateStore(self._paths.state_file).record
             jobs_dir = private_directory(self._paths.jobs_dir)
             self._owner = _hold_owner_lock(jobs_dir)
             self._db = _connect(self._paths.index_file)
@@ -691,7 +792,8 @@ class JobSupervisor:
         newest of each store. Other finished jobs and logs go after 90 days
         (the last finished job of each store and kind stays), and the oldest
         logs beyond 1 GB. The scheduler calls it every hour. Cancel requests
-        of jobs that are not active go too.
+        of jobs that are not active go too, and so do their claims of
+        positions (``job_claims``).
 
         Parameters
         ----------
@@ -711,6 +813,7 @@ class JobSupervisor:
             _prune_logs(self._paths.jobs_dir, now=moment)
             _prune_jobs(db, now=moment)
             _prune_cancel_requests(db, self._paths.jobs_dir)
+            _release_claims(db)
         return routine
 
     def close(self) -> None:
@@ -759,6 +862,7 @@ class JobSupervisor:
         params: Mapping[str, object] | None = None,
         actor: Principal,
         admit: Callable[[], None] | None = None,
+        retry_of: str | None = None,
     ) -> JobRecord:
         """Record a job and start it when there is room, or join an active one.
 
@@ -799,12 +903,18 @@ class JobSupervisor:
             non-empty text or ``None``, the default; ``since`` an ISO 8601
             time with its offset).
         actor : Principal
-            Who asks; the job keeps its id, kind and session label.
+            Who asks; the job keeps its id, kind and session label. A person
+            (any actor but the ``scheduler``) gets the action log's entry
+            ``job.start`` of the job (``action_details``), with ``joined``
+            when the request joined an active job.
         admit : Callable[[], None] or None, optional
             Called under the supervisor's lock when the request would become
             a new job (nothing in its way and no active job taking it): it
             refuses the job by raising, and nothing is recorded then (the
             limits of a person's scans, ``archiwista.services.owndata``).
+        retry_of : str or None, optional
+            The job this one runs again (``archiwista.services.jobs.retry``):
+            the entry is ``job.retry`` with ``retry_of``.
 
         Returns
         -------
@@ -816,7 +926,9 @@ class JobSupervisor:
             those it started with), and no job is recorded. A job of a kind
             that overlaps (``download``) gets a warning notice
             ``overlapping_job`` naming the oldest active job it repeats a
-            call of, ``job`` its id.
+            call of, ``job`` its id. A ``download`` without a plan waits in
+            the queue while a running download of the store runs one of its
+            calls (a notice ``waiting_for_job`` naming it).
 
         Raises
         ------
@@ -900,9 +1012,30 @@ class JobSupervisor:
             if conflict is not None:
                 raise conflict
             if joined is None:
-                self._queue.append(_Waiting(job_id, job_kind, store))
+                waiting = _Waiting(
+                    job_id=job_id,
+                    kind=job_kind,
+                    store=store,
+                    actor=actor.id,
+                    actor_kind=actor.kind,
+                    keys=_waiting_keys(job_kind, store, values),
+                )
+                self._queue.append(waiting)
                 self._dispatch()
-        return self._record(joined or job_id)
+        started = joined or job_id
+        if actor.kind != "scheduler" and self._recorder is not None:
+            details = action_details(job_kind, store, values)
+            if retry_of is not None:
+                details["retry_of"] = retry_of
+            if joined is not None:
+                details["joined"] = True
+            self._recorder(
+                actor,
+                "job.start" if retry_of is None else "job.retry",
+                started,
+                details=details,
+            )
+        return self._record(started)
 
     def cancel(self, job_id: str) -> JobRecord:
         """Cancel a job.
@@ -1220,9 +1353,9 @@ class JobSupervisor:
         cursor : str or None, optional
             ``next_cursor`` of the previous page of the same filters.
         visible : ProjectVisibility, default ALL_PROJECTS
-            Projects the principal sees: only the jobs it sees, shown as
-            ``get`` shows them. The query leaves the others out, so a page
-            keeps its size.
+            Projects the principal sees: a job it sees is shown as ``get``
+            shows it, every other one ``hidden`` (``JobRecord.hidden``) with
+            its kind, store, actor, state, times and progress counts only.
 
         Raises
         ------
@@ -1246,11 +1379,11 @@ class JobSupervisor:
             values.extend(after)
         with self._reading() as connection:
             seen = _seen_projects(connection, visible)
-            if seen is not None or project is not None:
-                # The scope rule of ``get`` filters in the query, so a page
-                # keeps its size; registered on this thread's connection, the
-                # function is this call's alone.
-                connection.create_function("job_listed", 2, _listed(seen, project))
+            if project is not None:
+                # The project filter runs in the query, so a page keeps its
+                # size; registered on this thread's connection, the function
+                # is this call's alone.
+                connection.create_function("job_listed", 2, _listed(project))
                 conditions.append("job_listed(store, params)")
             where = " AND ".join(conditions) or "1"
             rows = connection.execute(
@@ -1259,7 +1392,7 @@ class JobSupervisor:
                 (*values, limit + 1),
             ).fetchall()
             items = tuple(
-                _redacted(_job_record(connection, row), seen) for row in rows[:limit]
+                _shown(_job_record(connection, row), seen) for row in rows[:limit]
             )
         next_cursor = None
         if len(rows) > limit:
@@ -1309,12 +1442,10 @@ class JobSupervisor:
                         logger.exception("Cancelling job %s failed", job_id)
 
     def _dispatch(self) -> None:
-        """Start waiting jobs, oldest first, while there is room."""
+        """Start waiting jobs while there is room (``_next``)."""
         if self._phase != "open":
             return
-        for waiting in tuple(self._queue):
-            if not self._room(waiting.kind):
-                continue
+        while (waiting := self._next()) is not None:
             self._queue.remove(waiting)
             try:
                 self._start(waiting)
@@ -1326,18 +1457,84 @@ class JobSupervisor:
                 self._end_waiting(
                     waiting, "failed", JobError(CODE_INTERNAL_ERROR, detail)
                 )
+        self._notice_waiting()
 
-    def _room(self, kind: JobKind) -> bool:
+    def _next(self) -> _Waiting | None:
+        """Return the waiting job to start next, or ``None`` while none may.
+
+        Jobs start oldest first; when the oldest that may start is a network
+        job, the network job that starts is the oldest of the person with the
+        fewest running network jobs among those that may start (ADR-047).
+        """
+        limit = self._settings.get().network_jobs_per_person
+        running = Counter(
+            run.person for run in self._running.values() if JOB_RULES[run.kind].network
+        )
+        allowed = [item for item in self._queue if self._room(item, running, limit)]
+        if not allowed or not JOB_RULES[allowed[0].kind].network:
+            return allowed[0] if allowed else None
+        network = [item for item in allowed if JOB_RULES[item.kind].network]
+        return min(network, key=lambda item: running[item.person])
+
+    def _room(
+        self, waiting: _Waiting, running: Counter[str | None], limit: int
+    ) -> bool:
+        """Whether a waiting job may start now.
+
+        ``running`` counts the running network jobs of each person (``None``:
+        the scheduler's), ``limit`` is ``network_jobs_per_person``.
+        """
         if len(self._running) >= self._max_jobs:
             return False
-        rule = JOB_RULES[kind]
-        running = [run.kind for run in self._running.values()]
-        if rule.exclusive and kind in running:
+        rule = JOB_RULES[waiting.kind]
+        kinds = [run.kind for run in self._running.values()]
+        if rule.exclusive and waiting.kind in kinds:
             return False
-        if rule.network:
-            network = sum(JOB_RULES[other].network for other in running)
-            return network < self._max_network_jobs
-        return True
+        if self._waits_for(waiting) is not None:
+            return False
+        if not rule.network:
+            return True
+        if sum(running.values()) >= self._max_network_jobs:
+            return False
+        return waiting.person is None or running[waiting.person] < limit
+
+    def _waits_for(self, waiting: _Waiting) -> str | None:
+        """Return the oldest running job a waiting one waits for: one of its calls."""
+        return next(
+            (
+                run.job_id
+                for run in self._running.values()
+                if not waiting.keys.isdisjoint(run.keys)
+            ),
+            None,
+        )
+
+    def _notice_waiting(self) -> None:
+        """Record ``waiting_for_job`` once for each job that waits for another."""
+        for waiting in self._queue:
+            other = None if waiting.noticed else self._waits_for(waiting)
+            if other is None:
+                continue
+            waiting.noticed = True
+            text = message("job.waiting_for_job", job=other)
+            data: JsonObject = {
+                "level": "info",
+                "code": "waiting_for_job",
+                "message": localize(text, STORED_LANG),
+                "job": other,
+            }
+            db = self._open_db()
+            now = _now()
+            with _transaction(db):
+                event = _insert_event(
+                    db,
+                    waiting.job_id,
+                    _next_seq(db, waiting.job_id),
+                    "notice",
+                    data,
+                    now,
+                )
+            self._publish(event)
 
     def _start(self, waiting: _Waiting) -> None:
         """Mark a job running and start its worker with the current settings."""
@@ -1363,20 +1560,24 @@ class JobSupervisor:
                 " WHERE id = ?",
                 (waiting.job_id,),
             ).fetchone()
+            params: JsonObject = json.loads(row["params"])
             db.execute(
                 "UPDATE jobs SET state = 'running', started_at = ? WHERE id = ?",
                 (_iso(now), waiting.job_id),
             )
+            claims = self._claim(db, waiting, params, now)
             seq = int(row["seq"] or 0) + 1
             event = _insert_event(
                 db, waiting.job_id, seq, "state", {"state": "running"}, now
             )
+        for stale in claims.stale:
+            self._publish(stale)
         self._publish(event)
         spec = JobSpec(
             job_id=waiting.job_id,
             kind=waiting.kind,
             store=waiting.store,
-            params=json.loads(row["params"]),
+            params=params,
             actor=row["actor"],
             actor_kind=row["actor_kind"],
             session=row["session"],
@@ -1385,6 +1586,8 @@ class JobSupervisor:
             previews_dir=self._paths.previews_dir,
             work_dir=self._paths.work_dir,
             settings=settings,
+            claimed=claims.claimed,
+            taken=claims.taken,
         )
         log = _log_path(self._paths.jobs_dir, waiting.job_id).open("ab")
         try:
@@ -1409,6 +1612,8 @@ class JobSupervisor:
             job_id=waiting.job_id,
             kind=waiting.kind,
             store=waiting.store,
+            person=waiting.person,
+            keys=_running_keys(waiting.kind, waiting.store, params),
             process=process,
             log=log,
             seq=seq,
@@ -1493,6 +1698,7 @@ class JobSupervisor:
                             run.job_id,
                         ),
                     )
+                    db.execute("DELETE FROM job_claims WHERE job_id = ?", (run.job_id,))
                     event = _insert_event(
                         db, run.job_id, run.seq + 1, "state", data, now
                     )
@@ -1574,6 +1780,71 @@ class JobSupervisor:
             state=busy["state"],
         )
         return error, tuple(events)
+
+    def _claim(
+        self,
+        db: sqlite3.Connection,
+        waiting: _Waiting,
+        params: JsonObject,
+        now: datetime,
+    ) -> _Claims:
+        """Claim the positions to download of a starting planned download.
+
+        A ``download`` with ``plan_job`` claims each position to download of
+        that job's kept plans (``job_claims``) that no live active job of the
+        store holds; a position held is ``taken``, with its holder's id and
+        actor. A holder whose supervisor is gone becomes ``interrupted`` and
+        loses its claims. Runs in the transaction that starts the job.
+        """
+        plan_job = params.get("plan_job")
+        if waiting.kind != "download" or plan_job is None:
+            return _Claims()
+        rows = db.execute(
+            "SELECT json_extract(e.value, '$.path') AS path,"
+            " json_extract(e.value, '$.unit') AS unit"
+            " FROM plans p, json_each(p.plan, '$.entries') e WHERE p.job_id = ?"
+            " AND json_extract(e.value, '$.status')"
+            f" IN ({_placeholders(PLAN_TODO)}) ORDER BY p.call, e.key",
+            (plan_job, *PLAN_TODO),
+        ).fetchall()
+        wanted: dict[str, str] = {}
+        for row in rows:
+            wanted.setdefault(row["path"], row["unit"])
+        holders: dict[str, tuple[str, str]] = {}
+        live: dict[str, bool] = {}
+        stale: list[JobEvent] = []
+        for row in db.execute(
+            "SELECT c.path, c.job_id, j.actor, j.state, j.pid FROM job_claims c"
+            " JOIN jobs j ON j.id = c.job_id WHERE c.store = ?",
+            (waiting.store,),
+        ).fetchall():
+            holder = row["job_id"]
+            if holder not in live:
+                active = row["state"] in ACTIVE_STATES
+                live[holder] = active and self._owner_alive(holder, row["pid"])
+                if active and not live[holder]:
+                    stale.append(self._mark_stale(db, holder, now))
+            if live[holder]:
+                holders[row["path"]] = (holder, row["actor"])
+        taken: list[JsonObject] = []
+        claimed: list[tuple[str, str | None, str, str]] = []
+        for path, unit in wanted.items():
+            if path in holders:
+                job, actor = holders[path]
+                taken.append({"path": path, "unit": unit, "job": job, "actor": actor})
+            else:
+                claimed.append((waiting.job_id, waiting.store, path, unit))
+        db.executemany(
+            "INSERT INTO job_claims (job_id, store, path, unit) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (store, path) DO UPDATE SET job_id = excluded.job_id,"
+            " unit = excluded.unit",
+            claimed,
+        )
+        return _Claims(
+            claimed=tuple(path for _, _, path, _ in claimed),
+            taken=tuple(taken),
+            stale=tuple(stale),
+        )
 
     def _join(
         self,
@@ -1696,7 +1967,7 @@ class JobSupervisor:
                 logger.exception("Job listener %r failed", listener)
 
     def _settings_changed(self, previous: AppSettings, current: AppSettings) -> None:
-        """Cancel the jobs of removed stores and follow the new stores."""
+        """Cancel the jobs of removed stores, follow the new stores and limits."""
         removed = {store.id for store in previous.stores} - {
             store.id for store in current.stores
         }
@@ -1710,6 +1981,7 @@ class JobSupervisor:
             for job_id in doomed:
                 self.cancel(job_id)
             self._sync(current)
+            self._dispatch()
 
     def _sync(self, settings: AppSettings) -> None:
         """Make the index's stores those of the settings (once per change)."""
@@ -1976,18 +2248,41 @@ def _finish_row(
     error: JobError,
     now: datetime,
 ) -> JobEvent:
-    """End a job that has no worker (any more) and record its state event."""
+    """End a job that has no worker (any more) and record its state event.
+
+    Its claims of positions (``job_claims``) go with it.
+    """
     payload = error.to_json()
     db.execute(
         "UPDATE jobs SET state = ?, finished_at = ?, error = ? WHERE id = ?",
         (state, _iso(now), _json(payload), job_id),
     )
+    db.execute("DELETE FROM job_claims WHERE job_id = ?", (job_id,))
+    return _insert_event(
+        db,
+        job_id,
+        _next_seq(db, job_id),
+        "state",
+        {"state": state, "error": payload},
+        now,
+    )
+
+
+def _next_seq(db: sqlite3.Connection, job_id: str) -> int:
+    """Return the number of a job's next event."""
     seq = db.execute(
         "SELECT coalesce(max(seq), 0) FROM job_events WHERE job_id = ?", (job_id,)
     ).fetchone()[0]
-    return _insert_event(
-        db, job_id, int(seq) + 1, "state", {"state": state, "error": payload}, now
-    )
+    return int(seq) + 1
+
+
+def _release_claims(db: sqlite3.Connection) -> None:
+    """Remove the claims of positions of jobs that are not active (any more)."""
+    with _transaction(db):
+        db.execute(
+            "DELETE FROM job_claims WHERE job_id NOT IN"
+            f" (SELECT id FROM jobs WHERE state IN {_ACTIVE_SQL})"
+        )
 
 
 def _insert_event(
@@ -2118,21 +2413,41 @@ def _seen_projects(
     return frozenset(row["key"] for row in rows if visible.sees(row["access_key"]))
 
 
-def _listed(
-    seen: frozenset[str] | None, project: str | None
-) -> Callable[[str | None, str], bool]:
-    """Return the SQL function keeping the jobs ``list`` gives (``job_listed``).
+def _listed(project: str) -> Callable[[str | None, str], bool]:
+    """Return the SQL function keeping the jobs with a project's data (``job_listed``).
 
-    It takes a job's ``store`` and ``params`` (JSON) and keeps a job that one
-    seeing the projects ``seen`` (``None``: all) sees and that, given a
-    ``project``, has data of that project.
+    It takes a job's ``store`` and ``params`` (JSON).
     """
 
     def listed(store: str | None, params: str) -> bool:
-        scope = _Scope.of(store, json.loads(params))
-        return scope.seen_by(seen) and (project is None or project in scope.projects)
+        return project in _Scope.of(store, json.loads(params)).projects
 
     return listed
+
+
+def _shown(record: JobRecord, seen: frozenset[str] | None) -> JobRecord:
+    """Return a job of the queue as one seeing the projects ``seen`` lists it.
+
+    A job seen is shown as ``get`` shows it (``_redacted``); any other one is
+    ``hidden``: its kind, store, actor, state and times stay, its progress
+    keeps ``current`` and ``total``, the rest goes (ADR-047 decision 3).
+    """
+    if _Scope.of(record.store, record.params).seen_by(seen):
+        return _redacted(record, seen)
+    progress = record.progress
+    if progress is not None:
+        progress = {
+            key: progress[key] for key in ("current", "total") if key in progress
+        }
+    return replace(
+        record,
+        params={},
+        session=None,
+        progress=progress,
+        result=None,
+        error=None,
+        hidden=True,
+    )
 
 
 def _redacted(record: JobRecord, seen: frozenset[str] | None) -> JobRecord:

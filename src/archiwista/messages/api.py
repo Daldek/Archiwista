@@ -145,6 +145,37 @@ MESSAGES = {
         'Version "{version}" in store "{store}" has no readable sidecar.',
         "Wersja „{version}” w magazynie „{store}” nie ma czytelnego sidecara.",
     ),
+    "file_member_unknown": Text(
+        'The set of "{ref}" holds no file "{member}".',
+        "Zestaw „{ref}” nie zawiera pliku „{member}”.",
+    ),
+    "file_missing": Text(
+        (
+            'The file of "{ref}" is not on the disk any more; the next scan updates'
+            " the index."
+        ),
+        "Pliku „{ref}” nie ma już na dysku; następny skan zaktualizuje indeks.",
+    ),
+    "file_unreadable": Text(
+        (
+            'The file of "{ref}" cannot be downloaded: its last scan could not read'
+            " it, or the snapshot is not valid."
+        ),
+        (
+            "Nie można pobrać pliku „{ref}”: ostatni skan nie mógł go odczytać albo"
+            " migawka jest nieważna."
+        ),
+    ),
+    "too_many_downloads": Text(
+        (
+            "The limit of downloads at once per person ({limit}) is reached: try again"
+            " when one of yours has ended."
+        ),
+        (
+            "Osiągnięto limit jednoczesnych pobrań na osobę ({limit}): spróbuj"
+            " ponownie, gdy któreś z twoich się skończy."
+        ),
+    ),
     "request_unknown": Text(
         'The index does not know the files of producer job "{parent_request}".',
         "Indeks nie zna plików zadania producenta „{parent_request}”.",

@@ -24,11 +24,14 @@
  * „Pokaż na mapie” the project's map with the version's extent and its
  * objects or tiles (map/own.js, map/previews.js) and „Wachlarz migawek”
  * (`own_fan=1`) the file's versions as the Wachlarz of fan/fan.js, one
- * choice with the axis.
+ * choice with the axis. „Pobierz plik” downloads the chosen version (the
+ * working file or a snapshot; api.js `fileAddress`), and „Pliki zestawu” in
+ * its metadata each file of a set (a Shapefile, a MapInfo TAB).
  */
 
 import {
   buildOwnPreview,
+  fileAddress,
   getOwnFile,
   getOwnFileLayers,
   getOwnPreview,
@@ -79,6 +82,7 @@ import {
   Badge,
   CopyAction,
   Crs,
+  DownloadLink,
   FINAL_STATES,
   IssueList,
   JobStatus,
@@ -222,12 +226,14 @@ function Rescan({ project, onDone }) {
 function Actions({ project, card, chosen, fan, onPlan }) {
   const reference = chosen ? chosen.ref : card.ref;
   const located = chosen ? snapshotOutline(chosen) !== null : card.location.kind === "footprint";
+  const download = fileAddress({ project, fileId: card.file_id, label: chosen?.label ?? null });
   return html`<div class="own-actions">
     ${chosen === null
       ? html`<button type="button" class="btn sm primary" title=${L.actions.snapshot_title}
           disabled=${card.state === "missing"} onClick=${onPlan}>
           <${Icon} name="plus" size=${14} />${L.actions.snapshot}</button>`
       : null}
+    <${DownloadLink} address=${download} reason=${downloadReason(card, chosen)} />
     <${CompareWith} card=${card} chosen=${chosen} />
     ${located ? html`<${ShowOnMap} project=${project} reference=${reference} style=${null} />` : null}
     ${card.snapshots.length
@@ -237,6 +243,12 @@ function Actions({ project, card, chosen, fan, onPlan }) {
           <${Icon} name="fan" size=${14} />${L.actions.fan}</button>`
       : null}
   </div>`;
+}
+
+/** Why the working file (`snapshot` null) or a snapshot cannot be downloaded, or `null`. */
+function downloadReason(card, snapshot) {
+  if (snapshot) return snapshot.state === "ok" ? null : "snapshot_invalid";
+  return card.state === "missing" ? "file_missing" : null;
 }
 
 /**
@@ -346,8 +358,8 @@ function VersionDetails({ project, fileId, card, chosen, tab, style }) {
       ${tab === "preview"
         ? html`<${VersionPreview} project=${project} fileId=${fileId} card=${card} chosen=${chosen} style=${style} />`
         : chosen
-          ? html`<${SnapshotMetadata} snapshot=${chosen} />`
-          : html`<${WorkingMetadata} card=${card} />`}
+          ? html`<${SnapshotMetadata} project=${project} card=${card} snapshot=${chosen} />`
+          : html`<${WorkingMetadata} project=${project} card=${card} />`}
     </div>
   </section>`;
 }
@@ -401,7 +413,7 @@ function VersionPreview({ project, fileId, card, chosen, style }) {
   </${PreviewPane}>`;
 }
 
-function WorkingMetadata({ card }) {
+function WorkingMetadata({ project, card }) {
   const counts = card.layers.map((layer) => layer.feature_count);
   const features = counts.length && counts.every((value) => value !== null) ? counts.reduce((a, b) => a + b, 0) : null;
   const rows = [
@@ -421,11 +433,13 @@ function WorkingMetadata({ card }) {
     ${card.layers.length ? html`<${Layers} layers=${card.layers} />` : null}
     ${card.raster ? html`<${Raster} raster=${card.raster} />` : null}
     <${Paths} title=${L.meta.paths} paths=${card.paths} copy=${L.meta.copy_path} />
+    <${SetFiles} members=${card.members} reason=${downloadReason(card, null)}
+      address=${(member) => fileAddress({ project, fileId: card.file_id, member })} />
     ${card.history.length ? html`<${History} history=${card.history} />` : null}
   `;
 }
 
-function SnapshotMetadata({ snapshot }) {
+function SnapshotMetadata({ project, card, snapshot }) {
   const author = snapshot.author;
   const authorValues = author ? Object.entries(author).filter(([, value]) => value).map(([name, value]) => [name, String(value)]) : [];
   const rows = [
@@ -451,6 +465,9 @@ function SnapshotMetadata({ snapshot }) {
   return html`
     <${Rows} rows=${rows} />
     <${Paths} title=${L.meta.snapshot_path} paths=${snapshot.paths} copy=${L.meta.copy_snapshot} />
+    <${SetFiles} members=${snapshot.members} reason=${downloadReason(card, snapshot)}
+      address=${(member) =>
+        fileAddress({ project, fileId: card.file_id, label: snapshot.label, member })} />
   `;
 }
 
@@ -554,6 +571,20 @@ function Paths({ title, paths, copy }) {
         </p>`,
       )}
     </div>
+  </div>`;
+}
+
+/** „Pliki zestawu”: each file of a set (a Shapefile, a MapInfo TAB) to download. */
+function SetFiles({ members, reason, address }) {
+  if (members.length < 2) return null;
+  return html`<div class="fc-block">
+    <h4 class="section-title">${L.meta.set_files}</h4>
+    <p class="own-set-files">
+      ${members.map(
+        (name) => html`<${DownloadLink} key=${name} address=${address(name)} reason=${reason}
+          member=${name} />`,
+      )}
+    </p>
   </div>`;
 }
 

@@ -10,7 +10,7 @@ the changes and runs of a project are optional capabilities: a producer
 without them still satisfies ``SourceAdapter``.
 """
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -308,6 +308,7 @@ class ActionAdapter(Protocol):
     availability at the source (A2) and the plan of a run (A4) ask the network
     and write only the producer's metadata cache, which the adapter keeps in its
     ``cache_dir``; the run itself (A5) writes the store through the producer.
+    ``narrow`` leaves out of a plan the positions another job fetches (ADR-047).
     """
 
     def commands(self) -> tuple[CommandInfo, ...]:
@@ -438,6 +439,23 @@ class ActionAdapter(Protocol):
         ------
         ValueError
             ``path`` is not the place of a file of the producer's store.
+        """
+        ...
+
+    def narrow(self, plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+        """Return the plan without the positions to download outside ``paths``.
+
+        The positions to download (``ActionPlan.todo``) at ``paths`` stay, the
+        others go from ``entries`` and from the producer's own plan
+        (``document``), so a ``run`` of the narrowed plan never fetches them;
+        the positions a run does not download stay as they are. No network
+        and no write (ADR-047: the positions another active download of the
+        store claimed).
+
+        Raises
+        ------
+        ValueError
+            ``plan`` is no plan of this producer's ``check``.
         """
         ...
 

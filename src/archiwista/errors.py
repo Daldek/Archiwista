@@ -324,13 +324,30 @@ class PermissionDeniedError(ArchiwistaError):
     """The principal may not perform an action (A-ADR-029).
 
     The message says what is missing; the HTTP API answers
-    ``403 forbidden`` with the reason ``permission_denied``. A project the
-    principal does not see is ``NotFoundError`` instead, so that its
-    existence stays hidden.
+    ``403 forbidden`` with the reason ``permission_denied`` and logs the
+    refusal (``permission.denied``). A project the principal does not see is
+    ``NotFoundError`` instead, so that its existence stays hidden.
+
+    Parameters
+    ----------
+    message : str
+        What the action needs, a catalog text.
+    action : str or None, optional
+        The action refused, e.g. ``store.write`` (``Authorizer``'s action).
+    target : str or None, optional
+        What it was refused on, e.g. a project key, a job id, a store or
+        ``settings``; the log's target of the refusal.
     """
 
     default_code = "forbidden"
     default_reason = "permission_denied"
+
+    def __init__(
+        self, message: str, *, action: str | None = None, target: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.action = action
+        self.target = target
 
 
 class NotFoundError(ArchiwistaError):

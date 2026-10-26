@@ -8,13 +8,14 @@ queries and services filter projects and pins with, and
 of a listing at once. Routers and the command line never decide on their
 own: they pass the principal to the services, which ask here.
 
-Rules (v0.1, ``project.write`` since v0.2, ``project.create`` and
-``store.scan`` since v0.4):
+Rules (v0.1, ``project.write`` since v0.2, ``project.create``,
+``store.scan`` and ``log.read`` since v0.4):
 
-- ``admin`` manages accounts, groups and settings, scans the stores, sees
-  every project and manages the access and the content of each
-  (``users.manage``, ``groups.manage``, ``settings.write``, ``store.scan``,
-  ``project.view``, ``project.share``, ``project.write``);
+- ``admin`` manages accounts, groups and settings, scans the stores, reads
+  the action log, sees every project and manages the access and the content
+  of each (``users.manage``, ``groups.manage``, ``settings.write``,
+  ``store.scan``, ``log.read``, ``project.view``, ``project.share``,
+  ``project.write``);
 - every principal acting for a person (the local owner, a ``user``, an
   ``agent``; not the scheduler) creates a project where none is yet
   (``project.create``); the service makes an account that creates one (a
@@ -68,6 +69,7 @@ type Action = Literal[
     "store.write",
     "store.scan",
     "job.cancel",
+    "log.read",
 ]
 
 ACTIONS: tuple[Action, ...] = (
@@ -81,12 +83,13 @@ ACTIONS: tuple[Action, ...] = (
     "store.write",
     "store.scan",
     "job.cancel",
+    "log.read",
 )
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
 
 _ADMIN_ACTIONS: frozenset[Action] = frozenset(
-    {"users.manage", "groups.manage", "settings.write", "store.scan"}
+    {"users.manage", "groups.manage", "settings.write", "store.scan", "log.read"}
 )
 
 
@@ -208,8 +211,8 @@ class Authorizer:
         action : Action
             ``project.view``, ``project.share``, ``project.write``,
             ``project.create``, ``users.manage``, ``groups.manage``,
-            ``settings.write``, ``store.write``, ``store.scan`` or
-            ``job.cancel``.
+            ``settings.write``, ``store.write``, ``store.scan``,
+            ``job.cancel`` or ``log.read``.
         resource : str or None, optional
             For ``project.view``, ``project.share`` and ``project.write``: the
             project's access key (``access_key`` of its directory,
@@ -244,18 +247,37 @@ class Authorizer:
         return _admits(principal, access)
 
     def require(
-        self, principal: Principal, action: Action, resource: str | None = None
+        self,
+        principal: Principal,
+        action: Action,
+        resource: str | None = None,
+        *,
+        target: str | None = None,
     ) -> None:
         """Do nothing when ``can`` allows the action, else refuse it.
+
+        Parameters
+        ----------
+        principal, action, resource
+            As for ``can``.
+        target : str or None, optional
+            What the refusal names in the action log, e.g. a job id or a
+            store: ``resource`` when omitted, else the first part of the
+            action (``settings`` for ``settings.write``).
 
         Raises
         ------
         PermissionDeniedError
-            With a message naming what the action needs.
+            With a message naming what the action needs, the action and the
+            target.
         """
         if not self.can(principal, action, resource):
             name = action.replace(".", "_")
-            raise PermissionDeniedError(message(f"permission.{name}"))
+            raise PermissionDeniedError(
+                message(f"permission.{name}"),
+                action=action,
+                target=target or resource or action.partition(".")[0],
+            )
 
     def visible_projects(self, principal: Principal) -> ProjectVisibility:
         """Return the projects ``principal`` sees.

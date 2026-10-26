@@ -64,7 +64,10 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").JobDetail} JobDetail */
 /** @typedef {import("./types.js").JobFilters} JobFilters */
 /** @typedef {import("./types.js").JobList} JobList */
+/** @typedef {import("./types.js").JobLog} JobLog */
 /** @typedef {import("./types.js").JobHandlers} JobHandlers */
+/** @typedef {import("./types.js").ActionFilters} ActionFilters */
+/** @typedef {import("./types.js").ActionPage} ActionPage */
 /** @typedef {import("./types.js").AreaInput} AreaInput */
 /** @typedef {import("./types.js").Area} Area */
 /** @typedef {import("./types.js").LocalCoverageQuery} LocalCoverageQuery */
@@ -116,6 +119,8 @@ const FINAL_JOB_STATES = new Set([
 ]);
 const JSON_ANSWERS = "application/json, application/problem+json";
 const IMAGE_ANSWERS = "image/png, application/problem+json";
+// Media types of the formats of the log's export (`GET /log/export`).
+const EXPORT_TYPES = { jsonl: "application/jsonl", csv: "text/csv" };
 
 /** @type {SessionState|null} */
 let current = null;
@@ -719,6 +724,43 @@ export function putSettings(settings) {
   return request("PUT", "/settings", { json: settings });
 }
 
+// The action log (v0.4) -------------------------------------------------------
+
+/**
+ * A page of the action log, newest entry first (`get_log`; administrators).
+ *
+ * @param {ActionFilters & {limit?: number, cursor?: number}} [filters] -
+ *   `limit` 1–200 (default 50); `cursor`: `next_cursor` of the page before.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ActionPage>}
+ * @throws {ApiError} `403 permission_denied` without the role `admin` (the log
+ *   records the refusal); `400 validation_error` for an invalid filter.
+ */
+export function getLog(filters = {}, { signal } = {}) {
+  return request("GET", "/log", { query: filters, signal });
+}
+
+/**
+ * Every entry of the action log the filters select, as a file (`export_log`;
+ * administrators): JSON Lines, or CSV for a spreadsheet. The export is itself
+ * an entry of the log (`log.export`) and holds the entries before it.
+ *
+ * @param {ActionFilters} filters
+ * @param {"jsonl"|"csv"} format
+ * @param {RequestOptions} [options]
+ * @returns {Promise<{blob: Blob, name: string}>} The file and the name the
+ *   server gave it (`archiwista-log-<UTC time>.<format>`).
+ * @throws {ApiError} As `getLog`.
+ */
+export async function exportLog(filters, format, { signal } = {}) {
+  const headers = { Accept: `${EXPORT_TYPES[format]}, application/problem+json` };
+  const address = `${API_PREFIX}/log/export${search({ ...filters, format })}`;
+  const response = await send("GET", address, { headers, signal });
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista-log.${format}`;
+  return { blob: await response.blob(), name };
+}
+
 // Background jobs (9b) --------------------------------------------------------
 
 /**
@@ -790,6 +832,34 @@ export function getJob(job, { signal } = {}) {
  */
 export function cancelJob(job) {
   return request("POST", `/jobs/${one(job)}/cancel`);
+}
+
+/**
+ * Run a job that did not succeed again (`retry_job`): a new job of the
+ * session with the same kind, store and parameters, asking again what its
+ * kind needs (a download: the permission to write the stores).
+ *
+ * @param {string} job - Job id.
+ * @returns {Promise<JobDetail>} The new job (`202`).
+ * @throws {ApiError} `403 permission_denied`, `404`, `409 conflict`
+ *   (`job_succeeded`, `job_active`).
+ */
+export function retryJob(job) {
+  return request("POST", `/jobs/${one(job)}/retry`);
+}
+
+/**
+ * The end of a job's log (`get_job_log`): its worker's standard error, the
+ * last MiB of it.
+ *
+ * @param {string} job - Job id.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<JobLog>}
+ * @throws {ApiError} `404`: no such job, one the session does not see whole,
+ *   or a job without a log.
+ */
+export function getJobLog(job, { signal } = {}) {
+  return request("GET", `/jobs/${one(job)}/log`, { signal });
 }
 
 /**
@@ -1121,6 +1191,28 @@ export function buildOwnPreview(project, fileId, label, { force = false } = {}) 
 function ownPreviewPath(project, fileId, label) {
   const file = `/projects/${one(project)}/files/${one(fileId)}`;
   return label === null ? `${file}/preview` : `${file}/snapshots/${one(label)}/preview`;
+}
+
+/**
+ * The address of a file to download (`download_version_file`,
+ * `download_own_file`, `download_snapshot_file`; ADR-047 decision 5) for a
+ * link of the page (`<a href download>`): the browser sends the session's
+ * cookie and `Sec-Fetch-Site: same-origin`, which stand in for the CSRF
+ * header a link cannot send. The answer is an attachment, never shown.
+ *
+ * @param {{store: string, version: string}|{project: string, fileId: string,
+ *   label?: string|null, member?: string|null}} file - A version of a store,
+ *   or an own file: one of its snapshots (`label`), one file of its set or of
+ *   the snapshot's (`member`, a name of its `members`).
+ * @returns {string} Path and query, e.g. `/api/v1/stores/…/file`.
+ */
+export function fileAddress(file) {
+  if ("store" in file) {
+    return `${API_PREFIX}/stores/${one(file.store)}/versions/${segments(file.version)}/file`;
+  }
+  const own = `/projects/${one(file.project)}/files/${one(file.fileId)}`;
+  const path = file.label ? `${own}/snapshots/${one(file.label)}/file` : `${own}/file`;
+  return API_PREFIX + path + search({ member: file.member });
 }
 
 // The source and producers' commands (v0.3) ------------------------------------

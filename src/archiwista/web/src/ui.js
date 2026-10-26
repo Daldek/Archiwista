@@ -57,6 +57,7 @@ const ICONS = {
   layers: "m12 3 9 4.5-9 4.5-9-4.5L12 3Zm-9 9 9 4.5 9-4.5",
   chevron: "m9 6 6 6-6 6",
   down: "m6 9 6 6 6-6",
+  download: "M12 4v11m-5-5 5 5 5-5M5 20h14",
   trash: "M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13",
   plus: "M12 5v14M5 12h14",
   file: "M6 3h8l4 4v14H6V3Zm8 0v4h4",

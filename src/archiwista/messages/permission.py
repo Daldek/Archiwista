@@ -85,4 +85,8 @@ MESSAGES = {
             " czyta go tylko ten, kto widzi je wszystkie."
         ),
     ),
+    "log_read": Text(
+        "Reading the action log requires the administrator role.",
+        "Odczyt dziennika działań wymaga roli administratora.",
+    ),
 }

@@ -6,13 +6,14 @@ Kartograf's own classes (``DataReport``, ``UnitFile``, ``VersionedFile``,
 the kept plan as ``update="upgrade"``, never ``output_dir``) and the reading
 of ``kartograf-download/1``. The refusal of an invalid call and the scan
 scope of every standard path are Kartograf's own answers, without the
-network.
+network; so is the plan a narrowed document reads back as (plan v0.4, T9).
 """
 
 from pathlib import Path
 
 import kartograf
 import pytest
+from kartograf.testing import PL_SEGMENT, PL_SHEET
 
 import archiwista.adapter.kartograf.actions as actions_module
 from archiwista.adapter.kartograf import load
@@ -263,6 +264,61 @@ def test_a_kept_plan_runs_as_an_upgrade_of_that_very_plan(
     assert "output_dir" not in call
     assert attempts == []
     assert (result.status, result.files, result.items) == ("ok", (), ())
+
+
+def test_a_plan_narrowed_to_one_position_reads_back_holding_only_it(
+    adapter: ActionAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf reads the narrowed document back with the one position to download.
+
+    A position a run does not download stays; nothing asks the network.
+    """
+    root = tmp_path / "store"
+
+    def item(sheet: str, status: str) -> kartograf.PlanItem:
+        return kartograf.PlanItem(
+            track="pl_sheet",
+            segment=PL_SEGMENT,
+            hierarchy="N-34/130",
+            name=f"{sheet}.asc",
+            unit=sheet,
+            local_label=None if status == "missing" else "2021",
+            local_sha256=None,
+            available_label="2023",
+            available_signal=None,
+            status=status,  # type: ignore[arg-type]
+        )
+
+    items = (
+        item(PL_SHEET, "newer"),
+        item("N-34-130-D-d-2-3", "missing"),
+        item("N-34-130-D-d-2-2", "current"),
+    )
+
+    def checking(
+        command: str, options: object, **kwargs: object
+    ) -> kartograf.CommandResult[kartograf.UpdatePlan]:
+        plan = kartograf.UpdatePlan(
+            root=str(root),
+            checked_at="2026-10-26T08:15:02+00:00",
+            kartograf_version=kartograf.__version__,
+            items=items,
+        )
+        return kartograf.CommandResult(command, True, "ok", plan)
+
+    monkeypatch.setattr(actions_module, "check_command", checking)
+
+    with no_network() as attempts:
+        plan = adapter.check("elevation download", NMT, root=root)
+        narrowed = adapter.narrow(plan, [items[1].store_path])
+        emptied = adapter.narrow(plan, [])
+
+    assert attempts == []
+    assert kartograf.UpdatePlan.from_dict(narrowed.document).items == items[1:]
+    assert [entry.path for entry in narrowed.todo] == [items[1].store_path]
+    assert narrowed.entries == plan.entries[1:]
+    assert (emptied.todo, emptied.entries) == ((), plan.entries[2:])
+    assert kartograf.UpdatePlan.from_dict(emptied.document).items == items[2:]
 
 
 @pytest.mark.parametrize("status", ["written", "replaced"])

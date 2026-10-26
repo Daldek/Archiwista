@@ -94,6 +94,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/project_jobs.py` | v0.3 CLI of a project's jobs over `services/project_jobs.py` (ADR-040): `project-download`, `project-repin`, `project-check` and `project-verify` start the job as `POST /projects/{project}/jobs` and follow it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
 | `commands/preview_warm.py` | v0.3 CLI of the warm-up of previews over `services/warm.py` (ADR-041): `preview-warm` (filters `--store`, `--product`, `--segment`, `--project`, `--area-id`) starts the `preview_warm` job as `POST /previews/warm` and follows it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner | `add_commands`, `main` |
 | `commands/stations.py` | the CLI of the stations over `api/stations.py` (plan I6): `stations list` (its options generated from `StationListFilters`, one per parameter of `GET /stations`, a repeatable one with `action="append"`, validated by the same model) and `stations show KOD` (the options of `StationLookup`); `--json` prints the route's model, a refusal the route's problem as `archiwista-error/1`; reads the index only, no network, no writes | `add_commands`, `main`, `query_of` |
+| `commands/log.py` | v0.4 CLI of the action log over `services/log.py`: `log list` (a page as `GET /log`, `ActionPage` with `--json`) and `log export` (the bytes of `GET /log/export` to standard output or `--output`, mode `0600`), the filters of the routes validated by their models; as the local owner | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -102,7 +103,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `security.py` | the rules of local and team mode for every request (`Transport`: origin, `Host` values, trusted proxies, TLS, the proxy's header; the client address), one-time tokens, in-memory sessions with the limits of the mode and their cookie (`__Host-archiwista_session` in team mode), the public requests (the exchange, the sign-ins, the ways to sign in), the person a trusted proxy names and the end of a proxy session whose proxy names someone else or nobody, the proxy's header from other peers logged once an hour per address, the gate of a temporary password, CSP and HSTS, TLS files checked as a pair, token redaction in logs | `SecurityMiddleware`, `Transport`, `client_address`, `transport_rejection`, `named_by_proxy`, `ProxyHeaderLog`, `tls_problem`, `session_cookie_name`, `SessionStore`, `Session`, `SessionMethod`, `PASSWORD_CHANGE_ROUTES`, `issue_one_time_token`, `redeem_one_time_token`, `revoke_agent_sessions`, `session_principals`, `require_session`, `current_principal`, `csp_header`, `fragment_url`, `TokenRedactionFilter` |
 | `api/__init__.py` | path constants | `API_PREFIX` (`/api/v1`), `DOCS_PATH` (`/api/docs`) |
 | `api/dependencies.py` | route dependencies taken from `app.state` | `authorizer`, `index_queries`, `settings_service`, `plugin_registry`, `visible_projects` |
-| `api/errors.py` | RFC 9457 problems with the codes of the Nogat registry; the same `Problem` serves the CLI | `ApiError`, `problem_body`, `problem_response`, `problem_responses`, `install_error_handlers` |
+| `api/errors.py` | RFC 9457 problems with the codes of the Nogat registry; the same `Problem` serves the CLI; a `403 permission_denied` of a request goes to the action log (`permission.denied` with the action and the route, at most one entry per person and action a minute) | `ApiError`, `DenialLog`, `problem_body`, `problem_response`, `problem_responses`, `install_error_handlers` |
 | `api/language.py` | the outermost middleware: the language of a request from `Accept-Language`, `Content-Language` and `Vary` | `LanguageMiddleware` |
 | `api/models.py` | Pydantic models of requests and responses (except the session and administration models, which live next to their routers) — also the OpenAPI schema | `CatalogFilters`, `MapFilters`, `IndexAnswer`, `CatalogPage`, `SlotCard`, `VersionCard`, `MapView`, `Health`, `StoreDetail`, `ProjectCard`, `JobDetail`, `Area`, `AreaCoverage`, `Settings`, `ProblemDetails` |
 | `api/docs.py` | OpenAPI (`operationId` = route function name) and local Swagger UI from `api/swagger/` | `install_docs`, `operation_id`, `openapi_document` |
@@ -114,13 +115,15 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/map.py` | `/map/footprints`, `/map/sheets` | `map_view`, `sheet_list` |
 | `api/stations.py`, `api/models_stations.py` | the stations of the station catalogs (plan I6): `/stations` (a page by name with the filters of SPEC 9.2, an area by `area_id` or `bbox` with the stations on its boundary, the counts of the location groups and of the stations the coverage filters hid), `/stations/{code}` (the card), `/stations/{code}/coverage` (each variable year by year in R, the Timeline), `/map/stations` (points or a grid); `503` while the source of the stations (`STATION_PRODUCER`, IMGWTools) is not available; a code of several stations is refused with them named; the query models build the options of `archiwista stations`; the coverage label as text | `station_list`, `station_card`, `station_timeline`, `station_map`, `find_station`, `require_station_source`, `StationListFilters`, `StationLookup`, `StationList`, `StationCard`, `StationTimeline`, `StationMapView`, `series_label_text` |
 | `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status` (each manifest's producer asked now, `ManifestStatus`); `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}` (ADR-039: the producer writes its manifest, `project.write`, the answer is the card as the index holds it at once); `POST /projects/{project}/jobs` in `job_router`, served with the supervisor (ADR-040: a job of the tasks of a manifest, `202`); a change and a job name the manifest's `producer` in a project of two (ADR 0032 decision 14) | `read_projects`, `project_card`, `check_project`, `create_project`, `add_project_task`, `remove_project_task`, `start_project_job`, `ProjectRequest`, `TaskRequest`, `ProjectJobRequest` |
-| `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
+| `api/settings.py` | `GET` and `PUT /settings`; a change is logged with the settings it changed, before and after (`settings.update`) | `save_settings`, `settings_writer`, `log_change` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream; the store jobs take the principal from `store_scanner` (`store.scan`, v0.4) | `start_scan`, `start_footprints`, `start_link_check`, `store_scanner`, `SCAN_LIMITED`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
 | `api/admin.py` | `/users`, `/users/{user_id}/password`, `/users/{user_id}/sessions`, `/groups`, `/projects/{project}/access` | models `User` (with the state of its password), `TemporaryPassword`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
 | `api/directory.py` | `GET /directory` (v0.4, any session): the enabled accounts and the groups, ids and names only, to share a project with | `get_directory`, models `Directory`, `DirectoryEntry` |
+| `api/log.py` | `GET /log` (`ActionPageQuery` → `ActionPage` with `total`) and `GET /log/export` (`ActionExportQuery`; streamed as an attachment, `Cache-Control: private, no-store`); both need `log.read` | `get_log`, `export_log` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
+| `api/files.py` | file download (ADR-047 decision 5): `GET` and `HEAD` of a version's file, an own file's (or one file of its set, `member`) and a snapshot's; Starlette's `FileResponse` (`Range`) as an attachment with `Cache-Control: private, no-store`, its stream counted in `app.state.file_streams` until it ends, `file.download` logged for a `GET` from byte 0; mounted before the catalog's router, whose `/stores/{store}/versions/{version}` would take `…/file` | `download_version_file`, `download_own_file`, `download_snapshot_file`, `file_resolver`, `CACHE_CONTROL` |
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
 | `api/compare.py`, `api/models_compare.py` | comparison of two `ref`s | `get_comparison`, `CompareQuery` |
 | `api/commands.py`, `api/models_commands.py` | the producers' commands (ADR-034): their catalog, a pasted line read into a call, a call checked without the network, the line of a call; a `422 unsupported` of a producer without commands | `list_commands`, `parse_command`, `validate_command`, `format_command`, `CommandList`, `CommandCallItem`, `CommandLine`, `ValidateRequest` |
@@ -135,7 +138,9 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/stores.py` | store state for the "Magazyn" (Store) view | `store_summary`, `StoreSummary`, `issue_problem` |
 | `services/projects.py` | project card, live producer status and the changes of a manifest through its producer (ADR-039): a new project where a scan finds it, bound to a configured store, and a task added or removed for whoever has `project.write`, recorded in the index at once; the manifest an action acts on (`project_manifest`: the producer named, else the project's only one; `producer_required`, `other_producer`); the problems of each manifest and a task name of both (`duplicate_task`); a project's directory and the configured store a manifest names, for its jobs (ADR-040) | `project_detail`, `ProjectDetail`, `project_problems`, `project_status`, `project_manifest`, `create_project`, `add_project_task`, `remove_project_task`, `project_actions`, `project_directory`, `project_store` |
 | `services/access.py` | accounts, groups and project access — for HTTP and the CLI; the directory of enabled accounts and groups for everyone | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project`, `directory` |
+| `services/log.py` | the action log for administrators (`log.read`): a page and the count of its filters; an export logged first (`log.export`) and streamed in batches as JSON Lines or CSV (BOM, CRLF, a formula's first character escaped with `'`); `entry_document` is the JSON of an entry, also `ActionEntryModel` | `read`, `export`, `entry_document`, `LogPage`, `LogExport`, `FIELDS` |
 | `services/owndata.py` | the data folder (its owner or an administrator; for an owner inside the project's directory), the limits of a person's scans of a data folder, folder checking and project file problems | `set_data_dir`, `scan_limits`, `SCAN_INTERVAL_S`, `folder_check`, `folder_problems`, `file_problems` |
+| `services/files.py` | the file of a download as `ObjectResolver.resolve` finds it (known to the index, visible, inside its root, a working file unchanged since its scan; a file gone `404 missing_file`, an unreadable one or an invalid snapshot `409 file_unreadable`), one file of a set by `member`, its media type (`FileFormat.media_type`, else Python's own `mimetypes` table, else `application/octet-stream`); the downloads each person streams (`FileStreams`: 2 at once, a third `429 too_many_downloads`) | `version_file`, `own_file`, `snapshot_file`, `media_type`, `FileDownload`, `FileStreams`, `FILE_DOWNLOADS_PER_PERSON` |
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
 | `services/compare.py` | comparison of metadata and schema, not of object data | `compare` |
 | `services/commands.py` | producers' commands for HTTP and the CLI (ADR-034): the catalogs of the producers that offer them, `parse`, `validate` (a command of the catalog, the configured store's root, no file path of a request) and `format` | `list_commands`, `parse_command`, `validate_command`, `checked_call`, `command_info`, `format_command`, `actions`, `store_root` |
@@ -170,10 +175,10 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs` |
-| `jobs/worker.py` | job worker process: scan, footprints, link, preview, own scan, snapshot, availability at the source, the plan of each call of a job (`check`; calls or positions not checked end `partial` through `PartialResult`), the run of each call (`download`; a call without a kept plan is skipped), the jobs of a project (`project_download`, `project_repin`, `project_check`, `project_verify`; ADR-040) and the warm-up of previews (`preview_warm`, ADR-041) | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_availability`, `run_check`, `run_download`, `run_project_download`, `run_project_repin`, `run_project_check`, `run_project_verify`, `run_preview_warm`, `PartialResult`, `Emitter` |
+| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning; the claims of the positions of planned downloads (`job_claims`) and the waiting of an unplanned download of a running call, the network jobs of one person (`network_jobs_per_person`; a free place to the person with the fewest running ones) and the `hidden` jobs of the list (ADR-047); the jobs people start or retry go to the action log (`job.start`, `job.retry` with `action_details`; `record`, the state database of its paths by default; not the scheduler's) | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs`, `action_details` |
+| `jobs/worker.py` | job worker process: scan, footprints, link, preview, own scan, snapshot, availability at the source, the plan of each call of a job (`check`; calls or positions not checked end `partial` through `PartialResult`), the run of each call (`download`; a call without a kept plan is skipped, a kept plan runs narrowed to the claimed positions, those of other jobs are `taken`), the jobs of a project (`project_download`, `project_repin`, `project_check`, `project_verify`; ADR-040) and the warm-up of previews (`preview_warm`, ADR-041) | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_availability`, `run_check`, `run_download`, `run_project_download`, `run_project_repin`, `run_project_check`, `run_project_verify`, `run_preview_warm`, `PartialResult`, `Emitter` |
 | `jobs/protocol.py` | JSON Lines protocol supervisor ↔ worker process | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `WARM_FILTERS`, `INTERRUPTED_EXIT`, `CODE_WORKER_CRASHED` |
-| `jobs/scheduler.py` | periodic scans of the store and own data; with `preview_warm_after_scan`, a `preview_warm` job of the versions a store's newest scan wrote (`since` its start), once per scan | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
+| `jobs/scheduler.py` | periodic scans of the store and own data; with `preview_warm_after_scan`, a `preview_warm` job of the versions a store's newest scan wrote (`since` its start), once per scan; every hour, the first time at the start, the action log's entries older than `action_log_retention_days` go (`log.prune`) | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
 | `jobs/reindex.py` | `archiwista reindex`: full foreground scan | `reindex_main` |
 | `jobs/availability.py` | whether the store can be read now (an empty mount point of a known store = unavailable), as the error a job raises: `store_unavailable` with the reason and the hint of the probe | `store_unreachable` |
 | `jobs/foreground.py` | tracking foreground CLI jobs | `run_foreground` |
@@ -456,7 +461,7 @@ A cache rebuilt from the producers' files (A-ADR-002),
 
 - **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
   IMGW slots, 8 since the availability reports, 9 since the plans of `check` jobs
-  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
+  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer, 14 since the claims of planned downloads) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
@@ -481,7 +486,9 @@ A cache rebuilt from the producers' files (A-ADR-002),
   and product as JSON, with `checked_at` and the id of the job that asked; an
   older report never replaces a newer one), `jobs`, `job_events`, `plans` (the
   `ActionPlan` of each call of a `check` job as JSON, keyed by the job and `call`, with its store and the producer's command
-  line of the run; deleted with its job), `station_catalogs` (the catalog version
+  line of the run; deleted with its job), `job_claims` (the positions to download
+  each running planned download claimed, one claimant per store and path; deleted
+  with its job's end), `station_catalogs` (the catalog version
   each provider's stations of a store were read from), `stations` (the stations
   of that version: identity store, provider and code as text; a point, or none
   with the catalog's reason; the hydrographic code indexed for a prefix range),
@@ -806,6 +813,13 @@ of the code):
     `problem_body` renders `title`, `detail`, `hint`, the texts in `details`
     and `errors[]` in the language of the request, `Problem.localized`).
 
+Step 6 has one exception (ADR-047 decision 5, `file_link`): a `GET` or `HEAD` of a
+file download (`…/versions/{version}/file`, `…/files/{file_id}/file`,
+`…/snapshots/{label}/file`) without `X-Archiwista-CSRF` passes with the session
+cookie when `Sec-Fetch-Site` is `same-origin` (a link of the interface) or `none`
+(an address typed in): a link cannot send the header, and step 3 refuses the other
+sites. A request with the header, or without fetch metadata, keeps step 6.
+
 A session starts with a one-time token: `archiwista serve` issues a
 startup token (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,
 128 bits, valid for 10 min), and only its SHA-256 hash stays in the index
@@ -846,7 +860,16 @@ ends all of them.
    the index stores with the settings (`sync_stores`), launches the
    worker process in its own process group, writes `encode_spec(JobSpec)` (with
    `PROTOCOL_VERSION`, the settings from the moment of the start, the path of the index
-   and of the cache) and sets `running`.
+   and of the cache) and sets `running`. A `download` with `plan_job` claims, in
+   the transaction that sets `running` (`BEGIN IMMEDIATE`, so two processes never
+   claim one position), the positions to download of its kept plans that no live
+   active job of the store holds (`job_claims`); the worker gets them as
+   `JobSpec.claimed` and the others as `taken` (holder's job and actor), runs each
+   plan narrowed to them (`ActionAdapter.narrow`) and ends `partial` when some were
+   taken (ADR-047). The claims go when the job ends (`_finish`, `_finish_row`) and,
+   at every start (`prune`), those of jobs no longer active. A `download` without
+   a plan of a call a running download of this supervisor runs stays in the queue
+   until that one ends, with one notice `waiting_for_job`.
 3. **Progress** — the reader thread decodes lines (`decode_message`):
    `progress` (`current`, `total`; a scan also `segment`, `entries`; footprints
    `written`, `failed`) and `notice` (`level`, `code`, `message` in Polish:
@@ -1044,6 +1067,10 @@ with errata. State of the code in brief:
   symbolic link (`PathOutsideRootError` →
   `403 path_outside_root`); `indexed_path` builds a "copyable" path without
   touching the disk.
+- **File download** (ADR-047 decision 5, `api/files.py`): only a file the index
+  knows and the session sees, resolved as for a preview (`ObjectResolver`), never
+  a listing; an attachment, never inline (a PDF neither), with `Cache-Control:
+  private, no-store`; at most two streams per person at once (`FileStreams`).
 - **Untrusted files:** `sandbox.untrusted_env`, explicit drivers
   (`formats.py`), `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` and
   `GDAL_PAM_ENABLED=NO` protect against the network, implicitly attached files
@@ -1084,12 +1111,13 @@ the CLI: `tests/integration/test_team_permissions.py`).
   ADR-039, and a project's download and repin, ADR-040; since v0.4: its data
   folder), `project.create` (v0.4: every principal acting for a person, not the
   scheduler), `users.manage`, `groups.manage`, `settings.write`, `store.write`,
-  `store.scan` (v0.4: `admin`), `job.cancel`.
-  `admin` manages accounts, groups and settings, scans the stores, sees every
-  project, manages access to it and changes it; the owner does so for their own (a
-  project without an access entry is changed only by the administrator); in team mode
-  the last enabled administrator can be neither disabled, removed nor deprived of the
-  role (`keep_admin` of `StateStore`, `409 last_admin`);
+  `store.scan` (v0.4: `admin`), `job.cancel`, `log.read` (v0.4: reading and
+  exporting the action log, administrators only).
+  `admin` manages accounts, groups and settings, scans the stores, reads the action
+  log, sees every project, manages access to it and changes it; the owner does so for
+  their own (a project without an access entry is changed only by the administrator);
+  in team mode the last enabled administrator can be neither disabled, removed nor
+  deprived of the role (`keep_admin` of `StateStore`, `409 last_admin`);
   visibility `public` (everyone), `users` (people from the entry), `group` (members of
   the groups from the entry), `private` (owner only); a project without an entry follows
   `default_project_visibility` (`public` or `private` = administrators
@@ -1149,7 +1177,13 @@ the CLI: `tests/integration/test_team_permissions.py`).
 - **Responses:** an invisible project → `404 not_found`, a visible one without
   the right to act → `403 permission_denied` (`services/access.py`).
   Every change of accounts, groups and access goes to the action log
-  (`action_log`) with the actor, kind, session and client address.
+  (`action_log`) with the actor, kind, session and client address; so do the jobs
+  people start, retry (`JobSupervisor`, its `record`, an `ActionRecorder`) or cancel
+  (`services/jobs.py`), a change of the settings (`api/settings.py`) or of a project's
+  tasks (`services/projects.py`) and a refused request (`api/errors.py` `DenialLog`;
+  `PermissionDeniedError` carries the `action` and the `target`). Administrators
+  read and export it (`log.read`, `services/log.py`; the view "Dziennik",
+  `views/log.js`); an export is an entry too.
 - **CLI** (`reader.py`, `commands/`, `admin.py`) runs as `LOCAL_OWNER`
   through the same `Authorizer` and the same services.
 
@@ -1179,6 +1213,7 @@ apart from it, it reads only its own static files from the server.
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check` (`store.scan`), `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
 | `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `DELETE /users/{user_id}/sessions`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
 | `api/directory.py` (`permissions`) | `GET /directory` (any session) |
+| `api/log.py` (`log`) | `GET /log`, `GET /log/export` (`log.read`) |
 | `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members`; with `jobs`: `POST /previews/warm` (`202` with the `preview_warm` job; any session) |
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
@@ -1186,6 +1221,7 @@ apart from it, it reads only its own static files from the server.
 | `api/availability.py` (`availability`) | `GET /availability` (the kept report, no network); with `jobs`: `POST /availability` (`200` with a fresh report or `202` with the `availability` job; offline `409`) |
 | `api/actions.py` (`jobs`; only with `jobs`) | `POST /jobs` (a job of `calls` of commands of a producer's catalog on a configured store: kind `check` or `download`, the latter with `store.write` and an optional `plan_job` of the same calls; `202`, refused before a job exists), `GET /jobs/{job}/plan` (the plans a `check` job kept, no network) |
 | `api/owndata.py` (`own_data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; previews, tiles, features and ZIP of a file and of a snapshot |
+| `api/files.py` (`files`) | `GET`/`HEAD /stores/{store}/versions/{version}/file`, `/projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` (`?member=`; a link of the interface without the CSRF header, step 6 of section 5.3) |
 
 Rules in the code: Pydantic models (`api/models.py`, `models_previews.py`,
 `models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`, `models_availability.py`, `models_actions.py`, `models_stations.py`; session
@@ -1251,12 +1287,13 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | Module | Role |
 |---|---|
 | `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session (or when it ends) `SessionScreen` in local mode, the sign-in of `views/login.js` in team mode (`GET /session/methods`); a session with a temporary password gets `TemporaryPassword` before the shell |
-| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`; CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
+| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`, `fileAddress` (the address of a file download for a link, `<a href download>`, which passes without the CSRF header by `Sec-Fetch-Site`); CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
-| `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView`; a view marked `admin` is in the navigation of an `admin` session only |
+| `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView`; a view's `count` (the number next to its name in the navigation) and `admin` (in the navigation of an administrator only) |
 | `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`, the downloads (`DownloadsProvider`) with the plan windows, the list and the toasts over the views; with no store in the settings it opens the wizard; in team mode the `AccountMenu` (the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Wyloguj") instead of the session chip |
 | `downloads.js` | the session's downloads in the background (ADR-043): a store outside Preact in one context (each reader subscribes), an event stream for each running download and at most two queued ones (the others looked up in `GET /jobs?state=queued` every 2 s), the list kept in `sessionStorage`; `useDownloads`, `useDownloadActions` (`track`, `openPlan`, `cancel`), `useDownloadEnd`, the top bar's `DownloadsIndicator`, `DownloadsPanel`, `DownloadToasts` and `PlanWindows` (the plan windows hosted by the shell) |
+| `queue.js` | `useRunningJobs`: the number of the queue's running jobs next to "Zadania" (`GET /jobs?state=running` every 5 s while the page is visible; everyone's jobs, hidden ones too, ADR-047) |
 | `context.js` | `AppContext`, `useApp`, `useAppState`: session, settings, `/health` every 2 s during a scan or with a waiting store, otherwise every 15 s |
 | `banner.js` | `IndexBanner`: state of the index and the stores (a download of the session is left to the top bar) |
 | `setup.js` | first-run wizard and the "Ustawienia" (Settings) view (`PUT /settings`) |
@@ -1264,7 +1301,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `panels.js`, `hooks.js`, `format.js` | panel layout (`ViewLayout`, `Resizer`, `usePanelWidths`), `useResource`, `useAction` (a control's call: busy, its answer or its problem), `useMedia`, Polish formats (`day`, `stamp`, `int`, `size`, `plural`, `count`) |
 | `search.js` | `SearchButton`, shortcuts `Ctrl+K` and `/`, `SLOT_PARAMS` (the `/slots` parameters in the address) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
-| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down), `accounts.js` ("Konta" of administrators: the list of `GET /users` and an account's card), `groups.js` ("Grupy" of administrators: the list of `GET /groups`, a new group, the members editor and the removal), `sharing.js` ("Udostępnianie" of a project, opened from its card: the owner, the visibility with people and groups of `GET /directory`, the data folder) |
+| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `jobs.js` ("Zadania": everyone's jobs read every 2 s while one waits or runs, else every 15 s; filters in the address, cancel, retry, the events and the log of a job, hidden jobs bare), `log.js` ("Dziennik", administrators: the action log of `GET /log` 50 entries a page through its cursors, the filters in the address, a row's state before and after, the export of `GET /log/export` through `fetch` saved as a file), `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` with `TakenList` and `projectSummary`, `FileLink`, `CopyAction`, `DownloadLink`: "Pobierz plik", disabled with its reason), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down), `accounts.js` ("Konta" of administrators: the list of `GET /users` and an account's card), `groups.js` ("Grupy" of administrators: the list of `GET /groups`, a new group, the members editor and the removal), `sharing.js` ("Udostępnianie" of a project, opened from its card: the owner, the visibility with people and groups of `GET /directory`, the data folder) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `labels/` | text dictionary (below) |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |
@@ -1273,7 +1310,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 
 **View registration.** A view is one line in `VIEWS` (`id` = the `view`
 parameter and the name key in `labels/shell.js` `nav`, `icon`, `load` = dynamic
-import of the module, optionally `start`, `bottom`, `admin`), an overlay is a line in
+import of the module, optionally `start`, `bottom`, `count`, `admin`), an overlay is a line in
 `OVERLAYS` (`param`, `load`). The module exports by default a component
 receiving `route` (an overlay also `value` and `onClose`); it keeps its texts
 in `labels/<view>.js` and loads its style through `loadStylesheet`. Nothing else
@@ -1332,11 +1369,12 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   ones and the last administrator (`auth/passwords.py`, section 7), sign-in over HTTP
   and through the reverse proxy with the wait after failures, the sessions of team mode
   and their revocation (`api/session.py`, `api/sessions.py`, `auth/throttle.py`, 5.3),
-  the screens of sign-in, accounts, groups and sharing, projects of every person and
-  the scan limits. Missing are the rest of the log and its screen, the shared queue and
-  the jobs view, the file download, and the preferences and path aliases (plan
-  `2026-10-26-plan-v0.4.md`, T8 to T12); sessions live in the memory of a single server
-  (`SessionStore`).
+  the screens of sign-in, accounts, groups and sharing, projects of every person, the
+  scan limits, the action log with its reading, export and screen (section 7), the
+  shared queue with the limits per person and the jobs view, and the file download
+  (`api/files.py`). Missing are the preferences and path aliases and the acceptance
+  (plan `2026-10-26-plan-v0.4.md`, T11 and T12); sessions live in the memory of a
+  single server (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

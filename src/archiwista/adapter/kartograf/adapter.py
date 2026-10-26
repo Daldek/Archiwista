@@ -14,7 +14,7 @@ import json
 import os
 import shlex
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -588,6 +588,10 @@ class KartografAdapter:
     def scope(self, path: str) -> ScanScope:
         """Return the segment and the unit that read a standard path again."""
         return actions.scope(path)
+
+    def narrow(self, plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+        """Return the plan keeping only the positions to download at ``paths``."""
+        return actions.narrow(plan, paths)
 
     def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
         """Create a project with ``init_project``, ``root=`` the configured store's."""

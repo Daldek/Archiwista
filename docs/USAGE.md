@@ -52,11 +52,11 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 ## The window
 
 - **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
-  Projects ("Projekty"), Store ("Magazyn") and, at the bottom, Settings
-  ("Ustawienia"), the same form as the wizard, and for an administrator
-  Accounts ("Konta") and Groups ("Grupy"; see "Team server"). Saving the
-  settings replaces all of them at once; a new or moved store is scanned
-  from scratch.
+  Projects ("Projekty"), Jobs ("Zadania", with the number of running jobs),
+  Store ("Magazyn") and, at the bottom, Settings ("Ustawienia"), the same form
+  as the wizard, and for an administrator Accounts ("Konta"), Groups ("Grupy";
+  see "Team server") and the action log ("Dziennik"). Saving the settings
+  replaces all of them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
   in every view) and the current session (on a team server the account menu).
 - **The index status bar** under the top bar reports a scan in progress, a
@@ -227,6 +227,12 @@ versions a scan has just indexed.
   current version and points to other content once a newer one is downloaded.
   "Na innym komputerze" (on another computer) gives the same path under another
   drive letter or mount (the store setting `path_aliases`).
+- **"Pobierz plik"** (download the file, v0.4) next to the version's title
+  saves the version's file on this computer under its name; nothing opens in
+  the browser, a PDF neither. It is disabled, with the reason, while the store
+  is unavailable or when the version is gone from it. One person downloads at
+  most two files at once: the browser reports a third as failed; download it
+  again when one has ended.
 - **"Przypięta w:"** (pinned in): the projects that pinned this version.
 - **"Pliki tego samego zapytania"** (files of the same request): files
   downloaded by one producer request, for example both sides of the PL/CZ
@@ -294,6 +300,12 @@ versions a scan has just indexed.
   The same content twice does not duplicate a version. Snapshots lie in
   `<data folder>/.wersje/`, in the open format `archiwista-snapshot/1`;
   Archiwista does not delete them.
+- **"Pobierz plik"** in the card of an own file saves the version chosen on
+  its timeline, the working file or a snapshot, under its name; "Pliki
+  zestawu" (the files of the set) in its metadata saves each file of a
+  Shapefile or a MapInfo TAB by its name. Whoever sees the project may
+  download its files; a file missing from the disk and a snapshot that is not
+  valid cannot be downloaded, and the action says why.
 
 ![File changed since the snapshot](reports/v0.2-screenshots/09-zmieniony-od-migawki.webp)
 ![A second snapshot of the same content](reports/v0.2-screenshots/10-ta-sama-tresc.webp)
@@ -341,6 +353,82 @@ comparison and changes no data.
   free. Archiwista deletes nothing; the report serves a decision.
 - **Store problems** with a repair description (and the file card when they
   concern a file), and the **projects** that use the store.
+
+## Jobs
+
+![Jobs](reports/v0.4-screenshots/08-zadania.webp)
+
+"Zadania" (jobs) lists the background jobs of the server, newest first: scans,
+plans and downloads, the jobs of projects, previews. In a team it lists everyone's
+jobs, and the number next to "Zadania" in the navigation counts the running ones.
+
+- **Filters** "Wszystkie" (all), "Trwa" (waiting or running), "Błędy" (failed,
+  partial or interrupted) and "Moje" (yours, also those of your agents); the
+  address keeps the filter.
+- **A row:** the state, the kind and what the job works on (the producer's
+  command and the store, the project), who started it ("Ty" for you, a person's
+  name, "… (agent)", "harmonogram" for the scheduler), the progress "3 z 7" while
+  it waits or runs, else when it ended, why it failed, and the positions another
+  download fetched for it ("2 pozycje pobiera olga (zadanie …)": none is
+  downloaded twice).
+- **"Anuluj"** (cancel) stops a waiting or running job; whoever started it and
+  administrators have it. What is done stays.
+- **"Ponów"** (retry) runs a job that did not succeed again, as a new job of your
+  session with the same parameters, also one "przerwane" (interrupted) when the
+  server stopped. Retrying a download, or a project's download or repin, needs
+  "zapis do magazynu" (the role `store_writer`); without it the button is
+  disabled with the reason.
+- **"Szczegóły"** (details) follows the job: its progress, the notices of its
+  producer (for example the positions another person's download fetches) and its
+  summary or failure. **"Dziennik"** (log) shows the end of its log, the standard
+  error of its worker (in English).
+- **A job of a project you do not see** shows only its kind with "bez dostępu"
+  (no access), who started it and its progress, and nothing opens.
+- The list is read again every 2 seconds while a job waits or runs, else every 15
+  seconds, and only while the page is visible. "Pokaż starsze" (show older)
+  extends it to at most the 200 newest jobs; older ones are listed by
+  `archiwista jobs list` and `GET /api/v1/jobs`.
+
+## Action log
+
+![Action log](reports/v0.4-screenshots/07-dziennik.webp)
+
+The action log (v0.4) records who did what, when and from where: changes of
+accounts, groups, sharing and settings, the jobs people start, cancel or retry,
+file downloads, refused requests, the deletion of entries older than
+`action_log_retention_days` (365 days by default) and the exports of the log. Only
+administrators read it, in "Dziennik" (action log) at the bottom of their
+navigation; anyone else who opens it gets the refusal, which the log records.
+
+- **The table** shows 50 entries a page, newest first: when, who (an account,
+  "… (agent)", "harmonogram" for the scheduler, "niezalogowany" before a
+  sign-in), the action, what it was about, the outcome and the client's address
+  ("terminal" for the owner's commands). "Dalej" (next) and "Wstecz" (back) page
+  through it; the line under the table counts the entries the filters select and
+  says after how many days entries are deleted.
+- **Filters** "Kto" (an account; Enter applies it), "Działanie" (a group of
+  actions, such as "Odmowy" for the refusals), "Wynik" (outcome) and the days
+  "Od dnia" and "Do dnia" (both included); the page address keeps them.
+- **A row** opens the state before and after the change, its details, the
+  session, the kind of actor and the address.
+- **"Eksportuj CSV"** and **"Eksportuj JSON Lines"** save every entry the filters
+  select as a file, as `log export` writes it.
+
+At the terminal the owner of the installation reads and exports it:
+
+```sh
+archiwista log list --action permission. --since 2026-10-01T00:00:00+02:00
+archiwista log export --format csv --actor marek.lis --output dziennik.csv
+```
+
+`log list` prints the newest entries (50, `--limit` up to 200; the next page is
+`--cursor`) with how many the filters select. `log export` writes every entry the
+filters select as JSON Lines or CSV for a spreadsheet, to standard output or to
+`--output`, a file only you can read; a cell that a spreadsheet could take for a
+formula begins with `'`. The filters: `--actor` (an account, `local` for the owner,
+`-` before a sign-in), `--action` (a name such as `job.start`, or a group such as
+`session.`), `--outcome` (`ok`, `denied`, `failed`), `--target`, and `--since`
+and `--until` with a time zone. An export is itself an entry of the log.
 
 ## IMGW stations (command line)
 
@@ -620,10 +708,8 @@ turns the permission log into the action log.
 ## What version 0.3 does not do
 
 - It checks availability at the source and downloads only from the step "U
-  źródła" of the map and from the project card, through Kartograf; the
-  interface has no list of jobs with cancel, retry and log yet (the API and
-  `archiwista jobs` have them), and an area is not chosen by the name of an
-  administrative unit.
+  źródła" of the map and from the project card, through Kartograf, and an area
+  is not chosen by the name of an administrative unit.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
