@@ -418,6 +418,19 @@ with its date in its tooltip; the pointer gives the values of its day.
 
 ![The chart of a station](reports/v0.5-screenshots/05-wykres-stacji.webp)
 
+"Porównaj z…" in the chart's toolbar opens the comparison of stations with this station
+and the chart's variable and range. In the Catalog's list of stations the button at the
+end of a row, or `P` on a row, chooses up to five stations; "Porównaj" compares them.
+Each station is a panel, one above another over one time axis, all with the same range
+and interval: a selection, the wheel or the keys in any panel zoom them all, and `Home`
+or "Cały okres" shows the whole period again. A station without the series or the
+variable keeps its panel with "brak danych". "Zmienna" switches the variable, "Dodaj
+stację" finds another station with a series of the dataset by name, river or code (five
+at most), and the table below gives each station's facts as on its card, followed by
+each provider's formula.
+
+![The comparison of stations](reports/v0.5-screenshots/06-porownanie-stacji.webp)
+
 The command line and the API (`GET /api/v1/stations`) show the stations and the
 coverage of their series from the index while IMGWTools is installed:
 

@@ -17,7 +17,9 @@
  * expanded when the address asks for `location=none` (the map's counter,
  * M5). Its rows never lead to the map. Enter or a click opens a station's
  * card (views/station.js, `station` of the address), on a group row folds
- * it; M and the row's button show a located station on the map.
+ * it; M and the row's button show a located station on the map. The row's
+ * other button and P choose up to five stations, which „Porównaj” opens in
+ * the comparison of stations (views/station-compare.js, plan I8.6).
  *
  * „Oś czasu” (`layout=timeline`, plan I8.3) is the other layout of the same
  * toolbar and filters: `GET /stations/timeline` of one dataset (the
@@ -31,6 +33,9 @@ import { count, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
 import {
+  COMPARE_VIEW,
+  compareParams,
+  MAX_COMPARED,
   STATION_KINDS,
   STATION_PARAM,
   StationSymbol,
@@ -250,6 +255,17 @@ export function CatalogStations(props) {
     else if (!item.group) openCard(item);
   };
   const selected = params[STATION_PARAM] ?? null;
+  // The stations chosen for a comparison, in the order chosen (up to five).
+  const [picked, setPicked] = useState([]);
+  const pickedAddresses = picked.map(stationAddress);
+  const pick = (item) => {
+    const address = stationAddress(item);
+    if (pickedAddresses.includes(address)) setPicked(picked.filter((other) => stationAddress(other) !== address));
+    else if (picked.length < MAX_COMPARED) setPicked([...picked, item]);
+  };
+  const comparing = findView(COMPARE_VIEW)
+    ? () => navigate(COMPARE_VIEW, compareParams(pickedAddresses, compareChoice(picked, params, datasets)))
+    : null;
   const datasetNames = new Map(datasets.map((item) => [item.dataset, item.name ?? item.dataset]));
   const active = activeStationFilters(params);
   const sort = query.sort ?? "river";
@@ -277,6 +293,7 @@ export function CatalogStations(props) {
       moreError=${pages.moreError} onMore=${() => pages.more(open)} resetKey=${key} narrow=${narrow}
       handle=${grid} isSelected=${(item) => !item.group && stationAddress(item) === selected}
       cardOpen=${selected !== null} onOpen=${openRow} onMap=${map}
+      onPick=${comparing ? pick : null} picked=${pickedAddresses}
       onToggle=${toggleGroup} sort=${sort} storeNames=${storeNames} datasetNames=${datasetNames}
       empty=${empty} />`;
   }
@@ -311,6 +328,14 @@ export function CatalogStations(props) {
           ? html`<${Link} view="map" params=${mapParams(params)} class="btn sm" title=${S.show_on_map_all_title}>
               <${Icon} name="map" size=${14} />${S.show_on_map_all}</${Link}>`
           : null}
+        ${comparing && picked.length && !timeline
+          ? html`<span class="cat-pick-bar" role="group" aria-label=${S.compare_title}>
+              <span class="tabular">${t(S.picked, { count: picked.length, max: MAX_COMPARED })}</span>
+              <button type="button" class="btn sm primary" disabled=${picked.length < 2}
+                title=${S.compare_title} onClick=${comparing}><${Icon} name="chart" size=${14} />${S.compare}</button>
+              <button type="button" class="btn ghost sm" onClick=${() => setPicked([])}>${S.pick_clear}</button>
+            </span>`
+          : null}
         <span class="cat-api"><${Tech} value=${[[L.result.api_title, api]]}>
           <span class="faint">${L.result.api}</span></${Tech}></span>
       </div>
@@ -330,7 +355,8 @@ export function CatalogStations(props) {
           ? html` ${S.timeline.keys} `
           : html`<span class="kbd">↑</span><span class="kbd">↓</span> ${L.grid.key_move} ·
               <span class="kbd">Enter</span> ${S.key_open} ·
-              ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}`}
+              ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}
+              ${comparing ? html`<span class="kbd">P</span> ${S.key_pick} · ` : null}`}
         <span class="kbd">Ctrl K</span> ${L.grid.key_search}
       </span>
     </footer>
@@ -344,6 +370,26 @@ export function CatalogStations(props) {
 function groupsOf(location) {
   if (location === "none") return ["none"];
   return location === "with" ? ["with"] : ["with", "none"];
+}
+
+/**
+ * What a comparison of chosen stations compares: the address's dataset, else
+ * the one most of them have; the address's „Kolor punktów” when its series
+ * has it, else the series' first variable.
+ *
+ * @returns {{dataset: string|null, variable: string|null, year_type: string|null}}
+ */
+function compareChoice(picked, params, datasets) {
+  const counts = new Map();
+  for (const item of picked) {
+    for (const series of item.series) counts.set(series.dataset, (counts.get(series.dataset) ?? 0) + 1);
+  }
+  const common = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const dataset = params.dataset ?? common ?? datasets[0]?.dataset ?? null;
+  const series = picked.flatMap((item) => item.series).find((item) => item.dataset === dataset);
+  const keys = series ? Object.keys(series.coverage) : [];
+  const variable = keys.includes(params.color) ? params.color : (keys[0] ?? null);
+  return { dataset, variable, year_type: params.year_type ?? null };
 }
 
 /** The location groups with their counts: a group is the `location` filter. */
@@ -563,6 +609,7 @@ const STATION_ROWS = {
   key: (item) => (item.group ? `group:${item.group}` : `${item.store}/${item.provider}/${item.code}`),
   className: (item) => (item.group ? "st-group-row" : item.location.kind === "point" ? "" : "unlocated"),
   mappable: (item) => !item.group && item.location.kind === "point",
+  pickable: (item) => !item.group,
 };
 
 /** The lines of a station's coverage: one per variable of each series, at least one. */
@@ -614,12 +661,23 @@ function StationCells({ item, props }) {
     <div role="gridcell" class="cell c-cov">${coverageLines(item, props.datasetNames)}</div>
     <div role="gridcell" class="cell c-loc">${stationLocation(item)}</div>
     <div role="gridcell" class="cell c-act">
+      ${props.onPick ? pickButton(item, name, props) : null}
       ${located && props.onMap
         ? html`<button type="button" class="btn ghost icon-btn cat-map" tabindex="-1"
             title=${t(S.show_on_map, { name })} aria-label=${t(S.show_on_map, { name })}
             onClick=${() => props.onMap(item)}><${Icon} name="map" size=${15} /></button>`
         : null}
     </div>`;
+}
+
+/** The button choosing a station for a comparison; disabled for a sixth. */
+function pickButton(item, name, props) {
+  const on = props.picked.includes(stationAddress(item));
+  const full = !on && props.picked.length >= MAX_COMPARED;
+  const title = full ? S.pick_full : t(on ? S.unpick_title : S.pick_title, { name });
+  return html`<button type="button" class=${`btn ghost icon-btn cat-pick${on ? " on" : ""}`} tabindex="-1"
+    aria-pressed=${on ? "true" : "false"} disabled=${full} title=${title} aria-label=${title}
+    onClick=${() => props.onPick(item)}><${Icon} name=${on ? "check" : "chart"} size=${15} /></button>`;
 }
 
 /** A group's heading: its name and count; „Bez położenia” folds. */

@@ -126,12 +126,16 @@
 
 /* ---------- stations (views/catalog-stations.js): a line per variable ---------- */
 .cat-grid.stations {
-  --cat-cols: minmax(150px, 1.2fr) minmax(110px, 0.8fr) minmax(120px, 0.9fr) minmax(280px, 2.6fr) minmax(140px, 1fr) 36px;
-  --cat-min: 1000px;
+  --cat-cols: minmax(150px, 1.2fr) minmax(110px, 0.8fr) minmax(120px, 0.9fr) minmax(280px, 2.6fr) minmax(140px, 1fr) 64px;
+  --cat-min: 1030px;
 }
 .cat-grid.stations .cat-rows .cat-row { align-items: start; padding-top: 5px; padding-bottom: 5px; }
 .cat-grid.stations .cat-rows .cell { justify-content: flex-start; gap: 0; }
-.cat-grid.stations .cat-rows .c-act { align-self: center; }
+.cat-grid.stations .cat-rows .c-act { align-self: center; flex-direction: row; gap: 2px; }
+.cat-pick { width: 28px; height: 28px; color: var(--text-3); }
+.cat-pick.on { color: var(--accent-2); background: var(--accent-soft, rgba(37, 99, 235, 0.1)); }
+.cat-pick:disabled { opacity: 0.35; cursor: not-allowed; }
+.cat-pick-bar { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .st-line { display: flex; align-items: center; gap: 5px; height: 18px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .st-line .station-symbol { flex: none; }
 .st-name { display: block; font-weight: 600; font-size: 12.5px; line-height: 18px; color: var(--text); text-overflow: ellipsis; }

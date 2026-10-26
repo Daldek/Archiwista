@@ -42,6 +42,8 @@ const PREFETCH_ROWS = 120;
  * @property {(item: *) => string} key - A row's identity.
  * @property {(item: *) => string} [className] - More classes of a row.
  * @property {(item: *) => boolean} mappable - The row can be shown on the map (M).
+ * @property {(item: *) => boolean} [pickable] - The row can be chosen for a
+ *   comparison (P).
  */
 
 /**
@@ -71,6 +73,8 @@ export function onMapOf(item) {
  * @param {boolean} props.cardOpen - Whether a card is open.
  * @param {(item: *) => void} props.onOpen - Enter, Space or a click on the row.
  * @param {((item: *) => void)|null} props.onMap - `null` when there is no map view.
+ * @param {((item: *) => void)|null} [props.onPick] - Choose a row for a comparison
+ *   (P), or leave it out; `null` without one.
  * @param {boolean} props.narrow - Phone layout.
  * @param {*} props.empty - Shown instead of rows when there are none.
  * @param {{current: *}} props.handle - Receives `{focusRow(index)}`.
@@ -177,6 +181,8 @@ export function CatalogGrid(props) {
     else if ((event.key === "Enter" || event.key === " ") && plain && !onButton) props.onOpen(item);
     else if ((event.key === "m" || event.key === "M") && plain && props.onMap && rows.mappable(item)) {
       props.onMap(item);
+    } else if ((event.key === "p" || event.key === "P") && plain && props.onPick && rows.pickable?.(item)) {
+      props.onPick(item);
     } else return;
     event.preventDefault();
   };

@@ -95,6 +95,33 @@ export function stationAddress(station) {
   return `${station.store}/${station.provider}/${station.code}`;
 }
 
+/** The view comparing stations (views/station-compare.js) and its stations' parameter. */
+export const COMPARE_VIEW = "station-compare";
+/** Address parameter of the stations compared: their `stationAddress`, comma-separated. */
+export const COMPARE_PARAM = "stations";
+/** The most stations of a comparison (SPEC 6.7, `GET /stations/compare`). */
+export const MAX_COMPARED = 5;
+
+/**
+ * The address of a comparison of stations: the stations in the order of the
+ * panels, the dataset and variable compared, the year type and the range.
+ *
+ * @param {string[]} stations - `stationAddress` of each.
+ * @param {{dataset?: string|null, variable?: string|null, year_type?: string|null,
+ *   from?: string|null, to?: string|null}} [choice]
+ * @returns {Object<string, string|null>} Parameters of `navigate(COMPARE_VIEW, …)`.
+ */
+export function compareParams(stations, choice = {}) {
+  return {
+    [COMPARE_PARAM]: stations.slice(0, MAX_COMPARED).join(","),
+    dataset: choice.dataset ?? null,
+    variable: choice.variable ?? null,
+    year_type: choice.year_type ?? null,
+    from: choice.from ?? null,
+    to: choice.to ?? null,
+  };
+}
+
 /**
  * What the station view shows, from the address and `GET /stations/datasets`.
  *

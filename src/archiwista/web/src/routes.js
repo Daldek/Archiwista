@@ -45,6 +45,12 @@ export const VIEWS = [
   { id: "projects", icon: "folder", load: () => import("./views/projects.js") },
   { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
+  {
+    id: "station-compare",
+    icon: "chart",
+    nav: false,
+    load: () => import("./views/station-compare.js"),
+  },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
 ];
 

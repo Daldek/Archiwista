@@ -13,7 +13,9 @@
  * card asks nothing of it). The actions: „Pokaż na mapie” for a station with
  * a position (the map of its product centred on it; the card closes) and
  * „Kopiuj ścieżkę pliku” (its series file on this computer, `paths` of the
- * card). Then the coverage of each variable of each series: its label with
+ * card); „Porównaj z…” in the chart's toolbar opens the comparison of
+ * stations (views/station-compare.js) with this station, the chart's series,
+ * variable and range. Then the coverage of each variable of each series: its label with
  * the fill of SPEC 4.8.4 in the station's shape, its full years and its
  * longest gap (a station has no label of its own, P16); the tabs „Wykres”,
  * the default (views/station-chart.js: the series drawn over the address's
@@ -33,9 +35,12 @@ import { catalog as C } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import {
+  COMPARE_VIEW,
+  compareParams,
   STATION_KINDS,
   STATION_PARAM,
   StationSymbol,
+  stationAddress,
   stationShape,
   stationType,
 } from "../map/stations.js";
@@ -83,6 +88,8 @@ export default function StationCard({ route, value, onClose }) {
   const titleId = useId();
   const heading = useRef(null);
   const opener = useRef(document.activeElement);
+  // The view the card opened over: closed there, its parameters go with it.
+  const view = useRef(route.view);
   const address = parseStation(value);
   const yearType = route.params.year_type ?? null;
   const card = useResource(
@@ -97,9 +104,10 @@ export default function StationCard({ route, value, onClose }) {
   useEffect(() => heading.current?.focus(), [value]);
   useEffect(
     () => () => {
-      // Closed by Esc, the button or another view: the tab goes too.
-      const { params } = readRoute();
-      if (!params[STATION_PARAM] && CARD_PARAMS.some((name) => params[name])) {
+      // Closed by Esc or the button: the tab and the chart's range go too. Another
+      // view brings its own address (the comparison of „Porównaj z…”: its range).
+      const { view: now, params } = readRoute();
+      if (now === view.current && !params[STATION_PARAM] && CARD_PARAMS.some((name) => params[name])) {
         setParams(Object.fromEntries(CARD_PARAMS.map((name) => [name, null])), { replace: true });
       }
       if (opener.current?.isConnected) opener.current.focus();
@@ -167,10 +175,11 @@ function CardBody({ card, params, error, loading }) {
             ? html`<${Technical} card=${card} params=${params} />`
             : tab === "meta"
               ? html`<${Metadata} station=${station} />`
-              : html`<${StationChartTab} station=${station} params=${params} names=${names} />`}
+              : html`<${StationChartTab} station=${station} params=${params} names=${names}
+                  actions=${compareAction(station, params)} />`}
       </div>
     </section>
-    <${Attribution} station=${station} />
+    <${Attribution} items=${station.series} />
     ${loading ? html`<${Spinner} quiet />` : null}
   `;
 }
@@ -179,6 +188,29 @@ function CardBody({ card, params, error, loading }) {
 function useDatasetNames(store) {
   const { data } = useResource((signal) => listStationDatasets({ store }, { signal }), [store]);
   return new Map((data?.items ?? []).map((item) => [item.dataset, item.name ?? item.dataset]));
+}
+
+/**
+ * „Porównaj z…” of the chart: the comparison of stations with this one, the
+ * chart's series and first variable, the address's year type and range.
+ */
+function compareAction(station, params) {
+  if (!findView(COMPARE_VIEW)) return null;
+  return ({ dataset, keys }) => {
+    const open = () =>
+      navigate(
+        COMPARE_VIEW,
+        compareParams([stationAddress(station)], {
+          dataset,
+          variable: keys[0],
+          year_type: params.year_type,
+          from: params.from,
+          to: params.to,
+        }),
+      );
+    return html`<button type="button" class="btn sm sc-compare" title=${L.actions.compare_title}
+      onClick=${open}><${Icon} name="chart" size=${14} />${L.actions.compare}</button>`;
+  };
 }
 
 function Heading({ station, params }) {
@@ -497,11 +529,16 @@ function Technical({ card, params }) {
   </div>`;
 }
 
-/** The licence and the provider's formula of the station's series, each once. */
-function Attribution({ station }) {
+/**
+ * The licence and the provider's formula of series, each once: a card's
+ * series, or the stations of a comparison.
+ *
+ * @param {{items: Array<{license: string|null, attribution: string|null}>}} props
+ */
+export function Attribution({ items }) {
   const A = L.attribution;
   const seen = new Map();
-  for (const series of station.series) {
+  for (const series of items) {
     const key = `${series.license ?? ""}\n${series.attribution ?? ""}`;
     if ((series.license || series.attribution) && !seen.has(key)) seen.set(key, series);
   }

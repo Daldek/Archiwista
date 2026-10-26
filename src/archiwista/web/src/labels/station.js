@@ -3,7 +3,8 @@
  * 6.5 k; plan I8.5): the header with the station's type, river and the
  * year-type switch, the location or the reason without one, the coverage of
  * each variable, the tabs, the series versions, the actions and the
- * provider's formula.
+ * provider's formula; and of the comparison of stations
+ * (views/station-compare.js, plan I8.6).
  */
 
 export const station = {
@@ -38,6 +39,9 @@ export const station = {
     show_on_map: "Pokaż na mapie",
     show_on_map_title: "Mapa produktu stacji, przybliżona na tę stację",
     copy_path: "Kopiuj ścieżkę pliku",
+    compare: "Porównaj z…",
+    compare_title:
+      "Ta zmienna tej stacji obok innych stacji (najwyżej pięciu) na jednej osi czasu",
   },
   coverage: {
     title: "Pokrycie — osobno dla każdej zmiennej",
@@ -144,5 +148,39 @@ export const station = {
     license: "Licencja {license}",
     copy: "Kopiuj atrybucję",
     none: "Szeregi stacji nie podają licencji ani formuły.",
+  },
+  compare: {
+    title: "Porównanie stacji",
+    lead: "{variable} z {dataset} · lata {year_type}",
+    stations: "Stacje porównania",
+    remove: "Usuń {name} z porównania",
+    add: "Dodaj stację",
+    add_placeholder: "nazwa, rzeka albo kod",
+    add_title: "Stacja z szeregiem tego zbioru danych, po nazwie, rzece albo kodzie",
+    add_full: "Porównanie ma już pięć stacji: najpierw usuń którąś.",
+    add_none: "Żadna stacja z szeregiem tego zbioru danych nie pasuje.",
+    fewer:
+      "Porównanie potrzebuje co najmniej dwóch stacji (najwyżej pięciu): dodaj stację " +
+      "albo wybierz wiersze listy stacji w Katalogu.",
+    no_dataset: "Adres porównania nie podaje zbioru danych ani zmiennej.",
+    variable: "Zmienna",
+    no_series: "brak danych: stacja nie ma szeregu „{dataset}”",
+    no_variable: "brak danych: szereg stacji nie ma zmiennej {variable}",
+    panel_label: "{name}: {variable}, {from}–{to}",
+    empty: "Żadna jednostka szeregów nie leży w zakresie.",
+    facts: "Fakty stacji",
+    station: "Stacja",
+    years: "Lata z wartością",
+    label: "Etykieta",
+    longest: "Najdłuższa luka",
+    full: "Pełne lata",
+    location: "Położenie",
+    located: "źródło: {source}",
+    unlocated: "bez położenia: {reason}",
+    none: "brak danych",
+    keys:
+      "Zaznaczenie, kółko myszy, + i − oraz strzałki w jednym panelu zmieniają zakres " +
+      "wszystkich; Home pokazuje cały okres.",
+    api: "Adres API porównania",
   },
 };

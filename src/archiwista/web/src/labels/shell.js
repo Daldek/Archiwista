@@ -16,6 +16,7 @@ export const shell = {
     store: "Magazyn",
     setup: "Ustawienia",
     compare: "Porównanie",
+    "station-compare": "Porównanie stacji",
   },
   stores_label: "Magazyny",
   store_title: "Magazyn „{name}” ({id}): {status}",

@@ -56,6 +56,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").StationCard} StationCard */
 /** @typedef {import("./types.js").StationChartQuery} StationChartQuery */
 /** @typedef {import("./types.js").StationChart} StationChart */
+/** @typedef {import("./types.js").StationCompareQuery} StationCompareQuery */
+/** @typedef {import("./types.js").StationComparison} StationComparison */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
@@ -615,6 +617,22 @@ export function getStation(code, lookup, { signal } = {}) {
  */
 export function getStationSeries(code, query, { signal } = {}) {
   return request("GET", `/stations/${one(code)}/series`, { query, signal });
+}
+
+/**
+ * One variable of 2 to 5 stations over one range (`compare_stations`): each
+ * station's chart with the same interval, the variable's label and facts as on
+ * its card; `null` for a station without the series or the variable.
+ *
+ * @param {StationCompareQuery} query - `station` repeated, `<store>/<provider>/<code>`.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationComparison>}
+ * @throws {ApiError} `400` (one or more than five stations, a variable no
+ *   station has, a reversed range), `404` (no such station, none with a series
+ *   of the dataset), `503 missing_dependency` without IMGWTools.
+ */
+export function compareStations(query, { signal } = {}) {
+  return request("GET", "/stations/compare", { query, signal });
 }
 
 /**

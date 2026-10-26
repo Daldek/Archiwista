@@ -131,8 +131,9 @@ export function chartSeries(station) {
  * of the address's range and the line summing it.
  *
  * @param {{station: import("../types.js").StationItem, params: Object<string, string>,
- *   names: Map<string, string>, actions?: *}} props - `names`: the datasets' names;
- *   `actions`: more buttons of its toolbar („Porównaj z…”).
+ *   names: Map<string, string>, actions?: ((shown: {dataset: string, keys: string[]}) => *)|null}} props
+ *   - `names`: the datasets' names; `actions`: more buttons of its toolbar for
+ *   the series and variables it shows („Porównaj z…”).
  */
 export function StationChartTab({ station, params, names, actions = null }) {
   const series = chartSeries(station);
@@ -210,7 +211,7 @@ function SeriesChart({ station, series, chosen, params, names, actions }) {
         options=${Object.keys(chosen.coverage).map((key) => ({ value: key, label: key }))} />
       <${SecondVariable} series=${chosen} keys=${keys} onChange=${chooseKeys} />
       <span class="sch-spacer"></span>
-      ${actions}
+      ${actions ? actions({ dataset: chosen.dataset, keys }) : null}
     </div>
     <div class="sch-range">
       ${data?.from

@@ -1008,6 +1008,64 @@
  */
 
 /**
+ * The query of a comparison of stations (`GET /stations/compare`).
+ *
+ * @typedef {object} StationCompareQuery
+ * @property {string[]} station - 2 to 5 stations, each `<store>/<provider>/<code>`.
+ * @property {string} dataset - The dataset of the series compared.
+ * @property {string} variable - The variable compared.
+ * @property {string} [from] - First day; default the variable's first known day
+ *   at the stations together.
+ * @property {string} [to] - Last day; default its last known day.
+ * @property {string} [year_type] - `hydrological` or `calendar`, as on the card.
+ * @property {number} [max_points] - The most points of each station (≤ 2,000).
+ */
+
+/**
+ * A station of a comparison: who and where it is, its series, the variable's
+ * label and facts as on its card, its chart in the comparison's range; the
+ * series fields, `coverage` and `chart` are `null` without the series or the
+ * variable („brak danych”).
+ *
+ * @typedef {object} ComparedStation
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code
+ * @property {StationLocation} location
+ * @property {YearSpan|null} years
+ * @property {string|null} series
+ * @property {string|null} series_version
+ * @property {string|null} file
+ * @property {string|null} sha256
+ * @property {string|null} license
+ * @property {string|null} attribution
+ * @property {VariableCoverage|null} coverage
+ * @property {ChartVariable|null} chart
+ */
+
+/**
+ * 2 to 5 stations' series of one variable over one range (`GET /stations/compare`).
+ *
+ * @typedef {object} StationComparison
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {string} dataset
+ * @property {string} variable
+ * @property {string|null} kind
+ * @property {string} time_unit - `day` or `month`.
+ * @property {string} year_type
+ * @property {string|null} from - First day of the range; `null`: an empty comparison.
+ * @property {string|null} to - Last day of the range.
+ * @property {number} units - Units of the range.
+ * @property {number} interval - Units of a point, the same for every station.
+ * @property {ComparedStation[]} stations - In the order asked.
+ */
+
+/**
  * A page of stations with the counts of the whole result (`GET /stations`).
  *
  * @typedef {object} StationList

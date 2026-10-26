@@ -5,14 +5,17 @@ The station views show the stations of a copy of a store of
 on the Raba) and one located precipitation post (Warszawa) beside stations
 without a position; ``complete_pl_cz`` adds the stations of ČHMÚ. The server
 is offline. Helpers start a session, read the API in the interface's
-language (Polish labels) and find where a position of the map lies on the
-screen: MapLibre draws Web Mercator with 512 px tiles around the centre and
-zoom the address holds.
+language (Polish labels), find where a position of the map lies on the
+screen (MapLibre draws Web Mercator with 512 px tiles around the centre and
+zoom the address holds) and where the days of a chart's plot lie, to select
+them by dragging.
 """
 
 import math
 import shutil
 import time
+from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -134,6 +137,58 @@ def hover_until(page: Page, point: tuple[float, float], shown: Locator) -> None:
         page.mouse.move(point[0] + step % 2, point[1])
         step += 1
         page.wait_for_timeout(150)
+
+
+@dataclass(frozen=True)
+class Frame:
+    """A plot's range of days and where it lies: its svg on the screen, px."""
+
+    first: date
+    last: date
+    svg_x: float
+    left: float
+    width: float
+    y: float
+
+    @property
+    def days(self) -> int:
+        """Return the days of the range."""
+        return (self.last - self.first).days + 1
+
+    def day_at(self, x: float) -> date:
+        """Return the day under an x of the svg (its own coordinates)."""
+        return self.first + timedelta(
+            days=int((x - self.left) / self.width * self.days)
+        )
+
+    def screen_x(self, day: date) -> float:
+        """Return the screen x of the middle of a day."""
+        offset = (day - self.first).days + 0.5
+        return self.svg_x + self.left + offset / self.days * self.width
+
+
+def frame_of(plot: Locator) -> Frame:
+    """Return the range and place of a chart's plot (``.sch-plot``)."""
+    box = plot.locator("svg").bounding_box()
+    assert box is not None
+    return Frame(
+        first=date.fromisoformat(plot.get_attribute("data-from") or ""),
+        last=date.fromisoformat(plot.get_attribute("data-to") or ""),
+        svg_x=box["x"],
+        left=float(plot.get_attribute("data-left") or 0),
+        width=float(plot.get_attribute("data-width") or 0),
+        y=box["y"] + 100,
+    )
+
+
+def drag(page: Page, frame: Frame, first: date, last: date) -> None:
+    """Select the days from ``first`` to ``last`` by dragging over the plot."""
+    start, end = frame.screen_x(first), frame.screen_x(last)
+    page.mouse.move(start, frame.y)
+    page.mouse.down()
+    page.mouse.move((start + end) / 2, frame.y)
+    page.mouse.move(end, frame.y)
+    page.mouse.up()
 
 
 def _mercator_y(lat: float) -> float:

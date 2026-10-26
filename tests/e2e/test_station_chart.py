@@ -18,18 +18,19 @@ reset the range.
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
-from playwright.sync_api import Locator, Page, Route, expect
+from playwright.sync_api import Locator, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.station_browser import (
     STORE,
     address,
     api,
+    drag,
+    frame_of,
     open_session,
     query_of,
     station_settings,
@@ -44,53 +45,10 @@ VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
 
 
-@dataclass(frozen=True)
-class Frame:
-    """The plot's range of days and where it lies: its svg on the screen, px."""
-
-    first: date
-    last: date
-    svg_x: float
-    left: float
-    width: float
-    y: float
-
-    @property
-    def days(self) -> int:
-        """Return the days of the range."""
-        return (self.last - self.first).days + 1
-
-    def day_at(self, x: float) -> date:
-        """Return the day under an x of the svg (its own coordinates)."""
-        return self.first + timedelta(
-            days=int((x - self.left) / self.width * self.days)
-        )
-
-    def screen_x(self, day: date) -> float:
-        """Return the screen x of the middle of a day."""
-        offset = (day - self.first).days + 0.5
-        return self.svg_x + self.left + offset / self.days * self.width
-
-
 def card_address(served: Served, station: str, **params: str) -> str:
     """Return the Catalog's address with the card of a station of the fixture."""
     return address(
         served, view="catalog", product="hydro", station=f"{STORE}/{station}", **params
-    )
-
-
-def frame_of(card: Locator) -> Frame:
-    """Return the plot's range and place in the card."""
-    plot = card.locator(".sch-plot")
-    box = plot.locator("svg").bounding_box()
-    assert box is not None
-    return Frame(
-        first=date.fromisoformat(plot.get_attribute("data-from") or ""),
-        last=date.fromisoformat(plot.get_attribute("data-to") or ""),
-        svg_x=box["x"],
-        left=float(plot.get_attribute("data-left") or 0),
-        width=float(plot.get_attribute("data-width") or 0),
-        y=box["y"] + 100,
     )
 
 
@@ -100,16 +58,6 @@ def subpaths(line: Locator) -> list[list[float]]:
     return [
         [float(x) for x, _ in VERTEX.findall(part)] for part in path.split("M") if part
     ]
-
-
-def drag(page: Page, frame: Frame, first: date, last: date) -> None:
-    """Select the days from ``first`` to ``last`` by dragging over the plot."""
-    start, end = frame.screen_x(first), frame.screen_x(last)
-    page.mouse.move(start, frame.y)
-    page.mouse.down()
-    page.mouse.move((start + end) / 2, frame.y)
-    page.mouse.move(end, frame.y)
-    page.mouse.up()
 
 
 def test_the_gaps_are_grey_bands_the_line_never_crosses(
@@ -138,7 +86,7 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
         for band in bands
     ]
     runs = subpaths(line)
-    frame = frame_of(card)
+    frame = frame_of(card.locator(".sch-plot"))
 
     # Assert
     expect(card.get_by_role("tab", name="Wykres")).to_have_attribute(
@@ -249,13 +197,13 @@ def test_a_selection_narrows_the_whole_series_to_daily_values_and_writes_the_ran
     card = page.get_by_role("dialog", name="Špindlerův Mlýn")
     note = card.locator(".sch-note")
     expect(note).to_contain_text("wykres uproszczony: min./śr./maks. z 2 dni")
-    whole = frame_of(card)
+    whole = frame_of(card.locator(".sch-plot"))
 
     # Act
     drag(page, whole, date(2024, 4, 1), date(2024, 7, 31))
     expect(note).to_have_text("wartości dobowe")
     narrowed = query_of(page)
-    frame = frame_of(card)
+    frame = frame_of(card.locator(".sch-plot"))
     drag(page, frame, date(2024, 5, 1), date(2024, 5, 31))
     expect(page).to_have_url(re.compile(r"[?&]to=2024-05-31(&|$)"))
     expect(card.locator(".sch-summary")).to_contain_text("(31 dni)")

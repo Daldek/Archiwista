@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- The comparison of stations: "Porównaj z…" in the toolbar of the station card's chart,
+  or up to five rows of the Catalog's station list chosen with their button or `P` and
+  then "Porównaj", opens one variable of 2 to 5 stations as panels stacked over one
+  time axis (`view=station-compare` with `stations`, `dataset`, `variable`, `from`,
+  `to`). Every panel has the same range and interval, so a selection, the wheel or the
+  keys in one panel zoom all of them (`Home` or "Cały okres" gives the whole period
+  back); a station without the series or the variable keeps its panel with "brak
+  danych". Below the panels: the facts of each station as on its card (years with a
+  value, label, longest gap, full years, location) and each provider's formula.
+  "Zmienna" switches the variable and "Dodaj stację" finds another station of the
+  dataset by name, river or code; a sixth station cannot be added. The card keeps the
+  chart's range when it opens the comparison. (ADR-045 decision 13, plan I8.6)
+
 - `GET /api/v1/stations/compare` and `archiwista stations compare --station … --station …
   --dataset … --variable …`: one variable of 2 to 5 stations (each
   `<store>/<provider>/<code>`) of one dataset over one range, for display only. The
