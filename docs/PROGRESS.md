@@ -146,11 +146,31 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    ADR-042). **A13 is done** (Status row "v0.3 A13"; ADR-042 decision 4: a project's
    download and repin start from the card, "Sprawdź aktualizacje" being the project's
    plan; whether criterion 4 wants a window before them too is an open question for the
-   author). *Next:* A14, then A12 (the web client has no cancel, retry or log yet); a
-   variant without a default format and a plan with conflicts are untested in the
-   browser (the stand-in has neither); the Kartograf lines of a real report (several
-   lines per set) are checked live in A14, which also runs `tests/perf/test_warm_perf.py`
-   (criterion 8) on the preview fixtures next to the 50 000-slot store.
+   author). **A14 commit 1 is done:** `tests/e2e/test_acceptance_v03.py` (3 tests, no
+   network): UC-01 with the stand-in from the kept area's report to files in the store,
+   the labels of both years and the ranking computed by hand from the report the index
+   keeps (criterion 3), nothing downloaded before the plan window's confirmation
+   (criterion 4), a server stopped during the download leaves it `interrupted` and its
+   retry fetches only the rest (criterion 5, retry by `POST /jobs/{job}/retry`: no jobs
+   panel yet); a person without `store_writer` gets the download disabled and `403`
+   with no job (criterion 7); UC-06 over Kartograf's fixture project: status, verify,
+   download of the held pins, the year 2025 added as a task, and the owner without
+   `store_writer` refused a download and a repin (criterion 7). *Criterion 8 measured*
+   (2026-10-26, reference computer, SSD, `tests/perf/test_warm_perf.py -m perf` over
+   `previews-perf` next to the 50 000-slot store, which needed its marker first:
+   `kartograf store init --root <data-dir>/previews-perf/data`): scan 1.4 s; the
+   scheduler's warm-up 94.9 s for 353 versions (353 warmed, 296 waiting for a local COG,
+   0 failed, not stopped); preview cache 40 MB; first look at 40 warmed versions:
+   description p95 4.2 ms (median 3.7), first thumbnail p95 4.1 ms (median 3.6), target
+   100 ms. The SMB run (`-m smb`) is the author's. *Next (A14 commit 2):*
+   `tests/integration/test_live_actions.py` (marker `live`, opt-in variable; criteria
+   1, 2, 6; Kartograf's line `elevation download --product nmt --sheet
+   N-34-130-D-d-2-4 --resolution 1m --vertical-crs EVRF2007` parses offline),
+   `docs/reports/v0.3-measurements.md` with the figures above and screenshots 01–12,
+   USAGE (0.3), AGENT_API, SPEC 13 status of v0.3, CHANGELOG; then I4 to I7 and A12 (the
+   web client has no cancel, retry or log yet); a variant without a default format and
+   a plan with conflicts are untested in the browser (the stand-in has neither); the
+   Kartograf lines of a real report are checked live.
    Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`)
    is not its canonical line, so the contract test compares calls, not text (a request
    to Kartograf).
