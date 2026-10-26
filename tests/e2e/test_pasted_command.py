@@ -345,9 +345,7 @@ def test_a_person_who_may_not_change_the_project_sees_the_option_disabled(
         team.served.paths.index_file, "startup", minted_by=principal(state, "listed")
     )
     page = tab.page
-    step = open_step(
-        page, team.served, fragment_url(team.served.server.port, issued.token)
-    )
+    step = open_step(page, team.served, fragment_url(team.served.base, issued.token))
     listed = call(page, "/projects")["items"]
 
     # Act

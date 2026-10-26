@@ -33,6 +33,7 @@ Rules (v0.1, ``project.write`` since v0.2):
 
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime
 from typing import Literal
 
 from archiwista.auth.principal import (
@@ -49,7 +50,7 @@ from archiwista.auth.visibility import (
 from archiwista.config import AppSettings, DefaultProjectVisibility
 from archiwista.errors import PermissionDeniedError
 from archiwista.messages import message
-from archiwista.state import ProjectAccessRecord, StateStore
+from archiwista.state import ProjectAccessRecord, StateStore, UserRecord
 
 type Action = Literal[
     "project.view",
@@ -99,12 +100,7 @@ def principal_for(state: StateStore, user_id: str) -> Principal | None:
     user = state.user(user_id)
     if user is None or user.disabled:
         return None
-    return Principal(
-        id=user.id,
-        kind="user",
-        roles=frozenset(user.roles),
-        groups=frozenset(user.groups),
-    )
+    return _principal(user)
 
 
 def session_principal(
@@ -113,6 +109,7 @@ def session_principal(
     kind: PrincipalKind,
     *,
     session: str | None = None,
+    issued_at: datetime | None = None,
 ) -> Principal | None:
     """Return who a session acts as now, with the current roles and groups.
 
@@ -131,20 +128,37 @@ def session_principal(
         How the session acts: as that principal or as an agent for it.
     session : str or None, optional
         Label of the session, kept in the principal.
+    issued_at : datetime or None, optional
+        When the session's credential (sign-in or token) was issued.
 
     Returns
     -------
     Principal or None
-        ``None`` when the account is unknown or disabled: the session ends.
+        ``None`` when the account is unknown or disabled, or its sessions
+        were revoked after ``issued_at`` (``sessions_revoked_at``): the
+        session ends.
     """
     if principal_id == LOCAL_PRINCIPAL_ID:
-        base: Principal | None = LOCAL_OWNER
+        base = LOCAL_OWNER
     else:
-        base = principal_for(state, principal_id)
-    if base is None:
-        return None
+        user = state.user(principal_id)
+        if user is None or user.disabled:
+            return None
+        revoked = user.sessions_revoked_at
+        if issued_at is not None and revoked is not None and issued_at < revoked:
+            return None
+        base = _principal(user)
     acting = "agent" if kind == "agent" else base.kind
     return replace(base, kind=acting, session=session)
+
+
+def _principal(user: UserRecord) -> Principal:
+    return Principal(
+        id=user.id,
+        kind="user",
+        roles=frozenset(user.roles),
+        groups=frozenset(user.groups),
+    )
 
 
 class Authorizer:

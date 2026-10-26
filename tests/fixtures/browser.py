@@ -105,7 +105,7 @@ class Served:
         issued = issue_one_time_token(
             self.paths.index_file, "startup", minted_by=LOCAL_OWNER
         )
-        return fragment_url(self.server.port, issued.token)
+        return fragment_url(self.base, issued.token)
 
     def settings(self) -> AppSettings:
         """Return the settings saved in the configuration file."""

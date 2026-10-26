@@ -67,6 +67,8 @@ from archiwista.messages import message
 from archiwista.state import StateStore
 
 type TokenKind = Literal["startup", "agent"]
+# How a session started: a startup token, an agent's token, a password, the proxy.
+type SessionMethod = Literal["startup", "token", "password", "proxy"]
 type IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -80,10 +82,16 @@ HSTS = "max-age=31536000"
 CSRF_HEADER = "X-Archiwista-CSRF"
 SESSION_PATH = f"{API_PREFIX}/session"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-# Each request of a session moves its end by the idle timeout.
+# Each request of a session moves its end by the idle timeout: a day in local
+# mode, 8 hours in team mode, where a session also ends 7 days after its start
+# (ADR-046 decision 7, ASVS 7.3.1 and 7.3.2).
 SESSION_IDLE_TIMEOUT = timedelta(hours=24)
-# An agent's session ends this long after its start, used or not.
+TEAM_IDLE_TIMEOUT = timedelta(hours=8)
+TEAM_MAX_AGE = timedelta(days=7)
+# An agent's session ends this long after its start, used or not, in both modes.
 AGENT_SESSION_MAX_AGE = timedelta(hours=12)
+# The browser a session shows in its list (``User-Agent``), cut to this length.
+USER_AGENT_MAX_LENGTH = 200
 TOKEN_TTL: Mapping[TokenKind, timedelta] = MappingProxyType(
     {"startup": timedelta(minutes=10), "agent": timedelta(minutes=5)}
 )
@@ -190,9 +198,12 @@ def issue_one_time_token(
         The value to hand over, the label of its session and its expiry.
         Expired tokens are removed from the index on the way.
     """
-    issued_at = _whole_seconds(now)
+    # The issue time to the microsecond: a token issued before its account's
+    # sessions were revoked opens no session (``session_principals``).
+    moment = (now or _utc_now()).astimezone(UTC)
+    issued_at = _whole_seconds(moment)
     token = secrets.token_urlsafe(_TOKEN_BYTES)
-    label = secrets.token_hex(_LABEL_BYTES)
+    label = new_label()
     expires_at = issued_at + TOKEN_TTL[kind]
     principal = json.dumps({"id": minted_by.id, "kind": minted_by.kind})
     connection = connect(index_path)
@@ -211,7 +222,7 @@ def issue_one_time_token(
                     kind,
                     principal,
                     label,
-                    issued_at.isoformat(),
+                    moment.isoformat(),
                     expires_at.isoformat(),
                 ),
             )
@@ -237,6 +248,9 @@ class SessionGrant:
         Kind of the token used.
     generation : int
         The index's agent-session generation when the token was used.
+    issued_at : datetime
+        When the token was issued (UTC, to the microsecond): the session ends
+        when its account's sessions are revoked after it.
     """
 
     principal_id: str
@@ -244,6 +258,7 @@ class SessionGrant:
     label: str
     token_kind: TokenKind
     generation: int
+    issued_at: datetime
 
 
 def redeem_one_time_token(
@@ -277,7 +292,7 @@ def redeem_one_time_token(
             rows = connection.execute(
                 "UPDATE session_tokens SET used_at = ?"
                 " WHERE hash = ? AND used_at IS NULL AND expires_at > ?"
-                " RETURNING kind, principal, label",
+                " RETURNING kind, principal, label, created_at",
                 (used_at, _digest(token), used_at),
             ).fetchall()
             generation = _agent_generation(connection)
@@ -285,7 +300,7 @@ def redeem_one_time_token(
         connection.close()
     if not rows:
         return None
-    token_kind, carried, label = rows[0]
+    token_kind, carried, label, created_at = rows[0]
     minter = json.loads(carried)
     return SessionGrant(
         principal_id=minter["id"],
@@ -293,7 +308,13 @@ def redeem_one_time_token(
         label=label,
         token_kind=token_kind,
         generation=generation,
+        issued_at=datetime.fromisoformat(created_at),
     )
+
+
+def new_label() -> str:
+    """Return a new session label: 8 random hexadecimal digits."""
+    return secrets.token_hex(_LABEL_BYTES)
 
 
 def revoke_agent_sessions(index_path: Path) -> int:
@@ -345,13 +366,15 @@ def _agent_generation(connection: sqlite3.Connection) -> int:
     return 0 if row is None else int(row[0])
 
 
-def fragment_url(port: int, token: str) -> str:
-    """Return the one-time address ``http://127.0.0.1:<port>/#token=<token>``.
+def fragment_url(origin: str, token: str) -> str:
+    """Return the one-time address ``<origin>/#token=<token>``.
 
-    The token travels in the fragment, which browsers send neither to the
-    server (nor its access log) nor in ``Referer``.
+    ``origin`` is ``http://127.0.0.1:<port>`` in local mode and the team's
+    ``origin`` in team mode (``Transport.origin``). The token travels in the
+    fragment, which browsers send neither to the server (nor its access log)
+    nor in ``Referer``.
     """
-    return f"http://{LOOPBACK_HOST}:{port}/#token={token}"
+    return f"{origin}/#token={token}"
 
 
 # Sessions ------------------------------------------------------------------
@@ -369,19 +392,39 @@ class Session:
         How it acts; the roles and groups are read for each request
         (``archiwista.auth.authorize.session_principal``).
     label : str
-        Label recorded with the session's jobs and permission changes.
+        Label recorded with the session's jobs and the action log.
     csrf_token : str
         128-bit secret that every ``/api`` request of the session carries in
         ``X-Archiwista-CSRF``.
     created_at : datetime
-        Start of the session (UTC).
+        Start of the session (UTC, whole seconds).
     expires_at : datetime
-        End of the session unless used again; every request moves it
-        ``SESSION_IDLE_TIMEOUT`` ahead, an agent's session never past
-        ``AGENT_SESSION_MAX_AGE`` after its start.
+        End of the session unless used again: every request moves it by the
+        idle timeout of the mode, never past the mode's longest life
+        (``TEAM_MAX_AGE``; ``AGENT_SESSION_MAX_AGE`` for an agent) after its
+        start.
+    issued_at : datetime
+        When the credential that opened it was issued (UTC, to the
+        microsecond): the sign-in, or the one-time token. The session ends
+        when its account's sessions are revoked after this time.
+    method : {"startup", "token", "password", "proxy"}
+        How it started: a startup token, an agent's token, a password, the
+        reverse proxy.
     generation : int, optional
         The index's agent-session generation at the start; an agent session
         ends when it changes.
+    client : str or None, optional
+        The client address of the request that started it.
+    user_agent : str or None, optional
+        Its browser (``User-Agent``, at most ``USER_AGENT_MAX_LENGTH``
+        characters).
+    last_seen_at : datetime or None, optional
+        Its last request; its start until then.
+    password_change_required : bool, optional
+        Signed in with a temporary password: until the change it may only
+        read itself, change the password and sign out.
+    proxy_user : str or None, optional
+        The value of the proxy's header that started it (``method`` ``proxy``).
     """
 
     principal_id: str
@@ -390,59 +433,111 @@ class Session:
     csrf_token: str
     created_at: datetime
     expires_at: datetime
+    issued_at: datetime
+    method: SessionMethod
     generation: int = 0
+    client: str | None = None
+    user_agent: str | None = None
+    last_seen_at: datetime | None = None
+    password_change_required: bool = False
+    proxy_user: str | None = None
 
 
 class SessionStore:
     """Sessions of the running server, kept in memory only.
 
-    A server restart ends every session: ``archiwista serve`` prints a new
-    one-time address. Only SHA-256 hashes of session ids are held.
-    Thread-safe.
+    A server restart ends every session. Only SHA-256 hashes of session ids
+    are held. Thread-safe. Local mode: a session ends after
+    ``SESSION_IDLE_TIMEOUT`` without requests. Team mode: after
+    ``TEAM_IDLE_TIMEOUT`` without requests and ``TEAM_MAX_AGE`` after its
+    start. An agent's session ends ``AGENT_SESSION_MAX_AGE`` after its start
+    in both.
 
     Parameters
     ----------
-    idle_timeout : timedelta, optional
-        How long a session lives without requests.
-    agent_max_age : timedelta, optional
-        How long an agent's session lives at most, used or not.
+    team : bool, optional
+        The limits of team mode.
     clock : Callable[[], datetime], optional
         Source of the current time (aware).
     """
 
     def __init__(
-        self,
-        *,
-        idle_timeout: timedelta = SESSION_IDLE_TIMEOUT,
-        agent_max_age: timedelta = AGENT_SESSION_MAX_AGE,
-        clock: Callable[[], datetime] = _utc_now,
+        self, *, team: bool = False, clock: Callable[[], datetime] = _utc_now
     ) -> None:
-        self._idle_timeout = idle_timeout
-        self._agent_max_age = agent_max_age
+        self._idle_timeout = TEAM_IDLE_TIMEOUT if team else SESSION_IDLE_TIMEOUT
+        self._max_age = TEAM_MAX_AGE if team else None
         self._clock = clock
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
 
-    def create(self, grant: SessionGrant) -> tuple[str, Session]:
-        """Start a session acting as a used token grants.
+    def create(
+        self,
+        principal_id: str,
+        kind: PrincipalKind,
+        *,
+        method: SessionMethod,
+        label: str | None = None,
+        issued_at: datetime | None = None,
+        generation: int = 0,
+        client: str | None = None,
+        user_agent: str | None = None,
+        password_change_required: bool = False,
+        proxy_user: str | None = None,
+        replaces: str | None = None,
+    ) -> tuple[str, Session]:
+        """Start a session, ending the one whose cookie the request carried.
+
+        Parameters
+        ----------
+        principal_id : str
+            Who it belongs to.
+        kind : {"local_owner", "user", "agent"}
+            How it acts.
+        method : {"startup", "token", "password", "proxy"}
+            How it starts.
+        label : str or None, optional
+            Its label: the token's; a new one when omitted.
+        issued_at : datetime or None, optional
+            When its credential was issued (a token); now when omitted.
+        generation : int, optional
+            The index's agent-session generation (an agent's token).
+        client, user_agent : str or None, optional
+            The request's client address and ``User-Agent``.
+        password_change_required : bool, optional
+            Signed in with a temporary password.
+        proxy_user : str or None, optional
+            The value of the proxy's header.
+        replaces : str or None, optional
+            The session id of the request's cookie: that session ends, so no
+            session id is used before and after a sign-in (ASVS 7.2.4).
 
         Returns
         -------
         tuple[str, Session]
             The secret session id for the ``HttpOnly`` cookie and the session.
         """
-        now = _whole_seconds(self._clock())
+        moment = self._clock().astimezone(UTC)
+        now = _whole_seconds(moment)
         session_id = secrets.token_urlsafe(_SESSION_ID_BYTES)
         session = Session(
-            principal_id=grant.principal_id,
-            kind=grant.kind,
-            label=grant.label,
+            principal_id=principal_id,
+            kind=kind,
+            label=label or new_label(),
             csrf_token=secrets.token_urlsafe(_TOKEN_BYTES),
             created_at=now,
-            expires_at=self._end(grant.kind, now, now),
-            generation=grant.generation,
+            expires_at=self._end(kind, now, now),
+            issued_at=moment if issued_at is None else issued_at,
+            method=method,
+            generation=generation,
+            client=client,
+            user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
+            last_seen_at=now,
+            password_change_required=password_change_required,
+            proxy_user=proxy_user,
         )
         with self._lock:
+            if replaces:
+                self._sessions.pop(_digest(replaces), None)
             expired = [
                 key for key, item in self._sessions.items() if item.expires_at <= now
             ]
@@ -488,7 +583,7 @@ class SessionStore:
             if expires_at <= now:
                 del self._sessions[key]
                 return None
-            session = replace(session, expires_at=expires_at)
+            session = replace(session, expires_at=expires_at, last_seen_at=now)
             self._sessions[key] = session
         return session
 
@@ -505,13 +600,51 @@ class SessionStore:
         with self._lock:
             return self._sessions.pop(_digest(session_id), None) is not None
 
+    def live(self, principal_id: str) -> tuple[Session, ...]:
+        """Return the live sessions of a principal, its agents' too, oldest first.
+
+        Whether each may still act (its account, a revocation) is
+        ``session_principals``' to say.
+        """
+        now = _whole_seconds(self._clock())
+        with self._lock:
+            found = [
+                session
+                for session in self._sessions.values()
+                if session.principal_id == principal_id and session.expires_at > now
+            ]
+        return tuple(sorted(found, key=lambda session: session.created_at))
+
+    def end_label(self, label: str, *, owner: str | None = None) -> Session | None:
+        """End the live session with ``label``, if ``owner`` (when given) owns it.
+
+        Returns
+        -------
+        Session or None
+            The ended session; ``None`` when no live session of ``owner``
+            has the label.
+        """
+        now = _whole_seconds(self._clock())
+        with self._lock:
+            for key, session in self._sessions.items():
+                if (
+                    session.label == label
+                    and session.expires_at > now
+                    and owner in (None, session.principal_id)
+                ):
+                    del self._sessions[key]
+                    return session
+        return None
+
     def _end(
         self, kind: PrincipalKind, created_at: datetime, now: datetime
     ) -> datetime:
-        idle_end = now + self._idle_timeout
+        end = now + self._idle_timeout
         if kind == "agent":
-            return min(idle_end, created_at + self._agent_max_age)
-        return idle_end
+            return min(end, created_at + AGENT_SESSION_MAX_AGE)
+        if self._max_age is not None:
+            return min(end, created_at + self._max_age)
+        return end
 
 
 def session_principals(
@@ -522,7 +655,10 @@ def session_principals(
     An agent session has ended once the index's agent-session generation is
     not the one it started under (``revoke_agent_sessions``). Otherwise the
     roles and groups come from the state database at each request
-    (``session_principal``): a disabled or removed account ends its sessions.
+    (``session_principal``): a disabled or removed account ends its sessions,
+    and so does a revocation of the account's sessions after the session's
+    credential was issued (``StateStore.revoke_sessions``, also from another
+    process).
 
     Parameters
     ----------
@@ -539,7 +675,11 @@ def session_principals(
         ):
             return None
         return session_principal(
-            state, session.principal_id, session.kind, session=session.label
+            state,
+            session.principal_id,
+            session.kind,
+            session=session.label,
+            issued_at=session.issued_at,
         )
 
     return principal

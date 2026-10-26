@@ -330,7 +330,7 @@ def test_a_session_that_may_not_write_sees_the_download_disabled_with_its_reason
         served.paths.index_file, "startup", minted_by=principal(state, "other")
     )
     page = tab.page
-    step = open_area(page, served, fragment_url(served.server.port, issued.token))
+    step = open_area(page, served, fragment_url(served.base, issued.token))
 
     # Act
     dialog = open_plan(page, check_at_source(step).nth(0))

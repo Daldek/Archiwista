@@ -776,16 +776,19 @@ of the code):
    (curl, an agent script) passes on.
 4. Paths outside `/api` (`/`, `/static/…`) and public requests
    (`POST /api/v1/session`, the `/api/docs` files) end the session check here.
-5. **Session:** the `archiwista_session` cookie in `SessionStore` → otherwise
-   `401 session_required`.
+5. **Session:** the `archiwista_session` cookie (`__Host-archiwista_session` in team
+   mode) in `SessionStore` → otherwise `401 session_required`.
 6. **CSRF token:** `X-Archiwista-CSRF` equal to the session token in **every**
    `/api` request, including a read (`csrf_rejection`, comparison with
    `hmac.compare_digest`) → otherwise `403 csrf_rejected`.
 7. **Principal:** `session_principals` reads the roles
-   and groups from the state database on every request (`session_principal`); a disabled or deleted account
-   and an agent session from before `revoke_agent_sessions` (a different generation
-   in `index_info`) end the session → `401 session_required`. A request that
-   has passed these checks moves the end of the session forward (`SessionStore.extend`).
+   and groups from the state database on every request (`session_principal`); a disabled or deleted account,
+   a session whose credential (sign-in or one-time token, `Session.issued_at`) is older
+   than its account's `sessions_revoked_at` (`StateStore.revoke_sessions`, also written
+   by another process such as the command line) and an agent session from before
+   `revoke_agent_sessions` (a different generation in `index_info`) end the session
+   → `401 session_required`. A request that has passed these checks moves the end of
+   the session forward and records it as its last request (`SessionStore.extend`).
 8. **Body limit** (`body_limit`, only after the header checks, so the body
    of a request without a session is not read): 4 KiB for `/api/v1/session`,
    1 MiB for the others, `POST /api/v1/areas` reads the body itself with its own
@@ -803,8 +806,9 @@ of the code):
 A session starts with a one-time token: `archiwista serve` issues a
 startup token (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,
 128 bits, valid for 10 min), and only its SHA-256 hash stays in the index
-(`session_tokens`). The address `http://127.0.0.1:<port>/#token=…`
-(`fragment_url`) carries the token in the fragment, which does not reach the server,
+(`session_tokens`). The address `<origin>/#token=…` (`fragment_url(origin, token)`:
+`http://127.0.0.1:<port>` in local mode, the team's `origin` in team mode) carries the
+token in the fragment, which does not reach the server,
 the log or `Referer`; the browser opened by `archiwista serve`
 gets it through the private `LaunchFile` file (`open_in_browser`), not through the
 command line. `startSession` from `api.js` (called by `main.js`) removes the
@@ -812,9 +816,16 @@ token from the address (`history.replaceState`) and exchanges it
 (`POST /api/v1/session` → `redeem_one_time_token`, once only, before
 expiry). The response sets the session cookie (`HttpOnly`,
 `SameSite=Strict`, `Path=/`) and returns `csrf_token`, which the interface keeps
-in `sessionStorage`. Sessions live in server memory: they end after 24 h without requests
-(`SESSION_IDLE_TIMEOUT`), an agent session lasts at most 12 h
-(`AGENT_SESSION_MAX_AGE`), and a server restart ends all of them.
+in `sessionStorage`. A new session ends the one whose cookie the request carried
+(`SessionStore.create(…, replaces=…)`), so no session id outlives a sign-in. A
+`Session` keeps how it started (`method`: `startup`, `token`, `password`, `proxy`),
+when its credential was issued (`issued_at`, to the microsecond), the client address,
+the `User-Agent` (at most 200 characters) and its last request. Sessions live in
+server memory: in local mode they end after 24 h without requests
+(`SESSION_IDLE_TIMEOUT`); in team mode after 8 h without requests
+(`TEAM_IDLE_TIMEOUT`) and 7 days after their start at the latest (`TEAM_MAX_AGE`); an
+agent session lasts at most 12 h in both (`AGENT_SESSION_MAX_AGE`); a server restart
+ends all of them.
 
 ### 5.4 Job lifecycle and SSE
 

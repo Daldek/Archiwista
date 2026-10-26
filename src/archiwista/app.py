@@ -139,7 +139,8 @@ def create_app(
         Copies of uploaded area files (``AppPaths.areas_dir``); those older
         than 7 days are deleted at start-up (``app.state.area_files``).
     sessions : SessionStore or None, optional
-        Live sessions; a new, empty store when omitted.
+        Live sessions; a new, empty store with the limits of the mode when
+        omitted.
     web_dir : Path, optional
         Interface files: ``index.html`` at ``/`` and every file under
         ``/static/``.
@@ -158,11 +159,11 @@ def create_app(
     FastAPI
         The application, ready for Uvicorn or a test client.
     """
-    if sessions is None:
-        sessions = SessionStore()
     queries = IndexQueries(index_path)
     # The table [team] is read once: changing it needs a restart (ADR-046).
     transport = Transport.of(settings.get(), port)
+    if sessions is None:
+        sessions = SessionStore(team=transport.team)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -183,7 +184,6 @@ def create_app(
     app.state.transport = transport
     app.state.sessions = sessions
     app.state.index_path = index_path
-    app.state.port = port
     app.state.authorizer = Authorizer(state, settings.get)
     # Who sessions act as now: the middleware's check and the session routes.
     app.state.principals = session_principals(state, index_path)

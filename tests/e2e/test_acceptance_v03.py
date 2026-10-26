@@ -334,7 +334,7 @@ def test_uc01_without_the_permission_to_write_the_stores_nothing_is_written(
         served.paths.index_file, "startup", minted_by=principal(state, "other")
     )
     page = tab.page
-    step = open_area(page, served, fragment_url(served.server.port, issued.token))
+    step = open_area(page, served, fragment_url(served.base, issued.token))
 
     # Act
     check_at_source(step).nth(0).get_by_role("button", name="Pobierz…").first.click()
@@ -422,7 +422,7 @@ def test_uc06_a_project_is_verified_downloaded_and_given_a_year_by_its_owner(
     issued = issue_one_time_token(
         served.paths.index_file, "startup", minted_by=principal(state, "owner")
     )
-    open_projects(page, served, fragment_url(served.server.port, issued.token), key)
+    open_projects(page, served, fragment_url(served.base, issued.token), key)
     downloads = len(jobs_of(page, "project_download"))
     refused = {
         kind: call(page, "POST", f"/projects/{key}/jobs", body)

@@ -19,6 +19,7 @@ from starlette.types import Scope
 
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER, LOCAL_ROLES, Principal
+from archiwista.auth.authorize import principal_for
 from archiwista.config import (
     AppSettings,
     BasemapConfig,
@@ -28,8 +29,11 @@ from archiwista.config import (
 )
 from archiwista.index.schema import initialize
 from archiwista.security import (
+    AGENT_SESSION_MAX_AGE,
     CSRF_HEADER,
     SESSION_COOKIE,
+    TEAM_IDLE_TIMEOUT,
+    TEAM_MAX_AGE,
     TOKEN_TTL,
     SessionStore,
     TokenKind,
@@ -41,6 +45,7 @@ from archiwista.security import (
     origin_rejection,
     redeem_one_time_token,
     revoke_agent_sessions,
+    session_principals,
     transport_rejection,
 )
 from archiwista.state import StateStore
@@ -376,6 +381,109 @@ def test_security_session_ends_after_idle_timeout(api: Api) -> None:
     assert kept.status_code == 200
     assert kept.json()["expires_at"] == "2026-10-20T11:00:00Z"
     assert_problem(ended, 401, "unauthorized", "session_required")
+
+
+def test_security_team_session_ends_after_8_idle_hours() -> None:
+    """In team mode each request extends a session by 8 hours, not by a day."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, session = store.create("anna", "user", method="password")
+
+    clock.now = START + timedelta(hours=7)
+    extended = store.extend(session_id)
+    clock.now = START + timedelta(hours=7) + TEAM_IDLE_TIMEOUT
+    ended = store.get(session_id)
+
+    assert session.expires_at == START + TEAM_IDLE_TIMEOUT
+    assert extended is not None
+    assert extended.expires_at == START + timedelta(hours=15)
+    assert extended.last_seen_at == START + timedelta(hours=7)
+    assert ended is None
+
+
+def test_security_team_session_ends_7_days_after_its_start() -> None:
+    """A team session used every 7 hours still ends a week after its start."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, _ = store.create("anna", "user", method="password")
+
+    answers = []
+    for step in range(1, 25):
+        clock.now = START + timedelta(hours=7 * step)
+        answers.append(store.extend(session_id))
+
+    kept = [answer for answer in answers if answer is not None]
+    assert len(kept) == 23 and answers[-1] is None
+    assert kept[-1].expires_at == START + TEAM_MAX_AGE == START + timedelta(days=7)
+
+
+def test_security_team_agent_session_ends_12_hours_after_its_start() -> None:
+    """An agent's session of team mode, used every hour, ends after 12 hours."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, session = store.create("anna", "agent", method="token")
+
+    answers = []
+    for hour in range(1, 13):
+        clock.now = START + timedelta(hours=hour)
+        answers.append(store.extend(session_id))
+
+    kept = [answer for answer in answers if answer is not None]
+    assert session.expires_at == START + TEAM_IDLE_TIMEOUT
+    assert len(kept) == 11 and answers[-1] is None
+    assert kept[-1].expires_at == START + AGENT_SESSION_MAX_AGE
+
+
+def test_security_revocation_ends_what_was_issued_before_it(tmp_path: Path) -> None:
+    """Revoking an account's sessions ends those issued before it, not later ones.
+
+    A one-time token issued before the revocation opens no session either,
+    even when it is exchanged after it.
+    """
+    index_path = tmp_path / "index.sqlite"
+    initialize(index_path)
+    state = StateStore(tmp_path / "state.sqlite")
+    state.add_user("anna", actor=LOCAL_OWNER)
+    anna = principal_for(state, "anna")
+    assert anna is not None
+    store = SessionStore(team=True)
+    _, before = store.create("anna", "user", method="password")
+    issued = issue_one_time_token(index_path, "agent", minted_by=anna)
+
+    state.revoke_sessions("anna", actor=LOCAL_OWNER)
+    _, after = store.create("anna", "user", method="password")
+    grant = redeem_one_time_token(index_path, issued.token)
+    assert grant is not None
+    _, agent = store.create(
+        grant.principal_id,
+        grant.kind,
+        method="token",
+        label=grant.label,
+        issued_at=grant.issued_at,
+        generation=grant.generation,
+    )
+    acting = session_principals(state, index_path)
+
+    assert acting(before) is None
+    assert acting(agent) is None
+    now = acting(after)
+    assert now is not None and (now.id, now.kind) == ("anna", "user")
+
+
+def test_security_new_session_ends_the_one_of_its_cookie(api: Api) -> None:
+    """An exchange carrying a session cookie ends that session (no fixation)."""
+    old_id, old_csrf = api.login()
+    issued = issue_one_time_token(api.index_path, "startup", minted_by=LOCAL_OWNER)
+
+    exchanged = api.client.post(
+        "/api/v1/session", json={"token": issued.token}, headers=cookies(old_id)
+    )
+    api.client.cookies.clear()
+    old = api.client.get("/api/v1/session", headers=cookies(old_id, old_csrf))
+
+    assert exchanged.status_code == 200
+    assert exchanged.cookies[SESSION_COOKIE] != old_id
+    assert_problem(old, 401, "unauthorized", "session_required")
 
 
 # CSRF, Origin and Sec-Fetch-Site ------------------------------------------

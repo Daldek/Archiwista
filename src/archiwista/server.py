@@ -64,9 +64,9 @@ from archiwista.security import (
     AGENT_SESSION_MAX_AGE,
     LOOPBACK_HOST,
     TOKEN_TTL,
-    SessionStore,
     TokenKind,
     TokenRedactionFilter,
+    Transport,
     fragment_url,
     issue_one_time_token,
     revoke_agent_sessions,
@@ -520,7 +520,6 @@ def serve_main(
                 state=state,
                 registry=registry,
                 areas_dir=paths.areas_dir,
-                sessions=SessionStore(),
                 jobs=jobs,
                 previews=previews,
                 on_redeem=redeemed,
@@ -529,7 +528,8 @@ def serve_main(
                 issued = issue_one_time_token(
                     paths.index_file, "startup", minted_by=LOCAL_OWNER
                 )
-                url = fragment_url(bound_port, issued.token)
+                transport: Transport = app.state.transport
+                url = fragment_url(transport.origin, issued.token)
                 started = message("serve.started", url=url, minutes=_minutes("startup"))
             else:
                 url = origin
@@ -616,9 +616,10 @@ def token_main(
         return 0
     # The owner at the terminal mints a token for an agent acting for them.
     issued = issue_one_time_token(paths.index_file, "agent", minted_by=LOCAL_OWNER)
+    transport = Transport.of(settings, settings.port if port is None else port)
     token = OneTimeToken(
         token=issued.token,
-        url=fragment_url(settings.port if port is None else port, issued.token),
+        url=fragment_url(transport.origin, issued.token),
         label=issued.label,
         expires_at=issued.expires_at,
     )

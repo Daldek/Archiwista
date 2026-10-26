@@ -100,14 +100,13 @@ class SessionState(BaseModel):
         )
     )
     label: str = Field(
-        description=(
-            "Label of the session, recorded with its jobs and permission changes."
-        )
+        description="Label of the session, recorded with its jobs and the action log."
     )
     expires_at: datetime = Field(
         description=(
             "End of the session unless used again: each request extends it by"
-            " 24 h; an agent's session ends 12 h after its start at the latest."
+            " 24 h, in team mode by 8 h and never past 7 days after its start;"
+            " an agent's session ends 12 h after its start at the latest."
         )
     )
 
@@ -187,7 +186,8 @@ def exchange_token(
     `__Host-archiwista_session` with `Secure`); every later request also
     sends `csrf_token` as `X-Archiwista-CSRF`, since the cookie alone never
     acts. An unknown, used, expired or revoked token, or one of an account
-    disabled since, answers `401 session_required`.
+    disabled since, answers `401 session_required`. A session cookie the
+    request carried ends: no session id lives on across a new session.
     """
     index_path: Path = request.app.state.index_path
     grant = redeem_one_time_token(index_path, body.token)
@@ -196,7 +196,18 @@ def exchange_token(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )
     sessions: SessionStore = request.app.state.sessions
-    session_id, session = sessions.create(grant)
+    transport: Transport = request.app.state.transport
+    session_id, session = sessions.create(
+        grant.principal_id,
+        grant.kind,
+        method="startup" if grant.token_kind == "startup" else "token",
+        label=grant.label,
+        issued_at=grant.issued_at,
+        generation=grant.generation,
+        client=getattr(request.state, "client", None),
+        user_agent=request.headers.get("user-agent"),
+        replaces=request.cookies.get(session_cookie_name(transport)),
+    )
     principals: Callable[[Session], Principal | None] = request.app.state.principals
     principal = principals(session)
     if principal is None:
@@ -204,7 +215,7 @@ def exchange_token(
         raise ApiError(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )
-    set_session_cookie(response, session_id, request.app.state.transport)
+    set_session_cookie(response, session_id, transport)
     on_redeem(request, grant.token_kind)
     return NewSession(
         **_state(session, principal, authorizer(request)).model_dump(),
@@ -257,10 +268,10 @@ def issue_token(
     issued = issue_one_time_token(
         request.app.state.index_path, "agent", minted_by=principal
     )
-    port: int = request.app.state.port
+    transport: Transport = request.app.state.transport
     return OneTimeToken(
         token=issued.token,
-        url=fragment_url(port, issued.token),
+        url=fragment_url(transport.origin, issued.token),
         label=issued.label,
         expires_at=issued.expires_at,
     )

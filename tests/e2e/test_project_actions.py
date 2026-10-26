@@ -352,9 +352,7 @@ def test_a_person_the_project_is_shared_with_sees_every_change_disabled_with_why
     page = tab.page
 
     # Act
-    open_projects(
-        page, team.served, fragment_url(team.served.server.port, issued.token), None
-    )
+    open_projects(page, team.served, fragment_url(team.served.base, issued.token), None)
 
     # Assert: only the shared project; no new project for her.
     rows = page.locator(".projects-table tbody tr")

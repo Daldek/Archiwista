@@ -60,6 +60,13 @@ command-line interface may change.
   `archiwista users add ID --role admin` and `archiwista users password ID`);
   `archiwista doctor` names those administrators, reading the state database
   without creating or upgrading it.
+- Sessions of team mode (v0.4, ADR-046): a session ends after 8 hours without
+  requests and 7 days after its start at the latest (local mode keeps a day without
+  requests; an agent's session ends 12 hours after its start in both modes). Setting
+  a password or ending an account's sessions also ends the sessions of one-time tokens
+  issued before, even when they are exchanged later, and a new session ends the one
+  whose cookie the request carried. In team mode `POST /session/tokens` and
+  `archiwista token` give addresses of the team's origin.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

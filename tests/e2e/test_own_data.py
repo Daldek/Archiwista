@@ -409,7 +409,7 @@ def test_data_dir_change_admin_only(
         context = chromium.new_context(locale="pl-PL", timezone_id="Europe/Warsaw")
         try:
             person = context.new_page()
-            person.goto(fragment_url(own_server.served.server.port, issued.token))
+            person.goto(fragment_url(own_server.served.base, issued.token))
             expect(person.get_by_role("navigation", name="Widoki")).to_be_visible()
             person.goto(
                 f"{own_server.served.base}/?view=projects&project={OTHER_PROJECT}"
