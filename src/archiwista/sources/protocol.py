@@ -4,9 +4,10 @@ A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
 version of a slot, their parts, coordinate operations, link confirmation,
-sheet grids, the default store root and the producer's commands with the
-availability at the source are optional capabilities: a producer without them
-still satisfies ``SourceAdapter``.
+sheet grids, the default store root, the producer's commands with the
+availability at the source and the changes of a project's manifest are
+optional capabilities: a producer without them still satisfies
+``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping
@@ -375,4 +376,47 @@ class ActionAdapter(Protocol):
         ValueError
             ``path`` is not the place of a file of the producer's store.
         """
+        ...
+
+
+@runtime_checkable
+class ProjectActionAdapter(Protocol):
+    """Optional capability: change a project's manifest (SPEC 4.7, 9.2; ADR-039).
+
+    Create a project bound to a store, add a task (a data command of the
+    producer's catalog with its options) and remove one. Each call is the
+    producer's own: it writes the manifest under the producer's lock and
+    refuses what the producer's command line refuses, as ``ProducerError``
+    with the producer's code, text and ``details.option``. None uses the
+    network or writes the store; the store's files of a removed task stay.
+    """
+
+    def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
+        """Create the project's manifest in ``directory`` for the store at ``root``.
+
+        ``root`` is the configured store's directory, never the producer's
+        default root. ``relative`` writes it relative to the project directory
+        (a share mounted under other paths on other computers, SPEC 4.6 point
+        7), else as the absolute path. A missing ``directory`` is created; a
+        project that exists already is refused and left as it is.
+        """
+        ...
+
+    def add_project_task(
+        self,
+        directory: Path,
+        *,
+        name: str,
+        command: str,
+        options: Mapping[str, object],
+    ) -> None:
+        """Add the task ``name``: ``command`` with ``options`` in their JSON form.
+
+        Checked without the network, as the producer checks the command before
+        its first request; nothing is downloaded.
+        """
+        ...
+
+    def remove_project_task(self, directory: Path, *, name: str) -> None:
+        """Remove the task ``name`` with its pins; its files stay in the store."""
         ...

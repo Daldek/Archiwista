@@ -13,11 +13,13 @@ without a configured store or a status (invalid manifest, unknown store,
 store unreachable) is read on every pass until it matches and is checked
 (``IndexWriter.project_stamps``). A project directory that cannot be read
 keeps the projects indexed under it, so a disconnected share does not empty
-the list.
+the list. ``record_project`` reads one project again the same way after
+Archiwista changed its manifest through the producer (ADR-039).
 """
 
 import os
 from collections.abc import Iterator, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -97,11 +99,7 @@ def scan_projects(
     manifest = PROJECT_MANIFESTS.get(adapter.producer)
     if manifest is None:
         return ProjectScanSummary()
-    roots = {
-        config.id: root
-        for config in stores
-        if (root := config.roots().get(adapter.producer)) is not None
-    }
+    roots = _roots(adapter.producer, stores)
     skipped = {
         os.path.normpath(root) for config in stores for root in config.roots().values()
     }
@@ -144,6 +142,59 @@ def scan_projects(
         removed=removed,
         unreadable_dirs=tuple(unreadable),
     )
+
+
+def record_project(
+    adapter: SourceAdapter,
+    writer: IndexWriter,
+    directory: Path,
+    *,
+    stores: Sequence[StoreConfig],
+) -> str:
+    """Read one project again and record it as a scan would; return its key.
+
+    For a manifest Archiwista just changed through the producer: the project
+    shows the change at once, and the next scan finds the stamp of the manifest
+    it read (taken before the read, so a change in between is read again).
+
+    Parameters
+    ----------
+    adapter : SourceAdapter
+        The producer of the project (``project_status``, falling back to
+        ``read_project``).
+    writer : IndexWriter
+        Writer of the local index.
+    directory : Path
+        The project directory as discovery names it: below a configured
+        project directory, without resolving symbolic links.
+    stores : Sequence[StoreConfig]
+        All configured stores: the manifest's store is matched to one of them
+        by path or alias.
+
+    Returns
+    -------
+    str
+        The project's key (``ProjectRef.key``), kept when it was indexed.
+    """
+    manifest = PROJECT_MANIFESTS.get(adapter.producer)
+    stamp = ManifestStamp(None, None)
+    if manifest is not None:
+        with suppress(OSError):
+            status = os.stat(directory / manifest)
+            stamp = ManifestStamp(status.st_mtime_ns, status.st_size)
+    info = _read(adapter, directory)
+    roots = _roots(adapter.producer, stores)
+    store = _match_store(info, stores, roots) if info.problem is None else None
+    return writer.write_project(info, store=store, stamp=stamp)
+
+
+def _roots(producer: str, stores: Sequence[StoreConfig]) -> dict[str, Path]:
+    """Return each configured store's directory of ``producer`` by store id."""
+    return {
+        config.id: root
+        for config in stores
+        if (root := config.roots().get(producer)) is not None
+    }
 
 
 def _discover(

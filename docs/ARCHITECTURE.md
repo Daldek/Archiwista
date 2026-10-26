@@ -32,11 +32,13 @@ accounts and permissions that are not rebuildable (A-ADR-029).
 **The producer's store is read-only.** Scan, card, preview, footprints,
 link confirmation and project status write nothing to it.
 `tests/integration/test_read_only_store.py` and the preview security tests
-guard this boundary. The exception concerning projects:
+guard this boundary. The exceptions concerning projects:
 `owndata/snapshots.py:make_snapshot` writes, on the command of a person
 with `project.write`, a full snapshot of a file in `<data folder>/.wersje/`
 (`archiwista-snapshot/1` in `migawka.json`); it does not change the manifest.
-The index, preview cache, areas and jobs remain strictly local.
+On the command of the same person the producer's own calls create a project's
+manifest and add or remove its tasks (`services/projects.py`, ADR-039); they
+write no store. The index, preview cache, areas and jobs remain strictly local.
 
 **Producers through the public API, in adapters.** Knowledge of the store
 layout belongs to the producer (A-ADR-014). Archiwista does not walk the `data/` tree
@@ -120,7 +122,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 |---|---|---|
 | `services/problems.py` | a problem with a Polish description and a repair instruction | `Problem`, `explain`, `KNOWN_PROBLEMS` |
 | `services/stores.py` | store state for the "Magazyn" (Store) view | `store_summary`, `StoreSummary`, `issue_problem` |
-| `services/projects.py` | project card and live producer status | `project_detail`, `ProjectDetail`, `project_problems`, `project_status` |
+| `services/projects.py` | project card, live producer status and the changes of a manifest through its producer (ADR-039): a new project where a scan finds it, bound to a configured store, and a task added or removed for whoever has `project.write`, recorded in the index at once | `project_detail`, `ProjectDetail`, `project_problems`, `project_status`, `create_project`, `add_project_task`, `remove_project_task`, `project_actions` |
 | `services/access.py` | accounts, groups and project access — for HTTP and the CLI | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project` |
 | `services/owndata.py` | folder checking and project file problems | `set_data_dir`, `folder_check`, `folder_problems`, `file_problems` |
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
@@ -143,7 +145,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `index/writer.py` | writing the index from source interface types (never from Kartograf objects) | `IndexWriter` |
 | `index/queries.py` | catalog, map, products, own data and snapshots, projects, state | `IndexQueries` |
 | `index/scanner.py` | store scan and view refresh | `scan_store`, `refresh_view`, `ScanProgress`, `ScanNotice`, `ScanSummary`, `SegmentScan`, `BATCH_ENTRIES`, `BATCH_SECONDS`, `FOOTPRINT_THREADS`, `REFRESH_VIEW_MAX_UNITS` |
-| `index/projects.py` | discovering and indexing project manifests | `scan_projects`, `ProjectScanSummary`, `PROJECT_MANIFESTS`, `MAX_PROJECT_DEPTH` |
+| `index/projects.py` | discovering and indexing project manifests; one project read again after Archiwista changed it | `scan_projects`, `record_project`, `ProjectScanSummary`, `PROJECT_MANIFESTS`, `MAX_PROJECT_DEPTH` |
 | `index/coverage.py` | local coverage in a planar coordinate system | `measure_coverage`, `planar_crs`, `PLANAR_CRS`, `CoverageShape`, `CoverageMeasure` |
 | `index/geometry.py` | helper GeoJSON functions in WGS84 | `polygon_bounds`, `is_box`, `box_geometry`, `require_wgs84_area`, `require_wgs84_bbox` |
 | `index/types.py` | index query and response types, limits | `SlotQuery`, `MapQuery`, `SlotPage`, `SlotDetail`, `VersionDetail`, `FootprintPage`, `IndexStatus`, `StoreIndexState`, `StoreFreshness`, `AreaRecord`, `SlotUnit`, `ScanPass`, `BatchResult`, `PassSummary`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`, `MAP_FOOTPRINT_LIMIT`, `MAX_GRID_COLUMNS` |
@@ -183,12 +185,12 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities, the producer's commands as data, the availability at the source, the plan of a run and the run with the scope that reads its files again among them (`ActionAdapter`, ADR-034, ADR-035, ADR-036, ADR-037) | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `ActionAdapter`, `CoordinateTransformer` |
+| `sources/protocol.py` | adapter protocols (`runtime_checkable`): required and optional capabilities, the producer's commands as data, the availability at the source, the plan of a run and the run with the scope that reads its files again among them (`ActionAdapter`, ADR-034, ADR-035, ADR-036, ADR-037), the changes of a project's manifest (`ProjectActionAdapter`, ADR-039) | `SourceAdapter`, `SourceFactory`, `SegmentDescriptionAdapter`, `SegmentedAdapter`, `CurrentVersionAdapter`, `PartitionedAdapter`, `GeoAdapter`, `LinkCheckAdapter`, `SheetGridAdapter`, `DefaultRootAdapter`, `ActionAdapter`, `ProjectActionAdapter`, `CoordinateTransformer` |
 | `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `EntryMeta`, `Footprint`, `ProjectInfo`, `ProjectTask`, `ProjectPin`, `SheetGrid`, `SourceStatus`, `CommandInfo`, `CommandOption`, `CommandChoice`, `CommandCall`, `OptionType`, `PathRole`, `CommandWrites`, `AvailabilityReport` (with `to_json`, `from_json`), `AvailabilityArea`, `AvailabilityCombination`, `AvailabilitySheet`, `AvailabilityCampaign`, `AvailabilityFailure`, `AvailabilityNotice`, `ActionPlan` (with `to_json`, `from_json`, `counts`, `todo`, `size_bytes`, `size_complete`), `PlanEntry`, `PlanStatus`, `PLAN_STATUSES`, `PLAN_TODO`, `ActionResult` (with `failed`), `ActionFile`, `ActionItem`, `ActionProgress`, `FileStatus`, `ItemStatus`, `RunStatus`, `FILE_STATUSES` |
 | `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the default root of a producer that has one (ADR-033) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
 | `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities | `KartografAdapter`, `UNIT_CACHE_FILE` |
-| `adapter/kartograf/actions.py` | Kartograf's commands as producer-neutral ones (ADR-034): the catalog of `list_commands` and `command_schema` (the options of a call without the store root and the flags of a run), `parse_command`, `validate_command` (`root=` for a command on a store, never the default root) and `format_command`; a refusal as Kartograf's `error_report` in the call's language; `check_availability` with Archiwista's own `MetadataCache` (`metadata.db` in the adapter's cache directory, never `cache=True`) and the area as the envelope of its polygon in EPSG:2180 (EPSG:5514 for CZ alone) with `country` `pl`, `cz` or `auto` (ADR-035), its report converted to `AvailabilityReport`; `check_command` with `root=` and the same cache, its `kartograf-plan/1` converted to `ActionPlan` (no size: KC-3; a refused root is the plan's one `conflict`; ADR-036); `run_command` with `root=`, the same cache and a kept plan as `update="upgrade", plan=…`, its `kartograf-download/1` read as `ActionResult` (`files[]` below the root; a plain or outside file is a `BrokenContractError`), `DownloadProgress` counting units, and the scan scope of a standard path, `<segment>` and `<slot directory>/<stem>` (ADR-037) | `catalog`, `parse`, `validate`, `format_line`, `call_error`, `availability`, `availability_products`, `area_request`, `check`, `run`, `scope`, `BESIDE_OPTIONS`, `METADATA_CACHE_FILE`, `AVAILABILITY_COMMAND` |
+| `adapter/kartograf/actions.py` | Kartograf's commands as producer-neutral ones (ADR-034): the catalog of `list_commands` and `command_schema` (the options of a call without the store root and the flags of a run), `parse_command`, `validate_command` (`root=` for a command on a store, never the default root) and `format_command`; a refusal as Kartograf's `error_report` in the call's language; `check_availability` with Archiwista's own `MetadataCache` (`metadata.db` in the adapter's cache directory, never `cache=True`) and the area as the envelope of its polygon in EPSG:2180 (EPSG:5514 for CZ alone) with `country` `pl`, `cz` or `auto` (ADR-035), its report converted to `AvailabilityReport`; `check_command` with `root=` and the same cache, its `kartograf-plan/1` converted to `ActionPlan` (no size: KC-3; a refused root is the plan's one `conflict`; ADR-036); `run_command` with `root=`, the same cache and a kept plan as `update="upgrade", plan=…`, its `kartograf-download/1` read as `ActionResult` (`files[]` below the root; a plain or outside file is a `BrokenContractError`), `DownloadProgress` counting units, and the scan scope of a standard path, `<segment>` and `<slot directory>/<stem>` (ADR-037); `init_project` with `root=` the configured store (from the working directory when it is written relative), `add_project_task` after `validate_command` on the project's store (the box of the JSON form as one `BBox`) and `remove_project_task` (ADR-039) | `catalog`, `parse`, `validate`, `format_line`, `call_error`, `availability`, `availability_products`, `area_request`, `check`, `run`, `scope`, `create_project`, `add_task`, `remove_task`, `BESIDE_OPTIONS`, `METADATA_CACHE_FILE`, `AVAILABILITY_COMMAND` |
 | `adapter/kartograf/marker.py` | judges the store marker by file name and schema, no import of Kartograf (ADR-031): a marker of `kartograf-store/1`, a marker of another schema, the marker of another tool, no marker with or without a layout | `refusal`, `Refusal`, `MARKER`, `MARKER_SCHEMA`, `OTHER_MARKERS` |
 | `adapter/kartograf/unit_cache.py` | local cache of unit footprints (TERYT, KU, SM5) for `file_footprint` | `UnitBBoxCache` |
 | `sources/markers.py` | file names of the producers' store markers (DEV-19.12): an adapter refuses a foreign store by the file name alone, importing no other producer | `STORE_MARKERS`, `foreign_markers` |
@@ -360,7 +362,8 @@ one job writing a store's index (`INDEX_JOB_KINDS`: `scan`,
 process, e.g. `archiwista reindex` (`JobConflictError` → `409 conflict`).
 Besides the scan write thread, the index is written by: the supervisor (`jobs`, `job_events`,
 `IndexWriter.sync_stores`), the server (`refresh_view` and `write_area`
-in the area routes, `session_tokens`) and the other jobs in worker
+in the area routes, `record_project` after a change of a manifest,
+`session_tokens`) and the other jobs in worker
 processes — `footprints` (`write_footprints`) and `link_check`
 (`record_issue`, `clear_issue`).
 
@@ -381,7 +384,8 @@ the source. `consistent_sqlite_read` handles three WAL/journal states.
 The local location is determined by `AppPaths.default()` through `platformdirs` (Linux:
 `~/.config/archiwista/` and `~/.local/share/archiwista/`). Apart from these,
 Archiwista writes **only** snapshots in the project directory, on the command
-of a person with `project.write`; the store remains unchanged.
+of a person with `project.write`, and the same person has the producer write a
+project's manifest (ADR-039); the store remains unchanged.
 
 | Path (`AppPaths`) | Contents | Rebuildable | Who writes |
 |---|---|---|---|
@@ -1181,8 +1185,10 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   `Authorizer.require(principal, "store.write")` (`store_writer` or
   `store_write_for_all`) before a `download` exists, for the API, the CLI and an
   agent token alike. The source interface has the optional capability
-  `ActionAdapter` (ADR-034): `commands`, `validate`, `format`, `check` and `run`;
-  the project operations of the SPEC 5.3 table are still missing.
+  `ActionAdapter` (ADR-034): `commands`, `validate`, `format`, `check` and `run`,
+  and the capability `ProjectActionAdapter` (ADR-039) creates a project and adds
+  or removes its tasks; the jobs of a project (download with pinning, repin,
+  check, verify) are still missing.
 - **Team mode (v0.4, A-ADR-013).** The model is ready: `PrincipalKind`
   `user`, `principal_for`, accounts and groups in `state.sqlite`, roles read on
   every request, `permission_log` with the kind of actor and the session. Missing are

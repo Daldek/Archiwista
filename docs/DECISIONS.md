@@ -62,6 +62,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 
 ---
 

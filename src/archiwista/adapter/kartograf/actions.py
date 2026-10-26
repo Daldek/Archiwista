@@ -21,12 +21,15 @@ configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
 cache, its ``kartograf-plan/1`` read as the producer-neutral ``ActionPlan``.
 ``run_command`` runs it (A5, ADR-037): ``root=``, Archiwista's cache, the
 kept plan back as ``update="upgrade", plan=…``, and ``kartograf-download/1``
-read as the producer-neutral ``ActionResult``.
+read as the producer-neutral ``ActionResult``. ``init_project``,
+``add_project_task`` and ``remove_project_task`` change a project's manifest
+(A7, ADR-039): the store root of a new project is the configured store's, and
+the options of a task are checked as a call of its command first.
 """
 
 import inspect
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -39,14 +42,18 @@ from kartograf import (
     MetadataCache,
     PlanItem,
     UpdatePlan,
+    add_project_task,
     check_availability,
     check_command,
     command_schema,
     error_report,
     format_command,
+    init_project,
     list_commands,
+    open_project,
     parse_command,
     pinned_transform,
+    remove_project_task,
     run_command,
     validate_command,
 )
@@ -128,6 +135,10 @@ _UNIT_NAMES = frozenset(
         "campaign",
     }
 )
+# Kartograf's commands of the changes of a project: their hints and examples.
+_PROJECT_INIT = "project init"
+_PROJECT_ADD = "project add"
+_PROJECT_REMOVE = "project remove"
 
 
 def catalog() -> tuple[CommandInfo, ...]:
@@ -403,6 +414,96 @@ def scope(path: str) -> ScanScope:
     return ScanScope(
         segment=f"{product}/{variant}", units=("/".join((*hierarchy, stem)),)
     )
+
+
+def create_project(directory: Path, *, root: Path, relative: bool) -> None:
+    """Create a project with ``init_project``, its store the configured ``root``.
+
+    Kartograf writes a ``root`` given relative to the working directory relative
+    to the project directory, and an absolute one as it is: a relative root goes
+    as the path from the working directory, or as the absolute path where there
+    is none (another drive, a working directory that is gone). The root is always
+    named, so Kartograf's default root never stands in.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused: the manifest exists already (nothing is changed) or
+        the store directory cannot be made.
+    """
+    given: str | Path = root
+    if relative:
+        with suppress(ValueError, OSError):
+            given = os.path.relpath(root)
+    try:
+        init_project(directory, root=given)
+    except KartografError as error:
+        raise call_error(
+            error, command=_PROJECT_INIT, given={"project_dir": str(directory)}
+        ) from error
+
+
+def add_task(
+    directory: Path, *, name: str, command: str, options: Mapping[str, object]
+) -> None:
+    """Add a task with ``add_project_task``; its options are checked as a call first.
+
+    ``validate`` checks the options in their JSON form as a call of the command on
+    the project's store, as ``kartograf project add`` reads them (a refusal names
+    the command's own example); then ``add_project_task`` gets the library
+    arguments, in which a box (``bbox`` with ``bbox_crs``) is one ``BBox``, and
+    writes the options back in their JSON form. Nothing uses the network.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused: an invalid manifest, a missing store directory, an
+        option of another command or an invalid choice (``details.option``), an
+        invalid or taken name, no data command.
+    """
+    given = {"name": name, "command": command, "options": dict(options)}
+    try:
+        project = open_project(directory)
+    except KartografError as error:
+        raise call_error(error, command=_PROJECT_ADD, given=given) from error
+    validate(command, options, root=project.root)
+    try:
+        add_project_task(
+            directory, name=name, command=command, options=_task_arguments(options)
+        )
+    except KartografError as error:
+        raise call_error(error, command=_PROJECT_ADD, given=given) from error
+
+
+def remove_task(directory: Path, *, name: str) -> None:
+    """Remove a task with its pins (``remove_project_task``); its files stay.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf refused: an unknown task (``details.option`` ``name``), a
+        missing store directory, the task changed by another process meanwhile.
+    """
+    try:
+        remove_project_task(directory, name=name)
+    except KartografError as error:
+        raise call_error(
+            error, command=_PROJECT_REMOVE, given={"name": name}
+        ) from error
+
+
+def _task_arguments(options: Mapping[str, object]) -> dict[str, object]:
+    """Return the library arguments of a task's options, checked as a call.
+
+    Only a box differs from its JSON form: ``bbox`` (four numbers) with its
+    ``bbox_crs`` is one ``BBox``, as Kartograf's command line reads it
+    (``options_to_json`` writes it back).
+    """
+    arguments = dict(options)
+    if "bbox" in arguments and "bbox_crs" in arguments:
+        x0, y0, x1, y1 = cast(Sequence[float], arguments.pop("bbox"))
+        arguments["bbox"] = BBox(x0, y0, x1, y1, str(arguments.pop("bbox_crs")))
+    return arguments
 
 
 def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:

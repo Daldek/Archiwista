@@ -14,6 +14,7 @@ the request that is a file path: the producer would open that file in this
 process (SPEC 10.1). Nothing here uses the network or writes.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from archiwista.config import AppSettings
@@ -147,16 +148,29 @@ def checked_call(
     ProducerError
         The producer refused the call.
     """
+    refuse_path_options(info, call.options)
+    root = store_root(settings, store, call) if info.store else None
+    checked = adapter.validate(call.command, call.options, root=root)
+    return CommandCall(call.producer, call.command, checked)
+
+
+def refuse_path_options(info: CommandInfo, options: Mapping[str, object]) -> None:
+    """Refuse an option of the command ``info`` that is a file path.
+
+    The producer would open the file in this process (SPEC 10.1).
+
+    Raises
+    ------
+    PathOutsideRootError
+        An option with a ``path_role`` is given (``details.option``).
+    """
     for option in info.options:
-        if option.path_role is not None and option.name in call.options:
+        if option.path_role is not None and option.name in options:
             raise PathOutsideRootError(
                 message("command.path_option", option=option.name),
                 hint=message("command.path_option_hint"),
                 details={"option": option.name},
             )
-    root = store_root(settings, store, call) if info.store else None
-    checked = adapter.validate(call.command, call.options, root=root)
-    return CommandCall(call.producer, call.command, checked)
 
 
 def format_command(registry: PluginRegistry, call: CommandCall) -> str:

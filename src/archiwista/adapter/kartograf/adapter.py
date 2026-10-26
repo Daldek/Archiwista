@@ -97,10 +97,12 @@ class KartografAdapter:
     -----
     Besides ``SourceAdapter`` it implements every optional capability:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
-    ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter`` and
+    ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter``,
     ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
-    ``actions.py``). All methods may run in several threads at once; one
-    iterator of ``iter_entries`` belongs to one thread.
+    ``actions.py``) and ``ProjectActionAdapter`` (``init_project``,
+    ``add_project_task``, ``remove_project_task``, ``actions.py``). All methods
+    may run in several threads at once; one iterator of ``iter_entries``
+    belongs to one thread.
     """
 
     producer = PRODUCER
@@ -565,6 +567,25 @@ class KartografAdapter:
     def scope(self, path: str) -> ScanScope:
         """Return the segment and the unit that read a standard path again."""
         return actions.scope(path)
+
+    def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
+        """Create a project with ``init_project``, ``root=`` the configured store's."""
+        actions.create_project(directory, root=root, relative=relative)
+
+    def add_project_task(
+        self,
+        directory: Path,
+        *,
+        name: str,
+        command: str,
+        options: Mapping[str, object],
+    ) -> None:
+        """Add a task with ``add_project_task``, its options checked as a call first."""
+        actions.add_task(directory, name=name, command=command, options=options)
+
+    def remove_project_task(self, directory: Path, *, name: str) -> None:
+        """Remove a task with ``remove_project_task``; its store files stay."""
+        actions.remove_task(directory, name=name)
 
     def _state(
         self,
