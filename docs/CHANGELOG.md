@@ -203,7 +203,11 @@ command-line interface may change.
   `too_many_downloads`, `Retry-After: 10`), and a download from its first byte is
   logged (`file.download` with `size_bytes`). A working file changed since its scan is
   `409 own_file_changed`, one its scan could not read and a snapshot that is not valid
-  `409 file_unreadable`, a file gone from the disk `404 missing_file`. A link of the
+  `409 file_unreadable`, a file gone from the disk `404 missing_file`. An own file and
+  a snapshot come only from a data folder that the rules of its scan let be read now:
+  one that leads out of its project's directory (a symbolic link put in its place) or
+  lies in a store is `409 own_folder_invalid`, and another folder than the one the
+  last scan read `409 own_file_changed`. A link of the
   interface passes without `X-Archiwista-CSRF` (`Sec-Fetch-Site` `same-origin` or
   `none`); every other request keeps the header.
 - "Pobierz plik" (v0.4, ADR-047): next to a version's title in the file card it saves

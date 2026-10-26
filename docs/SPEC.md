@@ -3320,7 +3320,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /projects/{project}/files/{file_id}/snapshot-plan`, `POST …/snapshots` | plan and snapshot requiring `project.write` |
 | `GET /projects/{project}/files/{file_id}/layers` | working file and snapshots as layers |
 | `GET`/`POST /projects/{project}/files/{file_id}/preview` and `…/snapshots/{label}/preview` | previews of own data and snapshots; analogous `preview.png`, `tiles`, `features`, `members` |
-| `GET /projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` | an own file or a file of a snapshot, as `GET …/versions/{version}/file` (`member`: one file of a set; a working file changed since its scan is `409 own_file_changed`), for those who can see the project (v0.4) |
+| `GET /projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` | an own file or a file of a snapshot, as `GET …/versions/{version}/file` (`member`: one file of a set; a working file changed since its scan is `409 own_file_changed`; only from a data folder the rules of its scan let be read now, else `409 own_folder_invalid`), for those who can see the project (v0.4) |
 | `POST /availability` | availability of an area for a product → background job; result: local state, source report, rows with labels; for IMGW datasets — published years with publication dates and the area's stations with coverage labels |
 | `GET /availability` | last report for an area and product (no network) |
 | `GET /commands` | catalog of producers' data commands (KB-1, IMGW-11) |

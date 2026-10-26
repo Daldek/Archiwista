@@ -8,8 +8,14 @@ root (a symbolic link leaving it is ``403 path_outside_root``), a working file
 unchanged since its scan (else ``409 own_file_changed``). A file the index
 lists but the disk has no more is ``404`` (reason ``missing_file``); a working
 file its scan could not read and a snapshot that is not valid are ``409``
-(reason ``file_unreadable``). The media type is the registered type of the
-file's format (``archiwista.formats``), else that of Python's own table (the
+(reason ``file_unreadable``). A working file and a snapshot come only from a
+data folder that may be read now (``services.owndata.folder_check``, the
+rules of every scan): a folder breaking them, e.g. one that leads out of its
+project's directory, is ``409`` (reason ``own_folder_invalid``), a missing
+one ``404 missing_file``, an unreadable one ``409 file_unreadable``, and a
+project whose data folder is another one than its scan read ``409
+own_file_changed``. The media type is the registered type of the file's
+format (``archiwista.formats``), else that of Python's own table (the
 system's tables call an ASCII grid a PGP key), else
 ``application/octet-stream``.
 
@@ -28,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from archiwista.auth import Principal
+from archiwista.config import AppPaths, AppSettings
 from archiwista.errors import (
     ConflictError,
     NotFoundError,
@@ -35,8 +42,8 @@ from archiwista.errors import (
     RateLimitedError,
 )
 from archiwista.formats import file_format
-from archiwista.index import OwnFileDetail
-from archiwista.messages import message
+from archiwista.index import IndexQueries, OwnFileDetail, ProjectRef
+from archiwista.messages import lookup, message
 from archiwista.previews.types import PreviewSource
 from archiwista.refs import (
     FileRef,
@@ -47,6 +54,7 @@ from archiwista.refs import (
     snapshot_files,
     version_ref,
 )
+from archiwista.services.owndata import folder_check
 
 FILE_DOWNLOADS_PER_PERSON = 2
 RETRY_AFTER_S = 10
@@ -106,7 +114,10 @@ def version_file(
 
 def own_file(
     resolver: ObjectResolver,
-    project: str,
+    queries: IndexQueries,
+    settings: AppSettings,
+    paths: AppPaths,
+    project: ProjectRef,
     detail: OwnFileDetail,
     *,
     principal: Principal,
@@ -116,6 +127,11 @@ def own_file(
 
     Parameters
     ----------
+    queries, settings, paths
+        What the project's data folder is checked against now
+        (``folder_check``).
+    project : ProjectRef
+        The project, one the principal sees.
     detail : OwnFileDetail
         The file as the index lists it for a principal who sees its project.
     member : str or None, optional
@@ -125,13 +141,19 @@ def own_file(
     Raises
     ------
     NotFoundError
-        A ``member`` the index does not list for it, or its file gone.
+        A ``member`` the index does not list for it, or its file or data
+        folder gone.
     OwnFileChangedError
-        It changed since its scan.
-    PathOutsideRootError, SourceUnavailableError, ConflictError
+        It changed since its scan, or the project's data folder is another
+        one now.
+    ConflictError
+        Its data folder breaks the rules of a scan (``own_folder_invalid``)
+        or it cannot be read (``file_unreadable``).
+    PathOutsideRootError, SourceUnavailableError
         As the module says.
     """
-    ref = FileRef(project, detail.file.path)
+    ref = FileRef(project.key, detail.file.path)
+    _require_folder(queries, settings, paths, project, detail)
     source = _resolved(resolver, format_ref(ref), principal)
     if member is None:
         return _download(source.paths[0], PurePosixPath(detail.file.path).name, ref)
@@ -147,7 +169,10 @@ def own_file(
 
 def snapshot_file(
     resolver: ObjectResolver,
-    project: str,
+    queries: IndexQueries,
+    settings: AppSettings,
+    paths: AppPaths,
+    project: ProjectRef,
     detail: OwnFileDetail,
     label: str,
     *,
@@ -158,6 +183,11 @@ def snapshot_file(
 
     Parameters
     ----------
+    queries, settings, paths
+        What the project's data folder is checked against now
+        (``folder_check``).
+    project : ProjectRef
+        The project, one the principal sees.
     detail : OwnFileDetail
         The working file as the index lists it for a principal who sees its
         project.
@@ -170,11 +200,15 @@ def snapshot_file(
     Raises
     ------
     NotFoundError
-        No snapshot ``label`` of the file, or no file ``member`` in it.
+        No snapshot ``label`` of the file, no file ``member`` in it, or the
+        data folder gone.
+    OwnFileChangedError
+        The project's data folder is another one than its scan read.
     PathOutsideRootError, ConflictError
         As the module says.
     """
-    ref = SnapshotRef(project, label, detail.file.path)
+    ref = SnapshotRef(project.key, label, detail.file.path)
+    _require_folder(queries, settings, paths, project, detail)
     source = _resolved(resolver, format_ref(ref), principal)
     record = next(item for item in detail.snapshots if item.label == label)
     names = [name for name, _ in snapshot_files(record)]
@@ -225,6 +259,38 @@ class FileStreams:
                     del self._open[person]
 
         return end
+
+
+def _require_folder(
+    queries: IndexQueries,
+    settings: AppSettings,
+    paths: AppPaths,
+    project: ProjectRef,
+    detail: OwnFileDetail,
+) -> None:
+    """Refuse a file of a data folder that may not be read now (see the module).
+
+    The folder is checked as a scan checks it (``folder_check``), so a folder
+    replaced by a symbolic link out of its project is refused before any of
+    its files is opened; only the folder the index lists the file in is read.
+    """
+    folder = folder_check(settings, queries, paths, project.access_key)
+    ref = FileRef(project.key, detail.file.path)
+    shown = format_ref(ref)
+    if folder.state == "missing":
+        text = message("api.file_missing", ref=shown)
+        raise NotFoundError(text, reason="missing_file")
+    if folder.state == "invalid":
+        why = lookup(f"own.folder_reason_{folder.reason}", str(folder.reason))
+        text = message(
+            "api.file_folder_invalid", ref=shown, path=folder.path, reason=why
+        )
+        raise ConflictError(text, reason="own_folder_invalid")
+    if folder.state != "ok":
+        text = message("api.file_folder_unreadable", ref=shown, path=folder.path)
+        raise ConflictError(text, reason="file_unreadable")
+    if str(folder.path) != detail.folder.path:
+        raise own_file_changed(ref)
 
 
 def _resolved(

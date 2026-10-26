@@ -166,6 +166,20 @@ MESSAGES = {
             " migawka jest nieważna."
         ),
     ),
+    "file_folder_invalid": Text(
+        'The file of "{ref}" cannot be downloaded: its data folder {path} {reason}.',
+        "Nie można pobrać pliku „{ref}”: jego folder danych {path} {reason}.",
+    ),
+    "file_folder_unreadable": Text(
+        (
+            'The file of "{ref}" cannot be downloaded: its data folder {path} cannot'
+            " be read."
+        ),
+        (
+            "Nie można pobrać pliku „{ref}”: nie można odczytać jego folderu danych"
+            " {path}."
+        ),
+    ),
     "too_many_downloads": Text(
         (
             "The limit of downloads at once per person ({limit}) is reached: try again"

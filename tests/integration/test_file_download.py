@@ -159,6 +159,40 @@ def test_own_files_their_sets_and_snapshots_for_those_who_see_the_project(
     assert_problem(changed, 409, "conflict", "own_file_changed")
 
 
+def test_a_data_folder_led_out_of_its_project_gives_no_file(tmp_path: Path) -> None:
+    """A data folder replaced by a symbolic link out of the project is not read.
+
+    The working file and its snapshot are those the scan indexed, now reached
+    through the link: the folder breaks its rule (``outside_project``), as
+    the next scan would find, so neither is sent.
+    """
+    with own_data_api(tmp_path, first=("tif_2180",), workers=1) as served:
+        # Arrange
+        project = served.first
+        root = project.root
+        raster = project.folder.file("tif_2180").path
+        snapshot = write_snapshot_fixture(
+            root, raster, created_at=datetime(2026, 10, 20, 12, tzinfo=UTC)
+        )
+        served.scan()
+        url = project.url(raster, "file")
+        snapshot_url = project.snapshot_url(raster, snapshot.label, "file")
+        before = fetch(served.owner, url)
+        outside = tmp_path / "poza-projektu"
+        root.rename(outside)
+        root.symlink_to(outside, target_is_directory=True)
+
+        # Act
+        refused = [fetch(served.owner, address) for address in (url, snapshot_url)]
+        headers = fetch(served.owner, url, method="HEAD")
+
+    # Assert
+    assert before.status_code == 200
+    for answer in refused:
+        assert_problem(answer, 409, "conflict", "own_folder_invalid")
+    assert headers.status_code == 409
+
+
 def test_only_a_link_of_the_same_origin_goes_without_the_csrf_header(
     tmp_path: Path,
 ) -> None:
