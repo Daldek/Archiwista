@@ -617,6 +617,10 @@ those of SPEC 12; Kartograf's PROGRESS files the plan item size under "KH"):
 Planned 2026-10-26, after the author answered the mockup questions M5 and M11 (SPEC 16,
 user decisions 2026-10-26; SPEC 4.8.4, 6.5 i to k and m, 6.7, 6.8; A-ADR-021 erratum 4).
 Approval: open (DEV-17.4, the author's; D12 lists the choices M11 left to this part).
+**Status (2026-10-27): done.** I8.1 to I8.6 are built on `feature/kartograf-data-output`,
+each commit with the reduced gate and the scoped tests of its step; the last are I8.6
+commit 1 `474544f` (the route) and commit 2 `e6849a1` (the view, ADR-045 decision 13).
+PROGRESS Status lists every commit.
 It builds the read side of the station views of SPEC 13 "v0.5" on the routes of I6, on
 `feature/kartograf-data-output` as I6 and I7. Each commit passes the reduced gate of the
 author's decision of 2026-10-25 (ruff format, ruff check, mypy, `scripts/check-commits.sh`)
@@ -873,7 +877,8 @@ reaches the interface.
      rows in the Catalog list open it. *Acceptance:* (new)
      `tests/e2e/test_stations_compare.py` (both engines): two stations from the list give
      two panels with the same axis ticks; a selection zooms both and writes the address;
-     the facts equal the cards; a sixth station cannot be added.
+     the facts equal the cards; a sixth station cannot be added. (Built as planned; the
+     card also keeps the chart's range for the comparison, ADR-045 decision 13.)
 
 **Not in I8.** The archive badge of SPEC 4.8.4 and 9.2, the archives bar under the
 Timeline and the input archives of the card: they need the archives of a dataset's years
