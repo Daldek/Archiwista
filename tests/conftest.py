@@ -35,6 +35,7 @@ collect_ignore = (
         "integration/test_imgw_stations.py",
         "integration/test_series_labels.py",
         "integration/test_station_datasets_api.py",
+        "integration/test_station_series_api.py",
         "integration/test_station_timeline_api.py",
         "integration/test_stations_api.py",
         "integration/test_stations_cli.py",

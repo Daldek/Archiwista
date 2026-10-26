@@ -3151,7 +3151,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `503` without IMGWTools (ADR 0045 decision 6) |
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
-| `GET /stations/{code}/series` | chart data (`variable`, `from`, `to`, `max_points` ≤ 2,000, `version`): values or min./avg./max. in intervals, gaps as `null`, markers of IMGW aggregate sums and extremes; for display only |
+| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable —, `from`, `to`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); `gaps` the producer's gaps from the index cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400`) |
 | `GET /stations/compare` | 2–5 stations of one variable (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) on a common time axis |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
@@ -3487,19 +3487,37 @@ station; one of its variables and three of its 75 years shown)
 
 ```json
 {
-  "station": "149190310",
-  "variable": {"code": "Q", "unit": "m3/s"},
-  "file": {"path": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
-           "sha256": "…"},
-  "aggregation": {"kind": "min_mean_max", "bucket_days": 14},
-  "points": [
-    {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1},
-    {"t": "1981-06-02", "min": null, "mean": null, "max": null}
+  "store": "zespol",
+  "provider": "IMGW-PIB",
+  "code": "149190310",
+  "dataset": "pl.imgw.hydro_daily",
+  "kind": "hydro",
+  "time_unit": "day",
+  "series": "2026-08-31",
+  "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+  "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+  "sha256": "…",
+  "from": "1950-11-01",
+  "to": "2025-10-31",
+  "units": 27394,
+  "interval": 14,
+  "variables": [
+    {
+      "key": "Q", "variable": "Q", "unit": "m3/s",
+      "points": [
+        {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1},
+        {"t": "1981-06-03", "min": null, "mean": null, "max": null}
+      ],
+      "gaps": [{"from": "1981-06-02", "to": "1982-12-31", "units": 578}],
+      "markers": [
+        {"t": "1997-07-09", "kind": "max", "value": 412.0, "period": "annual", "end": "1997-07-10"}
+      ]
+    }
   ],
-  "markers": [
-    {"t": "1997-07-09", "kind": "annual_max", "value": 412.0, "source": "polr_Q_1997"}
-  ],
-  "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone."
+  "license": "IMGW-PIB",
+  "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+  "stale": false,
+  "stale_stores": []
 }
 ```
 

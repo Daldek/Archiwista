@@ -394,6 +394,7 @@ archiwista stations list --location none
 archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
+archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
 archiwista stations datasets
 ```
 
@@ -420,8 +421,14 @@ letters, or whose code begins with it. `stations timeline` is the Timeline of a 
 of the stations of one dataset (`--dataset` is required, the other options are those
 of `stations list`): under each station a line per variable with a character for
 each year of the range (`█` a value in every unit, `▒` with gaps, `·` without a
-value, `?` not known) and its label. Without IMGWTools each refuses with the repair
-command `pip install "archiwista[imgw]"`.
+value, `?` not known) and its label. `stations series` is the chart of one or two
+variables of a station's series (`--variable`, once or twice; `--dataset` when more
+than one series has them): the range with its days, each unit's value up to
+`--max-points` units (2000 by default) or else the least, mean and greatest value
+of intervals ("uproszczony, min./śr./maks. z 14 dni"), each variable's points with a
+value, its gaps and its markers (an accumulated sum, an extreme IMGW published);
+`--json` gives the points. Without IMGWTools each refuses with the repair command
+`pip install "archiwista[imgw]"`.
 
 ## Session
 

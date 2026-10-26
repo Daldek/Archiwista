@@ -1,11 +1,11 @@
 """Stations and the coverage of their series for people and agents (SPEC 9.2, 4.8.4).
 
 The query models of ``GET /stations``, ``/stations/timeline``,
-``/stations/{code}``, ``/stations/{code}/coverage`` and ``/map/stations``
-refuse unknown parameters, and ``archiwista stations`` builds its options
-from them. The index gives a coverage label as structure (`SeriesLabel`);
-the answers carry that structure beside its text, written here in the
-language of the context for the API and the command line alike.
+``/stations/{code}``, ``/stations/{code}/coverage``, ``/stations/{code}/series``
+and ``/map/stations`` refuse unknown parameters, and ``archiwista stations``
+builds its options from them. The index gives a coverage label as structure
+(`SeriesLabel`); the answers carry that structure beside its text, written
+here in the language of the context for the API and the command line alike.
 """
 
 import re
@@ -58,6 +58,11 @@ MIN_YEARS_PATTERN = r"^[^:\s]+:\d{1,4}$"
 # What a year of the Timeline shows (SPEC 6.7): a value in every unit, in
 # some, in none, or a year that is not known.
 type YearCell = Literal["full", "fraction", "none", "unknown"]
+# What a marker of a chart is (SPEC 6.7): an accumulated sum of the days before
+# it, or the least or greatest value of a half-year period as published.
+type MarkerKind = Literal["accumulated", "min", "max"]
+# The most points of each variable of a chart (SPEC 6.7, 9.2).
+MAX_CHART_POINTS = 2000
 
 _SHA256 = "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623"
 _SERIES_DIR = "series/versions/hydro_daily/2026-08-31_ab12cd34"
@@ -614,6 +619,78 @@ class StationDatasetsQuery(BaseModel):
     store: str | None = Field(
         default=None, description="Store id (/stores).", examples=["zespol"]
     )
+
+
+class StationChartQuery(BaseModel):
+    """The station, series, variables and range of ``GET /stations/{code}/series``.
+
+    ``from`` and ``to`` are read by these names (the fields ``start`` and
+    ``end``); unknown parameters are refused.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", validate_by_alias=True, validate_by_name=True
+    )
+
+    store: str | None = Field(
+        default=None, description="Store id (/stores).", examples=["zespol"]
+    )
+    provider: str | None = Field(
+        default=None,
+        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
+        examples=["IMGW-PIB"],
+    )
+    dataset: str | None = Field(
+        default=None,
+        description=(
+            "Dataset key (`pl.imgw.hydro_daily`); by default the one dataset whose"
+            " series of the station has every variable."
+        ),
+        examples=["pl.imgw.hydro_daily"],
+    )
+    variable: list[str] = Field(
+        min_length=1,
+        max_length=2,
+        description=(
+            "Repeatable, once or twice: a variable of the series (`Q`, `H`), each"
+            " with its points, gaps and markers."
+        ),
+        examples=[["Q"]],
+    )
+    start: date | None = Field(
+        default=None,
+        alias="from",
+        description="First day of the range; by default the series' first unit.",
+        examples=["1950-11-01"],
+    )
+    end: date | None = Field(
+        default=None,
+        alias="to",
+        description="Last day of the range; by default the series' last unit.",
+        examples=["2025-10-31"],
+    )
+    max_points: int = Field(
+        default=MAX_CHART_POINTS,
+        ge=1,
+        le=MAX_CHART_POINTS,
+        description=(
+            "The most points of a variable: a range of more units is given as the"
+            " least, mean and greatest value of intervals of equal length."
+        ),
+    )
+    version: str | None = Field(
+        default=None,
+        description=(
+            "The series version the chart must come from (its `series.json`,"
+            " relative to the store, as `series_version` of the card); by default"
+            " the index's current one, the only one whose gaps the index keeps."
+        ),
+    )
+
+    @field_validator("variable")
+    @classmethod
+    def _once_each(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(value))
 
 
 # Answers -------------------------------------------------------------------
@@ -1400,6 +1477,164 @@ class StationDatasets(IndexAnswer):
     def of(cls, found: Iterable[StationDataset], freshness: Mapping[str, Any]) -> Self:
         """Return the model of the datasets with station series."""
         return cls(items=[StationDatasetItem.of(item) for item in found], **freshness)
+
+
+@with_config(_examples({"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1}))
+class ChartPoint(TypedDict):
+    """A point of a chart: a unit, or an interval of units, and its values.
+
+    A record, not a model: a chart has up to 2,000 points a variable.
+    """
+
+    t: Annotated[date, Field(description="First day of the unit or interval.")]
+    min: Annotated[
+        float | None,
+        Field(
+            description=(
+                "The least value; `null` without one (the line breaks, never"
+                " interpolated). A unit's own value is its least, mean and"
+                " greatest."
+            )
+        ),
+    ]
+    mean: Annotated[float | None, Field(description="The mean of the values.")]
+    max: Annotated[float | None, Field(description="The greatest value.")]
+
+
+@with_config(
+    _examples(
+        {
+            "t": "1997-07-09",
+            "kind": "max",
+            "value": 412.0,
+            "period": "annual",
+            "end": "1997-07-10",
+        }
+    )
+)
+class ChartMarker(TypedDict):
+    """A value shown on its own: an accumulated sum, or a published extreme."""
+
+    t: Annotated[
+        date, Field(description="Its day; of an extreme, its first occurrence.")
+    ]
+    kind: Annotated[
+        MarkerKind,
+        Field(
+            description=(
+                "`accumulated`: a sum of the days before it, not a value of its"
+                " day; `min`, `max`: the least or greatest value of a half-year"
+                " period as the provider published it (SPEC 6.7)."
+            )
+        ),
+    ]
+    value: float
+    period: Annotated[
+        str | None,
+        Field(description="Of an extreme: `winter`, `summer` or `annual`."),
+    ]
+    end: Annotated[
+        date | None,
+        Field(description="Of an extreme: the day of its last occurrence."),
+    ]
+
+
+class ChartVariable(BaseModel):
+    """A variable of a chart: its points, the gaps of the range and its markers."""
+
+    key: str = Field(description="Key in the series index (`Q`).")
+    variable: str
+    unit: str = Field(description="Unit of its values, e.g. `m3/s`.")
+    points: list[ChartPoint] = Field(
+        description="One a unit, or one an interval of `interval` units, in order."
+    )
+    gaps: list[GapSpan] = Field(
+        description=(
+            "The producer's gaps within the range, cut at its ends: a band each,"
+            " also a gap shorter than an interval. A unit without a value outside"
+            " them is not known, not a gap."
+        )
+    )
+    markers: list[ChartMarker] = Field(
+        description="Accumulated sums and published extremes of the range, by day."
+    )
+
+
+class StationChart(IndexAnswer):
+    """A station's series as a chart, for display only (SPEC 6.7, 9.2)."""
+
+    model_config = _examples(
+        {
+            "store": "zespol",
+            "provider": "IMGW-PIB",
+            "code": "149190310",
+            "dataset": "pl.imgw.hydro_daily",
+            "kind": "hydro",
+            "time_unit": "day",
+            "series": "2026-08-31",
+            "series_version": f"{_SERIES_DIR}/series.json",
+            "file": f"{_SERIES_DIR}/stations/149190310.parquet",
+            "sha256": _SHA256,
+            "from": "1950-11-01",
+            "to": "2025-10-31",
+            "units": 27394,
+            "interval": 14,
+            "variables": [
+                {
+                    "key": "Q",
+                    "variable": "Q",
+                    "unit": "m3/s",
+                    "points": [
+                        {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1}
+                    ],
+                    "gaps": [_GAP_EXAMPLE],
+                    "markers": [
+                        {
+                            "t": "1997-07-09",
+                            "kind": "max",
+                            "value": 412.0,
+                            "period": "annual",
+                            "end": "1997-07-10",
+                        }
+                    ],
+                }
+            ],
+            "license": "IMGW-PIB",
+            "attribution": _SERIES_EXAMPLE["attribution"],
+            **_FRESH,
+        },
+        aliased=True,
+    )
+
+    store: str = Field(description="Store id.")
+    provider: str
+    code: str = Field(description="Station code, as text.")
+    dataset: str = Field(description="Dataset key of the series.")
+    kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
+    time_unit: TimeUnit = Field(description="Unit of the series: `day` or `month`.")
+    series: str | None = Field(description="Label of the series version.")
+    series_version: str = Field(
+        description="The version's `series.json`, relative to the store."
+    )
+    file: str = Field(description="The station's series file, relative to the store.")
+    sha256: str | None = Field(description="SHA-256 of the station's series file.")
+    first: date | None = Field(
+        alias="from", description="First day of the range; `null`: an empty series."
+    )
+    last: date | None = Field(alias="to", description="Last day of the range.")
+    units: int = Field(description="Units of the range (days or months).")
+    interval: int = Field(
+        description=(
+            "Units of a point: 1, each unit's value; more, the least, mean and"
+            " greatest value of each interval (a simplified chart, its note"
+            " naming the interval's length)."
+        )
+    )
+    variables: list[ChartVariable]
+    license: str | None = Field(description="Licence of the series version.")
+    attribution: str | None = Field(
+        description="The formula the source requires with its data (IMGW §5)."
+    )
 
 
 type _StationKey = tuple[str, str, str]

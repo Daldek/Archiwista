@@ -10,17 +10,21 @@ coverage filters and never placed in an area (SPEC 4.3 point 3).
 dataset chip of the map), ``GET /stations/timeline`` is a page of the
 stations of one dataset with each variable year by year (the Timeline tab of
 the Catalog), ``GET /stations/{code}`` is a station's card,
-``GET /stations/{code}/coverage`` its variables year by year (the Timeline)
-and ``GET /map/stations`` the located stations of a map view or their grid.
-The fixed paths are declared before ``/stations/{code}``, which would else
-read them as a code. Without ``year_type`` the labels number the years as the
-settings remember for the data's family (``year_types``, P15), a list of both
-families as for hydro data. Everything is read from the index, never from a
-series file, and only while the source of the stations is available: else
-``503`` (SPEC 5.8). ``archiwista stations`` calls the same functions without
-HTTP.
+``GET /stations/{code}/coverage`` its variables year by year (the Timeline),
+``GET /stations/{code}/series`` the values of one or two variables of a
+series as a chart and ``GET /map/stations`` the located stations of a map
+view or their grid. The fixed paths are declared before ``/stations/{code}``,
+which would else read them as a code. Without ``year_type`` the labels
+number the years as the settings remember for the data's family
+(``year_types``, P15), a list of both families as for hydro data. Everything
+is read from the index, never from a series file, except the values of a
+chart, which the producer reads (``SeriesValuesAdapter``); and only while the
+source of the stations is available: else ``503`` (SPEC 5.8).
+``archiwista stations`` calls the same functions without HTTP.
 """
 
+from collections.abc import Sequence
+from pathlib import Path as FilePath
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -30,6 +34,8 @@ from archiwista.api.errors import problem_responses
 from archiwista.api.models import AreaRef, staleness
 from archiwista.api.models_stations import (
     StationCard,
+    StationChart,
+    StationChartQuery,
     StationDatasets,
     StationDatasetsQuery,
     StationItem,
@@ -46,12 +52,19 @@ from archiwista.api.models_stations import (
 from archiwista.api.slots import bbox_area, checked_store
 from archiwista.auth import Principal
 from archiwista.config import AppSettings, SettingsService
-from archiwista.errors import IndexQueryError, NotFoundError
+from archiwista.errors import (
+    ConflictError,
+    IndexQueryError,
+    NotFoundError,
+    UnsupportedError,
+)
 from archiwista.index import (
     MAX_PAGE_LIMIT,
     AreaRecord,
     BBox,
+    CoverageVariable,
     IndexQueries,
+    StationCoverage,
     StationPage,
     StationQuery,
     StationRow,
@@ -59,7 +72,8 @@ from archiwista.index import (
 from archiwista.index.geometry import box_geometry, is_wgs84, require_wgs84_bbox
 from archiwista.messages import message
 from archiwista.security import current_principal
-from archiwista.sources import GeoJSONGeometry
+from archiwista.services import series_chart
+from archiwista.sources import GeoJSONGeometry, SeriesValuesAdapter
 from archiwista.sources.registry import PluginRegistry
 
 # The producer whose plugin keeps the station catalogs and series (IMGWTools,
@@ -229,6 +243,102 @@ def station_timeline(
     )
 
 
+def station_chart(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    code: str,
+    query: StationChartQuery,
+) -> StationChart:
+    """Return one or two variables of a station's series as a chart (SPEC 6.7).
+
+    The series is the station's in ``query.dataset``, or else the one whose
+    series has every variable; its current version in the index is read
+    through the producer, its gaps and the version come from the index, and
+    the extremes from the station's series of the dataset's half-year
+    characteristics when the index holds one.
+
+    Raises
+    ------
+    SourceStateError
+        The source of the stations is not available.
+    NotFoundError
+        No such station, or no series of ``dataset`` of it.
+    IndexQueryError
+        An unknown store, a code of several stations, a variable the series
+        lacks (reason ``unknown_variable``), variables in several series
+        without ``dataset`` (``ambiguous_dataset``), half-year
+        characteristics (``half_year_chart``) or a reversed range.
+    ConflictError
+        ``version`` is not the series' current version in the index (reason
+        ``series_version_not_current``).
+    UnsupportedError
+        The producer does not read the values of a series.
+    SourceUnavailableError, ProducerError
+        The producer could not read the series.
+    """
+    require_station_source(registry)
+    adapter = registry.adapter(STATION_PRODUCER)
+    if not isinstance(adapter, SeriesValuesAdapter):
+        raise UnsupportedError(
+            message("api.chart_unsupported", producer=STATION_PRODUCER)
+        )
+    if query.start is not None and query.end is not None and query.start > query.end:
+        raise IndexQueryError(
+            message("api.chart_range_reversed", start=query.start, end=query.end)
+        )
+    freshness = queries.freshness()
+    checked_store(query.store, settings, freshness)
+    row = find_station(queries, code, store=query.store, provider=query.provider)
+    found = queries.station_coverage(
+        row.store,
+        row.provider,
+        row.code,
+        dataset=query.dataset,
+        year_types=settings.year_types,
+    )
+    series, variables = _chart_series(row, found, query)
+    if query.version is not None and query.version != series.series_version:
+        raise ConflictError(
+            message(
+                "api.chart_version_not_current",
+                version=query.version,
+                dataset=series.dataset,
+                current=series.series_version,
+            ),
+            reason="series_version_not_current",
+            details={"current": series.series_version},
+            hint=message("api.chart_version_hint"),
+        )
+    config = settings.store(row.store)
+    root = None if config is None else config.roots().get(STATION_PRODUCER)
+    if root is None:
+        raise NotFoundError(message("api.store_not_configured", store=row.store))
+    characteristics = adapter.characteristics_dataset(series.dataset)
+    held = (
+        ()
+        if characteristics is None
+        else queries.station_coverage(
+            row.store,
+            row.provider,
+            row.code,
+            dataset=characteristics,
+            year_types=settings.year_types,
+        )
+    )
+    return series_chart.station_chart(
+        adapter,
+        FilePath(root),
+        series,
+        variables,
+        start=query.start,
+        end=query.end,
+        max_points=query.max_points,
+        characteristics=held[0] if held else None,
+        freshness=staleness(freshness, {row.store}),
+    )
+
+
 def station_map(
     queries: IndexQueries,
     settings: AppSettings,
@@ -292,6 +402,77 @@ def find_station(
             hint=message("api.station_ambiguous_hint"),
         )
     return page.items[0]
+
+
+def _chart_series(
+    row: StationRow, found: Sequence[StationCoverage], query: StationChartQuery
+) -> tuple[StationCoverage, list[CoverageVariable]]:
+    """Return the series a chart reads and its variables, in the order asked.
+
+    Raises
+    ------
+    NotFoundError
+        The station has no series of ``query.dataset``.
+    IndexQueryError
+        As ``station_chart``.
+    """
+    if query.dataset is not None and not found:
+        raise NotFoundError(
+            message("api.station_series_none", code=row.code, dataset=query.dataset)
+        )
+    keyed = [
+        (series, {item.key: item for item in series.variables}) for series in found
+    ]
+    held = [
+        (series, variables)
+        for series, variables in keyed
+        if all(name in variables for name in query.variable)
+    ]
+    names = ", ".join(query.variable)
+    if query.dataset is not None and not held:
+        series, variables = keyed[0]
+        missing = next(name for name in query.variable if name not in variables)
+        raise IndexQueryError(
+            message(
+                "api.chart_variable_unknown",
+                dataset=series.dataset,
+                code=row.code,
+                variable=missing,
+                allowed=", ".join(variables),
+            ),
+            reason="unknown_variable",
+            details={"option": "variable", "allowed": list(variables)},
+        )
+    if not held:
+        raise IndexQueryError(
+            message("api.chart_variables_unknown", code=row.code, variables=names),
+            reason="unknown_variable",
+            details={
+                "option": "variable",
+                "allowed": sorted({key for _, variables in keyed for key in variables}),
+            },
+        )
+    if len(held) > 1:
+        datasets = [series.dataset for series, _ in held]
+        raise IndexQueryError(
+            message(
+                "api.chart_dataset_ambiguous",
+                code=row.code,
+                variables=names,
+                datasets=", ".join(datasets),
+            ),
+            reason="ambiguous_dataset",
+            details={"option": "dataset", "allowed": datasets},
+            hint=message("api.chart_dataset_hint"),
+        )
+    series, variables = held[0]
+    if series.time_unit == "half_year":
+        raise IndexQueryError(
+            message("api.chart_half_year", dataset=series.dataset),
+            reason="half_year_chart",
+            details={"option": "dataset"},
+        )
+    return series, [variables[name] for name in query.variable]
 
 
 def _station_page(
@@ -487,6 +668,33 @@ def get_station_coverage(
     range or the year type reads no series.
     """
     return station_timeline(queries, settings.get(), registry, code, filters)
+
+
+@router.get(
+    "/stations/{code}/series",
+    response_model=StationChart,
+    responses=problem_responses(400, 404, 409, 503),
+)
+def get_station_series(
+    code: _Code,
+    query: Annotated[StationChartQuery, Query()],
+    principal: _Principal,
+    settings: _Settings,
+    registry: _Registry,
+    queries: _Queries,
+) -> StationChart:
+    """Return one or two variables of a station's series as a chart (display only).
+
+    A range (`from`, `to`; by default the whole series) of at most
+    `max_points` units gives each unit's value; a longer one gives the least,
+    mean and greatest value of each interval of `interval` units (`null`
+    without a value: never interpolated). `gaps` are the producer's gaps cut
+    at the range's ends; accumulated sums and the extremes the provider
+    published in its half-year characteristics are `markers`. The values are
+    read from the series file through the producer; `version`, when given,
+    must be the current one in the index (`409` otherwise).
+    """
+    return station_chart(queries, settings.get(), registry, code, query)
 
 
 @router.get(

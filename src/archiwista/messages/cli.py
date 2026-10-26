@@ -2007,6 +2007,19 @@ MESSAGES = {
             " etykiet (jak GET /api/v1/stations/datasets)."
         ),
     ),
+    "stations_series_help": Text(
+        (
+            "Shows one or two variables of a station's series as a chart: each"
+            " unit's value, or the least, mean and greatest value of intervals, with"
+            " the gaps and markers (like GET /api/v1/stations/CODE/series)."
+        ),
+        (
+            "Pokazuje jedną lub dwie zmienne szeregu stacji jako wykres: wartość"
+            " każdej jednostki albo najmniejszą, średnią i największą wartość"
+            " przedziałów, z lukami i znacznikami (jak GET"
+            " /api/v1/stations/KOD/series)."
+        ),
+    ),
     "stations_code_help": Text(
         "station code as its provider gives it",
         "kod stacji, jak podaje go dostawca",
@@ -2063,6 +2076,39 @@ MESSAGES = {
     "stations_variable_help": Text(
         "stations with a value of the variable, e.g. Q (repeatable)",
         "stacje z wartością zmiennej, np. Q (powtarzalna)",
+    ),
+    "stations_chart_variable_help": Text(
+        "variable of the series to draw, e.g. Q (once or twice)",
+        "zmienna szeregu do narysowania, np. Q (raz albo dwa razy)",
+    ),
+    "stations_chart_dataset_help": Text(
+        (
+            "dataset key of the series, e.g. pl.imgw.hydro_daily; by default the one"
+            " whose series has every variable"
+        ),
+        (
+            "klucz zbioru danych szeregu, np. pl.imgw.hydro_daily; domyślnie ten,"
+            " którego szereg ma każdą zmienną"
+        ),
+    ),
+    "stations_start_help": Text(
+        "first day of the range, e.g. 1950-11-01; by default the series' first",
+        "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy szeregu",
+    ),
+    "stations_end_help": Text(
+        "last day of the range, e.g. 2025-10-31; by default the series' last",
+        "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni szeregu",
+    ),
+    "stations_max_points_help": Text(
+        "the most points of a variable, at most 2000 (the default)",
+        "najwięcej punktów zmiennej, najwyżej 2000 (domyślnie)",
+    ),
+    "stations_version_help": Text(
+        (
+            "the series version the chart must come from (its series.json); by"
+            " default the current one"
+        ),
+        ("wersja szeregu, z której ma być wykres (jej series.json); domyślnie bieżąca"),
     ),
     "stations_coverage_help": Text(
         (
@@ -2236,6 +2282,64 @@ MESSAGES = {
     "station_attribution": Text(
         "  Licence {license}: {attribution}",
         "  Licencja {license}: {attribution}",
+    ),
+    "station_chart_title": Text(
+        "{code}: series {dataset}, version {series}: {file}",
+        "{code}: szereg {dataset}, wersja {series}: {file}",
+    ),
+    "station_chart_values": Text(
+        "Range {start} to {end} ({units}): each unit's value",
+        "Zakres {start} – {end} ({units}): wartość każdej jednostki",
+    ),
+    "station_chart_simplified": Text(
+        "Range {start} to {end} ({units}): simplified, min./mean/max. of {interval}",
+        "Zakres {start} – {end} ({units}): uproszczony, min./śr./maks. z {interval}",
+    ),
+    "station_chart_empty": Text(
+        "No unit of the series lies in the range.",
+        "Żadna jednostka szeregu nie leży w zakresie.",
+    ),
+    "station_chart_variable": Text(
+        (
+            "  {key} ({unit}): {valued} of {points} points with a value, {gaps} gaps,"
+            " {markers} markers"
+        ),
+        (
+            "  {key} ({unit}): {valued} z {points} punktów z wartością, luki: {gaps},"
+            " znaczniki: {markers}"
+        ),
+    ),
+    "station_chart_gap": Text(
+        "    gap {start} to {end} ({units})",
+        "    luka {start} – {end} ({units})",
+    ),
+    "station_chart_accumulated": Text(
+        "    accumulated sum {day}: {value}",
+        "    suma zbiorcza {day}: {value}",
+    ),
+    "station_chart_extreme": Text(
+        "    {kind} of the {period} {day}: {value}",
+        "    {kind} – {period} {day}: {value}",
+    ),
+    "station_marker_min": Text(
+        "least value",
+        "najmniejsza wartość",
+    ),
+    "station_marker_max": Text(
+        "greatest value",
+        "największa wartość",
+    ),
+    "station_period_winter": Text(
+        "winter half-year",
+        "półrocze zimowe",
+    ),
+    "station_period_summer": Text(
+        "summer half-year",
+        "półrocze letnie",
+    ),
+    "station_period_annual": Text(
+        "year",
+        "rok",
     ),
     "station_active_true": Text(
         "yes",

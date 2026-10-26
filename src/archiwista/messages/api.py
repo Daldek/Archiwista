@@ -177,6 +177,64 @@ MESSAGES = {
         "Name the station's store and provider (store, provider).",
         "Podaj magazyn i dostawcę stacji (store, provider).",
     ),
+    "station_series_none": Text(
+        'The station "{code}" has no series of {dataset} in the index.',
+        "Stacja „{code}” nie ma w indeksie szeregu {dataset}.",
+    ),
+    "chart_variable_unknown": Text(
+        (
+            'The series of {dataset} of the station "{code}" has no variable'
+            " {variable}; it has: {allowed}."
+        ),
+        ("Szereg {dataset} stacji „{code}” nie ma zmiennej {variable}; ma: {allowed}."),
+    ),
+    "chart_variables_unknown": Text(
+        'No series of the station "{code}" has every variable of: {variables}.',
+        "Żaden szereg stacji „{code}” nie ma wszystkich zmiennych z: {variables}.",
+    ),
+    "chart_dataset_ambiguous": Text(
+        (
+            'Several series of the station "{code}" have the variables {variables}:'
+            " {datasets}."
+        ),
+        "Zmienne {variables} są w kilku szeregach stacji „{code}”: {datasets}.",
+    ),
+    "chart_dataset_hint": Text(
+        "Name the dataset of the series (dataset).",
+        "Podaj zbiór danych szeregu (dataset).",
+    ),
+    "chart_half_year": Text(
+        (
+            "The half-year characteristics of {dataset} are not drawn as a line: they"
+            " are the extremes on the chart of the daily series."
+        ),
+        (
+            "Charakterystyki półroczne {dataset} nie są rysowane jako linia: to"
+            " ekstrema na wykresie szeregu dobowego."
+        ),
+    ),
+    "chart_range_reversed": Text(
+        "The range ends ({end}) before it starts ({start}).",
+        "Zakres kończy się ({end}) przed początkiem ({start}).",
+    ),
+    "chart_version_not_current": Text(
+        (
+            "The series version {version} is not the current one of {dataset}"
+            " ({current}); the index keeps the gaps of the current version only."
+        ),
+        (
+            "Wersja szeregu {version} nie jest bieżącą wersją {dataset} ({current});"
+            " indeks zna luki tylko bieżącej wersji."
+        ),
+    ),
+    "chart_version_hint": Text(
+        "Read the station's card again for its current series version.",
+        "Odczytaj ponownie kartę stacji, by poznać bieżącą wersję szeregu.",
+    ),
+    "chart_unsupported": Text(
+        "The source {producer} does not read the values of a series.",
+        "Źródło {producer} nie odczytuje wartości szeregu.",
+    ),
     "no_geo_source": Text(
         "No available data source converts the coordinates of the area.",
         "Żadne dostępne źródło danych nie przelicza współrzędnych obszaru.",

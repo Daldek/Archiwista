@@ -399,7 +399,18 @@ required, each item a station with its `series` exactly as `GET
 /stations/{code}/coverage` gives it for the same `variable`, `years` and
 `year_type`; `variable` keeps the stations with a value of each variable and only
 their rows. Read a long list page by page; the years of a page come from the
-index in one read.
+index in one read. `GET /stations/{code}/series` (`archiwista stations series`) is
+the chart of one or two variables (`variable`, once or twice) of a station's
+current series, for display only: `dataset` names the series (by default the one
+with every variable), `from` and `to` the range (by default the whole series) and
+`max_points` (≤ 2,000) the most points a variable gets: up to that many units each
+point is a unit's value, beyond it the least, mean and greatest value of `interval`
+units (`null` without a value, never interpolated). `gaps` are the producer's gaps
+cut at the range's ends (a unit without a value outside them is not known),
+`markers` the accumulated sums and the extremes IMGW published with their dates.
+`version` must be the current one in the index (`409` otherwise; read the card
+again); half-year characteristics are not drawn as a line (`400`, reason
+`half_year_chart`).
 
 ```sh
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
@@ -414,6 +425,7 @@ archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
 archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 archiwista stations datasets --json
 archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
+archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)

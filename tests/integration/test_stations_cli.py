@@ -216,6 +216,7 @@ def test_stations_options_are_the_parameters_of_the_routes(doors: Doors) -> None
     listing = options("list")
     timeline = options("timeline")
     shown = options("show")
+    series = options("series")
 
     # Assert
     assert set(listing) == parameters("/stations")
@@ -224,6 +225,11 @@ def test_stations_options_are_the_parameters_of_the_routes(doors: Doors) -> None
     assert shown.pop("code") == []  # the positional KOD
     for name, strings in [*listing.items(), *timeline.items(), *shown.items()]:
         assert strings == [f"--{name.replace('_', '-')}"]
+    assert series.pop("code") == []
+    assert {
+        strings[0].removeprefix("--").replace("-", "_") for strings in series.values()
+    } | {"code"} == parameters("/stations/{code}/series")
+    assert (series["start"], series["end"]) == (["--from"], ["--to"])
 
 
 @pytest.mark.parametrize(
@@ -278,13 +284,16 @@ def test_stations_cli_without_imgwtools_is_a_missing_dependency(
         "stations", "timeline", f"--dataset={DAILY}", registry=NoSources()
     )
     shown = doors.refused("stations", "show", RABA, registry=NoSources())
+    charted = doors.refused(
+        "stations", "series", RABA, "--variable=H", registry=NoSources()
+    )
     with running_api(local_paths(tmp_path), NoSources()) as api:
         problem = api.session(LOCAL_OWNER).request("GET", "/stations").json()
 
     # Assert
     assert_same_error(listed, problem)
     assert (listed["code"], listed["exit_code"]) == ("missing_dependency", 6)
-    assert timeline == shown == listed
+    assert timeline == shown == charted == listed
 
 
 def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:

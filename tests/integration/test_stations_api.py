@@ -57,6 +57,7 @@ ROUTES = (
     "/api/v1/stations/timeline",
     "/api/v1/stations/{code}",
     "/api/v1/stations/{code}/coverage",
+    "/api/v1/stations/{code}/series",
     "/api/v1/map/stations",
 )
 
@@ -400,6 +401,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
                 f"/stations/timeline?dataset={DAILY}",
                 f"/stations/{RABA}",
                 f"/stations/{RABA}/coverage",
+                f"/stations/{RABA}/series?variable=H",
                 "/map/stations?bbox=14,48,24,55",
             )
         ]
@@ -417,7 +419,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
 
 
 def test_openapi_documents_the_station_routes(served: Served) -> None:
-    """Agents find the five routes, their parameters, examples and problems."""
+    """Agents find the six routes, their parameters, examples and problems."""
     # Act
     document = served.json("/openapi.json")
 
@@ -453,6 +455,14 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
         "code", "store", "provider", "dataset", "years", "year_type",
     }  # fmt: skip
     assert "404" in card["responses"]
+    chart = document["paths"]["/api/v1/stations/{code}/series"]["get"]
+    required = {item["name"] for item in chart["parameters"] if item["required"]}
+    assert ({item["name"] for item in chart["parameters"]}, required) == (
+        {"code", "store", "provider", "dataset", "variable", "from", "to",
+         "max_points", "version"},
+        {"code", "variable"},
+    )  # fmt: skip
+    assert {"404", "409"} <= set(chart["responses"])
     assert document["paths"]["/api/v1/map/stations"]["get"]["tags"] == [
         "stations",
         "map",

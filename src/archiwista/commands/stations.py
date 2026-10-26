@@ -8,15 +8,18 @@ is a page of the stations of one dataset with each variable year by year, as
 ``GET /stations/timeline`` gives it (the options of
 ``StationTimelineListFilters``; a person reads a strip of year cells per
 variable). ``stations show CODE`` is the card of ``GET /stations/{code}``,
-with the options of ``StationLookup``, and ``stations datasets`` the datasets
-of ``GET /stations/datasets``. Each calls the function behind its route
-without HTTP: ``--json`` prints the route's model, a refusal the route's
-problem as the ``archiwista-error/1`` document (``503`` while IMGWTools is not
-available becomes its exit code). Nothing here uses the network or writes.
+with the options of ``StationLookup``, ``stations series CODE`` the chart of
+``GET /stations/{code}/series`` (the options of ``StationChartQuery``; a
+person reads the range, the points with a value, the gaps and the markers)
+and ``stations datasets`` the datasets of ``GET /stations/datasets``. Each
+calls the function behind its route without HTTP: ``--json`` prints the
+route's model, a refusal the route's problem as the ``archiwista-error/1``
+document (``503`` while IMGWTools is not available becomes its exit code).
+Nothing here uses the network or writes.
 """
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import TextIO, get_origin
 
@@ -24,7 +27,10 @@ from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import IndexAnswer
 from archiwista.api.models_stations import (
+    ChartVariable,
     StationCard,
+    StationChart,
+    StationChartQuery,
     StationDatasetItem,
     StationDatasetsQuery,
     StationItem,
@@ -41,6 +47,7 @@ from archiwista.api.models_stations import (
 )
 from archiwista.api.stations import (
     station_card,
+    station_chart,
     station_datasets,
     station_list,
     station_timeline_page,
@@ -61,7 +68,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import label, language, message, with_detail
+from archiwista.messages import label, language, message, plural_form, with_detail
 from archiwista.sources.registry import PluginRegistry
 
 COMMANDS = frozenset({"stations"})
@@ -78,6 +85,11 @@ _CELLS: dict[YearCell, str] = {
     "fraction": "▒",
     "none": "·",
     "unknown": "?",
+}
+# The help of an option of ``stations series`` whose meaning differs there.
+_SERIES_HELP = {
+    "dataset": "cli.stations_chart_dataset_help",
+    "variable": "cli.stations_chart_variable_help",
 }
 
 
@@ -111,6 +123,11 @@ def add_commands(commands: Commands) -> None:
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
     _options(shown, StationLookup)
+    series = add_parser(actions, "series", "cli.stations_series_help")
+    series.add_argument(
+        "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
+    )
+    _options(series, StationChartQuery, _SERIES_HELP)
     datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")
     _options(datasets, StationDatasetsQuery)
 
@@ -188,11 +205,19 @@ def query_of[Model: BaseModel](model: type[Model], args: argparse.Namespace) -> 
         raise _InvalidOptions(validation_problem(located)) from None
 
 
-def _options(parser: argparse.ArgumentParser, model: type[BaseModel]) -> None:
-    """Add an option for each parameter of a query model, of the same name."""
+def _options(
+    parser: argparse.ArgumentParser,
+    model: type[BaseModel],
+    helps: Mapping[str, str] | None = None,
+) -> None:
+    """Add an option for each parameter of a query model, of the same name.
+
+    A parameter read by an alias (``from``) is the option of the alias; its
+    help is ``cli.stations_<field>_help`` unless ``helps`` names another.
+    """
     for name, field in model.model_fields.items():
-        option = "--" + name.replace("_", "-")
-        help_text = message(f"cli.stations_{name}_help")
+        option = "--" + (field.alias or name).replace("_", "-")
+        help_text = message((helps or {}).get(name, f"cli.stations_{name}_help"))
         if get_origin(field.annotation) is list:
             parser.add_argument(option, dest=name, action="append", help=help_text)
         else:
@@ -250,6 +275,18 @@ def _show(
     return card, _card_text(card)
 
 
+def _series(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    chart = station_chart(
+        queries, settings, registry, args.code, query_of(StationChartQuery, args)
+    )
+    return chart, _chart_text(chart)
+
+
 def _datasets(
     args: argparse.Namespace,
     settings: AppSettings,
@@ -269,6 +306,7 @@ _ACTIONS: dict[str, _Action] = {
     "list": _list,
     "timeline": _timeline,
     "show": _show,
+    "series": _series,
     "datasets": _datasets,
 }
 
@@ -429,6 +467,93 @@ def _card_text(card: StationCard) -> str:
                 )
             )
     return _with_stale(card, lines)
+
+
+def _chart_text(chart: StationChart) -> str:
+    """Write a chart's series, range, and each variable's points, gaps, markers."""
+    lines: list[str] = [
+        message(
+            "cli.station_chart_title",
+            code=chart.code,
+            dataset=chart.dataset,
+            series=_value(chart.series),
+            file=chart.file,
+        )
+    ]
+    if chart.first is None or chart.last is None:
+        lines.append(message("cli.station_chart_empty"))
+    else:
+        lines.append(
+            message(
+                "cli.station_chart_values"
+                if chart.interval == 1
+                else "cli.station_chart_simplified",
+                start=chart.first,
+                end=chart.last,
+                units=_units(chart.units, chart.time_unit),
+                interval=_units(chart.interval, chart.time_unit),
+            )
+        )
+    for variable in chart.variables:
+        lines.extend(_chart_variable_lines(variable, chart.time_unit))
+    if chart.attribution is not None:
+        lines.append(
+            message(
+                "cli.station_attribution",
+                license=_value(chart.license),
+                attribution=chart.attribution,
+            )
+        )
+    return _with_stale(chart, lines)
+
+
+def _chart_variable_lines(variable: ChartVariable, time_unit: str) -> list[str]:
+    """Write a variable's count of points with a value, its gaps and markers."""
+    lines: list[str] = [
+        message(
+            "cli.station_chart_variable",
+            key=variable.key,
+            unit=variable.unit,
+            valued=sum(point["mean"] is not None for point in variable.points),
+            points=len(variable.points),
+            gaps=len(variable.gaps),
+            markers=len(variable.markers),
+        )
+    ]
+    lines.extend(
+        message(
+            "cli.station_chart_gap",
+            start=gap.first,
+            end=gap.last,
+            units=_units(gap.units, time_unit),
+        )
+        for gap in variable.gaps
+    )
+    for marker in variable.markers:
+        if marker["kind"] == "accumulated":
+            lines.append(
+                message(
+                    "cli.station_chart_accumulated",
+                    day=marker["t"],
+                    value=marker["value"],
+                )
+            )
+        else:
+            lines.append(
+                message(
+                    "cli.station_chart_extreme",
+                    kind=label("cli.station_marker", marker["kind"]),
+                    period=label("cli.station_period", marker["period"] or "annual"),
+                    day=marker["t"],
+                    value=marker["value"],
+                )
+            )
+    return lines
+
+
+def _units(count: int, time_unit: str) -> str:
+    """Return a count of days or months for a person ("14 dni")."""
+    return message(f"series.unit_{time_unit}_{plural_form(count)}", count=count)
 
 
 def _dataset_line(item: StationDatasetItem) -> str:

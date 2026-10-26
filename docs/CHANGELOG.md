@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- `GET /api/v1/stations/{code}/series` and `archiwista stations series CODE --variable …`:
+  one or two variables of a station's series as a chart, for display only. Up to
+  `max_points` units (2,000 at most) each unit's value; a longer range gives the least,
+  mean and greatest value of each interval of `interval` units, `null` without a value
+  (never interpolated). `gaps` are the producer's gaps cut at the range's ends and
+  `markers` the accumulated sums and the extremes IMGW published with their dates; the
+  answer names the series version, the station's file with its SHA-256 and the IMGW
+  formula. `dataset` chooses the series (by default the one with every variable),
+  `from` and `to` the range, `version` must be the current one (`409` otherwise).
+  (ADR-045, plan I8.4)
+
 - Plugins: the optional capability `SeriesValuesAdapter` (`archiwista.sources`) reads a
   station's values of a series version for a chart (`read_values`, one `SeriesValues` a
   unit: a missing unit `None`, accumulated sums flagged, the dates of half-year
