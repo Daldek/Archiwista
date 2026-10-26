@@ -111,7 +111,26 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    `tests/integration/test_download_api.py` (the permission matrix of role, setting and
    agent token, the refusals of a plan by API and CLI, a hidden plan job, the foreground
    run). The CLI always acts as the local owner, so its `403` cannot be shown; it calls
-   the same check. Next: A11 (the plan window).
+   the same check. **A11 (the plan window), commit 1 is done** (ADR-035 point 6): a
+   combination's `commands` (Kartograf's `download_hint`), each variant's `commands` by
+   format, the stand-in's lines (`series fetch --station … --kind hydro`), `GET /sources`
+   `availability` (`read_availability_products`),
+   `tests/integration/test_availability_commands.py`. *Next, A11 commit 2 (the web
+   client, not started):* `SessionState.store_write` (`Authorizer.can(principal,
+   "store.write")`, so `store_write_for_all` counts) for the disabled download with its
+   reason; `api.js` `startJob` (`POST /jobs`), `getJobPlan`, `parseCommand`,
+   `getAvailability`/`checkAvailability`; a step "U źródła" in `map/panel.js` (a producer
+   and product of `GET /sources`, a store, "Sprawdź u źródła", the rows with label, badge
+   and "+N wariantów"); the window as `views/own.js` `PlanWindow` (`<dialog>`,
+   `watchJob`): per line `POST /commands/parse` → `check` → `GET /jobs/{id}/plan`, counts,
+   size or "rozmiar nieznany", the target store, each `line` with `CopyButton`, the
+   format choice, the confirmation above 5 GB or 500 files, then `download` with
+   `plan_job` per plan, progress and the result (`counts`, failed items); labels in a new
+   `labels/actions.js`. e2e `tests/e2e/test_plan_window.py`: `serve` with
+   `AppSettings(offline=False, basemaps=())`, the stand-in (`register_standin`,
+   `standin_in_settings`, `JobSupervisor.__init__.__kwdefaults__["worker_command"] =
+   ACTION_WORKER`), `AREA` in the index, screenshots under `ARCHIWISTA_SCREENSHOTS` (as
+   `test_own_data.py`), kept as WebP in `docs/reports/v0.3-screenshots/`.
    Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`)
    is not its canonical line, so the contract test compares calls, not text (a request
    to Kartograf).

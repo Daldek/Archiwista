@@ -67,6 +67,7 @@ def test_sources_lists_imgw_with_its_versions_and_schemas(
                 " (variable IMGW_ROOT; does not exist)"
             ),
         },
+        "availability": [],
     }
     assert sources["imgw"]["message"] and sources["kartograf"]["status"] == "available"
 

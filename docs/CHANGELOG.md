@@ -229,6 +229,14 @@ command-line interface may change.
   `plan_job` the session does not see, or one that kept no plan, is `404`; one of another
   store, command or options is `409` (`plan_mismatch`). (SPEC 9.2, 10.2, SPEC 13 v0.3
   criterion 7, ADR-037)
+- Every combination of an availability report has `commands`, the producer's own command
+  lines that download it (Kartograf's `download_hint`, without the program name and the
+  store), and every variant of a row names them by format (`commands`): `POST
+  /commands/parse` reads a line into the call that `POST /jobs` plans and runs, so the
+  interface needs no knowledge of a producer's flags. A report kept before reads with no
+  commands. `GET /sources` and `archiwista sources --json` list for each producer the
+  products whose availability at the source it checks (`availability`). (SPEC 6.3,
+  ADR-035)
 
 ### Changed
 

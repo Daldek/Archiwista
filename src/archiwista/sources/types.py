@@ -630,6 +630,10 @@ class AvailabilityCombination:
         The records a download takes, by sheet (KD-1).
     campaign_coverage : tuple[AvailabilityCampaign, ...]
         Each campaign of ``campaigns`` on its own (KD-1).
+    commands : tuple[str, ...]
+        The producer's command lines that download it, without the program
+        name and the store (Kartograf: ``download_hint``); the adapter's
+        ``parse`` reads each into a call. Empty when the producer names none.
     """
 
     country: str
@@ -651,6 +655,7 @@ class AvailabilityCombination:
     published: tuple[str, str] | None = None
     sheet_records: tuple[AvailabilitySheet, ...] = ()
     campaign_coverage: tuple[AvailabilityCampaign, ...] = ()
+    commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1046,7 +1051,10 @@ class ActionResult:
 
 
 def _combination(data: Mapping[str, Any]) -> AvailabilityCombination:
-    """Read one combination of ``AvailabilityReport.to_json``."""
+    """Read one combination of ``AvailabilityReport.to_json``.
+
+    A report kept before combinations had ``commands`` reads with none.
+    """
     published = data["published"]
     return AvailabilityCombination(
         **{
@@ -1062,6 +1070,7 @@ def _combination(data: Mapping[str, Any]) -> AvailabilityCombination:
             "campaign_coverage": tuple(
                 AvailabilityCampaign(**item) for item in data["campaign_coverage"]
             ),
+            "commands": tuple(str(line) for line in data.get("commands", ())),
         }
     )
 

@@ -6,8 +6,9 @@ area and a product, and ``AvailabilityQuery`` names the report ``GET
 it: the area, when the source was asked and by which job, and the producer's
 report without its classes (ADR-035): the parts of the area by country, the
 combinations (a year, a variant and a format, with the sheet records and the
-campaigns of KD-1 and the full land of KD-2), the parts that failed and what
-the producer said. Its rows read the report for a person (SPEC 6.3, 6.4): a
+campaigns of KD-1, the full land of KD-2 and the producer's command lines that
+download it, ADR-035), the parts that failed and what the producer said. Its
+rows read the report for a person (SPEC 6.3, 6.4): a
 row for each year of a country with its variants ranked, the coverage label
 as structure and as text in the language of the request, and the store
 badge in the store a request names. The request models refuse unknown
@@ -62,6 +63,11 @@ _CAMPAIGN_EXAMPLE: dict[str, Any] = {
     "complete": True,
     "full_m2": _LAND_M2,
 }
+_COMMAND_EXAMPLE = (
+    "elevation download --product nmt --country pl --bbox"
+    " 561000,239000,573000,249000 --sheet-system 2000 --scale 1:1000 --resolution 1m"
+    " --vertical-crs EVRF2007 --year 2023"
+)
 _COMBINATION_EXAMPLE: dict[str, Any] = {
     "country": "PL",
     "product": "nmt",
@@ -82,6 +88,7 @@ _COMBINATION_EXAMPLE: dict[str, Any] = {
     "published": ["2023-09-14", "2023-09-14"],
     "sheet_records": [_SHEET_EXAMPLE],
     "campaign_coverage": [_CAMPAIGN_EXAMPLE],
+    "commands": [_COMMAND_EXAMPLE],
 }
 _NOTICE_EXAMPLE: dict[str, Any] = {
     "level": "info",
@@ -139,6 +146,7 @@ _VARIANT_EXAMPLE: dict[str, Any] = {
     "label": _LABEL_EXAMPLE,
     "coverage": _COVERAGE_EXAMPLE,
     "local": _BADGE_EXAMPLE,
+    "commands": {"ASC": [_COMMAND_EXAMPLE]},
 }
 _ROW_EXAMPLE: dict[str, Any] = {
     "country": "PL",
@@ -381,6 +389,14 @@ class AvailabilityCombinationItem(BaseModel):
     campaign_coverage: list[AvailabilityCampaignItem] = Field(
         description="Each campaign of `campaigns` on its own (KD-1)."
     )
+    commands: list[str] = Field(
+        description=(
+            "The producer's command lines that download it, without the program"
+            " name and the store (Kartograf's `download_hint`): `POST"
+            " /commands/parse` reads each into a call for `POST /jobs`. Empty"
+            " when the producer names none."
+        )
+    )
 
     @classmethod
     def of(cls, item: AvailabilityCombination) -> Self:
@@ -407,6 +423,7 @@ class AvailabilityCombinationItem(BaseModel):
             campaign_coverage=[
                 AvailabilityCampaignItem.of(c) for c in item.campaign_coverage
             ],
+            commands=list(item.commands),
         )
 
 
@@ -597,6 +614,13 @@ class AvailabilityVariantItem(BaseModel):
     local: StoreBadgeItem | None = Field(
         description="The store badge; null without a store in the request."
     )
+    commands: dict[str, list[str]] = Field(
+        description=(
+            "The producer's command lines that download the set, by format (a"
+            " format without lines is left out): `POST /commands/parse` reads"
+            " each into a call; one `check` job per line plans the download."
+        )
+    )
 
     @classmethod
     def of(cls, variant: AvailabilityVariant) -> Self:
@@ -615,6 +639,11 @@ class AvailabilityVariantItem(BaseModel):
             local=None
             if variant.local is None
             else StoreBadgeItem.of_badge(variant.local),
+            commands={
+                item.format: list(item.commands)
+                for item in variant.combinations
+                if item.commands
+            },
         )
 
 

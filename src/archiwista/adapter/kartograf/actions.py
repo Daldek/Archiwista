@@ -597,7 +597,11 @@ def _report(report: Any) -> AvailabilityReport:
 
 
 def _combination(item: Any) -> AvailabilityCombination:
-    """Convert one ``AvailabilityCombination`` with its KD-1 and KD-2 fields."""
+    """Convert one ``AvailabilityCombination`` with its KD-1 and KD-2 fields.
+
+    Its ``download_hint`` (command lines after ``kartograf``, without the
+    store) are the combination's ``commands``.
+    """
     published = item.published
     return AvailabilityCombination(
         country=item.country,
@@ -635,6 +639,7 @@ def _combination(item: Any) -> AvailabilityCombination:
             )
             for campaign in item.campaign_coverage
         ),
+        commands=tuple(str(line) for line in item.download_hint),
     )
 
 

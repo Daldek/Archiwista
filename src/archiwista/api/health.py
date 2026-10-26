@@ -8,8 +8,9 @@ render processes and the last scan of every project's own data. ``archiwista
 status --json`` prints the same model (``read_health``; without previews and
 own data: the command runs no render pool and no jobs).
 ``/sources`` lists the producer plugins with a description of their state and
-of its fix, and the directory a producer uses for a store when a call names
-none (``default_root``): the first-run wizard offers it. It is asked for on
+of its fix, the directory a producer uses for a store when a call names none
+(``default_root``: the first-run wizard offers it) and the products whose
+availability at the source it checks (``availability``). It is asked for on
 demand only, so ``/health``, which is polled, leaves it out.
 """
 
@@ -39,6 +40,7 @@ from archiwista.security import current_principal
 from archiwista.sources.registry import (
     APP_DISTRIBUTION,
     PluginRegistry,
+    read_availability_products,
     read_default_root,
 )
 
@@ -60,12 +62,12 @@ def source_infos(registry: PluginRegistry) -> list[SourceInfo]:
 
 
 def source_list(registry: PluginRegistry) -> SourceList:
-    """Return every producer plugin with its state, fix and default store root.
+    """Return every producer plugin with its state, fix, default root and products.
 
-    The root is asked of each available plugin that has one: unlike
-    ``source_infos``, which the polled ``/health`` uses, this asks the
-    producer for one more report (``store_root()`` of Kartograf and IMGWTools:
-    two ``stat`` calls).
+    The root and the products are asked of each available plugin that has
+    them: unlike ``source_infos``, which the polled ``/health`` uses, this
+    asks the producer for its reports (``store_root()`` of Kartograf and
+    IMGWTools: two ``stat`` calls; the products of its catalog).
     """
     items = []
     for info in source_infos(registry):
@@ -77,7 +79,8 @@ def source_list(registry: PluginRegistry) -> SourceList:
                 root, default_root_check(info.producer, root).message
             )
         )
-        items.append(SourceListItem.listed(info, shown))
+        products = read_availability_products(registry, info.producer)
+        items.append(SourceListItem.listed(info, shown, products))
     return SourceList(items=items)
 
 

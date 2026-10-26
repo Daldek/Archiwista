@@ -300,7 +300,11 @@ _DEFAULT_ROOT_EXAMPLE = {
         state=message("doctor.default_root_marked", "en"),
     ),
 }
-_LISTED_SOURCE_EXAMPLE = {**_SOURCE_EXAMPLE, "default_root": _DEFAULT_ROOT_EXAMPLE}
+_LISTED_SOURCE_EXAMPLE = {
+    **_SOURCE_EXAMPLE,
+    "default_root": _DEFAULT_ROOT_EXAMPLE,
+    "availability": ["nmt", "nmpt", "laz"],
+}
 _PROJECT_EXAMPLE = {
     "project": "raba",
     "name": "Raba",
@@ -1711,11 +1715,25 @@ class SourceListItem(SourceInfo):
             " the producer needs to size it."
         )
     )
+    availability: list[str] = Field(
+        description=(
+            "Products whose availability at the source the producer checks"
+            " (`POST /availability`), in its order; empty when the plugin is not"
+            " available or checks none."
+        )
+    )
 
     @classmethod
-    def listed(cls, info: SourceInfo, root: DefaultRootInfo | None) -> Self:
-        """Return the listing of a plugin: its state and its default root."""
-        return cls(**info.model_dump(), default_root=root)
+    def listed(
+        cls,
+        info: SourceInfo,
+        root: DefaultRootInfo | None,
+        availability: tuple[str, ...],
+    ) -> Self:
+        """Return the listing of a plugin: its state, default root and products."""
+        return cls(
+            **info.model_dump(), default_root=root, availability=list(availability)
+        )
 
 
 class SourceList(BaseModel):

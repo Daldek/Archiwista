@@ -304,6 +304,7 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_box(
                 campaign_coverage=(
                     AvailabilityCampaign("DFT.1.2023", False, 59_000_000.0),
                 ),
+                commands=("elevation download --product nmt",),
             ),
         ),
         failed=(AvailabilityFailure("CZ", "CUZK did not answer", "country"),),

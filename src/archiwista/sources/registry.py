@@ -29,7 +29,7 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.messages import lookup, message, with_detail
-from archiwista.sources.protocol import DefaultRootAdapter, SourceAdapter
+from archiwista.sources.protocol import ActionAdapter, DefaultRootAdapter, SourceAdapter
 from archiwista.sources.types import (
     DefaultRoot,
     SourceContext,
@@ -244,6 +244,32 @@ def read_default_root(registry: PluginRegistry, producer: str) -> DefaultRoot | 
     except Exception:  # an offer only: a faulty plugin must not stop the caller
         logger.exception("Reading the default root of producer %s failed", producer)
         return None
+
+
+def read_availability_products(
+    registry: PluginRegistry, producer: str
+) -> tuple[str, ...]:
+    """Return the products whose availability at the source a producer checks.
+
+    Returns
+    -------
+    tuple[str, ...]
+        What the adapter's ``availability_products`` names, in its order.
+        Empty when the plugin is not available, its adapter offers no
+        commands (``ActionAdapter``) or reading them failed (logged): a list
+        of what may be asked must not stop the caller.
+    """
+    try:
+        adapter = registry.adapter(producer)
+    except SourceStateError:
+        return ()
+    if not isinstance(adapter, ActionAdapter):
+        return ()
+    try:
+        return tuple(adapter.availability_products())
+    except Exception:  # a list of offers: a faulty plugin must not stop the caller
+        logger.exception("Reading the availability products of %s failed", producer)
+        return ()
 
 
 @dataclass(frozen=True, slots=True)

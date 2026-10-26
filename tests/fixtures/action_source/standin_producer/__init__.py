@@ -88,6 +88,7 @@ _COMBINATIONS: list[dict[str, object]] = [
             {"campaign": "A", "complete": False, "full_m2": 60_000_000.0},
             {"campaign": "B", "complete": False, "full_m2": 60_000_000.0},
         ],
+        commands=["series fetch --station 150160180 --kind hydro"],
     ),
     _combination(
         2023,
@@ -98,6 +99,7 @@ _COMBINATIONS: list[dict[str, object]] = [
         full_m2=LAND_M2,
         sheet_records=_records("C", "T1", "T2", "T3"),
         campaign_coverage=[{"campaign": "C", "complete": True, "full_m2": LAND_M2}],
+        commands=["series fetch --station 150160190 --kind hydro"],
     ),
     _combination(
         2022,
@@ -111,6 +113,7 @@ _COMBINATIONS: list[dict[str, object]] = [
         campaign_coverage=[
             {"campaign": "D", "complete": False, "full_m2": 69_600_000.0}
         ],
+        commands=["series fetch --station 150160200 --kind hydro"],
     ),
 ]
 
