@@ -168,6 +168,11 @@ class Authorizer:
         """Visibility of projects without their own access entry."""
         return self._settings().default_project_visibility
 
+    @property
+    def team(self) -> bool:
+        """Whether team mode is on: then no local owner administers the team."""
+        return self._settings().team.enabled
+
     def can(
         self, principal: Principal, action: Action, resource: str | None = None
     ) -> bool:

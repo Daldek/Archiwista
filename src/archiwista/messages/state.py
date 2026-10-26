@@ -94,6 +94,16 @@ MESSAGES = {
         'There is no group "{id}".',
         "Nie ma grupy „{id}”.",
     ),
+    "last_admin": Text(
+        (
+            'The account "{id}" is the last enabled administrator of the team: give'
+            " another account the role admin first."
+        ),
+        (
+            "Konto „{id}” jest ostatnim włączonym administratorem zespołu: najpierw"
+            " nadaj rolę admin innemu kontu."
+        ),
+    ),
     "users_unknown": Text(
         "Unknown accounts: {ids}.",
         "Nieznane konta: {ids}.",

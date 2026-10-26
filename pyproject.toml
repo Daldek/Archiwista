@@ -45,6 +45,8 @@ dependencies = [
     "affine>=3,<4",
     # Point clouds: LAZ headers, CRS from VLRs and chunked reads (lazrs).
     "laspy[lazrs]>=2.7,<3",
+    # Passwords of team mode (ADR-046): Argon2id with the library's defaults.
+    "argon2-cffi>=23.1,<26",
 ]
 
 [project.optional-dependencies]
@@ -88,6 +90,13 @@ include = ["archiwista*"]
 "archiwista.web" = ["**/*"]
 # Local Swagger UI of /api/docs (swagger-ui-dist 5.33.3, Apache-2.0).
 "archiwista.api" = ["swagger/*"]
+# The common-password list of the password policy, its manifest and its licence
+# (SecLists, MIT; scripts/build_common_passwords.py, ADR-046).
+"archiwista.auth" = [
+    "common-passwords.txt",
+    "common-passwords.json",
+    "common-passwords.LICENSE",
+]
 
 [tool.ruff]
 line-length = 88

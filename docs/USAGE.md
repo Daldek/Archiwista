@@ -438,6 +438,22 @@ server {
 }
 ```
 
+**The first administrator and passwords.** Accounts are created at the server's
+terminal, never on a page of the network: `archiwista users add anna.nowak --name
+"Anna Nowak" --role admin`, then `archiwista users password anna.nowak` (typed twice
+and not shown; `--stdin` reads one line, for a script). A password has 12 to 1,024
+characters of any kind; it may not be the account's identifier or name, nor one of
+the 3,000 most common passwords, and nothing forces a periodic change. An
+administrator gives a person a temporary password: the server generates one, shows
+it once and keeps only its hash (`POST /api/v1/users/{id}/password`), or `archiwista
+users password ID --temporary` takes a typed one. It is valid 72 hours and is changed
+at the first sign-in. Setting a password ends every session of the account.
+`archiwista users list` shows each account's password as `none`, `set`, `temporary`
+(with its end) or `expired`. `archiwista users disable ID` switches an account off
+(it acts nowhere and its sessions end) and `users enable ID` on again. The last
+enabled administrator cannot be disabled, removed or lose the role (`last_admin`):
+give another account the role `admin` first.
+
 **Backup of accounts and the log.** `archiwista state export --output FILE` copies the
 state database — accounts with their password hashes, groups, sharing, preferences
 and the action log — as `archiwista-state/2`. The file gets mode `0600` and must stay

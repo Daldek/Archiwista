@@ -39,6 +39,22 @@ command-line interface may change.
   details, and a trigger refuses to change an entry. The state database gains a table
   of password hashes, the time before which an account's sessions end, and the
   preferences of each person.
+- Passwords of accounts for team mode (v0.4, ADR-046). `archiwista users password ID
+  [--temporary] [--stdin]` sets one at the server's terminal (typed twice without
+  echo, or one line of standard input), and `POST /users/{user_id}/password` lets an
+  administrator give a person a temporary password that the server generates and
+  answers once (valid 72 hours, `Cache-Control: no-store`). A password has 12 to
+  1,024 characters after NFKC, of any composition, and may not be the account's
+  identifier or name or one of the 3,000 most common passwords of 12 characters or
+  more (`password_policy` with `details.rule`; the list is derived from SecLists, MIT,
+  and ships with its licence and manifest). It is kept as an Argon2id hash
+  (`argon2-cffi`, a new dependency; at most two hashes are computed at once), setting
+  one ends the account's sessions and logs `user.password_reset`, and `GET /users`
+  and `archiwista users list` show each account's password as `none`, `set`,
+  `temporary` (with its end) or `expired`, never a hash. `archiwista users disable
+  ID` and `users enable ID` switch an account off and on. In team mode the last
+  enabled administrator cannot be disabled, removed or deprived of the role (`409
+  conflict`, `last_admin`).
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

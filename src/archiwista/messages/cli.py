@@ -110,16 +110,22 @@ MESSAGES = {
         "Ustaw zmienną na jedną z dozwolonych wartości albo ją usuń.",
     ),
     "users_help": Text(
-        "People's accounts and their roles (administrator only).",
-        "Konta osób i ich role (tylko administrator).",
+        "People's accounts, their roles and passwords (administrator only).",
+        "Konta osób, ich role i hasła (tylko administrator).",
     ),
     "users_list_help": Text(
-        "Lists accounts with roles and groups.",
-        "Wypisuje konta z rolami i grupami.",
+        "Lists accounts with roles, groups and the state of the password.",
+        "Wypisuje konta z rolami, grupami i stanem hasła.",
     ),
     "users_add_help": Text(
-        "Creates an account (in v0.1 without a password or login).",
-        "Zakłada konto (w v0.1 bez hasła i logowania).",
+        (
+            "Creates an account without a password; it signs in once it has one"
+            ' ("archiwista users password", or a temporary one from an administrator).'
+        ),
+        (
+            "Zakłada konto bez hasła; zaloguje się, gdy je dostanie („archiwista"
+            " users password” albo tymczasowe od administratora)."
+        ),
     ),
     "users_roles_help": Text(
         "Sets the roles of an account (no roles — regular user).",
@@ -128,6 +134,66 @@ MESSAGES = {
     "users_remove_help": Text(
         "Removes the account from groups and sharing lists, then the account itself.",
         "Usuwa konto z grup i list udostępnienia, a potem samo konto.",
+    ),
+    "users_password_help": Text(
+        (
+            "Sets an account's password, typed twice without echo or read from"
+            " standard input; every session of the account ends."
+        ),
+        (
+            "Ustawia hasło konta, wpisane dwa razy bez wyświetlania albo czytane ze"
+            " standardowego wejścia; wszystkie sesje konta się kończą."
+        ),
+    ),
+    "password_temporary_help": Text(
+        "a temporary password: valid 72 hours, changed at the first sign-in",
+        "hasło tymczasowe: ważne 72 godziny, zmieniane przy pierwszym logowaniu",
+    ),
+    "password_stdin_help": Text(
+        "read the password from one line of standard input",
+        "czytaj hasło z jednego wiersza standardowego wejścia",
+    ),
+    "users_disable_help": Text(
+        "Disables an account: it acts nowhere and its sessions end.",
+        "Wyłącza konto: nigdzie nie działa, a jego sesje się kończą.",
+    ),
+    "users_enable_help": Text(
+        "Enables a disabled account.",
+        "Włącza wyłączone konto.",
+    ),
+    "password_prompt": Text(
+        "New password of {id}: ",
+        "Nowe hasło konta {id}: ",
+    ),
+    "password_again": Text(
+        "Repeat the password: ",
+        "Powtórz hasło: ",
+    ),
+    "password_mismatch": Text(
+        "The two passwords differ; the password stays as it was.",
+        "Wpisane hasła się różnią; hasło pozostaje bez zmian.",
+    ),
+    "password_set": Text(
+        "Password of {id} set; the account's sessions have ended.",
+        "Ustawiono hasło konta {id}; sesje konta zakończono.",
+    ),
+    "password_set_temporary": Text(
+        (
+            "Temporary password of {id} set, valid until {end}; it must be changed"
+            " at the first sign-in. The account's sessions have ended."
+        ),
+        (
+            "Ustawiono hasło tymczasowe konta {id}, ważne do {end}; trzeba je"
+            " zmienić przy pierwszym logowaniu. Sesje konta zakończono."
+        ),
+    ),
+    "password_state_none": Text("none", "brak"),
+    "password_state_set": Text("set", "ustawione"),
+    "password_state_temporary": Text("temporary", "tymczasowe"),
+    "password_state_expired": Text("expired", "wygasło"),
+    "password_until": Text(
+        "temporary until {end}",
+        "tymczasowe do {end}",
     ),
     "user_id_help": Text(
         "account identifier, e.g. anna.nowak",
@@ -285,8 +351,8 @@ MESSAGES = {
         "Brak grup.",
     ),
     "user_line": Text(
-        "{id} — {name}; roles: {roles}; groups: {groups}",
-        "{id} — {name}; role: {roles}; grupy: {groups}",
+        "{id} — {name}; roles: {roles}; groups: {groups}; password: {password}",
+        "{id} — {name}; role: {roles}; grupy: {groups}; hasło: {password}",
     ),
     "user_disabled": Text(
         " (disabled)",

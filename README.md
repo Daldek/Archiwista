@@ -110,7 +110,7 @@ A job that does not succeed exits `11` (failed) or `130` (cancelled or interrupt
 
 ## Data and licensing
 
-Archiwista holds no data of its own: it shows what the producers wrote, with the metadata of each file's sidecar (`kartograf-meta/1`, `imgw-meta/1`), which carries the licence of the data, and the project manifests (`kartograf-project/1`). The data sources and their terms are those of Kartograf and IMGWTools. The default basemap is OpenFreeMap vector tiles (OpenStreetMap data), with the attribution shown on the map; in offline mode the jobs that need the network are refused. The code is under the MIT licence.
+Archiwista holds no data of its own: it shows what the producers wrote, with the metadata of each file's sidecar (`kartograf-meta/1`, `imgw-meta/1`), which carries the licence of the data, and the project manifests (`kartograf-project/1`). The data sources and their terms are those of Kartograf and IMGWTools. The default basemap is OpenFreeMap vector tiles (OpenStreetMap data), with the attribution shown on the map; in offline mode the jobs that need the network are refused. The code is under the MIT licence. Third-party files in the package keep their own licences beside them: the interface's libraries (`src/archiwista/web/vendor/`), Swagger UI (`src/archiwista/api/swagger/`), and the list of common passwords of the password policy (`src/archiwista/auth/common-passwords.txt`, derived from SecLists by Daniel Miessler, MIT, `common-passwords.LICENSE`; its source, commit and rule are in `common-passwords.json`).
 
 ## Documentation
 

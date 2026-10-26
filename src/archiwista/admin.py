@@ -12,9 +12,12 @@ mode ``0600``; into an empty database only).
 """
 
 import argparse
+import getpass
 import json
+import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -35,9 +38,14 @@ from archiwista.error_document import (
     fail,
     refuse,
 )
-from archiwista.errors import ArchiwistaError, StateError
+from archiwista.errors import (
+    ArchiwistaError,
+    InvalidChangeError,
+    NotFoundError,
+    StateError,
+)
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import message, with_detail
+from archiwista.messages import label, message, with_detail
 from archiwista.services import access as access_service
 from archiwista.state import (
     ROLES,
@@ -97,6 +105,18 @@ def add_admin_commands(commands: _Commands) -> None:
     )
     remove = _parser(users, "remove", message("cli.users_remove_help"))
     remove.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
+    password = _parser(users, "password", message("cli.users_password_help"))
+    password.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
+    password.add_argument(
+        "--temporary", action="store_true", help=message("cli.password_temporary_help")
+    )
+    password.add_argument(
+        "--stdin", action="store_true", help=message("cli.password_stdin_help")
+    )
+    disable = _parser(users, "disable", message("cli.users_disable_help"))
+    disable.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
+    enable = _parser(users, "enable", message("cli.users_enable_help"))
+    enable.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
 
     groups = _subcommands(commands, "groups", message("cli.groups_help"))
     _parser(groups, "list", message("cli.groups_list_help"))
@@ -261,6 +281,48 @@ def _remove_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     return _Output(None, message("cli.user_removed", id=args.id))
 
 
+def _set_password(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
+    if authorizer.state.user(args.id) is None:
+        raise NotFoundError(message("state.user_not_found", id=args.id))
+    typed = _typed_password(args)
+    user = User.of(
+        access_service.set_password(
+            authorizer, LOCAL_OWNER, args.id, typed, temporary=args.temporary
+        )
+    )
+    if user.password_expires_at is None:
+        return _Output(user, message("cli.password_set", id=user.id))
+    expires = _time(user.password_expires_at)
+    return _Output(user, message("cli.password_set_temporary", id=user.id, end=expires))
+
+
+def _typed_password(args: argparse.Namespace) -> str:
+    """Return one line of standard input, or the password typed twice unseen."""
+    if args.stdin:
+        return sys.stdin.readline().removesuffix("\n").removesuffix("\r")
+    first = getpass.getpass(message("cli.password_prompt", id=args.id))
+    again = getpass.getpass(message("cli.password_again"))
+    if first != again:
+        raise InvalidChangeError(
+            message("cli.password_mismatch"), reason="password_mismatch"
+        )
+    return first
+
+
+def _disable_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
+    user = User.of(
+        access_service.update_user(authorizer, LOCAL_OWNER, args.id, disabled=True)
+    )
+    return _Output(user, _user_text(user))
+
+
+def _enable_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
+    user = User.of(
+        access_service.update_user(authorizer, LOCAL_OWNER, args.id, disabled=False)
+    )
+    return _Output(user, _user_text(user))
+
+
 def _list_groups(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     groups = GroupList(
         items=[
@@ -298,6 +360,9 @@ _USERS: dict[str, _Command] = {
     "add": _add_user,
     "roles": _set_roles,
     "remove": _remove_user,
+    "password": _set_password,
+    "disable": _disable_user,
+    "enable": _enable_user,
 }
 _GROUPS: dict[str, _Command] = {
     "list": _list_groups,
@@ -384,14 +449,22 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
 
 
 def _user_text(user: User) -> str:
+    password = label("cli.password_state", user.password)
+    if user.password == "temporary" and user.password_expires_at is not None:
+        password = message("cli.password_until", end=_time(user.password_expires_at))
     text = message(
         "cli.user_line",
         id=user.id,
         name=user.name,
         roles=_listing(message(f"role.{role}") for role in user.roles),
         groups=_listing(user.groups),
+        password=password,
     )
     return text + (message("cli.user_disabled") if user.disabled else "")
+
+
+def _time(moment: datetime) -> str:
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _group_text(group: Group) -> str:

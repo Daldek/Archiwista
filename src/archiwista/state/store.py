@@ -525,6 +525,7 @@ class StateStore:
         roles: Collection[Role] | None = None,
         disabled: bool | None = None,
         actor: Principal,
+        keep_admin: bool = False,
     ) -> UserRecord:
         """Change an account's name, roles or whether it is disabled.
 
@@ -540,6 +541,9 @@ class StateStore:
             Disable or enable the account; unchanged when omitted.
         actor : Principal
             Who makes the change.
+        keep_admin : bool, optional
+            Refuse a change that leaves no enabled account with the role
+            ``admin`` (team mode, where no local owner administers).
 
         Raises
         ------
@@ -547,6 +551,10 @@ class StateStore:
             Unknown account.
         InvalidChangeError
             An empty name or an unknown role.
+        ConflictError
+            With ``keep_admin``: the account is the last enabled
+            administrator and would be disabled or lose the role (reason
+            ``last_admin``).
         """
         display = None if name is None else _require_name(name)
         granted = None if roles is None else _require_roles(roles)
@@ -559,6 +567,11 @@ class StateStore:
             )
             if not changed:
                 return before
+            stays_admin = "admin" in (
+                before.roles if granted is None else granted
+            ) and (not (before.disabled if disabled is None else disabled))
+            if keep_admin and _enabled_admin(before) and not stays_admin:
+                _require_another_admin(connection, user_id)
             now = _now()
             connection.execute(
                 "UPDATE users SET name = ?, disabled = ?, updated_at = ? WHERE id = ?",
@@ -584,20 +597,36 @@ class StateStore:
             )
         return after
 
-    def remove_user(self, user_id: str, *, actor: Principal) -> None:
+    def remove_user(
+        self, user_id: str, *, actor: Principal, keep_admin: bool = False
+    ) -> None:
         """Remove an account, its roles, memberships, access entries and password.
 
         Projects it owned are left without an owner, which only narrows who
         sees them; every group and project changed is logged too. Its
         preferences go with it.
 
+        Parameters
+        ----------
+        user_id : str
+            The account.
+        actor : Principal
+            Who makes the change.
+        keep_admin : bool, optional
+            Refuse to remove the last enabled administrator (team mode).
+
         Raises
         ------
         NotFoundError
             Unknown account.
+        ConflictError
+            With ``keep_admin``: the account is the last enabled
+            administrator (reason ``last_admin``).
         """
         with self._write() as connection:
             before = _existing_user(connection, user_id)
+            if keep_admin and _enabled_admin(before):
+                _require_another_admin(connection, user_id)
             groups = _groups(
                 connection, f"g.id IN ({_IDS})", (json.dumps(list(before.groups)),)
             )
@@ -1088,6 +1117,23 @@ def _unknown(
 
 def _distinct(ids: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(set(ids)))
+
+
+def _enabled_admin(user: UserRecord) -> bool:
+    return "admin" in user.roles and not user.disabled
+
+
+def _require_another_admin(connection: sqlite3.Connection, user_id: str) -> None:
+    """Refuse a change that would leave no enabled administrator (``last_admin``)."""
+    (others,) = connection.execute(
+        "SELECT COUNT(*) FROM users u JOIN roles r ON r.user_id = u.id"
+        " WHERE r.role = 'admin' AND u.disabled = 0 AND u.id <> ?",
+        (user_id,),
+    ).fetchone()
+    if not others:
+        raise ConflictError(
+            message("state.last_admin", id=user_id), reason="last_admin"
+        )
 
 
 # Reading rows.

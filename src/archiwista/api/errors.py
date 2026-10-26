@@ -166,8 +166,9 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             " scan: refresh the project's own data), `snapshot_blocked`"
             " (`details.blocked_by`), `project_locked` (the lock of a"
             " project's manifest stays, `details.lock`: remove it when no program"
-            " is changing the project) or `unknown_store` (a project's manifest"
-            " names no configured store).",
+            " is changing the project), `unknown_store` (a project's manifest"
+            " names no configured store) or `last_admin` (team mode: the last"
+            " enabled administrator cannot be removed, disabled or lose the role).",
         ),
         500: (
             "data_error",

@@ -60,6 +60,7 @@ ADMIN_ROUTES = [
     ("POST", "/users", {"id": "nowy"}),
     ("PATCH", f"/users/{OTHER}", {"roles": ["admin"]}),
     ("DELETE", f"/users/{OTHER}", None),
+    ("POST", f"/users/{OTHER}/password", None),
     ("GET", "/groups", None),
     ("POST", "/groups", {"id": "geodezja"}),
     ("PUT", f"/groups/{GROUP}/members", {"members": [OTHER]}),

@@ -116,7 +116,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
-| `api/admin.py` | `/users`, `/groups`, `/projects/{project}/access` | models `User`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
+| `api/admin.py` | `/users`, `/users/{user_id}/password`, `/groups`, `/projects/{project}/access` | models `User` (with the state of its password), `TemporaryPassword`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
@@ -144,6 +144,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `auth/principal.py` | who acts | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
+| `auth/passwords.py` | passwords of accounts (ADR-046): the policy (12 to 1,024 characters after NFKC, not the account's id or name, not in `common-passwords.txt`, the package's list with its manifest and licence), Argon2id hashes of `HASHER` with at most `HASH_SLOTS` at once, verification of one hash on every path (a stand-in without a record), temporary passwords; the only reader and writer of the password table | `policy_problem`, `hash_password`, `verify`, `Verified`, `generate_temporary`, `set_password`, `set_temporary_password`, `TemporaryPassword`, `HASHER`, `HASH_SLOTS`, `TEMPORARY_TTL` |
 | `state/schema.py` | schema and migrations of `state.sqlite` | `initialize`, `MIGRATIONS`, `STATE_SCHEMA_VERSION` |
 | `state/store.py` | reading and changing the state database together with the action log (each change and its entries in one transaction; `record` for actions that change nothing here, `actions` pages the log newest first, `prune_actions` deletes old entries; the password table for `auth/passwords.py`; an account's revocation time) | `StateStore`, `UserRecord`, `GroupRecord`, `ProjectAccessRecord`, `PasswordRecord`, `PreferenceRecord`, `ActionEntry`, `ActionName`, `ActionQuery`, `ActionPage`, `StateSnapshot` |
 | `state/export.py` | the `archiwista-state/2` copy of the state database (a secret: it holds the password hashes); `archiwista-state/1` still imports | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `LegacyStateDocument`, `STATE_DOCUMENT_SCHEMA` |
@@ -1066,7 +1067,9 @@ identities (`tests/unit/test_authorize.py`,
   `groups.manage`, `settings.write`, `store.write`, `job.cancel`.
   `admin` manages accounts, groups and settings, sees every project,
   manages access to it and changes it; the owner does so for their own (a project without
-  an access entry is changed only by the administrator);
+  an access entry is changed only by the administrator); in team mode the last
+  enabled administrator can be neither disabled, removed nor deprived of the role
+  (`keep_admin` of `StateStore`, `409 last_admin`);
   visibility `public` (everyone), `users` (people from the entry), `group` (members of
   the groups from the entry), `private` (owner only); a project without an entry follows
   `default_project_visibility` (`public` or `private` = administrators
@@ -1129,7 +1132,7 @@ apart from it, it reads only its own static files from the server.
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
-| `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
+| `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
 | `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members`; with `jobs`: `POST /previews/warm` (`202` with the `preview_warm` job; any session) |
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
@@ -1160,7 +1163,7 @@ with the unchanged message (`<producer>_error`).
 |---|---|---|
 | `serve [--host] [--port] [--no-browser] [--access-log]`, `token [--port] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port |
 | `status`, `sources`, `search [ZAPYTANIE]`, `entry MAGAZYN SLOT`, `version MAGAZYN WERSJA`, `projects`, `project PROJEKT` | `reader.py` | without the server, on the local index; `--json` prints the API response model, an error as an RFC 9457 problem with exit code 1; the `search` options have the parameter names of `/slots` (`search_filters` → `CatalogFilters`) |
-| `users list\|add\|roles\|remove`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
+| `users list\|add\|roles\|remove\|password\|disable\|enable`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `users password ID [--temporary] [--stdin]` (typed twice without echo, or one line of standard input); `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
 | `reindex [--store ID]` | `jobs/reindex.py` | full scan as a `local` job in the foreground; progress on stderr, summary on stdout; exit 0, 1 (error, interruption, `conflict`), 2 (unknown store); Ctrl+C cancels |
 | `doctor` | `doctor.py` | diagnostics in Polish with a repair command for every problem |
 | `preview REF [--build] [--output PLIK.png]`, `layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ]`, `compare REF REF` | `commands/previews.py`, `commands/layers.py`, `commands/compare.py` | the same services as the API, images saved on request |
@@ -1279,10 +1282,11 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   `project_repin`, `project_check` and `project_verify`, one job per project.
 - **Team mode (v0.4, A-ADR-013, A-ADR-046, A-ADR-047).** Built so far: the `[team]`
   settings, the refusals to start, TLS and the transport rules (section 6), the
-  password table and the action log of `state.sqlite` (4.2). Missing are sign-in over
-  HTTP, the screens of accounts, sharing, the log and the jobs, the shared queue and the
-  file download (plan `2026-10-26-plan-v0.4.md`, T2 to T12); sessions live in the
-  memory of a single server (`SessionStore`).
+  password table and the action log of `state.sqlite` (4.2), passwords with temporary
+  ones and the last administrator (`auth/passwords.py`, section 7). Missing are sign-in
+  over HTTP, the screens of accounts, sharing, the log and the jobs, the shared queue
+  and the file download (plan `2026-10-26-plan-v0.4.md`, T3 to T12); sessions live in
+  the memory of a single server (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

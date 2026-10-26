@@ -13,7 +13,7 @@ with the principal as the actor: its id, kind, session label and client.
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from archiwista.auth import Principal
+from archiwista.auth import Principal, passwords
 from archiwista.auth.authorize import Authorizer
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries, ProjectRef
@@ -76,17 +76,61 @@ def update_user(
     roles: Collection[Role] | None = None,
     disabled: bool | None = None,
 ) -> UserRecord:
-    """Change an account (``users.manage``); see ``StateStore.update_user``."""
+    """Change an account (``users.manage``); see ``StateStore.update_user``.
+
+    In team mode the last enabled administrator can be neither disabled nor
+    deprived of the role (``409 last_admin``).
+    """
     authorizer.require(principal, "users.manage")
     return authorizer.state.update_user(
-        user_id, name=name, roles=roles, disabled=disabled, actor=principal
+        user_id,
+        name=name,
+        roles=roles,
+        disabled=disabled,
+        actor=principal,
+        keep_admin=authorizer.team,
     )
 
 
 def remove_user(authorizer: Authorizer, principal: Principal, user_id: str) -> None:
-    """Remove an account (``users.manage``); see ``StateStore.remove_user``."""
+    """Remove an account (``users.manage``); see ``StateStore.remove_user``.
+
+    In team mode the last enabled administrator stays (``409 last_admin``).
+    """
     authorizer.require(principal, "users.manage")
-    authorizer.state.remove_user(user_id, actor=principal)
+    authorizer.state.remove_user(user_id, actor=principal, keep_admin=authorizer.team)
+
+
+def set_temporary_password(
+    authorizer: Authorizer, principal: Principal, user_id: str
+) -> passwords.TemporaryPassword:
+    """Give an account a temporary password the server generates (``users.manage``).
+
+    The password is valid ``TEMPORARY_TTL`` and must be changed at the next
+    sign-in; the account's sessions end. See ``set_temporary_password`` of
+    ``archiwista.auth.passwords``.
+    """
+    authorizer.require(principal, "users.manage")
+    return passwords.set_temporary_password(authorizer.state, user_id, actor=principal)
+
+
+def set_password(
+    authorizer: Authorizer,
+    principal: Principal,
+    user_id: str,
+    password: str,
+    *,
+    temporary: bool,
+) -> UserRecord:
+    """Set a password typed for an account (``users.manage``, the command line).
+
+    The policy applies (``400 password_policy``); the account's sessions end.
+    See ``set_password`` of ``archiwista.auth.passwords``.
+    """
+    authorizer.require(principal, "users.manage")
+    return passwords.set_password(
+        authorizer.state, user_id, password, temporary=temporary, actor=principal
+    )
 
 
 def list_groups(

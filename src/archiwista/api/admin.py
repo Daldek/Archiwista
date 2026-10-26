@@ -1,23 +1,27 @@
 """Accounts, groups and project access over HTTP (A-ADR-029, SPEC 9.2).
 
-``GET/POST /users``, ``PATCH/DELETE /users/{id}``, ``GET/POST /groups``,
-``PUT /groups/{id}/members`` and ``DELETE /groups/{id}`` need ``admin``;
-``GET/PUT /projects/{id}/access`` the project's owner or ``admin``. Changes
-need the session's CSRF token, and each lands in the action log. The
-routes only translate: ``archiwista.services.access`` asks ``Authorizer``
-and changes the state database. ``archiwista users``, ``groups`` and
-``share --json`` print these same models.
+``GET/POST /users``, ``PATCH/DELETE /users/{id}``, ``POST
+/users/{id}/password``, ``GET/POST /groups``, ``PUT /groups/{id}/members``
+and ``DELETE /groups/{id}`` need ``admin``; ``GET/PUT /projects/{id}/access``
+the project's owner or ``admin``. Changes need the session's CSRF token, and
+each lands in the action log. The routes only translate:
+``archiwista.services.access`` asks ``Authorizer`` and changes the state
+database. ``archiwista users``, ``groups`` and ``share --json`` print these
+same models. No answer holds a password hash; a temporary password is
+answered once, by the route that generates it.
 """
 
 from datetime import datetime
 from typing import Annotated, Self
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.dependencies import authorizer, index_queries
+from archiwista.api.errors import problem_responses
 from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
+from archiwista.auth.passwords import TemporaryPassword as GeneratedPassword
 from archiwista.index import IndexQueries
 from archiwista.security import current_principal
 from archiwista.services import access as access_service
@@ -25,6 +29,7 @@ from archiwista.state import (
     ID_PATTERN,
     NAME_MAX_LENGTH,
     GroupRecord,
+    PasswordState,
     Role,
     UserRecord,
     Visibility,
@@ -42,7 +47,7 @@ _TIMES = {"created_at": "2026-10-18T12:00:00Z", "updated_at": "2026-10-18T12:00:
 
 
 class User(BaseModel):
-    """An account of a person; accounts cannot sign in before v0.4."""
+    """An account of a person, with the state of its password (never the hash)."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -54,6 +59,8 @@ class User(BaseModel):
                     "groups": ["hydro"],
                     "disabled": False,
                     **_TIMES,
+                    "password": "temporary",
+                    "password_expires_at": "2026-10-21T12:00:00Z",
                 }
             ]
         }
@@ -68,6 +75,16 @@ class User(BaseModel):
     disabled: bool = Field(description="A disabled account acts nowhere.")
     created_at: datetime
     updated_at: datetime
+    password: PasswordState = Field(
+        description=(
+            "`none`: no password (no sign-in with one); `set`; `temporary`: set by"
+            " an administrator, changed at the next sign-in; `expired`: a temporary"
+            " password past its end."
+        )
+    )
+    password_expires_at: datetime | None = Field(
+        description="The end of a temporary password."
+    )
 
     @classmethod
     def of(cls, record: UserRecord) -> Self:
@@ -80,6 +97,8 @@ class User(BaseModel):
             disabled=record.disabled,
             created_at=record.created_at,
             updated_at=record.updated_at,
+            password=record.password,
+            password_expires_at=record.password_expires_at,
         )
 
 
@@ -87,6 +106,34 @@ class UserList(BaseModel):
     """Every account, ordered by id."""
 
     items: list[User]
+
+
+class TemporaryPassword(BaseModel):
+    """A temporary password the server generated, answered this once."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "password": "Hk7m-Q2xa-9cPe-Rt4w",
+                    "expires_at": "2026-10-21T12:00:00Z",
+                }
+            ]
+        }
+    )
+
+    password: str = Field(
+        description=(
+            "The password, shown only in this answer (Archiwista keeps its hash);"
+            " the person changes it at the first sign-in."
+        )
+    )
+    expires_at: datetime = Field(description="Its end, 72 hours from now.")
+
+    @classmethod
+    def of(cls, generated: GeneratedPassword) -> Self:
+        """Return the model of a generated password."""
+        return cls(password=generated.password, expires_at=generated.expires_at)
 
 
 class NewUser(BaseModel):
@@ -293,14 +340,20 @@ def add_user(body: NewUser, principal: _Principal, decisions: _Authorizer) -> Us
     return User.of(user)
 
 
-@router.patch("/users/{user_id}", response_model=User)
+@router.patch(
+    "/users/{user_id}", response_model=User, responses=problem_responses(404, 409)
+)
 def update_user(
     user_id: _UserId,
     body: UserChange,
     principal: _Principal,
     decisions: _Authorizer,
 ) -> User:
-    """Change an account's name, roles or whether it is disabled (``admin``)."""
+    """Change an account's name, roles or whether it is disabled (``admin``).
+
+    In team mode the last enabled administrator can be neither disabled nor
+    deprived of the role: ``409 conflict``, reason ``last_admin``.
+    """
     user = access_service.update_user(
         decisions,
         principal,
@@ -312,15 +365,42 @@ def update_user(
     return User.of(user)
 
 
-@router.delete("/users/{user_id}", status_code=204)
+@router.delete(
+    "/users/{user_id}", status_code=204, responses=problem_responses(404, 409)
+)
 def remove_user(
     user_id: _UserId, principal: _Principal, decisions: _Authorizer
 ) -> None:
     """Remove an account from groups and project entries, then delete it.
 
-    Projects it owned keep their visibility without an owner (``admin``).
+    Projects it owned keep their visibility without an owner (``admin``). In
+    team mode the last enabled administrator stays: ``409 conflict``, reason
+    ``last_admin``.
     """
     access_service.remove_user(decisions, principal, user_id)
+
+
+@router.post(
+    "/users/{user_id}/password",
+    response_model=TemporaryPassword,
+    responses=problem_responses(404),
+)
+def set_temporary_password(
+    user_id: _UserId,
+    principal: _Principal,
+    decisions: _Authorizer,
+    response: Response,
+) -> TemporaryPassword:
+    """Give an account a temporary password the server generates (``admin``).
+
+    The password is answered this once (``Cache-Control: no-store``) and is
+    valid 72 hours; the person must change it at the first sign-in. Every
+    session of the account ends, and the action log records
+    ``user.password_reset`` (never the password).
+    """
+    generated = access_service.set_temporary_password(decisions, principal, user_id)
+    response.headers["Cache-Control"] = "no-store"
+    return TemporaryPassword.of(generated)
 
 
 @router.get("/groups", response_model=GroupList)

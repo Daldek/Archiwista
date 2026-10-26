@@ -4,7 +4,9 @@
 reserves a free port before the settings exist, so that the team's origin is
 ``https://localhost:<port>``. ``team_serving`` runs ``serve_main`` in team mode
 with TLS in the server there; ``team_client`` drives an application in a test
-client from a given peer address, over https by default.
+client from a given peer address, over https by default. ``save_team`` writes
+the settings of a team that no server serves, for ``running_api``, and
+``cheap_hasher`` is the Argon2id a test puts into ``passwords.HASHER``.
 """
 
 import socket
@@ -13,6 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+import argon2
 import trustme
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -26,6 +29,37 @@ from tests.fixtures.local_server import serving
 SERVER_NAMES = ("localhost", "127.0.0.1")
 # The port of a test client's peer address (any; the server reads the address).
 PEER_PORT = 50_000
+# A team that no server of the tests serves: the transport rules never open its
+# TLS files (``serve_main`` would), so they are named only.
+TEAM_ORIGIN = "https://archiwista.firma.local"
+NAMED_TLS = {
+    "tls_cert": "/etc/archiwista/tls/fullchain.pem",
+    "tls_key": "/etc/archiwista/tls/privkey.pem",
+}
+# A person's computer on the team's network: the peer of ``running_api``'s client.
+PERSON_PEER = "10.0.0.5"
+
+
+def cheap_hasher() -> argon2.PasswordHasher:
+    """Return Argon2id at the lowest cost argon2-cffi allows.
+
+    Tests check what Archiwista does with hashes, not what they cost, so they
+    replace ``archiwista.auth.passwords.HASHER`` with it; the defaults of the
+    code stay as they are (plan v0.4, rule 4).
+    """
+    return argon2.PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+
+
+def save_team(paths: AppPaths, **team: object) -> AppSettings:
+    """Write settings of team mode at ``TEAM_ORIGIN`` with TLS in the server.
+
+    ``team`` adds or replaces values of the table ``[team]``. ``running_api``
+    over these paths then serves team mode to a client at ``PERSON_PEER``.
+    """
+    table = {"enabled": True, "origin": TEAM_ORIGIN, **NAMED_TLS, **team}
+    settings = AppSettings(team=TeamSettings.model_validate(table))
+    ConfigStore(paths.config_file).save(settings)
+    return settings
 
 
 @dataclass(frozen=True)
