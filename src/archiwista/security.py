@@ -11,16 +11,20 @@ address of a request is its peer, or behind trusted proxies the right-most
 ``X-Forwarded-For`` address that is no trusted proxy (``client_address``).
 A one-time token, of which the local index keeps only the SHA-256 hash
 together with who minted it (id and kind), or in team mode a sign-in with an
-account's password (``api/session.py``), starts a session: an ``HttpOnly``
-session cookie (``__Host-archiwista_session`` with ``Secure`` in team mode)
-and a separate secret, the session's CSRF token, which the client keeps
-(the interface in ``sessionStorage``, bound to the server's origin) and
+account's password or through a trusted reverse proxy that names the person
+in ``proxy_user_header`` (``api/session.py``), starts a session: an
+``HttpOnly`` session cookie (``__Host-archiwista_session`` with ``Secure`` in
+team mode) and a separate secret, the session's CSRF token, which the client
+keeps (the interface in ``sessionStorage``, bound to the server's origin) and
 sends as ``X-Archiwista-CSRF`` with every ``/api`` request, reads included.
 Browsers send cookies to every port of a host, so the cookie never acts
-alone. ``/api/*`` requires both, except the exchange itself, the sign-in,
-the ways to sign in and the static files of ``/api/docs`` (local mode only);
-the session acts as a ``Principal`` whose roles and groups are read for
-every request (``current_principal`` for routers), and a session of a
+alone. ``/api/*`` requires both, except the exchange itself, the sign-ins,
+the ways to sign in and the static files of ``/api/docs`` (local mode only).
+Every request of a session signed in through the proxy must come from a
+trusted proxy naming the same person, and the proxy's header from any other
+peer is ignored and logged (``ProxyHeaderLog``). The session acts as a
+``Principal`` whose roles and groups are read for every request
+(``current_principal`` for routers), and a session of a
 temporary password may only change it. An agent's session ends 12 hours
 after its start at the latest, and at once when the owner revokes agent
 sessions (``revoke_agent_sessions``); every session ends when its account's
@@ -88,6 +92,7 @@ SESSION_PATH = f"{API_PREFIX}/session"
 LOGIN_PATH = f"{SESSION_PATH}/login"
 METHODS_PATH = f"{SESSION_PATH}/methods"
 PASSWORD_PATH = f"{SESSION_PATH}/password"
+PROXY_PATH = f"{SESSION_PATH}/proxy"
 # What a session signed in with a temporary password may do until it changes
 # it: read itself, change the password, sign out (ASVS 6.4.1).
 PASSWORD_CHANGE_ROUTES = frozenset(
@@ -107,6 +112,9 @@ TEAM_IDLE_TIMEOUT = timedelta(hours=8)
 TEAM_MAX_AGE = timedelta(days=7)
 # An agent's session ends this long after its start, used or not, in both modes.
 AGENT_SESSION_MAX_AGE = timedelta(hours=12)
+# The proxy's header from a peer that is no trusted proxy is logged at most once
+# per client address in this time, so a client repeating it fills no log.
+PROXY_HEADER_LOG_INTERVAL = timedelta(hours=1)
 # The browser a session shows in its list (``User-Agent``), cut to this length.
 USER_AGENT_MAX_LENGTH = 200
 TOKEN_TTL: Mapping[TokenKind, timedelta] = MappingProxyType(
@@ -762,6 +770,11 @@ class Transport:
         Networks of the trusted reverse proxies (team mode).
     tls_in_server : bool, optional
         Archiwista itself serves TLS (``tls_cert`` and ``tls_key``).
+    proxy_header : str or None, optional
+        The header in which a trusted proxy names the person
+        (``proxy_user_header``, lower-case); ``None`` without one.
+    proxy_autocreate : bool, optional
+        A missing account the proxy names is created without roles.
     """
 
     team: bool
@@ -769,6 +782,8 @@ class Transport:
     hosts: frozenset[str]
     trusted: tuple[IPNetwork, ...] = ()
     tls_in_server: bool = False
+    proxy_header: str | None = None
+    proxy_autocreate: bool = False
 
     @classmethod
     def of(cls, settings: AppSettings, port: int) -> Self:
@@ -777,12 +792,15 @@ class Transport:
         if not team.enabled or team.origin is None:
             origin = f"http://{LOOPBACK_HOST}:{port}"
             return cls(team=False, origin=origin, hosts=allowed_hosts(port))
+        header = team.proxy_user_header
         return cls(
             team=True,
             origin=team.origin,
             hosts=origin_hosts(team.origin),
             trusted=team.trusted_networks(),
             tls_in_server=team.tls_cert is not None,
+            proxy_header=None if header is None else header.lower(),
+            proxy_autocreate=team.proxy_autocreate,
         )
 
     def trusts(self, address: IPAddress | None) -> bool:
@@ -865,6 +883,77 @@ def client_address(scope: Scope, transport: Transport) -> str | None:
             return str(address)
         nearest = address
     return str(nearest)
+
+
+def named_by_proxy(scope: Scope, transport: Transport) -> str | None:
+    """Return the person a trusted reverse proxy names in a request (ADR-046).
+
+    Returns
+    -------
+    str or None
+        The value of ``proxy_user_header``, trimmed and lower-cased, when
+        the request's peer is a trusted proxy and carries the header exactly
+        once with a value; ``None`` otherwise, always in local mode and
+        without the header configured. The proxy replaces any such header a
+        client sent, so only its own value arrives.
+    """
+    if transport.proxy_header is None or not transport.trusts(_peer(scope)):
+        return None
+    values = Headers(scope=scope).getlist(transport.proxy_header)
+    if len(values) != 1:
+        return None
+    return values[0].strip().lower() or None
+
+
+def _proxy_header_ignored(scope: Scope, transport: Transport) -> bool:
+    """Return whether a peer that is no trusted proxy sent the proxy's header."""
+    return (
+        transport.proxy_header is not None
+        and transport.proxy_header in Headers(scope=scope)
+        and not transport.trusts(_peer(scope))
+    )
+
+
+class ProxyHeaderLog:
+    """The proxy's header from peers that are no trusted proxies (ADR-046).
+
+    Such a header is ignored; the action log gets one
+    ``session.proxy_header_ignored`` entry (outcome ``denied``) per client
+    address and ``PROXY_HEADER_LOG_INTERVAL``. Kept in memory; thread-safe.
+
+    Parameters
+    ----------
+    state : StateStore
+        The state database with the action log.
+    clock : Callable[[], datetime], optional
+        Source of the current time (aware).
+    """
+
+    def __init__(
+        self, state: StateStore, *, clock: Callable[[], datetime] = _utc_now
+    ) -> None:
+        self._state = state
+        self._clock = clock
+        self._logged: dict[str, datetime] = {}
+        self._lock = threading.Lock()
+
+    def ignored(self, address: str | None) -> None:
+        """Log the header ignored from ``address`` unless logged lately."""
+        key = address or "-"
+        now = self._clock()
+        with self._lock:
+            last = self._logged.get(key)
+            if last is not None and now - last < PROXY_HEADER_LOG_INTERVAL:
+                return
+            self._logged = {
+                other: at
+                for other, at in self._logged.items()
+                if now - at < PROXY_HEADER_LOG_INTERVAL
+            }
+            self._logged[key] = now
+        self._state.record(
+            None, "session.proxy_header_ignored", key, outcome="denied", client=address
+        )
 
 
 def transport_rejection(scope: Scope, transport: Transport) -> "_Rejection | None":
@@ -986,10 +1075,10 @@ def _is_session_path(path: str) -> bool:
 def _is_public(method: str, path: str) -> bool:
     """Return whether a request needs no session.
 
-    The token exchange, a sign-in, the ways to sign in and the files of
+    The token exchange, the sign-ins, the ways to sign in and the files of
     ``/api/docs``.
     """
-    if method == "POST" and path in (SESSION_PATH, LOGIN_PATH):
+    if method == "POST" and path in (SESSION_PATH, LOGIN_PATH, PROXY_PATH):
         return True
     if method in ("GET", "HEAD") and path == METHODS_PATH:
         return True
@@ -1066,15 +1155,20 @@ class SecurityMiddleware:
     then ``Host`` (``403 forbidden``, reason ``invalid_host``), ``Origin`` and
     ``Sec-Fetch-Site`` (``403 forbidden``, reason ``csrf_rejected``); then for
     ``/api/*``, except the public requests (``POST /api/v1/session``, ``POST
-    /api/v1/session/login``, ``GET /api/v1/session/methods`` and the files of
-    ``/api/docs``), the session cookie (``401 unauthorized``, reason
-    ``session_required``), the session's CSRF token in every request (``403
-    csrf_rejected``), who the session acts as now (``401 session_required``
-    once its account is disabled or removed, its sessions revoked, or its
-    agent session revoked) and, for a session of a temporary password, the
-    routes of ``PASSWORD_CHANGE_ROUTES`` only (``403 forbidden``, reason
+    /api/v1/session/login``, ``POST /api/v1/session/proxy``, ``GET
+    /api/v1/session/methods`` and the files of ``/api/docs``), the session
+    cookie (``401 unauthorized``, reason ``session_required``), for a session
+    signed in through the proxy a trusted proxy naming the same person
+    (``named_by_proxy``; otherwise the session ends, ``401 session_required``),
+    the session's CSRF token in every request (``403 csrf_rejected``), who the
+    session acts as now (``401 session_required`` once its account is
+    disabled or removed, its sessions revoked, or its agent session revoked)
+    and, for a session of a temporary password, the routes of
+    ``PASSWORD_CHANGE_ROUTES`` only (``403 forbidden``, reason
     ``password_change_required``); last the size of the body (``400
-    validation_error``, reason ``request_too_large``).
+    validation_error``, reason ``request_too_large``). The proxy's header
+    from a peer that is no trusted proxy is ignored and logged
+    (``ProxyHeaderLog``).
     Only a request passing all of them extends its session. The client
     address (``client_address``), the session and its principal (with that
     address) are left in ``request.state`` for ``require_session`` and
@@ -1097,6 +1191,8 @@ class SecurityMiddleware:
     principals : Callable[[Session], Principal or None]
         Who a session acts as now (``session_principals``); ``None`` ends
         the session.
+    proxy_log : ProxyHeaderLog
+        Where the proxy's header from other peers is logged.
     """
 
     def __init__(
@@ -1107,6 +1203,7 @@ class SecurityMiddleware:
         sessions: SessionStore,
         settings: Callable[[], AppSettings],
         principals: Callable[[Session], Principal | None],
+        proxy_log: ProxyHeaderLog,
     ) -> None:
         self.app = app
         self._transport = transport
@@ -1114,6 +1211,7 @@ class SecurityMiddleware:
         self._sessions = sessions
         self._settings = settings
         self._principals = principals
+        self._proxy_log = proxy_log
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Check an HTTP request; other scopes (lifespan) pass unchanged."""
@@ -1139,6 +1237,8 @@ class SecurityMiddleware:
                     headers[name] = value
             await send(message)
 
+        if _proxy_header_ignored(scope, self._transport):
+            self._proxy_log.ignored(client_address(scope, self._transport))
         connection = HTTPConnection(scope)
         outcome = transport_rejection(scope, self._transport) or self._check(
             connection, method, path
@@ -1180,6 +1280,12 @@ class SecurityMiddleware:
         if session_id is None or session is None:
             detail = message("api.session_required")
             return _Rejection("unauthorized", "session_required", detail, hint)
+        if session.method == "proxy" and session.proxy_user != named_by_proxy(
+            connection.scope, self._transport
+        ):
+            self._sessions.end(session_id)
+            ended = message("api.session_ended")
+            return _Rejection("unauthorized", "session_required", ended, hint)
         reason = csrf_rejection(connection.headers, session)
         if reason is not None:
             return _Rejection("forbidden", "csrf_rejected", reason)

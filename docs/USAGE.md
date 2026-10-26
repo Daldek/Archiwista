@@ -476,6 +476,54 @@ issues its one-time address (`POST /api/v1/session/tokens`), or the administrato
 does at the server's terminal with `archiwista token --user ID`, which team mode
 requires; the address is one of `origin`.
 
+**Signing in through the company's proxy.** A reverse proxy that already signs people
+in (single sign-on, Active Directory through Kerberos or LDAP) can name the person in a
+header: `proxy_user_header = "X-Remote-User"` next to `trusted_proxies`. A request
+from a trusted proxy carrying it signs in as the enabled account of that id, without a
+password and without the wait (`POST /api/v1/session/proxy`); with `proxy_autocreate =
+true` a missing account is created without roles. Every later request of that session
+must come from a trusted proxy naming the same person, or the session ends. Archiwista
+ignores the header from any other address and logs it, once an hour per address. The
+proxy must set the header itself on every request, replacing whatever the client sent:
+
+```
+# Caddyfile: inside route the directives run in this order.
+archiwista.firma.local {
+    tls /etc/caddy/tls/fullchain.pem /etc/caddy/tls/privkey.pem
+    route {
+        request_header -Remote-User                 # never the client's own value
+        forward_auth 127.0.0.1:9091 {               # the company's sign-in service
+            uri /api/authz/forward-auth
+            copy_headers Remote-User
+        }
+        reverse_proxy 127.0.0.1:8090 {
+            header_up X-Remote-User {http.request.header.Remote-User}
+        }
+    }
+}
+```
+
+```nginx
+# In the server block above: ask the sign-in service, pass on only its answer.
+location / {
+    auth_request /sign-in-check;
+    auth_request_set $person $upstream_http_remote_user;
+    proxy_set_header X-Remote-User $person;       # replaces the client's header
+    proxy_pass http://127.0.0.1:8090;             # and the lines shown above
+}
+location = /sign-in-check {
+    internal;
+    proxy_pass http://127.0.0.1:9091/api/authz/auth-request;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+}
+```
+
+A proxy on the server's own computer (`trusted_proxies = ["127.0.0.1"]`) makes every
+program and account of that computer able to name anyone: run Archiwista on a computer
+of its own, or use TLS in Archiwista without `proxy_user_header`.
+
 **Backup of accounts and the log.** `archiwista state export --output FILE` copies the
 state database — accounts with their password hashes, groups, sharing, preferences
 and the action log — as `archiwista-state/2`. The file gets mode `0600` and must stay

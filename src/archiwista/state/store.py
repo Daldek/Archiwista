@@ -50,6 +50,7 @@ type ActionName = Literal[
     "session.logout",
     "session.password",
     "session.ended",
+    "session.proxy_header_ignored",
     "token.issue",
     "token.revoke_all",
     "user.add",
@@ -482,7 +483,8 @@ class StateStore:
         *,
         name: str | None = None,
         roles: Collection[Role] = (),
-        actor: Principal,
+        actor: Principal | None,
+        client: str | None = None,
     ) -> UserRecord:
         """Create an account.
 
@@ -495,8 +497,11 @@ class StateStore:
             Display name; the id when omitted.
         roles : Collection[Role], optional
             ``admin`` and/or ``store_writer``.
-        actor : Principal
-            Who makes the change (for the log).
+        actor : Principal or None
+            Who makes the change (for the log); ``None`` before a sign-in
+            (an account the reverse proxy names, created at its sign-in).
+        client : str or None, optional
+            The client address of an entry without ``actor``.
 
         Raises
         ------
@@ -520,7 +525,13 @@ class StateStore:
             _insert_roles(connection, user_id, granted)
             after = _existing_user(connection, user_id)
             _record(
-                connection, actor, "user.add", user_id, now, after=_user_state(after)
+                connection,
+                actor,
+                "user.add",
+                user_id,
+                now,
+                after=_user_state(after),
+                client=client,
             )
         return after
 

@@ -71,6 +71,16 @@ MESSAGES = {
             " zmienia się tam, nie w Archiwiście."
         ),
     ),
+    "proxy_login_failed": Text(
+        (
+            "Signing in through the company's reverse proxy failed: it names no"
+            " enabled account of Archiwista. Ask an administrator."
+        ),
+        (
+            "Logowanie przez firmowy serwer pośredniczący nie powiodło się: nie"
+            " wskazuje on włączonego konta Archiwisty. Zwróć się do administratora."
+        ),
+    ),
     "session_unknown": Text(
         "No live session that you may end has the label {label}.",
         "Żadna trwająca sesja, którą możesz zakończyć, nie ma etykiety {label}.",

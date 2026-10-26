@@ -205,7 +205,7 @@ def test_sign_in_answers_a_session_with_the_team_cookie(team: Team) -> None:
     assert session.session_id not in (body["csrf_token"], body["label"])
     assert state.status_code == 200, state.text
     assert state.json() == {key: body[key] for key in state.json()}
-    assert methods.json() == {"mode": "team", "password": True}
+    assert methods.json() == {"mode": "team", "password": True, "proxy": False}
     assert team.hasher.verified == 1
 
 
@@ -632,5 +632,5 @@ def test_local_mode_has_no_sign_in(tmp_path: Path) -> None:
         refused = sign_in(api.client, PERSON, PERSON_PASSWORD)
 
     # Assert
-    assert methods.json() == {"mode": "local", "password": False}
+    assert methods.json() == {"mode": "local", "password": False, "proxy": False}
     assert_problem(refused, 409, "conflict", "local_mode")

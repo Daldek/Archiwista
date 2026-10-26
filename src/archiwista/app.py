@@ -72,6 +72,7 @@ from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.previews.pool import RenderPool
 from archiwista.security import (
+    ProxyHeaderLog,
     SecurityMiddleware,
     SessionStore,
     TokenKind,
@@ -250,6 +251,7 @@ def create_app(
         sessions=sessions,
         settings=settings.get,
         principals=app.state.principals,
+        proxy_log=ProxyHeaderLog(state),
     )
     app.add_middleware(LanguageMiddleware)
     return app

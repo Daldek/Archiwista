@@ -2,25 +2,31 @@
 
 ``GET /api/v1/session/methods`` (public) tells how to start a session: in
 local mode with one-time tokens only, in team mode also with an account's
-password. ``POST /api/v1/session/login`` (public, team mode) signs in with
-an account and its password (ADR-046): every refusal of an account answers
-the same ``401 login_failed`` after one password verification, a correct
-temporary password past its end ``401 password_expired``, and after five
-failures of the account or the address the attempts wait
-(``archiwista.auth.throttle``: ``429 login_blocked`` with ``Retry-After``,
-no verification). ``POST /api/v1/session`` (public) exchanges a one-time
-token. Both pass the ``Host`` and ``Origin`` rules, end the session whose
-cookie the request carried (no fixation) and answer the new session's CSRF
-token, which every other ``/api`` request carries in ``X-Archiwista-CSRF``
-next to the session cookie (SPEC 10.1). A session signed in with a
-temporary password may only read itself, change the password and sign out
-(``SecurityMiddleware``). ``GET`` shows the session without that token,
-with the roles and groups its principal has now and whether it may write
-the stores; ``PUT /api/v1/session/password`` changes the person's password,
-ends every session of the account and answers a new one; ``DELETE`` signs
-out; ``POST /api/v1/session/tokens`` issues a one-time token for an agent,
-which an agent's own session may not do. Each sign-in, failure, sign-out,
-password change and token lands in the action log.
+password, and through the company's reverse proxy when the request came
+from a trusted proxy naming the person. ``POST /api/v1/session/login``
+(public, team mode) signs in with an account and its password (ADR-046):
+every refusal of an account answers the same ``401 login_failed`` after one
+password verification, a correct temporary password past its end ``401
+password_expired``, and after five failures of the account or the address
+the attempts wait (``archiwista.auth.throttle``: ``429 login_blocked`` with
+``Retry-After``, no verification). ``POST /api/v1/session/proxy`` (public,
+team mode) signs in as the enabled account a trusted proxy names in
+``proxy_user_header`` (with ``proxy_autocreate`` a missing one is created
+without roles); each later request of that session must come from a
+trusted proxy naming the same person (``SecurityMiddleware``). ``POST
+/api/v1/session`` (public) exchanges a one-time token. All three pass the
+``Host`` and ``Origin`` rules, end the session whose cookie the request
+carried (no fixation) and answer the new session's CSRF token, which every
+other ``/api`` request carries in ``X-Archiwista-CSRF`` next to the session
+cookie (SPEC 10.1). A session signed in with a temporary password may only
+read itself, change the password and sign out (``SecurityMiddleware``).
+``GET`` shows the session without that token, with the roles and groups its
+principal has now and whether it may write the stores; ``PUT
+/api/v1/session/password`` changes the person's password, ends every
+session of the account and answers a new one; ``DELETE`` signs out; ``POST
+/api/v1/session/tokens`` issues a one-time token for an agent, which an
+agent's own session may not do. Each sign-in, failure, sign-out, password
+change and token lands in the action log.
 """
 
 import unicodedata
@@ -36,7 +42,12 @@ from archiwista.api.dependencies import authorizer
 from archiwista.api.errors import ApiError, problem_responses
 from archiwista.auth import LOCAL_PRINCIPAL_ID, Principal, PrincipalKind, passwords
 from archiwista.auth.throttle import LoginThrottle, throttle_keys
-from archiwista.errors import PermissionDeniedError, RateLimitedError
+from archiwista.errors import (
+    ConflictError,
+    InvalidChangeError,
+    PermissionDeniedError,
+    RateLimitedError,
+)
 from archiwista.messages import message
 from archiwista.security import (
     Session,
@@ -48,12 +59,13 @@ from archiwista.security import (
     current_principal,
     fragment_url,
     issue_one_time_token,
+    named_by_proxy,
     redeem_one_time_token,
     require_session,
     session_cookie_name,
     set_session_cookie,
 )
-from archiwista.state import StateStore
+from archiwista.state import StateStore, UserRecord
 
 router = APIRouter(prefix="/session", tags=["session"])
 
@@ -135,7 +147,9 @@ class SessionMethods(BaseModel):
     """How a session starts on this server."""
 
     model_config = ConfigDict(
-        json_schema_extra={"examples": [{"mode": "team", "password": True}]}
+        json_schema_extra={
+            "examples": [{"mode": "team", "password": True, "proxy": False}]
+        }
     )
 
     mode: Literal["local", "team"] = Field(
@@ -146,6 +160,12 @@ class SessionMethods(BaseModel):
     )
     password: bool = Field(
         description="Signing in with an account's password (POST /session/login)."
+    )
+    proxy: bool = Field(
+        description=(
+            "Signing in through the company's reverse proxy (POST /session/proxy):"
+            " this request came from a trusted proxy that names a person."
+        )
     )
 
 
@@ -300,6 +320,7 @@ def _new_session(
     issued_at: datetime | None = None,
     generation: int = 0,
     password_change_required: bool = False,
+    proxy_user: str | None = None,
 ) -> _Started | None:
     """Start a session, end the one of the request's cookie, set the cookie.
 
@@ -321,6 +342,7 @@ def _new_session(
         client=_client(request),
         user_agent=request.headers.get("user-agent"),
         password_change_required=password_change_required,
+        proxy_user=proxy_user,
         replaces=request.cookies.get(session_cookie_name(transport)),
     )
     principal: Principal | None = request.app.state.principals(session)
@@ -371,16 +393,94 @@ def on_redeem(request: Request, kind: TokenKind) -> None:
         hook(kind)
 
 
+def _proxy_refused() -> ApiError:
+    """Return the one refusal of a sign-in through the proxy."""
+    return ApiError(
+        "unauthorized", message("auth.proxy_login_failed"), reason="login_failed"
+    )
+
+
+def _proxy_account(
+    state: StateStore, named: str, transport: Transport, client: str | None
+) -> UserRecord | None:
+    """Return the account the proxy names; with ``proxy_autocreate`` a new one.
+
+    The new account has no roles and its ``user.add`` entry has no actor
+    (``-``). A name that is no valid account id creates nothing.
+    """
+    user = state.user(named)
+    if user is not None or not transport.proxy_autocreate:
+        return user
+    try:
+        return state.add_user(named, actor=None, client=client)
+    except InvalidChangeError:  # no valid account id, or ``local``
+        return None
+    except ConflictError:  # created meanwhile by another sign-in
+        return state.user(named)
+
+
 @router.get("/methods", response_model=SessionMethods)
 async def session_methods(request: Request) -> SessionMethods:
-    """Tell how a session starts here: local mode, or team mode with passwords.
+    """Tell how a session starts here: local mode, or team mode and its ways.
 
     Needs no session: the interface asks before it shows the sign-in.
+    `proxy` is true when this request came from a trusted proxy carrying
+    `proxy_user_header`.
     """
     transport: Transport = request.app.state.transport
     return SessionMethods(
-        mode="team" if transport.team else "local", password=transport.team
+        mode="team" if transport.team else "local",
+        password=transport.team,
+        proxy=named_by_proxy(request.scope, transport) is not None,
     )
+
+
+@router.post("/proxy", response_model=NewSession, responses=problem_responses(409))
+def proxy_sign_in(request: Request, response: Response) -> NewSession:
+    """Sign in as the person the company's reverse proxy names (team mode).
+
+    Only a request from a trusted proxy (`trusted_proxies`) carrying
+    `proxy_user_header` signs in, as the enabled account the header names
+    (trimmed and lower-cased); with `proxy_autocreate` a missing account is
+    created without roles. Anything else answers `401 login_failed`: no
+    header, another peer, an unknown or a disabled account. Sets the cookie
+    and answers the session with its `csrf_token` as POST /session/login;
+    every later `/api` request of the session must come from a trusted proxy
+    naming the same person, else the session ends (`401 session_required`).
+    The proxy has authenticated the person: no password and no wait after
+    failures. Local mode: `409 local_mode`.
+    """
+    transport: Transport = request.app.state.transport
+    if not transport.team:
+        raise ApiError("conflict", message("auth.local_mode"), reason="local_mode")
+    named = named_by_proxy(request.scope, transport)
+    if named is None:
+        raise _proxy_refused()
+    state = _state_store(request)
+    client = _client(request)
+    user = _proxy_account(state, named, transport, client)
+    if user is None or user.disabled:
+        state.record(
+            None,
+            "session.login_failed",
+            _typed(named[:ACCOUNT_MAX_LENGTH]),
+            outcome="failed",
+            details={
+                "reason": "unknown_proxy_user" if user is None else "disabled",
+                "method": "proxy",
+            },
+            client=client,
+        )
+        raise _proxy_refused()
+    started = _new_session(
+        request, response, user.id, "user", method="proxy", proxy_user=named
+    )
+    if started is None:  # disabled between the check and the session
+        raise _proxy_refused()
+    state.record(
+        started.principal, "session.login", user.id, details={"method": "proxy"}
+    )
+    return started.answer
 
 
 @router.post("/login", response_model=NewSession, responses=problem_responses(409, 429))

@@ -31,10 +31,12 @@ from archiwista.index.schema import initialize
 from archiwista.security import (
     AGENT_SESSION_MAX_AGE,
     CSRF_HEADER,
+    PROXY_HEADER_LOG_INTERVAL,
     SESSION_COOKIE,
     TEAM_IDLE_TIMEOUT,
     TEAM_MAX_AGE,
     TOKEN_TTL,
+    ProxyHeaderLog,
     SessionStore,
     TokenKind,
     Transport,
@@ -42,6 +44,7 @@ from archiwista.security import (
     csp_header,
     current_principal,
     issue_one_time_token,
+    named_by_proxy,
     origin_rejection,
     redeem_one_time_token,
     revoke_agent_sessions,
@@ -50,6 +53,7 @@ from archiwista.security import (
 )
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources, local_paths, serving
+from tests.fixtures.permissions import log_entries
 
 PORT = 8090
 BASE_URL = f"http://127.0.0.1:{PORT}"
@@ -940,6 +944,56 @@ def test_security_forwarded_https_believed_only_from_a_trusted_peer(
     )
 
     assert (None if rejection is None else rejection.reason) == reason
+
+
+@pytest.mark.parametrize(
+    ("peer", "values", "named"),
+    [
+        ("10.0.0.2", ("Kasia",), "kasia"),
+        ("10.0.0.2", ("  marek.nowak ",), "marek.nowak"),
+        ("10.0.0.2", (), None),
+        ("10.0.0.2", ("  ",), None),
+        ("10.0.0.2", ("kasia", "marek"), None),
+        ("10.0.0.5", ("kasia",), None),
+    ],
+)
+def test_security_only_a_trusted_proxy_names_the_person(
+    peer: str, values: tuple[str, ...], named: str | None
+) -> None:
+    """One value of the header from a trusted peer, trimmed and lower-cased."""
+    transport = team_transport(
+        trusted_proxies=["10.0.0.2"], proxy_user_header="X-Remote-User"
+    )
+    headers = tuple(("x-remote-user", value) for value in values)
+
+    assert named_by_proxy(request_scope(peer, headers=headers), transport) == named
+
+
+def test_security_proxy_header_is_logged_once_an_hour_per_address(
+    tmp_path: Path,
+) -> None:
+    """The header of another peer is logged again only an hour later."""
+    # Arrange
+    state = StateStore(tmp_path / "state.sqlite")
+    clock = Clock(START)
+    ignored = ProxyHeaderLog(state, clock=clock)
+
+    # Act
+    ignored.ignored("10.0.0.9")
+    clock.now = START + PROXY_HEADER_LOG_INTERVAL - timedelta(seconds=1)
+    ignored.ignored("10.0.0.9")
+    ignored.ignored("10.0.0.8")
+    clock.now = START + PROXY_HEADER_LOG_INTERVAL
+    ignored.ignored("10.0.0.9")
+
+    # Assert
+    assert [
+        (entry.action, entry.actor, entry.target, entry.outcome, entry.client)
+        for entry in log_entries(state)
+    ] == [
+        ("session.proxy_header_ignored", "-", address, "denied", address)
+        for address in ("10.0.0.9", "10.0.0.8", "10.0.0.9")
+    ]
 
 
 def test_security_team_host_and_origin_compare_with_the_origin() -> None:

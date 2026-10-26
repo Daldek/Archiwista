@@ -32,7 +32,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
-| team mode (v0.4): how a session starts, signing in, changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
+| team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
 | background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
@@ -177,7 +177,9 @@ and delete it after the work. The server's logs mask the token of an address
 A team server (USAGE "Team server") answers only at its `origin` over HTTPS;
 `curl` checks its certificate (`--cacert` for the company's authority). `GET
 /session/methods`, without a session, answers `{"mode": "team", "password":
-true}` (`"local"` and `false` on one person's computer).
+true, "proxy": false}` (`"local"` and `false` on one person's computer; `proxy`
+is `true` when the request came through a trusted reverse proxy that names a
+person).
 
 **An agent** acts for an account, with that account's current roles, through a
 one-time token exchanged as in steps 3 and 4: from a person's session (`POST
@@ -233,8 +235,16 @@ curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" "$BASE/session"
   `DELETE /users/{user_id}/sessions` and `archiwista users end-sessions ID` end
   every session of the account, also the tokens it issued and nobody exchanged
   yet.
-- On a local server `POST /session/login` and `PUT /session/password` are `409
-  conflict`, `local_mode`.
+- On a local server `POST /session/login`, `POST /session/proxy` and `PUT
+  /session/password` are `409 conflict`, `local_mode`.
+
+**Behind the company's reverse proxy** (`proxy_user_header`), a request that came
+through it signs in as the person it names with `POST /session/proxy` (no body,
+no password, no wait): the same answer with `method` `proxy`. Every later request
+of that session must come through the proxy naming the same person, else the
+session ends (`401 session_required`). A name that is no enabled account is `401
+login_failed` (with `proxy_autocreate` a missing account is created without roles),
+and so is a request that did not come through a trusted proxy.
 
 ## 3. Search and filters (`GET /slots`, `archiwista search`)
 
@@ -680,7 +690,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
 | 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name) or `common` (a common password); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
-| 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; `login_failed` (team mode): the account and password do not sign in, one answer for every cause; `password_expired`: a correct temporary password past its end, an administrator gives a new one |
+| 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; `login_failed` (team mode): the account and password do not sign in, one answer for every cause, or the reverse proxy names no enabled account (`POST /session/proxy`); `password_expired`: a correct temporary password past its end, an administrator gives a new one |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |

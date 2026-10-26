@@ -89,6 +89,17 @@ command-line interface may change.
   the action log. `429` problems of the API carry `details.retry_after_s`. AGENT_API
   section 2 shows a script's sign-in and an agent's token on a team server, and USAGE
   "Team server" signing in, sessions and the wait.
+- Signing in through the company's reverse proxy (v0.4, ADR-046): with
+  `proxy_user_header`, `POST /session/proxy` signs in as the enabled account that a
+  trusted proxy names in that header (trimmed and lower-cased; no password and no
+  wait), and `GET /session/methods` answers `proxy: true` for a request that came
+  through such a proxy. `proxy_autocreate` creates a missing account without roles
+  (`user.add` without an actor). Anything else is `401 login_failed`, logged with the
+  reason `unknown_proxy_user` or `disabled`. Every later request of such a session
+  must come from a trusted proxy naming the same person, else the session ends. The
+  header from any other address is ignored and logged (`session.proxy_header_ignored`,
+  once an hour per address). USAGE "Team server" shows Caddy (`forward_auth`,
+  `header_up`) and nginx (`auth_request`, `proxy_set_header`).
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
