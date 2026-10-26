@@ -10,9 +10,12 @@ dataset chip of the map), ``GET /stations/{code}`` is a station's card,
 ``GET /stations/{code}/coverage`` its variables year by year (the Timeline)
 and ``GET /map/stations`` the located stations of a map view or their grid.
 The fixed paths are declared before ``/stations/{code}``, which would else
-read them as a code. Everything is read from the index, never from a series
-file, and only while the source of the stations is available: else ``503``
-(SPEC 5.8). ``archiwista stations`` calls the same functions without HTTP.
+read them as a code. Without ``year_type`` the labels number the years as the
+settings remember for the data's family (``year_types``, P15), a list of both
+families as for hydro data. Everything is read from the index, never from a
+series file, and only while the source of the stations is available: else
+``503`` (SPEC 5.8). ``archiwista stations`` calls the same functions without
+HTTP.
 """
 
 from typing import Annotated
@@ -114,6 +117,7 @@ def station_list(
     if bbox is not None:
         area = _rectangle(registry, bbox, filters.bbox_crs)
     query = filters.station_query(
+        year_types=settings.year_types,
         area=area,
         boundary=filters.boundary,
         location=filters.location,
@@ -143,7 +147,7 @@ def station_datasets(
     require_station_source(registry)
     freshness = queries.freshness()
     stores = checked_store(query.store, settings, freshness)
-    found = queries.station_datasets(query.store)
+    found = queries.station_datasets(query.store, year_types=settings.year_types)
     return StationDatasets.of(found, staleness(freshness, stores))
 
 
@@ -178,6 +182,7 @@ def station_card(
         dataset=lookup.dataset,
         year_type=lookup.year_type,
         years=lookup.year_range(),
+        year_types=settings.year_types,
     )
     return StationCard(
         station=StationItem.of(row, found), **staleness(freshness, {row.store})
@@ -209,6 +214,7 @@ def station_timeline(
         dataset=filters.dataset,
         year_type=filters.year_type,
         years=filters.year_range(),
+        year_types=settings.year_types,
     )
     return StationTimeline.of(
         row, found, filters.variable, staleness(freshness, {row.store})
@@ -239,6 +245,7 @@ def station_map(
     stores = checked_store(filters.store, settings, freshness)
     record = _area(queries, filters.area_id)
     query = filters.station_query(
+        year_types=settings.year_types,
         area=None if record is None else record.geometry,
         bbox=filters.bbox_values(),
         boundary=filters.boundary,

@@ -38,6 +38,7 @@ import shapely
 from shapely.geometry import shape
 
 from archiwista.auth import ProjectVisibility
+from archiwista.config import DEFAULT_YEAR_TYPES, YearTypes
 from archiwista.errors import IndexQueryError
 from archiwista.index.coverage import CoverageShape, measure_coverage, planar_crs
 from archiwista.index.geometry import (
@@ -1410,22 +1411,27 @@ class IndexQueries:
             ).fetchone()
         return None if row is None else _station(row, stores)
 
-    def station_datasets(self, store: str | None = None) -> tuple[StationDataset, ...]:
+    def station_datasets(
+        self, store: str | None = None, *, year_types: YearTypes = DEFAULT_YEAR_TYPES
+    ) -> tuple[StationDataset, ...]:
         """Return the datasets with station series in the index (the dataset chip).
 
         Parameters
         ----------
         store : str or None
             One configured store id; ``None``: every store.
+        year_types : YearTypes
+            The year type remembered for each family: the numbering of each
+            dataset's labels and of its R (P15).
 
         Returns
         -------
         tuple[StationDataset, ...]
             One per store and dataset of the series catalogs (the current
             series version of each), by store and dataset key: the
-            producer's name of its segment, R by default in the default year
-            type of its labels and the distinct variable keys of its
-            stations' series, in the order of the series index.
+            producer's name of its segment, R by default in the year type of
+            its labels and the distinct variable keys of its stations'
+            series, in the order of the series index.
         """
         with self._read() as connection:
             stores = _stores(connection)
@@ -1467,7 +1473,7 @@ class IndexQueries:
         found: list[StationDataset] = []
         for row in rows:
             unit = row["time_unit"]
-            numbering = label_year_type(row["kind"], unit, None)
+            numbering = label_year_type(row["kind"], unit, None, year_types)
             found.append(
                 StationDataset(
                     store=stores[row["store_id"]],
@@ -1501,6 +1507,7 @@ class IndexQueries:
         dataset: str | None = None,
         year_type: YearType | None = None,
         years: YearRange | None = None,
+        year_types: YearTypes = DEFAULT_YEAR_TYPES,
     ) -> tuple[StationCoverage, ...]:
         """Return the coverage of a station's series with its labels (SPEC 4.8.4).
 
@@ -1515,13 +1522,15 @@ class IndexQueries:
         dataset : str or None
             One dataset only; ``None``: every dataset with a series of it.
         year_type : {"hydrological", "calendar"} or None
-            The numbering of the years; ``None``: hydrological years for hydro
-            data and calendar years for the others. Half-year characteristics
+            The numbering of the years; ``None``: the one ``year_types``
+            remembers for each dataset's family. Half-year characteristics
             stay in hydrological years whatever is asked (SPEC 4.8.2).
         years : tuple[int, int] or None
             R, the first and last year; ``None``: from the dataset's first
             year (else the first known one) to the last year of the known
             periods of its version.
+        year_types : YearTypes
+            The year type remembered for each family (P15).
 
         Returns
         -------
@@ -1546,7 +1555,12 @@ class IndexQueries:
             if dataset is not None:
                 where.add("s.dataset = ?", dataset)
             return _series_coverage(
-                connection, stores, where, year_type=year_type, years=years
+                connection,
+                stores,
+                where,
+                year_type=year_type,
+                year_types=year_types,
+                years=years,
             )
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
@@ -2668,6 +2682,7 @@ def _station_fingerprint(query: StationQuery) -> str:
         sorted([name, state] for name, state in query.coverage),
         sorted([name, years] for name, years in query.min_complete_years),
         query.year_type,
+        [query.year_types.hydro, query.year_types.meteo],
         None if query.years is None else list(query.years),
     ]
     data = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
@@ -2911,7 +2926,12 @@ def _covered(
         minimum[name] = max(years, minimum.get(name, 0))
     passing: set[int] = set()
     for found in _series_coverage(
-        connection, stores, where, year_type=query.year_type, years=query.years
+        connection,
+        stores,
+        where,
+        year_type=query.year_type,
+        year_types=query.year_types,
+        years=query.years,
     ):
         entries = {
             name: [
@@ -2945,7 +2965,12 @@ def _stations_coverage(
     if query.dataset is not None:
         where.add("s.dataset = ?", query.dataset)
     return _series_coverage(
-        connection, stores, where, year_type=query.year_type, years=query.years
+        connection,
+        stores,
+        where,
+        year_type=query.year_type,
+        year_types=query.year_types,
+        years=query.years,
     )
 
 
@@ -2955,11 +2980,13 @@ def _series_coverage(
     where: _Where,
     *,
     year_type: YearType | None,
+    year_types: YearTypes,
     years: YearRange | None,
 ) -> tuple[StationCoverage, ...]:
     """Read the coverage of the series ``where`` selects on ``s`` (station_series).
 
-    Each dataset's year type and range R are known before its years are
+    Each dataset's year type (the one asked, else the one ``year_types``
+    remembers for its family) and range R are known before its years are
     read, so only the years of R in that numbering are read.
     """
     rows = connection.execute(
@@ -2976,7 +3003,7 @@ def _series_coverage(
     for key, group in groups.items():
         first = group[0]
         unit = first["time_unit"]
-        numbering = label_year_type(first["kind"], unit, year_type)
+        numbering = label_year_type(first["kind"], unit, year_type, year_types)
         periods = _date_ranges(first["version_periods"])
         span = years or default_span(
             first["first_year"], periods, time_unit=unit, year_type=numbering

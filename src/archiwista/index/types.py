@@ -13,7 +13,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from archiwista.config import OwnFolderReason, OwnFolderSource
+from archiwista.config import (
+    DEFAULT_YEAR_TYPES,
+    OwnFolderReason,
+    OwnFolderSource,
+    YearTypes,
+)
 from archiwista.index.series import SeriesLabel, SeriesState, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
@@ -973,7 +978,11 @@ class StationQuery:
         station without the variable never passes a filter of it.
     year_type, years : YearType or None, YearRange or None
         The numbering and the range R of the labels (and of the coverage
-        filters); ``None``: the dataset's defaults (SPEC 4.8.4).
+        filters); ``None``: the type of ``year_types`` and the dataset's R by
+        default (SPEC 4.8.4).
+    year_types : YearTypes
+        The year type remembered for each family: the numbering of a
+        dataset's labels when ``year_type`` is ``None`` (P15).
     labels : bool
         Whether the result holds the coverage of its stations' series
         (``StationPage.coverage``), labelled in ``years`` and ``year_type``.
@@ -999,6 +1008,7 @@ class StationQuery:
     min_complete_years: tuple[tuple[str, int], ...] = ()
     year_type: YearType | None = None
     years: YearRange | None = None
+    year_types: YearTypes = DEFAULT_YEAR_TYPES
     labels: bool = False
 
 

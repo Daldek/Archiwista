@@ -33,6 +33,7 @@ from archiwista.config import (
     DefaultProjectVisibility,
     StoreConfig,
     StoreKind,
+    YearTypes,
 )
 from archiwista.error_document import REGISTRY_PAGE
 from archiwista.index import (
@@ -94,6 +95,7 @@ from archiwista.sources import (
     LocationKind,
     SourceState,
     SourceStatus,
+    YearType,
 )
 
 type Geometry = dict[str, Any]
@@ -3020,6 +3022,32 @@ class BasemapSettings(BaseModel):
         )
 
 
+class YearTypeSettings(BaseModel):
+    """The year type remembered for hydro and for meteo data (P15, SPEC 6.7)."""
+
+    model_config = _examples(
+        {"hydro": "hydrological", "meteo": "calendar"}, closed=True
+    )
+
+    hydro: YearType = Field(
+        default="hydrological",
+        description="Numbering of the years of hydro data: hydrological by default.",
+    )
+    meteo: YearType = Field(
+        default="calendar",
+        description="Numbering of the years of meteo data: calendar by default.",
+    )
+
+    @classmethod
+    def of(cls, year_types: YearTypes) -> Self:
+        """Return the model of the remembered year types."""
+        return cls(hydro=year_types.hydro, meteo=year_types.meteo)
+
+    def year_types(self) -> YearTypes:
+        """Return the settings' value of these year types."""
+        return YearTypes(hydro=self.hydro, meteo=self.meteo)
+
+
 class Settings(BaseModel):
     """All settings; PUT replaces all of them (omitted fields take defaults)."""
 
@@ -3038,6 +3066,7 @@ class Settings(BaseModel):
             "default_project_visibility": "public",
             "preview_cache_limit_gb": 20,
             "preview_warm_after_scan": False,
+            "year_types": {"hydro": "hydrological", "meteo": "calendar"},
         },
         closed=True,
     )
@@ -3101,6 +3130,14 @@ class Settings(BaseModel):
             " `PUT /projects/{project}/data-dir`. Without one: `<project>/dane`."
         ),
     )
+    year_types: YearTypeSettings = Field(
+        default_factory=YearTypeSettings,
+        description=(
+            "The year type remembered for hydro and for meteo data: the numbering"
+            " of the station views without `year_type`; set with"
+            " `PUT /settings/year-types`."
+        ),
+    )
 
     @classmethod
     def of(cls, settings: AppSettings) -> Self:
@@ -3120,6 +3157,7 @@ class Settings(BaseModel):
             preview_cache_limit_gb=settings.preview_cache_limit_gb,
             preview_warm_after_scan=settings.preview_warm_after_scan,
             own_data_dirs=dict(settings.own_data_dirs),
+            year_types=YearTypeSettings.of(settings.year_types),
         )
 
 

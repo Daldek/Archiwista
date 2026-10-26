@@ -567,6 +567,22 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `tests/e2e/test_stations_map.py` with `tests/fixtures/station_browser.py` (6 passed: tooltip, cluster,
      spread, grid in Chromium; legend, counter and chips in both engines; in `collect_ignore`); screenshot
      `docs/reports/v0.5-screenshots/01-stacje-na-mapie.webp`.
+     *The wheel test's flake (`f64318f`).* `tests/e2e/test_map.py::test_wheel_over_the_panel_brings_its_last_step_into_view`
+     failed in about one Chromium run of two (the panel 34.5 px lower before the wheel): the shell
+     polls `GET /health` every 2 s during a scan, so its scan line could still stand above the panel
+     after `wait_indexed`; the test waits for the "Stan indeksu" region to go before it measures
+     (10 runs in both engines passed).
+     *I8.2 commit 1 as built (the reduced gate).* `config.YearTypes` and `DEFAULT_YEAR_TYPES`,
+     `AppSettings.year_types` (in `config.toml`, `GET /settings`, `Settings.year_types`,
+     `YearTypeSettings`), `PUT /settings/year-types` (`put_year_types`, `settings.write`);
+     `label_year_type(kind, unit, asked, remembered)`, `StationQuery.year_types` (in the cursor's
+     fingerprint), `IndexQueries.station_datasets` and `station_coverage` with `year_types`,
+     `StationFilters.view_year_type` (a list of both families takes hydro's type). Tests: new
+     `tests/integration/test_year_types.py` (5 passed; in `collect_ignore`), the unit test of
+     `label_year_type` with remembered types, and the station tests (`test_stations_api.py`,
+     `test_stations_cli.py`, `test_station_datasets_api.py`, `test_station_queries.py`,
+     `test_station_areas.py`, `test_series_labels.py`, `test_api.py`, `tests/unit`: all passed but
+     `test_doctor.py::test_doctor_refused_store_shows_the_fix_the_producer_gave`, port 8090 in use).
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,

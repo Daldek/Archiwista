@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
+from archiwista.config import YearTypes
 from archiwista.sources import DateRange, TimeUnit, VariableCoverage, YearType
 
 type Interval = tuple[int, int]
@@ -325,19 +326,20 @@ class SeriesLabel:
 
 
 def label_year_type(
-    kind: str | None, time_unit: TimeUnit, asked: YearType | None
+    kind: str | None, time_unit: TimeUnit, asked: YearType | None, remembered: YearTypes
 ) -> YearType:
     """Return the year type of a dataset's labels (SPEC 4.8.2, P15).
 
-    The one asked, else hydrological years for hydro data and calendar years
-    for the others; half-year characteristics stay in hydrological years
-    whatever is asked, as IMGW computes them.
+    The one asked, else the one remembered for the dataset's family
+    (``remembered``: hydro for ``hydro`` data, meteo for the others, by
+    default hydrological and calendar years); half-year characteristics stay
+    in hydrological years whatever is asked, as IMGW computes them.
     """
     if time_unit == "half_year":
         return "hydrological"
     if asked is not None:
         return asked
-    return "hydrological" if kind == "hydro" else "calendar"
+    return remembered.of_kind(kind)
 
 
 def default_span(

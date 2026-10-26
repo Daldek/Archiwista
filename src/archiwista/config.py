@@ -26,7 +26,7 @@ from pydantic import (
 
 from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
-from archiwista.sources import SourceState
+from archiwista.sources import SourceState, YearType
 from archiwista.sources.markers import store_around, store_below
 
 logger = logging.getLogger(__name__)
@@ -386,6 +386,32 @@ DEFAULT_BASEMAPS: tuple[BasemapConfig, ...] = (
 )
 
 
+class YearTypes(BaseModel):
+    """The year type remembered for each family of station data (P15, SPEC 6.7).
+
+    Parameters
+    ----------
+    hydro, meteo : {"hydrological", "calendar"}
+        The numbering of the years of hydro and of meteo data in every view
+        until the next change: hydrological and calendar years by default, as
+        the archives number them. A ``year_type`` asked for wins and changes
+        neither; half-year characteristics stay hydrological (SPEC 4.8.2).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    hydro: YearType = "hydrological"
+    meteo: YearType = "calendar"
+
+    def of_kind(self, kind: str | None) -> YearType:
+        """Return the type of a family: hydro's for ``hydro``, else meteo's."""
+        return self.hydro if kind == "hydro" else self.meteo
+
+
+# What a new configuration remembers: the numbering of the IMGW archives.
+DEFAULT_YEAR_TYPES = YearTypes()
+
+
 class AppSettings(BaseModel):
     """All user settings stored in the TOML configuration file.
 
@@ -428,6 +454,10 @@ class AppSettings(BaseModel):
         Data folder of a project by the project directory after ``realpath``
         (its access key): absolute directories, set by an administrator.
         Without an entry a project's folder is ``<project directory>/dane``.
+    year_types : YearTypes
+        The year type remembered for hydro and for meteo data (P15): the
+        numbering of the station views without ``year_type``, set with
+        ``PUT /settings/year-types``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -454,6 +484,7 @@ class AppSettings(BaseModel):
     )
     preview_warm_after_scan: bool = False
     own_data_dirs: dict[str, str] = Field(default_factory=dict)
+    year_types: YearTypes = DEFAULT_YEAR_TYPES
 
     @field_validator("default_project_visibility", mode="before")
     @classmethod

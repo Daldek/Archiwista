@@ -1,4 +1,4 @@
-"""Settings over HTTP: ``GET /settings`` and ``PUT /settings`` (SPEC 9.2, 5.5).
+"""Settings over HTTP: ``GET /settings``, ``PUT /settings`` (SPEC 9.2, 5.5).
 
 ``GET`` answers any session (the interface needs the basemaps and offline
 mode). ``PUT`` replaces all settings: it needs ``settings.write`` (an
@@ -8,6 +8,9 @@ the directories: they exist and can be read, producer directories are not
 nested, the producer accepts each new or moved one. A rejected change keeps
 the file and the settings in effect. A saved change reaches subscribers
 (the scan scheduler) and the CSP of the following responses.
+``PUT /settings/year-types`` changes only the year type remembered for hydro
+and for meteo data (P15), with the same permission until accounts exist
+(v0.4).
 """
 
 from typing import Annotated
@@ -16,7 +19,7 @@ from fastapi import APIRouter, Depends
 
 from archiwista.api.dependencies import authorizer, settings_service
 from archiwista.api.errors import problem_responses
-from archiwista.api.models import Settings
+from archiwista.api.models import Settings, YearTypeSettings
 from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService, parse_settings
@@ -72,3 +75,26 @@ def put_settings(
     responses.
     """
     return save_settings(service, body)
+
+
+@router.put(
+    "/year-types", response_model=Settings, responses=problem_responses(403, 400)
+)
+def put_year_types(
+    body: YearTypeSettings,
+    principal: Annotated[Principal, Depends(settings_writer)],
+    service: _Settings,
+) -> Settings:
+    """Remember the year type of hydro and of meteo data; answer the settings.
+
+    The station routes number the years of a view without `year_type` by the
+    type remembered for its family, a list of both families by hydro's (P15);
+    a given `year_type` wins and changes nothing. Only these two settings
+    change; an omitted one takes its default (hydro hydrological, meteo
+    calendar). Needs the permission of `PUT /settings` until accounts exist
+    (v0.4).
+    """
+    current = service.get()
+    return Settings.of(
+        service.update(current.model_copy(update={"year_types": body.year_types()}))
+    )

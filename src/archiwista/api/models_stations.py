@@ -16,6 +16,7 @@ from typing import Any, Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from archiwista.api.models import WGS84, AreaRef, Cell, IndexAnswer, parse_bbox
+from archiwista.config import YearTypes
 from archiwista.index import (
     DEFAULT_GRID_COLUMNS,
     DEFAULT_PAGE_LIMIT,
@@ -256,7 +257,9 @@ class StationLookup(BaseModel):
         default=None,
         description=(
             "Numbering of the years: `hydrological` (1 XI to 31 X) or `calendar`;"
-            " by default hydrological for hydro data and calendar for the others."
+            " by default the type remembered for the data's family (`year_types`"
+            " of `GET /settings`: hydrological for hydro data and calendar for"
+            " meteo data until changed), for a list of both families hydro's."
             " Half-year characteristics stay hydrological."
         ),
     )
@@ -368,9 +371,23 @@ class StationFilters(StationLookup):
                 raise ValueError(message("api.min_complete_years_invalid", value=item))
         return value
 
+    def view_year_type(self, remembered: YearTypes) -> YearType | None:
+        """Return the year type every label of the view takes, if one does.
+
+        ``year_type`` when asked; else, for a view of both families (neither
+        ``dataset``, ``kind`` nor ``meteo_kind`` keeps one), the type
+        remembered for hydro data (P15, SPEC 6.7); else ``None``: each
+        dataset takes the type remembered for its family.
+        """
+        if self.year_type is not None:
+            return self.year_type
+        one_family = self.dataset is not None or self.kind is not None
+        return None if one_family or self.meteo_kind else remembered.hydro
+
     def station_query(
         self,
         *,
+        year_types: YearTypes,
         area: GeoJSONGeometry | None = None,
         bbox: BBox | None = None,
         boundary: bool = True,
@@ -379,7 +396,10 @@ class StationFilters(StationLookup):
         cursor: str | None = None,
         labels: bool = True,
     ) -> StationQuery:
-        """Return the index query of these filters with an area, view and page."""
+        """Return the index query of these filters with an area, view and page.
+
+        ``year_types`` are the year types the settings remember.
+        """
         return StationQuery(
             store=self.store,
             provider=self.provider,
@@ -406,7 +426,8 @@ class StationFilters(StationLookup):
                     item.rpartition(":") for item in self.min_complete_years
                 )
             ),
-            year_type=self.year_type,
+            year_type=self.view_year_type(year_types),
+            year_types=year_types,
             years=self.year_range(),
             labels=labels,
         )
@@ -1176,7 +1197,11 @@ class StationDatasetItem(BaseModel):
     kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
     time_unit: TimeUnit = Field(description="Unit of its series: `day`, `month`, …")
     year_type: YearType = Field(
-        description="Default numbering of the years of its labels and of `years`."
+        description=(
+            "Numbering of the years of its labels and of `years` without"
+            " `year_type`: the type remembered for its family (`year_types` of"
+            " `GET /settings`); hydrological for half-year characteristics."
+        )
     )
     years: YearSpan | None = Field(
         description=(

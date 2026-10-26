@@ -379,11 +379,17 @@ and `provider`. Without IMGWTools every station route answers `503
 missing_dependency` (`source_unavailable`) with the fix in `hint`. `GET
 /stations/datasets` names the datasets with station series (`archiwista stations
 datasets`): each one's key, the producer's name of its segment, provider, family,
-unit, default year type, R by default (`years`), the label of its current series
-version and its `variables` (the distinct keys of its stations' series); use a key
-as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
+unit, the year type of its labels, R by default (`years`), the label of its current
+series version and its `variables` (the distinct keys of its stations' series); use a
+key as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
 (repeatable: `synoptic`, `climate`, `precipitation`) keeps the meteo stations of
-those kinds, the counts too.
+those kinds, the counts too. Without `year_type` the routes and `archiwista stations`
+number the years as `year_types` of `GET /settings` remembers for the data's family
+(hydro hydrological and meteo calendar by default; a list of both families, without
+`dataset`, `kind` or `meteo_kind`, as hydro); a given `year_type` wins and changes
+nothing, and half-year characteristics stay hydrological. `PUT /settings/year-types`
+with `{"hydro": …, "meteo": …}` changes the choice (an administrator until accounts
+exist).
 
 ```sh
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"

@@ -9,6 +9,14 @@ command-line interface may change.
 
 ### Added
 
+- The year type is remembered for hydro and for meteo data (P15, ADR-045, plan I8.2):
+  `year_types` in `config.toml` and `GET /api/v1/settings` (hydro hydrological, meteo
+  calendar by default), changed by `PUT /api/v1/settings/year-types` (an administrator
+  until accounts exist). The station routes and `archiwista stations` number the years
+  of a view without `year_type` as remembered for its family; a list of both families,
+  without a dataset or a station type, takes the type remembered for hydro data (until
+  now each family kept its own default there). A `year_type` in the request wins and
+  changes nothing; half-year characteristics stay in hydrological years.
 - Stations on the map (ADR-045, plan I8.1). A product of IMGWTools shows its stations in
   place of outlines: the shape says the station type (a triangle for a water gauge, a
   square for a climatological or synoptic station, a circle for a precipitation post),
