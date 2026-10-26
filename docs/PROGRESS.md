@@ -670,6 +670,23 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      (17 and the `perf` test: median 15 ms; in `collect_ignore`); the route in `ROUTES`, the `503`
      and OpenAPI tests of `test_stations_api.py`, the options and missing-dependency tests of
      `test_stations_cli.py`.
+     *I8.5 commit 1 as built (the reduced gate).* `views/station.js` (the overlay `station` of
+     `routes.js` `OVERLAYS`, `parseStation`; header with the year-type switch, location or reason,
+     "Strona stacji IMGW" for a water gauge of IMGW-PIB, "Pokaż na mapie", "Kopiuj ścieżkę pliku",
+     the coverage, the tabs "Metadane", "Pochodzenie", "Szczegóły techniczne" in `station_tab`, the
+     formula with "Kopiuj atrybucję"), `views/station.css`, `views/year-type.js` (`useYearType`,
+     now also the Catalog's switch), `labels/station.js`; openers: `MapCanvas` `onStation` (a click
+     on a point; the tooltip says so), the Catalog's rows (Enter or a click; `M` the map) and the
+     Timeline's names (`K`); `map/stations.js` `STATION_PARAM`, `stationAddress`; `api.js`
+     `getStation`; `GET /stations/{code}` `paths` (`StationCard.paths`, `copy_path`). ADR-045
+     decision 10. Tests: new `tests/e2e/test_station_card.py` (8 passed in both engines), the keys
+     and unlocated rows of `test_stations_catalog.py` now open the card, the card's paths in
+     `test_stations_api.py`; `test_stations_catalog.py`, `test_stations_timeline.py`,
+     `test_stations_map.py`, `test_catalog.py`, `test_stations_api.py` and `test_stations_cli.py`
+     passed. Screenshot `docs/reports/v0.5-screenshots/04-karta-stacji.webp`. Next: I8.5 commit 2
+     (`views/station-chart.js`, the tab "Wykres" as the default; in `complete` H of `149190310`
+     has values on 2023.12.01 and 2024.02.29 only, so its path is two one-vertex subpaths beside
+     two bands), then I8.6 (`GET /stations/compare`, `views/station-compare.js`, "Porównaj z…").
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,

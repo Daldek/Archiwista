@@ -23,7 +23,8 @@
  * Rows have one height and are drawn only near the visible part. One cell
  * is the tab stop (roving tabindex): arrows move by year and row, Page
  * Up/Down by a view, Home/End to a row's ends (with Ctrl the grid's), Enter
- * or Space expands or folds a station.
+ * or Space expands or folds a station. A station's name, or K on any of its
+ * rows, opens its card (views/station.js).
  */
 
 import { count, day, int } from "../format.js";
@@ -104,6 +105,10 @@ export function timelinePage(dataset, variables) {
  * @param {string|null} props.color - The address's `color`.
  * @param {(key: string) => void} props.onColor - Choose the station rows' variable.
  * @param {*} props.empty - Shown instead of rows when there are none.
+ * @param {(station: import("../types.js").StationTimelineItem) => void} props.onOpen -
+ *   Open a station's card.
+ * @param {(station: import("../types.js").StationTimelineItem) => string} props.cardHref -
+ *   The address of a station's card (its name is a link).
  * @param {{current: *}} props.handle - Receives `{focusRow(index)}`.
  */
 export function StationTimeline(props) {
@@ -234,7 +239,9 @@ export function StationTimeline(props) {
     else if (event.key === "Home") focusCell(event.ctrlKey ? 0 : at, 0);
     else if (event.key === "End") focusCell(event.ctrlKey ? last : at, years);
     else if ((event.key === "Enter" || event.key === " ") && !event.ctrlKey) toggle(rows[at]);
-    else return;
+    else if ((event.key === "k" || event.key === "K") && !event.ctrlKey) {
+      props.onOpen(rows[at].station);
+    } else return;
     event.preventDefault();
   };
   const focusIn = (event) => {
@@ -256,7 +263,13 @@ export function StationTimeline(props) {
   };
   const click = (event) => {
     const found = target(event);
-    if (found && found.column === 0) toggle(rows[found.at]);
+    if (!found) return;
+    // The name is a link to the card: a plain click opens it over the Catalog.
+    if (event.target.closest?.(".stl-open")) {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      props.onOpen(rows[found.at].station);
+    } else if (found.column === 0) toggle(rows[found.at]);
   };
   // A scroll redraws the rows only when another row comes near the view.
   const scroll = (event) => {
@@ -307,7 +320,8 @@ export function StationTimeline(props) {
             const row = rows[index];
             return html`<${TimelineRow} key=${row.key} row=${row} index=${index} span=${span}
               yearType=${yearType} focusAt=${index === current ? col : -1}
-              described=${tipRow === row ? tip.col : -1} tipId=${tipId} total=${total} />`;
+              described=${tipRow === row ? tip.col : -1} tipId=${tipId} total=${total}
+              cardHref=${props.cardHref} />`;
           })}
           ${hasMore
             ? html`<div class="stl-more" aria-hidden="true"
@@ -358,7 +372,7 @@ function Legend() {
 }
 
 /** A row of the treegrid: a station, or a variable of an expanded station. */
-function TimelineRow({ row, index, span, yearType, focusAt, described, tipId, total }) {
+function TimelineRow({ row, index, span, yearType, focusAt, described, tipId, total, cardHref }) {
   const station = row.level === 1;
   const expanded = station && row.size ? (row.open ? "true" : "false") : null;
   const title = station ? stationTitle(row.station) : variableTitle(row.variable);
@@ -368,16 +382,17 @@ function TimelineRow({ row, index, span, yearType, focusAt, described, tipId, to
     data-row=${index} style=${{ transform: `translateY(${index * ROW}px)` }}>
     <div class="stl-rowhead" role="rowheader" aria-colindex="1" data-col="0"
       tabindex=${focusAt === 0 ? 0 : -1} title=${title}>
-      ${station ? stationHead(row) : variableHead(row)}
+      ${station ? stationHead(row, cardHref) : variableHead(row)}
     </div>
     ${span ? yearCells(row, span, focusAt, described, tipId) : null}
   </div>`;
 }
 
-/** The heading of a station's row: the fold, its symbol, name, code and the row's variable. */
-function stationHead(row) {
+/** The heading of a station's row: the fold, symbol, name (its card's link), code and variable. */
+function stationHead(row, cardHref) {
   const station = row.station;
   const state = row.variable?.state ?? "no_data";
+  const name = station.name ?? S.unnamed;
   let variable = null;
   if (row.variable) variable = html`<span class="stl-key mono">${row.variable.key}</span>`;
   else if (row.missing) {
@@ -389,7 +404,8 @@ function stationHead(row) {
       ${row.size ? html`<${Icon} name=${row.open ? "down" : "chevron"} size=${13} />` : null}
     </span>
     <${StationSymbol} shape=${stationShape(station)} state=${state} size=${12} />
-    <span class="stl-name ell">${station.name ?? S.unnamed}</span>${" "}
+    <a class="stl-name stl-open ell" href=${cardHref(station)} tabindex="-1"
+      title=${t(TL.open_title, { name })}>${name}</a>${" "}
     <span class="stl-code faint mono">${station.code}</span>${" "}
     ${variable}`;
 }

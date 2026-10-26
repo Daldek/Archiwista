@@ -259,6 +259,7 @@ export const map = {
     cell: "{count} w tej komórce",
     cell_zoom: "Kliknij, aby przybliżyć",
     on_boundary: "na granicy obszaru",
+    open: "Kliknij, aby otworzyć kartę stacji",
     dataset: "Zbiór danych",
     datasets_loading: "Wczytywanie zbiorów danych stacji…",
     no_datasets: "Indeks nie ma szeregów stacji tego produktu: punkty stacji bez koloru pokrycia.",

@@ -52,6 +52,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").StationTimelinePage} StationTimelinePage */
 /** @typedef {import("./types.js").StationMapFilters} StationMapFilters */
 /** @typedef {import("./types.js").StationMapView} StationMapView */
+/** @typedef {import("./types.js").StationLookup} StationLookup */
+/** @typedef {import("./types.js").StationCard} StationCard */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
@@ -580,6 +582,21 @@ export function listStationTimeline(filters, { signal } = {}) {
  */
 export function listMapStations(filters, { signal } = {}) {
   return request("GET", "/map/stations", { query: filters, signal });
+}
+
+/**
+ * A station's card (`get_station`): its catalog entry, each series labelled
+ * and the paths of its series files.
+ *
+ * @param {string} code - The station's code as its provider gives it.
+ * @param {StationLookup} lookup - `store` and `provider` name the station.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationCard>}
+ * @throws {ApiError} `404` (no such station), `400 ambiguous_station`,
+ *   `503 missing_dependency` without IMGWTools.
+ */
+export function getStation(code, lookup, { signal } = {}) {
+  return request("GET", `/stations/${one(code)}`, { query: lookup, signal });
 }
 
 /**

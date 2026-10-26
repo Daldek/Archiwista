@@ -19,8 +19,7 @@
  * address, since the filters need a dataset.
  */
 
-import { getArea, putYearTypes } from "../api.js";
-import { useApp } from "../context.js";
+import { getArea } from "../api.js";
 import { int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
@@ -28,6 +27,7 @@ import { t } from "../labels/index.js";
 import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
 import { html, Icon, Seg, Tech, useEffect, useState } from "../ui.js";
 import { STATION_FILTERS } from "./catalog-stations.js";
+import { useYearType, YEAR_TYPES } from "./year-type.js";
 
 const F = L.filters;
 /** Values of `versions`, the first one the API's default. */
@@ -315,32 +315,17 @@ function StationFields({ query, stations, errors, onChange }) {
     <${YearTypeSwitch} query=${query} family=${stations.family} onChange=${onChange} />`;
 }
 
-/** The roles that may change the settings, so remember a year type (`settings.write`). */
-const ADMIN_ROLE = "admin";
-
 /**
  * „Lata: hydrologiczne / kalendarzowe” (M11 point 5): the address's
- * `year_type`, else the type remembered for the list's family. A choice goes
- * to the address; an administrator's is also remembered for the family.
+ * `year_type`, else the type remembered for the list's family (year-type.js).
  */
 function YearTypeSwitch({ query, family, onChange }) {
   const SF = L.stations.filters;
-  const app = useApp();
-  const [failed, setFailed] = useState(false);
-  const remembered = app.settings?.year_types ?? null;
-  const fallback = family === "hydro" ? "hydrological" : "calendar";
-  const value = query.year_type ?? remembered?.[family] ?? fallback;
-  const admin = Boolean(app.session?.roles.includes(ADMIN_ROLE));
-  const choose = (next) => {
-    setFailed(false);
-    onChange({ year_type: next });
-    if (!admin || !remembered || remembered[family] === next) return;
-    putYearTypes({ ...remembered, [family]: next }).then(app.setSettings, () => setFailed(true));
-  };
+  const { value, choose, admin, failed } = useYearType(query.year_type, family, onChange);
   return html`<div class="field" role="group" aria-labelledby="cat-f-year_type-label">
     <span class="field-label" id="cat-f-year_type-label">${SF.year_type}</span>
     <${Seg} small label=${SF.year_type} value=${value} onChange=${choose}
-      options=${["hydrological", "calendar"].map((type) => ({ value: type, label: SF.year_types[type] }))} />
+      options=${YEAR_TYPES.map((type) => ({ value: type, label: SF.year_types[type] }))} />
     <span class="field-hint st-year-type-note">
       ${admin ? t(SF.year_type_hint, { family: SF.families[family] }) : SF.year_type_local}</span>
     ${failed ? html`<span class="field-error" role="alert">${SF.year_type_failed}</span>` : null}

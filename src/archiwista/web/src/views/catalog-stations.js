@@ -15,23 +15,30 @@
  * położenia” is the last group, read with `location=none` once the located
  * ones are all loaded, collapsed when more than 50 stations are located and
  * expanded when the address asks for `location=none` (the map's counter,
- * M5). Its rows never lead to the map. Until the station card (I8.5) a row
- * offers „Pokaż na mapie” only: Enter, a click and M show a located station
- * on the map; on a group row they fold it.
+ * M5). Its rows never lead to the map. Enter or a click opens a station's
+ * card (views/station.js, `station` of the address), on a group row folds
+ * it; M and the row's button show a located station on the map.
  *
  * „Oś czasu” (`layout=timeline`, plan I8.3) is the other layout of the same
  * toolbar and filters: `GET /stations/timeline` of one dataset (the
  * address's, else the product's first) in one cursor of the address's
  * location group, drawn as stations × years
- * (views/catalog-station-timeline.js).
+ * (views/catalog-station-timeline.js), whose station names open the card too.
  */
 
 import { listStations, listStationTimeline } from "../api.js";
 import { count, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
-import { STATION_KINDS, StationSymbol, stationShape, stationType } from "../map/stations.js";
-import { Link, navigate, setParams } from "../router.js";
+import {
+  STATION_KINDS,
+  STATION_PARAM,
+  StationSymbol,
+  stationAddress,
+  stationShape,
+  stationType,
+} from "../map/stations.js";
+import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import {
   html,
@@ -235,11 +242,14 @@ export function CatalogStations(props) {
           zoom: STATION_ZOOM,
         })
     : null;
-  // Enter or a click: a station with a position on the map, the heading of „Bez położenia” folds it.
+  const openCard = (item) => setParams({ [STATION_PARAM]: stationAddress(item) });
+  const cardHref = (item) => href("catalog", { ...params, [STATION_PARAM]: stationAddress(item) });
+  // Enter or a click: a station's card; the heading of „Bez położenia” folds it.
   const openRow = (item) => {
     if (item.group === "none") toggleGroup();
-    else if (!item.group && map && item.location.kind === "point") map(item);
+    else if (!item.group) openCard(item);
   };
+  const selected = params[STATION_PARAM] ?? null;
   const datasetNames = new Map(datasets.map((item) => [item.dataset, item.name ?? item.dataset]));
   const active = activeStationFilters(params);
   const sort = query.sort ?? "river";
@@ -259,12 +269,14 @@ export function CatalogStations(props) {
       loading=${pages.loading} loadingMore=${pages.loadingMore} moreError=${pages.moreError}
       onMore=${() => pages.more(true)} resetKey=${key} datasetKey=${datasetKey} dataset=${dataset}
       chosen=${Boolean(params.dataset)} color=${params.color ?? null}
-      onColor=${(value) => setParams({ color: value })} handle=${grid} empty=${empty} />`;
+      onColor=${(value) => setParams({ color: value })} onOpen=${openCard} cardHref=${cardHref}
+      handle=${grid} empty=${empty} />`;
   } else {
     body = html`<${CatalogGrid} rows=${STATION_ROWS} items=${items} total=${total}
       hasMore=${pages.hasMore(open)} loading=${pages.loading} loadingMore=${pages.loadingMore}
       moreError=${pages.moreError} onMore=${() => pages.more(open)} resetKey=${key} narrow=${narrow}
-      handle=${grid} isSelected=${() => false} cardOpen=${false} onOpen=${openRow} onMap=${map}
+      handle=${grid} isSelected=${(item) => !item.group && stationAddress(item) === selected}
+      cardOpen=${selected !== null} onOpen=${openRow} onMap=${map}
       onToggle=${toggleGroup} sort=${sort} storeNames=${storeNames} datasetNames=${datasetNames}
       empty=${empty} />`;
   }

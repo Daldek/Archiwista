@@ -52,6 +52,7 @@ export const VIEWS = [
 export const OVERLAYS = [
   { param: "file", load: () => import("./views/file.js") },
   { param: "own", load: () => import("./views/own.js") },
+  { param: "station", load: () => import("./views/station.js") },
 ];
 
 /** The view opened without `view=`: the one marked `start`, else the first. */

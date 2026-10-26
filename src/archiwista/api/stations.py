@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, Path, Query
 
 from archiwista.api.dependencies import index_queries, plugin_registry, settings_service
 from archiwista.api.errors import problem_responses
-from archiwista.api.models import AreaRef, staleness
+from archiwista.api.models import AreaRef, CopyPath, staleness
 from archiwista.api.models_stations import (
     StationCard,
     StationChart,
@@ -49,7 +49,7 @@ from archiwista.api.models_stations import (
     StationTimelineListFilters,
     StationTimelinePage,
 )
-from archiwista.api.slots import bbox_area, checked_store
+from archiwista.api.slots import bbox_area, checked_store, copy_path
 from archiwista.auth import Principal
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import (
@@ -180,7 +180,10 @@ def station_card(
     code: str,
     lookup: StationLookup,
 ) -> StationCard:
-    """Return a station's card: its catalog entry and its series labelled.
+    """Return a station's card: its catalog entry, its series labelled, their files.
+
+    Each series file is also given on this computer and as mounted on others
+    (``paths``), as the file card gives a version's (SPEC 4.6).
 
     Raises
     ------
@@ -206,8 +209,15 @@ def station_card(
         years=lookup.year_range(),
         year_types=settings.year_types,
     )
+    paths: dict[str, CopyPath] = {}
+    for series in found:
+        copied = copy_path(settings, row.store, STATION_PRODUCER, series.file)
+        if copied is not None:
+            paths[series.dataset] = copied
     return StationCard(
-        station=StationItem.of(row, found), **staleness(freshness, {row.store})
+        station=StationItem.of(row, found),
+        paths=paths,
+        **staleness(freshness, {row.store}),
     )
 
 
@@ -643,8 +653,10 @@ def get_station(
 ) -> StationCard:
     """Return a station's card: metadata, location and each series labelled.
 
-    A code that several stations share (two stores, two providers) is `400`
-    (reason `ambiguous_station`) until `store` and `provider` name one.
+    `paths` gives each series file on this computer and as mounted on others
+    (path aliases). A code that several stations share (two stores, two
+    providers) is `400` (reason `ambiguous_station`) until `store` and
+    `provider` name one.
     """
     return station_card(queries, settings.get(), registry, code, lookup)
 

@@ -304,6 +304,8 @@ function addDataLayers(map) {
  *   stations of the view (a station product), or their grid.
  * @param {string|null} [props.stationColor] - Key of the "Kolor punktów"
  *   variable: the state of a point's image (none: unknown).
+ * @param {(item: import("../types.js").StationPoint) => void} [props.onStation] -
+ *   A station's point chosen: open its card.
  * @param {*} [props.children] - Overlays of the view over the map.
  */
 export function MapCanvas({
@@ -328,6 +330,7 @@ export function MapCanvas({
   onOwn = null,
   stations = undefined,
   stationColor = null,
+  onStation = null,
   children,
 }) {
   const box = useRef(null);
@@ -354,6 +357,7 @@ export function MapCanvas({
     describe,
     tool,
     stationColor,
+    onStation,
     gridOn: sheets.length > 0,
   };
   const basemapKey = basemap ? JSON.stringify(basemap) : "";
@@ -749,8 +753,12 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       if (item) props.current.onSheet(item);
       return;
     }
-    // The next click folds a spread; a station point has no action of its own.
+    // A station's point opens its card; the next click folds a spread.
     const [station] = map.queryRenderedFeatures(event.point, { layers: STATION_LAYERS });
+    const point =
+      station && !station.properties.cluster && station.source !== "station-cells"
+        ? (data.current[lists[station.source]] ?? [])[station.properties.i]
+        : null;
     fold();
     if (station?.source === "station-cells") {
       const cell = data.current.stationCells[station.properties.i];
@@ -771,7 +779,10 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       );
       return;
     }
-    if (station) return;
+    if (station) {
+      if (point) props.current.onStation?.(point);
+      return;
+    }
     const [cell] = map.queryRenderedFeatures(event.point, { layers: ["cells-fill"] });
     const found = cell && data.current.cells[cell.properties.i];
     if (found) {

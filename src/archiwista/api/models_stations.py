@@ -15,7 +15,14 @@ from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, with_config
 
-from archiwista.api.models import WGS84, AreaRef, Cell, IndexAnswer, parse_bbox
+from archiwista.api.models import (
+    WGS84,
+    AreaRef,
+    Cell,
+    CopyPath,
+    IndexAnswer,
+    parse_bbox,
+)
 from archiwista.config import YearTypes
 from archiwista.index import (
     DEFAULT_GRID_COLUMNS,
@@ -1050,9 +1057,30 @@ class StationList(IndexAnswer):
 class StationCard(IndexAnswer):
     """A station's card: its catalog entry and every series labelled (SPEC 6.7)."""
 
-    model_config = _examples({"station": _STATION_EXAMPLE, **_FRESH})
+    model_config = _examples(
+        {
+            "station": _STATION_EXAMPLE,
+            "paths": {
+                "pl.imgw.hydro_daily": {
+                    "local": f"/mnt/nas/imgw/{_SERIES_DIR}/stations/149190310.parquet",
+                    "aliases": [
+                        "Z:\\imgw\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
+                        "\\stations\\149190310.parquet"
+                    ],
+                }
+            },
+            **_FRESH,
+        }
+    )
 
     station: StationItem
+    paths: dict[str, CopyPath] = Field(
+        description=(
+            "The station's series file of each dataset (`series[].file`) on this"
+            " computer and as mounted on others (path aliases, SPEC 4.6), by dataset"
+            " key; none for a store whose IMGW directory is no longer configured."
+        )
+    )
 
 
 @with_config(

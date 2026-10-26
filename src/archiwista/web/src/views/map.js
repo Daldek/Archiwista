@@ -89,7 +89,13 @@ import { OwnLegend, ownCardPatch, useOwnLayer } from "../map/own.js";
 import { own as O } from "../labels/own.js";
 import { productNames, productStores } from "../map/products.js";
 import { DEFAULT_GRID, GRID_PRODUCER, scaleLabel } from "../map/sheets.js";
-import { isStationProduct, STATION_PARAMS, stationChoice } from "../map/stations.js";
+import {
+  isStationProduct,
+  STATION_PARAM,
+  STATION_PARAMS,
+  stationAddress,
+  stationChoice,
+} from "../map/stations.js";
 import { availableBasemaps, chosenBasemap, keepBasemap, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { Link, setParams } from "../router.js";
@@ -467,6 +473,7 @@ export default function MapScreen({ route, embedded = false }) {
       <div class="map-pane">
         <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
           stations=${stationMode ? stationView.data : undefined} stationColor=${station.color}
+          onStation=${(item) => setParams({ [STATION_PARAM]: stationAddress(item) })}
           layerTiles=${layerSource} versionTiles=${versionSource}
           previewOutline=${previewRef ? preview.outline : null} previewFeatures=${features.data}
           own=${own.items} onOwn=${(item) => setParams({

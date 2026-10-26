@@ -147,9 +147,14 @@ def test_stations_lists_both_providers_page_by_page_with_the_location_groups(
 def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     served: Served,
 ) -> None:
-    """The card names the series version, the file with its digest, the terms."""
+    """The card names the series version, the file with its digest and paths."""
+    # Arrange
+    config = ConfigStore(served.paths.config_file).load().store(STORE)
+    assert config is not None and config.imgw is not None
+
     # Act
-    card = served.json(f"/stations/{RABA}")["station"]
+    answer = served.json(f"/stations/{RABA}")
+    card = answer["station"]
     czech = served.json("/stations/0-203-1-900001")["station"]
     polish = served.get(f"/stations/{RABA}?dataset={DAILY}", lang="pl").json()
 
@@ -184,6 +189,9 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     assert list(series["coverage"]) == ["H", "Q", "T"]
     assert series["coverage"]["Q"]["state"] == "gaps"
     assert series["coverage"]["Q"]["unknown_years"] == [{"from": 1951, "to": 2023}]
+    assert answer["paths"] == {
+        DAILY: {"local": str(config.imgw / series["file"]), "aliases": []}
+    }
     assert czech["provider"] == "CHMI"
     assert {item["license"] for item in czech["series"]} == {"CC-BY-4.0"}
     label = polish["station"]["series"][0]["coverage"]["H"]["label"]

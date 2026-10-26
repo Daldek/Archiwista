@@ -193,7 +193,7 @@ def test_the_rows_are_those_of_the_api_along_rivers_or_by_name(
 def test_stations_without_a_position_show_the_reason_and_no_map_link(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:
-    """The group "Bez położenia" is last: the reason, and no way to the map."""
+    """The group "Bez położenia" is last: the reason, the card, no way to the map."""
     # Arrange
     served = serve(station_settings(imgw_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -203,10 +203,13 @@ def test_stations_without_a_position_show_the_reason_and_no_map_link(
 
     # Act
     found = settled(page, rows, row_count(counts))
-    before = page.url
     unlocated.first.click()
+    expect(page).to_have_url(re.compile(r"[?&]station="))
+    opened = query_of(page)
+    page.keyboard.press("Escape")
+    expect(page.locator(".station-card")).to_have_count(0)
     page.keyboard.press("m")
-    page.keyboard.press("Enter")
+    after = query_of(page)
 
     # Assert
     assert found[-1 - counts["unlocated"]] == {
@@ -219,7 +222,8 @@ def test_stations_without_a_position_show_the_reason_and_no_map_link(
     expect(unlocated).to_have_count(counts["unlocated"])
     expect(unlocated.locator(".cat-map")).to_have_count(0)
     expect(unlocated.first).to_be_focused()
-    assert page.url == before
+    assert opened["view"] == "catalog"
+    assert after == {"view": "catalog", "product": "hydro"}
     engine_tab.assert_clean()
 
 
@@ -384,15 +388,15 @@ def test_the_year_type_switch_numbers_the_labels_and_is_remembered(
     engine_tab.assert_clean()
 
 
-def test_keys_move_through_the_rows_fold_the_group_and_open_the_map(
+def test_keys_move_through_the_rows_fold_the_group_open_the_card_and_the_map(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:
-    """Arrows, Home/End, Enter on "Bez położenia" and on a located station."""
+    """Arrows, Home/End, Enter on "Bez położenia" and on a station (its card), M."""
     # Arrange
     served = serve(station_settings(imgw_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     rows, counts = expected(page)
-    located = stations(page, location="with")["items"][0]["location"]
+    first = stations(page, location="with")["items"][0]
     total = row_count(counts)
     open_list(page, served, product="stations")
     settled(page, rows, total)
@@ -405,7 +409,7 @@ def test_keys_move_through_the_rows_fold_the_group_and_open_the_map(
     page.keyboard.press("End")
     last = page.evaluate(focused)
     page.keyboard.press("Home")
-    first = page.evaluate(focused)
+    first_row = page.evaluate(focused)
     for _ in range(counts["located"] + 1):
         page.keyboard.press("ArrowDown")
     heading = page.evaluate(focused)
@@ -416,15 +420,22 @@ def test_keys_move_through_the_rows_fold_the_group_and_open_the_map(
     page.keyboard.press("Home")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
+    expect(page).to_have_url(re.compile(r"[?&]station="))
+    card = query_of(page)["station"]
+    page.keyboard.press("Escape")
+    expect(page.locator(".station-card")).to_have_count(0)
+    page.keyboard.press("m")
     expect(page).to_have_url(re.compile(r"[?&]view=map(&|$)"))
     opened = query_of(page)
 
     # Assert
-    assert (first, second, last) == ("2", "3", str(total + 1))
+    assert (first_row, second, last) == ("2", "3", str(total + 1))
     assert heading == str(counts["located"] + 3)
     assert stations_of(folded) == rows[: counts["located"]]
     assert stations_of(unfolded) == rows
+    assert card == f"{first['store']}/{first['provider']}/{first['code']}"
     lon, lat = (float(value) for value in opened["center"].split(","))
+    located = first["location"]
     assert (round(lon, 4), round(lat, 4)) == (located["lon"], located["lat"])
     assert (opened["product"], float(opened["zoom"])) == ("stations", 11)
     engine_tab.assert_clean()

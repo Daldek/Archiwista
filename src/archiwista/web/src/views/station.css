@@ -1,0 +1,41 @@
+/* The station card (views/station.js; plan I8.5). The drawer, tabs, key-value lists and
+   copy actions come from styles.css and cards.css. */
+
+.station-card { width: clamp(440px, 44vw, 760px); }
+.station-card .drawer-head { align-items: flex-start; }
+.station-card .drawer-body { flex: 1; min-height: 0; gap: 10px; padding-bottom: 32px; }
+.station-card .section-title { margin-bottom: 6px; }
+
+.sc-heading { display: grid; gap: 8px; }
+.sc-subline { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--text-2); line-height: 1.45; }
+.sc-subline .station-symbol { flex: none; margin-right: 2px; }
+.sc-years { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sc-years-label { font-size: 12px; color: var(--text-3); }
+.sc-location { display: grid; gap: 4px; justify-items: start; font-size: 12.5px; }
+.sc-location p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.sc-location.none > p:first-child { color: var(--warn-ink); font-weight: 500; }
+.sc-page { font-size: 12.5px; }
+
+.sc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.sc-coverage { display: grid; gap: 8px; margin-top: 4px; }
+.sc-coverage .section-title { margin: 0; }
+.sc-series { display: grid; gap: 4px; }
+.sc-series-title { margin: 0; font-size: 12.5px; font-weight: 500; }
+.sc-vars { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.sc-var { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; line-height: 1.45; }
+.sc-var .station-symbol { flex: none; display: block; }
+.sc-key { min-width: 1.6em; }
+.sc-label { color: var(--text); }
+
+.sc-details { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }
+.sc-origin .kv { margin: 0; }
+.sc-file { display: grid; gap: 4px; justify-items: start; }
+.sc-alias { display: inline-flex; align-items: center; gap: 4px; }
+.sc-json { margin: 0; max-height: 320px; overflow: auto; justify-self: stretch; min-width: 0; }
+
+.sc-attribution { border-top: 1px solid var(--line); padding-top: 10px; }
+
+@media (max-width: 860px) {
+  .station-card { width: 100%; }
+}

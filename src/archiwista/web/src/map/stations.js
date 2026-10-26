@@ -45,6 +45,8 @@ export const METEO_KINDS = ["synoptic", "climate", "precipitation"];
 export const STATION_PARAMS = ["dataset", "color", "meteo_kind", "year_type"];
 /** Address parameter that leaves out the stations on an area's boundary (`false`). */
 export const BOUNDARY_PARAM = "boundary";
+/** Address parameter of the station card (views/station.js): `<store>/<provider>/<code>`. */
+export const STATION_PARAM = "station";
 const YEAR_TYPES = ["hydrological", "calendar"];
 /** The coverage states of SPEC 4.8.4, in the order of the legend. */
 export const STATION_STATES = ["continuous", "gaps", "partial", "no_data", "unknown"];
@@ -81,6 +83,16 @@ const EMPTY = { type: "FeatureCollection", features: [] };
  */
 export function isStationProduct(product) {
   return Boolean(product?.product) && product.segments.some((item) => item.segment.producer === STATION_PRODUCER);
+}
+
+/**
+ * The station card's value of the address for a station (`STATION_PARAM`).
+ *
+ * @param {{store: string, provider: string, code: string}} station
+ * @returns {string} `<store>/<provider>/<code>`.
+ */
+export function stationAddress(station) {
+  return `${station.store}/${station.provider}/${station.code}`;
 }
 
 /**
@@ -453,7 +465,8 @@ export function StationTip({ tip, variable }) {
           )}
         </ul>`
       : null}
-    <div class="faint mono">${item.code} · ${item.provider}</div>`;
+    <div class="faint mono">${item.code} · ${item.provider}</div>
+    <div class="muted">${L.stations.open}</div>`;
 }
 
 function pointLabel(item) {

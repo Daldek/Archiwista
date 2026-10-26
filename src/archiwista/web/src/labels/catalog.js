@@ -228,7 +228,7 @@ export const catalog = {
     order_name: "Nazwa",
     order_river_title: "Kod hydrograficzny rzeki (dopływ po swojej rzece), kolejność na liście dostawcy, nazwa",
     order_name_title: "Nazwa stacji, potem kod",
-    key_open: "pokaż na mapie albo rozwiń grupę",
+    key_open: "otwórz kartę stacji albo rozwiń grupę",
     layouts: {
       list_title: "Stacje pasujące do filtrów jako lista",
       timeline_title: "Lata stacji jednego zbioru danych: stacje w wierszach, lata w kolumnach",
@@ -273,8 +273,10 @@ export const catalog = {
         none: "brak wartości",
         unknown: "rok nieznany (nie każda jednostka znana)",
       },
+      open_title: "Karta stacji {name}",
       keys:
-        "strzałki: rok i wiersz · Home, End: końce wiersza · Enter, Spacja: rozwiń stację ·",
+        "strzałki: rok i wiersz · Home, End: końce wiersza · Enter, Spacja: rozwiń stację · " +
+        "K: karta stacji ·",
     },
     filters: {
       dataset: "Zbiór danych",

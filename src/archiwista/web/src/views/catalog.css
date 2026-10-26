@@ -180,6 +180,8 @@
 .stl-row.variable .stl-rowhead { padding-left: 32px; color: var(--text-2); }
 .stl-twisty { flex: none; display: inline-flex; width: 14px; color: var(--text-2); }
 .stl-name { flex: 0 1 auto; font-weight: 600; color: var(--text); }
+.stl-open { text-decoration: none; }
+.stl-open:hover { text-decoration: underline; color: var(--accent); }
 .stl-code { flex: none; font-size: 11px; }
 .stl-key { flex: none; font-weight: 600; color: var(--text); }
 .stl-row.station .stl-key, .stl-missing { margin-left: auto; }

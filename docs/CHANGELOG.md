@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- The station card: a click on a station's point on the map, a row of the Catalog's
+  list (Enter) or a station's name on its Timeline (`K`) opens it over the view
+  (`station=<store>/<provider>/<code>` in the address). It names the station's type,
+  river with its hydrographic code, code, provider and state, has the switch "Lata"
+  of the Catalog (it renumbers the labels and goes into the address), the location
+  with its source, catalog date and uncertainty or why there is none, "Strona stacji
+  IMGW" for a water gauge, "Pokaż na mapie", "Kopiuj ścieżkę pliku", the coverage of
+  each variable with its full years and longest gap, the tabs "Metadane",
+  "Pochodzenie" and "Szczegóły techniczne", and the IMGW formula with "Kopiuj
+  atrybucję". `GET /api/v1/stations/{code}` gains `paths`: each series file on this
+  computer and as mounted on others. Enter on a row of the station list opens the
+  card; `M` shows the station on the map. (ADR-045, plan I8.5)
+
 - `GET /api/v1/stations/{code}/series` and `archiwista stations series CODE --variable …`:
   one or two variables of a station's series as a chart, for display only. Up to
   `max_points` units (2,000 at most) each unit's value; a longer range gives the least,

@@ -347,7 +347,8 @@ The panel chooses the dataset ("Zbiór danych"), the types of meteo stations and
 whether the stations on an area's boundary count. Stations far apart at a low zoom
 form a neutral cluster with their count, which zooms in on a click; stations at one
 position spread around it until the next click or `Esc`. "N bez położenia" in the bar
-opens the Catalog with the stations that have no position.
+opens the Catalog with the stations that have no position; a click on a point opens
+the station card (below).
 
 ![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
 
@@ -364,25 +365,41 @@ or historical stations, a variable, the coverage chips of each variable with its
 full years, the range of the labels and "Lata: hydrologiczne / kalendarzowe": the
 choice goes into the address and, for an administrator, is remembered for hydro or
 meteo data. "Ukryte przez filtry pokrycia: N" above the list counts the stations the
-coverage chips hide. Enter or a click shows a station with a position on the map;
-the arrows, Home and End move through the rows, and Enter on "Bez położenia" folds it.
+coverage chips hide. Enter or a click opens a station's card; M or the row's map
+button shows a station with a position on the map; the arrows, Home and End move
+through the rows, and Enter on "Bez położenia" folds it.
 
 ![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
 
 "Oś czasu" beside "Lista" shows the same stations, with the same filters, as years:
 the stations of one dataset (the one chosen in the panel, else the product's first),
 a row per station with the years of one variable ("Wiersz stacji", the same choice as
-"Kolor punktów" on the map), which Enter, Space or a click on its name expands into a
-row per variable. A year is green when every unit of it has a value, a lighter green
-the fewer units have one, a grey hollow box when its known units have none and a grey
-dashed outline when not every unit of it is known (not a gap); the legend names each.
-The column headers say the numbering of the years ("r.h. 2024
-(2023.11.01–2024.10.31)" or "2024 (kalendarzowy)", the switch "Lata" in the panel),
-and the tooltip of a year gives its units, the known ones and those with a value, the
-variable's label and its longest gap. The arrows move by year and row, Home and End to
-the ends of a row.
+"Kolor punktów" on the map), which Enter, Space or a click beside its name expands into
+a row per variable; a click on the name, or K, opens the station's card. A year is
+green when every unit of it has a value, a lighter green the fewer units have one, a
+grey hollow box when its known units have none and a grey dashed outline when not
+every unit of it is known (not a gap); the legend names each. The column headers say
+the numbering of the years ("r.h. 2024 (2023.11.01–2024.10.31)" or "2024
+(kalendarzowy)", the switch "Lata" in the panel), and the tooltip of a year gives its
+units, the known ones and those with a value, the variable's label and its longest
+gap. The arrows move by year and row, Home and End to the ends of a row.
 
 ![The Timeline of the stations](reports/v0.5-screenshots/03-os-czasu-stacji.webp)
+
+The station card opens over the view (`station=<store>/<provider>/<code>` in the
+address; `Esc` closes it): the station's type, river with its hydrographic code and
+code, its provider and state, the switch "Lata" (as in the Catalog's panel: it
+renumbers the labels and goes into the address), the location with its source, the
+catalog's date and the uncertainty, or why it has none, and for a water gauge of
+IMGW-PIB "Strona stacji IMGW", a link to its page on hydro.imgw.pl. "Pokaż na mapie"
+opens the map on a station with a position and "Kopiuj ścieżkę pliku" copies the path
+of its series file. "Pokrycie" gives each variable of each series with its label, full
+years and longest gap; the tabs "Metadane" (the catalog's facts), "Pochodzenie" (each
+series version with the station's file, its SHA-256 and the series index, and the
+catalog version) and "Szczegóły techniczne" (the API's answer) follow, and last the
+licence with the formula IMGW requires and "Kopiuj atrybucję".
+
+![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
 
 The command line and the API (`GET /api/v1/stations`) show the stations and the
 coverage of their series from the index while IMGWTools is installed:
@@ -460,9 +477,9 @@ from an open Archiwista tab.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) and its projects, and shows its stations on the map and through
-  `archiwista stations` and the API, but has no station list, card or chart in
-  the interface and no IMGW actions yet (v0.5): an action on an IMGWTools
-  manifest is refused as not supported.
+  catalogs) and its projects, and shows its stations on the map, in the Catalog and
+  in the station card and through `archiwista stations` and the API, but has no
+  chart or comparison of stations in the interface and no IMGW actions yet (v0.5):
+  an action on an IMGWTools manifest is refused as not supported.
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

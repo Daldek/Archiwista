@@ -862,7 +862,12 @@
  * @property {YearType} year_type - Numbering of the years of R.
  * @property {YearSpan|null} years - R.
  * @property {string|null} series - Label of the series version.
+ * @property {string} series_version - The version's `series.json`, relative to the
+ *   store.
  * @property {string} file - The station's series file, relative to the store.
+ * @property {string|null} sha256 - SHA-256 of the station's series file.
+ * @property {string|null} license - Licence of the series version.
+ * @property {string|null} attribution - The formula the source requires (IMGW §5).
  * @property {Object<string, VariableCoverage>} coverage - Each variable by key, in
  *   the order of the series index.
  */
@@ -895,8 +900,38 @@
  * @property {string|null} hydrographic_code - The river's hydrographic code.
  * @property {number|null} river_order - Place of the station on its river.
  * @property {boolean|null} active
+ * @property {number|null} established_year
+ * @property {number|null} gauge_zero_m - Gauge zero elevation, m.
+ * @property {number|null} river_km - River kilometre.
+ * @property {number|null} elevation_m - Elevation, m.
+ * @property {string|null} catalog - Label of the catalog version (its date).
+ * @property {string|null} catalog_version - The catalog version's file, relative to
+ *   the store.
  * @property {StationLocation} location
  * @property {StationSeries[]} series - By dataset, each variable labelled (P16).
+ */
+
+/**
+ * Which station a code means (`store`, `provider`) and how its labels are
+ * numbered (`GET /stations/{code}`).
+ *
+ * @typedef {object} StationLookup
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Its coverage only.
+ * @property {string} [years] - R of the labels.
+ * @property {YearType} [year_type] - Default: the type remembered for the family.
+ */
+
+/**
+ * A station's card (`GET /stations/{code}`).
+ *
+ * @typedef {object} StationCard
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {StationItem} station
+ * @property {Object<string, CopyPath>} paths - Each series file by dataset key, on
+ *   this computer and as aliased elsewhere; none for an unconfigured directory.
  */
 
 /**
