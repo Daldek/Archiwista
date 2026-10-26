@@ -86,7 +86,9 @@ command-line interface may change.
   groups, how the session started, `password_change_required` and `team`. `archiwista
   token --user ID` issues an agent's token for an account (required in team mode).
   Sign-ins, failures, signing out, password changes, ended sessions and tokens are in
-  the action log. `429` problems of the API carry `details.retry_after_s`.
+  the action log. `429` problems of the API carry `details.retry_after_s`. AGENT_API
+  section 2 shows a script's sign-in and an agent's token on a team server, and USAGE
+  "Team server" signing in, sessions and the wait.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

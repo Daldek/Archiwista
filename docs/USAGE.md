@@ -363,12 +363,12 @@ command `pip install "archiwista[imgw]"`.
 
 ## Session
 
-Archiwista works only on this computer (`127.0.0.1`) and shows nothing
-without a session. The session expires after 24 hours without use and ends
-when the server stops; the screen "Wymagana sesja" (session required) then
-appears. A new session is opened by the address `archiwista serve` printed or
-a new address from `archiwista token`. Another browser tab gets its session
-from an open Archiwista tab.
+In local mode (a team server: below) Archiwista works only on this computer
+(`127.0.0.1`) and shows nothing without a session. The session expires after
+24 hours without use and ends when the server stops; the screen "Wymagana
+sesja" (session required) then appears. A new session is opened by the address
+`archiwista serve` printed or a new address from `archiwista token`. Another
+browser tab gets its session from an open Archiwista tab.
 
 ## Team server
 
@@ -457,6 +457,24 @@ at the first sign-in. Setting a password ends every session of the account.
 (it acts nowhere and its sessions end) and `users enable ID` on again. The last
 enabled administrator cannot be disabled, removed or lose the role (`last_admin`):
 give another account the role `admin` first.
+
+**Signing in and sessions.** A person signs in with the account's identifier and
+password (`POST /api/v1/session/login`; for a script see AGENT_API). A temporary
+password must be changed before anything else (`PUT /api/v1/session/password`), and
+changing a password ends the account's other sessions and those of its agents. A
+session ends after 8 hours without a request, 7 days after the sign-in at the
+latest, at sign-out, when an administrator ends it and when the server restarts.
+After five failed sign-ins of one account, or from one computer, each further
+attempt waits 1 second, then 2, 4 and so on up to 15 minutes, for that account from
+every computer and for that computer with every account; a success clears it.
+Anyone can make an account wait this way, at most 15 minutes at a time, and the
+action log names the address of every failure. A person lists their sessions and
+ends any of them (`GET /api/v1/sessions`, `DELETE /api/v1/sessions/{label}`); an
+administrator ends all of an account's, also on a running server, with `archiwista
+users end-sessions ID`. An agent acts for one account with its roles: the person
+issues its one-time address (`POST /api/v1/session/tokens`), or the administrator
+does at the server's terminal with `archiwista token --user ID`, which team mode
+requires; the address is one of `origin`.
 
 **Backup of accounts and the log.** `archiwista state export --output FILE` copies the
 state database — accounts with their password hashes, groups, sharing, preferences

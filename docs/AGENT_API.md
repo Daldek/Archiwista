@@ -31,7 +31,8 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, and a station's card (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]` | `GET /stations`, `GET /stations/{code}`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
-| session token for an agent | `archiwista token --json` | `POST /session/tokens` |
+| session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
+| team mode (v0.4): how a session starts, signing in, changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
 | background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
@@ -83,18 +84,21 @@ start download`), a project's download or repin (`project-download`,
 [--temporary] [--stdin]` sets an account's password at the server's terminal
 (typed twice without echo, or one line of standard input; never an argument,
 which other accounts of the computer could read), `users disable ID` and `users
-enable ID` switch an account off and on, and an administrator's session gives a
-person a temporary password with `POST /users/{user_id}/password`: the answer
-`{"password": "…", "expires_at": "…"}` (72 hours, `Cache-Control: no-store`) is
-the only place the password appears. Setting a password ends the account's
-sessions; no answer and no log holds a password or its hash (`GET /users`
-shows `password`: `none`, `set`, `temporary` or `expired`, and
+enable ID` switch an account off and on, `users end-sessions ID` ends every
+session of the account, also on a running server, and an administrator's session
+gives a person a temporary password with `POST /users/{user_id}/password`: the
+answer `{"password": "…", "expires_at": "…"}` (72 hours, `Cache-Control:
+no-store`) is the only place the password appears. Setting a password ends the
+account's sessions; no answer and no log holds a password or its hash (`GET
+/users` shows `password`: `none`, `set`, `temporary` or `expired`, and
 `password_expires_at`).
 
 ## 2. The HTTP session of an agent
 
 The server listens on `127.0.0.1` only (port `8090` by default, the setting
-`port`). Every request `/api/*` except the token exchange needs a session.
+`port`; a team server: below). Every request `/api/*` except the token exchange
+(and on a team server `GET /session/methods` and `POST /session/login`) needs a
+session.
 
 1. The owner starts the server: `archiwista serve --no-browser`.
 2. The agent takes a one-time token: `archiwista token --json` →
@@ -146,9 +150,10 @@ Rules of the session:
   the session), with their **current** roles and project visibility (read at
   every request).
 - Sessions live in the memory of the server: they expire after 24 h of
-  inactivity, an agent session 12 h after its start at the latest, and a
-  restart of the server ends all of them (`401 unauthorized`, `session_required`
-  → a new token). The owner ends all agent sessions with `archiwista token
+  inactivity (on a team server after 8 h, and 7 days after their start at the
+  latest), an agent session 12 h after its start at the latest, and a restart
+  of the server ends all of them (`401 unauthorized`, `session_required` → a new
+  token). The owner ends all agent sessions with `archiwista token
   --revoke-all`, at once, also on a running server, which also revokes unused
   agent tokens. Disabling or deleting an account ends its sessions, and a
   revoked role stops working at the next request.
@@ -157,14 +162,79 @@ Rules of the session:
   An agent does not issue tokens for further sessions (`POST /session/tokens`
   → `403 forbidden`, `permission_denied`): the owner gives a new token
   (`archiwista token`).
-- The body of a request is at most 1 MiB (token exchange: 4 KiB; area files:
-  50 MB), otherwise `400 validation_error` (`request_too_large`).
+- The body of a request is at most 1 MiB (token exchange: 4 KiB; sign-in: 16
+  KiB; area files: 50 MB), otherwise `400 validation_error`
+  (`request_too_large`).
 
 **Secrets.** Do not write the token, the cookies, `csrf_token` or the cookie
 jar file into prompts, notes, logs, shell history or the repository. Keep them
 in process environment variables or in a temporary file readable by you only,
 and delete it after the work. The server's logs mask the token of an address
 (`token=***`).
+
+### On a team server (v0.4)
+
+A team server (USAGE "Team server") answers only at its `origin` over HTTPS;
+`curl` checks its certificate (`--cacert` for the company's authority). `GET
+/session/methods`, without a session, answers `{"mode": "team", "password":
+true}` (`"local"` and `false` on one person's computer).
+
+**An agent** acts for an account, with that account's current roles, through a
+one-time token exchanged as in steps 3 and 4: from a person's session (`POST
+/session/tokens`) or from the server's terminal with `archiwista token --user ID
+--json`. There is no local owner on a team server, so `--user` is required
+(exit 2, `user_required`); a disabled account is refused (exit 2,
+`user_disabled`), an unknown one is `not_found` (exit 3), and `--revoke-all`
+takes no `--user` (`user_with_revoke_all`). `url` is an address of `origin`, and
+the cookie is `__Host-archiwista_session`.
+
+**A person's script** signs in with the account and its password: `POST
+/session/login` with `{"account": "…", "password": "…"}`. The account is trimmed
+and lower-cased, and the password is compared after Unicode NFKC. The answer is
+the same as the token exchange's, with `method` `password` and the
+`csrf_token`; a session cookie the request carried ends.
+
+```sh
+BASE=https://archiwista.firma.local/api/v1
+JAR="$(mktemp)"
+read -rs PASSWORD          # typed without echo; never an argument or a file
+CSRF="$(jq -Rn '{account: "anna.nowak", password: input}' <<<"$PASSWORD" |
+  curl -sf -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' \
+    --data-binary @- "$BASE/session/login" | jq -r .csrf_token)"
+unset PASSWORD
+curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" "$BASE/session"
+```
+
+- `401 unauthorized`, `login_failed`: one answer for an unknown account, a wrong
+  password, a disabled account and an account without a password.
+  `password_expired`: a correct temporary password past its 72 hours; an
+  administrator gives a new one.
+- After five failures of one account (from any address) or of one address (for
+  any account), each attempt waits 1 s, then 2 s, 4 s… up to 15 minutes: `429
+  rate_limited`, `login_blocked`, with `Retry-After` and `details.retry_after_s`.
+  No password is checked during the wait, so retrying earlier gains nothing; a
+  success clears both counts.
+- `password_change_required: true` (a temporary password): until `PUT
+  /session/password` with `{"current_password": "…", "new_password": "…"}` the
+  session may only call `GET /session`, `GET /session/methods`, that route and
+  `DELETE /session`; anything else is `403 forbidden`,
+  `password_change_required`.
+- `PUT /session/password` answers a new session (a new cookie and a new
+  `csrf_token`) and ends every other session of the account and of its agents.
+  It refuses a new password that breaks a rule (`400 password_policy`), a wrong
+  current one (`403 wrong_password`, which counts as a failed sign-in), an
+  agent's session (`403 permission_denied`) and a session of the reverse proxy
+  (`409 proxy_session`).
+- `GET /sessions` lists the live sessions of the person and of their agents,
+  oldest first (`label`, `kind` `browser` or `agent`, `method`, `client`,
+  `user_agent`, `created_at`, `last_seen_at`, `expires_at`, `current`); `DELETE
+  /sessions/{label}` ends one (another person's label is `404`). An
+  administrator lists another account's with `?user=ID` and ends any session;
+  `DELETE /users/{user_id}/sessions` and `archiwista users end-sessions ID` end
+  every session of the account, also the tokens it issued and nobody exchanged
+  yet.
+- On a local server `POST /session/login` and `PUT /session/password` are `409
+  conflict`, `local_mode`.
 
 ## 3. Search and filters (`GET /slots`, `archiwista search`)
 
@@ -609,15 +679,15 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name) or `common` (a common password); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
-| 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token |
-| 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name) or `common` (a common password); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
+| 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; `login_failed` (team mode): the account and password do not sign in, one answer for every cause; `password_expired`: a correct temporary password past its end, an administrator gives a new one |
+| 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
-| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first |
+| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
-| 429 | `rate_limited` | `preview_busy`: the render pool is full; wait for `Retry-After` |
+| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail` |
@@ -655,7 +725,9 @@ schema is `schemas/nogat/error-1.schema.json`.
    On `409 conflict` wait for the running job instead of retrying.
 6. **Errors:** pass `503 missing_dependency` (`source_unavailable` or
    `source_incompatible`) to the user with the fix from `hint`, and do not
-   retry in a loop; `401` → a new token from the user (`archiwista token`).
+   retry in a loop; `401` → a new token from the user (`archiwista token`; on a
+   team server `archiwista token --user ID` or the person's `POST
+   /session/tokens`); `429 login_blocked` → wait for `Retry-After`.
 7. **Paths:** to work with a file use `paths.local` from the card; do not build
    paths yourself.
 
