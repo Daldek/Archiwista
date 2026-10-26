@@ -35,3 +35,5 @@
 - A pin deleted from the store, restored offline, fails its task after Kartograf's retries (`conflict`, `pin_mismatch`); a corrupt pin fails it at once (`data_error`, `corrupt_pin`) with Kartograf's remedy (`--force`, which Archiwista does not offer).
 - The jobs' results keep every task and every file (`tasks[]`, `files[]`), so a large project makes a large job result.
 - The stand-in producer of the tests has no project operations; the interface of A13 is tested over a Kartograf project of `kartograf.testing`.
+
+**Erratum 1 (2026-10-26, ADR 0032 decision 14):** a job runs the tasks of one manifest of the project: the one of the `producer` the request names (`ProjectJobRequest.producer`, `--producer` of the four commands), else the project's only one. Before a job exists a project of several manifests refuses a request that names none (`400`, `producer_required`) and a producer without a manifest in it (`400`, `other_producer`). The job's `params` keep `producer` when the request named it, so the worker and a retry act on the same manifest; its store and directory checks (decision 5) are that manifest's.

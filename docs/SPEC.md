@@ -601,7 +601,7 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value, list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit, kind of years of its archives, first year and the periods known to the version |
 | `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
 | `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and project tasks, station codes and names, river names |
-| `projects`, `project_tasks`, `pins` | known projects, their tasks and pins linked to versions, with the manifest producer (Kartograf, IMGWTools) — the "which projects use the file" index (SCOPE 3.3) |
+| `projects`, `manifests`, `project_tasks`, `pins` | known projects, one per directory, with the manifest of each producer (Kartograf, IMGWTools) as it was last read (its store, state or error), and the tasks and pins of each manifest, with its producer, linked to versions — the "which projects use the file" index (SCOPE 3.3) |
 | `availability` | latest availability reports per area and product, with a date (visible without a network); for IMGW datasets — published years with publication dates |
 | `jobs`, `job_events` | history of background jobs and their events |
 | `conversations`, `messages`, `proposals` | conversations with the assistant and its proposals |
@@ -842,7 +842,15 @@ without access to a hardware GPU (SwiftShader: 8.4 frames/s).
   job of the second producer).
 - **Reading:** always `open_project` of the producer. An invalid manifest is
   shown with the producer's error text (e.g. "nieznany klucz 'optons'");
-  an error in one manifest does not hide the jobs of the other.
+  an error in one manifest does not hide the jobs of the other. The index
+  keeps one project per directory and key, with each manifest (its store,
+  state and error) and the jobs and pins of each with their producer (ADR
+  0032 decision 14); a job name used in both manifests is reported as a
+  project problem (`duplicate_task`, 14).
+- **Actions on a project of both manifests:** a change of jobs and a project
+  job act on one manifest, the one of the producer the request names, or the
+  project's only one; a project of both refuses a request that names none
+  (`producer_required`).
 - **Link to the store:** the project's `root` (and in the IMGW manifest
   `store_dir`) is matched to the producer's directory in the configured
   store by resolved path or alias; no match —
@@ -1196,7 +1204,7 @@ flowchart LR
   W["Worker processes<br/>(Kartograf API or IMGWTools)"]
   MAG[("Kartograf directory<br/>local disk or SMB")]
   MIG[("IMGW directory<br/>local disk or SMB")]
-  PRJ[("Project directories<br/>kartograf-project.json")]
+  PRJ[("Project directories<br/>kartograf-project.json, imgw-project.json")]
   SRC["GUGiK, CUZK, CLMS, ISRIC"]
   SIM["IMGW-PIB<br/>danepubliczne.imgw.pl"]
   LLM["Model provider<br/>or local model"]
@@ -3135,12 +3143,12 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`; a project's download or repin: `project.write` and `store.write`) (ADR-038, ADR-040) |
 | `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
-| `GET /projects`, `POST /projects` | list; a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; an existing project is found by the scan of the project directories; only an administrator creates one before v0.4 (ADR-039) |
-| `GET /projects/{id}` | project jobs of both producers (`producer` field), pins, state from the index; this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
-| `GET /projects/{id}/status` | producers' `get_project_status` (no network, fast) |
-| `POST /projects/{id}/tasks` | the producer's `add_project_task` (`name`, `command`, `options`, optionally `producer`, the project's by default; validation without the network; the project's owner or an administrator; IMGW: IMGW-14; ADR-039) |
-| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` of the project's producer (files stay in the store; the project's owner or an administrator; ADR-039) |
-| `POST /projects/{id}/jobs` | a job of the project's tasks (`kind`: `download` — download and pin what is not pinned yet, restore missing pinned versions; `repin` — one task anew to the source's newer versions; `check` — the pins against the source; `verify` — the pinned files in the store, no network; `tasks` optional, exactly one for a repin) → `202` with the job; a download and a repin need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); the manifest's store must be configured (`409 unknown_store`); a retry asks the same (ADR-040) |
+| `GET /projects`, `POST /projects` | list (each project, one per directory, with `manifests`: each producer's manifest with its `store`, `status`, `problem` and `scanned_at`, Kartograf's first; `store` lists the projects with a manifest naming the store); a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; a directory with the other producer's manifest stays one project with its key; an existing project is found by the scan of the project directories; only an administrator creates one before v0.4 (ADR-039) |
+| `GET /projects/{id}` | the manifests, project jobs of both producers (`producer` field), pins (`producer` field), state from the index, problems (a job name in both manifests: `duplicate_task`); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
+| `GET /projects/{id}/status` | each manifest's producer's `get_project_status` (no network, fast): `manifests` with the state of each task; while a manifest's store is unavailable, its last scan's state (`stale`) |
+| `POST /projects/{id}/tasks` | the producer's `add_project_task` (`name`, `command`, `options`, optionally `producer`: the manifest's producer, the project's only manifest by default, required for a project of both manifests (`producer_required`); validation without the network; the project's owner or an administrator; IMGW: IMGW-14; ADR-039) |
+| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` of the producer of the manifest (`?producer=`, as for adding a task) (files stay in the store; the project's owner or an administrator; ADR-039) |
+| `POST /projects/{id}/jobs` | a job of the tasks of the project's manifest (`kind`: `download` — download and pin what is not pinned yet, restore missing pinned versions; `repin` — one task anew to the source's newer versions; `check` — the pins against the source; `verify` — the pinned files in the store, no network; `tasks` optional, exactly one for a repin; `producer` optional, as for adding a task) → `202` with the job; a download and a repin need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); the manifest's store must be configured (`409 unknown_store`); a retry asks the same (ADR-040) |
 | `POST /projects/{id}/sets`, `GET /projects/{id}/sets` | set for QGIS (`export` job), list of sets |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |

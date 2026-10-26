@@ -228,6 +228,18 @@ MESSAGES = {
             " magazynu w manifeście projektu."
         ),
     ),
+    "duplicate_task": Text(
+        (
+            "Give the task another name in one of the manifests: remove it and add it"
+            " again under a new name with that source's project commands, so that a"
+            " name means one task."
+        ),
+        (
+            "Nadaj zadaniu inną nazwę w jednym z manifestów: usuń je i dodaj ponownie"
+            " pod nową nazwą poleceniami projektu tego źródła, aby nazwa oznaczała"
+            " jedno zadanie."
+        ),
+    ),
     "other": Text(
         "Check this location with the {producer} package tools.",
         "Sprawdź to miejsce narzędziami pakietu {producer}.",

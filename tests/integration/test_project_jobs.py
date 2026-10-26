@@ -217,7 +217,10 @@ def test_a_download_of_pins_the_store_holds_keeps_them_without_network(
     with IndexQueries(place.paths.index_file) as queries:
         indexed = queries.project(place.key, visible=ALL_PROJECTS)
     assert indexed is not None
-    assert (indexed.project.store, len(indexed.pins)) == (STORE, 2)
+    assert ([m.store for m in indexed.project.manifests], len(indexed.pins)) == (
+        [STORE],
+        2,
+    )
     assert not place.attempts.exists()
 
 

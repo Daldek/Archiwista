@@ -1,20 +1,24 @@
 """Discover producer project manifests and record them in the local index.
 
 Projects live in the configured project directories (SPEC 4.7): a project
-is a directory holding its producer's manifest (``kartograf-project.json``).
-Discovery goes at most four levels below each project directory and never
-enters ``.git``, hidden directories or a store's producer directory. Only a
-new or changed manifest (other size or modification time) is read again,
-through the producer's adapter; an invalid one stays visible with the
-producer's own message. A manifest that is a symbolic link resolving outside
-the configured project directory (SPEC 10.1) is never read: the project
-stays visible as invalid with ``path_outside_root``'s message. A project
-without a configured store or a status (invalid manifest, unknown store,
-store unreachable) is read on every pass until it matches and is checked
-(``IndexWriter.project_stamps``). A project directory that cannot be read
-keeps the projects indexed under it, so a disconnected share does not empty
-the list. ``record_project`` reads one project again the same way after
-Archiwista changed its manifest through the producer (ADR-039).
+is a directory holding the manifest of one producer or of both
+(``kartograf-project.json``, ``imgw-project.json``), each written only by
+its producer; the index keeps one project per directory and each manifest
+within it (``IndexWriter.write_project``). Each producer's manifests are
+discovered and read through its adapter after a scan of a store of that
+producer. Discovery goes at most four levels below each project directory
+and never enters ``.git``, hidden directories or a store's producer
+directory. Only a new or changed manifest (other size or modification time)
+is read again; an invalid one stays visible with the producer's own message
+and hides nothing of the other producer's manifest. A manifest that is a
+symbolic link resolving outside the configured project directory (SPEC 10.1)
+is never read: it stays visible as invalid with ``path_outside_root``'s
+message. A manifest without a configured store or a status (invalid, unknown
+store, store unreachable) is read on every pass until it matches and is
+checked (``IndexWriter.project_stamps``). A project directory that cannot be
+read keeps the manifests indexed under it, so a disconnected share does not
+empty the list. ``record_project`` reads one manifest again the same way
+after Archiwista changed it through its producer (ADR-039).
 """
 
 import os
@@ -31,8 +35,12 @@ from archiwista.messages import message
 from archiwista.paths import resolve_indexed_path
 from archiwista.sources import ProjectInfo, SourceAdapter
 
-# Manifest file of each producer's projects.
-PROJECT_MANIFESTS: Mapping[str, str] = {"kartograf": "kartograf-project.json"}
+# Manifest file of each producer's projects, in the order a project's
+# manifests and their tasks are listed.
+PROJECT_MANIFESTS: Mapping[str, str] = {
+    "kartograf": "kartograf-project.json",
+    "imgw": "imgw-project.json",
+}
 # Directory levels searched below a configured project directory.
 MAX_PROJECT_DEPTH = 4
 
@@ -44,7 +52,7 @@ class ProjectScanSummary:
     Attributes
     ----------
     found : int
-        Manifests discovered.
+        The producer's manifests discovered.
     read : int
         Manifests read because they were new or changed.
     unchanged : int
@@ -53,9 +61,10 @@ class ProjectScanSummary:
     invalid : int
         Manifests read that the producer rejected (kept with the message).
     unknown_store : int
-        Projects read whose store matches no configured store.
+        Manifests read whose store matches no configured store.
     removed : int
-        Indexed projects whose manifest is gone.
+        Indexed manifests of the producer that are gone; a project left
+        without a manifest goes with them.
     unreadable_dirs : tuple[str, ...]
         Directories that could not be listed; their projects were kept.
     """
@@ -76,7 +85,7 @@ def scan_projects(
     project_dirs: Sequence[Path],
     stores: Sequence[StoreConfig],
 ) -> ProjectScanSummary:
-    """Index the producer's projects found in the project directories.
+    """Index the producer's manifests found in the project directories.
 
     Parameters
     ----------
@@ -94,7 +103,7 @@ def scan_projects(
     Returns
     -------
     ProjectScanSummary
-        Counts of found, read, unchanged, invalid and removed projects.
+        Counts of found, read, unchanged, invalid and removed manifests.
     """
     manifest = PROJECT_MANIFESTS.get(adapter.producer)
     if manifest is None:
@@ -151,7 +160,7 @@ def record_project(
     *,
     stores: Sequence[StoreConfig],
 ) -> str:
-    """Read one project again and record it as a scan would; return its key.
+    """Read one manifest again and record it as a scan would; return its key.
 
     For a manifest Archiwista just changed through the producer: the project
     shows the change at once, and the next scan finds the stamp of the manifest

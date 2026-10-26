@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25
 **Status:** Accepted. Supplements A-ADR-019 and A-ADR-024. Decided by the plan
-`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I6), whose approval is
+`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I7), whose approval is
 delegated; the author may still amend it (D8).
 
 **Context:** A-ADR-019 gave Archiwista two producers behind one source interface, and
@@ -257,6 +257,46 @@ side.
     placing a station without a location by its province or river (a guessed location,
     P13); the first of the stations an ambiguous code means (an answer about another
     station than the one asked for); the stations without their source (decision 3).
+14. **A project is its directory, with the manifest of each producer** (plan I7, SPEC
+    4.7). A project directory may hold `kartograf-project.json`, `imgw-project.json` or
+    both, each written only by its producer. The index keeps one project per directory
+    (`projects`: the key, the path, the access key and the name; the key is made from
+    the name when the first manifest is read and kept while the directory holds one)
+    and each producer's manifest as it was last read (`manifests`: the store it names,
+    its status or the producer's message, its stamp); `project_tasks` and `pins` carry
+    the producer of their manifest and go with it. `PROJECT_MANIFESTS` names both files
+    in the order in which a project's manifests and their tasks are listed, Kartograf's
+    first. A scan of a producer's directory reads that producer's manifests and
+    replaces only their tasks and pins; a manifest that is gone takes its tasks and
+    pins, and the project goes with its last manifest. An invalid manifest stays
+    visible with its producer's message and hides nothing of the other's; a task name
+    used in both manifests is the project problem `duplicate_task` (SPEC 14). One key
+    per directory cannot live on rows of one producer each (`UNIQUE (producer, path)`,
+    a key per row), so the index moves to `SCHEMA_VERSION` 13: an existing index is
+    rebuilt and filled by the next full scan. The API is changed without an alias: a
+    project (`ProjectItem`, `ProjectCard`) lists `manifests[]` (`producer`, `store`,
+    `status`, `problem`, `scanned_at`) in place of those members of its one manifest;
+    tasks and pins name their `producer`; `GET /projects/{project}/status` answers
+    `manifests[]`, the producer's check of each manifest now (or, while its store is
+    unavailable, the last scan's, `stale`), and the first refusal of a producer is the
+    answer; `GET /projects?store=` lists a project once when any of its manifests
+    names the store. A change (`POST /projects/{project}/tasks`, `DELETE
+    /projects/{project}/tasks/{name}?producer=`) and a job (`POST
+    /projects/{project}/jobs`) act on one manifest: the one of the `producer` they name
+    (`--producer` of the commands), else the project's only one. A project of several
+    manifests refuses a request that names none (`400 validation_error`, reason
+    `producer_required`), and a producer without a manifest in the project is `400`,
+    reason `other_producer`, both with `details.option` `producer`; a job keeps the
+    named producer in its `params`, so a retry acts on the same manifest. IMGWTools
+    has no project actions yet (`422 unsupported`, `no_project_actions`): v0.5 adds its
+    commands. Rejected: a project per producer and directory sharing one key (a key
+    that names two rows, while the access entry, the own data and a job are each the
+    project's, by its key or its directory); the members of a primary manifest
+    (Kartograf's) at the top level with the other beside them (a second store, state or
+    problem shown nowhere, and a broken primary would hide the other); a job over the
+    tasks of every manifest (each producer runs its own manifest, with its own store
+    and lock; dropping `producer_required` for a job is left to v0.5, when both
+    producers have project actions).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -277,6 +317,8 @@ refused by the marker file names at its own field (DEV-19.14), looking two level
 because the producer's writer, which looks at the whole tree, is not run by a settings
 change. The index keeps the stations of each provider's current catalog (decision 11)
 and the coverage of each dataset's current series with its years (decision 12), and
-serves them through the station routes and `archiwista stations` (decision 13).
+serves them through the station routes and `archiwista stations` (decision 13). The
+projects of IMGWTools are found beside Kartograf's, in the same directories or alone
+(decision 14); ADR-039 and ADR-040 have an erratum for a project of two manifests.
 
 **Errata:** none.

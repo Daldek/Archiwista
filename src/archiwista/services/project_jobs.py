@@ -4,9 +4,12 @@
 /projects/{project}/jobs``, ``archiwista project-download``,
 ``project-repin``, ``project-check`` and ``project-verify``) and refuses
 before a job exists what its worker would refuse: a project the principal
-does not see (``404``, as an unknown one), a download or a repin asked by a
-principal who may not change the project (``project.write``) or write the
-stores (``store.write``; ``403 permission_denied``), a producer that runs no
+does not see (``404``, as an unknown one), a project of several producers'
+manifests without the producer whose tasks the job runs, or a producer
+without a manifest in it (``400``, ``producer_required``,
+``other_producer``), a download or a repin asked by a principal who may not
+change the project (``project.write``) or write the stores
+(``store.write``; ``403 permission_denied``), a producer that runs no
 project jobs (``422 unsupported``, ``no_project_actions``), a project
 directory that left the project directories (``403``,
 ``path_outside_root``) and, for a download or a repin, a manifest naming no
@@ -31,6 +34,7 @@ from archiwista.messages import message
 from archiwista.services.projects import (
     project_actions,
     project_directory,
+    project_manifest,
     project_store,
 )
 from archiwista.sources.registry import PluginRegistry
@@ -63,6 +67,7 @@ def start(
     *,
     kind: ProjectJobKind,
     tasks: Sequence[str] | None,
+    producer: str | None = None,
     actor: Principal,
     visible: ProjectVisibility,
 ) -> JobRecord:
@@ -71,7 +76,7 @@ def start(
     Parameters
     ----------
     registry : PluginRegistry
-        Producer plugins: the project's producer runs its jobs.
+        Producer plugins: the manifest's producer runs its jobs.
     settings : AppSettings
         The configured stores and project directories.
     jobs : JobSupervisor
@@ -87,6 +92,9 @@ def start(
         What the job does (``PROJECT_JOB_KINDS``).
     tasks : Sequence[str] or None
         The tasks by name, ``None`` for every task; a repin names one.
+    producer : str or None, optional
+        The producer whose manifest's tasks the job runs; ``None``: the
+        producer of the project's only manifest.
     actor : Principal
         Who asks: the job's actor.
     visible : ProjectVisibility
@@ -96,12 +104,16 @@ def start(
     -------
     JobRecord
         The job, ``queued`` or already ``running``, with no store; its
-        parameters are ``project`` and ``tasks``.
+        parameters are ``project`` and ``tasks``, with ``producer`` when the
+        request named it.
 
     Raises
     ------
     NotFoundError
         No project ``key`` that ``actor`` sees.
+    CommandRequestError
+        The project holds no manifest of ``producer`` (``other_producer``)
+        or holds several and ``producer`` is left out (``producer_required``).
     PermissionDeniedError
         A download or a repin while ``actor`` may not change the project
         (neither its owner nor an administrator) or may not write the
@@ -114,8 +126,8 @@ def start(
     PathOutsideRootError
         The project's directory now leaves the project directories.
     ConflictError
-        A download or a repin of a project whose manifest names no
-        configured store (reason ``unknown_store``).
+        A download or a repin of a manifest that names no configured store
+        (reason ``unknown_store``).
     JobConflictError
         The project has a job that waits or runs (``details.job``).
     OfflineModeError
@@ -131,14 +143,18 @@ def start(
     project = record.project
     job_kind = JOB_KIND[kind]
     require(authorizer, actor, job_kind, project)
-    project_actions(registry, project.producer)
-    project_directory(project, settings)
-    if job_kind in _WRITING and project.problem is None:
-        project_store(project, settings)
-    names = None if tasks is None else list(tasks)
-    return jobs.submit(
-        job_kind, params={"project": project.key, "tasks": names}, actor=actor
-    )
+    manifest = project_manifest(project, producer)
+    project_actions(registry, manifest.producer)
+    project_directory(project, settings, manifest.producer)
+    if job_kind in _WRITING and manifest.problem is None:
+        project_store(manifest, settings)
+    params: dict[str, object] = {
+        "project": project.key,
+        "tasks": None if tasks is None else list(tasks),
+    }
+    if producer is not None:
+        params["producer"] = producer
+    return jobs.submit(job_kind, params=params, actor=actor)
 
 
 def require(

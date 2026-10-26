@@ -711,20 +711,30 @@
 // Projects (9a) --------------------------------------------------------------
 
 /**
- * A discovered project the session's principal sees.
+ * One producer's manifest in a project directory, as the last scan read it.
  *
- * @typedef {object} ProjectItem
- * @property {string} project - Project id: /projects/{project}.
- * @property {string} name
- * @property {string} producer
+ * @typedef {object} ProjectManifest
+ * @property {string} producer - `kartograf` (`kartograf-project.json`) or `imgw`
+ *   (`imgw-project.json`).
  * @property {string|null} store - Configured store the manifest names; null when none
  *   matches.
  * @property {string|null} status - Producer's status when the manifest was read: `ok`,
  *   `not_downloaded`, `missing` or `corrupt`; null when not checked.
- * @property {string|null} problem - Producer's message for an invalid manifest.
- * @property {string} scanned_at
- * @property {number} tasks
- * @property {number} pins
+ * @property {string|null} problem - Producer's message for an invalid manifest, whose
+ *   tasks and pins are not read; the other manifest is read all the same.
+ * @property {string} scanned_at - When the manifest was read.
+ */
+
+/**
+ * A discovered project the session's principal sees: a directory with the manifest
+ * of one producer or of both.
+ *
+ * @typedef {object} ProjectItem
+ * @property {string} project - Project id: /projects/{project}.
+ * @property {string} name
+ * @property {ProjectManifest[]} manifests - Kartograf's first.
+ * @property {number} tasks - Tasks of every manifest.
+ * @property {number} pins - Pins of every manifest.
  * @property {number} missing_pins - Pins missing from the store or other.
  * @property {boolean} project_write - Whether the session's principal may change the
  *   project now (its owner or an administrator): add and remove its tasks, and download
@@ -741,9 +751,10 @@
  */
 
 /**
- * A task of a project with its existing command and options.
+ * A task of a project's manifest with its existing command and options.
  *
  * @typedef {object} ProjectTask
+ * @property {string} producer - Producer of the manifest holding the task.
  * @property {string} task
  * @property {string} command - Producer command as in the manifest.
  * @property {Object<string, *>} options - Options as in the manifest.
@@ -754,8 +765,10 @@
  * A version a project task pinned (older versions too).
  *
  * @typedef {object} ProjectPin
+ * @property {string} producer - Producer of the manifest that pins it.
  * @property {string|null} task
- * @property {string} version - Pinned version path.
+ * @property {string} version - Pinned version path, relative to the producer's
+ *   directory.
  * @property {string|null} sha256
  * @property {PinState} state
  * @property {string|null} slot
@@ -765,26 +778,20 @@
  */
 
 /**
- * A project: tasks with their commands, pinned versions and problems.
+ * A project: its manifests, tasks with their commands, pinned versions and problems.
  *
  * @typedef {object} ProjectCard
  * @property {boolean} stale
  * @property {StaleStore[]} stale_stores
  * @property {string} project - Project id: /projects/{project}.
  * @property {string} name
- * @property {string} producer
- * @property {string|null} store - Configured store the manifest names; null when none
- *   matches.
- * @property {string|null} status - Producer's status when the manifest was read; null:
- *   not checked.
- * @property {string|null} problem - Producer's message for an invalid manifest.
- * @property {string} scanned_at
+ * @property {ProjectManifest[]} manifests - Kartograf's first.
  * @property {number} missing_pins - Pins missing from the store or other.
  * @property {boolean} project_write - As in `ProjectItem`.
- * @property {ProjectTask[]} tasks - Tasks in manifest order.
+ * @property {ProjectTask[]} tasks - Tasks of each manifest in its order.
  * @property {ProjectPin[]} pins - Pinned versions, older ones too.
- * @property {Issue[]} problems - Invalid manifest, unknown store, missing or other
- *   pinned files.
+ * @property {Issue[]} problems - Invalid manifest, unknown store, a task name in the
+ *   manifests of several producers (`duplicate_task`), missing or other pinned files.
  */
 
 /**
@@ -797,10 +804,9 @@
  */
 
 /**
- * The producer's check of a project now (no network, no hashing).
+ * A producer's check of its manifest of a project now.
  *
- * @typedef {object} ProjectStatus
- * @property {string} project
+ * @typedef {object} ManifestStatus
  * @property {string} producer
  * @property {string|null} status - The worst task status.
  * @property {string} checked_at - When the producer checked: now, or the last scan when
@@ -809,6 +815,14 @@
  *   shown.
  * @property {string|null} stale_reason
  * @property {TaskStatus[]} tasks
+ */
+
+/**
+ * The producers' checks of a project now (no network, no hashing).
+ *
+ * @typedef {object} ProjectStatus
+ * @property {string} project
+ * @property {ManifestStatus[]} manifests - In the order of the project's manifests.
  */
 
 /**
@@ -832,7 +846,8 @@
  * @property {string} command - Data command of the producer's catalog.
  * @property {Object<string, *>} [options] - Its options in the JSON form of the catalog,
  *   checked without the network; no option that is a file path.
- * @property {string} [producer] - The producer the call names; left out: the project's.
+ * @property {string} [producer] - The producer whose manifest gets the task; left out:
+ *   the project's only one (needed for a project of several).
  */
 
 /**
@@ -844,6 +859,8 @@
  *   need only to see the project; all but `verify` use the network.
  * @property {string[]} [tasks] - The tasks by name; left out: every task. A `repin` names
  *   exactly one.
+ * @property {string} [producer] - The producer whose manifest's tasks run; left out: the
+ *   project's only one (needed for a project of several).
  */
 
 // Settings (9a) --------------------------------------------------------------

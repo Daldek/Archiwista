@@ -1,21 +1,23 @@
 /**
  * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11, v0.2
- * step 15, plan 2026-10-25 A13): the projects found in the project
+ * step 15, plan 2026-10-25 A13 and I7): the projects found in the project
  * directories that the session sees — as the API filters them (step 8b),
- * nothing filtered here — with their producer, its status when the manifest
- * was read and their missing pins, and „Nowy projekt…”: an administrator
- * creates a project of a producer in a project directory of the settings,
- * bound to a configured store. The chosen project
- * (`?view=projects&project=<id>`) is in the side panel with its tasks and
- * their existing commands, the producer's status now, the pinned versions
- * (older ones too) leading to their file cards, and its problems.
+ * nothing filtered here — with their manifests (a project directory holds
+ * Kartograf's, IMGWTools' or both: each with its producer, store, status when
+ * it was read and problem) and their missing pins, and „Nowy projekt…”: an
+ * administrator creates a project of a producer in a project directory of the
+ * settings, bound to a configured store. The chosen project
+ * (`?view=projects&project=<id>`) is in the side panel with the tasks of each
+ * manifest and their existing commands, the producers' status now, the pinned
+ * versions (older ones too) leading to their file cards, and its problems.
  *
- * The card's actions go through the project's producer: „Weryfikuj”,
- * „Sprawdź aktualizacje” and „Pobierz” start a job of the project's tasks,
- * „Przepnij” one of a task, each followed to its end with its tasks or files
- * and, when it fails, the producer's instruction (a left lock of the
- * manifest); a job of the project already running is followed instead. A
- * download and a repin also go to the downloads of the top bar
+ * The card's actions go through a manifest's producer — of a project with
+ * two manifests, the one chosen at the actions, of a task its own —:
+ * „Weryfikuj”, „Sprawdź aktualizacje” and „Pobierz” start a job of the
+ * manifest's tasks, „Przepnij” one of a task, each followed to its end with
+ * its tasks or files and, when it fails, the producer's instruction (a left
+ * lock of the manifest); a job of the project already running is followed
+ * instead. A download and a repin also go to the downloads of the top bar
  * (downloads.js), so they stay in sight after the card or the view closes.
  * „+ Zadanie” adds a pasted producer's command as a task (the producer reads
  * and checks it without the network; its text for a mistake shows at the
@@ -23,7 +25,7 @@
  * session may not do is disabled with the reason: a project is changed by its
  * owner or an administrator (`project_write`), a download and a repin write
  * the store (`store_write`) the manifest names, and they and a check need
- * the network. Beside the producer's tasks, the group „Dane własne” (SPEC
+ * the network. Beside the producers' tasks, the group „Dane własne” (SPEC
  * 4.7.1): the project's data folder with its state, files, sizes and
  * problems, each file with its change since its last snapshot leading to its
  * card (views/own.js), „Odśwież” (an `own_scan` of the folder, followed to
@@ -204,18 +206,15 @@ function ProjectList({ list, chosen, store, route }) {
                         class="row-link" aria-current=${item.project === chosen ? "true" : null}>
                         ${item.name}</${Link}>
                       ${item.project !== item.name ? html` <span class="faint mono">${item.project}</span>` : null}
-                      ${item.problem
-                        ? html`<p class="row-problem"><${Icon} name="alert" size=${13} />
-                            <span><b>${L.invalid}:</b>${" "}${item.problem}</span></p>`
-                        : null}
+                      <${ManifestProblems} manifests=${item.manifests} />
                     </td>
-                    <td class="mono">${item.producer}</td>
-                    <td>${item.store ? storeName(health, item.store) : html`<span class="warn-text">${L.no_store}</span>`}</td>
-                    <td><${Badge} level=${statusLevel(item.status)}>${statusName(item.status)}</${Badge}></td>
+                    <td class="mono">${producers(item.manifests)}</td>
+                    <td>${storeLines(health, item.manifests)}</td>
+                    <td>${byManifest(item.manifests, statusBadge)}</td>
                     <td class="num tabular">${int(item.tasks)}</td>
                     <td class="num tabular">${int(item.pins)}</td>
                     <td class=${item.missing_pins ? "num tabular bad-text" : "num tabular"}>${int(item.missing_pins)}</td>
-                    <td class="nw">${stamp(item.scanned_at)}</td>
+                    <td class="nw">${byManifest(item.manifests, scannedAt)}</td>
                   </tr>`,
                 )}
               </tbody>
@@ -223,6 +222,57 @@ function ProjectList({ list, chosen, store, route }) {
           </div>`
         : null}
     </div>`;
+}
+
+/**
+ * The values of a project's manifests, one line each led by its producer; a
+ * project of one manifest (the usual one) shows its value alone.
+ *
+ * @param {import("../types.js").ProjectManifest[]} manifests
+ * @param {(manifest: import("../types.js").ProjectManifest) => *} render
+ */
+function byManifest(manifests, render) {
+  if (manifests.length === 1) return render(manifests[0]);
+  return manifests.map(
+    (manifest) => html`<div key=${manifest.producer}>
+      <span class="faint mono">${manifest.producer}:</span>${" "}${render(manifest)}</div>`,
+  );
+}
+
+/** The producers of a project's manifests, Kartograf's first. */
+function producers(manifests) {
+  return manifests.map((manifest) => manifest.producer).join(", ");
+}
+
+/** The store each manifest names, or that it names none of the settings. */
+function storeLines(health, manifests) {
+  return byManifest(manifests, (manifest) =>
+    manifest.store
+      ? storeName(health, manifest.store)
+      : html`<span class="warn-text">${L.no_store}</span>`,
+  );
+}
+
+function statusBadge(manifest) {
+  const level = statusLevel(manifest.status);
+  return html`<${Badge} level=${level}>${statusName(manifest.status)}</${Badge}>`;
+}
+
+function scannedAt(manifest) {
+  return stamp(manifest.scanned_at);
+}
+
+/** The producer's message of each invalid manifest of a project's row. */
+function ManifestProblems({ manifests }) {
+  const several = manifests.length > 1;
+  return manifests
+    .filter((manifest) => manifest.problem)
+    .map(
+      (manifest) => html`<p key=${manifest.producer} class="row-problem">
+        <${Icon} name="alert" size=${13} />
+        <span><b>${L.invalid}:</b>${" "}${several ? `${manifest.producer}: ` : ""}${
+          manifest.problem}</span></p>`,
+    );
 }
 
 /**
@@ -314,18 +364,19 @@ function NewProject({ onClose, onCreated }) {
 }
 
 /**
- * The reason each action of a project is disabled now, or `null`.
+ * The reason each action on a project's manifest is disabled now, or `null`.
  *
  * @param {import("../types.js").ProjectCard} card
+ * @param {import("../types.js").ProjectManifest} manifest - The manifest acted on.
  * @param {{store_write: boolean}|null} session
  * @param {boolean} offline
  * @param {boolean} busy - A job of the project is being started or runs.
  * @returns {Object<string, string|null>} Per action (`ACTION_REASONS`), a key of `REASONS`.
  */
-function blocked(card, session, offline, busy) {
+function blocked(card, manifest, session, offline, busy) {
   const holds = {
     write: !card.project_write,
-    store: card.store === null,
+    store: manifest.store === null,
     store_write: !session?.store_write,
     offline,
     busy,
@@ -338,6 +389,12 @@ function blocked(card, session, offline, busy) {
   );
 }
 
+/** The store every manifest of a project names, else `null`. */
+function commonStore(manifests) {
+  const stores = new Set(manifests.map((manifest) => manifest.store));
+  return stores.size === 1 ? manifests[0].store : null;
+}
+
 function ProjectCard({ id, onChanged }) {
   const { health, session, settings } = useApp();
   const cardId = useId();
@@ -345,6 +402,7 @@ function ProjectCard({ id, onChanged }) {
   const [round, setRound] = useState(0);
   const [adding, setAdding] = useState(false);
   const [done, setDone] = useState(null);
+  const [producer, setProducer] = useState(null);
   const changed = () => {
     resource.reload();
     setRound((n) => n + 1);
@@ -359,46 +417,73 @@ function ProjectCard({ id, onChanged }) {
       ? html`<p class="hint warn">${t(L.not_found, { project: id })}</p>`
       : html`<${ProblemView} problem=${error.problem} />`;
   }
-  const why = blocked(card, session, Boolean(settings?.offline), job.starting || job.running);
+  // A project of two manifests acts on the one chosen at the actions, and a
+  // task through its own; the API needs the producer only then.
+  const several = card.manifests.length > 1;
+  const manifestOf = (name) =>
+    card.manifests.find((manifest) => manifest.producer === name) ?? card.manifests[0];
+  const acting = manifestOf(producer);
+  const busy = job.starting || job.running;
+  const whyOf = (manifest) => blocked(card, manifest, session, Boolean(settings?.offline), busy);
+  const why = whyOf(acting);
+  const taskWhy = Object.fromEntries(
+    card.manifests.map((manifest) => [manifest.producer, whyOf(manifest)]),
+  );
   const reasonId = (reason) => `${cardId}-why-${reason}`;
-  const told = REASONS.filter((reason) => Object.values(why).includes(reason));
-  const start = (kind, tasks = null) => {
+  const told = REASONS.filter((reason) =>
+    [why, ...Object.values(taskWhy)].some((each) => Object.values(each).includes(reason)),
+  );
+  const start = (kind, tasks = null, by = acting.producer) => {
     setDone(null);
+    const body = { kind, ...(tasks ? { tasks } : {}), ...(several ? { producer: by } : {}) };
     job.run(async () => {
-      const started = await startProjectJob(card.project, tasks ? { kind, tasks } : { kind });
+      const started = await startProjectJob(card.project, body);
       track(started, { title: downloadName(started, card.name) });
       return started;
     }, `project_${kind}`);
   };
-  const values = [
-    ["project", card.project],
-    ["producer", card.producer],
-  ];
-  if (card.store) values.push(["store", card.store]);
+  const values = [["project", card.project]];
+  for (const manifest of card.manifests) {
+    values.push(["producer", manifest.producer]);
+    if (manifest.store) values.push(["store", manifest.store]);
+  }
+  const invalid = card.manifests.filter((manifest) => manifest.problem);
   return html`<article class="project-card" aria-labelledby="project-card-title">
     <h2 class="pc-title" id="project-card-title">
       <${Tech} value=${values}>${card.name}</${Tech}>
     </h2>
     <${StaleNote} stores=${card.stale_stores} />
     <dl class="kv">
-      <dt>${L.card.producer}</dt><dd>${card.producer}</dd>
+      <dt>${L.card.producer}</dt><dd>${producers(card.manifests)}</dd>
       <dt>${L.card.store}</dt>
-      <dd>${card.store ? storeName(health, card.store) : html`<span class="warn-text">${L.no_store}</span>`}</dd>
-      <dt>${L.card.scanned_at}</dt><dd>${stamp(card.scanned_at)}</dd>
+      <dd>${storeLines(health, card.manifests)}</dd>
+      <dt>${L.card.scanned_at}</dt><dd>${byManifest(card.manifests, scannedAt)}</dd>
       <dt>${L.card.stored_status}</dt>
-      <dd><${Badge} level=${statusLevel(card.status)}>${statusName(card.status)}</${Badge}></dd>
-      ${card.problem ? null : html`<${LiveStatus} id=${card.project} round=${round} />`}
+      <dd>${byManifest(card.manifests, statusBadge)}</dd>
+      ${invalid.length ? null : html`<${LiveStatus} id=${card.project} round=${round} />`}
       ${card.missing_pins
         ? html`<dt>${L.card.missing_pins}</dt><dd class="bad-text tabular">${int(card.missing_pins)}</dd>`
         : null}
     </dl>
-    ${card.problem && !card.problems.some((issue) => issue.code === "invalid_manifest")
-      ? html`<div class="problem compact" role="alert">
-          <div class="problem-head"><${Icon} name="alert" /><b>${L.card.manifest_error}</b></div>
-          <p class="problem-producer"><code>${card.problem}</code></p>
-        </div>`
+    ${invalid.length && !card.problems.some((issue) => issue.code === "invalid_manifest")
+      ? invalid.map(
+          (manifest) => html`<div key=${manifest.producer} class="problem compact" role="alert">
+            <div class="problem-head"><${Icon} name="alert" /><b>${L.card.manifest_error}</b></div>
+            <p class="problem-producer"><code>${manifest.problem}</code></p>
+          </div>`,
+        )
       : null}
     <div class="pc-actions" role="group" aria-label=${L.actions.label}>
+      ${several
+        ? html`<label class="pc-producer">${L.actions.producer}${" "}
+            <select value=${acting.producer}
+              onChange=${(event) => setProducer(event.currentTarget.value)}>
+              ${card.manifests.map(
+                (manifest) => html`<option key=${manifest.producer} value=${manifest.producer}>
+                  ${manifest.producer}</option>`,
+              )}
+            </select></label>`
+        : null}
       <${ActionButton} icon="check" label=${L.actions.verify} title=${L.actions.verify_title}
         reason=${why.verify} reasonId=${reasonId} onClick=${() => start("verify")} />
       <${ActionButton} icon="search" label=${L.actions.check} title=${L.actions.check_title}
@@ -424,17 +509,19 @@ function ProjectCard({ id, onChanged }) {
     ${card.problems.length
       ? html`<section class="det-sec">
           <h3 class="section-title">${count(card.problems.length, T.common.units.problems)}</h3>
-          <${IssueList} issues=${card.problems} store=${card.store} currentProject=${card.project} />
+          <${IssueList} issues=${card.problems} store=${commonStore(card.manifests)}
+            currentProject=${card.project} />
         </section>`
       : null}
-    <${Tasks} card=${card} why=${why} reasonId=${reasonId}
-      adding=${adding ? html`<${AddTask} card=${card} onClose=${() => setAdding(false)}
+    <${Tasks} card=${card} why=${taskWhy} reasonId=${reasonId}
+      adding=${adding ? html`<${AddTask} card=${card} producer=${acting.producer}
+        onClose=${() => setAdding(false)}
         onAdded=${(name) => {
           setAdding(false);
           setDone(t(L.task.added, { name }));
           changed();
         }} />` : null}
-      onRepin=${(name) => start("repin", [name])}
+      onRepin=${(task) => start("repin", [task.task], task.producer)}
       onRemoved=${(name) => {
         setDone(t(L.task.removed, { name }));
         changed();
@@ -465,10 +552,13 @@ function LiveStatus({ id, round }) {
     <${Icon} name="rotate" size=${14} /></button>`;
   let value;
   if (data) {
-    value = html`<${Badge} level=${statusLevel(data.status)}>${statusName(data.status)}</${Badge}>
-      <span class="faint">${data.stale
-        ? t(L.card.stale_status, { at: stamp(data.checked_at) })
-        : t(L.card.checked_at, { at: stamp(data.checked_at) })}</span>`;
+    value = byManifest(
+      data.manifests,
+      (manifest) => html`${statusBadge(manifest)}
+        <span class="faint">${manifest.stale
+          ? t(L.card.stale_status, { at: stamp(manifest.checked_at) })
+          : t(L.card.checked_at, { at: stamp(manifest.checked_at) })}</span>`,
+    );
   } else if (error) {
     value = html`<${ProblemView} problem=${error.problem} compact />`;
   } else {
@@ -476,54 +566,83 @@ function LiveStatus({ id, round }) {
   }
   return html`<dt>${L.card.live_status}</dt>
     <dd class="pc-live">${value}${recheck}
-      ${data ? html`<${TaskStatuses} tasks=${data.tasks} />` : null}
+      ${data ? html`<${TaskStatuses} manifests=${data.manifests} />` : null}
     </dd>`;
 }
 
-function TaskStatuses({ tasks }) {
+/** Each manifest's tasks as its producer checked them, led by it when several. */
+function TaskStatuses({ manifests }) {
+  const several = manifests.length > 1;
+  const tasks = manifests.flatMap((manifest) =>
+    manifest.tasks.map((task) => ({ ...task, producer: manifest.producer })),
+  );
   if (!tasks.length) return null;
   return html`<ul class="pc-task-statuses">
     ${tasks.map(
-      (task) => html`<li key=${task.task}>
+      (task) => html`<li key=${`${task.producer}/${task.task}`}>
         <span class="mono">${task.task}</span>
+        ${several ? html`<span class="faint mono">${task.producer}</span>` : null}
         <${Badge} level=${statusLevel(task.status)}>${statusName(task.status)}</${Badge}>
       </li>`,
     )}
   </ul>`;
 }
 
+/**
+ * The tasks of each manifest with their commands, pins and actions, and the
+ * pins of no task; `why` holds the reasons of each manifest by producer.
+ */
 function Tasks({ card, why, reasonId, adding, onRepin, onRemoved }) {
-  const named = new Set(card.tasks.map((task) => task.task));
-  const loose = card.pins.filter((pin) => !named.has(pin.task));
+  const several = card.manifests.length > 1;
+  const named = new Set(card.tasks.map((task) => `${task.producer}/${task.task}`));
+  const loose = card.pins.filter((pin) => !named.has(`${pin.producer}/${pin.task}`));
   return html`<section class="det-sec">
     <h3 class="section-title">${L.card.tasks}</h3>
     ${adding}
     ${card.tasks.length
       ? html`<ul class="pc-tasks">
           ${card.tasks.map(
-            (task) => html`<li key=${task.task} class="pc-task">
+            (task) => html`<li key=${`${task.producer}/${task.task}`} class="pc-task">
               <div class="pc-task-head">
                 <b class="mono">${task.task}</b>
+                ${several ? html`<span class="faint mono">${task.producer}</span>` : null}
                 <${Badge} level=${statusLevel(task.status)}>${statusName(task.status)}</${Badge}>
               </div>
-              <${Command} task=${task} producer=${card.producer} />
-              <${PinList} store=${card.store}
-                pins=${card.pins.filter((pin) => pin.task === task.task)} />
-              <${TaskActions} project=${card.project} task=${task} why=${why} reasonId=${reasonId}
-                onRepin=${() => onRepin(task.task)} onRemoved=${() => onRemoved(task.task)} />
+              <${Command} task=${task} producer=${task.producer} />
+              <${PinList} store=${storeOf(card, task.producer)}
+                pins=${card.pins.filter(
+                  (pin) => pin.producer === task.producer && pin.task === task.task,
+                )} />
+              <${TaskActions} project=${card.project} task=${task}
+                producer=${several ? task.producer : null} why=${why[task.producer]}
+                reasonId=${reasonId} onRepin=${() => onRepin(task)}
+                onRemoved=${() => onRemoved(task.task)} />
             </li>`,
           )}
         </ul>`
       : html`<p class="faint">${L.card.no_tasks}</p>`}
     ${loose.length
       ? html`<h4 class="section-title">${L.card.other_pins}</h4>
-          <${PinList} store=${card.store} pins=${loose} />`
+          ${card.manifests.map((manifest) => {
+            const pins = loose.filter((pin) => pin.producer === manifest.producer);
+            return pins.length
+              ? html`<${PinList} key=${manifest.producer} store=${manifest.store} pins=${pins} />`
+              : null;
+          })}`
       : null}
   </section>`;
 }
 
-/** „Przepnij” and „Usuń” of a task; a removal asks to be confirmed first. */
-function TaskActions({ project, task, why, reasonId, onRepin, onRemoved }) {
+/** The store a project's manifest of `producer` names, or `null`. */
+function storeOf(card, producer) {
+  return card.manifests.find((manifest) => manifest.producer === producer)?.store ?? null;
+}
+
+/**
+ * „Przepnij” and „Usuń” of a task; a removal asks to be confirmed first.
+ * `producer` names the task's manifest for a project of several, else `null`.
+ */
+function TaskActions({ project, task, producer, why, reasonId, onRepin, onRemoved }) {
   const id = useId();
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -532,7 +651,7 @@ function TaskActions({ project, task, why, reasonId, onRepin, onRemoved }) {
     setRemoving(true);
     setProblem(null);
     try {
-      await removeProjectTask(project, task.task);
+      await removeProjectTask(project, task.task, producer);
       setConfirming(false);
       onRemoved();
     } catch (error) {
@@ -570,12 +689,13 @@ function TaskActions({ project, task, why, reasonId, onRepin, onRemoved }) {
 }
 
 /**
- * „+ Zadanie”: a pasted producer's command and the task's name. The project's
- * producer reads the line (`POST /commands/parse`) and adds the task after
- * checking it without the network (`POST /projects/{project}/tasks`); its
- * text for a mistake shows at the line, or at the name for a refused name.
+ * „+ Zadanie”: a pasted command of `producer` and the task's name. The
+ * producer reads the line (`POST /commands/parse`) and adds the task to its
+ * manifest after checking it without the network (`POST
+ * /projects/{project}/tasks`, naming the producer for a project of several);
+ * its text for a mistake shows at the line, or at the name for a refused name.
  */
-function AddTask({ card, onAdded, onClose }) {
+function AddTask({ card, producer, onAdded, onClose }) {
   const id = useId();
   const [line, setLine] = useState("");
   const [name, setName] = useState("");
@@ -590,9 +710,15 @@ function AddTask({ card, onAdded, onClose }) {
     setSaving(true);
     setRefusal(null);
     try {
-      const call = await parseCommand(card.producer, line.trim());
+      const call = await parseCommand(producer, line.trim());
       stage = "add";
-      await addProjectTask(card.project, { name: task, command: call.command, options: call.options });
+      const named = card.manifests.length > 1 ? { producer } : {};
+      await addProjectTask(card.project, {
+        name: task,
+        command: call.command,
+        options: call.options,
+        ...named,
+      });
       onAdded(task);
     } catch (error) {
       if (!error.problem) throw error;
@@ -617,7 +743,7 @@ function AddTask({ card, onAdded, onClose }) {
         }}></textarea>
       ${at("line")
         ? html`<${FieldError} id=${`${id}-line-note`} problem=${at("line")} />`
-        : html`<span class="field-hint" id=${`${id}-line-note`}>${t(L.task.line_hint, { producer: card.producer })}</span>`}
+        : html`<span class="field-hint" id=${`${id}-line-note`}>${t(L.task.line_hint, { producer })}</span>`}
     </div>
     <div class=${`field${at("name") ? " invalid" : ""}`}>
       <label for=${`${id}-name`}>${L.task.name}</label>

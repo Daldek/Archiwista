@@ -29,8 +29,8 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, and a station's card (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]` | `GET /stations`, `GET /stations/{code}`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
-| a new project, a task added or removed, the producer's status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}`, `GET /projects/{project}/status` |
-| a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
+| a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
+| a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
@@ -254,40 +254,60 @@ cursor is safe in a URL).
   example both sides of the PL/CZ border).
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
-  answers like a missing one (`404`). Each project says whether the actor may
+  answers like a missing one (`404`). A project is its directory, which holds
+  the manifest of Kartograf (`kartograf-project.json`), of IMGWTools
+  (`imgw-project.json`) or both: `manifests` lists each producer's manifest,
+  Kartograf's first, with the configured `store` it names (`null`: none),
+  its `status` when it was read, the producer's `problem` with an invalid one
+  (whose tasks are not read; the other manifest is) and `scanned_at`. Tasks and
+  pins carry the `producer` of their manifest; a task name in both manifests
+  is the problem `duplicate_task`. `--store` / `?store=` lists the projects
+  with a manifest naming the store. Each project says whether the actor may
   change it now (`project_write`: its owner or an administrator; read at each
   request), as the project's changes and jobs below decide it. `archiwista
-  project-status PROJEKT` / `GET /projects/{project}/status` asks the producer
-  for the state now (no network).
+  project-status PROJEKT` / `GET /projects/{project}/status` asks each
+  manifest's producer for the state now (no network): `manifests` with each
+  task's state, `stale` with the last scan's state while that manifest's store
+  is unavailable; the first refusal of a producer is the answer.
 - `archiwista project-init PRODUCENT KATALOG --store MAGAZYN` / `POST /projects`
   (`{"producer", "path", "store"}`), `archiwista project-add PROJEKT NAZWA
-  POLECENIE [--options JSON]` / `POST /projects/{project}/tasks` (`{"name",
-  "command", "options"}`, optionally `"producer"`) and `archiwista
-  project-remove PROJEKT NAZWA` / `DELETE /projects/{project}/tasks/{name}`
-  (v0.3, ADR-039): the producer writes its manifest, and the answer is the
-  project's card as the index holds it at once (`201` with `Location` for a
-  new project, `201` for a task, `200` for a removal). A new project lies in a
-  project directory of the settings or at most four levels below one, outside
-  hidden directories and stores (`400 project_not_discoverable`; elsewhere
-  `403 path_outside_root`), and names a configured store (`404`) with a
-  directory of the producer (`400 store_without_producer`) that can be read
-  now (`503 store_unavailable`); it has no owner yet, so only an administrator
-  creates one. A task is changed by the project's owner or an administrator
-  (`404` for a hidden project, `403 permission_denied` for one seen but not
-  owned); its command is in the producer's catalog (`400 unknown_command`), its
-  options are checked without the network (`400` with the producer's text and
-  `details.option`), and an option that is a file path is `403`. Removing a
-  task keeps its files in the store. A producer that changes no projects
-  answers `422 unsupported` (`no_project_actions`).
+  POLECENIE [--options JSON] [--producer PRODUCENT]` / `POST
+  /projects/{project}/tasks` (`{"name", "command", "options"}`, optionally
+  `"producer"`) and `archiwista project-remove PROJEKT NAZWA [--producer
+  PRODUCENT]` / `DELETE /projects/{project}/tasks/{name}` (optionally
+  `?producer=`) (v0.3, ADR-039): the producer writes its manifest, and the
+  answer is the project's card as the index holds it at once (`201` with
+  `Location` for a new project, `201` for a task, `200` for a removal). A new
+  project lies in a project directory of the settings or at most four levels
+  below one, outside hidden directories and stores (`400
+  project_not_discoverable`; elsewhere `403 path_outside_root`), and names a
+  configured store (`404`) with a directory of the producer (`400
+  store_without_producer`) that can be read now (`503 store_unavailable`); it
+  has no owner yet, so only an administrator creates one. In a directory that
+  holds the other producer's manifest it is the second manifest of the same
+  project, with its key. A task is changed by the project's owner or an
+  administrator (`404` for a hidden project, `403 permission_denied` for one
+  seen but not owned) in one manifest: the one of `producer`, else the
+  project's only one; a project of both manifests needs `producer` (`400
+  producer_required`), and a producer without a manifest in the project is
+  `400 other_producer` (both with `details.option` `producer`). Its command is
+  in the producer's catalog (`400 unknown_command`), its options are checked
+  without the network (`400` with the producer's text and `details.option`),
+  and an option that is a file path is `403`. Removing a task keeps its files
+  in the store. A producer that changes no projects answers `422 unsupported`
+  (`no_project_actions`): IMGWTools until v0.5.
 - `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT
   ZADANIE`, `project-check PROJEKT [ZADANIE ...]` and `project-verify PROJEKT
-  [ZADANIE ...]` / `POST /projects/{project}/jobs` (`{"kind": "download"}`,
-  `"repin"`, `"check"` or `"verify"`, optionally `"tasks": ["…"]`: every task
-  when left out, exactly one for a repin; v0.3, ADR-040) start a job of the
-  project's tasks (section 9). A download and a repin write the store and the
-  manifest through the producer, so they need the project's owner or an
-  administrator and `store_writer` (or the setting `store_write_for_all`); a
-  check and a verification need only to see the project.
+  [ZADANIE ...]`, each with `--producer PRODUCENT` / `POST
+  /projects/{project}/jobs` (`{"kind": "download"}`, `"repin"`, `"check"` or
+  `"verify"`, optionally `"tasks": ["…"]`: every task when left out, exactly
+  one for a repin, and `"producer"`; v0.3, ADR-040) start a job of the tasks of
+  one manifest of the project (section 9), named by `producer` as for a task
+  (`400 producer_required`, `400 other_producer`); the job's `params` keep a
+  named `producer`. A download and a repin write the store and the manifest
+  through the producer, so they need the project's owner or an administrator
+  and `store_writer` (or the setting `store_write_for_all`); a check and a
+  verification need only to see the project.
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
@@ -576,7 +596,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
@@ -638,7 +658,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link; an unknown slot → `404` |
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
-| `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) | a job of a project's tasks (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
+| `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) and `"producer"` (the manifest whose tasks run, needed for a project with the manifests of both producers) | a job of the tasks of a project's manifest (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`, with `producer` when the request named it. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: no `producer` for a project of both manifests (`400`, `producer_required`) or one without a manifest in it (`400`, `other_producer`), a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
 | `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |

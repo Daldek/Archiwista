@@ -1,19 +1,24 @@
 """Projects as people see them: tasks, pinned versions and problems.
 
+A project is its directory, holding the manifest of one producer or of both
+(SPEC 4.7): its tasks and pins carry the producer of their manifest, and an
+invalid manifest of one producer hides nothing of the other's.
 ``project_detail`` answers from the index (``GET /projects/{id}``);
-``project_status`` asks the producer now (``GET /projects/{id}/status``,
-no network, no hashing). Both take the principal's ``ProjectVisibility``
-(A-ADR-029): a project they do not see is unknown to them (``None``,
-``404``).
+``project_status`` asks a manifest's producer now (``GET
+/projects/{id}/status``, no network, no hashing). Both take the principal's
+``ProjectVisibility`` (A-ADR-029): a project they do not see is unknown to
+them (``None``, ``404``).
 
 ``create_project``, ``add_project_task`` and ``remove_project_task`` change a
 manifest through its producer (``ProjectActionAdapter``, ADR-039) for whoever
 may change the project (``project.write``), then record the project in the
-index at once, as a scan reads it. A new project lies where a scan finds it,
-below a configured project directory, and names a configured store, never
-the producer's default root. None of them uses the network or writes a store.
-``project_directory`` and ``project_store`` give the jobs of a project
-(ADR-040) its directory and the configured store its manifest names.
+index at once, as a scan reads it. A change acts on one manifest: the one of
+the producer it names, or the project's only one (``project_manifest``). A
+new project lies where a scan finds it, below a configured project
+directory, and names a configured store, never the producer's default root.
+None of them uses the network or writes a store. ``project_directory`` and
+``project_store`` give the jobs of a project (ADR-040) its directory and the
+configured store a manifest names.
 """
 
 import os
@@ -34,6 +39,7 @@ from archiwista.errors import (
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
+    ProjectManifestRef,
     ProjectPinRef,
     ProjectRecord,
     ProjectRef,
@@ -60,13 +66,15 @@ class ProjectDetail:
     Attributes
     ----------
     project : ProjectRef
-        The project as listed, with its store and manifest state.
+        The project as listed, with each manifest's store and state.
     tasks : tuple[ProjectTaskRef, ...]
-        Tasks in manifest order with their existing commands and options.
+        Tasks of each manifest in its order, with their producer, existing
+        commands and options.
     pins : tuple[ProjectPinRef, ...]
         Pinned versions (older ones included) with their index state.
     problems : tuple[Problem, ...]
-        Invalid manifest, unknown store, missing or other pinned files.
+        Invalid manifest, unknown store, a task name of several producers,
+        missing or other pinned files.
     """
 
     project: ProjectRef
@@ -106,30 +114,60 @@ def project_detail(
 
 
 def project_problems(record: ProjectRecord) -> tuple[Problem, ...]:
-    """Return a project's problems with their fix instructions."""
+    """Return a project's problems with their fix instructions.
+
+    Each manifest's own (invalid, or naming no configured store), then each
+    task name that the manifests of several producers use (SPEC 14), then
+    the pins whose version is missing or holds other content.
+    """
     project = record.project
-    common = {"producer": project.producer, "project": project.name}
     problems: list[Problem] = []
-    if project.problem is not None:
+    for manifest in project.manifests:
+        common = {"producer": manifest.producer, "project": project.name}
+        if manifest.problem is not None:
+            message, instruction = explain(
+                "invalid_manifest",
+                detail=manifest.problem,
+                path=project.path,
+                **common,
+            )
+            problems.append(
+                Problem("invalid_manifest", message, instruction, project=project.key)
+            )
+        elif manifest.store is None:
+            message, instruction = explain(
+                "unknown_store", store_dir=manifest.store_dir, **common
+            )
+            problems.append(
+                Problem("unknown_store", message, instruction, project=project.key)
+            )
+    producers: dict[str, list[str]] = {}
+    for task in record.tasks:
+        producers.setdefault(task.task_id, []).append(task.producer)
+    for name, used in producers.items():
+        if len(set(used)) < 2:
+            continue
         message, instruction = explain(
-            "invalid_manifest", detail=project.problem, path=project.path, **common
+            "duplicate_task",
+            task=name,
+            producers=", ".join(dict.fromkeys(used)),
+            project=project.name,
         )
         problems.append(
-            Problem("invalid_manifest", message, instruction, project=project.key)
-        )
-    elif project.store is None:
-        message, instruction = explain(
-            "unknown_store", store_dir=project.store_dir, **common
-        )
-        problems.append(
-            Problem("unknown_store", message, instruction, project=project.key)
+            Problem(
+                "duplicate_task", message, instruction, project=project.key, task=name
+            )
         )
     for pin in record.pins:
         if pin.state not in ("missing", "sha256_mismatch"):
             continue
         code = "missing_pin" if pin.state == "missing" else "pin_sha256_mismatch"
         message, instruction = explain(
-            code, version=pin.version, task=pin.task, **common
+            code,
+            version=pin.version,
+            task=pin.task,
+            producer=pin.producer,
+            project=project.name,
         )
         problems.append(
             Problem(
@@ -150,12 +188,13 @@ def project_status(
     registry: PluginRegistry,
     key: str,
     *,
+    producer: str | None = None,
     visible: ProjectVisibility,
     project_dirs: Sequence[Path],
 ) -> ProjectInfo | None:
-    """Ask the project's producer for its current status (no network, no hashing).
+    """Ask a manifest's producer for its current status (no network, no hashing).
 
-    The project's directory and manifest are first resolved inside the
+    The project's directory and the manifest are first resolved inside the
     configured project directories (SPEC 10.1): one that leaves them, e.g.
     through a symbolic link planted after the scan, is refused without
     asking the producer.
@@ -168,6 +207,9 @@ def project_status(
         Producer plugins.
     key : str
         Project key.
+    producer : str or None, optional
+        The producer whose manifest is checked; ``None``: the project's only
+        manifest (``project_manifest``).
     visible : ProjectVisibility
         Projects the principal sees (``Authorizer.visible_projects``).
     project_dirs : Sequence[Path]
@@ -177,11 +219,14 @@ def project_status(
     -------
     ProjectInfo or None
         Tasks with ``ok``, ``not_downloaded``, ``missing`` or ``corrupt``
-        and the project's worst state; ``None`` for an unknown project or
+        and the manifest's worst state; ``None`` for an unknown project or
         one the principal does not see.
 
     Raises
     ------
+    CommandRequestError
+        ``producer`` is not one of the project's (``other_producer``) or is
+        left out for a project of several (``producer_required``).
     PathOutsideRootError
         The project's directory or manifest resolves outside every
         configured project directory, or no longer lies below one of them.
@@ -193,11 +238,55 @@ def project_status(
     record = queries.project(key, visible=visible)
     if record is None:
         return None
-    project = record.project
-    adapter = registry.adapter(project.producer)
-    directory = Path(project.path)
-    _require_inside(directory, PROJECT_MANIFESTS.get(project.producer), project_dirs)
+    manifest = project_manifest(record.project, producer)
+    adapter = registry.adapter(manifest.producer)
+    directory = Path(record.project.path)
+    _require_inside(directory, PROJECT_MANIFESTS.get(manifest.producer), project_dirs)
     return adapter.project_status(directory)
+
+
+def project_manifest(project: ProjectRef, producer: str | None) -> ProjectManifestRef:
+    """Return the manifest of ``project`` that an action acts on.
+
+    Parameters
+    ----------
+    project : ProjectRef
+        The project as the index holds it.
+    producer : str or None
+        The producer the request names; ``None``: the project's only one.
+
+    Raises
+    ------
+    CommandRequestError
+        The project holds no manifest of ``producer`` (reason
+        ``other_producer``), or ``producer`` is left out while it holds the
+        manifests of several producers (``producer_required``); both with
+        ``details.option`` ``producer``.
+    """
+    producers = ", ".join(project.producers)
+    if producer is None:
+        if len(project.manifests) == 1:
+            return project.manifests[0]
+        raise CommandRequestError(
+            message(
+                "project.producer_required", project=project.key, producers=producers
+            ),
+            reason="producer_required",
+            details={"option": "producer"},
+        )
+    found = project.manifest(producer)
+    if found is None:
+        raise CommandRequestError(
+            message(
+                "project.other_producer",
+                project=project.key,
+                producers=producers,
+                producer=producer,
+            ),
+            reason="other_producer",
+            details={"option": "producer"},
+        )
+    return found
 
 
 def _require_inside(
@@ -240,7 +329,10 @@ def create_project(
     store: str,
     actor: Principal,
 ) -> str:
-    """Create a project of ``producer`` bound to a configured store; return its key.
+    """Create a manifest of ``producer`` bound to a configured store; return its key.
+
+    A directory that is a project already, through another producer's
+    manifest, gets the second manifest and stays one project with its key.
 
     Parameters
     ----------
@@ -331,7 +423,7 @@ def add_project_task(
     actor: Principal,
     visible: ProjectVisibility,
 ) -> str:
-    """Add a task to a project through its producer; return the project's key.
+    """Add a task to a project's manifest through its producer; return the key.
 
     Parameters
     ----------
@@ -354,7 +446,8 @@ def add_project_task(
     options : Mapping[str, object]
         Its options in the JSON form of the catalog, no file path.
     producer : str or None
-        The producer the call names; ``None`` is the project's.
+        The producer the call names; ``None``: the producer of the project's
+        only manifest.
     actor : Principal
         Who asks.
     visible : ProjectVisibility
@@ -368,8 +461,10 @@ def add_project_task(
         ``actor`` may not change the project: neither its owner nor an
         administrator.
     CommandRequestError
-        ``producer`` is not the project's (reason ``other_producer``), or the
-        command is not in its catalog (``unknown_command``).
+        The project holds no manifest of ``producer`` (reason
+        ``other_producer``) or holds several and ``producer`` is left out
+        (``producer_required``), or the command is not in its catalog
+        (``unknown_command``).
     UnsupportedError
         The producer changes no projects (``no_project_actions``) or offers
         no commands (``no_commands``).
@@ -383,25 +478,15 @@ def add_project_task(
         The producer's plugin is not available.
     """
     project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
-    if producer is not None and producer != project.producer:
-        raise CommandRequestError(
-            message(
-                "project.other_producer",
-                project=key,
-                project_producer=project.producer,
-                producer=producer,
-            ),
-            reason="other_producer",
-            details={"option": "producer"},
-        )
-    adapter = project_actions(registry, project.producer)
-    call = CommandCall(project.producer, command, options)
+    manifest = project_manifest(project, producer)
+    adapter = project_actions(registry, manifest.producer)
+    call = CommandCall(manifest.producer, command, options)
     refuse_path_options(
-        command_info(actions(registry, project.producer), call), options
+        command_info(actions(registry, manifest.producer), call), options
     )
-    directory = project_directory(project, settings)
+    directory = project_directory(project, settings, manifest.producer)
     adapter.add_project_task(directory, name=name, command=command, options=options)
-    return _record(registry, settings, index_path, project.producer, directory)
+    return _record(registry, settings, index_path, manifest.producer, directory)
 
 
 def remove_project_task(
@@ -413,12 +498,15 @@ def remove_project_task(
     key: str,
     *,
     name: str,
+    producer: str | None = None,
     actor: Principal,
     visible: ProjectVisibility,
 ) -> str:
-    """Remove a task and its pins through the producer; return the project's key.
+    """Remove a task and its pins through its producer; return the project's key.
 
-    The store's files of the task stay: other projects may pin them.
+    The task is the one of the manifest of ``producer``, or of the project's
+    only manifest when ``producer`` is ``None``. The store's files of the
+    task stay: other projects may pin them.
 
     Raises
     ------
@@ -426,6 +514,9 @@ def remove_project_task(
         No project ``key`` ``actor`` sees.
     PermissionDeniedError
         ``actor`` may not change the project.
+    CommandRequestError
+        The project holds no manifest of ``producer`` (``other_producer``)
+        or holds several and ``producer`` is left out (``producer_required``).
     UnsupportedError
         The producer changes no projects (``no_project_actions``).
     PathOutsideRootError
@@ -437,10 +528,11 @@ def remove_project_task(
         The producer's plugin is not available.
     """
     project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
-    adapter = project_actions(registry, project.producer)
-    directory = project_directory(project, settings)
+    manifest = project_manifest(project, producer)
+    adapter = project_actions(registry, manifest.producer)
+    directory = project_directory(project, settings, manifest.producer)
     adapter.remove_project_task(directory, name=name)
-    return _record(registry, settings, index_path, project.producer, directory)
+    return _record(registry, settings, index_path, manifest.producer, directory)
 
 
 def project_actions(registry: PluginRegistry, producer: str) -> ProjectActionAdapter:
@@ -478,43 +570,53 @@ def _changed_project(
     return record.project
 
 
-def project_directory(project: ProjectRef, settings: AppSettings) -> Path:
+def project_directory(
+    project: ProjectRef, settings: AppSettings, producer: str
+) -> Path:
     """Return a project's directory, refused when it left the project directories.
+
+    Parameters
+    ----------
+    project : ProjectRef
+        The project as the index holds it.
+    settings : AppSettings
+        The configured project directories.
+    producer : str
+        The producer whose manifest the caller acts on: that manifest must
+        resolve inside them too.
 
     Raises
     ------
     PathOutsideRootError
-        The directory or its manifest resolves outside every configured
+        The directory or the manifest resolves outside every configured
         project directory (e.g. through a symbolic link planted after the
         scan), or no longer lies below one.
     """
     directory = Path(project.path)
-    _require_inside(
-        directory, PROJECT_MANIFESTS.get(project.producer), settings.project_dirs
-    )
+    _require_inside(directory, PROJECT_MANIFESTS.get(producer), settings.project_dirs)
     return directory
 
 
-def project_store(project: ProjectRef, settings: AppSettings) -> Path:
-    """Return the producer's directory of the configured store a project names.
+def project_store(manifest: ProjectManifestRef, settings: AppSettings) -> Path:
+    """Return the producer's directory of the configured store a manifest names.
 
     Archiwista writes only configured stores (plan of 2026-10-25, rule 1): a
-    project whose manifest names another store is refused before its producer
-    writes there.
+    manifest that names another store is refused before its producer writes
+    there.
 
     Raises
     ------
     ConflictError
-        The manifest names no configured store with a directory of the
-        project's producer (reason ``unknown_store``).
+        The manifest names no configured store with a directory of its
+        producer (reason ``unknown_store``).
     """
-    config = None if project.store is None else settings.store(project.store)
-    root = None if config is None else config.roots().get(project.producer)
+    config = None if manifest.store is None else settings.store(manifest.store)
+    root = None if config is None else config.roots().get(manifest.producer)
     if root is None:
         raise ConflictError(
-            message("problem.unknown_store", store_dir=project.store_dir),
+            message("problem.unknown_store", store_dir=manifest.store_dir),
             reason="unknown_store",
-            hint=message("fix.unknown_store", store_dir=project.store_dir),
+            hint=message("fix.unknown_store", store_dir=manifest.store_dir),
         )
     return root
 

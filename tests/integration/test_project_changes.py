@@ -203,7 +203,9 @@ def test_a_project_and_its_task_are_written_as_kartografs_own_calls_write_them(
     with IndexQueries(place.index) as queries:
         record = queries.project(key, visible=ALL_PROJECTS)
     assert record is not None
-    assert (record.project.store, record.project.status) == (STORE, "not_downloaded")
+    assert [(m.store, m.status) for m in record.project.manifests] == [
+        (STORE, "not_downloaded")
+    ]
     assert [(task.task_id, task.command) for task in record.tasks] == [(TASK, COMMAND)]
     assert dict(record.tasks[0].options) == written["tasks"][0]["options"]
 
@@ -302,7 +304,9 @@ def test_a_new_project_is_the_project_a_scan_finds(place: Place) -> None:
     assert (summary.found, summary.unchanged, summary.removed) == (1, 1, 0)
     with IndexQueries(place.index) as queries:
         listed = queries.projects(visible=ALL_PROJECTS)
-    assert [(item.key, item.store, item.tasks) for item in listed] == [(key, STORE, 1)]
+    assert [
+        (item.key, [m.store for m in item.manifests], item.tasks) for item in listed
+    ] == [(key, [STORE], 1)]
 
 
 @pytest.mark.parametrize("relative", ["a/b/c/d/raba", ".ukryty/raba"])

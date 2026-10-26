@@ -1398,20 +1398,22 @@ class IndexWriter:
     # Projects.
 
     def project_stamps(self, producer: str) -> dict[str, ManifestStamp]:
-        """Return each indexed project's directory with its manifest stamp.
+        """Return the directory of each indexed manifest of ``producer`` with its stamp.
 
         A manifest whose size and modification time equal the stamp need
-        not be read again. A project without a configured store (an invalid
+        not be read again. A manifest without a configured store (an invalid
         manifest, an unknown or removed store) or without a status gets an
         empty stamp, so it is read again until it matches and is checked.
         """
         return {
             str(path): ManifestStamp(mtime_ns, size)
             for path, mtime_ns, size in self._connection.execute(
-                "SELECT path,"
-                " iif(store_id IS NULL OR status IS NULL, NULL, manifest_mtime_ns),"
-                " iif(store_id IS NULL OR status IS NULL, NULL, manifest_size)"
-                " FROM projects WHERE producer = ?",
+                "SELECT pr.path,"
+                " iif(m.store_id IS NULL OR m.status IS NULL, NULL,"
+                " m.manifest_mtime_ns),"
+                " iif(m.store_id IS NULL OR m.status IS NULL, NULL, m.manifest_size)"
+                " FROM manifests m JOIN projects pr ON pr.id = m.project_id"
+                " WHERE m.producer = ?",
                 (producer,),
             ).fetchall()
         }
@@ -1419,13 +1421,18 @@ class IndexWriter:
     def write_project(
         self, info: ProjectInfo, *, store: str | None, stamp: ManifestStamp
     ) -> str:
-        """Record a project with its tasks and pinned versions.
+        """Record a producer's manifest with its tasks and pinned versions.
+
+        The project is its directory: the manifest joins the project the
+        directory already is, with the manifests of other producers and their
+        tasks left as they are, and only this producer's tasks and pins are
+        replaced.
 
         Parameters
         ----------
         info : ProjectInfo
-            ``read_project`` or ``project_status`` of the adapter; a project
-            with ``problem`` (an invalid manifest) stays visible.
+            ``read_project`` or ``project_status`` of the adapter; a manifest
+            with ``problem`` (an invalid one) stays visible.
         store : str or None
             Configured id of the store the manifest names (``info.store``)
             and its pins refer to; ``None`` when no configured store matches.
@@ -1435,37 +1442,44 @@ class IndexWriter:
         Returns
         -------
         str
-            The project's key: its slugged name, made unique. The project's
-            access key (its directory after ``realpath``) is recorded with
-            it, so the state database's access entry applies.
+            The project's key: its slugged name, made unique, kept while the
+            directory holds a manifest. The project's access key (its
+            directory after ``realpath``) is recorded with it, so the state
+            database's access entry applies.
         """
         store_id = self._find_store_id(store) if store is not None else None
         path = str(info.path)
         key_of_access = access_key(info.path)
         with self._transaction() as connection:
             row = connection.execute(
-                "SELECT key FROM projects WHERE producer = ? AND path = ?",
-                (info.producer, path),
+                "SELECT id, key FROM projects WHERE path = ?", (path,)
             ).fetchone()
-            key = str(row[0]) if row is not None else _free_key(connection, info.name)
-            (project_id,) = connection.execute(
-                "INSERT INTO projects (key, producer, path, access_key, name,"
-                " store_id, store_dir, status, problem, manifest_mtime_ns,"
-                " manifest_size, scanned_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                " ON CONFLICT (producer, path) DO UPDATE SET name = excluded.name,"
-                " access_key = excluded.access_key,"
+            if row is None:
+                key = _free_key(connection, info.name)
+                (project_id,) = connection.execute(
+                    "INSERT INTO projects (key, path, access_key, name)"
+                    " VALUES (?, ?, ?, ?) RETURNING id",
+                    (key, path, key_of_access, info.name),
+                ).fetchone()
+            else:
+                project_id, key = int(row[0]), str(row[1])
+                connection.execute(
+                    "UPDATE projects SET access_key = ?, name = ? WHERE id = ?",
+                    (key_of_access, info.name, project_id),
+                )
+            connection.execute(
+                "INSERT INTO manifests (project_id, producer, store_id, store_dir,"
+                " status, problem, manifest_mtime_ns, manifest_size, scanned_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (project_id, producer) DO UPDATE SET"
                 " store_id = excluded.store_id, store_dir = excluded.store_dir,"
                 " status = excluded.status, problem = excluded.problem,"
                 " manifest_mtime_ns = excluded.manifest_mtime_ns,"
                 " manifest_size = excluded.manifest_size,"
-                " scanned_at = excluded.scanned_at RETURNING id",
+                " scanned_at = excluded.scanned_at",
                 (
-                    key,
+                    project_id,
                     info.producer,
-                    path,
-                    key_of_access,
-                    info.name,
                     store_id,
                     info.store,
                     info.status,
@@ -1474,18 +1488,22 @@ class IndexWriter:
                     stamp.size,
                     _now(),
                 ),
-            ).fetchone()
-            connection.execute(
-                "DELETE FROM project_tasks WHERE project_id = ?", (project_id,)
             )
-            connection.execute("DELETE FROM pins WHERE project_id = ?", (project_id,))
+            manifest = (project_id, info.producer)
+            connection.execute(
+                "DELETE FROM project_tasks WHERE project_id = ? AND producer = ?",
+                manifest,
+            )
+            connection.execute(
+                "DELETE FROM pins WHERE project_id = ? AND producer = ?", manifest
+            )
             connection.executemany(
                 "INSERT INTO project_tasks"
-                " (project_id, task_id, position, command, options, status)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
+                " (project_id, producer, task_id, position, command, options, status)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
-                        project_id,
+                        *manifest,
                         task.task_id,
                         position,
                         task.command,
@@ -1496,12 +1514,11 @@ class IndexWriter:
                 ],
             )
             connection.executemany(
-                "INSERT INTO pins"
-                " (project_id, task_id, store_id, store_dir, version_path, sha256)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO pins (project_id, producer, task_id, store_id,"
+                " store_dir, version_path, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
-                        project_id,
+                        *manifest,
                         pin.task_id,
                         store_id,
                         pin.store,
@@ -1514,20 +1531,29 @@ class IndexWriter:
         return key
 
     def remove_projects(self, producer: str, *, keep: Collection[str]) -> int:
-        """Remove the producer's projects whose directory is not in ``keep``.
+        """Remove the manifests of ``producer`` whose directory is not in ``keep``.
+
+        A project left without a manifest is removed with them; one that
+        holds another producer's manifest stays, with its key.
 
         Returns
         -------
         int
-            Number of projects removed.
+            Number of manifests removed.
         """
         with self._transaction() as connection:
-            return int(
+            removed = int(
                 connection.execute(
-                    f"DELETE FROM projects WHERE producer = ? AND path NOT IN ({_IDS})",
+                    "DELETE FROM manifests WHERE producer = ? AND project_id IN"
+                    f" (SELECT id FROM projects WHERE path NOT IN ({_IDS}))",
                     (producer, json.dumps(sorted(keep))),
                 ).rowcount
             )
+            connection.execute(
+                "DELETE FROM projects WHERE NOT EXISTS"
+                " (SELECT 1 FROM manifests m WHERE m.project_id = projects.id)"
+            )
+        return removed
 
     # Areas.
 

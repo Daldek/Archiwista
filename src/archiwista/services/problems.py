@@ -25,6 +25,7 @@ KNOWN_PROBLEMS = frozenset(
         "pin_sha256_mismatch",
         "invalid_manifest",
         "unknown_store",
+        "duplicate_task",
         *OWN_PROBLEM_CODES,
     }
 )

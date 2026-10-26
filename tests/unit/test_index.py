@@ -1379,6 +1379,148 @@ def test_index_projects_keep_unique_keys_and_stamps(
     assert list(writer.project_stamps("kartograf")) == ["/projekty/a/Raba"]
 
 
+def test_index_project_is_its_directory_with_a_manifest_of_each_producer(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """Both manifests of a directory are one project with one key, Kartograf's first.
+
+    Each manifest keeps its store, state, stamp, tasks and pins: writing one
+    again replaces only its own, and removing one keeps the project and its key
+    until the last one goes.
+    """
+    # Arrange
+    writer, queries = index
+    current = version(SHEET_A, "2025-04-26_82710", 1)
+    write_pass(writer, [link(SHEET_A, current), current])
+    directory = Path("/projekty/Raba")
+    imgw = ProjectInfo(
+        "imgw",
+        "/dane/imgw",
+        directory,
+        "Raba",
+        tasks=(
+            ProjectTask("przeplywy", "series select"),
+            ProjectTask("opady", "series select"),
+        ),
+        status="not_downloaded",
+    )
+    kartograf = ProjectInfo(
+        "kartograf",
+        ROOT,
+        directory,
+        "Raba",
+        tasks=(ProjectTask("teren", "elevation download"),),
+        pins=(ProjectPin(ROOT, current.relative_path, sha(1), "teren"),),
+        status="ok",
+    )
+
+    # Act
+    keys = [
+        writer.write_project(imgw, store=None, stamp=ManifestStamp(1, 10)),
+        writer.write_project(kartograf, store=STORE, stamp=ManifestStamp(2, 20)),
+        writer.write_project(
+            replace(imgw, tasks=imgw.tasks[:1]), store=None, stamp=ManifestStamp(3, 30)
+        ),
+    ]
+    both = queries.project("raba", visible=ALL_PROJECTS)
+    stamps = {name: writer.project_stamps(name) for name in ("kartograf", "imgw")}
+    removed_first = writer.remove_projects("kartograf", keep=set())
+    left = queries.projects(visible=ALL_PROJECTS)
+    removed_last = writer.remove_projects("imgw", keep=set())
+
+    # Assert
+    assert keys == ["raba", "raba", "raba"]
+    assert both is not None
+    assert [(m.producer, m.store, m.status) for m in both.project.manifests] == [
+        ("kartograf", STORE, "ok"),
+        ("imgw", None, "not_downloaded"),
+    ]
+    assert [(t.producer, t.task_id) for t in both.tasks] == [
+        ("kartograf", "teren"),
+        ("imgw", "przeplywy"),
+    ]
+    assert [(p.producer, p.task, p.state) for p in both.pins] == [
+        ("kartograf", "teren", "ok")
+    ]
+    assert (both.project.tasks, both.project.pins) == (2, 1)
+    assert stamps == {
+        "kartograf": {str(directory): ManifestStamp(2, 20)},
+        "imgw": {str(directory): ManifestStamp(None, None)},
+    }
+    assert removed_first == 1
+    assert [(p.key, p.producers, p.tasks, p.pins) for p in left] == [
+        ("raba", ("imgw",), 1, 0)
+    ]
+    assert removed_last == 1
+    assert queries.projects(visible=ALL_PROJECTS) == ()
+
+
+# The projects of an index of schema 12 (v0.4): one row per producer and directory.
+_SCHEMA_12_PROJECTS = """
+CREATE TABLE projects (
+    id INTEGER PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    producer TEXT NOT NULL,
+    path TEXT NOT NULL,
+    access_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    store_id INTEGER,
+    store_dir TEXT NOT NULL,
+    status TEXT,
+    problem TEXT,
+    manifest_mtime_ns INTEGER,
+    manifest_size INTEGER,
+    scanned_at TEXT NOT NULL,
+    UNIQUE (producer, path)
+);
+INSERT INTO projects (key, producer, path, access_key, name, store_dir, scanned_at)
+VALUES
+    ('raba', 'kartograf', '/projekty/Raba', '/projekty/Raba', 'Raba', '/dane',
+        '2026-10-25T12:00:00+00:00'),
+    ('raba-2', 'imgw', '/projekty/Raba', '/projekty/Raba', 'Raba', '/dane/imgw',
+        '2026-10-25T12:00:00+00:00');
+PRAGMA user_version = 12;
+"""
+
+
+def test_index_of_schema_12_is_rebuilt_into_one_project_per_directory(
+    tmp_path: Path,
+) -> None:
+    """An index of a project per producer and directory is rebuilt, not migrated.
+
+    Its two projects of one directory are gone; the manifests written again
+    make one project.
+    """
+    # Arrange
+    path = tmp_path / "index.sqlite"
+    connection = sqlite3.connect(path)
+    connection.executescript(_SCHEMA_12_PROJECTS)
+    connection.close()
+
+    # Act
+    state = initialize(path)
+    with IndexQueries(path) as queries:
+        emptied = queries.projects(visible=ALL_PROJECTS)
+    with IndexWriter(path) as writer:
+        writer.sync_stores({STORE: {"kartograf": ROOT, "imgw": "/dane/imgw"}})
+        keys = [
+            writer.write_project(
+                ProjectInfo(producer, root, Path("/projekty/Raba"), "Raba"),
+                store=STORE,
+                stamp=STAMP,
+            )
+            for producer, root in (("kartograf", ROOT), ("imgw", "/dane/imgw"))
+        ]
+    with IndexQueries(path) as queries:
+        listed = queries.projects(visible=ALL_PROJECTS)
+
+    # Assert
+    assert state == "rebuilt"
+    assert emptied == ()
+    assert keys == ["raba", "raba"]
+    assert [(p.key, p.producers) for p in listed] == [("raba", ("kartograf", "imgw"))]
+
+
 def test_index_writer_refuses_misuse(index: tuple[IndexWriter, IndexQueries]) -> None:
     """Passes are explicit: one at a time, for a known store and one producer."""
     # Arrange

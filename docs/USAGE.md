@@ -37,8 +37,9 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
      `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/imgw`) exists and holds
      the producer's marker, the wizard offers it under the empty field of that
      producer with the button "Użyj tego katalogu"; it is entered only by your click.
-   - **Projects** ("Projekty"): directories with Kartograf projects
-     (`kartograf-project.json`); they can be added later.
+   - **Projects** ("Projekty"): directories with the projects of Kartograf
+     (`kartograf-project.json`) and IMGWTools (`imgw-project.json`); they can be
+     added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request
      outside Archiwista, so the map has no basemap.
    - **Save** ("Zapis"): a summary and "Zapisz i zindeksuj" (save and index).
@@ -137,7 +138,8 @@ The panel "Wybór" (selection) leads through four steps:
    same plan window for that line, which writes to the target store instead of
    the line's `-o` or `--root`. In the plan window "Dodaj jako zadanie
    projektu" (add as a project task) adds the one command as a task of a
-   project of the producer in that store ("Projekt", "Nazwa zadania"); with
+   project with a manifest of the producer in that store ("Projekt", "Nazwa
+   zadania"); with
    something to download the button reads "Dodaj zadanie i pobierz N
    pozycji" and the project's download of the new task downloads and pins
    it. The option is disabled with the reason when the variant has several
@@ -239,20 +241,28 @@ versions a scan has just indexed.
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
 - **The list** of projects shows the producer ("Producent"), the store, the
-  tasks, the pinned and missing versions and the own data. Hidden projects are
+  tasks, the pinned and missing versions and the own data. A project is its
+  directory: it may hold the manifest of Kartograf, of IMGWTools or both, and a
+  project of both shows each manifest's store, state at the scan and reading
+  time on its own line, led by its producer. An invalid manifest shows the
+  producer's message and hides nothing of the other. Hidden projects are
   not visible. "Nowy projekt…" is an administrator's: a
   producer, a store with a directory of that producer and the project's
   directory in a project directory of the settings (made when missing); the
   producer writes the manifest, which names that store's directory. Others see
   the button disabled with the reason.
-- **The project card** shows the producer's "Stan teraz" (state now), the
-  tasks and the pins from the manifest, and its actions,
+- **The project card** shows the producers' "Stan teraz" (state now), the
+  tasks and the pins of each manifest (with their producer when there are two),
+  and its actions,
   each run by the producer: "Weryfikuj" (verify: checksums of the pinned files
   in the store, no network), "Sprawdź aktualizacje" (check the pins against the
   source), "Pobierz" (download and pin the tasks not downloaded yet, restore
   missing pinned files) and, at a task, "Przepnij" (repin the task to the
   source's newer versions); the job shows its progress, then its tasks by
-  outcome or its files by state. "+ Zadanie" adds a pasted producer's command
+  outcome or its files by state. In a project of two manifests "Manifest
+  producenta" chooses the manifest the card's actions and "+ Zadanie" act on;
+  a task's actions act on its own manifest. A task name in both manifests is
+  a problem of the project. "+ Zadanie" adds a pasted producer's command
   as a task (the producer checks it without the network; its text for a
   mistake shows at the field) and "Usuń" removes a task and its pins after a
   question; the files stay in the store. A project is changed by its owner or
@@ -381,7 +391,9 @@ from an open Archiwista tab.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) and lists its stations through `archiwista stations` and the API, but
-  has no station views in the interface and no IMGW actions yet (v0.5).
+  catalogs) and its projects, and lists its stations through `archiwista
+  stations` and the API, but has no station views in the interface and no IMGW
+  actions yet (v0.5): an action on an IMGWTools manifest is refused as not
+  supported.
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

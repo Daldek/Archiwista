@@ -180,6 +180,19 @@ command-line interface may change.
   the label of every variable of its series and the counters of the whole result, or
   the card with its facts, location, series and licence. (AGENT_API, ADR 0032
   decision 13)
+- The projects of IMGWTools: the project directories are searched for
+  `imgw-project.json` beside `kartograf-project.json` after a scan of a store with an
+  IMGW directory, and a directory with both manifests is one project with the tasks of
+  both, each with its producer; its pins name versions of the IMGW index (state, slot,
+  label), and `GET /projects/{project}/status` and `archiwista project-status` give
+  IMGWTools' check of its manifest (`not_downloaded`, `ok`, `corrupt`, `missing`)
+  beside Kartograf's. An invalid manifest of one producer shows that producer's
+  message and hides nothing of the other's, and a task name used in both manifests is
+  the project problem `duplicate_task`. The Projects view and the store's projects show
+  each manifest's store and state, and on a card of two manifests "Manifest
+  producenta" chooses the manifest its actions act on. IMGWTools has no project
+  actions yet: an action on its manifest is refused (`422`, `no_project_actions`;
+  v0.5). (SPEC 4.7, ADR 0032 decision 14)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps
@@ -475,6 +488,23 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** a project is its directory, with the manifest of one producer or of
+  both (ADR 0032 decision 14). `GET /projects` items and the card `GET
+  /projects/{project}` (and `archiwista projects`, `project … --json`) lose
+  `producer`, `store`, `status`, `problem` and `scanned_at`: they are in `manifests`,
+  one entry per producer's manifest (`producer`, `store`, `status`, `problem`,
+  `scanned_at`), Kartograf's first; every task and pin has `producer`. `GET
+  /projects/{project}/status` (`archiwista project-status`) answers `{"project",
+  "manifests": [{"producer", "status", "checked_at", "stale", "stale_reason",
+  "tasks"}]}`. A change of a task and a project's job act on one manifest: the
+  `producer` of `POST /projects/{project}/tasks` and `POST /projects/{project}/jobs`,
+  `?producer=` of `DELETE /projects/{project}/tasks/{name}` and `--producer` of
+  `project-add`, `project-remove`, `project-download`, `project-repin`,
+  `project-check` and `project-verify` name it, else it is the project's only one; a
+  project of two manifests refuses a request without it (`400`, `producer_required`),
+  and `other_producer` names a producer without a manifest in the project. The
+  index keeps one project per directory with its manifests (`SCHEMA_VERSION` 13: an
+  existing index is rebuilt when it is opened and filled by the next full scan).
 - **Breaking:** a `check` or `download` job takes `calls` (1 to 1000 `{"command",
   "options"}` of one producer) instead of `command` and `options`, so all the lines of a
   report's row, or of a pasted list, are one check and one download (ADR-044): `POST /jobs`,

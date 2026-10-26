@@ -127,12 +127,15 @@ def test_a_project_is_created_and_its_tasks_changed_over_http(
     assert created.status_code == 201, created.text
     assert created.headers["location"] == f"/api/v1/projects/{key}"
     assert created.json() == new
-    assert (new["producer"], new["store"], new["tasks"]) == ("kartograf", STORE, [])
+    assert [(m["producer"], m["store"]) for m in new["manifests"]] == [
+        ("kartograf", STORE)
+    ]
+    assert new["tasks"] == []
     assert added.status_code == 201, added.text
     assert added.json() == with_task
-    assert [(task["task"], task["command"]) for task in with_task["tasks"]] == [
-        (TASK, COMMAND)
-    ]
+    assert [
+        (task["producer"], task["task"], task["command"]) for task in with_task["tasks"]
+    ] == [("kartograf", TASK, COMMAND)]
     assert with_task["tasks"][0]["options"] == written["tasks"][0]["options"]
     assert removed.status_code == 200, removed.text
     assert removed.json() == without
@@ -173,10 +176,19 @@ def test_the_commands_print_what_the_routes_answer(
     assert created == new
     assert added == with_task
     assert [task["task"] for task in added["tasks"]] == [TASK]
-    assert {**status, "checked_at": None} == {**checked, "checked_at": None}
-    assert [task["task"] for task in status["tasks"]] == [TASK]
+    assert _unclocked(status) == _unclocked(checked)
+    assert [
+        (manifest["producer"], [task["task"] for task in manifest["tasks"]])
+        for manifest in status["manifests"]
+    ] == [("kartograf", [TASK])]
     assert removed == without
     assert removed["tasks"] == []
+
+
+def _unclocked(status: dict[str, Any]) -> dict[str, Any]:
+    """Return a project's status without the times its producers checked it."""
+    manifests = [{**item, "checked_at": None} for item in status["manifests"]]
+    return {**status, "manifests": manifests}
 
 
 @pytest.mark.parametrize("token", ["startup", "agent"])

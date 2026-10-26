@@ -60,6 +60,7 @@ from archiwista.index import (
     PinState,
     ProductSummary,
     ProductUsage,
+    ProjectManifestRef,
     ProjectPinRef,
     ProjectRef,
     ProjectTaskRef,
@@ -307,14 +308,24 @@ _LISTED_SOURCE_EXAMPLE = {
     "default_root": _DEFAULT_ROOT_EXAMPLE,
     "availability": ["nmt", "nmpt", "laz"],
 }
-_PROJECT_EXAMPLE = {
-    "project": "raba",
-    "name": "Raba",
+_MANIFEST_EXAMPLE = {
     "producer": "kartograf",
     "store": _STORE,
     "status": "ok",
     "problem": None,
     "scanned_at": "2026-10-18T12:02:30Z",
+}
+_IMGW_MANIFEST_EXAMPLE = {
+    "producer": "imgw",
+    "store": _STORE,
+    "status": "not_downloaded",
+    "problem": None,
+    "scanned_at": "2026-10-18T12:02:31Z",
+}
+_PROJECT_EXAMPLE = {
+    "project": "raba",
+    "name": "Raba",
+    "manifests": [_MANIFEST_EXAMPLE, _IMGW_MANIFEST_EXAMPLE],
     "tasks": 2,
     "pins": 14,
     "missing_pins": 0,
@@ -422,12 +433,25 @@ _INDEX_EXAMPLE = {
     "size_bytes": 214958080,
 }
 _TASK_EXAMPLE = {
+    "producer": "kartograf",
     "task": "teren",
     "command": "elevation download",
     "options": {"product": "nmt", "sheet": ["N-34-130-D-d-2-4"]},
     "status": "ok",
 }
+_IMGW_TASK_EXAMPLE = {
+    "producer": "imgw",
+    "task": "przeplywy",
+    "command": "series select",
+    "options": {
+        "dataset": "pl.imgw.hydro_daily",
+        "stations": ["149190310"],
+        "years": [2024],
+    },
+    "status": "not_downloaded",
+}
 _PROJECT_PIN_EXAMPLE = {
+    "producer": "kartograf",
     "task": "teren",
     "version": _OLDER,
     "sha256": _SHA256,
@@ -2350,14 +2374,17 @@ class Unused(BaseModel):
         )
 
 
-class ProjectItem(BaseModel):
-    """A discovered project the session's principal sees."""
+class ProjectManifest(BaseModel):
+    """One producer's manifest in a project directory, as the last scan read it."""
 
-    model_config = _examples(_PROJECT_EXAMPLE)
+    model_config = _examples(_MANIFEST_EXAMPLE)
 
-    project: str = Field(description="Project id: /projects/{project}.")
-    name: str
-    producer: str
+    producer: str = Field(
+        description=(
+            "Producer whose manifest it is: `kartograf` (`kartograf-project.json`)"
+            " or `imgw` (`imgw-project.json`)."
+        )
+    )
     store: str | None = Field(
         description="Configured store the manifest names; null when none matches."
     )
@@ -2368,11 +2395,41 @@ class ProjectItem(BaseModel):
         )
     )
     problem: str | None = Field(
-        description="Producer's message for an invalid manifest."
+        description=(
+            "Producer's message for an invalid manifest, whose tasks and pins are"
+            " not read; the other manifest is read all the same."
+        )
     )
-    scanned_at: datetime
-    tasks: int
-    pins: int
+    scanned_at: datetime = Field(description="When the manifest was read.")
+
+    @classmethod
+    def of(cls, manifest: ProjectManifestRef) -> Self:
+        """Return the model of a project's manifest."""
+        return cls(
+            producer=manifest.producer,
+            store=manifest.store,
+            status=manifest.status,
+            problem=manifest.problem,
+            scanned_at=manifest.scanned_at,
+        )
+
+
+_MANIFESTS = (
+    "The producers' manifests the project directory holds, Kartograf's first: a"
+    " project has one or both (SPEC 4.7), each with its store, state and problem."
+)
+
+
+class ProjectItem(BaseModel):
+    """A discovered project the session's principal sees."""
+
+    model_config = _examples(_PROJECT_EXAMPLE)
+
+    project: str = Field(description="Project id: /projects/{project}.")
+    name: str
+    manifests: list[ProjectManifest] = Field(description=_MANIFESTS)
+    tasks: int = Field(description="Tasks of every manifest.")
+    pins: int = Field(description="Pins of every manifest.")
     missing_pins: int = Field(description="Pins missing from the store or other.")
     project_write: bool = Field(description=_PROJECT_WRITE)
 
@@ -2382,11 +2439,7 @@ class ProjectItem(BaseModel):
         return cls(
             project=project.key,
             name=project.name,
-            producer=project.producer,
-            store=project.store,
-            status=project.status,
-            problem=project.problem,
-            scanned_at=project.scanned_at,
+            manifests=[ProjectManifest.of(item) for item in project.manifests],
             tasks=project.tasks,
             pins=project.pins,
             missing_pins=project.missing_pins,
@@ -2419,7 +2472,10 @@ class StoreDetail(BaseModel):
     usage: Usage
     unused: Unused
     projects: list[ProjectItem] = Field(
-        description="Projects naming the store that the principal sees."
+        description=(
+            "Projects the principal sees with a manifest naming the store, with all"
+            " their manifests."
+        )
     )
     problems: list[Issue]
 
@@ -2583,10 +2639,11 @@ class ProjectList(IndexAnswer):
 
 
 class ProjectTask(BaseModel):
-    """A task of a project with its existing command and options."""
+    """A task of a project's manifest with its existing command and options."""
 
-    model_config = _examples(_TASK_EXAMPLE)
+    model_config = _examples(_TASK_EXAMPLE, _IMGW_TASK_EXAMPLE)
 
+    producer: str = Field(description="Producer of the manifest holding the task.")
     task: str
     command: str = Field(description="Producer command as in the manifest.")
     options: dict[str, Any] = Field(description="Options as in the manifest.")
@@ -2596,6 +2653,7 @@ class ProjectTask(BaseModel):
     def of(cls, task: ProjectTaskRef) -> Self:
         """Return the model of a project task."""
         return cls(
+            producer=task.producer,
             task=task.task_id,
             command=task.command,
             options=dict(task.options),
@@ -2608,8 +2666,16 @@ class ProjectPin(BaseModel):
 
     model_config = _examples(_PROJECT_PIN_EXAMPLE)
 
+    producer: str = Field(
+        description=(
+            "Producer of the manifest that pins it: the version lies in that"
+            " producer's directory of the store."
+        )
+    )
     task: str | None
-    version: str = Field(description="Pinned version path.")
+    version: str = Field(
+        description="Pinned version path, relative to the producer's directory."
+    )
     sha256: str | None
     state: PinState
     slot: str | None
@@ -2621,6 +2687,7 @@ class ProjectPin(BaseModel):
     def of(cls, pin: ProjectPinRef) -> Self:
         """Return the model of a project's pin."""
         return cls(
+            producer=pin.producer,
             task=pin.task,
             version=pin.version,
             sha256=pin.sha256,
@@ -2642,7 +2709,7 @@ class ProjectCard(IndexAnswer):
                 for key, value in _PROJECT_EXAMPLE.items()
                 if key not in ("tasks", "pins")
             },
-            "tasks": [_TASK_EXAMPLE],
+            "tasks": [_TASK_EXAMPLE, _IMGW_TASK_EXAMPLE],
             "pins": [_PROJECT_PIN_EXAMPLE],
             "problems": [],
             **_FRESH,
@@ -2651,23 +2718,18 @@ class ProjectCard(IndexAnswer):
 
     project: str = Field(description="Project id: /projects/{project}.")
     name: str
-    producer: str
-    store: str | None = Field(
-        description="Configured store the manifest names; null when none matches."
-    )
-    status: str | None = Field(
-        description="Producer's status when the manifest was read; null: not checked."
-    )
-    problem: str | None = Field(
-        description="Producer's message for an invalid manifest."
-    )
-    scanned_at: datetime
+    manifests: list[ProjectManifest] = Field(description=_MANIFESTS)
     missing_pins: int = Field(description="Pins missing from the store or other.")
     project_write: bool = Field(description=_PROJECT_WRITE)
-    tasks: list[ProjectTask] = Field(description="Tasks in manifest order.")
+    tasks: list[ProjectTask] = Field(
+        description="Tasks of each manifest in its order, manifest after manifest."
+    )
     pins: list[ProjectPin] = Field(description="Pinned versions, older ones too.")
     problems: list[Issue] = Field(
-        description="Invalid manifest, unknown store, missing or other pinned files."
+        description=(
+            "Invalid manifest, unknown store, a task name in the manifests of"
+            " several producers (`duplicate_task`), missing or other pinned files."
+        )
     )
 
     @classmethod
@@ -2683,11 +2745,7 @@ class ProjectCard(IndexAnswer):
         return cls(
             project=project.key,
             name=project.name,
-            producer=project.producer,
-            store=project.store,
-            status=project.status,
-            problem=project.problem,
-            scanned_at=project.scanned_at,
+            manifests=[ProjectManifest.of(item) for item in project.manifests],
             missing_pins=project.missing_pins,
             project_write=writable(project.access_key),
             tasks=[ProjectTask.of(task) for task in detail.tasks],
@@ -2708,22 +2766,21 @@ class TaskStatus(BaseModel):
     )
 
 
-class ProjectStatus(BaseModel):
-    """The producer's check of a project now (no network, no hashing)."""
+_MANIFEST_STATUS_EXAMPLE = {
+    "producer": "kartograf",
+    "status": "ok",
+    "checked_at": "2026-10-18T14:05:12Z",
+    "stale": False,
+    "stale_reason": None,
+    "tasks": [{"task": "teren", "status": "ok"}],
+}
 
-    model_config = _examples(
-        {
-            "project": "raba",
-            "producer": "kartograf",
-            "status": "ok",
-            "checked_at": "2026-10-18T14:05:12Z",
-            "stale": False,
-            "stale_reason": None,
-            "tasks": [{"task": "teren", "status": "ok"}],
-        }
-    )
 
-    project: str
+class ManifestStatus(BaseModel):
+    """A producer's check of its manifest of a project now."""
+
+    model_config = _examples(_MANIFEST_STATUS_EXAMPLE)
+
     producer: str
     status: str | None = Field(description="The worst task status.")
     checked_at: datetime = Field(
@@ -2734,6 +2791,30 @@ class ProjectStatus(BaseModel):
     )
     stale_reason: Literal["store_unavailable"] | None
     tasks: list[TaskStatus]
+
+
+class ProjectStatus(BaseModel):
+    """The producers' checks of a project now (no network, no hashing)."""
+
+    model_config = _examples(
+        {
+            "project": "raba",
+            "manifests": [
+                _MANIFEST_STATUS_EXAMPLE,
+                {
+                    **_MANIFEST_STATUS_EXAMPLE,
+                    "producer": "imgw",
+                    "status": "not_downloaded",
+                    "tasks": [{"task": "przeplywy", "status": "not_downloaded"}],
+                },
+            ],
+        }
+    )
+
+    project: str
+    manifests: list[ManifestStatus] = Field(
+        description="The check of each manifest of the project, in their order."
+    )
 
 
 class ProjectRequest(BaseModel):
@@ -2796,8 +2877,10 @@ class TaskRequest(BaseModel):
         default=None,
         min_length=1,
         description=(
-            "The producer the call names; left out: the project's. Another"
-            " producer is refused (`other_producer`)."
+            "The producer whose manifest gets the task; left out: the project's"
+            " only one. A project holding the manifests of several producers needs"
+            " it (`producer_required`); a producer without a manifest in the"
+            " project is refused (`other_producer`)."
         ),
     )
 
@@ -2808,6 +2891,7 @@ class ProjectJobRequest(BaseModel):
     model_config = _examples(
         {"kind": "download"},
         {"kind": "repin", "tasks": [_TASK_EXAMPLE["task"]]},
+        {"kind": "verify", "producer": "kartograf"},
         closed=True,
     )
 
@@ -2832,6 +2916,16 @@ class ProjectJobRequest(BaseModel):
             "The tasks by name (`task` of /projects/{project}); left out or `null`:"
             " every task of the project. A `repin` names exactly one; a name given"
             " twice counts once."
+        ),
+    )
+    producer: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The producer whose manifest's tasks the job runs; left out: the"
+            " project's only one. A project holding the manifests of several"
+            " producers needs it (`producer_required`); a producer without a"
+            " manifest in the project is refused (`other_producer`)."
         ),
     )
 

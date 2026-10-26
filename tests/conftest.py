@@ -28,6 +28,7 @@ collect_ignore = (
         "contract/test_imgw_series.py",
         "contract/test_imgw_stations.py",
         "integration/test_imgw_index.py",
+        "integration/test_imgw_projects.py",
         "integration/test_imgw_series.py",
         "integration/test_imgw_stations.py",
         "integration/test_series_labels.py",

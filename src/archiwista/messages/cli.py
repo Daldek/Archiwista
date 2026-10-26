@@ -572,25 +572,29 @@ MESSAGES = {
     ),
     "project_line": Text(
         (
-            "{project} — {name}; store: {store}; tasks {tasks}, pins {pins}, missing"
-            " {missing}."
+            "{project} — {name}; manifests: {manifests}; tasks {tasks}, pins {pins},"
+            " missing {missing}."
         ),
         (
-            "{project} — {name}; magazyn: {store}; zadania {tasks}, przypięcia {pins},"
-            " brakujące {missing}."
+            "{project} — {name}; manifesty: {manifests}; zadania {tasks}, przypięcia"
+            " {pins}, brakujące {missing}."
         ),
+    ),
+    "manifest_item": Text(
+        "{producer} (store {store})",
+        "{producer} (magazyn {store})",
     ),
     "no_projects": Text(
         "No visible projects.",
         "Brak widocznych projektów.",
     ),
     "task_line": Text(
-        "  task {task}: {command}; state: {status}",
-        "  zadanie {task}: {command}; stan: {status}",
+        "  task {task} ({producer}): {command}; state: {status}",
+        "  zadanie {task} ({producer}): {command}; stan: {status}",
     ),
     "pin_line": Text(
-        "  pin {version} (task {task}): {state}",
-        "  przypięcie {version} (zadanie {task}): {state}",
+        "  pin {version} ({producer}, task {task}): {state}",
+        "  przypięcie {version} ({producer}, zadanie {task}): {state}",
     ),
     "reindex_help": Text(
         (
@@ -1776,8 +1780,14 @@ MESSAGES = {
         "Polecenie danych z katalogu producenta, np. „elevation download”.",
     ),
     "project_producer_help": Text(
-        "Producer of the call; by default the project's.",
-        "Producent wywołania; domyślnie producent projektu.",
+        (
+            "The producer whose manifest the command acts on; by default the"
+            " project's only one."
+        ),
+        (
+            "Producent, którego manifestu dotyczy polecenie; domyślnie jedyny"
+            " manifest projektu."
+        ),
     ),
     "project_remove_help": Text(
         (

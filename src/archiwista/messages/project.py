@@ -41,10 +41,23 @@ MESSAGES = {
     ),
     "other_producer": Text(
         (
-            'The project "{project}" is a project of the source {project_producer},'
-            " not of {producer}."
+            'The project "{project}" holds no manifest of the source {producer};'
+            " its manifests: {producers}."
         ),
-        "Projekt „{project}” jest projektem źródła {project_producer}, nie {producer}.",
+        (
+            "Projekt „{project}” nie ma manifestu źródła {producer}; jego manifesty:"
+            " {producers}."
+        ),
+    ),
+    "producer_required": Text(
+        (
+            'The project "{project}" holds the manifests of several sources'
+            " ({producers}); name the one to act on."
+        ),
+        (
+            "Projekt „{project}” ma manifesty kilku źródeł ({producers}); wskaż,"
+            " którego dotyczy działanie."
+        ),
     ),
     "outside_project_dirs": Text(
         (

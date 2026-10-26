@@ -9,7 +9,9 @@ restores missing pinned versions, ``project-repin PROJEKT ZADANIE`` pins one
 task anew to the source's newer versions, ``project-check PROJEKT [ZADANIE
 ...]`` compares the pins with the source and ``project-verify PROJEKT
 [ZADANIE ...]`` checks the pinned files in the store without the network; no
-task named is every task. Each prints the job as it ended (``GET /jobs/{job}``,
+task named is every task, and ``--producer`` names the manifest whose tasks
+run (needed for a project with the manifests of several producers). Each
+prints the job as it ended (``GET /jobs/{job}``,
 ``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
 ``11`` failed, ``130`` cancelled or interrupted (ERR §1). They call
 ``archiwista.services.project_jobs`` without HTTP, as the owner of the
@@ -93,6 +95,11 @@ def add_commands(commands: Commands) -> None:
                 metavar=message("metavar.task"),
                 help=message("cli.project_tasks_help"),
             )
+        parser.add_argument(
+            "--producer",
+            metavar=message("metavar.producer"),
+            help=message("cli.project_producer_help"),
+        )
 
 
 def main(
@@ -112,7 +119,7 @@ def main(
         Configuration (the stores, project directories, offline mode), local
         index, state database and jobs.
     registry : PluginRegistry
-        Producer plugins: the project's producer runs the job.
+        Producer plugins: the producer of the project's manifest runs the job.
     out, err : TextIO
         The route's model (as JSON with ``--json``); a refusal's Polish
         message and its ``archiwista-error/1`` document, and the progress of
@@ -130,6 +137,8 @@ def main(
         given["tasks"] = [args.task]
     elif args.tasks:
         given["tasks"] = args.tasks
+    if args.producer is not None:
+        given["producer"] = args.producer
     try:
         request = ProjectJobRequest.model_validate(given)
     except ValidationError as error:
@@ -156,6 +165,7 @@ def main(
                 args.project,
                 kind=request.kind,
                 tasks=request.tasks,
+                producer=request.producer,
                 actor=LOCAL_OWNER,
                 visible=ALL_PROJECTS,
             )

@@ -1,22 +1,25 @@
-"""Projects over HTTP: list, detail, the producer's status and changes (SPEC 9.2, 4.7).
+"""Projects over HTTP: list, detail, the producers' status and changes (SPEC 9.2, 4.7).
 
-Tasks with their existing commands and options, pinned versions (older ones
-too) and problems with instructions. Every answer is filtered by the projects
-the session's principal sees (A-ADR-029): another project is ``404
-not_found``, as if it did not exist. ``/projects/{project}/status`` asks the
-producer now (no network, no hashing); while the project's store is
-unavailable it answers the check of the last scan as ``stale``, and ``503
-store_unavailable`` when there is none. ``POST /projects`` creates a project
-through its producer, ``POST /projects/{project}/tasks`` adds a task and
-``DELETE /projects/{project}/tasks/{name}`` removes one (ADR-039): each needs
+A project is its directory, with the manifest of one producer or of both:
+tasks with their producer, existing commands and options, pinned versions
+(older ones too) and problems with instructions. Every answer is filtered by
+the projects the session's principal sees (A-ADR-029): another project is
+``404 not_found``, as if it did not exist. ``/projects/{project}/status``
+asks each manifest's producer now (no network, no hashing); while a
+manifest's store is unavailable it answers that manifest's check of the last
+scan as ``stale``, and ``503 store_unavailable`` when there is none. ``POST
+/projects`` creates a manifest through its producer, ``POST
+/projects/{project}/tasks`` adds a task and ``DELETE
+/projects/{project}/tasks/{name}`` removes one (ADR-039): each needs
 ``project.write`` (the owner or an administrator) and answers the project's
 card as the index holds it right after the change. ``POST
 /projects/{project}/jobs`` starts a job of the project's tasks (ADR-040):
 ``download`` and ``repin`` need ``project.write`` and ``store.write``,
 ``check`` and ``verify`` only to see the project; it answers ``202`` with the
-job and is in ``job_router``, served with the job supervisor. They translate
-only: ``archiwista.services.projects`` and
-``archiwista.services.project_jobs`` do the work, and ``archiwista
+job and is in ``job_router``, served with the job supervisor. A change and a
+job act on one manifest: the one of the ``producer`` they name, else the
+project's only one. They translate only: ``archiwista.services.projects``
+and ``archiwista.services.project_jobs`` do the work, and ``archiwista
 project-init``, ``project-add``, ``project-remove``, ``project-download``,
 ``project-repin``, ``project-check`` and ``project-verify`` call the same
 functions. Nothing here uses the network or writes a store: a job's worker
@@ -43,6 +46,7 @@ from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_r
 from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import (
     JobDetail,
+    ManifestStatus,
     ProjectCard,
     ProjectItem,
     ProjectJobRequest,
@@ -58,7 +62,7 @@ from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError, SourceUnavailableError
-from archiwista.index import IndexQueries
+from archiwista.index import IndexQueries, ProjectManifestRef, ProjectRecord
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.security import current_principal
@@ -84,6 +88,17 @@ _Project = Annotated[
 _Task = Annotated[
     str,
     Path(description="Task name (`task` of /projects/{project}).", examples=["teren"]),
+]
+_Producer = Annotated[
+    str | None,
+    Query(
+        min_length=1,
+        description=(
+            "The producer whose manifest holds the task; left out: the project's"
+            " only one (`producer_required` for a project of several)."
+        ),
+        examples=["kartograf"],
+    ),
 ]
 
 
@@ -152,8 +167,11 @@ def project_card(
     detail = project_detail(queries, key, visible=visible)
     if detail is None:
         raise NotFoundError(message("project.not_found", project=key))
-    store = detail.project.store
-    stores = set() if store is None else {store}
+    stores = {
+        manifest.store
+        for manifest in detail.project.manifests
+        if manifest.store is not None
+    }
     freshness = staleness(queries.freshness(), stores)
     return ProjectCard.of(detail, freshness, writable=writable)
 
@@ -166,57 +184,86 @@ def check_project(
     *,
     visible: ProjectVisibility,
 ) -> ProjectStatus:
-    """Ask the project's producer for its status, or answer the scan's check.
+    """Ask each manifest's producer for its status, or answer the scan's check.
+
+    The manifests are checked in their order; the first refusal is the
+    answer.
 
     Raises
     ------
     NotFoundError
         Unknown project, or one the principal does not see.
     SourceStateError
-        The producer's plugin is not available.
+        A manifest's producer plugin is not available.
     SourceUnavailableError
-        Without a ``state``: the project's store is unavailable and no scan
-        checked the project (``503 store_unavailable``).
+        Without a ``state``: a manifest's store is unavailable and no scan
+        checked it (``503 store_unavailable``).
     PathOutsideRootError
-        The project's directory or manifest resolves outside the project
+        The project's directory or a manifest resolves outside the project
         directories (``403 path_outside_root``).
     ProducerError
-        The producer cannot read the manifest.
+        A producer cannot read its manifest.
     """
     record = queries.project(key, visible=visible)
     if record is None:
         raise NotFoundError(message("project.not_found", project=key))
-    project = record.project
-    registry.adapter(project.producer)
-    if project.store is not None and _unavailable(
-        queries, settings, registry, project.store, project.producer
+    return ProjectStatus(
+        project=key,
+        manifests=[
+            _manifest_status(
+                queries, settings, registry, record, manifest, visible=visible
+            )
+            for manifest in record.project.manifests
+        ],
+    )
+
+
+def _manifest_status(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    record: ProjectRecord,
+    manifest: ProjectManifestRef,
+    *,
+    visible: ProjectVisibility,
+) -> ManifestStatus:
+    """Ask a manifest's producer for its status, or answer the scan's check."""
+    key = record.project.key
+    producer = manifest.producer
+    registry.adapter(producer)
+    if manifest.store is not None and _unavailable(
+        queries, settings, registry, manifest.store, producer
     ):
-        if project.status is None:
+        if manifest.status is None:
             text = message(
-                "api.project_store_unavailable", project=key, store=project.store
+                "api.project_store_unavailable", project=key, store=manifest.store
             )
             raise SourceUnavailableError(text)
-        return ProjectStatus(
-            project=key,
-            producer=project.producer,
-            status=project.status,
-            checked_at=project.scanned_at,
+        return ManifestStatus(
+            producer=producer,
+            status=manifest.status,
+            checked_at=manifest.scanned_at,
             stale=True,
             stale_reason="store_unavailable",
             tasks=[
                 TaskStatus(task=task.task_id, status=task.status)
                 for task in record.tasks
+                if task.producer == producer
             ],
         )
     checked_at = datetime.now(UTC)
     info = project_status(
-        queries, registry, key, visible=visible, project_dirs=settings.project_dirs
+        queries,
+        registry,
+        key,
+        producer=producer,
+        visible=visible,
+        project_dirs=settings.project_dirs,
     )
     if info is None:  # pragma: no cover - removed by a scan in between
         raise NotFoundError(message("project.not_found", project=key))
-    return ProjectStatus(
-        project=key,
-        producer=project.producer,
+    return ManifestStatus(
+        producer=producer,
         status=info.status,
         checked_at=checked_at,
         stale=False,
@@ -287,9 +334,10 @@ def create_project(
     The producer writes its manifest in `path`, made when missing, naming the
     store's directory of the producer: relative to the project directory
     when the store has path aliases, else absolute, never the producer's
-    default root. The index holds the project at once: the answer is `201`
-    with its card and `Location: /api/v1/projects/{project}`. A new project
-    has no owner yet, so only an administrator creates one (`403
+    default root. A directory that holds another producer's manifest stays
+    one project with both. The index holds the project at once: the answer
+    is `201` with its card and `Location: /api/v1/projects/{project}`. A new
+    project has no owner yet, so only an administrator creates one (`403
     permission_denied`). Refused: a path that is not absolute or leaves the
     project directories of the settings (`403`, `path_outside_root`), a place
     a scan would not find (`400`, `project_not_discoverable`: more than four
@@ -299,8 +347,9 @@ def create_project(
     `store_without_producer`) or cannot be read now (`503
     store_unavailable`), a producer that creates no projects (`422`,
     `no_project_actions`), the producer's refusal (`400` with its text,
-    e.g. a project that is there already) and a lock of the manifest that
-    stays (`409`, `project_locked`, `details.lock`). Nothing uses the network.
+    e.g. a manifest of its own that is there already) and a lock of the
+    manifest that stays (`409`, `project_locked`, `details.lock`). Nothing
+    uses the network.
     """
     key = project_service.create_project(
         registry,
@@ -320,11 +369,14 @@ def create_project(
 def get_project(
     project: _Project, visible: _Visible, writable: _Writable, queries: _Queries
 ) -> ProjectCard:
-    """Return a project: tasks with commands and options, pins and problems.
+    """Return a project: each manifest, tasks with commands and options, pins, problems.
 
-    Pins carry their state in the index (`ok`, `missing`, `sha256_mismatch`,
-    `unknown`); problems carry fix instructions. `project_write` says whether
-    the principal may change the project.
+    Tasks and pins carry the producer of their manifest; an invalid manifest
+    hides nothing of the other. Pins carry their state in the index (`ok`,
+    `missing`, `sha256_mismatch`, `unknown`); problems carry fix instructions,
+    a task name in the manifests of several producers among them
+    (`duplicate_task`). `project_write` says whether the principal may change
+    the project.
     """
     return project_card(queries, project, visible=visible, writable=writable)
 
@@ -341,11 +393,12 @@ def get_project_status(
     registry: _Registry,
     queries: _Queries,
 ) -> ProjectStatus:
-    """Return the producer's check of the project now: each task's worst file.
+    """Return each producer's check of its manifest now: each task's worst file.
 
-    No network and no hashing. While the store is unavailable the answer is
-    the last scan's check, marked `stale`. A project directory that leaves
-    the project directories (a symbolic link) is refused (`path_outside_root`).
+    No network and no hashing. While a manifest's store is unavailable its
+    answer is the last scan's check, marked `stale`. A project directory or
+    manifest that leaves the project directories (a symbolic link) is
+    refused (`path_outside_root`).
     """
     return check_project(queries, settings.get(), registry, project, visible=visible)
 
@@ -371,19 +424,20 @@ def add_project_task(
     queries: _Queries,
     index: _Index,
 ) -> ProjectCard:
-    """Add a task to a project through its producer: a command and its options.
+    """Add a task to a project's manifest through its producer: a command and options.
 
     The producer checks the call without the network and writes the task in
-    the manifest; nothing is downloaded. The index holds the task at once:
+    its manifest; nothing is downloaded. The index holds the task at once:
     the answer is `201` with the project's card. Only the project's owner or
     an administrator changes a project: one the session does not see is
     `404`, one it sees but may not change `403 permission_denied`. Refused:
-    a producer other than the project's (`400`, `other_producer`), a command
-    outside its catalog (`400`, `unknown_command`), an option that is a file
-    path (`403`, `path_outside_root`, `details.option`), a producer that
-    changes no projects or has no commands (`422`), the producer's refusal
-    (`400` with its text and `details.option`: an invalid or taken name, an
-    invalid option) and a lock of the manifest that stays (`409`,
+    a producer without a manifest in the project (`400`, `other_producer`),
+    no producer for a project of several (`400`, `producer_required`), a
+    command outside its catalog (`400`, `unknown_command`), an option that is
+    a file path (`403`, `path_outside_root`, `details.option`), a producer
+    that changes no projects or has no commands (`422`), the producer's
+    refusal (`400` with its text and `details.option`: an invalid or taken
+    name, an invalid option) and a lock of the manifest that stays (`409`,
     `project_locked`, `details.lock`: Archiwista never removes it).
     """
     key = project_service.add_project_task(
@@ -422,12 +476,16 @@ def remove_project_task(
     settings: _Settings,
     queries: _Queries,
     index: _Index,
+    producer: _Producer = None,
 ) -> ProjectCard:
-    """Remove a task and its pins from a project through its producer.
+    """Remove a task and its pins from a project's manifest through its producer.
 
-    The task's files stay in the store: other projects may pin them. The
-    index holds the change at once: the answer is the project's card. A
-    project the session does not see is `404`, one it may not change `403
+    The task is the one of the manifest of `producer`, else of the project's
+    only manifest (`400`, `producer_required` for a project of several; a
+    producer without a manifest in it is `400`, `other_producer`). The
+    task's files stay in the store: other projects may pin them. The index
+    holds the change at once: the answer is the project's card. A project
+    the session does not see is `404`, one it may not change `403
     permission_denied`; a task the manifest does not hold is the producer's
     refusal (`400`, `details.option` `name`); a lock of the manifest that
     stays is `409` (`project_locked`, `details.lock`).
@@ -440,6 +498,7 @@ def remove_project_task(
         decisions,
         project,
         name=name,
+        producer=producer,
         actor=principal,
         visible=visible,
     )
@@ -467,26 +526,30 @@ def start_project_job(
     jobs: _Jobs,
     response: Response,
 ) -> JobDetail:
-    """Start a job of a project's tasks; answer `202` with the job.
+    """Start a job of the tasks of a project's manifest; answer `202` with the job.
 
-    `download` downloads and pins the tasks not downloaded yet and restores
-    missing pinned versions into the configured store the manifest names;
-    `repin` pins one task anew to the source's newer versions; `check`
-    compares the pins with the source without effects; `verify` checks the
-    pinned files in the store without the network. `tasks` names the tasks,
-    every task when left out. The answer has `Location: /api/v1/jobs/{job}`;
-    follow the job with `GET /jobs/{job}/events`. A project the session does
-    not see is `404`; a download and a repin need the project's owner or an
-    administrator and the role `store_writer` or the setting
-    `store_write_for_all` (`403 permission_denied`). Refused before a job
-    exists: a repin without exactly one task (`400`), a producer that runs
-    no project jobs (`422`, `no_project_actions`), a project directory that
-    left the project directories (`403`, `path_outside_root`), a download or
-    a repin of a project whose manifest names no configured store (`409`,
-    `unknown_store`), a second job of the project (`409 conflict`, that job
-    in `details.job`), offline mode for every kind but `verify` (`409`,
-    `offline_mode`) and a producer whose plugin is missing (`503`). A lock of
-    the manifest that stays fails the job (`project_locked`, `details.lock`).
+    The tasks are those of the manifest of `producer`, else of the project's
+    only manifest. `download` downloads and pins the tasks not downloaded
+    yet and restores missing pinned versions into the configured store the
+    manifest names; `repin` pins one task anew to the source's newer
+    versions; `check` compares the pins with the source without effects;
+    `verify` checks the pinned files in the store without the network.
+    `tasks` names the tasks, every task when left out. The answer has
+    `Location: /api/v1/jobs/{job}`; follow the job with `GET
+    /jobs/{job}/events`. A project the session does not see is `404`; a
+    download and a repin need the project's owner or an administrator and
+    the role `store_writer` or the setting `store_write_for_all` (`403
+    permission_denied`). Refused before a job exists: a repin without
+    exactly one task (`400`), no producer for a project of several (`400`,
+    `producer_required`) or a producer without a manifest in it (`400`,
+    `other_producer`), a producer that runs no project jobs (`422`,
+    `no_project_actions`), a project directory that left the project
+    directories (`403`, `path_outside_root`), a download or a repin of a
+    manifest that names no configured store (`409`, `unknown_store`), a
+    second job of the project (`409 conflict`, that job in `details.job`),
+    offline mode for every kind but `verify` (`409`, `offline_mode`) and a
+    producer whose plugin is missing (`503`). A lock of the manifest that
+    stays fails the job (`project_locked`, `details.lock`).
     """
     job = project_jobs.start(
         registry,
@@ -497,6 +560,7 @@ def start_project_job(
         project,
         kind=body.kind,
         tasks=body.tasks,
+        producer=body.producer,
         actor=principal,
         visible=visible,
     )

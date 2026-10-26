@@ -5,10 +5,12 @@ Projects changed through their producer (plan of 2026-10-25, A7; ADR-039).
 producer in a directory (``POST /projects``; a relative directory is taken
 from the current one), ``project-add PROJEKT NAZWA POLECENIE [--options JSON]
 [--producer PRODUCENT]`` adds a task to a project (``POST
-/projects/{project}/tasks``) and ``project-remove PROJEKT NAZWA`` removes one
-(``DELETE /projects/{project}/tasks/{name}``): each prints the project's card
-as the index holds it right after the change (``ProjectCard``).
-``project-status PROJEKT`` prints the producer's check of a project now
+/projects/{project}/tasks``) and ``project-remove PROJEKT NAZWA [--producer
+PRODUCENT]`` removes one (``DELETE /projects/{project}/tasks/{name}``): each
+prints the project's card as the index holds it right after the change
+(``ProjectCard``); ``--producer`` names the manifest a change acts on, needed
+for a project with the manifests of several producers.
+``project-status PROJEKT`` prints each producer's check of its manifest now
 (``GET /projects/{project}/status``, ``ProjectStatus``). They call
 ``archiwista.services.projects`` and ``archiwista.api.projects`` without
 HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
@@ -137,6 +139,11 @@ def add_commands(commands: Commands) -> None:
     removed = add_parser(commands, "project-remove", "cli.project_remove_help")
     _project(removed)
     _task(removed)
+    removed.add_argument(
+        "--producer",
+        metavar=message("metavar.producer"),
+        help=message("cli.project_producer_help"),
+    )
     status = add_parser(commands, "project-status", "cli.project_status_help")
     _project(status)
 
@@ -261,6 +268,7 @@ def _remove(args: argparse.Namespace, place: _Place) -> _Output:
         place.decisions,
         args.project,
         name=args.task,
+        producer=args.producer,
         actor=LOCAL_OWNER,
         visible=place.visible,
     )
@@ -272,7 +280,7 @@ def _remove(args: argparse.Namespace, place: _Place) -> _Output:
 
 
 def _status(args: argparse.Namespace, place: _Place) -> _Output:
-    """Ask the producer as ``GET /projects/{project}/status`` does."""
+    """Ask each producer as ``GET /projects/{project}/status`` does."""
     status = check_project(
         place.queries,
         place.settings,
@@ -310,23 +318,27 @@ def _body[Body: BaseModel](model: type[Body], given: dict[str, Any]) -> Body:
 
 
 def _status_text(status: ProjectStatus) -> str:
-    """Return the producer's check of a project for a person."""
+    """Return each producer's check of its manifest of a project for a person."""
     none = message("cli.none")
-    lines = [
-        message(
-            "cli.project_status_line",
-            project=status.project,
-            producer=status.producer,
-            status=status.status or none,
-            checked_at=status.checked_at.astimezone().strftime("%Y-%m-%d %H:%M"),
+    lines: list[str] = []
+    for manifest in status.manifests:
+        lines.append(
+            message(
+                "cli.project_status_line",
+                project=status.project,
+                producer=manifest.producer,
+                status=manifest.status or none,
+                checked_at=manifest.checked_at.astimezone().strftime("%Y-%m-%d %H:%M"),
+            )
         )
-    ]
-    lines += [
-        message("cli.project_status_task", task=task.task, status=task.status or none)
-        for task in status.tasks
-    ]
-    if status.stale:
-        lines.append(message("cli.project_status_stale"))
+        lines += [
+            message(
+                "cli.project_status_task", task=task.task, status=task.status or none
+            )
+            for task in manifest.tasks
+        ]
+        if manifest.stale:
+            lines.append(message("cli.project_status_stale"))
     return "\n".join(lines)
 
 

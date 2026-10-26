@@ -79,6 +79,16 @@ MESSAGES = {
         "Unknown project store: {store_dir}",
         "Magazyn projektu nieznany: {store_dir}",
     ),
+    "duplicate_task": Text(
+        (
+            "The task name {task} is used in the manifests of several sources"
+            ' ({producers}) of project "{project}"'
+        ),
+        (
+            "Nazwa zadania {task} występuje w manifestach kilku źródeł ({producers})"
+            " projektu „{project}”"
+        ),
+    ),
     "other": Text(
         "Store problem ({code}): {path}",
         "Problem magazynu ({code}): {path}",

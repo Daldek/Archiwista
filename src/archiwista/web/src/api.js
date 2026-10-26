@@ -584,17 +584,21 @@ export function addProjectTask(project, body) {
 }
 
 /**
- * Remove a task and its pins from a project (`remove_project_task`); its
- * files stay in the store.
+ * Remove a task and its pins from a project's manifest (`remove_project_task`);
+ * its files stay in the store.
  *
  * @param {string} project - Project id.
  * @param {string} name - Task name.
+ * @param {string|null} [producer] - The producer whose manifest holds the task;
+ *   needed for a project with the manifests of several producers.
  * @returns {Promise<ProjectCard>} The project's card without the task.
- * @throws {ApiError} `400` (the producer's refusal), `403 permission_denied`,
- *   `404`, `409` (`project_locked`, `details.lock`).
+ * @throws {ApiError} `400` (the producer's refusal, `producer_required`,
+ *   `other_producer`), `403 permission_denied`, `404`, `409` (`project_locked`,
+ *   `details.lock`).
  */
-export function removeProjectTask(project, name) {
-  return request("DELETE", `/projects/${one(project)}/tasks/${one(name)}`);
+export function removeProjectTask(project, name, producer = null) {
+  const query = producer ? { producer } : {};
+  return request("DELETE", `/projects/${one(project)}/tasks/${one(name)}`, { query });
 }
 
 /**

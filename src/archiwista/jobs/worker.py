@@ -95,6 +95,7 @@ from archiwista.index import (
     IndexQueries,
     IndexWriter,
     PlanTotals,
+    ProjectManifestRef,
     ProjectRef,
     SnapshotWrite,
     StoredPlan,
@@ -159,6 +160,7 @@ from archiwista.services.problems import explain
 from archiwista.services.projects import (
     project_actions,
     project_directory,
+    project_manifest,
     project_store,
 )
 from archiwista.sources import (
@@ -858,10 +860,10 @@ def run_project_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResul
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
     registry = load_registry(cache_dir=spec.cache_dir)
-    project = _project(spec)
-    directory = project_directory(project, spec.settings)
+    project, manifest = _project(spec)
+    directory = project_directory(project, spec.settings, manifest.producer)
     started = time.perf_counter()
-    checked = project_actions(registry, project.producer).check_project(
+    checked = project_actions(registry, manifest.producer).check_project(
         directory,
         tasks=_tasks(spec),
         on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
@@ -881,10 +883,10 @@ def run_project_verify(spec: JobSpec, emit: Emitter) -> JsonObject:
     result (``ok`` false), not a failure of the job.
     """
     registry = load_registry(cache_dir=spec.cache_dir)
-    project = _project(spec)
-    directory = project_directory(project, spec.settings)
+    project, manifest = _project(spec)
+    directory = project_directory(project, spec.settings, manifest.producer)
     started = time.perf_counter()
-    checked = project_actions(registry, project.producer).verify_project(
+    checked = project_actions(registry, manifest.producer).verify_project(
         directory, tasks=_tasks(spec)
     )
     return _check_summary(project, checked, started)
@@ -938,35 +940,35 @@ def _project_download(
 ) -> JsonObject | PartialResult:
     """Download a project's tasks into its store; then read their slots again.
 
-    The manifest is read again first (another process may have changed it):
-    its store must be a configured store (``unknown_store``) that can be read
-    now. The producer writes that store and the manifest; its progress and
-    notices become the job's. Afterwards the index holds the project as the
-    manifest reads then and the slots of the files pinned or unpinned are
-    read again (``scope``, ``refresh_view``); when the run is interrupted or
-    fails, the slots of the units its progress named are read again within
-    ``RESCAN_STOP_S``. A run some of whose tasks failed ends ``partial``, one
-    with every task failed fails (``RunFailedError``, the code of its first
-    failed task); a lock of the manifest that stays fails it as
-    ``project_locked``.
+    The tasks are those of the job's manifest (``producer`` of its
+    parameters, else the project's only one). The manifest is read again
+    first (another process may have changed it): its store must be a
+    configured store (``unknown_store``) that can be read now. The producer
+    writes that store and the manifest; its progress and notices become the
+    job's. Afterwards the index holds the manifest as it reads then and the
+    slots of the files pinned or unpinned are read again (``scope``,
+    ``refresh_view``); when the run is interrupted or fails, the slots of
+    the units its progress named are read again within ``RESCAN_STOP_S``. A
+    run some of whose tasks failed ends ``partial``, one with every task
+    failed fails (``RunFailedError``, the code of its first failed task); a
+    lock of the manifest that stays fails it as ``project_locked``.
     """
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
     registry = load_registry(cache_dir=spec.cache_dir)
-    project = _project(spec)
-    directory = project_directory(project, spec.settings)
-    adapter = project_actions(registry, project.producer)
-    reader = registry.adapter(project.producer)
-    project = _record_project(spec, reader, directory, project.key)
+    project, manifest = _project(spec)
+    producer = manifest.producer
+    directory = project_directory(project, spec.settings, producer)
+    adapter = project_actions(registry, producer)
+    reader = registry.adapter(producer)
+    manifest = _record_project(spec, reader, directory, project.key)
     root: Path | None = None
-    if project.problem is None:
-        root = project_store(project, spec.settings)
-        refused = store_unreachable(
-            registry.probe(project.producer, root), root, indexed=True
-        )
+    if manifest.problem is None:
+        root = project_store(manifest, spec.settings)
+        refused = store_unreachable(registry.probe(producer, root), root, indexed=True)
         if refused is not None:
             raise refused
-    commands = actions(registry, project.producer)
+    commands = actions(registry, producer)
     started = time.perf_counter()
     units: set[str] = set()
 
@@ -992,12 +994,12 @@ def _project_download(
             ),
         )
     except BaseException:
-        if root is not None and project.store is not None:
+        if root is not None and manifest.store is not None:
             store_dir = root
             _rescan(
                 spec,
                 reader,
-                project.store,
+                manifest.store,
                 lambda: _unit_scopes(commands, reader, store_dir, None, units),
                 emit,
                 timeout_s=RESCAN_STOP_S,
@@ -1010,11 +1012,11 @@ def _project_download(
         text = with_detail(message("job.project_not_indexed"), str(error))
         emit.notice("warning", "project_not_indexed", text)
     rescanned = 0
-    if project.store is not None:
+    if manifest.store is not None:
         rescanned = _rescan(
             spec,
             reader,
-            project.store,
+            manifest.store,
             lambda: _scopes(commands, _pinned_paths(run)),
             emit,
             timeout_s=None,
@@ -1024,7 +1026,7 @@ def _project_download(
     summary: JsonObject = {
         "producer": run.producer,
         "project": project.key,
-        "store": project.store,
+        "store": manifest.store,
         "root": run.root,
         "upgrade": upgrade,
         "ok": run.ok,
@@ -1037,33 +1039,42 @@ def _project_download(
     return summary if run.ok else PartialResult(summary)
 
 
-def _project(spec: JobSpec) -> ProjectRef:
-    """Return the project of a job as the index holds it.
+def _project(spec: JobSpec) -> tuple[ProjectRef, ProjectManifestRef]:
+    """Return the project of a job as the index holds it, and the job's manifest.
+
+    The manifest is that of ``producer`` of the job's parameters, else the
+    project's only one (``project_manifest``).
 
     Raises
     ------
     NotFoundError
         The index no longer holds the project (a scan dropped it).
+    CommandRequestError
+        The project holds no manifest of that producer, or holds several and
+        the job names none.
     """
     key = str(spec.params["project"])
     with IndexQueries(spec.index_path) as queries:
         record = queries.project(key, visible=ALL_PROJECTS)
     if record is None:
         raise NotFoundError(message("project.not_found", project=key))
-    return record.project
+    producer = spec.params.get("producer")
+    named = None if producer is None else str(producer)
+    return record.project, project_manifest(record.project, named)
 
 
 def _record_project(
     spec: JobSpec, reader: SourceAdapter, directory: Path, key: str
-) -> ProjectRef:
-    """Read a project's manifest again into the index; return it as recorded."""
+) -> ProjectManifestRef:
+    """Read a manifest again into the index; return it as recorded."""
     with IndexWriter(spec.index_path) as writer:
         record_project(reader, writer, directory, stores=spec.settings.stores)
     with IndexQueries(spec.index_path) as queries:
         record = queries.project(key, visible=ALL_PROJECTS)
-    if record is None:
+    manifest = None if record is None else record.project.manifest(reader.producer)
+    if manifest is None:
         raise NotFoundError(message("project.not_found", project=key))
-    return record.project
+    return manifest
 
 
 def _tasks(spec: JobSpec) -> list[str] | None:

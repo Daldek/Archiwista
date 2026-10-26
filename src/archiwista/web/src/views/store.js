@@ -348,11 +348,18 @@ function ProjectsSection({ projects }) {
           ${projects.map(
             (project) => html`<li key=${project.project}>
               <${Link} view="projects" params=${{ project: project.project }}>${project.name}</${Link}>
-              <${Badge} level=${statusLevel(project.status)}>${statusName(project.status)}</${Badge}>
+              ${project.manifests.map(
+                (manifest) => html`<${Badge} key=${manifest.producer}
+                  level=${statusLevel(manifest.status)}>${project.manifests.length > 1
+                    ? `${manifest.producer}: `
+                    : ""}${statusName(manifest.status)}</${Badge}>`,
+              )}
               ${project.missing_pins
                 ? html`<span class="bad-text">${t(L.projects.missing, { count: int(project.missing_pins) })}</span>`
                 : null}
-              ${project.problem ? html`<span class="bad-text">${L.projects.invalid}</span>` : null}
+              ${project.manifests.some((manifest) => manifest.problem)
+                ? html`<span class="bad-text">${L.projects.invalid}</span>`
+                : null}
             </li>`,
           )}
         </ul>`

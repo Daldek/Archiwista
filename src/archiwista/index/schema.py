@@ -11,8 +11,9 @@ Tables (v0.1): ``stores``, ``segments``, ``slots``, ``versions`` with the
 1:1 ``version_sidecars`` (raw sidecar) and ``version_shapes`` (outlines
 that are not plain boxes, native outlines), ``footprints`` (R*Tree of WGS84
 boxes, versions with a footprint only), ``search`` (FTS5, one row per
-slot), ``issues``, ``projects``, ``project_tasks``, ``pins``, ``areas``,
-``jobs`` with ``job_events``, ``session_tokens`` and ``index_info``.
+slot), ``issues``, ``projects`` with ``manifests``, ``project_tasks`` and
+``pins``, ``areas``, ``jobs`` with ``job_events``, ``session_tokens`` and
+``index_info``.
 Public keys are a store's configured id (``stores.key``) and paths relative
 to the store's producer directory; integer ids never leave the index.
 
@@ -60,6 +61,13 @@ the dataset's rows.
 Version 12 (v0.3, ADR-044): a ``check`` job plans every call of its
 ``calls``, so ``plans`` keeps one plan per call (``call``, its place in the
 job's ``calls``); a call whose check failed has none.
+
+Version 13 (v0.5, plan I7): a project is its directory (``projects``, one
+row and one key per directory), which holds the manifest of one producer or
+of both (SPEC 4.7). ``manifests`` keeps each producer's manifest as it was
+read (the store it names, its status or the producer's problem, its stamp),
+and ``project_tasks`` and ``pins`` carry the producer of the manifest they
+come from; they go with it.
 """
 
 import sqlite3
@@ -71,7 +79,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -254,14 +262,21 @@ CREATE TABLE issues (
 CREATE INDEX issues_segment ON issues (segment_id);
 CREATE INDEX issues_slot ON issues (slot_id);
 
+-- A project is its directory: one key whatever manifests it holds.
 CREATE TABLE projects (
     id INTEGER PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
-    producer TEXT NOT NULL,
-    path TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
     -- Key of the project's access entry in the state database (realpath).
     access_key TEXT NOT NULL,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE INDEX projects_access ON projects (access_key);
+
+-- One producer's manifest in a project directory, as it was last read.
+CREATE TABLE manifests (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    producer TEXT NOT NULL,
     store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
     store_dir TEXT NOT NULL,
     status TEXT,
@@ -269,32 +284,37 @@ CREATE TABLE projects (
     manifest_mtime_ns INTEGER,
     manifest_size INTEGER,
     scanned_at TEXT NOT NULL,
-    UNIQUE (producer, path)
-);
-CREATE INDEX projects_store ON projects (store_id);
-CREATE INDEX projects_access ON projects (access_key);
+    PRIMARY KEY (project_id, producer)
+) WITHOUT ROWID;
+CREATE INDEX manifests_store ON manifests (store_id);
 
 CREATE TABLE project_tasks (
-    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL,
+    producer TEXT NOT NULL,
     task_id TEXT NOT NULL,
     position INTEGER NOT NULL,
     command TEXT NOT NULL,
     options TEXT NOT NULL DEFAULT '{}',
     status TEXT,
-    PRIMARY KEY (project_id, task_id)
+    PRIMARY KEY (project_id, producer, task_id),
+    FOREIGN KEY (project_id, producer)
+        REFERENCES manifests (project_id, producer) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE pins (
     id INTEGER PRIMARY KEY,
-    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL,
+    producer TEXT NOT NULL,
     task_id TEXT,
     store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
     store_dir TEXT NOT NULL,
     version_path TEXT NOT NULL,
-    sha256 TEXT
+    sha256 TEXT,
+    FOREIGN KEY (project_id, producer)
+        REFERENCES manifests (project_id, producer) ON DELETE CASCADE
 );
 CREATE INDEX pins_version ON pins (store_id, version_path);
-CREATE INDEX pins_project ON pins (project_id);
+CREATE INDEX pins_project ON pins (project_id, producer);
 
 CREATE TABLE areas (
     id TEXT PRIMARY KEY,

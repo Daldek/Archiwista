@@ -1148,38 +1148,65 @@ class ManifestStamp:
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectRef:
-    """A discovered project as listed (``GET /projects``).
+class ProjectManifestRef:
+    """One producer's manifest of a project as it was last read.
 
     ``store`` is the configured store the manifest names, ``None`` when no
     configured store matches ``store_dir`` (the manifest's own store path).
     ``status`` is the producer's project status when the manifest was last
     read (``None``: not checked); ``problem`` is the producer's message for
-    an invalid manifest. ``missing_pins`` counts pins whose version is not
-    present in the index or holds other content. ``access_key`` is the key
-    of the project's access entry in the state database: its directory after
-    ``realpath`` when it was scanned (``archiwista.auth.access_key``).
+    an invalid manifest, whose tasks and pins are not used.
     """
 
-    key: str
-    name: str
     producer: str
-    path: str
-    access_key: str
     store: str | None
     store_dir: str
     status: str | None
     problem: str | None
     scanned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRef:
+    """A discovered project as listed (``GET /projects``).
+
+    A project is its directory, holding the manifest of one producer or of
+    several (SPEC 4.7): ``manifests`` in the order of the producers'
+    manifests (``PROJECT_MANIFESTS``: Kartograf's first), each with its own
+    store, status and problem, so an invalid manifest hides nothing of
+    another. ``tasks``, ``pins`` and ``missing_pins`` count those of every
+    manifest; ``missing_pins`` counts pins whose version is not present in
+    the index or holds other content. ``access_key`` is the key of the
+    project's access entry in the state database: its directory after
+    ``realpath`` when it was scanned (``archiwista.auth.access_key``).
+    """
+
+    key: str
+    name: str
+    path: str
+    access_key: str
+    manifests: tuple[ProjectManifestRef, ...]
     tasks: int
     pins: int
     missing_pins: int
 
+    @property
+    def producers(self) -> tuple[str, ...]:
+        """Return the producers whose manifests the project holds, in order."""
+        return tuple(manifest.producer for manifest in self.manifests)
+
+    def manifest(self, producer: str) -> ProjectManifestRef | None:
+        """Return the project's manifest of ``producer``, ``None`` without one."""
+        return next(
+            (item for item in self.manifests if item.producer == producer), None
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectTaskRef:
-    """A task of a project with its existing command and options."""
+    """A task of a project's manifest with its existing command and options."""
 
+    producer: str
     task_id: str
     command: str
     options: dict[str, object]
@@ -1190,10 +1217,12 @@ class ProjectTaskRef:
 class ProjectPinRef:
     """A version a project task pinned, joined with the index by path and SHA-256.
 
-    ``state`` is ``unknown`` when the project's store is not configured;
-    ``slot``, ``label`` and ``size_bytes`` come from the indexed version.
+    ``producer`` is the producer of the manifest that pins it; ``state`` is
+    ``unknown`` when that manifest's store is not configured; ``slot``,
+    ``label`` and ``size_bytes`` come from the indexed version.
     """
 
+    producer: str
     task: str | None
     version: str
     sha256: str | None
@@ -1206,7 +1235,10 @@ class ProjectPinRef:
 
 @dataclass(frozen=True, slots=True)
 class ProjectRecord:
-    """A project with its tasks (manifest order) and pinned versions."""
+    """A project with its tasks and pinned versions, manifest after manifest.
+
+    Within a manifest the tasks keep the manifest's order.
+    """
 
     project: ProjectRef
     tasks: tuple[ProjectTaskRef, ...]

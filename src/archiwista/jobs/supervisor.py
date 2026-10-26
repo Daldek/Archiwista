@@ -789,10 +789,11 @@ class JobSupervisor:
             a JSON object, ``{}`` by default); ``download``: those of
             ``check`` and ``plan_job`` (the ``check`` job whose kept plans
             the run runs, ``None`` by default); ``project_download``,
-            ``project_check``, ``project_verify``: ``project`` (its key) and
+            ``project_check``, ``project_verify``: ``project`` (its key),
             ``tasks`` (a list of task names, ``None`` for every task, the
-            default); ``project_repin``: ``project`` and ``tasks`` with one
-            task; ``preview_warm``: ``store``, ``product``, ``segment``,
+            default) and, when given, ``producer`` (the manifest whose tasks
+            run; left out: the project's only one); ``project_repin``: those
+            with one task; ``preview_warm``: ``store``, ``product``, ``segment``,
             ``project``, ``area_id`` and ``since`` (``WARM_FILTERS``: each a
             non-empty text or ``None``, the default; ``since`` an ISO 8601
             time with its offset).
@@ -1786,16 +1787,19 @@ def _warm_params(params: Mapping[str, object]) -> JsonObject:
 
 
 def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
-    """Check a project job's project and tasks; a repin takes exactly one task.
+    """Check a project job's project, tasks and producer; a repin takes one task.
 
     ``tasks`` is a list of task names, a name given twice kept once, or
-    ``None``, every task of the project.
+    ``None``, every task of the project. ``producer``, when given, names the
+    manifest whose tasks the job runs; left out, the project's only one.
     """
     project = params.get("project")
     tasks = params.get("tasks")
+    producer = params.get("producer")
     if (
-        set(params) - {"project", "tasks"}
+        set(params) - {"project", "tasks", "producer"}
         or not (isinstance(project, str) and project)
+        or ("producer" in params and not (isinstance(producer, str) and producer))
         or not (
             (tasks is None and kind != "project_repin")
             or (
@@ -1809,7 +1813,10 @@ def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
     names = None if tasks is None else list(dict.fromkeys(cast(list[str], tasks)))
     if kind == "project_repin" and (names is None or len(names) != 1):
         raise ValueError(f"a project_repin job takes one task, got {tasks!r}"[:300])
-    return {"project": project, "tasks": names}
+    checked: JsonObject = {"project": project, "tasks": names}
+    if "producer" in params:
+        checked["producer"] = producer
+    return checked
 
 
 def _check_params(params: Mapping[str, object]) -> JsonObject:

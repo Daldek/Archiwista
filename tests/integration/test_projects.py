@@ -116,7 +116,7 @@ def test_scan_projects_links_pins_to_indexed_versions(
     assert summary.found == len(store.projects)
     assert summary.read == len(store.projects)
     assert detail is not None
-    assert detail.project.store == STORE
+    assert [manifest.store for manifest in detail.project.manifests] == [STORE]
     assert [(t.task_id, t.command) for t in detail.tasks] == [
         (t.name, t.command) for t in expected.tasks
     ]
@@ -234,14 +234,15 @@ def test_scan_projects_invalid_manifest_stays_visible_until_fixed(
 
     # Assert
     assert broken.invalid == 1
-    assert listed.problem is not None
-    assert "elevation fly" in listed.problem
+    (entry,) = listed.manifests
+    assert entry.problem is not None
+    assert "elevation fly" in entry.problem
     assert detail is not None
     assert [p.code for p in detail.problems] == ["invalid_manifest"]
-    assert listed.problem in detail.problems[0].message
+    assert entry.problem in detail.problems[0].message
     assert healed is not None
     assert healed.problems == ()
-    assert healed.project.store == STORE
+    assert [item.store for item in healed.project.manifests] == [STORE]
     assert [t.task_id for t in healed.tasks] == ["teren"]
 
 
@@ -268,12 +269,13 @@ def test_scan_projects_unknown_store_matches_once_configured(
     # Assert
     assert first.unknown_store == 1
     assert unknown is not None
-    assert unknown.project.store is None
-    assert unknown.project.store_dir == str(other)
+    assert [(m.store, m.store_dir) for m in unknown.project.manifests] == [
+        (None, str(other))
+    ]
     assert [p.code for p in unknown.problems] == ["unknown_store"]
     assert str(other) in unknown.problems[0].message
     assert known is not None
-    assert known.project.store == "inny"
+    assert [manifest.store for manifest in known.project.manifests] == ["inny"]
     assert known.problems == ()
     assert [p.key for p in queries.projects(store="inny", visible=ALL_PROJECTS)] == [
         "inny-magazyn"
@@ -335,8 +337,10 @@ def test_scan_projects_never_reads_manifest_leaving_project_dir(
 
     # Assert
     assert "obcy" not in adapter.reads
-    assert listed["obcy"].problem == message("ref.path_outside_root", path=planted)
-    assert listed["dowiazany"].problem is None
+    assert [m.problem for m in listed["obcy"].manifests] == [
+        message("ref.path_outside_root", path=planted)
+    ]
+    assert [m.problem for m in listed["dowiazany"].manifests] == [None]
     assert "dowiazany" in adapter.reads
     assert summary.invalid == 1 + sum(not p.valid for p in store.projects)
 
@@ -396,17 +400,19 @@ def test_scan_projects_matches_store_through_path_alias(
 
     # Act
     scan_projects(adapter, writer, project_dirs=[projects], stores=[config])
-    windows_store = {p.name: p.store for p in queries.projects(visible=ALL_PROJECTS)}[
-        "z-windows"
-    ]
+    windows_store = {
+        p.name: [m.store for m in p.manifests]
+        for p in queries.projects(visible=ALL_PROJECTS)
+    }["z-windows"]
     scan_projects(adapter, writer, project_dirs=[projects], stores=[mac])
-    mac_store = {p.name: p.store for p in queries.projects(visible=ALL_PROJECTS)}[
-        "z-maca"
-    ]
+    mac_store = {
+        p.name: [m.store for m in p.manifests]
+        for p in queries.projects(visible=ALL_PROJECTS)
+    }["z-maca"]
 
     # Assert
-    assert windows_store == STORE
-    assert mac_store == STORE
+    assert windows_store == [STORE]
+    assert mac_store == [STORE]
 
 
 def test_project_status_asks_the_producer_now(

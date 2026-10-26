@@ -325,7 +325,10 @@ def test_api_disconnected_store_answers_stale(tmp_path: Path) -> None:
     assert page["stale_stores"][0]["store"] == STORE
     assert page["stale_stores"][0]["detail"] == "udział odłączony"
     assert stores["items"][0]["state"]["stale"]
-    assert status["stale"] and status["stale_reason"] == "store_unavailable"
+    assert [
+        (manifest["producer"], manifest["stale"], manifest["stale_reason"])
+        for manifest in status["manifests"]
+    ] == [("kartograf", True, "store_unavailable")]
     assert_problem(unchecked, 503, "store_unavailable", "store_unreadable")
 
 

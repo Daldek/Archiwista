@@ -31,6 +31,7 @@ from archiwista.api.models import (
     IndexAnswer,
     Issue,
     ProjectCard,
+    ProjectManifest,
     SlotCard,
     Version,
     VersionCard,
@@ -285,7 +286,7 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
             "cli.project_line",
             project=item.project,
             name=item.name,
-            store=_value(item.store),
+            manifests=_manifests_text(item.manifests),
             tasks=item.tasks,
             pins=item.pins,
             missing=item.missing_pins,
@@ -463,7 +464,7 @@ def project_text(card: ProjectCard) -> str:
             "cli.project_line",
             project=card.project,
             name=card.name,
-            store=_value(card.store),
+            manifests=_manifests_text(card.manifests),
             tasks=len(card.tasks),
             pins=len(card.pins),
             missing=card.missing_pins,
@@ -473,6 +474,7 @@ def project_text(card: ProjectCard) -> str:
         message(
             "cli.task_line",
             task=task.task,
+            producer=task.producer,
             command=task.command,
             status=_value(task.status),
         )
@@ -480,12 +482,28 @@ def project_text(card: ProjectCard) -> str:
     )
     lines.extend(
         message(
-            "cli.pin_line", version=pin.version, task=_value(pin.task), state=pin.state
+            "cli.pin_line",
+            version=pin.version,
+            producer=pin.producer,
+            task=_value(pin.task),
+            state=pin.state,
         )
         for pin in card.pins
     )
     lines.extend(_problem_lines(card.problems))
     return _with_stale(card, lines)
+
+
+def _manifests_text(manifests: Iterable[ProjectManifest]) -> str:
+    """Return a project's manifests for a person: each producer with its store."""
+    return ", ".join(
+        message(
+            "cli.manifest_item",
+            producer=manifest.producer,
+            store=_value(manifest.store),
+        )
+        for manifest in manifests
+    )
 
 
 def _problem_lines(problems: Iterable[Issue]) -> list[str]:

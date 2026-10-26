@@ -1,19 +1,22 @@
 /**
  * Texts of the Projects view (views/projects.js, docs/SPEC.md UC-06 and
- * 6.5 g): the projects found in the project directories with their producer,
- * „Nowy projekt…” for an administrator, their tasks with the producer's
- * commands, pins, statuses and problems, the project's actions through its
- * producer (verify, check, download, repin, add and remove a task) with the
- * reason when one is not allowed, and the group „Dane własne” (SPEC 4.7.1):
- * the project's data folder with its files, „Odśwież” and, for an
- * administrator, another data folder.
+ * 6.5 g): the projects found in the project directories with their
+ * manifests (Kartograf's, IMGWTools' or both), „Nowy projekt…” for an
+ * administrator, their tasks with the producer's commands, pins, statuses and
+ * problems, the actions through a manifest's producer (verify, check,
+ * download, repin, add and remove a task) with the reason when one is not
+ * allowed, and the group „Dane własne” (SPEC 4.7.1): the project's data
+ * folder with its files, „Odśwież” and, for an administrator, another data
+ * folder.
  */
 
 export const projects = {
   title: "Projekty",
   count: ["projekt", "projekty", "projektów"],
   empty: "Nie znaleziono projektów w katalogach projektów z ustawień.",
-  empty_hint: "Projekty to katalogi z manifestem kartograf-project.json; dodaj ich katalog w Ustawieniach.",
+  empty_hint:
+    "Projekty to katalogi z manifestem kartograf-project.json lub imgw-project.json; " +
+    "dodaj ich katalog w Ustawieniach.",
   settings: "Ustawienia",
   store_filter: "Magazyn",
   all_stores: "wszystkie",
@@ -50,6 +53,7 @@ export const projects = {
   },
   actions: {
     label: "Działania projektu",
+    producer: "Manifest producenta",
     verify: "Weryfikuj",
     verify_title: "Producent liczy sumy SHA-256 przypiętych plików w magazynie; bez sieci",
     check: "Sprawdź aktualizacje",

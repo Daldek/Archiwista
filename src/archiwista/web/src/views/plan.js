@@ -205,7 +205,10 @@ export function DownloadPlan({
     setAdded({ state: "added", download: fetching, name, project: chosen, problem: null });
     if (!fetching) return;
     try {
-      const job = await startProjectJob(task.project, { kind: "download", tasks: [name] });
+      // A project of several manifests names the one whose task downloads.
+      const named = chosen.manifests.length > 1 ? { producer } : {};
+      const body = { kind: "download", tasks: [name], ...named };
+      const job = await startProjectJob(task.project, body);
       downloads.track(job, { title, window: windowKey });
       record(0, { job });
     } catch (error) {
@@ -314,8 +317,9 @@ function isOver(item) {
 }
 
 /**
- * Whether the call can be added as a task, and to which projects: those of
- * the producer in the store that the session may change (`project_write`).
+ * Whether the call can be added as a task, and to which projects: those with
+ * a manifest of the producer naming the store that the session may change
+ * (`project_write`).
  *
  * @returns {{options: import("../types.js").ProjectItem[], reason: string|null}}
  */
@@ -325,7 +329,8 @@ function taskOffer(projects, producer, store, lines, items) {
   }
   if (projects.error) return { options: [], reason: projects.error.problem?.detail ?? L.task_no_project_list };
   if (!projects.data) return { options: [], reason: L.task_loading };
-  const own = projects.data.items.filter((item) => item.producer === producer);
+  const ours = (manifest) => manifest.producer === producer && manifest.store === store.id;
+  const own = projects.data.items.filter((item) => item.manifests.some(ours));
   const options = own.filter((item) => item.project_write);
   if (!own.length) return { options, reason: t(L.task_no_project, { producer, store: store.name }) };
   if (!options.length) return { options, reason: L.task_no_write };

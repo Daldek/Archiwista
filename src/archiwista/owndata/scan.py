@@ -497,9 +497,10 @@ def folder_rules(
     }
     stores = [root for store in settings.stores for root in store.roots().values()]
     stores += [
-        Path(project.store_dir)
+        Path(manifest.store_dir)
         for project in known_projects
-        if os.path.isabs(project.store_dir)
+        for manifest in project.manifests
+        if os.path.isabs(manifest.store_dir)
     ]
     return stores, folders
 
