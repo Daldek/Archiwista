@@ -841,10 +841,13 @@ reaches the interface.
      unit gets the right axis; keys `+`, `-`, arrows and `Home` (reset); a text line
      sums the range, the points and the gaps. *Acceptance:* (new)
      `tests/e2e/test_station_chart.py` (both engines): `149190310` H has two grey bands
-     at 2023.12.02–12.31 and 2024.02.01–28 and its path three subpaths, no vertex inside a
-     band; a request rewritten to `max_points=30` shows the note, and a selection of one
-     month shows 31 daily vertices and writes `from` and `to`; extremes are covered by
-     the unit test of I8.4 until `imgwtools.testing` has a half-year series (Requests).
+     at 2023.12.02–12.31 and 2024.02.01–28 and its path two subpaths of one vertex
+     (corrected when built: H has a value on 2023.12.01 and 2024.02.29 only), no vertex
+     inside a band; a request rewritten to `max_points=30` shows the note, and a
+     selection of one month shows 31 daily vertices (H of the ČHMÚ gauge of
+     `complete_pl_cz`, a value every day) and writes `from` and `to`; extremes are
+     covered by the unit test of I8.4 until `imgwtools.testing` has a half-year series
+     (Requests).
 6. **I8.6. Comparison** (two commits).
    - *Commit 1, the route.* `GET /stations/compare` (`station` repeatable, 2 to 5, as
      `<store>/<provider>/<code>`; `dataset`, `variable`, `from`, `to`, `year_type`,

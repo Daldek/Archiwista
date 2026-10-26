@@ -54,6 +54,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").StationMapView} StationMapView */
 /** @typedef {import("./types.js").StationLookup} StationLookup */
 /** @typedef {import("./types.js").StationCard} StationCard */
+/** @typedef {import("./types.js").StationChartQuery} StationChartQuery */
+/** @typedef {import("./types.js").StationChart} StationChart */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
@@ -597,6 +599,22 @@ export function listMapStations(filters, { signal } = {}) {
  */
 export function getStation(code, lookup, { signal } = {}) {
   return request("GET", `/stations/${one(code)}`, { query: lookup, signal });
+}
+
+/**
+ * One or two variables of a station's series as a chart (`get_station_series`):
+ * each unit's value up to `max_points` units, else the least, mean and greatest
+ * value of each interval, with the producer's gaps and the markers.
+ *
+ * @param {string} code - The station's code as its provider gives it.
+ * @param {StationChartQuery} query - `store` and `provider` name the station.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationChart>}
+ * @throws {ApiError} `404` (no such station or series), `400` (a variable the
+ *   series lacks, a reversed range), `503 missing_dependency` without IMGWTools.
+ */
+export function getStationSeries(code, query, { signal } = {}) {
+  return request("GET", `/stations/${one(code)}/series`, { query, signal });
 }
 
 /**

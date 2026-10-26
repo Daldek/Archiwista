@@ -9,6 +9,16 @@ command-line interface may change.
 
 ### Added
 
+- The chart of the station card, its default tab "Wykres": one or two variables of a
+  station's series ("Druga zmienna" on the right axis for another unit), the whole
+  series simplified to the least, mean and greatest value of intervals when it has
+  more days than the plot has pixels (with the note "wykres uproszczony: … z N
+  dni"), each day's value once a drag selection, the wheel or the keys `+`, `-` and
+  the arrows narrow the range (`from`, `to` in the address; `Home` or "Cały okres"
+  gives the whole series back). A gap breaks the line and is a grey band, never
+  interpolated; published extremes are dots and an accumulated sum a diamond, each
+  with its date. (ADR-045, plan I8.5)
+
 - The station card: a click on a station's point on the map, a row of the Catalog's
   list (Enter) or a station's name on its Timeline (`K`) opens it over the view
   (`station=<store>/<provider>/<code>` in the address). It names the station's type,

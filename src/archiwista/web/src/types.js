@@ -935,6 +935,75 @@
  */
 
 /**
+ * The station, series, variables and range of a chart
+ * (`GET /stations/{code}/series`).
+ *
+ * @typedef {object} StationChartQuery
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Default: the one series with every variable.
+ * @property {string[]} variable - One or two variables of the series.
+ * @property {string} [from] - First day; default the series' first unit.
+ * @property {string} [to] - Last day; default the series' last unit.
+ * @property {number} [max_points] - The most points of a variable (≤ 2,000).
+ */
+
+/**
+ * A point of a chart: a unit, or an interval of units, and its values; `null`
+ * without a value (the line breaks).
+ *
+ * @typedef {{t: string, min: number|null, mean: number|null, max: number|null}} ChartPoint
+ */
+
+/**
+ * A value shown on its own: an accumulated sum, or an extreme the provider
+ * published (`min`, `max`) with the day of its first and last occurrence.
+ *
+ * @typedef {object} ChartMarker
+ * @property {string} t - Its day.
+ * @property {"accumulated"|"min"|"max"} kind
+ * @property {number} value
+ * @property {string|null} period - Of an extreme: `winter`, `summer`, `annual`.
+ * @property {string|null} end - Of an extreme: the day of its last occurrence.
+ */
+
+/**
+ * A variable of a chart: its points, the producer's gaps of the range and its
+ * markers.
+ *
+ * @typedef {object} ChartVariable
+ * @property {string} key
+ * @property {string} variable
+ * @property {string} unit
+ * @property {ChartPoint[]} points - One a unit, or one an interval.
+ * @property {GapSpan[]} gaps - A grey band each, also one shorter than an interval.
+ * @property {ChartMarker[]} markers
+ */
+
+/**
+ * A station's series as a chart (`GET /stations/{code}/series`).
+ *
+ * @typedef {object} StationChart
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string} dataset
+ * @property {string} time_unit - `day` or `month`.
+ * @property {string|null} series - Label of the series version.
+ * @property {string} series_version
+ * @property {string} file
+ * @property {string|null} from - First day of the range; `null`: an empty series.
+ * @property {string|null} to - Last day of the range.
+ * @property {number} units - Units of the range.
+ * @property {number} interval - Units of a point: more than 1, a simplified chart.
+ * @property {ChartVariable[]} variables
+ * @property {string|null} license
+ * @property {string|null} attribution
+ */
+
+/**
  * A page of stations with the counts of the whole result (`GET /stations`).
  *
  * @typedef {object} StationList

@@ -15,12 +15,14 @@
  * „Kopiuj ścieżkę pliku” (its series file on this computer, `paths` of the
  * card). Then the coverage of each variable of each series: its label with
  * the fill of SPEC 4.8.4 in the station's shape, its full years and its
- * longest gap (a station has no label of its own, P16); the tabs „Metadane”,
- * „Pochodzenie” (the series versions with their files and SHA-256, the
- * catalog) and „Szczegóły techniczne” (the API's answer), the chosen one in
- * the address (`station_tab`); and last the licence with the provider's
- * formula and „Kopiuj atrybucję”. A point on the map, a row of the Catalog's
- * list and a station of its Timeline open the card.
+ * longest gap (a station has no label of its own, P16); the tabs „Wykres”,
+ * the default (views/station-chart.js: the series drawn over the address's
+ * `from` and `to`), „Metadane”, „Pochodzenie” (the series versions with their
+ * files and SHA-256, the catalog) and „Szczegóły techniczne” (the API's
+ * answer), the chosen one in the address (`station_tab`); and last the
+ * licence with the provider's formula and „Kopiuj atrybucję”. A point on the
+ * map, a row of the Catalog's list and a station of its Timeline open the
+ * card; its parameters go with it.
  */
 
 import { getStation, listStationDatasets } from "../api.js";
@@ -53,15 +55,16 @@ import {
   useRef,
 } from "../ui.js";
 import { CopyAction, loadCardStyles, StaleNote, storeName } from "./cards.js";
+import { CHART_PARAMS, StationChartTab } from "./station-chart.js";
 import { useYearType, YEAR_TYPES } from "./year-type.js";
 
 await Promise.all([loadCardStyles(), loadStylesheet(new URL("./station.css", import.meta.url))]);
 
-/** Address parameter of the card's tab: the metadata without it. */
+/** Address parameter of the card's tab: the chart without it. */
 export const TAB_PARAM = "station_tab";
-const TABS = ["meta", "origin", "tech"];
+const TABS = ["chart", "meta", "origin", "tech"];
 // The card's own parameters, gone with it.
-const CARD_PARAMS = [TAB_PARAM];
+const CARD_PARAMS = [TAB_PARAM, ...CHART_PARAMS];
 /** Zoom of the map showing one station (as the Catalog's „Pokaż na mapie”). */
 const STATION_ZOOM = 11;
 const DEGREES = new Intl.NumberFormat("pl-PL", {
@@ -162,7 +165,9 @@ function CardBody({ card, params, error, loading }) {
           ? html`<${Origin} card=${card} names=${names} />`
           : tab === "tech"
             ? html`<${Technical} card=${card} params=${params} />`
-            : html`<${Metadata} station=${station} />`}
+            : tab === "meta"
+              ? html`<${Metadata} station=${station} />`
+              : html`<${StationChartTab} station=${station} params=${params} names=${names} />`}
       </div>
     </section>
     <${Attribution} station=${station} />

@@ -394,12 +394,26 @@ catalog's date and the uncertainty, or why it has none, and for a water gauge of
 IMGW-PIB "Strona stacji IMGW", a link to its page on hydro.imgw.pl. "Pokaż na mapie"
 opens the map on a station with a position and "Kopiuj ścieżkę pliku" copies the path
 of its series file. "Pokrycie" gives each variable of each series with its label, full
-years and longest gap; the tabs "Metadane" (the catalog's facts), "Pochodzenie" (each
-series version with the station's file, its SHA-256 and the series index, and the
-catalog version) and "Szczegóły techniczne" (the API's answer) follow, and last the
-licence with the formula IMGW requires and "Kopiuj atrybucję".
+years and longest gap; the tabs "Wykres" (the default), "Metadane" (the catalog's
+facts), "Pochodzenie" (each series version with the station's file, its SHA-256 and the
+series index, and the catalog version) and "Szczegóły techniczne" (the API's answer)
+follow, and last the licence with the formula IMGW requires and "Kopiuj atrybucję".
 
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
+
+"Wykres" draws one variable of the station's series, or two with "Druga zmienna" (a
+second unit gets the right axis). It opens on the whole series: one longer than the
+plot has pixels is simplified to the least, mean and greatest value of each interval
+(a band under the mean line; the note says "wykres uproszczony: min./śr./maks. z N
+dni"). Drag over the plot to select days, turn the wheel over it, or focus it and
+press `+` and `-` to zoom and the arrows to move: a range of no more days than the
+plot has pixels shows each day's value, and the range goes into the address (`from`,
+`to`); `Home` or "Cały okres" shows the whole series again. A gap breaks the line and
+is a grey band; a day without a value outside a gap is not known and has no band.
+Dots are the extremes the provider published and a diamond an accumulated sum, each
+with its date in its tooltip; the pointer gives the values of its day.
+
+![The chart of a station](reports/v0.5-screenshots/05-wykres-stacji.webp)
 
 The command line and the API (`GET /api/v1/stations`) show the stations and the
 coverage of their series from the index while IMGWTools is installed:
