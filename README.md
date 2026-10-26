@@ -46,7 +46,7 @@ Archiwista itself writes nothing in a Kartograf store or a project manifest: fro
 |---|---|---|
 | settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
 | index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
-| state database `state.sqlite`: accounts, groups, project sharing, the permission log | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export`, restore with `state import` |
+| state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import` |
 | `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/` | yes, from the network |
 | `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
 | `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |

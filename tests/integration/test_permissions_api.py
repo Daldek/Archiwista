@@ -45,6 +45,8 @@ from tests.fixtures.permissions import (
     WHO,
     Who,
     add_people,
+    last_entry,
+    log_entries,
     principal,
     share,
 )
@@ -219,7 +221,7 @@ def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
     # Assert
     assert response.status_code == 200
     assert response.json()["users"] == [LISTED]
-    change = api.state.changes()[-1]
+    change = api.state.actions().entries[0]
     assert (change.actor, change.action, change.target) == (
         OWNER,
         "project.access",
@@ -321,7 +323,7 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
     """Create, change and remove accounts and groups; each change is logged."""
     # Arrange
     admin = api.session(principal(api.state, "admin"))
-    logged = len(api.state.changes())
+    logged = last_entry(api.state)
 
     # Act
     created = admin.request(
@@ -358,7 +360,7 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
     assert dropped.status_code == 204
     assert "jan" not in {user["id"] for user in users}
     assert "geodezja" not in {group["id"] for group in groups}
-    actions = [change.action for change in api.state.changes()[logged:]]
+    actions = [entry.action for entry in log_entries(api.state, after=logged)]
     assert actions == [
         "user.add",
         "user.update",
@@ -368,7 +370,7 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
         "group.members",
         "group.remove",
     ]
-    assert {change.actor for change in api.state.changes()[logged:]} == {"ada"}
+    assert {entry.actor for entry in log_entries(api.state, after=logged)} == {"ada"}
 
 
 def test_local_owner_sees_and_manages_everything(api: Api) -> None:
@@ -385,7 +387,7 @@ def test_local_owner_sees_and_manages_everything(api: Api) -> None:
     # Assert
     assert access.status_code == 200
     assert changed.json()["visibility"] == "public"
-    assert api.state.changes()[-1].actor == "local"
+    assert api.state.actions().entries[0].actor == "local"
     assert [user["id"] for user in users.json()["items"]] == sorted(
         ["ada", "igor", "lena", "olga"]
     )
@@ -467,14 +469,14 @@ def test_token_of_disabled_account_starts_no_session(
     assert "set-cookie" not in exchanged.headers
 
 
-def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
-    """A logged change keeps who acted, how (owner, person, agent) and the session."""
+def test_action_log_records_how_and_in_which_session(api: Api) -> None:
+    """A logged change keeps who acted, how, the session and the client address."""
     # Arrange
     local = api.session(LOCAL_OWNER)
     owner = api.session(principal(api.state, "owner"))
     agent = api.session(principal(api.state, "admin"), token="agent")
     share(api.state, KEY, "private")
-    logged = len(api.state.changes())
+    logged = last_entry(api.state)
     labels = [
         caller.request("GET", "/session").json()["label"]
         for caller in (local, owner, agent)
@@ -486,7 +488,7 @@ def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
     agent.request("POST", "/groups", json={"id": "geodezja"})
 
     # Assert
-    changes = api.state.changes()[logged:]
+    changes = log_entries(api.state, after=logged)
     assert [
         (change.actor, change.actor_kind, change.session, change.action)
         for change in changes
@@ -495,6 +497,9 @@ def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
         (OWNER, "user", labels[1], "project.access"),
         (ADMIN, "agent", labels[2], "group.add"),
     ]
+    # The peer of TestClient, as the transport names it (ADR-046).
+    assert {change.client for change in changes} == {"testclient"}
+    assert {change.outcome for change in changes} == {"ok"}
     assert len(set(labels)) == 3
 
 

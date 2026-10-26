@@ -3,11 +3,12 @@
 The commands act as the owner of the local installation (``LOCAL_OWNER``,
 roles ``admin`` and ``store_writer``) through the same services as the HTTP
 routes of ``archiwista/api/admin.py``, so ``--json`` prints exactly the
-models of those routes and every change lands in the permission log
-(A-ADR-029). A refused action exits with the registry's exit code and ends
-standard error with the ``archiwista-error/1`` document, the Polish text
-before it (ERR-4). ``state export`` and ``state import`` back up and restore the state
-database (``archiwista-state/1``, into an empty database only).
+models of those routes and every change lands in the action log
+(A-ADR-029, A-ADR-047). A refused action exits with the registry's exit code
+and ends standard error with the ``archiwista-error/1`` document, the Polish
+text before it (ERR-4). ``state export`` and ``state import`` back up and
+restore the state database (``archiwista-state/2``, a secret written with
+mode ``0600``; into an empty database only).
 """
 
 import argparse
@@ -348,7 +349,9 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
         text = dump_state(export_state(store))
         if args.output is None:
             out.write(text)
+            err.write(message("cli.state_secret") + "\n")
         else:
+            # Mode 0600 on POSIX (write_text_atomic): the copy holds password hashes.
             write_text_atomic(args.output, text)
             err.write(message("cli.state_exported", path=args.output) + "\n")
         return 0
@@ -367,9 +370,10 @@ def _state(args: argparse.Namespace, paths: AppPaths, out: TextIO, err: TextIO) 
         message(
             "cli.state_imported",
             users=len(restored.users),
+            passwords=len(restored.passwords),
             groups=len(restored.groups),
             projects=len(restored.projects),
-            changes=len(restored.changes),
+            actions=len(restored.actions),
         )
         + "\n"
     )

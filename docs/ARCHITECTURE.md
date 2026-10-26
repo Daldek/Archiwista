@@ -145,8 +145,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
 | `state/schema.py` | schema and migrations of `state.sqlite` | `initialize`, `MIGRATIONS`, `STATE_SCHEMA_VERSION` |
-| `state/store.py` | reading and changing the state database together with the permissions log | `StateStore`, `UserRecord`, `GroupRecord`, `ProjectAccessRecord`, `PermissionChange`, `StateSnapshot` |
-| `state/export.py` | the `archiwista-state/1` copy of the state database | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `STATE_DOCUMENT_SCHEMA` |
+| `state/store.py` | reading and changing the state database together with the action log (each change and its entries in one transaction; `record` for actions that change nothing here, `actions` pages the log newest first, `prune_actions` deletes old entries; the password table for `auth/passwords.py`; an account's revocation time) | `StateStore`, `UserRecord`, `GroupRecord`, `ProjectAccessRecord`, `PasswordRecord`, `PreferenceRecord`, `ActionEntry`, `ActionName`, `ActionQuery`, `ActionPage`, `StateSnapshot` |
+| `state/export.py` | the `archiwista-state/2` copy of the state database (a secret: it holds the password hashes); `archiwista-state/1` still imports | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `LegacyStateDocument`, `STATE_DOCUMENT_SCHEMA` |
 
 **Index**
 
@@ -510,21 +510,29 @@ A separate file next to the index (`state/schema.py`) that no
 file on disk can rebuild (A-ADR-029): rebuilding the index does not touch it.
 
 - **Schema version** `STATE_SCHEMA_VERSION` = number of `MIGRATIONS` (2
-  in release 0.1.0). `initialize` runs the missing migrations in a single
+  in release 0.1.0, 3 from v0.4). `initialize` runs the missing migrations in a single
   transaction and checks foreign keys; a database from a newer Archiwista (higher
   `user_version`) raises `StateError`, with no changes to the file. WAL,
   `synchronous = FULL`.
-- **Tables:** `users`, `groups`, `memberships`, `roles` (`admin`,
+- **Tables:** `users` (from version 3 with `sessions_revoked_at`, the time before which
+  the account's sessions end), `groups`, `memberships`, `roles` (`admin`,
   `store_writer`), `project_acl` (key = project directory after `realpath`,
-  `owner`, `visibility`), `project_acl_entries` (person or group),
-  `permission_log` (who, when, what, state before and after in JSON; since version 2
-  also `actor_kind` and the session label). Accounts have no passwords (login since
-  v0.4).
+  `owner`, `visibility`), `project_acl_entries` (person or group), and from version 3
+  `passwords` (an Argon2id hash per account, how and by whom it was set, the end of a
+  temporary one; read only through `auth/passwords.py` and copied by the backup),
+  `preferences` (a JSON document per account or `local`) and `action_log` (A-ADR-047:
+  when, who with the kind of actor, the session label and the client address, what and
+  about what, the outcome `ok`/`denied`/`failed`, state before and after and details in
+  JSON). The migration to version 3 copies the `permission_log` of versions 1 and 2 into
+  `action_log` with the outcome `ok` and drops it; the trigger
+  `action_log_append_only` refuses every `UPDATE` of an entry, and only
+  `StateStore.prune_actions` deletes entries.
 - **Backup:** `archiwista state export [--output PLIK]` writes a JSON
-  document `archiwista-state/1` (`export_state`: one consistent snapshot,
-  `dump_state`); `archiwista state import PLIK` (`parse_state`,
-  `import_state`, `StateStore.restore`) accepts only an empty database —
-  restoring from a backup, not merging.
+  document `archiwista-state/2` (`export_state`: one consistent snapshot,
+  `dump_state`) with the password hashes, so the file gets mode `0600`;
+  `archiwista state import PLIK` (`parse_state`, `import_state`,
+  `StateStore.restore`) accepts only an empty database — restoring from a backup, not
+  merging — and reads `archiwista-state/1` too (its log becomes `ok` entries).
 
 ---
 
@@ -1093,8 +1101,8 @@ identities (`tests/unit/test_authorize.py`,
   the project directory share the entry.
 - **Responses:** an invisible project → `404 not_found`, a visible one without
   the right to act → `403 permission_denied` (`services/access.py`).
-  Every change of accounts, groups and access goes to `permission_log` with
-  the actor, kind and session.
+  Every change of accounts, groups and access goes to the action log
+  (`action_log`) with the actor, kind, session and client address.
 - **CLI** (`reader.py`, `commands/`, `admin.py`) runs as `LOCAL_OWNER`
   through the same `Authorizer` and the same services.
 
@@ -1269,11 +1277,12 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   and the capability `ProjectActionAdapter` (ADR-039, ADR-040) creates a project,
   adds or removes its tasks and runs it: the job kinds `project_download`,
   `project_repin`, `project_check` and `project_verify`, one job per project.
-- **Team mode (v0.4, A-ADR-013).** The model is ready: `PrincipalKind`
-  `user`, `principal_for`, accounts and groups in `state.sqlite`, roles read on
-  every request, `permission_log` with the kind of actor and the session. Missing are
-  login and passwords, and `serve_main` refuses any address other than `127.0.0.1`;
-  sessions live in the memory of a single server (`SessionStore`).
+- **Team mode (v0.4, A-ADR-013, A-ADR-046, A-ADR-047).** Built so far: the `[team]`
+  settings, the refusals to start, TLS and the transport rules (section 6), the
+  password table and the action log of `state.sqlite` (4.2). Missing are sign-in over
+  HTTP, the screens of accounts, sharing, the log and the jobs, the shared queue and the
+  file download (plan `2026-10-26-plan-v0.4.md`, T2 to T12); sessions live in the
+  memory of a single server (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

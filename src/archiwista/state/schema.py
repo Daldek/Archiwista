@@ -2,11 +2,12 @@
 
 The state database (``state.sqlite`` next to ``index.sqlite`` in the user
 data directory; never on a share or in a store) keeps what no file on disk
-can rebuild: accounts, groups and memberships, roles, project access and the
-permission log. An index rebuild never touches it. Its schema therefore
-changes by migrations, each one taking ``PRAGMA user_version`` a step
-further, all pending ones in one transaction, and never by a rebuild; a
-database written by a newer Archiwista is refused rather than changed.
+can rebuild: accounts, groups and memberships, roles, project access,
+passwords, preferences and the action log. An index rebuild never touches
+it. Its schema therefore changes by migrations, each one taking
+``PRAGMA user_version`` a step further, all pending ones in one
+transaction, and never by a rebuild; a database written by a newer
+Archiwista is refused rather than changed.
 
 Tables (version 1): ``users``, ``groups``, ``memberships``, ``roles``,
 ``project_acl`` (key: the project directory after ``realpath``; owner and
@@ -14,7 +15,12 @@ visibility), ``project_acl_entries`` (a person or a group per row) and
 ``permission_log`` (who, when, what, and the state before and after as
 JSON). Version 2 records with each log entry how the actor acted
 (``actor_kind``: the owner, a person or an agent) and the label of its
-session. Accounts have no passwords before v0.4.
+session. Version 3 (v0.4, A-ADR-046, A-ADR-047) adds ``passwords``
+(Argon2id hashes, used by ``archiwista.auth.passwords`` and copied only by
+the backup), the accounts' ``sessions_revoked_at``, ``preferences`` per
+principal, and turns the permission log into ``action_log`` (its entries
+kept with the outcome ``ok``; new: the client address, the outcome and
+details), which a trigger keeps append-only.
 """
 
 import sqlite3
@@ -115,8 +121,66 @@ def _version_2(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE permission_log ADD COLUMN session TEXT")
 
 
+_VERSION_3 = (
+    """
+    CREATE TABLE passwords (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        hash TEXT NOT NULL,
+        set_at TEXT NOT NULL,
+        set_by TEXT NOT NULL,
+        temporary INTEGER NOT NULL CHECK (temporary IN (0, 1)),
+        expires_at TEXT
+    ) WITHOUT ROWID
+    """,
+    "ALTER TABLE users ADD COLUMN sessions_revoked_at TEXT",
+    """
+    CREATE TABLE action_log (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        actor_kind TEXT,
+        session TEXT,
+        client TEXT,
+        action TEXT NOT NULL,
+        target TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'denied', 'failed')),
+        before TEXT,
+        after TEXT,
+        details TEXT
+    )
+    """,
+    """
+    INSERT INTO action_log
+        (id, at, actor, actor_kind, session, action, target, outcome, before, after)
+    SELECT id, at, actor, actor_kind, session, action, target, 'ok', before, after
+    FROM permission_log ORDER BY id
+    """,
+    "DROP TABLE permission_log",
+    "CREATE INDEX action_log_at ON action_log (at)",
+    "CREATE INDEX action_log_actor ON action_log (actor, at)",
+    "CREATE INDEX action_log_action ON action_log (action, at)",
+    """
+    CREATE TRIGGER action_log_append_only BEFORE UPDATE ON action_log
+    BEGIN SELECT RAISE(ABORT, 'the action log is append-only'); END
+    """,
+    """
+    CREATE TABLE preferences (
+        principal TEXT PRIMARY KEY,
+        document TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    ) WITHOUT ROWID
+    """,
+)
+
+
+def _version_3(connection: sqlite3.Connection) -> None:
+    """Passwords, revocation times, preferences, and the action log (v0.4)."""
+    for statement in _VERSION_3:
+        connection.execute(statement)
+
+
 # Migration ``i`` takes a database from user_version ``i`` to ``i + 1``.
-MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2)
+MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2, _version_3)
 STATE_SCHEMA_VERSION = len(MIGRATIONS)
 
 

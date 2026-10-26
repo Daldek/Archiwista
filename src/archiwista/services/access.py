@@ -6,8 +6,8 @@ Each asks ``Authorizer`` before reading or changing anything, so neither has
 rules of its own: accounts and groups need ``admin``; a project's access
 needs its owner or ``admin``. A project the principal does not see is
 ``NotFoundError`` (``404``), a visible one they may not manage is
-``PermissionDeniedError`` (``403``). Every change lands in the permission
-log with the principal as the actor: its id, kind and session label.
+``PermissionDeniedError`` (``403``). Every change lands in the action log
+with the principal as the actor: its id, kind, session label and client.
 """
 
 from collections.abc import Collection

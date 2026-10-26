@@ -105,11 +105,12 @@ MESSAGES = {
     "import_not_empty": Text(
         (
             "The state database {path} is not empty: a backup can only be restored"
-            " into an empty database (no accounts, groups, project entries or log)."
+            " into an empty database (no accounts, groups, project entries,"
+            " preferences or log)."
         ),
         (
             "Baza stanu {path} nie jest pusta: kopię można odtworzyć tylko do pustej"
-            " bazy (bez kont, grup, wpisów projektów i dziennika)."
+            " bazy (bez kont, grup, wpisów projektów, preferencji i dziennika)."
         ),
     ),
     "import_inconsistent": Text(

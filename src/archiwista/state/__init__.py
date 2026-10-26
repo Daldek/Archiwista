@@ -1,11 +1,12 @@
-"""Local state database: accounts, groups, roles, project access, permission log.
+"""Local state database: accounts, groups, roles, project access, the action log.
 
 Unlike the index, this state cannot be rebuilt from files (A-ADR-029, SPEC
 4.3): it changes by migrations and is backed up with ``archiwista state
-export`` (``archiwista-state/1``).
+export`` (``archiwista-state/2``, a secret: it holds the password hashes).
 """
 
 from archiwista.state.export import (
+    LEGACY_STATE_DOCUMENT_SCHEMA,
     STATE_DOCUMENT_SCHEMA,
     StateDocument,
     dump_state,
@@ -21,14 +22,23 @@ from archiwista.state.schema import (
     initialize,
 )
 from archiwista.state.store import (
+    ANONYMOUS_ACTOR,
     ID_PATTERN,
     NAME_MAX_LENGTH,
+    OUTCOMES,
     RESERVED_USER_IDS,
     ROLES,
     VISIBILITIES,
-    ChangeAction,
+    ActionEntry,
+    ActionName,
+    ActionPage,
+    ActionQuery,
+    ActorKind,
     GroupRecord,
-    PermissionChange,
+    Outcome,
+    PasswordRecord,
+    PasswordState,
+    PreferenceRecord,
     ProjectAccessRecord,
     Role,
     StateSnapshot,
@@ -38,18 +48,28 @@ from archiwista.state.store import (
 )
 
 __all__ = [
+    "ANONYMOUS_ACTOR",
     "ID_PATTERN",
+    "LEGACY_STATE_DOCUMENT_SCHEMA",
     "MIGRATIONS",
     "NAME_MAX_LENGTH",
+    "OUTCOMES",
     "RESERVED_USER_IDS",
     "ROLES",
     "STATE_DOCUMENT_SCHEMA",
     "STATE_SCHEMA_VERSION",
     "VISIBILITIES",
-    "ChangeAction",
+    "ActionEntry",
+    "ActionName",
+    "ActionPage",
+    "ActionQuery",
+    "ActorKind",
     "GroupRecord",
     "Migration",
-    "PermissionChange",
+    "Outcome",
+    "PasswordRecord",
+    "PasswordState",
+    "PreferenceRecord",
     "ProjectAccessRecord",
     "Role",
     "StateDocument",

@@ -1,25 +1,31 @@
-"""State database access: accounts, groups, roles, project access and their log.
+"""State database access: accounts, groups, roles, project access, the action log.
 
 ``StateStore`` reads and changes the state database (``schema``). Every
-change runs in one transaction together with its ``permission_log`` entries:
-who (``actor``, a principal id, with its kind and session label), when, what
-(``action`` and ``target``) and
+change runs in one transaction together with its ``action_log`` entries
+(A-ADR-047): who (``actor``, a principal id, with its kind, session label and
+client address), when, what (``action`` and ``target``), the outcome and
 the state before and after. Removing an account or a group also takes it out
 of memberships and project access entries (an account's projects are left
-without an owner); each group or project changed that way gets its own
-entry. A request that changes nothing writes nothing.
+without an owner; its password and preferences go); each group or project
+changed that way gets its own entry. A request that changes nothing writes
+nothing. ``record`` writes the entries of actions that change nothing here
+(a sign-in, a refusal); no method changes an entry, and only
+``prune_actions`` deletes old ones.
 
 ``StateStore`` keeps the data rules (ids, names, known people and groups,
 entries that fit the visibility) but decides no permissions: that is
 ``archiwista.auth.authorize``, called by the services before any change.
+Password hashes are written and read for verification by
+``archiwista.auth.passwords`` only; ``UserRecord`` tells the state of a
+password, never its hash.
 """
 
 import json
 import re
 import sqlite3
-from collections.abc import Collection, Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -36,35 +42,50 @@ from archiwista.state.schema import connect, initialize
 
 type Role = Literal["admin", "store_writer"]
 type Visibility = Literal["public", "users", "group", "private"]
-type ChangeAction = Literal[
+# The actions of the log written so far (A-ADR-047, plan v0.4 C8); each step
+# that logs a new action adds its name here.
+type ActionName = Literal[
     "user.add",
     "user.update",
     "user.remove",
+    "user.password_reset",
+    "user.sessions_ended",
     "group.add",
     "group.members",
     "group.remove",
     "project.access",
 ]
+type ActorKind = PrincipalKind | Literal["anonymous"]
+type Outcome = Literal["ok", "denied", "failed"]
+type PasswordState = Literal["none", "set", "temporary", "expired"]
 
 ROLES: tuple[Role, ...] = ("admin", "store_writer")
 VISIBILITIES: tuple[Visibility, ...] = ("public", "users", "group", "private")
+OUTCOMES: tuple[Outcome, ...] = ("ok", "denied", "failed")
 # Account and group ids: lowercase letters, digits, ".", "_" and "-".
 ID_PATTERN = r"[a-z0-9][a-z0-9._-]{0,63}"
 NAME_MAX_LENGTH = 200
 # ``local`` is the owner of a local installation, never an account.
 RESERVED_USER_IDS = frozenset({LOCAL_PRINCIPAL_ID})
+# The actor of an entry written before anyone signed in (a failed sign-in).
+ANONYMOUS_ACTOR = "-"
 
 _ID = re.compile(ID_PATTERN)
 _IDS = "SELECT value FROM json_each(?)"
 _USER_SELECT = """
-SELECT u.id, u.name, u.disabled, u.created_at, u.updated_at,
+SELECT u.id, u.name, u.disabled, u.created_at, u.updated_at, u.sessions_revoked_at,
+    p.temporary AS password_temporary, p.expires_at AS password_expires_at,
     (SELECT json_group_array(role) FROM
         (SELECT role FROM roles r WHERE r.user_id = u.id ORDER BY role)) AS roles,
     (SELECT json_group_array(group_id) FROM
         (SELECT group_id FROM memberships m WHERE m.user_id = u.id
          ORDER BY group_id)) AS groups
-FROM users u
+FROM users u LEFT JOIN passwords p ON p.user_id = u.id
 """
+_ACTION_COLUMNS = (
+    "id, at, actor, actor_kind, session, client, action, target, outcome,"
+    " before, after, details"
+)
 _GROUP_SELECT = """
 SELECT g.id, g.name, g.created_at, g.updated_at,
     (SELECT json_group_array(user_id) FROM
@@ -88,7 +109,7 @@ FROM project_acl a
 
 @dataclass(frozen=True, slots=True)
 class UserRecord:
-    """An account of a person; accounts cannot sign in before v0.4.
+    """An account of a person.
 
     Attributes
     ----------
@@ -104,6 +125,14 @@ class UserRecord:
         A disabled account acts nowhere.
     created_at, updated_at : datetime
         Creation and last change (UTC).
+    password : PasswordState
+        ``none`` (the account cannot sign in with a password), ``set``,
+        ``temporary`` (to be changed at the next sign-in) or ``expired`` (a
+        temporary password past its end); never the hash.
+    password_expires_at : datetime or None
+        The end of a temporary password.
+    sessions_revoked_at : datetime or None
+        Sessions of the account started before this time are ended.
     """
 
     id: str
@@ -113,6 +142,9 @@ class UserRecord:
     disabled: bool
     created_at: datetime
     updated_at: datetime
+    password: PasswordState
+    password_expires_at: datetime | None
+    sessions_revoked_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,8 +199,59 @@ class ProjectAccessRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class PermissionChange:
-    """One entry of the permission log.
+class PasswordRecord:
+    """The password of an account (``archiwista.auth.passwords``).
+
+    Attributes
+    ----------
+    user_id : str
+        The account.
+    hash : str
+        Argon2id hash as a PHC string; never shown by ``repr``.
+    set_at : datetime
+        When it was set (UTC).
+    set_by : str
+        Who set it: the person, an administrator, or ``local``.
+    temporary : bool
+        Set by an administrator, to be changed at the next sign-in.
+    expires_at : datetime or None
+        The end of a temporary password.
+    """
+
+    user_id: str
+    hash: str = field(repr=False)
+    set_at: datetime
+    set_by: str
+    temporary: bool
+    expires_at: datetime | None
+
+    def state(self, now: datetime) -> PasswordState:
+        """Return ``set``, ``temporary`` or ``expired`` at the time ``now``."""
+        return _password_state(self.temporary, self.expires_at, now)
+
+
+@dataclass(frozen=True, slots=True)
+class PreferenceRecord:
+    """The preferences of one principal (plan v0.4 C12).
+
+    Attributes
+    ----------
+    principal : str
+        Account id, or ``local`` for the owner of a local installation.
+    document : dict[str, object]
+        The preferences as JSON.
+    updated_at : datetime
+        Last change (UTC).
+    """
+
+    principal: str
+    document: dict[str, object]
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ActionEntry:
+    """One entry of the action log (A-ADR-047).
 
     Attributes
     ----------
@@ -177,32 +260,92 @@ class PermissionChange:
     at : datetime
         When (UTC).
     actor : str
-        Who: the acting principal's id (``local`` in local mode).
-    actor_kind : {"local_owner", "user", "agent"} or None
-        How: the owner, a person, or an agent acting for ``actor``; ``None``
-        for entries written before Archiwista recorded it.
+        Who: the acting principal's id (``local`` in local mode), or ``-``
+        before a sign-in.
+    actor_kind : ActorKind or None
+        How: ``local_owner``, ``user``, an ``agent`` acting for ``actor``,
+        the ``scheduler``, or ``anonymous``; ``None`` for entries written
+        before Archiwista recorded it.
     session : str or None
-        Label of the session the change came from; ``None`` at the terminal.
-    action : ChangeAction
-        What: ``user.add``, ``user.update``, ``user.remove``,
-        ``group.add``, ``group.members``, ``group.remove`` or
-        ``project.access``.
+        Label of the session the action came from; ``None`` at the terminal.
+    client : str or None
+        Client address of the request; ``None`` at the terminal and for
+        entries written before v0.4.
+    action : ActionName
+        What, e.g. ``user.add`` or ``project.access``.
     target : str
-        The account id, group id or project key changed.
+        What the action was about: an account id, a group id, a project key.
+    outcome : Outcome
+        ``ok``, ``denied`` or ``failed``.
     before, after : dict[str, object] or None
-        The state before and after; ``None`` before an addition and after a
-        removal.
+        The state before and after; ``None`` before an addition, after a
+        removal and for actions that change no state.
+    details : dict[str, object] or None
+        What else the action tells, e.g. ``{"temporary": true}``.
     """
 
     id: int
     at: datetime
     actor: str
-    actor_kind: PrincipalKind | None
+    actor_kind: ActorKind | None
     session: str | None
-    action: ChangeAction
+    client: str | None
+    action: ActionName
     target: str
+    outcome: Outcome
     before: dict[str, object] | None
     after: dict[str, object] | None
+    details: dict[str, object] | None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionQuery:
+    """Which entries of the action log to read, newest first.
+
+    Attributes
+    ----------
+    actor : str or None
+        Only the entries of this actor (an account id, ``local`` or ``-``).
+    action : str or None
+        Only this action, or, ending with ``.``, every action of the group
+        (``session.``).
+    outcome : Outcome or None
+        Only the entries with this outcome.
+    target : str or None
+        Only the entries about this target.
+    since, until : datetime or None
+        Only the entries at or after ``since`` and before ``until``.
+    limit : int
+        At most this many entries.
+    cursor : int or None
+        Only the entries older than this one: ``ActionPage.next_cursor`` of
+        the page before.
+    """
+
+    actor: str | None = None
+    action: str | None = None
+    outcome: Outcome | None = None
+    target: str | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionPage:
+    """A page of the action log, newest entry first.
+
+    Attributes
+    ----------
+    entries : tuple[ActionEntry, ...]
+        The entries of the page.
+    next_cursor : int or None
+        ``ActionQuery.cursor`` of the next page; ``None`` on the last page.
+    """
+
+    entries: tuple[ActionEntry, ...]
+    next_cursor: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +355,9 @@ class StateSnapshot:
     users: tuple[UserRecord, ...]
     groups: tuple[GroupRecord, ...]
     projects: tuple[ProjectAccessRecord, ...]
-    changes: tuple[PermissionChange, ...]
+    passwords: tuple[PasswordRecord, ...]
+    preferences: tuple[PreferenceRecord, ...]
+    actions: tuple[ActionEntry, ...]
 
 
 class StateStore:
@@ -276,10 +421,34 @@ class StateStore:
         with self._read() as connection:
             return _access(connection, project)
 
-    def changes(self) -> tuple[PermissionChange, ...]:
-        """Return the permission log, oldest entry first."""
+    def actions(self, query: ActionQuery | None = None) -> ActionPage:
+        """Return a page of the action log, newest entry first.
+
+        Parameters
+        ----------
+        query : ActionQuery or None, optional
+            Filters, the size of the page and where it starts; the newest
+            100 entries when omitted.
+        """
+        wanted = query or ActionQuery()
+        condition, params = _action_filter(wanted)
         with self._read() as connection:
-            return _changes(connection)
+            found = _actions(
+                connection, condition, params, newest_first=True, limit=wanted.limit + 1
+            )
+        entries = found[: wanted.limit]
+        more = len(found) > len(entries) and bool(entries)
+        return ActionPage(entries, entries[-1].id if more else None)
+
+    def password_record(self, user_id: str) -> PasswordRecord | None:
+        """Return an account's password, or ``None`` without one.
+
+        Only ``archiwista.auth.passwords`` calls this: the record holds the
+        hash.
+        """
+        with self._read() as connection:
+            found = _passwords(connection, "user_id = ?", (user_id,))
+        return found[0] if found else None
 
     def snapshot(self) -> StateSnapshot:
         """Return everything the database holds, as one consistent read."""
@@ -288,7 +457,9 @@ class StateStore:
                 users=_users(connection),
                 groups=_groups(connection),
                 projects=_accesses(connection),
-                changes=_changes(connection),
+                passwords=_passwords(connection),
+                preferences=_preferences(connection),
+                actions=_actions(connection),
             )
 
     def is_empty(self) -> bool:
@@ -341,7 +512,9 @@ class StateStore:
             )
             _insert_roles(connection, user_id, granted)
             after = _existing_user(connection, user_id)
-            _log(connection, actor, "user.add", user_id, None, _user_state(after), now)
+            _record(
+                connection, actor, "user.add", user_id, now, after=_user_state(after)
+            )
         return after
 
     def update_user(
@@ -400,22 +573,23 @@ class StateStore:
                 connection.execute("DELETE FROM roles WHERE user_id = ?", (user_id,))
                 _insert_roles(connection, user_id, granted)
             after = _existing_user(connection, user_id)
-            _log(
+            _record(
                 connection,
                 actor,
                 "user.update",
                 user_id,
-                _user_state(before),
-                _user_state(after),
                 now,
+                before=_user_state(before),
+                after=_user_state(after),
             )
         return after
 
     def remove_user(self, user_id: str, *, actor: Principal) -> None:
-        """Remove an account, its roles, memberships and access entries.
+        """Remove an account, its roles, memberships, access entries and password.
 
         Projects it owned are left without an owner, which only narrows who
-        sees them; every group and project changed is logged too.
+        sees them; every group and project changed is logged too. Its
+        preferences go with it.
 
         Raises
         ------
@@ -435,16 +609,92 @@ class StateStore:
             )
             now = _now()
             connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
-            _log(
+            connection.execute(
+                "DELETE FROM preferences WHERE principal = ?", (user_id,)
+            )
+            _record(
                 connection,
                 actor,
                 "user.remove",
                 user_id,
-                _user_state(before),
-                None,
                 now,
+                before=_user_state(before),
             )
             _log_cascade(connection, actor, groups, projects, now)
+
+    def set_password(
+        self,
+        user_id: str,
+        password_hash: str,
+        *,
+        expires_at: datetime | None,
+        actor: Principal,
+    ) -> UserRecord:
+        """Set an account's password and end the account's sessions.
+
+        Only ``archiwista.auth.passwords`` calls this, with a hash it made.
+        The entry ``user.password_reset`` tells whether the password is
+        temporary and its end, never the hash; the account's revocation time
+        becomes now (``revoke_sessions``), in the same transaction.
+
+        Parameters
+        ----------
+        user_id : str
+            The account.
+        password_hash : str
+            Argon2id hash as a PHC string.
+        expires_at : datetime or None
+            The end of a temporary password, which must be changed at the
+            next sign-in; ``None`` for a password that stays.
+        actor : Principal
+            Who sets it (``set_by`` and the log).
+
+        Raises
+        ------
+        NotFoundError
+            Unknown account.
+        """
+        with self._write() as connection:
+            _existing_user(connection, user_id)
+            now = _now()
+            ends = None if expires_at is None else _iso(expires_at)
+            connection.execute(
+                "INSERT INTO passwords"
+                " (user_id, hash, set_at, set_by, temporary, expires_at)"
+                " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET"
+                " hash = excluded.hash, set_at = excluded.set_at,"
+                " set_by = excluded.set_by, temporary = excluded.temporary,"
+                " expires_at = excluded.expires_at",
+                (user_id, password_hash, now, actor.id, int(ends is not None), ends),
+            )
+            _revoke(connection, user_id)
+            _record(
+                connection,
+                actor,
+                "user.password_reset",
+                user_id,
+                now,
+                details={"temporary": ends is not None, "expires_at": ends},
+            )
+            return _existing_user(connection, user_id)
+
+    def revoke_sessions(self, user_id: str, *, actor: Principal) -> UserRecord:
+        """End every session the account started until now.
+
+        Sets the account's ``sessions_revoked_at``; a server ends a session
+        started before it at the session's next request, also when the
+        command line set it. Logged as ``user.sessions_ended``.
+
+        Raises
+        ------
+        NotFoundError
+            Unknown account.
+        """
+        with self._write() as connection:
+            _existing_user(connection, user_id)
+            _revoke(connection, user_id)
+            _record(connection, actor, "user.sessions_ended", user_id, _now())
+            return _existing_user(connection, user_id)
 
     # Groups.
 
@@ -480,8 +730,8 @@ class StateStore:
             )
             _insert_members(connection, group_id, wanted)
             after = _existing_group(connection, group_id)
-            _log(
-                connection, actor, "group.add", group_id, None, _group_state(after), now
+            _record(
+                connection, actor, "group.add", group_id, now, after=_group_state(after)
             )
         return after
 
@@ -512,14 +762,14 @@ class StateStore:
                 "UPDATE groups SET updated_at = ? WHERE id = ?", (now, group_id)
             )
             after = _existing_group(connection, group_id)
-            _log(
+            _record(
                 connection,
                 actor,
                 "group.members",
                 group_id,
-                _group_state(before),
-                _group_state(after),
                 now,
+                before=_group_state(before),
+                after=_group_state(after),
             )
         return after
 
@@ -541,14 +791,13 @@ class StateStore:
             )
             now = _now()
             connection.execute("DELETE FROM groups WHERE id = ?", (group_id,))
-            _log(
+            _record(
                 connection,
                 actor,
                 "group.remove",
                 group_id,
-                _group_state(before),
-                None,
                 now,
+                before=_group_state(before),
             )
             _log_cascade(connection, actor, (), projects, now)
 
@@ -616,16 +865,83 @@ class StateStore:
             )
             _insert_entries(connection, project, people, teams)
             after = _existing_access(connection, project)
-            _log(
+            _record(
                 connection,
                 actor,
                 "project.access",
                 project,
-                None if before is None else _access_state(before),
-                _access_state(after),
                 now,
+                before=None if before is None else _access_state(before),
+                after=_access_state(after),
             )
         return after
+
+    # The action log.
+
+    def record(
+        self,
+        actor: Principal | None,
+        action: ActionName,
+        target: str,
+        *,
+        outcome: Outcome = "ok",
+        before: Mapping[str, object] | None = None,
+        after: Mapping[str, object] | None = None,
+        details: Mapping[str, object] | None = None,
+        client: str | None = None,
+    ) -> ActionEntry:
+        """Append an entry to the action log.
+
+        Parameters
+        ----------
+        actor : Principal or None
+            Who acted, with its kind, session label and client address;
+            ``None`` before a sign-in (actor ``-``, kind ``anonymous``).
+        action : ActionName
+            What was done.
+        target : str
+            What it was about.
+        outcome : Outcome, optional
+            ``ok`` (default), ``denied`` or ``failed``.
+        before, after, details : Mapping[str, object] or None, optional
+            The state before and after and other facts, as JSON values.
+        client : str or None, optional
+            The client address of an entry without ``actor``; a principal's
+            entry has the principal's own.
+
+        Returns
+        -------
+        ActionEntry
+            The entry written.
+        """
+        with self._write() as connection:
+            entry_id = _record(
+                connection,
+                actor,
+                action,
+                target,
+                _now(),
+                outcome=outcome,
+                before=before,
+                after=after,
+                details=details,
+                client=client,
+            )
+            return _actions(connection, "id = ?", (entry_id,))[0]
+
+    def prune_actions(self, before: datetime) -> int:
+        """Delete the entries of the action log older than ``before``.
+
+        Returns
+        -------
+        int
+            How many entries were deleted.
+        """
+        with self._write() as connection:
+            deleted = connection.execute(
+                "DELETE FROM action_log WHERE at < ?", (_iso(before),)
+            )
+            return deleted.rowcount
 
     # Backups.
 
@@ -785,18 +1101,30 @@ def _users(
     rows = connection.execute(
         f"{_USER_SELECT} WHERE {condition} ORDER BY u.id", params
     ).fetchall()
-    return tuple(
-        UserRecord(
-            id=row["id"],
-            name=row["name"],
-            roles=tuple(json.loads(row["roles"])),
-            groups=tuple(json.loads(row["groups"])),
-            disabled=bool(row["disabled"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+    now = datetime.now(UTC)
+    users = []
+    for row in rows:
+        ends = _moment(row["password_expires_at"])
+        temporary = row["password_temporary"]
+        users.append(
+            UserRecord(
+                id=row["id"],
+                name=row["name"],
+                roles=tuple(json.loads(row["roles"])),
+                groups=tuple(json.loads(row["groups"])),
+                disabled=bool(row["disabled"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+                password=(
+                    "none"
+                    if temporary is None
+                    else _password_state(bool(temporary), ends, now)
+                ),
+                password_expires_at=ends,
+                sessions_revoked_at=_moment(row["sessions_revoked_at"]),
+            )
         )
-        for row in rows
-    )
+    return tuple(users)
 
 
 def _user(connection: sqlite3.Connection, user_id: str) -> UserRecord | None:
@@ -878,32 +1206,113 @@ def _existing_access(
     return access
 
 
-def _changes(connection: sqlite3.Connection) -> tuple[PermissionChange, ...]:
+def _passwords(
+    connection: sqlite3.Connection,
+    condition: str = "1",
+    params: tuple[object, ...] = (),
+) -> tuple[PasswordRecord, ...]:
     rows = connection.execute(
-        "SELECT id, at, actor, actor_kind, session, action, target, before, after"
-        " FROM permission_log ORDER BY id"
+        "SELECT user_id, hash, set_at, set_by, temporary, expires_at FROM passwords"
+        f" WHERE {condition} ORDER BY user_id",
+        params,
     ).fetchall()
     return tuple(
-        PermissionChange(
+        PasswordRecord(
+            user_id=row["user_id"],
+            hash=row["hash"],
+            set_at=datetime.fromisoformat(row["set_at"]),
+            set_by=row["set_by"],
+            temporary=bool(row["temporary"]),
+            expires_at=_moment(row["expires_at"]),
+        )
+        for row in rows
+    )
+
+
+def _preferences(connection: sqlite3.Connection) -> tuple[PreferenceRecord, ...]:
+    rows = connection.execute(
+        "SELECT principal, document, updated_at FROM preferences ORDER BY principal"
+    ).fetchall()
+    return tuple(
+        PreferenceRecord(
+            principal=row["principal"],
+            document=json.loads(row["document"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+        for row in rows
+    )
+
+
+def _actions(
+    connection: sqlite3.Connection,
+    condition: str = "1",
+    params: tuple[object, ...] = (),
+    *,
+    newest_first: bool = False,
+    limit: int = -1,
+) -> tuple[ActionEntry, ...]:
+    order = "DESC" if newest_first else "ASC"
+    rows = connection.execute(
+        f"SELECT {_ACTION_COLUMNS} FROM action_log WHERE {condition}"
+        f" ORDER BY id {order} LIMIT ?",
+        (*params, limit),
+    ).fetchall()
+    return tuple(
+        ActionEntry(
             id=int(row["id"]),
             at=datetime.fromisoformat(row["at"]),
             actor=row["actor"],
             actor_kind=row["actor_kind"],
             session=row["session"],
+            client=row["client"],
             action=row["action"],
             target=row["target"],
-            before=None if row["before"] is None else json.loads(row["before"]),
-            after=None if row["after"] is None else json.loads(row["after"]),
+            outcome=row["outcome"],
+            before=_from_json(row["before"]),
+            after=_from_json(row["after"]),
+            details=_from_json(row["details"]),
         )
         for row in rows
     )
+
+
+def _action_filter(query: ActionQuery) -> tuple[str, tuple[object, ...]]:
+    """Return the SQL condition and parameters of a query's filters."""
+    conditions: list[str] = []
+    params: list[object] = []
+    for column, value in (
+        ("actor", query.actor),
+        ("outcome", query.outcome),
+        ("target", query.target),
+    ):
+        if value is not None:
+            conditions.append(f"{column} = ?")
+            params.append(value)
+    if query.action is not None:
+        if query.action.endswith("."):
+            conditions.append("substr(action, 1, ?) = ?")
+            params.extend((len(query.action), query.action))
+        else:
+            conditions.append("action = ?")
+            params.append(query.action)
+    if query.since is not None:
+        conditions.append("at >= ?")
+        params.append(_iso(query.since))
+    if query.until is not None:
+        conditions.append("at < ?")
+        params.append(_iso(query.until))
+    if query.cursor is not None:
+        conditions.append("id < ?")
+        params.append(query.cursor)
+    return " AND ".join(conditions) or "1", tuple(params)
 
 
 def _is_empty(connection: sqlite3.Connection) -> bool:
     (filled,) = connection.execute(
         "SELECT EXISTS (SELECT 1 FROM users) OR EXISTS (SELECT 1 FROM groups)"
         " OR EXISTS (SELECT 1 FROM project_acl)"
-        " OR EXISTS (SELECT 1 FROM permission_log)"
+        " OR EXISTS (SELECT 1 FROM preferences)"
+        " OR EXISTS (SELECT 1 FROM action_log)"
     ).fetchone()
     return not filled
 
@@ -946,14 +1355,16 @@ def _restore(connection: sqlite3.Connection, snapshot: StateSnapshot) -> None:
     for user in snapshot.users:
         _require_user_id(user.id)
         connection.execute(
-            "INSERT INTO users (id, name, disabled, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO users"
+            " (id, name, disabled, created_at, updated_at, sessions_revoked_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             (
                 user.id,
                 _require_name(user.name),
                 int(user.disabled),
                 _iso(user.created_at),
                 _iso(user.updated_at),
+                _precise(user.sessions_revoked_at),
             ),
         )
         _insert_roles(connection, user.id, _require_roles(user.roles))
@@ -979,22 +1390,50 @@ def _restore(connection: sqlite3.Connection, snapshot: StateSnapshot) -> None:
         )
         _insert_entries(connection, access.project, people, teams)
     connection.executemany(
-        "INSERT INTO permission_log"
-        " (id, at, actor, actor_kind, session, action, target, before, after)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO passwords (user_id, hash, set_at, set_by, temporary, expires_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
         [
             (
-                change.id,
-                _iso(change.at),
-                change.actor,
-                change.actor_kind,
-                change.session,
-                change.action,
-                change.target,
-                _json(change.before),
-                _json(change.after),
+                password.user_id,
+                password.hash,
+                _iso(password.set_at),
+                password.set_by,
+                int(password.temporary),
+                None if password.expires_at is None else _iso(password.expires_at),
             )
-            for change in snapshot.changes
+            for password in snapshot.passwords
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO preferences (principal, document, updated_at) VALUES (?, ?, ?)",
+        [
+            (
+                preference.principal,
+                _json(preference.document),
+                _iso(preference.updated_at),
+            )
+            for preference in snapshot.preferences
+        ],
+    )
+    connection.executemany(
+        f"INSERT INTO action_log ({_ACTION_COLUMNS})"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                entry.id,
+                _iso(entry.at),
+                entry.actor,
+                entry.actor_kind,
+                entry.session,
+                entry.client,
+                entry.action,
+                entry.target,
+                entry.outcome,
+                _json(entry.before),
+                _json(entry.after),
+                _json(entry.details),
+            )
+            for entry in snapshot.actions
         ],
     )
 
@@ -1002,29 +1441,52 @@ def _restore(connection: sqlite3.Connection, snapshot: StateSnapshot) -> None:
 # Log.
 
 
-def _log(
+def _record(
     connection: sqlite3.Connection,
-    actor: Principal,
-    action: ChangeAction,
+    actor: Principal | None,
+    action: ActionName,
     target: str,
-    before: dict[str, object] | None,
-    after: dict[str, object] | None,
     at: str,
-) -> None:
-    connection.execute(
-        "INSERT INTO permission_log"
-        " (at, actor, actor_kind, session, action, target, before, after)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    *,
+    outcome: Outcome = "ok",
+    before: Mapping[str, object] | None = None,
+    after: Mapping[str, object] | None = None,
+    details: Mapping[str, object] | None = None,
+    client: str | None = None,
+) -> int:
+    """Append an entry to the action log; return its id."""
+    who: str = ANONYMOUS_ACTOR
+    kind: ActorKind = "anonymous"
+    session: str | None = None
+    if actor is not None:
+        who, kind, session, client = actor.id, actor.kind, actor.session, actor.client
+    cursor = connection.execute(
+        "INSERT INTO action_log"
+        " (at, actor, actor_kind, session, client, action, target, outcome,"
+        " before, after, details)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             at,
-            actor.id,
-            actor.kind,
-            actor.session,
+            who,
+            kind,
+            session,
+            client,
             action,
             target,
+            outcome,
             _json(before),
             _json(after),
+            _json(details),
         ),
+    )
+    return int(cursor.lastrowid or 0)
+
+
+def _revoke(connection: sqlite3.Connection, user_id: str) -> None:
+    """Set an account's revocation time to now, to the microsecond."""
+    connection.execute(
+        "UPDATE users SET sessions_revoked_at = ? WHERE id = ?",
+        (_precise(datetime.now(UTC)), user_id),
     )
 
 
@@ -1041,14 +1503,14 @@ def _log_cascade(
         connection.execute(
             "UPDATE groups SET updated_at = ? WHERE id = ?", (at, group.id)
         )
-        _log(
+        _record(
             connection,
             actor,
             "group.members",
             group.id,
-            _group_state(group),
-            _group_state(after_group),
             at,
+            before=_group_state(group),
+            after=_group_state(after_group),
         )
     for project in projects:
         after_project = _existing_access(connection, project.project)
@@ -1056,14 +1518,14 @@ def _log_cascade(
             "UPDATE project_acl SET updated_at = ? WHERE project = ?",
             (at, project.project),
         )
-        _log(
+        _record(
             connection,
             actor,
             "project.access",
             project.project,
-            _access_state(project),
-            _access_state(after_project),
             at,
+            before=_access_state(project),
+            after=_access_state(after_project),
         )
 
 
@@ -1091,8 +1553,20 @@ def _access_state(access: ProjectAccessRecord) -> dict[str, object]:
     }
 
 
-def _json(value: dict[str, object] | None) -> str | None:
+def _json(value: Mapping[str, object] | None) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False)
+
+
+def _from_json(text: str | None) -> dict[str, object] | None:
+    return None if text is None else json.loads(text)
+
+
+def _password_state(
+    temporary: bool, expires_at: datetime | None, now: datetime
+) -> PasswordState:
+    if not temporary:
+        return "set"
+    return "temporary" if expires_at is not None and now < expires_at else "expired"
 
 
 def _now() -> str:
@@ -1101,3 +1575,14 @@ def _now() -> str:
 
 def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _precise(moment: datetime | None) -> str | None:
+    """Return a time to the microsecond: revocations compare with session starts."""
+    if moment is None:
+        return None
+    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+def _moment(text: str | None) -> datetime | None:
+    return None if text is None else datetime.fromisoformat(text)

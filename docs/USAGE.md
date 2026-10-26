@@ -438,6 +438,14 @@ server {
 }
 ```
 
+**Backup of accounts and the log.** `archiwista state export --output FILE` copies the
+state database — accounts with their password hashes, groups, sharing, preferences
+and the action log — as `archiwista-state/2`. The file gets mode `0600` and must stay
+as secret as the passwords themselves. `archiwista state import FILE` restores such a
+copy into an empty state database only; a copy made before v0.4
+(`archiwista-state/1`) imports too. Make one before upgrading to v0.4: its first start
+turns the permission log into the action log.
+
 ## When something does not work
 
 - `archiwista doctor` checks the installation, the Kartograf plugin, the

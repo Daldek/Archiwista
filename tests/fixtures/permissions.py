@@ -11,7 +11,7 @@ from typing import Literal
 from archiwista.auth import LOCAL_OWNER, Principal
 from archiwista.auth.authorize import principal_for, session_principal
 from archiwista.security import issue_one_time_token, redeem_one_time_token
-from archiwista.state import Role, StateStore, Visibility
+from archiwista.state import ActionEntry, ActionQuery, Role, StateStore, Visibility
 
 type Who = Literal["owner", "listed", "other", "admin"]
 
@@ -80,3 +80,15 @@ def as_agent(index_path: Path, state: StateStore, minter: Principal) -> Principa
     )
     assert agent is not None
     return agent
+
+
+def last_entry(state: StateStore) -> int:
+    """Return the id of the newest entry of the action log, ``0`` without one."""
+    newest = state.actions(ActionQuery(limit=1)).entries
+    return newest[0].id if newest else 0
+
+
+def log_entries(state: StateStore, *, after: int = 0) -> list[ActionEntry]:
+    """Return the entries of the action log newer than ``after``, oldest first."""
+    page = state.actions(ActionQuery(limit=10_000))
+    return [entry for entry in reversed(page.entries) if entry.id > after]

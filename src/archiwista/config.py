@@ -1252,7 +1252,8 @@ def write_text_atomic(path: Path, text: str) -> None:
 
     The text goes to a temporary file in the same directory, which is
     flushed to the disk and then renamed over ``path``; a failure leaves the
-    old file as it was.
+    old file as it was. On POSIX the file is its owner's only (mode ``0600``
+    of ``tempfile.mkstemp``), which a backup of the state database relies on.
 
     Parameters
     ----------

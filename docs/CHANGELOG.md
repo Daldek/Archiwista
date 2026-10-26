@@ -33,6 +33,12 @@ command-line interface may change.
   served. The client address (logs, limits, sessions) is the peer, or behind trusted
   proxies the right-most `X-Forwarded-For` address that is no trusted proxy. Local
   mode is unchanged. USAGE "Team server" shows Caddy and nginx configurations.
+- The action log (v0.4, ADR-047) replaces the permission log in the state database
+  (state schema 3; the migration keeps every entry, with the outcome `ok`): each entry
+  also records the client address, the outcome (`ok`, `denied` or `failed`) and
+  details, and a trigger refuses to change an entry. The state database gains a table
+  of password hashes, the time before which an account's sessions end, and the
+  preferences of each person.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
@@ -512,6 +518,11 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** `archiwista state export` writes `archiwista-state/2`: the password
+  hashes (`passwords`), the preferences (`preferences`) and the action log (`actions`,
+  instead of `permission_log`), and each account's `sessions_revoked_at`. The copy is
+  a secret: the file gets mode `0600`. `archiwista state import` reads `/2` and still
+  `/1`, whose log entries become `ok` entries of the action log. (ADR-047)
 - Kartograf is pinned at `745e8b18`, and the adapter uses what it asked for (plan, Requests):
   the probe of a store is Kartograf's `store_state(root)`, not a copy of its judgement by file
   name (`adapter/kartograf/marker.py` is gone; ADR-031 erratum 1): the reasons keep their names,

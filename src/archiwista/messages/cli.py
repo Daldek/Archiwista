@@ -213,37 +213,59 @@ MESSAGES = {
         "wypisz JSON jak odpowiedź API",
     ),
     "state_help": Text(
-        "Backup of the state database (accounts, groups, sharing, log).",
-        "Kopia zapasowa bazy stanu (konta, grupy, udostępnienia, dziennik).",
+        "Backup of the state database (accounts, passwords, groups, sharing, log).",
+        "Kopia zapasowa bazy stanu (konta, hasła, grupy, udostępnienia, dziennik).",
     ),
     "state_export_help": Text(
-        "Writes the state database as JSON archiwista-state/1.",
-        "Zapisuje bazę stanu jako JSON archiwista-state/1.",
+        (
+            "Writes the state database as JSON archiwista-state/2; it holds the"
+            " password hashes, so keep it secret."
+        ),
+        (
+            "Zapisuje bazę stanu jako JSON archiwista-state/2; zawiera skróty haseł,"
+            " więc trzymaj ją w tajemnicy."
+        ),
     ),
     "state_output_help": Text(
-        "backup file (default: standard output)",
-        "plik kopii (domyślnie standardowe wyjście)",
+        "backup file, written with mode 0600 (default: standard output)",
+        "plik kopii, zapisywany z trybem 0600 (domyślnie standardowe wyjście)",
     ),
     "state_import_help": Text(
-        "Restores the state database from a backup — into an empty database only.",
-        "Odtwarza bazę stanu z kopii — tylko do pustej bazy.",
+        (
+            "Restores the state database from a backup (archiwista-state/2 or /1)"
+            " — into an empty database only."
+        ),
+        (
+            "Odtwarza bazę stanu z kopii (archiwista-state/2 albo /1) — tylko do"
+            " pustej bazy."
+        ),
     ),
     "state_file_help": Text(
         'file written by "archiwista state export"',
         "plik zapisany przez „archiwista state export”",
     ),
     "state_exported": Text(
-        "State database backup saved: {path}",
-        "Zapisano kopię bazy stanu: {path}",
+        (
+            "State database backup saved: {path} (mode 0600). It holds the password"
+            " hashes: keep it secret."
+        ),
+        (
+            "Zapisano kopię bazy stanu: {path} (tryb 0600). Zawiera skróty haseł:"
+            " trzymaj ją w tajemnicy."
+        ),
+    ),
+    "state_secret": Text(
+        "The backup holds the password hashes: keep it secret.",
+        "Kopia zawiera skróty haseł: trzymaj ją w tajemnicy.",
     ),
     "state_imported": Text(
         (
-            "State database restored: accounts {users}, groups {groups}, projects"
-            " {projects}, log entries {changes}."
+            "State database restored: accounts {users}, passwords {passwords},"
+            " groups {groups}, projects {projects}, log entries {actions}."
         ),
         (
-            "Odtworzono bazę stanu: konta {users}, grupy {groups}, projekty"
-            " {projects}, wpisy dziennika {changes}."
+            "Odtworzono bazę stanu: konta {users}, hasła {passwords}, grupy"
+            " {groups}, projekty {projects}, wpisy dziennika {actions}."
         ),
     ),
     "state_unreadable": Text(

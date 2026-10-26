@@ -3,7 +3,7 @@
 ``GET/POST /users``, ``PATCH/DELETE /users/{id}``, ``GET/POST /groups``,
 ``PUT /groups/{id}/members`` and ``DELETE /groups/{id}`` need ``admin``;
 ``GET/PUT /projects/{id}/access`` the project's owner or ``admin``. Changes
-need the session's CSRF token, and each lands in the permission log. The
+need the session's CSRF token, and each lands in the action log. The
 routes only translate: ``archiwista.services.access`` asks ``Authorizer``
 and changes the state database. ``archiwista users``, ``groups`` and
 ``share --json`` print these same models.

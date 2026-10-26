@@ -39,6 +39,7 @@ from tests.fixtures.layer_store import (
 )
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.own_data_api import OwnDataApi, own_data_api
+from tests.fixtures.permissions import log_entries
 from tests.fixtures.preview_api import (
     PreviewApi,
     decoded_png,
@@ -135,7 +136,7 @@ def test_admin_cli_json_equals_http(
     for from_cli, from_http in pairs:
         assert from_cli == from_http
     assert removed is None
-    assert {change.actor for change in api.state.changes()} == {"local"}
+    assert {entry.actor for entry in log_entries(api.state)} == {"local"}
 
 
 @pytest.mark.parametrize(
