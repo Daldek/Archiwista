@@ -1,8 +1,10 @@
 /**
  * Texts of the Projects view (views/projects.js, docs/SPEC.md UC-06 and
- * 6.5 g): the projects found in the project directories, their tasks with
- * the producer's commands, pins, statuses and problems — nothing there
- * starts or changes a project — and the group „Dane własne” (SPEC 4.7.1):
+ * 6.5 g): the projects found in the project directories with their producer,
+ * „Nowy projekt…” for an administrator, their tasks with the producer's
+ * commands, pins, statuses and problems, the project's actions through its
+ * producer (verify, check, download, repin, add and remove a task) with the
+ * reason when one is not allowed, and the group „Dane własne” (SPEC 4.7.1):
  * the project's data folder with its files, „Odśwież” and, for an
  * administrator, another data folder.
  */
@@ -17,6 +19,7 @@ export const projects = {
   all_stores: "wszystkie",
   columns: {
     name: "Projekt",
+    producer: "Producent",
     store: "Magazyn",
     status: "Stan przy skanie",
     tasks: "Zadania",
@@ -29,6 +32,64 @@ export const projects = {
   panel: "Projekt",
   select: "Wybierz projekt z listy, aby zobaczyć jego zadania, przypięcia i stan.",
   not_found: "Nie ma projektu „{project}” albo nie masz do niego dostępu.",
+  create: {
+    open: "Nowy projekt…",
+    open_title: "Załóż projekt producenta w katalogu projektów z ustawień, związany z magazynem",
+    admin_only: "Projekt zakłada administrator: nowy projekt nie ma jeszcze właściciela.",
+    no_dirs: "Ustawienia nie mają katalogów projektów; dodaj katalog w Ustawieniach.",
+    title: "Nowy projekt",
+    producer: "Producent",
+    no_producer: "Żaden magazyn nie ma katalogu dostępnego producenta; dodaj katalog magazynu w Ustawieniach.",
+    store: "Magazyn",
+    store_hint: "Manifest wskaże katalog producenta w tym magazynie; tam trafią pliki zadań.",
+    path: "Katalog projektu",
+    path_hint: "Ścieżka bezwzględna w katalogu projektów z ustawień ({dirs}); brakujący katalog powstanie.",
+    submit: "Załóż projekt",
+    cancel: "Anuluj",
+    created: "Założono projekt „{name}”.",
+  },
+  actions: {
+    label: "Działania projektu",
+    verify: "Weryfikuj",
+    verify_title: "Producent liczy sumy SHA-256 przypiętych plików w magazynie; bez sieci",
+    check: "Sprawdź aktualizacje",
+    check_title: "Producent porównuje przypięte wersje ze źródłem; nic nie zapisuje",
+    download: "Pobierz",
+    download_title:
+      "Producent pobiera i przypina zadania bez przypięć oraz przywraca brakujące przypięte pliki w magazynie",
+    repin: "Przepnij",
+    repin_title: "Producent przypina zadanie do nowszych wersji u źródła i pobiera je do magazynu",
+    add: "Zadanie",
+    add_title: "Dodaj polecenie producenta jako zadanie projektu; producent sprawdzi je bez sieci",
+    remove: "Usuń",
+    remove_title: "Usuń zadanie i jego przypięcia z manifestu; pliki zostają w magazynie",
+  },
+  /** Why an action of a project is disabled, in the order they are told. */
+  why: {
+    write: "Zmienia projekt jego właściciel albo administrator.",
+    store: "Manifest nie wskazuje skonfigurowanego magazynu, więc producent nie pobierze ani nie przepnie zadań.",
+    store_write:
+      "Pobieranie i przepinanie zapisują magazyn, a ta sesja nie ma uprawnienia „zapis do magazynu” (rola store_writer).",
+    offline: "Tryb offline: sprawdzenie, pobieranie i przepinanie potrzebują sieci.",
+    busy: "Trwa zadanie projektu; następne można uruchomić po jego końcu.",
+  },
+  task: {
+    title: "Nowe zadanie",
+    line: "Polecenie producenta",
+    line_placeholder: "np. kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4",
+    line_hint: "Wiersz polecenia producenta {producer}, jak w jego wierszu poleceń; producent sprawdzi go bez sieci.",
+    name: "Nazwa zadania",
+    name_example: "teren-2023",
+    name_hint: "Nazwa zadania w manifeście projektu; jej zasady sprawdza producent.",
+    submit: "Dodaj zadanie",
+    cancel: "Anuluj",
+    added: "Dodano zadanie „{name}”.",
+    confirm: "Usunąć zadanie „{name}” z manifestu? Jego przypięcia znikną, a pliki zostaną w magazynie.",
+    confirm_remove: "Usuń zadanie",
+    confirm_cancel: "Zostaw",
+    removed: "Usunięto zadanie „{name}”.",
+    actions: "Działania zadania {name}",
+  },
   card: {
     producer: "Producent",
     store: "Magazyn",
@@ -52,7 +113,6 @@ export const projects = {
     pin_open: "Karta pliku",
     missing_pins: "Brakujące przypięcia",
     other_pins: "Przypięcia bez zadania",
-    readonly: "Archiwista tylko pokazuje projekt — pobieranie, przepinanie i zmiany robi się poleceniami producenta.",
   },
   own: {
     title: "Dane własne",

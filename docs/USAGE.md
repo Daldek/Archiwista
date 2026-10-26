@@ -216,10 +216,32 @@ versions a scan has just indexed.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
-- **The list** of projects shows the store, the tasks, the pinned and missing
-  versions and the own data. Hidden projects are not visible.
+- **The list** of projects shows the producer ("Producent"), the store, the
+  tasks, the pinned and missing versions and the own data. Hidden projects are
+  not visible. "Nowy projekt…" (v0.3, in development) is an administrator's: a
+  producer, a store with a directory of that producer and the project's
+  directory in a project directory of the settings (made when missing); the
+  producer writes the manifest, which names that store's directory. Others see
+  the button disabled with the reason.
 - **The project card** shows the producer's "Stan teraz" (state now), the
-  tasks and the pins from the manifest. Only Kartograf changes the manifest.
+  tasks and the pins from the manifest, and its actions (v0.3, in development),
+  each run by the producer: "Weryfikuj" (verify: checksums of the pinned files
+  in the store, no network), "Sprawdź aktualizacje" (check the pins against the
+  source), "Pobierz" (download and pin the tasks not downloaded yet, restore
+  missing pinned files) and, at a task, "Przepnij" (repin the task to the
+  source's newer versions); the job shows its progress, then its tasks by
+  outcome or its files by state. "+ Zadanie" adds a pasted producer's command
+  as a task (the producer checks it without the network; its text for a
+  mistake shows at the field) and "Usuń" removes a task and its pins after a
+  question; the files stay in the store. A project is changed by its owner or
+  an administrator, a download and a repin also need the permission "zapis do
+  magazynu" and, like a check, the network: an action you may not do is
+  disabled and the card says why. When a change stops at a lock of the
+  manifest that an interrupted change left, the message names the lock
+  directory to remove; Archiwista never removes it.
+
+  ![Project actions after a verification](reports/v0.3-screenshots/11-akcje-projektu.webp)
+
 - **The data folder** is `<project folder>/dane/` by default; an administrator
   can point to another folder. Its scan only reads files. Own data is on the
   map and in the project card, outside the `/slots` catalog of the store.
@@ -303,8 +325,9 @@ from an open Archiwista tab.
 ## What version 0.2 does not do
 
 - It checks availability at the source and downloads only from the step "U
-  źródła" of the map (v0.3 "Actions", in development) and does not change
-  project manifests through the producer yet.
+  źródła" of the map and from the project card (v0.3 "Actions", in
+  development); the interface has no list of jobs with cancel, retry and log
+  yet (the API and `archiwista jobs` have them).
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It does not show object differences between snapshots, has no sign-in or

@@ -367,6 +367,22 @@ command-line interface may change.
   store without a project of the producer and a session that may change none. A project's
   job in a window shows its tasks by outcome or its files by state, and a failed job its
   instruction (the producer's lock). (SPEC 6.5 h, 10.3, UC-15; plan A11, ADR-042)
+- The Projects view acts on projects through their producer (SPEC 6.5 g, UC-06): the list
+  has a column "Producent" and "Nowy projekt…" (an administrator's: the producer, a store
+  with its directory and the project's directory in a project directory of the settings,
+  `POST /projects`; a refusal of the directory or the store shows at its field). The card
+  offers "Weryfikuj", "Sprawdź aktualizacje" and "Pobierz" for the project's tasks and
+  "Przepnij" at each task (`POST /projects/{project}/jobs`), followed to their end with the
+  tasks by outcome or the files by state, the card and "Stan teraz" read again; a job of
+  the project that runs already is followed instead. "+ Zadanie" adds a pasted producer's
+  command as a task (`POST /commands/parse`, then `POST /projects/{project}/tasks`; the
+  producer's text at the line, or at the name for a refused name) and "Usuń" removes a
+  task after a question. An action the session may not do is disabled and the card lists
+  why: not the project's owner or an administrator (`project_write`), no configured store
+  in the manifest, no permission to write the stores (`store_write`), offline mode for a
+  check, a download and a repin, a job of the project running. A lock of the manifest that
+  an interrupted change left shows with the instruction naming it. The card's line that
+  Archiwista only shows a project is gone. (SPEC 6.5 g, 10.2, UC-06; plan A13, ADR-042)
 
 ### Changed
 

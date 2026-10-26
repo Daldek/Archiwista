@@ -1,26 +1,45 @@
 /**
  * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11, v0.2
- * step 15): the projects found in the project directories that the session
- * sees — as the API filters them (step 8b), nothing filtered here — with
- * their producer's status when the manifest was read and their missing
- * pins; the chosen project (`?view=projects&project=<id>`) in the side panel
- * with its tasks and their existing commands, the producer's status now, the
- * pinned versions (older ones too) leading to their file cards, and its
- * problems. Nothing here starts or changes a project. Beside the producer's
- * tasks, the group „Dane własne” (SPEC 4.7.1): the project's data folder
- * with its state, files, sizes and problems, each file with its change
- * since its last snapshot leading to its card (views/own.js), „Odśwież”
- * (an `own_scan` of the folder, followed to its end), „Pokaż na mapie” (the
- * project's map: its own data and pinned versions) and, for an
- * administrator, „Zmień folder danych…”.
+ * step 15, plan 2026-10-25 A13): the projects found in the project
+ * directories that the session sees — as the API filters them (step 8b),
+ * nothing filtered here — with their producer, its status when the manifest
+ * was read and their missing pins, and „Nowy projekt…”: an administrator
+ * creates a project of a producer in a project directory of the settings,
+ * bound to a configured store. The chosen project
+ * (`?view=projects&project=<id>`) is in the side panel with its tasks and
+ * their existing commands, the producer's status now, the pinned versions
+ * (older ones too) leading to their file cards, and its problems.
+ *
+ * The card's actions go through the project's producer: „Weryfikuj”,
+ * „Sprawdź aktualizacje” and „Pobierz” start a job of the project's tasks,
+ * „Przepnij” one of a task, each followed to its end with its tasks or files
+ * and, when it fails, the producer's instruction (a left lock of the
+ * manifest); a job of the project already running is followed instead.
+ * „+ Zadanie” adds a pasted producer's command as a task (the producer reads
+ * and checks it without the network; its text for a mistake shows at the
+ * field) and „Usuń” removes a task after a confirmation. An action the
+ * session may not do is disabled with the reason: a project is changed by its
+ * owner or an administrator (`project_write`), a download and a repin write
+ * the store (`store_write`) the manifest names, and they and a check need
+ * the network. Beside the producer's tasks, the group „Dane własne” (SPEC
+ * 4.7.1): the project's data folder with its state, files, sizes and
+ * problems, each file with its change since its last snapshot leading to its
+ * card (views/own.js), „Odśwież” (an `own_scan` of the folder, followed to
+ * its end), „Pokaż na mapie” (the project's map: its own data and pinned
+ * versions) and, for an administrator, „Zmień folder danych…”.
  */
 
 import {
+  addProjectTask,
+  createProject,
   getProject,
   getProjectStatus,
   listOwnFiles,
   listProjects,
+  parseCommand,
   putDataDir,
+  removeProjectTask,
+  startProjectJob,
   startProjectScan,
 } from "../api.js";
 import { useApp } from "../context.js";
@@ -51,6 +70,7 @@ import {
   JobStatus,
   loadCardStyles,
   pinStateName,
+  projectSummary,
   StaleNote,
   statusLevel,
   statusName,
@@ -63,10 +83,22 @@ await loadCardStyles();
 const ALL = "";
 // Own files of one page of the group (the API's largest).
 const OWN_PAGE = 200;
-// Another data folder is the administrators' (`settings.write`, A-ADR-029):
-// only their sessions offer it; the server refuses anyone else.
+// A new project and another data folder are the administrators' (A-ADR-029):
+// only their sessions offer them; the server refuses anyone else.
 const ADMIN_ROLE = "admin";
 const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
+// Why an action of a project is disabled, in the order a reason is told
+// (labels `why`): who may change the project, a store to write, the
+// permission to write it, the network, a job of the project running.
+const REASONS = ["write", "store", "store_write", "offline", "busy"];
+// The reasons each action can have.
+const ACTION_REASONS = {
+  verify: ["busy"],
+  check: ["offline", "busy"],
+  download: ["write", "store", "store_write", "offline", "busy"],
+  repin: ["write", "store", "store_write", "offline", "busy"],
+  change: ["write"],
+};
 
 /**
  * The Projects view (route `projects`).
@@ -85,7 +117,7 @@ export default function ProjectsView({ route }) {
     label: L.panel,
     open: chosen !== null,
     onClose: () => setParams({ project: null }),
-    content: chosen ? html`<${ProjectCard} key=${chosen} id=${chosen} />` : null,
+    content: chosen ? html`<${ProjectCard} key=${chosen} id=${chosen} onChanged=${list.reload} />` : null,
   };
   return html`<${ViewLayout} id="projects" right=${panel}>
     <${ProjectList} list=${list} chosen=${chosen} store=${store} route=${route} />
@@ -93,10 +125,17 @@ export default function ProjectsView({ route }) {
 }
 
 function ProjectList({ list, chosen, store, route }) {
-  const { health } = useApp();
+  const { health, session, settings } = useApp();
+  const id = useId();
+  const [creating, setCreating] = useState(false);
   const stores = health?.stores ?? [];
   const items = list.data?.items ?? [];
   const pick = (project) => setParams({ project });
+  const createWhy = !session?.roles.includes(ADMIN_ROLE)
+    ? L.create.admin_only
+    : settings && !settings.project_dirs?.length
+      ? L.create.no_dirs
+      : null;
   return html`<div class="center-bar">
       <h1 class="view-title">${L.title}</h1>
       ${list.data ? html`<span class="faint">${count(items.length, L.count)}</span>` : null}
@@ -111,8 +150,22 @@ function ProjectList({ list, chosen, store, route }) {
               ]} />
           </div>`
         : null}
+      <div class="pc-new-open">
+        <button type="button" class="btn sm" disabled=${createWhy !== null || creating}
+          title=${createWhy ?? L.create.open_title} aria-describedby=${createWhy ? `${id}-why` : null}
+          onClick=${() => setCreating(true)}><${Icon} name="plus" size=${14} />${L.create.open}</button>
+        ${createWhy ? html`<span class="faint pc-why-inline" id=${`${id}-why`}>${createWhy}</span>` : null}
+      </div>
     </div>
     <div class="cards-scroll">
+      ${creating
+        ? html`<${NewProject} onClose=${() => setCreating(false)}
+            onCreated=${(card) => {
+              setCreating(false);
+              list.reload();
+              pick(card.project);
+            }} />`
+        : null}
       ${list.error ? html`<${ProblemView} problem=${list.error.problem} />` : null}
       ${list.data ? html`<${StaleNote} stores=${list.data.stale_stores} />` : null}
       ${!list.data && !list.error ? html`<${Spinner} />` : null}
@@ -128,6 +181,7 @@ function ProjectList({ list, chosen, store, route }) {
             <table class="projects-table">
               <thead><tr>
                 <th scope="col">${L.columns.name}</th>
+                <th scope="col">${L.columns.producer}</th>
                 <th scope="col">${L.columns.store}</th>
                 <th scope="col">${L.columns.status}</th>
                 <th scope="col" class="num">${L.columns.tasks}</th>
@@ -152,6 +206,7 @@ function ProjectList({ list, chosen, store, route }) {
                             <span><b>${L.invalid}:</b>${" "}${item.problem}</span></p>`
                         : null}
                     </td>
+                    <td class="mono">${item.producer}</td>
                     <td>${item.store ? storeName(health, item.store) : html`<span class="warn-text">${L.no_store}</span>`}</td>
                     <td><${Badge} level=${statusLevel(item.status)}>${statusName(item.status)}</${Badge}></td>
                     <td class="num tabular">${int(item.tasks)}</td>
@@ -167,15 +222,146 @@ function ProjectList({ list, chosen, store, route }) {
     </div>`;
 }
 
-function ProjectCard({ id }) {
-  const { health } = useApp();
-  const { data: card, error } = useResource((signal) => getProject(id, { signal }), [id]);
+/**
+ * „Nowy projekt”: a producer with a directory in some store, that store and
+ * the project's directory in a project directory of the settings; the
+ * producer writes the manifest (`POST /projects`).
+ *
+ * @param {{onClose: () => void,
+ *   onCreated: (card: import("../types.js").ProjectCard) => void}} props
+ */
+function NewProject({ onClose, onCreated }) {
+  const { health, settings } = useApp();
+  const id = useId();
+  const [form, setForm] = useState({ producer: null, store: null, path: null });
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const stores = health?.stores ?? [];
+  const producers = (health?.sources ?? [])
+    .filter((source) => source.status === "available")
+    .map((source) => source.producer)
+    .filter((name) => stores.some((item) => item.producers.includes(name)));
+  const producer = producers.includes(form.producer) ? form.producer : (producers[0] ?? "");
+  const choices = stores.filter((item) => item.producers.includes(producer));
+  const store = choices.some((item) => item.store === form.store) ? form.store : (choices[0]?.store ?? "");
+  const dirs = settings?.project_dirs ?? [];
+  const path = form.path ?? (dirs.length ? `${dirs[0]}/` : "");
+  const field = problem?.details?.option === "path" || problem?.details?.option === "store" ? problem.details.option : null;
+  const ready = producer !== "" && store !== "" && path.trim() !== "" && !saving;
+  const change = (patch) => {
+    setForm((now) => ({ ...now, ...patch }));
+    setProblem(null);
+  };
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready) return;
+    setSaving(true);
+    setProblem(null);
+    try {
+      const card = await createProject({ producer, store, path: path.trim() });
+      onCreated(card);
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return html`<form class="pc-form pc-new" aria-labelledby=${`${id}-title`} onSubmit=${submit}>
+    <h2 class="section-title" id=${`${id}-title`}>${L.create.title}</h2>
+    ${producers.length
+      ? html`<div class="pc-form-row">
+          <div class="field">
+            <label for=${`${id}-producer`}>${L.create.producer}</label>
+            <select id=${`${id}-producer`} value=${producer}
+              onChange=${(event) => change({ producer: event.currentTarget.value })}>
+              ${producers.map((name) => html`<option key=${name} value=${name}>${name}</option>`)}
+            </select>
+          </div>
+          <div class=${`field${field === "store" ? " invalid" : ""}`}>
+            <label for=${`${id}-store`}>${L.create.store}</label>
+            <select id=${`${id}-store`} value=${store} aria-invalid=${field === "store" ? "true" : null}
+              aria-describedby=${`${id}-store-note`}
+              onChange=${(event) => change({ store: event.currentTarget.value })}>
+              ${choices.map((item) => html`<option key=${item.store} value=${item.store}>${item.name}</option>`)}
+            </select>
+            ${field === "store"
+              ? html`<span class="field-error" id=${`${id}-store-note`} role="alert">${problem.detail}</span>`
+              : html`<span class="field-hint" id=${`${id}-store-note`}>${L.create.store_hint}</span>`}
+          </div>
+        </div>`
+      : html`<p class="hint warn" role="note">${L.create.no_producer}</p>`}
+    <div class=${`field${field === "path" ? " invalid" : ""}`}>
+      <label for=${`${id}-path`}>${L.create.path}</label>
+      <input id=${`${id}-path`} class="mono" value=${path} autocomplete="off" spellcheck="false"
+        aria-invalid=${field === "path" ? "true" : null} aria-describedby=${`${id}-path-note`}
+        onInput=${(event) => change({ path: event.currentTarget.value })} />
+      ${field === "path"
+        ? html`<span class="field-error" id=${`${id}-path-note`} role="alert">${problem.detail}</span>`
+        : html`<span class="field-hint" id=${`${id}-path-note`}>${t(L.create.path_hint, { dirs: dirs.join(", ") || "–" })}</span>`}
+    </div>
+    ${problem && field === null ? html`<${ProblemView} problem=${problem} compact />` : null}
+    <div class="pc-form-actions">
+      <button type="submit" class="btn sm primary" disabled=${!ready}>
+        ${saving ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="plus" size=${14} />`}
+        ${L.create.submit}</button>
+      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>${L.create.cancel}</button>
+    </div>
+  </form>`;
+}
+
+/**
+ * The reason each action of a project is disabled now, or `null`.
+ *
+ * @param {import("../types.js").ProjectCard} card
+ * @param {{store_write: boolean}|null} session
+ * @param {boolean} offline
+ * @param {boolean} busy - A job of the project is being started or runs.
+ * @returns {Object<string, string|null>} Per action (`ACTION_REASONS`), a key of `REASONS`.
+ */
+function blocked(card, session, offline, busy) {
+  const holds = {
+    write: !card.project_write,
+    store: card.store === null,
+    store_write: !session?.store_write,
+    offline,
+    busy,
+  };
+  return Object.fromEntries(
+    Object.entries(ACTION_REASONS).map(([action, reasons]) => [
+      action,
+      reasons.find((reason) => holds[reason]) ?? null,
+    ]),
+  );
+}
+
+function ProjectCard({ id, onChanged }) {
+  const { health, session, settings } = useApp();
+  const cardId = useId();
+  const resource = useResource((signal) => getProject(id, { signal }), [id]);
+  const [round, setRound] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [done, setDone] = useState(null);
+  const changed = () => {
+    resource.reload();
+    setRound((n) => n + 1);
+    onChanged();
+  };
+  const job = useJob({ onEnd: changed });
+  const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;
     return error.status === 404
       ? html`<p class="hint warn">${t(L.not_found, { project: id })}</p>`
       : html`<${ProblemView} problem=${error.problem} />`;
   }
+  const why = blocked(card, session, Boolean(settings?.offline), job.starting || job.running);
+  const reasonId = (reason) => `${cardId}-why-${reason}`;
+  const told = REASONS.filter((reason) => Object.values(why).includes(reason));
+  const start = (kind, tasks = null) => {
+    setDone(null);
+    job.run(() => startProjectJob(card.project, tasks ? { kind, tasks } : { kind }), `project_${kind}`);
+  };
   const values = [
     ["project", card.project],
     ["producer", card.producer],
@@ -193,7 +379,7 @@ function ProjectCard({ id }) {
       <dt>${L.card.scanned_at}</dt><dd>${stamp(card.scanned_at)}</dd>
       <dt>${L.card.stored_status}</dt>
       <dd><${Badge} level=${statusLevel(card.status)}>${statusName(card.status)}</${Badge}></dd>
-      ${card.problem ? null : html`<${LiveStatus} id=${card.project} />`}
+      ${card.problem ? null : html`<${LiveStatus} id=${card.project} round=${round} />`}
       ${card.missing_pins
         ? html`<dt>${L.card.missing_pins}</dt><dd class="bad-text tabular">${int(card.missing_pins)}</dd>`
         : null}
@@ -204,22 +390,67 @@ function ProjectCard({ id }) {
           <p class="problem-producer"><code>${card.problem}</code></p>
         </div>`
       : null}
+    <div class="pc-actions" role="group" aria-label=${L.actions.label}>
+      <${ActionButton} icon="check" label=${L.actions.verify} title=${L.actions.verify_title}
+        reason=${why.verify} reasonId=${reasonId} onClick=${() => start("verify")} />
+      <${ActionButton} icon="search" label=${L.actions.check} title=${L.actions.check_title}
+        reason=${why.check} reasonId=${reasonId} onClick=${() => start("check")} />
+      <${ActionButton} icon="database" label=${L.actions.download} title=${L.actions.download_title}
+        reason=${why.download} reasonId=${reasonId} onClick=${() => start("download")} />
+      <${ActionButton} icon="plus" label=${L.actions.add} title=${L.actions.add_title}
+        reason=${adding ? "" : why.change} reasonId=${reasonId}
+        onClick=${() => {
+          setDone(null);
+          setAdding(true);
+        }} />
+    </div>
+    ${told.length
+      ? html`<ul class="pc-why">${told.map(
+          (reason) => html`<li key=${reason} id=${reasonId(reason)}>${L.why[reason]}</li>`,
+        )}</ul>`
+      : null}
+    <${JobStatus} job=${job} summary=${projectSummary} />
+    ${done
+      ? html`<p class="pc-done" role="status"><${Icon} name="check" size=${15} /><span>${done}</span></p>`
+      : null}
     ${card.problems.length
       ? html`<section class="det-sec">
           <h3 class="section-title">${count(card.problems.length, T.common.units.problems)}</h3>
           <${IssueList} issues=${card.problems} store=${card.store} currentProject=${card.project} />
         </section>`
       : null}
-    <${Tasks} card=${card} />
-    <p class="hint">${L.card.readonly}</p>
+    <${Tasks} card=${card} why=${why} reasonId=${reasonId}
+      adding=${adding ? html`<${AddTask} card=${card} onClose=${() => setAdding(false)}
+        onAdded=${(name) => {
+          setAdding(false);
+          setDone(t(L.task.added, { name }));
+          changed();
+        }} />` : null}
+      onRepin=${(name) => start("repin", [name])}
+      onRemoved=${(name) => {
+        setDone(t(L.task.removed, { name }));
+        changed();
+      }} />
     <${OwnData} key=${card.project} project=${card.project} />
   </article>`;
 }
 
-function LiveStatus({ id }) {
+/**
+ * A button of a project's action: disabled with its reason (`reason`, a key
+ * of `REASONS`, told in the card's list of reasons; `""`: disabled while its
+ * form is open) or `null` when it may be used.
+ */
+function ActionButton({ icon, label, title, reason, reasonId, onClick }) {
+  const told = reason ? L.why[reason] : null;
+  return html`<button type="button" class="btn sm" disabled=${reason !== null}
+    title=${told ?? title} aria-describedby=${told ? reasonId(reason) : null} onClick=${onClick}>
+    <${Icon} name=${icon} size=${14} />${label}</button>`;
+}
+
+function LiveStatus({ id, round }) {
   const { data, error, loading, reload } = useResource(
     (signal) => getProjectStatus(id, { signal }),
-    [id],
+    [id, round],
   );
   const recheck = html`<button type="button" class="btn ghost sm icon-btn" onClick=${reload}
     disabled=${loading} title=${L.card.recheck_hint} aria-label=${L.card.recheck}>
@@ -253,11 +484,12 @@ function TaskStatuses({ tasks }) {
   </ul>`;
 }
 
-function Tasks({ card }) {
+function Tasks({ card, why, reasonId, adding, onRepin, onRemoved }) {
   const named = new Set(card.tasks.map((task) => task.task));
   const loose = card.pins.filter((pin) => !named.has(pin.task));
   return html`<section class="det-sec">
     <h3 class="section-title">${L.card.tasks}</h3>
+    ${adding}
     ${card.tasks.length
       ? html`<ul class="pc-tasks">
           ${card.tasks.map(
@@ -269,6 +501,8 @@ function Tasks({ card }) {
               <${Command} task=${task} producer=${card.producer} />
               <${PinList} store=${card.store}
                 pins=${card.pins.filter((pin) => pin.task === task.task)} />
+              <${TaskActions} project=${card.project} task=${task} why=${why} reasonId=${reasonId}
+                onRepin=${() => onRepin(task.task)} onRemoved=${() => onRemoved(task.task)} />
             </li>`,
           )}
         </ul>`
@@ -278,6 +512,134 @@ function Tasks({ card }) {
           <${PinList} store=${card.store} pins=${loose} />`
       : null}
   </section>`;
+}
+
+/** „Przepnij” and „Usuń” of a task; a removal asks to be confirmed first. */
+function TaskActions({ project, task, why, reasonId, onRepin, onRemoved }) {
+  const id = useId();
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const remove = async () => {
+    setRemoving(true);
+    setProblem(null);
+    try {
+      await removeProjectTask(project, task.task);
+      setConfirming(false);
+      onRemoved();
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    } finally {
+      setRemoving(false);
+    }
+  };
+  return html`<div class="pc-task-actions">
+    <div class="pc-task-buttons" role="group" aria-label=${t(L.task.actions, { name: task.task })}>
+      <${ActionButton} icon="rotate" label=${L.actions.repin} title=${L.actions.repin_title}
+        reason=${why.repin} reasonId=${reasonId} onClick=${onRepin} />
+      <${ActionButton} icon="trash" label=${L.actions.remove} title=${L.actions.remove_title}
+        reason=${confirming ? "" : why.change} reasonId=${reasonId}
+        onClick=${() => {
+          setProblem(null);
+          setConfirming(true);
+        }} />
+    </div>
+    ${confirming
+      ? html`<div class="pc-confirm" role="group" aria-labelledby=${`${id}-confirm`}>
+          <p id=${`${id}-confirm`}>${t(L.task.confirm, { name: task.task })}</p>
+          <div class="pc-form-actions">
+            <button type="button" class="btn sm danger" disabled=${removing} onClick=${remove}>
+              ${removing ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="trash" size=${14} />`}
+              ${L.task.confirm_remove}</button>
+            <button type="button" class="btn sm ghost" disabled=${removing}
+              onClick=${() => setConfirming(false)}>${L.task.confirm_cancel}</button>
+          </div>
+        </div>`
+      : null}
+    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+  </div>`;
+}
+
+/**
+ * „+ Zadanie”: a pasted producer's command and the task's name. The project's
+ * producer reads the line (`POST /commands/parse`) and adds the task after
+ * checking it without the network (`POST /projects/{project}/tasks`); its
+ * text for a mistake shows at the line, or at the name for a refused name.
+ */
+function AddTask({ card, onAdded, onClose }) {
+  const id = useId();
+  const [line, setLine] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const ready = line.trim() !== "" && name.trim() !== "" && !saving;
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready) return;
+    const task = name.trim();
+    let stage = "parse";
+    setSaving(true);
+    setRefusal(null);
+    try {
+      const call = await parseCommand(card.producer, line.trim());
+      stage = "add";
+      await addProjectTask(card.project, { name: task, command: call.command, options: call.options });
+      onAdded(task);
+    } catch (error) {
+      if (!error.problem) throw error;
+      const option = error.problem.details?.option ?? null;
+      const field = stage === "parse" ? "line" : option === "name" ? "name" : option !== null ? "line" : null;
+      setRefusal({ problem: error.problem, field });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const at = (field) => (refusal?.field === field ? refusal.problem : null);
+  return html`<form class="pc-form pc-add" aria-labelledby=${`${id}-title`} onSubmit=${submit}>
+    <h4 class="section-title" id=${`${id}-title`}>${L.task.title}</h4>
+    <div class=${`field${at("line") ? " invalid" : ""}`}>
+      <label for=${`${id}-line`}>${L.task.line}</label>
+      <textarea id=${`${id}-line`} class="mono pc-add-line" rows="2" value=${line} spellcheck="false"
+        autocomplete="off" placeholder=${L.task.line_placeholder}
+        aria-invalid=${at("line") ? "true" : null} aria-describedby=${`${id}-line-note`}
+        onInput=${(event) => {
+          setLine(event.currentTarget.value);
+          setRefusal(null);
+        }}></textarea>
+      ${at("line")
+        ? html`<${FieldError} id=${`${id}-line-note`} problem=${at("line")} />`
+        : html`<span class="field-hint" id=${`${id}-line-note`}>${t(L.task.line_hint, { producer: card.producer })}</span>`}
+    </div>
+    <div class=${`field${at("name") ? " invalid" : ""}`}>
+      <label for=${`${id}-name`}>${L.task.name}</label>
+      <input id=${`${id}-name`} type="text" class="mono" value=${name} spellcheck="false" autocomplete="off"
+        placeholder=${L.task.name_example} aria-invalid=${at("name") ? "true" : null}
+        aria-describedby=${`${id}-name-note`}
+        onInput=${(event) => {
+          setName(event.currentTarget.value);
+          setRefusal(null);
+        }} />
+      ${at("name")
+        ? html`<${FieldError} id=${`${id}-name-note`} problem=${at("name")} />`
+        : html`<span class="field-hint" id=${`${id}-name-note`}>${L.task.name_hint}</span>`}
+    </div>
+    ${refusal && refusal.field === null ? html`<${ProblemView} problem=${refusal.problem} compact />` : null}
+    <div class="pc-form-actions">
+      <button type="submit" class="btn sm primary" disabled=${!ready}>
+        ${saving ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="plus" size=${14} />`}
+        ${L.task.submit}</button>
+      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>${L.task.cancel}</button>
+    </div>
+  </form>`;
+}
+
+/** The producer's text for a field, its code and option a click away. */
+function FieldError({ id, problem }) {
+  const values = problem.code ? [["code", problem.code]] : [];
+  if (problem.details?.option) values.push(["option", problem.details.option]);
+  return html`<span class="field-error" id=${id} role="alert">
+    ${values.length ? html`<${Tech} value=${values}>${problem.detail}</${Tech}>` : problem.detail}</span>`;
 }
 
 function Command({ task, producer }) {
