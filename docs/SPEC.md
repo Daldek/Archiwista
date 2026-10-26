@@ -413,10 +413,11 @@ directory byte-identical to the one produced by the same `imgw` command from the
 
 Ola opens the station "Stróża": the station card has metadata (code, river and its
 hydrographic code, location with source and uncertainty), coverage of H, Q and T,
-a chart of daily Q (gaps as breaks, annual maxima published by
+a chart of daily Q (gaps as breaks with a grey band, annual maxima published by
 IMGW as points), versions of series and archives, and IMGW formulas
-with "Kopiuj atrybucję" (Copy attribution). "Porównaj z…" (Compare with…) overlays Q from Gdów and Proszówki on
-a common time axis. Archiwista does not compute statistics (1.3).
+with "Kopiuj atrybucję" (Copy attribution). "Porównaj z…" (Compare with…) adds Q from Gdów and Proszówki as
+panels stacked under that of Stróża on a common time axis, with a table of facts (6.7, M11).
+Archiwista does not compute statistics (1.3).
 
 ### UC-18. Daily flows for a catchment via the assistant (from v1.2)
 
@@ -1140,7 +1141,7 @@ dataset and range, not per station:
 
 Next to it is the state of the dataset's series: "szeregi 2026-08-31" (the label of the current version), "szeregi nieaktualne" (the current archives are not its inputs) or "szeregi nieprzygotowane" (IMGWTools `series_state`: `current`, `outdated`, `missing`), and after a check at the source, the last published year and the date of its publication.
 
-**Appearance** (as in 6.4: never color alone): "ciągły" (continuous) — green with full fill; "luki" (gaps) — green with a dashed pattern; "częściowy" (partial) — amber with hatching; "brak danych" (no data) — gray with dots; "nieznane" (unknown) — no fill, with a "?" mark.
+**Appearance** (as in 6.4: never color alone; user decision 2026-10-26, M11): the colours of "pełne" (green) and "częściowe" (amber, called orange below) of 6.4, told apart also by fill and outline, so that colour-blind users can read them: "ciągły" (continuous) — green, solid fill; "luki" (gaps) — orange, solid fill; "częściowy" (partial) — orange, half fill; "brak danych" (no data) — grey, hollow (outline only); "nieznane" (unknown) — grey dashed outline, no fill. On the map the fill is that of the point, whose shape says the station type (6.7).
 
 #### 4.8.5 IMGW license and terms
 
@@ -1376,9 +1377,9 @@ ensures that the layers above do not depend on Kartograf (sections 11 and 13).
   (section 15, P6).
 - Data layers: footprints (color by state and coverage), raster previews
   (tiles `/api/v1/…/tiles/{z}/{x}/{y}.png`), vector objects (GeoJSON).
-- IMGW station layer: points from the index (`station_points`), symbol by
-  station kind, coverage state by color and pattern, clusters at low
-  zoom (6.7). Stations without a location are not on the map — the counter
+- IMGW station layer: points from the index (`station_points`), shape by
+  station kind, coverage state by colour and fill (4.8.4), neutral clusters with
+  their count at low zoom (6.7, M11). Stations without a location are not on the map — the counter
   leads to the "Katalog" (Catalog) (4.3, 6.8). The station layer is not present
   in the "Wachlarz" (the Fan) (it is not a layer of years).
 - Sheet grid (PL-1992, PL-2000, TM33) as an overlay for selecting sheets:
@@ -2051,7 +2052,11 @@ POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
 ```
 
 **i) "Mapa" (Map) with IMGW stations and "Zestawienie" (Summary) (Table)** (station names
-from the IMGW list; coverage, years and numbers are illustrative)
+from the IMGW list; coverage, years and numbers are illustrative; the shape of a point is
+the station type — `^` water gauge, a square climatological station, a circle precipitation
+post —, its colour and fill the coverage of the "Kolor punktów" variable (4.8.4); `(12)` is a
+neutral cluster with its count; the year-type switch stands in the "Katalog" and the
+station card, the map follows it; M11)
 
 ```text
 +-----------------------------------------------------------------------------+
@@ -2059,22 +2064,22 @@ from the IMGW list; coverage, years and numbers are illustrative)
 +-----------------------------------------------------------------------------+
 | Obszar: Zlewnia Raby (zlewnia.gpkg) · 1 470 km² · PL [Zmień]                |
 | Produkt: [Stany i przepływy dobowe (IMGW) v]   Kolor punktów: (Q) H T       |
-| Lata: [hydrologiczne v] 1951–2025                   Widok: (Mapa) Katalog   |
+| Lata: hydrologiczne 1951–2025                       Widok: (Mapa) Katalog   |
 +---------------------------------------+-------------------------------------+
 |                                       | ZESTAWIENIE      [Tabela] Oś czasu  |
 |   [^] Rabka 2                         | Hydro dobowe · 9 stacji · 1951–2025 |
 |           [^] Mszana Dolna            | ----------------------------------- |
 |       [^] Kasinka Mała                | Proszówki                           |
-|  [^] Stróża       [.] Dobczyce        |   H ciągły · 1951–2025              |
+|  [^] Stróża      [^.] Dobczyce        |   H ciągły · 1951–2025              |
 |                [^] Gdów               |   Q ciągły · 1951–2025              |
 |                      [^] Proszówki    |   T częściowy · od 1972             |
 |  [^?] Stradomka                       | Stróża                              |
 |                                       |   H ciągły · 1951–2025              |
-|  [^] wodowskaz  [.] brak danych Q     |   Q luki 3% · najdł. 1981.06.02–    |
-|  [?] na granicy obszaru               |     1982.12.31                      |
-|  2 bez położenia → [Katalog]          |   T luki 12% · od 1972              |
-|                                       | Dobczyce                            |
-|                                       |   H ciągły · 1951–2025              |
+|  [^] wodowskaz (kształt = typ stacji) |   Q luki 3% · najdł. 1981.06.02–    |
+|  [^.] brak danych Q (szary, pusty)    |     1982.12.31                      |
+|  [?] na granicy obszaru               |   T luki 12% · od 1972              |
+|  2 bez położenia → [Katalog]          | Dobczyce                            |
+|  (12) skupisko: liczba stacji         |   H ciągły · 1951–2025              |
 |                                       |   Q brak danych (tylko H)           |
 |                                       |   T brak danych                     |
 |                                       | ...                                 |
@@ -2084,13 +2089,14 @@ from the IMGW list; coverage, years and numbers are illustrative)
 +---------------------------------------+-------------------------------------+
 ```
 
-**j) Station "Zestawienie" (Summary) — Timeline** (row = station × variable — a station
-expands into variable rows, each with its own coverage; column = year
-in the chosen kind of years; below, the archives in the store — shared by
-all stations, because the archives are national)
+**j) Station "Katalog" (Catalog) — the "Oś czasu" (Timeline) tab next to the "Lista" (List)**
+(row = station × variable — a station expands into variable rows, each with its own
+coverage; column = year in the chosen kind of years, the colour saturation of a cell = the
+share of units with a value; below, the archives in the store — shared by all stations,
+because the archives are national; M3, M11)
 
 ```text
- ZESTAWIENIE  Tabela [Oś czasu]     Hydro dobowe · lata hydrologiczne (XI–X)
+ KATALOG  Lista [Oś czasu]          Hydro dobowe · lata hydrologiczne (XI–X)
                   1951    1961    1971    1981    1991    2001    2011    2025
                   |       |       |       |       |       |       |          |
  Proszówki    H   ############################################################
@@ -2104,14 +2110,15 @@ all stations, because the archives are national)
  Archiwa          ============================================================
  # rok pełny   : rok z lukami   . brak danych   ? nieznane (archiwum
    niepobrane)   = archiwa w magazynie   (szkic: 1 znak = 1,25 roku;
-   w interfejsie komórka = 1 rok, podpowiedź: etykieta i najdł. przerwa)
+   w interfejsie komórka = 1 rok, nasycenie koloru = udział jednostek
+   z wartością; podpowiedź: etykieta i najdł. przerwa)
 ```
 
 **k) "Karta stacji" (Station card)**
 
 ```text
 Wodowskaz STRÓŻA · Raba (kod hydrograficzny 2138) · 149190310           [x]
-IMGW-PIB · czynna · lata hydrologiczne (XI–X)            [Kopiuj atrybucję]
+IMGW-PIB · czynna · Lata: [hydrologiczne (XI–X) v]       [Kopiuj atrybucję]
 Położenie: 49,7963° N, 19,9247° E · API IMGW (danepubliczne), 2026.10.17
            · niepewność ±150 m                          [Strona stacji IMGW]
 -----------------------------------------------------------------------------
@@ -2123,7 +2130,9 @@ Położenie: 49,7963° N, 19,9247° E · API IMGW (danepubliczne), 2026.10.17
   100 | ||   |||  | ||  |  (przerwa)  |  | || ||   | |  || ||
     0 +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+--
       1951  1958  1966  1973  1981  1988  1996  2003  2011  2018  2025
-      wykres uproszczony: min./śr./maks. z 14 dni · przerwa = brak danych
+      wykres uproszczony: min./śr./maks. z 14 dni (cały okres; po
+      przybliżeniu wartości dobowe) · przerwa = brak danych: linia
+      przerwana i szare pasmo, bez interpolacji
       o maks. roczne opublikowane przez IMGW (polr_Q)
 -----------------------------------------------------------------------------
 Pokrycie — osobno dla każdej zmiennej:
@@ -2227,13 +2236,18 @@ a counterpart in the filters).
 ### 6.7 IMGW stations and series
 
 Rules of the views for IMGW measurements (sketches 6.5 i–l, definitions 4.8; patterns
-to be confirmed in the mockup, M11):
+confirmed by the user on 2026-10-26, M11):
 
-- **Points on the map.** Stations of the area from the `station_points` layer: symbol
-  by type (water gauge, climatological station, precipitation post), coverage
-  state of one variable by colour and outline pattern (4.8.4), label —
-  name, and for a water gauge also the river; at low zoom, clusters
-  with the number of stations. The station type and the colour variable ("Kolor punktów" (Point colour))
+- **Points on the map.** Stations of the area from the `station_points` layer. The
+  **shape** of a point says the station type: a water gauge is a triangle, a
+  climatological station a square, a precipitation post a circle; colour is reserved
+  for coverage. The colour and fill say the coverage state of one variable (4.8.4,
+  "Wygląd" (Appearance)): "ciągły" green solid, "luki" orange solid, "częściowy" orange
+  half fill, "brak danych" grey hollow, "nieznane" grey dashed outline. Label —
+  name, and for a water gauge also the river. At low zoom stations form clusters: a
+  neutral circle with the number of stations and no coverage colour; a click zooms in,
+  or spreads a few stations that cannot be told apart at the deepest zoom (M11). The
+  station type and the colour variable ("Kolor punktów" (Point colour))
   are chosen with chips above the panel; "Opad dobowy" (Daily precipitation) combines climatological stations
   and precipitation posts. A point has one colour, but the point tooltip and the station
   panel give the labels of all its variables separately (H, Q, T or
@@ -2249,16 +2263,18 @@ to be confirmed in the mockup, M11):
   by attributes — river and hydrographic code (also with tributaries, P19),
   name, type; the 1° square from the code that intersects the area is there only a
   rough hint.
-- **Summary.** "Tabela" (Table): station, river, type, and for each variable of the
+- **Summary.** "Tabela" (Table), the default (M3): station, river, type, and for each variable of the
   dataset separately the coverage label and full years (P16), series badge;
   sorting by order along rivers (from the IMGW list), by name or by the number of
-  full years of the chosen variable. "Oś czasu" (the Timeline): station × variable × years
-  (a station expands into variable rows), cell = share of units with a value in the year (full, fraction, none,
-  unknown), tooltip with the label and the longest gap; below the axis a bar
+  full years of the chosen variable. "Oś czasu" (the Timeline) of stations is a tab of the
+  "Katalog" (Catalog) next to the "Lista" (List), one click away (M3, M11; sketch 6.5 j):
+  a row is a station that expands into its variable rows, a cell is a year whose colour
+  saturation is the share of units with a value (full, fraction, none; unknown as in
+  4.8.4), tooltip with the label and the longest gap; below the axis a bar
   of archives in the store and the publication dates of the latest annual volumes. The rows
   cover all stations, also those with gaps and without data (P14). "Wachlarz"
   (the Fan) does not apply to stations (they are not year layers), and the "Katalog" (Catalog) view shows them as
-  a list or cards, also without a location (6.8).
+  a list, also without a location (6.8; the "Karty" (Cards) are for products with a footprint, M5).
 - **Year type (P15, user decision 2026-10-17).** The switch
   "lata hydrologiczne / kalendarzowe" (hydrological / calendar years) is available for hydro and meteo
   data. Default: hydro — hydrological (like the archives, IMGW characteristics
@@ -2274,8 +2290,9 @@ to be confirmed in the mockup, M11):
   from the gap lists, without reading the series, and headers always show
   the convention: "r.h. 2024 (2023.11.01–2024.10.31)" or "2024
   (kalendarzowy)"; the set (8.4) and the CSV export (IMGW-12) record the year
-  type.
-- **Station card** (6.5 k): metadata (code, type, river and hydrographic
+  type. The switch stands in the filter bar of the "Katalog" (Catalog) and in the header of the
+  station card (M11); the map and the comparison follow the choice in effect.
+- **Station card** (6.5 k): the year-type switch in its header (M11); metadata (code, type, river and hydrographic
   code, year of establishment, gauge zero elevation, river
   kilometre), location with source, catalogue date and uncertainty or the reason
   for the missing location, coverage
@@ -2287,22 +2304,24 @@ to be confirmed in the mockup, M11):
   "Polecenie IMGWTools" (IMGWTools command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
   "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…) (IMGW-14), "Dodaj do zestawu" (Add to set).
 - **Chart.** One variable or two with different units (two axes);
-  range by selection. The server returns at most 2,000 points per series:
+  range by selection. By default the chart shows the whole available period
+  simplified (M11). The server returns at most 2,000 points per series:
   for a longer range min/avg/max in intervals with the note
   "wykres uproszczony: … z 14 dni" (simplified chart: … from 14 days), after zooming in daily values. A gap
-  = a break in the line, never interpolation; the aggregate precipitation sum has a separate
+  = a break in the line plus a grey band over its time, never interpolation; the aggregate precipitation sum has a separate
   marker; extremes from half-year and annual characteristics (`polr_*`)
   are points with a date — values published by IMGW, not calculated by
   Archiwista. Aggregation serves only display (like previews, 5.7)
   and never goes into a set or the store.
-- **Station comparison.** 2–5 stations, one variable, a common timeline
-  and year type; coverage bars side by side and a table of facts (period, gaps,
-  full years, location source). No statistics or correlations (1.3).
+- **Station comparison.** 2–5 stations, one variable, a common time axis
+  and year type: one chart panel per station, stacked one above another with a shared
+  time axis (not lines overlaid in one chart; M11), each with its gaps as in the chart; below them
+  a table of facts (period, gaps, full years, location source). No statistics or correlations (1.3).
 - **Linking with spatial data.** An area from a file — e.g. a catchment
   boundary from Hydrograf (`zlewnia.gpkg`, EPSG:2180) — selects Kartograf's
   data and IMGW stations at the same time: "Wszystkie produkty" (All products) (UC-02) shows
   the slots and stations of the area, and the set (8.4) combines the layers of both producers
-  with the attributions of both. Optionally, after the mockup (M11): a common timeline of the years of
+  with the attributions of both. Optionally, later (M11 did not decide it): a common timeline of the years of
   NMT flights and series coverage.
 - **Licence.** Below the chart, in the station card and in the comparison are placed
   the IMGW formulas (4.8.5), and for ČHMÚ stations — the CC BY 4.0 attribution from the sidecar.
@@ -4155,7 +4174,7 @@ log complete; the server does not start outside `127.0.0.1` without login and TL
 Scope: the IMGW adapter as a plugin (`archiwista[imgw]`, A-ADR-024) and the IMGW catalog in the store configuration (A-ADR-019);
 an index of stations, series and archives; a station layer, the "Katalog" (Catalog) of stations
 with a "bez położenia" (without location) group and a hydrographic code filter (6.8, P13, P19),
-the station "Zestawienie" (Overview) (Tabela (Table), Oś czasu (Timeline)) with series coverage labels
+the station "Zestawienie" (Overview) (Tabela (Table); the Oś czasu (Timeline) as a tab of the "Katalog", M11) with series coverage labels
 separate for each variable (4.8.4, P16) and a year-type switch for hydro and meteo (P15); the "Karta
 stacji" (Station card) with a chart; station comparison; a check of archive currency
 (`ETag`, `Last-Modified`), synchronization and series as IMGWTools background jobs
@@ -4398,7 +4417,7 @@ Decisions the mockup is meant to help make:
 |---|---|
 | M1 | Is starting from the map (area → product → availability) natural, or would starting from the catalog be better? |
 | M2 | Are the labels "pełne" (full), "pełne · 2 kampanie" (full · 2 campaigns), "częściowe · 58%" (partial · 58%), "brak danych" (no data) and the store badge understandable without instructions; colors and patterns (6.4) |
-| M3 | "Zestawienie" (Summary): default "Tabela" (Table) or "Oś czasu" (Timeline); how much information per row |
+| M3 | ~~"Zestawienie" (Summary): default "Tabela" (Table) or "Oś czasu" (Timeline); how much information per row~~ **Resolved 2026-10-26 (user decision, with M11):** the default is the "Tabela" (Table) of the "Zestawienie" and the "Lista" (List) of the "Katalog" (Catalog); the "Oś czasu" (Timeline) is a tab one click away; for stations it is the tab of the "Katalog" next to the "Lista" (6.7, sketch 6.5 j) |
 | M4 | ~~"Stos" (Stack): does the isometric view help choose a year (stays as a mode or goes away); plates with footprints or with textures (P12); layout variant~~ **Resolved 2026-10-17 (user decision, A-ADR-018 erratum 1):** "Wachlarz" (the Fan) completely replaces "Stos" — year layers as thumbnails on an arc like a stack of files in the macOS dock, each shown in full, the selected one enlarged; the isometric "Stos" and the "Wachlarz / Stos" switch removed from the mockup (screenshots `05a`–`05c`, `14`, `17`, `21-wachlarz-*`) |
 | M5 | ~~"Katalog" (Catalog): cards or list; what the card shows; the "bez położenia" (no location) group and the counter on the map (6.8, P13)~~ **Resolved 2026-10-26 (user decision):** the "Lista" (List) is the default layout for every producer; "Karty" (Cards) is an option only for products with a footprint or a thumbnail (Kartograf rasters), remembered per product kind; a card shows what sketch 6.5 d shows (year, thumbnail from previews when local, else a sheet schema, coverage label, formats, sheet count and size, store badge); objects without a location form a collapsible group "Bez położenia" at the end of the list with its count in the heading (collapsed by default when the area has many located objects), and the map counter "N stacji bez położenia" opens the "Katalog" with the same filters and the group expanded (P13, A-ADR-022; 6.8) |
 | M6 | "Asystent" (Assistant): ~~side or bottom panel~~ **resolved 2026-10-17 (A-ADR-018):** desktop — pinned side panel (the map narrows), phone — drawer; open: the look of the proposal card and of highlights on the map |
@@ -4406,7 +4425,7 @@ Decisions the mockup is meant to help make:
 | M8 | "Karta pliku" (File card): version axis, pins, order and names of actions |
 | M9 | Vocabulary: names of views, labels and actions; date format in the interface. **Resolved 2026-10-17 (A-ADR-016):** `RRRR.MM.DD` in the interface (e.g. `2024.06.21`, flight range `2024.06.21–2024.07.30`), ISO `RRRR-MM-DD` in the API and files |
 | M10 | Light and dark theme, typography, information density |
-| M11 | IMGW stations: symbols and clusters on the map, series coverage labels (4.8.4) and their patterns, the station × years Timeline, the year-kind switch, the "Karta stacji" (Station card) with a chart (aggregation, gaps, extremes), station comparison, the assistant proposal card for IMGW data |
+| M11 | ~~IMGW stations: symbols and clusters on the map, series coverage labels (4.8.4) and their patterns, the station × years Timeline, the year-kind switch, the "Karta stacji" (Station card) with a chart (aggregation, gaps, extremes), station comparison, the assistant proposal card for IMGW data~~ **Resolved 2026-10-26 (user decision; 4.8.4, 6.7, sketches 6.5 i–k):** (1) the station type by the **shape** of the point — water gauge a triangle, climatological station a square, precipitation post a circle; colour is reserved for coverage; label: the name, for a water gauge also the river; (2) at low zoom clusters are a neutral circle with the count, without a coverage colour; a click zooms in or spreads a few stations; (3) coverage of the chosen point variable: "ciągły" (continuous) green, solid fill; "luki" (gaps) orange, solid fill; "częściowy" (partial) orange, half fill; "brak danych" (no data) grey, hollow; "nieznane" (unknown) grey dashed outline — the colours of "pełne" and "częściowe" of 6.4, fill and outline so that colour-blind users can read them; (4) the station × years Timeline is a tab of the "Katalog" next to the "Lista": a row is a station that expands into its variables, a cell is a year whose colour saturation is the share of units with a value, the tooltip gives the label and the longest gap; the default view is the "Lista", the Timeline one click away (this also resolves M3); (5) the year-type switch (behaviour: P15) stands in the filter bar of the "Katalog" and in the header of the station card; (6) the chart of the station card shows by default the whole available period simplified (min./avg./max.) and daily values after zooming in; a gap is a break in the line plus a grey band, never interpolation; the extremes from the IMGW characteristics are points with a date; (7) comparison: up to 5 stations as stacked panels with a shared time axis (not lines overlaid in one chart), plus the table of facts; (8) the assistant proposal card for IMGW data is deferred after the MVP and does not block the station views |
 
 Vocabulary agreed with the mockup author (2026-10-17): the views "Mapa" (Map),
 "Wachlarz" (the Fan; replaced "Stos", user decision 2026-10-17), "Katalog" (Catalog), the "Zestawienie" (Summary) panel with the tabs "Tabela" (Table) and "Oś czasu" (Timeline),

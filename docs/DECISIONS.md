@@ -44,7 +44,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-018](#adr-018-interface-patterns-after-the-mockup-chat-stack-previews) | Interface patterns after the mockup: chat, Stack, previews | 2026-10-17 | accepted (erratum 1: "the Fan" replaces "Stack", M4/P12 resolved) |
 | [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024; the IMGW source: ADR-032) |
 | [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | proposed (IMGWTools ADR; SPEC 12.8) |
-| [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station); proposed (mockup: M11) |
+| [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station; erratum 4: appearance, M11, user decision 2026-10-26) |
 | [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
 | [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted (IMGW data in a project in v1.0 and two manifest files: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0) |
 | [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032) |
@@ -983,7 +983,7 @@ same version policy (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
 ## ADR-021: Coverage labels of IMGW series
 
 **Date:** 2026-10-17
-**Status:** accepted (P14, P15 — erratum 1; P16 — erratum 2; user decisions 2026-10-17; erratum 3: units known per ČHMÚ station); proposed (mockup: M11)
+**Status:** accepted (P14, P15 — erratum 1; P16 — erratum 2; user decisions 2026-10-17; erratum 3: units known per ČHMÚ station; erratum 4: appearance, user decision 2026-10-26, M11)
 
 **Context:** The user wants labels for the coverage of station series over time, e.g. "ciągły
 1951–2024", "luki 3%", defined precisely. A station's coverage is known
@@ -1050,6 +1050,18 @@ of IMGWTools), not of the periods of the whole dataset: a year without a station
 published by ČHMÚ, is "unknown", not a gap, while missing rows within a known period are a gap;
 K₁, K₂ and the "known year" are computed per station. For IMGW-PIB national archives nothing changes
 (the dataset's `periods`). The label definitions are unchanged (SPEC 4.8.4).
+
+**Erratum 4 (2026-10-26, user decision — SPEC 16, M11):** the appearance of the labels
+is decided. The colours are those of "pełne" (green) and "częściowe" (amber) of ADR-010,
+told apart also by fill and outline for colour-blind users: "ciągły" green with a solid
+fill, "luki" orange with a solid fill, "częściowy" orange with a half fill, "brak danych"
+grey and hollow, "nieznane" a grey dashed outline. On the map the fill is that of the point
+and its shape says the station type (water gauge a triangle, climatological station a
+square, precipitation post a circle), so colour carries only coverage; clusters are
+neutral. In the Timeline (a tab of the "Katalog") the colour saturation of a year's cell
+is the share of units with a value. The previous appearance (gaps green with dashes,
+partial amber with hatching, no data grey with dots, unknown with "?") is replaced. The
+label definitions are unchanged (SPEC 4.8.4, 6.7).
 
 ---
 
