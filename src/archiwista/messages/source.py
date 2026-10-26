@@ -23,35 +23,17 @@ MESSAGES = {
     ),
     "kartograf_not_store": Text(
         (
-            "no directory is a Kartograf segment — point to the store root, the"
-            " directory that holds {marker}"
+            "the directory holds other files and no Kartograf store — point to the"
+            " store root, the directory that holds {marker}"
         ),
         (
-            "żaden katalog nie jest segmentem Kartografa — wskaż katalog główny"
-            " magazynu, czyli ten z plikiem {marker}"
+            "w katalogu są inne pliki, a nie magazyn Kartografa — wskaż katalog"
+            " główny magazynu, czyli ten z plikiem {marker}"
         ),
     ),
     "no_marker": Text(
         "the directory has the layout of a Kartograf store but no {marker}",
         "katalog ma układ magazynu Kartografa, ale nie ma pliku {marker}",
-    ),
-    "foreign_store": Text(
-        (
-            "the directory is the root of the {tool} store ({marker}), not of a"
-            " Kartograf store"
-        ),
-        "to katalog główny magazynu {tool} ({marker}), a nie magazynu Kartografa",
-    ),
-    "unsupported_marker": Text(
-        (
-            'the marker {marker} has the schema "{found}", Archiwista reads'
-            ' "{supported}"'
-        ),
-        "znacznik {marker} ma schemat „{found}”, Archiwista czyta „{supported}”",
-    ),
-    "invalid_marker": Text(
-        'the marker {marker} is not a JSON document with the schema "{supported}"',
-        "znacznik {marker} nie jest dokumentem JSON ze schematem „{supported}”",
     ),
     "imgw_no_marker": Text(
         (

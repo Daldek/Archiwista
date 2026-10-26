@@ -34,7 +34,7 @@ from tests.fixtures.network import no_network
 
 PL_TASK = "nmt-pl"
 CZ_TASK = "nmt-cz"
-LOCK = ".kartograf-project.lock"
+LOCK = kartograf.PROJECT_LOCK
 SEGMENT = "nmt/pl_1992_1m_evrf2007"
 
 
@@ -84,9 +84,11 @@ def _report(
     )
 
 
-def _failed(name: str, text: str) -> kartograf.TaskResult:
+def _failed(name: str, text: str, reason: str | None = None) -> kartograf.TaskResult:
     """Return a task that failed as Kartograf's commit of its pins fails."""
-    return kartograf.TaskResult(name, "failed", (), (), (text,), "validation_error")
+    return kartograf.TaskResult(
+        name, "failed", (), (), (text,), "validation_error", reason
+    )
 
 
 def test_the_adapter_runs_projects_beside_changing_them(
@@ -374,23 +376,26 @@ def test_a_change_refused_while_the_lock_stays_names_the_lock_and_keeps_it(
     assert (project / "kartograf-project.json").read_bytes() == manifest
 
 
-def test_a_task_that_failed_while_the_lock_stays_is_the_left_lock(
+def test_a_task_that_failed_on_the_lock_is_the_left_lock(
     adapter: ProjectActionAdapter,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed commit of pins with the lock present is ``project_locked``; else not."""
+    """A failed task with Kartograf's reason ``project_locked`` names the lock."""
     directory = tmp_path / "projekty" / "raba"
     directory.mkdir(parents=True)
     text = "project locked by another process"
+    reason: list[str | None] = ["invalid_input"]
 
     def download(project_dir: Path, **kwargs: Any) -> kartograf.ProjectReport:
-        return _report(project_dir, tmp_path / "data", _failed(PL_TASK, text))
+        failed = _failed(PL_TASK, text, reason[0])
+        return _report(project_dir, tmp_path / "data", failed)
 
     monkeypatch.setattr(actions_module, "download_project", download)
 
+    (directory / LOCK).mkdir()  # a lock that Kartograf does not blame is no refusal
     unlocked = adapter.download_project(directory)
-    (directory / LOCK).mkdir()
+    reason[0] = "project_locked"
     with pytest.raises(ProjectLockedError) as raised:
         adapter.download_project(directory)
 

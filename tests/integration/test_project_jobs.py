@@ -367,7 +367,9 @@ def test_a_lock_left_by_an_interrupted_change_fails_the_download_and_stays(
     text = "project locked by another process"
 
     def download(project_dir: Path, **kwargs: Any) -> Any:
-        failed = kartograf.TaskResult(PL_TASK, "failed", (), (), (text,), "conflict")
+        failed = kartograf.TaskResult(
+            PL_TASK, "failed", (), (), (text,), "validation_error", "project_locked"
+        )
         return _report(project_dir, place.built.root, failed)
 
     monkeypatch.setattr(actions_module, "download_project", download)

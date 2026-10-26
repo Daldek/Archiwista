@@ -1,9 +1,9 @@
-"""The adapter judges the store marker the way Kartograf's own writers leave it.
+"""The adapter's probe is Kartograf's own judgement of a store (``store_state``).
 
 ``kartograf.testing`` builds the stores and ``kartograf.init_store`` is the
-command ``kartograf store init`` (DEV-19.13), so a change of the marker's name,
-of its schema or of what Kartograf takes for a layout breaks a test here when
-the pin moves (ADR-031), instead of mis-judging the store of a person.
+command ``kartograf store init`` (DEV-19.13): the probe agrees with what the
+writer does with a directory, and maps its verdicts and refusals to the
+reasons of ``SourceState`` (ADR-031, erratum 1).
 """
 
 import json
@@ -22,11 +22,14 @@ from kartograf.testing import (
     build_project,
 )
 
-from archiwista.adapter.kartograf import load
+from archiwista.adapter.kartograf import SCHEMAS, load
 from archiwista.adapter.kartograf.adapter import KartografAdapter
-from archiwista.adapter.kartograf.marker import MARKER, MARKER_SCHEMA
 from archiwista.messages import message
 from archiwista.sources import SourceContext, SourceState
+from archiwista.sources.markers import STORE_MARKERS
+
+MARKER = STORE_MARKERS["kartograf"]
+MARKER_SCHEMA = "kartograf-store/1"
 
 
 @pytest.fixture
@@ -61,6 +64,7 @@ def test_marker_name_and_schema_are_what_kartograf_writes(tmp_path: Path) -> Non
     # Assert
     assert written.name == MARKER
     assert json.loads(written.read_text("utf-8"))["schema"] == MARKER_SCHEMA
+    assert MARKER_SCHEMA in SCHEMAS
 
 
 def test_marker_probe_accepts_the_store_kartograf_builds(
@@ -164,7 +168,7 @@ def test_marker_probe_does_not_take_a_staging_directory_for_a_layout(
 def test_marker_probe_refuses_a_marker_of_another_schema(
     adapter: KartografAdapter, root: Path
 ) -> None:
-    """A marker that is not ``kartograf-store/1`` names both schemas."""
+    """A marker that is not ``kartograf-store/1`` is refused in Kartograf's words."""
     # Arrange
     (root / MARKER).write_text(json.dumps({"schema": "kartograf-store/2"}), "utf-8")
 
@@ -173,12 +177,7 @@ def test_marker_probe_refuses_a_marker_of_another_schema(
 
     # Assert
     assert _verdict(refused) == ("incompatible", "unsupported_marker")
-    assert refused.detail == message(
-        "source.unsupported_marker",
-        marker=MARKER,
-        found="kartograf-store/2",
-        supported=MARKER_SCHEMA,
-    )
+    assert refused.detail is not None and MARKER_SCHEMA in refused.detail
     assert refused.hint is None
     with pytest.raises(kartograf.InvalidLayoutError):
         kartograf.init_store(root)  # Kartograf's own writer refuses it, too
@@ -197,9 +196,7 @@ def test_marker_probe_refuses_a_marker_that_is_no_store_document(
 
     # Assert
     assert _verdict(refused) == ("incompatible", "unsupported_marker")
-    assert refused.detail == message(
-        "source.invalid_marker", marker=MARKER, supported=MARKER_SCHEMA
-    )
+    assert refused.detail is not None and MARKER in refused.detail
     with pytest.raises(kartograf.InvalidLayoutError):
         kartograf.init_store(root)
 
@@ -207,7 +204,7 @@ def test_marker_probe_refuses_a_marker_that_is_no_store_document(
 def test_marker_probe_refuses_the_root_of_an_imgw_store(
     adapter: KartografAdapter, root: Path
 ) -> None:
-    """The marker of another tool, found by its file name, makes the root foreign."""
+    """The marker of another tool makes the root foreign, as Kartograf says."""
     # Arrange
     (root / "imgw-store.json").write_text('{"schema": "imgw-store/1"}', "utf-8")
 
@@ -216,9 +213,7 @@ def test_marker_probe_refuses_the_root_of_an_imgw_store(
 
     # Assert
     assert _verdict(refused) == ("incompatible", "foreign_store")
-    assert refused.detail == message(
-        "source.foreign_store", marker="imgw-store.json", tool="IMGW"
-    )
+    assert refused.detail is not None and "imgw-store.json" in refused.detail
     with pytest.raises(kartograf.ConflictError) as raised:
         kartograf.init_store(root)
     assert raised.value.reason == "nested_store"  # a store never holds another
@@ -261,7 +256,7 @@ def test_marker_probe_accepts_an_empty_directory(
 def test_marker_probe_refuses_the_parent_of_a_store_that_holds_a_project(
     adapter: KartografAdapter, built: FixtureStore, tmp_path: Path
 ) -> None:
-    """The directory above the store holds no known segment and asks for the marker."""
+    """The directory above a store holds another store: Kartograf's nested store."""
     # Arrange
     build_project(tmp_path / "projects" / "projekt", built)
 
@@ -269,10 +264,27 @@ def test_marker_probe_refuses_the_parent_of_a_store_that_holds_a_project(
     parent = adapter.probe(tmp_path)
 
     # Assert
-    assert _verdict(parent) == ("incompatible", "not_a_store")
-    assert parent.detail == message("source.kartograf_not_store", marker=MARKER)
+    assert _verdict(parent) == ("incompatible", "foreign_store")
+    assert parent.detail is not None and str(built.root) in parent.detail
     assert parent.hint is None
     assert adapter.probe(built.root).status == "available"
+
+
+def test_marker_probe_refuses_a_directory_with_other_files_as_not_a_store(
+    adapter: KartografAdapter, tmp_path: Path
+) -> None:
+    """Other files and no layout: Kartograf's writer refuses it (``not_empty``)."""
+    # Arrange
+    (tmp_path / "notes.txt").write_text("mine", "utf-8")
+
+    # Act
+    refused = adapter.probe(tmp_path)
+
+    # Assert
+    assert _verdict(refused) == ("incompatible", "not_a_store")
+    assert refused.detail == message("source.kartograf_not_store", marker=MARKER)
+    with pytest.raises(kartograf.ConflictError):
+        kartograf.init_store(tmp_path)
 
 
 def test_marker_probe_reports_an_unreadable_marker_as_an_error(

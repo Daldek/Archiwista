@@ -86,3 +86,15 @@ and schema, after `list_segments`:
   `OTHER_MARKERS` of the Kartograf adapter lists it by name for `foreign_store`.
 - A change of the marker's name or schema in Kartograf, or of what it takes for a layout,
   fails a contract test when the pin moves, instead of a person's store being mis-judged.
+
+**Erratum 1 (2026-10-26, Kartograf `ba1e8ee7`, its ADR-054 erratum 2):** Kartograf offers
+`store_state(root)`, so the copy of decision 3 is gone with `adapter/kartograf/marker.py`. The
+probe lists the root (a missing one is still `error`) and asks `store_state`: `marked` and `new`
+are `available`; `layout` is `no_marker` with the same text and hint; `foreign` (other files and
+no layout, the writer's `not_empty`) is `not_a_store`; Kartograf's `ConflictError`
+(`nested_store`: the root is, lies in or holds another store, the parent of a store included) is
+`foreign_store`, and its `InvalidLayoutError` (a marker that is not `kartograf-store/1`) is
+`unsupported_marker`, both with Kartograf's own text in the language of the call; an unreadable
+marker is Kartograf's `OSError`, so `error`. The reasons keep their names; the texts
+`source.foreign_store`, `source.unsupported_marker` and `source.invalid_marker` are gone. The
+contract test holds the probe to Kartograf's writers as before.

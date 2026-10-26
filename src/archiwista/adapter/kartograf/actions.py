@@ -45,12 +45,12 @@ from typing import Any, cast
 
 import shapely
 from kartograf import (
+    PROJECT_LOCK,
     BBox,
     KartografError,
     MetadataCache,
     PlanItem,
     UpdatePlan,
-    add_project_task,
     check_availability,
     check_command,
     check_project,
@@ -170,9 +170,9 @@ _PROJECT_ADD = "project add"
 _PROJECT_REMOVE = "project remove"
 _PROJECT_DOWNLOAD = "project download"
 _PROJECT_VERIFY = "project verify"
-# Kartograf's lock of a manifest: a directory beside it, made for one change
-# and removed after it (its ``LOCK_NAME``, not in ``kartograf.__all__``).
-PROJECT_LOCK = ".kartograf-project.lock"
+# Kartograf's lock of a manifest is ``kartograf.PROJECT_LOCK``, a directory beside
+# it made for one change; a refusal or a failed task with the reason
+# ``project_locked`` says that it stays.
 
 
 def catalog() -> tuple[CommandInfo, ...]:
@@ -477,7 +477,7 @@ def create_project(directory: Path, *, root: Path, relative: bool) -> None:
         init_project(directory, root=given)
     except KartografError as error:
         raise _project_error(
-            error, directory, _PROJECT_INIT, {"project_dir": str(directory)}
+            error, _PROJECT_INIT, {"project_dir": str(directory)}
         ) from error
 
 
@@ -488,9 +488,10 @@ def add_task(
 
     ``validate`` checks the options in their JSON form as a call of the command on
     the project's store, as ``kartograf project add`` reads them (a refusal names
-    the command's own example); then ``add_project_task`` gets the library
-    arguments, in which a box (``bbox`` with ``bbox_crs``) is one ``BBox``, and
-    writes the options back in their JSON form. Nothing uses the network.
+    the command's own example); then ``run_command`` of ``project add`` gives
+    ``add_project_task`` the library arguments, in which a box (``bbox`` with
+    ``bbox_crs``) is one ``BBox``, and the options are written back in their JSON
+    form. Nothing uses the network.
 
     Raises
     ------
@@ -506,11 +507,17 @@ def add_task(
         raise call_error(error, command=_PROJECT_ADD, given=given) from error
     validate(command, options, root=project.root)
     try:
-        add_project_task(
-            directory, name=name, command=command, options=_task_arguments(options)
+        run_command(
+            _PROJECT_ADD,
+            {
+                "project_dir": str(directory),
+                "name": name,
+                "command": command,
+                "options": dict(options),
+            },
         )
     except KartografError as error:
-        raise _project_error(error, directory, _PROJECT_ADD, given) from error
+        raise _project_error(error, _PROJECT_ADD, given) from error
 
 
 def remove_task(directory: Path, *, name: str) -> None:
@@ -527,9 +534,7 @@ def remove_task(directory: Path, *, name: str) -> None:
     try:
         remove_project_task(directory, name=name)
     except KartografError as error:
-        raise _project_error(
-            error, directory, _PROJECT_REMOVE, {"name": name}
-        ) from error
+        raise _project_error(error, _PROJECT_REMOVE, {"name": name}) from error
 
 
 def project_download(
@@ -546,8 +551,8 @@ def project_download(
     With Archiwista's own metadata cache (``METADATA_CACHE_FILE`` in
     ``cache_dir``), never ``cache=True``, and ``update`` unset (pin or
     restore) or ``"upgrade"`` (a repin); the store is the one the manifest
-    names. A task that failed while Kartograf's lock stays failed on the lock
-    (Kartograf writes the pins of each task under it, after its download).
+    names. A task that failed with Kartograf's reason ``project_locked`` failed on
+    the lock (Kartograf writes the pins of each task under it, after its download).
 
     Raises
     ------
@@ -574,7 +579,7 @@ def project_download(
             on_notice=None if on_notice is None else _forward(on_notice),
         )
     except KartografError as error:
-        raise _project_error(error, directory, _PROJECT_DOWNLOAD, given) from error
+        raise _project_error(error, _PROJECT_DOWNLOAD, given) from error
     finally:
         cache.close()
     run = ProjectRun(
@@ -583,10 +588,10 @@ def project_download(
         tasks=tuple(_task_run(task) for task in report.tasks),
         notices=tuple(_notice(notice) for notice in report.notices),
     )
+    lock = Path(report.project.directory) / PROJECT_LOCK
     for task in run.failed:
-        locked = _locked(directory, task.errors[0] if task.errors else None)
-        if locked is not None:
-            raise locked
+        if task.reason == "project_locked":
+            raise _locked(lock, task.errors[0] if task.errors else None)
     return run
 
 
@@ -620,7 +625,7 @@ def project_check(
             on_notice=None if on_notice is None else _forward(on_notice),
         )
     except KartografError as error:
-        raise _project_error(error, directory, _PROJECT_DOWNLOAD, given) from error
+        raise _project_error(error, _PROJECT_DOWNLOAD, given) from error
     finally:
         cache.close()
     return _project_check(checked)
@@ -645,29 +650,24 @@ def project_verify(directory: Path, *, tasks: Sequence[str] | None) -> ProjectCh
             directory, tasks=None if tasks is None else list(tasks)
         )
     except KartografError as error:
-        raise _project_error(error, directory, _PROJECT_VERIFY, given) from error
+        raise _project_error(error, _PROJECT_VERIFY, given) from error
     return _project_check(checked)
 
 
 def _project_error(
     error: KartografError,
-    directory: Path,
     command: str,
     given: Mapping[str, object],
 ) -> ProducerError | ProjectLockedError:
     """Return Kartograf's refusal of a project call; the left lock if it stays."""
     refused = call_error(error, command=command, given=given)
-    return _locked(directory, refused.message) or refused
+    if error.reason != "project_locked":
+        return refused
+    return _locked(Path(str(error.details()["path"])), refused.message)
 
 
-def _locked(directory: Path, text: str | None) -> ProjectLockedError | None:
-    """Return the refusal of a project whose lock stays, with Kartograf's ``text``.
-
-    ``None`` when there is no lock: then a refusal was not about it.
-    """
-    lock = directory / PROJECT_LOCK
-    if not lock.is_dir():
-        return None
+def _locked(lock: Path, text: str | None) -> ProjectLockedError:
+    """Return the refusal of a project whose ``lock`` stays, with Kartograf's text."""
     return ProjectLockedError(
         with_detail(message("project.locked", lock=lock), text),
         lock=str(lock),
@@ -721,20 +721,6 @@ def _project_check(checked: Any) -> ProjectCheck:
         notices=tuple(_notice(notice) for notice in checked.notices),
         ok=bool(checked.ok),
     )
-
-
-def _task_arguments(options: Mapping[str, object]) -> dict[str, object]:
-    """Return the library arguments of a task's options, checked as a call.
-
-    Only a box differs from its JSON form: ``bbox`` (four numbers) with its
-    ``bbox_crs`` is one ``BBox``, as Kartograf's command line reads it
-    (``options_to_json`` writes it back).
-    """
-    arguments = dict(options)
-    if "bbox" in arguments and "bbox_crs" in arguments:
-        x0, y0, x1, y1 = cast(Sequence[float], arguments.pop("bbox"))
-        arguments["bbox"] = BBox(x0, y0, x1, y1, str(arguments.pop("bbox_crs")))
-    return arguments
 
 
 def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:

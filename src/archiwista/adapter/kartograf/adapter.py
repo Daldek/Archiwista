@@ -12,6 +12,7 @@ the message unchanged.
 
 import json
 import os
+import shlex
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
@@ -21,6 +22,7 @@ from typing import Any
 
 from kartograf import (
     BBox,
+    ConflictError,
     InvalidSidecarError,
     KartografError,
     StoreEntry,
@@ -38,13 +40,13 @@ from kartograf import (
     pinned_transform,
     read_sidecar,
     store_root,
+    store_state,
 )
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER, SCHEMAS, actions
-from archiwista.adapter.kartograf.marker import refusal
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
-from archiwista.messages import message, with_detail
+from archiwista.messages import current_language, message, with_detail
 from archiwista.sources import (
     ActionPlan,
     ActionProgress,
@@ -73,8 +75,11 @@ from archiwista.sources import (
     SourceState,
     SourceStatus,
 )
+from archiwista.sources.markers import STORE_MARKERS
 
 UNIT_CACHE_FILE = "unit_bboxes.sqlite"
+
+_MARKER = STORE_MARKERS[PRODUCER]
 
 _WGS84 = "EPSG:4326"
 # Problems of a whole segment: they have no slot.
@@ -129,32 +134,45 @@ class KartografAdapter:
         Returns
         -------
         SourceState
-            ``available`` for a store with its marker, for a directory with no
-            segment yet (a new store) and for known segments with no file
-            below them (no layout yet). ``incompatible`` with a ``reason``
-            when Kartograf's own writer would not use the directory:
-            ``no_marker`` (known segments with a file and no marker; the hint
-            is ``kartograf store init``), ``unsupported_marker`` (a marker that
-            is not ``kartograf-store/1``), ``foreign_store`` (the marker of
-            another tool) or ``not_a_store`` (segments but none known, e.g.
-            the parent of the store). ``error`` when the directory or a marker
-            cannot be read.
+            Kartograf's own judgement of the directory (``store_state``):
+            ``available`` for a store with its marker and for a new one
+            (missing, or no file yet: its first write marks it).
+            ``incompatible`` with a ``reason`` when Kartograf's writer would not
+            use it: ``no_marker`` (the layout of a store without its marker; the
+            hint is ``kartograf store init``), ``not_a_store`` (other files and
+            no layout, e.g. a file), ``foreign_store`` (it is, lies in or holds
+            another store, Kartograf's ``nested_store``) or
+            ``unsupported_marker`` (a marker that is not ``kartograf-store/1``),
+            the last two with Kartograf's own text. ``error`` when the directory
+            cannot be listed (a detached share) or its marker cannot be read.
         """
         try:
-            segments = list_segments(root)
-            known = [name for name in segments if describe_segment(name).known]
-            refused = refusal(root, segments, known)
+            os.listdir(root)  # a reader needs the directory, a writer would make it
+            state = store_state(root)
         except OSError as error:
             return self._state("error", root, detail=str(error))
-        if refused is None:
-            return self._state("available", root)
-        return self._state(
-            "incompatible",
-            root,
-            detail=refused.detail,
-            reason=refused.reason,
-            hint=refused.hint,
-        )
+        except KartografError as error:
+            nested = isinstance(error, ConflictError)
+            return self._state(
+                "incompatible",
+                root,
+                detail=error.localized(current_language()),
+                reason="foreign_store" if nested else "unsupported_marker",
+            )
+        if state == "layout":
+            return self._state(
+                "incompatible",
+                root,
+                detail=message("source.no_marker", marker=_MARKER),
+                reason="no_marker",
+                hint=message("fix.store_init", path=shlex.quote(str(root))),
+            )
+        if state == "foreign":
+            detail = message("source.kartograf_not_store", marker=_MARKER)
+            return self._state(
+                "incompatible", root, detail=detail, reason="not_a_store"
+            )
+        return self._state("available", root)
 
     def default_root(self) -> DefaultRoot:
         """Report the store root Kartograf uses when a call names none.

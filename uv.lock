@@ -89,7 +89,7 @@ requires-dist = [
     { name = "affine", specifier = ">=3,<4" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "imgwtools", extras = ["store"], marker = "extra == 'imgw'", git = "https://github.com/Daldek/IMGWTools?rev=6bd35a49b329f99b591ffdee39367daec0e75af7" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=70ef08ef60db7eed99cbc246c14de2a1ea3775d8" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=745e8b18b586243ae4899fa483db74588cc13dac" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
     { name = "packaging", specifier = ">=24" },
     { name = "platformdirs", specifier = ">=4,<5" },
@@ -768,7 +768,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf?rev=70ef08ef60db7eed99cbc246c14de2a1ea3775d8#70ef08ef60db7eed99cbc246c14de2a1ea3775d8" }
+source = { git = "https://github.com/Daldek/Kartograf?rev=745e8b18b586243ae4899fa483db74588cc13dac#745e8b18b586243ae4899fa483db74588cc13dac" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },

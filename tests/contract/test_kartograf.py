@@ -29,7 +29,6 @@ from archiwista.adapter.kartograf import SUPPORTED_VERSIONS, load
 from archiwista.adapter.kartograf.adapter import UNIT_CACHE_FILE, KartografAdapter
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
-from archiwista.messages import message
 from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
@@ -641,12 +640,9 @@ def test_probe_accepts_the_generated_store_and_rejects_its_parent(
 
     assert adapter.probe(store.root).status == "available"
     assert adapter.probe(empty).status == "available"
-    parent = adapter.probe(store.base)
-    assert (parent.status, parent.reason, parent.detail) == (
-        "incompatible",
-        "not_a_store",
-        message("source.kartograf_not_store", marker="kartograf-store.json"),
-    )
+    parent = adapter.probe(store.base)  # Kartograf: a store lies below it
+    assert (parent.status, parent.reason) == ("incompatible", "foreign_store")
+    assert parent.detail is not None and str(store.root) in parent.detail
     assert adapter.probe(tmp_path / "missing").status == "error"
 
 

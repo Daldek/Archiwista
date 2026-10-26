@@ -488,6 +488,15 @@ command-line interface may change.
 
 ### Changed
 
+- Kartograf is pinned at `745e8b18`, and the adapter uses what it asked for (plan, Requests):
+  the probe of a store is Kartograf's `store_state(root)`, not a copy of its judgement by file
+  name (`adapter/kartograf/marker.py` is gone; ADR-031 erratum 1): the reasons keep their names,
+  the parent of a store is now `foreign_store` (Kartograf's `nested_store`) and a directory with
+  other files `not_a_store`, a refused marker or nested store carries Kartograf's own text, and
+  an unreadable marker is `error`; a task is added with `run_command("project add", …)`, which
+  converts a box itself (ADR-039 erratum 2); a lock that stays is recognised by Kartograf's reason
+  `project_locked` and the path it gives, no longer by the directory beside the manifest
+  (ADR-040 erratum 2).
 - **Breaking:** a project is its directory, with the manifest of one producer or of
   both (ADR 0032 decision 14). `GET /projects` items and the card `GET
   /projects/{project}` (and `archiwista projects`, `project … --json`) lose

@@ -11,14 +11,16 @@ from pathlib import Path
 import pytest
 from kartograf.testing import build_fixture_store
 
-from archiwista.adapter.kartograf.marker import MARKER
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.messages import message
+from archiwista.sources.markers import STORE_MARKERS
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import served_store
 from tests.fixtures.jobs import STORE, jobs_env
+
+MARKER = STORE_MARKERS["kartograf"]
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 
