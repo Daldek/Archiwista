@@ -34,6 +34,10 @@ type PinState = Literal["ok", "missing", "sha256_mismatch", "unknown"]
 type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
+# "Exactly this river" or "with its tributaries" (P19): a station's hydrographic
+# code equal to the river's, or beginning with it.
+type RiverScope = Literal["exact", "tributaries"]
+type StationLocation = Literal["point", "none"]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
 # A producer's current version of a slot, asked by the slot's key at the end of
 # a pass: a path relative to the store, ``None`` without one
@@ -65,6 +69,7 @@ VERSIONS_MODES: tuple[VersionsMode, ...] = (
     "noncurrent_unpinned",
 )
 LOCATION_FILTERS: tuple[LocationFilter, ...] = ("any", "with", "none")
+RIVER_SCOPES: tuple[RiverScope, ...] = ("exact", "tributaries")
 ROW_STATUSES: tuple[RowStatus, ...] = (
     "ok",
     "missing",
@@ -839,6 +844,109 @@ class StationCatalogRecord:
     slot: str
     version: str
     read_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StationQuery:
+    """Filters and page of a station query (``GET /stations``).
+
+    Parameters
+    ----------
+    store, provider : str or None
+        Exact store id and provider (``IMGW-PIB``, ``CHMI``).
+    code : str or None
+        Exact station code.
+    kind : str or None
+        Exact kind (``hydro``, ``meteo``).
+    active : bool or None
+        Active (``True``) or historical (``False``) stations only.
+    river_code, river_scope : str or None, {"exact", "tributaries"}
+        The river's hydrographic code (P19): ``exact`` takes the stations of
+        that code, ``tributaries`` also those whose code begins with it (IMGW
+        ``2138`` takes ``21382``, never ``2139``); a code with ``-`` between
+        its parts (ČHMÚ ``1-05-03-0110``) begins with whole parts only
+        (``1-05`` takes it, ``1-0`` does not).
+    bbox : BBox or None
+        ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84: located stations
+        inside it, edges included. A station without a location is never in
+        a box (SPEC 4.3 point 3): with a box, ``location="any"`` lists
+        located stations only.
+    location : {"any", "with", "none"}
+        Which stations are rows: every one, located ones, or those without a
+        location (the box does not apply to them).
+    limit : int
+        Page size, 1 to ``MAX_PAGE_LIMIT``.
+    cursor : str or None
+        ``next_cursor`` of the previous page of the same query.
+    """
+
+    store: str | None = None
+    provider: str | None = None
+    code: str | None = None
+    kind: str | None = None
+    active: bool | None = None
+    river_code: str | None = None
+    river_scope: RiverScope = "exact"
+    bbox: BBox | None = None
+    location: LocationFilter = "any"
+    limit: int = DEFAULT_PAGE_LIMIT
+    cursor: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StationRow:
+    """A station of a provider's current catalog, as the index keeps it.
+
+    ``point`` is ``(lon, lat)`` in WGS84 for ``location="point"``; a station
+    without one has ``location="none"`` and the catalog's ``location_reason``
+    (``none``, ``zero``, ``outside_country``). ``catalog`` is the label of the
+    catalog version the station was read from (its download date) and
+    ``catalog_version`` its file, relative to the store.
+    """
+
+    store: str
+    provider: str
+    code: str
+    kind: str | None
+    meteo_kind: str | None
+    name: str | None
+    river: str | None
+    hydrographic_code: str | None
+    river_order: int | None
+    location: StationLocation
+    point: tuple[float, float] | None
+    location_reason: str | None
+    location_source: str | None
+    location_uncertainty_m: float | None
+    active: bool | None
+    established_year: int | None
+    gauge_zero_m: float | None
+    river_km: float | None
+    elevation_m: float | None
+    catalog: str | None
+    catalog_version: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StationCounts:
+    """Stations of a query by location, whatever its ``location`` selects.
+
+    ``located`` counts the located stations that match the filters (inside
+    the box when there is one); ``unlocated`` the stations without a location
+    that match the attribute filters, which a box never narrows (SPEC 4.3).
+    """
+
+    located: int = 0
+    unlocated: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class StationPage:
+    """A page of stations by name; ``next_cursor`` is ``None`` on the last page."""
+
+    items: tuple[StationRow, ...]
+    next_cursor: str | None
+    counts: StationCounts
 
 
 @dataclass(frozen=True, slots=True)

@@ -44,4 +44,8 @@ MESSAGES = {
         'Unknown file state "{state}" — allowed: {allowed}.',
         "Nieznany stan pliku „{state}” — dozwolone: {allowed}.",
     ),
+    "invalid_river_code": Text(
+        "The river's hydrographic code must not be empty.",
+        "Kod hydrograficzny rzeki nie może być pusty.",
+    ),
 }

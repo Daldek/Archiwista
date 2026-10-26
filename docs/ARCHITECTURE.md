@@ -152,12 +152,12 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 |---|---|---|
 | `index/schema.py` | SQLite schema, connection settings, rebuild on version change | `SCHEMA_VERSION`, `initialize`, `connect`, `IndexUnsupportedError`, `MIN_SQLITE_VERSION` |
 | `index/writer.py` | writing the index from source interface types (never from Kartograf objects); the stations of a provider's catalog replaced in one transaction | `IndexWriter` (`replace_stations`, `drop_stations`, `keyed_slots`, `station_catalogs`) |
-| `index/queries.py` | catalog, map, products, own data and snapshots, projects, state | `IndexQueries` |
+| `index/queries.py` | catalog, map, products, own data and snapshots, projects, state; stations by attributes, a box over `station_points` (located ones only) and a river with or without its tributaries (a range over the hydrographic code, whole parts of a ČHMÚ code), with the counts of the located and the unlocated | `IndexQueries` (`stations`, `station`) |
 | `index/scanner.py` | store scan and view refresh | `scan_store`, `refresh_view`, `ScanProgress`, `ScanNotice`, `ScanSummary`, `SegmentScan`, `BATCH_ENTRIES`, `BATCH_SECONDS`, `FOOTPRINT_THREADS`, `REFRESH_VIEW_MAX_UNITS` |
 | `index/projects.py` | discovering and indexing project manifests; one project read again after Archiwista changed it | `scan_projects`, `record_project`, `ProjectScanSummary`, `PROJECT_MANIFESTS`, `MAX_PROJECT_DEPTH` |
 | `index/coverage.py` | local coverage in a planar coordinate system | `measure_coverage`, `planar_crs`, `PLANAR_CRS`, `CoverageShape`, `CoverageMeasure` |
 | `index/geometry.py` | helper GeoJSON functions in WGS84 | `polygon_bounds`, `is_box`, `box_geometry`, `require_wgs84_area`, `require_wgs84_bbox` |
-| `index/types.py` | index query and response types, limits | `SlotQuery`, `MapQuery`, `SlotPage`, `SlotDetail`, `VersionDetail`, `FootprintPage`, `IndexStatus`, `StoreIndexState`, `StoreFreshness`, `AreaRecord`, `SlotUnit`, `ScanPass`, `BatchResult`, `PassSummary`, `KeyedSlot`, `StationCatalogRecord`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`, `MAP_FOOTPRINT_LIMIT`, `MAX_GRID_COLUMNS` |
+| `index/types.py` | index query and response types, limits | `SlotQuery`, `MapQuery`, `SlotPage`, `SlotDetail`, `VersionDetail`, `FootprintPage`, `IndexStatus`, `StoreIndexState`, `StoreFreshness`, `AreaRecord`, `SlotUnit`, `ScanPass`, `BatchResult`, `PassSummary`, `KeyedSlot`, `StationCatalogRecord`, `StationQuery`, `StationRow`, `StationPage`, `StationCounts`, `RIVER_SCOPES`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`, `MAP_FOOTPRINT_LIMIT`, `MAX_GRID_COLUMNS` |
 
 **Background jobs**
 

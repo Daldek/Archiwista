@@ -87,6 +87,7 @@ from archiwista.index.types import (
     ProjectRecord,
     ProjectRef,
     ProjectTaskRef,
+    RiverScope,
     RowStatus,
     SegmentRef,
     SegmentSummary,
@@ -96,6 +97,10 @@ from archiwista.index.types import (
     SlotRow,
     SlotUnit,
     SnapshotRecord,
+    StationCounts,
+    StationPage,
+    StationQuery,
+    StationRow,
     StoredAvailability,
     StoredPlan,
     StoreFreshness,
@@ -224,6 +229,25 @@ _VERSION_COLUMNS = """
     (v.id = s.current_version_id) AS is_current,
     (v.id = s.full_sheet_version_id) AS is_full_sheet
 """
+# A station with the label and file of the catalog version it was read from.
+_STATION_COLUMNS = """
+    s.store_id AS store_id, s.provider AS provider, s.code AS code, s.kind AS kind,
+    s.meteo_kind AS meteo_kind, s.name AS name, s.river AS river,
+    s.hydrographic_code AS hydrographic_code, s.river_order AS river_order,
+    s.location AS location, s.lon AS lon, s.lat AS lat,
+    s.location_reason AS location_reason, s.location_source AS location_source,
+    s.location_uncertainty_m AS location_uncertainty_m, s.active AS active,
+    s.established_year AS established_year, s.gauge_zero_m AS gauge_zero_m,
+    s.river_km AS river_km, s.elevation_m AS elevation_m,
+    coalesce(s.name, '') AS sort_name, cv.label AS catalog,
+    c.version_path AS catalog_version
+"""
+_STATION_SOURCE = (
+    "stations s LEFT JOIN station_catalogs c"
+    " ON c.store_id = s.store_id AND c.provider = s.provider"
+    " LEFT JOIN versions cv ON cv.store_id = c.store_id AND cv.path = c.version_path"
+)
+_STATION_ORDER = "coalesce(s.name, ''), s.code, s.provider, s.store_id"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1127,6 +1151,97 @@ class IndexQueries:
             )
             for row in rows
         )
+
+    # Stations of the station catalogs.
+
+    def stations(self, query: StationQuery) -> StationPage:
+        """Return a page of stations by name, with the counts by location.
+
+        Parameters
+        ----------
+        query : StationQuery
+            Attribute filters, the box, the location group, page size and
+            cursor.
+
+        Returns
+        -------
+        StationPage
+            Rows by name (then code, provider and store); ``counts`` count
+            the whole result by location, whatever ``query.location``
+            selects: the stations without a location after the attribute
+            filters only, never narrowed or joined by the box.
+
+        Raises
+        ------
+        IndexQueryError
+            Limit out of range, an invalid box, an empty river code or a
+            cursor of another query.
+        """
+        _require_limit(query.limit, MAX_PAGE_LIMIT)
+        box = None if query.bbox is None else require_wgs84_bbox(query.bbox)
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _station_where(query, stores)
+            located = _Where(list(where.conditions), list(where.params))
+            located.add("s.location = 'point'")
+            if box is not None:
+                _station_box(located, box)
+            unlocated = _Where(list(where.conditions), list(where.params))
+            unlocated.add("s.location = 'none'")
+            counts = StationCounts(
+                located=_count_stations(connection, located),
+                unlocated=_count_stations(connection, unlocated),
+            )
+            if query.location == "none":
+                page = unlocated
+            elif query.location == "with" or box is not None:
+                page = located
+            else:
+                page = where
+            fingerprint = _station_fingerprint(query)
+            after = _decode_station_cursor(query.cursor, fingerprint)
+            if after is not None:
+                page.add(f"({_STATION_ORDER}) > (?, ?, ?, ?)", *after)
+            rows = connection.execute(
+                f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
+                f" WHERE {page.sql()} ORDER BY {_STATION_ORDER} LIMIT ?",
+                [*page.params, query.limit + 1],
+            ).fetchall()
+        more = len(rows) > query.limit
+        rows = rows[: query.limit]
+        next_cursor = None
+        if more and rows:
+            last = rows[-1]
+            next_cursor = _encode_cursor(
+                fingerprint,
+                [last["sort_name"], last["code"], last["provider"], last["store_id"]],
+            )
+        return StationPage(
+            items=tuple(_station(row, stores) for row in rows),
+            next_cursor=next_cursor,
+            counts=counts,
+        )
+
+    def station(self, store: str, provider: str, code: str) -> StationRow | None:
+        """Return one station of a store, or ``None`` when its catalog lacks it.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        provider : str
+            The station's provider (``IMGW-PIB``, ``CHMI``).
+        code : str
+            The station's code, as text.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            row = connection.execute(
+                f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
+                " WHERE s.store_id = ? AND s.provider = ? AND s.code = ?",
+                (_store_id(stores, store), provider, code),
+            ).fetchone()
+        return None if row is None else _station(row, stores)
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.
@@ -2091,16 +2206,21 @@ def _encode_cursor(fingerprint: str, values: list[object]) -> str:
     return base64.urlsafe_b64encode(data.encode()).decode().rstrip("=")
 
 
+def _parse_cursor(cursor: str) -> Any:
+    """Return the JSON a cursor encodes; anything else is an invalid cursor."""
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise IndexQueryError(message("index.invalid_cursor")) from None
+
+
 def _decode_cursor(
     cursor: str | None, fingerprint: str, size: int
 ) -> list[object] | None:
     if cursor is None:
         return None
-    try:
-        padded = cursor + "=" * (-len(cursor) % 4)
-        data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
-    except (ValueError, UnicodeDecodeError, binascii.Error):
-        raise IndexQueryError(message("index.invalid_cursor")) from None
+    data = _parse_cursor(cursor)
     valid = (
         isinstance(data, list)
         and len(data) == size + 2
@@ -2114,6 +2234,145 @@ def _decode_cursor(
     if not valid:
         raise IndexQueryError(message("index.invalid_cursor"))
     return list(data[2:])
+
+
+def _station_where(query: StationQuery, stores: Mapping[int, str]) -> _Where:
+    """Attribute filters of a station query on ``s`` (stations); no box."""
+    where = _Where()
+    if query.store is not None:
+        where.add("s.store_id = ?", _store_id(stores, query.store))
+    if query.provider is not None:
+        where.add("s.provider = ?", query.provider)
+    if query.code is not None:
+        where.add("s.code = ?", query.code)
+    if query.kind is not None:
+        where.add("s.kind = ?", query.kind)
+    if query.active is not None:
+        where.add("s.active = ?", int(query.active))
+    if query.river_code is not None:
+        _river(where, query.river_code, query.river_scope)
+    return where
+
+
+def _river(where: _Where, code: str, scope: RiverScope) -> None:
+    """Stations of a river, or of the river with its tributaries (P19).
+
+    A tributary's code begins with the river's: a range ``code <= x < next``
+    over the index of hydrographic codes, where ``next`` follows every text
+    that begins with ``code``. A code with ``-`` between its parts (ČHMÚ
+    ``1-05-03-0110``) begins with whole parts only, so the text after the
+    river's code starts with ``-``; one without (IMGW ``21382``) with any
+    character.
+    """
+    river = code.strip()
+    if not river:
+        raise IndexQueryError(message("index.invalid_river_code"))
+    if scope == "exact":
+        where.add("s.hydrographic_code = ?", river)
+        return
+    following = river[:-1] + chr(ord(river[-1]) + 1)
+    where.add(
+        "s.hydrographic_code >= ? AND s.hydrographic_code < ?"
+        " AND (s.hydrographic_code = ? OR instr(s.hydrographic_code, '-') = 0"
+        " OR substr(s.hydrographic_code, ?, 1) = '-')",
+        river,
+        following,
+        river,
+        len(river) + 1,
+    )
+
+
+def _station_box(where: _Where, box: BBox) -> None:
+    """Located stations inside a WGS84 box, edges included.
+
+    The R*Tree keeps 32-bit bounds rounded outward, so it only picks the
+    candidates; the stored coordinates decide.
+    """
+    min_lon, min_lat, max_lon, max_lat = box
+    where.add(
+        "s.id IN (SELECT id FROM station_points WHERE max_lon >= ? AND min_lon <= ?"
+        " AND max_lat >= ? AND min_lat <= ?)"
+        " AND s.lon BETWEEN ? AND ? AND s.lat BETWEEN ? AND ?",
+        min_lon,
+        max_lon,
+        min_lat,
+        max_lat,
+        min_lon,
+        max_lon,
+        min_lat,
+        max_lat,
+    )
+
+
+def _count_stations(connection: sqlite3.Connection, where: _Where) -> int:
+    return int(
+        connection.execute(
+            f"SELECT count(*) FROM stations s WHERE {where.sql()}", where.params
+        ).fetchone()[0]
+    )
+
+
+def _station_fingerprint(query: StationQuery) -> str:
+    """Identity of a station query's rows: a cursor is valid only for the same one."""
+    identity = [
+        query.store,
+        query.provider,
+        query.code,
+        query.kind,
+        query.active,
+        query.river_code,
+        query.river_scope,
+        None if query.bbox is None else list(query.bbox),
+        query.location,
+    ]
+    data = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
+    return hashlib.blake2b(data, digest_size=8).hexdigest()
+
+
+def _decode_station_cursor(cursor: str | None, fingerprint: str) -> list[object] | None:
+    """Return the name, code, provider and store id after which a page goes on."""
+    if cursor is None:
+        return None
+    data = _parse_cursor(cursor)
+    valid = (
+        isinstance(data, list)
+        and len(data) == 6
+        and data[0] == _CURSOR_VERSION
+        and data[1] == fingerprint
+        and all(isinstance(value, str) for value in data[2:5])
+        and isinstance(data[5], int)
+    )
+    if not valid:
+        raise IndexQueryError(message("index.invalid_cursor"))
+    return list(data[2:])
+
+
+def _station(row: sqlite3.Row, stores: Mapping[int, str]) -> StationRow:
+    located = row["location"] == "point"
+    active = row["active"]
+    return StationRow(
+        store=stores[row["store_id"]],
+        provider=row["provider"],
+        code=row["code"],
+        kind=row["kind"],
+        meteo_kind=row["meteo_kind"],
+        name=row["name"],
+        river=row["river"],
+        hydrographic_code=row["hydrographic_code"],
+        river_order=row["river_order"],
+        location="point" if located else "none",
+        point=(row["lon"], row["lat"]) if located else None,
+        location_reason=row["location_reason"],
+        location_source=row["location_source"],
+        location_uncertainty_m=row["location_uncertainty_m"],
+        active=None if active is None else bool(active),
+        established_year=row["established_year"],
+        gauge_zero_m=row["gauge_zero_m"],
+        river_km=row["river_km"],
+        elevation_m=row["elevation_m"],
+        catalog=row["catalog"],
+        catalog_version=row["catalog_version"],
+    )
 
 
 def _segment_columns() -> str:

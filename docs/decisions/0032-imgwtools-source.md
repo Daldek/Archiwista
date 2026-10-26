@@ -171,10 +171,20 @@ side.
     version in it: decision 8) has no stations; a version IMGWTools refuses
     (`ProducerError`) leaves it none as well, with the scan notice `stations_unreadable`,
     and the next scan reads it again; a file the system cannot read makes the store
-    unavailable, as a listing does, and the rows stay. Rejected: reading the catalogs at
-    every scan (a parse of every station per scan on a share); keeping the rows of a
-    version the producer refuses (stations that are no current catalog's); a station by
-    code alone (the codes of two providers could meet).
+    unavailable, as a listing does, and the rows stay. The queries (`IndexQueries.stations`,
+    commit 2) keep the location groups apart (SPEC 4.3 point 3): a box (`station_points`,
+    then the stored coordinates, edges included) takes located stations only, and the
+    stations without a location are counted beside it after the attribute filters, never
+    narrowed by the box; asking for the group `none` lists them. A river with its
+    tributaries (P19) is the range `code <= x < next` over the index of hydrographic codes,
+    where `next` follows every text that begins with the code; a code with `-` between its
+    parts (ČHMÚ HLGP4) begins with whole parts only, so `1-05` takes `1-05-03-0110` and not
+    `1-050-01-0001`, while the IMGW `2138` takes `21382` and never `2139`. Rejected: reading
+    the catalogs at every scan (a parse of every station per scan on a share); keeping the
+    rows of a version the producer refuses (stations that are no current catalog's); a
+    station by code alone (the codes of two providers could meet); `LIKE` or `GLOB` for the
+    prefix (their wildcards are characters a code may hold, and a range uses the plain
+    index).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
