@@ -2,12 +2,16 @@
 
 For display only (SPEC 5.7): nothing here goes into a set or the store. The
 values come from the producer (``SeriesValuesAdapter.read_values``) and the
-gaps from the index, so a band marks exactly the producer's gaps and a unit
-without a value outside them stays a unit that is not known. A range of at
-most ``max_points`` units gives each unit's value; a longer one is cut into
-intervals of ``ceil(units / max_points)`` units from its first, each with the
-least, mean and greatest value it holds (``null`` for none: the line breaks,
-never interpolated). Units are calendar units (days, months), so a unit the
+gaps from the index: they are the runs of gaps the variable's label counts
+(``SeriesLabel.gap_runs``, the known units of its years y1 to y2 without a
+value, SPEC 4.8.4), so a band is a gap of the label, and a unit without a
+value outside them is no gap of it (not known, or outside y1 to y2). The
+range is by default the variables' known span, so the label's longest gap
+lies in it (ADR-045 erratum 1). A range of at most ``max_points`` units
+gives each unit's value; a longer one is cut into intervals of
+``ceil(units / max_points)`` units from its first, each with the least, mean
+and greatest value it holds (``null`` for none: the line breaks, never
+interpolated). Units are calendar units (days, months), so a unit the
 station's file lacks is a unit without a value too. An accumulated sum is a
 marker, never a value of its day; the extremes of the half-year
 characteristics, as the provider published them with their dates, are
@@ -28,7 +32,7 @@ from archiwista.api.models_stations import (
     StationChart,
 )
 from archiwista.index import CoverageVariable, StationCoverage
-from archiwista.index.series import GapRun, day_of, unit_of
+from archiwista.index.series import GapRun, Interval, day_of, gap_run, unit_of
 from archiwista.sources import (
     DateRange,
     Extreme,
@@ -139,21 +143,31 @@ def chart_values(
     return points, accumulated
 
 
-def chart_gaps(gaps: Iterable[DateRange], span: ChartRange) -> list[GapRun]:
-    """Return the producer's gaps of a variable within a range, cut at its ends."""
+def chart_gaps(runs: Iterable[Interval], span: ChartRange) -> list[GapRun]:
+    """Return the runs of gaps of a variable's label within a range, cut at its ends.
+
+    ``runs`` are ``SeriesLabel.gap_runs``, in the units of the range.
+    """
     found: list[GapRun] = []
-    for start, end in gaps:
-        low = max(unit_of(start, span.time_unit), span.first)
-        high = min(unit_of(end, span.time_unit), span.last)
+    for first, last in runs:
+        low, high = max(first, span.first), min(last, span.last)
         if low <= high:
-            found.append(
-                GapRun(
-                    start=day_of(low, span.time_unit),
-                    end=day_of(high + 1, span.time_unit) - timedelta(days=1),
-                    units=high - low + 1,
-                )
-            )
+            found.append(gap_run((low, high), span.time_unit))
     return found
+
+
+def known_span(variables: Iterable[CoverageVariable]) -> DateRange | None:
+    """Return the first and last known day of variables: a chart's default range.
+
+    Every unit their labels count lies in it, so their longest gaps do too
+    (ADR-045 erratum 1); a first or last value outside the known periods
+    widens it. ``None`` when no variable has a known period or a value.
+    """
+    days: list[date] = []
+    for item in variables:
+        days.extend(day for period in item.known for day in period)
+        days.extend(day for day in (item.first, item.last) if day is not None)
+    return (min(days), max(days)) if days else None
 
 
 def extreme_markers(
@@ -212,9 +226,11 @@ def station_chart(
     series : StationCoverage
         The station's series in the index: its current version and file.
     variables : Sequence[CoverageVariable]
-        One or two variables of the series, each with its gaps.
+        One or two variables of the series, each with its label (whose gap
+        runs are the bands) and known periods.
     start, end : date or None
-        The range; a bound left out is the series' first or last unit.
+        The range; a bound left out is the variables' known span's
+        (``known_span``), else the series' first or last unit.
     max_points : int
         The most points of a variable.
     characteristics : StationCoverage or None
@@ -228,22 +244,30 @@ def station_chart(
     NotFoundError, SourceUnavailableError, ProducerError
         As ``SeriesValuesAdapter.read_values``.
     """
-    version = Path(series.series_version)
-    values = list(
-        adapter.read_values(
-            root,
-            version,
-            station=series.code,
-            variables=[item.variable for item in variables],
-            start=start,
-            end=end,
+    known = known_span(variables)
+    low = known[0] if start is None and known is not None else start
+    high = known[1] if end is None and known is not None else end
+    values: list[SeriesValues] = []
+    # A bound asked beyond the other one's default leaves no unit to read.
+    if low is None or high is None or low <= high:
+        values = list(
+            adapter.read_values(
+                root,
+                Path(series.series_version),
+                station=series.code,
+                variables=[item.variable for item in variables],
+                start=low,
+                end=high,
+            )
         )
+    if values:
+        low = values[0].start if low is None else low
+        high = values[-1].start if high is None else high
+    span = (
+        chart_range(series.time_unit, low, high, max_points)
+        if low is not None and high is not None and low <= high
+        else None
     )
-    span = None
-    if values or (start is not None and end is not None):
-        low = start if start is not None else values[0].start
-        high = end if end is not None else values[-1].start
-        span = chart_range(series.time_unit, low, high, max_points)
     extremes = (
         {}
         if span is None
@@ -257,6 +281,7 @@ def station_chart(
             "dataset": series.dataset,
             "kind": series.kind,
             "time_unit": series.time_unit,
+            "year_type": series.year_type,
             "series": series.series,
             "series_version": series.series_version,
             "file": series.file,
@@ -292,7 +317,7 @@ def _chart_variable(
             GapSpan.model_validate(
                 {"from": gap.start, "to": gap.end, "units": gap.units}
             )
-            for gap in chart_gaps(variable.gaps, span)
+            for gap in chart_gaps(variable.label.gap_runs, span)
         ]
     return ChartVariable(
         key=variable.key,

@@ -402,14 +402,17 @@ follow, and last the licence with the formula IMGW requires and "Kopiuj atrybucj
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
 
 "Wykres" draws one variable of the station's series, or two with "Druga zmienna" (a
-second unit gets the right axis). It opens on the whole series: one longer than the
-plot has pixels is simplified to the least, mean and greatest value of each interval
-(a band under the mean line; the note says "wykres uproszczony: min./śr./maks. z N
-dni"). Drag over the plot to select days, turn the wheel over it, or focus it and
+second unit gets the right axis). It opens on the whole period the variable's label
+counts (its known days): one longer than the plot has pixels is simplified to the
+least, mean and greatest value of each interval (a band under the mean line; the
+note says "wykres uproszczony: min./śr./maks. z N dni"). Drag over the plot to
+select days, turn the wheel over it, or focus it and
 press `+` and `-` to zoom and the arrows to move: a range of no more days than the
 plot has pixels shows each day's value, and the range goes into the address (`from`,
-`to`); `Home` or "Cały okres" shows the whole series again. A gap breaks the line and
-is a grey band; a day without a value outside a gap is not known and has no band.
+`to`); `Home` or "Cały okres" shows the whole period again. A gap breaks the line and
+is a grey band: the bands are the gaps the label counts in the card's year type, so
+"luki 92%" shows its 92%; a day without a value outside them (not known, or outside
+the label's years) has no band.
 Dots are the extremes the provider published and a diamond an accumulated sum, each
 with its date in its tooltip; the pointer gives the values of its day.
 
@@ -457,7 +460,8 @@ variables of a station's series (`--variable`, once or twice; `--dataset` when m
 than one series has them): the range with its days, each unit's value up to
 `--max-points` units (2000 by default) or else the least, mean and greatest value
 of intervals ("uproszczony, min./śr./maks. z 14 dni"), each variable's points with a
-value, its gaps and its markers (an accumulated sum, an extreme IMGW published);
+value, the gaps its label counts in `--year-type` and its markers (an accumulated
+sum, an extreme IMGW published);
 `--json` gives the points. Without IMGWTools each refuses with the repair command
 `pip install "archiwista[imgw]"`.
 

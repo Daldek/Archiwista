@@ -10,14 +10,16 @@ command-line interface may change.
 ### Added
 
 - The chart of the station card, its default tab "Wykres": one or two variables of a
-  station's series ("Druga zmienna" on the right axis for another unit), the whole
-  series simplified to the least, mean and greatest value of intervals when it has
-  more days than the plot has pixels (with the note "wykres uproszczony: … z N
-  dni"), each day's value once a drag selection, the wheel or the keys `+`, `-` and
-  the arrows narrow the range (`from`, `to` in the address; `Home` or "Cały okres"
-  gives the whole series back). A gap breaks the line and is a grey band, never
-  interpolated; published extremes are dots and an accumulated sum a diamond, each
-  with its date. (ADR-045, plan I8.5)
+  station's series ("Druga zmienna" on the right axis for another unit), over the
+  whole period their labels count (the known days) simplified to the least, mean and
+  greatest value of intervals when it has more days than the plot has pixels (with
+  the note "wykres uproszczony: … z N dni"), each day's value once a drag selection,
+  the wheel or the keys `+`, `-` and the arrows narrow the range (`from`, `to` in the
+  address; `Home` or "Cały okres" gives the whole period back). A gap breaks the line
+  and is a grey band, never interpolated: the bands are the gaps the coverage label
+  counts in the card's year type, so "luki 92%" shows its band. Published extremes
+  are dots and an accumulated sum a diamond, each with its date. (ADR-045 and its
+  erratum 1, plan I8.5)
 
 - The station card: a click on a station's point on the map, a row of the Catalog's
   list (Enter) or a station's name on its Timeline (`K`) opens it over the view
@@ -36,12 +38,14 @@ command-line interface may change.
   one or two variables of a station's series as a chart, for display only. Up to
   `max_points` units (2,000 at most) each unit's value; a longer range gives the least,
   mean and greatest value of each interval of `interval` units, `null` without a value
-  (never interpolated). `gaps` are the producer's gaps cut at the range's ends and
+  (never interpolated). `gaps` are the gaps each variable's label counts in
+  `year_type` (as on the card; named in the answer) cut at the range's ends and
   `markers` the accumulated sums and the extremes IMGW published with their dates; the
   answer names the series version, the station's file with its SHA-256 and the IMGW
   formula. `dataset` chooses the series (by default the one with every variable),
-  `from` and `to` the range, `version` must be the current one (`409` otherwise).
-  (ADR-045, plan I8.4)
+  `from` and `to` the range (by default the variables' known span, so a label's
+  longest gap lies in it), `version` must be the current one (`409` otherwise).
+  (ADR-045 and its erratum 1, plan I8.4)
 
 - Plugins: the optional capability `SeriesValuesAdapter` (`archiwista.sources`) reads a
   station's values of a series version for a chart (`read_values`, one `SeriesValues` a

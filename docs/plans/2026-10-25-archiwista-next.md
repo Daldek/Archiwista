@@ -798,7 +798,9 @@ reaches the interface.
      `ceil(units / max_points)` units with min, avg and max of the values in each (`null`
      for an interval without a value, never interpolated), with the note's interval
      length; `gaps[]` from the gap list of `station_series` clipped to the range, so a gap
-     shorter than an interval still has its band; accumulated sums as markers; extremes
+     shorter than an interval still has its band (corrected by ADR-045 erratum 1: the runs
+     of gaps the variable's label counts in `year_type`, and by default the variables'
+     known span as the range); accumulated sums as markers; extremes
      from the characteristics dataset's current series of the station when the store has
      it (the values published by IMGW with their dates, SPEC 6.7), else none.
      `GET /stations/{code}/series` (`store`, `provider`, `dataset`, `variable` one or two,
@@ -842,7 +844,9 @@ reaches the interface.
      sums the range, the points and the gaps. *Acceptance:* (new)
      `tests/e2e/test_station_chart.py` (both engines): `149190310` H has two grey bands
      at 2023.12.02–12.31 and 2024.02.01–28 and its path two subpaths of one vertex
-     (corrected when built: H has a value on 2023.12.01 and 2024.02.29 only), no vertex
+     (corrected when built: H has a value on 2023.12.01 and 2024.02.29 only; and by
+     ADR-045 erratum 1: four bands, the label's gaps over its known span 2023.11.01–
+     2024.10.31), no vertex
      inside a band; a request rewritten to `max_points=30` shows the note, and a
      selection of one month shows 31 daily vertices (H of the ČHMÚ gauge of
      `complete_pl_cz`, a value every day) and writes `from` and `to`; extremes are

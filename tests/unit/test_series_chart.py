@@ -3,7 +3,8 @@
 Units are calendar units counted from the range's first; a longer range than
 ``max_points`` units is cut into intervals of ``ceil(units / max_points)``
 units with the least, mean and greatest value of each, ``null`` without one
-(never interpolated). The producer's gaps are cut at the range's ends, an
+(never interpolated). The runs of gaps of the variable's label are cut at the
+range's ends, the range is by default the variables' known span, an
 accumulated sum is a marker and no value, and the extremes of the half-year
 characteristics are markers at the day the provider published.
 """
@@ -12,8 +13,9 @@ from collections.abc import Iterator, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from archiwista.api.models_stations import StationChart
 from archiwista.index import CoverageVariable, StationCoverage
-from archiwista.index.series import GapRun, SeriesLabel
+from archiwista.index.series import GapRun, Interval, SeriesLabel
 from archiwista.services.series_chart import (
     chart_gaps,
     chart_range,
@@ -33,11 +35,23 @@ def _daily(values: Sequence[float | None], start: date = START) -> list[SeriesVa
     ]
 
 
-def _variable(gaps: tuple[tuple[date, date], ...] = ()) -> CoverageVariable:
-    label = SeriesLabel(state="gaps", year_type="hydrological", span=None)
+def _day(day: date) -> int:
+    """Return a day as the unit of a daily series (its ordinal)."""
+    return day.toordinal()
+
+
+def _variable(
+    runs: tuple[Interval, ...] = (),
+    known: tuple[tuple[date, date], ...] = (),
+    first: date | None = None,
+    last: date | None = None,
+) -> CoverageVariable:
+    label = SeriesLabel(
+        state="gaps", year_type="hydrological", span=None, gap_runs=runs
+    )
     return CoverageVariable(
-        key="Q", variable="Q", unit="m3/s", period=None, first=None, last=None,
-        accumulated=0, years=(), label=label, gaps=gaps,
+        key="Q", variable="Q", unit="m3/s", period=None, first=first, last=last,
+        accumulated=0, years=(), label=label, known=known,
     )  # fmt: skip
 
 
@@ -68,13 +82,11 @@ def test_an_interval_of_only_gaps_has_no_value_and_a_short_gap_its_band() -> Non
     """``null`` for an interval without a value; a one-day gap stays a gap."""
     values = _daily([1.0, 2.0, None, 4.0, None, None, None, None, None, 10.0])
     span = chart_range("day", START, START + timedelta(days=9), 4)
-    gaps = (
-        (START + timedelta(days=2), START + timedelta(days=2)),
-        (START + timedelta(days=4), START + timedelta(days=8)),
-    )
+    first = _day(START)
+    runs = ((first + 2, first + 2), (first + 4, first + 8))
 
     points, _ = chart_values(values, "Q", span)
-    bands = chart_gaps(gaps, span)
+    bands = chart_gaps(runs, span)
 
     assert span.interval == 3
     assert [(p["min"], p["mean"], p["max"]) for p in points] == [
@@ -163,13 +175,16 @@ def test_months_are_units_of_their_own_length() -> None:
 def test_gaps_are_cut_at_the_ends_of_the_range() -> None:
     """A gap across an end keeps its part in the range; one outside is gone."""
     span = chart_range("day", date(2024, 1, 10), date(2024, 1, 20), 2000)
-    gaps = (
-        (date(2024, 1, 1), date(2024, 1, 4)),
-        (date(2024, 1, 8), date(2024, 1, 11)),
-        (date(2024, 1, 19), date(2024, 2, 3)),
+    runs = tuple(
+        (_day(start), _day(end))
+        for start, end in (
+            (date(2024, 1, 1), date(2024, 1, 4)),
+            (date(2024, 1, 8), date(2024, 1, 11)),
+            (date(2024, 1, 19), date(2024, 2, 3)),
+        )
     )
 
-    assert chart_gaps(gaps, span) == [
+    assert chart_gaps(runs, span) == [
         GapRun(date(2024, 1, 10), date(2024, 1, 11), 2),
         GapRun(date(2024, 1, 19), date(2024, 1, 20), 2),
     ]
@@ -266,7 +281,7 @@ def test_a_chart_has_the_extremes_and_sums_of_its_range_by_day() -> None:
     )
     half = [_half_year(date(2023, 11, 1), "winter", 40.0, datetime(2024, 3, 2))]
     producer = _Producer(daily, half)
-    variable = _variable(gaps=((date(2024, 3, 4), date(2024, 3, 4)),))
+    variable = _variable(runs=((_day(date(2024, 3, 4)), _day(date(2024, 3, 4))),))
 
     chart = station_chart(
         producer,
@@ -294,3 +309,43 @@ def test_a_chart_has_the_extremes_and_sums_of_its_range_by_day() -> None:
     assert [(gap.first, gap.last, gap.units) for gap in found.gaps] == [
         (date(2024, 3, 4), date(2024, 3, 4), 1)
     ]
+
+
+def _chart_of(
+    producer: _Producer, variable: CoverageVariable, start: date | None
+) -> StationChart:
+    return station_chart(
+        producer,
+        Path("store"),
+        _series(variable, "pl.daily"),
+        [variable],
+        start=start,
+        end=None,
+        max_points=2000,
+        characteristics=None,
+        freshness={"stale": False, "stale_stores": []},
+    )
+
+
+def test_the_default_range_is_the_known_span_widened_to_a_value() -> None:
+    """Known days before the file are in it, a later value too; not a later start."""
+    known = ((date(2024, 2, 1), date(2024, 3, 5)),)
+    variable = _variable(known=known, first=date(2024, 3, 1), last=date(2024, 3, 10))
+    rows = _daily([5.0] * 10, start=date(2024, 3, 1))
+    late = _Producer(rows, [])
+
+    chart = _chart_of(_Producer(rows, []), variable, None)
+    empty = _chart_of(late, variable, date(2024, 4, 1))
+
+    assert (chart.first, chart.last, chart.units) == (
+        date(2024, 2, 1),
+        date(2024, 3, 10),
+        39,
+    )
+    assert [p["mean"] for p in chart.variables[0].points[28:30]] == [None, 5.0]
+    assert (empty.first, empty.units, empty.variables[0].points, late.read) == (
+        None,
+        0,
+        [],
+        {},
+    )

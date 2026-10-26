@@ -2092,12 +2092,24 @@ MESSAGES = {
         ),
     ),
     "stations_start_help": Text(
-        "first day of the range, e.g. 1950-11-01; by default the series' first",
-        "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy szeregu",
+        (
+            "first day of the range, e.g. 1950-11-01; by default the variables'"
+            " first known day"
+        ),
+        (
+            "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy znany dzień"
+            " zmiennych"
+        ),
     ),
     "stations_end_help": Text(
-        "last day of the range, e.g. 2025-10-31; by default the series' last",
-        "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni szeregu",
+        (
+            "last day of the range, e.g. 2025-10-31; by default the variables' last"
+            " known day"
+        ),
+        (
+            "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni znany dzień"
+            " zmiennych"
+        ),
     ),
     "stations_max_points_help": Text(
         "the most points of a variable, at most 2000 (the default)",
@@ -2284,8 +2296,8 @@ MESSAGES = {
         "  Licencja {license}: {attribution}",
     ),
     "station_chart_title": Text(
-        "{code}: series {dataset}, version {series}: {file}",
-        "{code}: szereg {dataset}, wersja {series}: {file}",
+        "{code}: series {dataset}, version {series}, {year_type} years: {file}",
+        "{code}: szereg {dataset}, wersja {series}, lata {year_type}: {file}",
     ),
     "station_chart_values": Text(
         "Range {start} to {end} ({units}): each unit's value",

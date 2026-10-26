@@ -8,19 +8,21 @@
  * address's `chart_dataset`, else its `dataset`, else the station's first
  * series that is not of half-year characteristics) for one variable or two
  * (`chart_variable`, `H` or `H,Q`; by default the address's „Kolor punktów”
- * `color`, else the series' first), with `max_points` the plot's width in
- * pixels (at most 2,000). Without `from` and `to` it shows the whole series:
- * one of more days than the plot has pixels comes as the least, mean and
- * greatest value of intervals, drawn as a band with the mean line and the
+ * `color`, else the series' first), in the address's `year_type` as the card,
+ * with `max_points` the plot's width in pixels (at most 2,000). Without `from`
+ * and `to` it shows the variables' known span, the whole period their labels
+ * count: one of more days than the plot has pixels comes as the least, mean
+ * and greatest value of intervals, drawn as a band with the mean line and the
  * note „wykres uproszczony: min./śr./maks. z N dni”; a range of at most as
  * many days as pixels comes as each day's value. A drag selection, the wheel
  * and the keys `+`, `-` and the arrows change `from` and `to` in the address;
  * `Home` and „Cały okres” remove them.
  *
  * A point without a value breaks the line (a new subpath, never a line across
- * it), and so does a gap of the producer between two points; each gap
- * (`gaps`) is a grey band over its days, also one shorter than an interval.
- * A unit without a value outside the gaps is not known: no band. Extremes
+ * it), and so does a gap between two points; each gap (`gaps`, the gaps the
+ * variable's label counts: ADR-045 erratum 1) is a grey band over its days,
+ * also one shorter than an interval. A unit without a value outside them is
+ * no gap of the label (not known, or outside its years y1–y2): no band. Extremes
  * the provider published are dots with their dates in the tooltip, an
  * accumulated sum a diamond (`markers`). A second variable of another unit
  * gets the right axis. A line below sums the range, the points and the gaps.
@@ -169,6 +171,7 @@ function SeriesChart({ station, series, chosen, params, names, actions }) {
   const maxPoints = Math.min(MAX_POINTS, plot);
   const from = params.from ?? null;
   const to = params.to ?? null;
+  const yearType = params.year_type ?? null;
   const query = {
     store: station.store,
     provider: station.provider,
@@ -176,11 +179,12 @@ function SeriesChart({ station, series, chosen, params, names, actions }) {
     variable: keys,
     from,
     to,
+    year_type: yearType,
     max_points: maxPoints,
   };
   const chart = useResource(
     (signal) => (maxPoints > 0 ? getStationSeries(station.code, query, { signal }) : Promise.resolve(null)),
-    [station.store, station.provider, station.code, chosen.dataset, keys.join(","), from ?? "", to ?? "", maxPoints],
+    [station.store, station.provider, station.code, chosen.dataset, keys.join(","), from ?? "", to ?? "", yearType ?? "", maxPoints],
   );
   // The whole series as the API gave it without a range: the bound of a zoom out.
   const whole = useRef(null);

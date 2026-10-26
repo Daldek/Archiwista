@@ -943,8 +943,10 @@
  * @property {string} [provider]
  * @property {string} [dataset] - Default: the one series with every variable.
  * @property {string[]} variable - One or two variables of the series.
- * @property {string} [from] - First day; default the series' first unit.
- * @property {string} [to] - Last day; default the series' last unit.
+ * @property {string} [from] - First day; default the variables' first known day.
+ * @property {string} [to] - Last day; default the variables' last known day.
+ * @property {string} [year_type] - `hydrological` or `calendar`: the labels whose
+ *   gaps the chart gives; default the remembered type, as on the card.
  * @property {number} [max_points] - The most points of a variable (≤ 2,000).
  */
 
@@ -968,8 +970,8 @@
  */
 
 /**
- * A variable of a chart: its points, the producer's gaps of the range and its
- * markers.
+ * A variable of a chart: its points, the gaps its label counts in the range
+ * and its markers.
  *
  * @typedef {object} ChartVariable
  * @property {string} key
@@ -991,6 +993,8 @@
  * @property {string} code
  * @property {string} dataset
  * @property {string} time_unit - `day` or `month`.
+ * @property {string} year_type - `hydrological` or `calendar`: of the labels whose
+ *   gaps it gives.
  * @property {string|null} series - Label of the series version.
  * @property {string} series_version
  * @property {string} file

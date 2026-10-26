@@ -667,14 +667,29 @@ class StationChartQuery(BaseModel):
     start: date | None = Field(
         default=None,
         alias="from",
-        description="First day of the range; by default the series' first unit.",
+        description=(
+            "First day of the range; by default the variables' first known day"
+            " (or an earlier value), so the range holds every gap their labels"
+            " count."
+        ),
         examples=["1950-11-01"],
     )
     end: date | None = Field(
         default=None,
         alias="to",
-        description="Last day of the range; by default the series' last unit.",
+        description=(
+            "Last day of the range; by default the variables' last known day (or"
+            " a later value)."
+        ),
         examples=["2025-10-31"],
+    )
+    year_type: YearType | None = Field(
+        default=None,
+        description=(
+            "Numbering of the years of the variables' labels, whose gaps are the"
+            " chart's: `hydrological` (1 XI to 31 X) or `calendar`; by default the"
+            " type remembered for the data's family, as on the card."
+        ),
     )
     max_points: int = Field(
         default=MAX_CHART_POINTS,
@@ -1568,7 +1583,7 @@ class ChartMarker(TypedDict):
 
 
 class ChartVariable(BaseModel):
-    """A variable of a chart: its points, the gaps of the range and its markers."""
+    """A variable of a chart: its points, its label's gaps and its markers."""
 
     key: str = Field(description="Key in the series index (`Q`).")
     variable: str
@@ -1578,9 +1593,11 @@ class ChartVariable(BaseModel):
     )
     gaps: list[GapSpan] = Field(
         description=(
-            "The producer's gaps within the range, cut at its ends: a band each,"
-            " also a gap shorter than an interval. A unit without a value outside"
-            " them is not known, not a gap."
+            "The gaps its label counts (the known units of its years y1–y2"
+            " without a value, SPEC 4.8.4) within the range, cut at its ends: a"
+            " band each, also a gap shorter than an interval. A unit without a"
+            " value outside them is no gap of the label: not known, or outside"
+            " y1–y2."
         )
     )
     markers: list[ChartMarker] = Field(
@@ -1599,6 +1616,7 @@ class StationChart(IndexAnswer):
             "dataset": "pl.imgw.hydro_daily",
             "kind": "hydro",
             "time_unit": "day",
+            "year_type": "hydrological",
             "series": "2026-08-31",
             "series_version": f"{_SERIES_DIR}/series.json",
             "file": f"{_SERIES_DIR}/stations/149190310.parquet",
@@ -1640,6 +1658,9 @@ class StationChart(IndexAnswer):
     dataset: str = Field(description="Dataset key of the series.")
     kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
     time_unit: TimeUnit = Field(description="Unit of the series: `day` or `month`.")
+    year_type: YearType = Field(
+        description="Numbering of the years of the labels whose gaps it gives."
+    )
     series: str | None = Field(description="Label of the series version.")
     series_version: str = Field(
         description="The version's `series.json`, relative to the store."

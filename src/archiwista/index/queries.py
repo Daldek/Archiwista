@@ -3154,7 +3154,7 @@ def _station_coverage(
                 accumulated=coverage.accumulated,
                 years=_years_in(rows_of_years, span),
                 label=label,
-                gaps=coverage.gaps,
+                known=known,
             )
         )
     if first["kind"] == "hydro":

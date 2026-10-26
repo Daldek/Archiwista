@@ -477,6 +477,7 @@ def _chart_text(chart: StationChart) -> str:
             code=chart.code,
             dataset=chart.dataset,
             series=_value(chart.series),
+            year_type=label("series.year_type", chart.year_type),
             file=chart.file,
         )
     ]

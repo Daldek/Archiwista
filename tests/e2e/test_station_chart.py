@@ -2,15 +2,18 @@
 
 The card draws ``GET /stations/{code}/series`` as SVG with ``max_points`` the
 plot's width. In ``complete`` H of Raba Górna (``149190310``) has values on
-2023.12.01 and 2024.02.29 only, between the producer's gaps 2023.12.02–12.31
-and 2024.02.01–28 (January has no value and no gap: it is not known), so its
-line is two subpaths of one vertex each beside two grey bands, never a line
-across them. A request rewritten to ``max_points=30`` gives intervals of 4
-days and the note of a simplified chart. In ``complete_pl_cz`` the ČHMÚ gauge
-Špindlerův Mlýn has 731 days of H, more than the plot's pixels: simplified
-until a drag selection narrows the range to daily values, writing ``from``
-and ``to``; a selection of one month gives its 31 daily vertices. The keys
-zoom, move and reset the range.
+2023.12.01 and 2024.02.29 only; its label counts four gaps in the
+hydrological year 2024 (November before the first value, the producer's
+gaps 2023.12.02–12.31 and 2024.02.01–28, and March to October after the last
+value; January lies between two values in no gap), and the chart shows the
+year, its known span, with those four grey bands (ADR-045 erratum 1): its
+line is two subpaths of one vertex each, never a line across a band. A
+request rewritten to ``max_points=30`` gives intervals of 13 days and the
+note of a simplified chart. In ``complete_pl_cz`` the ČHMÚ gauge Špindlerův
+Mlýn has 731 days of H, more than the plot's pixels: simplified until a drag
+selection narrows the range to daily values, writing ``from`` and ``to``; a
+selection of one month gives its 31 daily vertices. The keys zoom, move and
+reset the range.
 """
 
 import re
@@ -112,7 +115,7 @@ def drag(page: Page, frame: Frame, first: date, last: date) -> None:
 def test_the_gaps_are_grey_bands_the_line_never_crosses(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:
-    """H of Raba Górna: two bands, two one-vertex subpaths, no vertex in a band."""
+    """H of Raba Górna: four bands, two one-vertex subpaths, no vertex in a band."""
     # Arrange
     served = serve(station_settings(imgw_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -142,7 +145,12 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
         "aria-selected", "true"
     )
     assert shown == [(gap["from"], gap["to"]) for gap in variable["gaps"]]
-    assert shown == [("2023-12-02", "2023-12-31"), ("2024-02-01", "2024-02-28")]
+    assert shown == [
+        ("2023-11-01", "2023-11-30"),
+        ("2023-12-02", "2023-12-31"),
+        ("2024-02-01", "2024-02-28"),
+        ("2024-03-01", "2024-10-31"),
+    ]
     assert [len(run) for run in runs] == [1, 1]
     vertices = [x for run in runs for x in run]
     assert [frame.day_at(x).isoformat() for x in vertices] == valued
@@ -151,16 +159,50 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
         assert all(not start <= x <= start + width for start, width in spans)
     expect(card.locator(".sch-note")).to_have_text("wartości dobowe")
     expect(card.locator(".sch-summary")).to_have_text(
-        "2023.12.01–2024.02.29 (91 dni) · H: 2 z 91 punktów z wartością,"
-        " 2 luki (58 dni)"
+        "2023.11.01–2024.10.31 (366 dni) · H: 2 z 366 punktów z wartością,"
+        " 4 luki (333 dni)"
     )
+    engine_tab.assert_clean()
+
+
+def test_the_bands_are_the_gaps_of_the_cards_label_in_its_year_type(
+    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+) -> None:
+    """T of Špindlerův Mlýn: "luki 92%" has its band; calendar years have two."""
+    # Arrange
+    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    page = open_session(engine_tab, served)
+    card = page.get_by_role("dialog", name="Špindlerův Mlýn")
+    key = page.locator(".sc-key", has_text="T")
+    label = card.locator(".sc-var").filter(has=key).locator(".sc-label")
+    bands = card.locator(".sch-gap[data-key=T]")
+
+    # Act
+    page.goto(card_address(served, SPINDLER, chart_variable="T"))
+    expect(label).to_contain_text("luki 92%")
+    expect(bands).to_have_count(1)
+    hydrological = [
+        (b.get_attribute("data-from"), b.get_attribute("data-to")) for b in bands.all()
+    ]
+    page.goto(card_address(served, SPINDLER, chart_variable="T", year_type="calendar"))
+    expect(label).to_contain_text("częściowy")
+    expect(bands).to_have_count(2)
+    calendar = [
+        (b.get_attribute("data-from"), b.get_attribute("data-to")) for b in bands.all()
+    ]
+
+    # Assert
+    assert hydrological == [("2023-12-01", "2024-10-31")]
+    assert calendar == [("2023-01-01", "2023-09-30"), ("2023-12-01", "2023-12-31")]
+    expect(card.locator(".sch-plot")).to_have_attribute("data-from", "2023-01-01")
+    expect(card.locator(".sch-plot")).to_have_attribute("data-to", "2024-12-31")
     engine_tab.assert_clean()
 
 
 def test_a_request_rewritten_to_30_points_shows_the_note_of_a_simplified_chart(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:
-    """``max_points=30`` over 91 days: intervals of 4 days, a band and the note."""
+    """``max_points=30`` over 366 days: intervals of 13 days, a band and the note."""
     # Arrange
     served = serve(station_settings(imgw_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -179,7 +221,7 @@ def test_a_request_rewritten_to_30_points_shows_the_note_of_a_simplified_chart(
     page.goto(card_address(served, RABA))
     card = page.get_by_role("dialog", name="Raba Górna")
     expect(card.locator(".sch-note")).to_have_text(
-        "wykres uproszczony: min./śr./maks. z 4 dni"
+        "wykres uproszczony: min./śr./maks. z 13 dni"
         " (cały okres; po przybliżeniu wartości dobowe)"
     )
     runs = subpaths(card.locator(".sch-line[data-key=H]"))
@@ -189,9 +231,9 @@ def test_a_request_rewritten_to_30_points_shows_the_note_of_a_simplified_chart(
     assert asked[-1] == int(width)
     assert [len(run) for run in runs] == [1, 1]
     expect(card.locator(".sch-band")).to_have_count(1)
-    expect(card.locator(".sch-gap[data-key=H]")).to_have_count(2)
+    expect(card.locator(".sch-gap[data-key=H]")).to_have_count(4)
     expect(card.locator(".sch-summary")).to_contain_text(
-        "H: 2 z 23 punktów z wartością"
+        "H: 2 z 29 punktów z wartością"
     )
     engine_tab.assert_clean()
 

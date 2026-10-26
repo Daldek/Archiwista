@@ -290,6 +290,10 @@ class SeriesLabel:
     gap_count, long_gaps : int
         The runs of gaps in y1 to y2, and those longer than
         ``LONG_GAP_DAYS`` days.
+    gap_runs : tuple[tuple[int, int], ...]
+        Those runs in order, each its first and last unit: a chart draws
+        them as its bands (``gap_run`` gives their days), so a band is a gap
+        the label counts (ADR-045 erratum 1).
     complete_years : int
         Full years of y1 to y2: a value in every unit.
     unknown_years : tuple[tuple[int, int], ...]
@@ -311,6 +315,7 @@ class SeriesLabel:
     longest_gap: GapRun | None = None
     gap_count: int = 0
     long_gaps: int = 0
+    gap_runs: tuple[Interval, ...] = ()
     complete_years: int = 0
     unknown_years: tuple[YearRange, ...] = ()
     only: tuple[str, ...] = ()
@@ -461,9 +466,10 @@ def series_label(
         with_value=with_value,
         percent=min(99, -(-100 * gaps // units)) if gaps else 0,
         below_one=0 < 100 * gaps < units,
-        longest_gap=None if longest is None else _gap_run(longest, time_unit),
+        longest_gap=None if longest is None else gap_run(longest, time_unit),
         gap_count=len(runs),
         long_gaps=sum(1 for run in runs if _days(run, time_unit) > LONG_GAP_DAYS),
+        gap_runs=tuple(runs),
         complete_years=complete_years,
         unknown_years=unknown,
     )
@@ -490,7 +496,7 @@ def _gap_intervals(
     )
 
 
-def _gap_run(run: Interval, time_unit: TimeUnit) -> GapRun:
+def gap_run(run: Interval, time_unit: TimeUnit) -> GapRun:
     """Return a run of units as its first and last day and its units."""
     start, end = run
     return GapRun(

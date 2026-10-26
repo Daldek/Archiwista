@@ -264,9 +264,11 @@ def station_chart(
 
     The series is the station's in ``query.dataset``, or else the one whose
     series has every variable; its current version in the index is read
-    through the producer, its gaps and the version come from the index, and
-    the extremes from the station's series of the dataset's half-year
-    characteristics when the index holds one.
+    through the producer, the version and each variable's label, in the year
+    type of ``query.year_type``, come from the index: the label's runs of
+    gaps are the bands and its known span the default range (ADR-045
+    erratum 1). The extremes come from the station's series of the dataset's
+    half-year characteristics when the index holds one.
 
     Raises
     ------
@@ -305,6 +307,7 @@ def station_chart(
         row.provider,
         row.code,
         dataset=query.dataset,
+        year_type=query.year_type,
         year_types=settings.year_types,
     )
     series, variables = _chart_series(row, found, query)
@@ -697,14 +700,15 @@ def get_station_series(
 ) -> StationChart:
     """Return one or two variables of a station's series as a chart (display only).
 
-    A range (`from`, `to`; by default the whole series) of at most
+    A range (`from`, `to`; by default the variables' known span) of at most
     `max_points` units gives each unit's value; a longer one gives the least,
     mean and greatest value of each interval of `interval` units (`null`
-    without a value: never interpolated). `gaps` are the producer's gaps cut
-    at the range's ends; accumulated sums and the extremes the provider
-    published in its half-year characteristics are `markers`. The values are
-    read from the series file through the producer; `version`, when given,
-    must be the current one in the index (`409` otherwise).
+    without a value: never interpolated). `gaps` are the gaps of each
+    variable's label (as on the card in the same `year_type`) cut at the
+    range's ends; accumulated sums and the extremes the provider published in
+    its half-year characteristics are `markers`. The values are read from the
+    series file through the producer; `version`, when given, must be the
+    current one in the index (`409` otherwise).
     """
     return station_chart(queries, settings.get(), registry, code, query)
 

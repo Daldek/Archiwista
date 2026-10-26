@@ -402,12 +402,15 @@ their rows. Read a long list page by page; the years of a page come from the
 index in one read. `GET /stations/{code}/series` (`archiwista stations series`) is
 the chart of one or two variables (`variable`, once or twice) of a station's
 current series, for display only: `dataset` names the series (by default the one
-with every variable), `from` and `to` the range (by default the whole series) and
-`max_points` (≤ 2,000) the most points a variable gets: up to that many units each
-point is a unit's value, beyond it the least, mean and greatest value of `interval`
-units (`null` without a value, never interpolated). `gaps` are the producer's gaps
-cut at the range's ends (a unit without a value outside them is not known),
-`markers` the accumulated sums and the extremes IMGW published with their dates.
+with every variable), `from` and `to` the range (by default the variables' known
+span, every day their labels count) and `max_points` (≤ 2,000) the most points a
+variable gets: up to that many units each point is a unit's value, beyond it the
+least, mean and greatest value of `interval` units (`null` without a value, never
+interpolated). `gaps` are the gaps each variable's label counts in `year_type`
+(the card's, by default the remembered one; named in the answer) cut at the
+range's ends: over the default range their units are the label's known units
+without a value and its longest gap is one of them. `markers` are the accumulated
+sums and the extremes IMGW published with their dates.
 `version` must be the current one in the index (`409` otherwise; read the card
 again); half-year characteristics are not drawn as a line (`400`, reason
 `half_year_chart`).

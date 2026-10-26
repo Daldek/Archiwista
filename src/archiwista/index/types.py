@@ -1095,8 +1095,9 @@ class CoverageVariable:
     are its first and last date with a value and ``accumulated`` its
     accumulated sums. ``years`` are its years of the range in the label's
     year type (a year the index knows nothing of is left out) and ``label``
-    its label (SPEC 4.8.4); ``gaps`` are the producer's gaps of the whole
-    series, each the dates of its first and last unit (IMGW-8).
+    its label (SPEC 4.8.4); ``known`` are the periods whose units the label
+    counts as known (the station's own, else the version's: A-ADR-021
+    erratum 3), each the dates of its first and last day.
     """
 
     key: str
@@ -1108,7 +1109,7 @@ class CoverageVariable:
     accumulated: int
     years: tuple[SeriesYear, ...]
     label: SeriesLabel
-    gaps: tuple[DateRange, ...] = ()
+    known: tuple[DateRange, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -689,12 +689,24 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `chartSummary`; the parameters `from`, `to`, `chart_dataset`, `chart_variable`), the tab
      "Wykres" first and default in `views/station.js` (`CARD_PARAMS` with the chart's), its
      labels and styles, `api.js` `getStationSeries`, the chart types. ADR-045 decision 11 (the
-     bands are the producer's gaps while a label also counts known units after the last value:
-     left to the author). Tests: new `tests/e2e/test_station_chart.py` (4 tests in both engines,
-     8 passed); `test_station_card.py`, `test_stations_catalog.py` and
-     `test_stations_timeline.py` (30) passed beside it. Screenshot
-     `docs/reports/v0.5-screenshots/05-wykres-stacji.webp`. Next: I8.6 (`GET /stations/compare`,
-     `views/station-compare.js`, "Porównaj z…").
+     bands were the producer's gaps while a label also counts known units after the last value:
+     left to the author, then decided by ADR-045 erratum 1). Tests: new
+     `tests/e2e/test_station_chart.py` (4 tests in both engines, 8 passed);
+     `test_station_card.py`, `test_stations_catalog.py` and `test_stations_timeline.py` (30)
+     passed beside it. Screenshot `docs/reports/v0.5-screenshots/05-wykres-stacji.webp`.
+     *ADR-045 erratum 1 as built (the reduced gate; delegated approval, consistency first).*
+     A chart's bands are the runs of gaps its variable's label counts (`SeriesLabel.gap_runs`,
+     `chart_gaps` over them), its default range the variables' known span
+     (`CoverageVariable.known` in place of the producer's gaps, `known_span`), and `GET
+     /stations/{code}/series` takes and answers `year_type` (the card's chart asks with the
+     address's; `stations series --year-type`, the year type in its title): "luki 92%" of T of
+     `0-203-1-900001` has its band and the longest gap of H of `149190310` lies in the range.
+     Tests: `tests/integration/test_station_series_api.py` (new regression over
+     `complete_pl_cz`, both stations in both year types), `tests/unit/test_series_chart.py`
+     (the default range), `tests/e2e/test_station_chart.py` (5 tests in both engines, 10
+     passed: the card's "luki 92%" with its band, the four bands of `149190310`);
+     `test_station_card.py` (8) and the station API, CLI, Timeline, year-type and label tests
+     passed. Next: I8.6 (`GET /stations/compare`, `views/station-compare.js`, "Porównaj z…").
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,

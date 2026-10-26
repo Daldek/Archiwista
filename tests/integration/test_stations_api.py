@@ -467,7 +467,7 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
     required = {item["name"] for item in chart["parameters"] if item["required"]}
     assert ({item["name"] for item in chart["parameters"]}, required) == (
         {"code", "store", "provider", "dataset", "variable", "from", "to",
-         "max_points", "version"},
+         "year_type", "max_points", "version"},
         {"code", "variable"},
     )  # fmt: skip
     assert {"404", "409"} <= set(chart["responses"])

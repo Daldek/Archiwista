@@ -604,7 +604,7 @@ export function getStation(code, lookup, { signal } = {}) {
 /**
  * One or two variables of a station's series as a chart (`get_station_series`):
  * each unit's value up to `max_points` units, else the least, mean and greatest
- * value of each interval, with the producer's gaps and the markers.
+ * value of each interval, with the gaps of each variable's label and the markers.
  *
  * @param {string} code - The station's code as its provider gives it.
  * @param {StationChartQuery} query - `store` and `provider` name the station.

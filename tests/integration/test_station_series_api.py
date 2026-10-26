@@ -4,10 +4,12 @@
 station's current series through the producer over the index of a scanned
 copy of ``complete`` (``imgwtools.testing``): each unit's value up to
 ``max_points`` units, else the least, mean and greatest value of intervals,
-the producer's gaps cut at the range's ends and the accumulated sums as
-markers. ``archiwista stations series`` prints the same. Building the chart of
-27,393 days takes less than the 500 ms of SPEC 4.5 (``perf``; the read of a
-real 75-year file is measured on the author's store).
+the gaps each variable's label counts cut at the range's ends (by default the
+variables' known span, ADR-045 erratum 1; ``complete_pl_cz`` for the ČHMÚ
+gauge) and the accumulated sums as markers. ``archiwista stations series``
+prints the same. Building the chart of 27,393 days takes less than the 500 ms
+of SPEC 4.5 (``perf``; the read of a real 75-year file is measured on the
+author's store).
 """
 
 import json
@@ -47,6 +49,7 @@ STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
 PRECIPITATION = "pl.imgw.meteo_precip_daily"
 RABA = "149190310"
+SPINDLER = "0-203-1-900001"
 
 type Stores = Callable[[str], Path]
 type Params = dict[str, str | list[str]]
@@ -72,14 +75,10 @@ class Served:
         return response.json()
 
 
-@pytest.fixture(scope="module")
-def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[Served]:
-    """Serve the index of a copy of ``complete`` after a full scan."""
-    base = tmp_path_factory.mktemp("station-series")
+def _serve(stores: Stores, base: Path, variant: str) -> Iterator[Served]:
+    """Serve the index of a copy of a fixture store after a full scan."""
     root = base / "store"
-    shutil.copytree(imgw_store("complete"), root)
+    shutil.copytree(stores(variant), root)
     paths = local_paths(base)
     config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
     settings = AppSettings(stores=(config,))
@@ -91,6 +90,23 @@ def served(
         scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths, root)
+
+
+@pytest.fixture(scope="module")
+def served(
+    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Served]:
+    """Serve the index of a copy of ``complete`` after a full scan."""
+    yield from _serve(imgw_store, tmp_path_factory.mktemp("station-series"), "complete")
+
+
+@pytest.fixture(scope="module")
+def served_cz(
+    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Served]:
+    """Serve the index of a copy of ``complete_pl_cz`` (IMGW and ČHMÚ stations)."""
+    base = tmp_path_factory.mktemp("station-series-cz")
+    yield from _serve(imgw_store, base, "complete_pl_cz")
 
 
 def _series(served: Served, code: str, variables: Sequence[str]) -> list[Any]:
@@ -105,8 +121,25 @@ def _days(start: date, end: date) -> list[date]:
     return [start + timedelta(days=n) for n in range((end - start).days + 1)]
 
 
-def test_the_daily_values_are_the_producers_with_the_two_gaps(served: Served) -> None:
-    """H of the Raba gauge: a point a day, ``null`` without a value, two bands."""
+def _gap(start: str, end: str, units: int) -> dict[str, Any]:
+    return {"from": start, "to": end, "units": units}
+
+
+# The four runs of gaps of the label of H of the Raba gauge in hydrological
+# years: November before the first value, the producer's two gaps and March to
+# October after the last value (January lies between two values and in no gap).
+RABA_GAPS = [
+    _gap("2023-11-01", "2023-11-30", 30),
+    _gap("2023-12-02", "2023-12-31", 30),
+    _gap("2024-02-01", "2024-02-28", 28),
+    _gap("2024-03-01", "2024-10-31", 245),
+]
+
+
+def test_the_daily_values_are_the_producers_and_the_gaps_the_labels(
+    served: Served,
+) -> None:
+    """H of the Raba gauge: a point a known day, ``null`` without a value, 4 bands."""
     # Arrange
     records = _series(served, RABA, ["H"])
     card = served.json(f"/stations/{RABA}", {"dataset": DAILY})
@@ -119,13 +152,14 @@ def test_the_daily_values_are_the_producers_with_the_two_gaps(served: Served) ->
 
     # Assert
     assert (chart["from"], chart["to"], chart["units"], chart["interval"]) == (
-        "2023-12-01",
-        "2024-02-29",
-        91,
+        "2023-11-01",
+        "2024-10-31",
+        366,
         1,
     )
-    assert (chart["dataset"], chart["file"], chart["sha256"]) == (
+    assert (chart["dataset"], chart["year_type"], chart["file"], chart["sha256"]) == (
         DAILY,
+        "hydrological",
         series["file"],
         series["sha256"],
     )
@@ -136,18 +170,22 @@ def test_the_daily_values_are_the_producers_with_the_two_gaps(served: Served) ->
     (variable,) = chart["variables"]
     value = {record.date: record.measurements["H"].value for record in records}
     assert variable["points"] == [
-        {"t": day.isoformat(), "min": value[day], "mean": value[day], "max": value[day]}
-        for day in _days(date(2023, 12, 1), date(2024, 2, 29))
-    ]
-    assert variable["gaps"] == [
         {
-            "from": start.isoformat(),
-            "to": end.isoformat(),
-            "units": (end - start).days + 1,
+            "t": day.isoformat(),
+            "min": value.get(day),
+            "mean": value.get(day),
+            "max": value.get(day),
         }
-        for start, end in produced
+        for day in _days(date(2023, 11, 1), date(2024, 10, 31))
     ]
-    assert [gap["units"] for gap in variable["gaps"]] == [30, 28]
+    assert variable["gaps"] == RABA_GAPS
+    for start, end in produced:
+        assert (
+            _gap(start.isoformat(), end.isoformat(), (end - start).days + 1)
+            in (variable["gaps"])
+        )
+    label = series["coverage"]["H"]
+    assert (label["gap_count"], label["units"] - label["with_value"]) == (4, 333)
     assert [
         point["t"] for point in variable["points"] if point["mean"] is not None
     ] == [
@@ -160,7 +198,7 @@ def test_the_daily_values_are_the_producers_with_the_two_gaps(served: Served) ->
 def test_more_units_than_points_give_the_least_mean_and_greatest_of_each_interval(
     served: Served,
 ) -> None:
-    """``max_points=30`` over 91 days: intervals of 4 days from the first."""
+    """``max_points=30`` over 366 days: intervals of 13 days from the first."""
     # Arrange
     records = _series(served, RABA, ["H", "Q"])
 
@@ -171,17 +209,17 @@ def test_more_units_than_points_give_the_least_mean_and_greatest_of_each_interva
     )
 
     # Assert
-    assert (chart["units"], chart["interval"]) == (91, 4)
-    first = date(2023, 12, 1)
+    assert (chart["units"], chart["interval"]) == (366, 13)
+    first = date(2023, 11, 1)
     for variable in chart["variables"]:
         name = variable["key"]
         expected = []
-        for index in range(23):
-            start = first + timedelta(days=4 * index)
+        for index in range(29):
+            start = first + timedelta(days=13 * index)
             values = [
                 record.measurements[name].value
                 for record in records
-                if start <= record.date < start + timedelta(days=4)
+                if start <= record.date < start + timedelta(days=13)
                 and record.measurements[name].value is not None
             ]
             expected.append(
@@ -194,13 +232,13 @@ def test_more_units_than_points_give_the_least_mean_and_greatest_of_each_interva
             )
         assert variable["points"] == expected, name
     assert [variable["key"] for variable in chart["variables"]] == ["H", "Q"]
-    assert [len(variable["gaps"]) for variable in chart["variables"]] == [2, 0]
+    assert [len(variable["gaps"]) for variable in chart["variables"]] == [4, 2]
 
 
 def test_a_range_cuts_the_gaps_and_its_units_without_a_row_have_no_value(
     served: Served,
 ) -> None:
-    """Days before the station's file are units without a value, not a gap."""
+    """Known days before the station's file are a gap of the label, cut at ``from``."""
     # Act
     chart = served.json(
         f"/stations/{RABA}/series",
@@ -219,7 +257,87 @@ def test_a_range_cuts_the_gaps_and_its_units_without_a_row_have_no_value(
         False,
         False,
     ]
-    assert variable["gaps"] == [{"from": "2023-12-02", "to": "2023-12-05", "units": 4}]
+    assert variable["gaps"] == [
+        _gap("2023-11-28", "2023-11-30", 3),
+        _gap("2023-12-02", "2023-12-05", 4),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("code", "key", "year_type", "state", "span", "bands"),
+    [
+        pytest.param(
+            SPINDLER,
+            "T",
+            "hydrological",
+            "gaps",
+            ("2023-01-01", "2024-12-31"),
+            [_gap("2023-12-01", "2024-10-31", 336)],
+            id="spindler-T-luki-92",
+        ),
+        pytest.param(
+            SPINDLER,
+            "T",
+            "calendar",
+            "partial",
+            ("2023-01-01", "2024-12-31"),
+            [
+                _gap("2023-01-01", "2023-09-30", 273),
+                _gap("2023-12-01", "2023-12-31", 31),
+            ],
+            id="spindler-T-calendar",
+        ),
+        pytest.param(
+            RABA,
+            "H",
+            "hydrological",
+            "gaps",
+            ("2023-11-01", "2024-10-31"),
+            RABA_GAPS,
+            id="raba-H-after-the-last-value",
+        ),
+        pytest.param(
+            RABA,
+            "H",
+            "calendar",
+            "unknown",
+            ("2023-11-01", "2024-10-31"),
+            [],
+            id="raba-H-no-known-calendar-year",
+        ),
+    ],
+)
+def test_the_bands_are_the_gaps_the_label_counts(
+    served_cz: Served,
+    code: str,
+    key: str,
+    year_type: str,
+    state: str,
+    span: tuple[str, str],
+    bands: list[dict[str, Any]],
+) -> None:
+    """The chart's gaps are its label's, the longest one in the default range."""
+    # Arrange
+    card = served_cz.json(f"/stations/{code}", {"year_type": year_type})
+    (series,) = card["station"]["series"]
+    label = series["coverage"][key]
+
+    # Act
+    chart = served_cz.json(
+        f"/stations/{code}/series", {"variable": key, "year_type": year_type}
+    )
+
+    # Assert
+    (variable,) = chart["variables"]
+    assert (label["state"], chart["year_type"]) == (state, year_type)
+    assert (chart["from"], chart["to"]) == span
+    assert variable["gaps"] == bands
+    assert len(bands) == label["gap_count"]
+    assert sum(gap["units"] for gap in bands) == label["units"] - label["with_value"]
+    longest = label["longest_gap"]
+    if longest is not None:
+        assert longest in bands
+        assert span[0] <= longest["from"] <= longest["to"] <= span[1]
 
 
 def test_an_accumulated_sum_is_a_marker_and_no_value_of_its_day(
@@ -309,6 +427,7 @@ def test_the_current_version_may_be_named(served: Served) -> None:
         ["--variable=H"],
         ["--variable=H", "--variable=Q", "--max-points=30", f"--dataset={DAILY}"],
         ["--variable=T", "--from=2024-02-01", "--to=2024-02-29"],
+        ["--variable=H", "--year-type=calendar"],
     ],
 )
 def test_the_route_and_the_command_line_give_the_same_chart(
@@ -350,7 +469,7 @@ def test_the_command_line_refuses_as_the_route_does(
 def test_the_command_line_writes_the_chart_for_a_person(
     served: Served, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The series, the range and each variable's points, gaps and markers."""
+    """The series, its year type, the range and each variable's points and gaps."""
     # Act
     capsys.readouterr()
     status = main(
@@ -361,15 +480,18 @@ def test_the_command_line_writes_the_chart_for_a_person(
 
     # Assert
     assert status == 0
+    assert ", lata hydrologiczne: " in lines[0]
     assert lines[1] == (
-        "Zakres 2023-12-01 – 2024-02-29 (91 dni): uproszczony, min./śr./maks. z 4 dni"
+        "Zakres 2023-11-01 – 2024-10-31 (366 dni): uproszczony, min./śr./maks. z 13 dni"
     )
-    assert lines[2] == "  H (cm): 2 z 23 punktów z wartością, luki: 2, znaczniki: 0"
-    assert lines[3:5] == [
+    assert lines[2] == "  H (cm): 2 z 29 punktów z wartością, luki: 4, znaczniki: 0"
+    assert lines[3:7] == [
+        "    luka 2023-11-01 – 2023-11-30 (30 dni)",
         "    luka 2023-12-02 – 2023-12-31 (30 dni)",
         "    luka 2024-02-01 – 2024-02-28 (28 dni)",
+        "    luka 2024-03-01 – 2024-10-31 (245 dni)",
     ]
-    assert lines[5].startswith("  Licencja IMGW-PIB: Źródłem pochodzenia danych")
+    assert lines[7].startswith("  Licencja IMGW-PIB: Źródłem pochodzenia danych")
 
 
 # Performance ------------------------------------------------------------------
@@ -408,15 +530,16 @@ def test_a_chart_of_27393_days_within_500_ms() -> None:
         )
         for n in range(PERF_DAYS)
     ]
-    gaps = tuple(
-        (first + timedelta(days=n), first + timedelta(days=n))
-        for n in range(0, PERF_DAYS, 97)
+    runs = tuple(
+        (first.toordinal() + n, first.toordinal() + n) for n in range(0, PERF_DAYS, 97)
     )
-    label = SeriesLabel(state="gaps", year_type="hydrological", span=None)
+    label = SeriesLabel(
+        state="gaps", year_type="hydrological", span=None, gap_runs=runs
+    )
+    last = first + timedelta(days=PERF_DAYS - 1)
     variable = CoverageVariable(
-        key="Q", variable="Q", unit="m3/s", period=None, first=first,
-        last=first + timedelta(days=PERF_DAYS - 1), accumulated=0, years=(),
-        label=label, gaps=gaps,
+        key="Q", variable="Q", unit="m3/s", period=None, first=first, last=last,
+        accumulated=0, years=(), label=label, known=((first, last),),
     )  # fmt: skip
     series = StationCoverage(
         store=STORE, provider="IMGW-PIB", code=RABA, dataset=DAILY, kind="hydro",
