@@ -117,6 +117,7 @@ export const file = {
   link_check: {
     action: "Potwierdź bieżącą wersję",
     hint: "Sprawdza treścią (SHA-256 całego pliku), którą wersję trzyma ścieżka standardowa. Na udziale sieciowym może potrwać.",
+    admin_only: "Ścieżkę standardową sprawdza administrator, jak skan magazynu.",
     running: "Sprawdzanie ścieżki standardowej…",
     result: {
       confirmed: "Potwierdzono: ścieżka standardowa trzyma wersję {version}.",

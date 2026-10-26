@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.config import AppPaths, AppSettings, ConfigStore, TeamSettings
 from archiwista.server import AppServer
+from archiwista.sources.registry import PluginRegistry
 from archiwista.state import Role, StateStore
 from tests.fixtures.local_server import serving
 
@@ -141,10 +142,14 @@ class TeamSite:
         """The address people open: ``https://localhost:<port>``."""
         return f"https://localhost:{self.port}"
 
-    def settings(self, **team: object) -> AppSettings:
+    def settings(
+        self, base: AppSettings | None = None, /, **team: object
+    ) -> AppSettings:
         """Return settings of team mode with TLS in the server at the origin.
 
-        ``team`` adds or replaces values of the table ``[team]``.
+        ``base`` holds the other settings (stores, project directories), the
+        defaults without it; ``team`` adds or replaces values of the table
+        ``[team]``.
         """
         table: dict[str, object] = {
             "enabled": True,
@@ -153,7 +158,9 @@ class TeamSite:
             "tls_key": self.tls.key,
             **team,
         }
-        return AppSettings(port=self.port, team=TeamSettings.model_validate(table))
+        return (base or AppSettings()).model_copy(
+            update={"port": self.port, "team": TeamSettings.model_validate(table)}
+        )
 
 
 def team_site(directory: Path) -> TeamSite:
@@ -188,20 +195,28 @@ def add_admin(paths: AppPaths, account: str = ADMIN_ACCOUNT) -> None:
 
 @contextmanager
 def team_serving(
-    paths: AppPaths, site: TeamSite, *, admin: bool = True, **team: object
+    paths: AppPaths,
+    site: TeamSite,
+    base: AppSettings | None = None,
+    registry: PluginRegistry | None = None,
+    /,
+    *,
+    admin: bool = True,
+    **team: object,
 ) -> Iterator[tuple[AppServer, str]]:
     """Run ``serve_main`` in team mode with TLS in the server on the site's port.
 
-    ``team`` adds or replaces values of the table ``[team]``; with ``admin``
-    the state database first gets the administrator ``ADMIN_ACCOUNT`` with a
-    password, without which team mode does not start. Yields the server and
-    what it printed; the server stops when the block ends and must then exit
-    with status 0.
+    ``base`` holds the other settings (``TeamSite.settings``) and ``registry``
+    the producers (none without it, as for ``serving``); ``team`` adds or
+    replaces values of the table ``[team]``; with ``admin`` the state database
+    first gets the administrator ``ADMIN_ACCOUNT`` with a password, without
+    which team mode does not start. Yields the server and what it printed;
+    the server stops when the block ends and must then exit with status 0.
     """
-    ConfigStore(paths.config_file).save(site.settings(**team))
+    ConfigStore(paths.config_file).save(site.settings(base, **team))
     if admin:
         add_admin(paths)
-    with serving(paths, port=site.port) as served:
+    with serving(paths, registry=registry, port=site.port) as served:
         yield served
 
 

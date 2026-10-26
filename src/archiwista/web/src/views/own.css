@@ -57,9 +57,6 @@
 .own-folder { margin: 0; }
 .own-folder-path { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .own-folder-path code { overflow-wrap: anywhere; }
-.own-data-dir { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); }
-.own-data-dir .field { margin: 0; }
-.own-data-dir-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .own-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .own-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; background: var(--panel); }
 .own-file-name { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }

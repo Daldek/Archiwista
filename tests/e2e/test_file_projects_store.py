@@ -390,7 +390,7 @@ def test_link_check_result_on_file_card(serve: Serve, tab: Tab, tmp_path: Path) 
 
 
 def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> None:
-    """The last scan names who started it: the scheduler's owner, then an account."""
+    """The last scan names who started it: the local owner, then an administrator."""
     _, served, page = served_store(serve, tab, tmp_path)
     page.goto(f"{served.base}/?view=store")
     row = value(page, "Ostatni skan")
@@ -398,7 +398,8 @@ def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> N
     expect(row).to_contain_text("Wykonawca: właściciel lokalny")
     expect(raw(reveal(row), "local")).to_be_visible()
     state = StateStore(served.paths.state_file)
-    state.add_user("olga", name="Olga Owczarek", actor=LOCAL_OWNER)
+    # Scanning a store is an administrator's (`store.scan`).
+    state.add_user("olga", name="Olga Owczarek", roles=["admin"], actor=LOCAL_OWNER)
     olga = principal_for(state, "olga")
     assert olga is not None
     token = issue_one_time_token(served.paths.index_file, "startup", minted_by=olga)

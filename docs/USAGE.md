@@ -234,7 +234,8 @@ versions a scan has just indexed.
 - **Sidecar:** the producer's raw metadata, unchanged, ready to copy.
 - **"Potwierdź bieżącą wersję"** (confirm the current version) checks by
   content (SHA-256 of the whole file) which version the standard path holds;
-  on a share it can take a while.
+  on a share it can take a while. It is an administrator's, like a store's scan:
+  others see it disabled with the reason.
 
 `Esc` or "×" closes the card.
 
@@ -248,11 +249,11 @@ versions a scan has just indexed.
   project of both shows each manifest's store, state at the scan and reading
   time on its own line, led by its producer. An invalid manifest shows the
   producer's message and hides nothing of the other. Hidden projects are
-  not visible. "Nowy projekt…" is an administrator's: a
+  not visible. "Nowy projekt…" takes a
   producer, a store with a directory of that producer and the project's
   directory in a project directory of the settings (made when missing); the
-  producer writes the manifest, which names that store's directory. Others see
-  the button disabled with the reason.
+  producer writes the manifest, which names that store's directory, and the
+  person who created the project owns it.
 - **The project card** shows the producers' "Stan teraz" (state now), the
   tasks and the pins of each manifest (with their producer when there are two),
   and its actions,
@@ -267,20 +268,22 @@ versions a scan has just indexed.
   a problem of the project. "+ Zadanie" adds a pasted producer's command
   as a task (the producer checks it without the network; its text for a
   mistake shows at the field) and "Usuń" removes a task and its pins after a
-  question; the files stay in the store. A project is changed by its owner or
-  an administrator, a download and a repin also need the permission "zapis do
-  magazynu" and, like a check, the network: an action you may not do is
-  disabled and the card says why. When a change stops at a lock of the
-  manifest that an interrupted change left, the message names the lock
-  directory to remove; Archiwista never removes it.
+  question; the files stay in the store. "Udostępnij…" (share) opens the
+  project's sharing screen (see "Projects in a team" below). A project is
+  changed and shared by its owner or an administrator, a download and a repin
+  also need the permission "zapis do magazynu" and, like a check, the network:
+  an action you may not do is disabled and the card says why. When a change
+  stops at a lock of the manifest that an interrupted change left, the message
+  names the lock directory to remove; Archiwista never removes it.
 
   ![Project actions after a verification](reports/v0.3-screenshots/11-akcje-projektu.webp)
 
 - **The data folder** is `<project folder>/dane/` by default; the project's owner
-  or an administrator can point to another folder. Its scan only reads files. A
-  folder inside the project folder, `dane/` too, that a symbolic link leads out of
-  the project is not read: the card names the problem. Own data is on the map and
-  in the project card, outside the `/slots` catalog of the store.
+  or an administrator can point to another folder on the sharing screen ("Folder
+  danych własnych"; an empty field brings back `dane/`). Its scan only reads
+  files. A folder inside the project folder, `dane/` too, that a symbolic link
+  leads out of the project is not read: the card names the problem. Own data is
+  on the map and in the project card, outside the `/slots` catalog of the store.
 - **Working file and snapshots:** the card gives metadata, a preview and the
   history; "Zmieniony od migawki" (changed since the snapshot) means the
   content differs from the last saved version. First look at the plan of the
@@ -329,7 +332,8 @@ comparison and changes no data.
   by hand in known version folders; "Uzupełnij obrysy jednostek" (complete
   unit footprints) fetches TERYT and KU boundaries from the network
   (unavailable in offline mode). The progress of the job shows in this view
-  and in the status bar.
+  and in the status bar. The three are an administrator's: others see them
+  disabled with the reason, and the server scans by itself on its schedule.
 - **Usage by product:** every version counted once, without links and repeated
   content.
 - **Non-current and unpinned:** versions that are neither current, nor in
@@ -489,13 +493,22 @@ directories of the settings where no project is yet, and owns them; a new projec
 starts at the visibility of the setting `default_project_visibility`. A directory
 that already holds a project — shared before, scanned or only just made by a
 producer's program — is changed by its owner or an administrator only, so nobody takes
-over a colleague's project. The owner may give the project another data folder only
-inside the project's directory (a link pointing out of it counts as outside); an
-administrator may choose one elsewhere, away from the stores and the folders of other
-projects. Anyone who sees a project may scan its data folder ("Odśwież"), one scan of
-theirs at a time and each folder once a minute, otherwise the answer says when to ask
-again; scanning a store, outlining its units and checking its links are an
-administrator's, and the server scans by itself on its schedule.
+over a colleague's project. "Udostępnij…" on the project card opens "Udostępnianie"
+(sharing) for the owner and administrators; others see it disabled with the reason. It
+shows the owner, with "Przekaż…" to give the project to another account; who sees the
+project: "wszyscy" (everyone), "wybrane osoby" (chosen people, added with "+ osoba"),
+"wybrane grupy" (chosen groups, added with "+ grupa") or "tylko właściciel" (the owner
+only), while administrators see every project; and the project's data folder.
+"Zapisz" saves only what changed, and a refusal shows at its field. The owner may give
+the project another data folder only inside the project's directory (a link pointing
+out of it counts as outside); an administrator may choose one elsewhere, away from the
+stores and the folders of other projects. Anyone who sees a project may scan its data
+folder ("Odśwież"), one scan of theirs at a time and each folder once a minute,
+otherwise the answer says when to ask again; scanning a store, outlining its units and
+checking its links are an administrator's, and the server scans by itself on its
+schedule.
+
+![Sharing a project with the group hydro](reports/v0.4-screenshots/06-udostepnianie.webp)
 
 **The sign-in page.** In the browser a team server opens "Logowanie" (sign-in): the
 account ("Konto") and its password ("Hasło"; "Pokaż" shows what was typed), which the

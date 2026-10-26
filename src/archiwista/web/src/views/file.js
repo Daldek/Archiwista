@@ -17,7 +17,8 @@
  * the version's title opens the comparison with another version of the
  * slot (`view=compare&a&b`, views/compare.js). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
- * /stores/{store}/link-check`) and shows its result from the job's events.
+ * /stores/{store}/link-check`; an administrator's, disabled with the reason
+ * for anyone else) and shows its result from the job's events.
  * Everything is read by store and path from the index, never from a file URL.
  */
 
@@ -608,8 +609,11 @@ function Sidecar({ sidecar }) {
 }
 
 function LinkCheck({ store, card, versions, onDone }) {
+  const { session } = useApp();
   const job = useJob({ onEnd: onDone });
   const busy = job.starting || job.running;
+  // A link check is a store's scan: an administrator's (`store.scan`).
+  const admin = Boolean(session?.roles.includes("admin"));
   const labelOf = (path) => versions.find((version) => version.path === path)?.label ?? path;
   const summary = (events) => {
     const result = events.result;
@@ -624,12 +628,12 @@ function LinkCheck({ store, card, versions, onDone }) {
   };
   return html`<section class="det-sec fc-link-check">
     <div class="fc-action">
-      <button type="button" class="btn" disabled=${busy}
+      <button type="button" class="btn" disabled=${busy || !admin} aria-describedby="fc-link-check-note"
         onClick=${() => job.run(() => startLinkCheck(store, card.slot), "link_check")}>
         ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="check" />`}
         ${L.link_check.action}
       </button>
-      <span class="hint">${L.link_check.hint}</span>
+      <span class="hint" id="fc-link-check-note">${admin ? L.link_check.hint : L.link_check.admin_only}</span>
     </div>
     <${JobStatus} job=${job} summary=${summary} />
   </section>`;

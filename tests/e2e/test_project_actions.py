@@ -8,8 +8,9 @@ the store already holds need no network. An administrator creates a project
 of Kartograf in a project directory of the settings, adds a pasted command as
 its task (Kartograf's text for a mistake at the field) and removes the task
 after a confirmation; verifies the project and downloads it. A person the
-project is shared with sees it with every change disabled and the reason,
-and never sees a project that is not shared with her. Offline, the actions
+project is shared with sees it with every change (its sharing too) disabled
+and the reason, may create a project of her own, and never sees a project
+that is not shared with her. Offline, the actions
 that need the network say so, and a lock of the manifest that an interrupted
 change left makes a removal fail with the instruction naming the lock, which
 stays. With ``ARCHIWISTA_SCREENSHOTS=<directory>`` the steps keep screenshots
@@ -354,15 +355,11 @@ def test_a_person_the_project_is_shared_with_sees_every_change_disabled_with_why
     # Act
     open_projects(page, team.served, fragment_url(team.served.base, issued.token), None)
 
-    # Assert: only the shared project; no new project for her.
+    # Assert: only the shared project; she may create one of her own.
     rows = page.locator(".projects-table tbody tr")
     expect(rows).to_have_count(1)
     expect(rows.first).to_contain_text(PROJECT)
-    create = page.get_by_role("button", name="Nowy projekt…")
-    expect(create).to_be_disabled()
-    expect(create).to_have_accessible_description(
-        "Projekt zakłada administrator: nowy projekt nie ma jeszcze właściciela."
-    )
+    expect(page.get_by_role("button", name="Nowy projekt…")).to_be_enabled()
     assert call(page, "GET", f"/projects/{team.hidden}")["status"] == 404
 
     # Act
@@ -375,6 +372,7 @@ def test_a_person_the_project_is_shared_with_sees_every_change_disabled_with_why
     changes = [
         actions.get_by_role("button", name="Pobierz", exact=True),
         actions.get_by_role("button", name="Zadanie", exact=True),
+        actions.get_by_role("button", name="Udostępnij…"),
     ]
     for name in TASKS:
         changes.append(task(page, name).get_by_role("button", name="Przepnij"))

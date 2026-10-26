@@ -19,7 +19,7 @@
  * @property {"local_owner"|"user"|"agent"} kind - How: the owner, a signed-in person
  *   (team mode) or an agent for `actor`.
  * @property {string[]} roles - Roles `actor` has now, read again for each request:
- *   `admin` (accounts, settings, every project's data folder), `store_writer`; an
+ *   `admin` (accounts, groups, settings, store scans, every project), `store_writer`; an
  *   agent has those of `actor`. The owner of a local installation has both.
  * @property {string[]} groups - Groups `actor` belongs to now.
  * @property {boolean} store_write - Whether `actor` may write the stores now (a
@@ -134,6 +134,47 @@
  *
  * @typedef {object} GroupList
  * @property {Group[]} items
+ */
+
+/**
+ * An account or a group as every session sees it (`GET /directory`).
+ *
+ * @typedef {object} DirectoryEntry
+ * @property {string} id - Account or group id.
+ * @property {string} name - Display name.
+ */
+
+/**
+ * The enabled accounts and the groups to share a project with (`GET /directory`).
+ *
+ * @typedef {object} Directory
+ * @property {DirectoryEntry[]} users - Enabled accounts ordered by id.
+ * @property {DirectoryEntry[]} groups - Every group ordered by id.
+ */
+
+/**
+ * Who owns a project and who sees it (`GET`/`PUT /projects/{project}/access`).
+ *
+ * @typedef {object} ProjectAccess
+ * @property {string} project - Project id.
+ * @property {string|null} owner - Owning account; `null`: only administrators manage it.
+ * @property {"public"|"users"|"group"|"private"} visibility - `public`: everyone;
+ *   `users`: the listed people; `group`: members of the listed groups; `private`:
+ *   the owner only. Administrators see every project.
+ * @property {string[]} users
+ * @property {string[]} groups
+ * @property {boolean} explicit - Whether the project has its own access entry;
+ *   otherwise the setting `default_project_visibility` applies.
+ */
+
+/**
+ * A new visibility of a project and, optionally, its new owner.
+ *
+ * @typedef {object} AccessChange
+ * @property {"public"|"users"|"group"|"private"} visibility
+ * @property {string[]} users - With `users`: at least one person.
+ * @property {string[]} groups - With `group`: at least one group.
+ * @property {string} [owner] - New owning account; unchanged when left out.
  */
 
 // Problems -------------------------------------------------------------------
@@ -828,8 +869,8 @@
  * @property {number} pins - Pins of every manifest.
  * @property {number} missing_pins - Pins missing from the store or other.
  * @property {boolean} project_write - Whether the session's principal may change the
- *   project now (its owner or an administrator): add and remove its tasks, and download
- *   and repin it with `store_write` of the session.
+ *   project now (its owner or an administrator): share it, give it a data folder, add
+ *   and remove its tasks, and download and repin it with `store_write` of the session.
  */
 
 /**

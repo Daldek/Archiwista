@@ -632,11 +632,13 @@ export function getProjectStatus(project, { signal } = {}) {
 
 /**
  * Create a project of a producer bound to a configured store
- * (`create_project`): the producer writes its manifest; administrators only.
+ * (`create_project`): the producer writes its manifest, and the person who
+ * asked owns the project.
  *
  * @param {ProjectRequest} body
  * @returns {Promise<ProjectCard>} The new project's card (`201`).
- * @throws {ApiError} `403` (`permission_denied`, `path_outside_root`), `400`
+ * @throws {ApiError} `403` (`permission_denied`: a project already there that
+ *   the session may not change; `path_outside_root`), `400`
  *   (`project_not_discoverable`, `project_dir_missing`, `store_without_producer`,
  *   the producer's refusal), `404` (a store that is not configured), `409`
  *   (`project_locked`), `422 unsupported`, `503 store_unavailable`.
@@ -1013,14 +1015,17 @@ export function startProjectScan(project) {
 
 /**
  * Give a project another data folder, or its default `dane/` again
- * (`put_data_dir`, administrators); its scan starts at once.
+ * (`put_data_dir`; the project's owner or an administrator); its scan starts
+ * at once.
  *
  * @param {string} project
- * @param {string|null} path - Absolute folder on the server's computer;
- *   `null` brings back the default.
+ * @param {string|null} path - Absolute folder on the server's computer, for an
+ *   owner who is no administrator inside the project's directory; `null`
+ *   brings back the default.
  * @returns {Promise<OwnFolder>}
  * @throws {ApiError} `403 forbidden` (reason `permission_denied`), `400
- *   validation_error` with `details.problems` (the folder breaks a rule).
+ *   validation_error` with `details.problems` (the folder breaks a rule, e.g.
+ *   `own_data_dir_outside_project`).
  */
 export function putDataDir(project, path) {
   return request("PUT", `/projects/${one(project)}/data-dir`, { json: { path } });
@@ -1320,6 +1325,45 @@ export function setGroupMembers(id, members) {
  */
 export function removeGroup(id) {
   return request("DELETE", `/groups/${one(id)}`);
+}
+
+/**
+ * The enabled accounts and the groups to share a project with, ids and names
+ * only (`get_directory`; any session).
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<Directory>}
+ */
+export function getDirectory({ signal } = {}) {
+  return request("GET", "/directory", { signal });
+}
+
+/**
+ * Who owns a project and who sees it (`project_access`; its owner or an
+ * administrator).
+ *
+ * @param {string} project
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ProjectAccess>}
+ * @throws {ApiError} `403 forbidden` (`permission_denied`), `404`.
+ */
+export function getProjectAccess(project, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/access`, { signal });
+}
+
+/**
+ * Set who sees a project and, optionally, its new owner (`share_project`;
+ * its owner or an administrator).
+ *
+ * @param {string} project
+ * @param {AccessChange} change
+ * @returns {Promise<ProjectAccess>}
+ * @throws {ApiError} `403 forbidden` (`permission_denied`), `404`, `400
+ *   validation_error` (unknown people, groups or owner; lists that do not fit
+ *   the visibility).
+ */
+export function putProjectAccess(project, change) {
+  return request("PUT", `/projects/${one(project)}/access`, { json: change });
 }
 
 // Helpers ---------------------------------------------------------------------

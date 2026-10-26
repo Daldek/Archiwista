@@ -1,15 +1,16 @@
 /**
  * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11, v0.2
- * step 15, plan 2026-10-25 A13 and I7): the projects found in the project
- * directories that the session sees — as the API filters them (step 8b),
- * nothing filtered here — with their manifests (a project directory holds
- * Kartograf's, IMGWTools' or both: each with its producer, store, status when
- * it was read and problem) and their missing pins, and „Nowy projekt…”: an
- * administrator creates a project of a producer in a project directory of the
- * settings, bound to a configured store. The chosen project
- * (`?view=projects&project=<id>`) is in the side panel with the tasks of each
- * manifest and their existing commands, the producers' status now, the pinned
- * versions (older ones too) leading to their file cards, and its problems.
+ * step 15, plan 2026-10-25 A13 and I7, plan v0.4 T7): the projects found in
+ * the project directories that the session sees — as the API filters them
+ * (step 8b), nothing filtered here — with their manifests (a project
+ * directory holds Kartograf's, IMGWTools' or both: each with its producer,
+ * store, status when it was read and problem) and their missing pins, and
+ * „Nowy projekt…”: every person creates a project of a producer in a project
+ * directory of the settings, bound to a configured store, and owns it. The
+ * chosen project (`?view=projects&project=<id>`) is in the side panel with
+ * the tasks of each manifest and their existing commands, the producers'
+ * status now, the pinned versions (older ones too) leading to their file
+ * cards, and its problems.
  *
  * The card's actions go through a manifest's producer — of a project with
  * two manifests, the one chosen at the actions, of a task its own —:
@@ -21,16 +22,18 @@
  * (downloads.js), so they stay in sight after the card or the view closes.
  * „+ Zadanie” adds a pasted producer's command as a task (the producer reads
  * and checks it without the network; its text for a mistake shows at the
- * field) and „Usuń” removes a task after a confirmation. An action the
- * session may not do is disabled with the reason: a project is changed by its
- * owner or an administrator (`project_write`), a download and a repin write
- * the store (`store_write`) the manifest names, and they and a check need
- * the network. Beside the producers' tasks, the group „Dane własne” (SPEC
- * 4.7.1): the project's data folder with its state, files, sizes and
- * problems, each file with its change since its last snapshot leading to its
- * card (views/own.js), „Odśwież” (an `own_scan` of the folder, followed to
- * its end), „Pokaż na mapie” (the project's map: its own data and pinned
- * versions) and, for an administrator, „Zmień folder danych…”.
+ * field) and „Usuń” removes a task after a confirmation. „Udostępnij…” opens
+ * the sharing screen (views/sharing.js): who sees the project, its owner and
+ * its data folder. An action the session may not do is disabled with the
+ * reason: a project is changed and shared by its owner or an administrator
+ * (`project_write`), a download and a repin write the store (`store_write`)
+ * the manifest names, and they and a check need the network. Beside the
+ * producers' tasks, the group „Dane własne” (SPEC 4.7.1): the project's data
+ * folder with its state, files, sizes and problems, each file with its change
+ * since its last snapshot leading to its card (views/own.js), „Odśwież” (an
+ * `own_scan` of the folder, followed to its end; after the sharing screen
+ * changed the folder, the scan the server started) and „Pokaż na mapie” (the
+ * project's map: its own data and pinned versions).
  */
 
 import {
@@ -38,10 +41,10 @@ import {
   createProject,
   getProject,
   getProjectStatus,
+  listJobs,
   listOwnFiles,
   listProjects,
   parseCommand,
-  putDataDir,
   removeProjectTask,
   startProjectJob,
   startProjectScan,
@@ -82,15 +85,13 @@ import {
   storeName,
   useJob,
 } from "./cards.js";
+import { SharingDialog } from "./sharing.js";
 
 await loadCardStyles();
 
 const ALL = "";
 // Own files of one page of the group (the API's largest).
 const OWN_PAGE = 200;
-// A new project and another data folder are the administrators' (A-ADR-029):
-// only their sessions offer them; the server refuses anyone else.
-const ADMIN_ROLE = "admin";
 const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
 // Why an action of a project is disabled, in the order a reason is told
 // (labels `why`): who may change the project, a store to write, the
@@ -103,6 +104,7 @@ const ACTION_REASONS = {
   download: ["write", "store", "store_write", "offline", "busy"],
   repin: ["write", "store", "store_write", "offline", "busy"],
   change: ["write"],
+  share: ["write"],
 };
 
 /**
@@ -130,17 +132,13 @@ export default function ProjectsView({ route }) {
 }
 
 function ProjectList({ list, chosen, store, route }) {
-  const { health, session, settings } = useApp();
+  const { health, settings } = useApp();
   const id = useId();
   const [creating, setCreating] = useState(false);
   const stores = health?.stores ?? [];
   const items = list.data?.items ?? [];
   const pick = (project) => setParams({ project });
-  const createWhy = !session?.roles.includes(ADMIN_ROLE)
-    ? L.create.admin_only
-    : settings && !settings.project_dirs?.length
-      ? L.create.no_dirs
-      : null;
+  const createWhy = settings && !settings.project_dirs?.length ? L.create.no_dirs : null;
   return html`<div class="center-bar">
       <h1 class="view-title">${L.title}</h1>
       ${list.data ? html`<span class="faint">${count(items.length, L.count)}</span>` : null}
@@ -403,6 +401,10 @@ function ProjectCard({ id, onChanged }) {
   const [adding, setAdding] = useState(false);
   const [done, setDone] = useState(null);
   const [producer, setProducer] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  // Each change of the data folder on the sharing screen: „Dane własne” reads
+  // the folder again and follows the scan the server started.
+  const [folderRound, setFolderRound] = useState(0);
   const changed = () => {
     resource.reload();
     setRound((n) => n + 1);
@@ -496,6 +498,8 @@ function ProjectCard({ id, onChanged }) {
           setDone(null);
           setAdding(true);
         }} />
+      <${ActionButton} icon="users" label=${L.actions.share} title=${L.actions.share_title}
+        reason=${why.share} reasonId=${reasonId} onClick=${() => setSharing(true)} />
     </div>
     ${told.length
       ? html`<ul class="pc-why">${told.map(
@@ -526,7 +530,19 @@ function ProjectCard({ id, onChanged }) {
         setDone(t(L.task.removed, { name }));
         changed();
       }} />
-    <${OwnData} key=${card.project} project=${card.project} />
+    <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
+    ${sharing
+      ? html`<${SharingDialog} project=${card.project} name=${card.name}
+          onChanged=${(what) => {
+            if (what === "folder") {
+              setFolderRound((n) => n + 1);
+            } else {
+              resource.reload();
+              onChanged();
+            }
+          }}
+          onClose=${() => setSharing(false)} />`
+      : null}
   </article>`;
 }
 
@@ -820,17 +836,22 @@ function PinList({ store, pins }) {
 
 /**
  * „Dane własne” of a project: its data folder and files, „Odśwież” with the
- * scan's progress, the project's map and, for an administrator, another
- * data folder.
+ * scan's progress and the project's map. A new `round` (the sharing screen
+ * changed the folder) reads the folder again and follows the scan the
+ * server started for it.
  */
-function OwnData({ project }) {
-  const { session } = useApp();
+function OwnData({ project, round }) {
   const list = useResource((signal) => listOwnFiles(project, { limit: OWN_PAGE }, { signal }), [project]);
   const [extra, setExtra] = useState({ items: [], cursor: null, loading: false, problem: null });
   const job = useJob({ onEnd: list.reload });
   const busy = job.starting || job.running;
   const page = list.data;
   useEffect(() => setExtra({ items: [], cursor: page?.next_cursor ?? null, loading: false, problem: null }), [page]);
+  useEffect(() => {
+    if (!round) return;
+    list.reload();
+    job.run(async () => (await listJobs({ kind: "own_scan", project, limit: 1 })).items[0], "own_scan");
+  }, [round]);
   const refresh = () => job.run(() => startProjectScan(project), "own_scan");
   const more = async () => {
     setExtra((current) => ({ ...current, loading: true, problem: null }));
@@ -857,13 +878,6 @@ function OwnData({ project }) {
     ${list.error ? html`<${ProblemView} problem=${list.error.problem} compact />` : null}
     ${!page && !list.error ? html`<${Spinner} />` : null}
     ${folder ? html`<${OwnFolder} folder=${folder} />` : null}
-    ${folder && session?.roles.includes(ADMIN_ROLE)
-      ? html`<${DataDir} project=${project} folder=${folder} onChanged=${() => {
-          list.reload();
-          // The server scans the new folder at once: follow that scan.
-          refresh();
-        }} />`
-      : null}
     ${folder?.problems.length
       ? html`<${IssueList} issues=${folder.problems} currentProject=${project} empty=${false} />`
       : null}
@@ -919,54 +933,4 @@ function OwnFileRow({ project, item }) {
     <span class="own-file-marks"><${StateBadge} file=${item} /><${ChangeBadge} file=${item} /></span>
     <span class="own-file-meta">${meta.join(" · ")}</span>
   </li>`;
-}
-
-/** „Zmień folder danych…”: another folder, or the default `dane/` again. */
-function DataDir({ project, folder, onChanged }) {
-  const id = useId();
-  const [open, setOpen] = useState(false);
-  const [path, setPath] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState(null);
-  const save = async (value) => {
-    setSaving(true);
-    setProblem(null);
-    try {
-      await putDataDir(project, value);
-      setOpen(false);
-      onChanged();
-    } catch (error) {
-      if (!error.problem) throw error;
-      setProblem(error.problem);
-    } finally {
-      setSaving(false);
-    }
-  };
-  if (!open) {
-    return html`<button type="button" class="btn sm own-data-dir-open" title=${L.own.change_dir_title}
-      onClick=${() => {
-        setPath(folder.path.local);
-        setProblem(null);
-        setOpen(true);
-      }}><${Icon} name="folder" size=${14} />${L.own.change_dir}</button>`;
-  }
-  return html`<form class="own-data-dir" onSubmit=${(event) => {
-    event.preventDefault();
-    save(path.trim());
-  }}>
-    <div class="field">
-      <label for=${id}>${L.own.dir_label}</label>
-      <input id=${id} class="mono" value=${path} autocomplete="off" spellcheck="false"
-        onInput=${(event) => setPath(event.currentTarget.value)} />
-      <span class="field-hint">${L.own.dir_hint}</span>
-    </div>
-    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
-    <div class="own-data-dir-actions">
-      <button type="submit" class="btn sm primary" disabled=${saving || !path.trim()}>${L.own.dir_save}</button>
-      ${folder.source === "setting"
-        ? html`<button type="button" class="btn sm" disabled=${saving} onClick=${() => save(null)}>${L.own.dir_default}</button>`
-        : null}
-      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${() => setOpen(false)}>${L.own.dir_cancel}</button>
-    </div>
-  </form>`;
 }

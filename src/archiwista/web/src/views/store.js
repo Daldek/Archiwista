@@ -7,7 +7,9 @@
  * `POST /stores/{store}/scan`), „Pełny skan” (the same with `mode: "full"`)
  * and „Uzupełnij obrysy jednostek” (`…/footprints`, which needs the network
  * and is off in offline mode) followed live through the job's events; a
- * `409` follows the job already running. Below: disk usage per product with each
+ * `409` follows the job already running. The three are an administrator's
+ * (`store.scan`, plan v0.4 T7): anyone else sees them disabled with the
+ * reason. Below: disk usage per product with each
  * version counted once, the versions neither current, nor in `full_sheet/`,
  * nor pinned (a report for a decision — Archiwista deletes nothing), the
  * store's problems with their fixes and the visible projects naming it. The
@@ -73,7 +75,7 @@ export default function StoreView({ route }) {
 }
 
 function StoreDetail({ item }) {
-  const { health, settings, refreshHealth } = useApp();
+  const { health, session, settings, refreshHealth } = useApp();
   const detail = useResource((signal) => getStore(item.store, { signal }), [item.store]);
   const products = useResource(
     (signal) => listProducts({ store: item.store }, { signal }),
@@ -93,6 +95,9 @@ function StoreDetail({ item }) {
 
   const busy = job.starting || job.running;
   const offline = settings?.offline === true;
+  // Scans, outlines and link checks of a store are an administrator's (`store.scan`).
+  const admin = Boolean(session?.roles.includes("admin"));
+  const told = admin ? null : "store-scan-admin";
   const [scanMode, setScanMode] = useState("incremental");
   const start = (kind, mode = "incremental") => {
     if (kind === "scan") setScanMode(mode);
@@ -119,25 +124,28 @@ function StoreDetail({ item }) {
         <span class="chip static">${T.common.store_kind[item.kind] ?? item.kind}</span>
       </div>
       <div class="store-actions">
-        <button type="button" class="btn primary" disabled=${busy} title=${L.actions.refresh_hint}
+        <button type="button" class="btn primary" disabled=${busy || !admin}
+          title=${admin ? L.actions.refresh_hint : L.actions.admin_only} aria-describedby=${told}
           onClick=${() => start("scan")}>
           ${scanSpinner("incremental", "rotate")}
           ${L.actions.refresh}
         </button>
-        <button type="button" class="btn" disabled=${busy} title=${L.actions.full_scan_hint}
+        <button type="button" class="btn" disabled=${busy || !admin}
+          title=${admin ? L.actions.full_scan_hint : L.actions.admin_only} aria-describedby=${told}
           onClick=${() => start("scan", "full")}>
           ${scanSpinner("full", "database")}
           ${L.actions.full_scan}
         </button>
-        <button type="button" class="btn" disabled=${busy || offline}
-          title=${offline ? L.actions.footprints_offline : L.actions.footprints_hint}
-          aria-describedby=${offline ? "store-footprints-offline" : null}
+        <button type="button" class="btn" disabled=${busy || offline || !admin}
+          title=${!admin ? L.actions.admin_only : offline ? L.actions.footprints_offline : L.actions.footprints_hint}
+          aria-describedby=${told ?? (offline ? "store-footprints-offline" : null)}
           onClick=${() => start("footprints")}>
           <${Icon} name="map" />${L.actions.footprints}
         </button>
       </div>
     </header>
-    ${offline
+    ${!admin ? html`<p class="hint" id="store-scan-admin">${L.actions.admin_only}</p>` : null}
+    ${admin && offline
       ? html`<p class="hint" id="store-footprints-offline">${L.actions.footprints_offline}</p>`
       : null}
     <${JobStatus} job=${job} />

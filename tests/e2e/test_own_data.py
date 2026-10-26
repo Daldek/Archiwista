@@ -7,8 +7,9 @@ project's view lists them with their change since the last snapshot, the
 card of a file shows its metadata, versions and preview, „Zrób migawkę…”
 opens the plan window and starts the ``snapshot`` job, the project's map
 draws the files' extents, the Wachlarz shows the working file on top and
-„Porównaj z migawką…” opens the comparison. Only an administrator changes a
-project's data folder.
+„Porównaj z migawką…” opens the comparison. A project's data folder changes
+on its sharing screen, which a project without an owner offers only to
+administrators.
 """
 
 import json
@@ -22,7 +23,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 from archiwista.config import AppSettings, ConfigStore, StoreConfig
 from archiwista.index import own_file_id
@@ -171,6 +172,15 @@ def shot(page: Page, name: str) -> None:
         return
     Path(SHOTS).mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(Path(SHOTS) / f"{name}.png"))
+
+
+def sharing(page: Page) -> Locator:
+    """Open „Udostępnij…” of the chosen project; return its window."""
+    card = page.get_by_role("complementary", name="Projekt")
+    card.get_by_role("button", name="Udostępnij…").click()
+    window = page.get_by_role("dialog")
+    expect(window.get_by_label("Folder danych własnych")).to_be_visible()
+    return window
 
 
 def test_project_own_data_on_map_and_card(own_server: OwnServer, tab: Tab) -> None:
@@ -380,18 +390,20 @@ def test_data_dir_change_admin_only(
 ) -> None:
     """The owner gives another folder; an administrator's account may, another not.
 
-    The interface offers the change by the session's roles: the owner of the
-    computer and a signed-in administrator see it, anyone else neither sees it
-    nor gets it from the API.
+    The folder changes on the sharing screen („Udostępnij…”), which a project
+    without an owner offers the owner of the computer and an administrator;
+    anyone else sees it disabled and gets a refusal from the API. An empty
+    field brings back the default ``dane/``.
     """
     page = open_session(tab, own_server)
     other_dir = own_server.store.base.parent / "inne-dane"
     (other_dir / "warstwy").mkdir(parents=True, exist_ok=True)
     page.goto(f"{own_server.served.base}/?view=projects&project={OTHER_PROJECT}")
     group = page.locator(".own-group")
-    group.get_by_role("button", name="Zmień folder danych…").click()
-    group.get_by_label("Folder danych projektu").fill(str(other_dir))
-    group.get_by_role("button", name="Zapisz i odśwież").click()
+    window = sharing(page)
+    window.get_by_label("Folder danych własnych").fill(str(other_dir))
+    window.get_by_role("button", name="Zapisz").click()
+    expect(window).to_be_hidden()
     expect(group.locator(".own-folder")).to_contain_text(str(other_dir))
     expect(group.locator(".own-folder")).to_contain_text("folder z ustawień Archiwisty")
     assert own_server.served.settings().own_data_dirs  # saved in the settings
@@ -399,7 +411,7 @@ def test_data_dir_change_admin_only(
 
     state = StateStore(own_server.served.paths.state_file)
     add_people(state)
-    accounts: tuple[tuple[Who, int], ...] = (("admin", 1), ("other", 0))
+    accounts: tuple[tuple[Who, bool], ...] = (("admin", True), ("other", False))
     for who, offered in accounts:
         issued = issue_one_time_token(
             own_server.served.paths.index_file,
@@ -417,9 +429,10 @@ def test_data_dir_change_admin_only(
             expect(person.locator(".own-group .own-folder")).to_be_visible(
                 timeout=WAIT_S * 1000
             )
-            expect(
-                person.get_by_role("button", name="Zmień folder danych…")
-            ).to_have_count(offered)
+            share = person.get_by_role("complementary", name="Projekt").get_by_role(
+                "button", name="Udostępnij…"
+            )
+            expect(share).to_be_enabled(enabled=offered)
             if not offered:
                 refused = person.evaluate(
                     API,
@@ -437,8 +450,10 @@ def test_data_dir_change_admin_only(
         finally:
             context.close()
 
-    group.get_by_role("button", name="Zmień folder danych…").click()
-    group.get_by_role("button", name="Przywróć domyślny folder dane/").click()
+    window = sharing(page)
+    window.get_by_label("Folder danych własnych").fill("")
+    window.get_by_role("button", name="Zapisz").click()
+    expect(window).to_be_hidden()
     expect(group.locator(".own-folder")).to_contain_text(
         "domyślny folder dane/ projektu"
     )

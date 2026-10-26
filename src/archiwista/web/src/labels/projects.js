@@ -1,13 +1,13 @@
 /**
  * Texts of the Projects view (views/projects.js, docs/SPEC.md UC-06 and
  * 6.5 g): the projects found in the project directories with their
- * manifests (Kartograf's, IMGWTools' or both), „Nowy projekt…” for an
- * administrator, their tasks with the producer's commands, pins, statuses and
+ * manifests (Kartograf's, IMGWTools' or both), „Nowy projekt…” for every
+ * person, their tasks with the producer's commands, pins, statuses and
  * problems, the actions through a manifest's producer (verify, check,
- * download, repin, add and remove a task) with the reason when one is not
- * allowed, and the group „Dane własne” (SPEC 4.7.1): the project's data
- * folder with its files, „Odśwież” and, for an administrator, another data
- * folder.
+ * download, repin, add and remove a task) and „Udostępnij…” with the reason
+ * when one is not allowed, and the group „Dane własne” (SPEC 4.7.1): the
+ * project's data folder with its files and „Odśwież”. The sharing screen's
+ * texts are in labels/sharing.js.
  */
 
 export const projects = {
@@ -38,7 +38,6 @@ export const projects = {
   create: {
     open: "Nowy projekt…",
     open_title: "Załóż projekt producenta w katalogu projektów z ustawień, związany z magazynem",
-    admin_only: "Projekt zakłada administrator: nowy projekt nie ma jeszcze właściciela.",
     no_dirs: "Ustawienia nie mają katalogów projektów; dodaj katalog w Ustawieniach.",
     title: "Nowy projekt",
     producer: "Producent",
@@ -67,6 +66,8 @@ export const projects = {
     add_title: "Dodaj polecenie producenta jako zadanie projektu; producent sprawdzi je bez sieci",
     remove: "Usuń",
     remove_title: "Usuń zadanie i jego przypięcia z manifestu; pliki zostają w magazynie",
+    share: "Udostępnij…",
+    share_title: "Kto widzi projekt, jego właściciel i folder danych własnych",
   },
   /** Why an action of a project is disabled, in the order they are told. */
   why: {
@@ -148,12 +149,5 @@ export const projects = {
     more: "Pokaż więcej plików",
     shown: "Pokazano {shown} z {total}",
     file_snapshots: ["migawka", "migawki", "migawek"],
-    change_dir: "Zmień folder danych…",
-    change_dir_title: "Wskaż inny folder danych własnych projektu (tylko administrator)",
-    dir_label: "Folder danych projektu",
-    dir_hint: "Ścieżka bezwzględna na komputerze serwera Archiwisty; folder nie może leżeć w magazynie, w danych Archiwisty ani w folderze innego projektu. Migawki trafią do jego .wersje/.",
-    dir_save: "Zapisz i odśwież",
-    dir_default: "Przywróć domyślny folder dane/",
-    dir_cancel: "Anuluj",
   },
 };

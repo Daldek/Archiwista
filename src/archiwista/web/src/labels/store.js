@@ -27,6 +27,8 @@ export const store = {
     footprints_hint: "Pobiera z sieci granice jednostek (TERYT, KU) dla wersji bez obrysu.",
     footprints_offline:
       "Niedostępne w trybie offline: obrysy jednostek pobiera się z sieci. Wyłącz tryb offline w Ustawieniach, aby je uzupełnić.",
+    admin_only:
+      "Skan magazynu i obrysy jednostek zleca administrator; serwer i tak skanuje magazyn sam według harmonogramu.",
   },
   state: {
     title: "Stan",

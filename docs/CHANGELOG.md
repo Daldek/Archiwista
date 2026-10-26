@@ -149,6 +149,18 @@ command-line interface may change.
   `Retry-After`, a retry too; a waiting scan of the folder is joined, and the
   computer's owner is not limited. `GET /directory` (any session) lists the enabled
   accounts and the groups, with their ids and names, to share a project with.
+- The sharing screen of a project (v0.4, SPEC 6.5 r, A-ADR-029 erratum 2):
+  "Udostępnij…" on the project card, for its owner and administrators (others see it
+  disabled with the reason), opens "Udostępnianie": the owner with "Przekaż…" (give the
+  project to another account), who sees it ("wszyscy", "wybrane osoby" and "wybrane
+  grupy" with the people and groups of `GET /directory`, "tylko właściciel") and the
+  project's data folder (an empty field brings back `dane/`; it was "Zmień folder
+  danych…" of "Dane własne", an administrator's). "Zapisz" sends only what changed
+  (`PUT /projects/{project}/access`, then `PUT /projects/{project}/data-dir`), shows a
+  refusal at its field, and "Dane własne" follows the scan of a new folder. "Nowy
+  projekt…" is every person's. Without the role `admin` the Store view's "Odśwież",
+  "Pełny skan" and "Uzupełnij obrysy jednostek" and the file card's "Potwierdź bieżącą
+  wersję" are disabled with the reason.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
@@ -599,9 +611,9 @@ command-line interface may change.
   job in a window shows its tasks by outcome or its files by state, and a failed job its
   instruction (the producer's lock). (SPEC 6.5 h, 10.3, UC-15; plan A11, ADR-042)
 - The Projects view acts on projects through their producer (SPEC 6.5 g, UC-06): the list
-  has a column "Producent" and "Nowy projekt…" (an administrator's: the producer, a store
-  with its directory and the project's directory in a project directory of the settings,
-  `POST /projects`; a refusal of the directory or the store shows at its field). The card
+  has a column "Producent" and "Nowy projekt…" (the producer, a store with its directory
+  and the project's directory in a project directory of the settings, `POST /projects`; a
+  refusal of the directory or the store shows at its field). The card
   offers "Weryfikuj", "Sprawdź aktualizacje" and "Pobierz" for the project's tasks and
   "Przepnij" at each task (`POST /projects/{project}/jobs`), followed to their end with the
   tasks by outcome or the files by state, the card and "Stan teraz" read again; a job of

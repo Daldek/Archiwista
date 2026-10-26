@@ -4,8 +4,9 @@
 ``signed_in`` signs a person in up to the shell, ``answered`` returns the
 status of the API request a press sends, ``read_session`` the page's
 session as the API tells it, ``come_back`` asks the server at once as a
-person returning to the tab does, and ``shot`` keeps a Chromium screenshot
-for a report when ``ARCHIWISTA_SCREENSHOTS`` names a directory.
+person returning to the tab does, and ``shot`` keeps a Chromium screenshot,
+local paths covered, for a report when ``ARCHIWISTA_SCREENSHOTS`` names a
+directory.
 """
 
 import os
@@ -24,15 +25,28 @@ _READ_SESSION = """async () => {
   return (await fetch("/api/v1/session", { headers })).json();
 }"""
 _COME_BACK = "document.dispatchEvent(new Event('visibilitychange'))"
+# Covers the text of local paths for a screenshot. Through the CSSOM: the
+# CSP allows no injected stylesheet.
+_COVER_PATHS = """(cover) => {
+  for (const path of document.querySelectorAll("code.path, input.mono")) {
+    path.style.color = cover ? "transparent" : "";
+    path.style.background = cover ? "#d0d5dd" : "";
+  }
+}"""
 
 
 def shot(page: Page, name: str) -> None:
-    """Keep a Chromium screenshot when ``ARCHIWISTA_SCREENSHOTS`` is set."""
+    """Keep a Chromium screenshot when ``ARCHIWISTA_SCREENSHOTS`` is set.
+
+    Local paths (``code.path``, ``input.mono``) are covered in it.
+    """
     directory = os.environ.get(SCREENSHOTS)
     browser = page.context.browser
     if directory and browser is not None and browser.browser_type.name == "chromium":
         Path(directory).mkdir(parents=True, exist_ok=True)
+        page.evaluate(_COVER_PATHS, True)
         page.screenshot(path=str(Path(directory) / f"{name}.png"))
+        page.evaluate(_COVER_PATHS, False)
 
 
 def open_sign_in(page: Page, origin: str) -> None:

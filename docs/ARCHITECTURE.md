@@ -1264,7 +1264,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `panels.js`, `hooks.js`, `format.js` | panel layout (`ViewLayout`, `Resizer`, `usePanelWidths`), `useResource`, `useAction` (a control's call: busy, its answer or its problem), `useMedia`, Polish formats (`day`, `stamp`, `int`, `size`, `plural`, `count`) |
 | `search.js` | `SearchButton`, shortcuts `Ctrl+K` and `/`, `SLOT_PARAMS` (the `/slots` parameters in the address) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
-| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down), `accounts.js` ("Konta" of administrators: the list of `GET /users` and an account's card), `groups.js` ("Grupy" of administrators: the list of `GET /groups`, a new group, the members editor and the removal) |
+| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down), `accounts.js` ("Konta" of administrators: the list of `GET /users` and an account's card), `groups.js` ("Grupy" of administrators: the list of `GET /groups`, a new group, the members editor and the removal), `sharing.js` ("Udostępnianie" of a project, opened from its card: the owner, the visibility with people and groups of `GET /directory`, the data folder) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `labels/` | text dictionary (below) |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |
@@ -1330,11 +1330,13 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   settings, the refusals to start, TLS and the transport rules (section 6), the
   password table and the action log of `state.sqlite` (4.2), passwords with temporary
   ones and the last administrator (`auth/passwords.py`, section 7), sign-in over HTTP
-  with the wait after failures, the sessions of team mode and their revocation
-  (`api/session.py`, `api/sessions.py`, `auth/throttle.py`, 5.3). Missing are the
-  sign-in through the reverse proxy, the screens of sign-in, accounts, sharing, the log
-  and the jobs, the shared queue and the file download (plan `2026-10-26-plan-v0.4.md`,
-  T4 to T12); sessions live in the memory of a single server (`SessionStore`).
+  and through the reverse proxy with the wait after failures, the sessions of team mode
+  and their revocation (`api/session.py`, `api/sessions.py`, `auth/throttle.py`, 5.3),
+  the screens of sign-in, accounts, groups and sharing, projects of every person and
+  the scan limits. Missing are the rest of the log and its screen, the shared queue and
+  the jobs view, the file download, and the preferences and path aliases (plan
+  `2026-10-26-plan-v0.4.md`, T8 to T12); sessions live in the memory of a single server
+  (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

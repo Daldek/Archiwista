@@ -2331,8 +2331,9 @@ Kto widzi projekt (administratorzy widzą każdy):
   ( ) tylko właściciel
 Folder danych własnych:
   [ /mnt/nas/projekty/raba/dane                                    ]
-  domyślnie <katalog projektu>/dane; leży w katalogu projektu (administrator
-  może wskazać inny, poza magazynami i folderami innych projektów)
+  domyślnie <katalog projektu>/dane (puste pole go przywraca); leży w katalogu
+  projektu (administrator może wskazać inny, poza magazynami i folderami innych
+  projektów)
                                                       [Anuluj] [Zapisz]
 ```
 

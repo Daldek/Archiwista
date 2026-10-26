@@ -4,7 +4,7 @@
 settings saved first (none: a first run); ``tab`` is a fresh Chromium context
 (its own cookies) with a recording page, and ``engine_tab`` the same in
 Chromium and then in Firefox, for what depends on the browser engine.
-``team_serve(**team)`` starts a team server over TLS, and ``team_tab()``
+``team_serve(base, **team)`` starts a team server over TLS, and ``team_tab()``
 opens one person's browser of it, in each engine. The browsers are
 installed once with ``.venv/bin/python -m playwright install chromium
 firefox``.
@@ -121,18 +121,21 @@ def engine_tab(request: pytest.FixtureRequest) -> Iterator[Tab]:
 def team_serve(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., TeamServed]]:
-    """Start a team server over TLS over ``tmp_path``: ``team_serve(**team)``.
+    """Start a team server over TLS over ``tmp_path``: ``team_serve(base, **team)``.
 
-    ``team`` adds values of the table ``[team]``. The administrator
+    ``base`` holds the other settings (stores, project directories), the
+    defaults without it; ``team`` adds values of the table ``[team]``. The
+    server has the installed producers, as ``serve``; the administrator
     ``ADMIN_ACCOUNT`` exists; passwords are hashed at the lowest cost.
     """
     monkeypatch.setattr(passwords, "HASHER", cheap_hasher())
     with ExitStack() as stack:
 
-        def start(**team: object) -> TeamServed:
+        def start(base: AppSettings | None = None, /, **team: object) -> TeamServed:
             paths = local_paths(tmp_path)
             site = team_site(tmp_path / "tls")
-            served = team_serving(paths, site, admin=True, **team)
+            registry = load_registry(cache_dir=paths.cache_dir)
+            served = team_serving(paths, site, base, registry, admin=True, **team)
             server, _ = stack.enter_context(served)
             return TeamServed(server, paths, site.origin)
 
