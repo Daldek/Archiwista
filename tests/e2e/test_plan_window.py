@@ -1,4 +1,4 @@
-"""From an area on the map to files in the store, in Chromium (plan 2026-10-25, A10, A11).
+"""From an area on the map to files in the store, in Chromium (plan A10, A11).
 
 The stand-in producer (``tests/fixtures/action_source``) serves the store
 ``pomiary`` (its Kartograf directory is the stand-in's) and its workers run as
@@ -145,7 +145,9 @@ def test_a_variant_of_a_row_is_planned_and_downloaded(
     # Assert
     expect(first).to_contain_text("2023")
     expect(first).to_contain_text("pełne")
-    expect(first.locator(".src-variant").first).to_contain_text("PL-2000 · 1m · EVRF2007")
+    expect(first.locator(".src-variant").first).to_contain_text(
+        "PL-2000 · 1m · EVRF2007"
+    )
     expect(first.locator(".src-variant").first).to_contain_text("rozmiar nieznany")
     expect(first.locator(".src-variant").first).to_contain_text("niepobrane")
     others = first.get_by_role("list", name="Pozostałe warianty roku 2023")
@@ -164,7 +166,8 @@ def test_a_variant_of_a_row_is_planned_and_downloaded(
         "Pobrać? dem · 2023 · PL-2000 · 1m · EVRF2007 · obszar Kraków"
     )
     expect(dialog).to_contain_text(
-        "4 pozycje: aktualne 1, nowsze u źródła 1, brak w magazynie 1, nie do sprawdzenia 1"
+        "4 pozycje: aktualne 1, nowsze u źródła 1, brak w magazynie 1,"
+        " nie do sprawdzenia 1"
     )
     expect(dialog).to_contain_text("Do pobrania: 2")
     expect(dialog).to_contain_text("rozmiar co najmniej 5,4 kB")
