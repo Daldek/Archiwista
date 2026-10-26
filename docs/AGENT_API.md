@@ -480,9 +480,11 @@ curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   -d '{"note":"przed zmianą"}' "$BASE/projects/projekt-01/files/$FILE_ID/snapshots"
 ```
 
-`GET /jobs?project=projekt-01` filters the jobs of a project. The list, the
-details `/jobs/{job}` and the SSE `/jobs/{job}/events` do not reveal jobs with
-data of an invisible project (`404` for a direct address); an ordinary store
+`GET /jobs?project=projekt-01` filters the jobs of a project. The details
+`/jobs/{job}`, the SSE `/jobs/{job}/events` and the log do not reveal jobs with
+data of an invisible project (`404` for a direct address); the list holds every
+job of the queue, such a job with `hidden: true` and nothing but its kind,
+store, who, state, times and progress counts (v0.4, ADR-047). An ordinary store
 scan is shared. The SSE sends `progress`, `notice` and `state`, and a client
 resumes after `Last-Event-ID`.
 
@@ -677,9 +679,12 @@ A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 `project_download`, `project_repin`, `project_check`, `project_verify`, `preview_warm`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
-`progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`
-with `limit` (1–200) and `cursor`, newest first. Jobs with project data check
-the visibility of the project in a single card and in the SSE stream too.
+`progress`, `result`, `error` and `hidden` (v0.4: a job only of projects the
+session does not see, listed with empty `params`, `null` `session`, `result` and
+`error`, and `progress` with `current` and `total` only). The list: `GET
+/jobs?kind=&store=&state=&project=` with `limit` (1–200) and `cursor`, newest
+first. Jobs with project data check the visibility of the project in a single
+card and in the SSE stream too.
 
 **The shared queue (v0.4, ADR-047).** A `download` with `plan_job` claims the
 positions to download of its plans when it starts; a position another active
@@ -690,7 +695,10 @@ its person, a call all of whose positions are taken is skipped (`reason`
 the other job failed. A `download` without `plan_job` of a call (store, producer,
 command, options) that a running download runs stays `queued` with a notice
 `waiting_for_job` naming that job, and runs when it ends, finding the files in
-the store.
+the store. A person (with their agents; the scheduler is no person) runs at most
+`network_jobs_per_person` network jobs at once (`GET`/`PUT /settings`, 2 by
+default); further ones stay `queued`, none is refused, and a free place goes to
+the oldest waiting job of the person with the fewest running ones.
 
 The plans of a `check` job that succeeded or ended `partial` are `GET
 /jobs/{id}/plan` (`ActionPlanInfo`, from the index, no network): the store, the

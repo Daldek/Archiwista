@@ -9,6 +9,12 @@ command-line interface may change.
 
 ### Added
 
+- Limits per person in the queue (v0.4, ADR-047): a person, with the jobs of their
+  agents, runs at most `network_jobs_per_person` network jobs at once (2 by default;
+  the scheduler is no person); further ones wait in the queue and none is refused.
+  When a network place frees, the oldest waiting job of the person with the fewest
+  running network jobs takes it, and a change of the setting takes effect at once.
+  The server's limit of two network jobs stays.
 - The shared queue (v0.4, ADR-047): a download with a plan claims the positions it
   downloads when it starts, and a download of another person (or another job) that
   planned some of them leaves them to that job: its result lists them as `taken`
@@ -530,6 +536,11 @@ command-line interface may change.
 
 ### Changed
 
+- `GET /jobs` lists every job of the queue (v0.4, ADR-047 decision 3): a job only of
+  projects the session does not see, left out before, is listed with `hidden: true`
+  (a new field of `JobDetail`), its kind, store, who, state, times and progress
+  counts, and empty `params`, `session`, `result` and `error`; its own address, its
+  events and its log still answer `404`.
 - **Breaking:** `archiwista state export` writes `archiwista-state/2`: the password
   hashes (`passwords`), the preferences (`preferences`) and the action log (`actions`,
   instead of `permission_log`), and each account's `sessions_revoked_at`. The copy is

@@ -770,8 +770,13 @@ def _own_expected(
     if not sees:  # its store part stays, with whole counts
         expected["job mixed"] = routes.hidden_mixed
         expected["job mixed events"] = routes.hidden_mixed_events
-    expected["jobs"] = (PROBE_JOBS if sees else ("mixed",), sees)
-    expected["jobs of project"] = shown(PROBE_JOBS)
+    # Everyone sees every job of the queue; a job only of the project is
+    # listed hidden for one not seeing it (ADR-047 decision 3).
+    expected["jobs"] = (
+        tuple((name, not sees and name != "mixed") for name in PROBE_JOBS),
+        sees,
+    )
+    expected["jobs of project"] = shown(tuple((name, False) for name in PROBE_JOBS))
     return expected
 
 
@@ -808,11 +813,16 @@ def _without_failures(events: list[_Event]) -> list[_Event]:
     ]
 
 
-def _probes(listed: httpx.Response, routes: _OwnRoutes) -> tuple[str, ...]:
-    """Return the names of the project's jobs a page of ``GET /jobs`` holds."""
+def _probes(listed: httpx.Response, routes: _OwnRoutes) -> tuple[tuple[str, bool], ...]:
+    """Return the names of the project's jobs a page of ``GET /jobs`` holds.
+
+    Each name comes with whether the page marks that job ``hidden``.
+    """
     assert listed.status_code == 200, listed.text
-    shown = {item["id"] for item in listed.json()["items"]}
-    return tuple(sorted(name for name, job in routes.ids.items() if job in shown))
+    shown = {item["id"]: item["hidden"] for item in listed.json()["items"]}
+    return tuple(
+        sorted((name, shown[job]) for name, job in routes.ids.items() if job in shown)
+    )
 
 
 def _info(served: OwnDataApi, url: str) -> dict[str, Any]:

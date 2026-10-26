@@ -236,6 +236,7 @@ _JOB_DETAIL_EXAMPLE = {
         },
     },
     "error": None,
+    "hidden": False,
 }
 _JOB_FAILED_EXAMPLE = {
     "id": "9b2e44d01c7f3a85",
@@ -252,6 +253,7 @@ _JOB_FAILED_EXAMPLE = {
     "progress": None,
     "result": None,
     "error": _JOB_FAILURE_EXAMPLE,
+    "hidden": False,
 }
 _STORE_STATE_EXAMPLE = {
     "status": "available",
@@ -1891,8 +1893,9 @@ class JobDetail(BaseModel):
 
     Its events (progress, notices, changes of state) stream from
     `GET /jobs/{job}/events`. A job only of projects the session does not
-    see is not shown; a `preview` job lists only the refs (and failures) of
-    visible projects, with whole counts.
+    see is listed `hidden` with its kind, store, who, state, times and
+    progress counts, and answers `404` at its own address; a `preview` job
+    lists only the refs (and failures) of visible projects, with whole counts.
     """
 
     model_config = _examples(_JOB_DETAIL_EXAMPLE, _JOB_FAILED_EXAMPLE)
@@ -2048,6 +2051,16 @@ class JobDetail(BaseModel):
     error: JobFailure | None = Field(
         description="Why a job ended without success (`null` otherwise)."
     )
+    hidden: bool = Field(
+        default=False,
+        description=(
+            "True for a job only of projects the session does not see, as"
+            " `GET /jobs` lists it (ADR-047): its `params` are empty, its"
+            " `session`, `result` and `error` `null`, its `progress` has"
+            " `current` and `total` only; `GET /jobs/{job}`, its events and its"
+            " log answer `404`."
+        ),
+    )
 
     @classmethod
     def of(cls, job: JobRecord) -> Self:
@@ -2075,6 +2088,7 @@ class JobDetail(BaseModel):
                 hint=error.hint,
                 details=dict(error.details),
             ),
+            hidden=job.hidden,
         )
 
 

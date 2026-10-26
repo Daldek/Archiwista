@@ -75,10 +75,10 @@ def _warm(caller: Caller, body: dict[str, Any] | None) -> httpx.Response:
     return caller.request("POST", WARM, json=body)
 
 
-def _listed(caller: Caller) -> set[str]:
-    """Return the ids of the warm-ups ``caller`` sees in ``GET /jobs``."""
+def _listed(caller: Caller) -> dict[str, bool]:
+    """Return the warm-ups ``caller`` gets in ``GET /jobs``: each id, if ``hidden``."""
     page = caller.request("GET", "/jobs?kind=preview_warm").json()
-    return {item["id"] for item in page["items"]}
+    return {item["id"]: item["hidden"] for item in page["items"]}
 
 
 def _pane_thumbnail(info: dict[str, Any]) -> str | None:
@@ -131,9 +131,10 @@ def test_who_sees_a_project_warms_its_own_data_and_sees_that_warm_up(
 
     The owner, the person the project is shared with and an administrator
     start it (`202`, the same waiting job, which they all see); another
-    person gets `404` as for an unknown project, and sees neither that job
-    nor its id. Everyone may warm a store and sees that warm-up. An agent
-    acts with the person who minted its token.
+    person gets `404` as for an unknown project, and finds that job in the
+    queue only `hidden`, without its details (ADR-047). Everyone may warm a
+    store and sees that warm-up. An agent acts with the person who minted its
+    token.
     """
     # Arrange: no job runs, so equal requests join the waiting one.
     monkeypatch.setattr(supervisor, "default_max_jobs", lambda: 0)
@@ -177,7 +178,7 @@ def test_who_sees_a_project_warms_its_own_data_and_sees_that_warm_up(
     assert store.json()["params"]["store"] == STORE
     store_job = store.json()["id"]
     assert listed == {
-        (who, token): {store_job, project_job} if who in sees else {store_job}
+        (who, token): {store_job: False, project_job: who not in sees}
         for who in WHO
         for token in tokens
     }

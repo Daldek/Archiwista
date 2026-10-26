@@ -479,10 +479,11 @@ def list_jobs(
 ) -> JobList:
     """List background jobs newest first, with who started each (`actor`).
 
-    Jobs only of projects the session does not see are left out, and a
-    `preview` job lists only the refs (and failures) of visible projects.
-    `project` keeps the jobs with that project's data (`404` for a project
-    the session does not see).
+    Everyone sees every job of the queue (ADR-047): a job only of projects
+    the session does not see is listed `hidden`, with its kind, store, who,
+    state, times and progress counts only, and a `preview` job lists only
+    the refs (and failures) of visible projects. `project` keeps the jobs
+    with that project's data (`404` for a project the session does not see).
     """
     checked_project(queries, filters.project, visible)
     page = jobs.list(

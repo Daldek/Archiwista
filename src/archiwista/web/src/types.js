@@ -1009,6 +1009,9 @@
  *   `detail`), `skipped`, `stopped` (`cache_full` or null), `room_bytes`,
  *   `seconds`.
  * @property {JobFailure|null} error
+ * @property {boolean} hidden - A job only of projects the session does not see, as
+ *   `GET /jobs` lists it: empty `params`, null `session`, `result` and `error`,
+ *   `progress` with `current` and `total` only (ADR-047).
  */
 
 /**
