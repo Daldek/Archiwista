@@ -226,6 +226,12 @@ versions a scan has just indexed.
   current version and points to other content once a newer one is downloaded.
   "Na innym komputerze" (on another computer) gives the same path under another
   drive letter or mount (the store setting `path_aliases`).
+- **"Pobierz plik"** (download the file, v0.4) next to the version's title
+  saves the version's file on this computer under its name; nothing opens in
+  the browser, a PDF neither. It is disabled, with the reason, while the store
+  is unavailable or when the version is gone from it. One person downloads at
+  most two files at once: the browser reports a third as failed; download it
+  again when one has ended.
 - **"Przypięta w:"** (pinned in): the projects that pinned this version.
 - **"Pliki tego samego zapytania"** (files of the same request): files
   downloaded by one producer request, for example both sides of the PL/CZ
@@ -288,6 +294,12 @@ versions a scan has just indexed.
   The same content twice does not duplicate a version. Snapshots lie in
   `<data folder>/.wersje/`, in the open format `archiwista-snapshot/1`;
   Archiwista does not delete them.
+- **"Pobierz plik"** in the card of an own file saves the version chosen on
+  its timeline, the working file or a snapshot, under its name; "Pliki
+  zestawu" (the files of the set) in its metadata saves each file of a
+  Shapefile or a MapInfo TAB by its name. Whoever sees the project may
+  download its files; a file missing from the disk and a snapshot that is not
+  valid cannot be downloaded, and the action says why.
 
 ![File changed since the snapshot](reports/v0.2-screenshots/09-zmieniony-od-migawki.webp)
 ![A second snapshot of the same content](reports/v0.2-screenshots/10-ta-sama-tresc.webp)

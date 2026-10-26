@@ -119,6 +119,19 @@ export const cards = {
   },
   stale: "Magazyn „{store}” jest niedostępny — stan z indeksu z {indexed_at}, nie dowód, że plików nie ma.",
   stale_never: "Magazyn „{store}” jest niedostępny i nie ma pełnego przejścia indeksu.",
+  /** „Pobierz plik” (views/cards.js `DownloadLink`; ADR-047 decision 5). */
+  download: {
+    action: "Pobierz plik",
+    title: "Zapisz plik na tym komputerze",
+    member_title: "Zapisz plik „{name}” na tym komputerze",
+    /** Why a file cannot be downloaded now (the disabled action's description). */
+    why: {
+      store_unavailable: "Magazyn jest niedostępny, więc pliku nie można teraz pobrać.",
+      version_missing: "Tej wersji nie ma już w magazynie.",
+      file_missing: "Pliku nie ma na dysku.",
+      snapshot_invalid: "Migawka jest nieważna, więc nie można jej pobrać.",
+    },
+  },
   /** Human names of coordinate systems of Polish and Czech data (Kartograf's names). */
   crs: {
     "EPSG:2180": "PL-1992",

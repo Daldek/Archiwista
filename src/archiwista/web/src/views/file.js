@@ -15,7 +15,9 @@
  * (previews.js `PreviewPane`) with „Pokaż podgląd na mapie” when it has
  * tiles or features (the map with `preview=<ref>`). „Porównaj z…” next to
  * the version's title opens the comparison with another version of the
- * slot (`view=compare&a&b`, views/compare.js). Then the slot's problems.
+ * slot (`view=compare&a&b`, views/compare.js), and „Pobierz plik” downloads
+ * the version's file (api.js `fileAddress`; disabled with its reason while
+ * the store is unavailable or the version is gone). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
  * /stores/{store}/link-check`) and shows its result from the job's events.
  * Everything is read by store and path from the index, never from a file URL.
@@ -23,6 +25,7 @@
 
 import {
   buildPreview,
+  fileAddress,
   getPreview,
   getSlot,
   getVersion,
@@ -54,6 +57,7 @@ import {
   Badge,
   CopyAction,
   Crs,
+  DownloadLink,
   FileLink,
   IssueList,
   JobStatus,
@@ -291,7 +295,10 @@ function VersionDetails({ store, card, version, versions, tab, style }) {
       <h3 class="fc-version-title">
         <${Tech} value=${[["path", version.path], ["ref", version.ref]]}>${title}</${Tech}>
       </h3>
-      <${CompareWith} versions=${versions} version=${version} />
+      <div class="fc-version-actions">
+        <${CompareWith} versions=${versions} version=${version} />
+        <${DownloadVersion} store=${store} card=${card} version=${version} />
+      </div>
     </div>
     <${VersionTabs} tab=${tab} panel=${panel} />
     <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
@@ -329,6 +336,18 @@ function CompareWith({ versions, version }) {
       })}
     </ul>
   </details>`;
+}
+
+/**
+ * „Pobierz plik” of a version: disabled while its store is unavailable (the
+ * card is answered from the index) or the version is gone from the store.
+ */
+function DownloadVersion({ store, card, version }) {
+  let reason = null;
+  if (card.stale) reason = "store_unavailable";
+  else if (version.state === "missing") reason = "version_missing";
+  const address = fileAddress({ store, version: version.path });
+  return html`<${DownloadLink} address=${address} reason=${reason} />`;
 }
 
 /**

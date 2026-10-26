@@ -114,6 +114,8 @@ export const own = {
     paths: "Ścieżka do skopiowania",
     copy_path: "Kopiuj ścieżkę pliku",
     alias: "na innym komputerze",
+    /** The files of a set (a Shapefile, a MapInfo TAB), each its own download. */
+    set_files: "Pliki zestawu",
     history: "Historia stanów",
     history_hint: "Stany zaobserwowane przy skanach, bez treści; najnowszy u góry.",
     history_columns: {

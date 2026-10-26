@@ -1070,6 +1070,28 @@ function ownPreviewPath(project, fileId, label) {
   return label === null ? `${file}/preview` : `${file}/snapshots/${one(label)}/preview`;
 }
 
+/**
+ * The address of a file to download (`download_version_file`,
+ * `download_own_file`, `download_snapshot_file`; ADR-047 decision 5) for a
+ * link of the page (`<a href download>`): the browser sends the session's
+ * cookie and `Sec-Fetch-Site: same-origin`, which stand in for the CSRF
+ * header a link cannot send. The answer is an attachment, never shown.
+ *
+ * @param {{store: string, version: string}|{project: string, fileId: string,
+ *   label?: string|null, member?: string|null}} file - A version of a store,
+ *   or an own file: one of its snapshots (`label`), one file of its set or of
+ *   the snapshot's (`member`, a name of its `members`).
+ * @returns {string} Path and query, e.g. `/api/v1/stores/…/file`.
+ */
+export function fileAddress(file) {
+  if ("store" in file) {
+    return `${API_PREFIX}/stores/${one(file.store)}/versions/${segments(file.version)}/file`;
+  }
+  const own = `/projects/${one(file.project)}/files/${one(file.fileId)}`;
+  const path = file.label ? `${own}/snapshots/${one(file.label)}/file` : `${own}/file`;
+  return API_PREFIX + path + search({ member: file.member });
+}
+
 // The source and producers' commands (v0.3) ------------------------------------
 
 /**

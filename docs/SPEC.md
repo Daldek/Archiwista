@@ -1558,7 +1558,7 @@ proxy_autocreate = false                        # create a missing account on it
 | GeoPackage (BDOT10k, PRG, EGiB, ZABAGED, RUIAN…) | layers, feature count, features in view (GeoJSON, up to 5,000), attribute sample | opened with `immutable=1`; above the limit "Przybliż albo otwórz w QGIS" |
 | ZIP (SHP, GML, CityGML, XLS, PDF, OBJ) | list of members with sizes and recognised format | SHP and GML preview via `/vsizip/` later |
 | LAZ | header (extent, point count, classes, density) and a 2D image from a sample | 3D view after v1.0 (section 15, P5) |
-| TXT, PDF | metadata and the reason `document_no_preview` | PDF without delivering the file to the browser (v0.4); XYZ grids like ASC |
+| TXT, PDF | metadata and the reason `document_no_preview` | never shown in the browser, a PDF neither: "Pobierz plik" downloads it (v0.4, A-ADR-047 decision 5); XYZ grids like ASC |
 | IMGW series (Parquet in the dataset's series version) | variable chart (up to 2,000 points per series: min./avg./max. in intervals), first and last rows | read through `read_series` (IMGW-10); cache keyed by the `sha256` of the station file (6.7) |
 | IMGW archives (ZIP), station catalog (GeoJSON) | list of members with sizes; points and attribute table | the contents of the archives are read only by IMGWTools |
 

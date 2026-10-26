@@ -61,8 +61,14 @@ MESSAGES = {
         "Dokument nie ma podglądu w Archiwiście.",
     ),
     "fix_document_no_preview": Text(
-        "Open the file from the path to copy in a program that supports it.",
-        "Otwórz plik ze ścieżki do skopiowania w programie, który go obsługuje.",
+        (
+            'Download it with "Pobierz plik" (Download file) and open it in a program'
+            " that supports it, or open it from the path to copy."
+        ),
+        (
+            "Pobierz go przyciskiem „Pobierz plik” i otwórz w programie, który go"
+            " obsługuje, albo otwórz go ze ścieżki do skopiowania."
+        ),
     ),
     "reason_unsupported_format": Text(
         "Archiwista does not show a preview of this file format.",

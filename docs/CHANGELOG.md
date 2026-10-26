@@ -9,6 +9,14 @@ command-line interface may change.
 
 ### Added
 
+- "Pobierz plik" (v0.4, ADR-047): next to a version's title in the file card it saves
+  the version's file, in the card of an own file the working file or the snapshot
+  chosen on its timeline, and "Pliki zestawu" in the metadata saves each file of a
+  Shapefile or a MapInfo TAB by its name: the browser's download of a plain link,
+  nothing opens in the browser. It is disabled with the reason while the store is
+  unavailable, for a version gone from the store, a working file missing from the disk
+  and a snapshot that is not valid. The fix of a document without a preview (PDF, TXT)
+  points to it.
 - File download over HTTP (v0.4, ADR-047): `GET /stores/{store}/versions/{version}/file`,
   `GET /projects/{project}/files/{file_id}/file` and `GET
   …/files/{file_id}/snapshots/{label}/file` (also `HEAD`) send the file of a version,
