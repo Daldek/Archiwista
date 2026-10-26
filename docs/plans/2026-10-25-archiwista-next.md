@@ -1,4 +1,4 @@
-# Plan: Archiwista next: the data-output migration, the IMGWTools source, v0.3 "Actions"
+# Plan: Archiwista next: the data-output migration, the IMGWTools source, v0.3 "Actions", the station views
 
 Approved: 2026-10-25 (delegated approval: the coordinating session of the Nogat
 data-output work approved this plan on the author's behalf; the author's own
@@ -37,7 +37,7 @@ Both producers are untagged, so no data is migrated and no old name stays (ECO-0
 | B. Build v0.3 on the current pin `8e9bcbb` and migrate at the release | Rejected: at the pin `run_command(command, options, *, output_dir, ...)` takes the store root as `output_dir`, required, and returns the bare report; ADR-054 gives that keyword the meaning "plain directory", makes the store `root` optional (a forgotten one falls back to the default root without an error) and wraps the result in the envelope `kartograf-result/1`. A call written now becomes a plain write into the store root when the pin moves, and only a root that already has its marker stops it (`output_in_store`). The reports and plans v0.3 reads change too (`files[].file.path` becomes `files[].path`, the `store` of `kartograf-plan/1` becomes `root`), so v0.3 would be written twice |
 | C. Wait for the tags `v0.8.0` and `v3.0.0` and pin them | Rejected: the tags need the author (DEV-3.3), and REL-5.3 allows the commit pin that the Nogat plan names |
 | D. Accept both names of the store root in the adapter for a transition | Rejected: no aliases or shims (ECO-020); both producers are untagged, so one window of development heads is supported |
-| E. Bring all of v0.5 (stations views, charts, synchronisation) forward with the source | Rejected: stations, charts and synchronisation need the mockup answer M11 (SPEC 16; M5 answered 2026-10-26) and the v0.3 action layer; only the read side is planned (Part 2) |
+| E. Bring all of v0.5 (stations views, charts, synchronisation) forward with the source | Rejected: synchronisation and the IMGW actions need the v0.3 action layer; only the read side is planned (Part 2), and its station views (I8, Part 4) once the author answered M5 and M11 (2026-10-26) |
 | F. Let Archiwista write the marker of the author's existing stores (`kartograf store init`) | Not now: the store is read-only for Archiwista (CLAUDE.md), so the interface shows the command to copy; the author decides (D2) |
 
 ## Decision
@@ -106,7 +106,12 @@ acceptance tests; "(new)" means a test file or test to write.
 | I5 | Series coverage | 2 | I4 |
 | I6 | Read API and CLI for stations | 2 | I5 |
 | I7 | Projects of IMGWTools | 1 | I3 |
-| I8 | Stations on the map and in the Catalog | blocked | mockup answers, I6 |
+| I8.1 | Stations on the map: shapes, coverage fills, clusters | 2 | I6 |
+| I8.2 | The Catalog list of stations, "Bez położenia", the year type | 3 | I8.1 |
+| I8.3 | The Timeline tab of the Catalog | 2 | I8.2 |
+| I8.4 | Reading series values | 2 | I6 |
+| I8.5 | The station card and its chart | 2 | I8.2, I8.4 |
+| I8.6 | Comparison | 2 | I8.5 |
 | A1 | The action capability and the command catalog | 2 | M4 |
 | A2 | Availability job and the stored report | 2 | A1 |
 | A3 | Coverage labels, variants, store badge | 2 | A2 |
@@ -403,15 +408,14 @@ What the adapter must know about IMGWTools after ADR-007 (read at `a304521`):
    gives one project with tasks of both; pins link to versions of the IMGW index;
    `project_status` states as in the fixture; no action exists yet (A7 and A8 are
    producer-neutral and v0.5 adds the IMGW commands).
-8. **I8. Stations on the map and in the Catalog (blocked).** The interface of stations
-   (symbols and clusters, the group "without position", coverage labels and their
-   patterns, the station card, the chart) waits for the mockup answer M11 of SPEC 16,
-   which is the author's (M5, the Catalog layout and the "without position" group, was
-   answered 2026-10-26, SPEC 6.8). It is planned as a separate plan when they exist.
+8. **I8. Stations on the map and in the Catalog.** The interface of stations waited for
+   the mockup answers M5 and M11 of SPEC 16, which the author gave on 2026-10-26 (SPEC
+   4.8.4, 6.7, 6.8). It is planned in Part 4 (I8.1 to I8.6).
 
 After A8 and I7 the IMGW actions (check and synchronise archives, build series, project
-tasks of IMGWTools, export of a series, the card and comparison of stations) reuse the
-action layer of v0.3 and are the plan of v0.5; ČHMÚ views are v0.6.
+tasks of IMGWTools, export of a series, the actions of the station card) reuse the
+action layer of v0.3 and are the plan of v0.5; the station views without actions are
+I8 (Part 4); ČHMÚ views are v0.6.
 
 ### Part 3. v0.3 "Actions" (A)
 
@@ -608,6 +612,272 @@ those of SPEC 12; Kartograf's PROGRESS files the plan item size under "KH"):
 15. **A15. Area by unit name (blocked on KB-7).** `find_admin_units` is not in Kartograf;
     until it is, an area is chosen by code as in v0.1. No workaround.
 
+### Part 4. I8: the station views of the web interface
+
+Planned 2026-10-26, after the author answered the mockup questions M5 and M11 (SPEC 16,
+user decisions 2026-10-26; SPEC 4.8.4, 6.5 i to k and m, 6.7, 6.8; A-ADR-021 erratum 4).
+Approval: open (DEV-17.4, the author's; D12 lists the choices M11 left to this part).
+It builds the read side of the station views of SPEC 13 "v0.5" on the routes of I6, on
+`feature/kartograf-data-output` as I6 and I7. Each commit passes the reduced gate of the
+author's decision of 2026-10-25 (ruff format, ruff check, mypy, `scripts/check-commits.sh`)
+with the scoped tests of its step; the full offline run is the one at the end of the
+session. The interface tests run in Chromium and Firefox (`engine_tab` of
+`tests/e2e/conftest.py`), except what is drawn on the map's WebGL canvas: headless Firefox
+has no WebGL2 (PROGRESS Status, the panel row), so those assertions run in Chromium
+(`tab`) and the Firefox run of the same test checks what stands beside the canvas
+(legend, counter, panel, list). The stores are `imgwtools.testing`'s (`imgw_store`
+fixture): in `complete` the hydro series of `149190310` has H (and T) with the gaps
+2023.12.02–12.31 and 2024.02.01–28 and Q without a gap, `149190311` has no gap, and the catalog has
+stations without a position; `complete_pl_cz` adds ČHMÚ stations. One ADR,
+`docs/decisions/0045-station-views.md`, is written in I8.1 and grows a decision per
+step, as ADR 0032 did; each commit brings the CHANGELOG `[Unreleased]`, SPEC 9.2 and
+9.3 for a new route, AGENT_API and USAGE for a new CLI command, ARCHITECTURE for a new
+module, and PROGRESS.
+
+The routes the interface reads, from I6 (ADR 0032 decision 13), and what this part adds:
+
+| Route | State | Used by |
+|---|---|---|
+| `GET /map/stations` (points with `coverage` per variable when `dataset` is given; above `limit` the grid `cells`; `counts`) | built (I6) | I8.1 |
+| `GET /stations` (filters, `location` groups, `counts`, cursor) | built (I6); `q`, `sort` and `meteo_kind` added | I8.1, I8.2 |
+| `GET /stations/{code}` (card) and `/stations/{code}/coverage` (the years of one station) | built (I6) | I8.3, I8.5 |
+| `GET /stations/datasets` | new (I8.1) | I8.1 to I8.6 |
+| `PUT /settings/year-types` | new (I8.2) | I8.2, I8.5 |
+| `GET /stations/timeline` (the years of a page of stations) | new (I8.3) | I8.3 |
+| `GET /stations/{code}/series` (chart data, SPEC 9.2) | new (I8.4); the source interface has no capability that reads series values (only `read_series_index`) | I8.5 |
+| `GET /stations/compare` (SPEC 9.2) | new (I8.6) | I8.6 |
+
+The fixed paths (`/stations/datasets`, `/stations/timeline`, `/stations/compare`) are
+declared before `/stations/{code}` in `api/stations.py`, or FastAPI would read them as a
+code. A station in the address of the interface is `<store>/<provider>/<code>` (codes of
+both providers hold no `/`), so an ambiguous code (`400 ambiguous_station`) never
+reaches the interface.
+
+1. **I8.1. Stations on the map: shapes, coverage fills, clusters** (two commits; ADR 0045).
+   - *Commit 1, the datasets and the station type.* `GET /stations/datasets`: the
+     datasets with station series in the index (`series_catalogs`), each with its key,
+     the name of its segment, provider, family, time unit, default year type, R (first and
+     last year), the label of the series version and its variables (key, variable, unit,
+     half-year period; the distinct keys of `station_series`), from a new
+     `IndexQueries.station_datasets(store)`; `archiwista stations datasets [--json]`.
+     `StationFilters` gains the repeatable `meteo_kind` (`synoptic`, `climate`,
+     `precipitation`), so the type chips filter on the server and the grid counts what the
+     chips show. *Acceptance:* (new) `tests/integration/test_station_datasets_api.py` over
+     `complete` and `complete_pl_cz`: the datasets are those of the series slots, the
+     variables those of `summarize_series`, route and CLI agree, `503` without IMGWTools,
+     the OpenAPI test lists the route; `meteo_kind=precipitation` keeps only the
+     precipitation posts and `counts` follow it.
+   - *Commit 2, the layer.* `web/src/map/stations.js` (new) and `map/canvas.js`: a GeoJSON
+     source `stations` with MapLibre clustering (`cluster: true`), a symbol layer whose
+     `icon-image` is `<shape>-<state>`: 15 images drawn once on a canvas and added with
+     `map.addImage` (shapes: triangle for `kind` `hydro`, square for `meteo_kind`
+     `climate` and `synoptic`, circle for `precipitation`; states of SPEC 4.8.4: green
+     solid, orange solid, orange half, grey hollow, grey dashed outline), the label the
+     name and, for a water gauge, the river; clusters a neutral circle with
+     `point_count` (no coverage colour). A click on a cluster eases to
+     `getClusterExpansionZoom`; when the cluster cannot expand (its expansion zoom is past
+     the map's `maxZoom`, or up to 8 leaves share one position) its leaves
+     (`getClusterLeaves`) are spread on a circle around it with leader lines until the
+     next click or `Esc`. Above `limit` (5,000, as footprints) the answer's `cells` are
+     drawn as the same neutral circles at the cell centres, and a click fits the cell.
+     The tooltip of a point: name, type, river, "na granicy obszaru" when
+     `location.on_boundary`, and the label of every variable from the point's `coverage`
+     (P16). `views/map.js` and `map/panel.js`: for a product whose segments belong to the
+     producer `imgw` (`GET /products`, `segment.producer`), the dataset chip (from
+     `GET /stations/datasets`), the type chips and "Kolor punktów" (the dataset's
+     variables; default its first, address `color`) replace the footprint layer; the
+     counter "N stacji bez położenia" (`counts.unlocated`) links to the Catalog with
+     `location=none` (M5); `map/legend.js` shows the three shapes, the five fills with
+     their texts (never colour alone) and the cluster. Requests: `GET /map/stations`
+     (`bbox`, `area_id`, `boundary`, `dataset`, `kind`, `meteo_kind`, `year_type`,
+     `years`, `limit=5000`, `grid_columns`), `GET /stations/datasets`. Labels in
+     `labels/map.js`.
+   - *Acceptance.* (new) `tests/e2e/test_stations_map.py`: the map centred on a located
+     station of `complete` (its position from `GET /map/stations`) shows on hover its
+     name, river and the labels of H, Q and T (Chromium); at a low zoom the stations form
+     a cluster whose tooltip counts them and whose click raises the zoom of the address;
+     a request rewritten with `page.route` to `limit=1` gets `cells` and the neutral
+     circles are drawn and fit on click (Chromium); in both engines the legend lists the
+     three shapes and five fills by text, the counter equals `counts.unlocated` and opens
+     the Catalog with `location=none`, and the "Kolor punktów" chip changes `color` and
+     the `dataset` of the next request; `tab.assert_clean()`. Each fill and shape is
+     checked in a screenshot of the legend in `docs/reports/` (the canvas is not
+     asserted pixel by pixel).
+2. **I8.2. The Catalog list of stations, "Bez położenia", the year type** (three commits).
+   - *Commit 1, the remembered year type (P15).* `AppSettings.year_types` (`hydro`
+     hydrological, `meteo` calendar by default) in `config.toml` (SPEC 4.3, view
+     preferences), in `GET /settings`, and `PUT /settings/year-types`, which changes only
+     these, with the permission of `PUT /settings` (`settings_writer`) until accounts
+     exist (v0.4). The station routes and `archiwista stations` take the remembered type
+     of the dataset's family when `year_type` is absent (today the family default, ADR
+     0032 decision 12); a given `year_type` wins and changes nothing; a mixed view uses
+     the one of hydro; half-year characteristics stay hydrological. *Acceptance:* (new)
+     `tests/integration/test_year_types.py`: after `PUT` of meteo hydrological, `GET
+     /stations` of a meteo dataset labels in hydrological years without `year_type`, with
+     `year_type=calendar` in calendar years and the settings unchanged; the half-year
+     dataset stays hydrological; the file round-trips; a session without the permission
+     gets `403`.
+   - *Commit 2, search and order.* `GET /stations` gains `q` (a name or river containing
+     the text, case-folded, or a code beginning with it; no `LIKE` wildcards, ADR 0032
+     decision 11) and `sort` (`river`: hydrographic code, then `river_order`, then name,
+     the order along rivers of SPEC 6.8, the default; `name`), both bound to the keyset
+     cursor. *Acceptance:* (new) cases in `tests/integration/test_station_queries.py`: a
+     name part, a code prefix, a river name; the river order of a synthetic list with
+     tributaries; pages of both orders join without a duplicate or a gap.
+   - *Commit 3, the list.* `views/catalog.js` switches to the stations for a product of
+     the producer `imgw` (as I8.1); `views/catalog-stations.js` (new) reads `GET
+     /stations` page by page (`limit=200`, the cursor) with the filters of the address,
+     one row per station with a line per variable (label text with the fill of SPEC
+     4.8.4, full years) and the columns of sketch 6.5 m (station, code, river and its
+     code, coverage, location: source, or the reason without a position);
+     `views/catalog-grid.js` takes a row height per row and a row renderer, so files and
+     stations share one virtualised grid. Groups as SPEC 6.8 with the counts of `counts`;
+     "Bez położenia" is last, read with `location=none`, collapsed by default when more
+     than 50 stations are located and expanded when the address has `location=none` (the
+     map counter, M5); `counts.hidden` says how many the coverage filters hide (P14).
+     `views/catalog-filters.js` gains the station fields: search (`q`), dataset, type
+     (`kind`, `meteo_kind`), river code with "z dopływami" (`river_scope`), active,
+     variable, coverage chips (`coverage`, `min_complete_years`), years and the
+     year-type switch "Lata: hydrologiczne / kalendarzowe" (M11 point 5), which writes
+     `year_type` to the address and the remembered choice with `PUT
+     /settings/year-types`. A row opens the station card (I8.5; until then "Pokaż na
+     mapie" only). Labels in `labels/catalog.js`.
+   - *Acceptance.* (new) `tests/e2e/test_stations_catalog.py` (both engines): the rows of
+     `complete` equal `GET /stations`, ordered along rivers; "Bez położenia" holds the
+     stations without a position with their reason and never a map link; the map counter
+     opens it expanded; the river filter with tributaries and a coverage chip change the
+     address and the rows, and the hidden count is shown; the year-type switch changes the
+     labels (equal to the API's with `year_type`), survives a reload from the address and
+     is remembered; keyboard: arrows, Home/End, Enter as in `test_catalog.py`.
+3. **I8.3. The Timeline tab of the Catalog** (two commits).
+   - *Commit 1, the years of a page.* `GET /stations/timeline`: the filters and cursor of
+     `GET /stations` with `dataset` required and `variable` repeatable; each item the
+     station and its `TimelineSeries` (the model of `/stations/{code}/coverage`), read by
+     a batch form of `IndexQueries.station_coverage` over the page's stations in one read
+     of `series_years`; `archiwista stations timeline [--json]`. *Acceptance:* (new)
+     `tests/integration/test_station_timeline_api.py`: each item equals
+     `/stations/{code}/coverage` of its station; pages join; `400` without `dataset`;
+     route and CLI agree; a `perf` test of 200 stations × 75 years on a synthetic index
+     within the 300 ms of SPEC 4.5.
+   - *Commit 2, the tab.* `views/catalog-station-timeline.js` (new) on `layout=timeline`
+     (`views/switch.js` `TIMELINE_LAYOUT`; the "Lista" stays the default, M3): an ARIA
+     treegrid, a station row with the cells of the "Kolor punktów" variable that expands
+     into a row per variable; a cell is a year whose colour saturation is
+     `with_value / known` (`full` saturated, `fraction` lighter in proportion, `none`
+     grey hollow, `unknown` grey dashed outline); the tooltip gives the label, the longest
+     gap and the year's units, known units and units with a value; the year headers say
+     the convention ("r.h. 2024 (2023.11.01–2024.10.31)"); keys as the file Timeline
+     (arrows, Home/End, Enter or Space expands, roving tabindex). No archive bar (below,
+     "Not in I8").
+   - *Acceptance.* (new) `tests/e2e/test_stations_timeline.py` (both engines): the tab is
+     one click from the list and keeps the filters; for `149190310` the H row has the
+     years of `/stations/149190310/coverage` with the fraction cells of the two gaps and
+     its tooltip names the longest gap; expanding and collapsing by keyboard; the year
+     type switch changes the columns.
+4. **I8.4. Reading series values** (two commits). Nothing reads a series file today:
+   the labels come from the index (ADR 0032 decision 12), and the chart needs the values.
+   - *Commit 1, the capability.* The optional capability `SeriesValuesAdapter` in
+     `sources/protocol.py`: `read_values(root, version, *, station, variables, start,
+     end) -> Iterator[SeriesValues]` (`sources/types.py`: the date or period, the value of
+     each variable or `None`, the producer's flags for a missing unit and an accumulated
+     sum, the dates of half-year extremes), and `characteristics_dataset(dataset_key) ->
+     str | None`, the dataset of the same provider and family with the time unit
+     `half_year` in the producer's registry (`imgwtools.datasets()`: `provider`, `kind`,
+     `time_unit`; never derived from the key text, SPEC 4.2.1). The IMGW adapter
+     maps `imgwtools.store.read_series(version, root=…, station=…, variables=…,
+     start=…, end=…)` (`NormalizedRecord`); refusals are `ProducerError` and a missing
+     station `NotFoundError`; Archiwista still imports no `pyarrow`. *Acceptance:* (new)
+     `tests/contract/test_imgw_values.py` over `complete`: the values of `149190310` H
+     equal `read_series`, every day of its two gaps is `None` and no other day is; a
+     station outside the series and a refused version raise; `characteristics_dataset`
+     names `pl.imgw.hydro_semiannual` for `pl.imgw.hydro_daily` and none for a meteo
+     dataset (the registry has no half-year meteo dataset); the
+     import test still finds `imgwtools` only in `adapter/imgw`.
+   - *Commit 2, the route.* `services/series_chart.py` (new): a range of at most
+     `max_points` units is returned as values; a longer one in intervals of
+     `ceil(units / max_points)` units with min, avg and max of the values in each (`null`
+     for an interval without a value, never interpolated), with the note's interval
+     length; `gaps[]` from the gap list of `station_series` clipped to the range, so a gap
+     shorter than an interval still has its band; accumulated sums as markers; extremes
+     from the characteristics dataset's current series of the station when the store has
+     it (the values published by IMGW with their dates, SPEC 6.7), else none.
+     `GET /stations/{code}/series` (`store`, `provider`, `dataset`, `variable` one or two,
+     `from`, `to`, `max_points` ≤ 2,000, `version`, default the index's current) answers
+     `StationChart` with the licence and attribution of the series; `archiwista stations
+     series CODE [--json]`. *Acceptance:* (new) `tests/unit/test_series_chart.py` on
+     synthetic records: 27,393 days at 2,000 points give intervals of 14 days, an interval
+     of only gaps is `null`, a one-day gap inside an interval is in `gaps`, no value
+     exists for a missing day, a leap day, an accumulated sum; and
+     `tests/integration/test_station_series_api.py` over `complete`: the daily values of
+     `149190310` H equal `read_series` with its two gaps, `max_points=30` simplifies,
+     `503` without IMGWTools, `400` for an unknown variable or more than two, route and
+     CLI agree; a `perf` test of the aggregation of 27,393 days within the 500 ms of SPEC
+     4.5 (the read of a real 75-year file is measured on the author's store).
+5. **I8.5. The station card and its chart** (two commits).
+   - *Commit 1, the card.* The overlay `station` (`routes.js` `OVERLAYS`, value
+     `<store>/<provider>/<code>`), `views/station.js` (new) over `GET /stations/{code}`:
+     a header with the type, name, river and its code, code, provider, active or
+     historical, and the year-type switch (M11 point 5, as in the Catalog); location with
+     source, catalog date and uncertainty, or the reason; the tabs "Wykres", "Metadane",
+     "Pochodzenie", "Szczegóły techniczne"; the coverage of each variable (label with its
+     fill, full years, longest gap; no station label, P16); the series versions (file,
+     SHA-256, label); the IMGW formulas with "Kopiuj atrybucję"; "Strona stacji IMGW"
+     as a plain link (no request); the actions of I8: "Kopiuj ścieżkę pliku", "Pokaż na
+     mapie" (with a position), "Porównaj z…" (I8.6). A point on the map, a list row and a
+     Timeline row open it. *Acceptance:* (new) `tests/e2e/test_station_card.py` (both
+     engines): opened from the map tooltip (Chromium), a list row and the address; the
+     header switch changes the labels and the address; a station without a position shows
+     its reason and no map action; the attribution text is the IMGW formula (copied, read
+     back in Chromium); the station page link makes no request (`tab.assert_clean()`).
+   - *Commit 2, the chart.* `views/station-chart.js` (new), SVG drawn by the module (no
+     chart library: the interface has no build step, A-ADR-028, and the vendored
+     libraries have none): it asks `GET /stations/{code}/series` with `max_points` the
+     plot width in pixels (at most 2,000); by default the whole R simplified (the min–max
+     band and the average line, the note "wykres uproszczony: min./śr./maks. z N dni"),
+     daily values once a drag selection or the wheel narrows the range to at most
+     `max_points` days (`from`, `to` in the address); a gap breaks the path (a new
+     subpath after each `null`) and has a grey band over `gaps[]`, never a line across
+     it; extremes are dots with their date in the tooltip; a second variable of another
+     unit gets the right axis; keys `+`, `-`, arrows and `Home` (reset); a text line
+     sums the range, the points and the gaps. *Acceptance:* (new)
+     `tests/e2e/test_station_chart.py` (both engines): `149190310` H has two grey bands
+     at 2023.12.02–12.31 and 2024.02.01–28 and its path three subpaths, no vertex inside a
+     band; a request rewritten to `max_points=30` shows the note, and a selection of one
+     month shows 31 daily vertices and writes `from` and `to`; extremes are covered by
+     the unit test of I8.4 until `imgwtools.testing` has a half-year series (Requests).
+6. **I8.6. Comparison** (two commits).
+   - *Commit 1, the route.* `GET /stations/compare` (`station` repeatable, 2 to 5, as
+     `<store>/<provider>/<code>`; `dataset`, `variable`, `from`, `to`, `year_type`,
+     `max_points`): one range for all (the union of the stations' R, or `from`–`to`),
+     a `StationChart` per station with the same interval, and the facts of each from the
+     index (y₁–y₂, gap share, longest gap, full years, location source); a station
+     without the variable stays with "brak danych" (P14). `archiwista stations compare
+     [--json]`. *Acceptance:* (new) `tests/integration/test_station_compare_api.py` over
+     `complete`: the two hydro stations share the interval and the range, the facts equal
+     their cards, `400` for one or six stations, route and CLI agree.
+   - *Commit 2, the view.* `views/station-compare.js` (new; `routes.js` `VIEWS` with `nav:
+     false`): the stations as panels stacked one above another with one time axis at the
+     bottom (not lines overlaid; M11 point 7), each with its name, gaps and extremes as in
+     the chart, a selection or zoom in one panel moves all; the table of facts below; the
+     formulas of each provider. "Porównaj z…" of the card and a selection of up to five
+     rows in the Catalog list open it. *Acceptance:* (new)
+     `tests/e2e/test_stations_compare.py` (both engines): two stations from the list give
+     two panels with the same axis ticks; a selection zooms both and writes the address;
+     the facts equal the cards; a sixth station cannot be added.
+
+**Not in I8.** The archive badge of SPEC 4.8.4 and 9.2, the archives bar under the
+Timeline and the input archives of the card: they need the archives of a dataset's years
+from the producer, a capability the source interface lacks (ADR 0032 decision 13). The
+assistant proposal card for IMGW data: after the MVP (M11 point 8). The IMGW actions of
+the card, the list and the map ("Polecenie IMGWTools", "Sprawdź aktualność", "Pobierz
+archiwa…", "Przygotuj szeregi…", "Dodaj do projektu…", "Dodaj do zestawu", "Plik
+współrzędnych…"): the IMGW actions of v0.5 on the action layer. The ČHMÚ surface of SPEC
+4.8.6 (supplier badge, "Dostawca" filter, "nieopublikowany"): v0.6; ČHMÚ stations show as
+any station with their provider. The year type kept with an account: v0.4 login. The
+order by full years (a label is computed, not stored, so a keyset cursor cannot page it;
+`min_complete_years` filters by it). A common timeline of NMT flights and series coverage
+(SPEC 6.7, undecided).
+
 ## Requests
 
 To be opened as GitHub issues labelled `request` in the producer's repository (DEV-17.5)
@@ -630,6 +900,7 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | ~~a reason `project_locked` (and the lock's path in `details`) on the `ValidationError` of a lock that stays past `LOCK_TIMEOUT_S`, and `.kartograf-project.lock` as a public name: today the refusal has no reason and the name is internal, so Archiwista recognises a left lock by the directory beside the manifest (found in A8, ADR-040)~~ **done** (Kartograf `745e8b18`, ADR-040 erratum 3 there: `ProjectLockedError`, `details.path`, `TaskResult.reason`, `kartograf.PROJECT_LOCK`; the adapter reads the reason, ADR-040 erratum 2) | A8 |
 | IMGWTools | a machine code in `StoreInfo` (today only `problems` texts; `missing_marker` covers a layout without a marker and a foreign directory) | I1 |
 | IMGWTools | `parse_command(line)` beside `format_command`, as Kartograf's KB-2, so that a pasted `imgw …` line becomes a call | the IMGW actions (v0.5; ADR-034) |
+| IMGWTools | a `hydro_semiannual` series in the `complete` variant of `imgwtools.testing.build_fixture_store`, for a station of the daily series, with dated half-year extremes, so that the extremes of the chart are tested on the producer's own data (interim: synthetic records in the unit test) | I8.4, I8.5 |
 | Nogat | registry: the edge to Kartograf gets `uses` and `exchange` for the command layer (`kartograf-commands/1`, `kartograf-result/1`, `kartograf-download/1`, `kartograf-availability/1`, `kartograf-testing`); the edge to IMGWTools becomes `active` with I2 and gets `imgw-plan/1`, `imgw-result/1`, `imgw-testing` | I2, A1 |
 
 ## Risks
@@ -648,6 +919,7 @@ by the author or by a session with access; none is a blocker of M.
 | Messages and the SPEC move under the steps (message catalog step 2, the translation) | conflicts and stale line numbers | M2 and M3 start after the catalog commit; the translation of the SPEC starts after M3; line numbers are those of `2b167c3` and the steps name symbols |
 | The approval is delegated (DEV-17.4 asks for the author's) | a plan amended later | steps not yet started follow the amendment; the line stays "delegated" until the author confirms |
 | `archiwista[imgw]` pulls `pyarrow` into the lock and the gate (`--all-extras`) | a heavier environment and lock | one lock for both configurations (A-ADR-024); the CI configuration without the extra proves the optional path |
+| Headless Firefox has no WebGL2, so the map canvas is not drawn there | the station symbols and clusters are tested in one engine | the canvas assertions run in Chromium, the Firefox run checks the legend, counter, panel and list beside it (I8.1); the chart, the Timeline and the comparison are SVG and DOM, tested in both engines |
 
 ## Decisions for the author
 
@@ -683,11 +955,19 @@ the amendment.
   stores; agents do not.
 - **D11. Order when one session is available.** M, then A, then I: v0.3 is the next
   release and the IMGW source is an optional extra.
+- **D12. Choices of Part 4 not fixed by M11** (open; Part 4 is not approved yet, and these
+  are the defaults it is written with): a synoptic station is drawn as a square, like a
+  climatological one; a cluster of up to 8 stations at one position spreads instead of
+  zooming; "Bez położenia" is collapsed by default above 50 located stations; the
+  remembered year type is changed with the permission of `PUT /settings` until accounts
+  exist; the chart is SVG drawn by Archiwista, without a chart library; the Catalog
+  orders stations along rivers by default; the "Kolor punktów" variable defaults to the
+  dataset's first.
 
 ## Not in this plan
 
-v0.4 "Team" (no producer needs; it follows A); the IMGW actions and the stations views
-(v0.5, a plan of its own after A8, I7 and the mockup answers); the PL + CZ surface (KF,
+v0.4 "Team" (no producer needs; it follows A); the IMGW actions (v0.5, a plan of its own
+after A8 and I7) and what Part 4 leaves out ("Not in I8"); the PL + CZ surface (KF,
 v0.6); the QGIS set, the assistant and the mosaic (v1.1 to v1.3); the translation of the
 documents, the first CI run and the tags (PROGRESS Next 1.2, 3 and 4).
 
