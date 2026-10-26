@@ -10,6 +10,7 @@
 .admin-table td { overflow-wrap: anywhere; }
 .admin-table tr.admin-off td { color: var(--text-3); }
 .admin-manage { width: 1%; white-space: nowrap; text-align: right; }
+.admin-actions { display: inline-flex; gap: 6px; }
 
 .admin-form { display: grid; gap: 12px; }
 .admin-form .field { margin: 0; }
@@ -20,6 +21,7 @@
 .admin-roles { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .admin-roles legend { font-weight: 600; font-size: 13px; padding: 0; margin-bottom: 6px; }
 .admin-roles .check-field { font-weight: 400; }
+.admin-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .admin-note { padding: 7px 9px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; }
 .admin-note.warn { background: var(--bad-bg); color: var(--bad-ink); }
 .admin-secret { display: grid; gap: 6px; padding: 10px; border: 1px solid #c7d2fe; border-radius: 10px; background: var(--accent-soft); }

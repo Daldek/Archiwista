@@ -2300,12 +2300,13 @@ HASŁO TYMCZASOWE · marek.lis (widoczne tylko teraz)
   sesje marek.lis zostały zakończone
 ```
 
-**q) "Grupy" (Groups; administrators)**
+**q) "Grupy" (Groups; administrators)** (removing a group takes it out of the projects
+shared with it, after a confirmation)
 
 ```text
 GRUPY                                                     [+ Nowa grupa]
-hydro  Dział hydrologii  3: Anna Nowak, Kasia Wrona, …  [Członkowie…] [Usuń]
-gis    Dział GIS         1: Marek Lis                   [Członkowie…] [Usuń]
+hydro  Dział hydrologii  3: Anna Nowak, Kasia Wrona, …  [Członkowie…] [Usuń…]
+gis    Dział GIS         1: Marek Lis                   [Członkowie…] [Usuń…]
 
 CZŁONKOWIE · hydro
   [x] Anna Nowak (anna.nowak)     [ ] Marek Lis (marek.lis)

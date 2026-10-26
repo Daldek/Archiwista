@@ -118,6 +118,24 @@
  * @property {string} expires_at - Its end, 72 hours after it was set.
  */
 
+/**
+ * A group of people, e.g. a department.
+ *
+ * @typedef {object} Group
+ * @property {string} id
+ * @property {string} name - Display name.
+ * @property {string[]} members - Account ids, ordered.
+ * @property {string} created_at
+ * @property {string} updated_at
+ */
+
+/**
+ * Every group, ordered by id (`GET /groups`).
+ *
+ * @typedef {object} GroupList
+ * @property {Group[]} items
+ */
+
 // Problems -------------------------------------------------------------------
 
 /**

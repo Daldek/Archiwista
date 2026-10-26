@@ -21,7 +21,7 @@ import {
 } from "../api.js";
 import { useApp } from "../context.js";
 import { stamp } from "../format.js";
-import { useResource } from "../hooks.js";
+import { useAction, useResource } from "../hooks.js";
 import { admin as L } from "../labels/admin.js";
 import { t } from "../labels/index.js";
 import {
@@ -287,28 +287,6 @@ function RoleChecks({ legend, roles, onChange }) {
         ${L.roles[role]}</label>`,
     )}
   </fieldset>`;
-}
-
-/**
- * A call of one control: `busy` while it runs, then its answer (`done`,
- * `value`) or its refusal (`problem`). `run` resolves to `{value}`, or
- * `null` when refused.
- */
-function useAction() {
-  const [state, setState] = useState({ busy: false, done: false, value: null, problem: null });
-  const run = async (call) => {
-    setState({ busy: true, done: false, value: null, problem: null });
-    try {
-      const value = await call();
-      setState({ busy: false, done: true, value, problem: null });
-      return { value };
-    } catch (error) {
-      if (!error.problem) throw error;
-      setState({ busy: false, done: false, value: null, problem: error.problem });
-      return null;
-    }
-  };
-  return { ...state, run };
 }
 
 function roleNames(roles) {

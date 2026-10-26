@@ -49,6 +49,7 @@ export const VIEWS = [
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
   { id: "accounts", icon: "user", bottom: true, admin: true, load: () => import("./views/accounts.js") },
+  { id: "groups", icon: "users", bottom: true, admin: true, load: () => import("./views/groups.js") },
 ];
 
 /** @type {OverlayRoute[]} */

@@ -17,6 +17,7 @@ export const shell = {
     setup: "Ustawienia",
     compare: "Porównanie",
     accounts: "Konta",
+    groups: "Grupy",
   },
   stores_label: "Magazyny",
   store_title: "Magazyn „{name}” ({id}): {status}",

@@ -54,8 +54,9 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 - **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
   Projects ("Projekty"), Store ("Magazyn") and, at the bottom, Settings
   ("Ustawienia"), the same form as the wizard, and for an administrator
-  Accounts ("Konta", see "Team server"). Saving the settings replaces all of
-  them at once; a new or moved store is scanned from scratch.
+  Accounts ("Konta") and Groups ("Grupy"; see "Team server"). Saving the
+  settings replaces all of them at once; a new or moved store is scanned
+  from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
   in every view) and the current session (on a team server the account menu).
 - **The index status bar** under the top bar reports a scan in progress, a
@@ -471,6 +472,15 @@ switch it off and on, and "Usuń…" removes it after a confirmation. A refusal,
 that of the last administrator, shows at its control.
 
 ![Accounts with a temporary password](reports/v0.4-screenshots/04-konta.webp)
+
+**Groups in the browser.** "Grupy" (groups), beside "Konta" and for administrators only,
+lists each group with its name and members. "Nowa grupa" takes the group's identifier,
+name and members; "Członkowie…" checks and unchecks the accounts of a group, which
+count from each person's next request; "Usuń…" removes a group after saying that its
+members stop seeing the projects shared only with it. A project is shared with a
+group on its sharing screen.
+
+![Groups with the members of hydro](reports/v0.4-screenshots/05-grupy.webp)
 
 **The sign-in page.** In the browser a team server opens "Logowanie" (sign-in): the
 account ("Konto") and its password ("Hasło"; "Pokaż" shows what was typed), which the

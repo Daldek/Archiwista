@@ -1,13 +1,15 @@
-"""The administrators' „Konta” on a team server, in Chromium and Firefox.
+"""The administrators' „Konta” and „Grupy” on a team server, in Chromium and Firefox.
 
 Plan v0.4, step T6. A real ``archiwista serve`` in team mode over TLS: the
 administrator anna creates kasia and gives her a temporary password, which
 kasia changes at her first sign-in in a second browser; the role „zapis do
 magazynu” counts from kasia's next request, and disabling kasia ends her
-session. A person without ``admin`` has no „Konta” and its route answers
-``403``; the last administrator can neither be disabled nor lose the role,
-said at the control. With ``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium
-keeps screenshots there (``docs/reports/v0.4-screenshots/``).
+session. Anna makes the group hydro with kasia, adds herself and removes it;
+kasia's groups follow at her next request. A person without ``admin`` has
+neither „Konta” nor „Grupy”, and their routes answer ``403``; the last
+administrator can neither be disabled nor lose the role, said at the
+control. With ``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium keeps
+screenshots there (``docs/reports/v0.4-screenshots/``).
 """
 
 import re
@@ -43,10 +45,10 @@ LAST_ADMIN = (
     "Konto „anna” jest ostatnim włączonym administratorem zespołu: najpierw nadaj"
     " rolę admin innemu kontu."
 )
-# The status of GET /users for the page's session.
-USERS_STATUS = """async () => {
+# The status of an API request (``/api/v1/…``) sent with the page's session.
+STATUS = """async (path) => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
-  return (await fetch("/api/v1/users", { headers })).status;
+  return (await fetch(path, { headers })).status;
 }"""
 
 
@@ -54,6 +56,12 @@ def open_accounts(page: Page) -> None:
     """Open „Konta” from the navigation."""
     page.get_by_role("link", name="Konta").click()
     expect(page.get_by_role("heading", name="Konta")).to_be_visible()
+
+
+def open_groups(page: Page) -> None:
+    """Open „Grupy” from the navigation."""
+    page.get_by_role("link", name="Grupy").click()
+    expect(page.get_by_role("heading", name="Grupy")).to_be_visible()
 
 
 def test_an_administrator_creates_an_account_and_manages_it(
@@ -112,10 +120,51 @@ def test_an_administrator_creates_an_account_and_manages_it(
     person.assert_clean()
 
 
-def test_without_admin_no_accounts_and_the_last_administrator_stays(
+def test_an_administrator_makes_a_group_and_changes_its_members(
     team_serve: TeamServe, team_tab: TeamTab
 ) -> None:
-    """Without admin no „Konta” and a 403; the last administrator stays one."""
+    """Hydro with kasia, then anna too, then removed; kasia's groups follow."""
+    served = team_serve()
+    add_person(served.paths, KASIA, KASIA_PASSWORD, name="Kasia Wrona")
+    admin = team_tab()
+    person = team_tab()
+    page = admin.page
+    created = page.get_by_role("dialog", name="Nowa grupa")
+    members = page.get_by_role("dialog", name="Członkowie · hydro")
+    removal = page.get_by_role("dialog", name="Usunąć grupę hydro?")
+    row = page.get_by_role("row").filter(has_text="Dział hydrologii")
+    signed_in(person.page, served.origin, KASIA, KASIA_PASSWORD)
+    signed_in(page, served.origin, ADMIN_ACCOUNT, ADMIN_PASSWORD)
+    open_groups(page)
+
+    page.get_by_role("button", name="Nowa grupa").click()
+    created.get_by_label("Grupa", exact=True).fill("hydro")
+    created.get_by_label("Nazwa").fill("Dział hydrologii")
+    created.get_by_label("Kasia Wrona (kasia)").check()
+    created.get_by_role("button", name="Utwórz grupę").click()
+    expect(row).to_contain_text("1: Kasia Wrona")
+    joined = read_session(person.page)
+    page.get_by_role("button", name="Członkowie grupy hydro").click()
+    members.get_by_label(ADMIN_ACCOUNT, exact=True).check()
+    shot(page, "05-grupy")
+    members.get_by_role("button", name="Zapisz").click()
+    expect(row).to_contain_text(f"2: {ADMIN_ACCOUNT}, Kasia Wrona")
+    page.get_by_role("button", name="Usuń grupę hydro").click()
+    removal.get_by_role("button", name="Usuń grupę").click()
+    expect(row).to_have_count(0)
+    left = read_session(person.page)
+
+    assert joined["groups"] == ["hydro"]
+    assert left["groups"] == []
+    expect(page.get_by_text("Nie ma jeszcze żadnej grupy.")).to_be_visible()
+    admin.assert_clean()
+    person.assert_clean()
+
+
+def test_without_admin_no_accounts_nor_groups_and_the_last_administrator_stays(
+    team_serve: TeamServe, team_tab: TeamTab
+) -> None:
+    """No „Konta”, „Grupy” nor their routes without admin; the last admin stays."""
     served = team_serve()
     add_person(served.paths, KASIA, KASIA_PASSWORD)
     admin = team_tab()
@@ -125,9 +174,11 @@ def test_without_admin_no_accounts_and_the_last_administrator_stays(
     signed_in(person.page, served.origin, KASIA, KASIA_PASSWORD)
     signed_in(page, served.origin, ADMIN_ACCOUNT, ADMIN_PASSWORD)
 
-    links = person.page.get_by_role("link", name="Konta")
+    links = [person.page.get_by_role("link", name=name) for name in ("Konta", "Grupy")]
     expect(person.page.get_by_role("link", name="Ustawienia")).to_be_visible()
-    status = person.page.evaluate(USERS_STATUS)
+    statuses = [
+        person.page.evaluate(STATUS, f"/api/v1/{path}") for path in ("users", "groups")
+    ]
     person.page.goto(f"{served.origin}/?view=accounts")
     expect(
         person.page.get_by_text("Zarządzanie kontami wymaga roli administratora.")
@@ -139,8 +190,9 @@ def test_without_admin_no_accounts_and_the_last_administrator_stays(
     card.get_by_label("administrator").uncheck()
     card.get_by_role("button", name="Zapisz role").click()
 
-    assert status == 403
-    expect(links).to_have_count(0)
+    assert statuses == [403, 403]
+    for link in links:
+        expect(link).to_have_count(0)
     expect(card.get_by_text(LAST_ADMIN)).to_have_count(2)
     expect(card.get_by_role("button", name="Wyłącz")).to_be_visible()
     admin.assert_clean()

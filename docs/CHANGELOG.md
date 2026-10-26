@@ -126,6 +126,12 @@ command-line interface may change.
   saves the roles, ends the sessions (`DELETE /users/{user_id}/sessions`), disables
   and enables the account and removes it after a confirmation; `409 last_admin` shows
   at its control. In local mode the passwords and sessions are left out.
+- "Grupy" (groups) for administrators (v0.4, ADR-046), beside "Konta": every group
+  with its name and members (`GET /groups`, named after `GET /users`); "Nowa grupa"
+  (`POST /groups`: the identifier, the name and the members), "Członkowie…" (`PUT
+  /groups/{group_id}/members`, a checkbox for every account) and "Usuń…" (`DELETE
+  /groups/{group_id}` after a confirmation that its members stop seeing the projects
+  shared only with it); a refusal shows in the window that asked.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

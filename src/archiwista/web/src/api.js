@@ -40,6 +40,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").User} User */
 /** @typedef {import("./types.js").UserList} UserList */
 /** @typedef {import("./types.js").TemporaryPassword} TemporaryPassword */
+/** @typedef {import("./types.js").Group} Group */
+/** @typedef {import("./types.js").GroupList} GroupList */
 /** @typedef {import("./types.js").Health} Health */
 /** @typedef {import("./types.js").SourceList} SourceList */
 /** @typedef {import("./types.js").StoreList} StoreList */
@@ -1206,7 +1208,7 @@ export function getJobPlan(job, { signal } = {}) {
   return request("GET", `/jobs/${one(job)}/plan`, { signal });
 }
 
-// Accounts (v0.4, step T6) ------------------------------------------------------
+// Accounts and groups (v0.4, step T6) -----------------------------------------
 
 /**
  * Every account with its roles, groups and the state of its password
@@ -1274,6 +1276,50 @@ export function temporaryPassword(id) {
  */
 export function endUserSessions(id) {
   return request("DELETE", `/users/${one(id)}/sessions`);
+}
+
+/**
+ * Every group with its members (`list_groups`; `admin`).
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<GroupList>}
+ */
+export function listGroups({ signal } = {}) {
+  return request("GET", "/groups", { signal });
+}
+
+/**
+ * Create a group, optionally with its members (`add_group`; `admin`).
+ *
+ * @param {{id: string, name?: string, members: string[]}} group
+ * @returns {Promise<Group>}
+ * @throws {ApiError} `409 conflict` (the id is taken), `400 validation_error`
+ *   (an unknown member).
+ */
+export function addGroup(group) {
+  return request("POST", "/groups", { json: group });
+}
+
+/**
+ * Replace a group's members (`set_group_members`).
+ *
+ * @param {string} id
+ * @param {string[]} members - Account ids, the complete new list.
+ * @returns {Promise<Group>}
+ */
+export function setGroupMembers(id, members) {
+  return request("PUT", `/groups/${one(id)}/members`, { json: { members } });
+}
+
+/**
+ * Delete a group (`remove_group`): its members no longer see the projects
+ * shared with it.
+ *
+ * @param {string} id
+ * @returns {Promise<null>}
+ */
+export function removeGroup(id) {
+  return request("DELETE", `/groups/${one(id)}`);
 }
 
 // Helpers ---------------------------------------------------------------------

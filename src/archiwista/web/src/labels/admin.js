@@ -2,7 +2,8 @@
  * Texts of the administrators' views (docs/SPEC.md 6.5 p and q, ADR-046):
  * „Konta” (views/accounts.js) — the accounts with their roles, groups and
  * passwords, a new account, a temporary password shown once, ending the
- * sessions, disabling and removing an account.
+ * sessions, disabling and removing an account; „Grupy” (views/groups.js) —
+ * the groups with their members, a new group, the members and the removal.
  */
 
 import { account } from "./account.js";
@@ -75,5 +76,43 @@ export const admin = {
     submit: "Utwórz konto",
     created:
       "Konto {id} utworzone. Nadaj mu hasło tymczasowe, aby osoba mogła się zalogować.",
+  },
+  groups: {
+    title: "Grupy",
+    intro:
+      "Grupy osób, np. działy. Projekt udostępniony grupie widzą jej członkowie; zmiana członków działa od następnego żądania osoby.",
+    add: "Nowa grupa",
+    columns: { id: "Grupa", name: "Nazwa", members: "Członkowie", actions: "Działania" },
+    count: "{count}: {names}",
+    more: "…",
+    none: "—",
+    empty: "Nie ma jeszcze żadnej grupy.",
+    loading: "Wczytywanie grup…",
+    members: "Członkowie…",
+    members_label: "Członkowie grupy {id}",
+    remove: "Usuń…",
+    remove_label: "Usuń grupę {id}",
+  },
+  members: {
+    title: "Członkowie · {id}",
+    legend: "Członkowie",
+    person: "{name} ({id})",
+    disabled: "wyłączone",
+    no_accounts: "Nie ma jeszcze żadnego konta.",
+    loading: "Wczytywanie kont…",
+    save: "Zapisz",
+  },
+  new_group: {
+    title: "Nowa grupa",
+    id: "Grupa",
+    id_hint: "Małe litery, cyfry, „.”, „_” i „-”, najwyżej 64 znaki, np. hydro.",
+    name: "Nazwa",
+    name_hint: "Np. Dział hydrologii; bez niej nazwą jest identyfikator grupy.",
+    submit: "Utwórz grupę",
+  },
+  remove_group: {
+    title: "Usunąć grupę {id}?",
+    text: "Jej członkowie przestaną widzieć projekty udostępnione tylko tej grupie; ich konta zostają.",
+    yes: "Usuń grupę",
   },
 };
