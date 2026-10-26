@@ -48,4 +48,14 @@ MESSAGES = {
         "The river's hydrographic code must not be empty.",
         "Kod hydrograficzny rzeki nie może być pusty.",
     ),
+    "coverage_without_dataset": Text(
+        (
+            "A coverage filter needs a dataset: a label belongs to the series of"
+            " one dataset."
+        ),
+        (
+            "Filtr pokrycia wymaga zbioru danych: etykieta dotyczy szeregu jednego"
+            " zbioru."
+        ),
+    ),
 }

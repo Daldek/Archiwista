@@ -56,6 +56,7 @@ from archiwista.api import map as map_routes
 from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
+from archiwista.api import stations as station_routes
 from archiwista.api.docs import install_docs, operation_id
 from archiwista.api.errors import ApiError, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
@@ -196,6 +197,7 @@ def create_app(
     app.include_router(preview_routes.router, prefix=API_PREFIX)
     app.include_router(slots.router, prefix=API_PREFIX)
     app.include_router(map_routes.router, prefix=API_PREFIX)
+    app.include_router(station_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
     app.include_router(area_routes.router, prefix=API_PREFIX)

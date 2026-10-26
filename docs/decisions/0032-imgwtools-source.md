@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25
 **Status:** Accepted. Supplements A-ADR-019 and A-ADR-024. Decided by the plan
-`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I3), whose approval is
+`docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I6), whose approval is
 delegated; the author may still amend it (D8).
 
 **Context:** A-ADR-019 gave Archiwista two producers behind one source interface, and
@@ -220,6 +220,40 @@ side.
     calendar for meteo; the share of gaps is rounded up and capped at 99% (a range with
     a value is never all gaps); "brak danych" of a hydro series names the station's
     variables with a value ("tylko H").
+13. **The stations are read through four routes, from the index only, while their source
+    is available** (plan I6). `GET /stations`, `/stations/{code}`,
+    `/stations/{code}/coverage` (the Timeline) and `/map/stations` read `stations`,
+    `station_series` and `series_years`, never a series file, and answer `503
+    missing_dependency` (`source_unavailable`) while IMGWTools is not available
+    (`STATION_PRODUCER`), even when the index still holds its stations (SPEC 5.8): they
+    could not be refreshed, and the formula and the licence they carry are the
+    producer's. The dataset is the parameter `dataset` (its key, `pl.imgw.hydro_daily`)
+    where SPEC 9.2 had `product`: an IMGW product is a family of datasets (decision 10)
+    of both providers and every time unit, while a label belongs to the series of one
+    dataset. An area (`area_id`, or `bbox` with `bbox_crs`) takes the located stations
+    it covers, edges included, and those on its boundary (SPEC 6.7): closer to the
+    boundary than their location uncertainty, on either side, the circle drawn as an
+    ellipse at the station's latitude (`geometry.area_places`); the candidates come from
+    the R*Tree in the area's bounds widened by the largest uncertainty, so a far station
+    with a wide circle is not missed. `boundary=false` leaves the boundary group out of
+    the rows and still counts it. A station without a location is never placed in an
+    area or a box: it is counted after the attribute and coverage filters (SPEC 4.3
+    point 3) and listed by `location=none`. The coverage filters (`coverage`
+    `<variable>:<state>`, `min_complete_years` `<variable>:<years>`) need `dataset` and
+    label the variables they name, in R and the year type, for every station the other
+    filters leave, before the page is cut, so a cursor pages one result and
+    `counts.hidden` says how many stations they hid; states of one variable are
+    alternatives, different variables must all match, a variable of several half-year
+    periods passes when each period does, and a station without the variable never
+    passes. A code is its provider's in a store: a code that several stations share
+    (two stores, two providers) is `400` (reason `ambiguous_station`,
+    `details.stations`) until `store` and `provider` name one. The archive badge of SPEC
+    9.2 and the input archives of the card need the archives of a dataset's years from
+    the producer, a capability the source interface lacks, and are not built. Rejected:
+    the filters after paging (pages of any length, and no count of what they hid);
+    placing a station without a location by its province or river (a guessed location,
+    P13); the first of the stations an ambiguous code means (an answer about another
+    station than the one asked for); the stations without their source (decision 3).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -239,6 +273,7 @@ entry kept (SPEC 5.8); and a directory that lies in a store of any producer or h
 refused by the marker file names at its own field (DEV-19.14), looking two levels down
 because the producer's writer, which looks at the whole tree, is not run by a settings
 change. The index keeps the stations of each provider's current catalog (decision 11)
-and the coverage of each dataset's current series with its years (decision 12).
+and the coverage of each dataset's current series with its years (decision 12), and
+serves them through the station routes (decision 13).
 
 **Errata:** none.

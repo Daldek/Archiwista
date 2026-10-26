@@ -149,6 +149,28 @@ command-line interface may change.
   runs of gaps and those over 30 days, the units with a value and the accumulated sums.
   The text is written in the language of the request from the catalog `series.*`.
   (SPEC 4.8.4, A-ADR-021, ADR 0032)
+- The stations over HTTP, from the index alone: `GET /stations` pages the stations of
+  both providers by name with the filters of SPEC 9.2 (`store`, `provider`, `kind`,
+  `active`, `river_code` with `river_scope`, `dataset` (the dataset key), `variable`,
+  `coverage` such as `Q:continuous` and `min_complete_years` such as `Q:30`, both
+  repeatable and needing `dataset`, `years`, `year_type`, `location`, `limit`,
+  `cursor`), in an area (`area_id`, or `bbox` with `bbox_crs`) with the stations on its
+  boundary, those closer to it than their location uncertainty
+  (`location.on_boundary`; `boundary=false` leaves them out). Each station has its
+  location and each series with its version, file, SHA-256, licence and the formula
+  IMGW requires, each variable labelled (P16); `counts` has `located`, `boundary`,
+  `unlocated` (after the attribute and coverage filters, never placed in an area, SPEC
+  4.3 point 3) and `hidden` (the stations a coverage filter hid, which it labels before
+  the page is cut). `GET /stations/{code}` is the station's card, `GET
+  /stations/{code}/coverage` each variable year by year in R (`full`, `fraction`,
+  `none`, `unknown`: the Timeline) and `GET /map/stations` the located stations of a
+  map view, with each variable's state and label when `dataset` is given, or their
+  grid above `limit`. A code that several stations share (two stores or providers) is
+  `400` (`ambiguous_station`, `details.stations`) until `store` and `provider` name
+  one. All four answer `503 missing_dependency` (`source_unavailable`) while IMGWTools
+  is not available, even when the index holds stations. The archive badge and the
+  input archives of the card are not built yet. (SPEC 9.2, 6.7, 6.8, ADR 0032
+  decision 13)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps

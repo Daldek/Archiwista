@@ -11,11 +11,14 @@ extent) is a rotated quadrilateral with slightly curved edges in WGS84
 to hundreds of metres at the edges of a country. ``outline_wgs84`` moves the
 rectangle with the producer's pinned operation instead (decision 4 of the
 v0.2 plan, KA-6), its edges densified first.
+
+``area_places`` puts stations against an area (SPEC 6.7): inside it, or on
+its boundary when they are closer to it than their location uncertainty.
 """
 
 import math
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import shapely
@@ -26,6 +29,8 @@ from archiwista.messages import message
 from archiwista.sources import CoordinateTransformer, FloatArray, GeoJSONGeometry
 
 type BBox = tuple[float, float, float, float]
+# Where a station is against an area (SPEC 6.7).
+type AreaPlace = Literal["inside", "boundary", "outside"]
 
 WGS84 = "EPSG:4326"
 # Longest edge of a native rectangle before it moves to WGS84.
@@ -39,6 +44,11 @@ _METRES_PER_DEGREE = 111_320.0
 # The polygon's edges are chords of curved edges (at most MAX_SEGMENT_M
 # long), which a box touching the curve crosses by centimetres to decimetres.
 _WITHIN_DEGREES = 1e-5
+# Sides of the polygon that stands for a station's circle of uncertainty: its
+# sides lie within 0.2% of the circle's radius.
+_CIRCLE_SIDES = 64
+# Metres of a degree of latitude at the equator, the shortest one.
+_SHORTEST_DEGREE_M = 110_574.0
 
 
 def polygon_bounds(geometry: GeoJSONGeometry | None) -> BBox | None:
@@ -252,6 +262,87 @@ def require_wgs84_bbox(bbox: BBox) -> BBox:
     ):
         raise IndexQueryError(message("index.invalid_bbox"))
     return (min_x, min_y, max_x, max_y)
+
+
+def widen_bounds(bounds: BBox, metres: float) -> BBox:
+    """Return WGS84 bounds widened on every side by at least ``metres``.
+
+    A degree is taken at its shortest within the widened bounds, so every
+    point closer than ``metres`` to the bounds lies inside the result.
+    """
+    min_lon, min_lat, max_lon, max_lat = bounds
+    if metres <= 0:
+        return bounds
+    dlat = metres / _SHORTEST_DEGREE_M
+    farthest = min(90.0, max(abs(min_lat), abs(max_lat)) + dlat)
+    lon_m = float(_degree_metres(np.array([farthest]))[0][0])
+    dlon = 360.0 if lon_m < 1.0 else metres / lon_m
+    return (
+        max(-180.0, min_lon - dlon),
+        max(-90.0, min_lat - dlat),
+        min(180.0, max_lon + dlon),
+        min(90.0, max_lat + dlat),
+    )
+
+
+def area_places(
+    area: GeoJSONGeometry,
+    points: Sequence[tuple[float, float]],
+    uncertainties_m: Sequence[float | None],
+) -> tuple[AreaPlace, ...]:
+    """Place stations against an area: inside it, on its boundary or outside.
+
+    A station closer to the area's boundary than its location uncertainty, on
+    either side, is on the boundary (SPEC 6.7): its circle of uncertainty,
+    drawn in degrees at its latitude (an ellipse), meets the boundary. Any
+    other station is inside when the area covers its point (edges included),
+    else outside; one without an uncertainty is never on the boundary.
+
+    Parameters
+    ----------
+    area : GeoJSONGeometry
+        A ``Polygon`` or ``MultiPolygon`` in WGS84.
+    points : Sequence[tuple[float, float]]
+        ``(lon, lat)`` of each station.
+    uncertainties_m : Sequence[float or None]
+        The location uncertainty of each station, in metres.
+    """
+    if not points:
+        return ()
+    polygon = shape(area)
+    edge = polygon.boundary
+    shapely.prepare(polygon)
+    shapely.prepare(edge)
+    lons = np.array([lon for lon, _ in points], dtype=float)
+    lats = np.array([lat for _, lat in points], dtype=float)
+    inside = shapely.covers(polygon, shapely.points(lons, lats))
+    radii = np.array([value or 0.0 for value in uncertainties_m], dtype=float)
+    near = np.zeros(len(points), dtype=bool)
+    chosen = np.flatnonzero(radii > 0)
+    if chosen.size:
+        lon_m, lat_m = _degree_metres(lats[chosen])
+        lon_m = np.maximum(lon_m, 1e-6)
+        angles = np.linspace(0.0, 2 * math.pi, _CIRCLE_SIDES + 1)
+        xs = lons[chosen, None] + (radii[chosen] / lon_m)[:, None] * np.cos(angles)
+        ys = lats[chosen, None] + (radii[chosen] / lat_m)[:, None] * np.sin(angles)
+        circles = shapely.polygons(np.stack([xs, ys], axis=-1))
+        near[chosen] = shapely.intersects(edge, circles)
+    return tuple(
+        "boundary" if close else "inside" if within else "outside"
+        for close, within in zip(near.tolist(), inside.tolist(), strict=True)
+    )
+
+
+def _degree_metres(latitudes: FloatArray) -> tuple[FloatArray, FloatArray]:
+    """Return the metres of a degree of longitude and of latitude at each latitude.
+
+    The series of the WGS84 ellipsoid, within centimetres of the exact
+    lengths; a degree of longitude is 0 m long at a pole.
+    """
+    phi = np.radians(latitudes)
+    lon = 111_412.84 * np.cos(phi) - 93.5 * np.cos(3 * phi)
+    lat = 111_132.92 - 559.82 * np.cos(2 * phi) + 1.175 * np.cos(4 * phi)
+    return np.maximum(lon, 0.0), lat
 
 
 def _rings(geometry: GeoJSONGeometry) -> list[list[Any]] | None:

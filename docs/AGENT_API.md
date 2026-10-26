@@ -329,6 +329,41 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
+**Stations and the coverage of their series** (the IMGWTools source, plan I6).
+`GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ by
+name. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
+`river_scope` (`exact`, or `tributaries`: every code that begins with it),
+`dataset` (a dataset key such as `pl.imgw.hydro_daily`), `variable`, `coverage`
+(`Q:continuous`, `H:gaps`; states of one variable are alternatives) and
+`min_complete_years` (`Q:30`), all three repeatable and the last two needing
+`dataset`, `years` (`1951-2025`, the range R of the labels), `year_type`,
+`location` (`any`, `with`, `none`), `limit` and `cursor`; an area is `area_id` or
+`bbox` with `bbox_crs`, and it takes the stations on its boundary too, those closer
+to it than their location uncertainty (`location.on_boundary`; `boundary=false`
+leaves them out). Each item has its `location` and `series[]`: per dataset the
+series version, the station's `file` with its `sha256`, the `license`, the
+`attribution` to quote with the data, and `coverage` with an entry per variable
+(`state`, the `label` in the request's language and the structure behind it); a
+station has no single label. `counts` counts the whole result: `located`,
+`boundary`, `unlocated` (no position: after the attribute and coverage filters,
+never placed in an area; list them with `location=none`) and `hidden` (stations a
+coverage filter hid). `GET /stations/{code}` is a station's card, `GET
+/stations/{code}/coverage` its variables year by year (`variable` repeatable; each
+year's `cell` is `full`, `fraction`, `none` or `unknown`, and an unknown year is
+never a gap) and `GET /map/stations?bbox=…` the located stations of a view, with
+each variable's state and label when `dataset` is given, or a grid above `limit`. A
+code that several stations share answers `400` with `details.reason`
+`ambiguous_station` and the stations in `details.stations`: ask again with `store`
+and `provider`. Without IMGWTools every station route answers `503
+missing_dependency` (`source_unavailable`) with the fix in `hint`.
+
+```sh
+curl -sf -b "$JAR" -H "$H" \
+  "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
+```
+
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
 
 Take a `ref` from the answer of the card of a version, of an own file or of a
@@ -537,7 +572,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); no reason: an unknown store, area or cursor |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>`; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor |
@@ -746,5 +781,7 @@ when they meet).
   (v0.5). An area is a drawn, sheet or file area as in v0.1, not the name of an
   administrative unit (plan A15, Kartograf KB-7).
 - The files of an IMGWTools store are indexed (archives, series, station
-  catalogs); stations and the coverage of series are v0.5. No chat and no MCP;
+  catalogs), and its stations and the coverage of their series are read through
+  `/stations` (section 5); the stations in the interface, the chart data, the
+  comparison of stations and the archive badge are v0.5. No chat and no MCP;
   an external agent uses the API described above.

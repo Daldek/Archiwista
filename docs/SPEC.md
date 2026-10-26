@@ -3108,10 +3108,10 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1) |
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
 | `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
-| `GET /map/stations` | IMGW station points in the view (`bbox`, `zoom`, filters) as GeoJSON or clusters |
-| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `product`, `variable` (repeatable: stations having the variable), `kind`, `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`), `min_complete_years` (repeatable, e.g. `Q:30`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`) with coverage labels separately for each variable of the station (P16), an archive badge and location groups with counters (stations without a location — after attribute filters, 6.8) |
-| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series and input archives, IMGW formulas |
-| `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `year_type`, `years`) — the Timeline |
+| `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn) |
+| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while IMGWTools is not available |
+| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
+| `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
 | `GET /stations/{code}/series` | chart data (`variable`, `from`, `to`, `max_points` ≤ 2,000, `version`): values or min./avg./max. in intervals, gaps as `null`, markers of IMGW aggregate sums and extremes; for display only |
 | `GET /stations/compare` | 2–5 stations of one variable (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) on a common time axis |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
@@ -3259,71 +3259,94 @@ cause `kartograf_error`):
 }
 ```
 
-**Source unavailable** — `GET /api/v1/stations?…` without IMGWTools installed,
-`503`, `application/problem+json` (code `missing_dependency`, cause
-`source_unavailable`, A-ADR-024):
+**Source unavailable** — `GET /api/v1/stations?…` with `Accept-Language: pl` without
+IMGWTools installed, `503`, `application/problem+json` (code `missing_dependency`, cause
+`source_unavailable`, A-ADR-024; the station card, the Timeline and `GET /map/stations`
+answer the same):
 
 ```json
 {
   "type": "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md#missing_dependency",
-  "title": "Missing optional dependency",
+  "title": "Brak opcjonalnej zależności",
   "status": 503,
-  "detail": "Źródło danych IMGW jest niedostępne: pakiet IMGWTools nie jest zainstalowany. Zainstaluj go poleceniem: pip install \"archiwista[imgw]\".",
+  "detail": "Źródło danych imgw jest niedostępne: pakiet producenta nie jest zainstalowany: brak pakietu imgwtools. Naprawa: zainstaluj zgodną wersję: pip install \"archiwista[imgw]\"",
   "instance": "/api/v1/stations",
   "code": "missing_dependency",
-  "hint": "Zainstaluj go poleceniem: pip install \"archiwista[imgw]\".",
+  "hint": "zainstaluj zgodną wersję: pip install \"archiwista[imgw]\"",
   "details": {
     "reason": "source_unavailable",
-    "source": {"id": "imgw", "state": "not_installed", "extra": "imgw"}
+    "source": {"id": "imgw", "state": "not_installed", "package_version": null,
+               "supported_versions": ">=3.0.0,<4", "requirement": "archiwista[imgw]"}
   }
 }
 ```
 
-**Stations in an area** — `GET /api/v1/stations?area_id=raba&product=hydro_daily&years=1951-2025&year_type=hydrological&limit=1`
-(`coverage` has a separate entry for each variable of the station — never one for
-the whole station, P16; the `label` field is interface text with dates in the `RRRR.MM.DD` format, structural fields
-in ISO; illustrative numbers)
+**Stations in an area** — `GET /api/v1/stations?area_id=raba&dataset=pl.imgw.hydro_daily&years=1951-2025&year_type=hydrological&limit=1`
+with `Accept-Language: pl` (`coverage` has a separate entry for each variable of each
+series of the station — never one for the whole station, P16; the `label` field is
+interface text in the request's language with dates in the `RRRR.MM.DD` format,
+structural fields in ISO; an excerpt: `H` and `T` have the fields of `Q`; illustrative
+numbers)
 
 ```json
 {
-  "area": {"id": "raba", "area_km2": 1470.0, "countries": ["PL"]},
-  "product": "hydro_daily",
-  "variables": [{"code": "H", "label": "stan wody", "unit": "cm"},
-                {"code": "Q", "label": "przepływ", "unit": "m3/s"},
-                {"code": "T", "label": "temperatura wody", "unit": "°C"}],
-  "years": {"from": 1951, "to": 2025, "type": "hydrological"},
-  "archives": {"label": "pobrane", "years_local": 75, "of": 75,
-               "published": {"last_year": 2025, "last_modified": "2026-08-31"}},
-  "series": {"label": "2026-08-31", "state": "current"},
+  "area": {"id": "raba", "name": "zlewnia.gpkg", "area_km2": 1470.0, "countries": ["PL"]},
+  "counts": {"located": 14, "boundary": 2, "unlocated": 3, "hidden": 0},
   "items": [
     {
+      "store": "zespol",
+      "provider": "IMGW-PIB",
       "code": "149190310",
       "name": "STRÓŻA",
       "kind": "hydro",
-      "river": {"name": "Raba", "code": "2138"},
-      "location": {"lon": 19.9247, "lat": 49.7963, "source": "imgw_api_hydro",
-                   "catalog": "2026-10-17", "uncertainty_m": 150,
-                   "on_boundary": false},
-      "coverage": {
-        "H": {"state": "continuous", "label": "ciągły · 1951–2025",
-              "first": "1950-11-01", "last": "2025-10-31", "missing_share": 0.0,
-              "complete_years": 75, "unknown_years": []},
-        "Q": {"state": "gaps",
-              "label": "luki 3% · najdł. 1981.06.02–1982.12.31",
-              "first": "1950-11-01", "last": "2025-10-31",
-              "units": 27394, "with_value": 26804, "missing_share": 0.0215,
-              "longest_gap": {"from": "1981-06-02", "to": "1982-12-31",
-                              "units": 578},
-              "complete_years": 71, "unknown_years": []},
-        "T": {"state": "partial", "label": "częściowy · od 1972 · luki 12%",
-              "first": "1971-11-01", "last": "2025-10-31",
-              "missing_share": 0.12, "complete_years": 41, "unknown_years": []}
-      },
-      "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet"
+      "meteo_kind": null,
+      "river": "Raba",
+      "hydrographic_code": "2138",
+      "river_order": 12,
+      "active": true,
+      "established_year": 1951,
+      "gauge_zero_m": 296.47,
+      "river_km": 74.3,
+      "elevation_m": null,
+      "catalog": "2026-10-17",
+      "catalog_version": "stations/versions/2026-10-17_5c1d9a20/stations.geojson",
+      "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "series": [
+        {
+          "dataset": "pl.imgw.hydro_daily",
+          "kind": "hydro",
+          "time_unit": "day",
+          "year_type": "hydrological",
+          "years": {"from": 1951, "to": 2025},
+          "series": "2026-08-31",
+          "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+          "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+          "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
+          "license": "IMGW-PIB",
+          "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
+          "coverage": {
+            "H": {"key": "H", "state": "continuous", "label": "ciągły · 1951–2025",
+                  "first": "1950-11-01", "last": "2025-10-31", "complete_years": 75},
+            "Q": {"key": "Q", "variable": "Q", "unit": "m3/s", "period": null,
+                  "state": "gaps", "label": "luki 3% · najdł. 1981.06.02–1982.12.31",
+                  "first": "1950-11-01", "last": "2025-10-31",
+                  "known": {"from": 1951, "to": 2025}, "valued": {"from": 1951, "to": 2025},
+                  "units": 27394, "with_value": 26804, "missing_share": 0.0215,
+                  "percent": 3, "below_one": false,
+                  "longest_gap": {"from": "1981-06-02", "to": "1982-12-31", "units": 578},
+                  "gap_count": 12, "long_gaps": 2, "complete_years": 71,
+                  "unknown_years": [], "accumulated": 0, "only": []},
+            "T": {"key": "T", "state": "partial", "label": "częściowy · od 1972 · luki 12%",
+                  "first": "1971-11-01", "last": "2025-10-31", "complete_years": 41}
+          }
+        }
+      ]
     }
   ],
-  "unlocated": [],
-  "next_cursor": "…"
+  "next_cursor": "…",
+  "stale": false,
+  "stale_stores": []
 }
 ```
 

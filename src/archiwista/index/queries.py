@@ -26,7 +26,7 @@ import os
 import re
 import sqlite3
 import threading
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
@@ -41,10 +41,13 @@ from archiwista.auth import ProjectVisibility
 from archiwista.errors import IndexQueryError
 from archiwista.index.coverage import CoverageShape, measure_coverage, planar_crs
 from archiwista.index.geometry import (
+    AreaPlace,
+    area_places,
     box_geometry,
     is_box,
     require_wgs84_area,
     require_wgs84_bbox,
+    widen_bounds,
 )
 from archiwista.index.schema import SCHEMA_VERSION, connect, initialize
 from archiwista.index.series import (
@@ -108,6 +111,7 @@ from archiwista.index.types import (
     SnapshotRecord,
     StationCounts,
     StationCoverage,
+    StationMap,
     StationPage,
     StationQuery,
     StationRow,
@@ -244,7 +248,8 @@ _VERSION_COLUMNS = """
 """
 # A station with the label and file of the catalog version it was read from.
 _STATION_COLUMNS = """
-    s.store_id AS store_id, s.provider AS provider, s.code AS code, s.kind AS kind,
+    s.id AS id, s.store_id AS store_id, s.provider AS provider, s.code AS code,
+    s.kind AS kind,
     s.meteo_kind AS meteo_kind, s.name AS name, s.river AS river,
     s.hydrographic_code AS hydrographic_code, s.river_order AS river_order,
     s.location AS location, s.lon AS lon, s.lat AS lat,
@@ -262,17 +267,28 @@ _STATION_SOURCE = (
 )
 _STATION_ORDER = "coalesce(s.name, ''), s.code, s.provider, s.store_id"
 # A variable of a station's series with what its labels need of the dataset's
-# version, and the label of that version.
+# version, and the label, licence and attribution of that version.
 _SERIES_COLUMNS = """
     s.id AS id, s.store_id AS store_id, s.dataset AS dataset, s.provider AS provider,
     s.code AS code, s.variable_key AS variable_key, s.variable AS variable,
     s.unit AS unit, s.period AS period, s.first_date AS first_date,
     s.last_date AS last_date, s.with_value AS with_value,
     s.accumulated AS accumulated, s.gaps AS gaps, s.periods AS periods,
-    s.file AS file, c.kind AS kind, c.time_unit AS time_unit,
+    s.file AS file, s.sha256 AS sha256, c.kind AS kind, c.time_unit AS time_unit,
     c.first_year AS first_year, c.periods AS version_periods,
-    c.version_path AS version_path, sv.label AS series
+    c.version_path AS version_path, sv.label AS series, sv.license AS license,
+    sv.attribution AS attribution
 """
+# The stations whose ids a JSON list gives, as the key of their series.
+_SERIES_OF_STATIONS = (
+    "(s.store_id, s.provider, s.code) IN (SELECT store_id, provider, code"
+    f" FROM stations WHERE id IN ({_IDS}))"
+)
+# The series ``x`` of the station ``s``, for ``EXISTS`` (``AND …`` follows).
+_STATION_SERIES = (
+    "station_series x WHERE x.store_id = s.store_id AND x.provider = s.provider"
+    " AND x.code = s.code"
+)
 _SERIES_SOURCE = (
     "station_series s JOIN series_catalogs c"
     " ON c.store_id = s.store_id AND c.dataset = s.dataset"
@@ -306,6 +322,65 @@ class _Where:
 
     def sql(self) -> str:
         return " AND ".join(f"({item})" for item in self.conditions) or "1"
+
+    def copy(self) -> Self:
+        return type(self)(list(self.conditions), list(self.params))
+
+
+@dataclass(frozen=True, slots=True)
+class _Grid:
+    """The aggregation grid of a map view: cells of ``width`` by ``height``°."""
+
+    min_lon: float
+    min_lat: float
+    columns: int
+    rows: int
+    width: float
+    height: float
+
+    def cell(self, column: int, row: int, count: int) -> GridCell:
+        """Return the cell in ``column`` and ``row`` holding ``count`` objects."""
+        return GridCell(
+            min_lon=self.min_lon + column * self.width,
+            min_lat=self.min_lat + row * self.height,
+            max_lon=self.min_lon + (column + 1) * self.width,
+            max_lat=self.min_lat + (row + 1) * self.height,
+            count=count,
+        )
+
+    def count(self, points: Iterable[tuple[float, float]]) -> tuple[GridCell, ...]:
+        """Count points of the view by cell, row after row."""
+        counts: dict[tuple[int, int], int] = {}
+        for lon, lat in points:
+            column = max(
+                0, min(self.columns - 1, int((lon - self.min_lon) / self.width))
+            )
+            row = max(0, min(self.rows - 1, int((lat - self.min_lat) / self.height)))
+            counts[row, column] = counts.get((row, column), 0) + 1
+        return tuple(
+            self.cell(column, row, count)
+            for (row, column), count in sorted(counts.items())
+        )
+
+
+def _grid(view: BBox, columns: int) -> _Grid:
+    """Return the grid of a view: ``columns`` across, rows of square cells.
+
+    Raises
+    ------
+    IndexQueryError
+        ``columns`` out of range.
+    """
+    if not 1 <= columns <= MAX_GRID_COLUMNS:
+        raise IndexQueryError(message("index.invalid_grid", limit=MAX_GRID_COLUMNS))
+    min_lon, min_lat, max_lon, max_lat = view
+    width = (max_lon - min_lon) / columns
+    middle = math.radians((min_lat + max_lat) / 2)
+    rows = min(
+        MAX_GRID_COLUMNS,
+        max(1, math.ceil((max_lat - min_lat) / (width * math.cos(middle)))),
+    )
+    return _Grid(min_lon, min_lat, columns, rows, width, (max_lat - min_lat) / rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -672,19 +747,11 @@ class IndexQueries:
         IndexQueryError
             An invalid view, limit or grid.
         """
-        min_lon, min_lat, max_lon, max_lat = require_wgs84_bbox(query.bbox)
+        view_box = require_wgs84_bbox(query.bbox)
+        min_lon, min_lat, max_lon, max_lat = view_box
         _require_limit(query.limit, MAP_FOOTPRINT_LIMIT)
-        if not 1 <= query.grid_columns <= MAX_GRID_COLUMNS:
-            raise IndexQueryError(message("index.invalid_grid", limit=MAX_GRID_COLUMNS))
+        grid_shape = _grid(view_box, query.grid_columns)
         filters = _filters(query)
-        columns = query.grid_columns
-        cell_width = (max_lon - min_lon) / columns
-        middle = math.radians((min_lat + max_lat) / 2)
-        rows_count = min(
-            MAX_GRID_COLUMNS,
-            max(1, math.ceil((max_lat - min_lat) / (cell_width * math.cos(middle)))),
-        )
-        cell_height = (max_lat - min_lat) / rows_count
         with self._read() as connection:
             stores = _stores(connection)
             where = _where(connection, filters, stores, visible)
@@ -706,25 +773,19 @@ class IndexQueries:
                 " / 2 - ?) / ? AS INTEGER))) AS row, count(*) AS n"
                 f" FROM {_MAP_SOURCE} WHERE {view.sql()} GROUP BY col, row",
                 [
-                    columns - 1,
+                    grid_shape.columns - 1,
                     min_lon,
-                    cell_width,
-                    rows_count - 1,
+                    grid_shape.width,
+                    grid_shape.rows - 1,
                     min_lat,
-                    cell_height,
+                    grid_shape.height,
                     *view.params,
                 ],
             ).fetchall()
             total = sum(int(cell["n"]) for cell in cells)
             if total > query.limit:
                 grid = tuple(
-                    GridCell(
-                        min_lon=min_lon + cell["col"] * cell_width,
-                        min_lat=min_lat + cell["row"] * cell_height,
-                        max_lon=min_lon + (cell["col"] + 1) * cell_width,
-                        max_lat=min_lat + (cell["row"] + 1) * cell_height,
-                        count=int(cell["n"]),
-                    )
+                    grid_shape.cell(cell["col"], cell["row"], int(cell["n"]))
                     for cell in sorted(cells, key=lambda c: (c["row"], c["col"]))
                 )
                 return FootprintPage(total, True, (), grid, groups), "[]"
@@ -1190,8 +1251,8 @@ class IndexQueries:
         Parameters
         ----------
         query : StationQuery
-            Attribute filters, the box, the location group, page size and
-            cursor.
+            Attribute and coverage filters, the box or the area, the location
+            group, the labels, page size and cursor.
 
         Returns
         -------
@@ -1199,35 +1260,29 @@ class IndexQueries:
             Rows by name (then code, provider and store); ``counts`` count
             the whole result by location, whatever ``query.location``
             selects: the stations without a location after the attribute
-            filters only, never narrowed or joined by the box.
+            and coverage filters only, never narrowed or joined by the box or
+            the area. With ``query.labels``, ``coverage`` holds the coverage
+            of the page's stations.
 
         Raises
         ------
         IndexQueryError
-            Limit out of range, an invalid box, an empty river code or a
-            cursor of another query.
+            Limit out of range, an invalid box or area, an empty river code,
+            a coverage filter without a dataset, a reversed range of years or
+            a cursor of another query.
         """
         _require_limit(query.limit, MAX_PAGE_LIMIT)
         box = None if query.bbox is None else require_wgs84_bbox(query.bbox)
+        _require_station_filters(query)
         with self._read() as connection:
             stores = _stores(connection)
-            where = _station_where(query, stores)
-            located = _Where(list(where.conditions), list(where.params))
-            located.add("s.location = 'point'")
-            if box is not None:
-                _station_box(located, box)
-            unlocated = _Where(list(where.conditions), list(where.params))
-            unlocated.add("s.location = 'none'")
-            counts = StationCounts(
-                located=_count_stations(connection, located),
-                unlocated=_count_stations(connection, unlocated),
-            )
+            found = _select_stations(connection, stores, query, box)
             if query.location == "none":
-                page = unlocated
-            elif query.location == "with" or box is not None:
-                page = located
+                page = found.unlocated.copy()
+            elif query.location == "with" or box is not None or query.area is not None:
+                page = found.located.copy()
             else:
-                page = where
+                page = found.every.copy()
             fingerprint = _station_fingerprint(query)
             after = _decode_station_cursor(query.cursor, fingerprint)
             if after is not None:
@@ -1237,8 +1292,13 @@ class IndexQueries:
                 f" WHERE {page.sql()} ORDER BY {_STATION_ORDER} LIMIT ?",
                 [*page.params, query.limit + 1],
             ).fetchall()
-        more = len(rows) > query.limit
-        rows = rows[: query.limit]
+            more = len(rows) > query.limit
+            rows = rows[: query.limit]
+            coverage = (
+                _stations_coverage(connection, stores, rows, query)
+                if query.labels
+                else ()
+            )
         next_cursor = None
         if more and rows:
             last = rows[-1]
@@ -1247,9 +1307,73 @@ class IndexQueries:
                 [last["sort_name"], last["code"], last["provider"], last["store_id"]],
             )
         return StationPage(
-            items=tuple(_station(row, stores) for row in rows),
+            items=tuple(_station(row, stores, found.boundary) for row in rows),
             next_cursor=next_cursor,
-            counts=counts,
+            counts=found.counts,
+            coverage=coverage,
+        )
+
+    def station_map(
+        self, query: StationQuery, *, limit: int, grid_columns: int
+    ) -> StationMap:
+        """Return the located stations of a map view, or their grid above ``limit``.
+
+        Parameters
+        ----------
+        query : StationQuery
+            ``bbox`` is the view (required); the filters, the area and the
+            labels apply as in ``stations``. A map holds located stations
+            only, so ``location``, ``limit`` and ``cursor`` do not apply.
+        limit : int
+            Most stations drawn, 1 to ``MAP_FOOTPRINT_LIMIT``; above it the
+            view is a grid of counts.
+        grid_columns : int
+            Columns of the grid, 1 to ``MAX_GRID_COLUMNS`` (rows follow the
+            view's shape, as in ``footprints``).
+
+        Returns
+        -------
+        StationMap
+            The stations of the view by name, or the grid; ``counts`` as in
+            ``stations`` (the stations without a location are never drawn,
+            only counted).
+
+        Raises
+        ------
+        IndexQueryError
+            No view or an invalid one, a limit or grid out of range, or the
+            refusals of ``stations``.
+        """
+        if query.bbox is None:
+            raise IndexQueryError(message("index.invalid_bbox"))
+        box = require_wgs84_bbox(query.bbox)
+        _require_limit(limit, MAP_FOOTPRINT_LIMIT)
+        grid = _grid(box, grid_columns)
+        _require_station_filters(query)
+        with self._read() as connection:
+            stores = _stores(connection)
+            found = _select_stations(connection, stores, query, box)
+            rows = connection.execute(
+                f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
+                f" WHERE {found.located.sql()} ORDER BY {_STATION_ORDER}",
+                found.located.params,
+            ).fetchall()
+            if len(rows) > limit:
+                points = [(row["lon"], row["lat"]) for row in rows]
+                cells = grid.count(points)
+                return StationMap(len(rows), True, (), cells, found.counts)
+            coverage = (
+                _stations_coverage(connection, stores, rows, query)
+                if query.labels
+                else ()
+            )
+        return StationMap(
+            total=len(rows),
+            aggregated=False,
+            items=tuple(_station(row, stores, found.boundary) for row in rows),
+            cells=(),
+            counts=found.counts,
+            coverage=coverage,
         )
 
     def station(self, store: str, provider: str, code: str) -> StationRow | None:
@@ -2347,6 +2471,18 @@ def _station_where(query: StationQuery, stores: Mapping[int, str]) -> _Where:
         where.add("s.active = ?", int(query.active))
     if query.river_code is not None:
         _river(where, query.river_code, query.river_scope)
+    dataset = () if query.dataset is None else (query.dataset,)
+    in_dataset = "" if query.dataset is None else " AND x.dataset = ?"
+    if query.dataset is not None:
+        where.add(f"EXISTS (SELECT 1 FROM {_STATION_SERIES}{in_dataset})", *dataset)
+    for name in query.variables:
+        where.add(
+            f"EXISTS (SELECT 1 FROM {_STATION_SERIES}{in_dataset}"
+            " AND (x.variable = ? OR x.variable_key = ?) AND x.first_date IS NOT NULL)",
+            *dataset,
+            name,
+            name,
+        )
     return where
 
 
@@ -2410,6 +2546,10 @@ def _count_stations(connection: sqlite3.Connection, where: _Where) -> int:
 
 def _station_fingerprint(query: StationQuery) -> str:
     """Identity of a station query's rows: a cursor is valid only for the same one."""
+    area = None
+    if query.area is not None:
+        text = json.dumps(query.area, sort_keys=True, separators=(",", ":"))
+        area = hashlib.blake2b(text.encode(), digest_size=8).hexdigest()
     identity = [
         query.store,
         query.provider,
@@ -2420,6 +2560,14 @@ def _station_fingerprint(query: StationQuery) -> str:
         query.river_scope,
         None if query.bbox is None else list(query.bbox),
         query.location,
+        area,
+        query.boundary,
+        query.dataset,
+        sorted(query.variables),
+        sorted([name, state] for name, state in query.coverage),
+        sorted([name, years] for name, years in query.min_complete_years),
+        query.year_type,
+        None if query.years is None else list(query.years),
     ]
     data = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
     return hashlib.blake2b(data, digest_size=8).hexdigest()
@@ -2443,7 +2591,9 @@ def _decode_station_cursor(cursor: str | None, fingerprint: str) -> list[object]
     return list(data[2:])
 
 
-def _station(row: sqlite3.Row, stores: Mapping[int, str]) -> StationRow:
+def _station(
+    row: sqlite3.Row, stores: Mapping[int, str], boundary: Collection[int] = ()
+) -> StationRow:
     located = row["location"] == "point"
     active = row["active"]
     return StationRow(
@@ -2468,6 +2618,233 @@ def _station(row: sqlite3.Row, stores: Mapping[int, str]) -> StationRow:
         elevation_m=row["elevation_m"],
         catalog=row["catalog"],
         catalog_version=row["catalog_version"],
+        on_boundary=row["id"] in boundary,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Stations:
+    """The stations of a query by location group, with their counts.
+
+    ``located`` and ``unlocated`` select the rows of each group on ``s``
+    (stations), ``every`` both; ``boundary`` holds the ids of the stations on
+    the area's boundary that pass the other filters.
+    """
+
+    located: _Where
+    unlocated: _Where
+    every: _Where
+    boundary: frozenset[int]
+    counts: StationCounts
+
+
+def _require_station_filters(query: StationQuery) -> None:
+    """Refuse an area, a range of years or coverage filters that cannot apply."""
+    if query.area is not None:
+        require_wgs84_area(query.area)
+    if query.years is not None and query.years[0] > query.years[1]:
+        raise IndexQueryError(
+            message("index.invalid_years", start=query.years[0], end=query.years[1])
+        )
+    if (query.coverage or query.min_complete_years) and query.dataset is None:
+        raise IndexQueryError(message("index.coverage_without_dataset"))
+
+
+def _select_stations(
+    connection: sqlite3.Connection,
+    stores: Mapping[int, str],
+    query: StationQuery,
+    box: BBox | None,
+) -> _Stations:
+    """Split a station query's result by location group (SPEC 4.3 point 3).
+
+    The attribute filters are SQL. The area places the located stations it
+    may hold (R*Tree candidates) with shapely; the coverage filters label the
+    stations the other filters leave, before any page is cut. The stations
+    without a location are never placed by a box or an area.
+    """
+    where = _station_where(query, stores)
+    located = where.copy()
+    located.add("s.location = 'point'")
+    if box is not None:
+        _station_box(located, box)
+    unlocated = where.copy()
+    unlocated.add("s.location = 'none'")
+    boundary: set[int] = set()
+    located_ids: list[int] | None = None
+    if query.area is not None:
+        places = _area_places(connection, located, query.area)
+        boundary = {key for key, place in places.items() if place == "boundary"}
+        located_ids = [
+            key
+            for key, place in places.items()
+            if place == "inside" or (place == "boundary" and query.boundary)
+        ]
+    hidden = 0
+    unlocated_ids: list[int] | None = None
+    filtered = bool(query.coverage or query.min_complete_years)
+    if filtered:
+        if located_ids is None:
+            located_ids = _station_ids(connection, located)
+        unlocated_ids = _station_ids(connection, unlocated)
+        shown = {*located_ids, *unlocated_ids}
+        passing = _covered(connection, stores, shown | boundary, query)
+        hidden = len(shown - passing)
+        located_ids = [key for key in located_ids if key in passing]
+        unlocated_ids = [key for key in unlocated_ids if key in passing]
+        boundary &= passing
+    if located_ids is not None:
+        located = _with_ids(located, located_ids)
+    if unlocated_ids is not None:
+        unlocated = _with_ids(unlocated, unlocated_ids)
+    every = (
+        _with_ids(where, [*(located_ids or ()), *(unlocated_ids or ())])
+        if filtered
+        else where
+    )
+    counts = StationCounts(
+        located=(
+            _count_stations(connection, located)
+            if located_ids is None
+            else len(located_ids)
+        ),
+        unlocated=(
+            _count_stations(connection, unlocated)
+            if unlocated_ids is None
+            else len(unlocated_ids)
+        ),
+        boundary=len(boundary),
+        hidden=hidden,
+    )
+    return _Stations(located, unlocated, every, frozenset(boundary), counts)
+
+
+def _area_places(
+    connection: sqlite3.Connection, located: _Where, area: GeoJSONGeometry
+) -> dict[int, AreaPlace]:
+    """Place the located stations near an area: inside it or on its boundary.
+
+    The R*Tree candidates lie in the area's bounds widened by the largest
+    location uncertainty among the stations, so a station outside the area
+    but closer to it than its uncertainty is among them. Stations outside are
+    left out.
+    """
+    bounds = require_wgs84_area(area)
+    widest = connection.execute(
+        f"SELECT max(s.location_uncertainty_m) FROM stations s WHERE {located.sql()}",
+        located.params,
+    ).fetchone()[0]
+    candidates = located.copy()
+    _station_box(candidates, widen_bounds(bounds, float(widest or 0.0)))
+    rows = connection.execute(
+        "SELECT s.id, s.lon, s.lat, s.location_uncertainty_m FROM stations s"
+        f" WHERE {candidates.sql()}",
+        candidates.params,
+    ).fetchall()
+    places = area_places(
+        area,
+        [(row[1], row[2]) for row in rows],
+        [row[3] for row in rows],
+    )
+    return {
+        row[0]: place
+        for row, place in zip(rows, places, strict=True)
+        if place != "outside"
+    }
+
+
+def _station_ids(connection: sqlite3.Connection, where: _Where) -> list[int]:
+    return [
+        int(row[0])
+        for row in connection.execute(
+            f"SELECT s.id FROM stations s WHERE {where.sql()}", where.params
+        )
+    ]
+
+
+def _with_ids(where: _Where, ids: Iterable[int]) -> _Where:
+    """Return ``where`` narrowed to the stations of ``ids``."""
+    narrowed = where.copy()
+    narrowed.add(f"s.id IN ({_IDS})", json.dumps(sorted(ids)))
+    return narrowed
+
+
+def _covered(
+    connection: sqlite3.Connection,
+    stores: Mapping[int, str],
+    ids: Collection[int],
+    query: StationQuery,
+) -> set[int]:
+    """Return the stations of ``ids`` whose labels pass the coverage filters.
+
+    Only the variables the filters name are labelled, in the query's dataset,
+    range and year type. A variable passes a filter when each of its entries
+    (its half-year periods) does; a station without the variable never does.
+    """
+    if not ids:
+        return set()
+    names = sorted(
+        {name for name, _ in query.coverage}
+        | {name for name, _ in query.min_complete_years}
+    )
+    keys = {
+        (stores[row[1]], row[2], row[3]): int(row[0])
+        for row in connection.execute(
+            f"SELECT id, store_id, provider, code FROM stations WHERE id IN ({_IDS})",
+            (json.dumps(sorted(ids)),),
+        )
+    }
+    where = _Where()
+    where.add("s.dataset = ?", query.dataset)
+    where.add(_SERIES_OF_STATIONS, json.dumps(sorted(ids)))
+    where.add(
+        f"(s.variable IN ({_IDS}) OR s.variable_key IN ({_IDS}))",
+        json.dumps(names),
+        json.dumps(names),
+    )
+    states: dict[str, set[str]] = {}
+    for name, state in query.coverage:
+        states.setdefault(name, set()).add(state)
+    minimum: dict[str, int] = {}
+    for name, years in query.min_complete_years:
+        minimum[name] = max(years, minimum.get(name, 0))
+    passing: set[int] = set()
+    for found in _series_coverage(
+        connection, stores, where, year_type=query.year_type, years=query.years
+    ):
+        entries = {
+            name: [
+                item for item in found.variables if name in (item.key, item.variable)
+            ]
+            for name in names
+        }
+        if all(
+            entries[name] and all(item.label.state in allowed for item in entries[name])
+            for name, allowed in states.items()
+        ) and all(
+            entries[name]
+            and all(item.label.complete_years >= least for item in entries[name])
+            for name, least in minimum.items()
+        ):
+            passing.add(keys[(found.store, found.provider, found.code)])
+    return passing
+
+
+def _stations_coverage(
+    connection: sqlite3.Connection,
+    stores: Mapping[int, str],
+    rows: Sequence[sqlite3.Row],
+    query: StationQuery,
+) -> tuple[StationCoverage, ...]:
+    """Label the series of the stations of ``rows`` as the query asks."""
+    if not rows:
+        return ()
+    where = _Where()
+    where.add(_SERIES_OF_STATIONS, json.dumps([row["id"] for row in rows]))
+    if query.dataset is not None:
+        where.add("s.dataset = ?", query.dataset)
+    return _series_coverage(
+        connection, stores, where, year_type=query.year_type, years=query.years
     )
 
 
@@ -2479,53 +2856,79 @@ def _series_coverage(
     year_type: YearType | None,
     years: YearRange | None,
 ) -> tuple[StationCoverage, ...]:
-    """Read the coverage of the series ``where`` selects on ``s`` (station_series)."""
+    """Read the coverage of the series ``where`` selects on ``s`` (station_series).
+
+    Each dataset's year type and range R are known before its years are
+    read, so only the years of R in that numbering are read.
+    """
     rows = connection.execute(
         f"SELECT {_SERIES_COLUMNS} FROM {_SERIES_SOURCE} WHERE {where.sql()}"
         " ORDER BY s.store_id, s.provider, s.code, s.dataset, s.id",
         where.params,
     ).fetchall()
-    found: dict[int, list[SeriesYear]] = {}
-    for row in connection.execute(
-        "SELECT series_id, year_type, year, units, known, with_value FROM series_years"
-        f" WHERE series_id IN ({_IDS}) ORDER BY series_id, year_type, year",
-        (json.dumps([row["id"] for row in rows]),),
-    ):
-        found.setdefault(row["series_id"], []).append(
-            SeriesYear(
-                year_type=row["year_type"],
-                year=row["year"],
-                units=row["units"],
-                known=row["known"],
-                with_value=row["with_value"],
-            )
-        )
     groups: dict[tuple[int, str, str, str], list[sqlite3.Row]] = {}
     for row in rows:
         key = (row["store_id"], row["provider"], row["code"], row["dataset"])
         groups.setdefault(key, []).append(row)
+    plans: dict[tuple[int, str, str, str], _LabelPlan] = {}
+    wanted: dict[YearType, tuple[list[int], YearRange]] = {}
+    for key, group in groups.items():
+        first = group[0]
+        unit = first["time_unit"]
+        numbering = label_year_type(first["kind"], unit, year_type)
+        periods = _date_ranges(first["version_periods"])
+        span = years or default_span(
+            first["first_year"], periods, time_unit=unit, year_type=numbering
+        )
+        plans[key] = _LabelPlan(numbering, periods, span)
+        if span is None:
+            continue
+        ids, (low, high) = wanted.get(numbering, ([], span))
+        ids.extend(row["id"] for row in group)
+        wanted[numbering] = (ids, (min(low, span[0]), max(high, span[1])))
+    found: dict[int, list[SeriesYear]] = {}
+    for numbering, (ids, (low, high)) in wanted.items():
+        for row in connection.execute(
+            "SELECT series_id, year_type, year, units, known, with_value"
+            f" FROM series_years WHERE series_id IN ({_IDS}) AND year_type = ?"
+            " AND year BETWEEN ? AND ?"
+            " ORDER BY series_id, year",
+            (json.dumps(ids), numbering, low, high),
+        ):
+            found.setdefault(row["series_id"], []).append(
+                SeriesYear(
+                    year_type=row["year_type"],
+                    year=row["year"],
+                    units=row["units"],
+                    known=row["known"],
+                    with_value=row["with_value"],
+                )
+            )
     return tuple(
-        _station_coverage(group, found, stores, year_type=year_type, years=years)
-        for group in groups.values()
+        _station_coverage(group, found, stores, plans[key])
+        for key, group in groups.items()
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _LabelPlan:
+    """How a dataset's labels count: the year type, known periods and range R."""
+
+    numbering: YearType
+    periods: tuple[DateRange, ...]
+    span: YearRange | None
 
 
 def _station_coverage(
     rows: Sequence[sqlite3.Row],
     found: Mapping[int, Sequence[SeriesYear]],
     stores: Mapping[int, str],
-    *,
-    year_type: YearType | None,
-    years: YearRange | None,
+    plan: _LabelPlan,
 ) -> StationCoverage:
     """Label a station's variables in one dataset, in one range R."""
     first = rows[0]
     unit = first["time_unit"]
-    numbering = label_year_type(first["kind"], unit, year_type)
-    periods = _date_ranges(first["version_periods"])
-    span = years or default_span(
-        first["first_year"], periods, time_unit=unit, year_type=numbering
-    )
+    numbering, periods, span = plan.numbering, plan.periods, plan.span
     variables: list[CoverageVariable] = []
     for row in rows:
         coverage = VariableCoverage(
@@ -2584,6 +2987,9 @@ def _station_coverage(
         series=first["series"],
         series_version=first["version_path"],
         variables=tuple(variables),
+        sha256=first["sha256"],
+        license=first["license"],
+        attribution=first["attribution"],
     )
 
 

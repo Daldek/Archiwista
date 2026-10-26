@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from archiwista.config import OwnFolderReason, OwnFolderSource
-from archiwista.index.series import SeriesLabel, SeriesYear, YearRange
+from archiwista.index.series import SeriesLabel, SeriesState, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
     PLAN_STATUSES,
@@ -496,7 +496,7 @@ class MapFootprint:
 
 @dataclass(frozen=True, slots=True)
 class GridCell:
-    """Number of footprints whose centre falls in one grid cell."""
+    """Number of footprints (by their centre) or stations in one grid cell."""
 
     min_lon: float
     min_lat: float
@@ -912,7 +912,7 @@ class SeriesCatalogRecord:
 
 @dataclass(frozen=True, slots=True)
 class StationQuery:
-    """Filters and page of a station query (``GET /stations``).
+    """Filters and page of a station query (``GET /stations``, ``/map/stations``).
 
     Parameters
     ----------
@@ -932,16 +932,45 @@ class StationQuery:
         (``1-05`` takes it, ``1-0`` does not).
     bbox : BBox or None
         ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84: located stations
-        inside it, edges included. A station without a location is never in
-        a box (SPEC 4.3 point 3): with a box, ``location="any"`` lists
-        located stations only.
+        inside it, edges included (a map view). A station without a location
+        is never in a box (SPEC 4.3 point 3): with a box, ``location="any"``
+        lists located stations only.
     location : {"any", "with", "none"}
         Which stations are rows: every one, located ones, or those without a
-        location (the box does not apply to them).
+        location (the box and the area do not apply to them).
     limit : int
         Page size, 1 to ``MAX_PAGE_LIMIT``.
     cursor : str or None
         ``next_cursor`` of the previous page of the same query.
+    area : GeoJSONGeometry or None
+        A ``Polygon`` or ``MultiPolygon`` in WGS84: the located stations in
+        it, edges included, and those on its boundary (SPEC 6.7): closer to
+        the boundary, on either side, than their location uncertainty. Like
+        a box, it never takes a station without a location.
+    boundary : bool
+        Whether the stations on the area's boundary are rows; they are
+        counted either way (``StationCounts.boundary``).
+    dataset : str or None
+        The dataset (``pl.imgw.hydro_daily``): only stations with a series
+        of it, and its coverage only.
+    variables : tuple[str, ...]
+        Stations with a value of each of these variables (``Q``), or
+        variable keys (``Q_max@winter``), in a series (of ``dataset``).
+    coverage : tuple[tuple[str, SeriesState], ...]
+        ``(variable, state)``: the variable's label in the range of years has
+        one of the states given for it (``Q:continuous``, ``Q:gaps``);
+        different variables must all match. Needs ``dataset``.
+    min_complete_years : tuple[tuple[str, int], ...]
+        ``(variable, years)``: the variable's label has at least this many
+        full years (``Q:30``). Needs ``dataset``. A variable of several
+        half-year periods passes a coverage filter when each period does; a
+        station without the variable never passes a filter of it.
+    year_type, years : YearType or None, YearRange or None
+        The numbering and the range R of the labels (and of the coverage
+        filters); ``None``: the dataset's defaults (SPEC 4.8.4).
+    labels : bool
+        Whether the result holds the coverage of its stations' series
+        (``StationPage.coverage``), labelled in ``years`` and ``year_type``.
     """
 
     store: str | None = None
@@ -955,6 +984,15 @@ class StationQuery:
     location: LocationFilter = "any"
     limit: int = DEFAULT_PAGE_LIMIT
     cursor: str | None = None
+    area: GeoJSONGeometry | None = None
+    boundary: bool = True
+    dataset: str | None = None
+    variables: tuple[str, ...] = ()
+    coverage: tuple[tuple[str, SeriesState], ...] = ()
+    min_complete_years: tuple[tuple[str, int], ...] = ()
+    year_type: YearType | None = None
+    years: YearRange | None = None
+    labels: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -965,7 +1003,9 @@ class StationRow:
     without one has ``location="none"`` and the catalog's ``location_reason``
     (``none``, ``zero``, ``outside_country``). ``catalog`` is the label of the
     catalog version the station was read from (its download date) and
-    ``catalog_version`` its file, relative to the store.
+    ``catalog_version`` its file, relative to the store. ``on_boundary``:
+    the station lies on the boundary of the query's area (closer to it than
+    its location uncertainty); ``False`` without an area.
     """
 
     store: str
@@ -989,6 +1029,7 @@ class StationRow:
     elevation_m: float | None
     catalog: str | None
     catalog_version: str | None
+    on_boundary: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -996,21 +1037,19 @@ class StationCounts:
     """Stations of a query by location, whatever its ``location`` selects.
 
     ``located`` counts the located stations that match the filters (inside
-    the box when there is one); ``unlocated`` the stations without a location
-    that match the attribute filters, which a box never narrows (SPEC 4.3).
+    the box or the area when there is one, with the stations on the area's
+    boundary when ``StationQuery.boundary`` takes them); ``boundary`` those
+    on the area's boundary, whether taken or not; ``unlocated`` the stations
+    without a location that match the attribute and coverage filters, which
+    a box or an area never narrows (SPEC 4.3); ``hidden`` the stations of
+    ``located`` and ``unlocated`` that the coverage filters hid ("ukryte
+    filtrem: 4", SPEC 4.8.4).
     """
 
     located: int = 0
     unlocated: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class StationPage:
-    """A page of stations by name; ``next_cursor`` is ``None`` on the last page."""
-
-    items: tuple[StationRow, ...]
-    next_cursor: str | None
-    counts: StationCounts
+    boundary: int = 0
+    hidden: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1044,9 +1083,10 @@ class StationCoverage:
     ``year_type`` numbers the years of ``span``, the range R of the labels
     (``None`` when the version knows no period). ``file`` is the station's
     series file in the version ``series_version`` (its ``series.json``,
-    relative to the store), whose label is ``series`` (``None`` when the
-    index has no such version). Each variable keeps the order of the series
-    index.
+    relative to the store), with its ``sha256``; ``series`` is the label of
+    that version and ``license`` and ``attribution`` its licence and the
+    formula the source requires (``None`` when the index has no such
+    version). Each variable keeps the order of the series index.
     """
 
     store: str
@@ -1061,6 +1101,42 @@ class StationCoverage:
     series: str | None
     series_version: str
     variables: tuple[CoverageVariable, ...]
+    sha256: str | None = None
+    license: str | None = None
+    attribution: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StationPage:
+    """A page of stations by name; ``next_cursor`` is ``None`` on the last page.
+
+    ``coverage`` holds the coverage of the series of the page's stations when
+    the query asked for labels (``StationQuery.labels``), by station and
+    dataset; empty otherwise.
+    """
+
+    items: tuple[StationRow, ...]
+    next_cursor: str | None
+    counts: StationCounts
+    coverage: tuple[StationCoverage, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class StationMap:
+    """The located stations of a map view, or their grid above the limit.
+
+    ``total`` counts the stations of the view that match the filters;
+    ``aggregated`` replaces ``items`` by ``cells`` (each a count of
+    stations). ``counts`` are those of the same query as a list, and
+    ``coverage`` that of ``items`` when the query asked for labels.
+    """
+
+    total: int
+    aggregated: bool
+    items: tuple[StationRow, ...]
+    cells: tuple[GridCell, ...]
+    counts: StationCounts
+    coverage: tuple[StationCoverage, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

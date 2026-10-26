@@ -147,6 +147,36 @@ MESSAGES = {
         "years is a year or a range of years: 2023, 2020-2023, 2020- or -2023.",
         "years to rok albo zakres lat: 2023, 2020-2023, 2020- albo -2023.",
     ),
+    "station_years_invalid": Text(
+        "years is a year or a range of years: 2025 or 1951-2025.",
+        "years to rok albo zakres lat: 2025 albo 1951-2025.",
+    ),
+    "coverage_filter_invalid": Text(
+        (
+            'A coverage filter is variable:state, e.g. Q:continuous, not "{value}";'
+            " states: {states}."
+        ),
+        (
+            "Filtr pokrycia to zmienna:stan, np. Q:continuous, a nie „{value}”;"
+            " stany: {states}."
+        ),
+    ),
+    "min_complete_years_invalid": Text(
+        'A minimum of full years is variable:years, e.g. Q:30, not "{value}".',
+        "Najmniejsza liczba pełnych lat to zmienna:lata, np. Q:30, a nie „{value}”.",
+    ),
+    "station_unknown": Text(
+        'There is no station "{code}" in the station catalogs of the index.',
+        "Nie ma stacji „{code}” w katalogach stacji indeksu.",
+    ),
+    "station_ambiguous": Text(
+        'The code "{code}" names several stations: {stations}.',
+        "Kod „{code}” oznacza kilka stacji: {stations}.",
+    ),
+    "station_ambiguous_hint": Text(
+        "Name the station's store and provider (store, provider).",
+        "Podaj magazyn i dostawcę stacji (store, provider).",
+    ),
     "no_geo_source": Text(
         "No available data source converts the coordinates of the area.",
         "Żadne dostępne źródło danych nie przelicza współrzędnych obszaru.",

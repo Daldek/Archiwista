@@ -652,8 +652,8 @@ def _year_range(text: str | None) -> YearRange | None:
     return (int(start) if start else None), (int(end) if end else None)
 
 
-def _bbox(text: str) -> BBox:
-    """Parse ``min_x,min_y,max_x,max_y`` (finite numbers)."""
+def parse_bbox(text: str) -> BBox:
+    """Parse ``min_x,min_y,max_x,max_y`` (finite numbers) of a query parameter."""
     parts = text.split(",")
     try:
         values = [float(part) for part in parts]
@@ -786,12 +786,12 @@ class CatalogFilters(CommonFilters):
     @classmethod
     def _check_bbox(cls, value: str | None) -> str | None:
         if value is not None:
-            _bbox(value)
+            parse_bbox(value)
         return value
 
     def bbox_values(self) -> BBox | None:
         """Return ``bbox`` as four numbers."""
-        return None if self.bbox is None else _bbox(self.bbox)
+        return None if self.bbox is None else parse_bbox(self.bbox)
 
     def slot_query(self, area: AreaFilter | None) -> SlotQuery:
         """Return the index query of these filters with a resolved area."""
@@ -835,13 +835,13 @@ class MapFilters(CommonFilters):
     @field_validator("bbox")
     @classmethod
     def _check_bbox(cls, value: str) -> str:
-        _bbox(value)
+        parse_bbox(value)
         return value
 
     def map_query(self) -> MapQuery:
         """Return the index query of this view."""
         return MapQuery(
-            bbox=_bbox(self.bbox),
+            bbox=parse_bbox(self.bbox),
             q=self.q,
             store=self.store,
             product=self.product,
@@ -877,12 +877,12 @@ class SheetFilters(BaseModel):
     @field_validator("bbox")
     @classmethod
     def _check_bbox(cls, value: str) -> str:
-        _bbox(value)
+        parse_bbox(value)
         return value
 
     def bbox_values(self) -> BBox:
         """Return the view as four numbers."""
-        return _bbox(self.bbox)
+        return parse_bbox(self.bbox)
 
 
 # Catalog -------------------------------------------------------------------
@@ -1511,7 +1511,7 @@ class Footprint(BaseModel):
 
 
 class Cell(BaseModel):
-    """Number of footprints whose centre falls in one grid cell (WGS84)."""
+    """Number of footprints (by their centre) or stations in one grid cell (WGS84)."""
 
     model_config = _examples(
         {
