@@ -1,13 +1,17 @@
-"""Run ``archiwista serve`` on a free port in a background thread."""
+"""Run ``archiwista serve`` in a background thread, on a free or a given port."""
 
 import io
 import queue
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from functools import partial
 from pathlib import Path
+from unittest import mock
 
+import archiwista.server
+from archiwista.app import create_app
 from archiwista.config import AppPaths
 from archiwista.server import LocalServer, serve_main
 from archiwista.sources import SourceAdapter, SourceState
@@ -55,13 +59,17 @@ def serving(
     access_log: bool = False,
     registry: PluginRegistry | None = None,
     on_ready: Callable[[LocalServer], object] | None = None,
+    port: int = 0,
+    web_dir: Path | None = None,
 ) -> Iterator[tuple[LocalServer, str]]:
-    """Run ``serve_main`` on a free port; yield the server and what it printed.
+    """Run ``serve_main`` on ``port``; yield the server and what it printed.
 
     Without ``registry`` the server has no producers (``NoSources``);
     ``on_ready`` runs as ``archiwista serve`` runs it (e.g. opening the
-    browser). The server stops when the block ends and must then exit with
-    status 0.
+    browser). ``port`` ``0`` is a free one; the port of a stopped server
+    serves the same address again. ``web_dir`` replaces the package's
+    interface files (an upgrade of the interface). The server stops when the
+    block ends and must then exit with status 0.
     """
     out = io.StringIO()
     err = io.StringIO()
@@ -80,26 +88,37 @@ def serving(
                 registry if registry is not None else NoSources(),
                 out,
                 err,
-                port=0,
+                port=port,
                 access_log=access_log,
                 on_ready=ready_now,
             )
         )
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + START_TIMEOUT_S
-    while True:
+    with ExitStack() as patches:
+        if web_dir is not None:
+            patches.enter_context(
+                mock.patch.object(
+                    archiwista.server,
+                    "create_app",
+                    partial(create_app, web_dir=web_dir),
+                )
+            )
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + START_TIMEOUT_S
+        while True:
+            try:
+                server = ready.get(timeout=0.05)
+                break
+            except queue.Empty:
+                if not thread.is_alive() or time.monotonic() > deadline:
+                    raise AssertionError(
+                        f"serve did not start: {err.getvalue()}"
+                    ) from None
         try:
-            server = ready.get(timeout=0.05)
-            break
-        except queue.Empty:
-            if not thread.is_alive() or time.monotonic() > deadline:
-                raise AssertionError(f"serve did not start: {err.getvalue()}") from None
-    try:
-        yield server, out.getvalue()
-    finally:
-        server.stop()
-        thread.join(timeout=START_TIMEOUT_S)
+            yield server, out.getvalue()
+        finally:
+            server.stop()
+            thread.join(timeout=START_TIMEOUT_S)
     assert not thread.is_alive()
     assert statuses == [0], err.getvalue()

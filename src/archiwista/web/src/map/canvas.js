@@ -339,8 +339,8 @@ export function MapCanvas({
         if (live) setBasemapFailed(true);
         return null;
       }),
-    ]).then(
-      ([maplibre, source]) => {
+    ])
+      .then(([maplibre, source]) => {
         if (!live) return;
         const narrow = box.current.clientWidth < 600;
         created = new maplibre.Map({
@@ -401,9 +401,9 @@ export function MapCanvas({
           });
           props.current.onMove?.(move(created, false));
         });
-      },
-      (error) => live && setFailure(error),
-    );
+      })
+      // A browser that cannot draw the map (no WebGL2) throws while it is created.
+      .catch((error) => live && setFailure(error));
     return () => {
       live = false;
       created?.remove();

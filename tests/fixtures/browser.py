@@ -1,4 +1,4 @@
-"""A real ``archiwista serve`` and a Chromium tab that records what went wrong.
+"""A real ``archiwista serve`` and a browser tab that records what went wrong.
 
 ``Served`` is a server over a test directory with the real plugin registry,
 job supervisor and scan scheduler; ``Tab`` a Playwright page recording CSP
@@ -114,7 +114,7 @@ class Served:
 
 @dataclass
 class Tab:
-    """A Chromium page and what happened on it."""
+    """A browser page (Chromium or Firefox) and what happened on it."""
 
     page: Page
     page_errors: list[str] = field(default_factory=list)

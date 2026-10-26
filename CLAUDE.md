@@ -57,7 +57,7 @@ authoritative). Introduction: [README.md](README.md); specification:
 
 ```bash
 uv sync --locked --all-extras          # environment in .venv (DEV-6.2, DEV-6.3)
-uv run playwright install chromium     # once, for the interface tests
+uv run playwright install chromium firefox  # once, for the interface tests
 scripts/gate.sh                        # ruff format, ruff check, mypy, pytest + coverage, commits
 uv run pytest tests/unit -q           # a part of the tests (coverage is measured by the gate)
 uv run archiwista doctor               # checks the installation
@@ -70,7 +70,7 @@ network services and stores), `perf` (the synthetic store of 50,000 slots) and `
 registered (DEV-10.1) and not used yet. Coverage floor 80% (`fail_under` of
 `[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local
 disk: a network share breaks SQLite and hard links. The full gate takes about 25 minutes
-(the interface tests drive Chromium).
+(the interface tests drive Chromium; those that depend on the engine also Firefox).
 
 ## Code map
 

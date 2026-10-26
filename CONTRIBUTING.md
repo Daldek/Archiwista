@@ -10,8 +10,8 @@ specification, fixes, features, and documentation are welcome.
 # (uv: https://docs.astral.sh/uv/)
 uv sync --locked --all-extras
 
-# Chromium for the interface tests (once)
-uv run playwright install chromium
+# Chromium and Firefox for the interface tests (once)
+uv run playwright install chromium firefox
 
 # Run the gate before opening a pull request: ruff, mypy, tests with coverage and the
 # commit check (contributors keep their own identity, so skip the author check)

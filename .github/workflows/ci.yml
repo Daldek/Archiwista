@@ -52,10 +52,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
-      - name: Chromium for the interface tests
+      - name: Chromium and Firefox for the interface tests
         run: |
           uv sync --locked --all-extras
-          uv run --no-sync playwright install --with-deps chromium
+          uv run --no-sync playwright install --with-deps chromium firefox
       - name: Gate
         shell: bash
         env:
@@ -89,10 +89,10 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Environment without the extras, Chromium for the interface tests
+      - name: Environment without the extras, Chromium and Firefox for the interface tests
         run: |
           uv sync --locked
-          uv run --no-sync playwright install --with-deps chromium
+          uv run --no-sync playwright install --with-deps chromium firefox
       - name: Tests
         # The marker expression of scripts/gate.sh (DEV-10.1).
         run: uv run --no-sync pytest tests -m "not live and not perf and not smb" -q

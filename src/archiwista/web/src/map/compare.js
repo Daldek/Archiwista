@@ -150,8 +150,8 @@ export function CompareMaps({ basemap, start, mode, sides, onReady, onMove, chil
         if (live) setNotes((current) => ({ ...current, basemap: true }));
         return null;
       }),
-    ]).then(
-      ([maplibre, source]) => {
+    ])
+      .then(([maplibre, source]) => {
         if (!live) return;
         created = SIDES.map((side, index) =>
           makeMap(maplibre, boxes[index].current, { side, basemap, source, start, setNotes, setFailure }),
@@ -167,9 +167,9 @@ export function CompareMaps({ basemap, start, mode, sides, onReady, onMove, chil
           });
           props.current.onMove?.(moveOf(created[0], false));
         });
-      },
-      (error) => live && setFailure(error),
-    );
+      })
+      // A browser that cannot draw the maps (no WebGL2) throws while they are created.
+      .catch((error) => live && setFailure(error));
     return () => {
       live = false;
       unsync?.();

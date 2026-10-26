@@ -2,11 +2,15 @@
 
 A session from the one-time token of the address, the instruction without a
 session, the first-run wizard, offline mode with MapLibre's worker and the
-packaged glyphs under the CSP, and every ES module loading without errors
-(the syntax check without Node.js).
+packaged glyphs under the CSP, every ES module loading without errors (the
+syntax check without Node.js), and in Chromium and Firefox an interface
+upgraded on the same address reaching the next visit, view modules included.
 """
 
+import os
 import re
+import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
@@ -15,11 +19,17 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 import archiwista.web
-from archiwista.config import AppSettings, StoreConfig
+from archiwista.config import AppSettings, ConfigStore, StoreConfig
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
 
 WEB_DIR = Path(archiwista.web.__file__).resolve().parent
+# The map view's panel, a module the view imports once the page has loaded.
+PANEL_MODULE = "src/map/panel.js"
+# A file this old stays fresh by heuristic for a tenth of its age (three
+# days): a browser would reuse it without asking, were it not ``no-cache``.
+MONTH_S = 30 * 24 * 3600
 GLYPHS = "/static/vendor/glyphs/noto-sans-regular/"
 # A map like a map view's: a polygon and a label whose letters need three
 # glyph ranges (Latin-1, Latin Extended-A for „Ł” and „ź”, punctuation „–”).
@@ -94,9 +104,26 @@ def open_shell(page: Page, url: str) -> None:
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
 
 
+def open_map_view(page: Page, served: Served) -> None:
+    """Open the map view with a new session, in one page load."""
+    fragment = urlsplit(served.token_url()).fragment
+    page.goto(f"{served.base}/?view=map#{fragment}")
+
+
 def zespol(root: Path) -> StoreConfig:
     """Return the generated store as the ``zespol`` store."""
     return StoreConfig(id="zespol", name="Zespół", kartograf=root, kind="local")
+
+
+def interface_copy(directory: Path, build: str, modified: float) -> Path:
+    """Copy the interface, dated ``modified``; its panel marks the page ``build``."""
+    shutil.copytree(WEB_DIR, directory)
+    panel = directory / PANEL_MODULE
+    mark = f'\ndocument.documentElement.dataset.build = "{build}";\n'
+    panel.write_text(panel.read_text("utf-8") + mark, "utf-8")
+    for path in directory.rglob("*"):
+        os.utime(path, (modified, modified))
+    return directory
 
 
 def test_fragment_token_starts_session_and_is_removed_from_url(
@@ -345,3 +372,39 @@ def test_all_modules_load_without_errors(serve: Serve, tab: Tab) -> None:
     assert "vendor/maplibre-gl/maplibre-gl.mjs" in vendored
     assert failures == []
     tab.assert_clean()
+
+
+def test_an_upgraded_interface_reaches_the_next_visit(
+    engine_tab: Tab, tmp_path: Path
+) -> None:
+    """After an upgrade on the same address the next visit runs the new modules.
+
+    A view's modules are imported after the page has loaded, so not even a
+    forced reload asks for them again: a browser that kept the previous
+    build's by heuristic freshness went on showing its map panel (without
+    „U źródła”) for days. Every file is ``no-cache``, so it asks each time.
+    Each visit is one page load in a tab of its own in the same browser (one
+    cache); the first tab closes before its server stops.
+    """
+    now = time.time()
+    previous = interface_copy(tmp_path / "previous", "previous", now - MONTH_S)
+    upgraded = interface_copy(tmp_path / "upgraded", "upgraded", now)
+    paths = local_paths(tmp_path)
+    ConfigStore(paths.config_file).save(AppSettings(offline=True))
+    context = engine_tab.page.context
+
+    with serving(paths, web_dir=previous) as (server, _):
+        open_map_view(engine_tab.page, Served(server, paths))
+        expect(engine_tab.page.locator("html")).to_have_attribute(
+            "data-build", "previous"
+        )
+        engine_tab.assert_clean()
+        engine_tab.page.close()
+        port = server.port
+    with serving(paths, port=port, web_dir=upgraded) as (server, _):
+        again = Tab(context.new_page())
+        again.watch()
+        open_map_view(again.page, Served(server, paths))
+
+        expect(again.page.locator("html")).to_have_attribute("data-build", "upgraded")
+        again.assert_clean()

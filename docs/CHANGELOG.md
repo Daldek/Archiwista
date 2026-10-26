@@ -561,15 +561,28 @@ command-line interface may change.
 - Kartograf ships `py.typed`, so mypy checks the calls to it; the code and tests
   that its types rejected are corrected and the `ignore_missing_imports`
   override is gone.
+- The interface tests that depend on the browser engine (the panel scrolled by the wheel,
+  an upgraded interface reaching the next visit) run in Chromium and in Firefox; install
+  both once with `uv run playwright install chromium firefox`.
 
 ### Fixed
 
 - After a server upgrade a browser could keep showing the previous interface (the map
-  panel without its fourth step "U źródła"): the page and the `/static/…` files had only
-  `ETag` and `Last-Modified`, so the browser reused its ES modules by heuristic
-  freshness without asking. They now carry `Cache-Control: no-cache`: the browser
-  revalidates each file before reuse, and an unchanged one is answered `304`. API
-  responses keep their caching.
+  panel without its fourth step "U źródła", so the panel seemed not to scroll down to
+  it): the page and the `/static/…` files had only `ETag` and `Last-Modified`, so the
+  browser reused its ES modules by heuristic freshness without asking, for days and even
+  after a forced reload (Ctrl+Shift+R), which asks again only for the modules of the
+  page's start, not for those a view imports later. They now carry `Cache-Control:
+  no-cache`: the browser revalidates each file before reuse, a view's modules included,
+  and an unchanged one is answered `304`. API responses keep their caching. A browser
+  that holds the files of a version before this fix keeps them until their heuristic
+  freshness ends (up to a week in Firefox): clear its cached web content once (Firefox:
+  Settings → Privacy & Security → Cookies and Site Data → Clear Data… → Cached Web
+  Content; Chrome: Delete browsing data → Cached images and files).
+- A browser without WebGL2 (such as headless Firefox) showed an empty map and an
+  uncaught error: MapLibre throws while it creates the map, past the handler of a failed
+  load. The map view and the comparison now say "Mapa nie działa w tej przeglądarce: …"
+  with MapLibre's reason.
 - A job refused in offline mode said that unit footprints need the network, whatever
   the job was (a check, a download, a project's job); it says that the job needs the
   network.

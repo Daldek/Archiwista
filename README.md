@@ -25,7 +25,7 @@ Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https:
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
-uv run playwright install chromium    # once; only the interface tests need it
+uv run playwright install chromium firefox  # once; only the interface tests need them
 uv run archiwista doctor              # checks the installation
 uv run archiwista serve               # starts the server and opens the browser
 ```
