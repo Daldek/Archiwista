@@ -9,6 +9,15 @@ command-line interface may change.
 
 ### Added
 
+- Reading and exporting the action log (v0.4, A-ADR-047), for administrators only
+  (`log.read`; a refusal is logged): `GET /log` and `archiwista log list` give a page
+  newest first with `total` and `next_cursor`, filtered by `actor`, `action` (a name
+  or a group's prefix such as `session.`), `outcome`, `target`, `since` and `until`
+  (ISO 8601 with a zone); `GET /log/export` and `archiwista log export` stream every
+  entry they select as JSON Lines or CSV (UTF-8 with a BOM; a cell that could start a
+  formula begins with `'`), the command to standard output or to `--output` (mode
+  `0600`). An export is logged first (`log.export` with its filters, format and
+  count) and holds the entries before it.
 - The action log records more (v0.4, A-ADR-047): who started, retried or cancelled a
   job (`job.start`, `job.retry` with `retry_of`, `job.cancel`; the job's kind, store
   and project; a request that joined an active job has `joined`; never the

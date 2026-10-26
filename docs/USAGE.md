@@ -382,6 +382,28 @@ jobs, and the number next to "Zadania" in the navigation counts the running ones
   extends it to at most the 200 newest jobs; older ones are listed by
   `archiwista jobs list` and `GET /api/v1/jobs`.
 
+## Action log
+
+The action log (v0.4) records who did what, when and from where: changes of
+accounts, groups, sharing and settings, the jobs people start, cancel or retry,
+file downloads, refused requests, the deletion of entries older than
+`action_log_retention_days` (365 days by default) and the exports of the log. Only
+administrators read it; at the terminal the owner of the installation does:
+
+```sh
+archiwista log list --action permission. --since 2026-10-01T00:00:00+02:00
+archiwista log export --format csv --actor marek.lis --output dziennik.csv
+```
+
+`log list` prints the newest entries (50, `--limit` up to 200; the next page is
+`--cursor`) with how many the filters select. `log export` writes every entry the
+filters select as JSON Lines or CSV for a spreadsheet, to standard output or to
+`--output`, a file only you can read; a cell that a spreadsheet could take for a
+formula begins with `'`. The filters: `--actor` (an account, `local` for the owner,
+`-` before a sign-in), `--action` (a name such as `job.start`, or a group such as
+`session.`), `--outcome` (`ok`, `denied`, `failed`), `--target`, and `--since`
+and `--until` with a time zone. An export is itself an entry of the log.
+
 ## IMGW stations (command line)
 
 The stations of the station catalogs of IMGW-PIB and ČHMÚ and the coverage of their

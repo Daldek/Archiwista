@@ -94,6 +94,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/project_jobs.py` | v0.3 CLI of a project's jobs over `services/project_jobs.py` (ADR-040): `project-download`, `project-repin`, `project-check` and `project-verify` start the job as `POST /projects/{project}/jobs` and follow it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
 | `commands/preview_warm.py` | v0.3 CLI of the warm-up of previews over `services/warm.py` (ADR-041): `preview-warm` (filters `--store`, `--product`, `--segment`, `--project`, `--area-id`) starts the `preview_warm` job as `POST /previews/warm` and follows it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner | `add_commands`, `main` |
 | `commands/stations.py` | the CLI of the stations over `api/stations.py` (plan I6): `stations list` (its options generated from `StationListFilters`, one per parameter of `GET /stations`, a repeatable one with `action="append"`, validated by the same model) and `stations show KOD` (the options of `StationLookup`); `--json` prints the route's model, a refusal the route's problem as `archiwista-error/1`; reads the index only, no network, no writes | `add_commands`, `main`, `query_of` |
+| `commands/log.py` | v0.4 CLI of the action log over `services/log.py`: `log list` (a page as `GET /log`, `ActionPage` with `--json`) and `log export` (the bytes of `GET /log/export` to standard output or `--output`, mode `0600`), the filters of the routes validated by their models; as the local owner | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -117,6 +118,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
 | `api/admin.py` | `/users`, `/groups`, `/projects/{project}/access` | models `User`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
+| `api/log.py` | `GET /log` (`ActionPageQuery` → `ActionPage` with `total`) and `GET /log/export` (`ActionExportQuery`; streamed as an attachment, `Cache-Control: private, no-store`); both need `log.read` | `get_log`, `export_log` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
 | `api/files.py` | file download (ADR-047 decision 5): `GET` and `HEAD` of a version's file, an own file's (or one file of its set, `member`) and a snapshot's; Starlette's `FileResponse` (`Range`) as an attachment with `Cache-Control: private, no-store`, its stream counted in `app.state.file_streams` until it ends, `file.download` logged for a `GET` from byte 0; mounted before the catalog's router, whose `/stores/{store}/versions/{version}` would take `…/file` | `download_version_file`, `download_own_file`, `download_snapshot_file`, `file_resolver`, `CACHE_CONTROL` |
@@ -134,6 +136,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/stores.py` | store state for the "Magazyn" (Store) view | `store_summary`, `StoreSummary`, `issue_problem` |
 | `services/projects.py` | project card, live producer status and the changes of a manifest through its producer (ADR-039): a new project where a scan finds it, bound to a configured store, and a task added or removed for whoever has `project.write`, recorded in the index at once; the manifest an action acts on (`project_manifest`: the producer named, else the project's only one; `producer_required`, `other_producer`); the problems of each manifest and a task name of both (`duplicate_task`); a project's directory and the configured store a manifest names, for its jobs (ADR-040) | `project_detail`, `ProjectDetail`, `project_problems`, `project_status`, `project_manifest`, `create_project`, `add_project_task`, `remove_project_task`, `project_actions`, `project_directory`, `project_store` |
 | `services/access.py` | accounts, groups and project access — for HTTP and the CLI | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project` |
+| `services/log.py` | the action log for administrators (`log.read`): a page and the count of its filters; an export logged first (`log.export`) and streamed in batches as JSON Lines or CSV (BOM, CRLF, a formula's first character escaped with `'`); `entry_document` is the JSON of an entry, also `ActionEntryModel` | `read`, `export`, `entry_document`, `LogPage`, `LogExport`, `FIELDS` |
 | `services/owndata.py` | folder checking and project file problems | `set_data_dir`, `folder_check`, `folder_problems`, `file_problems` |
 | `services/files.py` | the file of a download as `ObjectResolver.resolve` finds it (known to the index, visible, inside its root, a working file unchanged since its scan; a file gone `404 missing_file`, an unreadable one or an invalid snapshot `409 file_unreadable`), one file of a set by `member`, its media type (`FileFormat.media_type`, else Python's own `mimetypes` table, else `application/octet-stream`); the downloads each person streams (`FileStreams`: 2 at once, a third `429 too_many_downloads`) | `version_file`, `own_file`, `snapshot_file`, `media_type`, `FileDownload`, `FileStreams`, `FILE_DOWNLOADS_PER_PERSON` |
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
@@ -1087,7 +1090,8 @@ identities (`tests/unit/test_authorize.py`,
   `project.share`, `project.write` (since v0.2: snapshots of project files;
   since v0.3: creating a project and adding or removing its tasks, ADR-039,
   and a project's download and repin, ADR-040), `users.manage`,
-  `groups.manage`, `settings.write`, `store.write`, `job.cancel`.
+  `groups.manage`, `settings.write`, `store.write`, `job.cancel`, `log.read`
+  (v0.4: reading and exporting the action log, administrators only).
   `admin` manages accounts, groups and settings, sees every project,
   manages access to it and changes it; the owner does so for their own (a project without
   an access entry is changed only by the administrator);
@@ -1130,7 +1134,8 @@ identities (`tests/unit/test_authorize.py`,
   people start, retry (`JobSupervisor`, its `record`, an `ActionRecorder`) or cancel
   (`services/jobs.py`), a change of the settings (`api/settings.py`) or of a project's
   tasks (`services/projects.py`) and a refused request (`api/errors.py` `DenialLog`;
-  `PermissionDeniedError` carries the `action` and the `target`).
+  `PermissionDeniedError` carries the `action` and the `target`). Administrators
+  read and export it (`log.read`, `services/log.py`); an export is an entry too.
 - **CLI** (`reader.py`, `commands/`, `admin.py`) runs as `LOCAL_OWNER`
   through the same `Authorizer` and the same services.
 
@@ -1158,6 +1163,7 @@ apart from it, it reads only its own static files from the server.
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
 | `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
+| `api/log.py` (`log`) | `GET /log`, `GET /log/export` (`log.read`) |
 | `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members`; with `jobs`: `POST /previews/warm` (`202` with the `preview_warm` job; any session) |
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |

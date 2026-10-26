@@ -61,6 +61,7 @@ type ActionName = Literal[
     "job.cancel",
     "job.retry",
     "permission.denied",
+    "log.export",
     "log.prune",
     "file.download",
 ]
@@ -463,6 +464,19 @@ class StateStore:
         entries = found[: wanted.limit]
         more = len(found) > len(entries) and bool(entries)
         return ActionPage(entries, entries[-1].id if more else None)
+
+    def count_actions(self, query: ActionQuery | None = None) -> int:
+        """Return how many entries of the action log a query selects.
+
+        Its filters and ``cursor`` count, its ``limit`` does not: the entries
+        of all its pages together.
+        """
+        condition, params = _action_filter(query or ActionQuery())
+        with self._read() as connection:
+            (count,) = connection.execute(
+                f"SELECT count(*) FROM action_log WHERE {condition}", params
+            ).fetchone()
+        return int(count)
 
     def password_record(self, user_id: str) -> PasswordRecord | None:
         """Return an account's password, or ``None`` without one.

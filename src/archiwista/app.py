@@ -55,6 +55,7 @@ from archiwista.api import compare as compare_routes
 from archiwista.api import files as file_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import layers as layer_routes
+from archiwista.api import log as log_routes
 from archiwista.api import map as map_routes
 from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
@@ -213,6 +214,7 @@ def create_app(
     app.include_router(station_routes.router, prefix=API_PREFIX)
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(settings_routes.router, prefix=API_PREFIX)
+    app.include_router(log_routes.router, prefix=API_PREFIX)
     app.include_router(area_routes.router, prefix=API_PREFIX)
     app.include_router(availability_routes.router, prefix=API_PREFIX)
     app.include_router(compare_routes.router, prefix=API_PREFIX)

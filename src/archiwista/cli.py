@@ -20,6 +20,7 @@ from archiwista.commands import (
     compare,
     jobs,
     layers,
+    log,
     owndata,
     preview_warm,
     previews,
@@ -58,6 +59,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     project_jobs,
     preview_warm,
     stations,
+    log,
 )
 
 

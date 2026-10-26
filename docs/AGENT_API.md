@@ -46,6 +46,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 | a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
 | a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
+| the action log: a page newest first, an export of every entry the filters select (v0.4, administrators) | `archiwista log list [filters] [--limit N] [--cursor ID]`, `log export [filters] [--format jsonl\|csv] [--output FILE]` (section 10) | `GET /log`, `GET /log/export` |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -852,7 +853,42 @@ full scan in the foreground (for the owner at a terminal, not for an agent next
 to a running server: both go to the same queue and get a conflict, exit `4`,
 when they meet).
 
-## 10. Limits of v0.3
+## 10. The action log (v0.4, administrators)
+
+The log says who did what, when and from where (A-ADR-047, SPEC 10.2): changes of
+accounts, groups, sharing and settings, the jobs people start, cancel or retry, file
+downloads, refusals (`403`), the pruning of old entries and the exports of the log
+itself (on a team server also sign-ins and sessions). Only an administrator reads it
+(`log.read`); anyone else gets `403 permission_denied`, which is logged too. The CLI
+acts as the owner of the installation, who is one.
+
+- **Filters** of `GET /log`, `GET /log/export` and both commands (`--actor` …):
+  `actor` (an account id, `local`, or `-` before a sign-in), `action` (a name such
+  as `job.start`, or a group by its prefix ending with a dot: `session.`),
+  `outcome` (`ok`, `denied`, `failed`), `target`, `since` (inclusive) and `until`
+  (exclusive), ISO 8601 with a zone; a time without a zone is `400`.
+- **A page** (`ActionPage`, newest first): `items` (`ActionEntryModel`: `id`, `at`
+  in UTC, `actor`, `actor_kind`, `session`, `client`, `action`, `target`,
+  `outcome`, `before`, `after`, `details`), `total` (the entries of all pages of
+  the filters) and `next_cursor`, paged as in section 4 (`limit` 1–200, 50 by
+  default). Reading is not logged.
+- **An export** is logged first (`log.export` with its `filters`, `format` and
+  `count`) and holds every entry older than that one, newest first, as an
+  attachment: JSON Lines (`format=jsonl`, the default; `application/jsonl`, an
+  `ActionEntryModel` per line) or CSV (`format=csv`; UTF-8 with a BOM, CRLF, a
+  header of the field names, the objects as JSON text, null as an empty cell). A
+  CSV cell that starts with `=`, `+`, `-`, `@`, a tab, CR or LF begins with `'`, so
+  a spreadsheet shows it as text: drop that `'` to read the value. `archiwista log
+  export` writes the same bytes to standard output, or replaces `--output FILE`
+  (mode `0600`).
+
+```sh
+curl -sf -b "$JAR" -H "$H" "$BASE/log?action=permission.&since=2026-10-01T00:00:00%2B02:00"
+archiwista log list --actor marek.lis --json
+archiwista log export --format csv --since 2026-10-01T00:00:00+02:00 --output dziennik.csv
+```
+
+## 11. Limits of v0.3
 
 - Local mode only: one person on `127.0.0.1`, no login; accounts and groups
   serve the visibility of projects (A-ADR-029).

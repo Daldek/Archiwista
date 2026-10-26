@@ -10,10 +10,10 @@ own: they pass the principal to the services, which ask here.
 
 Rules (v0.1, ``project.write`` since v0.2):
 
-- ``admin`` manages accounts, groups and settings, sees every project and
-  manages the access and the content of each (``users.manage``,
-  ``groups.manage``, ``settings.write``, ``project.view``, ``project.share``,
-  ``project.write``);
+- ``admin`` manages accounts, groups and settings, reads the action log,
+  sees every project and manages the access and the content of each
+  (``users.manage``, ``groups.manage``, ``settings.write``, ``log.read``
+  (v0.4), ``project.view``, ``project.share``, ``project.write``);
 - a project's owner sees it, manages its access and changes it
   (``project.write``: snapshots of own files, ``POST …/snapshots``, later
   manifest changes); a project without an access entry has no owner, so
@@ -60,6 +60,7 @@ type Action = Literal[
     "settings.write",
     "store.write",
     "job.cancel",
+    "log.read",
 ]
 
 ACTIONS: tuple[Action, ...] = (
@@ -71,12 +72,13 @@ ACTIONS: tuple[Action, ...] = (
     "settings.write",
     "store.write",
     "job.cancel",
+    "log.read",
 )
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
 
 _ADMIN_ACTIONS: frozenset[Action] = frozenset(
-    {"users.manage", "groups.manage", "settings.write"}
+    {"users.manage", "groups.manage", "settings.write", "log.read"}
 )
 
 
@@ -180,7 +182,7 @@ class Authorizer:
         action : Action
             ``project.view``, ``project.share``, ``project.write``,
             ``users.manage``, ``groups.manage``, ``settings.write``,
-            ``store.write`` or ``job.cancel``.
+            ``store.write``, ``job.cancel`` or ``log.read``.
         resource : str or None, optional
             For ``project.*``: the project's access key (``access_key`` of
             its directory, ``ProjectRef.access_key``); for ``job.cancel``:

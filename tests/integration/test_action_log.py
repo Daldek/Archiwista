@@ -1,4 +1,4 @@
-"""The action log: every action logged once, with who, how and from where (T8).
+"""The action log: every action logged once, who reads and exports it (T8).
 
 Each name of ``ActionName`` has a case in ``CASES`` that performs the action
 through the API (or, for the pruning, the server's scheduler) and finds
@@ -10,21 +10,30 @@ expected failure until its case is written. The world is a marked Kartograf
 store ``zespol`` (empty), a project directory, the four people of
 ``tests.fixtures.permissions`` and a supervisor that starts no job, so jobs
 wait to be cancelled and retried; the download of a file uses a generated
-store scanned into the index (``served_store``). Offline.
+store scanned into the index (``served_store``). Reading the log: its pages
+and both formats of its export hold the same entries, a CSV cell that could
+start a formula is escaped, only administrators read it, the command line
+prints what the routes answer, and times bound it in any zone. Offline.
 """
 
+import csv
+import io
+import json
+import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, get_args
+from urllib.parse import quote
 
 import kartograf
 import pytest
 
 from archiwista.api.errors import DenialLog
 from archiwista.auth import LOCAL_OWNER, access_key
+from archiwista.cli import main
 from archiwista.config import (
     DEFAULT_ACTION_LOG_RETENTION_DAYS,
     AppPaths,
@@ -35,8 +44,9 @@ from archiwista.config import (
 )
 from archiwista.index import IndexWriter, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
+from archiwista.services.log import FIELDS
 from archiwista.sources.registry import SourceRegistry, load_registry
-from archiwista.state import ActionEntry, ActionName, StateStore
+from archiwista.state import ActionEntry, ActionName, StateSnapshot, StateStore
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import served_store
 from tests.fixtures.local_server import local_paths
@@ -403,6 +413,17 @@ def log_prune(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
+def log_export(tmp_path: Path) -> Performed:
+    """Export Igor's entries as CSV as the owner."""
+    with world(tmp_path) as made:
+        started_scan(made)
+        since = last_entry(made.api.state)
+        exported = made.owner.request("GET", f"/log/export?format=csv&actor={OTHER}")
+        assert exported.status_code == 200, exported.text
+        details = {"filters": {"actor": OTHER}, "format": "csv", "count": 1}
+        return Performed(made.api.state, since, as_owner(made, "log", details=details))
+
+
 def file_download(tmp_path: Path) -> Performed:
     """Download a version's file as the owner."""
     with served_store(tmp_path) as served:
@@ -433,6 +454,7 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "job.cancel": job_cancel,
     "job.retry": job_retry,
     "permission.denied": permission_denied,
+    "log.export": log_export,
     "log.prune": log_prune,
     "file.download": file_download,
 }
@@ -519,3 +541,190 @@ def test_refusals_are_logged_once_per_person_action_and_minute(tmp_path: Path) -
         (LISTED, "settings", "settings.write"),
         (OTHER, "settings", "settings.write"),
     ]
+
+
+def pages(caller: Caller, query: str) -> list[dict[str, Any]]:
+    """Return the entries of every page of ``GET /log?<query>``, two a page."""
+    items: list[dict[str, Any]] = []
+    cursor = ""
+    while True:
+        page = caller.request("GET", f"/log?{query}&limit=2{cursor}").json()
+        items += page["items"]
+        assert page["total"] >= len(items)
+        if page["next_cursor"] is None:
+            assert page["total"] == len(items)
+            return items
+        cursor = f"&cursor={page['next_cursor']}"
+
+
+def csv_rows(data: bytes) -> list[list[str]]:
+    """Return the rows of a CSV export: UTF-8 with a BOM, CRLF, a header first."""
+    text = data.decode("utf-8")
+    assert text.startswith("\ufeff") and text.endswith("\r\n")
+    rows = list(csv.reader(io.StringIO(text.removeprefix("\ufeff"), newline="")))
+    assert rows[0] == list(FIELDS)
+    return rows[1:]
+
+
+def csv_document(row: list[str]) -> dict[str, Any]:
+    """Return an entry as its CSV row tells it, a formula's escape removed."""
+    document: dict[str, Any] = {}
+    for name, cell in zip(FIELDS, row, strict=True):
+        if cell[:1] == "'" and cell[1:2] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+            cell = cell[1:]
+        if not cell:
+            document[name] = None
+        elif name in ("id", "before", "after", "details"):
+            document[name] = json.loads(cell)
+        else:
+            document[name] = cell
+    return document
+
+
+def test_pages_and_both_formats_of_the_export_hold_the_same_entries(
+    tmp_path: Path,
+) -> None:
+    """JSON Lines and CSV of a filter list the pages' entries; ``=1+1`` is ``'=1+1``."""
+    with world(tmp_path) as made:
+        # Arrange: Igor's scan and refusal, and an entry about a formula.
+        started_scan(made)
+        body = made.person.request("GET", "/settings").json()
+        made.person.request("PUT", "/settings", json=body)
+        made.api.state.record(
+            principal(made.api.state, "other"),
+            "permission.denied",
+            "=1+1",
+            outcome="denied",
+            details={"action": "store.write", "route": "POST /jobs"},
+        )
+
+        # Act
+        listed = pages(made.owner, f"actor={OTHER}")
+        refusals = pages(made.owner, f"actor={OTHER}&action=permission.&outcome=denied")
+        lines = made.owner.request("GET", f"/log/export?actor={OTHER}")
+        table = made.owner.request("GET", f"/log/export?actor={OTHER}&format=csv")
+
+    # Assert
+    assert [item["action"] for item in listed] == [
+        "permission.denied",
+        "permission.denied",
+        "job.start",
+    ]
+    assert refusals == listed[:2]
+    assert lines.headers["content-type"] == "application/jsonl"
+    assert [json.loads(line) for line in lines.text.splitlines()] == listed
+    assert table.headers["content-type"] == "text/csv; charset=utf-8"
+    assert table.headers["cache-control"] == "private, no-store"
+    assert re.fullmatch(
+        r'attachment; filename="archiwista-log-\d{8}T\d{6}Z\.csv"',
+        table.headers["content-disposition"],
+    )
+    rows = csv_rows(table.content)
+    assert [csv_document(row) for row in rows] == listed
+    assert rows[0][FIELDS.index("target")] == "'=1+1"
+    assert rows[1][FIELDS.index("target")] == "settings"
+
+
+def test_only_administrators_read_and_export_the_log(tmp_path: Path) -> None:
+    """Igor is refused both routes, logged once; Ada, an administrator, reads it."""
+    with world(tmp_path) as made:
+        ada = made.api.session(principal(made.api.state, "admin"))
+        since = last_entry(made.api.state)
+
+        # Act
+        refused = made.person.request("GET", "/log")
+        refused_export = made.person.request("GET", "/log/export?format=csv")
+        read = ada.request("GET", "/log")
+        logged = log_entries(made.api.state, after=since)
+
+    # Assert
+    assert_problem(refused, 403, "forbidden", "permission_denied")
+    assert_problem(refused_export, 403, "forbidden", "permission_denied")
+    assert read.status_code == 200, read.text
+    assert [(entry.actor, entry.action, entry.target) for entry in logged] == [
+        (OTHER, "permission.denied", "log")
+    ]
+    assert logged[0].details == {"action": "log.read", "route": "GET /log"}
+
+
+def test_the_command_line_prints_what_the_routes_answer(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``log list --json`` is ``GET /log``; ``log export`` writes the route's bytes."""
+    with world(tmp_path) as made:
+        # Arrange
+        started_scan(made)
+        saved = tmp_path / "eksport" / "dziennik.csv"
+
+        def cli(*argv: str) -> str:
+            capsys.readouterr()
+            status = main(["log", *argv], registry=made.registry, paths=made.paths)
+            captured = capsys.readouterr()
+            assert status == 0, captured.err
+            return captured.out
+
+        # Act
+        route_page = made.owner.request("GET", f"/log?actor={OTHER}").json()
+        route_csv = made.owner.request(
+            "GET", f"/log/export?format=csv&actor={OTHER}"
+        ).content
+        since = last_entry(made.api.state)
+        listed = cli("list", "--json", "--actor", OTHER)
+        exported = cli("export", "--format", "csv", "--actor", OTHER)
+        cli("export", "--format", "csv", "--actor", OTHER, "--output", str(saved))
+        logged = log_entries(made.api.state, after=since)
+
+    # Assert
+    assert json.loads(listed) == route_page
+    assert exported.encode() == route_csv
+    assert saved.read_bytes() == route_csv
+    assert [
+        (entry.action, entry.actor, entry.actor_kind, entry.session, entry.client)
+        for entry in logged
+    ] == [("log.export", "local", "local_owner", None, None)] * 2
+
+
+def test_since_and_until_bound_the_entries_in_any_zone(tmp_path: Path) -> None:
+    """``since`` keeps its moment, ``until`` leaves it out; a time needs a zone."""
+    # Arrange: refusals around 22:00 UTC, which is midnight in Warsaw.
+    paths = local_paths(tmp_path)
+    moments = (
+        datetime(2026, 10, 1, 21, 59, 59, tzinfo=UTC),
+        datetime(2026, 10, 1, 22, 0, 0, tzinfo=UTC),
+        datetime(2026, 10, 1, 22, 0, 1, tzinfo=UTC),
+    )
+    entries = tuple(
+        ActionEntry(
+            id=number,
+            at=moment,
+            actor="-",
+            actor_kind="anonymous",
+            session=None,
+            client="10.0.0.9",
+            action="permission.denied",
+            target="settings",
+            outcome="denied",
+            before=None,
+            after=None,
+            details=None,
+        )
+        for number, moment in enumerate(moments, start=1)
+    )
+    restored = StateSnapshot(
+        users=(), groups=(), projects=(), passwords=(), preferences=(), actions=entries
+    )
+    StateStore(paths.state_file).restore(restored)
+    midnight = quote("2026-10-02T00:00:00+02:00", safe="")
+    with running_api(paths) as api:
+        owner = api.session(LOCAL_OWNER)
+
+        # Act
+        since = owner.request("GET", f"/log?since={midnight}").json()
+        until = owner.request("GET", f"/log?until={midnight}").json()
+        local = owner.request("GET", "/log?since=2026-10-02T00:00:00")
+
+    # Assert
+    assert [item["id"] for item in since["items"]] == [3, 2]
+    assert [item["id"] for item in until["items"]] == [1]
+    assert until["items"][0]["at"] == "2026-10-01T21:59:59Z"
+    assert_problem(local, 400, "validation_error")
