@@ -168,9 +168,12 @@
  */
 
 /**
- * A producer plugin of `GET /sources`: its state and its default store root.
+ * A producer plugin of `GET /sources`: its state, its default store root and the
+ * products whose availability at the source it checks (`POST /availability`), in
+ * its order; none when the plugin is not available or checks none.
  *
- * @typedef {SourceInfo & {default_root: DefaultRoot|null}} SourceListItem
+ * @typedef {SourceInfo & {default_root: DefaultRoot|null, availability: string[]}}
+ *   SourceListItem
  */
 
 /**
@@ -901,13 +904,14 @@
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
  *   and `force` of an availability check, `producer`, `command` and `options` of a
- *   plan (`check`).
+ *   plan (`check`), those and `plan_job` of a `download`.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
  * @property {Object<string, *>|null} progress - Data of the last progress event:
  *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
- *   (`copy`, `checksums`, `document`, `rename`, `published`).
+ *   (`copy`, `checksums`, `document`, `rename`, `published`), a `download` the
+ *   producer's `unit` (or null), `status` and `message`.
  * @property {Object<string, *>|null} result - Summary of a job that succeeded or ended
  *   `partial`; of an `own_scan` the counts `projects`, `files`, `new`, `changed`,
  *   `missing`, `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot
@@ -916,7 +920,11 @@
  *   `checked_at`, `ok`, `combinations`, `kept`, `seconds`; of a plan (`check`)
  *   `producer`, `command`, `store`, `root`, `line`, `checked_at`, `ok`, `positions`,
  *   `counts`, `size_bytes` (null: no size known), `size_complete`, `failed`,
- *   `seconds`.
+ *   `seconds`; of a `download` `producer`, `command`, `store`, `root`, `plan_job`,
+ *   `status` (`ok`, `partial`), `counts` of the files (`new`, `unchanged`,
+ *   `relabeled`), `files` (`path`, `version_path`, `unit`, `status`, `size_bytes`,
+ *   `sha256`, `label`), `items` (`id`, `status`, `code`, `reason`, `message`),
+ *   `failed`, `rescanned`, `seconds`.
  * @property {JobFailure|null} error
  */
 
@@ -1517,6 +1525,163 @@
  * @property {number|null} free_bytes - Free bytes where it goes; null: out of reach.
  * @property {Array<{code: string, message: string}>} warnings - E.g.
  *   `editing_detected`.
+ */
+
+// The source and producers' commands (v0.3) ------------------------------------
+
+/**
+ * The kept report `GET /availability` returns, and how to read its rows.
+ *
+ * @typedef {object} AvailabilityQuery
+ * @property {string} area_id
+ * @property {string} product - A product of the producer's `availability` (`GET /sources`).
+ * @property {string} [producer] - Default `kartograf`.
+ * @property {string} [store] - A configured store: each variant gets its store badge.
+ * @property {string} [horizontal] - Only variants of this sheet system (`PL-1992`).
+ * @property {string} [resolution]
+ * @property {string} [vertical_crs]
+ */
+
+/**
+ * Body of `POST /availability`.
+ *
+ * @typedef {AvailabilityQuery & {force?: boolean}} AvailabilityRequest - `force`: ask
+ *   the source even when a report younger than seven days is kept.
+ */
+
+/**
+ * A coverage label as structure (SPEC 6.4); `label` beside it is its text.
+ *
+ * @typedef {object} CoverageInfo
+ * @property {"full"|"full_campaigns"|"partial"|"no_data"} kind
+ * @property {number} campaigns - Distinct campaigns of the sheets a download takes.
+ * @property {number|null} full_share - Land in full sheets over the area's land, 0-1.
+ * @property {number|null} percent - Rounded down, at most 99 if partial.
+ * @property {boolean} below_one - A share above zero below 1% (`<1%`).
+ * @property {number} partial_sheets
+ * @property {number} missing_sheets
+ */
+
+/**
+ * How much of a variant's set a store holds (the store badge).
+ *
+ * @typedef {object} StoreBadge
+ * @property {string} store
+ * @property {"all"|"some"|"none"} state
+ * @property {number} units - Units with a version of the set.
+ * @property {number} of - The set's units.
+ * @property {string} label - „pobrane”, „pobrane 5/12”, „niepobrane”.
+ */
+
+/**
+ * One set of the source in each of its formats (A-ADR-017).
+ *
+ * @typedef {object} AvailabilityVariant
+ * @property {string} horizontal - Sheet system or horizontal CRS (`PL-2000`).
+ * @property {string|null} resolution - Null for point clouds.
+ * @property {string} vertical_crs
+ * @property {string[]} campaigns
+ * @property {string[]} formats - Its badges, in the report's order.
+ * @property {string|null} default_format - ASC, then TIFF; null: the plan asks for a
+ *   choice.
+ * @property {number|null} size_bytes - Of the default format; null when unknown.
+ * @property {string} label - The coverage label for people.
+ * @property {CoverageInfo} coverage
+ * @property {StoreBadge|null} local - Null without a store in the request.
+ * @property {Object<string, string[]>} commands - The producer's command lines that
+ *   download the set, by format (`POST /commands/parse` reads each).
+ */
+
+/**
+ * One year of one country: its best variant first.
+ *
+ * @typedef {object} AvailabilityRow
+ * @property {string} country
+ * @property {number|null} year - Null for CZ.
+ * @property {string} label - The first variant's label, else „brak danych”.
+ * @property {CoverageInfo} coverage
+ * @property {StoreBadge|null} local - The first variant's badge.
+ * @property {number} other_variants - The chip „+N wariantów”.
+ * @property {AvailabilityVariant[]} variants - Empty for `no_data`.
+ */
+
+/**
+ * The last report of what the source has for an area and a product.
+ *
+ * @typedef {object} AvailabilityInfo
+ * @property {{id: string, name: string|null, area_km2: number|null, countries: string[]}} area
+ * @property {string} producer
+ * @property {string} product
+ * @property {string} checked_at - When the source was asked.
+ * @property {string|null} job_id - The `availability` job that asked.
+ * @property {string|null} store - The store of the badges.
+ * @property {{horizontal: string|null, resolution: string|null, vertical_crs:
+ *   string|null}} variant - The dimensions of the request.
+ * @property {AvailabilityRow[]} rows
+ * @property {{producer: string, schema: string, checked_at: string, ok: boolean,
+ *   failed: Array<{part: string, detail: string, kind: string}>,
+ *   notices: Array<{level: string, code: string, message: string}>}} report - The
+ *   producer's report (also its `areas` and `combinations`).
+ */
+
+/**
+ * A call of a producer's command (`POST /commands/parse`).
+ *
+ * @typedef {object} CommandCall
+ * @property {string} producer
+ * @property {string} command - Of the producer's catalog (`GET /commands`).
+ * @property {Object<string, *>} options - In the JSON form of the catalog.
+ * @property {Object<string, *>} run - What a line gives beside the options (`root`…).
+ */
+
+/**
+ * Body of `POST /jobs`: a job of a producer's command on a configured store.
+ *
+ * @typedef {object} JobRequest
+ * @property {"check"|"download"} kind
+ * @property {string} producer
+ * @property {string} store - Its directory of the producer is the store root.
+ * @property {string} command
+ * @property {Object<string, *>} options
+ * @property {string} [plan_job] - `download` only: the `check` job whose plan it runs.
+ */
+
+/**
+ * One position of a plan.
+ *
+ * @typedef {object} PlanEntry
+ * @property {string} path - Below the store root.
+ * @property {string} unit - The producer's unit (a sheet, a tile, a station).
+ * @property {"current"|"newer"|"missing"|"unverifiable"|"check_failed"} status - A run
+ *   downloads `newer` and `missing`.
+ * @property {string|null} local_label
+ * @property {string|null} available_label
+ * @property {number|null} size_bytes - Null when the producer does not tell it.
+ * @property {string|null} error - The producer's text of a failed check.
+ * @property {string|null} conflict - Why a run would refuse to write it
+ *   (`nested_store`, `not_empty`).
+ */
+
+/**
+ * The plan a `check` job kept (`GET /jobs/{job}/plan`).
+ *
+ * @typedef {object} ActionPlanInfo
+ * @property {string} job_id
+ * @property {string} store
+ * @property {string} producer
+ * @property {string} command
+ * @property {string} line - The producer's command line of the run, with the root.
+ * @property {string} root - The store root the producer planned for.
+ * @property {string} schema
+ * @property {string} checked_at
+ * @property {boolean} ok - No position is `check_failed`.
+ * @property {Object<string, number>} counts - Positions of each status.
+ * @property {number} todo - Positions a run downloads.
+ * @property {number|null} size_bytes - Of the positions to download as far as the
+ *   producer tells; null when it tells none of them, never 0 for unknown.
+ * @property {boolean} size_complete - Every position to download has its size.
+ * @property {PlanEntry[]} entries
+ * @property {Array<{level: string, code: string, message: string}>} notices
  */
 
 export {};

@@ -19,7 +19,7 @@
  */
 
 import { apiAddress, getImage, getLinked, networkProblem } from "./api.js";
-import { count, day, int, size } from "./format.js";
+import { bytes, count, day, int } from "./format.js";
 import { useResource } from "./hooks.js";
 import { T, t } from "./labels/index.js";
 import { previews as L } from "./labels/previews.js";
@@ -54,7 +54,6 @@ const STATE_LEVEL = { ready: "ok", needs_build: "info", building: "info", unavai
 const HEX = /^#[0-9a-f]{6}$/i;
 const NUMBER = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
 const SHARE = new Intl.NumberFormat("pl-PL", { style: "percent", maximumFractionDigits: 1 });
-const KILO = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /**
  * The object a pane previews.
@@ -560,11 +559,4 @@ function cellText(value) {
   if (value === null || value === undefined) return T.common.empty;
   if (typeof value === "boolean") return value ? T.common.yes : T.common.no;
   return typeof value === "object" ? JSON.stringify(value) : String(value);
-}
-
-/** A member's size: bytes and kB below a megabyte, then `format.js` sizes. */
-function bytes(value) {
-  if (value < 1000) return `${int(value)} B`;
-  if (value < 1e6) return `${KILO.format(value / 1e3)} kB`;
-  return size(value);
 }

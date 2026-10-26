@@ -68,6 +68,12 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").OwnFolder} OwnFolder */
 /** @typedef {import("./types.js").OwnFileCard} OwnFileCard */
 /** @typedef {import("./types.js").SnapshotPlan} SnapshotPlan */
+/** @typedef {import("./types.js").AvailabilityQuery} AvailabilityQuery */
+/** @typedef {import("./types.js").AvailabilityRequest} AvailabilityRequest */
+/** @typedef {import("./types.js").AvailabilityInfo} AvailabilityInfo */
+/** @typedef {import("./types.js").CommandCall} CommandCall */
+/** @typedef {import("./types.js").JobRequest} JobRequest */
+/** @typedef {import("./types.js").ActionPlanInfo} ActionPlanInfo */
 
 /**
  * Abort a read: every function takes these options last.
@@ -384,6 +390,8 @@ export function getHealth({ signal } = {}) {
 
 /**
  * Producer plugins with their states and fixes (`list_sources`).
+ * Each item names the products whose availability at the source its
+ * producer checks (`availability`).
  *
  * @param {RequestOptions} [options]
  * @returns {Promise<SourceList>}
@@ -949,6 +957,80 @@ export function buildOwnPreview(project, fileId, label, { force = false } = {}) 
 function ownPreviewPath(project, fileId, label) {
   const file = `/projects/${one(project)}/files/${one(fileId)}`;
   return label === null ? `${file}/preview` : `${file}/snapshots/${one(label)}/preview`;
+}
+
+// The source and producers' commands (v0.3) ------------------------------------
+
+/**
+ * The last report of what the source has for an area and a product, with
+ * its rows (`get_availability`): from the index, never from the network.
+ *
+ * @param {AvailabilityQuery} query - `area_id`, `product`, `producer`; `store`
+ *   gives each variant its store badge.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<AvailabilityInfo>}
+ * @throws {ApiError} `404 not_found`: no report of the area and the product
+ *   (also an unknown area or a store that is not configured).
+ */
+export function getAvailability(query, { signal } = {}) {
+  return request("GET", "/availability", { query, signal });
+}
+
+/**
+ * Ask what the source has for an area and a product (`check_availability`).
+ *
+ * @param {AvailabilityRequest} body - `force`: ask the source even when a
+ *   report younger than seven days is kept („Sprawdź ponownie”).
+ * @returns {Promise<JobDetail|AvailabilityInfo>} `202` the `availability`
+ *   job, `200` the kept report when it is younger than seven days (no `id`).
+ * @throws {ApiError} `409 conflict` (reason `offline_mode`), `422 unsupported`
+ *   (`no_availability`), `503 source_unavailable`.
+ */
+export function checkAvailability(body) {
+  return request("POST", "/availability", { json: body });
+}
+
+/**
+ * Read a producer's command line into a call (`parse_command`), e.g. a line
+ * of a variant's `commands`; nothing is checked against the source.
+ *
+ * @param {string} producer - Producer id.
+ * @param {string} line - The line without the program name.
+ * @returns {Promise<CommandCall>}
+ * @throws {ApiError} `400 validation_error` with the producer's text and
+ *   `details.option`.
+ */
+export function parseCommand(producer, line) {
+  return request("POST", "/commands/parse", { json: { producer, line } });
+}
+
+/**
+ * Start a job of a producer's command on a configured store (`start_job`):
+ * `check` plans a run without its effects, `download` runs it (with
+ * `plan_job`, the plan that check kept).
+ *
+ * @param {JobRequest} body
+ * @returns {Promise<JobDetail>} The queued job (`202`).
+ * @throws {ApiError} `403 permission_denied` (a download without
+ *   `store_write`), `400` (`store_without_producer`, the producer's refusal
+ *   of an option), `404`, `409 conflict` (`offline_mode`, `plan_mismatch`).
+ */
+export function startJob(body) {
+  return request("POST", "/jobs", { json: body });
+}
+
+/**
+ * The plan a `check` job kept (`get_job_plan`): its counts, size and
+ * positions, from the index.
+ *
+ * @param {string} job - Job id of a `check` that succeeded or ended `partial`.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ActionPlanInfo>}
+ * @throws {ApiError} `404 not_found` (no plan kept, or a job the session does
+ *   not see).
+ */
+export function getJobPlan(job, { signal } = {}) {
+  return request("GET", `/jobs/${one(job)}/plan`, { signal });
 }
 
 // Helpers ---------------------------------------------------------------------

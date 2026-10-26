@@ -241,6 +241,23 @@ command-line interface may change.
   (`store_write`: the role `store_writer` or the setting `store_write_for_all`, read at
   each request like `roles`): the permission `POST /jobs` asks of a download, known to a
   client before it asks. (SPEC 9.2, 10.2)
+- The map's panel "Wybór" has a fourth step, "U źródła": a product whose availability a
+  producer checks (`GET /sources`) and the target store, the area's last report with its
+  date (`GET /availability`), "Sprawdź u źródła" and "Sprawdź ponownie" (the
+  `availability` job, followed live), and a row per year with its coverage label, its best
+  variant (sheet system, resolution, height system, formats, size or "rozmiar nieznany"),
+  the store badge and the chip "+N wariantów" that lists the others. "Pobierz…" of a
+  variant opens the plan window: each of its lines in the chosen format is read by `POST
+  /commands/parse` and planned by a `check` job (no format is chosen for a variant without
+  a default one), and the window shows the positions by status, what a run downloads with
+  its size ("co najmniej …" when the producer tells only some sizes, "rozmiar nieznany"
+  when none, never 0), each position, the positions the producer would refuse to write,
+  the store with the producer's directory and each command line to copy. "Pobierz N
+  pozycji" starts one `download` per plan (`plan_job`), asks to confirm first above 5 GB
+  or 500 positions, and shows the progress, the files by status and the failed units; a
+  session without `store_write` sees it disabled with the reason, and offline mode keeps
+  the report and disables both actions. A job that ended `partial` shows its summary too.
+  (SPEC 6.3, 6.4, 6.5 h, 10.3; plan A10, A11)
 
 ### Changed
 

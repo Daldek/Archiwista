@@ -1,8 +1,8 @@
 /**
  * The „Wybór” panel of the map view (docs/SPEC.md 6.1, 6.3): the area and
- * its tools, the product from the index with the filters, and the local
- * state of the area. Each piece of information has this one place; the map
- * shows the same choice.
+ * its tools, the product from the index with the filters, the local state
+ * of the area and what the source has for it (map/source.js). Each piece of
+ * information has this one place; the map shows the same choice.
  */
 
 import { count } from "../format.js";
@@ -23,6 +23,7 @@ import { LocalState } from "./coverage.js";
 import { bboxText } from "./geo.js";
 import { productTitle } from "./products.js";
 import { scaleLabel, SHEET_GRIDS } from "./sheets.js";
+import { SourceStep } from "./source.js";
 
 const KM2 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
 const PRODUCT_SEARCH_FROM = 8;
@@ -65,7 +66,8 @@ export function areaName(area) {
 /**
  * The panel's content.
  *
- * @param {object} props - See `AreaStep`, `ProductStep` and `LocalState`.
+ * @param {object} props - See `AreaStep`, `ProductStep`, `LocalState` and
+ *   `SourceStep`.
  */
 export function SelectionPanel(props) {
   return html`<div class="map-steps">
@@ -73,6 +75,8 @@ export function SelectionPanel(props) {
     <${ProductStep} ...${props} />
     <${LocalState} area=${props.area} filters=${props.filters} products=${props.products?.items ?? []}
       stores=${props.stores} names=${props.names} indexKey=${props.indexKey} onRefreshed=${props.onRefreshed} />
+    <${SourceStep} area=${props.area} areaLabel=${props.area ? areaName(props.area) : null} filters=${props.filters}
+      stores=${props.stores} names=${props.names} onRefreshed=${props.onRefreshed} />
   </div>`;
 }
 

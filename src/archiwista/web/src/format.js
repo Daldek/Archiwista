@@ -1,8 +1,9 @@
 /**
  * Polish formatting of values for people (docs/SPEC.md 6.1, A-ADR-016): dates
  * `RRRR.MM.DD` in the interface while the API and files keep ISO, numbers
- * `12 345`, sizes in MB and GB, plural forms of counted words. Version labels
- * such as `2025-04-26_82710` are identifiers and are never reformatted.
+ * `12 345`, sizes in MB and GB (bytes and kB where they may be small), plural
+ * forms of counted words. Version labels such as `2025-04-26_82710` are
+ * identifiers and are never reformatted.
  */
 
 const INT = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
@@ -72,6 +73,19 @@ export function size(bytes) {
   if (bytes >= 1e12) return `${ONE.format(bytes / 1e12)} TB`;
   if (bytes >= 1e9) return `${ONE.format(bytes / 1e9)} GB`;
   return `${ONE.format(bytes / 1e6)} MB`;
+}
+
+/**
+ * A size that may be small: bytes and kB below a megabyte, then `size`,
+ * e.g. `5,4 kB`.
+ *
+ * @param {number} value - Bytes.
+ * @returns {string}
+ */
+export function bytes(value) {
+  if (value < 1000) return `${int(value)} B`;
+  if (value < 1e6) return `${ONE.format(value / 1e3)} kB`;
+  return size(value);
 }
 
 /**

@@ -66,7 +66,7 @@ line: [`README.md`](../README.md); scripts and agents:
 
 ![Map with an area and the local state](reports/v0.1-screenshots/02-map.webp)
 
-The panel "Wybór" (selection) leads through three steps:
+The panel "Wybór" (selection) leads through four steps:
 
 1. **Area:** "Prostokąt" (rectangle: drag on the map), "Wielokąt" (polygon:
    click the vertices; finish by clicking the first point, with a double click
@@ -85,6 +85,25 @@ The panel "Wybór" (selection) leads through three steps:
    "Odśwież" (refresh) reads the slots of the area from the store again;
    "Pokaż pliki obszaru w Katalogu" (show the files of the area in the
    Catalog) opens the list.
+4. **At the source** ("U źródła", v0.3 in development): a product whose
+   availability a producer checks and the target store ("Magazyn docelowy").
+   "Sprawdź u źródła" asks the source (a background job); a report younger
+   than seven days is shown with its date, and "Sprawdź ponownie" asks again.
+   A row is a year: its coverage label ("pełne", "częściowe · 58% · 1 ark.
+   niepełny"), its best variant with the formats, the size (or "rozmiar
+   nieznany") and the store badge ("niepobrane", "pobrane 5/12"); "+1 wariant"
+   lists the other variants. "Pobierz…" opens the plan window ("Pobrać?"):
+   the producer's plan of the chosen format with the positions by status
+   ("aktualne", "nowsze u źródła", "brak w magazynie", "nie do sprawdzenia"),
+   what will be downloaded and its size ("co najmniej …" when the producer
+   tells only some sizes), the store and the producer's command line to copy.
+   Nothing is written before "Pobierz N pozycji"; above 5 GB or 500 positions
+   it asks for a confirmation. The window then shows the progress, the files
+   by status and the units that failed. Without the permission "zapis do
+   magazynu" the plan is shown and the download is disabled with the reason;
+   offline mode keeps the last report and disables both actions.
+
+   ![Plan window of a download](reports/v0.3-screenshots/02-okno-planu.webp)
 
 File footprints are visible at once; with more than 5,000 footprints in view
 the map shows a density grid, and clicking a cell zooms in. Clicking a
@@ -251,9 +270,9 @@ from an open Archiwista tab.
 
 ## What version 0.2 does not do
 
-- It does not download data, does not check availability at the source and
-  does not change project manifests through the producer; that is v0.3
-  "Actions".
+- It checks availability at the source and downloads only from the step "U
+  źródła" of the map (v0.3 "Actions", in development) and does not change
+  project manifests through the producer yet.
 - It does not build previews before the first opening; pre-building of
   thumbnails and overviews of current versions is planned for v0.3.
 - It does not show object differences between snapshots, has no sign-in or

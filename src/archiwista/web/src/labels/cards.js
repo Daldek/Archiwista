@@ -40,6 +40,14 @@ export const cards = {
       rename: "przeniesienie na miejsce",
       published: "opublikowana",
     },
+    download_progress: "{current} z {total} · {status}",
+    /** The producers' words of a run's progress (`status`); another shows as it is. */
+    unit_status: {
+      downloading: "pobieranie",
+      completed: "pobrane",
+      skipped: "bez zmian",
+      failed: "błąd",
+    },
     folders: ["folder", "foldery", "folderów"],
     failed: "Zadanie zakończone stanem „{state}”: {detail}",
     notices: "Komunikaty zadania",

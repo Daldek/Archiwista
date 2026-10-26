@@ -104,7 +104,7 @@
 .sw-preview-outline { border: 2px solid #ea580c; }
 .sw-features { background: rgba(13, 148, 136, 0.22); border: 1.5px solid #0d9488; }
 
-/* ---------- „Wybór” panel (panel.js, coverage.js) ---------- */
+/* ---------- „Wybór” panel (panel.js, coverage.js, source.js) ---------- */
 .map-steps h2.step-title { font-size: 13.5px; margin: 0; }
 .step-anchor:focus { outline: none; }
 .step-anchor:focus-visible > .step { box-shadow: 0 0 0 3px #c7d2fe; }
@@ -147,6 +147,25 @@
 .coverage-details { font-size: 11.5px; }
 .coverage-row .hint { margin: 0; }
 .catalog-link { margin-top: 8px; }
+.src-field { margin: 0 0 8px; }
+.src-field span { font-weight: 600; font-size: 12px; }
+.src-store { margin: 0 0 6px; font-size: 12px; }
+.src-check { margin-top: 8px; }
+.src-step .job-status { margin-top: 8px; font-size: 12px; }
+.src-checked { margin: 0 0 6px; font-size: 11.5px; }
+.src-rows, .src-others { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.src-row { border-top: 1px solid var(--line); padding-top: 7px; display: grid; gap: 4px; }
+.src-row-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.src-year { font-size: 13px; }
+.src-label { font-size: 12.5px; font-weight: 500; }
+.src-label.partial { color: var(--warn-ink); }
+.src-label.no_data { color: var(--text-3); }
+.src-more { cursor: pointer; }
+.src-more[aria-expanded="true"] { background: var(--accent-soft); border-color: #c7d2fe; color: var(--accent); }
+.src-variant { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
+.src-dims { color: var(--text-2); }
+.src-download { margin-left: auto; }
+.src-others { padding-left: 10px; border-left: 2px solid var(--line); gap: 8px; }
 
 /* ---------- phones ---------- */
 @media (max-width: 860px) {

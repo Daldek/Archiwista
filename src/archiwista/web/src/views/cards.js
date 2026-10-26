@@ -32,6 +32,8 @@ export const FINAL_STATES = new Set([
   "interrupted",
   "cancelled",
 ]);
+/** States of a job that ended with its summary (`result`), as on the server. */
+export const SUMMARY_STATES = new Set(["succeeded", "partial"]);
 const SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
 const SHORT_SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
 const COPIED_MS = 1500;
@@ -248,7 +250,8 @@ function issueValues(issue) {
  * @property {string} state - The last state event.
  * @property {Object<string, *>|null} progress - The last progress event.
  * @property {Array<{level: string, code: string, message: string}>} notices
- * @property {Object<string, *>|null} result - Summary of a succeeded job.
+ * @property {Object<string, *>|null} result - Summary of a job that succeeded or
+ *   ended `partial`.
  * @property {import("../types.js").JobFailure|null} error - Why it ended otherwise.
  * @property {import("../types.js").Problem|null} stream - The stream broke off.
  */
@@ -324,8 +327,8 @@ export function useJob({ onEnd } = {}) {
  * notices, its summary or why it failed; a problem of starting it first.
  *
  * @param {{job: ReturnType<typeof useJob>, summary?: (events: JobEvents) => *}}
- *   props - `summary` renders a succeeded job's result (default: the scan
- *   and footprints summaries).
+ *   props - `summary` renders the result of a job that succeeded or ended
+ *   `partial` (default: the scan and footprints summaries).
  */
 export function JobStatus({ job, summary = defaultSummary }) {
   const { events, problem } = job;
@@ -373,7 +376,7 @@ function JobEventsView({ events, summary, kind }) {
           )}</ul>
         </div>`
       : null}
-    ${events.state === "succeeded" ? summary(events) : null}
+    ${SUMMARY_STATES.has(events.state) ? summary(events) : null}
     ${events.error
       ? html`<p class="job-error">
           <${Tech} value=${technical}>${t(L.job.failed, {
@@ -419,6 +422,14 @@ function progressText(progress) {
       files: int(progress.files),
       read: int(progress.read),
     });
+  }
+  if ("unit" in progress && "status" in progress) {
+    const text = t(L.job.download_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      status: L.job.unit_status[progress.status] ?? progress.status,
+    });
+    return progress.unit ? `${text} · ${progress.unit}` : text;
   }
   return t(L.job.progress, { current: int(progress.current), total: int(progress.total) });
 }
