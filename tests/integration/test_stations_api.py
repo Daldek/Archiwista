@@ -114,7 +114,7 @@ def _codes(body: dict[str, Any]) -> list[str]:
     return [item["code"] for item in body["items"]]
 
 
-def test_stations_lists_both_providers_by_name_with_the_location_groups(
+def test_stations_lists_both_providers_page_by_page_with_the_location_groups(
     served: Served,
 ) -> None:
     """Every station once, page after page; the unlocated keep their reason."""
@@ -437,7 +437,7 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
     assert names == {
         "store", "provider", "dataset", "years", "year_type", "kind", "active",
         "river_code", "river_scope", "variable", "coverage", "min_complete_years",
-        "meteo_kind",
+        "meteo_kind", "q", "sort",
         "area_id", "bbox", "bbox_crs", "boundary", "location", "limit", "cursor",
     }  # fmt: skip
     card = document["paths"]["/api/v1/stations/{code}"]["get"]

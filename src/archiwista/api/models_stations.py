@@ -42,6 +42,7 @@ from archiwista.index import (
     StationPage,
     StationQuery,
     StationRow,
+    StationSort,
     YearRange,
 )
 from archiwista.index.series import MAX_UNKNOWN_RANGES, year_span
@@ -394,11 +395,14 @@ class StationFilters(StationLookup):
         location: LocationFilter = "any",
         limit: int = DEFAULT_PAGE_LIMIT,
         cursor: str | None = None,
+        q: str | None = None,
+        sort: StationSort = "river",
         labels: bool = True,
     ) -> StationQuery:
         """Return the index query of these filters with an area, view and page.
 
-        ``year_types`` are the year types the settings remember.
+        ``year_types`` are the year types the settings remember; ``q`` and
+        ``sort`` the search and order of a list (``GET /stations``).
         """
         return StationQuery(
             store=self.store,
@@ -408,10 +412,12 @@ class StationFilters(StationLookup):
             active=self.active,
             river_code=self.river_code,
             river_scope=self.river_scope,
+            q=q,
             bbox=bbox,
             location=location,
             limit=limit,
             cursor=cursor,
+            sort=sort,
             area=area,
             boundary=boundary,
             dataset=self.dataset,
@@ -434,8 +440,25 @@ class StationFilters(StationLookup):
 
 
 class StationListFilters(StationFilters):
-    """Filters, area and page of ``GET /stations``."""
+    """Filters, search, order, area and page of ``GET /stations``."""
 
+    q: str | None = Field(
+        default=None,
+        description=(
+            "Search: stations whose name or river contains the text (case-folded;"
+            " no character is a wildcard) or whose code begins with it."
+        ),
+        examples=["raba"],
+    )
+    sort: StationSort = Field(
+        default="river",
+        description=(
+            "Order of the rows: `river` along rivers (the hydrographic code, so"
+            " a tributary follows its river, then the provider's order on the"
+            " river, then the name; stations without a code or an order last;"
+            " SPEC 6.8) or `name`; then code, provider and store."
+        ),
+    )
     area_id: str | None = Field(
         default=None,
         description=(

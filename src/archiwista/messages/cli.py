@@ -2061,6 +2061,20 @@ MESSAGES = {
         "variable:least full years, e.g. Q:30 (repeatable; needs --dataset)",
         "zmienna:najmniej pełnych lat, np. Q:30 (powtarzalna; wymaga --dataset)",
     ),
+    "stations_q_help": Text(
+        (
+            "search: stations whose name or river contains the text (case"
+            " ignored) or whose code begins with it"
+        ),
+        (
+            "wyszukiwanie: stacje, których nazwa albo rzeka zawiera tekst (bez"
+            " względu na wielkość liter), albo których kod się nim zaczyna"
+        ),
+    ),
+    "stations_sort_help": Text(
+        "order: river (along rivers, default) or name",
+        "kolejność: river (wzdłuż rzek, domyślnie) albo name (według nazwy)",
+    ),
     "stations_area_id_help": Text(
         "area saved via POST /api/v1/areas",
         "obszar zapisany przez POST /api/v1/areas",

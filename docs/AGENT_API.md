@@ -351,8 +351,12 @@ archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
 **Stations and the coverage of their series** (the IMGWTools source, plans I6 and I8).
-`GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ by
-name. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
+`GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ along
+rivers (`sort=river`, the default: by the hydrographic code, so a tributary follows
+its river, then the provider's order on the river, then the name) or by name
+(`sort=name`). `q` finds a station whose name or river contains the text (case
+ignored; no character is a wildcard) or whose code begins with it; a cursor belongs
+to its `q` and `sort`. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
 `river_scope` (`exact`, or `tributaries`: every code that begins with it),
 `dataset` (a dataset key such as `pl.imgw.hydro_daily`), `variable`, `coverage`
 (`Q:continuous`, `H:gaps`; states of one variable are alternatives) and

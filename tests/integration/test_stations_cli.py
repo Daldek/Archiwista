@@ -135,6 +135,7 @@ def _options(params: Params) -> list[str]:
         ({"variable": ["Q", "T"], "year_type": "calendar"}, 2),
         ({"provider": "CHMI", "river_code": "1-05", "river_scope": "tributaries"}, 1),
         ({"kind": "meteo", "active": "true", "location": "with"}, 3),
+        ({"q": "RABA", "sort": "name", "limit": "2"}, 3),
     ],
 )
 def test_stations_list_json_equals_the_route_page_after_page(

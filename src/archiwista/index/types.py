@@ -50,6 +50,8 @@ type RiverScope = Literal["exact", "tributaries"]
 type StationLocation = Literal["point", "none"]
 # The kind of a meteo station in its catalog (a station type of the map, 6.7).
 type MeteoKind = Literal["synoptic", "climate", "precipitation"]
+# The order of a list of stations (SPEC 6.8): along rivers, or by name.
+type StationSort = Literal["river", "name"]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
 # A producer's current version of a slot, asked by the slot's key at the end of
 # a pass: a path relative to the store, ``None`` without one
@@ -83,6 +85,7 @@ VERSIONS_MODES: tuple[VersionsMode, ...] = (
 LOCATION_FILTERS: tuple[LocationFilter, ...] = ("any", "with", "none")
 RIVER_SCOPES: tuple[RiverScope, ...] = ("exact", "tributaries")
 METEO_KINDS: tuple[MeteoKind, ...] = ("synoptic", "climate", "precipitation")
+STATION_SORTS: tuple[StationSort, ...] = ("river", "name")
 ROW_STATUSES: tuple[RowStatus, ...] = (
     "ok",
     "missing",
@@ -941,6 +944,10 @@ class StationQuery:
         ``2138`` takes ``21382``, never ``2139``); a code with ``-`` between
         its parts (ČHMÚ ``1-05-03-0110``) begins with whole parts only
         (``1-05`` takes it, ``1-0`` does not).
+    q : str or None
+        Search text: stations whose name or river contains it, case-folded,
+        or whose code begins with it; no character is a wildcard. Blank: no
+        search.
     bbox : BBox or None
         ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84: located stations
         inside it, edges included (a map view). A station without a location
@@ -953,6 +960,13 @@ class StationQuery:
         Page size, 1 to ``MAX_PAGE_LIMIT``.
     cursor : str or None
         ``next_cursor`` of the previous page of the same query.
+    sort : {"river", "name"}
+        The order of the rows of a page (SPEC 6.8): along rivers (the
+        hydrographic code as text, so a tributary follows its river, then
+        the order of the provider's list on the river, then the name;
+        stations without a code or an order after those with one), or by
+        name; then the code, provider and store. A map draws its stations by
+        name.
     area : GeoJSONGeometry or None
         A ``Polygon`` or ``MultiPolygon`` in WGS84: the located stations in
         it, edges included, and those on its boundary (SPEC 6.7): closer to
@@ -996,10 +1010,12 @@ class StationQuery:
     active: bool | None = None
     river_code: str | None = None
     river_scope: RiverScope = "exact"
+    q: str | None = None
     bbox: BBox | None = None
     location: LocationFilter = "any"
     limit: int = DEFAULT_PAGE_LIMIT
     cursor: str | None = None
+    sort: StationSort = "river"
     area: GeoJSONGeometry | None = None
     boundary: bool = True
     dataset: str | None = None

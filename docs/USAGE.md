@@ -358,6 +358,7 @@ coverage of their series from the index while IMGWTools is installed:
 archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous --min-complete-years Q:30
 archiwista stations list --area-id OBSZAR --boundary false
 archiwista stations list --location none
+archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations datasets
 ```
@@ -377,7 +378,11 @@ needs `--store` and `--provider`. `stations datasets` names the datasets with st
 series: each with the producer's name, provider and family, the version of its series,
 the years of its labels by default and its variables with their units (`--dataset`
 and `--variable` take them). `--meteo-kind` (repeatable: `synoptic`, `climate`,
-`precipitation`) keeps the meteo stations of those kinds. Without IMGWTools each
+`precipitation`) keeps the meteo stations of those kinds. The list goes along rivers
+(the river's hydrographic code, so a tributary follows its river, then the station's
+place on the provider's list, then the name); `--sort name` orders it by name. `--q`
+finds a station whose name or river contains the text, whatever the case of the
+letters, or whose code begins with it. Without IMGWTools each
 refuses with the repair command `pip install "archiwista[imgw]"`.
 
 ## Session

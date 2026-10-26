@@ -1,26 +1,31 @@
-"""Station queries of the local index (plan I4, commit 2).
+"""Station queries of the local index (plan I4, commit 2; plan I8.2, commit 2).
 
 The stations are written the way a scan writes a provider's catalog
 (``IndexWriter.replace_stations``), from synthetic lists, so every rule is
 shown on the codes it is about: the box takes located stations only and the
 stations without a location are counted beside it after the attribute
 filters, a river with its tributaries is a prefix of the hydrographic code
-(by whole parts for ČHMÚ codes), and two providers never share a station.
+(by whole parts for ČHMÚ codes), two providers never share a station, the
+search finds a part of a name or river or the beginning of a code, and the
+river order puts a tributary after its river (SPEC 6.8).
 """
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from archiwista.errors import IndexQueryError
 from archiwista.index import (
+    STATION_SORTS,
     IndexQueries,
     IndexWriter,
     RiverScope,
     StationCounts,
     StationPage,
     StationQuery,
+    StationSort,
 )
 from archiwista.sources import Station
 
@@ -67,21 +72,7 @@ def _all(queries: IndexQueries, query: StationQuery) -> list[tuple[str, str, str
     rows: list[tuple[str, str, str]] = []
     cursor = None
     while True:
-        page = queries.stations(
-            StationQuery(
-                store=query.store,
-                provider=query.provider,
-                code=query.code,
-                kind=query.kind,
-                active=query.active,
-                river_code=query.river_code,
-                river_scope=query.river_scope,
-                bbox=query.bbox,
-                location=query.location,
-                limit=query.limit,
-                cursor=cursor,
-            )
-        )
+        page = queries.stations(replace(query, cursor=cursor))
         rows.extend((row.store, row.provider, row.code) for row in page.items)
         cursor = page.next_cursor
         if cursor is None:
@@ -258,10 +249,11 @@ def test_two_providers_and_two_stores_never_share_a_station(
     assert queries.station("unknown", PL, same) is None
 
 
-def test_pages_follow_the_names_and_a_cursor_belongs_to_its_query(
-    index: tuple[IndexWriter, IndexQueries],
+@pytest.mark.parametrize("sort", STATION_SORTS)
+def test_pages_of_either_order_join_and_a_cursor_belongs_to_its_query(
+    index: tuple[IndexWriter, IndexQueries], sort: StationSort
 ) -> None:
-    """Every station once, by name; a cursor of other filters is refused."""
+    """Every station once, in the order of one page; another query's cursor fails."""
     # Arrange
     writer, queries = index
     _write(
@@ -273,6 +265,8 @@ def test_pages_follow_the_names_and_a_cursor_belongs_to_its_query(
                 f"1491903{number:02d}",
                 name=None if number % 5 == 0 else f"Stacja {number % 7}",
                 kind="hydro" if number % 2 else "meteo",
+                hydrographic_code=None if number % 6 == 0 else f"213{number % 4}",
+                river_order=None if number % 4 == 1 else number % 3,
                 active=number % 3 != 0,
                 point=(20.0 + number / 100, 50.0) if number % 4 else None,
                 location_reason=None if number % 4 else "none",
@@ -280,24 +274,126 @@ def test_pages_follow_the_names_and_a_cursor_belongs_to_its_query(
             for number in range(23)
         ],
     )
+    other: StationSort = "name" if sort == "river" else "river"
 
     # Act
-    paged = _all(queries, StationQuery(limit=4))
-    first = queries.stations(StationQuery(limit=4, kind="hydro"))
-    historical = queries.stations(StationQuery(active=False, limit=200))
+    paged = _all(queries, StationQuery(limit=4, sort=sort))
+    first = queries.stations(StationQuery(limit=4, kind="hydro", sort=sort))
+    historical = queries.stations(StationQuery(active=False, limit=200, sort=sort))
 
     # Assert
     assert len(paged) == len(set(paged)) == 23
-    assert paged == [
-        (STORE, PL, row.code) for row in queries.stations(StationQuery(limit=200)).items
-    ]
+    whole = queries.stations(StationQuery(limit=200, sort=sort))
+    assert paged == [(STORE, PL, row.code) for row in whole.items]
     assert first.next_cursor is not None
-    with pytest.raises(IndexQueryError):
-        queries.stations(StationQuery(limit=4, cursor=first.next_cursor))
-    with pytest.raises(IndexQueryError):
-        queries.stations(StationQuery(limit=4, cursor="not-a-cursor"))
+    for query in (
+        StationQuery(limit=4, sort=sort),
+        StationQuery(limit=4, kind="hydro", sort=other),
+        StationQuery(limit=4, kind="hydro", sort=sort, q="Stacja"),
+        StationQuery(limit=4, cursor="not-a-cursor"),
+    ):
+        with pytest.raises(IndexQueryError):
+            queries.stations(replace(query, cursor=query.cursor or first.next_cursor))
     assert {row.active for row in historical.items} == {False}
     assert len(historical.items) == len([n for n in range(23) if n % 3 == 0])
+
+
+def test_the_river_order_puts_tributaries_after_their_river(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """SPEC 6.8: the code, then the order on the list, then the name; unknown last."""
+    # Arrange
+    writer, queries = index
+    stations = [
+        ("149190301", "Dobczyce", "2138", 3),
+        ("149190302", "Stróża", "2138", 2),
+        ("149190303", "Kasinka Mała", "2138", 1),
+        ("149190304", "Proszówki", "2138", None),
+        ("149190305", "Mszana Dolna", "21382", 1),  # Mszanka, a tributary of Raba
+        ("149190306", "Łapanów", "21388", 1),  # Stradomka, another one
+        ("149190307", "Gdów", "2139", 1),
+        ("149190308", "Zakopane", None, None),
+        ("149190309", "Bielsko", None, 4),
+        ("149190310", "Wisła", "2", 1),
+        ("149190311", "Ustroń", "2", 0),
+    ]
+    _write(
+        writer,
+        PL,
+        [
+            Station(
+                PL,
+                code,
+                name=name,
+                hydrographic_code=river,
+                river_order=order,
+                point=(20.0, 50.0) if order != 1 else None,
+                location_reason=None if order != 1 else "none",
+            )
+            for code, name, river, order in stations
+        ],
+    )
+
+    # Act
+    along = _all(queries, StationQuery(limit=3))
+    by_name = queries.stations(StationQuery(sort="name"))
+
+    # Assert
+    assert [code for *_, code in along] == [
+        "149190311",  # Wisła 2, order 0
+        "149190310",  # Wisła 2, order 1
+        "149190303",  # Raba 2138, orders 1, 2, 3, then none
+        "149190302",
+        "149190301",
+        "149190304",
+        "149190305",  # Mszanka 21382
+        "149190306",  # Stradomka 21388
+        "149190307",  # 2139
+        "149190309",  # no code: by order, then name
+        "149190308",
+    ]
+    assert [row.name for row in by_name.items] == sorted(
+        name for _, name, *_ in stations
+    )
+
+
+def test_a_search_finds_a_name_or_river_part_or_a_code_prefix(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """Case-folded parts of a name or a river, the start of a code; no wildcard."""
+    # Arrange
+    writer, queries = index
+    _write(
+        writer,
+        PL,
+        [
+            Station(PL, "149190310", name="Stróża", river="Raba", point=(20.0, 49.8)),
+            Station(PL, "149190320", name="Łódź-Lublinek", location_reason="none"),
+            Station(PL, "150190010", name="Nowy Targ", river="Dunajec (Czarny)"),
+            Station(PL, "250190010", name="Rabka_Zdrój", point=(19.9, 49.6)),
+            Station(PL, "349190320", location_reason="none"),
+        ],
+    )
+    _write(writer, CZ, [Station(CZ, "0-203-0-1490", name="Raba", river="Odra")])
+
+    def found(text: str) -> set[str]:
+        return {code for *_, code in _all(queries, StationQuery(q=text, limit=2))}
+
+    # Act
+    raba = found("RABA")
+    counted = queries.stations(StationQuery(q="14919"))
+
+    # Assert
+    assert raba == {"149190310", "0-203-0-1490"}
+    assert found("łÓdŹ") == {"149190320"}
+    assert found("czarny)") == {"150190010"}
+    assert found("14919") == {"149190310", "149190320"}
+    assert found(" 0-203-0 ") == {"0-203-0-1490"}
+    assert found("9190") == set()  # a code begins with the text, never holds it
+    assert found("_") == {"250190010"}
+    assert found("%") == set()
+    assert len(found("  ")) == 6
+    assert counted.counts == StationCounts(located=1, unlocated=1)
 
 
 @pytest.mark.parametrize(

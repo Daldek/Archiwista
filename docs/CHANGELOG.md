@@ -9,6 +9,13 @@ command-line interface may change.
 
 ### Added
 
+- `GET /api/v1/stations` and `archiwista stations list` take `q` and `sort` (ADR-045, plan
+  I8.2). `q` finds a station whose name or river contains the text, whatever the case
+  of the letters (`łódź` finds `Łódź`), or whose code begins with it; no character is a
+  wildcard. `sort=river`, now the default, lists the stations along rivers (by the
+  river's hydrographic code, so a tributary follows its river, then by the station's
+  place on the provider's list, then by name); `sort=name` keeps the order by name, the
+  only one until now. A cursor belongs to its search and order.
 - The year type is remembered for hydro and for meteo data (P15, ADR-045, plan I8.2):
   `year_types` in `config.toml` and `GET /api/v1/settings` (hydro hydrological, meteo
   calendar by default), changed by `PUT /api/v1/settings/year-types` (an administrator

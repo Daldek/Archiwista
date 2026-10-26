@@ -1,11 +1,12 @@
 """Stations of the producers' station catalogs over HTTP (SPEC 9.2, 6.7, 6.8).
 
-``GET /stations`` pages the stations of the filters by name, in an area
-(``area_id``, or ``bbox`` with ``bbox_crs``) with the stations on its
-boundary, each variable of each series labelled (P16), with the counts of
-the location groups: the stations without a location are counted after the
-attribute and coverage filters and never placed in an area (SPEC 4.3 point
-3). ``GET /stations/datasets`` names the datasets with station series (the
+``GET /stations`` pages the stations of the filters along rivers or by name
+(``sort``), found by a name, river or code (``q``), in an area (``area_id``,
+or ``bbox`` with ``bbox_crs``) with the stations on its boundary, each
+variable of each series labelled (P16), with the counts of the location
+groups: the stations without a location are counted after the attribute and
+coverage filters and never placed in an area (SPEC 4.3 point 3).
+``GET /stations/datasets`` names the datasets with station series (the
 dataset chip of the map), ``GET /stations/{code}`` is a station's card,
 ``GET /stations/{code}/coverage`` its variables year by year (the Timeline)
 and ``GET /map/stations`` the located stations of a map view or their grid.
@@ -123,6 +124,8 @@ def station_list(
         location=filters.location,
         limit=filters.limit,
         cursor=filters.cursor,
+        q=filters.q,
+        sort=filters.sort,
     )
     page = queries.stations(query)
     reference = None if record is None else AreaRef.of(record)
@@ -329,7 +332,14 @@ def list_stations(
     registry: _Registry,
     queries: _Queries,
 ) -> StationList:
-    """List stations by name with every variable of their series labelled.
+    """List stations along rivers or by name, each variable of their series labelled.
+
+    `sort=river` (the default) follows the rivers as the Catalog does (SPEC
+    6.8): the hydrographic code, so a tributary follows its river, then the
+    provider's order on the river, then the name; `sort=name` by name. `q`
+    finds a station whose name or river contains the text (case-folded; no
+    character is a wildcard) or whose code begins with it. Both take part in
+    `next_cursor`.
 
     In an area (`area_id`, or `bbox` with `bbox_crs`) a station is in it, or
     on its boundary when it is closer to it than its location uncertainty
