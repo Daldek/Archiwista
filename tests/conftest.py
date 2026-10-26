@@ -30,6 +30,7 @@ collect_ignore = (
         "integration/test_imgw_index.py",
         "integration/test_imgw_series.py",
         "integration/test_imgw_stations.py",
+        "integration/test_series_labels.py",
     ]
 )
 

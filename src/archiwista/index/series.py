@@ -15,17 +15,40 @@ of the version: A-ADR-021 erratum 3), and ``with_value`` the known units from
 the first to the last unit with a value that lie in no gap. The gap lists
 decide, not the producer's count of units with a value: SPEC 4.8.4 computes
 the coverage from the gap lists.
+
+``series_label`` reads a variable's years in a range R as the label of SPEC
+4.8.4, as structure (`SeriesLabel`); the interfaces write its text. A year is
+known when all its units are; K1 and K2 are the first and last known year of
+R, y1 and y2 the first and last known year with a value. The gaps are the
+known units of y1 to y2 without a value, their share rounded up to a whole
+percent, and the longest gap the longest run of them.
 """
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from typing import Literal
 
 from archiwista.sources import DateRange, TimeUnit, VariableCoverage, YearType
 
 type Interval = tuple[int, int]
+type YearRange = tuple[int, int]
+type SeriesState = Literal["continuous", "gaps", "partial", "no_data", "unknown"]
 
 YEAR_TYPES: tuple[YearType, ...] = ("hydrological", "calendar")
+SERIES_STATES: tuple[SeriesState, ...] = (
+    "continuous",
+    "gaps",
+    "partial",
+    "no_data",
+    "unknown",
+)
+# The states of a variable with a value in a known year of the range.
+VALUED_STATES: frozenset[SeriesState] = frozenset({"continuous", "gaps", "partial"})
+# The unknown years a label names as ranges; more are only counted.
+MAX_UNKNOWN_RANGES = 2
+# A gap longer than this many days is counted among the long ones.
+LONG_GAP_DAYS = 30
 # The first month of the hydrological year (1 XI of the year before).
 _HYDROLOGICAL_START = 11
 
@@ -214,3 +237,255 @@ def series_years(
                 )
             )
     return tuple(years)
+
+
+@dataclass(frozen=True, slots=True)
+class GapRun:
+    """A run of consecutive known units without a value (SPEC 4.8.4).
+
+    ``start`` is the first day of its first unit and ``end`` the last day of
+    its last one; ``units`` counts them.
+    """
+
+    start: date
+    end: date
+    units: int
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesLabel:
+    """The coverage label of a variable in a range of years, as structure.
+
+    The interfaces write its text (SPEC 4.8.4): "ciągły · 1951–2025"
+    (``continuous``), "luki 3% · najdł. 1981.06.02–1982.12.31" (``gaps``),
+    "częściowy · od 1972 · luki 12%" (``partial``), "brak danych (tylko H)"
+    (``no_data``) and "nieznane" (``unknown``), with "· nieznane: 2011–2025"
+    when some years of the range are not known.
+
+    Parameters
+    ----------
+    state : {"continuous", "gaps", "partial", "no_data", "unknown"}
+        ``continuous``: y1 = K1, y2 = K2 and no gap; ``gaps``: the same with
+        gaps; ``partial``: y1 > K1 or y2 < K2; ``no_data``: known years
+        without a value; ``unknown``: no known year in the range.
+    year_type : {"hydrological", "calendar"}
+        The numbering of the years.
+    span : tuple[int, int] or None
+        R, the range of years; ``None`` when the series knows no period.
+    known : tuple[int, int] or None
+        K1 and K2, the first and last known year of R.
+    valued : tuple[int, int] or None
+        y1 and y2, the first and last known year of R with a value.
+    units, with_value : int
+        The known units of y1 to y2, and those of them with a value.
+    percent : int
+        The gap share in whole percent rounded up (2.15% is 3), at most 99:
+        a range with a value is never all gaps; 0 without a gap.
+    below_one : bool
+        A gap share above zero that is below 1% ("<1%", never "0%").
+    longest_gap : GapRun or None
+        The longest run of gaps in y1 to y2 (the first of equal ones).
+    gap_count, long_gaps : int
+        The runs of gaps in y1 to y2, and those longer than
+        ``LONG_GAP_DAYS`` days.
+    complete_years : int
+        Full years of y1 to y2: a value in every unit.
+    unknown_years : tuple[tuple[int, int], ...]
+        The years of R that are not known, as ranges of years.
+    only : tuple[str, ...]
+        For ``no_data`` of a hydrological series, the station's variables
+        that have a value in those years ("brak danych (tylko H)").
+    """
+
+    state: SeriesState
+    year_type: YearType
+    span: YearRange | None
+    known: YearRange | None = None
+    valued: YearRange | None = None
+    units: int = 0
+    with_value: int = 0
+    percent: int = 0
+    below_one: bool = False
+    longest_gap: GapRun | None = None
+    gap_count: int = 0
+    long_gaps: int = 0
+    complete_years: int = 0
+    unknown_years: tuple[YearRange, ...] = ()
+    only: tuple[str, ...] = ()
+
+    @property
+    def missing_share(self) -> float:
+        """The gaps over the known units of y1 to y2; 0 without such units."""
+        return (self.units - self.with_value) / self.units if self.units else 0.0
+
+    @property
+    def unknown_count(self) -> int:
+        """How many years of R are not known."""
+        return sum(end - start + 1 for start, end in self.unknown_years)
+
+
+def label_year_type(
+    kind: str | None, time_unit: TimeUnit, asked: YearType | None
+) -> YearType:
+    """Return the year type of a dataset's labels (SPEC 4.8.2, P15).
+
+    The one asked, else hydrological years for hydro data and calendar years
+    for the others; half-year characteristics stay in hydrological years
+    whatever is asked, as IMGW computes them.
+    """
+    if time_unit == "half_year":
+        return "hydrological"
+    if asked is not None:
+        return asked
+    return "hydrological" if kind == "hydro" else "calendar"
+
+
+def default_span(
+    first_year: int | None,
+    periods: Sequence[DateRange],
+    *,
+    time_unit: TimeUnit,
+    year_type: YearType,
+) -> YearRange | None:
+    """Return R by default: the dataset's first year to the last published one.
+
+    The first year the source publishes, else the first year of the known
+    periods, up to the last year of the known periods of the version; ``None``
+    without known periods.
+    """
+    known = intervals(periods, time_unit)
+    if not known:
+        return None
+    last = year_of(known[-1][1], year_type, time_unit)
+    first = year_of(known[0][0], year_type, time_unit)
+    return (min(first if first_year is None else first_year, last), last)
+
+
+def year_ranges(years: Iterable[int]) -> tuple[YearRange, ...]:
+    """Return years as ranges of consecutive years, in order."""
+    ranges: list[YearRange] = []
+    for year in sorted(set(years)):
+        if ranges and year == ranges[-1][1] + 1:
+            ranges[-1] = (ranges[-1][0], year)
+        else:
+            ranges.append((year, year))
+    return tuple(ranges)
+
+
+def series_label(
+    coverage: VariableCoverage,
+    years: Iterable[SeriesYear],
+    *,
+    known: Sequence[DateRange],
+    time_unit: TimeUnit,
+    year_type: YearType,
+    span: YearRange | None,
+) -> SeriesLabel:
+    """Return the label of a variable in the range of years R (SPEC 4.8.4).
+
+    Parameters
+    ----------
+    coverage : VariableCoverage
+        The variable's first and last unit with a value and its gaps: the
+        longest gap comes from them.
+    years : Iterable[SeriesYear]
+        The variable's years (``series_years``); those of other year types
+        are ignored, and a year without one knows no unit.
+    known : Sequence[DateRange]
+        The known periods: the station's own, else the version's.
+    time_unit : TimeUnit
+        The unit of the dataset's series.
+    year_type : YearType
+        The numbering of R (hydrological only for half-year characteristics).
+    span : tuple[int, int] or None
+        R, first and last year; ``None``: no year is known.
+
+    Returns
+    -------
+    SeriesLabel
+        The label; its ``only`` is left empty (the station's other
+        variables decide it).
+    """
+    if span is None:
+        return SeriesLabel(state="unknown", year_type=year_type, span=None)
+    rows = {year.year: year for year in years if year.year_type == year_type}
+    first, last = span
+    known_years = [
+        year
+        for year in range(first, last + 1)
+        if (row := rows.get(year)) is not None and 0 < row.units == row.known
+    ]
+    unknown = year_ranges(set(range(first, last + 1)) - set(known_years))
+    if not known_years:
+        return SeriesLabel(
+            state="unknown", year_type=year_type, span=span, unknown_years=unknown
+        )
+    bounds = (known_years[0], known_years[-1])
+    valued_years = [year for year in known_years if rows[year].with_value > 0]
+    if not valued_years:
+        return SeriesLabel(
+            state="no_data",
+            year_type=year_type,
+            span=span,
+            known=bounds,
+            unknown_years=unknown,
+        )
+    valued = (valued_years[0], valued_years[-1])
+    window = [rows[year] for year in range(valued[0], valued[1] + 1) if year in rows]
+    units = sum(row.known for row in window)
+    with_value = sum(row.with_value for row in window)
+    gaps = units - with_value
+    runs = _gap_runs(coverage, known, time_unit, year_type, valued)
+    if valued != bounds:
+        state: SeriesState = "partial"
+    else:
+        state = "gaps" if gaps else "continuous"
+    return SeriesLabel(
+        state=state,
+        year_type=year_type,
+        span=span,
+        known=bounds,
+        valued=valued,
+        units=units,
+        with_value=with_value,
+        percent=min(99, -(-100 * gaps // units)) if gaps else 0,
+        below_one=0 < 100 * gaps < units,
+        longest_gap=max(runs, key=lambda run: run.units, default=None),
+        gap_count=len(runs),
+        long_gaps=sum(
+            1 for run in runs if (run.end - run.start).days + 1 > LONG_GAP_DAYS
+        ),
+        complete_years=sum(
+            1 for row in window if row.units == row.known == row.with_value
+        ),
+        unknown_years=unknown,
+    )
+
+
+def _gap_runs(
+    coverage: VariableCoverage,
+    known: Sequence[DateRange],
+    time_unit: TimeUnit,
+    year_type: YearType,
+    years: YearRange,
+) -> list[GapRun]:
+    """Return the runs of known units without a value in a range of years."""
+    known_units = intervals(known, time_unit)
+    window = [
+        (
+            year_span(years[0], year_type, time_unit)[0],
+            year_span(years[1], year_type, time_unit)[1],
+        )
+    ]
+    runs = subtract(
+        intersect(known_units, window),
+        value_intervals(coverage, known_units, time_unit),
+    )
+    return [
+        GapRun(
+            start=day_of(start, time_unit),
+            end=day_of(end + 1, time_unit) - timedelta(days=1),
+            units=end - start + 1,
+        )
+        for start, end in runs
+    ]

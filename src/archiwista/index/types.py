@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from archiwista.config import OwnFolderReason, OwnFolderSource
+from archiwista.index.series import SeriesLabel, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
     ActionPlan,
@@ -22,6 +23,8 @@ from archiwista.sources import (
     GeoJSONGeometry,
     LocationKind,
     SourceEntry,
+    TimeUnit,
+    YearType,
 )
 
 type VersionsMode = Literal[
@@ -964,6 +967,56 @@ class StationPage:
     items: tuple[StationRow, ...]
     next_cursor: str | None
     counts: StationCounts
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageVariable:
+    """A variable of a station's series with its label in a range of years.
+
+    ``key`` names it in the series index (``Q``, ``Q_max@winter``), with its
+    ``variable``, ``unit`` and half-year ``period``; ``first`` and ``last``
+    are its first and last date with a value and ``accumulated`` its
+    accumulated sums. ``years`` are its years of the range in the label's
+    year type (a year the index knows nothing of is left out) and ``label``
+    its label (SPEC 4.8.4).
+    """
+
+    key: str
+    variable: str
+    unit: str
+    period: str | None
+    first: date | None
+    last: date | None
+    accumulated: int
+    years: tuple[SeriesYear, ...]
+    label: SeriesLabel
+
+
+@dataclass(frozen=True, slots=True)
+class StationCoverage:
+    """The coverage of a station's series in one dataset, read from the index.
+
+    ``kind`` (``hydro``, ``meteo``) and ``time_unit`` are the dataset's;
+    ``year_type`` numbers the years of ``span``, the range R of the labels
+    (``None`` when the version knows no period). ``file`` is the station's
+    series file in the version ``series_version`` (its ``series.json``,
+    relative to the store), whose label is ``series`` (``None`` when the
+    index has no such version). Each variable keeps the order of the series
+    index.
+    """
+
+    store: str
+    provider: str
+    code: str
+    dataset: str
+    kind: str | None
+    time_unit: TimeUnit
+    year_type: YearType
+    span: YearRange | None
+    file: str
+    series: str | None
+    series_version: str
+    variables: tuple[CoverageVariable, ...]
 
 
 @dataclass(frozen=True, slots=True)

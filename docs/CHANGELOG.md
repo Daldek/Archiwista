@@ -127,6 +127,17 @@ command-line interface may change.
   is unknown, never a gap. A listing IMGWTools refuses leaves its dataset without
   coverage and the scan says so (notice `series_unreadable`). (SPEC 4.3, 4.4, 4.8.4,
   ADR 0032)
+- The coverage labels of SPEC 4.8.4 come from the index alone, never from a series file:
+  `IndexQueries.station_coverage` gives each variable of a station's series its label
+  in a range of years (by default from the dataset's first year to the last published
+  one) and a year type (by default hydrological for hydro and calendar for meteo;
+  half-year characteristics stay hydrological): "ciągły · 1951–2025", "luki 3% · najdł.
+  1981.06.02–1982.12.31" (the share rounded up, "<1%" never "0%"), "częściowy · od 1972
+  · luki 12%", "brak danych (tylko H)" and "nieznane", with "· nieznane: 2011–2025" (at
+  most two ranges, else "· nieznane: 136 lat"), and the row details: full years, the
+  runs of gaps and those over 30 days, the units with a value and the accumulated sums.
+  The text is written in the language of the request from the catalog `series.*`.
+  (SPEC 4.8.4, A-ADR-021, ADR 0032)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps

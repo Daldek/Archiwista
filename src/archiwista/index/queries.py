@@ -28,7 +28,7 @@ import sqlite3
 import threading
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import TracebackType
@@ -47,6 +47,14 @@ from archiwista.index.geometry import (
     require_wgs84_bbox,
 )
 from archiwista.index.schema import SCHEMA_VERSION, connect, initialize
+from archiwista.index.series import (
+    VALUED_STATES,
+    SeriesYear,
+    YearRange,
+    default_span,
+    label_year_type,
+    series_label,
+)
 from archiwista.index.types import (
     DEFAULT_PAGE_LIMIT,
     MAP_FOOTPRINT_LIMIT,
@@ -57,6 +65,7 @@ from archiwista.index.types import (
     AreaFilter,
     AreaRecord,
     BBox,
+    CoverageVariable,
     FootprintPage,
     GridCell,
     GroupMember,
@@ -98,6 +107,7 @@ from archiwista.index.types import (
     SlotUnit,
     SnapshotRecord,
     StationCounts,
+    StationCoverage,
     StationPage,
     StationQuery,
     StationRow,
@@ -120,8 +130,11 @@ from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
 from archiwista.sources import (
     ActionPlan,
     AvailabilityReport,
+    DateRange,
     GeoJSONGeometry,
     SourceEntry,
+    VariableCoverage,
+    YearType,
 )
 
 _IDS = "SELECT value FROM json_each(?)"
@@ -248,6 +261,23 @@ _STATION_SOURCE = (
     " LEFT JOIN versions cv ON cv.store_id = c.store_id AND cv.path = c.version_path"
 )
 _STATION_ORDER = "coalesce(s.name, ''), s.code, s.provider, s.store_id"
+# A variable of a station's series with what its labels need of the dataset's
+# version, and the label of that version.
+_SERIES_COLUMNS = """
+    s.id AS id, s.store_id AS store_id, s.dataset AS dataset, s.provider AS provider,
+    s.code AS code, s.variable_key AS variable_key, s.variable AS variable,
+    s.unit AS unit, s.period AS period, s.first_date AS first_date,
+    s.last_date AS last_date, s.with_value AS with_value,
+    s.accumulated AS accumulated, s.gaps AS gaps, s.periods AS periods,
+    s.file AS file, c.kind AS kind, c.time_unit AS time_unit,
+    c.first_year AS first_year, c.periods AS version_periods,
+    c.version_path AS version_path, sv.label AS series
+"""
+_SERIES_SOURCE = (
+    "station_series s JOIN series_catalogs c"
+    " ON c.store_id = s.store_id AND c.dataset = s.dataset"
+    " LEFT JOIN versions sv ON sv.store_id = c.store_id AND sv.path = c.version_path"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1242,6 +1272,65 @@ class IndexQueries:
                 (_store_id(stores, store), provider, code),
             ).fetchone()
         return None if row is None else _station(row, stores)
+
+    # Coverage of the series of stations.
+
+    def station_coverage(
+        self,
+        store: str,
+        provider: str,
+        code: str,
+        *,
+        dataset: str | None = None,
+        year_type: YearType | None = None,
+        years: YearRange | None = None,
+    ) -> tuple[StationCoverage, ...]:
+        """Return the coverage of a station's series with its labels (SPEC 4.8.4).
+
+        Everything comes from ``station_series`` and ``series_years``: no
+        series file is read, and changing the range or the year type reads
+        nothing else.
+
+        Parameters
+        ----------
+        store, provider, code : str
+            The station: configured store id, provider and code as text.
+        dataset : str or None
+            One dataset only; ``None``: every dataset with a series of it.
+        year_type : {"hydrological", "calendar"} or None
+            The numbering of the years; ``None``: hydrological years for hydro
+            data and calendar years for the others. Half-year characteristics
+            stay in hydrological years whatever is asked (SPEC 4.8.2).
+        years : tuple[int, int] or None
+            R, the first and last year; ``None``: from the dataset's first
+            year (else the first known one) to the last year of the known
+            periods of its version.
+
+        Returns
+        -------
+        tuple[StationCoverage, ...]
+            By dataset; empty when the index holds no series of the station.
+
+        Raises
+        ------
+        IndexQueryError
+            A range whose first year comes after its last.
+        """
+        if years is not None and years[0] > years[1]:
+            raise IndexQueryError(
+                message("index.invalid_years", start=years[0], end=years[1])
+            )
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _Where()
+            where.add("s.store_id = ?", _store_id(stores, store))
+            where.add("s.provider = ?", provider)
+            where.add("s.code = ?", code)
+            if dataset is not None:
+                where.add("s.dataset = ?", dataset)
+            return _series_coverage(
+                connection, stores, where, year_type=year_type, years=years
+            )
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.
@@ -2372,6 +2461,151 @@ def _station(row: sqlite3.Row, stores: Mapping[int, str]) -> StationRow:
         elevation_m=row["elevation_m"],
         catalog=row["catalog"],
         catalog_version=row["catalog_version"],
+    )
+
+
+def _series_coverage(
+    connection: sqlite3.Connection,
+    stores: Mapping[int, str],
+    where: _Where,
+    *,
+    year_type: YearType | None,
+    years: YearRange | None,
+) -> tuple[StationCoverage, ...]:
+    """Read the coverage of the series ``where`` selects on ``s`` (station_series)."""
+    rows = connection.execute(
+        f"SELECT {_SERIES_COLUMNS} FROM {_SERIES_SOURCE} WHERE {where.sql()}"
+        " ORDER BY s.store_id, s.provider, s.code, s.dataset, s.id",
+        where.params,
+    ).fetchall()
+    found: dict[int, list[SeriesYear]] = {}
+    for row in connection.execute(
+        "SELECT series_id, year_type, year, units, known, with_value FROM series_years"
+        f" WHERE series_id IN ({_IDS}) ORDER BY series_id, year_type, year",
+        (json.dumps([row["id"] for row in rows]),),
+    ):
+        found.setdefault(row["series_id"], []).append(
+            SeriesYear(
+                year_type=row["year_type"],
+                year=row["year"],
+                units=row["units"],
+                known=row["known"],
+                with_value=row["with_value"],
+            )
+        )
+    groups: dict[tuple[int, str, str, str], list[sqlite3.Row]] = {}
+    for row in rows:
+        key = (row["store_id"], row["provider"], row["code"], row["dataset"])
+        groups.setdefault(key, []).append(row)
+    return tuple(
+        _station_coverage(group, found, stores, year_type=year_type, years=years)
+        for group in groups.values()
+    )
+
+
+def _station_coverage(
+    rows: Sequence[sqlite3.Row],
+    found: Mapping[int, Sequence[SeriesYear]],
+    stores: Mapping[int, str],
+    *,
+    year_type: YearType | None,
+    years: YearRange | None,
+) -> StationCoverage:
+    """Label a station's variables in one dataset, in one range R."""
+    first = rows[0]
+    unit = first["time_unit"]
+    numbering = label_year_type(first["kind"], unit, year_type)
+    periods = _date_ranges(first["version_periods"])
+    span = years or default_span(
+        first["first_year"], periods, time_unit=unit, year_type=numbering
+    )
+    variables: list[CoverageVariable] = []
+    for row in rows:
+        coverage = VariableCoverage(
+            key=row["variable_key"],
+            variable=row["variable"],
+            unit=row["unit"],
+            period=row["period"],
+            first=_date(row["first_date"]),
+            last=_date(row["last_date"]),
+            with_value=row["with_value"],
+            accumulated=row["accumulated"],
+            gaps=_date_ranges(row["gaps"]),
+        )
+        own = row["periods"]
+        known = periods if own is None else _date_ranges(own)
+        rows_of_years = found.get(row["id"], ())
+        label = series_label(
+            coverage,
+            rows_of_years,
+            known=known,
+            time_unit=unit,
+            year_type=numbering,
+            span=span,
+        )
+        variables.append(
+            CoverageVariable(
+                key=coverage.key,
+                variable=coverage.variable,
+                unit=coverage.unit,
+                period=coverage.period,
+                first=coverage.first,
+                last=coverage.last,
+                accumulated=coverage.accumulated,
+                years=tuple(
+                    year
+                    for year in rows_of_years
+                    if year.year_type == numbering
+                    and span is not None
+                    and span[0] <= year.year <= span[1]
+                ),
+                label=label,
+            )
+        )
+    if first["kind"] == "hydro":
+        variables = _only_with_value(variables)
+    return StationCoverage(
+        store=stores[first["store_id"]],
+        provider=first["provider"],
+        code=first["code"],
+        dataset=first["dataset"],
+        kind=first["kind"],
+        time_unit=unit,
+        year_type=numbering,
+        span=span,
+        file=first["file"],
+        series=first["series"],
+        series_version=first["version_path"],
+        variables=tuple(variables),
+    )
+
+
+def _only_with_value(variables: Sequence[CoverageVariable]) -> list[CoverageVariable]:
+    """Name the variables with a value beside each one without ("tylko H")."""
+    valued = tuple(
+        dict.fromkeys(
+            item.variable for item in variables if item.label.state in VALUED_STATES
+        )
+    )
+    return [
+        replace(
+            item,
+            label=replace(
+                item.label,
+                only=tuple(name for name in valued if name != item.variable),
+            ),
+        )
+        if item.label.state == "no_data"
+        else item
+        for item in variables
+    ]
+
+
+def _date_ranges(value: str) -> tuple[DateRange, ...]:
+    """Ranges of days written as JSON by the writer (``[["2001-01-01", ...]]``)."""
+    return tuple(
+        (date.fromisoformat(start), date.fromisoformat(end))
+        for start, end in json.loads(value)
     )
 
 

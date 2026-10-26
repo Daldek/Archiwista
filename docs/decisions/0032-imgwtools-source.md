@@ -211,7 +211,15 @@ side.
     is refused the same way. Rejected: reading the Parquet series (the labels must
     follow from the listing, SPEC 4.8.4); counting the years when a label is asked for
     (every range and year type of every station would walk the gap lists again);
-    trusting `with_value` of the listing (it disagrees with its own gaps).
+    trusting `with_value` of the listing (it disagrees with its own gaps). The labels
+    (commit 2) are computed from those rows when asked (`IndexQueries.station_coverage`,
+    `series_label`), as structure; the text comes from the catalog `series.*` in the
+    language of the request (`api/models_stations.py`), as the availability labels do.
+    R defaults to the dataset's first year (else the first known year) up to the last
+    year of the version's periods, the year type to hydrological for hydro and
+    calendar for meteo; the share of gaps is rounded up and capped at 99% (a range with
+    a value is never all gaps); "brak danych" of a hydro series names the station's
+    variables with a value ("tylko H").
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
