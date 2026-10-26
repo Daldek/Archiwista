@@ -557,6 +557,16 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      of the series slots, the variables of `summarize_series` as a set, route and CLI, `503`, OpenAPI,
      `meteo_kind` with its counts; in `collect_ignore`), with `test_stations_api.py`,
      `test_stations_cli.py`, `test_station_queries.py` and `test_station_areas.py` (86 passed).
+     *I8.1 commit 2 as built (the reduced gate).* `web/src/map/stations.js` (images, clustered source,
+     `openCluster` and the spread, cells, `StationTip`, `StationSymbol`, `ClusterSymbol`, `stationChoice`)
+     wired into `map/canvas.js` (hover, clicks, `Esc`, the spread folded on a zoom), `views/map.js` (station
+     mode for a product of `imgw`, `useMapData` for outlines and stations, the products and datasets
+     awaited, `StationCounters`, "Kolor punktów"), `map/panel.js` (dataset and type chips, boundary),
+     `map/legend.js`, `labels/map.js`, `api.js` and `types.js`; a map without WebGL2 reports the view of
+     the address or the home view (`geo.js` `centerBounds`), so Firefox counts the stations. Tests: new
+     `tests/e2e/test_stations_map.py` with `tests/fixtures/station_browser.py` (6 passed: tooltip, cluster,
+     spread, grid in Chromium; legend, counter and chips in both engines; in `collect_ignore`); screenshot
+     `docs/reports/v0.5-screenshots/01-stacje-na-mapie.webp`.
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,

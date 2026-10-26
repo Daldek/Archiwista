@@ -334,11 +334,25 @@ comparison and changes no data.
 - **Store problems** with a repair description (and the file card when they
   concern a file), and the **projects** that use the store.
 
-## IMGW stations (command line)
+## IMGW stations
 
-The stations of the station catalogs of IMGW-PIB and ČHMÚ and the coverage of their
-series have no view in the interface yet (v0.5); the command line and the API
-(`GET /api/v1/stations`) show them from the index while IMGWTools is installed:
+A product of IMGWTools chosen on the map (hydro, meteo, or the station catalogs
+themselves) shows its stations in place of outlines. The shape of a point is the
+station type: a triangle for a water gauge, a square for a climatological or synoptic
+station, a circle for a precipitation post. Its colour and fill are the coverage of
+the variable chosen in "Kolor punktów" in the bar (green solid "ciągły", orange solid
+"luki", orange half "częściowy", grey hollow "brak danych", grey dashed "nieznane");
+the legend names each, and the tooltip of a point gives the label of every variable.
+The panel chooses the dataset ("Zbiór danych"), the types of meteo stations and
+whether the stations on an area's boundary count. Stations far apart at a low zoom
+form a neutral cluster with their count, which zooms in on a click; stations at one
+position spread around it until the next click or `Esc`. "N bez położenia" in the bar
+opens the Catalog with the stations that have no position.
+
+![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
+
+The command line and the API (`GET /api/v1/stations`) show the stations and the
+coverage of their series from the index while IMGWTools is installed:
 
 ```sh
 archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous --min-complete-years Q:30
@@ -396,9 +410,9 @@ from an open Archiwista tab.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) and its projects, and lists its stations through `archiwista
-  stations` and the API, but has no station views in the interface and no IMGW
-  actions yet (v0.5): an action on an IMGWTools manifest is refused as not
-  supported.
+  catalogs) and its projects, and shows its stations on the map and through
+  `archiwista stations` and the API, but has no station list, card or chart in
+  the interface and no IMGW actions yet (v0.5): an action on an IMGWTools
+  manifest is refused as not supported.
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

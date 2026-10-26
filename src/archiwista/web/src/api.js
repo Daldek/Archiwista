@@ -46,6 +46,9 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").MapView} MapView */
 /** @typedef {import("./types.js").SheetQuery} SheetQuery */
 /** @typedef {import("./types.js").SheetList} SheetList */
+/** @typedef {import("./types.js").StationDatasets} StationDatasets */
+/** @typedef {import("./types.js").StationMapFilters} StationMapFilters */
+/** @typedef {import("./types.js").StationMapView} StationMapView */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
@@ -518,6 +521,32 @@ export function listFootprints(filters, { signal } = {}) {
  */
 export function listSheets(query, { signal } = {}) {
   return request("GET", "/map/sheets", { query, signal });
+}
+
+/**
+ * The datasets with station series in the index (`list_station_datasets`):
+ * the dataset chips and the „Kolor punktów” variables of the map.
+ *
+ * @param {{store?: string}} [query]
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationDatasets>}
+ * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ */
+export function listStationDatasets(query = {}, { signal } = {}) {
+  return request("GET", "/stations/datasets", { query, signal });
+}
+
+/**
+ * The located stations of a map view, or their grid above `limit`
+ * (`list_map_stations`).
+ *
+ * @param {StationMapFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationMapView>}
+ * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ */
+export function listMapStations(filters, { signal } = {}) {
+  return request("GET", "/map/stations", { query: filters, signal });
 }
 
 /**

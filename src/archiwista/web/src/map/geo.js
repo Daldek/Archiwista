@@ -13,6 +13,8 @@ export const WORLD_BOUNDS = [-180, -85, 180, 85];
 /** Decimal places of coordinates sent to the API (about 0.1 m). */
 const DIGITS = 6;
 const LAT_LIMIT = 85;
+// The world at zoom 0 in MapLibre's pixels (512 px tiles).
+const TILE_PX = 512;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const round = (value, digits = DIGITS) => Number(value.toFixed(digits));
@@ -160,4 +162,25 @@ export function readPosition(params) {
     zoom >= 0 &&
     zoom <= 24;
   return valid ? { center: [center[0], center[1]], zoom } : null;
+}
+
+/**
+ * The box a map of `width` × `height` px shows around a position, in Web
+ * Mercator with MapLibre's 512 px tiles: the view of a map that cannot be
+ * drawn (no WebGL2), whose counters still count it.
+ *
+ * @param {[number, number]} center - `[lon, lat]`.
+ * @param {number} zoom - MapLibre's zoom.
+ * @param {number} width - px.
+ * @param {number} height - px.
+ * @returns {number[]} `[min_lon, min_lat, max_lon, max_lat]`, inside WGS84.
+ */
+export function centerBounds([lon, lat], zoom, width, height) {
+  const size = TILE_PX * 2 ** zoom;
+  const x = ((lon + 180) / 360) * size;
+  const y = ((1 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI) / 2) * size;
+  const toLon = (px) => clamp((px / size) * 360 - 180, -180, 180);
+  const toLat = (py) =>
+    clamp((Math.atan(Math.sinh(Math.PI * (1 - (2 * py) / size))) * 180) / Math.PI, -LAT_LIMIT, LAT_LIMIT);
+  return [toLon(x - width / 2), toLat(y + height / 2), toLon(x + width / 2), toLat(y - height / 2)];
 }

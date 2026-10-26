@@ -22,6 +22,13 @@
  * `center=lon,lat` and `zoom`; without a position the map frames the
  * preview, else what the filters match. A download that ends (downloads.js,
  * also one started in another view) reads the outlines and the layers again.
+ *
+ * A product of the station producer (plan I8.1, ADR-045) shows its stations
+ * in place of the outlines (`/map/stations`, map/stations.js): the dataset
+ * and type chips in the panel, "Kolor punktów" in the bar, the stations'
+ * legend and the counter of stations without a position, which opens the
+ * catalog with `location=none`. Its choices are address parameters of their
+ * own (`STATION_PARAMS`), never filters of the outlines.
  */
 
 import {
@@ -30,9 +37,11 @@ import {
   getArea,
   getVersion,
   listFootprints,
+  listMapStations,
   listProducts,
   listSheets,
   listSlots,
+  listStationDatasets,
   uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
@@ -80,6 +89,7 @@ import { OwnLegend, ownCardPatch, useOwnLayer } from "../map/own.js";
 import { own as O } from "../labels/own.js";
 import { productNames, productStores } from "../map/products.js";
 import { DEFAULT_GRID, GRID_PRODUCER, scaleLabel } from "../map/sheets.js";
+import { isStationProduct, STATION_PARAMS, stationChoice } from "../map/stations.js";
 import { availableBasemaps, chosenBasemap, keepBasemap, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { Link, setParams } from "../router.js";
@@ -101,9 +111,11 @@ await loadStylesheet(new URL("../map/map.css", import.meta.url));
 
 /** Address parameters that filter the map: the `/slots` names (`project`: its pinned versions). */
 export const FILTERS = ["store", "product", "country", "years", "unit", "versions", "status", "q", "project"];
+/** The filters that also choose stations (`/map/stations`). */
+const STATION_FILTERS = ["product", "store", "years"];
 // Least span of a framed object: a single point is shown with its surroundings.
 const FRAME_MIN_DEGREES = 0.003;
-/** Most outlines drawn one by one; above it the view is a grid (`/map/footprints`). */
+/** Most outlines or stations drawn one by one; above it the view is a grid. */
 const FOOTPRINT_LIMIT = 5000;
 /** Width of a grid cell on the screen, px. */
 const CELL_PX = 56;
@@ -111,6 +123,7 @@ const CELL_PX = 56;
 const FRAME_COLUMNS = 512;
 const MOVE_DEBOUNCE_MS = 150;
 const NO_SHEETS = { items: [], status: null, problem: null, loading: false };
+const NO_VIEW = { data: undefined, error: undefined, loading: false };
 
 /** Areas this page saved or read, by id: no second request after saving. */
 const areas = new Map();
@@ -180,10 +193,33 @@ export default function MapScreen({ route, embedded = false }) {
   // Year layers of the chosen product in the area: of the chosen store, else
   // of the first store holding the product.
   const product = products.data?.items.find((item) => item.product === filters.product) ?? null;
+  // A product of the station producer: its stations in place of the outlines and year layers.
+  const stationMode = isStationProduct(product);
+  const datasets = useResource(
+    (signal) =>
+      stationMode ? listStationDatasets(filters.store ? { store: filters.store } : {}, { signal }) : Promise.resolve(null),
+    [stationMode, filters.store ?? "", indexKey],
+  );
+  const station = stationChoice(params, filters.product ?? null, datasets.data);
+  // The stations wait for the datasets: their first is the default.
+  const stationQuery =
+    stationMode && !datasets.loading && datasets.data
+      ? {
+          store: filters.store,
+          dataset: station.dataset?.dataset,
+          kind: station.kind,
+          meteo_kind: station.meteoKinds,
+          year_type: station.yearType,
+          years: filters.years,
+          area_id: areaId,
+          boundary: station.boundary ? null : false,
+        }
+      : null;
+  const stationView = useMapData(move, listMapStations, stationQuery, JSON.stringify(stationQuery), dataKey);
   const layerStore =
     filters.store ?? (product ? (productStores(product, stores.map((item) => item.id))[0] ?? null) : null);
   const layers = useLayers(
-    { store: layerStore, product: filters.product ?? null, areaId, group },
+    { store: layerStore, product: stationMode ? null : (filters.product ?? null), areaId, group },
     params[LAYER_PARAM] || null,
     dataKey,
   );
@@ -200,7 +236,9 @@ export default function MapScreen({ route, embedded = false }) {
   // With a layer chosen, the outlines are those of its versions.
   const viewKey = layer ? `${filtersKey}\n${layers.set.store}\n${layer.key}` : filtersKey;
   const viewFilters = useMemo(() => (layer ? layerFilters(filters, layers.set, layer) : filters), [viewKey]);
-  const view = useFootprints(move, viewFilters, viewKey, dataKey);
+  // Outlines once the products tell the product is not a station one.
+  const outlines = !stationMode && (!filters.product || Boolean(products.data || products.error));
+  const view = useMapData(move, listFootprints, outlines ? viewFilters : null, outlines ? viewKey : null, dataKey);
   const footprints = useMemo(() => layerView(view.data, layer), [view.data, layer]);
   const sheets = useSheets(grid, move);
   const sheetItems = useRef([]);
@@ -337,6 +375,9 @@ export default function MapScreen({ route, embedded = false }) {
     names,
     indexKey,
     onRefreshed: () => setRound((n) => n + 1),
+    station: stationMode
+      ? { choice: station, loading: datasets.loading, error: datasets.error, onChange: (patch) => setParams(patch) }
+      : null,
   };
 
   const change = () => {
@@ -362,7 +403,8 @@ export default function MapScreen({ route, embedded = false }) {
   const notes = [];
   if (!tool && grid.on) notes.push(html`<${GridNote} key="grid" grid=${grid} sheets=${sheets}
     onOff=${() => setGrid((previous) => ({ ...previous, on: false }))} />`);
-  if (!tool && view.error) notes.push(html`<div key="error" class="float-card map-problem"><${ProblemView} problem=${view.error.problem} compact /></div>`);
+  const viewError = stationMode ? stationView.error : view.error;
+  if (!tool && viewError) notes.push(html`<div key="error" class="float-card map-problem"><${ProblemView} problem=${viewError.problem} compact /></div>`);
   if (!tool && layers.error) notes.push(html`<div key="layers" class="float-card map-problem"><${ProblemView} problem=${layers.error.problem} compact /></div>`);
   // Below the zoom of a preview's tiles: its outlines only, and a way closer.
   const hidden = move ? [layerSource, versionSource].filter((source) => source && !tilesShown(source, move.zoom)) : [];
@@ -402,13 +444,29 @@ export default function MapScreen({ route, embedded = false }) {
             <button type="button" class="btn ghost sm" onClick=${panel.onClear}>${L.area.clear}</button>
           </span>`
         : null}
-      <${FilterChips} filters=${filters} names=${names} stores=${stores} />
-      ${fanMode && !split ? null : html`<${Counters} view=${{ ...view, data: footprints }} filters=${viewFilters} area=${currentArea} />`}
+      <${FilterChips} filters=${filters} names=${names} stores=${stores} only=${stationMode ? STATION_FILTERS : FILTERS} />
+      ${stationMode
+        ? html`<${ColorChips} dataset=${station.dataset} color=${station.color}
+            onChoose=${(key) => setParams({ color: key })} />`
+        : null}
+      ${fanMode && !split
+        ? null
+        : stationMode
+          ? html`<${StationCounters} view=${stationView} link=${{
+              ...Object.fromEntries(STATION_FILTERS.map((name) => [name, filters[name]])),
+              area_id: currentArea?.id,
+              location: "none",
+              dataset: station.dataset?.dataset,
+              meteo_kind: params.meteo_kind,
+              year_type: station.yearType,
+            }} />`
+          : html`<${Counters} view=${{ ...view, data: footprints }} filters=${viewFilters} area=${currentArea} />`}
       ${!embedded && layer ? html`<${DetailsToggle} open=${detailsOpen} controls="map-right" onToggle=${toggleDetails} />` : null}
     </div>
     <div class=${`center-body map-body${fanMode ? (split ? " split" : " fan-only") : ""}`}>
       <div class="map-pane">
         <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
+          stations=${stationMode ? stationView.data : undefined} stationColor=${station.color}
           layerTiles=${layerSource} versionTiles=${versionSource}
           previewOutline=${previewRef ? preview.outline : null} previewFeatures=${features.data}
           own=${own.items} onOwn=${(item) => setParams({
@@ -430,7 +488,15 @@ export default function MapScreen({ route, embedded = false }) {
             setParams({ [LAYER_PARAM]: key })} />
           <${Legend} view=${footprints} versions=${filters.versions ?? "current"} grid=${grid}
             area=${Boolean(currentArea)} offline=${Boolean(settings?.offline)} basemaps=${basemaps}
-            basemap=${basemap} layer=${layer?.title ?? null} onBasemap=${(name) => {
+            basemap=${basemap} layer=${layer?.title ?? null}
+            stations=${stationMode
+              ? {
+                  variable: station.color,
+                  shape: station.kind === "hydro" ? "triangle" : "square",
+                  aggregated: Boolean(stationView.data?.aggregated),
+                }
+              : null}
+            onBasemap=${(name) => {
               keepBasemap(name);
               setBasemapName(name);
             }}>${sections}</${Legend}>
@@ -461,7 +527,13 @@ export default function MapScreen({ route, embedded = false }) {
   </${ViewLayout}>`;
 }
 
-function FilterChips({ filters, names, stores }) {
+/**
+ * The chips of the filters in the address, each removable.
+ *
+ * @param {{only: string[]}} props - `only`: the filters that apply (a station
+ *   product takes the product, the store and the years).
+ */
+function FilterChips({ filters, names, stores, only }) {
   const chips = [];
   if (filters.product) chips.push(["product", names.get(filters.product) ?? filters.product]);
   if (filters.store) {
@@ -478,9 +550,10 @@ function FilterChips({ filters, names, stores }) {
   }
   if (filters.q) chips.push(["q", t(L.chips.q, { value: filters.q })]);
   if (filters.project) chips.push(["project", t(O.map.chip, { name: filters.project })]);
-  if (!chips.length) return null;
+  const shown = chips.filter(([name]) => only.includes(name));
+  if (!shown.length) return null;
   return html`<ul class="chip-row filter-chips" aria-label=${L.filters.title}>
-    ${chips.map(
+    ${shown.map(
       ([name, text]) => html`<li key=${name} class="chip static filter-chip">
         <span>${text}</span>
         <button type="button" class="chip-remove" aria-label=${t(L.filters.chip_remove, { name: text })}
@@ -501,16 +574,10 @@ function Counters({ view, filters, area }) {
     else text = answer.total ? t(L.counts.outlines, { count: outlines }) : L.counts.empty;
   }
   const none = answer?.groups.none ?? 0;
-  const stale = answer?.stale_stores ?? [];
   return html`<div class="map-counts">
     <span class="map-count-busy">${view.loading ? html`<${Spinner} quiet label=${L.counts.loading} />` : null}</span>
     <span class="map-count" role="status">${text ?? (view.loading ? L.counts.loading : "")}</span>
-    ${answer?.stale
-      ? html`<span class="chip static stale-chip" title=${t(L.counts.stale_title, {
-          stores: stale.map((item) => item.store).join(", "),
-          indexed_at: stale.map((item) => stamp(item.indexed_at)).join(", "),
-        })}><${Icon} name="alert" size=${13} />${L.counts.stale}</span>`
-      : null}
+    <${StaleChip} answer=${answer} />
     ${none
       ? html`<${Link} class="chip no-outline" view="catalog"
           params=${{ ...filters, area_id: area?.id, location: "none" }} title=${L.counts.no_outline_title}>
@@ -522,8 +589,69 @@ function Counters({ view, filters, area }) {
 }
 
 /**
- * A change of the filters: a year layer belongs to its product, so another
- * product leaves no layer chosen.
+ * The counters of a station product: the stations in the view and those
+ * without a position, which open the catalog (SPEC 4.3 point 4, M5).
+ *
+ * @param {{view: {data: import("../types.js").StationMapView|undefined, loading: boolean},
+ *   link: Object<string, string|undefined>}} props - `link`: the catalog's parameters.
+ */
+function StationCounters({ view, link }) {
+  const S = L.stations.counts;
+  const answer = view.data;
+  let text = null;
+  if (answer) {
+    const stations = count(answer.total, L.units.stations);
+    if (answer.aggregated) text = t(S.grid, { count: stations });
+    else text = answer.total ? t(S.stations, { count: stations }) : S.empty;
+  }
+  const unlocated = answer?.counts.unlocated ?? 0;
+  return html`<div class="map-counts">
+    <span class="map-count-busy">${view.loading ? html`<${Spinner} quiet label=${S.loading} />` : null}</span>
+    <span class="map-count" role="status">${text ?? (view.loading ? S.loading : "")}</span>
+    <${StaleChip} answer=${answer} />
+    ${unlocated
+      ? html`<${Link} class="chip no-outline" view="catalog" params=${link} title=${S.unlocated_title}>
+          ${t(S.unlocated, { count: count(unlocated, L.units.stations) })}
+          <${Icon} name="chevron" size=${12} />
+        </${Link}>`
+      : null}
+  </div>`;
+}
+
+/** "wynik z indeksu" while a store of the answer is unavailable. */
+function StaleChip({ answer }) {
+  if (!answer?.stale) return null;
+  const stale = answer.stale_stores;
+  return html`<span class="chip static stale-chip" title=${t(L.counts.stale_title, {
+    stores: stale.map((item) => item.store).join(", "),
+    indexed_at: stale.map((item) => stamp(item.indexed_at)).join(", "),
+  })}><${Icon} name="alert" size=${13} />${L.counts.stale}</span>`;
+}
+
+/**
+ * "Kolor punktów": the variables of the chosen dataset, the one whose
+ * coverage colours the points (SPEC 6.7; its first by default, D12).
+ *
+ * @param {{dataset: import("../types.js").StationDataset|null, color: string|null,
+ *   onChoose: (key: string) => void}} props
+ */
+function ColorChips({ dataset, color, onChoose }) {
+  const variables = dataset?.variables ?? [];
+  if (!variables.length) return null;
+  return html`<div class="chip-row color-chips" role="group" aria-label=${L.stations.color}>
+    <span class="color-chips-label" aria-hidden="true">${L.stations.color}:</span>
+    ${variables.map((item) => {
+      const on = item.key === color;
+      return html`<button type="button" key=${item.key} class=${`chip${on ? " on" : ""}`}
+        aria-pressed=${on ? "true" : "false"} title=${t(L.stations.color_title, { variable: item.key, unit: item.unit })}
+        onClick=${() => onChoose(item.key)}>${item.key}</button>`;
+    })}
+  </div>`;
+}
+
+/**
+ * A change of the filters: a year layer and the station choices belong to
+ * their product, so another product leaves none of them chosen.
  *
  * @param {Object<string, string|null>} patch
  * @param {import("../map/panel.js").MapFilters} filters - Before the change.
@@ -531,7 +659,8 @@ function Counters({ view, filters, area }) {
  */
 function filterPatch(patch, filters) {
   const other = "product" in patch && (patch.product || null) !== (filters.product ?? null);
-  return other ? { ...patch, [LAYER_PARAM]: null } : patch;
+  if (!other) return patch;
+  return { [LAYER_PARAM]: null, ...Object.fromEntries(STATION_PARAMS.map((name) => [name, null])), ...patch };
 }
 
 /**
@@ -592,22 +721,34 @@ function columns(width) {
 }
 
 /**
- * Outlines of the view, asked again when the map stops, the filters change
- * or the index changes; the previous question is abandoned.
+ * Outlines or stations of the view, asked again when the map stops, the
+ * filters change or the index changes; the previous question is abandoned.
+ *
+ * @param {import("../map/canvas.js").MapMove|null} move
+ * @param {(query: object, options: {signal: AbortSignal}) => Promise<*>} read -
+ *   `listFootprints` or `listMapStations`.
+ * @param {object|null} filters - Without them nothing is asked and nothing shown.
+ * @param {string|null} filtersKey - Changes with `filters`.
+ * @param {string} dataKey - Changes with the index.
  */
-function useFootprints(move, filters, filtersKey, dataKey) {
-  const [state, setState] = useState({ data: undefined, error: undefined, loading: false });
+function useMapData(move, read, filters, filtersKey, dataKey) {
+  const [state, setState] = useState(NO_VIEW);
   const moveKey = move ? `${bboxText(move.bbox)}|${columns(move.width)}` : "";
   useEffect(() => {
-    if (!move) return undefined;
+    if (!move || !filters) {
+      setState(NO_VIEW);
+      return undefined;
+    }
     const controller = new AbortController();
     setState((previous) => (previous.loading ? previous : { ...previous, loading: true }));
     const timer = setTimeout(() => {
-      listFootprints(
+      read(
         { ...filters, bbox: bboxText(move.bbox), limit: FOOTPRINT_LIMIT, grid_columns: columns(move.width) },
         { signal: controller.signal },
       ).then(
-        (data) => setState({ data, error: undefined, loading: false }),
+        (data) => {
+          if (!controller.signal.aborted) setState({ data, error: undefined, loading: false });
+        },
         (error) => {
           if (!controller.signal.aborted) setState((previous) => ({ ...previous, error, loading: false }));
         },

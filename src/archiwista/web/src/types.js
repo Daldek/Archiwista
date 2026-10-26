@@ -708,6 +708,130 @@
  * @property {Sheet[]} items
  */
 
+// Stations (plan I8) ---------------------------------------------------------
+
+/**
+ * @typedef {"hydrological"|"calendar"} YearType
+ */
+
+/**
+ * The coverage state of a variable's label in R (SPEC 4.8.4).
+ *
+ * @typedef {"continuous"|"gaps"|"partial"|"no_data"|"unknown"} SeriesState
+ */
+
+/**
+ * A range of years, both included.
+ *
+ * @typedef {{from: number, to: number}} YearSpan
+ */
+
+/**
+ * A variable of a dataset's station series: a „Kolor punktów” choice.
+ *
+ * @typedef {object} DatasetVariable
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable - `H`, `Q`, `T`, `P`, `Tmax`…
+ * @property {string} unit - Unit of its values, e.g. `m3/s`.
+ * @property {string|null} period - Half-year period of a characteristic.
+ */
+
+/**
+ * A dataset with station series in a store (the dataset chip of the map).
+ *
+ * @typedef {object} StationDataset
+ * @property {string} store
+ * @property {string} dataset - Dataset key, the `dataset` of the station routes.
+ * @property {string|null} name - The producer's name of its segment.
+ * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string|null} kind - Its family (`hydro`, `meteo`): the product.
+ * @property {string} time_unit - `day`, `month`, `half_year`.
+ * @property {YearType} year_type - Default numbering of the years of its labels.
+ * @property {YearSpan|null} years - R by default; null when no period is known.
+ * @property {string|null} series - Label of the current series version.
+ * @property {string} series_version - Its `series.json`, relative to the store.
+ * @property {DatasetVariable[]} variables - In the order of the series index; the
+ *   first is the default colour of the points.
+ */
+
+/**
+ * The datasets with station series in the index (`GET /stations/datasets`).
+ *
+ * @typedef {object} StationDatasets
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {StationDataset[]} items - By store and key.
+ */
+
+/**
+ * The state and label of a variable, for a point's colour and tooltip.
+ *
+ * @typedef {object} PointCoverage
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ */
+
+/**
+ * A located station drawn on the map.
+ *
+ * @typedef {object} StationPoint
+ * @property {string} store
+ * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {string|null} meteo_kind - `synoptic`, `climate` or `precipitation`.
+ * @property {string|null} river
+ * @property {number} lon - WGS84.
+ * @property {number} lat
+ * @property {number|null} uncertainty_m - Uncertainty of the position, m.
+ * @property {boolean} on_boundary - On the area's boundary (with `area_id`).
+ * @property {Object<string, PointCoverage>} coverage - With `dataset`: each variable
+ *   of its series by key; empty without it.
+ */
+
+/**
+ * Stations of the whole result by location group.
+ *
+ * @typedef {object} StationCounts
+ * @property {number} located - With a position, matching every filter.
+ * @property {number} boundary - On the area's boundary.
+ * @property {number} unlocated - Without a position: the counter leading to the
+ *   Catalog with `location=none`.
+ * @property {number} hidden - Hidden by the coverage filters.
+ */
+
+/**
+ * The located stations of a map view or, above `limit`, their grid.
+ *
+ * @typedef {object} StationMapView
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {number} total - Stations of the view that match the filters.
+ * @property {boolean} aggregated - True: `cells` instead of `items`.
+ * @property {StationPoint[]} items
+ * @property {Cell[]} cells
+ * @property {StationCounts} counts
+ */
+
+/**
+ * Parameters of `GET /map/stations` (unknown ones answer 400).
+ *
+ * @typedef {object} StationMapFilters
+ * @property {string} bbox - The view `min_lon,min_lat,max_lon,max_lat` (WGS84).
+ * @property {string} [store]
+ * @property {string} [dataset] - Dataset key: its stations and their coverage.
+ * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {string[]} [meteo_kind] - Repeated: these station types only.
+ * @property {YearType} [year_type]
+ * @property {string} [years] - R: `1951-2025` or one year.
+ * @property {string} [area_id]
+ * @property {boolean} [boundary] - `false` leaves out the stations on the area's
+ *   boundary.
+ * @property {number} [limit] - ≤ 5000 stations; above it a grid of `grid_columns`.
+ * @property {number} [grid_columns]
+ */
+
 // Projects (9a) --------------------------------------------------------------
 
 /**

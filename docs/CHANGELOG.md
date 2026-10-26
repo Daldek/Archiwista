@@ -9,6 +9,18 @@ command-line interface may change.
 
 ### Added
 
+- Stations on the map (ADR-045, plan I8.1). A product of IMGWTools shows its stations in
+  place of outlines: the shape says the station type (a triangle for a water gauge, a
+  square for a climatological or synoptic station, a circle for a precipitation post),
+  the colour and fill the coverage of the "Kolor punktów" variable (green solid, orange
+  solid, orange half, grey hollow, grey dashed), and the legend names each. Stations far
+  apart at a low zoom form a neutral cluster with its count that zooms in on a click;
+  stations at one position spread around it until the next click or `Esc`; above 5,000
+  stations the view is a grid. The tooltip gives the name, type, river and the label of
+  every variable. The panel has the dataset and station type chips and "Uwzględnij
+  stacje na granicy obszaru"; the counter "N bez położenia" opens the Catalog with the
+  stations without a position. A browser that cannot draw the map (no WebGL2) still
+  shows the counters of the view.
 - `GET /api/v1/stations/datasets` and `archiwista stations datasets [--store …]`: the
   datasets with station series in the index, each with the producer's name of its
   segment, provider, family, time unit, default year type, the years of its labels by

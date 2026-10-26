@@ -1201,6 +1201,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |
 | `views/own.js`, `views/compare.js`, `views/set-details.js` | own file and snapshot plan, metadata comparison and the curtain, details of the selected layer |
 | `map/previews.js`, `map/own.js` | tiles and features of local layers, project data and snapshots on the map |
+| `map/stations.js` | the stations of a product of the producer `imgw` in place of the outlines (plan I8.1, ADR-045): the 15 images `<shape>-<state>` drawn once on a canvas (`addStationImages`), the clustered GeoJSON source and its layers (`addStationLayers`, under the drawing), `openCluster` (zoom to `getClusterExpansionZoom`, or spread up to 8 stations at one position with leader lines; `closeSpread`), the grid cells as neutral circles (`cellFeatures`), `StationTip`, `StationSymbol` and `ClusterSymbol` (SVG for the legend and lists), `stationChoice` (the dataset, "Kolor punktów", types, year type and boundary of the address, `STATION_PARAMS`) |
 
 **View registration.** A view is one line in `VIEWS` (`id` = the `view`
 parameter and the name key in `labels/shell.js` `nav`, `icon`, `load` = dynamic
