@@ -81,8 +81,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | Module | Role | Key symbols |
 |---|---|---|
 | `cli.py` | the `archiwista` command (`[project.scripts]`); `umask 077` on POSIX; dispatches subcommands | `main` |
-| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; socket, startup token in local mode, Uvicorn, job supervisor and scheduler) and `archiwista token` | `serve_main`, `token_main`, `team_refusal`, `Refusal`, `LocalServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
-| `app.py` | FastAPI application factory: shared objects in `app.state`, routers under `/api/v1`, API documentation, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
+| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; socket, startup token in local mode, Uvicorn with the TLS files of team mode, job supervisor and scheduler) and `archiwista token` | `serve_main`, `token_main`, `team_refusal`, `Refusal`, `AppServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
+| `app.py` | FastAPI application factory: shared objects in `app.state` (the `Transport` built once from the settings), routers under `/api/v1`, the OpenAPI document, `/api/docs` in local mode only, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
 | `reader.py` | read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` built on API functions and models | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | commands `users`, `groups`, `share`, `state export` and `state import`, run as `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
 | `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, plugins, stores and project directories, data directory, team mode (address, TLS files, trusted proxies), port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `team_checks`, `is_port_available`, `REQUIRED_PRODUCERS` |
@@ -99,7 +99,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `security.py` | local-mode rules for every request, one-time tokens, in-memory sessions, CSP, token redaction in logs | `SecurityMiddleware`, `SessionStore`, `Session`, `issue_one_time_token`, `redeem_one_time_token`, `revoke_agent_sessions`, `session_principals`, `require_session`, `current_principal`, `csp_header`, `fragment_url`, `TokenRedactionFilter` |
+| `security.py` | the rules of local and team mode for every request (`Transport`: origin, `Host` values, trusted proxies, TLS; the client address), one-time tokens, in-memory sessions and their cookie (`__Host-archiwista_session` in team mode), CSP and HSTS, TLS files checked as a pair, token redaction in logs | `SecurityMiddleware`, `Transport`, `client_address`, `transport_rejection`, `tls_problem`, `session_cookie_name`, `SessionStore`, `Session`, `issue_one_time_token`, `redeem_one_time_token`, `revoke_agent_sessions`, `session_principals`, `require_session`, `current_principal`, `csp_header`, `fragment_url`, `TokenRedactionFilter` |
 | `api/__init__.py` | path constants | `API_PREFIX` (`/api/v1`), `DOCS_PATH` (`/api/docs`) |
 | `api/dependencies.py` | route dependencies taken from `app.state` | `authorizer`, `index_queries`, `settings_service`, `plugin_registry`, `visible_projects` |
 | `api/errors.py` | RFC 9457 problems with the codes of the Nogat registry; the same `Problem` serves the CLI | `ApiError`, `problem_body`, `problem_response`, `problem_responses`, `install_error_handlers` |
@@ -747,13 +747,19 @@ JSON responses, problems and event streams under `/api/v1` (except
 The order of checks in `SecurityMiddleware` (described in its docstring; this is the state
 of the code):
 
+0. **Transport of team mode** (`transport_rejection`, ADR-046): without TLS in the
+   server only a peer in `trusted_proxies` may connect (`403 proxy_required`); a
+   request is over TLS when its connection is, or when a trusted peer's last
+   `X-Forwarded-Proto` is `https` (`403 tls_required`). Local mode skips this.
 1. **Response headers** computed at the start of the request: CSP from the current
    settings (`csp_header`), `Referrer-Policy: no-referrer`,
-   `X-Content-Type-Options: nosniff`, and for `/api/v1/session*`
+   `X-Content-Type-Options: nosniff`, in team mode
+   `Strict-Transport-Security: max-age=31536000`, and for `/api/v1/session*`
    `Cache-Control: no-store`; every response gets them, including a refusal.
-2. **`Host`** must be one of `allowed_hosts(port)`
-   (`127.0.0.1:<port>`, `localhost:<port>`) → otherwise `400 invalid_host`
-   (protection against DNS rebinding).
+2. **`Host`** must be one of `Transport.hosts`: in local mode `allowed_hosts(port)`
+   (`127.0.0.1:<port>`, `localhost:<port>`), in team mode the host of `origin`
+   (`origin_hosts`) → otherwise `403 invalid_host` (protection against DNS
+   rebinding). `X-Forwarded-Host` is never read.
 3. **`Origin` and `Sec-Fetch-Site`** (`origin_rejection`): a present `Origin`
    must be `http://<host>`; with `Sec-Fetch-Site` a read passes only
    from `same-origin` or `none`, a state change only from `same-origin`
@@ -887,7 +893,7 @@ process (`archiwista reindex`) are visible too. Resumption after `Last-Event-ID`
 ends with the final `state`; a job finished without new events → `204`;
 a `: keepalive` comment after 15 s of silence. `JobStreams` ends the open
 streams before Uvicorn starts waiting for connections on stop
-(`LocalServer(…, on_stop=…)`). The interface does not use `EventSource`, because it
+(`AppServer(…, on_stop=…)`). The interface does not use `EventSource`, because it
 cannot send the `X-Archiwista-CSRF` header: `watchJob` in `web/src/api.js`
 reads the stream through `fetch`, parses it with the `eventMessages` generator
 and after a break resumes with `Last-Event-ID`.

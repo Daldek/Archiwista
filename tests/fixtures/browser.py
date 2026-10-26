@@ -34,7 +34,7 @@ from playwright.sync_api import (
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths, AppSettings, ConfigStore
 from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
-from archiwista.server import LocalServer
+from archiwista.server import AppServer
 
 VIEWPORT: ViewportSize = {"width": 1440, "height": 900}
 # How long an expectation waits for the page, the server or a build before it
@@ -92,7 +92,7 @@ FAILED_RESOURCE = "Failed to load resource"
 class Served:
     """A running server over a test directory."""
 
-    server: LocalServer
+    server: AppServer
     paths: AppPaths
 
     @property

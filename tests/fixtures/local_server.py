@@ -13,7 +13,7 @@ from unittest import mock
 import archiwista.server
 from archiwista.app import create_app
 from archiwista.config import AppPaths
-from archiwista.server import LocalServer, serve_main
+from archiwista.server import AppServer, serve_main
 from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import PluginRegistry, source_error
 
@@ -58,10 +58,10 @@ def serving(
     *,
     access_log: bool = False,
     registry: PluginRegistry | None = None,
-    on_ready: Callable[[LocalServer], object] | None = None,
+    on_ready: Callable[[AppServer], object] | None = None,
     port: int = 0,
     web_dir: Path | None = None,
-) -> Iterator[tuple[LocalServer, str]]:
+) -> Iterator[tuple[AppServer, str]]:
     """Run ``serve_main`` on ``port``; yield the server and what it printed.
 
     Without ``registry`` the server has no producers (``NoSources``);
@@ -73,10 +73,10 @@ def serving(
     """
     out = io.StringIO()
     err = io.StringIO()
-    ready: queue.Queue[LocalServer] = queue.Queue()
+    ready: queue.Queue[AppServer] = queue.Queue()
     statuses: list[int] = []
 
-    def ready_now(server: LocalServer) -> None:
+    def ready_now(server: AppServer) -> None:
         if on_ready is not None:
             on_ready(server)
         ready.put(server)

@@ -1,30 +1,38 @@
-"""Local-mode access protection (SPEC 10.1, A-ADR-012 errata 1 and 2).
+"""Access protection of local and team mode (SPEC 10.1 and 10.2, A-ADR-012, ADR-046).
 
-The server listens on ``127.0.0.1`` only and answers requests whose ``Host``
-is ``127.0.0.1:<port>`` or ``localhost:<port>`` (DNS rebinding). A one-time
-token, of which the local index keeps only the SHA-256 hash together with
-who minted it (id and kind), is exchanged for a session: an ``HttpOnly``
-session cookie and a separate secret, the session's CSRF token, which the
+Local mode: the server listens on ``127.0.0.1`` only and answers requests
+whose ``Host`` is ``127.0.0.1:<port>`` or ``localhost:<port>`` (DNS
+rebinding). Team mode (``Transport.team``): every request comes over TLS,
+directly or from a trusted reverse proxy whose last ``X-Forwarded-Proto`` is
+``https`` (``403 tls_required``), and without TLS in the server only from a
+trusted proxy (``403 proxy_required``); ``Host`` and a present ``Origin``
+compare with the team's ``origin``; every response carries HSTS. The client
+address of a request is its peer, or behind trusted proxies the right-most
+``X-Forwarded-For`` address that is no trusted proxy (``client_address``).
+A one-time token, of which the local index keeps only the SHA-256 hash
+together with who minted it (id and kind), is exchanged for a session: an
+``HttpOnly`` session cookie (``__Host-archiwista_session`` with ``Secure`` in
+team mode) and a separate secret, the session's CSRF token, which the
 client keeps (the interface in ``sessionStorage``, bound to the server's
 origin) and sends as ``X-Archiwista-CSRF`` with every ``/api`` request,
 reads included. Browsers send cookies to every port of a host, so the cookie
 never acts alone. ``/api/*`` requires both, except the exchange itself and
-the static files of ``/api/docs``; the session acts as a ``Principal`` whose
-roles and groups are read for every request (``current_principal`` for
-routers). An agent's session ends 12 hours after its start at the latest,
-and at once when the owner revokes agent sessions
-(``revoke_agent_sessions``). A present ``Origin`` must be the server itself;
-a browser (``Sec-Fetch-Site``) may change state only from the same origin and
-read only from the same origin or by a direct navigation (``none``). Request
-bodies are capped before a route reads them: 4 KiB for the token exchange,
-1 MiB otherwise (area files keep their own 50 MB limit). Every response
-carries a CSP computed from the current settings,
+the static files of ``/api/docs`` (local mode only); the session acts as a
+``Principal`` whose roles and groups are read for every request
+(``current_principal`` for routers). An agent's session ends 12 hours after
+its start at the latest, and at once when the owner revokes agent sessions
+(``revoke_agent_sessions``). A browser (``Sec-Fetch-Site``) may change state
+only from the same origin and read only from the same origin or by a direct
+navigation (``none``). Request bodies are capped before a route reads them:
+4 KiB for the token exchange, 1 MiB otherwise (area files keep their own 50
+MB limit). Every response carries a CSP computed from the current settings,
 ``Referrer-Policy: no-referrer`` and ``X-Content-Type-Options: nosniff``;
 there is no CORS. Files are opened only through ``archiwista.paths``.
 """
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import re
@@ -38,7 +46,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
 from fastapi import Depends, Request, Security
 from fastapi.security import APIKeyCookie, APIKeyHeader
@@ -51,16 +60,23 @@ from archiwista.api import API_PREFIX, DOCS_PATH
 from archiwista.api.errors import ApiError, problem_response
 from archiwista.auth import Principal, PrincipalKind
 from archiwista.auth.authorize import session_principal
-from archiwista.config import AppSettings
+from archiwista.config import HTTPS_PORT, AppSettings, IPNetwork
 from archiwista.error_document import Problem
 from archiwista.index.schema import connect
 from archiwista.messages import message
 from archiwista.state import StateStore
 
 type TokenKind = Literal["startup", "agent"]
+type IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 LOOPBACK_HOST = "127.0.0.1"
 SESSION_COOKIE = "archiwista_session"
+# The cookie of team mode: the prefix makes browsers require Secure, Path=/ and
+# no Domain, so no other host of the network can set it (ASVS 3.3.1).
+TEAM_SESSION_COOKIE = "__Host-archiwista_session"
+# HSTS of team mode: a year, without includeSubDomains, which could break other
+# services of the network's domain (ADR-046).
+HSTS = "max-age=31536000"
 CSRF_HEADER = "X-Archiwista-CSRF"
 SESSION_PATH = f"{API_PREFIX}/session"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -529,31 +545,201 @@ def session_principals(
     return principal
 
 
-def set_session_cookie(response: Response, session_id: str) -> None:
+def session_cookie_name(transport: "Transport") -> str:
+    """Return the name of the session cookie: ``__Host-`` prefixed in team mode."""
+    return TEAM_SESSION_COOKIE if transport.team else SESSION_COOKIE
+
+
+def set_session_cookie(
+    response: Response, session_id: str, transport: "Transport"
+) -> None:
     """Set the ``HttpOnly`` session cookie (``SameSite=Strict``, ``Path=/``).
 
     It ends with the browser session. Browsers send it to every port of the
-    host, so it never acts alone: requests also carry the CSRF token.
+    host, so it never acts alone: requests also carry the CSRF token. In team
+    mode it is ``__Host-archiwista_session`` with ``Secure``.
     """
     response.set_cookie(
-        SESSION_COOKIE, session_id, httponly=True, samesite="strict", path="/"
+        session_cookie_name(transport),
+        session_id,
+        secure=transport.team,
+        httponly=True,
+        samesite="strict",
+        path="/",
     )
 
 
-def clear_session_cookie(response: Response) -> None:
+def clear_session_cookie(response: Response, transport: "Transport") -> None:
     """Remove the session cookie from the browser (logout)."""
-    response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="strict", path="/")
+    response.delete_cookie(
+        session_cookie_name(transport),
+        secure=transport.team,
+        httponly=True,
+        samesite="strict",
+        path="/",
+    )
+
+
+# Transport -----------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Transport:
+    """How requests reach the server: local mode, or team mode over TLS.
+
+    Built once from the settings the server started with (``Transport.of``):
+    the table ``[team]`` is read only then (ADR-046).
+
+    Parameters
+    ----------
+    team : bool
+        Team mode: TLS, trusted proxies, the team's origin, HSTS.
+    origin : str
+        The address people open: ``http://127.0.0.1:<port>`` in local mode,
+        the team's ``origin`` in team mode.
+    hosts : frozenset[str]
+        The ``Host`` values the server answers, lower-case.
+    trusted : tuple[IPNetwork, ...], optional
+        Networks of the trusted reverse proxies (team mode).
+    tls_in_server : bool, optional
+        Archiwista itself serves TLS (``tls_cert`` and ``tls_key``).
+    """
+
+    team: bool
+    origin: str
+    hosts: frozenset[str]
+    trusted: tuple[IPNetwork, ...] = ()
+    tls_in_server: bool = False
+
+    @classmethod
+    def of(cls, settings: AppSettings, port: int) -> Self:
+        """Return the transport of the settings for a server on ``port``."""
+        team = settings.team
+        if not team.enabled or team.origin is None:
+            origin = f"http://{LOOPBACK_HOST}:{port}"
+            return cls(team=False, origin=origin, hosts=allowed_hosts(port))
+        return cls(
+            team=True,
+            origin=team.origin,
+            hosts=origin_hosts(team.origin),
+            trusted=team.trusted_networks(),
+            tls_in_server=team.tls_cert is not None,
+        )
+
+    def trusts(self, address: IPAddress | None) -> bool:
+        """Return whether ``address`` is a trusted reverse proxy."""
+        return address is not None and any(
+            address in network for network in self.trusted
+        )
+
+
+def origin_hosts(origin: str) -> frozenset[str]:
+    """Return the ``Host`` values of a team's origin (with ``:443`` or without)."""
+    parts = urlsplit(origin)
+    if parts.port is None:
+        return frozenset({parts.netloc, f"{parts.netloc}:{HTTPS_PORT}"})
+    return frozenset({parts.netloc})
+
+
+def _address(text: str) -> IPAddress | None:
+    """Return an IP address, an IPv4-mapped IPv6 one as IPv4; ``None`` if none."""
+    try:
+        address = ipaddress.ip_address(text.strip())
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        return address.ipv4_mapped
+    return address
+
+
+def _peer(scope: Scope) -> IPAddress | None:
+    client = scope.get("client")
+    return _address(str(client[0])) if client else None
+
+
+def _header_items(headers: Headers, name: str) -> list[str]:
+    """Return the comma-separated items of every ``name`` header, in order."""
+    return [
+        item.strip()
+        for value in headers.getlist(name)
+        for item in value.split(",")
+        if item.strip()
+    ]
+
+
+def client_address(scope: Scope, transport: Transport) -> str | None:
+    """Return the address of the client of a request (ADR-046).
+
+    The peer, or for a trusted proxy the right-most ``X-Forwarded-For``
+    address that is no trusted proxy: each trusted proxy names the one it
+    heard from, and anything left of the first address that is not a trusted
+    proxy came from the client. A request from a trusted proxy itself, or one
+    whose chain names only trusted proxies, is the last of them. It is kept
+    in ``scope["state"]["client"]`` and ``Principal.client``.
+
+    Parameters
+    ----------
+    scope : Scope
+        The request.
+    transport : Transport
+        The trusted proxies; none in local mode.
+
+    Returns
+    -------
+    str or None
+        The address; ``None`` without a peer.
+    """
+    client = scope.get("client")
+    if not client:
+        return None
+    peer = _address(str(client[0]))
+    if peer is None:
+        return str(client[0])
+    if not transport.trusts(peer):
+        return str(peer)
+    nearest = peer
+    for item in reversed(_header_items(Headers(scope=scope), "x-forwarded-for")):
+        address = _address(item)
+        if address is None:
+            break
+        if not transport.trusts(address):
+            return str(address)
+        nearest = address
+    return str(nearest)
+
+
+def transport_rejection(scope: Scope, transport: Transport) -> "_Rejection | None":
+    """Return why team mode refuses how a request came, or ``None``.
+
+    Without TLS in the server only a trusted proxy may connect
+    (``proxy_required``); a request is over TLS when the connection is, or
+    when a trusted proxy's last ``X-Forwarded-Proto`` says ``https``
+    (``tls_required``). Local mode refuses nothing here.
+    """
+    if not transport.team:
+        return None
+    trusted = transport.trusts(_peer(scope))
+    if not transport.tls_in_server and not trusted:
+        detail = message("api.proxy_required")
+        return _Rejection("forbidden", "proxy_required", detail)
+    if scope.get("scheme") == "https":
+        return None
+    forwarded = _header_items(Headers(scope=scope), "x-forwarded-proto")
+    if trusted and forwarded and forwarded[-1].lower() == "https":
+        return None
+    detail = message("api.tls_required", origin=transport.origin)
+    return _Rejection("forbidden", "tls_required", detail)
 
 
 # Request rules -------------------------------------------------------------
 
 
 def allowed_hosts(port: int) -> frozenset[str]:
-    """Return the ``Host`` values the server answers (DNS rebinding guard)."""
+    """Return the ``Host`` values of local mode (DNS rebinding guard)."""
     return frozenset({f"{LOOPBACK_HOST}:{port}", f"localhost:{port}"})
 
 
-def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
+def origin_rejection(method: str, headers: Headers, origin: str) -> str | None:
     """Return why the ``Origin`` and ``Sec-Fetch-Site`` rule refuses a request.
 
     Parameters
@@ -562,8 +748,9 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
         HTTP method; anything but GET, HEAD and OPTIONS changes state.
     headers : Headers
         Request headers.
-    host : str
-        The request's ``Host``, already one of ``allowed_hosts``.
+    origin : str
+        The server's own origin: ``http://<Host>`` of the request in local
+        mode, the team's ``origin`` in team mode.
 
     Returns
     -------
@@ -572,8 +759,8 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
         A client without ``Origin`` and ``Sec-Fetch-Site`` (curl, an agent's
         script) passes here; the session and its CSRF token still apply.
     """
-    origin = headers.get("origin")
-    if origin is not None and origin.lower() != f"http://{host}":
+    sent = headers.get("origin")
+    if sent is not None and sent.lower() != origin:
         return message("api.cross_site")
     fetch_site = headers.get("sec-fetch-site")
     if fetch_site is None:
@@ -585,7 +772,7 @@ def origin_rejection(method: str, headers: Headers, host: str) -> str | None:
         return message("api.cross_site")
     if fetch_site != "same-origin":
         return message("api.cross_site")
-    if origin is None:
+    if sent is None:
         return message("api.origin_missing")
     return None
 
@@ -704,9 +891,11 @@ class _Authorized:
 
 
 class SecurityMiddleware:
-    """Apply the local-mode rules to every HTTP request and response.
+    """Apply the rules of local or team mode to every HTTP request and response.
 
-    Order: ``Host`` (``403 forbidden``, reason ``invalid_host``), ``Origin`` and
+    Order: in team mode first how the request came (``403 forbidden``,
+    reason ``proxy_required`` or ``tls_required``, ``transport_rejection``);
+    then ``Host`` (``403 forbidden``, reason ``invalid_host``), ``Origin`` and
     ``Sec-Fetch-Site`` (``403 forbidden``, reason ``csrf_rejected``); then for
     ``/api/*``, except ``POST /api/v1/session`` and the files of ``/api/docs``,
     the session cookie (``401 unauthorized``, reason ``session_required``), the
@@ -714,19 +903,21 @@ class SecurityMiddleware:
     session acts as now (``401 session_required`` once its account is disabled
     or removed, or its agent session revoked); last the size of the body
     (``400 validation_error``, reason ``request_too_large``).
-    Only a request passing all of them extends its session. The session and
-    its principal are left in ``request.state`` for ``require_session`` and
+    Only a request passing all of them extends its session. The client
+    address (``client_address``), the session and its principal (with that
+    address) are left in ``request.state`` for ``require_session`` and
     ``current_principal``. Every response, including these problems, gets
     the CSP of the current settings, ``Referrer-Policy: no-referrer`` and
-    ``X-Content-Type-Options: nosniff``; ``/api/v1/session*`` also
-    ``Cache-Control: no-store``.
+    ``X-Content-Type-Options: nosniff``, in team mode
+    ``Strict-Transport-Security``; ``/api/v1/session*`` also
+    ``Cache-Control: no-store``. ``X-Forwarded-Host`` is never read.
 
     Parameters
     ----------
     app : ASGIApp
         The wrapped application.
-    port : int
-        Port the server listens on.
+    transport : Transport
+        Local or team mode: the origin, the ``Host`` values, trusted proxies.
     sessions : SessionStore
         Live sessions.
     settings : Callable[[], AppSettings]
@@ -740,14 +931,14 @@ class SecurityMiddleware:
         self,
         app: ASGIApp,
         *,
-        port: int,
+        transport: Transport,
         sessions: SessionStore,
         settings: Callable[[], AppSettings],
         principals: Callable[[Session], Principal | None],
     ) -> None:
         self.app = app
-        self._port = port
-        self._hosts = allowed_hosts(port)
+        self._transport = transport
+        self._cookie = session_cookie_name(transport)
         self._sessions = sessions
         self._settings = settings
         self._principals = principals
@@ -764,6 +955,8 @@ class SecurityMiddleware:
             ("referrer-policy", "no-referrer"),
             ("x-content-type-options", "nosniff"),
         ]
+        if self._transport.team:
+            security_headers.append(("strict-transport-security", HSTS))
         if _is_session_path(path):
             security_headers.append(("cache-control", "no-store"))
 
@@ -775,7 +968,9 @@ class SecurityMiddleware:
             await send(message)
 
         connection = HTTPConnection(scope)
-        outcome = self._check(connection, method, path)
+        outcome = transport_rejection(scope, self._transport) or self._check(
+            connection, method, path
+        )
         limit = body_limit(method, path)
         if not isinstance(outcome, _Rejection) and limit is not None:
             body = await _read_body(connection.headers, receive, limit)
@@ -788,25 +983,26 @@ class SecurityMiddleware:
             response = problem_response(outcome.problem(), Request(scope))
             await response(scope, receive, send_secured)
             return
+        state = scope.setdefault("state", {})
+        state["client"] = client_address(scope, self._transport)
         if outcome is not None:
-            state = scope.setdefault("state", {})
             state["session"] = outcome.session
-            state["principal"] = outcome.principal
+            state["principal"] = replace(outcome.principal, client=state["client"])
         await self.app(scope, receive, send_secured)
 
     def _check(
         self, connection: HTTPConnection, method: str, path: str
     ) -> _Rejection | _Authorized | None:
         host = connection.headers.get("host", "").lower()
-        if host not in self._hosts:
-            detail = message("api.invalid_host", port=self._port)
-            return _Rejection("forbidden", "invalid_host", detail)
-        reason = origin_rejection(method, connection.headers, host)
+        if host not in self._transport.hosts:
+            return _Rejection("forbidden", "invalid_host", self._invalid_host())
+        origin = self._transport.origin if self._transport.team else f"http://{host}"
+        reason = origin_rejection(method, connection.headers, origin)
         if reason is not None:
             return _Rejection("forbidden", "csrf_rejected", reason)
         if not _is_api(path) or _is_public(method, path):
             return None
-        session_id = connection.cookies.get(SESSION_COOKIE)
+        session_id = connection.cookies.get(self._cookie)
         session = self._sessions.get(session_id)
         hint = message("api.hint_session_required")
         if session_id is None or session is None:
@@ -823,6 +1019,12 @@ class SecurityMiddleware:
             return _Rejection("unauthorized", "session_required", ended, hint)
         return _Authorized(extended, principal)
 
+    def _invalid_host(self) -> str:
+        if self._transport.team:
+            return message("api.invalid_host_team", origin=self._transport.origin)
+        port = urlsplit(self._transport.origin).port
+        return message("api.invalid_host", port=port)
+
 
 # Route dependencies --------------------------------------------------------
 
@@ -831,7 +1033,7 @@ _SESSION_SCHEME = APIKeyCookie(
     scheme_name="session",
     description=(
         "Session cookie set by POST /api/v1/session; never enough alone, see"
-        " the csrf scheme."
+        f" the csrf scheme. In team mode it is {TEAM_SESSION_COOKIE} (Secure)."
     ),
     auto_error=False,
 )

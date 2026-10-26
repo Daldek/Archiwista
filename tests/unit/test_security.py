@@ -1,4 +1,4 @@
-"""Local-mode access protection: Host, tokens, session, CSRF, paths (SPEC 10.1)."""
+"""Access protection: Host, tokens, session, CSRF, paths; team transport (SPEC 10)."""
 
 import hashlib
 import logging
@@ -14,10 +14,18 @@ import httpx
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
+from starlette.types import Scope
 
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER, LOCAL_ROLES, Principal
-from archiwista.config import AppSettings, BasemapConfig, ConfigStore, SettingsService
+from archiwista.config import (
+    AppSettings,
+    BasemapConfig,
+    ConfigStore,
+    SettingsService,
+    TeamSettings,
+)
 from archiwista.index.schema import initialize
 from archiwista.security import (
     CSRF_HEADER,
@@ -25,11 +33,15 @@ from archiwista.security import (
     TOKEN_TTL,
     SessionStore,
     TokenKind,
+    Transport,
+    client_address,
     csp_header,
     current_principal,
     issue_one_time_token,
+    origin_rejection,
     redeem_one_time_token,
     revoke_agent_sessions,
+    transport_rejection,
 )
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources, local_paths, serving
@@ -737,3 +749,104 @@ def test_token_not_logged(
     assert queried.status_code == 200
     assert "/api/v1/session?token=***" in logs
     assert token not in logs
+
+
+# Team mode -----------------------------------------------------------------
+
+TEAM_ORIGIN = "https://archiwista.firma.local"
+
+
+def team_transport(**team: object) -> Transport:
+    """Return the transport of team mode at ``TEAM_ORIGIN`` with ``team``."""
+    table = {"enabled": True, "origin": TEAM_ORIGIN, **team}
+    return Transport.of(AppSettings(team=TeamSettings.model_validate(table)), PORT)
+
+
+def request_scope(
+    peer: str, *, scheme: str = "http", headers: tuple[tuple[str, str], ...] = ()
+) -> Scope:
+    """Return the ASGI scope of a request from ``peer`` with ``headers``."""
+    return {
+        "type": "http",
+        "scheme": scheme,
+        "client": (peer, 50_000),
+        "headers": [(name.encode(), value.encode()) for name, value in headers],
+    }
+
+
+@pytest.mark.parametrize(
+    ("peer", "forwarded", "client"),
+    [
+        ("10.0.0.5", ("6.6.6.6",), "10.0.0.5"),
+        ("10.0.0.2", (), "10.0.0.2"),
+        ("10.0.0.2", ("10.0.0.5",), "10.0.0.5"),
+        ("10.0.0.2", ("6.6.6.6, 10.0.0.5",), "10.0.0.5"),
+        ("10.0.0.2", ("6.6.6.6", "10.0.0.5"), "10.0.0.5"),
+        ("10.0.0.2", ("10.0.0.5, 192.168.7.3",), "10.0.0.5"),
+        ("10.0.0.2", ("192.168.7.3",), "192.168.7.3"),
+        ("10.0.0.2", ("unknown",), "10.0.0.2"),
+        ("::ffff:10.0.0.2", ("10.0.0.5",), "10.0.0.5"),
+        ("fd00::7", ("10.0.0.5",), "fd00::7"),
+    ],
+)
+def test_security_client_address_follows_only_trusted_proxies(
+    peer: str, forwarded: tuple[str, ...], client: str
+) -> None:
+    """The client is the right-most forwarded address that is no trusted proxy."""
+    transport = team_transport(trusted_proxies=["10.0.0.2", "192.168.7.0/24"])
+    headers = tuple(("x-forwarded-for", value) for value in forwarded)
+
+    assert client_address(request_scope(peer, headers=headers), transport) == client
+
+
+def test_security_client_address_of_local_mode_is_the_peer() -> None:
+    """Local mode trusts no proxy, so a forwarded address is never believed."""
+    scope = request_scope("127.0.0.1", headers=(("x-forwarded-for", "6.6.6.6"),))
+
+    assert client_address(scope, Transport.of(AppSettings(), PORT)) == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    ("peer", "scheme", "proto", "reason"),
+    [
+        ("10.0.0.2", "http", "https", None),
+        ("10.0.0.2", "http", "http", "tls_required"),
+        ("10.0.0.2", "http", None, "tls_required"),
+        ("10.0.0.5", "http", "https", "tls_required"),
+        ("10.0.0.5", "https", None, None),
+    ],
+)
+def test_security_forwarded_https_believed_only_from_a_trusted_peer(
+    peer: str, scheme: str, proto: str | None, reason: str | None
+) -> None:
+    """A request is over TLS by its connection, or by what a trusted proxy says."""
+    transport = team_transport(
+        tls_cert="/etc/tls/cert.pem",
+        tls_key="/etc/tls/key.pem",
+        trusted_proxies=["10.0.0.2"],
+    )
+    headers = () if proto is None else (("x-forwarded-proto", proto),)
+
+    rejection = transport_rejection(
+        request_scope(peer, scheme=scheme, headers=headers), transport
+    )
+
+    assert (None if rejection is None else rejection.reason) == reason
+
+
+def test_security_team_host_and_origin_compare_with_the_origin() -> None:
+    """Host is the origin's host, with :443 or without; Origin must be the origin."""
+    transport = team_transport()
+    other_port = team_transport(origin="https://archiwista.firma.local:8443")
+
+    def refused(origin: str) -> bool:
+        headers = Headers({"origin": origin, "sec-fetch-site": "same-origin"})
+        return origin_rejection("POST", headers, transport.origin) is not None
+
+    assert transport.hosts == {"archiwista.firma.local", "archiwista.firma.local:443"}
+    assert other_port.hosts == {"archiwista.firma.local:8443"}
+    assert not refused(TEAM_ORIGIN)
+    assert refused("http://archiwista.firma.local")
+    assert refused("https://archiwista.firma.local:8443")
+    assert refused(f"http://127.0.0.1:{PORT}")
+    assert refused("null")

@@ -19,7 +19,7 @@ import pytest
 from archiwista import server as server_module
 from archiwista.cli import main
 from archiwista.security import CSRF_HEADER, LOOPBACK_HOST, SESSION_COOKIE, TOKEN_TTL
-from archiwista.server import LaunchFile, LocalServer, bind_address, open_in_browser
+from archiwista.server import AppServer, LaunchFile, bind_address, open_in_browser
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.cli_errors import refusal
 from tests.fixtures.local_server import NoSources, local_paths, serving
@@ -266,12 +266,12 @@ def test_token_revoke_all_ends_agent_sessions_of_running_server(
     assert late.status_code == 401
 
 
-def _write_launch(server: LocalServer) -> None:
+def _write_launch(server: AppServer) -> None:
     """Write the launch file as ``open_in_browser`` does, opening no browser."""
     _launch(server).write(server.url)
 
 
-def _launch(server: LocalServer) -> LaunchFile:
+def _launch(server: AppServer) -> LaunchFile:
     """Return the launch file of a server of local mode."""
     assert server.launch is not None
     return server.launch

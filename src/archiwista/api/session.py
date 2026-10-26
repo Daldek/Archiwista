@@ -25,16 +25,17 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.errors import PermissionDeniedError
 from archiwista.messages import message
 from archiwista.security import (
-    SESSION_COOKIE,
     Session,
     SessionStore,
     TokenKind,
+    Transport,
     clear_session_cookie,
     current_principal,
     fragment_url,
     issue_one_time_token,
     redeem_one_time_token,
     require_session,
+    session_cookie_name,
     set_session_cookie,
 )
 
@@ -182,7 +183,8 @@ def exchange_token(
 ) -> NewSession:
     """Exchange a one-time token for a session and its CSRF token.
 
-    Sets the `HttpOnly` cookie `archiwista_session`; every later request also
+    Sets the `HttpOnly` cookie `archiwista_session` (in team mode
+    `__Host-archiwista_session` with `Secure`); every later request also
     sends `csrf_token` as `X-Archiwista-CSRF`, since the cookie alone never
     acts. An unknown, used, expired or revoked token, or one of an account
     disabled since, answers `401 session_required`.
@@ -202,7 +204,7 @@ def exchange_token(
         raise ApiError(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )
-    set_session_cookie(response, session_id)
+    set_session_cookie(response, session_id, request.app.state.transport)
     on_redeem(request, grant.token_kind)
     return NewSession(
         **_state(session, principal, authorizer(request)).model_dump(),
@@ -232,9 +234,10 @@ async def end_session(
 ) -> Response:
     """End the session at once (log out) and remove its cookie."""
     sessions: SessionStore = request.app.state.sessions
-    sessions.end(request.cookies.get(SESSION_COOKIE))
+    transport: Transport = request.app.state.transport
+    sessions.end(request.cookies.get(session_cookie_name(transport)))
     response = Response(status_code=204)
-    clear_session_cookie(response)
+    clear_session_cookie(response, transport)
     return response
 
 

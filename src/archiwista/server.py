@@ -272,7 +272,7 @@ class LaunchFile:
             self._path = None
 
 
-class LocalServer:
+class AppServer:
     """The application on a listening socket, ready to serve.
 
     Parameters
@@ -295,6 +295,10 @@ class LocalServer:
         streams).
     log_level : str, optional
         Level of Uvicorn's own messages (``archiwista.logs.LOG_LEVELS``).
+    tls : tuple[Path, Path] or None, optional
+        The certificate chain and the private key of TLS in the server (team
+        mode); Python's defaults of a TLS server apply (TLS 1.2 or newer).
+        ``None`` serves plain HTTP: local mode, or behind a proxy.
     """
 
     def __init__(
@@ -307,6 +311,7 @@ class LocalServer:
         access_log: bool,
         on_stop: Callable[[], None],
         log_level: str = DEFAULT_LOG_LEVEL,
+        tls: tuple[Path, Path] | None = None,
     ) -> None:
         self.url = url
         self.launch = launch
@@ -319,9 +324,12 @@ class LocalServer:
             port=self.port,
             log_config=uvicorn_log_config(log_level),
             access_log=access_log,
+            # Archiwista reads forwarded headers itself, from trusted proxies.
             proxy_headers=False,
             server_header=False,
             limit_concurrency=LIMIT_CONCURRENCY,
+            ssl_certfile=None if tls is None else tls[0],
+            ssl_keyfile=None if tls is None else tls[1],
         )
         self._server = _Uvicorn(config, on_stop)
 
@@ -336,7 +344,7 @@ class LocalServer:
         self._server.should_exit = True
 
 
-def open_in_browser(server: LocalServer) -> None:
+def open_in_browser(server: AppServer) -> None:
     """Open the server's one-time address in the default browser, not waiting.
 
     The browser gets the ``file:`` address of ``server.launch``, never the
@@ -359,7 +367,7 @@ def serve_main(
     port: int | None = None,
     access_log: bool = False,
     log_level: str = DEFAULT_LOG_LEVEL,
-    on_ready: Callable[[LocalServer], object] | None = None,
+    on_ready: Callable[[AppServer], object] | None = None,
 ) -> int:
     """Run ``archiwista serve`` and return the process exit status.
 
@@ -383,7 +391,7 @@ def serve_main(
     log_level : str, optional
         Level of Uvicorn's own messages; ``warning`` unless the command line
         asked for another (``archiwista.logs``).
-    on_ready : Callable[[LocalServer], object] or None, optional
+    on_ready : Callable[[AppServer], object] or None, optional
         Called with the server after the address is printed and before it
         serves, e.g. ``open_in_browser``. The launch file goes once the
         startup token is used, when it expires, and when the server stops.
@@ -497,7 +505,10 @@ def serve_main(
                 started = message(
                     "serve.started_team", origin=origin, address=listening
                 )
-            server = LocalServer(
+            tls = None
+            if team.enabled and team.tls_cert is not None and team.tls_key is not None:
+                tls = (team.tls_cert, team.tls_key)
+            server = AppServer(
                 sock,
                 app,
                 url=url,
@@ -505,6 +516,7 @@ def serve_main(
                 access_log=access_log,
                 log_level=log_level,
                 on_stop=app.state.job_streams.close,
+                tls=tls,
             )
             out.write(started + "\n")
             out.flush()

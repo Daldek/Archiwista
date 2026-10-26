@@ -370,6 +370,74 @@ appears. A new session is opened by the address `archiwista serve` printed or
 a new address from `archiwista token`. Another browser tab gets its session
 from an open Archiwista tab.
 
+## Team server
+
+Team mode (v0.4, ADR-046) lets the people of a local network use one Archiwista.
+It is an explicit setting, the table `[team]` of `config.toml`, which the server
+reads when it starts: edit it while the server is stopped ("Ustawienia" neither
+shows nor changes it) and check it with `archiwista doctor`.
+
+```toml
+[team]
+enabled = true
+origin = "https://archiwista.firma.local"       # the address people open: https, host, port
+tls_cert = "/etc/archiwista/tls/fullchain.pem"  # TLS in Archiwista: both files or neither
+tls_key = "/etc/archiwista/tls/privkey.pem"
+# trusted_proxies = ["127.0.0.1"]               # or behind a reverse proxy with TLS
+```
+
+Every request comes over TLS and every answer carries
+`Strict-Transport-Security: max-age=31536000`; `Host` must be the host of
+`origin`, the session cookie is `__Host-archiwista_session` (`Secure`), and
+`/api/docs` is not served. `archiwista serve` prints `origin` and issues no
+startup address. It refuses to start (exit 2) when team mode is off and `--host`
+is not `127.0.0.1` (`host_refused`), without TLS files and trusted proxies
+(`tls_required`), with files that do not load as a pair or an encrypted key
+(`tls_unusable`), and behind proxies on `0.0.0.0` or `::`
+(`proxy_bind_wildcard`) or, when every proxy is on this computer, on an address
+that is not a loopback one (`proxy_bind_not_loopback`).
+
+**TLS in Archiwista.** Give the certificate chain (PEM: of the company's
+authority, or a public one for a name the computers resolve) and its private key
+without a passphrase, readable by the server's account only (`chmod 600`), then
+for example `archiwista serve --host 0.0.0.0 --port 8443` with `origin =
+"https://archiwista.firma.local:8443"`.
+
+**Behind a reverse proxy.** Caddy or nginx ends TLS and passes the requests to
+Archiwista over plain HTTP. `trusted_proxies` names the proxy's addresses
+(addresses, or networks of at most 256 addresses) and `--host` the address the
+proxy connects to, `127.0.0.1` when it runs on the same computer. The proxy keeps
+`Host` (Archiwista never reads `X-Forwarded-Host`) and sets `X-Forwarded-For`
+and `X-Forwarded-Proto`; Archiwista believes them only from a trusted proxy,
+takes the person's address from the right-most `X-Forwarded-For` address that is
+no trusted proxy, and answers a request from any other address with `403
+proxy_required`.
+
+```
+# Caddyfile: reverse_proxy keeps Host and sets X-Forwarded-For and -Proto itself.
+archiwista.firma.local {
+    tls /etc/caddy/tls/fullchain.pem /etc/caddy/tls/privkey.pem
+    reverse_proxy 127.0.0.1:8090
+}
+```
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name archiwista.firma.local;
+    ssl_certificate     /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+    client_max_body_size 60m;                     # area files up to 50 MB
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_set_header Host $http_host;          # keep Host as the browser sent it
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;                       # job events (Server-Sent Events)
+    }
+}
+```
+
 ## When something does not work
 
 - `archiwista doctor` checks the installation, the Kartograf plugin, the

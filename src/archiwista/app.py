@@ -1,18 +1,19 @@
-"""FastAPI application: local-mode security, API routers and interface files.
+"""FastAPI application: the security of both modes, API routers and interface files.
 
 ``create_app`` wraps every request in ``LanguageMiddleware`` (the language of
 its texts from ``Accept-Language``), outermost, and ``SecurityMiddleware``
-(``Host``, ``Origin``/``Sec-Fetch-Site``, session cookie and CSRF token rules,
-body limits, CSP and other
-headers), answers errors with RFC 9457 problems, mounts the routers under
-``/api/v1`` (with the OpenAPI document and the local ``/api/docs``) and
-serves the build-free interface from ``archiwista/web`` (``/`` and
-``/static/…``, revalidated on every use: ``InterfaceFiles``), which needs no
-session. Routers reach the shared objects
-through ``request.app.state``: ``settings`` (``SettingsService``),
-``sessions`` (``SessionStore``), ``index_path``, ``port``, ``authorizer``
-(``Authorizer`` over the state database), ``queries`` (``IndexQueries``),
-``registry`` (the producer plugins), the last three also as dependencies of
+(in team mode TLS and trusted proxies; ``Host``, ``Origin``/``Sec-Fetch-Site``,
+session cookie and CSRF token rules, body limits, CSP and other headers),
+answers errors with RFC 9457 problems, mounts the routers under ``/api/v1``
+(with the OpenAPI document, and ``/api/docs`` in local mode only) and serves
+the build-free interface from ``archiwista/web`` (``/`` and ``/static/…``,
+revalidated on every use: ``InterfaceFiles``), which needs no session.
+Routers reach the shared objects through ``request.app.state``: ``settings``
+(``SettingsService``), ``transport`` (``Transport``: local or team mode, built
+once from the settings the server started with), ``sessions``
+(``SessionStore``), ``index_path``, ``port``, ``authorizer`` (``Authorizer``
+over the state database), ``queries`` (``IndexQueries``), ``registry`` (the
+producer plugins), the last three also as dependencies of
 ``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
 without background jobs, which leaves out their routes), ``job_streams``
 (open job event streams, which the server ends as it stops), ``previews``
@@ -57,7 +58,7 @@ from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api import stations as station_routes
-from archiwista.api.docs import install_docs, operation_id
+from archiwista.api.docs import install_docs, install_openapi, operation_id
 from archiwista.api.errors import ApiError, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
@@ -71,6 +72,7 @@ from archiwista.security import (
     SecurityMiddleware,
     SessionStore,
     TokenKind,
+    Transport,
     session_principals,
 )
 from archiwista.services.layers import LayerMemo
@@ -121,9 +123,11 @@ def create_app(
     Parameters
     ----------
     port : int
-        Port the server listens on; ``Host`` must name it.
+        Port the server listens on; in local mode ``Host`` must name it.
     settings : SettingsService
         Settings in effect; each response's CSP follows their current value.
+        Their table ``[team]`` gives the transport (``app.state.transport``):
+        local mode, or team mode with its origin, TLS and trusted proxies.
     index_path : Path
         Local index (catalog, projects, hashes of one-time session tokens).
     state : StateStore
@@ -157,6 +161,8 @@ def create_app(
     if sessions is None:
         sessions = SessionStore()
     queries = IndexQueries(index_path)
+    # The table [team] is read once: changing it needs a restart (ADR-046).
+    transport = Transport.of(settings.get(), port)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -174,6 +180,7 @@ def create_app(
         generate_unique_id_function=operation_id,
     )
     app.state.settings = settings
+    app.state.transport = transport
     app.state.sessions = sessions
     app.state.index_path = index_path
     app.state.port = port
@@ -213,7 +220,9 @@ def create_app(
         app.include_router(action_routes.router, prefix=API_PREFIX)
         app.include_router(projects.job_router, prefix=API_PREFIX)
         app.include_router(preview_routes.job_router, prefix=API_PREFIX)
-    install_docs(app)
+    install_openapi(app)
+    if not transport.team:
+        install_docs(app)
 
     index_page = web_dir / "index.html"
     interface_files = InterfaceFiles(directory=web_dir)
@@ -229,7 +238,7 @@ def create_app(
     app.mount("/static", interface_files, name="static")
     app.add_middleware(
         SecurityMiddleware,
-        port=port,
+        transport=transport,
         sessions=sessions,
         settings=settings.get,
         principals=app.state.principals,

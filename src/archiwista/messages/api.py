@@ -14,6 +14,21 @@ MESSAGES = {
             " localhost:{port}."
         ),
     ),
+    "invalid_host_team": Text(
+        "Archiwista accepts only requests to {origin}.",
+        "Archiwista przyjmuje tylko żądania na adres {origin}.",
+    ),
+    "tls_required": Text(
+        "Archiwista answers only over HTTPS: open {origin}.",
+        "Archiwista odpowiada tylko przez HTTPS: otwórz {origin}.",
+    ),
+    "proxy_required": Text(
+        ("Archiwista answers only through the team's reverse proxy, not directly."),
+        (
+            "Archiwista odpowiada tylko przez serwer pośredniczący zespołu, a nie"
+            " bezpośrednio."
+        ),
+    ),
     "session_required": Text(
         (
             'No valid session. Open the address printed by "archiwista serve" or'

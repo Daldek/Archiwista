@@ -41,6 +41,10 @@ class Principal:
         Label of the session the principal acts in, recorded with its jobs
         and permission changes; ``None`` at the terminal and for the
         scheduler.
+    client : str or None, optional
+        Address of the client of the request (the peer, or behind trusted
+        proxies the client they name, ADR-046); ``None`` at the terminal and
+        for the scheduler.
     """
 
     id: str
@@ -48,6 +52,7 @@ class Principal:
     roles: frozenset[str]
     groups: frozenset[str]
     session: str | None = None
+    client: str | None = None
 
 
 LOCAL_OWNER = Principal(

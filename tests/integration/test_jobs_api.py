@@ -28,7 +28,7 @@ from archiwista.security import (
     SESSION_COOKIE,
     issue_one_time_token,
 )
-from archiwista.server import LaunchFile, LocalServer, bind_address
+from archiwista.server import AppServer, LaunchFile, bind_address
 from archiwista.state import StateStore
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.jobs import (
@@ -431,7 +431,7 @@ def test_event_stream_ends_when_server_stops(
             areas_dir=env.paths.areas_dir,
             jobs=env.jobs,
         )
-        server = LocalServer(
+        server = AppServer(
             sock,
             app,
             url="",

@@ -113,8 +113,8 @@ def operation_id(route: APIRoute) -> str:
     return route.name
 
 
-def install_docs(app: FastAPI) -> None:
-    """Serve ``/api/docs`` and document problems in the OpenAPI document."""
+def install_openapi(app: FastAPI) -> None:
+    """Document problems in the application's OpenAPI document (both modes)."""
 
     def document() -> dict[str, Any]:
         if app.openapi_schema is None:
@@ -122,6 +122,10 @@ def install_docs(app: FastAPI) -> None:
         return app.openapi_schema
 
     app.openapi = document  # type: ignore[method-assign]
+
+
+def install_docs(app: FastAPI) -> None:
+    """Serve ``/api/docs``: Swagger UI of local mode, not of a team (ADR-046)."""
     app.add_api_route(DOCS_PATH, _docs_page, include_in_schema=False)
     app.mount(DOCS_PATH, StaticFiles(directory=SWAGGER_DIR), name="api-docs")
 

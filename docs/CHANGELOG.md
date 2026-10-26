@@ -23,7 +23,16 @@ command-line interface may change.
   anything is created or bound. In team mode it issues no startup token, opens no
   browser and prints the team's address. `archiwista doctor` reports team mode: the
   address, the certificate and key loaded as a pair, a key that other accounts may
-  read, the trusted proxies.
+  read, the trusted proxies. In team mode every request comes over TLS: with
+  `tls_cert` and `tls_key` the server itself serves HTTPS (TLS 1.2 or newer), and
+  behind a reverse proxy only a peer of `trusted_proxies` may connect (`403
+  forbidden`, `proxy_required`) and its last `X-Forwarded-Proto` must be `https`
+  (`403 tls_required`). `Host` and a present `Origin` must be the team's origin,
+  every answer carries `Strict-Transport-Security: max-age=31536000`, the session
+  cookie is `__Host-archiwista_session` with `Secure`, and `/api/docs` is not
+  served. The client address (logs, limits, sessions) is the peer, or behind trusted
+  proxies the right-most `X-Forwarded-For` address that is no trusted proxy. Local
+  mode is unchanged. USAGE "Team server" shows Caddy and nginx configurations.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
