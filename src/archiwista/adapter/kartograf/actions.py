@@ -18,7 +18,10 @@ country (``auto`` for both), and the metadata cache is Archiwista's own,
 ``metadata.db`` in the adapter's cache directory: never ``cache=True``, which
 would be Kartograf's default cache (D5). ``check_command`` plans a run in the
 configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
-cache, its ``kartograf-plan/1`` read as the producer-neutral ``ActionPlan``.
+cache, whose answers of the source younger than ``PLAN_REFRESH_TTL_S`` stand for
+asking it again (Kartograf ADR-056: the plan of a report's row right after the
+report asks GUGiK nothing), its ``kartograf-plan/1`` read as the
+producer-neutral ``ActionPlan``.
 ``run_command`` runs it (A5, ADR-037): ``root=``, Archiwista's cache, the
 kept plan back as ``update="upgrade", plan=…``, and ``kartograf-download/1``
 read as the producer-neutral ``ActionResult``. ``init_project``,
@@ -127,6 +130,11 @@ _ROOT_ROLE = "root"
 _PATH_ROLES: frozenset[str] = frozenset({"input", "output"})
 # The file of Kartograf's metadata cache (its own name, ``metadata.db``).
 METADATA_CACHE_FILE = "metadata.db"
+# How old an answer of the source may be to stand, in a plan, for asking it
+# again (``MetadataCache.refresh_ttl_seconds``, Kartograf ADR-056): the
+# availability report's answers serve "Pobierz…" of its rows for an hour; an
+# older report's row asks the source again, and a run always does.
+PLAN_REFRESH_TTL_S = 3600
 # The command of ``check_availability`` in Kartograf's catalog.
 AVAILABILITY_COMMAND = "elevation availability"
 # The CRS Kartograf measures each country's part of an area in: EPSG:2180 for
@@ -323,10 +331,12 @@ def check(
     """Plan a run of a command in the store at ``root`` (``check_command``).
 
     With Archiwista's own metadata cache (``METADATA_CACHE_FILE`` in
-    ``cache_dir``), never ``cache=True``. A root a run would refuse as a
-    conflict (``nested_store``, ``not_empty``) is the one position of
-    Kartograf's plan, its reason in ``conflict``. Kartograf's plan names no size
-    of a position (KC-3), so every ``size_bytes`` is ``None``.
+    ``cache_dir``), never ``cache=True``, whose answers younger than
+    ``PLAN_REFRESH_TTL_S`` (the availability report's) are not asked again.
+    A root a run would refuse as a conflict (``nested_store``, ``not_empty``)
+    is the one position of Kartograf's plan, its reason in ``conflict``.
+    Kartograf's plan names no size of a position (KC-3), so every
+    ``size_bytes`` is ``None``.
 
     Raises
     ------
@@ -338,7 +348,9 @@ def check(
         The check of the command is no plan of a store (``no_plan``):
         ``project download`` answers with the check of a project.
     """
-    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
+    cache = MetadataCache(
+        cache_dir / METADATA_CACHE_FILE, refresh_ttl_seconds=PLAN_REFRESH_TTL_S
+    )
     try:
         result = check_command(
             command,

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import kartograf
 import pytest
+from kartograf.cache.defaults import open_cache
 
 import archiwista.adapter.kartograf.actions as actions_module
 from archiwista.adapter.kartograf import load
@@ -114,6 +115,9 @@ def test_the_plan_of_a_download_comes_back_in_archiwistas_types(
 ) -> None:
     """Kartograf gets the store's root and Archiwista's cache, never ``cache=True``.
 
+    The cache reads, even refreshed as Kartograf's check refreshes it, an answer
+    the source gave a moment ago (the availability report's, Kartograf ADR-056).
+
     Every status and label comes back as Kartograf gave it; its plan names no
     size, so none is known and the total says so.
     """
@@ -162,6 +166,13 @@ def test_the_plan_of_a_download_comes_back_in_archiwistas_types(
     cache = call.pop("cache")
     assert isinstance(cache, kartograf.MetadataCache)
     assert cache.db_path == tmp_path / "cache" / "kartograf" / "metadata.db"
+    cache.set_index_area("wfs-types|https://index", ["gugik:SkorowidzNMT2025"])
+    with open_cache(cache, force=True) as refreshing:
+        assert refreshing is not None
+        assert refreshing.get_index_area("wfs-types|https://index") == [
+            "gugik:SkorowidzNMT2025"
+        ]
+    cache.close()
     assert call == {
         "command": "elevation download",
         "options": NMT,

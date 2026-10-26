@@ -13,13 +13,14 @@ authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
     # Commit of the Kartograf branch `feature/data-output` (REL-5.3): the store
     # root `root`, the marker `kartograf-store.json`, the default root
-    # (`store_root()`), `kartograf.testing` (ADR-054) and `find_sheet_outlines`
-    # (PL-2000 zones of powiats, Kartograf ADR-055) have no release yet; the
-    # commit is on GitHub.
+    # (`store_root()`), `kartograf.testing` (ADR-054), `find_sheet_outlines`
+    # (PL-2000 zones of powiats, Kartograf ADR-055) and the refresh TTL of the
+    # metadata cache with the index answers shared by the availability report and
+    # the plans (Kartograf ADR-056) have no release yet; the commit is on GitHub.
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@34fab30b267396ebb5be392d6439c03571025b20",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@70ef08ef60db7eed99cbc246c14de2a1ea3775d8",
     "fastapi>=0.115,<1",
     "uvicorn>=0.34,<1",
     "pydantic>=2,<3",

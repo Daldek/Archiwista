@@ -433,6 +433,13 @@ command-line interface may change.
 
 ### Changed
 
+- The plan of a row of an availability report ("Pobierz…") right after the report asks GUGiK
+  nothing: the adapter's `check` opens Archiwista's metadata cache with
+  `refresh_ttl_seconds=PLAN_REFRESH_TTL_S` (one hour), and Kartograf `70ef08ef` (ADR-056)
+  plans NMT, NMPT and LAZ hints from the index answers the report cached; a report older than
+  the hour, the CZ part and every run still ask the source. Kartograf's recorded Kraków
+  report: 288 requests for the checks of its 34 hints before, none after, the same positions.
+  (ADR-036 erratum 1)
 - `GET /map/sheets` items carry `zone`: the PL-2000 zone (5-8) of the powiats the sheet lies
   over, `null` in PL-1992; the `geometry` of a PL-2000 sheet that a zone boundary cuts is its
   part inside its zone (a `Polygon` or `MultiPolygon`). The adapter's `sheet_grid` takes
