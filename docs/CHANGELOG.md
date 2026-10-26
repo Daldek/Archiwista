@@ -237,6 +237,10 @@ command-line interface may change.
   commands. `GET /sources` and `archiwista sources --json` list for each producer the
   products whose availability at the source it checks (`availability`). (SPEC 6.3,
   ADR-035)
+- `POST` and `GET /session` say whether the session may write the stores now
+  (`store_write`: the role `store_writer` or the setting `store_write_for_all`, read at
+  each request like `roles`): the permission `POST /jobs` asks of a download, known to a
+  client before it asks. (SPEC 9.2, 10.2)
 
 ### Changed
 

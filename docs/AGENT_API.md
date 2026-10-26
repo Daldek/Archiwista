@@ -84,9 +84,11 @@ The server listens on `127.0.0.1` only (port `8090` by default, the setting
 3. The agent exchanges the token for a session: `POST /api/v1/session` with the
    body `{"token": "…"}`. The answer `200` sets the cookie `archiwista_session`
    (`HttpOnly`) and returns `{"actor": "local", "kind": "agent", "roles":
-   ["admin", "store_writer"], "label": "…", "csrf_token": "…", "expires_at":
-   "…"}`: `csrf_token` appears only here, and `roles` are the roles of the
-   actor (an agent has the roles of the person who issued the token).
+   ["admin", "store_writer"], "store_write": true, "label": "…", "csrf_token":
+   "…", "expires_at": "…"}`: `csrf_token` appears only here, `roles` are the
+   roles of the actor (an agent has the roles of the person who issued the
+   token), and `store_write` says whether the session may write the stores (a
+   `download`: the role `store_writer` or the setting `store_write_for_all`).
 4. **Every** request to `/api`, `GET` too, carries the session cookie and the
    header `X-Archiwista-CSRF` equal to `csrf_token`; without the header or with
    another token the answer is `403 forbidden` (`details.reason`
@@ -127,9 +129,10 @@ Rules of the session:
   agent tokens. Disabling or deleting an account ends its sessions, and a
   revoked role stops working at the next request.
 - `GET /session` returns the state of the session (without `csrf_token`) with
-  the roles read at this request; `DELETE /session` ends it. An agent does not
-  issue tokens for further sessions (`POST /session/tokens` → `403 forbidden`,
-  `permission_denied`): the owner gives a new token (`archiwista token`).
+  the roles and `store_write` read at this request; `DELETE /session` ends it.
+  An agent does not issue tokens for further sessions (`POST /session/tokens`
+  → `403 forbidden`, `permission_denied`): the owner gives a new token
+  (`archiwista token`).
 - The body of a request is at most 1 MiB (token exchange: 4 KiB; area files:
   50 MB), otherwise `400 validation_error` (`request_too_large`).
 

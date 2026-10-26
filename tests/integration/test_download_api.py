@@ -182,7 +182,9 @@ def test_a_download_needs_the_permission_to_write_the_stores(
 ) -> None:
     """Without it: `403 permission_denied` and no job; a plan needs none.
 
-    An agent acts with the roles of the person who minted its token.
+    An agent acts with the roles of the person who minted its token. The
+    session says beforehand what the route decides (`store_write`), so the
+    interface shows the download disabled instead of offering a refusal.
     """
     # Arrange
     paths = action_paths(tmp_path)
@@ -195,12 +197,14 @@ def test_a_download_needs_the_permission_to_write_the_stores(
         person = api.session(principal(api.state, "other"), token=token)
 
         # Act
+        session = person.request("GET", "/session")
         checked = person.request("POST", "/jobs", json=CHECK_BODY)
         answered = person.request("POST", "/jobs", json=DOWNLOAD_BODY)
         kinds = sorted(job.kind for job in jobs.list().items)
     validated = [call for call in standin.CALLS if call[0] == "validate_command"]
 
     # Assert
+    assert session.json()["store_write"] is allowed
     assert checked.status_code == 202, checked.text
     if allowed:
         assert answered.status_code == 202, answered.text

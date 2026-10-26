@@ -4,9 +4,10 @@
 ``Origin`` rules; it answers the session's CSRF token, which every other
 ``/api`` request carries in ``X-Archiwista-CSRF`` next to the session cookie
 (SPEC 10.1). ``GET`` shows the session without that token, with the roles
-its principal has now (the interface offers administrators' actions by
-them), ``DELETE`` ends it, and ``POST /api/v1/session/tokens`` issues a
-one-time token for an agent, which an agent's own session may not do.
+its principal has now (the interface offers administrators' actions by them)
+and whether it may write the stores (a download), ``DELETE`` ends it, and
+``POST /api/v1/session/tokens`` issues a one-time token for an agent, which
+an agent's own session may not do.
 """
 
 from collections.abc import Callable
@@ -17,8 +18,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from archiwista.api.dependencies import authorizer
 from archiwista.api.errors import ApiError
 from archiwista.auth import Principal, PrincipalKind
+from archiwista.auth.authorize import Authorizer
 from archiwista.errors import PermissionDeniedError
 from archiwista.messages import message
 from archiwista.security import (
@@ -41,6 +44,7 @@ _STATE_EXAMPLE: dict[str, Any] = {
     "actor": "local",
     "kind": "local_owner",
     "roles": ["admin", "store_writer"],
+    "store_write": True,
     "label": "3f9c1a7e",
     "expires_at": "2026-10-19T12:00:00Z",
 }
@@ -84,6 +88,14 @@ class SessionState(BaseModel):
             " (accounts, settings, every project's data folder), `store_writer`;"
             " an agent has those of `actor`. The owner of a local installation"
             " has both."
+        )
+    )
+    store_write: bool = Field(
+        description=(
+            "Whether `actor` may write the stores now (a `download` job): the role"
+            " `store_writer` or the setting `store_write_for_all`, read again for"
+            " each request like `roles`. Without it `POST /jobs` refuses a"
+            " download with `403 permission_denied`."
         )
     )
     label: str = Field(
@@ -140,11 +152,14 @@ class OneTimeToken(BaseModel):
     expires_at: datetime = Field(description="End of validity (5 minutes).")
 
 
-def _state(session: Session, principal: Principal) -> SessionState:
+def _state(
+    session: Session, principal: Principal, decisions: Authorizer
+) -> SessionState:
     return SessionState(
         actor=session.principal_id,
         kind=session.kind,
         roles=sorted(principal.roles),
+        store_write=decisions.can(principal, "store.write"),
         label=session.label,
         expires_at=session.expires_at,
     )
@@ -190,7 +205,8 @@ def exchange_token(
     set_session_cookie(response, session_id)
     on_redeem(request, grant.token_kind)
     return NewSession(
-        **_state(session, principal).model_dump(), csrf_token=session.csrf_token
+        **_state(session, principal, authorizer(request)).model_dump(),
+        csrf_token=session.csrf_token,
     )
 
 
@@ -198,14 +214,16 @@ def exchange_token(
 async def read_session(
     session: Annotated[Session, Depends(require_session)],
     principal: Annotated[Principal, Depends(current_principal)],
+    decisions: Annotated[Authorizer, Depends(authorizer)],
 ) -> SessionState:
     """Return who acts in the session, how, with which roles, its label and end.
 
-    The roles are those of this request: a role granted or taken away since
-    the session started shows at once. The CSRF token is not repeated: the
-    request already carries it.
+    The roles, and whether the session may write the stores, are those of
+    this request: a role or a setting changed since the session started
+    shows at once. The CSRF token is not repeated: the request already
+    carries it.
     """
-    return _state(session, principal)
+    return _state(session, principal, decisions)
 
 
 @router.delete("", status_code=204, response_class=Response)

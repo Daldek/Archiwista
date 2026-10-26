@@ -3050,7 +3050,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | Method and path | What it does |
 |---|---|
 | `POST /session` | exchange of a one-time token for a session (`HttpOnly` cookie) and a CSRF token sent with every request (10.1); only here does the response contain the token |
-| `GET /session` | session state: actor (`actor`), kind (`kind`), the actor's roles read on every request (`roles`; the interface uses them to show administrator actions), label (`label`), expiry — without the CSRF token |
+| `GET /session` | session state: actor (`actor`), kind (`kind`), the actor's roles read on every request (`roles`; the interface uses them to show administrator actions), whether the session may write the stores (`store_write`: the role `store_writer` or the setting `store_write_for_all`, read on every request; the interface shows a download disabled with its reason without it), label (`label`), expiry — without the CSRF token |
 | `DELETE /session` | logout: ends the session and removes the cookie |
 | `POST /session/tokens` | one-time agent session token, valid for 5 min (10.1); an agent session gets `403 permission_denied` |
 | `GET /stores` | stores, availability, statistics |
