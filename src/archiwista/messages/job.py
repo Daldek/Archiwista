@@ -301,4 +301,26 @@ MESSAGES = {
             " koniec."
         ),
     ),
+    "cancel_finished": Text(
+        'Job "{job}" has already ended ({state}); there is nothing to cancel.',
+        "Zadanie „{job}” już się zakończyło ({state}); nie ma czego anulować.",
+    ),
+    "retry_succeeded": Text(
+        'Job "{job}" succeeded; there is nothing to retry.',
+        "Zadanie „{job}” zakończyło się powodzeniem; nie ma czego ponawiać.",
+    ),
+    "retry_active": Text(
+        'Job "{job}" has not ended yet ({state}); retry it after it ends.',
+        "Zadanie „{job}” jeszcze się nie zakończyło ({state}); ponów je po jego końcu.",
+    ),
+    "no_log": Text(
+        (
+            'Job "{job}" has no log: it never started its worker, or its log went'
+            " with the old logs (kept 90 days and up to 1 GB)."
+        ),
+        (
+            "Zadanie „{job}” nie ma dziennika: nie uruchomiło procesu roboczego albo"
+            " jego dziennik usunięto z dawnymi (trzymane są 90 dni i do 1 GB)."
+        ),
+    ),
 }

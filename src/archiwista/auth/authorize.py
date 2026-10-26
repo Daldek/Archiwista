@@ -23,6 +23,8 @@ Rules (v0.1, ``project.write`` since v0.2):
   (``public``: everyone, ``private``: administrators);
 - ``store.write`` needs the ``store_writer`` role or the setting
   ``store_write_for_all`` (enforced from v0.3);
+- ``job.cancel`` (v0.3) is for whoever started the job (its ``actor``) and
+  administrators;
 - an ``agent`` acts with the roles, groups and id of the principal that
   minted its token, read again for each request (``session_principal``), so
   it may do exactly what they may now.
@@ -52,6 +54,7 @@ type Action = Literal[
     "groups.manage",
     "settings.write",
     "store.write",
+    "job.cancel",
 ]
 
 ACTIONS: tuple[Action, ...] = (
@@ -62,6 +65,7 @@ ACTIONS: tuple[Action, ...] = (
     "groups.manage",
     "settings.write",
     "store.write",
+    "job.cancel",
 )
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
@@ -170,16 +174,18 @@ class Authorizer:
             Who acts.
         action : Action
             ``project.view``, ``project.share``, ``project.write``,
-            ``users.manage``, ``groups.manage``, ``settings.write`` or
-            ``store.write``.
+            ``users.manage``, ``groups.manage``, ``settings.write``,
+            ``store.write`` or ``job.cancel``.
         resource : str or None, optional
             For ``project.*``: the project's access key (``access_key`` of
-            its directory, ``ProjectRef.access_key``); unused otherwise.
+            its directory, ``ProjectRef.access_key``); for ``job.cancel``:
+            the job's ``actor``; unused otherwise.
 
         Raises
         ------
         ValueError
-            A project action without a project.
+            A project action without a project, ``job.cancel`` without the
+            job's actor.
         """
         if action in _ADMIN_ACTIONS:
             return ADMIN in principal.roles
@@ -188,9 +194,11 @@ class Authorizer:
                 STORE_WRITER in principal.roles or self._settings().store_write_for_all
             )
         if resource is None:
-            raise ValueError(f"{action} needs the project's access key")
+            raise ValueError(f"{action} needs the project's access key or job's actor")
         if ADMIN in principal.roles:
             return True
+        if action == "job.cancel":
+            return principal.id == resource
         access = self.state.project_access(resource)
         if action in ("project.share", "project.write"):
             return _owns(principal, access)

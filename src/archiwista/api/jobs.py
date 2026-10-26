@@ -12,7 +12,12 @@ process, ``archiwista reindex`` too. ``GET /jobs/{job}/events`` streams a
 job's ``progress``, ``notice`` and ``state`` events as Server-Sent Events:
 the ``id`` of each is its number, a client resumes after ``Last-Event-ID``
 from the events kept in the index, and the stream ends after the final state
-(or when the server stops). What a session sees of the jobs follows their
+(or when the server stops). ``POST /jobs/{job}/cancel`` stops a job that
+waits or runs (whoever started it or an administrator; ``409`` once it has
+ended), ``POST /jobs/{job}/retry`` starts one that did not succeed again as a
+new job of the session (``409`` for one that succeeded or is active), and
+``GET /jobs/{job}/log`` returns the end of its log (ADR-038,
+``archiwista.services.jobs``). What a session sees of the jobs follows their
 scope (plan v0.2 "Zadania", ``JobSupervisor``): a job of a store or of
 versions (``version:`` refs), or of no project at all, everyone sees; one of
 projects only (an ``own_scan`` of a project, a ``snapshot``, a ``preview`` of
@@ -35,6 +40,7 @@ from fastapi.responses import StreamingResponse
 
 from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import (
+    authorizer,
     index_queries,
     settings_service,
     visible_projects,
@@ -48,11 +54,13 @@ from archiwista.api.models import (
     JobDetail,
     JobFilters,
     JobList,
+    JobLog,
     LinkCheckRequest,
     ScanRequest,
 )
 from archiwista.api.slots import checked_project
 from archiwista.auth import Principal, ProjectVisibility
+from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
@@ -65,6 +73,7 @@ from archiwista.jobs import (
 )
 from archiwista.messages import current_language, label, message
 from archiwista.security import current_principal
+from archiwista.services import jobs as job_controls
 
 router = APIRouter(tags=["jobs"])
 
@@ -246,14 +255,6 @@ async def job_event_stream(
         unwatch()
 
 
-def _job(jobs: JobSupervisor, job: str, visible: ProjectVisibility) -> JobRecord:
-    """Return a job the session sees or refuse with ``404 not_found``."""
-    record = jobs.get(job, visible=visible)
-    if record is None:
-        raise NotFoundError(message("job.not_found", job=job))
-    return record
-
-
 def _accepted(job: JobRecord, response: Response) -> JobDetail:
     """Return a started job, naming where it can be followed."""
     response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
@@ -296,6 +297,66 @@ def _conflicts(*codes: str) -> dict[int | str, dict[str, Any]]:
     }
 
 
+_CANCEL_CONFLICT = (
+    "The job has ended (`details.reason` `job_finished`, the job in `details.job`)."
+)
+_RETRY_CONFLICT = (
+    "The job succeeded (`details.reason` `job_succeeded`) or has not ended"
+    " (`job_active`), the job in `details.job`; or the new job is refused as"
+    " any job of its kind: another job writes the store's index (`conflict`)"
+    " or offline mode is on (`offline_mode`)."
+)
+
+
+def _state_conflicts(
+    description: str, *reasons: str
+) -> dict[int | str, dict[str, Any]]:
+    """Return the OpenAPI ``409`` of a job control refusing a job in its state."""
+    ended = {"id": "3f9c1a7e5b2d4c60", "kind": "download", "state": "succeeded"}
+    running = {**ended, "state": "running"}
+    examples = {
+        "job_finished": problem_example(
+            "conflict",
+            message(
+                "job.cancel_finished",
+                job=ended["id"],
+                state=label("job.state", ended["state"]),
+            ),
+            reason="job_finished",
+            details={"job": ended},
+        ),
+        "job_succeeded": problem_example(
+            "conflict",
+            message("job.retry_succeeded", job=ended["id"]),
+            reason="job_succeeded",
+            details={"job": ended},
+        ),
+        "job_active": problem_example(
+            "conflict",
+            message(
+                "job.retry_active",
+                job=running["id"],
+                state=label("job.state", running["state"]),
+            ),
+            reason="job_active",
+            details={"job": running},
+        ),
+    }
+    return {
+        409: {
+            "description": description,
+            "content": {
+                PROBLEM_MEDIA_TYPE: {
+                    "schema": {"$ref": "#/components/schemas/ProblemDetails"},
+                    "examples": {
+                        reason: {"value": examples[reason]} for reason in reasons
+                    },
+                }
+            },
+        }
+    }
+
+
 _SSE_EXAMPLE = "".join(
     (
         sse_message(1, "state", {"state": "queued"}),
@@ -330,6 +391,7 @@ _Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Streams = Annotated[JobStreams, Depends(job_streams)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
+_Authorizer = Annotated[Authorizer, Depends(authorizer)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"])]
 
@@ -444,7 +506,7 @@ def get_job(
     A job only of projects the session does not see answers `404`, as an
     unknown one; a `preview` job lists only the refs of visible projects.
     """
-    return JobDetail.of(_job(jobs, job, visible))
+    return JobDetail.of(job_controls.visible_job(jobs, job, visible))
 
 
 @router.get(
@@ -499,7 +561,7 @@ def get_job_events(
     `404`; a `preview` job's final state lists the failures of visible refs.
     """
     after = last_event_id or 0
-    record = _job(jobs, job, visible)
+    record = job_controls.visible_job(jobs, job, visible)
     finished = record.state in FINISHED_STATES
     if finished and not jobs.events(job, after=after, visible=visible):
         return Response(status_code=204)
@@ -507,3 +569,97 @@ def get_job_events(
         job_event_stream(jobs, streams, job, visible=visible, after=after),
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post(
+    "/jobs/{job}/cancel",
+    response_model=JobDetail,
+    status_code=202,
+    responses={
+        **problem_responses(403, 404),
+        **_state_conflicts(_CANCEL_CONFLICT, "job_finished"),
+    },
+)
+def cancel_job(
+    job: _JobId,
+    principal: _Principal,
+    visible: _Visible,
+    decisions: _Authorizer,
+    jobs: _Jobs,
+    response: Response,
+) -> JobDetail:
+    """Cancel a job that waits or runs; answer `202` with the job as it is then.
+
+    A waiting job is `cancelled` at once, without a worker. A running one is
+    interrupted as Ctrl+C would and ends `cancelled` when its worker has
+    stopped, within 30 s (then it is killed); a download publishes no half
+    version and its finished files are read into the index. A job another
+    process runs (`archiwista jobs start` at the terminal) is stopped by
+    that process within a second. Follow the end with `GET
+    /jobs/{job}/events`. Only whoever started the job (`actor`) or an
+    administrator cancels it (`403 permission_denied`); a job that has ended
+    is `409` (`job_finished`); a job only of projects the session does not
+    see is `404`.
+    """
+    record = job_controls.cancel(
+        jobs, decisions, job_id=job, actor=principal, visible=visible
+    )
+    return _accepted(record, response)
+
+
+@router.post(
+    "/jobs/{job}/retry",
+    response_model=JobDetail,
+    status_code=202,
+    responses={
+        **problem_responses(403, 404),
+        **_state_conflicts(_RETRY_CONFLICT, "job_succeeded", "job_active"),
+    },
+)
+def retry_job(
+    job: _JobId,
+    principal: _Principal,
+    visible: _Visible,
+    decisions: _Authorizer,
+    jobs: _Jobs,
+    queries: _Queries,
+    response: Response,
+) -> JobDetail:
+    """Start a job that did not succeed again; answer `202` with the new job.
+
+    A job that ended `partial`, `failed`, `interrupted` (the server stopped
+    meanwhile) or `cancelled` is submitted again with its kind, store and
+    `params` as the session sees them, as a new job of the session (its
+    `actor`), with `Location: /api/v1/jobs/{new job}`. A download fetches
+    only what its store still lacks: units it finished are not fetched
+    again. What the kind needs at its start is asked again: a download needs
+    the role `store_writer` or the setting `store_write_for_all`, a snapshot
+    the project's owner or an administrator (`403 permission_denied`). A job
+    that succeeded or has not ended is `409` (`job_succeeded`,
+    `job_active`); the new job is refused as any job of its kind (another
+    job writing the store's index, offline mode: `409`; a store no longer
+    configured: `404`). A job only of projects the session does not see is
+    `404`.
+    """
+    record = job_controls.retry(
+        jobs, decisions, queries, job_id=job, actor=principal, visible=visible
+    )
+    return _accepted(record, response)
+
+
+@router.get(
+    "/jobs/{job}/log", response_model=JobLog, responses=problem_responses(403, 404)
+)
+def get_job_log(
+    job: _JobId, principal: _Principal, visible: _Visible, jobs: _Jobs
+) -> JobLog:
+    """Return the end of a job's log: its worker's standard error, in English.
+
+    The last MiB at most (`truncated`), read as the job runs. A job that never
+    started its worker, or whose log went with the old logs (90 days, 1 GB),
+    is `404`, as is a job only of projects the session does not see; a
+    `preview` job that also builds files of projects the session does not
+    see is `403 permission_denied`.
+    """
+    tail = job_controls.log(jobs, job_id=job, visible=visible)
+    return JobLog.of(job, tail)

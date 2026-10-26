@@ -1449,6 +1449,10 @@ disappeared (5.8).
   does `.kartograf-project.lock` remain, which Kartograf says to remove
   manually — Archiwista recognizes this state and shows instructions (section
   14). After cancellation, Archiwista refreshes the slots the job concerned.
+  A job that another process supervises (a server's job cancelled at the
+  terminal, or the reverse) is cancelled by that process: the request is a
+  file `<jobs>/<id>.cancel` that its supervisor carries out within half a
+  second (ADR-038).
   IMGWTools jobs work the same way: `cancel` (IMGW-11), and until then an
   interrupt signal; writing through `.incoming/` with a sidecar that commits the version
   (IMGW-2) does not leave half a version: an interrupt or killing the process during
@@ -3099,8 +3103,8 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /jobs` | background job: `check`, `download`, `series`, `project`, `compose`, `export`, `preview`; command with `producer` (9.1) |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; a hidden project job → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID` |
-| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel, retry |
-| `GET /jobs/{id}/log` | job log |
+| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`) (ADR-038) |
+| `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
 | `GET /projects`, `POST /projects` | list; registration of an existing project (`path`) or a new one (`path`, `producer`, `root` → the producer's `init_project`; one member for both producers: `root` of Kartograf, `store_dir` of IMGWTools underneath) |
 | `GET /projects/{id}` | project jobs of both producers (`producer` field), pins, state from the index |
 | `GET /projects/{id}/status` | producers' `get_project_status` (no network, fast) |

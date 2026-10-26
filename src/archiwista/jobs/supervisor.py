@@ -27,6 +27,12 @@ store runs too starts with a warning notice naming that job). At most half
 the processors' worth of workers run, the rest wait in
 the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
 CTRL_BREAK_EVENT to its process group on Windows) and kills it after 30 s.
+A job that another supervisor waits for or runs, in this process or in
+another one (a server's job cancelled at the terminal, or the reverse), is
+cancelled through a request file ``<jobs>/<id>.cancel``: each supervisor
+looks for the requests of its own jobs every ``CANCEL_POLL_S`` and carries
+them out, and the file goes when the job ends. ``log`` reads the end of a
+job's log (``LogTail``).
 
 A job whose supervising process is gone (a server stopped or crashed) becomes
 ``interrupted`` as soon as a supervisor meets it: every supervising process
@@ -139,6 +145,10 @@ _PROJECT_REFS = ("file", "snapshot")
 _VERSION_REF = "version:"
 LOG_MAX_AGE = timedelta(days=90)
 LOG_MAX_BYTES = 1024**3
+# Bytes of the end of a job's log that ``log`` reads.
+LOG_TAIL_BYTES = 1024**2
+# Seconds between two looks of a supervisor for cancel requests of its jobs.
+CANCEL_POLL_S = 0.5
 # Routine scans (scheduled, incremental, nothing changed) older than this go.
 ROUTINE_SCAN_MAX_AGE = timedelta(hours=48)
 # ``-P``: the working directory (the jobs directory) is not on ``sys.path``.
@@ -262,6 +272,27 @@ class JobPage:
 
     items: tuple[JobRecord, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class LogTail:
+    """The end of a job's log (``JobSupervisor.log``).
+
+    Attributes
+    ----------
+    text : str
+        The log read as UTF-8 (a byte that is none is replaced): all of it,
+        or its last ``LOG_TAIL_BYTES`` from the first line that starts in
+        them.
+    size_bytes : int
+        Size of the whole log when it was read; it grows while the job runs.
+    truncated : bool
+        Whether ``text`` leaves the start of the log out.
+    """
+
+    text: str
+    size_bytes: int
+    truncated: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +598,8 @@ class JobSupervisor:
         self._unsubscribe: Callable[[], None] | None = None
         self._synced: AppSettings | None = None
         self._phase: Literal["new", "open", "closing", "closed"] = "new"
+        self._stopping = threading.Event()
+        self._watcher: threading.Thread | None = None
 
     def __enter__(self) -> Self:
         """Start the supervisor for a ``with`` block."""
@@ -585,7 +618,8 @@ class JobSupervisor:
     def start(self) -> int:
         """Claim this process's jobs, follow the settings and recover jobs.
 
-        Old jobs and logs are pruned first (``prune``).
+        Old jobs and logs are pruned first (``prune``); then a thread looks
+        for the cancel requests of this supervisor's jobs (``cancel``).
 
         Returns
         -------
@@ -604,6 +638,10 @@ class JobSupervisor:
             self.prune()
             self._sync(self._settings.get())
             self._unsubscribe = self._settings.subscribe(self._settings_changed)
+            self._watcher = threading.Thread(
+                target=self._watch_cancels, name="archiwista-job-cancels", daemon=True
+            )
+            self._watcher.start()
         return self.recover()
 
     def prune(self, now: datetime | None = None) -> int:
@@ -613,7 +651,8 @@ class JobSupervisor:
         succeeded without changing the index, go after 48 hours, except the
         newest of each store. Other finished jobs and logs go after 90 days
         (the last finished job of each store and kind stays), and the oldest
-        logs beyond 1 GB. The scheduler calls it every hour.
+        logs beyond 1 GB. The scheduler calls it every hour. Cancel requests
+        of jobs that are not active go too.
 
         Parameters
         ----------
@@ -632,6 +671,7 @@ class JobSupervisor:
             routine += _prune_routine_own_scans(db, self._paths.jobs_dir, now=moment)
             _prune_logs(self._paths.jobs_dir, now=moment)
             _prune_jobs(db, now=moment)
+            _prune_cancel_requests(db, self._paths.jobs_dir)
         return routine
 
     def close(self) -> None:
@@ -646,6 +686,7 @@ class JobSupervisor:
             if self._phase != "open":
                 return
             self._phase = "closing"
+            self._stopping.set()
             if self._unsubscribe is not None:
                 self._unsubscribe()
             stopped = _interrupted(message("job.interrupted_stop"))
@@ -655,6 +696,8 @@ class JobSupervisor:
             for run in runs:
                 run.stop = True
                 self._interrupt(run)
+        if self._watcher is not None:
+            self._watcher.join()
         for run in runs:
             if run.reader is not None:
                 run.reader.join(self._stop_timeout_s + 10)
@@ -801,12 +844,22 @@ class JobSupervisor:
         return self._record(joined or job_id)
 
     def cancel(self, job_id: str) -> JobRecord:
-        """Cancel a job of this supervisor.
+        """Cancel a job.
 
-        A waiting job ends at once; a running worker is interrupted (and
-        killed after ``stop_timeout_s``) and the job ends ``cancelled`` when
-        the worker is gone. A finished job, or one another process
-        supervises, is returned unchanged.
+        A job waiting under this supervisor ends at once; a running worker of
+        this supervisor is interrupted (and killed after ``stop_timeout_s``)
+        and its job ends ``cancelled`` when the worker is gone. A job that
+        another live supervisor waits for or runs, of this process or of
+        another one, gets a cancel request (``<jobs>/<id>.cancel``) that its
+        supervisor carries out the same way within ``CANCEL_POLL_S``. A job
+        whose supervising process is gone ends ``interrupted`` first
+        (``recover``); a finished job is returned unchanged.
+
+        Returns
+        -------
+        JobRecord
+            The job right after the request: ``cancelled`` when it waited
+            here, otherwise as it is until its worker or supervisor stops it.
 
         Raises
         ------
@@ -814,18 +867,36 @@ class JobSupervisor:
             No job has this id.
         """
         with self._lock:
-            waiting = next(
-                (item for item in self._queue if item.job_id == job_id), None
-            )
-            if waiting is not None:
-                self._queue.remove(waiting)
-                error = JobError(CODE_CANCELLED, message("job.cancelled"))
-                self._end_waiting(waiting, "cancelled", error)
-            run = self._running.get(job_id)
-            if run is not None and not run.cancel:
-                run.cancel = True
-                self._interrupt(run)
-        return self._record(job_id)
+            if self._owns(job_id):
+                self._cancel_own(job_id)
+                return self._record(job_id)
+        self.recover()
+        record = self._record(job_id)
+        if record.state not in ACTIVE_STATES:
+            return record
+        request = _cancel_path(self._paths.jobs_dir, job_id)
+        request.touch()
+        current = self._record(job_id)
+        if current.state not in ACTIVE_STATES:  # it ended meanwhile
+            request.unlink(missing_ok=True)
+        return current
+
+    def log(self, job_id: str) -> LogTail | None:
+        """Return the end of a job's log: its worker's standard error.
+
+        Returns
+        -------
+        LogTail or None
+            The log, its last ``LOG_TAIL_BYTES`` at most; ``None`` when the
+            job has none: it never started a worker, or its log was pruned.
+
+        Raises
+        ------
+        NotFoundError
+            No job has this id.
+        """
+        self._record(job_id)
+        return _read_log(_log_path(self._paths.jobs_dir, job_id))
 
     def wait(self, job_id: str, timeout: float | None = None) -> JobRecord:
         """Wait until a job of this supervisor ends (or ``timeout`` passes).
@@ -924,6 +995,24 @@ class JobSupervisor:
         if not _Scope.of(record.store, record.params).seen_by(seen):
             return None
         return _redacted(record, seen)
+
+    def sees_whole(self, job_id: str, *, visible: ProjectVisibility) -> bool:
+        """Whether one seeing the projects ``visible`` sees all of a job's data.
+
+        A job of a store, of versions or of one project is seen whole by
+        whoever sees it; a ``preview`` job only when every project of its
+        refs is seen (``get`` shows it without the others). ``False`` for an
+        unknown job.
+        """
+        with self._reading() as connection:
+            row = connection.execute(
+                "SELECT store, params FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            seen = _seen_projects(connection, visible)
+        scope = _Scope.of(row["store"], json.loads(row["params"]))
+        return seen is None or scope.projects <= seen
 
     def events(
         self,
@@ -1101,6 +1190,34 @@ class JobSupervisor:
         return job_id in self._running or any(
             item.job_id == job_id for item in self._queue
         )
+
+    def _cancel_own(self, job_id: str) -> None:
+        """Cancel a job waiting or running under this supervisor (lock held)."""
+        waiting = next((item for item in self._queue if item.job_id == job_id), None)
+        if waiting is not None:
+            self._queue.remove(waiting)
+            error = JobError(CODE_CANCELLED, message("job.cancelled"))
+            self._end_waiting(waiting, "cancelled", error)
+        run = self._running.get(job_id)
+        if run is not None and not run.cancel:
+            run.cancel = True
+            self._interrupt(run)
+
+    def _watch_cancels(self) -> None:
+        """Carry out the cancel requests of this supervisor's jobs (``cancel``)."""
+        while not self._stopping.wait(CANCEL_POLL_S):
+            with self._lock:
+                if self._phase != "open":
+                    return
+                owned = [item.job_id for item in self._queue]
+                owned += [key for key, run in self._running.items() if not run.cancel]
+                for job_id in owned:
+                    if not _cancel_path(self._paths.jobs_dir, job_id).exists():
+                        continue
+                    try:
+                        self._cancel_own(job_id)
+                    except Exception:  # the next look tries again
+                        logger.exception("Cancelling job %s failed", job_id)
 
     def _dispatch(self) -> None:
         """Start waiting jobs, oldest first, while there is room."""
@@ -1295,6 +1412,7 @@ class JobSupervisor:
             finally:
                 self._running.pop(run.job_id, None)
                 _set_active(run.job_id, active=False)
+                _drop_cancel_request(self._paths.jobs_dir, run.job_id)
                 for stream in (run.process.stdin, run.process.stdout, run.log):
                     if stream is not None:
                         _close_quietly(stream)
@@ -1308,6 +1426,7 @@ class JobSupervisor:
         with _transaction(db):
             event = _finish_row(db, waiting.job_id, state, error, now)
         _set_active(waiting.job_id, active=False)
+        _drop_cancel_request(self._paths.jobs_dir, waiting.job_id)
         self._publish(event)
         self._changed.notify_all()
 
@@ -1964,6 +2083,44 @@ def _decode_cursor(cursor: str | None, fingerprint: str) -> tuple[str, str] | No
 
 def _log_path(jobs_dir: Path, job_id: str) -> Path:
     return jobs_dir / f"{job_id}.log"
+
+
+def _read_log(path: Path, max_bytes: int = LOG_TAIL_BYTES) -> LogTail | None:
+    """Return the end of a log from the first line starting in it; ``None``: none."""
+    try:
+        with path.open("rb") as handle:
+            size = os.fstat(handle.fileno()).st_size
+            start = max(0, size - max_bytes)
+            handle.seek(start)
+            data = handle.read(size - start)
+    except FileNotFoundError:
+        return None
+    if start:
+        _, newline, rest = data.partition(b"\n")
+        if newline:
+            data = rest
+    return LogTail(data.decode("utf-8", "replace"), size, start > 0)
+
+
+def _cancel_path(jobs_dir: Path, job_id: str) -> Path:
+    return jobs_dir / f"{job_id}.cancel"
+
+
+def _drop_cancel_request(jobs_dir: Path, job_id: str) -> None:
+    """Remove the cancel request of a job that ended, if it has one."""
+    with suppress(OSError):
+        _cancel_path(jobs_dir, job_id).unlink(missing_ok=True)
+
+
+def _prune_cancel_requests(db: sqlite3.Connection, jobs_dir: Path) -> None:
+    """Remove the cancel requests of jobs that are not active (any more)."""
+    active = {
+        row["id"]
+        for row in db.execute(f"SELECT id FROM jobs WHERE state IN {_ACTIVE_SQL}")
+    }
+    for path in jobs_dir.glob("*.cancel"):
+        if path.stem not in active:
+            _drop_cancel_request(jobs_dir, path.stem)
 
 
 def _prune_logs(jobs_dir: Path, *, now: datetime) -> None:

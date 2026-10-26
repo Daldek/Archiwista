@@ -1334,12 +1334,14 @@ MESSAGES = {
     ),
     "jobs_help": Text(
         (
-            "Jobs of producers' commands on a store: start one and read the plan a"
-            " check kept (--json: the models of /api/v1/jobs)."
+            "Background jobs: start a job of a producer's command on a store, list"
+            " and show jobs, cancel or retry one, read its plan and its log (--json:"
+            " the models of /api/v1/jobs)."
         ),
         (
-            "Zadania poleceń producentów na magazynie: uruchomienie i odczyt planu,"
-            " który zachowało sprawdzenie (--json: modele z /api/v1/jobs)."
+            "Zadania w tle: uruchomienie zadania polecenia producenta na magazynie,"
+            " lista i podgląd zadań, anulowanie i ponowienie zadania, odczyt jego"
+            " planu i dziennika (--json: modele z /api/v1/jobs)."
         ),
     ),
     "jobs_start_help": Text(
@@ -1397,6 +1399,95 @@ MESSAGES = {
     "jobs_job_help": Text(
         "Job identifier (the id of POST /api/v1/jobs).",
         "Identyfikator zadania (id z POST /api/v1/jobs).",
+    ),
+    "jobs_list_help": Text(
+        (
+            "Lists the jobs newest first, with who started each (--json: JobList"
+            " model of GET /api/v1/jobs)."
+        ),
+        (
+            "Wypisuje zadania od najnowszych, z tym, kto uruchomił każde (--json:"
+            " model JobList z GET /api/v1/jobs)."
+        ),
+    ),
+    "jobs_list_kind_help": Text(
+        "Only jobs of this kind, e.g. scan, download.",
+        "Tylko zadania tego rodzaju, np. scan, download.",
+    ),
+    "jobs_list_store_help": Text(
+        "Only jobs of this store, also one no longer configured.",
+        "Tylko zadania tego magazynu, także już nieskonfigurowanego.",
+    ),
+    "jobs_list_state_help": Text(
+        "Only jobs in this state, e.g. running, failed, interrupted.",
+        "Tylko zadania w tym stanie, np. running, failed, interrupted.",
+    ),
+    "jobs_list_project_help": Text(
+        "Only jobs with this project's data.",
+        "Tylko zadania z danymi tego projektu.",
+    ),
+    "jobs_list_limit_help": Text(
+        "Page size.",
+        "Liczba zadań na stronie.",
+    ),
+    "jobs_list_cursor_help": Text(
+        "next_cursor of the previous page of the same filters.",
+        "next_cursor poprzedniej strony z tymi samymi filtrami.",
+    ),
+    "jobs_show_help": Text(
+        "Prints a job: its state, progress, and result or error (--json: JobDetail).",
+        "Wypisuje zadanie: stan, postęp i wynik albo błąd (--json: model JobDetail).",
+    ),
+    "jobs_cancel_help": Text(
+        (
+            "Cancels a job that waits or runs, also one a running server supervises"
+            " (--json: the JobDetail model right after the request)."
+        ),
+        (
+            "Anuluje zadanie, które czeka albo trwa, także nadzorowane przez"
+            " działający serwer (--json: model JobDetail tuż po żądaniu)."
+        ),
+    ),
+    "jobs_retry_help": Text(
+        (
+            "Starts a job that did not succeed again as a new job and follows it to"
+            " its end (--json: the JobDetail model of the new job as it ended)."
+        ),
+        (
+            "Uruchamia ponownie zadanie, które się nie powiodło, jako nowe zadanie"
+            " i śledzi je do końca (--json: model JobDetail nowego zadania po jego"
+            " końcu)."
+        ),
+    ),
+    "jobs_log_help": Text(
+        (
+            "Prints the end of a job's log: its worker's standard error (--json:"
+            " JobLog model)."
+        ),
+        (
+            "Wypisuje koniec dziennika zadania: standardowe wyjście błędów jego"
+            " procesu roboczego (--json: model JobLog)."
+        ),
+    ),
+    "jobs_list_line": Text(
+        "{job}  {kind}: {state}, started by {actor} at {created}",
+        "{job}  {kind}: {state}, uruchomił {actor} {created}",
+    ),
+    "jobs_list_none": Text(
+        "No jobs.",
+        "Brak zadań.",
+    ),
+    "jobs_list_next": Text(
+        "More jobs: --cursor {cursor}",
+        "Dalsze zadania: --cursor {cursor}",
+    ),
+    "jobs_cancel_requested": Text(
+        "Cancelling: the job stops within {seconds} s.",
+        "Anulowanie: zadanie zatrzyma się w ciągu {seconds} s.",
+    ),
+    "jobs_log_truncated": Text(
+        "The log is longer: only its last MiB follows ({size} bytes in all).",
+        "Dziennik jest dłuższy: poniżej tylko ostatni MiB ({size} bajtów w sumie).",
     ),
     "jobs_failed": Text(
         "Cannot run the job",

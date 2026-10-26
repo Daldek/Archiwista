@@ -26,7 +26,8 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
-| store scan, jobs, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `/jobs` |
+| store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
+| background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
 | preview and build, optional PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
 | comparison of the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | years/campaigns and thumbnail of a layer | `archiwista layers --store ID --product PRODUKT --area-id ID [--thumbnail KLUCZ --output FILE.png]` | `GET /local-layers`, `GET /local-layers/thumbnail.png` |
@@ -66,7 +67,8 @@ services as the HTTP routes, as the owner of the local installation
 Without `--json` the commands print a short Polish text for people; an agent
 should always pass `--json`.
 
-The CLI downloads no data and changes no store. The commands `users`,
+The CLI downloads data and writes a store only through a `download` job
+(`jobs start download`, or `jobs retry` of a download). The commands `users`,
 `groups`, `share` and `state` (permission administration) are described by
 `archiwista --help`.
 
@@ -566,6 +568,33 @@ size, never 0) with `size_complete`, and `entries`: `path` below the store root,
 session does not see, one that is no `check`, one still running and one that
 failed are `404`.
 
+A job is controlled by (v0.3; ADR-038):
+
+- `POST /jobs/{id}/cancel` (no body): a job that waits ends `cancelled` at once,
+  without a worker; a running one is interrupted and ends `cancelled` once its
+  worker has stopped, within 30 s. The answer is `202` with the job as it is
+  then (often still `running`): follow its events to the end. A job another
+  process runs (`archiwista jobs start` at a terminal, or a server's job
+  cancelled with `archiwista jobs cancel`) is stopped by that process within a
+  second. Only whoever started the job (`actor`; an agent acts as the person
+  who issued its token) or an administrator may: `403 permission_denied`; a
+  job that has ended is `409 conflict`, reason `job_finished`.
+- `POST /jobs/{id}/retry` (no body): a job that ended `partial`, `failed`,
+  `interrupted` or `cancelled` starts again as a new job of the session with its
+  kind, store and `params` (`202`, `Location` of the new job; the old job stays
+  as it ended). A download fetches only what the store still lacks. One that
+  succeeded is `409`, reason `job_succeeded`; one that waits or runs
+  `job_active`; a download needs `store_writer` again (`403`), a snapshot the
+  project's owner; the new job is refused as any job of its kind (`409` for a
+  store whose index another job writes, offline mode).
+- `GET /jobs/{id}/log`: the end of the job's log, its worker's standard error in
+  English (`JobLog`: `job`, `size_bytes` of the whole log, `truncated` when only
+  its last MiB is given, `text`). A job that never started a worker, or whose
+  log went with the old logs (90 days, 1 GB), is `404`; a `preview` job that
+  also builds files of projects the session does not see is `403`.
+
+A job the session does not see is `404` for all three.
+
 Events flow as SSE from `GET /jobs/{id}/events` (`text/event-stream`). Every
 frame has `id: <sequence number>`, `event: progress|notice|state` and
 `data: <JSON>`:
@@ -627,12 +656,14 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `internal_error` | none | a defect of Archiwista: details are in the job log |
 
 Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
-reason). The CLI's job commands are `archiwista jobs start` (a job of a
-producer's command in the foreground; it prints the job's `JobDetail` as it
-ended and exits `0`, `10` for `partial`, `11` or `130`) and `jobs plan`;
-`archiwista reindex [--store MAGAZYN]` runs a full scan in the foreground (for
-the owner at a terminal, not for an agent next to a running server: both go to
-the same queue and get a conflict, exit `4`, when they meet).
+reason). The CLI's job commands are `archiwista jobs start` and `jobs retry` (a
+job in the foreground; they print the job's `JobDetail` as it ended and exit
+`0`, `10` for `partial`, `11` or `130`), and `jobs list`, `jobs show`, `jobs
+cancel`, `jobs plan` and `jobs log`, which exit `0`; `jobs cancel` also stops a
+job a running server supervises. `archiwista reindex [--store MAGAZYN]` runs a
+full scan in the foreground (for the owner at a terminal, not for an agent next
+to a running server: both go to the same queue and get a conflict, exit `4`,
+when they meet).
 
 ## 10. Limits of v0.2
 

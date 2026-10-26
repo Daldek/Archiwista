@@ -83,7 +83,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/previews.py`, `commands/layers.py`, `commands/compare.py`, `commands/owndata.py` | v0.2 CLI shared with the API services: `preview`, `layers`, `compare`, `files`, `file`, `snapshot`, `own-scan` | `add_commands`, `main` in each module |
 | `commands/producer_commands.py` | v0.3 CLI of the producers' commands over `services/commands.py` (ADR-034): `commands list`, `parse`, `validate`, `format` | `add_commands`, `main` |
 | `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
-| `commands/jobs.py` | v0.3 CLI of the jobs of producers' commands over `services/actions.py` (ADR-036, ADR-037): `jobs start` (`check` or `download`, `--plan` the plan of a `check` job; the job in the foreground, printed as it ended; as the local owner, with the `Authorizer` over the state database) and `jobs plan` (the plan a `check` job kept) | `add_commands`, `main` |
+| `commands/jobs.py` | v0.3 CLI of background jobs over `services/actions.py` and `services/jobs.py` (ADR-036 to ADR-038): `jobs start` (`check` or `download`, `--plan` the plan of a `check` job; the job in the foreground, printed as it ended; as the local owner, with the `Authorizer` over the state database), `jobs retry` (a job that did not succeed, again in the foreground), `jobs list`, `jobs show`, `jobs cancel` (also a job a server supervises), `jobs plan` (the plan a `check` job kept) and `jobs log` (the end of a job's log) | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -389,7 +389,7 @@ of a person with `project.write`; the store remains unchanged.
 | `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 6 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
 | `state_file` = `state.sqlite` | accounts, groups, roles, project access, permissions log | **no** — backup with `archiwista state export` | `StateStore` |
 | `cache_dir` = `cache/<producer>/` | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
-| `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock) | logs not needed for operation | `JobSupervisor`, worker processes |
+| `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock), `<id>.cancel` (a cancel request for the job's supervisor, ADR-038) | logs not needed for operation | `JobSupervisor`, worker processes |
 | `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read) | load the file again | `AreaFiles` |
 | `open-<random>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
 | `previews_dir` = `previews/` | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
@@ -787,8 +787,12 @@ in `sessionStorage`. Sessions live in server memory: they end after 24 h without
    A job row from 0.2.x (an old job code, without `details`) is read
    with the code from the registry at every read (`JobError.from_json`) and is not
    rewritten.
-5. **Interruption** — cancellation (`cancel`: Ctrl+C in foreground
-   commands, removing the store from the settings; the API has no cancel route)
+5. **Interruption** — cancellation (`cancel`: `POST /jobs/{job}/cancel` and
+   `archiwista jobs cancel` through `services/jobs.py`, Ctrl+C in foreground
+   commands, removing the store from the settings; a job of another
+   supervisor, also of another process, through the request file
+   `<jobs>/<id>.cancel` that its supervisor's thread carries out every
+   `CANCEL_POLL_S`, ADR-038)
    and server stop (`close`) send SIGINT (Windows:
    `CTRL_BREAK_EVENT`) and kill the process after 30 s; a scan then abandons
    the run. A worker process whose supervisor has disappeared (end of stdin)
@@ -808,7 +812,12 @@ in `sessionStorage`. Sessions live in server memory: they end after 24 h without
    and logs of 90 days (`LOG_MAX_AGE`; the last job of each store
    and kind stays), logs together at most 1 GB, routine scans
    (incremental from the scheduler, successful, without changes) after 48 h
-   (`ROUTINE_SCAN_MAX_AGE`).
+   (`ROUTINE_SCAN_MAX_AGE`), the cancel requests of jobs that are not active.
+7. **Retry and log** (`services/jobs.py`, ADR-038) — `retry` submits the kind,
+   store and parameters of a job that did not succeed again as a new job of
+   the principal (a download asks `store.write` again, a snapshot
+   `project.write`); `log` reads the end of `<jobs>/<id>.log` (`LogTail`, the
+   last MiB) for a principal who sees the whole job (`sees_whole`).
 
 **SSE through `fetch`.** `GET /api/v1/jobs/{job}/events` (`job_event_stream`)
 sends messages `id: <seq>`, `event: progress|notice|state`, `data:`
@@ -973,7 +982,8 @@ identities (`tests/unit/test_authorize.py`,
   (`PermissionDeniedError` → `403 permission_denied`) and
   `visible_projects(principal)`. Actions (`ACTIONS`): `project.view`,
   `project.share`, `project.write` (since v0.2: snapshots of project files),
-  `users.manage`, `groups.manage`, `settings.write`, `store.write`.
+  `users.manage`, `groups.manage`, `settings.write`, `store.write`,
+  `job.cancel`.
   `admin` manages accounts, groups and settings, sees every project,
   manages access to it and changes it; the owner does so for their own (a project without
   an access entry is changed only by the administrator);
@@ -982,7 +992,9 @@ identities (`tests/unit/test_authorize.py`,
   `default_project_visibility` (`public` or `private` = administrators
   only). `store.write` = the role `store_writer` or the setting
   `store_write_for_all`; a `download` job needs it (`POST /jobs`, `archiwista jobs
-  start download`, v0.3).
+  start download`, and its retry, v0.3). `job.cancel` (the resource is the job's
+  `actor`) is for whoever started the job and administrators (`POST
+  /jobs/{job}/cancel`, `archiwista jobs cancel`, v0.3, ADR-038).
 - **Visibility — a single checkpoint.** `visible_projects` builds
   `ProjectVisibility` (`everything`, `granted`, `denied`, `unlisted`;
   `sees(key)`; the administrator gets `ALL_PROJECTS`). Routes take it as the dependency
@@ -1070,7 +1082,7 @@ with the unchanged message (`<producer>_error`).
 | `files PROJEKT`, `file PROJEKT PLIK`, `snapshot PROJEKT PLIK [--plan \| --note TEKST]`, `own-scan [--project PROJEKT]` | `commands/owndata.py` | list and card from the index; snapshot and scan are jobs with progress |
 | `commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE [--options JSON] [--store ID]`, `commands format PRODUCENT POLECENIE [--options JSON] [--run JSON]` | `commands/producer_commands.py` | the producers' catalogs and calls through `services/commands.py`, as `/commands`; no network, no writes; `--options` and `--run` take a JSON object |
 | `availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `commands/availability.py` | the kept report and a check at the source through `services/availability.py`, as `/availability`; `check` runs the `availability` job in the foreground and prints the report it kept |
-| `jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan ZADANIE]`, `jobs plan ZADANIE` | `commands/jobs.py` | a job of a producer's command through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plan of a `check` job), run in the foreground and printed as it ended (exit 0, 10 `partial`, 11, 130); the plan a `check` job kept, as `GET /jobs/{job}/plan` |
+| `jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan ZADANIE]`, `jobs retry ZADANIE`, `jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs plan ZADANIE`, `jobs log ZADANIE` | `commands/jobs.py` | a job of a producer's command through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plan of a `check` job), and the retry of a job, as `POST /jobs/{job}/retry`, run in the foreground and printed as they ended (exit 0, 10 `partial`, 11, 130); the list, a job, its cancel and the end of its log as `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel` and `GET /jobs/{job}/log`; the plan a `check` job kept, as `GET /jobs/{job}/plan` |
 
 ---
 

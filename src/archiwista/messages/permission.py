@@ -47,4 +47,18 @@ MESSAGES = {
         ),
         "Migawkę i zmiany projektu robi tylko jego właściciel albo administrator.",
     ),
+    "job_cancel": Text(
+        "Only whoever started a job or an administrator can cancel it.",
+        "Zadanie anuluje tylko ten, kto je uruchomił, albo administrator.",
+    ),
+    "job_log": Text(
+        (
+            "The log of this job also covers files of projects you do not see; only"
+            " someone who sees all of them can read it."
+        ),
+        (
+            "Dziennik tego zadania dotyczy też plików projektów, których nie widzisz;"
+            " czyta go tylko ten, kto widzi je wszystkie."
+        ),
+    ),
 }

@@ -81,7 +81,7 @@ from archiwista.index import (
     VersionSummary,
 )
 from archiwista.index.geometry import polygon_bounds
-from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, ScanHistory
+from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, LogTail, ScanHistory
 from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
@@ -2009,6 +2009,51 @@ class JobList(BaseModel):
         return cls(
             items=[JobDetail.of(job) for job in page.items],
             next_cursor=page.next_cursor,
+        )
+
+
+class JobLog(BaseModel):
+    """The end of a job's log: its worker's standard error, in English.
+
+    Python's log lines of Archiwista and of the producer (`INFO` and above)
+    and whatever a library writes there; it grows while the job runs.
+    """
+
+    model_config = _examples(
+        {
+            "job": "9b2e44d01c7f3a85",
+            "size_bytes": 182,
+            "truncated": False,
+            "text": (
+                "2026-10-26 09:12:03,418 INFO archiwista.jobs.worker: job"
+                " 9b2e44d01c7f3a85 (footprints) of store zespol started\n"
+                "2026-10-26 09:12:04,002 WARNING kartograf: PRG WFS timed out\n"
+            ),
+        }
+    )
+
+    job: str = Field(description="Job id.")
+    size_bytes: int = Field(
+        ge=0, description="Size of the whole log when it was read, in bytes."
+    )
+    truncated: bool = Field(
+        description=(
+            "Whether `text` leaves the start out: it holds the last MiB, from the"
+            " first line that starts in it."
+        )
+    )
+    text: str = Field(
+        description="The log as UTF-8; a byte that is no UTF-8 is replaced."
+    )
+
+    @classmethod
+    def of(cls, job: str, tail: LogTail) -> Self:
+        """Return the model of the end of a job's log."""
+        return cls(
+            job=job,
+            size_bytes=tail.size_bytes,
+            truncated=tail.truncated,
+            text=tail.text,
         )
 
 

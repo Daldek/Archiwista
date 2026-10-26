@@ -29,6 +29,7 @@ from archiwista.index import IndexQueries, StoredPlan
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import message
 from archiwista.services.commands import actions, checked_call, command_info
+from archiwista.services.jobs import visible_job
 from archiwista.sources import CommandCall
 from archiwista.sources.registry import PluginRegistry
 
@@ -148,7 +149,7 @@ def start(
     }
     if kind == "download":
         if plan_job is not None:
-            planned = _visible_job(jobs, plan_job, visible)
+            planned = visible_job(jobs, plan_job, visible)
             _stored_plan(queries, plan_job)
             if _call_key(planned.store, planned.params) != _call_key(store, params):
                 raise ConflictError(
@@ -176,18 +177,8 @@ def kept_plan(
         kept no plan (``job.no_plan``): it is not a ``check``, has not ended
         yet, or failed.
     """
-    _visible_job(jobs, job_id, visible)
+    visible_job(jobs, job_id, visible)
     return _stored_plan(queries, job_id)
-
-
-def _visible_job(
-    jobs: JobSupervisor, job_id: str, visible: ProjectVisibility
-) -> JobRecord:
-    """Return a job the principal sees, else refuse with ``job.not_found``."""
-    record = jobs.get(job_id, visible=visible)
-    if record is None:
-        raise NotFoundError(message("job.not_found", job=job_id))
-    return record
 
 
 def _stored_plan(queries: IndexQueries, job_id: str) -> StoredPlan:

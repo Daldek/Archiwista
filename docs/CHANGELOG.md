@@ -258,6 +258,24 @@ command-line interface may change.
   session without `store_write` sees it disabled with the reason, and offline mode keeps
   the report and disables both actions. A job that ended `partial` shows its summary too.
   (SPEC 6.3, 6.4, 6.5 h, 10.3; plan A10, A11)
+- Job controls (ADR-038): `POST /jobs/{job}/cancel` cancels a job that waits (at once,
+  without a worker) or runs (it ends `cancelled` when its worker has stopped, within the
+  stop timeout of 30 s) and answers `202` with the job as it is then; only whoever started
+  the job or an administrator may (`403 permission_denied` otherwise, the new permission
+  `job.cancel`), and a job that has ended is `409` (`job_finished`). A job another process
+  supervises (a server's job cancelled at the terminal, or a terminal's job from the
+  interface) is stopped by that process: a request file `<jobs>/<id>.cancel` that each
+  supervisor carries out within half a second. `POST /jobs/{job}/retry` starts a job that
+  ended `partial`, `failed`, `interrupted` or `cancelled` again as a new job of the session
+  with its kind, store and parameters (`202`); one that succeeded or has not ended is `409`
+  (`job_succeeded`, `job_active`), and what the kind needs is asked again (a download:
+  `store.write`; a snapshot: `project.write`). `GET /jobs/{job}/log` returns the end of the
+  job's log (`JobLog`: the last MiB, `truncated`, `size_bytes`); a job without a log is
+  `404`, a `preview` job that also builds files of projects the session does not see
+  `403`. A job the session does not see is `404` for all three. `archiwista jobs list`
+  (the filters of `GET /jobs`), `jobs show`, `jobs cancel`, `jobs retry` (in the
+  foreground, as `jobs start`) and `jobs log` give the routes' models with `--json`.
+  (SPEC 5.6, 9.2; plan A6)
 
 ### Changed
 

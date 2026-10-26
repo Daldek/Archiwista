@@ -31,6 +31,7 @@ from archiwista.jobs.supervisor import (
     JobRule,
     JobState,
     JobSupervisor,
+    LogTail,
     ScanHistory,
 )
 
@@ -54,6 +55,7 @@ __all__ = [
     "JobSpec",
     "JobState",
     "JobSupervisor",
+    "LogTail",
     "PlannedScan",
     "ScanHistory",
     "ScanScheduler",

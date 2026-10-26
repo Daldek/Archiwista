@@ -1,4 +1,4 @@
-"""``archiwista jobs``: jobs of producers' commands (plan of 2026-10-25, A4, A5).
+"""``archiwista jobs``: background jobs (plan of 2026-10-25, A4 to A6).
 
 ``jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan
 ZADANIE]`` starts a job of a command of the producer's catalog on a configured
@@ -7,25 +7,34 @@ store (``POST /jobs``) and follows it to its end in the foreground
 effects, ``download`` runs it in the store, with ``--plan`` the plan a
 ``check`` job kept. It prints the job as it ended (``GET /jobs/{job}``,
 ``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
-``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs plan ZADANIE``
-prints the plan a ``check`` job kept (``GET /jobs/{job}/plan``,
-``ActionPlanInfo``) without the network. Both call
-``archiwista.services.actions`` without HTTP, as the owner of the installation
-(``LOCAL_OWNER``, who may write the stores), with the ``Authorizer`` over the
-state database; ``--json`` prints the route's model, a refusal prints no model
-and ends standard error with its ``archiwista-error/1`` document.
+``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs retry
+ZADANIE`` starts a job that did not succeed again (``POST
+/jobs/{job}/retry``) and follows the new job the same way. ``jobs plan
+ZADANIE`` prints the plan a ``check`` job kept (``GET /jobs/{job}/plan``,
+``ActionPlanInfo``) without the network; ``jobs list`` the jobs (``GET
+/jobs``, ``JobList``, with its filters), ``jobs show ZADANIE`` one job
+(``JobDetail``), ``jobs cancel ZADANIE`` cancels a job that waits or runs,
+also one a running server supervises (``POST /jobs/{job}/cancel``: the job as
+it is right after the request), and ``jobs log ZADANIE`` prints the end of its
+log (``GET /jobs/{job}/log``, ``JobLog``); these exit ``0``. All of them call
+``archiwista.services`` without HTTP, as the owner of the installation
+(``LOCAL_OWNER``, who may write the stores and sees every job), with the
+``Authorizer`` over the state database; ``--json`` prints the route's model,
+a refusal prints no model and ends standard error with its
+``archiwista-error/1`` document.
 """
 
 import argparse
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from typing import Any, TextIO
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from archiwista.api.models import JobDetail
+from archiwista.api.models import JobDetail, JobFilters, JobList, JobLog
 from archiwista.api.models_actions import ActionPlanInfo, JobRequest
+from archiwista.api.slots import checked_project
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser
@@ -44,9 +53,17 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
+from archiwista.jobs import (
+    ACTIVE_STATES,
+    FINISHED_STATES,
+    JobEvent,
+    JobRecord,
+    JobSupervisor,
+)
 from archiwista.jobs.foreground import exit_status, run_foreground
+from archiwista.jobs.protocol import STOP_TIMEOUT_S
 from archiwista.messages import label, message, with_detail
+from archiwista.services import jobs as job_controls
 from archiwista.services.actions import kept_plan, start
 from archiwista.sources import FILE_STATUSES, PLAN_STATUSES, PLAN_TODO, PlanStatus
 from archiwista.sources.registry import PluginRegistry
@@ -99,10 +116,48 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.job"),
         help=message("cli.jobs_plan_job_help"),
     )
-    planned = add_parser(actions, "plan", "cli.jobs_plan_help")
-    planned.add_argument(
-        "job", metavar=message("metavar.job"), help=message("cli.jobs_job_help")
+    listed = add_parser(actions, "list", "cli.jobs_list_help")
+    listed.add_argument(
+        "--kind",
+        metavar=message("metavar.kind"),
+        help=message("cli.jobs_list_kind_help"),
     )
+    listed.add_argument(
+        "--store",
+        metavar=message("metavar.store"),
+        help=message("cli.jobs_list_store_help"),
+    )
+    listed.add_argument(
+        "--state",
+        metavar=message("metavar.state"),
+        help=message("cli.jobs_list_state_help"),
+    )
+    listed.add_argument(
+        "--project",
+        metavar=message("metavar.project"),
+        help=message("cli.jobs_list_project_help"),
+    )
+    listed.add_argument(
+        "--limit",
+        metavar=message("metavar.number"),
+        help=message("cli.jobs_list_limit_help"),
+    )
+    listed.add_argument(
+        "--cursor",
+        metavar=message("metavar.cursor"),
+        help=message("cli.jobs_list_cursor_help"),
+    )
+    for action, help_key in (
+        ("plan", "cli.jobs_plan_help"),
+        ("show", "cli.jobs_show_help"),
+        ("cancel", "cli.jobs_cancel_help"),
+        ("retry", "cli.jobs_retry_help"),
+        ("log", "cli.jobs_log_help"),
+    ):
+        one = add_parser(actions, action, help_key)
+        one.add_argument(
+            "job", metavar=message("metavar.job"), help=message("cli.jobs_job_help")
+        )
 
 
 def main(
@@ -134,9 +189,13 @@ def main(
         ``130``); the exit code of the registry code of a refusal.
     """
     with ExitStack() as stack:
+        if args.action == "start":
+            return _start(stack, args, paths, registry, out, err)
+        if args.action == "list":
+            return _list(stack, args, paths, registry, out, err)
         if args.action == "plan":
             return _plan(stack, args, paths, registry, out, err)
-        return _start(stack, args, paths, registry, out, err)
+        return _control(stack, args, paths, registry, out, err)
 
 
 def _start(
@@ -171,7 +230,6 @@ def _start(
         jobs = stack.enter_context(JobSupervisor(paths, service))
     except _UNUSABLE as error:
         return _unusable(error, err)
-    kind = label("job.kind", request.kind)
 
     def submit() -> JobRecord:
         return start(
@@ -188,6 +246,18 @@ def _start(
             plan_job=request.plan_job,
         )
 
+    return _foreground(jobs, submit, args, out, err)
+
+
+def _foreground(
+    jobs: JobSupervisor,
+    submit: Callable[[], JobRecord],
+    args: argparse.Namespace,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Submit a job, follow it to its end and print it as it ended."""
+
     def heard(event: JobEvent) -> str | None:
         if event.type != "notice":
             return None
@@ -199,26 +269,132 @@ def _start(
             jobs,
             submit,
             err,
-            started=lambda job: message("cli.jobs_started", kind=kind, job=job.id),
+            started=lambda job: message(
+                "cli.jobs_started", kind=label("job.kind", job.kind), job=job.id
+            ),
             event=heard,
             cancelling=lambda job: message(
-                "cli.jobs_cancelling", kind=kind, job=job.id
+                "cli.jobs_cancelling", kind=label("job.kind", job.kind), job=job.id
             ),
         )
     except ArchiwistaError as error:
         return refuse(describe(error), err)
     detail = JobDetail.of(jobs.get(record.id) or record)
     if detail.state in FINISHED_STATES and detail.error is not None:
-        failure = message(
-            "cli.jobs_job_failed",
-            kind=kind,
-            job=detail.id,
-            state=label("job.state", detail.state),
-            detail=detail.error.detail,
-        )
-        err.write(failure + "\n")
+        err.write(_failure(detail) + "\n")
     out.write((detail.model_dump_json() if args.json else _job_text(detail)) + "\n")
     return exit_status(detail.state)
+
+
+def _list(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Print the jobs as ``GET /jobs`` lists them, with its filters."""
+    names = ("kind", "store", "state", "project", "limit", "cursor")
+    given = {name: getattr(args, name) for name in names}
+    try:
+        filters = JobFilters.model_validate(
+            {name: value for name, value in given.items() if value is not None}
+        )
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        return refuse(validation_problem(located), err)
+    try:
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+    try:
+        checked_project(queries, filters.project, ALL_PROJECTS)
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    page = jobs.list(
+        kind=filters.kind,
+        store=filters.store,
+        state=filters.state,
+        project=filters.project,
+        limit=filters.limit,
+        cursor=filters.cursor,
+        visible=ALL_PROJECTS,
+    )
+    listed = JobList.of(page)
+    out.write((listed.model_dump_json() if args.json else _list_text(listed)) + "\n")
+    return 0
+
+
+def _control(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Show, cancel, retry a job or print its log, as the routes of the job do."""
+    try:
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        decisions = Authorizer(StateStore(paths.state_file), service.get)
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+    if args.action == "retry":
+
+        def submit() -> JobRecord:
+            return job_controls.retry(
+                jobs,
+                decisions,
+                queries,
+                job_id=args.job,
+                actor=LOCAL_OWNER,
+                visible=ALL_PROJECTS,
+            )
+
+        return _foreground(jobs, submit, args, out, err)
+    model: BaseModel
+    try:
+        if args.action == "log":
+            tail = job_controls.log(jobs, job_id=args.job, visible=ALL_PROJECTS)
+            model, text = JobLog.of(args.job, tail), tail.text
+            if tail.truncated and not args.json:
+                err.write(
+                    message("cli.jobs_log_truncated", size=tail.size_bytes) + "\n"
+                )
+        elif args.action == "cancel":
+            record = job_controls.cancel(
+                jobs,
+                decisions,
+                job_id=args.job,
+                actor=LOCAL_OWNER,
+                visible=ALL_PROJECTS,
+            )
+            model = detail = JobDetail.of(record)
+            text = _job_text(detail)
+            if detail.state in ACTIVE_STATES:
+                stopping = message(
+                    "cli.jobs_cancel_requested", seconds=round(STOP_TIMEOUT_S)
+                )
+                text = f"{text}\n{stopping}"
+        else:
+            detail = JobDetail.of(
+                job_controls.visible_job(jobs, args.job, ALL_PROJECTS)
+            )
+            model, text = detail, _job_text(detail)
+            if detail.error is not None:
+                text = f"{text}\n{_failure(detail)}"
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    if args.json:
+        out.write(model.model_dump_json() + "\n")
+    else:
+        out.write(text if text.endswith("\n") or not text else f"{text}\n")
+    return 0
 
 
 def _plan(
@@ -290,6 +466,38 @@ def _job_text(detail: JobDetail) -> str:
                 failed=result["failed"],
             )
         )
+    return "\n".join(lines)
+
+
+def _failure(detail: JobDetail) -> str:
+    """Return why a job did not succeed, for a person."""
+    assert detail.error is not None
+    return message(
+        "cli.jobs_job_failed",
+        kind=label("job.kind", detail.kind),
+        job=detail.id,
+        state=label("job.state", detail.state),
+        detail=detail.error.detail,
+    )
+
+
+def _list_text(listed: JobList) -> str:
+    """Return a page of jobs for a person: a line per job, then the next page."""
+    lines = [
+        message(
+            "cli.jobs_list_line",
+            job=item.id,
+            kind=label("job.kind", item.kind),
+            state=label("job.state", item.state),
+            actor=item.actor,
+            created=item.created_at.isoformat(timespec="seconds"),
+        )
+        for item in listed.items
+    ]
+    if not lines:
+        lines.append(message("cli.jobs_list_none"))
+    if listed.next_cursor is not None:
+        lines.append(message("cli.jobs_list_next", cursor=listed.next_cursor))
     return "\n".join(lines)
 
 
