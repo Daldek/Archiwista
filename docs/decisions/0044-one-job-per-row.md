@@ -1,7 +1,7 @@
 # ADR-044: One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter
 
 **Date:** 2026-10-26
-**Status:** proposed (the author chose A and C on 2026-10-26; done on the topic branch `feature/kartograf-data-output`; accepted when the author approves and merges the branch; amends ADR-035 point 6, ADR-036 and ADR-037)
+**Status:** proposed (options A and C were chosen on 2026-10-26 by delegated approval: the coordinating session of the Nogat data-output work decided on the author's behalf; done on the topic branch `feature/kartograf-data-output`; accepted when the author approves and merges the branch; amends ADR-035 point 6, ADR-036 and ADR-037)
 
 **Context:** After ADR-036 erratum 1 a plan of a report's row asks the source nothing, yet "Pobierz…" on a row of 32 per-sheet lines still waited about 30 s: each line was its own `check` job (ADR-035 point 6), each job a new worker process, two at a time (`MAX_NETWORK_JOBS`). A line cost about 1.4 s of process start (0.54 s importing `archiwista.jobs.worker`, 0.92 s with Kartograf) and bookkeeping, and a download did the same once more per line.
 

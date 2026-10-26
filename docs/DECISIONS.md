@@ -67,7 +67,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-043](decisions/0043-downloads-in-the-background.md) | Downloads in the background: the plan window lets go, the top bar follows | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | proposed (the author chose A and C; accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-035, ADR-036 and ADR-037) |
+| [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | proposed (A and C chosen by delegated approval; accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-035, ADR-036 and ADR-037) |
 
 ---
 
