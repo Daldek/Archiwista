@@ -4,14 +4,27 @@
  * switches apply at once; typed values (years, unit, rectangle) when the
  * field is left or Enter is pressed. A value the API refuses is marked on
  * its field with the API's message.
+ *
+ * For a station product (views/catalog-stations.js) the fields are those of
+ * `GET /stations` (SPEC 6.6 for IMGW measurements): the dataset, the station
+ * kind or the meteo types, the river code with its tributaries, active or
+ * historical, a variable, the coverage chips of each variable of the dataset
+ * (several states of one variable are alternatives) with its least full
+ * years, the range of the labels and the switch „Lata: hydrologiczne /
+ * kalendarzowe”, which writes `year_type` to the address and, for an
+ * administrator, remembers the choice for the family (`PUT
+ * /settings/year-types`, P15).
  */
 
-import { getArea, listProducts } from "../api.js";
+import { getArea, putYearTypes } from "../api.js";
+import { useApp } from "../context.js";
 import { int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
-import { html, Icon, Tech, useEffect, useState } from "../ui.js";
+import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
+import { html, Icon, Seg, Tech, useEffect, useState } from "../ui.js";
+import { STATION_FILTERS } from "./catalog-stations.js";
 
 const F = L.filters;
 /** Values of `versions`, the first one the API's default. */
@@ -62,27 +75,25 @@ function productName(product) {
  * The filter panel.
  *
  * @param {object} props
- * @param {Object<string, string>} props.query - The address's `/slots` parameters.
+ * @param {Object<string, string>} props.query - The address's parameters of the list.
  * @param {Array<{store: string, name: string}>} props.stores - Configured stores.
+ * @param {{data?: import("../types.js").ProductList}} props.products - `GET /products`.
+ * @param {StationPanel|null} props.stations - For a station product, else `null`.
  * @param {Object<string, string>} props.errors - API messages by parameter.
- * @param {string} props.indexStamp - Changes when a store's index changes.
  * @param {(patch: Object<string, string|null>) => void} props.onChange
- * @param {() => void} props.onClear - Remove every filter of the panel.
  */
-export function CatalogFilters({ query, stores, errors, indexStamp, onChange, onClear }) {
-  const products = useResource(
-    (signal) => listProducts(query.store ? { store: query.store } : {}, { signal }),
-    [query.store ?? "", indexStamp],
-  );
+export function CatalogFilters({ query, stores, products, stations, errors, onChange }) {
   const items = products.data?.items.filter((item) => item.product !== null) ?? [];
   const chosen = items.find((item) => item.product === query.product);
   const countries = [...new Set(items.flatMap((item) => item.countries))].sort();
   if (query.country && !countries.includes(query.country)) countries.push(query.country);
   const select = (name) => (event) => onChange({ [name]: event.currentTarget.value || null });
   const { from, to } = splitYears(query.years);
-  const active = FILTERS.some((name) => query[name]);
+  const names = stations ? STATION_FILTERS : FILTERS;
+  const active = names.some((name) => query[name]);
+  const clear = () => onChange(Object.fromEntries(names.map((name) => [name, null])));
 
-  return html`<div class="cat-filters">
+  return html`<div class=${`cat-filters${stations ? " cat-stations-fields" : ""}`}>
     ${stores.length > 1 || query.store
       ? html`<${Field} name="store" label=${F.store} errors=${errors}>
           <select id="cat-f-store" value=${query.store ?? ""} onChange=${select("store")}>
@@ -106,7 +117,32 @@ export function CatalogFilters({ query, stores, errors, indexStamp, onChange, on
       </select>
       ${chosen ? html`<${Segments} product=${chosen} />` : null}
     </${Field}>
-    <${Field} name="country" label=${F.country} errors=${errors}>
+    ${stations
+      ? html`<${StationFields} query=${query} stations=${stations} errors=${errors} onChange=${onChange} />`
+      : html`<${FileFields} query=${query} errors=${errors} onChange=${onChange} select=${select}
+          countries=${countries} from=${from} to=${to} />`}
+    <${AreaFields} query=${query} errors=${errors} onChange=${onChange} />
+    ${stations && (query.area_id || query.bbox)
+      ? html`<label class="check-field st-check"><input type="checkbox" checked=${query.boundary !== "false"}
+          onChange=${(event) => onChange({ boundary: event.currentTarget.checked ? null : "false" })} />
+          ${L.stations.filters.boundary}</label>`
+      : null}
+    ${query.limit
+      ? html`<div class="cat-limit">
+          <span class="muted">${F.limit}:</span> <code>${query.limit}</code>
+          <button type="button" class="btn ghost sm" onClick=${() => onChange({ limit: null })}
+            aria-label=${t(F.remove, { name: F.limit })}><${Icon} name="x" size=${13} /></button>
+        </div>`
+      : null}
+    <button type="button" class="btn sm" disabled=${!active} onClick=${clear} title=${F.clear_title}>
+      <${Icon} name="x" size=${14} />${F.clear}
+    </button>
+  </div>`;
+}
+
+/** The fields of files: country, data years, unit, versions and state. */
+function FileFields({ query, errors, onChange, select, countries, from, to }) {
+  return html`<${Field} name="country" label=${F.country} errors=${errors}>
       <select id="cat-f-country" value=${query.country ?? ""} onChange=${select("country")}>
         <option value="">${F.country_any}</option>
         ${countries.map(
@@ -147,19 +183,176 @@ export function CatalogFilters({ query, stores, errors, indexStamp, onChange, on
           (value) => html`<option value=${value} title=${value}>${L.status[value] ?? value}</option>`,
         )}
       </select>
+    </${Field}>`;
+}
+
+/**
+ * What the panel needs of a station product.
+ *
+ * @typedef {object} StationPanel
+ * @property {import("../types.js").StationDataset[]} datasets - Of the product's family.
+ * @property {string|null} kind - The product's station kind (`hydro`, `meteo`), else
+ *   `null` (both: the kind is a field).
+ * @property {"hydro"|"meteo"} family - Whose remembered year type numbers the list.
+ */
+
+/** The fields of `GET /stations` (see the module). */
+function StationFields({ query, stations, errors, onChange }) {
+  const SF = L.stations.filters;
+  const { datasets, kind } = stations;
+  const dataset = datasets.find((item) => item.dataset === query.dataset) ?? null;
+  const variables = dataset ? dataset.variables : distinctVariables(datasets);
+  const meteoKinds = splitList(query.meteo_kind);
+  const coverage = splitList(query.coverage);
+  const minYears = splitList(query.min_complete_years);
+  const select = (name) => (event) => onChange({ [name]: event.currentTarget.value || null });
+  const toggleIn = (name, values, value) =>
+    onChange({ [name]: joinList(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]) });
+  const yearsOf = (key) => minYears.find((item) => item.startsWith(`${key}:`))?.slice(key.length + 1) ?? "";
+  const setYears = (key, value) =>
+    onChange({
+      min_complete_years: joinList([
+        ...minYears.filter((item) => !item.startsWith(`${key}:`)),
+        ...(value ? [`${key}:${value}`] : []),
+      ]),
+    });
+
+  return html`<${Field} name="dataset" label=${SF.dataset} errors=${errors}>
+      <select id="cat-f-dataset" value=${query.dataset ?? ""}
+        onChange=${(event) => onChange({ dataset: event.currentTarget.value || null, coverage: null, min_complete_years: null })}>
+        <option value="">${SF.dataset_any}</option>
+        ${withCurrent(datasets.map((item) => item.dataset), query.dataset).map((key) => {
+          const item = datasets.find((candidate) => candidate.dataset === key);
+          const text = item ? t(SF.dataset_option, { name: item.name ?? key, provider: item.provider }) : key;
+          return html`<option value=${key} title=${key}>${text}</option>`;
+        })}
+      </select>
     </${Field}>
-    <${AreaFields} query=${query} errors=${errors} onChange=${onChange} />
-    ${query.limit
-      ? html`<div class="cat-limit">
-          <span class="muted">${F.limit}:</span> <code>${query.limit}</code>
-          <button type="button" class="btn ghost sm" onClick=${() => onChange({ limit: null })}
-            aria-label=${t(F.remove, { name: F.limit })}><${Icon} name="x" size=${13} /></button>
-        </div>`
-      : null}
-    <button type="button" class="btn sm" disabled=${!active} onClick=${onClear} title=${F.clear_title}>
-      <${Icon} name="x" size=${14} />${F.clear}
-    </button>
+    ${kind
+      ? null
+      : html`<${Field} name="kind" label=${SF.kind} errors=${errors}>
+          <select id="cat-f-kind" value=${query.kind ?? ""} onChange=${select("kind")}>
+            <option value="">${SF.kind_any}</option>
+            ${["hydro", "meteo"].map((value) => html`<option value=${value}>${SF.kinds[value]}</option>`)}
+          </select>
+        </${Field}>`}
+    ${kind === "hydro"
+      ? null
+      : html`<div class="field" role="group" aria-labelledby="cat-f-meteo_kind-label">
+          <span class="field-label" id="cat-f-meteo_kind-label">${SF.meteo_kind}</span>
+          <div class="st-types">
+            ${METEO_KINDS.map(
+              (value) => html`<button type="button" class=${`chip${meteoKinds.includes(value) ? " on" : ""}`}
+                aria-pressed=${meteoKinds.includes(value) ? "true" : "false"}
+                onClick=${() => toggleIn("meteo_kind", meteoKinds, value)}>${SF.meteo_kinds[value]}</button>`,
+            )}
+          </div>
+          <span class="field-hint">${SF.meteo_kind_hint}</span>
+        </div>`}
+    <${Field} name="river_code" label=${SF.river_code} errors=${errors} hint=${SF.river_hint}>
+      <${TextFilter} id="cat-f-river_code" value=${query.river_code ?? ""} placeholder=${SF.river_code_placeholder}
+        mono invalid=${Boolean(errors.river_code)} onCommit=${(value) => onChange({ river_code: value || null })} />
+      <label class="check-field st-check"><input type="checkbox" checked=${query.river_scope === "tributaries"}
+        onChange=${(event) => onChange({ river_scope: event.currentTarget.checked ? "tributaries" : null })} />
+        ${SF.river_tributaries}</label>
+    </${Field}>
+    <${Field} name="active" label=${SF.active} errors=${errors}>
+      <select id="cat-f-active" value=${query.active ?? ""} onChange=${select("active")}>
+        <option value="">${SF.active_any}</option>
+        <option value="true">${SF.active_true}</option>
+        <option value="false">${SF.active_false}</option>
+      </select>
+    </${Field}>
+    <${Field} name="variable" label=${SF.variable} errors=${errors} hint=${SF.variable_hint}>
+      <select id="cat-f-variable" value=${query.variable ?? ""} onChange=${select("variable")}>
+        <option value="">${SF.variable_any}</option>
+        ${withCurrent(variables.map((item) => item.key), query.variable).map(
+          (key) => html`<option value=${key}>${key}</option>`,
+        )}
+      </select>
+    </${Field}>
+    <div class=${`field${errors.coverage || errors.min_complete_years ? " invalid" : ""}`} role="group"
+      aria-labelledby="cat-f-coverage-label">
+      <span class="field-label" id="cat-f-coverage-label">${SF.coverage}</span>
+      ${dataset
+        ? variables.map(
+            (variable) => html`<div class="st-cov" key=${variable.key} role="group"
+              aria-label=${t(SF.coverage_variable, { variable: variable.key })}>
+              <span class="st-cov-key">${variable.key}</span>
+              ${STATION_STATES.map((state) => {
+                const value = `${variable.key}:${state}`;
+                const on = coverage.includes(value);
+                return html`<button type="button" class=${`chip${on ? " on" : ""}`} aria-pressed=${on ? "true" : "false"}
+                  onClick=${() => toggleIn("coverage", coverage, value)}>${SF.states[state]}</button>`;
+              })}
+              <span class="st-cov-years">${SF.min_years}
+                <${TextFilter} id=${`cat-f-min-${variable.key}`} label=${t(SF.min_years_label, { variable: variable.key })}
+                  value=${yearsOf(variable.key)} numeric invalid=${Boolean(errors.min_complete_years)}
+                  onCommit=${(value) => setYears(variable.key, value)} /></span>
+            </div>`,
+          )
+        : html`<span class="field-hint">${SF.coverage_need_dataset}</span>`}
+      ${errors.coverage || errors.min_complete_years
+        ? html`<span class="field-error" role="alert">${errors.coverage ?? errors.min_complete_years}</span>`
+        : null}
+      ${dataset ? html`<span class="field-hint">${SF.coverage_hint}</span>` : null}
+    </div>
+    <${Field} name="years" label=${SF.years} errors=${errors} hint=${SF.years_hint}>
+      <${TextFilter} id="cat-f-years" value=${query.years ?? ""} placeholder="1951-2025" mono
+        invalid=${Boolean(errors.years)} onCommit=${(value) => onChange({ years: value || null })} />
+    </${Field}>
+    <${YearTypeSwitch} query=${query} family=${stations.family} onChange=${onChange} />`;
+}
+
+/** The roles that may change the settings, so remember a year type (`settings.write`). */
+const ADMIN_ROLE = "admin";
+
+/**
+ * „Lata: hydrologiczne / kalendarzowe” (M11 point 5): the address's
+ * `year_type`, else the type remembered for the list's family. A choice goes
+ * to the address; an administrator's is also remembered for the family.
+ */
+function YearTypeSwitch({ query, family, onChange }) {
+  const SF = L.stations.filters;
+  const app = useApp();
+  const [failed, setFailed] = useState(false);
+  const remembered = app.settings?.year_types ?? null;
+  const fallback = family === "hydro" ? "hydrological" : "calendar";
+  const value = query.year_type ?? remembered?.[family] ?? fallback;
+  const admin = Boolean(app.session?.roles.includes(ADMIN_ROLE));
+  const choose = (next) => {
+    setFailed(false);
+    onChange({ year_type: next });
+    if (!admin || !remembered || remembered[family] === next) return;
+    putYearTypes({ ...remembered, [family]: next }).then(app.setSettings, () => setFailed(true));
+  };
+  return html`<div class="field" role="group" aria-labelledby="cat-f-year_type-label">
+    <span class="field-label" id="cat-f-year_type-label">${SF.year_type}</span>
+    <${Seg} small label=${SF.year_type} value=${value} onChange=${choose}
+      options=${["hydrological", "calendar"].map((type) => ({ value: type, label: SF.year_types[type] }))} />
+    <span class="field-hint st-year-type-note">
+      ${admin ? t(SF.year_type_hint, { family: SF.families[family] }) : SF.year_type_local}</span>
+    ${failed ? html`<span class="field-error" role="alert">${SF.year_type_failed}</span>` : null}
   </div>`;
+}
+
+/** The variables of every dataset, once each, in their order. */
+function distinctVariables(datasets) {
+  const seen = new Map();
+  for (const item of datasets.flatMap((dataset) => dataset.variables)) {
+    if (!seen.has(item.key)) seen.set(item.key, item);
+  }
+  return [...seen.values()];
+}
+
+/** A comma list of the address as values. */
+function splitList(text) {
+  return text ? text.split(",").filter(Boolean) : [];
+}
+
+/** Values as a comma list of the address; none: no parameter. */
+function joinList(values) {
+  return values.length ? values.join(",") : null;
 }
 
 /** A labelled field with the API's message when it refused the value. */

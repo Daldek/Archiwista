@@ -832,6 +832,114 @@
  * @property {number} [grid_columns]
  */
 
+/**
+ * A run of known units without a value.
+ *
+ * @typedef {{from: string, to: string, units: number}} GapSpan
+ */
+
+/**
+ * A variable of a station's series with its coverage label in R (SPEC 4.8.4).
+ *
+ * @typedef {object} VariableCoverage
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable
+ * @property {string} unit
+ * @property {string|null} period - Half-year period of a characteristic.
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ * @property {GapSpan|null} longest_gap
+ * @property {number} complete_years - Full years of y1–y2: a value in every unit.
+ */
+
+/**
+ * A station's series in one dataset: its version and each variable's label.
+ *
+ * @typedef {object} StationSeries
+ * @property {string} dataset - Dataset key.
+ * @property {string|null} kind
+ * @property {string} time_unit
+ * @property {YearType} year_type - Numbering of the years of R.
+ * @property {YearSpan|null} years - R.
+ * @property {string|null} series - Label of the series version.
+ * @property {string} file - The station's series file, relative to the store.
+ * @property {Object<string, VariableCoverage>} coverage - Each variable by key, in
+ *   the order of the series index.
+ */
+
+/**
+ * Where a station is: a point, or nowhere with the catalog's reason.
+ *
+ * @typedef {object} StationLocation
+ * @property {"point"|"none"} kind
+ * @property {number|null} lon - WGS84.
+ * @property {number|null} lat
+ * @property {string|null} reason - Without a position: `none`, `zero`,
+ *   `outside_country`.
+ * @property {string|null} source - Source of the position in the catalog.
+ * @property {number|null} uncertainty_m
+ * @property {boolean} on_boundary - On the area's boundary (with an area).
+ */
+
+/**
+ * A station of its provider's current catalog, with its series' coverage.
+ *
+ * @typedef {object} StationItem
+ * @property {string} store
+ * @property {string} provider - `IMGW-PIB` or `CHMI`; a code is its provider's.
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {string|null} meteo_kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code - The river's hydrographic code.
+ * @property {number|null} river_order - Place of the station on its river.
+ * @property {boolean|null} active
+ * @property {StationLocation} location
+ * @property {StationSeries[]} series - By dataset, each variable labelled (P16).
+ */
+
+/**
+ * A page of stations with the counts of the whole result (`GET /stations`).
+ *
+ * @typedef {object} StationList
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {{id: string, name: string|null}|null} area - The area of `area_id`.
+ * @property {StationCounts} counts
+ * @property {StationItem[]} items
+ * @property {string|null} next_cursor
+ */
+
+/**
+ * Parameters of `GET /stations` (unknown ones answer 400; repeatable ones are
+ * arrays).
+ *
+ * @typedef {object} StationListFilters
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Only stations with a series of it, its coverage only.
+ * @property {string} [years] - R of the labels.
+ * @property {YearType} [year_type] - Default: the type remembered for the family.
+ * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {string[]} [meteo_kind]
+ * @property {boolean} [active]
+ * @property {string} [river_code]
+ * @property {"exact"|"tributaries"} [river_scope]
+ * @property {string[]} [variable]
+ * @property {string[]} [coverage] - `<variable>:<state>`; needs `dataset`.
+ * @property {string[]} [min_complete_years] - `<variable>:<years>`; needs `dataset`.
+ * @property {string} [q] - A part of the name or river, or the beginning of the code.
+ * @property {"river"|"name"} [sort] - Along rivers (default) or by name.
+ * @property {string} [area_id]
+ * @property {string} [bbox]
+ * @property {string} [bbox_crs]
+ * @property {boolean} [boundary]
+ * @property {"any"|"with"|"none"} [location]
+ * @property {number} [limit] - ≤ 200.
+ * @property {string} [cursor]
+ */
+
 // Projects (9a) --------------------------------------------------------------
 
 /**
@@ -1047,6 +1155,16 @@
  *   1–10 000; the least recently used previews go first.
  * @property {boolean} [preview_warm_after_scan] - After a scan that indexed new versions
  *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
+ * @property {YearTypes} [year_types] - The year type remembered for hydro and for meteo
+ *   data (`PUT /settings/year-types`).
+ */
+
+/**
+ * The year type remembered for each family (P15).
+ *
+ * @typedef {object} YearTypes
+ * @property {YearType} hydro - Hydrological by default.
+ * @property {YearType} meteo - Calendar by default.
  */
 
 // Background jobs (9b) -------------------------------------------------------

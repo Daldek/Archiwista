@@ -351,6 +351,24 @@ opens the Catalog with the stations that have no position.
 
 ![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
 
+In the Catalog such a product lists its stations instead of files: a row per station
+with a line per variable of its series (the symbol with the fill of its coverage, the
+label and the full years), the code and provider, the river with its hydrographic code,
+and the location: its source, or why the station has none. The stations with a
+position come first; "Bez położenia" is the last group, folded when more than 50
+stations have a position, open when the map's counter leads there, and its rows never
+lead to the map. "Wzdłuż rzek" (the default) and "Nazwa" order the list, and the search
+field finds a part of a name or river or the start of a code. The filter panel adds
+the dataset, the station kind or meteo types, the river code with "z dopływami", active
+or historical stations, a variable, the coverage chips of each variable with its least
+full years, the range of the labels and "Lata: hydrologiczne / kalendarzowe": the
+choice goes into the address and, for an administrator, is remembered for hydro or
+meteo data. "Ukryte przez filtry pokrycia: N" above the list counts the stations the
+coverage chips hide. Enter or a click shows a station with a position on the map;
+the arrows, Home and End move through the rows, and Enter on "Bez położenia" folds it.
+
+![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
+
 The command line and the API (`GET /api/v1/stations`) show the stations and the
 coverage of their series from the index while IMGWTools is installed:
 

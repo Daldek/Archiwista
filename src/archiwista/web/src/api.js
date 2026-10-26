@@ -47,12 +47,15 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").SheetQuery} SheetQuery */
 /** @typedef {import("./types.js").SheetList} SheetList */
 /** @typedef {import("./types.js").StationDatasets} StationDatasets */
+/** @typedef {import("./types.js").StationListFilters} StationListFilters */
+/** @typedef {import("./types.js").StationList} StationList */
 /** @typedef {import("./types.js").StationMapFilters} StationMapFilters */
 /** @typedef {import("./types.js").StationMapView} StationMapView */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
 /** @typedef {import("./types.js").Settings} Settings */
+/** @typedef {import("./types.js").YearTypes} YearTypes */
 /** @typedef {import("./types.js").ScanRequest} ScanRequest */
 /** @typedef {import("./types.js").JobDetail} JobDetail */
 /** @typedef {import("./types.js").JobFilters} JobFilters */
@@ -537,6 +540,20 @@ export function listStationDatasets(query = {}, { signal } = {}) {
 }
 
 /**
+ * A page of stations with the coverage of their series (`list_stations`):
+ * along rivers by default (`sort`), the counts of the whole result by location.
+ *
+ * @param {StationListFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationList>}
+ * @throws {ApiError} `400` (a coverage filter without `dataset`, a cursor of
+ *   another query), `503 missing_dependency` without IMGWTools.
+ */
+export function listStations(filters, { signal } = {}) {
+  return request("GET", "/stations", { query: filters, signal });
+}
+
+/**
  * The located stations of a map view, or their grid above `limit`
  * (`list_map_stations`).
  *
@@ -667,6 +684,18 @@ export function getSettings({ signal } = {}) {
  */
 export function putSettings(settings) {
   return request("PUT", "/settings", { json: settings });
+}
+
+/**
+ * Remember the year type of hydro and of meteo data (`put_year_types`); an
+ * omitted one takes its default, so send both.
+ *
+ * @param {YearTypes} yearTypes
+ * @returns {Promise<Settings>} The settings now in effect.
+ * @throws {ApiError} `403 permission_denied` without the administrator role.
+ */
+export function putYearTypes(yearTypes) {
+  return request("PUT", "/settings/year-types", { json: yearTypes });
 }
 
 // Background jobs (9b) --------------------------------------------------------

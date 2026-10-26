@@ -1141,11 +1141,11 @@ class StationCoverage:
 
 @dataclass(frozen=True, slots=True)
 class StationPage:
-    """A page of stations by name; ``next_cursor`` is ``None`` on the last page.
+    """A page of stations in the order of the query's ``sort``.
 
-    ``coverage`` holds the coverage of the series of the page's stations when
-    the query asked for labels (``StationQuery.labels``), by station and
-    dataset; empty otherwise.
+    ``next_cursor`` is ``None`` on the last page. ``coverage`` holds the
+    coverage of the series of the page's stations when the query asked for
+    labels (``StationQuery.labels``), by station and dataset; empty otherwise.
     """
 
     items: tuple[StationRow, ...]

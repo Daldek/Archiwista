@@ -893,7 +893,7 @@ class StationCountsItem(BaseModel):
 
 
 class StationList(IndexAnswer):
-    """A page of stations by name with the counts of the whole result."""
+    """A page of stations in the order of ``sort``; the counts of the whole result."""
 
     model_config = _examples(
         {

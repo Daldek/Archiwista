@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- The Catalog lists the stations of an IMGWTools product (ADR-045, plan I8.2): a row
+  per station with a line per variable of its series (the symbol with the fill of its
+  coverage, the label and the full years), the code, the river with its hydrographic
+  code and the location's source, along rivers or by name ("Wzdłuż rzek", "Nazwa") and
+  page by page as the list scrolls. "Bez położenia" is the last group with the reason
+  of each station and no way to the map; it starts folded when more than 50 stations
+  have a position and open when the map's counter leads to it. The filter panel has
+  the fields of `GET /stations` (dataset, kind or meteo types, river code with "z
+  dopływami", active, variable, coverage chips with the least full years, range of the
+  labels) and "Lata: hydrologiczne / kalendarzowe", which writes `year_type` to the
+  address and, for an administrator, remembers the choice for the family. "Ukryte przez
+  filtry pokrycia: N" counts what the coverage chips hide. Enter or a click shows a
+  located station on the map.
 - `GET /api/v1/stations` and `archiwista stations list` take `q` and `sort` (ADR-045, plan
   I8.2). `q` finds a station whose name or river contains the text, whatever the case
   of the letters (`łódź` finds `Łódź`), or whose code begins with it; no character is a
