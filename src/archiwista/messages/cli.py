@@ -1676,4 +1676,123 @@ MESSAGES = {
         "  Not checked: {part}: {detail}",
         "  Nie sprawdzono: {part}: {detail}",
     ),
+    "project_init_help": Text(
+        (
+            "Creates a project of a producer in a directory, bound to a configured"
+            " store (--json: the ProjectCard model of POST /api/v1/projects)."
+        ),
+        (
+            "Tworzy projekt producenta w katalogu, związany ze skonfigurowanym"
+            " magazynem (--json: model ProjectCard z POST /api/v1/projects)."
+        ),
+    ),
+    "project_directory_help": Text(
+        (
+            "Project directory, made when missing: a project directory of the"
+            " settings or a directory at most four levels below one; a relative path"
+            " is taken from the current directory."
+        ),
+        (
+            "Katalog projektu, tworzony, gdy go brak: katalog projektów z ustawień"
+            " albo katalog najwyżej cztery poziomy pod nim; ścieżka względna liczy"
+            " się od bieżącego katalogu."
+        ),
+    ),
+    "project_store_help": Text(
+        (
+            "Identifier of the configured store whose directory of the producer the"
+            " project's manifest names."
+        ),
+        (
+            "Identyfikator skonfigurowanego magazynu, którego katalog producenta"
+            " wskazuje manifest projektu."
+        ),
+    ),
+    "project_add_help": Text(
+        (
+            "Adds a task to a project through its producer: a command of the catalog"
+            " with its options, checked without the network (--json: the ProjectCard"
+            " model of POST /api/v1/projects/{{project}}/tasks)."
+        ),
+        (
+            "Dodaje zadanie do projektu przez jego producenta: polecenie z katalogu z"
+            " opcjami, sprawdzone bez sieci (--json: model ProjectCard z POST"
+            " /api/v1/projects/{{project}}/tasks)."
+        ),
+    ),
+    "project_task_help": Text(
+        "Task name; the producer's rules apply, e.g. teren.",
+        "Nazwa zadania; obowiązują zasady producenta, np. teren.",
+    ),
+    "project_command_help": Text(
+        'Data command of the producer\'s catalog, e.g. "elevation download".',
+        "Polecenie danych z katalogu producenta, np. „elevation download”.",
+    ),
+    "project_producer_help": Text(
+        "Producer of the call; by default the project's.",
+        "Producent wywołania; domyślnie producent projektu.",
+    ),
+    "project_remove_help": Text(
+        (
+            "Removes a task and its pins from a project through its producer; its"
+            " files stay in the store (--json: the ProjectCard model of DELETE"
+            " /api/v1/projects/{{project}}/tasks/{{name}})."
+        ),
+        (
+            "Usuwa zadanie i jego przypięcia z projektu przez jego producenta; pliki"
+            " zostają w magazynie (--json: model ProjectCard z DELETE"
+            " /api/v1/projects/{{project}}/tasks/{{name}})."
+        ),
+    ),
+    "project_status_help": Text(
+        (
+            "Asks the project's producer for its status now, without the network"
+            " (--json: the ProjectStatus model of GET"
+            " /api/v1/projects/{{project}}/status)."
+        ),
+        (
+            "Pyta producenta projektu o jego stan teraz, bez sieci (--json: model"
+            " ProjectStatus z GET /api/v1/projects/{{project}}/status)."
+        ),
+    ),
+    "project_failed": Text(
+        "Cannot run the project command",
+        "Nie można wykonać polecenia projektu",
+    ),
+    "project_created": Text(
+        "Created the project {project} in {path}.",
+        "Utworzono projekt {project} w {path}.",
+    ),
+    "project_task_added": Text(
+        "Added the task {task} to the project {project}.",
+        "Dodano zadanie {task} do projektu {project}.",
+    ),
+    "project_task_removed": Text(
+        (
+            "Removed the task {task} from the project {project}; its files stay in"
+            " the store."
+        ),
+        (
+            "Usunięto zadanie {task} z projektu {project}; jego pliki zostają w"
+            " magazynie."
+        ),
+    ),
+    "project_status_line": Text(
+        "{project} ({producer}): {status}, checked {checked_at}",
+        "{project} ({producer}): {status}, sprawdzono {checked_at}",
+    ),
+    "project_status_task": Text(
+        "  task {task}: {status}",
+        "  zadanie {task}: {status}",
+    ),
+    "project_status_stale": Text(
+        (
+            "Note: the project's store is unavailable; this is the check of the last"
+            " scan."
+        ),
+        (
+            "Uwaga: magazyn projektu jest niedostępny; to sprawdzenie z ostatniego"
+            " skanu."
+        ),
+    ),
 }

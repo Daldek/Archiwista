@@ -83,7 +83,10 @@ _TAGS = [
     {"name": "availability", "description": "What the source has for an area."},
     {"name": "commands", "description": "Producers' commands: catalog, check, line."},
     {"name": "jobs", "description": "Background jobs and their events (SSE)."},
-    {"name": "projects", "description": "Projects, their pins and status (read)."},
+    {
+        "name": "projects",
+        "description": "Projects, their pins and status; new projects and tasks.",
+    },
     {"name": "settings", "description": "Settings (changes: administrators)."},
     {"name": "session", "description": "One-time tokens and the session."},
     {"name": "permissions", "description": "Accounts, groups, project access."},

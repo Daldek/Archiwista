@@ -86,6 +86,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/producer_commands.py` | v0.3 CLI of the producers' commands over `services/commands.py` (ADR-034): `commands list`, `parse`, `validate`, `format` | `add_commands`, `main` |
 | `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
 | `commands/jobs.py` | v0.3 CLI of background jobs over `services/actions.py` and `services/jobs.py` (ADR-036 to ADR-038): `jobs start` (`check` or `download`, `--plan` the plan of a `check` job; the job in the foreground, printed as it ended; as the local owner, with the `Authorizer` over the state database), `jobs retry` (a job that did not succeed, again in the foreground), `jobs list`, `jobs show`, `jobs cancel` (also a job a server supervises), `jobs plan` (the plan a `check` job kept) and `jobs log` (the end of a job's log) | `add_commands`, `main` |
+| `commands/projects.py` | v0.3 CLI of project changes over `services/projects.py` (ADR-039): `project-init` (a new project of a producer in a directory, bound to a configured store), `project-add` and `project-remove` (a task of a project), each printing the project's card as `GET /projects/{project}`, and `project-status` (the producer's status, as `GET /projects/{project}/status`); as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -103,7 +104,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/stores.py` | `/stores`, `/stores/{store}` | `read_stores`, `read_store` |
 | `api/slots.py` | catalog and cards: `/slots`, `/products`, `/stores/{store}/slots/{slot}`, `/stores/{store}/versions/{version}` (with `/sidecar`), `/requests/{parent_request}` | `search_slots`, `read_products`, `slot_card`, `version_card`, `copy_path`, `geo_adapter`, `checked_store` |
 | `api/map.py` | `/map/footprints`, `/map/sheets` | `map_view`, `sheet_list` |
-| `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status` | `read_projects`, `project_card`, `check_project` |
+| `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status`; `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}` (ADR-039: the producer writes the manifest, `project.write`, the answer is the card as the index holds it at once) | `read_projects`, `project_card`, `check_project`, `create_project`, `add_project_task`, `remove_project_task`, `ProjectRequest`, `TaskRequest` |
 | `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
@@ -985,7 +986,8 @@ identities (`tests/unit/test_authorize.py`,
   of decisions: `can(principal, action, resource)`, `require(…)`
   (`PermissionDeniedError` → `403 permission_denied`) and
   `visible_projects(principal)`. Actions (`ACTIONS`): `project.view`,
-  `project.share`, `project.write` (since v0.2: snapshots of project files),
+  `project.share`, `project.write` (since v0.2: snapshots of project files;
+  since v0.3: creating a project and adding or removing its tasks, ADR-039),
   `users.manage`, `groups.manage`, `settings.write`, `store.write`,
   `job.cancel`.
   `admin` manages accounts, groups and settings, sees every project,
@@ -1044,7 +1046,7 @@ apart from it, it reads only its own static files from the server.
 | `api/stores.py` (`stores`) | `GET /stores`, `GET /stores/{store}` |
 | `api/slots.py` (`catalog`) | `GET /slots` (also the `project` filter), `/products`, slot and version cards, `…/sidecar`, `/requests/{parent_request}` |
 | `api/map.py` (`map`) | `GET /map/footprints`, `GET /map/sheets` |
-| `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status` |
+| `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status`, `POST /projects` (`201`, `Location`), `POST /projects/{project}/tasks` (`201`), `DELETE /projects/{project}/tasks/{name}` (`project.write`; the answer is the project's card) |
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
@@ -1087,6 +1089,7 @@ with the unchanged message (`<producer>_error`).
 | `commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE [--options JSON] [--store ID]`, `commands format PRODUCENT POLECENIE [--options JSON] [--run JSON]` | `commands/producer_commands.py` | the producers' catalogs and calls through `services/commands.py`, as `/commands`; no network, no writes; `--options` and `--run` take a JSON object |
 | `availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `commands/availability.py` | the kept report and a check at the source through `services/availability.py`, as `/availability`; `check` runs the `availability` job in the foreground and prints the report it kept |
 | `jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan ZADANIE]`, `jobs retry ZADANIE`, `jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs plan ZADANIE`, `jobs log ZADANIE` | `commands/jobs.py` | a job of a producer's command through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plan of a `check` job), and the retry of a job, as `POST /jobs/{job}/retry`, run in the foreground and printed as they ended (exit 0, 10 `partial`, 11, 130); the list, a job, its cancel and the end of its log as `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel` and `GET /jobs/{job}/log`; the plan a `check` job kept, as `GET /jobs/{job}/plan` |
+| `project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `commands/projects.py` | a new project and a task added or removed through `services/projects.py`, as `POST /projects`, `POST /projects/{project}/tasks` and `DELETE /projects/{project}/tasks/{name}`, each printing the project's card; the producer's status as `GET /projects/{project}/status`; a relative `KATALOG` is taken from the current directory; no network |
 
 ---
 

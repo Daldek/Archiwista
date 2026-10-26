@@ -23,6 +23,7 @@ from archiwista.commands import (
     owndata,
     previews,
     producer_commands,
+    projects,
 )
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
@@ -50,6 +51,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     producer_commands,
     availability,
     jobs,
+    projects,
 )
 
 

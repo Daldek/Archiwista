@@ -101,6 +101,7 @@ YEARS_PATTERN = r"^(\d{4}|\d{4}-\d{4}|\d{4}-|-\d{4})$"
 WGS84 = "EPSG:4326"
 
 _STORE = "zespol"
+_PROJECT_DIRS = "/mnt/nas/projekty"
 _SEGMENT = "nmt/pl_1992_1m_evrf2007"
 _SLOT = f"{_SEGMENT}/N-34/130/D/d/2/4/N-34-130-D-d-2-4.asc"
 _VERSION = (
@@ -2661,6 +2662,72 @@ class ProjectStatus(BaseModel):
     tasks: list[TaskStatus]
 
 
+class ProjectRequest(BaseModel):
+    """A new project of a producer bound to a configured store (`POST /projects`)."""
+
+    model_config = _examples(
+        {"producer": "kartograf", "path": f"{_PROJECT_DIRS}/raba", "store": _STORE},
+        closed=True,
+    )
+
+    producer: str = Field(
+        min_length=1,
+        description="Producer that writes the project's manifest, e.g. `kartograf`.",
+    )
+    path: str = Field(
+        min_length=1,
+        description=(
+            "Absolute path of the project directory, made when missing: a project"
+            " directory of the settings or a directory at most four levels below"
+            " one, in no hidden directory and no store, where a scan finds it."
+        ),
+    )
+    store: str = Field(
+        min_length=1,
+        description=(
+            "Id of the configured store whose directory of the producer the"
+            " manifest names: relative to the project directory when the store has"
+            " path aliases, else absolute; never the producer's default root."
+        ),
+    )
+
+
+class TaskRequest(BaseModel):
+    """A task added to a project by its producer (`POST /projects/{project}/tasks`)."""
+
+    model_config = _examples(
+        {
+            "name": _TASK_EXAMPLE["task"],
+            "command": _TASK_EXAMPLE["command"],
+            "options": _TASK_EXAMPLE["options"],
+        },
+        closed=True,
+    )
+
+    name: str = Field(
+        min_length=1, description="Name of the new task; the producer's rules apply."
+    )
+    command: str = Field(
+        min_length=1,
+        description="Data command of the producer's catalog (`GET /commands`).",
+    )
+    options: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Its options in the JSON form of the catalog, checked without the"
+            " network; no option that is a file path (`path_role`)."
+        ),
+    )
+    producer: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The producer the call names; left out: the project's. Another"
+            " producer is refused (`other_producer`)."
+        ),
+    )
+
+
 # Settings ------------------------------------------------------------------
 
 
@@ -2756,7 +2823,7 @@ class Settings(BaseModel):
             "scan_interval_local_min": 5,
             "scan_interval_share_min": 15,
             "full_scan_interval_h": 24,
-            "project_dirs": ["/mnt/nas/projekty"],
+            "project_dirs": [_PROJECT_DIRS],
             "stores": [_STORE_SETTINGS_EXAMPLE],
             "basemaps": [_BASEMAP_EXAMPLE],
             "store_write_for_all": False,

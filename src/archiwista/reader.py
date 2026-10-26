@@ -294,7 +294,7 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 def _project(args: argparse.Namespace, reader: _Reader) -> _Output:
     card = project_card(reader.queries, args.project, visible=reader.visible)
-    return _Output(card, _project_text(card))
+    return _Output(card, project_text(card))
 
 
 _COMMANDS: dict[str, _Command] = {
@@ -449,7 +449,8 @@ def _version_text(card: VersionCard) -> str:
     return _with_stale(card, lines)
 
 
-def _project_text(card: ProjectCard) -> str:
+def project_text(card: ProjectCard) -> str:
+    """Return a project's card for a person: the project, its tasks, pins, problems."""
     lines: list[str] = [
         message(
             "cli.project_line",

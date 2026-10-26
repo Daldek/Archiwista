@@ -276,6 +276,27 @@ command-line interface may change.
   (the filters of `GET /jobs`), `jobs show`, `jobs cancel`, `jobs retry` (in the
   foreground, as `jobs start`) and `jobs log` give the routes' models with `--json`.
   (SPEC 5.6, 9.2; plan A6)
+- Projects created and changed through their producer (ADR-039): `POST /projects`
+  (`producer`, `path`, `store`) has the producer write a new project's manifest in a
+  project directory of the settings or at most four levels below one, where the next scan
+  finds it (`400 project_not_discoverable` in a hidden directory, a store or deeper; `403
+  path_outside_root` outside), naming the store's directory of the producer (relative to
+  the project directory when the store has path aliases, never the producer's default
+  root); the store is configured (`404`), has a directory of the producer (`400
+  store_without_producer`) and can be read now (`503 store_unavailable`). A new project
+  has no owner yet, so only an administrator creates one. `POST
+  /projects/{project}/tasks` adds a task (a command of the producer's catalog with its
+  options, checked without the network: the producer's refusal keeps its text and
+  `details.option`, an option that is a file path is `403`) and `DELETE
+  /projects/{project}/tasks/{name}` removes one with its pins (its files stay in the
+  store), for the project's owner or an administrator (`404` for a project the session
+  does not see, `403 permission_denied` for one it may not change). Each answers the
+  project's card as the index holds it right after the change (`201` with `Location` for
+  a new project); a producer that changes no projects is `422 unsupported`
+  (`no_project_actions`). `archiwista project-init PRODUCER DIR --store STORE`,
+  `project-add PROJECT NAME COMMAND [--options JSON] [--producer PRODUCER]`,
+  `project-remove PROJECT NAME` and `project-status PROJECT` give the routes' models with
+  `--json`. (SPEC 4.7, 9.2; plan A7)
 
 ### Changed
 

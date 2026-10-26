@@ -40,7 +40,7 @@ The first start after an update from 0.1 rebuilds the local index (`SCHEMA_VERSI
 
 Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing) is planned for v0.4 (A-ADR-013); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
 
-Archiwista writes nothing in a Kartograf store. The local index and the preview cache live in the user's account; the one other write, on the command of a person with `project.write`, is a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
+Archiwista itself writes nothing in a Kartograf store or a project manifest: from v0.3 a download and a change of a project (`project-init`, `project-add`, `project-remove`) go through the producer's API, which writes them, on the command of a person allowed to (`store.write`, `project.write`). The local index and the preview cache live in the user's account; the one other write, on the command of a person with `project.write`, is a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
 
 | What | Where | Rebuildable |
 |---|---|---|
@@ -63,7 +63,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Producer plugins and their state | `archiwista sources` | `GET /sources` |
 | Search the catalog | `archiwista search [QUERY] [options]` | `GET /slots` |
 | Card of a file and of one version | `archiwista entry STORE SLOT`, `archiwista version STORE VERSION` | `GET /stores/{store}/slots/{slot}`, `GET /stores/{store}/versions/{version}` |
-| Projects | `archiwista projects`, `archiwista project PROJECT` | `GET /projects`, `GET /projects/{project}` |
+| Projects: the list, a card, the producer's status; a new project, a task added or removed (through the producer) | `archiwista projects`, `project PROJECT`, `project-status PROJECT`, `project-init PRODUCER DIR --store STORE`, `project-add PROJECT NAME COMMAND [--options JSON]`, `project-remove PROJECT NAME` | `GET /projects`, `GET /projects/{project}`, `…/status`, `POST /projects`, `POST /projects/{project}/tasks`, `DELETE …/tasks/{name}` |
 | Preview of a file or a version, optionally as PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET` and `POST …/preview`, `GET …/preview.png` |
 | Compare the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |
@@ -80,7 +80,7 @@ The read commands work without a running server: they use the local index and th
 
 The guide for scripts and agents is [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md): the HTTP session, filters, paging, background jobs and errors. The full schema is `/api/v1/openapi.json` of a running server (it needs a session) and the interactive documentation is `/api/docs`. With `--json` a command prints only JSON of the schema of the API answer on standard output. There is no MCP server.
 
-Archiwista never writes to a store; its only writes outside its own index and cache are snapshots, which need `project.write`, and `archiwista snapshot PROJECT FILE --plan` shows what one would do without writing. Always pass `--json`, and decide on `code` and `details.reason` of an error, never on its text.
+Archiwista never writes to a store or a project manifest itself: a download and a change of a project go through the producer's API and need `store.write` or `project.write`; its only own writes outside its index and cache are snapshots, which need `project.write`, and `archiwista snapshot PROJECT FILE --plan` shows what one would do without writing. Always pass `--json`, and decide on `code` and `details.reason` of an error, never on its text.
 
 ## Related tools
 

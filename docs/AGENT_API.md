@@ -24,6 +24,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
+| a new project, a task added or removed, the producer's status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}`, `GET /projects/{project}/status` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
@@ -245,8 +246,29 @@ cursor is safe in a URL).
   example both sides of the PL/CZ border).
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
-  answers like a missing one (`404`). `GET /projects/{project}/status` asks the
-  producer for the state now (no network).
+  answers like a missing one (`404`). `archiwista project-status PROJEKT` /
+  `GET /projects/{project}/status` asks the producer for the state now (no
+  network).
+- `archiwista project-init PRODUCENT KATALOG --store MAGAZYN` / `POST /projects`
+  (`{"producer", "path", "store"}`), `archiwista project-add PROJEKT NAZWA
+  POLECENIE [--options JSON]` / `POST /projects/{project}/tasks` (`{"name",
+  "command", "options"}`, optionally `"producer"`) and `archiwista
+  project-remove PROJEKT NAZWA` / `DELETE /projects/{project}/tasks/{name}`
+  (v0.3, ADR-039): the producer writes its manifest, and the answer is the
+  project's card as the index holds it at once (`201` with `Location` for a
+  new project, `201` for a task, `200` for a removal). A new project lies in a
+  project directory of the settings or at most four levels below one, outside
+  hidden directories and stores (`400 project_not_discoverable`; elsewhere
+  `403 path_outside_root`), and names a configured store (`404`) with a
+  directory of the producer (`400 store_without_producer`) that can be read
+  now (`503 store_unavailable`); it has no owner yet, so only an administrator
+  creates one. A task is changed by the project's owner or an administrator
+  (`404` for a hidden project, `403 permission_denied` for one seen but not
+  owned); its command is in the producer's catalog (`400 unknown_command`), its
+  options are checked without the network (`400` with the producer's text and
+  `details.option`), and an option that is a file path is `403`. Removing a
+  task keeps its files in the store. A producer that changes no projects
+  answers `422 unsupported` (`no_project_actions`).
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
