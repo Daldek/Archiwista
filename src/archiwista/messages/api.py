@@ -41,12 +41,14 @@ MESSAGES = {
     ),
     "hint_session_required": Text(
         (
-            "Exchange the one-time token for a session: POST /api/v1/session"
-            ' ("archiwista token" prints the address with the token).'
+            "Sign in (POST /api/v1/session/login, team mode) or exchange a"
+            ' one-time token for a session: POST /api/v1/session ("archiwista'
+            ' token" prints the address with the token).'
         ),
         (
-            "Wymień jednorazowy token na sesję: POST /api/v1/session („archiwista"
-            " token” wypisuje adres z tokenem)."
+            "Zaloguj się (POST /api/v1/session/login, tryb zespołowy) albo wymień"
+            " jednorazowy token na sesję: POST /api/v1/session („archiwista token”"
+            " wypisuje adres z tokenem)."
         ),
     ),
     "token_rejected": Text(
@@ -61,14 +63,15 @@ MESSAGES = {
     ),
     "session_ended": Text(
         (
-            "The session has ended: the account is disabled or deleted, or the owner"
-            ' ended the agent sessions ("archiwista token --revoke-all"). Open a new'
-            " session."
+            "The session has ended: the account is disabled or deleted, its"
+            " sessions were ended (a password change, an administrator), or the"
+            ' owner ended the agent sessions ("archiwista token --revoke-all").'
+            " Open a new session."
         ),
         (
-            "Sesja zakończyła się: konto jest wyłączone albo usunięte, albo właściciel"
-            " zakończył sesje agentów („archiwista token --revoke-all”). Otwórz nową"
-            " sesję."
+            "Sesja zakończyła się: konto jest wyłączone albo usunięte, jego sesje"
+            " zakończono (zmiana hasła, administrator) albo właściciel zakończył"
+            " sesje agentów („archiwista token --revoke-all”). Otwórz nową sesję."
         ),
     ),
     "cross_site": Text(

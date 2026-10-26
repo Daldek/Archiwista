@@ -117,6 +117,8 @@ def add_admin_commands(commands: _Commands) -> None:
     disable.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
     enable = _parser(users, "enable", message("cli.users_enable_help"))
     enable.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
+    end_sessions = _parser(users, "end-sessions", message("cli.users_end_help"))
+    end_sessions.add_argument("id", metavar="ID", help=message("cli.user_id_help"))
 
     groups = _subcommands(commands, "groups", message("cli.groups_help"))
     _parser(groups, "list", message("cli.groups_list_help"))
@@ -323,6 +325,11 @@ def _enable_user(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     return _Output(user, _user_text(user))
 
 
+def _end_sessions(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
+    user = User.of(access_service.end_sessions(authorizer, LOCAL_OWNER, args.id))
+    return _Output(user, message("cli.sessions_ended", id=user.id))
+
+
 def _list_groups(args: argparse.Namespace, authorizer: Authorizer) -> _Output:
     groups = GroupList(
         items=[
@@ -363,6 +370,7 @@ _USERS: dict[str, _Command] = {
     "password": _set_password,
     "disable": _disable_user,
     "enable": _enable_user,
+    "end-sessions": _end_sessions,
 }
 _GROUPS: dict[str, _Command] = {
     "list": _list_groups,

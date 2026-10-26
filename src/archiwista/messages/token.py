@@ -29,4 +29,28 @@ MESSAGES = {
             " {count}. Nowa sesja agenta wymaga nowego tokenu („archiwista token”)."
         ),
     ),
+    "user_required": Text(
+        (
+            "Team mode has no local owner for the agent to act for: name its account"
+            ' ("archiwista token --user ID").'
+        ),
+        (
+            "Tryb zespołowy nie ma właściciela lokalnego, w którego imieniu działałby"
+            " agent: podaj jego konto („archiwista token --user ID”)."
+        ),
+    ),
+    "user_disabled": Text(
+        "The account {id} is disabled: no agent acts for it.",
+        "Konto {id} jest wyłączone: żaden agent nie działa w jego imieniu.",
+    ),
+    "user_with_revoke_all": Text(
+        (
+            "--revoke-all ends the sessions of every agent and takes no --user; to"
+            ' end one account\'s sessions use "archiwista users end-sessions ID".'
+        ),
+        (
+            "--revoke-all kończy sesje wszystkich agentów i nie przyjmuje --user;"
+            " sesje jednego konta kończy „archiwista users end-sessions ID”."
+        ),
+    ),
 }

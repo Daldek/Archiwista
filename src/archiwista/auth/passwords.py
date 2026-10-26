@@ -255,6 +255,30 @@ def sign_in_administrators(
     )
 
 
+type SignInFailure = Literal["login_failed", "disabled", "password_expired"]
+
+
+@dataclass(frozen=True, slots=True)
+class SignInCheck:
+    """The outcome of ``check_sign_in``.
+
+    Attributes
+    ----------
+    user : UserRecord or None
+        The account that signs in; ``None`` when the sign-in is refused.
+    failure : {"login_failed", "disabled", "password_expired"} or None
+        Why it is refused: an unknown account, a wrong password or an
+        account without one (``login_failed``), a disabled account, or a
+        correct temporary password past its end.
+    temporary : bool
+        Signed in with a temporary password, to be changed now.
+    """
+
+    user: UserRecord | None
+    failure: SignInFailure | None = None
+    temporary: bool = False
+
+
 def set_password(
     state: StateStore,
     user_id: str,
@@ -293,20 +317,101 @@ def set_password(
         The password breaks the policy: reason ``password_policy``,
         ``details.rule`` names the rule.
     """
-    user = state.user(user_id)
-    if user is None:
-        raise NotFoundError(message("state.user_not_found", id=user_id))
-    rule = policy_problem(password, account=user.id, name=user.name)
-    if rule is not None:
-        raise InvalidChangeError(
-            policy_text(rule), reason="password_policy", details={"rule": rule}
-        )
+    user = _existing(state, user_id)
+    _require_policy(password, user)
     ends = None
     if temporary:
         ends = (now or datetime.now(UTC)).replace(microsecond=0) + TEMPORARY_TTL
     return state.set_password(
         user_id, hash_password(password), expires_at=ends, actor=actor
     )
+
+
+def check_sign_in(
+    state: StateStore, account: str, password: str, *, now: datetime | None = None
+) -> SignInCheck:
+    """Check an account and a password, with one verification on every path.
+
+    An unknown account, a disabled one and one without a password verify a
+    hash too (theirs, or the stand-in of ``verify``), so neither the answer
+    nor its work tells which accounts exist (ASVS 6.3.8).
+
+    Parameters
+    ----------
+    state : StateStore
+        The state database.
+    account : str
+        The account id as signed in with (trimmed and lower-cased).
+    password : str
+        The password as received.
+    now : datetime or None, optional
+        The time that ends a temporary password; the current time when
+        omitted.
+    """
+    user = state.user(account)
+    record = None if user is None else state.password_record(user.id)
+    verified = verify(record, password, now=now)
+    if user is None:
+        return SignInCheck(None, "login_failed")
+    if user.disabled:
+        return SignInCheck(None, "disabled")
+    if not verified.matches:
+        return SignInCheck(None, "login_failed")
+    if verified.expired:
+        return SignInCheck(None, "password_expired")
+    return SignInCheck(user, temporary=verified.temporary)
+
+
+def change_password(
+    state: StateStore, user_id: str, current: str, new: str, *, actor: Principal
+) -> UserRecord | None:
+    """Change a person's own password, given the current one.
+
+    The new password must pass the policy (checked first, before any hash);
+    then the current one is verified. On success every session of the
+    account ends (its revocation time) and the action log gets
+    ``session.password``, in one transaction.
+
+    Returns
+    -------
+    UserRecord or None
+        The account after the change; ``None`` when ``current`` is not the
+        account's password: nothing changed.
+
+    Raises
+    ------
+    NotFoundError
+        Unknown account.
+    InvalidChangeError
+        The new password breaks the policy: reason ``password_policy``,
+        ``details.rule`` names the rule.
+    """
+    user = _existing(state, user_id)
+    _require_policy(new, user)
+    if not verify(state.password_record(user_id), current).matches:
+        return None
+    return state.set_password(
+        user_id,
+        hash_password(new),
+        expires_at=None,
+        actor=actor,
+        action="session.password",
+    )
+
+
+def _existing(state: StateStore, user_id: str) -> UserRecord:
+    user = state.user(user_id)
+    if user is None:
+        raise NotFoundError(message("state.user_not_found", id=user_id))
+    return user
+
+
+def _require_policy(password: str, user: UserRecord) -> None:
+    rule = policy_problem(password, account=user.id, name=user.name)
+    if rule is not None:
+        raise InvalidChangeError(
+            policy_text(rule), reason="password_policy", details={"rule": rule}
+        )
 
 
 def set_temporary_password(

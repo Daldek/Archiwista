@@ -1,14 +1,15 @@
 """Accounts, groups and project access over HTTP (A-ADR-029, SPEC 9.2).
 
 ``GET/POST /users``, ``PATCH/DELETE /users/{id}``, ``POST
-/users/{id}/password``, ``GET/POST /groups``, ``PUT /groups/{id}/members``
-and ``DELETE /groups/{id}`` need ``admin``; ``GET/PUT /projects/{id}/access``
-the project's owner or ``admin``. Changes need the session's CSRF token, and
-each lands in the action log. The routes only translate:
-``archiwista.services.access`` asks ``Authorizer`` and changes the state
-database. ``archiwista users``, ``groups`` and ``share --json`` print these
-same models. No answer holds a password hash; a temporary password is
-answered once, by the route that generates it.
+/users/{id}/password``, ``DELETE /users/{id}/sessions``, ``GET/POST
+/groups``, ``PUT /groups/{id}/members`` and ``DELETE /groups/{id}`` need
+``admin``; ``GET/PUT /projects/{id}/access`` the project's owner or
+``admin``. Changes need the session's CSRF token, and each lands in the
+action log. The routes only translate: ``archiwista.services.access`` asks
+``Authorizer`` and changes the state database. ``archiwista users``,
+``groups`` and ``share --json`` print these same models. No answer holds a
+password hash; a temporary password is answered once, by the route that
+generates it.
 """
 
 from datetime import datetime
@@ -401,6 +402,21 @@ def set_temporary_password(
     generated = access_service.set_temporary_password(decisions, principal, user_id)
     response.headers["Cache-Control"] = "no-store"
     return TemporaryPassword.of(generated)
+
+
+@router.delete(
+    "/users/{user_id}/sessions", status_code=204, responses=problem_responses(404)
+)
+def end_user_sessions(
+    user_id: _UserId, principal: _Principal, decisions: _Authorizer
+) -> None:
+    """End every session of an account and of its agents (``admin``).
+
+    The account's revocation time becomes now: each of its sessions, also of
+    a one-time token issued before, answers ``401 session_required`` at its
+    next request. Logged as ``user.sessions_ended``.
+    """
+    access_service.end_sessions(decisions, principal, user_id)
 
 
 @router.get("/groups", response_model=GroupList)

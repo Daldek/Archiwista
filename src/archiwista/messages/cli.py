@@ -75,6 +75,13 @@ MESSAGES = {
         "end all agent sessions and invalidate unused tokens",
         "zakończ wszystkie sesje agentów i unieważnij niewykorzystane tokeny",
     ),
+    "token_user_help": Text(
+        "account the agent acts for, with its roles (required in team mode)",
+        (
+            "konto, w którego imieniu działa agent, z jego rolami (wymagane w trybie"
+            " zespołowym)"
+        ),
+    ),
     "port_invalid": Text(
         "port must be a number from {minimum} to 65535",
         "port musi być liczbą od {minimum} do 65535",
@@ -160,6 +167,23 @@ MESSAGES = {
     "users_enable_help": Text(
         "Enables a disabled account.",
         "Włącza wyłączone konto.",
+    ),
+    "users_end_help": Text(
+        (
+            "Ends every session of an account and of its agents, also those of a"
+            " running server."
+        ),
+        "Kończy wszystkie sesje konta i jego agentów, także uruchomionego serwera.",
+    ),
+    "sessions_ended": Text(
+        (
+            "Sessions of {id} ended; each of them is refused at its next request,"
+            " also by a running server."
+        ),
+        (
+            "Zakończono sesje konta {id}; każda zostanie odrzucona przy następnym"
+            " żądaniu, także przez uruchomiony serwer."
+        ),
     ),
     "password_prompt": Text(
         "New password of {id}: ",

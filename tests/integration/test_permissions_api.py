@@ -61,6 +61,7 @@ ADMIN_ROUTES = [
     ("PATCH", f"/users/{OTHER}", {"roles": ["admin"]}),
     ("DELETE", f"/users/{OTHER}", None),
     ("POST", f"/users/{OTHER}/password", None),
+    ("DELETE", f"/users/{OTHER}/sessions", None),
     ("GET", "/groups", None),
     ("POST", "/groups", {"id": "geodezja"}),
     ("PUT", f"/groups/{GROUP}/members", {"members": [OTHER]}),
@@ -195,8 +196,8 @@ def test_other_person_cannot_change_access(api: Api) -> None:
     """Seeing a public project does not allow sharing it; nothing changes."""
     # Arrange
     share(api.state, KEY, "public")
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "other"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request("PUT", ACCESS, json={"visibility": "private"})
@@ -292,8 +293,8 @@ def test_admin_routes_refuse_people_without_admin(
 ) -> None:
     """Accounts and groups are an administrator's: others get 403, nothing changes."""
     # Arrange
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "owner"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request(method, path, json=body)
@@ -309,8 +310,8 @@ def test_changes_need_csrf_token(
 ) -> None:
     """Every change of accounts, groups or access needs the session's CSRF token."""
     # Arrange
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "admin"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request(method, path, json=body, csrf=False)

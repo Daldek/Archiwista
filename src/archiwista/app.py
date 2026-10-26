@@ -11,9 +11,10 @@ revalidated on every use: ``InterfaceFiles``), which needs no session.
 Routers reach the shared objects through ``request.app.state``: ``settings``
 (``SettingsService``), ``transport`` (``Transport``: local or team mode, built
 once from the settings the server started with), ``sessions``
-(``SessionStore``), ``index_path``, ``port``, ``authorizer`` (``Authorizer``
-over the state database), ``queries`` (``IndexQueries``), ``registry`` (the
-producer plugins), the last three also as dependencies of
+(``SessionStore``), ``login_throttle`` (``LoginThrottle``: the wait after
+failed sign-ins), ``index_path``, ``authorizer`` (``Authorizer`` over the
+state database), ``queries`` (``IndexQueries``), ``registry`` (the producer
+plugins), the last three also as dependencies of
 ``archiwista.api.dependencies``, ``jobs`` (``JobSupervisor``, ``None``
 without background jobs, which leaves out their routes), ``job_streams``
 (open job event streams, which the server ends as it stops), ``previews``
@@ -56,6 +57,7 @@ from archiwista.api import layers as layer_routes
 from archiwista.api import map as map_routes
 from archiwista.api import owndata as owndata_routes
 from archiwista.api import previews as preview_routes
+from archiwista.api import sessions as session_list_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api import stations as station_routes
 from archiwista.api.docs import install_docs, install_openapi, operation_id
@@ -63,6 +65,7 @@ from archiwista.api.errors import ApiError, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
 from archiwista.auth.authorize import Authorizer
+from archiwista.auth.throttle import LoginThrottle
 from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
@@ -113,6 +116,7 @@ def create_app(
     registry: PluginRegistry,
     areas_dir: Path,
     sessions: SessionStore | None = None,
+    login_throttle: LoginThrottle | None = None,
     web_dir: Path = WEB_DIR,
     jobs: JobSupervisor | None = None,
     previews: RenderPool | None = None,
@@ -141,6 +145,8 @@ def create_app(
     sessions : SessionStore or None, optional
         Live sessions; a new, empty store with the limits of the mode when
         omitted.
+    login_throttle : LoginThrottle or None, optional
+        The wait after failed sign-ins; a new one when omitted.
     web_dir : Path, optional
         Interface files: ``index.html`` at ``/`` and every file under
         ``/static/``.
@@ -183,6 +189,7 @@ def create_app(
     app.state.settings = settings
     app.state.transport = transport
     app.state.sessions = sessions
+    app.state.login_throttle = login_throttle or LoginThrottle()
     app.state.index_path = index_path
     app.state.authorizer = Authorizer(state, settings.get)
     # Who sessions act as now: the middleware's check and the session routes.
@@ -198,6 +205,7 @@ def create_app(
     app.state.layer_memo = LayerMemo()
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
+    app.include_router(session_list_routes.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(stores.router, prefix=API_PREFIX)

@@ -64,12 +64,12 @@ from archiwista.errors import (
     OwnFileChangedError,
     PathOutsideRootError,
     PermissionDeniedError,
-    PreviewBusyError,
     PreviewNotReadyError,
     PreviewParameterError,
     PreviewTimeoutError,
     PreviewUnavailableError,
     ProducerError,
+    RateLimitedError,
     SnapshotBlockedError,
     SourceIncompatibleError,
     SourceUnavailableError,
@@ -101,7 +101,7 @@ ANSWERED: tuple[type[ArchiwistaError], ...] = (
     PreviewParameterError,
     PreviewUnavailableError,
     PreviewNotReadyError,
-    PreviewBusyError,
+    RateLimitedError,
     PreviewTimeoutError,
     SourceIncompatibleError,
     SourceUnavailableError,
@@ -138,7 +138,11 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             "unauthorized",
             "session_required",
             "api.session_required",
-            "No valid session: exchange a one-time token (POST /api/v1/session).",
+            "No valid session (`session_required`): sign in (POST"
+            " /api/v1/session/login, team mode) or exchange a one-time token (POST"
+            " /api/v1/session); a refused sign-in is `login_failed` (one answer for"
+            " every cause) or `password_expired` (a temporary password past its"
+            " end).",
         ),
         403: (
             "forbidden",
@@ -146,8 +150,10 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             "api.csrf_missing",
             "Refused (`details.reason`): `csrf_rejected` (no or another"
             " X-Archiwista-CSRF, a foreign `Origin` or a cross-site request),"
-            " `invalid_host`, `permission_denied` (A-ADR-029) or"
-            " `path_outside_root`.",
+            " `invalid_host`, `tls_required`, `proxy_required`, `permission_denied`"
+            " (A-ADR-029), `path_outside_root`, `wrong_password` (the current"
+            " password of a change) or `password_change_required` (a session of"
+            " a temporary password changes it first).",
         ),
         404: (
             "not_found",
@@ -167,8 +173,20 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             " (`details.blocked_by`), `project_locked` (the lock of a"
             " project's manifest stays, `details.lock`: remove it when no program"
             " is changing the project), `unknown_store` (a project's manifest"
-            " names no configured store) or `last_admin` (team mode: the last"
-            " enabled administrator cannot be removed, disabled or lose the role).",
+            " names no configured store), `last_admin` (team mode: the last"
+            " enabled administrator cannot be removed, disabled or lose the"
+            " role), `local_mode` (no sign-in and no password in local mode) or"
+            " `proxy_session` (a session of the reverse proxy changes no"
+            " password).",
+        ),
+        429: (
+            "rate_limited",
+            "login_blocked",
+            "auth.login_blocked",
+            "Wait `Retry-After` seconds (also `details.retry_after_s`) and ask"
+            " again (`details.reason`): `login_blocked` (too many failed sign-ins"
+            " of the account or from the address), `preview_busy` (the render"
+            " queue is full).",
         ),
         500: (
             "data_error",
@@ -349,7 +367,7 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, ArchiwistaError):  # pragma: no cover - by registration
         raise error
     headers = None
-    if isinstance(error, PreviewBusyError):
+    if isinstance(error, RateLimitedError):
         headers = {"Retry-After": str(error.retry_after_s)}
     return problem_response(describe(error), request, headers=headers)
 

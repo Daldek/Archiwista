@@ -133,6 +133,18 @@ def set_password(
     )
 
 
+def end_sessions(
+    authorizer: Authorizer, principal: Principal, user_id: str
+) -> UserRecord:
+    """End every session of an account (``users.manage``).
+
+    See ``StateStore.revoke_sessions``: a server ends each session at its
+    next request, also when the command line asks.
+    """
+    authorizer.require(principal, "users.manage")
+    return authorizer.state.revoke_sessions(user_id, actor=principal)
+
+
 def list_groups(
     authorizer: Authorizer, principal: Principal
 ) -> tuple[GroupRecord, ...]:

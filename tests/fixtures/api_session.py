@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from archiwista.app import create_app
 from archiwista.auth import Principal
+from archiwista.auth.throttle import LoginThrottle
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.index.schema import initialize
 from archiwista.jobs import JobSupervisor
@@ -100,11 +101,14 @@ def running_api(
     registry: PluginRegistry | None = None,
     *,
     jobs: JobSupervisor | None = None,
+    login_throttle: LoginThrottle | None = None,
 ) -> Iterator[Api]:
     """Serve the application over ``paths`` (index and state database).
 
     ``registry`` holds the producer plugins; none when omitted. ``jobs``, a
     started supervisor, serves the routes of jobs; none when omitted.
+    ``login_throttle`` (the wait after failed sign-ins, e.g. on a test
+    clock) replaces the application's own.
     """
     initialize(paths.index_file)
     state = StateStore(paths.state_file)
@@ -117,6 +121,7 @@ def running_api(
         state=state,
         registry=plugins,
         areas_dir=paths.areas_dir,
+        login_throttle=login_throttle,
         jobs=jobs,
     )
     transport = app.state.transport

@@ -43,6 +43,7 @@ from uvicorn.config import LOGGING_CONFIG
 from archiwista.api.session import OneTimeToken
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
+from archiwista.auth.authorize import principal_for
 from archiwista.auth.passwords import sign_in_administrators
 from archiwista.config import (
     AppPaths,
@@ -51,8 +52,8 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
 )
-from archiwista.error_document import exception_problem, fail, refuse
-from archiwista.errors import StateError
+from archiwista.error_document import describe, exception_problem, fail, refuse
+from archiwista.errors import NotFoundError, StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
 from archiwista.logs import DEFAULT_LOG_LEVEL
@@ -579,43 +580,73 @@ def token_main(
     port: int | None = None,
     as_json: bool = False,
     revoke_all: bool = False,
+    user: str | None = None,
 ) -> int:
     """Run ``archiwista token``: a one-time address of an agent's session.
+
+    The agent acts for the owner of the computer, or with ``user`` for that
+    account, with its roles read again for each request. Team mode has no
+    local owner to act for, so it needs ``user``; the address is then one of
+    the team's origin. Each token and each revocation lands in the action
+    log, by the owner at the terminal (``token.issue``, ``token.revoke_all``).
 
     Parameters
     ----------
     paths : AppPaths
-        Configuration file and local index.
+        Configuration file, local index and state database.
     out, err : TextIO
         The address (or JSON) goes to ``out``, explanations to ``err``.
     port : int or None, optional
-        Port in the address; the configured one when omitted.
+        Port in the address of local mode; the configured one when omitted.
     as_json : bool, optional
         Print the ``POST /api/v1/session/tokens`` response model instead.
     revoke_all : bool, optional
         Issue nothing: end every agent session, also of a running server,
         and refuse the agent tokens not used yet.
+    user : str or None, optional
+        The enabled account the agent acts for; required in team mode.
 
     Returns
     -------
     int
-        ``0``, or the registry's exit code when the settings or the index
-        cannot be used.
+        ``0``; ``2`` (``validation_error``) without ``user`` in team mode,
+        for a disabled account or ``user`` with ``revoke_all``; the
+        registry's exit code for an unknown account and for settings, an
+        index or a state database that cannot be used.
     """
     try:
         settings = ConfigStore(paths.config_file).load()
         initialize(paths.index_file)
-    except (SettingsValidationError, IndexUnsupportedError) as error:
+        state = StateStore(paths.state_file)
+    except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
             exception_problem(error, with_detail(message("token.failed"), str(error))),
             err,
         )
     if revoke_all:
+        if user is not None:
+            text = message("token.user_with_revoke_all")
+            return fail(err, "validation_error", text, reason="user_with_revoke_all")
         refused = revoke_agent_sessions(paths.index_file)
+        state.record(LOCAL_OWNER, "token.revoke_all", "*", details={"count": refused})
         out.write(message("token.revoked", count=refused) + "\n")
         return 0
-    # The owner at the terminal mints a token for an agent acting for them.
-    issued = issue_one_time_token(paths.index_file, "agent", minted_by=LOCAL_OWNER)
+    minter = LOCAL_OWNER
+    if user is not None:
+        account = state.user(user)
+        if account is None:
+            missing = NotFoundError(message("state.user_not_found", id=user))
+            return refuse(describe(missing), err)
+        found = principal_for(state, user)
+        if found is None:
+            text = message("token.user_disabled", id=user)
+            return fail(err, "validation_error", text, reason="user_disabled")
+        minter = found
+    elif settings.team.enabled:
+        text = message("token.user_required")
+        return fail(err, "validation_error", text, reason="user_required")
+    issued = issue_one_time_token(paths.index_file, "agent", minted_by=minter)
+    state.record(LOCAL_OWNER, "token.issue", minter.id, details={"label": issued.label})
     transport = Transport.of(settings, settings.port if port is None else port)
     token = OneTimeToken(
         token=issued.token,

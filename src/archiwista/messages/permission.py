@@ -13,6 +13,16 @@ MESSAGES = {
             " wystawia właściciel („archiwista token”) albo jego przeglądarka."
         ),
     ),
+    "session_password": Text(
+        (
+            "An agent session does not change its account's password; the person"
+            " does it in their own session."
+        ),
+        (
+            "Sesja agenta nie zmienia hasła swojego konta; zmienia je sama osoba"
+            " w swojej sesji."
+        ),
+    ),
     "project_view": Text(
         "No access to this project.",
         "Brak dostępu do tego projektu.",

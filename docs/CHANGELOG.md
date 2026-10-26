@@ -67,6 +67,26 @@ command-line interface may change.
   issued before, even when they are exchanged later, and a new session ends the one
   whose cookie the request carried. In team mode `POST /session/tokens` and
   `archiwista token` give addresses of the team's origin.
+- Signing in to team mode (v0.4, ADR-046): `GET /session/methods` tells how a session
+  starts; `POST /session/login` signs in with an account and its password (an
+  unknown account, a wrong password, a disabled account and one without a password
+  all answer `401 login_failed` after one password verification; a correct temporary
+  password past its end `401 password_expired`; `409 local_mode` in local mode) and
+  ends the session whose cookie the request carried. After five failures of an
+  account (from any address) or of an address (for any account) each attempt waits,
+  1 s doubling up to 15 minutes (`429 rate_limited`, `login_blocked`, `Retry-After`),
+  and is refused without verifying a password. A session of a temporary password may
+  only read itself, change the password and sign out (`403 password_change_required`).
+  `PUT /session/password` changes the person's password (`wrong_password`, the rules
+  of `password_policy`), ends every session of the account and its agents' and
+  answers a new session. `GET /sessions` lists a person's sessions (`?user=` for an
+  administrator) and `DELETE /sessions/{label}` ends one; `DELETE
+  /users/{user_id}/sessions` and `archiwista users end-sessions ID` end all of an
+  account's, also those of a running server. `GET /session` also tells the name,
+  groups, how the session started, `password_change_required` and `team`. `archiwista
+  token --user ID` issues an agent's token for an account (required in team mode).
+  Sign-ins, failures, signing out, password changes, ended sessions and tokens are in
+  the action log. `429` problems of the API carry `details.retry_after_s`.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

@@ -45,6 +45,13 @@ type Visibility = Literal["public", "users", "group", "private"]
 # The actions of the log written so far (A-ADR-047, plan v0.4 C8); each step
 # that logs a new action adds its name here.
 type ActionName = Literal[
+    "session.login",
+    "session.login_failed",
+    "session.logout",
+    "session.password",
+    "session.ended",
+    "token.issue",
+    "token.revoke_all",
     "user.add",
     "user.update",
     "user.remove",
@@ -658,13 +665,16 @@ class StateStore:
         *,
         expires_at: datetime | None,
         actor: Principal,
+        action: Literal["user.password_reset", "session.password"] = (
+            "user.password_reset"
+        ),
     ) -> UserRecord:
         """Set an account's password and end the account's sessions.
 
         Only ``archiwista.auth.passwords`` calls this, with a hash it made.
-        The entry ``user.password_reset`` tells whether the password is
-        temporary and its end, never the hash; the account's revocation time
-        becomes now (``revoke_sessions``), in the same transaction.
+        The entry tells whether the password is temporary and its end, never
+        the hash; the account's revocation time becomes now
+        (``revoke_sessions``), in the same transaction.
 
         Parameters
         ----------
@@ -677,6 +687,9 @@ class StateStore:
             next sign-in; ``None`` for a password that stays.
         actor : Principal
             Who sets it (``set_by`` and the log).
+        action : {"user.password_reset", "session.password"}, optional
+            The entry: set for an account (an administrator, the terminal),
+            or changed by its person.
 
         Raises
         ------
@@ -700,7 +713,7 @@ class StateStore:
             _record(
                 connection,
                 actor,
-                "user.password_reset",
+                action,
                 user_id,
                 now,
                 details={"temporary": ends is not None, "expires_at": ends},

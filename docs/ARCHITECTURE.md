@@ -81,7 +81,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | Module | Role | Key symbols |
 |---|---|---|
 | `cli.py` | the `archiwista` command (`[project.scripts]`); `umask 077` on POSIX; dispatches subcommands | `main` |
-| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; team mode only with an administrator who can sign in, `admin_refusal`; socket, startup token in local mode, Uvicorn with the TLS files of team mode, job supervisor and scheduler) and `archiwista token` | `serve_main`, `token_main`, `team_refusal`, `admin_refusal`, `Refusal`, `AppServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
+| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; team mode only with an administrator who can sign in, `admin_refusal`; socket, startup token in local mode, Uvicorn with the TLS files of team mode, job supervisor and scheduler) and `archiwista token` (for the local owner, or with `--user` for an enabled account, which team mode requires; `token.issue` and `token.revoke_all` in the action log) | `serve_main`, `token_main`, `team_refusal`, `admin_refusal`, `Refusal`, `AppServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
 | `app.py` | FastAPI application factory: shared objects in `app.state` (the `Transport` built once from the settings), routers under `/api/v1`, the OpenAPI document, `/api/docs` in local mode only, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
 | `reader.py` | read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` built on API functions and models | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | commands `users`, `groups`, `share`, `state export` and `state import`, run as `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
@@ -99,14 +99,15 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `security.py` | the rules of local and team mode for every request (`Transport`: origin, `Host` values, trusted proxies, TLS; the client address), one-time tokens, in-memory sessions and their cookie (`__Host-archiwista_session` in team mode), CSP and HSTS, TLS files checked as a pair, token redaction in logs | `SecurityMiddleware`, `Transport`, `client_address`, `transport_rejection`, `tls_problem`, `session_cookie_name`, `SessionStore`, `Session`, `issue_one_time_token`, `redeem_one_time_token`, `revoke_agent_sessions`, `session_principals`, `require_session`, `current_principal`, `csp_header`, `fragment_url`, `TokenRedactionFilter` |
+| `security.py` | the rules of local and team mode for every request (`Transport`: origin, `Host` values, trusted proxies, TLS; the client address), one-time tokens, in-memory sessions with the limits of the mode and their cookie (`__Host-archiwista_session` in team mode), the public requests (the exchange, the sign-in, the ways to sign in), the gate of a temporary password, CSP and HSTS, TLS files checked as a pair, token redaction in logs | `SecurityMiddleware`, `Transport`, `client_address`, `transport_rejection`, `tls_problem`, `session_cookie_name`, `SessionStore`, `Session`, `SessionMethod`, `PASSWORD_CHANGE_ROUTES`, `issue_one_time_token`, `redeem_one_time_token`, `revoke_agent_sessions`, `session_principals`, `require_session`, `current_principal`, `csp_header`, `fragment_url`, `TokenRedactionFilter` |
 | `api/__init__.py` | path constants | `API_PREFIX` (`/api/v1`), `DOCS_PATH` (`/api/docs`) |
 | `api/dependencies.py` | route dependencies taken from `app.state` | `authorizer`, `index_queries`, `settings_service`, `plugin_registry`, `visible_projects` |
 | `api/errors.py` | RFC 9457 problems with the codes of the Nogat registry; the same `Problem` serves the CLI | `ApiError`, `problem_body`, `problem_response`, `problem_responses`, `install_error_handlers` |
 | `api/language.py` | the outermost middleware: the language of a request from `Accept-Language`, `Content-Language` and `Vary` | `LanguageMiddleware` |
 | `api/models.py` | Pydantic models of requests and responses (except the session and administration models, which live next to their routers) — also the OpenAPI schema | `CatalogFilters`, `MapFilters`, `IndexAnswer`, `CatalogPage`, `SlotCard`, `VersionCard`, `MapView`, `Health`, `StoreDetail`, `ProjectCard`, `JobDetail`, `Area`, `AreaCoverage`, `Settings`, `ProblemDetails` |
 | `api/docs.py` | OpenAPI (`operationId` = route function name) and local Swagger UI from `api/swagger/` | `install_docs`, `operation_id`, `openapi_document` |
-| `api/session.py` | `/session`: token exchange, session state, logout, agent tokens | `exchange_token`, `read_session`, `end_session`, `issue_token`, models `SessionExchange`, `NewSession`, `SessionState`, `OneTimeToken` |
+| `api/session.py` | `/session`: how a session starts here (`/methods`), a sign-in with an account's password (team mode; one answer for every refused account, the wait of `auth/throttle.py`), the token exchange, the session's state, the password change (a new session), signing out, agent tokens; each in the action log | `session_methods`, `sign_in`, `exchange_token`, `read_session`, `change_password`, `end_session`, `issue_token`, models `SessionMethods`, `SignIn`, `PasswordChange`, `SessionExchange`, `NewSession`, `SessionState`, `OneTimeToken` |
+| `api/sessions.py` | `/sessions`: a person's live sessions and their agents' (`?user=` an administrator's), ending one by its label | `list_sessions`, `end_session_label`, models `SessionItem`, `SessionList` |
 | `api/health.py` | `/health`, `/sources` | `read_health`, `source_infos`, `source_list` |
 | `api/stores.py` | `/stores`, `/stores/{store}` | `read_stores`, `read_store` |
 | `api/slots.py` | catalog and cards: `/slots`, `/products`, `/stores/{store}/slots/{slot}`, `/stores/{store}/versions/{version}` (with `/sidecar`), `/requests/{parent_request}` | `search_slots`, `read_products`, `slot_card`, `version_card`, `copy_path`, `geo_adapter`, `checked_store` |
@@ -116,7 +117,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
-| `api/admin.py` | `/users`, `/users/{user_id}/password`, `/groups`, `/projects/{project}/access` | models `User` (with the state of its password), `TemporaryPassword`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
+| `api/admin.py` | `/users`, `/users/{user_id}/password`, `/users/{user_id}/sessions`, `/groups`, `/projects/{project}/access` | models `User` (with the state of its password), `TemporaryPassword`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
@@ -144,7 +145,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `auth/principal.py` | who acts | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
-| `auth/passwords.py` | passwords of accounts (ADR-046): the policy (12 to 1,024 characters after NFKC, not the account's id or name, not in `common-passwords.txt`, the package's list with its manifest and licence), Argon2id hashes of `HASHER` with at most `HASH_SLOTS` at once, verification of one hash on every path (a stand-in without a record), temporary passwords, who can sign in (enabled, with a password that has not expired or through the proxy); the only reader and writer of the password table | `policy_problem`, `hash_password`, `verify`, `Verified`, `generate_temporary`, `set_password`, `set_temporary_password`, `TemporaryPassword`, `can_sign_in`, `sign_in_administrators`, `HASHER`, `HASH_SLOTS`, `TEMPORARY_TTL` |
+| `auth/passwords.py` | passwords of accounts (ADR-046): the policy (12 to 1,024 characters after NFKC, not the account's id or name, not in `common-passwords.txt`, the package's list with its manifest and licence), Argon2id hashes of `HASHER` with at most `HASH_SLOTS` at once, verification of one hash on every path (a stand-in without a record), the check of a sign-in (`login_failed` for an unknown account, a wrong password or none, `disabled`, `password_expired`), a person's own change after the current password, temporary passwords, who can sign in (enabled, with a password that has not expired or through the proxy); the only reader and writer of the password table | `policy_problem`, `hash_password`, `verify`, `Verified`, `check_sign_in`, `SignInCheck`, `change_password`, `generate_temporary`, `set_password`, `set_temporary_password`, `TemporaryPassword`, `can_sign_in`, `sign_in_administrators`, `HASHER`, `HASH_SLOTS`, `TEMPORARY_TTL` |
+| `auth/throttle.py` | the wait after failed sign-ins (ADR-046), in memory: per account name and per client address, from the fifth failure 1 s doubling up to 15 min, a refused attempt verifies nothing, a success forgets both keys, a key idle for a day is forgotten | `LoginThrottle`, `throttle_keys`, `FREE_FAILURES`, `MAX_WAIT` |
 | `state/schema.py` | schema and migrations of `state.sqlite` | `initialize`, `MIGRATIONS`, `STATE_SCHEMA_VERSION` |
 | `state/store.py` | reading and changing the state database together with the action log (each change and its entries in one transaction; `record` for actions that change nothing here, `actions` pages the log newest first, `prune_actions` deletes old entries; the password table for `auth/passwords.py`; an account's revocation time); `read_users` reads the accounts without creating or upgrading the database (the doctor) | `StateStore`, `UserRecord`, `GroupRecord`, `ProjectAccessRecord`, `PasswordRecord`, `PreferenceRecord`, `ActionEntry`, `ActionName`, `ActionQuery`, `ActionPage`, `StateSnapshot`, `read_users` |
 | `state/export.py` | the `archiwista-state/2` copy of the state database (a secret: it holds the password hashes); `archiwista-state/1` still imports | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `LegacyStateDocument`, `STATE_DOCUMENT_SCHEMA` |
@@ -1136,7 +1138,8 @@ apart from it, it reads only its own static files from the server.
 
 | Router (tag) | Routes |
 |---|---|
-| `api/session.py` (`session`) | `POST /session` (without a session), `GET`/`DELETE /session`, `POST /session/tokens` |
+| `api/session.py` (`session`) | `GET /session/methods`, `POST /session/login` and `POST /session` (without a session), `GET`/`DELETE /session`, `PUT /session/password`, `POST /session/tokens` |
+| `api/sessions.py` (`session`) | `GET /sessions` (`?user=` for an administrator), `DELETE /sessions/{label}` |
 | `api/health.py` (`health`) | `GET /health`, `GET /sources` |
 | `api/stores.py` (`stores`) | `GET /stores`, `GET /stores/{store}` |
 | `api/slots.py` (`catalog`) | `GET /slots` (also the `project` filter), `/products`, slot and version cards, `…/sidecar`, `/requests/{parent_request}` |
@@ -1146,7 +1149,7 @@ apart from it, it reads only its own static files from the server.
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
-| `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
+| `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `DELETE /users/{user_id}/sessions`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
 | `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members`; with `jobs`: `POST /previews/warm` (`202` with the `preview_warm` job; any session) |
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
@@ -1175,9 +1178,9 @@ with the unchanged message (`<producer>_error`).
 
 | Commands | Module | Notes |
 |---|---|---|
-| `serve [--host] [--port] [--no-browser] [--access-log]`, `token [--port] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port |
+| `serve [--host] [--port] [--no-browser] [--access-log]`, `token [--port] [--user ID] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port; `token --user ID` issues a token for an enabled account (required in team mode) |
 | `status`, `sources`, `search [ZAPYTANIE]`, `entry MAGAZYN SLOT`, `version MAGAZYN WERSJA`, `projects`, `project PROJEKT` | `reader.py` | without the server, on the local index; `--json` prints the API response model, an error as an RFC 9457 problem with exit code 1; the `search` options have the parameter names of `/slots` (`search_filters` → `CatalogFilters`) |
-| `users list\|add\|roles\|remove\|password\|disable\|enable`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `users password ID [--temporary] [--stdin]` (typed twice without echo, or one line of standard input); `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
+| `users list\|add\|roles\|remove\|password\|disable\|enable\|end-sessions`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `users password ID [--temporary] [--stdin]` (typed twice without echo, or one line of standard input); `users end-sessions ID` ends the account's sessions, also of a running server; `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
 | `reindex [--store ID]` | `jobs/reindex.py` | full scan as a `local` job in the foreground; progress on stderr, summary on stdout; exit 0, 1 (error, interruption, `conflict`), 2 (unknown store); Ctrl+C cancels |
 | `doctor` | `doctor.py` | diagnostics in Polish with a repair command for every problem |
 | `preview REF [--build] [--output PLIK.png]`, `layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ]`, `compare REF REF` | `commands/previews.py`, `commands/layers.py`, `commands/compare.py` | the same services as the API, images saved on request |
@@ -1297,10 +1300,12 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
 - **Team mode (v0.4, A-ADR-013, A-ADR-046, A-ADR-047).** Built so far: the `[team]`
   settings, the refusals to start, TLS and the transport rules (section 6), the
   password table and the action log of `state.sqlite` (4.2), passwords with temporary
-  ones and the last administrator (`auth/passwords.py`, section 7). Missing are sign-in
-  over HTTP, the screens of accounts, sharing, the log and the jobs, the shared queue
-  and the file download (plan `2026-10-26-plan-v0.4.md`, T3 to T12); sessions live in
-  the memory of a single server (`SessionStore`).
+  ones and the last administrator (`auth/passwords.py`, section 7), sign-in over HTTP
+  with the wait after failures, the sessions of team mode and their revocation
+  (`api/session.py`, `api/sessions.py`, `auth/throttle.py`, 5.3). Missing are the
+  sign-in through the reverse proxy, the screens of sign-in, accounts, sharing, the log
+  and the jobs, the shared queue and the file download (plan `2026-10-26-plan-v0.4.md`,
+  T4 to T12); sessions live in the memory of a single server (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

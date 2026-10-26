@@ -534,23 +534,35 @@ class FormatRefusedError(ArchiwistaError):
     default_reason = "format_refused"
 
 
-class PreviewBusyError(ArchiwistaError):
-    """The render queue is full (``429 rate_limited`` with ``Retry-After``).
+class RateLimitedError(ArchiwistaError):
+    """A request must wait (``429 rate_limited`` with ``Retry-After``).
 
     Parameters
     ----------
     message : str
-        Description of the full queue.
+        What waits and why, a catalog text.
     retry_after_s : int
-        Seconds after which asking again is likely to succeed.
+        Seconds after which asking again is likely to succeed (also
+        ``details.retry_after_s``).
+    reason : str or None, optional
+        The cause, e.g. ``login_blocked``; the class default when omitted.
     """
 
     default_code = "rate_limited"
-    default_reason = "preview_busy"
 
-    def __init__(self, message: str, *, retry_after_s: int) -> None:
-        super().__init__(message, details={"retry_after_s": retry_after_s})
+    def __init__(
+        self, message: str, *, retry_after_s: int, reason: str | None = None
+    ) -> None:
+        super().__init__(
+            message, reason=reason, details={"retry_after_s": retry_after_s}
+        )
         self.retry_after_s = retry_after_s
+
+
+class PreviewBusyError(RateLimitedError):
+    """The render queue is full (``429 rate_limited`` with ``Retry-After``)."""
+
+    default_reason = "preview_busy"
 
 
 class PreviewTimeoutError(ArchiwistaError):

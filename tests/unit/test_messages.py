@@ -7,7 +7,7 @@ import pickle
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
@@ -36,6 +36,7 @@ from archiwista.messages import (
     valid_key,
     with_detail,
 )
+from archiwista.state import ActionName
 
 SRC = Path(archiwista.__file__).parent
 # Polish diacritics or words that no English text uses (also for Polish text that
@@ -52,8 +53,8 @@ SCOPES = ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
 # Last segment of a dotted literal that is a file name, not a message key.
 _FILE_SUFFIXES = frozenset({"json", "geojson", "gpkg", "html", "sqlite", "toml", "zip"})
 # Dotted literals of the project that no catalog owns: permission actions and the
-# name of an audit entity.
-_NOT_KEYS = frozenset({*ACTIONS, "project.access"})
+# actions of the action log (``token.issue`` is no text of the ``token`` area).
+_NOT_KEYS = frozenset({*ACTIONS, *get_args(ActionName.__value__)})
 # Entries whose two languages read alike: a loan word, a code or a bare composition.
 _SAME_WORDS = frozenset(
     {

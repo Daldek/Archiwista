@@ -176,6 +176,7 @@ def _parser() -> argparse.ArgumentParser:
     token.add_argument(
         "--port", type=_port_type(1), help=message("cli.token_port_help")
     )
+    token.add_argument("--user", metavar="ID", help=message("cli.token_user_help"))
     token_output = token.add_mutually_exclusive_group()
     token_output.add_argument(
         "--json", action="store_true", help=message("cli.token_json_help")
@@ -258,6 +259,7 @@ def _dispatch(
             port=args.port,
             as_json=args.json,
             revoke_all=args.revoke_all,
+            user=args.user,
         )
     if registry is None:
         registry = load_registry(cache_dir=paths.cache_dir)

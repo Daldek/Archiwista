@@ -10,22 +10,26 @@ compare with the team's ``origin``; every response carries HSTS. The client
 address of a request is its peer, or behind trusted proxies the right-most
 ``X-Forwarded-For`` address that is no trusted proxy (``client_address``).
 A one-time token, of which the local index keeps only the SHA-256 hash
-together with who minted it (id and kind), is exchanged for a session: an
-``HttpOnly`` session cookie (``__Host-archiwista_session`` with ``Secure`` in
-team mode) and a separate secret, the session's CSRF token, which the
-client keeps (the interface in ``sessionStorage``, bound to the server's
-origin) and sends as ``X-Archiwista-CSRF`` with every ``/api`` request,
-reads included. Browsers send cookies to every port of a host, so the cookie
-never acts alone. ``/api/*`` requires both, except the exchange itself and
-the static files of ``/api/docs`` (local mode only); the session acts as a
-``Principal`` whose roles and groups are read for every request
-(``current_principal`` for routers). An agent's session ends 12 hours after
-its start at the latest, and at once when the owner revokes agent sessions
-(``revoke_agent_sessions``). A browser (``Sec-Fetch-Site``) may change state
-only from the same origin and read only from the same origin or by a direct
-navigation (``none``). Request bodies are capped before a route reads them:
-4 KiB for the token exchange, 1 MiB otherwise (area files keep their own 50
-MB limit). Every response carries a CSP computed from the current settings,
+together with who minted it (id and kind), or in team mode a sign-in with an
+account's password (``api/session.py``), starts a session: an ``HttpOnly``
+session cookie (``__Host-archiwista_session`` with ``Secure`` in team mode)
+and a separate secret, the session's CSRF token, which the client keeps
+(the interface in ``sessionStorage``, bound to the server's origin) and
+sends as ``X-Archiwista-CSRF`` with every ``/api`` request, reads included.
+Browsers send cookies to every port of a host, so the cookie never acts
+alone. ``/api/*`` requires both, except the exchange itself, the sign-in,
+the ways to sign in and the static files of ``/api/docs`` (local mode only);
+the session acts as a ``Principal`` whose roles and groups are read for
+every request (``current_principal`` for routers), and a session of a
+temporary password may only change it. An agent's session ends 12 hours
+after its start at the latest, and at once when the owner revokes agent
+sessions (``revoke_agent_sessions``); every session ends when its account's
+sessions are revoked after it started. A browser (``Sec-Fetch-Site``) may
+change state only from the same origin and read only from the same origin
+or by a direct navigation (``none``). Request bodies are capped before a
+route reads them: 4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB
+otherwise (area files keep their own 50 MB limit). Every response carries a
+CSP computed from the current settings,
 ``Referrer-Policy: no-referrer`` and ``X-Content-Type-Options: nosniff``;
 there is no CORS. Files are opened only through ``archiwista.paths``.
 """
@@ -81,6 +85,19 @@ TEAM_SESSION_COOKIE = "__Host-archiwista_session"
 HSTS = "max-age=31536000"
 CSRF_HEADER = "X-Archiwista-CSRF"
 SESSION_PATH = f"{API_PREFIX}/session"
+LOGIN_PATH = f"{SESSION_PATH}/login"
+METHODS_PATH = f"{SESSION_PATH}/methods"
+PASSWORD_PATH = f"{SESSION_PATH}/password"
+# What a session signed in with a temporary password may do until it changes
+# it: read itself, change the password, sign out (ASVS 6.4.1).
+PASSWORD_CHANGE_ROUTES = frozenset(
+    {
+        ("GET", SESSION_PATH),
+        ("GET", METHODS_PATH),
+        ("PUT", PASSWORD_PATH),
+        ("DELETE", SESSION_PATH),
+    }
+)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Each request of a session moves its end by the idle timeout: a day in local
 # mode, 8 hours in team mode, where a session also ends 7 days after its start
@@ -95,8 +112,10 @@ USER_AGENT_MAX_LENGTH = 200
 TOKEN_TTL: Mapping[TokenKind, timedelta] = MappingProxyType(
     {"startup": timedelta(minutes=10), "agent": timedelta(minutes=5)}
 )
-# Request bodies read before a route: the token exchange, everything else.
+# Request bodies read before a route: the token exchange, a sign-in,
+# everything else.
 SESSION_BODY_LIMIT_BYTES = 4 * 1024
+LOGIN_BODY_LIMIT_BYTES = 16 * 1024
 BODY_LIMIT_BYTES = 1024**2
 REDACTED = "***"
 
@@ -942,12 +961,15 @@ def csrf_rejection(headers: Headers, session: Session) -> str | None:
 def body_limit(method: str, path: str) -> int | None:
     """Return how many bytes a request body may have before a route reads it.
 
-    4 KiB for ``/api/v1/session`` (the token exchange needs no session),
-    1 MiB otherwise; ``None`` for ``POST /api/v1/areas``, which reads an
-    area file itself up to its own limit.
+    4 KiB for ``/api/v1/session`` (the token exchange needs no session), 16
+    KiB for ``/api/v1/session/login`` (a sign-in needs none either), 1 MiB
+    otherwise; ``None`` for ``POST /api/v1/areas``, which reads an area file
+    itself up to its own limit.
     """
     if path == SESSION_PATH:
         return SESSION_BODY_LIMIT_BYTES
+    if path == LOGIN_PATH:
+        return LOGIN_BODY_LIMIT_BYTES
     if method == "POST" and path == _AREAS_PATH:
         return None
     return BODY_LIMIT_BYTES
@@ -962,8 +984,14 @@ def _is_session_path(path: str) -> bool:
 
 
 def _is_public(method: str, path: str) -> bool:
-    """Return whether a request needs no session: the exchange, ``/api/docs``."""
-    if method == "POST" and path == SESSION_PATH:
+    """Return whether a request needs no session.
+
+    The token exchange, a sign-in, the ways to sign in and the files of
+    ``/api/docs``.
+    """
+    if method == "POST" and path in (SESSION_PATH, LOGIN_PATH):
+        return True
+    if method in ("GET", "HEAD") and path == METHODS_PATH:
         return True
     return method in ("GET", "HEAD") and (
         path == DOCS_PATH or path.startswith(f"{DOCS_PATH}/")
@@ -1037,12 +1065,16 @@ class SecurityMiddleware:
     reason ``proxy_required`` or ``tls_required``, ``transport_rejection``);
     then ``Host`` (``403 forbidden``, reason ``invalid_host``), ``Origin`` and
     ``Sec-Fetch-Site`` (``403 forbidden``, reason ``csrf_rejected``); then for
-    ``/api/*``, except ``POST /api/v1/session`` and the files of ``/api/docs``,
-    the session cookie (``401 unauthorized``, reason ``session_required``), the
-    session's CSRF token in every request (``403 csrf_rejected``) and who the
-    session acts as now (``401 session_required`` once its account is disabled
-    or removed, or its agent session revoked); last the size of the body
-    (``400 validation_error``, reason ``request_too_large``).
+    ``/api/*``, except the public requests (``POST /api/v1/session``, ``POST
+    /api/v1/session/login``, ``GET /api/v1/session/methods`` and the files of
+    ``/api/docs``), the session cookie (``401 unauthorized``, reason
+    ``session_required``), the session's CSRF token in every request (``403
+    csrf_rejected``), who the session acts as now (``401 session_required``
+    once its account is disabled or removed, its sessions revoked, or its
+    agent session revoked) and, for a session of a temporary password, the
+    routes of ``PASSWORD_CHANGE_ROUTES`` only (``403 forbidden``, reason
+    ``password_change_required``); last the size of the body (``400
+    validation_error``, reason ``request_too_large``).
     Only a request passing all of them extends its session. The client
     address (``client_address``), the session and its principal (with that
     address) are left in ``request.state`` for ``require_session`` and
@@ -1152,6 +1184,13 @@ class SecurityMiddleware:
         if reason is not None:
             return _Rejection("forbidden", "csrf_rejected", reason)
         principal = self._principals(session)
+        if (
+            principal is not None
+            and session.password_change_required
+            and (method, path) not in PASSWORD_CHANGE_ROUTES
+        ):
+            detail = message("auth.password_change_required")
+            return _Rejection("forbidden", "password_change_required", detail)
         extended = None if principal is None else self._sessions.extend(session_id)
         if principal is None or extended is None:
             self._sessions.end(session_id)
