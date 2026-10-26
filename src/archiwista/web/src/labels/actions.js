@@ -4,9 +4,9 @@
  * rows of a report and their variants and the pasted command, and the „Okno
  * planu” of a download with „Dodaj jako zadanie projektu”. Coverage labels
  * („pełne · 2 kampanie”) and store badges („pobrane 5/12”) come from the
- * server's dictionary; the words of a plan and of a run's files follow it
+ * server's dictionary; the words of a plan follow it
  * (archiwista/messages/job.py), so the interface and `archiwista jobs` say the
- * same thing.
+ * same thing, and those of a run's files are the job's (labels/cards.js).
  */
 
 export const actions = {
@@ -55,6 +55,8 @@ export const actions = {
   },
   plan: {
     title: "Pobrać?",
+    /** The title once something started. */
+    title_started: "Pobieranie",
     area: "obszar {name}",
     format: "Format",
     format_choose: "Wybierz format: żaden format tego wariantu nie jest domyślny, więc nic nie zostało wybrane za Ciebie.",
@@ -108,6 +110,13 @@ export const actions = {
     submit_unplanned: "Pobierz",
     cancel: "Anuluj",
     close: "Zamknij",
+    close_title: "Zamknij okno; pobieranie trwa dalej, a jego wynik zostaje na liście pod „Pobieranie” na górnym pasku",
+    minimise: "Zwiń",
+    minimise_title: "Schowaj okno; wraca przyciskiem „Pokaż okno planu” na liście pod „Pobieranie” na górnym pasku",
+    background:
+      "Pobieranie trwa w tle: zwinięcie ani zamknięcie okna go nie przerywa, a mapa i inne widoki działają dalej. Postęp i wynik pokazuje „Pobieranie” na górnym pasku.",
+    /** A download of one of a variant's several lines, in the list of downloads. */
+    run_title: "{title} — polecenie {place} z {count}",
     task: "Dodaj jako zadanie projektu",
     task_project: "Projekt",
     task_project_choose: "Wybierz projekt…",
@@ -127,13 +136,5 @@ export const actions = {
     task_no_call: "Polecenia nie udało się odczytać, więc nie można go dodać jako zadania.",
     submit_task: "Dodaj zadanie",
     submit_task_download: "Dodaj zadanie i pobierz {count} {positions}",
-    files: "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
-    file_status: {
-      new: "nowe",
-      unchanged: "bez zmian",
-      relabeled: "z nową etykietą",
-    },
-    files_title: "Pliki w magazynie",
-    failed_items: "Jednostki z błędem",
   },
 };

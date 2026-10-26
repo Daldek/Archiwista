@@ -10,18 +10,25 @@ year with its label, variant, badge and the chip of the other variants, and
 download runs that plan with its progress and files. A session without the
 permission to write the stores sees the plan with the action disabled and the
 reason; offline mode keeps the report and disables what needs the network.
+Downloads go on in the background (ADR-043): while the store holds the
+stand-in's ``HOLD`` a run waits after its first file, its window is closed or
+minimised, the map pans and zooms, the Catalog opens and the page reloads,
+and the top bar's „Pobieranie” follows the session's downloads all along,
+lists them with their files at the end and toasts each end; a download stops
+only by its „Anuluj pobieranie”.
 With ``ARCHIWISTA_SCREENSHOTS=<directory>`` the steps keep screenshots there,
 the local paths covered (``docs/reports/v0.3-screenshots/``).
 """
 
 import json
 import os
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -58,6 +65,14 @@ API = """async ([method, path, body]) => {
   if (body !== null) headers["Content-Type"] = "application/json";
   const answer = await fetch(`/api/v1${path}`, { method, headers, body });
   return { status: answer.status, body: await answer.json() };
+}"""
+# A call of the stand-in no plan window starts: a download of the session as
+# another tab would start it.
+OTHER_LINE = "series fetch --station 150160180 --kind hydro"
+# The address follows the map: its centre moved and it zoomed in.
+MOVED = """([center, zoom]) => {
+  const query = new URLSearchParams(location.search);
+  return query.get("center") !== center && Number(query.get("zoom")) > zoom;
 }"""
 
 
@@ -126,6 +141,40 @@ def shot(page: Page, name: str) -> None:
         page.evaluate(COVER_PATHS, True)
         page.screenshot(path=str(Path(directory) / f"{name}.png"))
         page.evaluate(COVER_PATHS, False)
+
+
+def plan_window(page: Page, year: int) -> Locator:
+    """Return the plan window of a year's best variant, planned or started."""
+    return page.get_by_role(
+        "dialog", name=re.compile(rf"^(Pobrać\?|Pobieranie) dem · {year} ")
+    )
+
+
+def indicator(page: Page) -> Locator:
+    """Return the top bar's „Pobieranie”: the session's downloads together."""
+    top = page.get_by_role("banner")
+    return top.get_by_role("button", name=re.compile(r"^(Pobieranie|Pobrano) \d"))
+
+
+def downloads(page: Page) -> Locator:
+    """Return the downloads listed under the indicator, newest first."""
+    panel = page.get_by_role("dialog", name="Pobrania w tle")
+    return panel.get_by_role("list", name="Pobrania w tle").locator("> li")
+
+
+def pan_and_zoom(page: Page) -> None:
+    """Drag the map and zoom it in with the wheel; wait for the address to follow."""
+    page.wait_for_function("() => new URLSearchParams(location.search).has('zoom')")
+    before = parse_qs(urlsplit(page.url).query)
+    box = page.locator(".maplibregl-canvas").bounding_box()
+    assert box is not None
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 120, y + 60, steps=8)
+    page.mouse.up()
+    page.mouse.wheel(0, -600)
+    page.wait_for_function(MOVED, arg=[before["center"][0], float(before["zoom"][0])])
 
 
 def test_a_variant_of_a_row_is_planned_and_downloaded(
@@ -269,4 +318,143 @@ def test_offline_mode_keeps_the_report_and_disables_the_network_actions(
     expect(step.get_by_role("button", name="Sprawdź ponownie")).to_have_count(0)
     step.scroll_into_view_if_needed()
     shot(page, "06-offline")
+    tab.assert_clean()
+
+
+def test_downloads_go_on_in_the_background_across_views_and_a_reload(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """Windows closed and minimised mid-run; map, Catalog, reload; the top bar."""
+    # Arrange: the runs wait after their first file while the store holds HOLD.
+    served = serve_store(serve, tmp_path)
+    page = tab.page
+    rows = check_at_source(open_area(page, served, served.token_url()))
+    hold = tmp_path / STORE / standin.HOLD
+    hold.touch()
+
+    # Act: the first download starts and its window closes while it runs.
+    first = open_plan(page, rows.nth(0))
+    first.get_by_role("button", name="Pobierz 2 pozycje").click()
+    expect(first.locator(".job-progress")).to_contain_text("1 z 2")
+    first.get_by_role("button", name="Zamknij").click()
+
+    # Assert: nothing cancelled it; the top bar follows it.
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    expect(indicator(page)).to_have_text("Pobieranie 0/1 · 50%")
+
+    # Act: a second one from the other row; its window is minimised, shown
+    # again from the list and minimised again.
+    open_plan(page, rows.nth(1))
+    second = plan_window(page, 2022)
+    second.get_by_role("button", name="Pobierz 2 pozycje").click()
+    expect(second.locator(".job-progress")).to_contain_text("1 z 2")
+    second.get_by_role("button", name="Zwiń").click()
+    expect(second).to_be_hidden()
+    expect(indicator(page)).to_be_focused()
+    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 50%")
+    indicator(page).click()
+    listed = downloads(page)
+    expect(listed).to_have_count(2)
+    expect(listed.nth(0)).to_contain_text("dem · 2022")
+    expect(listed.nth(1)).to_contain_text("dem · 2023")
+    listed.nth(0).get_by_role("button", name="Pokaż okno planu").click()
+    expect(second.locator(".job-progress")).to_contain_text("1 z 2")
+    second.get_by_role("button", name="Zwiń").click()
+    expect(second).to_be_hidden()
+
+    # Act: the map pans and zooms, the Catalog opens, the map comes back.
+    pan_and_zoom(page)
+    nav = page.get_by_role("navigation", name="Widoki")
+    nav.get_by_role("link", name="Katalog").click()
+    expect(page).to_have_url(re.compile(r"view=catalog"))
+    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 50%")
+    page.go_back()
+    expect(page).to_have_url(re.compile(r"view=map&area_id="))
+    expect(page.get_by_role("region", name="U źródła")).to_be_visible()
+
+    # Act: a third download of the session starts elsewhere (the API, as
+    # another tab would) and waits behind the two; then the page reloads.
+    line = {"producer": "standin", "line": OTHER_LINE}
+    other = call(page, "POST", "/commands/parse", line)
+    body = {"kind": "download", "producer": "standin", "store": STORE}
+    body |= {"command": other["command"], "options": other["options"]}
+    third = call(page, "POST", "/jobs", body)
+    page.reload()
+
+    # Assert: the session's three downloads are back, named as before.
+    expect(indicator(page)).to_have_text("Pobieranie 0/3 · 33%")
+    indicator(page).click()
+    expect(listed).to_have_count(3)
+    expect(listed.nth(0)).to_contain_text("standin · series fetch")
+    expect(listed.nth(0)).to_contain_text("Pobranie: w kolejce")
+    expect(listed.nth(1)).to_contain_text("dem · 2022")
+    expect(listed.nth(1).locator(".job-progress")).to_contain_text("1 z 2")
+    expect(listed.nth(2)).to_contain_text("dem · 2023")
+    expect(listed.nth(2).locator(".job-progress")).to_contain_text("1 z 2")
+    assert call(page, "GET", f"/jobs/{third['id']}")["state"] == "queued"
+    shot(page, "13-pobieranie-w-tle")
+    page.keyboard.press("Escape")
+    expect(indicator(page)).to_be_focused()
+
+    # Act: the store lets the runs go on.
+    hold.unlink()
+
+    # Assert: a toast at each end; the files are in the list of the indicator.
+    toasts = page.get_by_role("status", name="Powiadomienia o pobieraniu")
+    expect(toasts).to_contain_text("Pobrano: dem · 2023")
+    expect(toasts).to_contain_text("Pobrano: dem · 2022")
+    expect(toasts).to_contain_text("Pobrano: standin · series fetch")
+    expect(indicator(page)).to_have_text("Pobrano 3/3")
+    indicator(page).click()
+    expect(listed.nth(2)).to_contain_text(
+        "Pliki: 2 (nowe 2, bez zmian 0, z nową etykietą 0); jednostki z błędem: 0."
+    )
+    files = listed.nth(2).get_by_role("list", name="Pliki w magazynie").locator("> li")
+    expect(files).to_have_count(2)
+    expect(files.nth(0)).to_contain_text("hydro/150160190/2024.csv")
+    expect(files.nth(1)).to_contain_text("hydro/150160190/2025.csv")
+    expect(listed.nth(0)).to_contain_text("Pliki: 4 (nowe 4")
+    for station in ("150160190", "150160200"):
+        folder = tmp_path / STORE / "hydro" / station
+        names = sorted(path.name for path in folder.iterdir())
+        assert names == ["2024.csv", "2025.csv"], station
+    tab.assert_clean()
+
+
+def test_a_download_stops_only_by_its_cancel(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """`Esc` closes a run's window, not the run; its cancel in the list stops it."""
+    # Arrange: a run held after its first file.
+    served = serve_store(serve, tmp_path)
+    page = tab.page
+    rows = check_at_source(open_area(page, served, served.token_url()))
+    hold = tmp_path / STORE / standin.HOLD
+    hold.touch()
+    dialog = open_plan(page, rows.nth(0))
+    dialog.get_by_role("button", name="Pobierz 2 pozycje").click()
+    expect(dialog.locator(".job-progress")).to_contain_text("1 z 2")
+    (download,) = call(page, "GET", "/jobs?kind=download")["items"]
+
+    # Act
+    page.keyboard.press("Escape")
+
+    # Assert: the window is closed, the run goes on.
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    expect(indicator(page)).to_have_text("Pobieranie 0/1 · 50%")
+    assert call(page, "GET", f"/jobs/{download['id']}")["state"] == "running"
+
+    # Act
+    indicator(page).click()
+    downloads(page).nth(0).get_by_role("button", name="Anuluj pobieranie").click()
+
+    # Assert: cancelled, with the file it fetched kept.
+    toasts = page.get_by_role("status", name="Powiadomienia o pobieraniu")
+    expect(toasts).to_contain_text("Pobieranie anulowane: dem · 2023")
+    expect(indicator(page)).to_have_text("Pobrano 0/1")
+    expect(downloads(page).nth(0)).to_contain_text("Pobranie: anulowane")
+    assert call(page, "GET", f"/jobs/{download['id']}")["state"] == "cancelled"
+    folder = tmp_path / STORE / "hydro" / "150160190"
+    assert sorted(path.name for path in folder.iterdir()) == ["2024.csv"]
+    hold.unlink()
     tab.assert_clean()

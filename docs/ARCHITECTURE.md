@@ -1175,15 +1175,16 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
 | `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView` |
-| `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`; with no store in the settings it opens the wizard |
+| `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`, the downloads (`DownloadsProvider`) with the plan windows, the list and the toasts over the views; with no store in the settings it opens the wizard |
+| `downloads.js` | the session's downloads in the background (ADR-043): a store outside Preact in one context (each reader subscribes), an event stream for each running download and at most two queued ones (the others looked up in `GET /jobs?state=queued` every 2 s), the list kept in `sessionStorage`; `useDownloads`, `useDownloadActions` (`track`, `openPlan`, `cancel`), `useDownloadEnd`, the top bar's `DownloadsIndicator`, `DownloadsPanel`, `DownloadToasts` and `PlanWindows` (the plan windows hosted by the shell) |
 | `context.js` | `AppContext`, `useApp`, `useAppState`: session, settings, `/health` every 2 s during a scan or with a waiting store, otherwise every 15 s |
-| `banner.js` | `IndexBanner`: state of the index and the stores |
+| `banner.js` | `IndexBanner`: state of the index and the stores (a download of the session is left to the top bar) |
 | `setup.js` | first-run wizard and the "Ustawienia" (Settings) view (`PUT /settings`) |
 | `ui.js` | Preact and htm in one import (`html`), `Icon`, `Seg`, `CopyButton`, `Tech`, `ProblemView`, `Spinner`, `loadStylesheet` |
 | `panels.js`, `hooks.js`, `format.js` | panel layout (`ViewLayout`, `Resizer`, `usePanelWidths`), `useResource`, `useMedia`, Polish formats (`day`, `stamp`, `int`, `size`, `plural`, `count`) |
 | `search.js` | `SearchButton`, shortcuts `Ctrl+K` and `/`, `SLOT_PARAMS` (the `/slots` parameters in the address) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
-| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `FileLink`, `CopyAction`) |
+| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `labels/` | text dictionary (below) |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |

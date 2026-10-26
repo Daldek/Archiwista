@@ -4,10 +4,13 @@
  * and its progress (the wizard's new store is scanned by the server's
  * scheduler, step 6b), an unavailable store answered from the index as of
  * its last pass (`stale`, never shown as an empty result), a failed scan, an
- * unavailable producer plugin with its fix. Nothing while all is well.
+ * unavailable producer plugin with its fix. Nothing while all is well. A
+ * download of the session is not repeated here: the top bar's „Pobieranie”
+ * follows it (downloads.js).
  */
 
 import { useApp } from "./context.js";
+import { useDownloads } from "./downloads.js";
 import { int, plural, stamp } from "./format.js";
 import { T, t } from "./labels/index.js";
 import { Link } from "./router.js";
@@ -38,7 +41,9 @@ const FAILED = new Set(["failed", "interrupted"]);
  */
 export function IndexBanner({ view }) {
   const { health, healthError, settings } = useApp();
-  const lines = bannerLines({ health, healthError, settings, inSetup: view === "setup" });
+  const { entries } = useDownloads();
+  const followed = new Set(entries.map((item) => item.id));
+  const lines = bannerLines({ health, healthError, settings, inSetup: view === "setup", followed });
   if (!lines.length) return null;
   return html`<div class="banners" role="region" aria-label=${L.label}>
     ${lines.map(
@@ -70,10 +75,12 @@ function Progress({ label, current, total }) {
  * Lines of the banner, most important first.
  *
  * @param {{health?: import("./types.js").Health, healthError?: *,
- *   settings?: import("./types.js").Settings, inSetup: boolean}} state
+ *   settings?: import("./types.js").Settings, inSetup: boolean,
+ *   followed?: Set<string>}} state - `followed`: ids of the jobs the top bar
+ *   shows.
  * @returns {BannerLine[]}
  */
-export function bannerLines({ health, healthError, settings, inSetup }) {
+export function bannerLines({ health, healthError, settings, inSetup, followed = new Set() }) {
   const lines = [];
   if (healthError) {
     lines.push({
@@ -111,7 +118,7 @@ export function bannerLines({ health, healthError, settings, inSetup }) {
     });
   }
   for (const item of health.stores) {
-    const line = storeLine(item);
+    const line = storeLine(item, followed);
     if (line) lines.push(line);
   }
   return lines;
@@ -121,9 +128,10 @@ export function bannerLines({ health, healthError, settings, inSetup }) {
  * The banner line of one store, or `null` when it needs none.
  *
  * @param {import("./types.js").StoreItem} item
+ * @param {Set<string>} [followed] - Ids of the jobs the top bar shows instead.
  * @returns {BannerLine|null}
  */
-export function storeLine(item) {
+export function storeLine(item, followed = new Set()) {
   const { state } = item;
   const store = item.name;
   const key = `store-${item.store}`;
@@ -139,7 +147,7 @@ export function storeLine(item) {
     };
   }
   const job = state.running_job;
-  if (job) return jobLine(key, store, job);
+  if (job && !followed.has(job.id)) return jobLine(key, store, job);
   if (state.status === "unknown") {
     return { key, level: "info", icon: "database", text: t(L.waiting, { store }) };
   }

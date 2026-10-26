@@ -1,7 +1,7 @@
 /**
  * The „Okno planu” of a download (docs/SPEC.md 6.1 „Plan przed akcją”, 6.5 h,
- * UC-15; plan 2026-10-25 A11): what a run of the producer's command would do in a
- * configured store, and then the run.
+ * UC-15; plan 2026-10-25 A11; ADR-043): what a run of the producer's command
+ * would do in a configured store, and then the run.
  *
  * The variant's lines in the chosen format (`commands`; nothing is chosen
  * when the variant has no default format), or one pasted line, are read into
@@ -13,10 +13,18 @@
  * producer's directory, each position with the ones the producer would
  * refuse to write, and each command line to copy. „Pobierz” starts one
  * `download` per plan with something to download (`plan_job`: the run
- * fetches what was shown) and follows them to their files and failed
- * units; above 5 GB or 500 positions it asks to be confirmed first (SPEC
- * 10.3). A session that may not write the stores (`store_write`) sees the
- * plan with the action disabled and the reason.
+ * fetches what was shown) and hands each to the downloads of the shell
+ * (downloads.js), which follow it to its files and failed units; above 5 GB
+ * or 500 positions it asks to be confirmed first (SPEC 10.3). A session that
+ * may not write the stores (`store_write`) sees the plan with the action
+ * disabled and the reason.
+ *
+ * The shell opens the window (`openPlan` of downloads.js), so it outlives the
+ * view. Planning and the confirmation are modal; once something started the
+ * window is not, and the map and the other views stay usable: „Zwiń” hides
+ * it (the list under the top bar's „Pobieranie” shows it again), „Zamknij”
+ * and `Esc` close it, at any time and without cancelling anything. A download
+ * stops only by its „Anuluj pobieranie”.
  *
  * „Dodaj jako zadanie projektu” adds the one call as a task of a project of
  * the producer in the same store that the session may change (`POST
@@ -37,6 +45,7 @@ import {
   watchJob,
 } from "../api.js";
 import { useApp } from "../context.js";
+import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "../downloads.js";
 import { bytes, count, int, plural } from "../format.js";
 import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
@@ -56,15 +65,7 @@ import {
   useRef,
   useState,
 } from "../ui.js";
-import {
-  Badge,
-  FINAL_STATES,
-  JobStatus,
-  loadCardStyles,
-  projectSummary,
-  SUMMARY_STATES,
-  useJob,
-} from "./cards.js";
+import { Badge, FINAL_STATES, loadCardStyles, SUMMARY_STATES } from "./cards.js";
 
 await loadCardStyles();
 await loadStylesheet(new URL("./plan.css", import.meta.url));
@@ -76,12 +77,13 @@ const LARGE_POSITIONS = 500;
 /** Statuses of a plan's positions, in the server's order (`PLAN_STATUSES`). */
 const STATUSES = ["current", "newer", "missing", "unverifiable", "check_failed"];
 const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "plain", check_failed: "bad" };
-const FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
 
 /**
  * The plan window of one variant of a report's row, or of a pasted line.
  *
  * @param {object} props
+ * @param {number} props.windowKey - The shell's key of the window (`openPlan`).
+ * @param {boolean} props.visible - Shown, or hidden by „Zwiń” or another window.
  * @param {string} props.producer
  * @param {{id: string, name: string}} props.store - Where the run writes.
  * @param {string} props.title - What is downloaded, e.g. „NMT · 2023 · PL-2000”.
@@ -90,18 +92,30 @@ const FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
  * @param {string|null} [props.line] - One pasted line of the producer (no format
  *   to choose).
  * @param {() => void} props.onClose
- * @param {() => void} props.onDone - What was started here all ended.
+ * @param {() => void} props.onMinimise - Hide the window; what it started goes on.
  */
-export function DownloadPlan({ producer, store, title, variant = null, line = null, onClose, onDone }) {
+export function DownloadPlan({
+  windowKey,
+  visible,
+  producer,
+  store,
+  title,
+  variant = null,
+  line = null,
+  onClose,
+  onMinimise,
+}) {
   const { session } = useApp();
+  const downloads = useDownloads();
   const titleId = useId();
   const dialog = useRef(null);
+  // The last state of each run, also once removed from the list of downloads.
+  const seen = useRef(new Map());
   const [format, setFormat] = useState(variant?.default_format ?? null);
   const lines = line !== null ? [line] : format === null ? null : (variant.commands[format] ?? []);
   const items = usePlans(producer, store.id, lines);
   const [confirmed, setConfirmed] = useState(false);
   const [runs, setRuns] = useState(null);
-  const [ended, setEnded] = useState(() => new Set());
   const projects = useResource((signal) => listProjects({ store: store.id }, { signal }), [store.id]);
   const [task, setTask] = useState({ on: false, project: "", name: "" });
   const [added, setAdded] = useState(null);
@@ -113,36 +127,47 @@ export function DownloadPlan({ producer, store, title, variant = null, line = nu
   const call = items[0]?.call ?? null;
   const asTask = task.on && offer.reason === null;
   const fetching = planned && sum.todo > 0 && allowed;
-  const ranAll = runs !== null && runs.every((run) => run.problem || (run.job && ended.has(run.job.id)));
+  const followed = (run) => {
+    if (!run.job) return null;
+    const item = downloads.entries.find((entry) => entry.id === run.job.id) ?? seen.current.get(run.job.id) ?? null;
+    if (item) seen.current.set(run.job.id, item);
+    return item;
+  };
+  const ranAll = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
   const settled = ranAll || (added?.state === "added" && !added.download);
-  const busy = (runs !== null && !ranAll) || added?.state === "adding";
   const started = runs !== null || (added !== null && added.state !== "failed");
   const taskReady = Boolean(call) && task.project !== "" && task.name.trim() !== "";
   const ready = asTask
     ? planned && taskReady && (!fetching || !large || confirmed) && !started
     : planned && sum.todo > 0 && allowed && (!large || confirmed) && !started;
+  // Modal while planning; not once something started, so the page stays usable.
   useEffect(() => {
     const element = dialog.current;
-    element.showModal();
+    if (!visible) {
+      if (element.open) element.close();
+      return;
+    }
+    const modal = !started;
+    if (element.open && element.matches(":modal") === modal) return;
+    if (element.open) element.close();
+    if (modal) element.showModal();
+    else element.show();
+  }, [visible, started]);
+  useEffect(() => {
+    const element = dialog.current;
     return () => {
       if (element.open) element.close();
     };
   }, []);
   useEffect(() => {
-    if (settled) onDone();
-  }, [settled]);
-  useEffect(() => {
     if (offer.options.length === 1 && task.project === "") setTask((now) => ({ ...now, project: offer.options[0].project }));
   }, [offer.options.length]);
-  const close = () => {
-    if (!busy) onClose();
-  };
   const choose = (value) => {
     if (started) return;
     setFormat(value);
     setConfirmed(false);
   };
-  const follow = (index, patch) =>
+  const record = (index, patch) =>
     setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
   const download = async () => {
     const todo = items.filter((item) => item.plan?.todo > 0);
@@ -158,10 +183,12 @@ export function DownloadPlan({ producer, store, title, variant = null, line = nu
             options: item.call.options,
             plan_job: item.plan.job_id,
           });
-          follow(index, { job });
+          const name = todo.length > 1 ? t(L.run_title, { title, place: int(index + 1), count: int(todo.length) }) : title;
+          downloads.track(job, { title: name, window: windowKey });
+          record(index, { job });
         } catch (error) {
           if (!error.problem) throw error;
-          follow(index, { problem: error.problem });
+          record(index, { problem: error.problem });
         }
       }),
     );
@@ -181,10 +208,12 @@ export function DownloadPlan({ producer, store, title, variant = null, line = nu
     setAdded({ state: "added", download: fetching, name, project: chosen, problem: null });
     if (!fetching) return;
     try {
-      follow(0, { job: await startProjectJob(task.project, { kind: "download", tasks: [name] }) });
+      const job = await startProjectJob(task.project, { kind: "download", tasks: [name] });
+      downloads.track(job, { title, window: windowKey });
+      record(0, { job });
     } catch (error) {
       if (!error.problem) throw error;
-      follow(0, { problem: error.problem });
+      record(0, { problem: error.problem });
     }
   };
   const submit = (event) => {
@@ -202,14 +231,17 @@ export function DownloadPlan({ producer, store, title, variant = null, line = nu
   return html`<dialog class="plan-window" ref=${dialog} aria-labelledby=${titleId}
     onCancel=${(event) => {
       event.preventDefault();
-      close();
+      onClose();
     }}
     onKeyDown=${(event) => {
-      // Esc closes this window only, not a card under it (shell.js).
-      if (event.key === "Escape") event.stopPropagation();
+      if (event.key !== "Escape") return;
+      // Esc closes this window only, not a card under it (shell.js); a window
+      // that is not modal gets no `cancel` of its own.
+      event.stopPropagation();
+      if (started) onClose();
     }}>
     <form class="plan-body" onSubmit=${submit}>
-      <h2 class="plan-title" id=${titleId}>${L.title} <span class="plan-what">${title}</span></h2>
+      <h2 class="plan-title" id=${titleId}>${started ? L.title_started : L.title} <span class="plan-what">${title}</span></h2>
       <dl class="kv plan-facts">
         ${variant
           ? html`<dt>${L.format}</dt>
@@ -258,23 +290,29 @@ export function DownloadPlan({ producer, store, title, variant = null, line = nu
         ? html`<div class="plan-runs">${runs.map((run) =>
             run.problem
               ? html`<${ProblemView} key=${run.key} problem=${run.problem} compact />`
-              : run.job
-                ? html`<${RunStatus} key=${run.key} id=${run.job.id} kind=${run.kind}
-                    onEnd=${() => setEnded((done) => new Set(done).add(run.job.id))} />`
-                : html`<${Spinner} key=${run.key} />`,
+              : html`<${RunStatus} key=${run.key} item=${followed(run)} />`,
           )}</div>`
         : null}
-      <div class="plan-actions">
+      ${started && !settled ? html`<p class="hint plan-background">${L.background}</p>` : null}
+      <div class=${started && !settled ? "plan-actions running" : "plan-actions"}>
         ${settled
-          ? html`<button type="button" class="btn" onClick=${onClose}>${L.close}</button>`
-          : html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${L.cancel}</button>
-              <button type="submit" class="btn primary" disabled=${!ready}>
-                ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="check" size=${14} />`}
-                ${label}
-              </button>`}
+          ? html`<button type="button" class="btn" autofocus onClick=${onClose}>${L.close}</button>`
+          : started
+            ? html`<button type="button" class="btn" title=${L.close_title} onClick=${onClose}>${L.close}</button>
+                <button type="button" class="btn" autofocus title=${L.minimise_title} onClick=${onMinimise}>
+                  <${Icon} name="down" size=${14} />${L.minimise}</button>`
+            : html`<button type="button" class="btn" onClick=${onClose}>${L.cancel}</button>
+                <button type="submit" class="btn primary" disabled=${!ready}>
+                  <${Icon} name="check" size=${14} />${label}
+                </button>`}
       </div>
     </form>
   </dialog>`;
+}
+
+/** A run that ended, or can no longer be followed. */
+function isOver(item) {
+  return item !== null && !downloadActive(item);
 }
 
 /**
@@ -527,39 +565,14 @@ function LineProblem({ item }) {
     <span><${Tech} value=${[["code", item.failure.code]]}>${t(L.failed_line, { line: item.line })}</${Tech}> ${item.failure.detail}</span></p>`;
 }
 
-/** One download, or a project's download, started here and followed to its end. */
-function RunStatus({ id, kind, onEnd }) {
-  const job = useJob({ onEnd });
-  useEffect(() => job.follow(id, kind), [id]);
-  return html`<${JobStatus} job=${job} summary=${kind === "download" ? downloadSummary : projectSummary} />`;
-}
-
-/** A download's files by status and its failed units (`archiwista jobs` says the same). */
-function downloadSummary(events) {
-  const result = events.result;
-  if (!result) return null;
-  const counts = Object.entries(L.file_status).map(([status, word]) => `${word} ${int(result.counts[status] ?? 0)}`);
-  const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
-  const failed = result.items.filter((item) => item.status === "failed");
-  return html`<div class="plan-result">
-    <p class="job-summary">${t(L.files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
-    ${result.files.length
-      ? html`<ul class="plan-files" aria-label=${L.files_title}>${result.files.map(
-          (file) => html`<li key=${file.path}>
-            <${Tech} value=${[["version_path", file.version_path ?? "–"], ["sha256", file.sha256]]}><span class="mono">${file.path}</span></${Tech}>
-            <${Badge} level=${FILE_LEVELS[file.status] ?? "plain"}>${L.file_status[file.status] ?? file.status}</${Badge}>
-            <span class="faint tabular">${bytes(file.size_bytes)}</span>
-          </li>`,
-        )}</ul>`
-      : null}
-    ${failed.length
-      ? html`<div class="plan-failed">
-          <span class="section-title">${L.failed_items}</span>
-          <ul>${failed.map(
-            (item) => html`<li key=${item.id}><${Tech} value=${[["code", item.code ?? "–"], ["reason", item.reason ?? "–"]]}>
-              <span class="mono">${item.id}</span></${Tech}>${item.message ? ` ${item.message}` : ""}</li>`,
-          )}</ul>
-        </div>`
-      : null}
+/**
+ * One download, or a project's download, started here: its state as the
+ * downloads of the shell follow it, with its explicit cancel while it runs.
+ */
+function RunStatus({ item }) {
+  if (!item) return html`<${Spinner} />`;
+  return html`<div class="plan-run">
+    <${DownloadStatus} item=${item} />
+    ${downloadActive(item) ? html`<div class="plan-run-actions"><${CancelDownload} item=${item} /></div>` : null}
   </div>`;
 }

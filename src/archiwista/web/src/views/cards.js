@@ -1,14 +1,16 @@
 /**
  * Pieces shared by the file card, the Projects view and the Store view:
  * problems with their fixes, a background job started here and followed
- * through its event stream (SSE), links opening the file card over the
- * current view, labelled copy buttons, the stale-answer note and the human
- * names of statuses and coordinate systems (docs/SPEC.md 6.1 „Przejrzystość”).
+ * through its event stream (SSE), with the summaries of its result that the
+ * plan window and the downloads of the top bar show too, links opening the
+ * file card over the current view, labelled copy buttons, the stale-answer
+ * note and the human names of statuses and coordinate systems (docs/SPEC.md
+ * 6.1 „Przejrzystość”).
  */
 
 import { watchJob } from "../api.js";
 import { useApp } from "../context.js";
-import { int, plural, stamp } from "../format.js";
+import { bytes, int, plural, stamp } from "../format.js";
 import { cards as L } from "../labels/cards.js";
 import { T, t } from "../labels/index.js";
 import { Link, useRoute } from "../router.js";
@@ -50,6 +52,8 @@ const FILE_LEVELS = {
   check_failed: "bad",
   conflict: "bad",
 };
+/** The badge of each status of a download's file. */
+const DOWNLOAD_FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
 
 /**
  * Load the stylesheet of the three views once; their modules await it, so
@@ -536,6 +540,42 @@ export function projectSummary(events) {
             ${file.detail ? html`<span class="faint">${file.detail}</span>` : null}
           </li>`,
         )}</ul>`
+      : null}
+  </div>`;
+}
+
+/**
+ * The summary of a download (`download`): its files by status, each with its
+ * size, and its failed units, as `archiwista jobs show` says them.
+ *
+ * @param {JobEvents} events
+ */
+export function downloadSummary(events) {
+  const result = events.result;
+  if (!result) return null;
+  const statuses = L.job.download_file_status;
+  const counts = Object.entries(statuses).map(([status, word]) => `${word} ${int(result.counts[status] ?? 0)}`);
+  const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
+  const failed = result.items.filter((item) => item.status === "failed");
+  return html`<div class="job-download">
+    <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
+    ${result.files.length
+      ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
+          (file) => html`<li key=${file.path}>
+            <${Tech} value=${[["version_path", file.version_path ?? "–"], ["sha256", file.sha256]]}><span class="mono">${file.path}</span></${Tech}>
+            <${Badge} level=${DOWNLOAD_FILE_LEVELS[file.status] ?? "plain"}>${statuses[file.status] ?? file.status}</${Badge}>
+            <span class="faint tabular">${bytes(file.size_bytes)}</span>
+          </li>`,
+        )}</ul>`
+      : null}
+    ${failed.length
+      ? html`<div class="job-failed">
+          <span class="section-title">${L.job.download_failed}</span>
+          <ul>${failed.map(
+            (item) => html`<li key=${item.id}><${Tech} value=${[["code", item.code ?? "–"], ["reason", item.reason ?? "–"]]}>
+              <span class="mono">${item.id}</span></${Tech}>${item.message ? ` ${item.message}` : ""}</li>`,
+          )}</ul>
+        </div>`
       : null}
   </div>`;
 }

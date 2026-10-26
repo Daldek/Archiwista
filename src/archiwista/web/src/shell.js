@@ -1,13 +1,22 @@
 /**
- * The shell around the views (mockup layout): the top bar with the stores
- * and the session, the navigation (a rail on a computer, a bar at the bottom
- * of a phone), the index state banner, the current view of the address and
- * the overlays opened over it. Views and overlays come from `routes.js`; the
- * first run, without any store, opens the wizard.
+ * The shell around the views (mockup layout): the top bar with the stores,
+ * the downloads in the background and the session, the navigation (a rail on
+ * a computer, a bar at the bottom of a phone), the index state banner, the
+ * current view of the address and the overlays opened over it, and over all
+ * of them the plan windows, the list of downloads and their toasts
+ * (downloads.js). Views and overlays come from `routes.js`; the first run,
+ * without any store, opens the wizard.
  */
 
 import { AppContext, useApp, useAppState } from "./context.js";
 import { IndexBanner } from "./banner.js";
+import {
+  DownloadsIndicator,
+  DownloadsPanel,
+  DownloadsProvider,
+  DownloadToasts,
+  PlanWindows,
+} from "./downloads.js";
 import { stamp } from "./format.js";
 import { T, t } from "./labels/index.js";
 import { Link, navigate, setParams, useRoute } from "./router.js";
@@ -60,19 +69,24 @@ export function Shell({ session }) {
   else content = html`<${ViewHost} key=${view.id} view=${view} route=${route} />`;
 
   return html`<${AppContext.Provider} value=${app}>
-    <div class="shell">
-      <${TopBar} />
-      <${Navigation} current=${view && !view.unknown ? view.id : null} />
-      <div class="shell-main">
-        <${IndexBanner} view=${view && !view.unknown ? view.id : null} />
-        <main class="content" id="content">${content}</main>
+    <${DownloadsProvider} session=${session}>
+      <div class="shell">
+        <${TopBar} />
+        <${Navigation} current=${view && !view.unknown ? view.id : null} />
+        <div class="shell-main">
+          <${IndexBanner} view=${view && !view.unknown ? view.id : null} />
+          <main class="content" id="content">${content}</main>
+        </div>
+        ${overlays.map(
+          (overlay) => html`<${OverlayHost} key=${overlay.param} overlay=${overlay} route=${route}
+            value=${route.params[overlay.param]}
+            onClose=${() => setParams({ [overlay.param]: null })} />`,
+        )}
+        <${PlanWindows} />
+        <${DownloadsPanel} />
+        <${DownloadToasts} />
       </div>
-      ${overlays.map(
-        (overlay) => html`<${OverlayHost} key=${overlay.param} overlay=${overlay} route=${route}
-          value=${route.params[overlay.param]}
-          onClose=${() => setParams({ [overlay.param]: null })} />`,
-      )}
-    </div>
+    </${DownloadsProvider}>
   </${AppContext.Provider}>`;
 }
 
@@ -141,6 +155,7 @@ function TopBar() {
         </div>`
       : null}
     <div class="top-actions">
+      <${DownloadsIndicator} />
       <${SearchButton} />
       <span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
         <${Tech} value=${session.actor}>${t(L.session_label, { actor })}</${Tech}>

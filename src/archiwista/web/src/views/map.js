@@ -20,7 +20,8 @@
  * `area_id`, the chosen layer (`layer`, `group`), the version previewed
  * (`preview` and `preview_style`), the centre (`mode`) and the position as
  * `center=lon,lat` and `zoom`; without a position the map frames the
- * preview, else what the filters match.
+ * preview, else what the filters match. A download that ends (downloads.js,
+ * also one started in another view) reads the outlines and the layers again.
  */
 
 import {
@@ -35,6 +36,7 @@ import {
   uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
+import { useDownloadEnd } from "../downloads.js";
 import { Fan } from "../fan/fan.js";
 import { count, stamp } from "../format.js";
 import { NARROW, useMedia, useResource, useSize } from "../hooks.js";
@@ -134,6 +136,7 @@ export default function MapScreen({ route, embedded = false }) {
   const [grid, setGrid] = useState({ on: false, ...DEFAULT_GRID });
   const [move, setMove] = useState(null);
   const [round, setRound] = useState(0);
+  useDownloadEnd(() => setRound((n) => n + 1));
   const [areaBusy, setAreaBusy] = useState(false);
   const [areaProblem, setAreaProblem] = useState(null);
   const [areaNote, setAreaNote] = useState(null);

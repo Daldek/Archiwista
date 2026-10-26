@@ -696,6 +696,20 @@ export function getJob(job, { signal } = {}) {
 }
 
 /**
+ * Cancel a job that waits or runs (`cancel_job`): a waiting one ends
+ * `cancelled` at once, a running one when its worker has stopped (its events
+ * say so); a download publishes no half version.
+ *
+ * @param {string} job - Job id.
+ * @returns {Promise<JobDetail>} The job as it is then (`202`).
+ * @throws {ApiError} `403 permission_denied` (neither whoever started it nor
+ *   an administrator), `404`, `409 conflict` (`job_finished`).
+ */
+export function cancelJob(job) {
+  return request("POST", `/jobs/${one(job)}/cancel`);
+}
+
+/**
  * Follow a job's events (`get_job_events`, server-sent events read with
  * `fetch`, which sends the session's CSRF token): every event since the
  * start, then new ones until a final state ends the stream. A stream that

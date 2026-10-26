@@ -52,6 +52,15 @@ export const cards = {
     failed: "Zadanie zakończone stanem „{state}”: {detail}",
     notices: "Komunikaty zadania",
     entries: ["wpis", "wpisy", "wpisów"],
+    /** A download's files, as `archiwista jobs show` says them (archiwista/messages/job.py). */
+    download_files: "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
+    download_file_status: {
+      new: "nowe",
+      unchanged: "bez zmian",
+      relabeled: "z nową etykietą",
+    },
+    download_files_title: "Pliki w magazynie",
+    download_failed: "Jednostki z błędem",
     /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
     project_tasks: "Zadania projektu: {tasks} ({counts}).",
     project_tasks_title: "Wynik dla zadań projektu",

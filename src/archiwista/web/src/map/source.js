@@ -12,7 +12,9 @@
  * year of a country with the coverage label, its best variant (sheet
  * system, resolution, height system, formats, size) and the store badge;
  * the chip „+N wariantów” shows the others, each with its own label and
- * badge. „Pobierz…” of a variant opens the plan window (views/plan.js).
+ * badge. „Pobierz…” of a variant opens the plan window (views/plan.js) over
+ * the shell (downloads.js), so its download goes on in the background; the
+ * end of a download reads the report again (the store badges).
  * Offline the kept report stays and what needs the network is disabled;
  * without a kept report the step points to the local share of step 3 (the
  * badge of SPEC 6.4 without a source report: „lokalnie 83% obszaru”).
@@ -28,6 +30,7 @@
 
 import { checkAvailability, getAvailability, listSources, parseCommand, validateCommand } from "../api.js";
 import { useApp } from "../context.js";
+import { useDownloadActions, useDownloadEnd } from "../downloads.js";
 import { plural, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
@@ -35,7 +38,6 @@ import { t } from "../labels/index.js";
 import { map as M } from "../labels/map.js";
 import { html, Icon, ProblemView, Spinner, Tech, useId, useState } from "../ui.js";
 import { JobStatus, SUMMARY_STATES, useJob } from "../views/cards.js";
-import { DownloadPlan } from "../views/plan.js";
 
 const L = actions.source;
 const BADGE_TONES = { all: "done", some: "some", none: "no" };
@@ -49,10 +51,10 @@ const BADGE_TONES = { all: "done", some: "some", none: "no" };
  * @param {import("./panel.js").MapFilters} props.filters
  * @param {import("../types.js").StoreSettings[]} props.stores
  * @param {Map<string, string>} props.names - Product names by key.
- * @param {() => void} [props.onRefreshed] - A download changed the store.
  */
-export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshed }) {
+export function SourceStep({ area, areaLabel, filters, stores, names }) {
   const { settings } = useApp();
+  const { openPlan } = useDownloadActions();
   const id = useId();
   const offline = Boolean(settings?.offline);
   const sources = useResource((signal) => listSources({ signal }), []);
@@ -81,10 +83,9 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
       if (SUMMARY_STATES.has(end.state)) setRound((n) => n + 1);
     },
   });
+  useDownloadEnd(() => setRound((n) => n + 1));
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState(null);
-  const [plan, setPlan] = useState(null);
-  const [pasted, setPasted] = useState(null);
   const busy = starting || job.running;
   const check = async (force) => {
     setStarting(true);
@@ -152,29 +153,24 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
     <${JobStatus} job=${job} />
     ${info
       ? html`<${Report} info=${info} offline=${offline}
-          onDownload=${(row, variant) => setPlan({ row, variant })} />`
+          onDownload=${(row, variant) =>
+            openPlan({
+              producer: info.producer,
+              store: { id: store.id, name: store.name },
+              title: planTitle(productName(choice), row, variant, areaLabel),
+              variant,
+            })} />`
       : null}
     ${store
       ? html`<${PasteCommand} store=${store} fallback=${choice?.producer ?? null}
-          producers=${(sources.data?.items ?? []).map((item) => item.producer)} onPlan=${setPasted} />`
-      : null}
-    ${plan && info
-      ? html`<${DownloadPlan} producer=${info.producer} store=${{ id: store.id, name: store.name }}
-          title=${planTitle(productName(choice), plan.row, plan.variant, areaLabel)} variant=${plan.variant}
-          onClose=${() => setPlan(null)}
-          onDone=${() => {
-            setRound((n) => n + 1);
-            onRefreshed?.();
-          }} />`
-      : null}
-    ${pasted && store
-      ? html`<${DownloadPlan} producer=${pasted.producer} store=${{ id: store.id, name: store.name }}
-          title=${pasted.title} line=${pasted.line}
-          onClose=${() => setPasted(null)}
-          onDone=${() => {
-            setRound((n) => n + 1);
-            onRefreshed?.();
-          }} />`
+          producers=${(sources.data?.items ?? []).map((item) => item.producer)}
+          onPlan=${(found) =>
+            openPlan({
+              producer: found.producer,
+              store: { id: store.id, name: store.name },
+              title: found.title,
+              line: found.line,
+            })} />`
       : null}
   </section>`;
 }

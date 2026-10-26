@@ -14,7 +14,9 @@
  * „Sprawdź aktualizacje” and „Pobierz” start a job of the project's tasks,
  * „Przepnij” one of a task, each followed to its end with its tasks or files
  * and, when it fails, the producer's instruction (a left lock of the
- * manifest); a job of the project already running is followed instead.
+ * manifest); a job of the project already running is followed instead. A
+ * download and a repin also go to the downloads of the top bar
+ * (downloads.js), so they stay in sight after the card or the view closes.
  * „+ Zadanie” adds a pasted producer's command as a task (the producer reads
  * and checks it without the network; its text for a mistake shows at the
  * field) and „Usuń” removes a task after a confirmation. An action the
@@ -43,6 +45,7 @@ import {
   startProjectScan,
 } from "../api.js";
 import { useApp } from "../context.js";
+import { downloadName, useDownloadActions } from "../downloads.js";
 import { count, int, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { projects as L } from "../labels/projects.js";
@@ -348,6 +351,7 @@ function ProjectCard({ id, onChanged }) {
     onChanged();
   };
   const job = useJob({ onEnd: changed });
+  const { track } = useDownloadActions();
   const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;
@@ -360,7 +364,11 @@ function ProjectCard({ id, onChanged }) {
   const told = REASONS.filter((reason) => Object.values(why).includes(reason));
   const start = (kind, tasks = null) => {
     setDone(null);
-    job.run(() => startProjectJob(card.project, tasks ? { kind, tasks } : { kind }), `project_${kind}`);
+    job.run(async () => {
+      const started = await startProjectJob(card.project, tasks ? { kind, tasks } : { kind });
+      track(started, { title: downloadName(started, card.name) });
+      return started;
+    }, `project_${kind}`);
   };
   const values = [
     ["project", card.project],

@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- Downloads run in the background (ADR-043). The plan window is modal only while it
+  plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
+  (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
+  anything, so the map and the other views stay usable. "Pobieranie 2/6 · 45%" in the
+  top bar follows the session's downloads (`download`, `project_download`,
+  `project_repin`) across views and page reloads (`GET /jobs` for its queued and
+  running ones) and opens "Pobrania w tle": each download's progress, notices and files
+  or failure, "Anuluj pobieranie" (`POST /jobs/{job}/cancel`, the only way to stop
+  one), "Pokaż okno planu" and "Usuń z listy". A toast tells each end, after which the
+  map and the step "U źródła" read the store again; the index banner no longer repeats
+  a download the top bar shows.
 - `scripts/gate.sh` runs ruff format, ruff check, mypy, one pytest call with the
   coverage floor of 80% and the commit check (`scripts/check-commits.sh`: Conventional
   Commits, no AI attribution, author) before every commit; `.editorconfig`,
