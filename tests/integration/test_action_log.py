@@ -1,24 +1,25 @@
 """The action log: every action logged once, who reads and exports it (T8).
 
 Each name of ``ActionName`` has a case in ``CASES`` that performs the action
-through the API (or, for the pruning, the server's scheduler) and finds
-exactly one entry of it with its actor, the actor's kind, the session's
-label, the client address, the target and the outcome. A name without a case
-fails ``test_each_action_is_logged_once``; a name whose trigger is only on
-``feature/v0.4-team`` is listed in ``AWAITING_TEAM_MERGE`` and reported as an
-expected failure until its case is written. The world is a marked Kartograf
-store ``zespol`` (empty), a project directory, the four people of
-``tests.fixtures.permissions`` and a supervisor that starts no job, so jobs
-wait to be cancelled and retried; the download of a file uses a generated
-store scanned into the index (``served_store``). Reading the log: its pages
-and both formats of its export hold the same entries, a CSV cell that could
-start a formula is escaped, only administrators read it, the command line
-prints what the routes answer, and times bound it in any zone. Offline.
+through the API, the command line or (for the pruning) the server's scheduler
+and finds exactly one entry of it with its actor, the actor's kind, the
+session's label, the client address, the target and the outcome; a name
+without a case fails ``test_each_action_is_logged_once``. The world is a
+marked Kartograf store ``zespol`` (empty), a project directory, the four
+people of ``tests.fixtures.permissions`` and a supervisor that starts no job,
+so jobs wait to be cancelled and retried; the download of a file uses a
+generated store scanned into the index (``served_store``); signing in,
+passwords, sessions and agents' tokens use a team server with TLS behind a
+trusted proxy (``team``). Reading the log: its pages and both formats of its
+export hold the same entries, a CSV cell that could start a formula is
+escaped, only administrators read it, the command line prints what the
+routes answer, and times bound it in any zone. Offline.
 """
 
 import csv
 import io
 import json
+import os
 import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -28,11 +29,13 @@ from pathlib import Path
 from typing import Any, get_args
 from urllib.parse import quote
 
+import httpx
 import kartograf
 import pytest
+from fastapi import FastAPI
 
 from archiwista.api.errors import DenialLog
-from archiwista.auth import LOCAL_OWNER, access_key
+from archiwista.auth import LOCAL_OWNER, access_key, passwords
 from archiwista.cli import main
 from archiwista.config import (
     DEFAULT_ACTION_LOG_RETENTION_DAYS,
@@ -51,6 +54,7 @@ from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import served_store
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.permissions import (
+    ADMIN,
     GROUP,
     LISTED,
     OTHER,
@@ -60,6 +64,16 @@ from tests.fixtures.permissions import (
     principal,
 )
 from tests.fixtures.preview_api import entry_of
+from tests.fixtures.team_server import (
+    ADMIN_ACCOUNT,
+    ADMIN_PASSWORD,
+    PERSON_PEER,
+    add_admin,
+    add_person,
+    cheap_hasher,
+    save_team,
+    team_client,
+)
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 
@@ -82,24 +96,16 @@ TASK_BODY: dict[str, Any] = {
     },
 }
 ACTION_NAMES: tuple[str, ...] = get_args(ActionName.__value__)
-# Names whose trigger is on feature/v0.4-team only, with that trigger (plan
-# v0.4 T2 commit 2, T3, T4, T7). The coordinator writes the case of each in
-# CASES when that branch is merged, and removes the name here; until then each
-# is an expected failure of every run, never skipped.
-AWAITING_TEAM_MERGE: dict[str, str] = {
-    "session.login": "POST /session, /session/login (T3), /session/proxy (T4)",
-    "session.login_failed": "POST /session/login (T3), POST /session/proxy (T4)",
-    "session.logout": "DELETE /session (T3)",
-    "session.password": "PUT /session/password (T3)",
-    "session.ended": "DELETE /sessions/{label} (T3)",
-    "session.proxy_header_ignored": "the proxy's header from an untrusted peer (T4)",
-    "token.issue": "POST /session/tokens, archiwista token --user (T3)",
-    "token.revoke_all": "archiwista token --revoke-all (T3)",
-    "user.password_reset": "POST /users/{user_id}/password, archiwista users password",
-    "user.sessions_ended": "DELETE /users/{user_id}/sessions (T3)",
-    "project.create": "POST /projects by any person (T7)",
-    "project.data_dir": "PUT /projects/{project}/data-dir by the owner (T7)",
-}
+# The team server of the cases of signing in (plan v0.4 T3, T4): Kasia signs in
+# with her password from PERSON_PEER, Anna (ADMIN_ACCOUNT) administers, and the
+# proxy at PROXY_PEER would name people in HEADER.
+PERSON = "kasia"
+PERSON_PASSWORD = "wiosla-w-szuwarach-Wisly"
+NEW_PASSWORD = "most-na-Sanie-w-Przemyslu"
+WRONG_PASSWORD = "to-nie-jest-to-haslo"
+HEADER = "X-Remote-User"
+PROXY_PEER = "10.0.0.2"
+OTHER_PEER = "10.0.0.9"
 
 
 @dataclass(frozen=True)
@@ -140,6 +146,7 @@ class World:
     jobs: JobSupervisor
     owner: Caller
     person: Caller
+    admin: Caller
     project: str
     directory: Path
 
@@ -183,6 +190,7 @@ def world(tmp_path: Path) -> Iterator[World]:
             jobs,
             owner,
             api.session(principal(api.state, "other")),
+            api.session(principal(api.state, "admin")),
             created.json()["project"],
             directory,
         )
@@ -205,14 +213,156 @@ def as_person(world: World, target: str, **compared: Any) -> Logged:
     return Logged(OTHER, "user", label(world.person), CLIENT, target, **compared)
 
 
+def as_admin(world: World, target: str, **compared: Any) -> Logged:
+    """Return the entry of Ada's session (``admin``) about ``target``."""
+    return Logged(ADMIN, "user", label(world.admin), CLIENT, target, **compared)
+
+
 def started_scan(world: World) -> dict[str, Any]:
-    """Start a full scan of the store as Igor; it waits (no job starts)."""
-    started = world.person.request(
+    """Start a full scan of the store as Ada; it waits (no job starts).
+
+    A store's scan is an administrator's (``store.scan``).
+    """
+    started = world.admin.request(
         "POST", f"/stores/{STORE}/scan", json={"mode": "full"}
     )
     assert started.status_code == 202, started.text
     job: dict[str, Any] = started.json()
     return job
+
+
+@contextmanager
+def team(tmp_path: Path) -> Iterator[Api]:
+    """Serve team mode with TLS in the server, trusting the proxy at ``PROXY_PEER``.
+
+    Anna (``admin``) and Kasia have passwords; the client's requests come
+    from ``PERSON_PEER`` straight to the server.
+    """
+    paths = local_paths(tmp_path)
+    save_team(paths, trusted_proxies=[PROXY_PEER], proxy_user_header=HEADER)
+    add_admin(paths)
+    add_person(paths, PERSON, PERSON_PASSWORD)
+    with running_api(paths) as api:
+        yield api
+
+
+def sign_in(api: Api, account: str, password: str) -> httpx.Response:
+    """Send ``POST /session/login``; the client keeps no cookie afterwards."""
+    body = {"account": account, "password": password}
+    answer: httpx.Response = api.client.post("/api/v1/session/login", json=body)
+    api.client.cookies.clear()
+    return answer
+
+
+def signed_in(api: Api, account: str, password: str) -> Caller:
+    """Sign in to the team server and return the session."""
+    answer = sign_in(api, account, password)
+    assert answer.status_code == 200, answer.text
+    csrf = answer.json()["csrf_token"]
+    return Caller(api.client, answer.cookies[api.cookie], csrf, api.cookie)
+
+
+def as_account(session: Caller, account: str, target: str, **compared: Any) -> Logged:
+    """Return the entry of a person's session on the team server."""
+    return Logged(account, "user", label(session), PERSON_PEER, target, **compared)
+
+
+def session_login(tmp_path: Path) -> Performed:
+    """Kasia signs in with her password."""
+    with team(tmp_path) as api:
+        since = last_entry(api.state)
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        expected = as_account(kasia, PERSON, PERSON, details={"method": "password"})
+        return Performed(api.state, since, expected)
+
+
+def session_login_failed(tmp_path: Path) -> Performed:
+    """Kasia's wrong password: a failure of a client not signed in."""
+    with team(tmp_path) as api:
+        since = last_entry(api.state)
+        refused = sign_in(api, PERSON, WRONG_PASSWORD)
+        assert_problem(refused, 401, "unauthorized", "login_failed")
+        details = {"reason": "login_failed", "method": "password"}
+        expected = Logged(
+            "-", "anonymous", None, PERSON_PEER, PERSON, "failed", details=details
+        )
+        return Performed(api.state, since, expected)
+
+
+def session_logout(tmp_path: Path) -> Performed:
+    """Kasia signs out."""
+    with team(tmp_path) as api:
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        expected = as_account(kasia, PERSON, PERSON)
+        since = last_entry(api.state)
+        ended = kasia.request("DELETE", "/session")
+        api.client.cookies.clear()
+        assert ended.status_code == 204, ended.text
+        return Performed(api.state, since, expected)
+
+
+def session_password(tmp_path: Path) -> Performed:
+    """Kasia changes her password, logged by the session she changed it in."""
+    with team(tmp_path) as api:
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        details = {"temporary": False, "expires_at": None}
+        expected = as_account(kasia, PERSON, PERSON, details=details)
+        since = last_entry(api.state)
+        body = {"current_password": PERSON_PASSWORD, "new_password": NEW_PASSWORD}
+        changed = kasia.request("PUT", "/session/password", json=body)
+        api.client.cookies.clear()
+        assert changed.status_code == 200, changed.text
+        return Performed(api.state, since, expected)
+
+
+def session_ended(tmp_path: Path) -> Performed:
+    """Kasia ends her other session by its label."""
+    with team(tmp_path) as api:
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        other = label(signed_in(api, PERSON, PERSON_PASSWORD))
+        expected = as_account(kasia, PERSON, PERSON, details={"label": other})
+        since = last_entry(api.state)
+        ended = kasia.request("DELETE", f"/sessions/{other}")
+        assert ended.status_code == 204, ended.text
+        return Performed(api.state, since, expected)
+
+
+def session_proxy_header_ignored(tmp_path: Path) -> Performed:
+    """Send the proxy's header from a computer that is no trusted proxy."""
+    with team(tmp_path) as api:
+        app = api.client.app
+        assert isinstance(app, FastAPI)
+        stranger = team_client(app, peer=OTHER_PEER)
+        stranger.headers[HEADER] = PERSON
+        since = last_entry(api.state)
+        refused = stranger.post("/api/v1/session/proxy")
+        assert_problem(refused, 401, "unauthorized", "login_failed")
+        expected = Logged("-", "anonymous", None, OTHER_PEER, OTHER_PEER, "denied")
+        return Performed(api.state, since, expected)
+
+
+def token_issue(tmp_path: Path) -> Performed:
+    """Kasia issues a one-time token for her agent."""
+    with team(tmp_path) as api:
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        since = last_entry(api.state)
+        issued = kasia.request("POST", "/session/tokens")
+        assert issued.status_code == 201, issued.text
+        details = {"label": issued.json()["label"]}
+        expected = as_account(kasia, PERSON, PERSON, details=details)
+        return Performed(api.state, since, expected)
+
+
+def token_revoke_all(tmp_path: Path) -> Performed:
+    """Refuse Kasia's unused agent token at the terminal, as the computer's owner."""
+    with team(tmp_path) as api:
+        kasia = signed_in(api, PERSON, PERSON_PASSWORD)
+        issued = kasia.request("POST", "/session/tokens")
+        assert issued.status_code == 201, issued.text
+        since = last_entry(api.state)
+        assert main(["token", "--revoke-all"], paths=api.paths) == 0
+        expected = Logged("local", "local_owner", None, None, "*", details={"count": 1})
+        return Performed(api.state, since, expected)
 
 
 def user_add(tmp_path: Path) -> Performed:
@@ -241,6 +391,31 @@ def user_remove(tmp_path: Path) -> Performed:
         removed = made.owner.request("DELETE", f"/users/{OTHER}")
         assert removed.status_code == 204, removed.text
         return Performed(made.api.state, since, as_owner(made, OTHER))
+
+
+def user_password_reset(tmp_path: Path) -> Performed:
+    """Anna gives Kasia a temporary password."""
+    with team(tmp_path) as api:
+        anna = signed_in(api, ADMIN_ACCOUNT, ADMIN_PASSWORD)
+        since = last_entry(api.state)
+        reset = anna.request("POST", f"/users/{PERSON}/password")
+        assert reset.status_code == 200, reset.text
+        ends = datetime.fromisoformat(reset.json()["expires_at"]).astimezone(UTC)
+        details = {"temporary": True, "expires_at": ends.isoformat(timespec="seconds")}
+        expected = as_account(anna, ADMIN_ACCOUNT, PERSON, details=details)
+        return Performed(api.state, since, expected)
+
+
+def user_sessions_ended(tmp_path: Path) -> Performed:
+    """Anna ends every session of Kasia."""
+    with team(tmp_path) as api:
+        signed_in(api, PERSON, PERSON_PASSWORD)
+        anna = signed_in(api, ADMIN_ACCOUNT, ADMIN_PASSWORD)
+        since = last_entry(api.state)
+        ended = anna.request("DELETE", f"/users/{PERSON}/sessions")
+        assert ended.status_code == 204, ended.text
+        expected = as_account(anna, ADMIN_ACCOUNT, PERSON)
+        return Performed(api.state, since, expected)
 
 
 def group_add(tmp_path: Path) -> Performed:
@@ -283,6 +458,47 @@ def project_access(tmp_path: Path) -> Performed:
         assert shared.status_code == 200, shared.text
         key = access_key(made.directory)
         return Performed(made.api.state, since, as_owner(made, key))
+
+
+def created_by_igor(made: World) -> tuple[str, Path]:
+    """Create the project ``wisla`` as Igor; return its key and directory."""
+    directory = made.directory.with_name("wisla")
+    body = {"producer": "kartograf", "path": str(directory), "store": STORE}
+    created = made.person.request("POST", "/projects", json=body)
+    assert created.status_code == 201, created.text
+    return str(created.json()["project"]), directory
+
+
+def project_create(tmp_path: Path) -> Performed:
+    """Igor creates a project of his own and owns it."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        _, directory = created_by_igor(made)
+        details = {"producer": "kartograf", "owner": OTHER}
+        expected = as_person(made, access_key(directory), details=details)
+        return Performed(made.api.state, since, expected)
+
+
+def project_data_dir(tmp_path: Path) -> Performed:
+    """Igor, the project's owner, moves its data folder inside its directory."""
+    with world(tmp_path) as made:
+        project, directory = created_by_igor(made)
+        folder = directory / "robocze"
+        folder.mkdir()
+        key = access_key(directory)
+        default, source = made.settings.get().own_data_dir(key)
+        since = last_entry(made.api.state)
+        moved = made.person.request(
+            "PUT", f"/projects/{project}/data-dir", json={"path": str(folder)}
+        )
+        assert moved.status_code == 200, moved.text
+        expected = as_person(
+            made,
+            key,
+            before={"path": str(default), "source": source},
+            after={"path": os.path.realpath(folder), "source": "setting"},
+        )
+        return Performed(made.api.state, since, expected)
 
 
 def project_task_add(tmp_path: Path) -> Performed:
@@ -332,44 +548,44 @@ def settings_update(tmp_path: Path) -> Performed:
 
 
 def job_start(tmp_path: Path) -> Performed:
-    """Start a scan as Igor."""
+    """Start a scan as Ada."""
     with world(tmp_path) as made:
         since = last_entry(made.api.state)
         job = started_scan(made)
         details = {"kind": "scan", "store": STORE}
         return Performed(
-            made.api.state, since, as_person(made, job["id"], details=details)
+            made.api.state, since, as_admin(made, job["id"], details=details)
         )
 
 
 def job_cancel(tmp_path: Path) -> Performed:
-    """Cancel Igor's waiting scan as Igor."""
+    """Cancel Ada's waiting scan as Ada."""
     with world(tmp_path) as made:
         job = started_scan(made)
         since = last_entry(made.api.state)
-        cancelled = made.person.request("POST", f"/jobs/{job['id']}/cancel")
+        cancelled = made.admin.request("POST", f"/jobs/{job['id']}/cancel")
         assert cancelled.status_code == 202, cancelled.text
         assert cancelled.json()["state"] == "cancelled"
         details = {"kind": "scan", "store": STORE}
         return Performed(
-            made.api.state, since, as_person(made, job["id"], details=details)
+            made.api.state, since, as_admin(made, job["id"], details=details)
         )
 
 
 def job_retry(tmp_path: Path) -> Performed:
-    """Retry Igor's cancelled scan as Igor."""
+    """Retry Ada's cancelled scan as Ada."""
     with world(tmp_path) as made:
         job = started_scan(made)
-        made.person.request("POST", f"/jobs/{job['id']}/cancel")
+        made.admin.request("POST", f"/jobs/{job['id']}/cancel")
         since = last_entry(made.api.state)
-        retried = made.person.request("POST", f"/jobs/{job['id']}/retry")
+        retried = made.admin.request("POST", f"/jobs/{job['id']}/retry")
         assert retried.status_code == 202, retried.text
         again = retried.json()["id"]
         # A retry is no start of its own.
         actions = [entry.action for entry in log_entries(made.api.state, after=since)]
         assert "job.start" not in actions
         details = {"kind": "scan", "store": STORE, "retry_of": job["id"]}
-        return Performed(made.api.state, since, as_person(made, again, details=details))
+        return Performed(made.api.state, since, as_admin(made, again, details=details))
 
 
 def permission_denied(tmp_path: Path) -> Performed:
@@ -414,9 +630,8 @@ def log_prune(tmp_path: Path) -> Performed:
 
 
 def log_export(tmp_path: Path) -> Performed:
-    """Export Igor's entries as CSV as the owner."""
+    """Export Igor's entries (his sign-in) as CSV as the owner."""
     with world(tmp_path) as made:
-        started_scan(made)
         since = last_entry(made.api.state)
         exported = made.owner.request("GET", f"/log/export?format=csv&actor={OTHER}")
         assert exported.status_code == 200, exported.text
@@ -438,15 +653,27 @@ def file_download(tmp_path: Path) -> Performed:
         return Performed(served.api.state, since, expected)
 
 
-# The case of each name of ``ActionName`` that has its trigger here.
+# The case of each name of ``ActionName``.
 CASES: dict[str, Callable[[Path], Performed]] = {
+    "session.login": session_login,
+    "session.login_failed": session_login_failed,
+    "session.logout": session_logout,
+    "session.password": session_password,
+    "session.ended": session_ended,
+    "session.proxy_header_ignored": session_proxy_header_ignored,
+    "token.issue": token_issue,
+    "token.revoke_all": token_revoke_all,
     "user.add": user_add,
     "user.update": user_update,
     "user.remove": user_remove,
+    "user.password_reset": user_password_reset,
+    "user.sessions_ended": user_sessions_ended,
     "group.add": group_add,
     "group.members": group_members,
     "group.remove": group_remove,
     "project.access": project_access,
+    "project.create": project_create,
+    "project.data_dir": project_data_dir,
     "project.task_add": project_task_add,
     "project.task_remove": project_task_remove,
     "settings.update": settings_update,
@@ -460,20 +687,20 @@ CASES: dict[str, Callable[[Path], Performed]] = {
 }
 
 
-def test_every_case_belongs_to_one_name_of_the_log() -> None:
-    """A case or an awaited name is a name of ``ActionName`` or of the team branch."""
-    assert not set(CASES) & set(AWAITING_TEAM_MERGE)
+def test_every_case_belongs_to_a_name_of_the_log() -> None:
+    """No case is left over for a name ``ActionName`` no longer has."""
     assert set(CASES) <= set(ACTION_NAMES)
 
 
-@pytest.mark.parametrize("name", sorted({*ACTION_NAMES, *AWAITING_TEAM_MERGE}))
-def test_each_action_is_logged_once(name: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize("name", sorted(ACTION_NAMES))
+def test_each_action_is_logged_once(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """One entry of the action, with its actor, kind, session, client and target."""
     case = CASES.get(name)
-    if case is None:
-        assert name in AWAITING_TEAM_MERGE, f"{name} of ActionName has no case"
-        trigger = AWAITING_TEAM_MERGE[name]
-        pytest.xfail(f"{name}: write its case ({trigger}) at the merge of v0.4-team")
+    assert case is not None, f"{name} of ActionName has no case"
+    # Argon2id at its lowest cost: the cases check the log, not the hashes.
+    monkeypatch.setattr(passwords, "HASHER", cheap_hasher())
 
     # Act
     performed = case(tmp_path)
@@ -586,8 +813,8 @@ def test_pages_and_both_formats_of_the_export_hold_the_same_entries(
 ) -> None:
     """JSON Lines and CSV of a filter list the pages' entries; ``=1+1`` is ``'=1+1``."""
     with world(tmp_path) as made:
-        # Arrange: Igor's scan and refusal, and an entry about a formula.
-        started_scan(made)
+        # Arrange: Igor's sign-in (the world's) and refusal, and an entry
+        # about a formula.
         body = made.person.request("GET", "/settings").json()
         made.person.request("PUT", "/settings", json=body)
         made.api.state.record(
@@ -608,7 +835,7 @@ def test_pages_and_both_formats_of_the_export_hold_the_same_entries(
     assert [item["action"] for item in listed] == [
         "permission.denied",
         "permission.denied",
-        "job.start",
+        "session.login",
     ]
     assert refusals == listed[:2]
     assert lines.headers["content-type"] == "application/jsonl"
@@ -653,7 +880,6 @@ def test_the_command_line_prints_what_the_routes_answer(
     """``log list --json`` is ``GET /log``; ``log export`` writes the route's bytes."""
     with world(tmp_path) as made:
         # Arrange
-        started_scan(made)
         saved = tmp_path / "eksport" / "dziennik.csv"
 
         def cli(*argv: str) -> str:
@@ -719,7 +945,9 @@ def test_since_and_until_bound_the_entries_in_any_zone(tmp_path: Path) -> None:
         owner = api.session(LOCAL_OWNER)
 
         # Act
-        since = owner.request("GET", f"/log?since={midnight}").json()
+        # The owner's sign-in, now, is after midnight too: refusals only.
+        refusals = f"/log?since={midnight}&action=permission.denied"
+        since = owner.request("GET", refusals).json()
         until = owner.request("GET", f"/log?until={midnight}").json()
         local = owner.request("GET", "/log?since=2026-10-02T00:00:00")
 
