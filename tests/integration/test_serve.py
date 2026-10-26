@@ -18,8 +18,8 @@ import pytest
 
 from archiwista import server as server_module
 from archiwista.cli import main
-from archiwista.security import CSRF_HEADER, SESSION_COOKIE, TOKEN_TTL
-from archiwista.server import LocalServer, bind_loopback, open_in_browser
+from archiwista.security import CSRF_HEADER, LOOPBACK_HOST, SESSION_COOKIE, TOKEN_TTL
+from archiwista.server import LaunchFile, LocalServer, bind_address, open_in_browser
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.cli_errors import refusal
 from tests.fixtures.local_server import NoSources, local_paths, serving
@@ -114,7 +114,7 @@ def test_serve_connections_send_without_nagle_delay() -> None:
     """
 
     async def accepted_nodelay() -> int:
-        listening = bind_loopback(0)
+        listening = bind_address(LOOPBACK_HOST, 0)
         loop = asyncio.get_running_loop()
         accepted: asyncio.Future[int] = loop.create_future()
 
@@ -182,7 +182,7 @@ def test_serve_browser_opens_private_file_removed_once_token_used(
     paths = local_paths(tmp_path)
     with serving(paths, on_ready=open_in_browser) as (server, _):
         assert browsed.wait(10)
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         mode = stat.S_IMODE(launch.stat().st_mode)
         page = launch.read_text("utf-8")
@@ -200,13 +200,13 @@ def test_serve_browser_opens_private_file_removed_once_token_used(
     assert f'content="0;url={server.url}"' in page
     assert exchanged.status_code == 200
     assert not kept_after_use
-    assert server.launch.path is None
+    assert _launch(server).path is None
 
 
 def test_serve_launch_file_removed_on_stop(tmp_path: Path) -> None:
     """A token nobody used leaves no launch file once the server stops."""
     with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         existed = launch.exists()
 
@@ -221,7 +221,7 @@ def test_serve_launch_file_removed_when_token_expires(
     expiring = {**TOKEN_TTL, "startup": timedelta(seconds=0.2)}
     monkeypatch.setattr(server_module, "TOKEN_TTL", expiring)
     with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         deadline = time.monotonic() + 10
         while launch.exists() and time.monotonic() < deadline:
@@ -268,7 +268,13 @@ def test_token_revoke_all_ends_agent_sessions_of_running_server(
 
 def _write_launch(server: LocalServer) -> None:
     """Write the launch file as ``open_in_browser`` does, opening no browser."""
-    server.launch.write(server.url)
+    _launch(server).write(server.url)
+
+
+def _launch(server: LocalServer) -> LaunchFile:
+    """Return the launch file of a server of local mode."""
+    assert server.launch is not None
+    return server.launch
 
 
 def _session(client: httpx.Client, token: str) -> dict[str, str]:

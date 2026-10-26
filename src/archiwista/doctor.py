@@ -17,10 +17,11 @@ from archiwista.config import (
     SettingsProblem,
     SettingsValidationError,
     SourceRegistryView,
+    TeamSettings,
     validate_settings,
 )
 from archiwista.messages import message, with_detail
-from archiwista.security import LOOPBACK_HOST
+from archiwista.security import LOOPBACK_HOST, tls_problem
 from archiwista.sources import DefaultRoot, SourceState
 from archiwista.sources.registry import (
     PluginRegistry,
@@ -150,6 +151,7 @@ def run_doctor(
     privacy = _privacy_check(paths.data_dir)
     if privacy is not None:
         checks.append(privacy)
+    checks.extend(team_checks(settings.team))
     checks.append(_port_check(settings.port, port_available))
     return DoctorReport(tuple(checks))
 
@@ -297,6 +299,54 @@ def _privacy_check(data_dir: Path) -> DoctorCheck | None:
         return None
     text = message("doctor.data_dir_open", path=data_dir, mode=f"{mode:04o}")
     return DoctorCheck("warning", text, message("fix.data_dir_open", path=data_dir))
+
+
+def team_checks(team: TeamSettings) -> list[DoctorCheck]:
+    """Describe team mode: its address, TLS files and trusted proxies (ADR-046).
+
+    Parameters
+    ----------
+    team : TeamSettings
+        The table ``[team]`` of the settings.
+
+    Returns
+    -------
+    list[DoctorCheck]
+        Nothing in local mode. In team mode the address people open; the
+        TLS files of the server loaded as a pair (an error when they cannot
+        be, a warning when other accounts may read the key); an error when
+        there is neither TLS in the server nor a trusted proxy; the trusted
+        proxies.
+    """
+    if not team.enabled:
+        return []
+    checks = [DoctorCheck("ok", message("doctor.team_origin", origin=team.origin))]
+    if team.tls_cert is not None and team.tls_key is not None:
+        checks.extend(_tls_checks(team.tls_cert, team.tls_key))
+    elif not team.trusted_proxies:
+        text = message("serve.tls_required")
+        checks.append(DoctorCheck("error", text, message("serve.hint_tls_required")))
+    if team.trusted_proxies:
+        proxies = ", ".join(team.trusted_proxies)
+        checks.append(
+            DoctorCheck("ok", message("doctor.team_proxies", proxies=proxies))
+        )
+    return checks
+
+
+def _tls_checks(cert: Path, key: Path) -> list[DoctorCheck]:
+    problem = tls_problem(cert, key)
+    if problem is not None:
+        text = with_detail(message("serve.tls_unusable", cert=cert, key=key), problem)
+        return [DoctorCheck("error", text, message("serve.hint_tls_unusable"))]
+    checks = [DoctorCheck("ok", message("doctor.team_tls", cert=cert, key=key))]
+    if os.name == "posix":
+        mode = stat.S_IMODE(key.stat().st_mode)
+        if mode & 0o077:
+            text = message("doctor.team_key_open", path=key, mode=f"{mode:04o}")
+            fix = message("fix.team_key_open", path=key)
+            checks.append(DoctorCheck("warning", text, fix))
+    return checks
 
 
 def _port_check(port: int, port_available: Callable[[int], bool]) -> DoctorCheck:

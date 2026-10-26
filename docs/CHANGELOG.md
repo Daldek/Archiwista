@@ -9,6 +9,21 @@ command-line interface may change.
 
 ### Added
 
+- Team mode, its settings and where the server listens (v0.4, ADR-046): the table
+  `[team]` of `config.toml` (`enabled`, `origin`, `tls_cert`, `tls_key`,
+  `trusted_proxies`, `proxy_user_header`, `proxy_autocreate`) is read when the server
+  starts; `GET /settings` does not show it and `PUT /settings` writes it back as it
+  was. Two settings of a team that an administrator changes: `network_jobs_per_person`
+  (2, from 1 to 10) and `action_log_retention_days` (365, from 30 to 3,650).
+  `archiwista serve --host ADDRESS` listens beyond `127.0.0.1` only in team mode, with
+  TLS in the server or behind trusted reverse proxies on a specific address; otherwise
+  it ends with exit 2, `validation_error` and the reason `host_refused`,
+  `tls_required`, `tls_unusable` (files that do not load as a pair, or an encrypted
+  key), `proxy_bind_wildcard` or `proxy_bind_not_loopback`, with a hint, before
+  anything is created or bound. In team mode it issues no startup token, opens no
+  browser and prints the team's address. `archiwista doctor` reports team mode: the
+  address, the certificate and key loaded as a pair, a key that other accounts may
+  read, the trusted proxies.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

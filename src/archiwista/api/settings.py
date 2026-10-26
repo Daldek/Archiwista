@@ -7,7 +7,9 @@ configuration file (problems per field) and then
 the directories: they exist and can be read, producer directories are not
 nested, the producer accepts each new or moved one. A rejected change keeps
 the file and the settings in effect. A saved change reaches subscribers
-(the scan scheduler) and the CSP of the following responses.
+(the scan scheduler) and the CSP of the following responses. The table
+``[team]`` is neither shown nor changed: a change writes back the one the
+server read when it started (ADR-046).
 """
 
 from typing import Annotated
@@ -40,7 +42,7 @@ def save_settings(service: SettingsService, body: Settings) -> Settings:
     """Validate and save complete new settings; return those in effect.
 
     Fields the body omits take their defaults, a store without ``kind`` has
-    it detected.
+    it detected; the table ``[team]`` stays as the server read it.
 
     Raises
     ------
@@ -48,7 +50,8 @@ def save_settings(service: SettingsService, body: Settings) -> Settings:
         A value or a directory is unusable; nothing changes.
     """
     changed = parse_settings(body.model_dump(mode="json", exclude_unset=True))
-    return Settings.of(service.update(changed))
+    kept = changed.model_copy(update={"team": service.get().team})
+    return Settings.of(service.update(kept))
 
 
 @router.get("", response_model=Settings, responses=problem_responses())

@@ -81,11 +81,11 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | Module | Role | Key symbols |
 |---|---|---|
 | `cli.py` | the `archiwista` command (`[project.scripts]`); `umask 077` on POSIX; dispatches subcommands | `main` |
-| `server.py` | `archiwista serve` (`127.0.0.1` only: socket, startup token, Uvicorn, job supervisor and scheduler) and `archiwista token` | `serve_main`, `token_main`, `LocalServer`, `LaunchFile`, `bind_loopback`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
+| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; socket, startup token in local mode, Uvicorn, job supervisor and scheduler) and `archiwista token` | `serve_main`, `token_main`, `team_refusal`, `Refusal`, `LocalServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
 | `app.py` | FastAPI application factory: shared objects in `app.state`, routers under `/api/v1`, API documentation, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
 | `reader.py` | read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` built on API functions and models | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | commands `users`, `groups`, `share`, `state export` and `state import`, run as `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
-| `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, plugins, stores and project directories, data directory, port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `is_port_available`, `REQUIRED_PRODUCERS` |
+| `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, plugins, stores and project directories, data directory, team mode (address, TLS files, trusted proxies), port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `team_checks`, `is_port_available`, `REQUIRED_PRODUCERS` |
 | `commands/previews.py`, `commands/layers.py`, `commands/compare.py`, `commands/owndata.py` | v0.2 CLI shared with the API services: `preview`, `layers`, `compare`, `files`, `file`, `snapshot`, `own-scan` | `add_commands`, `main` in each module |
 | `commands/producer_commands.py` | v0.3 CLI of the producers' commands over `services/commands.py` (ADR-034): `commands list`, `parse`, `validate`, `format` | `add_commands`, `main` |
 | `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
@@ -975,9 +975,15 @@ and the layer schema, not object differences.
 Threat model and decisions: SPEC 10 ([`SPEC.md`](SPEC.md)), A-ADR-012
 with errata. State of the code in brief:
 
-- **Loopback only.** `serve_main` refuses any address other than
-  `127.0.0.1` before any other step (exit code 2), the socket is created by
-  `bind_loopback`; Uvicorn runs without `proxy_headers` and without the `Server` header.
+- **Where it listens.** `serve_main` asks `team_refusal` before it creates or binds
+  anything (exit code 2, `validation_error` with a reason and a hint): local mode
+  listens on `127.0.0.1` only (`host_refused`); team mode (the table `[team]`,
+  ADR-046) on an IP address with TLS in the server, whose files `tls_problem` loads
+  as a pair (`tls_unusable`, also for an encrypted key), or else behind
+  `trusted_proxies` (`tls_required` without them) on a specific address
+  (`proxy_bind_wildcard`), a loopback one when every proxy is one
+  (`proxy_bind_not_loopback`). The socket is created by `bind_address` (IPv4 or
+  IPv6); Uvicorn runs without `proxy_headers` and without the `Server` header.
 - **Check of every request** — `SecurityMiddleware` (section 5.3):
   `Host`, `Origin`/`Sec-Fetch-Site`, session, CSRF token in every `/api`
   request (the browser sends the cookie to every port of the host, so it never
@@ -1331,7 +1337,7 @@ the test account has no access to hardware WebGL; SwiftShader reached
   above `MAP_FOOTPRINT_LIMIT` (5000) footprints a grid with counters
   (`grid_columns` ≤ `MAX_GRID_COLUMNS`), FTS5 with one row per slot,
   SHA-256 prefix (8–64 hexadecimal characters) through the `versions_sha256` index;
-- server: an `IPPROTO_TCP` socket in `bind_loopback` (without the Nagle delay
+- server: an `IPPROTO_TCP` socket in `bind_address` (without the Nagle delay
   of about 40 ms per request), the interface draws only the catalog rows close to the
   view.
 

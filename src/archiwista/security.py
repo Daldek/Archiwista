@@ -30,6 +30,7 @@ import logging
 import re
 import secrets
 import sqlite3
+import ssl
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -921,6 +922,45 @@ def csp_header(settings: AppSettings) -> str:
             "frame-ancestors 'none'",
         )
     )
+
+
+# TLS -----------------------------------------------------------------------
+
+
+class _EncryptedKeyError(Exception):
+    """The private key asks for a passphrase, which the server never has."""
+
+
+def _no_passphrase() -> bytes:
+    raise _EncryptedKeyError(message("serve.tls_key_encrypted"))
+
+
+def tls_problem(cert: Path, key: Path) -> str | None:
+    """Return why a certificate chain and its key cannot serve TLS, or ``None``.
+
+    The files are loaded as the server loads them
+    (``ssl.SSLContext.load_cert_chain``): readable PEM files, a key that
+    matches the certificate and needs no passphrase (an encrypted key would
+    make the server ask for one at the terminal).
+
+    Parameters
+    ----------
+    cert, key : Path
+        ``tls_cert`` and ``tls_key`` of the table ``[team]``.
+
+    Returns
+    -------
+    str or None
+        What loading them said, or ``None`` when they load as a pair.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    try:
+        context.load_cert_chain(cert, key, password=_no_passphrase)
+    except _EncryptedKeyError as error:
+        return str(error)
+    except OSError as error:  # ssl.SSLError too
+        return error.strerror or str(error)
+    return None
 
 
 # Logs ----------------------------------------------------------------------

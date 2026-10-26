@@ -22,12 +22,24 @@ MESSAGES = {
         "Sprawdza instalację, wtyczki źródeł, magazyny i port.",
     ),
     "serve_help": Text(
-        "Starts the Archiwista server on 127.0.0.1 and opens the browser.",
-        "Uruchamia serwer Archiwisty na 127.0.0.1 i otwiera przeglądarkę.",
+        (
+            "Starts the Archiwista server on 127.0.0.1 and opens the browser; in"
+            " team mode ([team] in config.toml) at the team's address."
+        ),
+        (
+            "Uruchamia serwer Archiwisty na 127.0.0.1 i otwiera przeglądarkę; w"
+            " trybie zespołu ([team] w config.toml) pod adresem zespołu."
+        ),
     ),
     "serve_host_help": Text(
-        "listen address; without team mode only 127.0.0.1",
-        "adres nasłuchu; bez trybu zespołu tylko 127.0.0.1",
+        (
+            "IP address to listen on: 127.0.0.1; another one only in team mode, with"
+            " sign-in and TLS in the server or in a trusted reverse proxy"
+        ),
+        (
+            "adres IP nasłuchu: 127.0.0.1; inny tylko w trybie zespołu, z logowaniem"
+            " i TLS w serwerze albo w zaufanym serwerze pośredniczącym"
+        ),
     ),
     "serve_port_help": Text(
         "port (default from settings; 0 — any free port)",

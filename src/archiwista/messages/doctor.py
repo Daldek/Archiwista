@@ -144,4 +144,29 @@ MESSAGES = {
         "no data",
         "brak danych",
     ),
+    "team_origin": Text(
+        "Team mode: people open {origin}",
+        "Tryb zespołu: ludzie otwierają {origin}",
+    ),
+    "team_tls": Text(
+        "Team mode: TLS in the server, certificate {cert} and key {key} load as a pair",
+        (
+            "Tryb zespołu: TLS w serwerze, certyfikat {cert} i klucz {key} wczytują"
+            " się jako para"
+        ),
+    ),
+    "team_key_open": Text(
+        (
+            "The TLS key {path} is accessible to other accounts on this computer"
+            " (permissions {mode})"
+        ),
+        (
+            "Klucz TLS {path} jest dostępny dla innych kont tego komputera"
+            " (uprawnienia {mode})"
+        ),
+    ),
+    "team_proxies": Text(
+        "Team mode: trusted reverse proxies {proxies}",
+        "Tryb zespołu: zaufane serwery pośredniczące {proxies}",
+    ),
 }

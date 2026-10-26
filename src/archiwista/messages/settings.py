@@ -87,4 +87,36 @@ MESSAGES = {
         "allowed values: public, private",
         "dozwolone wartości: public, private",
     ),
+    "team_origin": Text(
+        (
+            "the address people open: https://, a host and an optional port, nothing"
+            " else (no path); required with enabled = true"
+        ),
+        (
+            "adres, który otwierają ludzie: https://, host i opcjonalny port, nic"
+            " więcej (bez ścieżki); wymagany przy enabled = true"
+        ),
+    ),
+    "team_tls_pair": Text(
+        "tls_cert and tls_key go together: give both files or neither",
+        "tls_cert i tls_key idą w parze: podaj oba pliki albo żaden",
+    ),
+    "team_proxy": Text(
+        "an IP address or a network of at most {limit} addresses (IPv4 /24, IPv6 /120)",
+        ("adres IP albo sieć najwyżej {limit} adresów (IPv4 /24, IPv6 /120)"),
+    ),
+    "team_proxy_header": Text(
+        (
+            "a header name (an HTTP token) other than Host, Cookie, Authorization,"
+            " Origin, X-Forwarded-* and X-Archiwista-*, used with trusted_proxies"
+        ),
+        (
+            "nazwa nagłówka (token HTTP) inna niż Host, Cookie, Authorization,"
+            " Origin, X-Forwarded-* i X-Archiwista-*, razem z trusted_proxies"
+        ),
+    ),
+    "team_proxy_autocreate": Text(
+        "proxy_autocreate needs proxy_user_header",
+        "proxy_autocreate wymaga proxy_user_header",
+    ),
 }

@@ -1,5 +1,6 @@
 """Local configuration: TOML settings, local data paths, and settings service."""
 
+import ipaddress
 import logging
 import os
 import re
@@ -20,6 +21,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -44,6 +46,24 @@ SHARE_FILESYSTEMS = frozenset({"cifs", "smb3", "smbfs", "nfs", "nfs4"})
 MOUNTINFO_PATH = Path("/proc/self/mountinfo")
 # A project's data folder unless the settings name another (decision 8).
 OWN_DATA_DIR_NAME = "dane"
+# Network jobs one person runs at once, their agents' included (ADR-047).
+DEFAULT_NETWORK_JOBS_PER_PERSON = 2
+DEFAULT_ACTION_LOG_RETENTION_DAYS = 365
+# A trusted proxy of team mode is an address or a network of at most this many
+# addresses (IPv4 /24, IPv6 /120), so a mistyped prefix cannot trust a whole
+# network (ADR-046).
+MAX_PROXY_ADDRESSES = 256
+# The headers a proxy may not name the person in: the request's own, the
+# forwarded ones Archiwista reads and its own (ADR-046).
+_RESERVED_HEADERS = frozenset({"host", "cookie", "authorization", "origin"})
+_RESERVED_HEADER_PREFIXES = ("x-forwarded-", "x-archiwista-")
+# A header name is an HTTP token (RFC 9110, 5.6.2).
+_HTTP_TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+# A host name of an origin: labels of letters, digits and hyphens (punycode too).
+_HOST_NAME = re.compile(
+    r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*"
+)
+HTTPS_PORT = 443
 
 type StoreKind = Literal["local", "share"]
 type BasemapKind = Literal["xyz", "wms", "vector"]
@@ -54,6 +74,7 @@ type DirectoryProblem = Literal["missing", "not_directory", "unreadable"]
 # Visibility of a project without its own access entry (A-ADR-029): everyone
 # sees it, or administrators only until someone shares it.
 type DefaultProjectVisibility = Literal["public", "private"]
+type IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 DEFAULT_PROJECT_VISIBILITIES: tuple[DefaultProjectVisibility, ...] = (
     "public",
@@ -386,13 +407,158 @@ DEFAULT_BASEMAPS: tuple[BasemapConfig, ...] = (
 )
 
 
+def _normalize_origin(value: str) -> str:
+    """Return a team's origin lower-case and without the port 443, or refuse it.
+
+    An origin is ``https://``, a host name or an IP address, and an optional
+    port: nothing else, so that it compares with a browser's ``Origin``.
+    """
+    text = value.lower()
+    parts = urlsplit(text)
+    try:
+        port = parts.port
+    except ValueError:
+        port = 0
+    host = parts.hostname or ""
+    bracketed = f"[{host}]" if ":" in host else host
+    given = f"https://{bracketed}" + ("" if port is None else f":{port}")
+    if text != given or port == 0 or not _valid_host(host):
+        raise ValueError(message("settings.team_origin"))
+    if port == HTTPS_PORT:
+        return f"https://{bracketed}"
+    return given
+
+
+def _valid_host(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return _HOST_NAME.fullmatch(host) is not None and not host.isdigit()
+    return True
+
+
+def _check_proxy(value: str) -> str:
+    """Return a trusted proxy (an address or a small network), or refuse it."""
+    text = value.strip()
+    try:
+        network = ipaddress.ip_network(text, strict=False)
+    except ValueError:
+        network = None
+    if network is None or network.num_addresses > MAX_PROXY_ADDRESSES:
+        raise ValueError(message("settings.team_proxy", limit=MAX_PROXY_ADDRESSES))
+    return text
+
+
+def _reserved_header(name: str) -> bool:
+    """Return whether a proxy may not name the person in the header ``name``."""
+    lowered = name.lower()
+    return lowered in _RESERVED_HEADERS or lowered.startswith(_RESERVED_HEADER_PREFIXES)
+
+
+class TeamSettings(BaseModel):
+    """Team mode: the table ``[team]`` of the configuration file (ADR-046).
+
+    The server reads it when it starts; the API neither shows nor changes
+    it, so no session can widen the server's exposure.
+
+    Parameters
+    ----------
+    enabled : bool
+        Team mode: people sign in, every request comes over TLS, and the
+        server may listen beyond ``127.0.0.1``.
+    origin : str or None
+        The address people open: ``https``, a host and an optional port,
+        nothing else; kept lower-case and without the port 443. Required
+        when ``enabled``.
+    tls_cert, tls_key : Path or None
+        TLS in the server: the certificate chain and its unencrypted private
+        key (PEM files); both or neither.
+    trusted_proxies : tuple[str, ...]
+        Reverse proxies whose ``X-Forwarded-For``, ``X-Forwarded-Proto`` and
+        ``proxy_user_header`` are believed: addresses, or networks of at most
+        256 addresses (IPv4 ``/24``, IPv6 ``/120``).
+    proxy_user_header : str or None
+        Header in which a trusted proxy names the person (an HTTP token, not
+        ``Host``, ``Cookie``, ``Authorization``, ``Origin``, an
+        ``X-Forwarded-*`` or ``X-Archiwista-*`` name); needs
+        ``trusted_proxies``.
+    proxy_autocreate : bool
+        Create a missing account, without roles, when the proxy names it;
+        needs ``proxy_user_header``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = False
+    origin: str | None = Field(default=None, validate_default=True)
+    tls_cert: AbsolutePath | None = None
+    tls_key: AbsolutePath | None = Field(default=None, validate_default=True)
+    trusted_proxies: tuple[Annotated[str, AfterValidator(_check_proxy)], ...] = ()
+    proxy_user_header: str | None = Field(default=None, validate_default=True)
+    proxy_autocreate: bool = Field(default=False, validate_default=True)
+
+    # A check of two fields runs on the second one, so that the problem names
+    # it (``team.<name>``); it is skipped when the first one is itself invalid.
+
+    @field_validator("origin")
+    @classmethod
+    def _check_origin(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is not None:
+            return _normalize_origin(value)
+        if info.data.get("enabled"):
+            raise ValueError(message("settings.team_origin"))
+        return None
+
+    @field_validator("tls_key")
+    @classmethod
+    def _check_tls_pair(cls, value: Path | None, info: ValidationInfo) -> Path | None:
+        if "tls_cert" in info.data and (value is None) != (
+            info.data["tls_cert"] is None
+        ):
+            raise ValueError(message("settings.team_tls_pair"))
+        return value
+
+    @field_validator("proxy_user_header")
+    @classmethod
+    def _check_proxy_header(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        without_proxies = (
+            "trusted_proxies" in info.data and not info.data["trusted_proxies"]
+        )
+        if (
+            _HTTP_TOKEN.fullmatch(value) is None
+            or _reserved_header(value)
+            or without_proxies
+        ):
+            raise ValueError(message("settings.team_proxy_header"))
+        return value
+
+    @field_validator("proxy_autocreate")
+    @classmethod
+    def _check_autocreate(cls, value: bool, info: ValidationInfo) -> bool:
+        if (
+            value
+            and "proxy_user_header" in info.data
+            and info.data["proxy_user_header"] is None
+        ):
+            raise ValueError(message("settings.team_proxy_autocreate"))
+        return value
+
+    def trusted_networks(self) -> tuple[IPNetwork, ...]:
+        """Return the trusted proxies as networks (an address is a ``/32``)."""
+        return tuple(
+            ipaddress.ip_network(value, strict=False) for value in self.trusted_proxies
+        )
+
+
 class AppSettings(BaseModel):
     """All user settings stored in the TOML configuration file.
 
     Parameters
     ----------
     port : int
-        Local server port on 127.0.0.1.
+        Server port (on 127.0.0.1 in local mode).
     offline : bool
         Disable every external request made by the browser.
     scan_threads : int
@@ -428,6 +594,14 @@ class AppSettings(BaseModel):
         Data folder of a project by the project directory after ``realpath``
         (its access key): absolute directories, set by an administrator.
         Without an entry a project's folder is ``<project directory>/dane``.
+    network_jobs_per_person : int
+        Network jobs one person (with their agents) runs at once; further
+        ones wait (ADR-047).
+    action_log_retention_days : int
+        Days the action log keeps an entry (ADR-047).
+    team : TeamSettings
+        Team mode, the table ``[team]``: read when the server starts, never
+        shown or changed by the API (ADR-046).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -454,6 +628,13 @@ class AppSettings(BaseModel):
     )
     preview_warm_after_scan: bool = False
     own_data_dirs: dict[str, str] = Field(default_factory=dict)
+    network_jobs_per_person: int = Field(
+        default=DEFAULT_NETWORK_JOBS_PER_PERSON, ge=1, le=10
+    )
+    action_log_retention_days: int = Field(
+        default=DEFAULT_ACTION_LOG_RETENTION_DAYS, ge=30, le=3650
+    )
+    team: TeamSettings = Field(default_factory=TeamSettings)
 
     @field_validator("default_project_visibility", mode="before")
     @classmethod
@@ -1118,10 +1299,11 @@ def dump_settings(settings: AppSettings) -> str:
     Returns
     -------
     str
-        TOML text with scalar settings first and one table per store and
-        basemap.
+        TOML text with scalar settings first, then the table ``[team]`` unless
+        it holds the defaults, and one table per store and basemap.
     """
     data = settings.model_dump(mode="json")
+    team: dict[str, object] = data.pop("team")
     lines: list[str] = []
     tables: list[tuple[str, list[dict[str, object]]]] = []
     for key, value in data.items():
@@ -1129,6 +1311,13 @@ def dump_settings(settings: AppSettings) -> str:
             tables.append((key, value))
         elif value is not None:
             lines.append(f"{_toml_key(key)} = {_toml_value(value)}")
+    if settings.team != TeamSettings():
+        lines.extend(("", "[team]"))
+        lines.extend(
+            f"{_toml_key(name)} = {_toml_value(value)}"
+            for name, value in team.items()
+            if value is not None
+        )
     for key, rows in tables:
         for row in rows:
             lines.extend(("", f"[[{_toml_key(key)}]]"))

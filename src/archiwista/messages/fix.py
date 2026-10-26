@@ -87,6 +87,10 @@ MESSAGES = {
         ),
         "uruchom „archiwista serve” (zamyka katalog do 0700) albo: chmod 700 {path}",
     ),
+    "team_key_open": Text(
+        "chmod 600 {path} (readable by the account of the server only)",
+        "chmod 600 {path} (do odczytu tylko przez konto serwera)",
+    ),
     "port": Text(
         "change the port in the settings or stop the program that is using it.",
         "zmień port w ustawieniach albo zatrzymaj program, który go używa.",

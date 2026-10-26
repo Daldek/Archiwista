@@ -1,25 +1,29 @@
-"""``archiwista serve`` and ``archiwista token``: the local server and its tokens.
+"""``archiwista serve`` and ``archiwista token``: the server and its tokens.
 
-``serve`` refuses any listening address but ``127.0.0.1`` before doing
-anything else (team mode with login comes in v0.4), binds the port, issues
-the one-time startup token, prints ``http://127.0.0.1:<port>/#token=…``,
-optionally opens it in the browser and serves until Ctrl+C. The browser gets
-the address through a private file (``LaunchFile``), never on its command
-line, which other accounts of the computer can read. Uvicorn's access log is
-off unless asked for; when on, ``token=`` values are redacted; it serves at
-most ``LIMIT_CONCURRENCY`` connections at once. While it serves, background
-jobs run under its ``JobSupervisor``, the ``ScanScheduler`` scans the stores
-and the ``RenderPool`` renders previews into the preview cache (reconciled
-at the start); stopping ends the open job event streams first (they would
-hold it until their jobs end), then interrupts running jobs and ends the
-render processes. ``token`` prints the
-one-time address of an agent's session, or ends every agent session
-(``--revoke-all``).
+``serve`` first checks where it may listen (``team_refusal``): in local mode
+only on ``127.0.0.1``; in team mode (the table ``[team]``, ADR-046) on an IP
+address of this computer with TLS in the server, or behind trusted reverse
+proxies on a specific address. It then binds the port and, in local mode,
+issues the one-time startup token, prints
+``http://127.0.0.1:<port>/#token=…`` and optionally opens it in the browser;
+in team mode it issues no token, opens no browser and prints the team's
+``origin``. It serves until Ctrl+C. The browser gets the address through a
+private file (``LaunchFile``), never on its command line, which other
+accounts of the computer can read. Uvicorn's access log is off unless asked
+for; when on, ``token=`` values are redacted; it serves at most
+``LIMIT_CONCURRENCY`` connections at once. While it serves, background jobs
+run under its ``JobSupervisor``, the ``ScanScheduler`` scans the stores and
+the ``RenderPool`` renders previews into the preview cache (reconciled at the
+start); stopping ends the open job event streams first (they would hold it
+until their jobs end), then interrupts running jobs and ends the render
+processes. ``token`` prints the one-time address of an agent's session, or
+ends every agent session (``--revoke-all``).
 """
 
 import contextlib
 import copy
 import html
+import ipaddress
 import os
 import secrets
 import socket
@@ -27,6 +31,7 @@ import sqlite3
 import threading
 import webbrowser
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -39,6 +44,7 @@ from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import (
     AppPaths,
+    AppSettings,
     ConfigStore,
     SettingsService,
     SettingsValidationError,
@@ -62,6 +68,7 @@ from archiwista.security import (
     fragment_url,
     issue_one_time_token,
     revoke_agent_sessions,
+    tls_problem,
 )
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
@@ -92,29 +99,107 @@ def uvicorn_log_config(level: str = DEFAULT_LOG_LEVEL) -> dict[str, Any]:
     return config
 
 
-def bind_loopback(port: int) -> socket.socket:
-    """Listen on ``127.0.0.1:<port>``; ``0`` picks a free port.
+@dataclass(frozen=True, slots=True)
+class Refusal:
+    """Why ``archiwista serve`` does not start on an address (exit 2).
+
+    Parameters
+    ----------
+    reason : str
+        ``details.reason`` of the ``validation_error``.
+    text : str
+        What is wrong, a catalog message.
+    hint : str
+        How to fix it, a catalog message.
+    """
+
+    reason: str
+    text: str
+    hint: str
+
+
+def team_refusal(settings: AppSettings, host: str) -> Refusal | None:
+    """Return why the server may not listen on ``host``, or ``None`` (ADR-046).
+
+    Local mode listens on ``127.0.0.1`` only (``host_refused``). Team mode
+    listens on an IP address of this computer (``host_refused`` for a name),
+    with TLS in the server, whose files must load as a pair
+    (``tls_unusable``), or else behind trusted proxies (``tls_required``
+    without them): then on a specific address (``proxy_bind_wildcard``),
+    and on a loopback one when every trusted proxy is one
+    (``proxy_bind_not_loopback``). Nothing is bound.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Settings with the table ``[team]``.
+    host : str
+        The address of ``--host``.
+    """
+    team = settings.team
+    if not team.enabled:
+        if host == LOOPBACK_HOST:
+            return None
+        text = message("serve.host_refused", host=host, loopback=LOOPBACK_HOST)
+        return Refusal("host_refused", text, message("serve.hint_host_refused"))
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        text = message("serve.host_not_address", host=host)
+        return Refusal("host_refused", text, message("serve.hint_host_address"))
+    if team.tls_cert is not None and team.tls_key is not None:
+        problem = tls_problem(team.tls_cert, team.tls_key)
+        if problem is None:
+            return None
+        files = message("serve.tls_unusable", cert=team.tls_cert, key=team.tls_key)
+        unusable = with_detail(files, problem)
+        return Refusal("tls_unusable", unusable, message("serve.hint_tls_unusable"))
+    networks = team.trusted_networks()
+    if not networks:
+        text = message("serve.tls_required")
+        return Refusal("tls_required", text, message("serve.hint_tls_required"))
+    if address.is_unspecified:
+        text = message("serve.proxy_bind_wildcard", host=host)
+        hint = message("serve.hint_proxy_bind_wildcard")
+        return Refusal("proxy_bind_wildcard", text, hint)
+    if all(network.is_loopback for network in networks) and not address.is_loopback:
+        text = message("serve.proxy_bind_not_loopback", host=host)
+        hint = message("serve.hint_proxy_bind_not_loopback")
+        return Refusal("proxy_bind_not_loopback", text, hint)
+    return None
+
+
+def bind_address(host: str, port: int) -> socket.socket:
+    """Listen on ``host:<port>``, an IPv4 or IPv6 address; ``0`` picks a port.
 
     Raises
     ------
     OSError
-        If the port is taken or not allowed.
+        If the port is taken or not allowed, or the address is not one of
+        this computer.
     """
+    version = ipaddress.ip_address(host).version
+    family = socket.AF_INET6 if version == 6 else socket.AF_INET
     # asyncio disables Nagle's algorithm only on connections accepted by an
     # IPPROTO_TCP socket; with it on, a response written in parts waits for
     # the client's delayed acknowledgement (about 40 ms per kept-alive request).
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+    sock = socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
     try:
         if os.name == "posix":
             # Restart at once even with connections of a stopped server in
             # TIME_WAIT (on Windows this option would allow port sharing).
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((LOOPBACK_HOST, port))
+        sock.bind((host, port))
         sock.listen()
     except BaseException:
         sock.close()
         raise
     return sock
+
+
+def _listening(host: str, port: int) -> str:
+    """Return ``host:port`` as an address is written (IPv6 in brackets)."""
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 class _Uvicorn(uvicorn.Server):
@@ -188,18 +273,20 @@ class LaunchFile:
 
 
 class LocalServer:
-    """The application on a listening loopback socket, ready to serve.
+    """The application on a listening socket, ready to serve.
 
     Parameters
     ----------
     sock : socket.socket
-        Socket from ``bind_loopback``; the server closes it when it stops.
+        Socket from ``bind_address``; the server closes it when it stops.
     app : ASGIApp
         The application.
     url : str
-        One-time address of the first session.
-    launch : LaunchFile
-        Where ``open_in_browser`` puts the address for the browser.
+        One-time address of the first session in local mode; the team's
+        ``origin`` in team mode.
+    launch : LaunchFile or None
+        Where ``open_in_browser`` puts the address for the browser; ``None``
+        in team mode, which opens no browser.
     access_log : bool
         Write Uvicorn's access log, with ``token=`` values redacted.
     on_stop : Callable[[], None]
@@ -216,18 +303,19 @@ class LocalServer:
         app: ASGIApp,
         *,
         url: str,
-        launch: LaunchFile,
+        launch: LaunchFile | None,
         access_log: bool,
         on_stop: Callable[[], None],
         log_level: str = DEFAULT_LOG_LEVEL,
     ) -> None:
         self.url = url
         self.launch = launch
-        self.port: int = sock.getsockname()[1]
+        address = sock.getsockname()
+        self.port: int = address[1]
         self._socket = sock
         config = uvicorn.Config(
             app,
-            host=LOOPBACK_HOST,
+            host=address[0],
             port=self.port,
             log_config=uvicorn_log_config(log_level),
             access_log=access_log,
@@ -252,8 +340,11 @@ def open_in_browser(server: LocalServer) -> None:
     """Open the server's one-time address in the default browser, not waiting.
 
     The browser gets the ``file:`` address of ``server.launch``, never the
-    token itself.
+    token itself. A server of team mode has no launch file and opens nothing:
+    people open its ``origin`` and sign in.
     """
+    if server.launch is None:
+        return
     uri = server.launch.write(server.url).as_uri()
     threading.Thread(target=webbrowser.open, args=(uri,), daemon=True).start()
 
@@ -282,8 +373,9 @@ def serve_main(
     out, err : TextIO
         Streams for the address and for errors.
     host : str, optional
-        Listening address; anything but ``127.0.0.1`` is refused before any
-        other step.
+        Listening address: ``127.0.0.1`` in local mode; in team mode an IP
+        address that ``team_refusal`` accepts. A refused one ends the command
+        before anything is created or bound.
     port : int or None, optional
         Port; the configured one when omitted, a free one for ``0``.
     access_log : bool, optional
@@ -305,14 +397,26 @@ def serve_main(
         directory or the preview cache that cannot be used the code of the
         error (``2`` invalid settings, ``8``, ``9``).
     """
-    if host != LOOPBACK_HOST:
-        text = message("serve.host_refused", host=host, loopback=LOOPBACK_HOST)
-        return fail(err, "validation_error", text, reason="host_refused")
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
+    except SettingsValidationError as error:
+        return refuse(
+            exception_problem(error, with_detail(message("serve.failed"), str(error))),
+            err,
+        )
+    refusal = team_refusal(settings.get(), host)
+    if refusal is not None:
+        return fail(
+            err,
+            "validation_error",
+            refusal.text,
+            reason=refusal.reason,
+            hint=refusal.hint,
+        )
+    try:
         initialize(paths.index_file)
         state = StateStore(paths.state_file)
-    except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
+    except (IndexUnsupportedError, StateError) as error:
         return refuse(
             exception_problem(error, with_detail(message("serve.failed"), str(error))),
             err,
@@ -320,9 +424,9 @@ def serve_main(
     if port is None:
         port = settings.get().port
     try:
-        sock = bind_loopback(port)
+        sock = bind_address(host, port)
     except OSError as error:
-        text = message("serve.port_unavailable", host=LOOPBACK_HOST, port=port)
+        text = message("serve.port_unavailable", host=host, port=port)
         detail = with_detail(text, error.strerror or str(error))
         return fail(err, "conflict", detail, reason="port_unavailable")
     with sock:
@@ -353,12 +457,19 @@ def serve_main(
             )
         )
         scheduler = ScanScheduler(jobs, settings, registry, index_path=paths.index_file)
-        launch = LaunchFile(paths.data_dir)
-        expiry = threading.Timer(TOKEN_TTL["startup"].total_seconds(), launch.remove)
-        expiry.daemon = True
+        # Team mode issues no startup token: people sign in at its origin.
+        team = settings.get().team
+        origin = team.origin if team.enabled else None
+        launch = LaunchFile(paths.data_dir) if origin is None else None
+        expiry: threading.Timer | None = None
+        if launch is not None:
+            expiry = threading.Timer(
+                TOKEN_TTL["startup"].total_seconds(), launch.remove
+            )
+            expiry.daemon = True
 
         def redeemed(kind: TokenKind) -> None:
-            if kind == "startup":
+            if kind == "startup" and launch is not None:
                 launch.remove()
 
         try:
@@ -374,31 +485,40 @@ def serve_main(
                 previews=previews,
                 on_redeem=redeemed,
             )
-            issued = issue_one_time_token(
-                paths.index_file, "startup", minted_by=LOCAL_OWNER
-            )
+            if origin is None:
+                issued = issue_one_time_token(
+                    paths.index_file, "startup", minted_by=LOCAL_OWNER
+                )
+                url = fragment_url(bound_port, issued.token)
+                started = message("serve.started", url=url, minutes=_minutes("startup"))
+            else:
+                url = origin
+                listening = _listening(host, bound_port)
+                started = message(
+                    "serve.started_team", origin=origin, address=listening
+                )
             server = LocalServer(
                 sock,
                 app,
-                url=fragment_url(bound_port, issued.token),
+                url=url,
                 launch=launch,
                 access_log=access_log,
                 log_level=log_level,
                 on_stop=app.state.job_streams.close,
             )
-            out.write(
-                message("serve.started", url=server.url, minutes=_minutes("startup"))
-                + "\n"
-            )
+            out.write(started + "\n")
             out.flush()
-            expiry.start()
+            if expiry is not None:
+                expiry.start()
             if on_ready is not None:
                 on_ready(server)
             scheduler.start()
             server.run()
         finally:
-            expiry.cancel()
-            launch.remove()
+            if expiry is not None:
+                expiry.cancel()
+            if launch is not None:
+                launch.remove()
             scheduler.stop()
             jobs.close()
             unsubscribe()

@@ -3021,7 +3021,11 @@ class BasemapSettings(BaseModel):
 
 
 class Settings(BaseModel):
-    """All settings; PUT replaces all of them (omitted fields take defaults)."""
+    """All settings; PUT replaces all of them (omitted fields take defaults).
+
+    The table `[team]` of the configuration file (team mode) is neither shown
+    nor changed here: the server reads it when it starts.
+    """
 
     model_config = _examples(
         {
@@ -3038,11 +3042,18 @@ class Settings(BaseModel):
             "default_project_visibility": "public",
             "preview_cache_limit_gb": 20,
             "preview_warm_after_scan": False,
+            "network_jobs_per_person": 2,
+            "action_log_retention_days": 365,
         },
         closed=True,
     )
 
-    port: int = Field(default=8090, ge=1024, le=65535, description="Port on 127.0.0.1.")
+    port: int = Field(
+        default=8090,
+        ge=1024,
+        le=65535,
+        description="Port of the server (on 127.0.0.1 in local mode).",
+    )
     offline: bool = Field(
         default=False,
         description="No external request from the browser (no online basemaps).",
@@ -3101,6 +3112,21 @@ class Settings(BaseModel):
             " `PUT /projects/{project}/data-dir`. Without one: `<project>/dane`."
         ),
     )
+    network_jobs_per_person: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description=(
+            "Network jobs one person, with their agents, runs at once; further ones"
+            " wait in the queue (v0.4)."
+        ),
+    )
+    action_log_retention_days: int = Field(
+        default=365,
+        ge=30,
+        le=3650,
+        description="Days the action log keeps an entry (v0.4).",
+    )
 
     @classmethod
     def of(cls, settings: AppSettings) -> Self:
@@ -3120,6 +3146,8 @@ class Settings(BaseModel):
             preview_cache_limit_gb=settings.preview_cache_limit_gb,
             preview_warm_after_scan=settings.preview_warm_after_scan,
             own_data_dirs=dict(settings.own_data_dirs),
+            network_jobs_per_person=settings.network_jobs_per_person,
+            action_log_retention_days=settings.action_log_retention_days,
         )
 
 

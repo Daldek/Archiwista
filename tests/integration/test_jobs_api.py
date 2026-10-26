@@ -22,8 +22,13 @@ from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
-from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
-from archiwista.server import LaunchFile, LocalServer, bind_loopback
+from archiwista.security import (
+    CSRF_HEADER,
+    LOOPBACK_HOST,
+    SESSION_COOKIE,
+    issue_one_time_token,
+)
+from archiwista.server import LaunchFile, LocalServer, bind_address
 from archiwista.state import StateStore
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.jobs import (
@@ -415,7 +420,7 @@ def test_event_stream_ends_when_server_stops(
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S * 4))
     lines: queue.Queue[str | None] = queue.Queue()
     with jobs_env(tmp_path, monkeypatch) as env:
-        sock = bind_loopback(0)
+        sock = bind_address(LOOPBACK_HOST, 0)
         port = sock.getsockname()[1]
         app = create_app(
             port=port,

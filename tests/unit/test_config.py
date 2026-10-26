@@ -16,6 +16,7 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
     StoreConfig,
+    TeamSettings,
     detect_store_kind,
     dump_settings,
     parse_settings,
@@ -144,6 +145,9 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     ]
     assert settings.store_write_for_all is False
     assert settings.default_project_visibility == "public"
+    assert settings.network_jobs_per_person == 2
+    assert settings.action_log_retention_days == 365
+    assert settings.team.enabled is False
 
 
 @pytest.mark.usefixtures("polish")
@@ -215,6 +219,153 @@ def test_config_basemap_url_fits_its_kind(kind: str, url: str, reason: str) -> N
         parse_settings({"basemaps": [{"name": "X", "kind": kind, "url": url}]})
 
     assert reason in error.value.problems[0].message
+
+
+TEAM = {
+    "enabled": True,
+    "origin": "https://archiwista.firma.local",
+    "tls_cert": "/etc/archiwista/tls/fullchain.pem",
+    "tls_key": "/etc/archiwista/tls/privkey.pem",
+    "trusted_proxies": ["127.0.0.1", "10.0.0.0/24"],
+    "proxy_user_header": "X-Remote-User",
+    "proxy_autocreate": True,
+}
+
+
+def test_config_store_round_trip_keeps_the_team_table(
+    tmp_path: Path, roots: tuple[Path, Path]
+) -> None:
+    """[team] is a table after the scalars and loads back equal, before the stores."""
+    settings = AppSettings(
+        stores=(make_store("zespol", roots[0]),),
+        network_jobs_per_person=3,
+        action_log_retention_days=30,
+        team=TeamSettings.model_validate(TEAM),
+    )
+    store = ConfigStore(tmp_path / "config.toml")
+
+    store.save(settings)
+
+    text = store.path.read_text("utf-8")
+    assert store.load() == settings
+    assert tomllib.loads(text)["team"] == TEAM
+    assert text.index("action_log_retention_days =") < text.index("\n[team]\n")
+    assert text.index("\n[team]\n") < text.index("\n[[stores]]\n")
+
+
+def test_config_store_writes_no_team_table_for_local_mode(tmp_path: Path) -> None:
+    """The table of the defaults (local mode) is left out of the file."""
+    store = ConfigStore(tmp_path / "config.toml")
+
+    store.save(AppSettings(network_jobs_per_person=1))
+
+    assert "team" not in tomllib.loads(store.path.read_text("utf-8"))
+    assert store.load() == AppSettings(network_jobs_per_person=1)
+
+
+def test_config_team_origin_kept_lower_case_without_the_https_port() -> None:
+    """An origin compares with a browser's Origin; proxies keep what was written."""
+    team = parse_settings(
+        {
+            "team": {
+                "enabled": True,
+                "origin": "HTTPS://Archiwista.Firma.Local:443",
+                "trusted_proxies": [" 10.0.0.7 ", "fd00::/120", "192.168.5.0/24"],
+            }
+        }
+    ).team
+    other_port = parse_settings({"team": {"origin": "https://[FD00::5]:8443"}}).team
+
+    assert team.origin == "https://archiwista.firma.local"
+    assert team.trusted_proxies == ("10.0.0.7", "fd00::/120", "192.168.5.0/24")
+    assert other_port.origin == "https://[fd00::5]:8443"
+
+
+@pytest.mark.parametrize(
+    ("team", "field"),
+    [
+        ({"enabled": True}, "team.origin"),
+        ({"origin": "http://archiwista.firma.local"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local/"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local/archiwista"}, "team.origin"),
+        ({"origin": "https://kasia@archiwista.firma.local"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local?a=1"}, "team.origin"),
+        ({"origin": "https://archiwista firma"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local:0"}, "team.origin"),
+        ({"origin": "archiwista.firma.local"}, "team.origin"),
+        ({"tls_cert": "/etc/tls/cert.pem"}, "team.tls_key"),
+        ({"tls_key": "/etc/tls/key.pem"}, "team.tls_key"),
+        ({"tls_cert": "cert.pem", "tls_key": "/etc/tls/key.pem"}, "team.tls_cert"),
+        ({"trusted_proxies": ["0.0.0.0/0"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["127.0.0.1", "10.0.0.0/16"]}, "team.trusted_proxies[1]"),
+        ({"trusted_proxies": ["10.0.0.0/23"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["fd00::/64"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["proxy.firma.local"]}, "team.trusted_proxies[0]"),
+        ({"proxy_user_header": "X-Remote-User"}, "team.proxy_user_header"),
+        ({"proxy_autocreate": True}, "team.proxy_autocreate"),
+        ({"login": "ldap"}, "team.login"),
+    ],
+)
+def test_config_team_problems_name_their_field(
+    team: dict[str, object], field: str
+) -> None:
+    """Each rule of the table [team] refuses its value at its own field."""
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"team": team})
+
+    assert [problem.field for problem in error.value.problems] == [field]
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Host",
+        "cookie",
+        "Authorization",
+        "ORIGIN",
+        "X-Forwarded-User",
+        "x-forwarded-for",
+        "X-Archiwista-User",
+        "X Remote User",
+        "X-Remote-User:",
+        "",
+    ],
+)
+def test_config_team_refuses_a_header_name_a_proxy_may_not_use(header: str) -> None:
+    """The person's header is a token outside the request's and Archiwista's own."""
+    team = {"trusted_proxies": ["10.0.0.2"], "proxy_user_header": header}
+
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"team": team})
+
+    assert [problem.field for problem in error.value.problems] == [
+        "team.proxy_user_header"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "accepted"),
+    [
+        ("network_jobs_per_person", 1, True),
+        ("network_jobs_per_person", 10, True),
+        ("network_jobs_per_person", 0, False),
+        ("network_jobs_per_person", 11, False),
+        ("action_log_retention_days", 30, True),
+        ("action_log_retention_days", 3650, True),
+        ("action_log_retention_days", 29, False),
+        ("action_log_retention_days", 3651, False),
+    ],
+)
+def test_config_team_numbers_within_their_bounds(
+    key: str, value: int, accepted: bool
+) -> None:
+    """One to ten network jobs per person; a month to ten years of the action log."""
+    if accepted:
+        assert getattr(parse_settings({key: value}), key) == value
+        return
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({key: value})
+    assert [problem.field for problem in error.value.problems] == [key]
 
 
 def test_config_store_failed_save_keeps_previous_file(

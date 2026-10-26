@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 import archiwista.api.models as models
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
-from archiwista.config import ConfigStore
+from archiwista.config import AppSettings, ConfigStore, TeamSettings
 from archiwista.error_document import describe
 from archiwista.errors import (
     ArchiwistaError,
@@ -362,6 +362,48 @@ def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
     assert "https://tiles.openfreemap.org" in online["content-security-policy"]
     assert "tiles.openfreemap.org" not in offline["content-security-policy"]
     assert_problem(no_csrf, 403, "forbidden", "csrf_rejected")
+
+
+def test_api_settings_keep_the_team_table_and_round_trip_the_team_numbers(
+    tmp_path: Path,
+) -> None:
+    """PUT /settings writes [team] back as read; no body shows or changes it."""
+    paths = local_paths(tmp_path)
+    team = TeamSettings(
+        origin="https://archiwista.firma.local",
+        trusted_proxies=("10.0.0.2",),
+        proxy_user_header="X-Remote-User",
+    )
+    ConfigStore(paths.config_file).save(AppSettings(team=team))
+    with running_api(paths) as api:
+        owner = api.session(LOCAL_OWNER)
+        current = owner.request("GET", "/settings").json()
+        changed = {**current, "network_jobs_per_person": 1}
+        saved = owner.request(
+            "PUT", "/settings", json={**changed, "action_log_retention_days": 30}
+        )
+        read = owner.request("GET", "/settings").json()
+        widened = owner.request(
+            "PUT", "/settings", json={**current, "team": {"enabled": True}}
+        )
+    loaded = ConfigStore(paths.config_file).load()
+
+    assert "team" not in current
+    assert (
+        current["network_jobs_per_person"],
+        current["action_log_retention_days"],
+    ) == (
+        2,
+        365,
+    )
+    assert saved.status_code == 200, saved.text
+    assert (read["network_jobs_per_person"], read["action_log_retention_days"]) == (
+        1,
+        30,
+    )
+    assert loaded.team == team
+    assert (loaded.network_jobs_per_person, loaded.action_log_retention_days) == (1, 30)
+    assert_problem(widened, 400, "validation_error")
 
 
 def test_api_openapi_documents_routes_examples_and_problems(
