@@ -1,8 +1,9 @@
 /**
  * Texts of the actions at the source (map/source.js, views/plan.js; docs/SPEC.md
- * 6.3, 6.4, 6.5 h): the step „U źródła” of the „Wybór” panel with the rows of
- * a report and their variants, and the „Okno planu” of a download. Coverage
- * labels („pełne · 2 kampanie”) and store badges („pobrane 5/12”) come from the
+ * 6.3, 6.4, 6.5 h, UC-15): the step „U źródła” of the „Wybór” panel with the
+ * rows of a report and their variants and the pasted command, and the „Okno
+ * planu” of a download with „Dodaj jako zadanie projektu”. Coverage labels
+ * („pełne · 2 kampanie”) and store badges („pobrane 5/12”) come from the
  * server's dictionary; the words of a plan and of a run's files follow it
  * (archiwista/messages/job.py), so the interface and `archiwista jobs` say the
  * same thing.
@@ -44,6 +45,13 @@ export const actions = {
     download_title: "Okno planu: co i ile zostanie pobrane do magazynu; nic nie zapisuje się przed potwierdzeniem",
     download_offline: "Pobieranie potrzebuje sieci: tryb offline jest włączony",
     no_commands: "Producent nie podał polecenia, które pobiera ten wariant",
+    paste: "Wklej polecenie producenta",
+    paste_placeholder: "np. kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4",
+    paste_hint:
+      "Polecenie jak w wierszu poleceń; Archiwista zapisze do magazynu „{store}” zamiast katalogu z -o albo --root. Najpierw pokaże plan.",
+    paste_submit: "Zaplanuj…",
+    paste_title: "{producer} · {command}",
+    paste_no_producer: "Nie wiadomo, czyje to polecenie: zacznij je od nazwy producenta ({producers}).",
   },
   plan: {
     title: "Pobrać?",
@@ -100,6 +108,25 @@ export const actions = {
     submit_unplanned: "Pobierz",
     cancel: "Anuluj",
     close: "Zamknij",
+    task: "Dodaj jako zadanie projektu",
+    task_project: "Projekt",
+    task_project_choose: "Wybierz projekt…",
+    task_name: "Nazwa zadania",
+    task_name_example: "teren-2023",
+    task_name_hint: "Nazwa zadania w manifeście projektu; jej zasady sprawdza producent.",
+    task_added: "Dodano zadanie „{name}” do projektu",
+    /** After „ma”: the accusative („1 polecenie”, „2 polecenia”, „5 poleceń”). */
+    lines: ["polecenie", "polecenia", "poleceń"],
+    task_lines: "Zadanie projektu to jedno polecenie, a ten format wariantu ma {count} {commands}.",
+    task_loading: "Wczytywanie projektów magazynu…",
+    task_no_project_list: "Nie udało się wczytać projektów magazynu.",
+    task_no_project:
+      "W magazynie „{store}” nie ma projektu producenta {producer}; projekt zakłada administrator w widoku Projekty.",
+    task_no_write:
+      "Zadania dodaje właściciel projektu albo administrator, a ta sesja nie może zmienić żadnego projektu tego producenta w tym magazynie.",
+    task_no_call: "Polecenia nie udało się odczytać, więc nie można go dodać jako zadania.",
+    submit_task: "Dodaj zadanie",
+    submit_task_download: "Dodaj zadanie i pobierz {count} {positions}",
     files: "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
     file_status: {
       new: "nowe",

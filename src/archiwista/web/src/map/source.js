@@ -1,6 +1,6 @@
 /**
  * Step 4 of the „Wybór” panel: what the source has for the area (docs/SPEC.md
- * 6.3 point 3, 6.4; plan 2026-10-25 A10).
+ * 6.3 point 3, 6.4, UC-15; plan 2026-10-25 A10, A11).
  *
  * A product whose availability a producer checks (`availability` of `GET
  * /sources`; the product of the filters first) and a configured store, the
@@ -16,9 +16,17 @@
  * Offline the kept report stays and what needs the network is disabled;
  * without a kept report the step points to the local share of step 3 (the
  * badge of SPEC 6.4 without a source report: „lokalnie 83% obszaru”).
+ *
+ * „Wklej polecenie producenta” takes a producer's command line, with or
+ * without an area (UC-15): the producer is its first word when that names
+ * an installed producer, else the step's; the line is read (`POST
+ * /commands/parse`) and checked without the network against the target store
+ * (`POST /commands/validate`), the producer's refusal shown at the field, and
+ * a valid line opens the same plan window with the target store in place of
+ * the line's own `-o`/`--root`.
  */
 
-import { checkAvailability, getAvailability, listSources } from "../api.js";
+import { checkAvailability, getAvailability, listSources, parseCommand, validateCommand } from "../api.js";
 import { useApp } from "../context.js";
 import { plural, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
@@ -76,6 +84,7 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [pasted, setPasted] = useState(null);
   const busy = starting || job.running;
   const check = async (force) => {
     setStarting(true);
@@ -120,7 +129,7 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
           </select>
         </label>`
       : null}
-    ${area && stores.length > 1
+    ${stores.length > 1
       ? html`<label class="field src-field">
           <span>${L.store}</span>
           <select class="select-sm" value=${store.id} onChange=${(event) => setPickedStore(event.currentTarget.value)}>
@@ -145,6 +154,10 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
       ? html`<${Report} info=${info} offline=${offline}
           onDownload=${(row, variant) => setPlan({ row, variant })} />`
       : null}
+    ${store
+      ? html`<${PasteCommand} store=${store} fallback=${choice?.producer ?? null}
+          producers=${(sources.data?.items ?? []).map((item) => item.producer)} onPlan=${setPasted} />`
+      : null}
     ${plan && info
       ? html`<${DownloadPlan} producer=${info.producer} store=${{ id: store.id, name: store.name }}
           title=${planTitle(productName(choice), plan.row, plan.variant, areaLabel)} variant=${plan.variant}
@@ -154,7 +167,81 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
             onRefreshed?.();
           }} />`
       : null}
+    ${pasted && store
+      ? html`<${DownloadPlan} producer=${pasted.producer} store=${{ id: store.id, name: store.name }}
+          title=${pasted.title} line=${pasted.line}
+          onClose=${() => setPasted(null)}
+          onDone=${() => {
+            setRound((n) => n + 1);
+            onRefreshed?.();
+          }} />`
+      : null}
   </section>`;
+}
+
+/**
+ * „Wklej polecenie producenta”: a line read and checked at the field, then
+ * planned (UC-15).
+ *
+ * @param {object} props
+ * @param {import("../types.js").StoreSettings} props.store - The target store.
+ * @param {string[]} props.producers - Ids of the installed producers.
+ * @param {string|null} props.fallback - The step's producer, for a line that
+ *   does not start with a producer's id.
+ * @param {(found: {producer: string, line: string, title: string}) => void} props.onPlan
+ */
+function PasteCommand({ store, producers, fallback, onPlan }) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState(null);
+  const [reading, setReading] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    const line = text.trim();
+    if (!line || reading) return;
+    const first = line.split(/\s+/, 1)[0];
+    const producer = producers.includes(first) ? first : fallback;
+    if (producer === null) {
+      setProblem({ detail: t(L.paste_no_producer, { producers: producers.join(", ") }) });
+      return;
+    }
+    setReading(true);
+    setProblem(null);
+    try {
+      const call = await parseCommand(producer, line);
+      await validateCommand({ producer, command: call.command, options: call.options, store: store.id });
+      onPlan({ producer, line, title: t(L.paste_title, { producer, command: call.command }) });
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    } finally {
+      setReading(false);
+    }
+  };
+  const values = problem?.code ? [["code", problem.code]] : [];
+  if (problem?.details?.option) values.push(["option", problem.details.option]);
+  return html`<form class="src-paste" onSubmit=${submit}>
+    <div class=${`field${problem ? " invalid" : ""}`}>
+      <label for=${`${id}-line`}>${L.paste}</label>
+      <textarea id=${`${id}-line`} class="mono src-paste-line" rows="2" value=${text} spellcheck="false"
+        autocomplete="off" placeholder=${L.paste_placeholder} aria-invalid=${problem ? "true" : null}
+        aria-describedby=${problem ? `${id}-error` : `${id}-hint`}
+        onInput=${(event) => {
+          setText(event.currentTarget.value);
+          setProblem(null);
+        }}
+        onKeyDown=${(event) => {
+          if (event.key === "Enter" && !event.shiftKey) submit(event);
+        }}></textarea>
+      ${problem
+        ? html`<span class="field-error" id=${`${id}-error`} role="alert">
+            ${values.length ? html`<${Tech} value=${values}>${problem.detail}</${Tech}>` : problem.detail}</span>`
+        : html`<span class="field-hint" id=${`${id}-hint`}>${t(L.paste_hint, { store: store.name })}</span>`}
+    </div>
+    <button type="submit" class="btn sm src-paste-plan" disabled=${reading || !text.trim()}>
+      ${reading ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="search" size=${14} />`}
+      ${L.paste_submit}</button>
+  </form>`;
 }
 
 /** The kept report of a query, or `null` while the index keeps none (`404`). */

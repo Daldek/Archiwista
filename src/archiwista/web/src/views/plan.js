@@ -1,15 +1,15 @@
 /**
- * The „Okno planu” of a download (docs/SPEC.md 6.1 „Plan przed akcją”, 6.5 h;
- * plan 2026-10-25 A11): what a run of the producer's command would do in a
+ * The „Okno planu” of a download (docs/SPEC.md 6.1 „Plan przed akcją”, 6.5 h,
+ * UC-15; plan 2026-10-25 A11): what a run of the producer's command would do in a
  * configured store, and then the run.
  *
  * The variant's lines in the chosen format (`commands`; nothing is chosen
- * when the variant has no default format) are read into calls (`POST
- * /commands/parse`), and each call is planned by a `check` job (`POST
- * /jobs`, then `GET /jobs/{job}/plan` once it ends): nothing is written. The
- * window sums the plans: the positions by status, what a run downloads and
- * its size („co najmniej …” when the producer tells only some sizes,
- * „rozmiar nieznany” when it tells none, never 0), the store with the
+ * when the variant has no default format), or one pasted line, are read into
+ * calls (`POST /commands/parse`), and each call is planned by a `check` job
+ * (`POST /jobs`, then `GET /jobs/{job}/plan` once it ends): nothing is
+ * written. The window sums the plans: the positions by status, what a run
+ * downloads and its size („co najmniej …” when the producer tells only some
+ * sizes, „rozmiar nieznany” when it tells none, never 0), the store with the
  * producer's directory, each position with the ones the producer would
  * refuse to write, and each command line to copy. „Pobierz” starts one
  * `download` per plan with something to download (`plan_job`: the run
@@ -17,13 +17,31 @@
  * units; above 5 GB or 500 positions it asks to be confirmed first (SPEC
  * 10.3). A session that may not write the stores (`store_write`) sees the
  * plan with the action disabled and the reason.
+ *
+ * „Dodaj jako zadanie projektu” adds the one call as a task of a project of
+ * the producer in the same store that the session may change (`POST
+ * /projects/{project}/tasks`, checked without the network), and with
+ * something to download starts that project's download of the task instead
+ * (`POST /projects/{project}/jobs`), which downloads and pins it. When the
+ * option cannot be had it says why: several lines, no project of the producer
+ * in the store, none the session may change, a line not read.
  */
 
-import { getJobPlan, parseCommand, startJob, watchJob } from "../api.js";
+import {
+  addProjectTask,
+  getJobPlan,
+  listProjects,
+  parseCommand,
+  startJob,
+  startProjectJob,
+  watchJob,
+} from "../api.js";
 import { useApp } from "../context.js";
 import { bytes, count, int, plural } from "../format.js";
+import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
+import { Link } from "../router.js";
 import {
   CopyButton,
   html,
@@ -38,7 +56,15 @@ import {
   useRef,
   useState,
 } from "../ui.js";
-import { Badge, FINAL_STATES, JobStatus, loadCardStyles, SUMMARY_STATES, useJob } from "./cards.js";
+import {
+  Badge,
+  FINAL_STATES,
+  JobStatus,
+  loadCardStyles,
+  projectSummary,
+  SUMMARY_STATES,
+  useJob,
+} from "./cards.js";
 
 await loadCardStyles();
 await loadStylesheet(new URL("./plan.css", import.meta.url));
@@ -53,33 +79,48 @@ const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "p
 const FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
 
 /**
- * The plan window of one variant of a report's row.
+ * The plan window of one variant of a report's row, or of a pasted line.
  *
  * @param {object} props
  * @param {string} props.producer
  * @param {{id: string, name: string}} props.store - Where the run writes.
  * @param {string} props.title - What is downloaded, e.g. „NMT · 2023 · PL-2000”.
- * @param {import("../types.js").AvailabilityVariant} props.variant
+ * @param {import("../types.js").AvailabilityVariant|null} [props.variant] - Its
+ *   lines by format; none with `line`.
+ * @param {string|null} [props.line] - One pasted line of the producer (no format
+ *   to choose).
  * @param {() => void} props.onClose
- * @param {() => void} props.onDone - The downloads started here all ended.
+ * @param {() => void} props.onDone - What was started here all ended.
  */
-export function DownloadPlan({ producer, store, title, variant, onClose, onDone }) {
+export function DownloadPlan({ producer, store, title, variant = null, line = null, onClose, onDone }) {
   const { session } = useApp();
   const titleId = useId();
   const dialog = useRef(null);
-  const [format, setFormat] = useState(variant.default_format);
-  const lines = format === null ? null : (variant.commands[format] ?? []);
+  const [format, setFormat] = useState(variant?.default_format ?? null);
+  const lines = line !== null ? [line] : format === null ? null : (variant.commands[format] ?? []);
   const items = usePlans(producer, store.id, lines);
   const [confirmed, setConfirmed] = useState(false);
   const [runs, setRuns] = useState(null);
   const [ended, setEnded] = useState(() => new Set());
+  const projects = useResource((signal) => listProjects({ store: store.id }, { signal }), [store.id]);
+  const [task, setTask] = useState({ on: false, project: "", name: "" });
+  const [added, setAdded] = useState(null);
   const sum = sumPlans(items);
   const planned = items.length > 0 && items.every(settledLine);
   const large = sum.todo > LARGE_POSITIONS || sum.known > LARGE_BYTES;
-  const settled = runs !== null && runs.every((run) => run.problem || (run.job && ended.has(run.job.id)));
-  const busy = runs !== null && !settled;
   const allowed = Boolean(session?.store_write);
-  const ready = planned && sum.todo > 0 && allowed && (!large || confirmed) && runs === null;
+  const offer = taskOffer(projects, producer, store, lines, items);
+  const call = items[0]?.call ?? null;
+  const asTask = task.on && offer.reason === null;
+  const fetching = planned && sum.todo > 0 && allowed;
+  const ranAll = runs !== null && runs.every((run) => run.problem || (run.job && ended.has(run.job.id)));
+  const settled = ranAll || (added?.state === "added" && !added.download);
+  const busy = (runs !== null && !ranAll) || added?.state === "adding";
+  const started = runs !== null || (added !== null && added.state !== "failed");
+  const taskReady = Boolean(call) && task.project !== "" && task.name.trim() !== "";
+  const ready = asTask
+    ? planned && taskReady && (!fetching || !large || confirmed) && !started
+    : planned && sum.todo > 0 && allowed && (!large || confirmed) && !started;
   useEffect(() => {
     const element = dialog.current;
     element.showModal();
@@ -90,21 +131,22 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
   useEffect(() => {
     if (settled) onDone();
   }, [settled]);
+  useEffect(() => {
+    if (offer.options.length === 1 && task.project === "") setTask((now) => ({ ...now, project: offer.options[0].project }));
+  }, [offer.options.length]);
   const close = () => {
     if (!busy) onClose();
   };
   const choose = (value) => {
-    if (runs !== null) return;
+    if (started) return;
     setFormat(value);
     setConfirmed(false);
   };
-  const download = async (event) => {
-    event.preventDefault();
-    if (!ready) return;
+  const follow = (index, patch) =>
+    setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
+  const download = async () => {
     const todo = items.filter((item) => item.plan?.todo > 0);
-    setRuns(todo.map((item) => ({ key: item.plan.job_id, job: null, problem: null })));
-    const update = (index, patch) =>
-      setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
+    setRuns(todo.map((item) => ({ key: item.plan.job_id, kind: "download", job: null, problem: null })));
     await Promise.all(
       todo.map(async (item, index) => {
         try {
@@ -116,15 +158,47 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
             options: item.call.options,
             plan_job: item.plan.job_id,
           });
-          update(index, { job });
+          follow(index, { job });
         } catch (error) {
           if (!error.problem) throw error;
-          update(index, { problem: error.problem });
+          follow(index, { problem: error.problem });
         }
       }),
     );
   };
+  const addTask = async () => {
+    const name = task.name.trim();
+    const chosen = offer.options.find((item) => item.project === task.project);
+    setAdded({ state: "adding", download: fetching, name, project: chosen, problem: null });
+    try {
+      await addProjectTask(task.project, { name, command: call.command, options: call.options, producer });
+    } catch (error) {
+      if (!error.problem) throw error;
+      setAdded({ state: "failed", download: fetching, name, project: chosen, problem: error.problem });
+      return;
+    }
+    if (fetching) setRuns([{ key: "project", kind: "project_download", job: null, problem: null }]);
+    setAdded({ state: "added", download: fetching, name, project: chosen, problem: null });
+    if (!fetching) return;
+    try {
+      follow(0, { job: await startProjectJob(task.project, { kind: "download", tasks: [name] }) });
+    } catch (error) {
+      if (!error.problem) throw error;
+      follow(0, { problem: error.problem });
+    }
+  };
+  const submit = (event) => {
+    event.preventDefault();
+    if (ready) (asTask ? addTask : download)();
+  };
   const reason = !planned || !sum.plans.length ? null : !sum.todo ? L.nothing : !allowed ? L.no_write : null;
+  const label = asTask
+    ? fetching
+      ? t(L.submit_task_download, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
+      : L.submit_task
+    : planned
+      ? t(L.submit, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
+      : L.submit_unplanned;
   return html`<dialog class="plan-window" ref=${dialog} aria-labelledby=${titleId}
     onCancel=${(event) => {
       event.preventDefault();
@@ -134,19 +208,21 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
       // Esc closes this window only, not a card under it (shell.js).
       if (event.key === "Escape") event.stopPropagation();
     }}>
-    <form class="plan-body" onSubmit=${download}>
+    <form class="plan-body" onSubmit=${submit}>
       <h2 class="plan-title" id=${titleId}>${L.title} <span class="plan-what">${title}</span></h2>
       <dl class="kv plan-facts">
-        <dt>${L.format}</dt>
-        <dd>
-          <${Seg} small label=${L.format} value=${format} onChange=${choose}
-            options=${variant.formats.map((value) => ({
-              value,
-              label: value,
-              disabled: runs !== null || !variant.commands[value]?.length,
-              title: variant.commands[value]?.length ? null : L.format_no_lines,
-            }))} />
-        </dd>
+        ${variant
+          ? html`<dt>${L.format}</dt>
+              <dd>
+                <${Seg} small label=${L.format} value=${format} onChange=${choose}
+                  options=${variant.formats.map((value) => ({
+                    value,
+                    label: value,
+                    disabled: started || !variant.commands[value]?.length,
+                    title: variant.commands[value]?.length ? null : L.format_no_lines,
+                  }))} />
+              </dd>`
+          : null}
         <dt>${L.store}</dt>
         <dd><${Tech} value=${[["store", store.id]]}>${store.name}</${Tech}></dd>
         ${sum.root
@@ -154,7 +230,7 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
               <dd class="plan-root"><code class="path">${sum.root}</code><${CopyButton} text=${sum.root} label=${L.copy_root} /></dd>`
           : null}
       </dl>
-      ${format === null
+      ${variant && format === null
         ? html`<p class="plan-line warn" role="note"><${Icon} name="info" size=${15} /><span>${L.format_choose}</span></p>`
         : null}
       ${lines !== null && !planned
@@ -166,14 +242,16 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
         : null}
       ${items.map((item) => html`<${LineProblem} key=${item.line} item=${item} />`)}
       ${sum.plans.length ? html`<${PlanSummary} sum=${sum} />` : null}
+      <${TaskChoice} offer=${offer} task=${task} added=${added} disabled=${started}
+        onChange=${(patch) => setTask((now) => ({ ...now, ...patch }))} />
       ${large && planned && sum.todo > 0
         ? html`<label class="check-field plan-confirm">
-            <input type="checkbox" checked=${confirmed} disabled=${runs !== null}
+            <input type="checkbox" checked=${confirmed} disabled=${started}
               onChange=${(event) => setConfirmed(event.currentTarget.checked)} />
             <span>${t(L.large, { positions: count(sum.todo, L.positions_accusative), size: sizeText(sum) })}</span>
           </label>`
         : null}
-      ${reason && runs === null
+      ${reason && !started
         ? html`<p class="plan-line warn plan-reason" role="note"><${Icon} name="alert" size=${15} /><span>${reason}</span></p>`
         : null}
       ${runs
@@ -181,7 +259,7 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
             run.problem
               ? html`<${ProblemView} key=${run.key} problem=${run.problem} compact />`
               : run.job
-                ? html`<${RunStatus} key=${run.key} id=${run.job.id}
+                ? html`<${RunStatus} key=${run.key} id=${run.job.id} kind=${run.kind}
                     onEnd=${() => setEnded((done) => new Set(done).add(run.job.id))} />`
                 : html`<${Spinner} key=${run.key} />`,
           )}</div>`
@@ -192,9 +270,7 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
           : html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${L.cancel}</button>
               <button type="submit" class="btn primary" disabled=${!ready}>
                 ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="check" size=${14} />`}
-                ${planned
-                  ? t(L.submit, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
-                  : L.submit_unplanned}
+                ${label}
               </button>`}
       </div>
     </form>
@@ -202,9 +278,76 @@ export function DownloadPlan({ producer, store, title, variant, onClose, onDone 
 }
 
 /**
+ * Whether the call can be added as a task, and to which projects: those of
+ * the producer in the store that the session may change (`project_write`).
+ *
+ * @returns {{options: import("../types.js").ProjectItem[], reason: string|null}}
+ */
+function taskOffer(projects, producer, store, lines, items) {
+  if (lines !== null && lines.length > 1) {
+    return { options: [], reason: t(L.task_lines, { count: int(lines.length), commands: plural(lines.length, L.lines) }) };
+  }
+  if (projects.error) return { options: [], reason: projects.error.problem?.detail ?? L.task_no_project_list };
+  if (!projects.data) return { options: [], reason: L.task_loading };
+  const own = projects.data.items.filter((item) => item.producer === producer);
+  const options = own.filter((item) => item.project_write);
+  if (!own.length) return { options, reason: t(L.task_no_project, { producer, store: store.name }) };
+  if (!options.length) return { options, reason: L.task_no_write };
+  if (items.length && items.every(settledLine) && !items[0].call) return { options, reason: L.task_no_call };
+  return { options, reason: null };
+}
+
+/** „Dodaj jako zadanie projektu”: the project, the task's name, what came of it. */
+function TaskChoice({ offer, task, added, disabled, onChange }) {
+  const id = useId();
+  const off = offer.reason !== null;
+  const problem = added?.state === "failed" ? added.problem : null;
+  const nameError = problem?.details?.option === "name" ? problem : null;
+  return html`<fieldset class="plan-task" disabled=${disabled}>
+    <legend class="visually-hidden">${L.task}</legend>
+    <div class="check-field">
+      <input type="checkbox" id=${`${id}-on`} checked=${task.on && !off} disabled=${off}
+        aria-describedby=${off ? `${id}-why` : null}
+        onChange=${(event) => onChange({ on: event.currentTarget.checked })} />
+      <label for=${`${id}-on`}>${L.task}</label>
+    </div>
+    ${off ? html`<p class="field-hint plan-task-why" id=${`${id}-why`}>${offer.reason}</p>` : null}
+    ${task.on && !off
+      ? html`<div class="plan-task-fields">
+          <div class="field">
+            <label for=${`${id}-project`}>${L.task_project}</label>
+            <select id=${`${id}-project`} value=${task.project}
+              onChange=${(event) => onChange({ project: event.currentTarget.value })}>
+              <option value="" disabled>${L.task_project_choose}</option>
+              ${offer.options.map((item) => html`<option key=${item.project} value=${item.project}>${item.name}</option>`)}
+            </select>
+          </div>
+          <div class=${`field${nameError ? " invalid" : ""}`}>
+            <label for=${`${id}-name`}>${L.task_name}</label>
+            <input id=${`${id}-name`} type="text" class="mono" value=${task.name} spellcheck="false" autocomplete="off"
+              placeholder=${L.task_name_example} aria-invalid=${nameError ? "true" : null}
+              aria-describedby=${nameError ? `${id}-name-error` : `${id}-name-hint`}
+              onInput=${(event) => onChange({ name: event.currentTarget.value })} />
+            ${nameError
+              ? html`<span class="field-error" id=${`${id}-name-error`} role="alert">${nameError.detail}</span>`
+              : html`<span class="field-hint" id=${`${id}-name-hint`}>${L.task_name_hint}</span>`}
+          </div>
+        </div>`
+      : null}
+    ${problem && !nameError ? html`<${ProblemView} problem=${problem} compact />` : null}
+    ${added?.state === "added"
+      ? html`<p class="plan-line plan-task-done" role="status"><${Icon} name="check" size=${15} />
+          <span>${t(L.task_added, { name: added.name })}${" "}
+            <${Link} view="projects" params=${{ project: added.project.project }}>${added.project.name}</${Link}></span></p>`
+      : null}
+  </fieldset>`;
+}
+
+/**
  * Plan each line: read it into a call, start its `check` job, wait for its
  * end and read the plan it kept. The lines are planned together; the server
- * runs two network jobs at a time and queues the others.
+ * runs two network jobs at a time and queues the others. A line read is
+ * known as its call also when its check is refused (offline mode).
  *
  * @param {string} producer
  * @param {string} store
@@ -229,9 +372,9 @@ function usePlans(producer, store, lines) {
       try {
         const call = await parseCommand(producer, line);
         if (!live) return;
+        update(index, { call });
         const job = await startJob({ kind: "check", producer, store, command: call.command, options: call.options });
         if (!live) return;
-        update(index, { call });
         const end = await finalState(job.id, stops);
         if (!live) return;
         if (!SUMMARY_STATES.has(end.state)) {
@@ -384,11 +527,11 @@ function LineProblem({ item }) {
     <span><${Tech} value=${[["code", item.failure.code]]}>${t(L.failed_line, { line: item.line })}</${Tech}> ${item.failure.detail}</span></p>`;
 }
 
-/** One download started here, followed to its end. */
-function RunStatus({ id, onEnd }) {
+/** One download, or a project's download, started here and followed to its end. */
+function RunStatus({ id, kind, onEnd }) {
   const job = useJob({ onEnd });
-  useEffect(() => job.follow(id, "download"), [id]);
-  return html`<${JobStatus} job=${job} summary=${downloadSummary} />`;
+  useEffect(() => job.follow(id, kind), [id]);
+  return html`<${JobStatus} job=${job} summary=${kind === "download" ? downloadSummary : projectSummary} />`;
 }
 
 /** A download's files by status and its failed units (`archiwista jobs` says the same). */

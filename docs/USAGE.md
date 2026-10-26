@@ -107,6 +107,24 @@ The panel "Wybór" (selection) leads through four steps:
 
    ![Plan window of a download](reports/v0.3-screenshots/02-okno-planu.webp)
 
+   "Wklej polecenie producenta" (paste a producer's command), with or without
+   an area, takes a command line as the producer's command line interface
+   reads it, e.g. `kartograf elevation download --product nmt … -o ./dane`:
+   the producer reads and checks it without the network against the target
+   store, and its text for a mistake shows at the field. "Zaplanuj…" opens the
+   same plan window for that line, which writes to the target store instead of
+   the line's `-o` or `--root`. In the plan window "Dodaj jako zadanie
+   projektu" (add as a project task) adds the one command as a task of a
+   project of the producer in that store ("Projekt", "Nazwa zadania"); with
+   something to download the button reads "Dodaj zadanie i pobierz N
+   pozycji" and the project's download of the new task downloads and pins
+   it. The option is disabled with the reason when the variant has several
+   commands, when the store has no project of the producer, or when you may
+   change none of them (the project's owner or an administrator may). Adding
+   a task needs no network, so it works offline too.
+
+   ![A pasted command as a project task](reports/v0.3-screenshots/10-zadanie-projektu.webp)
+
 File footprints are visible at once; with more than 5,000 footprints in view
 the map shows a density grid, and clicking a cell zooms in. Clicking a
 footprint opens the file card (when several files lie in one place, their list

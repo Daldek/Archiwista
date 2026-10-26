@@ -47,6 +47,10 @@
 .job-notices li.warning { color: var(--warn-ink); }
 .job p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
 .job-error { color: var(--bad-ink); }
+.job-hint { color: var(--text-2); }
+.job-project { display: grid; gap: 4px; }
+.job-project-list { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12.5px; }
+.job-project-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .job-summary.link-confirmed { color: var(--ok-ink); font-weight: 500; }
 .job-summary.link-mismatch, .job-summary.link-missing { color: var(--bad-ink); font-weight: 500; }
 .job-summary.link-index_outdated { color: var(--warn-ink); font-weight: 500; }

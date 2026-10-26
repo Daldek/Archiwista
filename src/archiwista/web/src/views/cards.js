@@ -37,6 +37,19 @@ export const SUMMARY_STATES = new Set(["succeeded", "partial"]);
 const SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
 const SHORT_SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
 const COPIED_MS = 1500;
+/** States of a project's file a job's summary does not list: nothing to do. */
+const QUIET_FILES = new Set(["ok", "current"]);
+/** The badge of each other state of a project's file. */
+const FILE_LEVELS = {
+  missing: "bad",
+  corrupt: "bad",
+  newer: "info",
+  added: "info",
+  removed: "warn",
+  unverifiable: "plain",
+  check_failed: "bad",
+  conflict: "bad",
+};
 
 /**
  * Load the stylesheet of the three views once; their modules await it, so
@@ -385,6 +398,9 @@ function JobEventsView({ events, summary, kind }) {
           })}</${Tech}>
         </p>`
       : null}
+    ${failure?.hint && !failure.detail.includes(failure.hint)
+      ? html`<p class="job-hint">${failure.hint}</p>`
+      : null}
     ${events.stream && !final ? html`<${ProblemView} problem=${events.stream} compact />` : null}
   </div>`;
 }
@@ -469,6 +485,59 @@ function defaultSummary(events) {
     })}</p>`;
   }
   return null;
+}
+
+/**
+ * The summary of a project's job, as `archiwista jobs show` says it: a
+ * download's or a repin's tasks by outcome, each task with its pins or
+ * errors; a check's or a verification's files by state, each file that is not
+ * in order with the producer's text.
+ *
+ * @param {JobEvents} events
+ */
+export function projectSummary(events) {
+  const result = events.result;
+  if (!result) return null;
+  if ("tasks" in result) {
+    const named = Object.entries(L.job.task_outcome)
+      .filter(([outcome]) => result.counts[outcome])
+      .map(([outcome, word]) => `${word} ${int(result.counts[outcome])}`);
+    return html`<div class="job-project">
+      <p class="job-summary">${t(L.job.project_tasks, { tasks: int(result.tasks.length), counts: named.join(", ") })}</p>
+      <ul class="job-project-list" aria-label=${L.job.project_tasks_title}>${result.tasks.map(
+        (task) => html`<li key=${task.name}>
+          <span class="mono">${task.name}</span>
+          <${Badge} level=${task.outcome === "failed" ? "bad" : "ok"}>
+            <${Tech} value=${[["outcome", task.outcome], ["code", task.code ?? "–"]]}>
+              ${L.job.task_outcome[task.outcome] ?? task.outcome}</${Tech}></${Badge}>
+          ${task.pinned.length ? html`<span class="faint">${t(L.job.task_pins, { count: int(task.pinned.length) })}</span>` : null}
+          ${task.errors.map((text, index) => html`<span key=${index} class="bad-text">${text}</span>`)}
+        </li>`,
+      )}</ul>
+    </div>`;
+  }
+  const named = Object.entries(L.job.project_file)
+    .filter(([status]) => result.counts[status])
+    .map(([status, word]) => `${word} ${int(result.counts[status])}`);
+  const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
+  const notable = result.files.filter((file) => !QUIET_FILES.has(file.status));
+  return html`<div class="job-project">
+    <p class="job-summary">${t(L.job.project_files, {
+      files: int(files),
+      counts: named.join(", "),
+      not_downloaded: int(result.not_downloaded.length),
+    })}</p>
+    ${notable.length
+      ? html`<ul class="job-project-list" aria-label=${L.job.project_files_title}>${notable.map(
+          (file, index) => html`<li key=${`${file.task}/${file.path}/${index}`}>
+            <span class="mono">${file.task}</span>
+            <${Tech} value=${[["unit", file.unit || "–"], ["status", file.status]]}><span class="mono">${file.path || file.unit || "–"}</span></${Tech}>
+            <${Badge} level=${FILE_LEVELS[file.status] ?? "warn"}>${L.job.project_file[file.status] ?? file.status}</${Badge}>
+            ${file.detail ? html`<span class="faint">${file.detail}</span>` : null}
+          </li>`,
+        )}</ul>`
+      : null}
+  </div>`;
 }
 
 /**

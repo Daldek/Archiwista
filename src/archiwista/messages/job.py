@@ -72,13 +72,10 @@ MESSAGES = {
         ),
     ),
     "offline_mode": Text(
+        "Offline mode is on: the job needs the network, so it was not started.",
         (
-            "Offline mode is on: unit footprints require a network, so the job was not"
-            " started."
-        ),
-        (
-            "Tryb offline jest włączony: obrysy jednostek wymagają sieci, więc zadanie"
-            " nie zostało uruchomione."
+            "Tryb offline jest włączony: to zadanie potrzebuje sieci, więc nie"
+            " zostało uruchomione."
         ),
     ),
     "cancelled": Text(

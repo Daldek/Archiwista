@@ -352,6 +352,21 @@ command-line interface may change.
   the permission adding and removing tasks and a project's download and repin ask, known
   to a client before it asks; `archiwista projects` and `project` print it with
   `--json`. (SPEC 9.2, 10.2; plan A11, A13)
+- "U źródła" takes a pasted producer's command ("Wklej polecenie producenta", with or
+  without an area; UC-15): the producer is the line's first word when it names an
+  installed producer, else the step's; the producer reads the line and checks it without
+  the network against the target store, and its text for a mistake shows at the field.
+  "Zaplanuj…" opens the plan window for the line (no format to choose), which writes to
+  the target store instead of the line's `-o` or `--root`. The plan window offers
+  "Dodaj jako zadanie projektu": a project of the producer in that store that the session
+  may change and the task's name; it adds the command as the project's task through the
+  producer (offline too; a name the producer refuses shows at the name field) and, with
+  something to download and the permission to write the stores, starts the project's
+  download of the new task, which downloads and pins it ("Dodaj zadanie i pobierz N
+  pozycji"). The option is disabled with the reason for a variant of several commands, a
+  store without a project of the producer and a session that may change none. A project's
+  job in a window shows its tasks by outcome or its files by state, and a failed job its
+  instruction (the producer's lock). (SPEC 6.5 h, 10.3, UC-15; plan A11, ADR-042)
 
 ### Changed
 
@@ -479,6 +494,9 @@ command-line interface may change.
 
 ### Fixed
 
+- A job refused in offline mode said that unit footprints need the network, whatever
+  the job was (a check, a download, a project's job); it says that the job needs the
+  network.
 - The PL-2000 sheet grid ("Siatka godeł") of a view across a zone boundary drew two whole
   grids over each other: Kartograf took the zones as longitude strips and gave every zone's
   sheets over the whole view (19.3-19.7 E x 51.95-52.05 N at 1:2000: 228 + 228 sheets, 862

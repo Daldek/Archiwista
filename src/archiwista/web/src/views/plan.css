@@ -26,6 +26,12 @@
 .plan-notices ul { margin: 2px 0 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; }
 .plan-confirm { font-weight: 500; }
 .plan-runs { display: grid; gap: 8px; }
+.plan-task { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; min-width: 0; }
+.plan-task .check-field label { font-weight: 500; }
+.plan-task-why { margin: 0; }
+.plan-task-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 8px; }
+.plan-task-fields .field { margin: 0; }
+.plan-task-done { background: var(--ok-bg); color: var(--ok-ink); }
 .plan-result { display: grid; gap: 6px; }
 .plan-files, .plan-failed ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
 .plan-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -33,5 +39,5 @@
 .plan-actions .btn:only-child { margin-left: auto; }
 
 @media (max-width: 860px) {
-  .plan-facts { grid-template-columns: 1fr; }
+  .plan-facts, .plan-task-fields { grid-template-columns: 1fr; }
 }

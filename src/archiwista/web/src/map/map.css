@@ -166,6 +166,13 @@
 .src-dims { color: var(--text-2); }
 .src-download { margin-left: auto; }
 .src-others { padding-left: 10px; border-left: 2px solid var(--line); gap: 8px; }
+.src-paste { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.src-paste .field { margin: 0; }
+.src-paste .field label { font-weight: 600; font-size: 12px; }
+.src-paste-line { width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff; resize: vertical; font-size: 12px; }
+.src-paste-line:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px #eef2ff; outline: none; }
+.src-paste .field.invalid .src-paste-line { border-color: var(--bad); box-shadow: 0 0 0 3px #fee2e2; }
+.src-paste-plan { justify-self: start; }
 
 /* ---------- phones ---------- */
 @media (max-width: 860px) {

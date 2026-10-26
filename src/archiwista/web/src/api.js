@@ -74,6 +74,10 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").CommandCall} CommandCall */
 /** @typedef {import("./types.js").JobRequest} JobRequest */
 /** @typedef {import("./types.js").ActionPlanInfo} ActionPlanInfo */
+/** @typedef {import("./types.js").ValidateRequest} ValidateRequest */
+/** @typedef {import("./types.js").ProjectRequest} ProjectRequest */
+/** @typedef {import("./types.js").TaskRequest} TaskRequest */
+/** @typedef {import("./types.js").ProjectJobRequest} ProjectJobRequest */
 
 /**
  * Abort a read: every function takes these options last.
@@ -550,6 +554,66 @@ export function getProjectStatus(project, { signal } = {}) {
 }
 
 /**
+ * Create a project of a producer bound to a configured store
+ * (`create_project`): the producer writes its manifest; administrators only.
+ *
+ * @param {ProjectRequest} body
+ * @returns {Promise<ProjectCard>} The new project's card (`201`).
+ * @throws {ApiError} `403` (`permission_denied`, `path_outside_root`), `400`
+ *   (`project_not_discoverable`, `project_dir_missing`, `store_without_producer`,
+ *   the producer's refusal), `404` (a store that is not configured), `409`
+ *   (`project_locked`), `422 unsupported`, `503 store_unavailable`.
+ */
+export function createProject(body) {
+  return request("POST", "/projects", { json: body });
+}
+
+/**
+ * Add a task to a project through its producer (`add_project_task`): checked
+ * without the network, nothing is downloaded.
+ *
+ * @param {string} project - Project id.
+ * @param {TaskRequest} body
+ * @returns {Promise<ProjectCard>} The project's card with the task (`201`).
+ * @throws {ApiError} `400` with the producer's text and `details.option` (an
+ *   invalid or taken name, an invalid option), `403 permission_denied`, `404`,
+ *   `409` (`project_locked`, `details.lock`).
+ */
+export function addProjectTask(project, body) {
+  return request("POST", `/projects/${one(project)}/tasks`, { json: body });
+}
+
+/**
+ * Remove a task and its pins from a project (`remove_project_task`); its
+ * files stay in the store.
+ *
+ * @param {string} project - Project id.
+ * @param {string} name - Task name.
+ * @returns {Promise<ProjectCard>} The project's card without the task.
+ * @throws {ApiError} `400` (the producer's refusal), `403 permission_denied`,
+ *   `404`, `409` (`project_locked`, `details.lock`).
+ */
+export function removeProjectTask(project, name) {
+  return request("DELETE", `/projects/${one(project)}/tasks/${one(name)}`);
+}
+
+/**
+ * Start a job of a project's tasks (`start_project_job`): `download`,
+ * `repin`, `check` or `verify`.
+ *
+ * @param {string} project - Project id.
+ * @param {ProjectJobRequest} body
+ * @returns {Promise<JobDetail>} The queued job (`202`).
+ * @throws {ApiError} `403 permission_denied` (a download or a repin without
+ *   `project_write` or `store_write`), `404`, `409 conflict` (`offline_mode`,
+ *   `unknown_store`, another job of the project in `details.job`), `422
+ *   unsupported`.
+ */
+export function startProjectJob(project, body) {
+  return request("POST", `/projects/${one(project)}/jobs`, { json: body });
+}
+
+/**
  * The settings in effect (`get_settings`).
  *
  * @param {RequestOptions} [options]
@@ -1002,6 +1066,20 @@ export function checkAvailability(body) {
  */
 export function parseCommand(producer, line) {
   return request("POST", "/commands/parse", { json: { producer, line } });
+}
+
+/**
+ * Check a call without the network (`validate_command`), a command that
+ * works on a store with that store's directory of the producer.
+ *
+ * @param {ValidateRequest} body
+ * @returns {Promise<CommandCall>} The call as the producer reads it.
+ * @throws {ApiError} `400 validation_error` with the producer's text and
+ *   `details.option`, `403` (`path_outside_root`: an option that is a file
+ *   path), `404` (a store that is not configured).
+ */
+export function validateCommand(body) {
+  return request("POST", "/commands/validate", { json: body });
 }
 
 /**

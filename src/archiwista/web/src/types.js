@@ -811,6 +811,41 @@
  * @property {TaskStatus[]} tasks
  */
 
+/**
+ * Body of `POST /projects`: a new project of a producer bound to a configured store.
+ *
+ * @typedef {object} ProjectRequest
+ * @property {string} producer - Producer that writes the project's manifest, e.g.
+ *   `kartograf`.
+ * @property {string} path - Absolute path of the project directory, made when missing: a
+ *   project directory of the settings or a directory at most four levels below one, in no
+ *   hidden directory and no store, where a scan finds it.
+ * @property {string} store - Id of the configured store whose directory of the producer
+ *   the manifest names.
+ */
+
+/**
+ * Body of `POST /projects/{project}/tasks`: a task added by the project's producer.
+ *
+ * @typedef {object} TaskRequest
+ * @property {string} name - Name of the new task; the producer's rules apply.
+ * @property {string} command - Data command of the producer's catalog.
+ * @property {Object<string, *>} [options] - Its options in the JSON form of the catalog,
+ *   checked without the network; no option that is a file path.
+ * @property {string} [producer] - The producer the call names; left out: the project's.
+ */
+
+/**
+ * Body of `POST /projects/{project}/jobs`: a job of a project's tasks.
+ *
+ * @typedef {object} ProjectJobRequest
+ * @property {"download"|"repin"|"check"|"verify"} kind - `download` and `repin` write
+ *   the store and the manifest (`project_write` and `store_write`); `check` and `verify`
+ *   need only to see the project; all but `verify` use the network.
+ * @property {string[]} [tasks] - The tasks by name; left out: every task. A `repin` names
+ *   exactly one.
+ */
+
 // Settings (9a) --------------------------------------------------------------
 
 /**
@@ -1654,6 +1689,17 @@
  * @property {string} command - Of the producer's catalog (`GET /commands`).
  * @property {Object<string, *>} options - In the JSON form of the catalog.
  * @property {Object<string, *>} run - What a line gives beside the options (`root`…).
+ */
+
+/**
+ * Body of `POST /commands/validate`: a call checked without the network.
+ *
+ * @typedef {object} ValidateRequest
+ * @property {string} producer
+ * @property {string} command
+ * @property {Object<string, *>} options
+ * @property {string} [store] - The configured store whose directory of the producer a
+ *   command that works on a store is checked with.
  */
 
 /**
