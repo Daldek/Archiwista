@@ -1557,6 +1557,18 @@ MESSAGES = {
         "Files: {files} ({counts}); tasks without pins: {not_downloaded}.",
         "Pliki: {files} ({counts}); zadania bez przypięć: {not_downloaded}.",
     ),
+    "jobs_warm": Text(
+        (
+            "Versions: {versions}, own files: {files}; prepared now {warmed},"
+            " ready before {cached}, waiting for a build {needs_build}, failed"
+            " {failed}, skipped {skipped}."
+        ),
+        (
+            "Wersje: {versions}, pliki własne: {files}; przygotowane teraz {warmed},"
+            " gotowe wcześniej {cached}, czekające na budowę {needs_build}, z błędem"
+            " {failed}, pominięte {skipped}."
+        ),
+    ),
     "availability_help": Text(
         (
             "What the source has for an area: the last report and a check at the"

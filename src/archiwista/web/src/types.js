@@ -893,7 +893,7 @@
  * @property {string} id
  * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"
  *   |"availability"|"check"|"download"|"project_download"|"project_repin"
- *   |"project_check"|"project_verify"} kind
+ *   |"project_check"|"project_verify"|"preview_warm"} kind
  * @property {"queued"|"running"|"succeeded"|"partial"|"failed"|"interrupted"|"cancelled"} state -
  *   `partial`: part of its units failed, `result` names them.
  * @property {string} actor - Who started it.
@@ -901,13 +901,14 @@
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
  * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot`,
- *   `availability` and the `project_*` kinds.
+ *   `availability`, the `project_*` kinds and `preview_warm`.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
  *   and `force` of an availability check, `producer`, `command` and `options` of a
  *   plan (`check`), those and `plan_job` of a `download`, `project` and `tasks`
- *   (null: every task) of the `project_*` kinds.
+ *   (null: every task) of the `project_*` kinds, `store`, `product`, `segment`,
+ *   `project`, `area_id` and `since` (null: not given) of a `preview_warm`.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
@@ -915,7 +916,8 @@
  *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
  *   (`copy`, `checksums`, `document`, `rename`, `published`), a `download`, a
  *   `project_download` and a `project_repin` the producer's `unit` (or null),
- *   `status` and `message`.
+ *   `status` and `message`, a `preview_warm` `warmed`, `cached`, `failed` and
+ *   `skipped`.
  * @property {Object<string, *>|null} result - Summary of a job that succeeded or ended
  *   `partial`; of an `own_scan` the counts `projects`, `files`, `new`, `changed`,
  *   `missing`, `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot
@@ -935,7 +937,10 @@
  *   `rescanned`, `seconds`; of a `project_check` or `project_verify` `producer`,
  *   `project`, `root`, `ok`, `counts` of the files, `files` (`task`, `unit`,
  *   `path`, `status`, `pinned_label`, `available_label`, `detail`),
- *   `not_downloaded`, `seconds`.
+ *   `not_downloaded`, `seconds`; of a `preview_warm` `versions`, `files`,
+ *   `warmed`, `cached`, `needs_build`, `failed`, `failures` (`ref`, `code`,
+ *   `detail`), `skipped`, `stopped` (`cache_full` or null), `room_bytes`,
+ *   `seconds`.
  * @property {JobFailure|null} error
  */
 

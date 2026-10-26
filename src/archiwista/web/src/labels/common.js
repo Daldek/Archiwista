@@ -45,6 +45,7 @@ export const common = {
     project_repin: "ponowne przypięcie zadania projektu",
     project_check: "sprawdzenie projektu u źródła",
     project_verify: "weryfikacja projektu",
+    preview_warm: "przygotowanie podglądów",
   },
   job_state: {
     queued: "w kolejce",

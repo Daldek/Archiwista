@@ -468,7 +468,8 @@ def _job_text(detail: JobDetail) -> str:
 
     A plan adds its counts and its line, a download the files by status and
     the units that failed, a project's download or repin its tasks by
-    outcome, a project's check or verification its files by state.
+    outcome, a project's check or verification its files by state, a
+    warm-up of previews what it selected and how each file went.
     """
     kind = label("job.kind", detail.kind)
     state = label("job.state", detail.state)
@@ -518,6 +519,19 @@ def _job_text(detail: JobDetail) -> str:
                 files=sum(states.values()),
                 counts=named,
                 not_downloaded=len(result["not_downloaded"]),
+            )
+        )
+    if detail.kind == "preview_warm":
+        lines.append(
+            message(
+                "cli.jobs_warm",
+                versions=result["versions"],
+                files=result["files"],
+                warmed=result["warmed"],
+                cached=result["cached"],
+                needs_build=result["needs_build"],
+                failed=result["failed"],
+                skipped=result["skipped"],
             )
         )
     return "\n".join(lines)

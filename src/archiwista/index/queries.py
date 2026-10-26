@@ -106,6 +106,8 @@ from archiwista.index.types import (
     VersionDetail,
     VersionsMode,
     VersionSummary,
+    WarmQuery,
+    WarmSelection,
 )
 from archiwista.messages import message
 from archiwista.owndata.document import SNAPSHOTS_DIR
@@ -832,6 +834,82 @@ class IndexQueries:
                 where.params,
             ).fetchall()
         return tuple(_product_version(row, shapes=bbox is not None) for row in rows)
+
+    def warm_selection(
+        self, query: WarmQuery, *, visible: ProjectVisibility
+    ) -> WarmSelection:
+        """Return what a warm-up of previews prepares (``preview_warm``).
+
+        The present current version of each slot that the filters admit, as
+        the catalog's current rows; with ``query.project`` only those the
+        project pins, and also the working files of its data folder that its
+        last ``own_scan`` read and found (unless ``product``, ``segment`` or
+        ``since`` is given: own data has none of them).
+
+        Parameters
+        ----------
+        query : WarmQuery
+            The filters.
+        visible : ProjectVisibility
+            Projects the principal sees: a project it does not see, or an
+            unknown one, adds nothing.
+
+        Returns
+        -------
+        WarmSelection
+            Versions by store and slot path, files by path.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _Where()
+            where.add("v.state = 'present'")
+            if query.store is not None:
+                where.add("s.store_id = ?", _store_id(stores, query.store))
+            if query.product is not None:
+                where.add("s.product = ?", query.product)
+            if query.segment is not None:
+                where.add("g.segment = ?", query.segment)
+            if query.since is not None:
+                where.add("v.indexed_at >= ?", _utc_text(query.since))
+            if query.project is not None:
+                seen, params = _visible(visible)
+                where.add(
+                    _PINNED_VISIBLE.format(visible=f"pr.key = ? AND {seen}"),
+                    query.project,
+                    *params,
+                )
+            if query.area is not None:
+                area = _area(connection, query.area)
+                where.add(area.admits, *area.params)
+            rows = connection.execute(
+                "SELECT s.store_id, v.path FROM slots s"
+                " JOIN segments g ON g.id = s.segment_id"
+                " JOIN versions v ON v.id = s.current_version_id"
+                f" WHERE {where.sql()} ORDER BY s.store_id, s.path",
+                where.params,
+            ).fetchall()
+            versions = tuple((stores[row[0]], str(row[1])) for row in rows)
+            files: tuple[str, ...] = ()
+            own = query.project is not None and all(
+                value is None for value in (query.product, query.segment, query.since)
+            )
+            folder = (
+                _own_folder_row(connection, str(query.project), visible)
+                if own
+                else None
+            )
+            if folder is not None:
+                found = connection.execute(
+                    "SELECT path, wgs84 FROM own_files WHERE folder_id = ?"
+                    " AND read_state = 'ok' AND missing_since IS NULL ORDER BY path",
+                    (folder["id"],),
+                ).fetchall()
+                files = tuple(
+                    str(row["path"])
+                    for row in found
+                    if query.area is None or _own_in_area(row["wgs84"], query.area)
+                )
+        return WarmSelection(versions, files)
 
     def entries_without_footprint(
         self, store: str, *, segment: str | None = None
@@ -2346,6 +2424,28 @@ def _datetime(value: object) -> datetime | None:
 
 def _date(value: object) -> date | None:
     return None if value is None else date.fromisoformat(str(value))
+
+
+def _utc_text(value: datetime) -> str:
+    """Return a time as the index writes its times: UTC ISO 8601, in seconds.
+
+    Such texts sort in time order; a naive time counts as UTC.
+    """
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _own_in_area(wgs84: str | None, area: AreaFilter) -> bool:
+    """Whether an own file belongs to an area as the catalog's rows do.
+
+    Its outline shares interior with the area (an edge alone is not enough);
+    a file without an outline always does.
+    """
+    if wgs84 is None:
+        return True
+    region = shapely.make_valid(shape(area.geometry))
+    outline = shape(json.loads(wgs84))
+    return bool(region.intersects(outline) and not region.touches(outline))
 
 
 # Own data of projects (decision 8).

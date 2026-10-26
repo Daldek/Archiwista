@@ -327,6 +327,24 @@ MESSAGES = {
         "project verification",
         "weryfikacja projektu",
     ),
+    "kind_preview_warm": Text(
+        "preview warm-up",
+        "przygotowanie podglądów",
+    ),
+    "warm_cache_full": Text(
+        (
+            "The preview cache has no more room without evicting previews used"
+            " in the last week: {skipped} files were left without a prepared"
+            " preview. Raise the preview cache limit ({limit} GB) in the settings"
+            " to prepare them."
+        ),
+        (
+            "W pamięci podglądów nie ma już miejsca bez usuwania podglądów"
+            " oglądanych w ostatnim tygodniu: {skipped} plików zostało bez"
+            " przygotowanego podglądu. Aby je przygotować, podnieś limit pamięci"
+            " podglądów ({limit} GB) w ustawieniach."
+        ),
+    ),
     "project_failed": Text(
         "None of the {count} tasks of the project succeeded.",
         "Żadne z {count} zadań projektu się nie powiodło.",

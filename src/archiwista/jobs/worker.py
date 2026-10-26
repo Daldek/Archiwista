@@ -37,7 +37,12 @@ input, runs it and reports in JSON Lines on standard output
   pinned files are read again into the index;
 - ``project_check`` and ``project_verify``: the project's pins compared with
   the source (``check_project``) or verified in the store
-  (``verify_project``), their states in the job's result.
+  (``verify_project``), their states in the job's result;
+- ``preview_warm``: the first look at current versions (the pane's
+  thumbnail, the map's tiles at the smallest zoom) prepared in the preview
+  cache ahead, at the lowest priority and within the room the cache has
+  without evicting what people used lately
+  (``archiwista.previews.warm.warm_previews``, ADR-041).
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -141,6 +146,7 @@ from archiwista.owndata.snapshots import (
 )
 from archiwista.paths import resolve_indexed_path
 from archiwista.previews.build import run_preview
+from archiwista.previews.warm import warm_previews
 from archiwista.sandbox import process_work_dir
 from archiwista.services.commands import actions, store_root
 from archiwista.services.problems import explain
@@ -857,6 +863,18 @@ def run_project_verify(spec: JobSpec, emit: Emitter) -> JsonObject:
     return _check_summary(project, checked, started)
 
 
+def run_preview_warm(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Prepare the first look at current versions ahead (``warm_previews``).
+
+    A warm-up some of whose files failed, or that stopped when the preview
+    cache had no more room, ends ``partial``.
+    """
+    summary = warm_previews(spec, emit)
+    if summary["failed"] or summary["skipped"]:
+        return PartialResult(summary)
+    return summary
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -871,6 +889,7 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "project_repin": run_project_repin,
     "project_check": run_project_check,
     "project_verify": run_project_verify,
+    "preview_warm": run_preview_warm,
 }
 
 

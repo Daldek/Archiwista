@@ -43,7 +43,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -66,6 +66,7 @@ type JobKind = Literal[
     "project_repin",
     "project_check",
     "project_verify",
+    "preview_warm",
 ]
 type MessageType = Literal["progress", "notice", "result", "partial", "error"]
 type NoticeLevel = Literal["info", "warning"]
@@ -80,6 +81,17 @@ PROJECT_KINDS: tuple[JobKind, ...] = (
     "project_repin",
     "project_check",
     "project_verify",
+)
+# The filters of a ``preview_warm`` job (``archiwista.index.WarmQuery``), each
+# a text or ``None``: ``since`` (ISO 8601 with its offset) only from the
+# scheduler's warm-up after a scan.
+WARM_FILTERS: tuple[str, ...] = (
+    "store",
+    "product",
+    "segment",
+    "project",
+    "area_id",
+    "since",
 )
 MESSAGE_TYPES: tuple[MessageType, ...] = get_args(MessageType.__value__)
 NOTICE_LEVELS: tuple[NoticeLevel, ...] = ("info", "warning")
@@ -128,7 +140,7 @@ class JobSpec:
         Configured id of the store the job works on; ``None`` for a kind
         working on no store (``preview``, ``own_scan``, ``snapshot``,
         ``availability``, the ``project_*`` kinds: a project's store is the
-        one its manifest names).
+        one its manifest names; ``preview_warm``: its filters name one).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
@@ -137,7 +149,8 @@ class JobSpec:
         ``availability``: ``area_id``, ``producer``, ``product`` and
         ``force``; ``check``: ``producer``, ``command`` and ``options``;
         ``download``: those of ``check`` and ``plan_job``; the ``project_*``
-        kinds: ``project`` and ``tasks``, one task for ``project_repin``).
+        kinds: ``project`` and ``tasks``, one task for ``project_repin``;
+        ``preview_warm``: the ``WARM_FILTERS``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

@@ -21,7 +21,10 @@ the objects found on the disk, and an empty directory is an empty cache.
 A put over the limit (``preview_cache_limit_gb``) evicts the least recently
 used objects down to ``EVICT_TO`` of it, never one pinned by a live process
 (being built). A hit writes its use at most once per ``TOUCH_INTERVAL_S`` per
-object and process, so serving a tile is normally no SQLite write.
+object and process, so serving a tile is normally no SQLite write. ``room``
+tells what puts may add before they would evict an object used lately, and
+``peek`` reads a file without counting a use: the ``preview_warm`` job keeps
+within both.
 
 The server, job workers and the command line share the cache. Every change
 under ``objects/`` (a put's rename, an eviction's removal) is made inside one
@@ -605,6 +608,22 @@ class PreviewCache:
         """
         return self._file(key, name).is_file()
 
+    def peek(self, key: CacheKey, name: str) -> bytes | None:
+        """Return a small file of an object as ``get`` does, but not as a use.
+
+        For a look that is no view: the ``preview_warm`` job checks what an
+        object holds without making it recently used.
+
+        Raises
+        ------
+        ValueError
+            A name that is not a relative path of the object's files.
+        """
+        try:
+            return self._file(key, name).read_bytes()
+        except (FileNotFoundError, NotADirectoryError):
+            return None
+
     def put(self, key: CacheKey, name: str, data: bytes | Path) -> None:
         """Keep a file of an object, replacing one of the same name.
 
@@ -717,6 +736,39 @@ class PreviewCache:
         with self._lock:
             row = self._db.execute("SELECT used_bytes, objects FROM totals").fetchone()
             return CacheUsage(int(row[0]), self._limit, int(row[1]))
+
+    def room(self, *, used_before: float) -> int:
+        """Return the bytes puts may add without evicting an object used lately.
+
+        A put within the limit evicts nothing; one past it evicts the least
+        recently used unpinned objects down to ``EVICT_TO`` of the limit, so
+        the objects last used before ``used_before`` go first. The room is
+        what stays below the limit, or what those objects can make room for,
+        whichever is more.
+
+        Parameters
+        ----------
+        used_before : float
+            Seconds since the epoch: an object last used before it may go
+            (an object pinned by any process, even one that ended, never).
+
+        Returns
+        -------
+        int
+            Bytes, ``0`` when the cache cannot take more without evicting an
+            object used since ``used_before``.
+        """
+        with self._lock:
+            row = self._db.execute(
+                "SELECT (SELECT used_bytes FROM totals),"
+                " (SELECT coalesce(sum(o.size_bytes), 0) FROM objects o"
+                " WHERE o.used_at < ? AND NOT EXISTS (SELECT 1 FROM pins p"
+                " WHERE p.content_key = o.content_key AND p.renderer = o.renderer"
+                " AND p.renderer_version = o.renderer_version))",
+                (used_before,),
+            ).fetchone()
+        used, cold = int(row[0]), int(row[1])
+        return max(0, self._limit - used, int(self._limit * EVICT_TO) - used + cold)
 
     def evict(self) -> int:
         """Evict down to ``EVICT_TO`` of the limit when over it.

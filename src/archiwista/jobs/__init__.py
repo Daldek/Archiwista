@@ -11,6 +11,7 @@ from archiwista.jobs.error import JobError
 from archiwista.jobs.protocol import (
     JOB_KINDS,
     PROJECT_KINDS,
+    WARM_FILTERS,
     JobKind,
     JobSpec,
     WorkerMessage,
@@ -49,6 +50,7 @@ __all__ = [
     "JOB_STATES",
     "MAX_PREVIEW_REFS",
     "PROJECT_KINDS",
+    "WARM_FILTERS",
     "EventType",
     "JobConflict",
     "JobError",

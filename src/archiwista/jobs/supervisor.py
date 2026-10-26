@@ -17,13 +17,14 @@ units failed; its summary names them), ``failed``, ``interrupted`` or
 Each kind has its rule (``JOB_RULES``; SPEC 5.6, plan v0.2 "Zadania"):
 whether it works on a configured store, needs the network (refused in
 offline mode, at most two network jobs run), runs alone (one ``preview``
-at a time, the next ones wait in the queue), conflicts with active jobs (one
-job writing a store's index at a time, ``scan`` or ``footprints``; one job of
-a project at a time, of the ``project_*`` kinds; another one is a
-``JobConflictError``), joins one (a ``preview`` of contents an
-active build already has adds its refs to that job; an ``availability``
+at a time, one ``preview_warm``; the next ones wait in the queue), conflicts
+with active jobs (one job writing a store's index at a time, ``scan`` or
+``footprints``; one job of a project at a time, of the ``project_*`` kinds;
+another one is a ``JobConflictError``), joins one (a ``preview`` of contents
+an active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
-job) or overlaps one (a ``download`` of a call an active download of the
+job; a ``preview_warm`` of the filters of a waiting one returns it) or
+overlaps one (a ``download`` of a call an active download of the
 store runs too starts with a warning notice naming that job). At most half
 the processors' worth of workers run, the rest wait in
 the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
@@ -99,6 +100,7 @@ from archiwista.jobs.protocol import (
     REASON_INTERRUPTED,
     REASON_WORKER_CRASHED,
     STOP_TIMEOUT_S,
+    WARM_FILTERS,
     JobKind,
     JobSpec,
     JsonObject,
@@ -476,6 +478,15 @@ def _join_availability(active: JsonObject, new: JsonObject) -> JsonObject | None
     return active
 
 
+def _join_warm(active: JsonObject, new: JsonObject) -> JsonObject | None:
+    """Join a warm-up of previews to a waiting one of the same filters.
+
+    It selects what to prepare when it starts, so a request finds in it
+    whatever the index holds until then.
+    """
+    return active if active == new else None
+
+
 # Jobs writing a store's index: one of them per store at a time.
 _INDEX_CONFLICT = JobConflict("index", _store_key, "job.conflict")
 _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
@@ -483,6 +494,8 @@ _PREVIEW_JOIN = JobJoin(_join_preview, ACTIVE_STATES)
 _OWN_SCAN_JOIN = JobJoin(_join_own_scan, ("queued",))
 # A running check answers the same question as a waiting one.
 _AVAILABILITY_JOIN = JobJoin(_join_availability, ACTIVE_STATES)
+# Only a waiting warm-up takes a request: a running one has chosen its files.
+_WARM_JOIN = JobJoin(_join_warm, ("queued",))
 # One snapshot of a file at a time; those of other files run side by side.
 _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
 # One job of a project at a time (SPEC 5.6): its producer writes the manifest
@@ -505,6 +518,7 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "project_repin": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
     "project_check": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
     "project_verify": JobRule(store=False, conflict=_PROJECT_CONFLICT),
+    "preview_warm": JobRule(store=False, exclusive=True, join=_WARM_JOIN),
 }
 
 
@@ -744,7 +758,8 @@ class JobSupervisor:
             Configured store id: required by a kind working on a store
             (``scan``, ``footprints``, ``link_check``, ``check``,
             ``download``), refused by one working on none (``preview``,
-            ``own_scan``, ``snapshot``, ``availability``, ``project_*``).
+            ``own_scan``, ``snapshot``, ``availability``, ``project_*``,
+            ``preview_warm``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -765,7 +780,10 @@ class JobSupervisor:
             ``project_check``, ``project_verify``: ``project`` (its key) and
             ``tasks`` (a list of task names, ``None`` for every task, the
             default); ``project_repin``: ``project`` and ``tasks`` with one
-            task.
+            task; ``preview_warm``: ``store``, ``product``, ``segment``,
+            ``project``, ``area_id`` and ``since`` (``WARM_FILTERS``: each a
+            non-empty text or ``None``, the default; ``since`` an ISO 8601
+            time with its offset).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
 
@@ -773,12 +791,13 @@ class JobSupervisor:
         -------
         JobRecord
             The job, ``queued`` or already ``running``. A kind that joins
-            (``preview``, ``availability``) returns the oldest active job of
-            the kind that takes the request instead: that job's ``params``
-            gain the request's (a running worker keeps those it started
-            with), and no job is recorded. A job of a kind that overlaps
-            (``download``) gets a warning notice ``overlapping_job`` naming
-            the oldest active job it repeats, ``job`` its id.
+            (``preview``, ``availability``, ``preview_warm``) returns the
+            oldest active job of the kind that takes the request instead:
+            that job's ``params`` gain the request's (a running worker keeps
+            those it started with), and no job is recorded. A job of a kind
+            that overlaps (``download``) gets a warning notice
+            ``overlapping_job`` naming the oldest active job it repeats,
+            ``job`` its id.
 
         Raises
         ------
@@ -1713,6 +1732,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return _download_params(params)
     if kind in PROJECT_KINDS:
         return _project_params(kind, params)
+    if kind == "preview_warm":
+        return _warm_params(params)
     if params:
         raise ValueError(f"{kind} takes no parameters, got {dict(params)!r}")
     return {}
@@ -1729,6 +1750,27 @@ def _availability_params(params: Mapping[str, object]) -> JsonObject:
     ):
         raise ValueError(f"invalid availability parameters {dict(params)!r}"[:300])
     return {**{name: params[name] for name in names}, "force": force}
+
+
+def _warm_params(params: Mapping[str, object]) -> JsonObject:
+    """Check a ``preview_warm`` job's filters: each a non-empty text or ``None``.
+
+    ``since`` is an ISO 8601 time with its offset. Every filter is kept,
+    ``None`` when not given, so equal requests have equal parameters.
+    """
+    unknown = set(params) - set(WARM_FILTERS)
+    if unknown:
+        raise ValueError(f"unknown preview_warm parameters {sorted(unknown)}")
+    checked: JsonObject = {}
+    for name in WARM_FILTERS:
+        value = params.get(name)
+        if value is not None and not (isinstance(value, str) and value):
+            raise ValueError(f"invalid preview_warm {name} {value!r}"[:300])
+        checked[name] = value
+    since = checked["since"]
+    if since is not None and datetime.fromisoformat(since).tzinfo is None:
+        raise ValueError(f"preview_warm since {since!r} has no offset")
+    return checked
 
 
 def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:

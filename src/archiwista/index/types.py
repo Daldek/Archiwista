@@ -209,6 +209,49 @@ class MapQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class WarmQuery:
+    """What the ``preview_warm`` job prepares previews of (SPEC 5.7).
+
+    The current versions of the stores, narrowed by every filter given; with
+    ``project`` the current versions the project pins and the working files
+    of its own data. ``AND`` of all of them.
+
+    Parameters
+    ----------
+    store, product, segment : str or None
+        Exact store id, product of the slots (e.g. ``"nmt"``) and segment.
+    project : str or None
+        Project key (``ProjectRef.key``).
+    area : AreaFilter or None
+        As the catalog's area: versions and files whose outline shares
+        interior with it, files of its countries, and those without location.
+    since : datetime or None
+        Only versions indexed since then (a warm-up after a scan); a
+        project's working files are not chosen by time.
+    """
+
+    store: str | None = None
+    product: str | None = None
+    segment: str | None = None
+    project: str | None = None
+    area: AreaFilter | None = None
+    since: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WarmSelection:
+    """The objects a warm-up of previews prepares, in the order it takes them.
+
+    ``versions`` are ``(store, version path)`` of current versions, by store
+    and slot path; ``own_files`` the paths in the project's data folder of its
+    working files that were read (not missing), by path.
+    """
+
+    versions: tuple[tuple[str, str], ...]
+    own_files: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SegmentRef:
     """A segment of a store with the producer's human-readable name.
 

@@ -1419,6 +1419,7 @@ disappeared (5.8).
 | `compose` | Kartograf's merge functions (KE, KF, KG) | usually no | store (through Kartograf) |
 | `export` | set for QGIS (Archiwista), series to CSV through `export_series` (IMGW-12) | no | set directory in the project |
 | `preview` | local COG or preview of a large file | no | preview cache |
+| `preview_warm` | render processes of its own at the lowest priority: the thumbnail of the preview pane and the map's tiles at the file's smallest zoom of current versions (with a project: its pinned current versions and its own data), within the room the cache has without evicting previews used in the last week; never a local COG (ADR-041) | no | preview cache |
 
 - **Life cycle:** "w kolejce" (queued) → "trwa" (running) → "zakończone" (succeeded) / "błąd" (error) /
   "anulowane" (cancelled) / "przerwane" (interrupted) (server stopped midway); in the API

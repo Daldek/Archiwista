@@ -1881,8 +1881,10 @@ class JobDetail(BaseModel):
             " and restored by its producer, over the network), `project_repin`"
             " (one task of a project pinned anew to the source's newer"
             " versions, over the network), `project_check` (a project's pins"
-            " compared with the source, over the network) or `project_verify`"
-            " (a project's pinned files checked in its store)."
+            " compared with the source, over the network), `project_verify`"
+            " (a project's pinned files checked in its store) or `preview_warm`"
+            " (the first look at current versions prepared in the preview"
+            " cache ahead)."
         )
     )
     state: JobState = Field(
@@ -1914,8 +1916,8 @@ class JobDetail(BaseModel):
     store: str | None = Field(
         description=(
             "Store id; `null` for `preview`, `own_scan`, `snapshot`,"
-            " `availability` and the `project_*` kinds (the project's manifest"
-            " names its store)."
+            " `availability`, the `project_*` kinds (the project's manifest"
+            " names its store) and `preview_warm` (its `params.store`)."
         )
     )
     params: dict[str, Any] = Field(
@@ -1927,7 +1929,10 @@ class JobDetail(BaseModel):
             " `force`; `check`: `producer`, `command` and `options`; `download`:"
             " those and `plan_job` (the `check` job whose plan it runs, or"
             " `null`); the `project_*` kinds: `project` (its key) and `tasks`"
-            " (task names, `null` for every task; one for `project_repin`)."
+            " (task names, `null` for every task; one for `project_repin`);"
+            " `preview_warm`: `store`, `product`, `segment`, `project`,"
+            " `area_id` and `since` (each `null` when not given; `since` only"
+            " from the warm-up after a scan)."
         )
     )
     created_at: datetime
@@ -1942,7 +1947,8 @@ class JobDetail(BaseModel):
             " adds `built`, `cached` and `failed`, `own_scan` adds `files` and"
             " `read`, `snapshot` adds `phase`; a `download`, `project_download`"
             " and `project_repin` count units and add the producer's `unit` (or"
-            " `null`), `status` and `message`."
+            " `null`), `status` and `message`; `preview_warm` counts files and"
+            " adds `warmed`, `cached`, `failed` and `skipped`."
         )
     )
     result: dict[str, Any] | None = Field(
@@ -1985,7 +1991,13 @@ class JobDetail(BaseModel):
             " `ok`, `missing` or `corrupt` in the store; `current`, `newer`,"
             " `added`, `removed`, `missing`, `unverifiable`, `check_failed` or"
             " `conflict` at the source; `pinned_label`, `available_label`,"
-            " `detail`), `not_downloaded` (tasks without pins) and `seconds`."
+            " `detail`), `not_downloaded` (tasks without pins) and `seconds`;"
+            " `preview_warm`: `versions` and `files` (own files) selected,"
+            " `warmed` (prepared now), `cached` (ready before), `needs_build`"
+            " (map tiles waiting for a `preview` job), `failed`, `failures`"
+            " (the first 100: `ref`, `code`, `detail`), `skipped` (not reached"
+            " when the preview cache had no more room), `stopped` (`cache_full`"
+            " or `null`), `room_bytes` and `seconds`."
         )
     )
     error: JobFailure | None = Field(

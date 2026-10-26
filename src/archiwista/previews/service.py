@@ -24,7 +24,9 @@ tiles only after their local COG is built (``409 preview_not_ready``).
 job that builds them already. An own-data working file that changed since
 its scan, before or while it is rendered, is ``OwnFileChangedError`` (``409
 own_file_changed``) for images and data, and ``changed_since_scan`` in its
-``PreviewInfo``.
+``PreviewInfo``. ``first_look`` names what a person's first look at a file
+asks for (the pane's thumbnail, the map's tiles at the file's smallest zoom),
+which the ``preview_warm`` job prepares (``archiwista.previews.warm``).
 """
 
 import asyncio
@@ -105,6 +107,11 @@ FAILURES: frozenset[PreviewReason] = frozenset({"timeout", "memory_limit"})
 # What a render process answers for a working file that changed, or went,
 # since its scan: its content is not the one its key names.
 _CHANGED_REASONS: frozenset[str] = frozenset({"changed_since_scan", "missing_file"})
+# Side of the preview pane's thumbnail (``THUMBNAIL_SIZE`` of
+# ``web/src/previews.js``): what a first look at a file shows.
+PANE_THUMBNAIL_SIZE = 512
+# Web Mercator's latitude limit: a map has no tile beyond it.
+_MAX_LATITUDE = 85.0511287798066
 
 logger = logging.getLogger(__name__)
 
@@ -721,6 +728,80 @@ def _meets(
         and south <= bounds[3]
         and north >= bounds[1]
     )
+
+
+def first_look(
+    source: PreviewSource, probe: PreviewProbe, *, built: bool
+) -> tuple[tuple[str, JsonObject], ...]:
+    """Return the renders a person's first look at a file asks for.
+
+    The preview pane's thumbnail in the default style
+    (``PANE_THUMBNAIL_SIZE``) and the map's tiles of the file at the smallest
+    zoom it is shown at (``minzoom``), in that style: what the
+    ``preview_warm`` job prepares. A file that shows nothing asks for
+    nothing, and so does one whose thumbnail waits for its build past the
+    auto-build limits; a file whose map shows its features (a vector) or
+    whose tiles wait for its build asks for its thumbnail only.
+
+    Parameters
+    ----------
+    source : PreviewSource
+        The file.
+    probe : PreviewProbe
+        Its probe.
+    built : bool
+        Whether what the file needs built (``build_product``) is in the
+        preview cache; ``True`` when it needs nothing.
+
+    Returns
+    -------
+    tuple of (str, dict)
+        Operations of ``OPERATIONS`` and their parameters, as the routes ask.
+    """
+    if (probe.reason is not None and probe.reason in NOTHING_SHOWN) or not probe.styles:
+        return ()
+    if not built and not auto_build(source, probe):
+        return ()
+    style = _style(probe, None)
+    asked: list[tuple[str, JsonObject]] = [
+        ("thumbnail", {"style": style, "size": PANE_THUMBNAIL_SIZE})
+    ]
+    bounds, zoom = probe.bbox_wgs84, probe.minzoom
+    if (
+        built
+        and probe.reason is None
+        and probe.kind != "vector"
+        and bounds is not None
+        and zoom is not None
+        and probe.maxzoom is not None
+    ):
+        asked += [
+            ("tile", {"style": style, "z": zoom, "x": x, "y": y})
+            for x, y in _tiles_meeting(bounds, zoom)
+        ]
+    return tuple(asked)
+
+
+def _tiles_meeting(
+    bounds: tuple[float, float, float, float], z: int
+) -> list[tuple[int, int]]:
+    """Return ``x``, ``y`` of the tiles at zoom ``z`` that meet an extent."""
+    count = 1 << z
+    west, south, east, north = bounds
+
+    def column(longitude: float) -> int:
+        return min(count - 1, max(0, int((longitude + 180.0) / 360.0 * count)))
+
+    def row(latitude: float) -> int:
+        clipped = math.radians(max(-_MAX_LATITUDE, min(_MAX_LATITUDE, latitude)))
+        place = (1 - math.asinh(math.tan(clipped)) / math.pi) / 2 * count
+        return min(count - 1, max(0, int(place)))
+
+    columns = range(max(0, column(west) - 1), min(count - 1, column(east) + 1) + 1)
+    rows = range(max(0, row(north) - 1), min(count - 1, row(south) + 1) + 1)
+    return [
+        (x, y) for x in columns for y in rows if _meets(tile_bounds(z, x, y), bounds)
+    ]
 
 
 def _style(probe: PreviewProbe, style: str | None) -> str:

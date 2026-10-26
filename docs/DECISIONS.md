@@ -64,6 +64,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-040](decisions/0040-project-jobs.md) | The jobs of a project: download, repin, check, verify, and the left lock | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 
 ---
 

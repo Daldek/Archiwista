@@ -322,6 +322,17 @@ command-line interface may change.
   in the foreground and print the route's `JobDetail` with `--json` (exit `0`, `10`
   partial, `11` failed, `130`); the interface names the four kinds of jobs. (SPEC 4.7,
   5.6, 9.2, SPEC 13 v0.3 criterion 7; plan A8)
+- The job `preview_warm` prepares the first look at current versions ahead (ADR-041):
+  the preview pane's thumbnail and the map's tiles at the file's smallest zoom, of the
+  versions its filters select (`store`, `product`, `segment`, `project` with its own
+  data, `area_id`), in a render process of its own at the lowest CPU priority, within
+  the room the preview cache has without evicting previews used in the last week; when
+  the room runs out it stops with `stopped: cache_full`, the number of files `skipped`
+  and a warning, and ends `partial` (also when a file failed). It never builds a local
+  COG (`needs_build` counts the files waiting for one), uses no network and reads the
+  stores only; a second warm-up finds the work ready without reading the store. `GET
+  /jobs` and `archiwista jobs show` show it; the job protocol is version 9. (SPEC 5.6,
+  5.7, SPEC 13 v0.3 criterion 8; plan A9)
 
 ### Changed
 

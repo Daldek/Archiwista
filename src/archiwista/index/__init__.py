@@ -115,6 +115,8 @@ from archiwista.index.types import (
     VersionsMode,
     VersionState,
     VersionSummary,
+    WarmQuery,
+    WarmSelection,
     own_file_id,
 )
 from archiwista.index.writer import IndexWriter
@@ -222,6 +224,8 @@ __all__ = [
     "VersionState",
     "VersionSummary",
     "VersionsMode",
+    "WarmQuery",
+    "WarmSelection",
     "connect",
     "initialize",
     "planar_crs",
