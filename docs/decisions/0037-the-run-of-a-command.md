@@ -28,3 +28,5 @@
 - Cancelling runs the rescan inside the stop timeout; a worker killed before it ends leaves the rest to the next scan.
 
 **Erratum 1 (2026-10-26, ADR-044):** a `download` job takes `calls[]` and runs them in turn (`plan_job` of the same calls, else `409 plan_mismatch`; a call without a kept plan or with nothing to download is skipped); its progress names the `call` (`PROTOCOL_VERSION` 10).
+
+**Erratum 2 (2026-10-26, ADR-047 decision 2, delegated approval; plan `docs/plans/2026-10-26-plan-v0.4.md` T9):** in v0.4 a `download` with `plan_job` claims, when it starts, the positions of its plans to download (index table `job_claims`, one claimant per store and path); a position another active job of the store claimed is left out of the plan the producer runs (`ActionAdapter.narrow`) and reported as `taken` with that job and its person. A download without a plan whose call equals a running download's waits in the queue until that one ends. The warning `overlapping_job` stays.

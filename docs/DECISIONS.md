@@ -35,8 +35,8 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-009](#adr-009-data-merging-processing-in-kartograf-packaging-in-archiwista) | Combining data: processing in Kartograf, packaging in Archiwista | 2026-10-17 | proposed (SPEC 15: P2, P3) |
 | [ADR-010](#adr-010-year-coverage-labels-and-the-store-badge) | Year coverage labels and store badge | 2026-10-17 | proposed (mockup: M2) |
 | [ADR-011](#adr-011-server-side-assistant-with-human-confirmation) | Server-side assistant with human confirmation | 2026-10-17 | accepted |
-| [ADR-012](#adr-012-protecting-local-mode) | Local mode protection | 2026-10-17 | accepted (erratum 1: token in the fragment, separate CSRF token, `Origin` rule, CSP with basemaps; erratum 2: CSRF token in every request instead of a cookie, agent sessions limited) |
-| [ADR-013](#adr-013-team-mode-as-a-single-server-on-the-local-network) | Team mode as a single server on a local network | 2026-10-17 | accepted, amended by ADR-029 (roles and permissions model from v0.1; user decision 2026-10-18; SPEC 15: P1) |
+| [ADR-012](#adr-012-protecting-local-mode) | Local mode protection | 2026-10-17 | accepted (erratum 1: token in the fragment, separate CSRF token, `Origin` rule, CSP with basemaps; erratum 2: CSRF token in every request instead of a cookie, agent sessions limited; erratum 3: team mode by ADR-046, file links by ADR-047) |
+| [ADR-013](#adr-013-team-mode-as-a-single-server-on-the-local-network) | Team mode as a single server on a local network | 2026-10-17 | accepted, amended by ADR-029 (roles and permissions model from v0.1; user decision 2026-10-18; SPEC 15: P1), ADR-046 and ADR-047 (erratum 3: v0.4) |
 | [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) and ADR-031 (erratum 3: the marker is judged by file name) |
 | [ADR-015](#adr-015-packaging-and-running) | Packaging and running | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18, no Node.js) |
 | [ADR-016](#adr-016-date-format-in-the-interface-and-the-map-basemap) | Date format in the interface and map basemap | 2026-10-17 | accepted (SPEC 15: P6; mockup: M9; erratum 2: OpenFreeMap vector basemap instead of BKG TopPlusOpen) |
@@ -52,7 +52,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
 | [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
 | [ADR-028](#adr-028-ui-in-preact--htm-without-a-build-step) | Interface in Preact + htm without a build step | 2026-10-18 | accepted (user decision; supersedes ADR-005) |
-| [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4) |
+| [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4; erratum 2: the data folder by its owner, scans, LDAP/AD groups deferred, v0.4) |
 | [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
 | [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
 | [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted (amends ADR-019 and ADR-024; the plan's approval is delegated; decision 14: a project is its directory, with the manifest of each producer, `SCHEMA_VERSION` 13, errata of ADR-039 and ADR-040) |
@@ -60,14 +60,16 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a row's lines are planned by one job (ADR-044) |
 | [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: the check reads the source's answers of the last hour (Kartograf ADR-056); erratum 2: a check plans several calls (ADR-044) |
-| [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a download runs several calls (ADR-044) |
-| [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a change names the manifest of a project of two (ADR-032 decision 14) |
+| [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a download runs several calls (ADR-044); erratum 2: a planned download claims its positions (ADR-047, v0.4) |
+| [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: everyone sees the queue (ADR-047, v0.4) |
+| [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a change names the manifest of a project of two (ADR-032 decision 14); erratum 3: every signed-in person creates a project and owns it (user decision 2026-10-26, v0.4) |
 | [ADR-040](decisions/0040-project-jobs.md) | The jobs of a project: download, repin, check, verify, and the left lock | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a job runs the tasks of one manifest (ADR-032 decision 14) |
 | [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-043](decisions/0043-downloads-in-the-background.md) | Downloads in the background: the plan window lets go, the top bar follows | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | proposed (A and C chosen by delegated approval; accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-035, ADR-036 and ADR-037) |
+| [ADR-046](decisions/0046-team-sign-in-sessions-and-tls.md) | Team mode: sign-in, sessions and transport security | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, not built yet; amends ADR-012 and ADR-013; LDAP/AD groups deferred) |
+| [ADR-047](decisions/0047-team-shared-work.md) | The team's shared work: the action log, the shared queue, limits per person, file download, preferences | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, not built yet; amends ADR-012, ADR-037 and ADR-038) |
 
 ---
 
@@ -565,12 +567,21 @@ does not block this. Changes without changing option B:
 - request body size is limited (4 KiB for token exchange, 1 MiB for the rest), local data
   has mode `0700` and `umask 077`.
 
+**Erratum 3 (2026-10-26, ADR-046 and ADR-047, delegated approval; plan v0.4):** local mode keeps
+every rule above. Team mode (ADR-046) changes four of them: the `Host` and `Origin` rules compare
+with the configured `origin` (an `https` address), the cookie is `__Host-archiwista_session` with
+`Secure`, there is no startup token (people sign in with an account or through a trusted proxy),
+and every request must come over TLS. The CSRF header stays in every `/api` request with one
+exception in both modes (ADR-047 decision 5): the `GET` and `HEAD` routes of a file download
+accept the session cookie without the header when `Sec-Fetch-Site` is `same-origin` or `none`,
+which a page on another port of the host (`same-site`) never sends.
+
 ---
 
 ## ADR-013: Team mode as a single server on the local network
 
 **Date:** 2026-10-17
-**Status:** accepted, amended by ADR-029 (roles and permission model from v0.1); user decision 2026-10-18; SPEC 15, P1
+**Status:** accepted, amended by ADR-029 (roles and permission model from v0.1), ADR-046 and ADR-047 (v0.4); user decision 2026-10-18; SPEC 15, P1
 
 **Context:** The team is to work later on a shared store on an SMB share without
 byte-range locks. Kartograf guarantees safe concurrent writes
@@ -595,6 +606,12 @@ path aliases. Team mode requires TLS, roles and an action log (SPEC 10.2).
 "administrator" (administrator) replace "administrator" (`admin`), "zapis do magazynu" (store write)
 (`store_writer`) and the plain "użytkownik" (user); the permission model and project visibility work
 from v0.1 (one local owner), login and account screens remain in v0.4.
+
+**Erratum 3 (2026-10-26, delegated approval; plan v0.4):** option B is built in v0.4 by ADR-046
+(sign-in with local accounts or through a trusted reverse proxy, sessions, TLS in the server or
+in the proxy) and ADR-047 (the action log, the shared queue without double downloads of planned
+downloads, limits per person, file download, preferences and path aliases per person). Groups
+come from Archiwista only; groups from LDAP/AD are deferred (ADR-046 decision 9).
 
 ---
 
@@ -1451,7 +1468,7 @@ require rewriting the components. Changes in SPEC: 5.1, 5.2, 14 (the "two ecosys
 ## ADR-029: Store write role and project sharing
 
 **Date:** 2026-10-18
-**Status:** accepted (user decision 2026-10-18); amends ADR-013; erratum 1: the own-data folder is set by the administrator until v0.4
+**Status:** accepted (user decision 2026-10-18); amends ADR-013; erratum 1: the own-data folder is set by the administrator until v0.4; erratum 2: the owner sets it from v0.4, scans, LDAP/AD groups deferred
 
 **Context:** A company deploys Archiwista with one central Kartograf store.
 Users also have their own projects with versioned own data (ADR-027) and want to
@@ -1538,6 +1555,26 @@ Snapshots (`project.write`: the owner or the administrator) follow
 item 2. Scanning the data folder is a read, not a project change: anyone who sees the
 project may request it (only that project's folder), while a pass through the folders of all projects
 is done only by the scheduler; the results are filtered by visibility (item 3).
+
+**Erratum 2 (2026-10-26, v0.4 decisions by delegated approval, ADR-047; plan
+`docs/plans/2026-10-26-plan-v0.4.md` step T7):** what erratum 1 left to v0.4.
+- The data folder of a project is set by its owner or an administrator (`project.write`, `PUT
+  /projects/{project}/data-dir`), with the rules of erratum 1 (absolute; after `realpath` outside
+  the stores, Archiwista's data directory and the folders of other projects; no symbolic link
+  out). For an owner who is not an administrator the folder must also lie inside the project's
+  directory (after `realpath`; reason `own_data_dir_outside_project`): Archiwista reads the folder's
+  files, previews them and from v0.4 serves them to everyone who sees the project, so a folder
+  elsewhere would let an owner expose any directory the server can read. A change is logged
+  (`project.data_dir`).
+- A scan of one project's data folder: anyone who sees the project, as before, at most one
+  waiting or running per person and one start per project a minute (`429 rate_limited`, reasons
+  `scan_running` and `scan_too_soon`, with `Retry-After`; a waiting scan covering the folder is
+  still joined). Scans of a store (`scan`, `footprints`, `link_check`: the new action
+  `store.scan`) and the pass over every project's folder: administrators and the scheduler.
+- Creating a project: ADR-039 erratum 3 (the author's decision: every signed-in person, who
+  becomes the owner).
+- Item 4's "optionally groups from LDAP/AD" is deferred (ADR-046 decision 9); groups are
+  managed in Archiwista.
 
 ---
 
