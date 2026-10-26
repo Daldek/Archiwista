@@ -118,6 +118,28 @@ MESSAGES = {
             " w trusted_proxies."
         ),
     ),
+    "team_no_admin": Text(
+        (
+            "Team mode needs an enabled administrator who can sign in: an account"
+            " with the role admin and a password (not an expired temporary one), or"
+            " any enabled one when proxy_user_header is set."
+        ),
+        (
+            "Tryb zespołu wymaga włączonego administratora, który może się zalogować:"
+            " konta z rolą admin i hasłem (nie wygasłym tymczasowym) albo dowolnego"
+            " włączonego, gdy ustawiono proxy_user_header."
+        ),
+    ),
+    "hint_team_no_admin": Text(
+        (
+            "On this computer: archiwista users add ID --role admin, then"
+            " archiwista users password ID."
+        ),
+        (
+            "Na tym komputerze: archiwista users add ID --role admin, potem"
+            " archiwista users password ID."
+        ),
+    ),
     "failed": Text(
         "Cannot start Archiwista",
         "Nie można uruchomić Archiwisty",

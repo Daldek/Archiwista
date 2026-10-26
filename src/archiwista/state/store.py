@@ -38,7 +38,7 @@ from archiwista.errors import (
     StateError,
 )
 from archiwista.messages import message
-from archiwista.state.schema import connect, initialize
+from archiwista.state.schema import STATE_SCHEMA_VERSION, connect, initialize
 
 type Role = Literal["admin", "store_writer"]
 type Visibility = Literal["public", "users", "group", "private"]
@@ -1026,6 +1026,52 @@ class StateStore:
                 raise
         finally:
             connection.close()
+
+
+def read_users(path: Path) -> tuple[UserRecord, ...] | None:
+    """Return every account of a state database, changing nothing.
+
+    For ``archiwista doctor``, which writes nothing: unlike ``StateStore`` it
+    neither creates the database nor brings an older one up to date.
+
+    Parameters
+    ----------
+    path : Path
+        The state database.
+
+    Returns
+    -------
+    tuple[UserRecord, ...] or None
+        The accounts ordered by id; none when the database does not exist
+        yet; ``None`` when its schema is older than this Archiwista's (the
+        server's next start or a command that changes it brings it up to
+        date).
+
+    Raises
+    ------
+    StateError
+        The database comes from a newer Archiwista.
+    sqlite3.Error
+        The file cannot be read as a database.
+    """
+    if not path.exists():
+        return ()
+    connection = connect(path)
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        (version,) = connection.execute("PRAGMA user_version").fetchone()
+        if version > STATE_SCHEMA_VERSION:
+            raise StateError(
+                message(
+                    "state.newer",
+                    path=path,
+                    version=version,
+                    supported=STATE_SCHEMA_VERSION,
+                )
+            )
+        return _users(connection) if version == STATE_SCHEMA_VERSION else None
+    finally:
+        connection.close()
 
 
 # Validation.

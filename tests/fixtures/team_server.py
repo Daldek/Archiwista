@@ -20,8 +20,10 @@ import trustme
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.config import AppPaths, AppSettings, ConfigStore, TeamSettings
 from archiwista.server import AppServer
+from archiwista.state import StateStore
 from tests.fixtures.local_server import serving
 
 # The names the server certificate holds: a team server in the tests is opened at
@@ -29,6 +31,10 @@ from tests.fixtures.local_server import serving
 SERVER_NAMES = ("localhost", "127.0.0.1")
 # The port of a test client's peer address (any; the server reads the address).
 PEER_PORT = 50_000
+# The administrator of a team server of the tests: team mode starts only with an
+# administrator who can sign in (ADR-046 decision 2).
+ADMIN_ACCOUNT = "anna"
+ADMIN_PASSWORD = "kajak-po-Rabie-o-swicie"
 # A team that no server of the tests serves: the transport rules never open its
 # TLS files (``serve_main`` would), so they are named only.
 TEAM_ORIGIN = "https://archiwista.firma.local"
@@ -148,14 +154,30 @@ def team_site(directory: Path) -> TeamSite:
     return TeamSite(tls=team_tls(directory), port=free_port())
 
 
+def add_admin(paths: AppPaths, account: str = ADMIN_ACCOUNT) -> None:
+    """Create an administrator whose password is ``ADMIN_PASSWORD``."""
+    state = StateStore(paths.state_file)
+    state.add_user(account, roles=["admin"], actor=LOCAL_OWNER)
+    passwords.set_password(
+        state, account, ADMIN_PASSWORD, temporary=False, actor=LOCAL_OWNER
+    )
+
+
 @contextmanager
-def team_serving(paths: AppPaths, site: TeamSite) -> Iterator[tuple[AppServer, str]]:
+def team_serving(
+    paths: AppPaths, site: TeamSite, *, admin: bool = True, **team: object
+) -> Iterator[tuple[AppServer, str]]:
     """Run ``serve_main`` in team mode with TLS in the server on the site's port.
 
-    Yields the server and what it printed; the server stops when the block
-    ends and must then exit with status 0.
+    ``team`` adds or replaces values of the table ``[team]``; with ``admin``
+    the state database first gets the administrator ``ADMIN_ACCOUNT`` with a
+    password, without which team mode does not start. Yields the server and
+    what it printed; the server stops when the block ends and must then exit
+    with status 0.
     """
-    ConfigStore(paths.config_file).save(site.settings())
+    ConfigStore(paths.config_file).save(site.settings(**team))
+    if admin:
+        add_admin(paths)
     with serving(paths, port=site.port) as served:
         yield served
 

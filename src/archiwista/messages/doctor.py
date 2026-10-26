@@ -169,4 +169,22 @@ MESSAGES = {
         "Team mode: trusted reverse proxies {proxies}",
         "Tryb zespołu: zaufane serwery pośredniczące {proxies}",
     ),
+    "team_admins": Text(
+        "Team mode: administrators who can sign in: {ids}",
+        "Tryb zespołu: administratorzy, którzy mogą się zalogować: {ids}",
+    ),
+    "state_outdated": Text(
+        (
+            "The state database {path} is from an older Archiwista: the server's"
+            " next start brings it up to date; check the administrators after that"
+        ),
+        (
+            "Baza stanu {path} pochodzi ze starszej Archiwisty: następne"
+            " uruchomienie serwera ją uaktualni; potem sprawdź administratorów"
+        ),
+    ),
+    "state_unreadable": Text(
+        "Cannot read the state database {path}",
+        "Nie można odczytać bazy stanu {path}",
+    ),
 }

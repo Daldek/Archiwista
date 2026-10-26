@@ -393,9 +393,13 @@ Every request comes over TLS and every answer carries
 startup address. It refuses to start (exit 2) when team mode is off and `--host`
 is not `127.0.0.1` (`host_refused`), without TLS files and trusted proxies
 (`tls_required`), with files that do not load as a pair or an encrypted key
-(`tls_unusable`), and behind proxies on `0.0.0.0` or `::`
+(`tls_unusable`), behind proxies on `0.0.0.0` or `::`
 (`proxy_bind_wildcard`) or, when every proxy is on this computer, on an address
-that is not a loopback one (`proxy_bind_not_loopback`).
+that is not a loopback one (`proxy_bind_not_loopback`), and without an enabled
+administrator who can sign in (`team_no_admin`: one with a password that has not
+expired, or any enabled one when `proxy_user_header` is set; see "The first
+administrator and passwords" below). `archiwista doctor` names the administrators
+who can sign in.
 
 **TLS in Archiwista.** Give the certificate chain (PEM: of the company's
 authority, or a public one for a name the computers resolve) and its private key

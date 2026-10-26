@@ -45,6 +45,7 @@ from archiwista.state.store import (
     StateStore,
     UserRecord,
     Visibility,
+    read_users,
 )
 
 __all__ = [
@@ -83,4 +84,5 @@ __all__ = [
     "import_state",
     "initialize",
     "parse_state",
+    "read_users",
 ]

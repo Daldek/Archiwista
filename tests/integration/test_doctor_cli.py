@@ -12,8 +12,10 @@ from tests.fixtures.isolation import Canary
 from tests.fixtures.team_server import team_tls
 
 
-def _doctor(tmp_path: Path) -> subprocess.CompletedProcess[str]:
-    """Run ``archiwista doctor`` as a fresh installation would, under ``tmp_path``."""
+def _archiwista(
+    tmp_path: Path, *argv: str, stdin: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run ``archiwista ARGV`` as a fresh installation would, under ``tmp_path``."""
     env = {
         **os.environ,
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
@@ -24,13 +26,19 @@ def _doctor(tmp_path: Path) -> subprocess.CompletedProcess[str]:
             sys.executable,
             "-c",
             "from archiwista.cli import main; raise SystemExit(main())",
-            "doctor",
+            *argv,
         ],
+        input=stdin,
         capture_output=True,
         text=True,
         env=env,
         check=False,
     )
+
+
+def _doctor(tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Run ``archiwista doctor`` as a fresh installation would, under ``tmp_path``."""
+    return _archiwista(tmp_path, "doctor")
 
 
 def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
@@ -91,6 +99,12 @@ def test_doctor_cli_reports_team_mode(tmp_path: Path) -> None:
         trusted_proxies=("127.0.0.1", "10.0.0.0/24"),
     )
     _configure(tmp_path, team)
+    for argv, stdin in [
+        (("users", "add", "anna", "--role", "admin"), None),
+        (("users", "password", "anna", "--stdin"), "kajak-po-Rabie-o-swicie\n"),
+    ]:
+        made = _archiwista(tmp_path, *argv, stdin=stdin)
+        assert made.returncode == 0, made.stderr
 
     result = _doctor(tmp_path)
 
@@ -113,6 +127,9 @@ def test_doctor_cli_reports_team_mode(tmp_path: Path) -> None:
         "[OK] Tryb zespołu: zaufane serwery pośredniczące 127.0.0.1, 10.0.0.0/24"
         in lines
     )
+    assert (
+        "[OK] Tryb zespołu: administratorzy, którzy mogą się zalogować: anna" in lines
+    )
 
 
 def test_doctor_cli_reports_team_mode_without_tls_as_an_error(tmp_path: Path) -> None:
@@ -126,3 +143,8 @@ def test_doctor_cli_reports_team_mode_without_tls_as_an_error(tmp_path: Path) ->
     assert result.returncode == 10, result.stdout + result.stderr
     assert "[BŁĄD] Tryb zespołu wymaga TLS" in result.stdout
     assert "Tryb zespołu: zaufane serwery" not in result.stdout
+    assert "[BŁĄD] Tryb zespołu wymaga włączonego administratora" in result.stdout
+    assert "Naprawa: Na tym komputerze: archiwista users add ID --role admin" in (
+        result.stdout
+    )
+    assert not (tmp_path / "data").exists()

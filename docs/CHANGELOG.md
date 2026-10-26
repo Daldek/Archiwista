@@ -54,7 +54,12 @@ command-line interface may change.
   `temporary` (with its end) or `expired`, never a hash. `archiwista users disable
   ID` and `users enable ID` switch an account off and on. In team mode the last
   enabled administrator cannot be disabled, removed or deprived of the role (`409
-  conflict`, `last_admin`).
+  conflict`, `last_admin`), and `archiwista serve` does not start team mode without
+  an enabled administrator who can sign in, with a password that has not expired or
+  through the proxy of `proxy_user_header` (exit 2, `team_no_admin`, the hint names
+  `archiwista users add ID --role admin` and `archiwista users password ID`);
+  `archiwista doctor` names those administrators, reading the state database
+  without creating or upgrading it.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

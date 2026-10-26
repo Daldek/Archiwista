@@ -3,7 +3,8 @@
 ``serve`` first checks where it may listen (``team_refusal``): in local mode
 only on ``127.0.0.1``; in team mode (the table ``[team]``, ADR-046) on an IP
 address of this computer with TLS in the server, or behind trusted reverse
-proxies on a specific address. It then binds the port and, in local mode,
+proxies on a specific address. Team mode also needs an administrator who can
+sign in (``admin_refusal``). It then binds the port and, in local mode,
 issues the one-time startup token, prints
 ``http://127.0.0.1:<port>/#token=…`` and optionally opens it in the browser;
 in team mode it issues no token, opens no browser and prints the team's
@@ -30,7 +31,7 @@ import socket
 import sqlite3
 import threading
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -42,6 +43,7 @@ from uvicorn.config import LOGGING_CONFIG
 from archiwista.api.session import OneTimeToken
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER
+from archiwista.auth.passwords import sign_in_administrators
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -71,7 +73,7 @@ from archiwista.security import (
     tls_problem,
 )
 from archiwista.sources.registry import PluginRegistry
-from archiwista.state import StateStore
+from archiwista.state import StateStore, UserRecord
 
 # Connections and tasks served at once; more are answered ``503``.
 LIMIT_CONCURRENCY = 100
@@ -167,6 +169,37 @@ def team_refusal(settings: AppSettings, host: str) -> Refusal | None:
         hint = message("serve.hint_proxy_bind_not_loopback")
         return Refusal("proxy_bind_not_loopback", text, hint)
     return None
+
+
+def admin_refusal(settings: AppSettings, users: Iterable[UserRecord]) -> Refusal | None:
+    """Return ``team_no_admin`` when team mode has no administrator to sign in.
+
+    Team mode needs an enabled account with the role ``admin`` that can sign
+    in: with a password that has not expired, or through the reverse proxy
+    when ``proxy_user_header`` is set (``sign_in_administrators``). Otherwise
+    nobody could manage the team, and nobody could create the first
+    administrator from the network (ADR-046 decisions 2 and 4).
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Settings with the table ``[team]``; local mode refuses nothing here.
+    users : Iterable[UserRecord]
+        Every account of the state database.
+    """
+    team = settings.team
+    proxy = team.proxy_user_header is not None
+    if not team.enabled or sign_in_administrators(users, proxy=proxy):
+        return None
+    text = message("serve.team_no_admin")
+    return Refusal("team_no_admin", text, message("serve.hint_team_no_admin"))
+
+
+def _refused(refusal: Refusal, err: TextIO) -> int:
+    """Print a refusal to start as a ``validation_error``; return its exit code."""
+    return fail(
+        err, "validation_error", refusal.text, reason=refusal.reason, hint=refusal.hint
+    )
 
 
 def bind_address(host: str, port: int) -> socket.socket:
@@ -400,10 +433,12 @@ def serve_main(
     -------
     int
         ``0`` after a normal stop; else the registry's exit code of what
-        went wrong: ``2`` for a refused address, ``4`` for a port that is
-        taken, and for the settings, the index, the state database, the jobs
-        directory or the preview cache that cannot be used the code of the
-        error (``2`` invalid settings, ``8``, ``9``).
+        went wrong: ``2`` for a refused address and for team mode without an
+        administrator who can sign in (``admin_refusal``, checked once the
+        state database is open, before the port is bound), ``4`` for a port
+        that is taken, and for the settings, the index, the state database,
+        the jobs directory or the preview cache that cannot be used the code
+        of the error (``2`` invalid settings, ``8``, ``9``).
     """
     try:
         settings = SettingsService(ConfigStore(paths.config_file), registry)
@@ -414,13 +449,7 @@ def serve_main(
         )
     refusal = team_refusal(settings.get(), host)
     if refusal is not None:
-        return fail(
-            err,
-            "validation_error",
-            refusal.text,
-            reason=refusal.reason,
-            hint=refusal.hint,
-        )
+        return _refused(refusal, err)
     try:
         initialize(paths.index_file)
         state = StateStore(paths.state_file)
@@ -429,6 +458,9 @@ def serve_main(
             exception_problem(error, with_detail(message("serve.failed"), str(error))),
             err,
         )
+    refusal = admin_refusal(settings.get(), state.users())
+    if refusal is not None:
+        return _refused(refusal, err)
     if port is None:
         port = settings.get().port
     try:

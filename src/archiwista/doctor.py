@@ -2,6 +2,7 @@
 
 import os
 import socket
+import sqlite3
 import stat
 import sys
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, TextIO
 
 from archiwista._errors import OUTCOMES
+from archiwista.auth.passwords import sign_in_administrators
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -20,6 +22,7 @@ from archiwista.config import (
     TeamSettings,
     validate_settings,
 )
+from archiwista.errors import StateError
 from archiwista.messages import message, with_detail
 from archiwista.security import LOOPBACK_HOST, tls_problem
 from archiwista.sources import DefaultRoot, SourceState
@@ -29,6 +32,7 @@ from archiwista.sources.registry import (
     read_default_root,
     source_fix,
 )
+from archiwista.state import read_users
 
 type CheckLevel = Literal["ok", "warning", "error"]
 
@@ -152,6 +156,9 @@ def run_doctor(
     if privacy is not None:
         checks.append(privacy)
     checks.extend(team_checks(settings.team))
+    admins = team_admin_check(settings.team, paths.state_file)
+    if admins is not None:
+        checks.append(admins)
     checks.append(_port_check(settings.port, port_available))
     return DoctorReport(tuple(checks))
 
@@ -332,6 +339,40 @@ def team_checks(team: TeamSettings) -> list[DoctorCheck]:
             DoctorCheck("ok", message("doctor.team_proxies", proxies=proxies))
         )
     return checks
+
+
+def team_admin_check(team: TeamSettings, state_file: Path) -> DoctorCheck | None:
+    """Describe who can administer a team: an administrator who can sign in.
+
+    Parameters
+    ----------
+    team : TeamSettings
+        The table ``[team]`` of the settings.
+    state_file : Path
+        The state database, read without being created or changed.
+
+    Returns
+    -------
+    DoctorCheck or None
+        Nothing in local mode. In team mode the administrators who can sign
+        in, or the error ``archiwista serve`` refuses to start with
+        (``team_no_admin``); a warning when the database waits for the
+        upgrade of its schema, an error when it cannot be read.
+    """
+    if not team.enabled:
+        return None
+    try:
+        users = read_users(state_file)
+    except (StateError, sqlite3.Error) as error:
+        text = message("doctor.state_unreadable", path=state_file)
+        return DoctorCheck("error", with_detail(text, str(error)))
+    if users is None:
+        return DoctorCheck("warning", message("doctor.state_outdated", path=state_file))
+    admins = sign_in_administrators(users, proxy=team.proxy_user_header is not None)
+    if not admins:
+        text = message("serve.team_no_admin")
+        return DoctorCheck("error", text, message("serve.hint_team_no_admin"))
+    return DoctorCheck("ok", message("doctor.team_admins", ids=", ".join(admins)))
 
 
 def _tls_checks(cert: Path, key: Path) -> list[DoctorCheck]:

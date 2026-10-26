@@ -25,6 +25,7 @@ import functools
 import secrets
 import threading
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -33,6 +34,7 @@ from typing import Literal
 import argon2
 from argon2.exceptions import InvalidHashError, VerificationError
 
+from archiwista.auth.authorize import ADMIN
 from archiwista.auth.principal import Principal
 from archiwista.errors import InvalidChangeError, NotFoundError
 from archiwista.messages import Message, message
@@ -215,6 +217,41 @@ def generate_temporary() -> str:
     return "-".join(
         symbols[start : start + TEMPORARY_GROUP_LENGTH]
         for start in range(0, len(symbols), TEMPORARY_GROUP_LENGTH)
+    )
+
+
+def can_sign_in(user: UserRecord, *, proxy: bool) -> bool:
+    """Return whether an account can sign in now.
+
+    Parameters
+    ----------
+    user : UserRecord
+        The account.
+    proxy : bool
+        Whether the reverse proxy names people (``proxy_user_header``): an
+        enabled account then signs in through it without a password.
+
+    Returns
+    -------
+    bool
+        Enabled, and with a password that has not expired (``set`` or
+        ``temporary``) or through the proxy.
+    """
+    return not user.disabled and (proxy or user.password in ("set", "temporary"))
+
+
+def sign_in_administrators(
+    users: Iterable[UserRecord], *, proxy: bool
+) -> tuple[str, ...]:
+    """Return the ids of the accounts with the role ``admin`` that can sign in.
+
+    Team mode does not start without one (ADR-046 decision 2); see
+    ``can_sign_in`` for ``proxy``.
+    """
+    return tuple(
+        user.id
+        for user in users
+        if ADMIN in user.roles and can_sign_in(user, proxy=proxy)
     )
 
 
