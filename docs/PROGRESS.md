@@ -546,6 +546,17 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      card; IMGWTools' refused with `422`). Open: the card enables the actions of an IMGWTools manifest,
      which the API refuses (`no_project_actions`) until v0.5; a broken manifest makes `GET
      /projects/{project}/status` the producer's refusal (the card shows each manifest's stored state).
+   - *I8 (plan Part 4, the station views; ADR-045).* *I8.1 commit 1 as built (the reduced gate).*
+     `IndexQueries.station_datasets(store)` (`StationDataset`, `DatasetVariable`: the datasets of
+     `series_catalogs` with the name of the series slot's segment, R by default in the default year
+     type, the series version and the distinct keys of `station_series` in the order of the series
+     index, which IMGWTools writes by key); `GET /stations/datasets` (`StationDatasetsQuery`,
+     `StationDatasets`, declared before `/stations/{code}`) and `archiwista stations datasets`;
+     `StationFilters.meteo_kind` (repeatable `MeteoKind`, `StationQuery.meteo_kinds`, in the cursor's
+     fingerprint). Tests: `tests/integration/test_station_datasets_api.py` (both variants: the datasets
+     of the series slots, the variables of `summarize_series` as a set, route and CLI, `503`, OpenAPI,
+     `meteo_kind` with its counts; in `collect_ignore`), with `test_stations_api.py`,
+     `test_stations_cli.py`, `test_station_queries.py` and `test_station_areas.py` (86 passed).
    - *The gate on a loaded machine.* The full run took 33 to 47 minutes on 2026-10-25. A run
      that overlapped two other gates failed six timing tests that pass alone in 86 s
      (`tests/e2e/test_fan.py` twice, `test_file_projects_store.py::test_disconnected_store_banner`,

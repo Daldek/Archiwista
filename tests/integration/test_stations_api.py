@@ -437,6 +437,7 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
     assert names == {
         "store", "provider", "dataset", "years", "year_type", "kind", "active",
         "river_code", "river_scope", "variable", "coverage", "min_complete_years",
+        "meteo_kind",
         "area_id", "bbox", "bbox_crs", "boundary", "location", "limit", "cursor",
     }  # fmt: skip
     card = document["paths"]["/api/v1/stations/{code}"]["get"]

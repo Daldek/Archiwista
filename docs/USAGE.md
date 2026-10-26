@@ -345,6 +345,7 @@ archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous -
 archiwista stations list --area-id OBSZAR --boundary false
 archiwista stations list --location none
 archiwista stations show 149190310 --years 1951-2025
+archiwista stations datasets
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -358,8 +359,12 @@ set the range and the numbering of the labels, and the next page is `--cursor`.
 `stations show` is the card of a station: its facts, its location with the source and
 the uncertainty, each series with its file and every variable labelled, and the
 licence with the formula IMGW requires. A code that two stores or providers share
-needs `--store` and `--provider`. Without IMGWTools both refuse with the repair
-command `pip install "archiwista[imgw]"`.
+needs `--store` and `--provider`. `stations datasets` names the datasets with station
+series: each with the producer's name, provider and family, the version of its series,
+the years of its labels by default and its variables with their units (`--dataset`
+and `--variable` take them). `--meteo-kind` (repeatable: `synoptic`, `climate`,
+`precipitation`) keeps the meteo stations of those kinds. Without IMGWTools each
+refuses with the repair command `pip install "archiwista[imgw]"`.
 
 ## Session
 

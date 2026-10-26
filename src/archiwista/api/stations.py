@@ -5,12 +5,14 @@
 boundary, each variable of each series labelled (P16), with the counts of
 the location groups: the stations without a location are counted after the
 attribute and coverage filters and never placed in an area (SPEC 4.3 point
-3). ``GET /stations/{code}`` is a station's card, ``GET
-/stations/{code}/coverage`` its variables year by year (the Timeline) and
-``GET /map/stations`` the located stations of a map view or their grid.
-Everything is read from the index, never from a series file, and only while
-the source of the stations is available: else ``503`` (SPEC 5.8).
-``archiwista stations`` calls the same functions without HTTP.
+3). ``GET /stations/datasets`` names the datasets with station series (the
+dataset chip of the map), ``GET /stations/{code}`` is a station's card,
+``GET /stations/{code}/coverage`` its variables year by year (the Timeline)
+and ``GET /map/stations`` the located stations of a map view or their grid.
+The fixed paths are declared before ``/stations/{code}``, which would else
+read them as a code. Everything is read from the index, never from a series
+file, and only while the source of the stations is available: else ``503``
+(SPEC 5.8). ``archiwista stations`` calls the same functions without HTTP.
 """
 
 from typing import Annotated
@@ -22,6 +24,8 @@ from archiwista.api.errors import problem_responses
 from archiwista.api.models import AreaRef, staleness
 from archiwista.api.models_stations import (
     StationCard,
+    StationDatasets,
+    StationDatasetsQuery,
     StationItem,
     StationList,
     StationListFilters,
@@ -119,6 +123,28 @@ def station_list(
     page = queries.stations(query)
     reference = None if record is None else AreaRef.of(record)
     return StationList.of(page, reference, staleness(freshness, stores))
+
+
+def station_datasets(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    query: StationDatasetsQuery,
+) -> StationDatasets:
+    """Return the datasets with station series in the index (the dataset chip).
+
+    Raises
+    ------
+    SourceStateError
+        The source of the stations is not available.
+    IndexQueryError
+        An unknown store.
+    """
+    require_station_source(registry)
+    freshness = queries.freshness()
+    stores = checked_store(query.store, settings, freshness)
+    found = queries.station_datasets(query.store)
+    return StationDatasets.of(found, staleness(freshness, stores))
 
 
 def station_card(
@@ -308,6 +334,30 @@ def list_stations(
     of the stations (IMGWTools) is not available.
     """
     return station_list(queries, settings.get(), registry, filters)
+
+
+@router.get(
+    "/stations/datasets",
+    response_model=StationDatasets,
+    responses=problem_responses(400, 503),
+)
+def list_station_datasets(
+    query: Annotated[StationDatasetsQuery, Query()],
+    principal: _Principal,
+    settings: _Settings,
+    registry: _Registry,
+    queries: _Queries,
+) -> StationDatasets:
+    """List the datasets with station series: their variables and default range.
+
+    Each dataset of each store with the producer's name of its segment, its
+    family, time unit and default year type, R by default, the label of its
+    current series version and the distinct variables of its stations'
+    series (`variables`, the first being the default colour of the map's
+    points). `503` while the source of the stations (IMGWTools) is not
+    available.
+    """
+    return station_datasets(queries, settings.get(), registry, query)
 
 
 @router.get(

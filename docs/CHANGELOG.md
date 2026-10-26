@@ -9,6 +9,13 @@ command-line interface may change.
 
 ### Added
 
+- `GET /api/v1/stations/datasets` and `archiwista stations datasets [--store …]`: the
+  datasets with station series in the index, each with the producer's name of its
+  segment, provider, family, time unit, default year type, the years of its labels by
+  default, the label of its current series version and its variables (key, unit,
+  half-year period). `GET /stations`, `GET /map/stations` and `archiwista stations list`
+  take the repeatable `meteo_kind` (`synoptic`, `climate`, `precipitation`), and the
+  counts follow it. (ADR-045, plan I8.1)
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

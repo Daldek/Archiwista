@@ -70,6 +70,7 @@ from archiwista.index.types import (
     AreaRecord,
     BBox,
     CoverageVariable,
+    DatasetVariable,
     FootprintPage,
     GridCell,
     GroupMember,
@@ -113,6 +114,7 @@ from archiwista.index.types import (
     SnapshotRecord,
     StationCounts,
     StationCoverage,
+    StationDataset,
     StationMap,
     StationPage,
     StationQuery,
@@ -1408,6 +1410,86 @@ class IndexQueries:
             ).fetchone()
         return None if row is None else _station(row, stores)
 
+    def station_datasets(self, store: str | None = None) -> tuple[StationDataset, ...]:
+        """Return the datasets with station series in the index (the dataset chip).
+
+        Parameters
+        ----------
+        store : str or None
+            One configured store id; ``None``: every store.
+
+        Returns
+        -------
+        tuple[StationDataset, ...]
+            One per store and dataset of the series catalogs (the current
+            series version of each), by store and dataset key: the
+            producer's name of its segment, R by default in the default year
+            type of its labels and the distinct variable keys of its
+            stations' series, in the order of the series index.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _Where()
+            if store is not None:
+                where.add("c.store_id = ?", _store_id(stores, store))
+            rows = connection.execute(
+                "SELECT c.store_id, c.dataset, c.provider, c.kind, c.time_unit,"
+                " c.first_year, c.periods, c.version_path, sv.label AS series,"
+                " g.name AS segment_name FROM series_catalogs c"
+                " LEFT JOIN versions sv"
+                " ON sv.store_id = c.store_id AND sv.path = c.version_path"
+                " LEFT JOIN slots sl"
+                " ON sl.store_id = c.store_id AND sl.path = c.slot_path"
+                " LEFT JOIN segments g ON g.id = sl.segment_id"
+                f" WHERE {where.sql()} ORDER BY c.store_id, c.dataset",
+                where.params,
+            ).fetchall()
+            # SQLite takes the bare columns of a ``min`` group from its row:
+            # each key with its first row, so the keys keep the index's order.
+            keys: dict[tuple[int, str], list[DatasetVariable]] = {}
+            for row in connection.execute(
+                "SELECT x.store_id, x.dataset, x.variable_key, x.variable, x.unit,"
+                " x.period, min(x.id) AS first FROM station_series x"
+                " JOIN series_catalogs c"
+                " ON c.store_id = x.store_id AND c.dataset = x.dataset"
+                f" WHERE {where.sql()} GROUP BY x.store_id, x.dataset, x.variable_key"
+                " ORDER BY x.store_id, x.dataset, first",
+                where.params,
+            ):
+                keys.setdefault((row["store_id"], row["dataset"]), []).append(
+                    DatasetVariable(
+                        key=row["variable_key"],
+                        variable=row["variable"],
+                        unit=row["unit"],
+                        period=row["period"],
+                    )
+                )
+        found: list[StationDataset] = []
+        for row in rows:
+            unit = row["time_unit"]
+            numbering = label_year_type(row["kind"], unit, None)
+            found.append(
+                StationDataset(
+                    store=stores[row["store_id"]],
+                    dataset=row["dataset"],
+                    name=row["segment_name"],
+                    provider=row["provider"],
+                    kind=row["kind"],
+                    time_unit=unit,
+                    year_type=numbering,
+                    span=default_span(
+                        row["first_year"],
+                        _date_ranges(row["periods"]),
+                        time_unit=unit,
+                        year_type=numbering,
+                    ),
+                    series=row["series"],
+                    series_version=row["version_path"],
+                    variables=tuple(keys.get((row["store_id"], row["dataset"]), ())),
+                )
+            )
+        return tuple(found)
+
     # Coverage of the series of stations.
 
     def station_coverage(
@@ -2483,6 +2565,8 @@ def _station_where(query: StationQuery, stores: Mapping[int, str]) -> _Where:
         where.add("s.code = ?", query.code)
     if query.kind is not None:
         where.add("s.kind = ?", query.kind)
+    if query.meteo_kinds:
+        where.add(f"s.meteo_kind IN ({_IDS})", json.dumps(sorted(query.meteo_kinds)))
     if query.active is not None:
         where.add("s.active = ?", int(query.active))
     if query.river_code is not None:
@@ -2571,6 +2655,7 @@ def _station_fingerprint(query: StationQuery) -> str:
         query.provider,
         query.code,
         query.kind,
+        sorted(query.meteo_kinds),
         query.active,
         query.river_code,
         query.river_scope,

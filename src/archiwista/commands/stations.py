@@ -1,14 +1,15 @@
-"""``archiwista stations``: the stations of the station catalogs (plan I6).
+"""``archiwista stations``: the stations of the station catalogs (plan I6, I8).
 
 ``stations list [options]`` pages the stations as ``GET /stations`` does; its
 options are generated from ``StationListFilters``, the route's query model:
 one option per parameter, of the same name, validated by the same model (a
 repeatable parameter is a repeatable option). ``stations show CODE`` is the
-card of ``GET /stations/{code}``, with the options of ``StationLookup``. Both
-call the functions behind the routes without HTTP: ``--json`` prints the
-route's model, a refusal the route's problem as the ``archiwista-error/1``
-document (``503`` while IMGWTools is not available becomes its exit code).
-Nothing here uses the network or writes.
+card of ``GET /stations/{code}``, with the options of ``StationLookup``, and
+``stations datasets`` the datasets of ``GET /stations/datasets``. Each calls
+the function behind its route without HTTP: ``--json`` prints the route's
+model, a refusal the route's problem as the ``archiwista-error/1`` document
+(``503`` while IMGWTools is not available becomes its exit code). Nothing
+here uses the network or writes.
 """
 
 import argparse
@@ -21,12 +22,15 @@ from pydantic import BaseModel, ValidationError
 from archiwista.api.models import IndexAnswer
 from archiwista.api.models_stations import (
     StationCard,
+    StationDatasetItem,
+    StationDatasetsQuery,
     StationItem,
     StationListFilters,
     StationLookup,
     StationSeriesItem,
+    YearSpan,
 )
-from archiwista.api.stations import station_card, station_list
+from archiwista.api.stations import station_card, station_datasets, station_list
 from archiwista.commands import Commands, add_parser
 from archiwista.config import (
     AppPaths,
@@ -64,7 +68,7 @@ class _InvalidOptions(Exception):
 
 
 def add_commands(commands: Commands) -> None:
-    """Add ``archiwista stations`` with ``list`` and ``show`` (see the module).
+    """Add ``archiwista stations`` with its actions (see the module).
 
     Parameters
     ----------
@@ -83,6 +87,8 @@ def add_commands(commands: Commands) -> None:
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
     _options(shown, StationLookup)
+    datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")
+    _options(datasets, StationDatasetsQuery)
 
 
 def main(
@@ -212,7 +218,22 @@ def _show(
     return card, _card_text(card)
 
 
-_ACTIONS: dict[str, _Action] = {"list": _list, "show": _show}
+def _datasets(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    found = station_datasets(
+        queries, settings, registry, query_of(StationDatasetsQuery, args)
+    )
+    lines = [_dataset_line(item) for item in found.items]
+    if not lines:
+        lines.append(message("cli.station_datasets_none"))
+    return found, _with_stale(found, lines)
+
+
+_ACTIONS: dict[str, _Action] = {"list": _list, "show": _show, "datasets": _datasets}
 
 
 # Text.
@@ -253,7 +274,7 @@ def _series_line(series: StationSeriesItem) -> str:
         dataset=series.dataset,
         series=_value(series.series),
         year_type=label("series.year_type", series.year_type),
-        years=_years(series),
+        years=_years(series.years),
         labels=labels,
     )
 
@@ -306,7 +327,7 @@ def _card_text(card: StationCard) -> str:
                 dataset=series.dataset,
                 series=_value(series.series),
                 year_type=label("series.year_type", series.year_type),
-                years=_years(series),
+                years=_years(series.years),
                 file=series.file,
             )
         )
@@ -331,10 +352,29 @@ def _card_text(card: StationCard) -> str:
     return _with_stale(card, lines)
 
 
-def _years(series: StationSeriesItem) -> str:
-    if series.years is None:
+def _dataset_line(item: StationDatasetItem) -> str:
+    variables = ", ".join(
+        message("cli.station_dataset_variable", key=variable.key, unit=variable.unit)
+        for variable in item.variables
+    )
+    return message(
+        "cli.station_dataset_line",
+        dataset=item.dataset,
+        name=_value(item.name),
+        provider=item.provider,
+        kind=_value(item.kind),
+        store=item.store,
+        series=_value(item.series),
+        year_type=label("series.year_type", item.year_type),
+        years=_years(item.years),
+        variables=variables or message("cli.none"),
+    )
+
+
+def _years(years: YearSpan | None) -> str:
+    if years is None:
         return message("cli.none")
-    first, last = series.years.first, series.years.last
+    first, last = years.first, years.last
     return str(first) if first == last else f"{first}–{last}"
 
 

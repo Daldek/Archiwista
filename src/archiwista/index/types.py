@@ -43,6 +43,8 @@ type BBox = tuple[float, float, float, float]
 # code equal to the river's, or beginning with it.
 type RiverScope = Literal["exact", "tributaries"]
 type StationLocation = Literal["point", "none"]
+# The kind of a meteo station in its catalog (a station type of the map, 6.7).
+type MeteoKind = Literal["synoptic", "climate", "precipitation"]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
 # A producer's current version of a slot, asked by the slot's key at the end of
 # a pass: a path relative to the store, ``None`` without one
@@ -75,6 +77,7 @@ VERSIONS_MODES: tuple[VersionsMode, ...] = (
 )
 LOCATION_FILTERS: tuple[LocationFilter, ...] = ("any", "with", "none")
 RIVER_SCOPES: tuple[RiverScope, ...] = ("exact", "tributaries")
+METEO_KINDS: tuple[MeteoKind, ...] = ("synoptic", "climate", "precipitation")
 ROW_STATUSES: tuple[RowStatus, ...] = (
     "ok",
     "missing",
@@ -922,6 +925,9 @@ class StationQuery:
         Exact station code.
     kind : str or None
         Exact kind (``hydro``, ``meteo``).
+    meteo_kinds : tuple[MeteoKind, ...]
+        Meteo stations of any of these kinds only (``synoptic``, ``climate``,
+        ``precipitation``; the type chips of the map); empty: no such filter.
     active : bool or None
         Active (``True``) or historical (``False``) stations only.
     river_code, river_scope : str or None, {"exact", "tributaries"}
@@ -977,6 +983,7 @@ class StationQuery:
     provider: str | None = None
     code: str | None = None
     kind: str | None = None
+    meteo_kinds: tuple[MeteoKind, ...] = ()
     active: bool | None = None
     river_code: str | None = None
     river_scope: RiverScope = "exact"
@@ -1137,6 +1144,48 @@ class StationMap:
     cells: tuple[GridCell, ...]
     counts: StationCounts
     coverage: tuple[StationCoverage, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetVariable:
+    """A variable of a dataset's station series, as the series index names it.
+
+    ``key`` names it in the series index (``Q``, ``Q_max@winter``), with its
+    ``variable``, ``unit`` and half-year ``period`` (``None`` for daily and
+    monthly data).
+    """
+
+    key: str
+    variable: str
+    unit: str
+    period: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StationDataset:
+    """A dataset with station series in a store's index (the dataset chip, 6.7).
+
+    ``name`` is the producer's name of the dataset's segment; ``kind`` its
+    family (``hydro``, ``meteo``) and ``time_unit`` its unit. ``span`` is R
+    by default (SPEC 4.8.4; ``None`` when the version knows no period) in
+    ``year_type``, the default year type of its labels.
+    ``series`` is the label of the current series version and
+    ``series_version`` its ``series.json``, relative to the store.
+    ``variables`` are the distinct keys of its stations' series, in the order
+    of the series index.
+    """
+
+    store: str
+    dataset: str
+    name: str | None
+    provider: str
+    kind: str | None
+    time_unit: TimeUnit
+    year_type: YearType
+    span: YearRange | None
+    series: str | None
+    series_version: str
+    variables: tuple[DatasetVariable, ...]
 
 
 @dataclass(frozen=True, slots=True)

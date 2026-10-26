@@ -28,7 +28,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
-| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, and a station's card (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]` | `GET /stations`, `GET /stations/{code}`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a station's card, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/{code}`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
@@ -350,7 +350,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-**Stations and the coverage of their series** (the IMGWTools source, plan I6).
+**Stations and the coverage of their series** (the IMGWTools source, plans I6 and I8).
 `GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ by
 name. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
 `river_scope` (`exact`, or `tributaries`: every code that begins with it),
@@ -376,9 +376,17 @@ each variable's state and label when `dataset` is given, or a grid above `limit`
 code that several stations share answers `400` with `details.reason`
 `ambiguous_station` and the stations in `details.stations`: ask again with `store`
 and `provider`. Without IMGWTools every station route answers `503
-missing_dependency` (`source_unavailable`) with the fix in `hint`.
+missing_dependency` (`source_unavailable`) with the fix in `hint`. `GET
+/stations/datasets` names the datasets with station series (`archiwista stations
+datasets`): each one's key, the producer's name of its segment, provider, family,
+unit, default year type, R by default (`years`), the label of its current series
+version and its `variables` (the distinct keys of its stations' series); use a key
+as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
+(repeatable: `synoptic`, `climate`, `precipitation`) keeps the meteo stations of
+those kinds, the counts too.
 
 ```sh
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
@@ -386,6 +394,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1
 archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
   --coverage=Q:continuous --min-complete-years=Q:30 --json
 archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
+archiwista stations datasets --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)

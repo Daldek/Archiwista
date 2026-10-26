@@ -1983,6 +1983,16 @@ MESSAGES = {
             " (jak GET /api/v1/stations/KOD)."
         ),
     ),
+    "stations_datasets_help": Text(
+        (
+            "Lists the datasets with station series: their variables and the"
+            " default range of their labels (like GET /api/v1/stations/datasets)."
+        ),
+        (
+            "Wypisuje zbiory z szeregami stacji: ich zmienne i domyślny zakres"
+            " etykiet (jak GET /api/v1/stations/datasets)."
+        ),
+    ),
     "stations_code_help": Text(
         "station code as its provider gives it",
         "kod stacji, jak podaje go dostawca",
@@ -2016,6 +2026,13 @@ MESSAGES = {
     "stations_kind_help": Text(
         "station kind: hydro or meteo",
         "rodzaj stacji: hydro albo meteo",
+    ),
+    "stations_meteo_kind_help": Text(
+        "meteo station kind: synoptic, climate or precipitation (repeatable)",
+        (
+            "rodzaj stacji meteorologicznej: synoptic (synoptyczna), climate"
+            " (klimatologiczna) albo precipitation (opadowa) (powtarzalna)"
+        ),
     ),
     "stations_active_help": Text(
         "true: active stations only, false: historical ones only",
@@ -2079,6 +2096,24 @@ MESSAGES = {
     "stations_none": Text(
         "No stations.",
         "Brak stacji.",
+    ),
+    "station_datasets_none": Text(
+        "No datasets with station series.",
+        "Brak zbiorów z szeregami stacji.",
+    ),
+    "station_dataset_line": Text(
+        (
+            "{dataset} · {name} · {provider} · {kind} · store {store}: series"
+            " {series}, {year_type} years {years}; variables: {variables}"
+        ),
+        (
+            "{dataset} · {name} · {provider} · {kind} · magazyn {store}: szeregi"
+            " {series}, lata {year_type} {years}; zmienne: {variables}"
+        ),
+    ),
+    "station_dataset_variable": Text(
+        "{key} ({unit})",
+        "{key} ({unit})",
     ),
     "station_line": Text(
         "{code}  {name} · {kind} · {provider} · store {store}{river}{place}",

@@ -25,14 +25,17 @@ from archiwista.index import (
     SERIES_STATES,
     BBox,
     CoverageVariable,
+    DatasetVariable,
     GapRun,
     LocationFilter,
+    MeteoKind,
     RiverScope,
     SeriesLabel,
     SeriesState,
     SeriesYear,
     StationCounts,
     StationCoverage,
+    StationDataset,
     StationLocation,
     StationMap,
     StationPage,
@@ -172,6 +175,29 @@ _POINT_EXAMPLE = {
         "Q": {"state": "gaps", "label": "gaps 3% · longest 1981.06.02–1982.12.31"}
     },
 }
+_DATASET_VARIABLE_EXAMPLE = {
+    "key": "Q",
+    "variable": "Q",
+    "unit": "m3/s",
+    "period": None,
+}
+_DATASET_EXAMPLE = {
+    "store": "zespol",
+    "dataset": "pl.imgw.hydro_daily",
+    "name": "Dane hydrologiczne dobowe",
+    "provider": "IMGW-PIB",
+    "kind": "hydro",
+    "time_unit": "day",
+    "year_type": "hydrological",
+    "years": {"from": 1951, "to": 2025},
+    "series": "2026-08-31",
+    "series_version": f"{_SERIES_DIR}/series.json",
+    "variables": [
+        {"key": "H", "variable": "H", "unit": "cm", "period": None},
+        _DATASET_VARIABLE_EXAMPLE,
+        {"key": "T", "variable": "T", "unit": "degC", "period": None},
+    ],
+}
 
 
 def _examples(*examples: dict[str, Any], aliased: bool = False) -> ConfigDict:
@@ -267,6 +293,15 @@ class StationFilters(StationLookup):
         description="Station kind: `hydro` or `meteo`.",
         examples=["hydro"],
     )
+    meteo_kind: list[MeteoKind] = Field(
+        default_factory=list,
+        description=(
+            "Repeatable: meteo stations of these kinds only (`synoptic`,"
+            " `climate`, `precipitation`; the station types of the map), the"
+            " counts too; a station of no such kind (a water gauge) is left out."
+        ),
+        examples=[["precipitation"]],
+    )
     active: bool | None = Field(
         default=None, description="Active (`true`) or historical (`false`) stations."
     )
@@ -349,6 +384,7 @@ class StationFilters(StationLookup):
             store=self.store,
             provider=self.provider,
             kind=self.kind,
+            meteo_kinds=tuple(self.meteo_kind),
             active=self.active,
             river_code=self.river_code,
             river_scope=self.river_scope,
@@ -480,6 +516,16 @@ class StationTimelineFilters(StationLookup):
             " (`Q_max@winter`); by default every variable of the station."
         ),
         examples=[["Q"]],
+    )
+
+
+class StationDatasetsQuery(BaseModel):
+    """The store of ``GET /stations/datasets``; unknown parameters are refused."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    store: str | None = Field(
+        default=None, description="Store id (/stores).", examples=["zespol"]
     )
 
 
@@ -1091,6 +1137,93 @@ class StationMapView(IndexAnswer):
             counts=StationCountsItem.of(found.counts),
             **freshness,
         )
+
+
+class DatasetVariableItem(BaseModel):
+    """A variable of a dataset's station series (a "Kolor punktów" choice)."""
+
+    model_config = _examples(_DATASET_VARIABLE_EXAMPLE)
+
+    key: str = Field(description="Key in the series index: `Q`, `Q_max@winter`.")
+    variable: str = Field(description="The variable: `H`, `Q`, `T`, `P`, `Tmax`, …")
+    unit: str = Field(description="Unit of its values, e.g. `m3/s`.")
+    period: str | None = Field(
+        description="Half-year period of a characteristic: `winter`, `summer`, …"
+    )
+
+    @classmethod
+    def of(cls, variable: DatasetVariable) -> Self:
+        """Return the model of a dataset's variable."""
+        return cls(
+            key=variable.key,
+            variable=variable.variable,
+            unit=variable.unit,
+            period=variable.period,
+        )
+
+
+class StationDatasetItem(BaseModel):
+    """A dataset with station series in a store (the dataset chip of the map)."""
+
+    model_config = _examples(_DATASET_EXAMPLE)
+
+    store: str = Field(description="Store id.")
+    dataset: str = Field(
+        description="Dataset key, the `dataset` of the station routes."
+    )
+    name: str | None = Field(description="The producer's name of its segment.")
+    provider: str = Field(description="`IMGW-PIB` or `CHMI`.")
+    kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
+    time_unit: TimeUnit = Field(description="Unit of its series: `day`, `month`, …")
+    year_type: YearType = Field(
+        description="Default numbering of the years of its labels and of `years`."
+    )
+    years: YearSpan | None = Field(
+        description=(
+            "R by default: the dataset's first year to the last one its series"
+            " knows; `null` when no period is known."
+        )
+    )
+    series: str | None = Field(description="Label of the current series version.")
+    series_version: str = Field(
+        description="The version's `series.json`, relative to the store."
+    )
+    variables: list[DatasetVariableItem] = Field(
+        description=(
+            "The distinct variables of its stations' series, in the order of the"
+            " series index (the first is the default colour of the points)."
+        )
+    )
+
+    @classmethod
+    def of(cls, found: StationDataset) -> Self:
+        """Return the model of a dataset with station series."""
+        return cls(
+            store=found.store,
+            dataset=found.dataset,
+            name=found.name,
+            provider=found.provider,
+            kind=found.kind,
+            time_unit=found.time_unit,
+            year_type=found.year_type,
+            years=YearSpan.of(found.span),
+            series=found.series,
+            series_version=found.series_version,
+            variables=[DatasetVariableItem.of(item) for item in found.variables],
+        )
+
+
+class StationDatasets(IndexAnswer):
+    """The datasets with station series in the index, by store and key."""
+
+    model_config = _examples({"items": [_DATASET_EXAMPLE], **_FRESH})
+
+    items: list[StationDatasetItem]
+
+    @classmethod
+    def of(cls, found: Iterable[StationDataset], freshness: Mapping[str, Any]) -> Self:
+        """Return the model of the datasets with station series."""
+        return cls(items=[StationDatasetItem.of(item) for item in found], **freshness)
 
 
 type _StationKey = tuple[str, str, str]

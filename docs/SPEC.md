@@ -3143,7 +3143,8 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
 | `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
 | `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn) |
-| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while IMGWTools is not available |
+| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while IMGWTools is not available |
+| `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, default year type, R by default (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `503` without IMGWTools (ADR 0045 decision 1) |
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
 | `GET /stations/{code}/series` | chart data (`variable`, `from`, `to`, `max_points` ≤ 2,000, `version`): values or min./avg./max. in intervals, gaps as `null`, markers of IMGW aggregate sums and extremes; for display only |
@@ -3379,6 +3380,36 @@ numbers)
     }
   ],
   "next_cursor": "…",
+  "stale": false,
+  "stale_stores": []
+}
+```
+
+**Datasets of the stations** — `GET /api/v1/stations/datasets?store=zespol` (the dataset
+chip of the map; `variables` are the distinct keys of the stations' series, the first is
+the default "Kolor punktów"; `name` is the producer's name of the segment)
+
+```json
+{
+  "items": [
+    {
+      "store": "zespol",
+      "dataset": "pl.imgw.hydro_daily",
+      "name": "Dane hydrologiczne dobowe",
+      "provider": "IMGW-PIB",
+      "kind": "hydro",
+      "time_unit": "day",
+      "year_type": "hydrological",
+      "years": {"from": 1951, "to": 2025},
+      "series": "2026-08-31",
+      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "variables": [
+        {"key": "H", "variable": "H", "unit": "cm", "period": null},
+        {"key": "Q", "variable": "Q", "unit": "m3/s", "period": null},
+        {"key": "T", "variable": "T", "unit": "degC", "period": null}
+      ]
+    }
+  ],
   "stale": false,
   "stale_stores": []
 }
