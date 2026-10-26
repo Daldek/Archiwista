@@ -1221,8 +1221,8 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 
 | Module | Role |
 |---|---|
-| `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session `SessionScreen` |
-| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`; CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
+| `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session (or when it ends) `SessionScreen` in local mode, the sign-in of `views/login.js` in team mode (`GET /session/methods`); a session with a temporary password gets `TemporaryPassword` before the shell |
+| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`; CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
 | `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView` |
@@ -1235,7 +1235,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `panels.js`, `hooks.js`, `format.js` | panel layout (`ViewLayout`, `Resizer`, `usePanelWidths`), `useResource`, `useMedia`, Polish formats (`day`, `stamp`, `int`, `size`, `plural`, `count`) |
 | `search.js` | `SearchButton`, shortcuts `Ctrl+K` and `/`, `SLOT_PARAMS` (the `/slots` parameters in the address) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
-| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`) |
+| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `labels/` | text dictionary (below) |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |

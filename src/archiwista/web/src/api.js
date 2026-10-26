@@ -15,12 +15,15 @@
  * then exchanges it (`POST /session`) and keeps the session's CSRF token in
  * this origin's `sessionStorage`; every request, reads included, carries it
  * in `X-Archiwista-CSRF` next to the `HttpOnly` session cookie, which
- * browsers also send to other ports of the host. A tab without the token
- * (a new one, a link opened in another tab) asks the open tabs of this
- * origin for it (`BroadcastChannel`); a tab starting a new session tells
- * them its token. Job events stream through `fetch`, which can send the
- * header (`EventSource` cannot), resuming after `Last-Event-ID`. Errors are
- * RFC 9457 problems thrown as `ApiError`: `code` is a code of the Nogat error
+ * browsers also send to other ports of the host. On a team server
+ * (ADR-046) `signIn` (an account and its password), `proxySignIn` (the
+ * company's reverse proxy) and `changePassword` start a session the same
+ * way. A tab without the token (a new one, a link opened in another tab)
+ * asks the open tabs of this origin for it (`BroadcastChannel`); a tab
+ * starting a new session tells them its token, since they share its cookie.
+ * Job events stream through `fetch`, which can send the header
+ * (`EventSource` cannot), resuming after `Last-Event-ID`. Errors are RFC 9457
+ * problems thrown as `ApiError`: `code` is a code of the Nogat error
  * registry, `details.reason` the project's own cause; a `401`, or a `403` with
  * the reason `csrf_rejected`, of any request after the start goes to the
  * `onSessionLost` listeners, so the shell can say how to open a new session.
@@ -31,6 +34,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").Problem} Problem */
 /** @typedef {import("./types.js").SessionState} SessionState */
 /** @typedef {import("./types.js").NewSession} NewSession */
+/** @typedef {import("./types.js").SessionMethods} SessionMethods */
 /** @typedef {import("./types.js").OneTimeToken} OneTimeToken */
 /** @typedef {import("./types.js").Health} Health */
 /** @typedef {import("./types.js").SourceList} SourceList */
@@ -151,13 +155,7 @@ export class ApiError extends Error {
  */
 export async function startSession() {
   const token = takeFragmentToken();
-  if (token !== null) {
-    const started = await exchangeToken(token);
-    sessionStorage.setItem(TOKEN_KEY, started.csrf_token);
-    channel?.postMessage({ type: "token", token: started.csrf_token });
-    current = started;
-    return started;
-  }
+  if (token !== null) return keepSession(await exchangeToken(token));
   const kept = storedToken() ?? (await askOpenTabs());
   if (kept === null) throw new ApiError(sessionMissingProblem());
   sessionStorage.setItem(TOKEN_KEY, kept);
@@ -345,6 +343,57 @@ export async function buildLinked(address, { force = false } = {}) {
  */
 export function exchangeToken(token) {
   return request("POST", "/session", { json: { token } });
+}
+
+/**
+ * How a session starts on this server (`session_methods`; needs no session).
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<SessionMethods>}
+ */
+export function sessionMethods({ signal } = {}) {
+  return request("GET", "/session/methods", { signal });
+}
+
+/**
+ * Sign in to a team server with an account and its password (`sign_in`).
+ *
+ * @param {string} account
+ * @param {string} password
+ * @returns {Promise<NewSession>} The session this tab now keeps.
+ * @throws {ApiError} `401 unauthorized` (`login_failed` for every refused
+ *   account, `password_expired`), `429 rate_limited` (`login_blocked`, the
+ *   wait in `details.retry_after_s`).
+ */
+export async function signIn(account, password) {
+  return keepSession(await request("POST", "/session/login", { json: { account, password } }));
+}
+
+/**
+ * Sign in as the person the company's reverse proxy names (`proxy_sign_in`).
+ *
+ * @returns {Promise<NewSession>} The session this tab now keeps.
+ * @throws {ApiError} `401 unauthorized` (`login_failed`).
+ */
+export async function proxySignIn() {
+  return keepSession(await request("POST", "/session/proxy"));
+}
+
+/**
+ * Change the session's password (`change_password`): every session of the
+ * account ends, and the new session of the answer is kept by this tab and
+ * told to the other tabs.
+ *
+ * @param {string} currentPassword
+ * @param {string} newPassword
+ * @returns {Promise<NewSession>}
+ * @throws {ApiError} `400 validation_error` (`password_policy`,
+ *   `details.rule`), `403 forbidden` (`wrong_password`), `429 rate_limited`
+ *   (`login_blocked`).
+ */
+export async function changePassword(currentPassword, newPassword) {
+  const json = { current_password: currentPassword, new_password: newPassword };
+  return keepSession(await request("PUT", "/session/password", { json }));
 }
 
 /**
@@ -1136,6 +1185,14 @@ export function getJobPlan(job, { signal } = {}) {
 /** The CSRF token this tab keeps, or `null`. */
 function storedToken() {
   return sessionStorage.getItem(TOKEN_KEY);
+}
+
+/** Keep a new session's CSRF token in this tab and tell the other tabs. */
+function keepSession(started) {
+  sessionStorage.setItem(TOKEN_KEY, started.csrf_token);
+  channel?.postMessage({ type: "token", token: started.csrf_token });
+  current = started;
+  return started;
 }
 
 /** Whether a parsed address is under `/api/v1/` of this origin. */

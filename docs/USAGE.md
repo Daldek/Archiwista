@@ -458,6 +458,18 @@ at the first sign-in. Setting a password ends every session of the account.
 enabled administrator cannot be disabled, removed or lose the role (`last_admin`):
 give another account the role `admin` first.
 
+**The sign-in page.** In the browser a team server opens "Logowanie" (sign-in): the
+account ("Konto") and its password ("Hasło"; "Pokaż" shows what was typed), which the
+browser's password manager can fill. Every refused account gets the same message,
+"Nieprawidłowe konto albo hasło.", and during the wait after failures the page counts
+it down. When the company's proxy names the person, "Zaloguj kontem firmowym" signs in
+without a password. A temporary password opens "Zmień hasło tymczasowe" before
+anything else: the current password and the new one twice, or "Wyloguj". When a
+session ends elsewhere (a password change, an administrator, a restart of the server),
+the page's next request leads back to the sign-in.
+
+![Sign-in page](reports/v0.4-screenshots/01-logowanie.webp)
+
 **Signing in and sessions.** A person signs in with the account's identifier and
 password (`POST /api/v1/session/login`; for a script see AGENT_API). A temporary
 password must be changed before anything else (`PUT /api/v1/session/password`), and

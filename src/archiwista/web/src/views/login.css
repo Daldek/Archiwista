@@ -1,0 +1,18 @@
+/* Signing in to a team server and changing a password (views/login.js, SPEC 6.5 n).
+   The card, the fields and the buttons come from styles.css. */
+
+.sign-in, .password-screen { width: min(420px, 100%); }
+.sign-in .brand, .password-screen .brand { flex-wrap: wrap; }
+.sign-in-host { font-size: 12.5px; font-weight: 500; color: var(--text-2); overflow-wrap: anywhere; }
+.sign-in .field, .password-change .field { margin: 0; }
+.password-row { display: flex; align-items: center; gap: 6px; }
+.password-row input { flex: 1; }
+.password-row .btn.sm { height: 34px; flex: none; }
+.sign-in-message { margin: 0; padding: 7px 9px; border-radius: 8px; background: var(--bad-bg); color: var(--bad-ink); font-size: 12.5px; line-height: 1.45; }
+.sign-in-alt { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+.password-change { display: grid; gap: 12px; min-width: 0; }
+.password-change h1 { font-size: 18px; overflow-wrap: anywhere; }
+.password-change h2 { font-size: 15px; overflow-wrap: anywhere; }
+.password-change p { margin: 0; }
+.password-change-actions { display: flex; justify-content: space-between; gap: 8px; }

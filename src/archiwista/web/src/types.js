@@ -15,17 +15,35 @@
  *
  * @typedef {object} SessionState
  * @property {string} actor - Who acts: the principal's id (`local` for the computer's owner).
+ * @property {string} name - The account's display name; the id for the computer's owner.
  * @property {"local_owner"|"user"|"agent"} kind - How: the owner, a signed-in person
  *   (team mode) or an agent for `actor`.
  * @property {string[]} roles - Roles `actor` has now, read again for each request:
  *   `admin` (accounts, settings, every project's data folder), `store_writer`; an
  *   agent has those of `actor`. The owner of a local installation has both.
+ * @property {string[]} groups - Groups `actor` belongs to now.
  * @property {boolean} store_write - Whether `actor` may write the stores now (a
  *   `download` job): the role `store_writer` or the setting `store_write_for_all`.
- * @property {string} label - Label of the session, recorded with its jobs and permission
- *   changes.
+ * @property {string} label - Label of the session, recorded with its jobs and the
+ *   action log.
+ * @property {"startup"|"token"|"password"|"proxy"} method - How it started.
+ * @property {boolean} password_change_required - Signed in with a temporary
+ *   password: until `PUT /session/password` it may only read itself and sign out.
+ * @property {boolean} team - The server runs in team mode.
  * @property {string} expires_at - End of the session unless used again: each request
- *   extends it by 24 h; an agent's session ends 12 h after its start at the latest.
+ *   extends it by 24 h, in team mode by 8 h and never past 7 days after its start;
+ *   an agent's session ends 12 h after its start at the latest.
+ */
+
+/**
+ * How a session starts on this server (`GET /session/methods`, no session).
+ *
+ * @typedef {object} SessionMethods
+ * @property {"local"|"team"} mode - `local`: one person, one-time tokens;
+ *   `team`: people sign in with accounts.
+ * @property {boolean} password - Signing in with an account's password.
+ * @property {boolean} proxy - This request came from the company's trusted
+ *   reverse proxy naming a person: `POST /session/proxy` signs them in.
  */
 
 /**

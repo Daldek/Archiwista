@@ -5,12 +5,13 @@ reserves a free port before the settings exist, so that the team's origin is
 ``https://localhost:<port>``. ``team_serving`` runs ``serve_main`` in team mode
 with TLS in the server there; ``team_client`` drives an application in a test
 client from a given peer address, over https by default. ``save_team`` writes
-the settings of a team that no server serves, for ``running_api``, and
+the settings of a team that no server serves, for ``running_api``,
+``add_person`` creates an account with a password, and
 ``cheap_hasher`` is the Argon2id a test puts into ``passwords.HASHER``.
 """
 
 import socket
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +24,7 @@ from fastapi.testclient import TestClient
 from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.config import AppPaths, AppSettings, ConfigStore, TeamSettings
 from archiwista.server import AppServer
-from archiwista.state import StateStore
+from archiwista.state import Role, StateStore
 from tests.fixtures.local_server import serving
 
 # The names the server certificate holds: a team server in the tests is opened at
@@ -154,13 +155,29 @@ def team_site(directory: Path) -> TeamSite:
     return TeamSite(tls=team_tls(directory), port=free_port())
 
 
+def add_person(
+    paths: AppPaths,
+    account: str,
+    password: str,
+    *,
+    name: str | None = None,
+    roles: Collection[Role] = (),
+    temporary: bool = False,
+) -> None:
+    """Create an account with a password, set by the computer's owner.
+
+    ``temporary``: the password must be changed at the first sign-in.
+    """
+    state = StateStore(paths.state_file)
+    state.add_user(account, name=name, roles=roles, actor=LOCAL_OWNER)
+    passwords.set_password(
+        state, account, password, temporary=temporary, actor=LOCAL_OWNER
+    )
+
+
 def add_admin(paths: AppPaths, account: str = ADMIN_ACCOUNT) -> None:
     """Create an administrator whose password is ``ADMIN_PASSWORD``."""
-    state = StateStore(paths.state_file)
-    state.add_user(account, roles=["admin"], actor=LOCAL_OWNER)
-    passwords.set_password(
-        state, account, ADMIN_PASSWORD, temporary=False, actor=LOCAL_OWNER
-    )
+    add_person(paths, account, ADMIN_PASSWORD, roles=["admin"])
 
 
 @contextmanager
@@ -180,6 +197,25 @@ def team_serving(
         add_admin(paths)
     with serving(paths, port=site.port) as served:
         yield served
+
+
+@dataclass(frozen=True)
+class TeamServed:
+    """A running team server of a test.
+
+    Parameters
+    ----------
+    server : AppServer
+        The server.
+    paths : AppPaths
+        Its configuration and state; ``add_person`` adds people while it runs.
+    origin : str
+        The address people open: ``https://localhost:<port>``.
+    """
+
+    server: AppServer
+    paths: AppPaths
+    origin: str
 
 
 def team_client(app: FastAPI, *, peer: str, base_url: str | None = None) -> TestClient:

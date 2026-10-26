@@ -100,6 +100,15 @@ command-line interface may change.
   header from any other address is ignored and logged (`session.proxy_header_ignored`,
   once an hour per address). USAGE "Team server" shows Caddy (`forward_auth`,
   `header_up`) and nginx (`auth_request`, `proxy_set_header`).
+- The sign-in page of a team server (v0.4, ADR-046): without a session the interface
+  asks `GET /session/methods` and, in team mode, shows "Logowanie" instead of the
+  local session screen: the account and the password ("Pokaż" shows it; the fields
+  carry `autocomplete` for password managers and allow pasting), one message for
+  every refused account, the wait after failures counted down from
+  `details.retry_after_s`, and "Zaloguj kontem firmowym" when a trusted proxy names
+  the person. A temporary password opens "Zmień hasło tymczasowe" before the shell
+  (the refusals at their fields: `wrong_password`, `password_policy`, a repeated
+  password that differs), and a session that ends leads back to the sign-in.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
