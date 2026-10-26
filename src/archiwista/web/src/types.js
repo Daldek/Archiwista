@@ -63,6 +63,28 @@
  * @property {string} expires_at - End of validity (5 minutes).
  */
 
+/**
+ * A live session of a person or of an agent acting for them.
+ *
+ * @typedef {object} SessionItem
+ * @property {string} label - Label of the session (`DELETE /sessions/{label}`).
+ * @property {"browser"|"agent"} kind - A person's own session, or an agent's.
+ * @property {"startup"|"token"|"password"|"proxy"} method - How it started.
+ * @property {string|null} client - Client address of its first request.
+ * @property {string|null} user_agent - Its browser or program (`User-Agent`).
+ * @property {string} created_at
+ * @property {string} last_seen_at - Its last request.
+ * @property {string} expires_at - Its end unless used again.
+ * @property {boolean} current - The session of this request.
+ */
+
+/**
+ * Live sessions, oldest first (`GET /sessions`).
+ *
+ * @typedef {object} SessionList
+ * @property {SessionItem[]} items
+ */
+
 // Problems -------------------------------------------------------------------
 
 /**

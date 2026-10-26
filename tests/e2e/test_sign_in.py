@@ -1,10 +1,12 @@
-"""Signing in to a team server, in Chromium and Firefox (plan v0.4, step T5).
+"""Signing in to a team server and the account menu, in Chromium and Firefox.
 
-A real ``archiwista serve`` in team mode over TLS (a test certificate
-authority): the sign-in page with one message for every refused account, the
-wait after five failures counted down, a temporary password changed before
-the shell opens, a session ended elsewhere leading back to the sign-in, and
-the company's sign-in through a trusted reverse proxy. With
+Plan v0.4, step T5. A real ``archiwista serve`` in team mode over TLS (a test
+certificate authority): the sign-in page with one message for every refused
+account, the wait after five failures counted down, a temporary password
+changed before the shell opens, a session ended elsewhere leading back to the
+sign-in, the company's sign-in through a trusted reverse proxy, and the
+account menu: the person, an agent's address, „Sesje”, a password change
+ending the other browsers' sessions, „Wyloguj”. With
 ``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium keeps screenshots there
 (``docs/reports/v0.4-screenshots/``).
 """
@@ -14,7 +16,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Response, expect
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.throttle import FREE_FAILURES
@@ -31,10 +33,13 @@ WRONG_PASSWORD = "zle-haslo-kasi-123"
 NEW_PASSWORD = "szum-Sanu-pod-Lesko"
 PROXY_HEADER = "X-Remote-User"
 SCREENSHOTS = "ARCHIWISTA_SCREENSHOTS"
-LOGIN = "/api/v1/session/login"
-PASSWORD = "/api/v1/session/password"
+LOGIN = "POST /api/v1/session/login"
+PASSWORD = "PUT /api/v1/session/password"
+SIGN_OUT = "DELETE /api/v1/session"
 REFUSED = "Nieprawidłowe konto albo hasło."
+LOST = "Sesja wygasła albo została zakończona. Zaloguj się ponownie."
 WAITING = re.compile(r"^Zbyt wiele nieudanych prób: spróbuj ponownie za \d+ s\.$")
+MENU = "#account-panel"
 # The session of the page as the API tells it, read with the tab's CSRF token.
 READ_SESSION = """async () => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
@@ -65,9 +70,14 @@ def fill_sign_in(page: Page, account: str, password: str) -> None:
     page.get_by_label("Hasło", exact=True).fill(password)
 
 
-def answered(page: Page, path: str, press: Callable[[], None]) -> int:
-    """Press something that calls ``path`` of the API; return the answer's status."""
-    with page.expect_response(lambda response: response.url.endswith(path)) as answer:
+def answered(page: Page, request: str, press: Callable[[], None]) -> int:
+    """Press something that sends ``request`` (``"PUT /path"``); return its status."""
+    method, path = request.split(" ")
+
+    def matches(response: Response) -> bool:
+        return response.request.method == method and response.url.endswith(path)
+
+    with page.expect_response(matches) as answer:
         press()
     return answer.value.status
 
@@ -81,6 +91,14 @@ def sign_in(page: Page) -> int:
 def expect_shell(page: Page) -> None:
     """Wait for the shell of a started session."""
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+
+
+def signed_in(page: Page, origin: str) -> None:
+    """Sign in as kasia and wait for the shell."""
+    open_sign_in(page, origin)
+    fill_sign_in(page, KASIA, KASIA_PASSWORD)
+    sign_in(page)
+    expect_shell(page)
 
 
 def test_a_person_signs_in_and_every_refusal_has_one_message(
@@ -209,17 +227,12 @@ def test_a_session_ended_elsewhere_leads_back_to_the_sign_in(
     add_person(served.paths, KASIA, KASIA_PASSWORD)
     tab = team_tab()
     page = tab.page
-    open_sign_in(page, served.origin)
-    fill_sign_in(page, KASIA, KASIA_PASSWORD)
-    sign_in(page)
-    expect_shell(page)
+    signed_in(page, served.origin)
 
     StateStore(served.paths.state_file).revoke_sessions(KASIA, actor=LOCAL_OWNER)
     page.evaluate(COME_BACK)
     expect(page.get_by_role("heading", name="Logowanie")).to_be_visible()
-    expect(
-        page.get_by_text("Sesja wygasła albo została zakończona. Zaloguj się ponownie.")
-    ).to_be_visible()
+    expect(page.get_by_text(LOST)).to_be_visible()
     fill_sign_in(page, KASIA, KASIA_PASSWORD)
     again = sign_in(page)
     expect_shell(page)
@@ -245,7 +258,111 @@ def test_the_company_sign_in_through_a_trusted_proxy(
     proxied.page.get_by_role("button", name=company).click()
     expect_shell(proxied.page)
     state = proxied.page.evaluate(READ_SESSION)
+    proxied.page.get_by_role("button", name="Konto: kasia").click()
+    menu = proxied.page.locator(MENU)
 
     assert (state["actor"], state["method"]) == (KASIA, "proxy")
+    expect(menu.get_by_role("button", name="Wyloguj")).to_be_visible()
+    expect(menu.get_by_role("button", name="Zmień hasło…")).to_have_count(0)
     plain.assert_clean()
     proxied.assert_clean()
+
+
+def test_the_account_menu_shows_the_person_issues_a_token_and_signs_out(
+    team_serve: TeamServe, team_tab: TeamTab
+) -> None:
+    """The name, roles and groups; an agent's address shown once; „Wyloguj”."""
+    served = team_serve()
+    add_person(
+        served.paths, KASIA, KASIA_PASSWORD, name="Kasia Wrona", roles=["store_writer"]
+    )
+    StateStore(served.paths.state_file).add_group(
+        "hydro", members=[KASIA], actor=LOCAL_OWNER
+    )
+    tab = team_tab()
+    page = tab.page
+    account = page.get_by_role("button", name="Konto: Kasia Wrona")
+    menu = page.locator(MENU)
+    token = page.get_by_role("dialog", name="Token dla agenta")
+    signed_in(page, served.origin)
+
+    account.click()
+    expect(menu).to_contain_text("Kasia Wrona · kasia")
+    expect(menu).to_contain_text("zapis do magazynu · grupy: hydro")
+    expect(menu.get_by_role("button", name="Sesje (1)…")).to_be_visible()
+    shot(page, "03-menu-konta")
+    menu.get_by_role("button", name="Token dla agenta…").click()
+    token.get_by_role("button", name="Wystaw adres").click()
+    expect(token.locator("code")).to_have_text(
+        re.compile(rf"^{re.escape(served.origin)}/#token=[\w-]+$")
+    )
+    expect(
+        token.get_by_role("button", name="Kopiuj: adres sesji agenta")
+    ).to_be_visible()
+    expect(token.get_by_role("button", name="Wystaw adres")).to_have_count(0)
+    token.get_by_role("button", name="Zamknij").click()
+    expect(token).to_have_count(0)
+    account.click()
+    sign_out = menu.get_by_role("button", name="Wyloguj")
+    signed_out = answered(page, SIGN_OUT, sign_out.click)
+    expect(page.get_by_role("heading", name="Logowanie")).to_be_visible()
+    cookies = [cookie["name"] for cookie in page.context.cookies()]
+
+    assert signed_out == 204
+    assert "__Host-archiwista_session" not in cookies
+    expect(page.get_by_text(LOST)).to_have_count(0)
+    tab.assert_clean()
+
+
+def test_sessions_and_a_password_change_end_another_browsers_session(
+    team_serve: TeamServe, team_tab: TeamTab
+) -> None:
+    """„Sesje” ends the other browser's session, and so does a password change."""
+    served = team_serve()
+    add_person(served.paths, KASIA, KASIA_PASSWORD, name="Kasia Wrona")
+    first = team_tab()
+    second = team_tab()
+    page = first.page
+    menu = page.locator(MENU)
+    sessions = page.get_by_role("dialog", name="Sesje · kasia")
+    change = page.get_by_role("dialog", name="Zmień hasło")
+    signed_in(page, served.origin)
+    signed_in(second.page, served.origin)
+
+    page.get_by_role("button", name="Konto: Kasia Wrona").click()
+    menu.get_by_role("button", name="Sesje (2)…").click()
+    rows = sessions.get_by_role("listitem")
+    expect(rows).to_have_count(2)
+    expect(rows.first).to_contain_text("ta sesja")
+    expect(rows.last).to_contain_text("przeglądarka · ")
+    expect(rows.last).to_contain_text("127.0.0.1")
+    rows.last.get_by_role("button", name=re.compile(r"^Zakończ sesję ")).click()
+    expect(rows).to_have_count(1)
+    sessions.get_by_role("button", name="Zamknij").click()
+    second.page.evaluate(COME_BACK)
+    expect(second.page.get_by_text(LOST)).to_be_visible()
+    fill_sign_in(second.page, KASIA, KASIA_PASSWORD)
+    sign_in(second.page)
+    expect_shell(second.page)
+    page.get_by_role("button", name="Konto: Kasia Wrona").click()
+    menu.get_by_role("button", name="Zmień hasło…").click()
+    change.get_by_label("Obecne hasło").fill(KASIA_PASSWORD)
+    change.get_by_label("Nowe hasło", exact=True).fill(NEW_PASSWORD)
+    change.get_by_label("Powtórz nowe hasło").fill(NEW_PASSWORD)
+    changed = answered(
+        page, PASSWORD, change.get_by_role("button", name="Zmień hasło").click
+    )
+    expect(change.get_by_role("status")).to_have_text(
+        "Hasło zostało zmienione; pozostałe sesje tego konta i jego agentów zakończono."
+    )
+    change.get_by_role("button", name="Zamknij").click()
+    second.page.evaluate(COME_BACK)
+    expect(second.page.get_by_text(LOST)).to_be_visible()
+    page.evaluate(COME_BACK)
+    state = page.evaluate(READ_SESSION)
+
+    assert changed == 200
+    assert state["actor"] == KASIA
+    expect_shell(page)
+    first.assert_clean()
+    second.assert_clean()

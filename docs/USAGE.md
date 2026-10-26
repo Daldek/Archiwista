@@ -470,6 +470,16 @@ the page's next request leads back to the sign-in.
 
 ![Sign-in page](reports/v0.4-screenshots/01-logowanie.webp)
 
+**The account menu.** On a team server the person's name at the right of the top bar
+opens the account menu: the name and account, the roles and groups of now, "Zmień
+hasło…" (not for a sign-in through the company's proxy, whose password is changed
+there), "Sesje…" (every session of the account and its agents, with the browser, the
+address and the start; "Zakończ" ends one at once, "Zakończ pozostałe sesje" all but
+this one), "Token dla agenta…" ("Wystaw adres" shows the one-time address of an
+agent's session once, with "Kopiuj"; it acts with the person's roles) and "Wyloguj".
+
+![Account menu](reports/v0.4-screenshots/03-menu-konta.webp)
+
 **Signing in and sessions.** A person signs in with the account's identifier and
 password (`POST /api/v1/session/login`; for a script see AGENT_API). A temporary
 password must be changed before anything else (`PUT /api/v1/session/password`), and

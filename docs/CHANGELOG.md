@@ -109,6 +109,15 @@ command-line interface may change.
   the person. A temporary password opens "Zmień hasło tymczasowe" before the shell
   (the refusals at their fields: `wrong_password`, `password_policy`, a repeated
   password that differs), and a session that ends leads back to the sign-in.
+- The account menu of a team server (v0.4, ADR-046): the person's name in the top bar
+  opens the name, the roles and groups of now (the session read again), "Zmień
+  hasło…" (left out for a sign-in through the proxy), "Sesje…" (`GET /sessions`:
+  each session of the account and its agents with the browser, the address and its
+  start or end; "Zakończ" and "Zakończ pozostałe sesje"), "Token dla agenta…" (`POST
+  /session/tokens`; the address shown once, with "Kopiuj") and "Wyloguj". Local mode
+  keeps the session chip. A request refused because a new session replaced its token
+  meanwhile (a password change, a sign-in in another tab) no longer ends the page's
+  session.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

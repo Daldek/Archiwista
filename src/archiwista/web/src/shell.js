@@ -1,13 +1,15 @@
 /**
  * The shell around the views (mockup layout): the top bar with the stores,
- * the downloads in the background and the session, the navigation (a rail on
- * a computer, a bar at the bottom of a phone), the index state banner, the
- * current view of the address and the overlays opened over it, and over all
- * of them the plan windows, the list of downloads and their toasts
- * (downloads.js). Views and overlays come from `routes.js`; the first run,
- * without any store, opens the wizard.
+ * the downloads in the background and the session — on a team server the
+ * account menu (`AccountMenu`) —, the navigation (a rail on a computer, a bar
+ * at the bottom of a phone), the index state banner, the current view of the
+ * address and the overlays opened over it, and over all of them the plan
+ * windows, the list of downloads and their toasts (downloads.js). Views and
+ * overlays come from `routes.js`; the first run, without any store, opens the
+ * wizard.
  */
 
+import { endSession, endSessionLabel, issueToken, listSessions, readSession } from "./api.js";
 import { AppContext, useApp, useAppState } from "./context.js";
 import { IndexBanner } from "./banner.js";
 import {
@@ -18,6 +20,7 @@ import {
   PlanWindows,
 } from "./downloads.js";
 import { stamp } from "./format.js";
+import { account as A } from "./labels/account.js";
 import { T, t } from "./labels/index.js";
 import { Link, navigate, setParams, useRoute } from "./router.js";
 import { findView, OVERLAYS, startView, VIEWS } from "./routes.js";
@@ -27,22 +30,33 @@ import {
   html,
   Icon,
   Logo,
+  ProblemView,
   Spinner,
   Tech,
   useEffect,
   useErrorBoundary,
+  useRef,
   useState,
 } from "./ui.js";
+import { PasswordChange } from "./views/login.js";
 
 const L = T.shell;
 const loaded = new Map();
+const ACCOUNT_PANEL = "account-panel";
+// The browser and the system a `User-Agent` names, the first mark found.
+const BROWSERS = [["Edg/", "Edge"], ["OPR/", "Opera"], ["Firefox/", "Firefox"], ["Chrome/", "Chrome"], ["Safari/", "Safari"]];
+const SYSTEMS = [["Windows", "Windows"], ["Android", "Android"], ["iPhone", "iOS"], ["iPad", "iOS"], ["Mac OS X", "macOS"], ["Linux", "Linux"]];
 
 /**
  * The interface of a started session.
  *
- * @param {{session: import("./types.js").SessionState}} props
+ * @param {{session: import("./types.js").SessionState,
+ *   onSessionChange: (session: import("./types.js").SessionState) => void,
+ *   onSignOut: () => void}} props - `onSessionChange`: the session read
+ *   again, or a new one after a password change; `onSignOut`: the person
+ *   signed out of a team server.
  */
-export function Shell({ session }) {
+export function Shell({ session, onSessionChange, onSignOut }) {
   const app = useAppState(session);
   const route = useRoute();
   const view = currentView(route, app.settings, app.settingsError);
@@ -71,7 +85,7 @@ export function Shell({ session }) {
   return html`<${AppContext.Provider} value=${app}>
     <${DownloadsProvider} session=${session}>
       <div class="shell">
-        <${TopBar} />
+        <${TopBar} onSessionChange=${onSessionChange} onSignOut=${onSignOut} />
         <${Navigation} current=${view && !view.unknown ? view.id : null} />
         <div class="shell-main">
           <${IndexBanner} view=${view && !view.unknown ? view.id : null} />
@@ -129,7 +143,7 @@ function viewName(id) {
   return L.nav[id] ?? id;
 }
 
-function TopBar() {
+function TopBar({ onSessionChange, onSignOut }) {
   const { health, session } = useApp();
   const actor = T.common.actor[session.actor] ?? session.actor;
   return html`<header class="topbar">
@@ -157,11 +171,253 @@ function TopBar() {
     <div class="top-actions">
       <${DownloadsIndicator} />
       <${SearchButton} />
-      <span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
-        <${Tech} value=${session.actor}>${t(L.session_label, { actor })}</${Tech}>
-      </span>
+      ${session.team
+        ? html`<${AccountMenu} session=${session} onSessionChange=${onSessionChange} onSignOut=${onSignOut} />`
+        : html`<span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
+            <${Tech} value=${session.actor}>${t(L.session_label, { actor })}</${Tech}>
+          </span>`}
     </div>
   </header>`;
+}
+
+/**
+ * The account of a team session (SPEC 6.5 o): its name, roles and groups —
+ * the session is read again whenever the menu opens — with „Zmień hasło…”,
+ * „Sesje…”, „Token dla agenta…” and „Wyloguj”. The server refuses a password
+ * change to a session of the company's proxy and to an agent, and tokens to
+ * an agent: those items are left out. `Esc` and a click outside close it.
+ */
+function AccountMenu({ session, onSessionChange, onSignOut }) {
+  const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const [count, setCount] = useState(null);
+  const panel = useRef(null);
+  const toggle = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const reading = new AbortController();
+    readSession({ signal: reading.signal }).then(onSessionChange, ignore);
+    listSessions({ signal: reading.signal }).then((list) => setCount(list.items.length), ignore);
+    panel.current.querySelector("button")?.focus();
+    const away = (event) => {
+      if (!panel.current?.contains(event.target) && !toggle.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => {
+      reading.abort();
+      document.removeEventListener("pointerdown", away);
+    };
+  }, [open]);
+  const choose = (name) => {
+    setOpen(false);
+    setDialog(name);
+  };
+  const closeDialog = () => {
+    setDialog(null);
+    toggle.current?.focus();
+  };
+  const signOut = () => endSession().catch(ignore).then(onSignOut);
+  const person = session.kind !== "agent";
+  const item = (label, onClick) => html`<button type="button" class="account-item" onClick=${onClick}>${label}</button>`;
+  return html`<div class="account">
+    <button type="button" ref=${toggle} class="btn sm account-toggle" aria-expanded=${open ? "true" : "false"}
+      aria-controls=${ACCOUNT_PANEL} aria-label=${t(A.menu.open, { name: session.name })}
+      onClick=${() => setOpen(!open)}>
+      <span>${session.name}</span><${Icon} name="down" size=${12} />
+    </button>
+    ${open
+      ? html`<div id=${ACCOUNT_PANEL} class="account-panel" ref=${panel}
+          onKeyDown=${(event) => {
+            if (event.key !== "Escape") return;
+            // Esc closes the menu only, not an overlay under it (Shell).
+            event.stopPropagation();
+            setOpen(false);
+            toggle.current?.focus();
+          }}>
+          <div class="account-who">
+            <b>${session.name} · ${session.actor}</b>
+            <span class="muted">${accountFacts(session)}</span>
+          </div>
+          ${person && session.method !== "proxy" ? item(A.menu.change_password, () => choose("password")) : null}
+          ${item(count === null ? A.menu.sessions : t(A.menu.sessions_count, { count }), () => choose("sessions"))}
+          ${person ? item(A.menu.token, () => choose("token")) : null}
+          ${item(A.menu.sign_out, signOut)}
+        </div>`
+      : null}
+    ${dialog === "password"
+      ? html`<${PasswordDialog} session=${session} onChanged=${onSessionChange} onClose=${closeDialog} />`
+      : null}
+    ${dialog === "sessions" ? html`<${SessionsDialog} session=${session} onClose=${closeDialog} />` : null}
+    ${dialog === "token" ? html`<${TokenDialog} session=${session} onClose=${closeDialog} />` : null}
+  </div>`;
+}
+
+/** „zapis do magazynu · grupy: gis”: the roles and groups of a session now. */
+function accountFacts(session) {
+  const roles = session.roles.map((role) => A.menu.roles[role] ?? role);
+  const facts = [roles.length ? roles.join(", ") : A.menu.no_roles];
+  if (session.groups.length) facts.push(t(A.menu.groups, { groups: session.groups.join(", ") }));
+  if (session.kind === "agent") facts.unshift(A.menu.agent);
+  return facts.join(" · ");
+}
+
+/** A modal window of the account menu; `Esc` closes it, not what is under it. */
+function AccountDialog({ label, onClose, children }) {
+  const dialog = useRef(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element.showModal();
+    return () => {
+      if (element.open) element.close();
+    };
+  }, []);
+  return html`<dialog class="account-dialog" ref=${dialog} aria-label=${label}
+    onCancel=${(event) => {
+      event.preventDefault();
+      onClose();
+    }}
+    onKeyDown=${(event) => {
+      if (event.key === "Escape") event.stopPropagation();
+    }}>
+    <div class="account-dialog-body">${children}</div>
+  </dialog>`;
+}
+
+/** „Zmień hasło…”: the change of the session's password, then its outcome. */
+function PasswordDialog({ session, onChanged, onClose }) {
+  const [done, setDone] = useState(false);
+  const changed = (started) => {
+    setDone(true);
+    onChanged(started);
+  };
+  return html`<${AccountDialog} label=${A.change.title} onClose=${onClose}>
+    ${done
+      ? html`<p role="status">${A.change.done}</p>
+          <div class="account-dialog-actions">
+            <button type="button" class="btn primary" onClick=${onClose}>${A.sessions.close}</button>
+          </div>`
+      : html`<${PasswordChange} session=${session} onChanged=${changed} onCancel=${onClose} />`}
+  </${AccountDialog}>`;
+}
+
+/** „Sesje…”: the live sessions of the account and its agents, each one ended at once. */
+function SessionsDialog({ session, onClose }) {
+  const [items, setItems] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () =>
+    listSessions().then(
+      (list) => setItems(list.items),
+      (error) => {
+        if (!error.problem) throw error;
+        setProblem(error.problem);
+      },
+    );
+  useEffect(() => {
+    load();
+  }, []);
+  const end = async (labels) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      for (const label of labels) await endSessionLabel(label);
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    }
+    await load();
+    setBusy(false);
+  };
+  const others = (items ?? []).filter((item) => !item.current).map((item) => item.label);
+  const title = t(A.sessions.title, { account: session.actor });
+  return html`<${AccountDialog} label=${title} onClose=${onClose}>
+    <h2>${title}</h2>
+    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+    ${items === null && problem === null ? html`<${Spinner} label=${A.sessions.loading} />` : null}
+    ${items
+      ? html`<ul class="account-sessions">
+          ${items.map(
+            (item) => html`<${SessionRow} key=${item.label} item=${item} busy=${busy}
+              onEnd=${() => end([item.label])} />`,
+          )}
+        </ul>`
+      : null}
+    <div class="account-dialog-actions">
+      <button type="button" class="btn" disabled=${busy || others.length === 0} onClick=${() => end(others)}>
+        ${A.sessions.end_others}</button>
+      <button type="button" class="btn primary" onClick=${onClose}>${A.sessions.close}</button>
+    </div>
+  </${AccountDialog}>`;
+}
+
+/**
+ * „przeglądarka · Firefox, Linux · 10.0.0.31 · od …”, or „agent (token) ·
+ * 10.0.0.31 · do …”, with „Zakończ” unless it is this session.
+ */
+function SessionRow({ item, busy, onEnd }) {
+  const facts = [item.kind === "agent" ? A.sessions.agent : A.sessions.browser];
+  if (item.kind === "browser" && item.user_agent) facts.push(browserName(item.user_agent));
+  if (item.client) facts.push(item.client);
+  facts.push(
+    item.kind === "agent"
+      ? t(A.sessions.until, { time: stamp(item.expires_at) })
+      : t(A.sessions.since, { time: stamp(item.created_at) }),
+  );
+  return html`<li class="account-session">
+    <span class="account-session-name">${item.current ? A.sessions.current : html`<code>${item.label}</code>`}</span>
+    <span class="account-session-facts">${facts.join(" · ")}</span>
+    ${item.current
+      ? null
+      : html`<button type="button" class="btn sm" disabled=${busy}
+          aria-label=${t(A.sessions.end_label, { label: item.label })} onClick=${onEnd}>${A.sessions.end}</button>`}
+  </li>`;
+}
+
+/** „Firefox, Linux” of a `User-Agent`; the text itself when it names neither. */
+function browserName(agent) {
+  const browser = BROWSERS.find(([mark]) => agent.includes(mark))?.[1];
+  const system = SYSTEMS.find(([mark]) => agent.includes(mark))?.[1];
+  return browser || system ? [browser, system].filter(Boolean).join(", ") : agent;
+}
+
+/** „Token dla agenta…”: a one-time address of an agent's session, shown once. */
+function TokenDialog({ session, onClose }) {
+  const [issued, setIssued] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const issue = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      setIssued(await issueToken());
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    }
+    setBusy(false);
+  };
+  return html`<${AccountDialog} label=${A.token.title} onClose=${onClose}>
+    <h2>${A.token.title}</h2>
+    <p>${t(A.token.intro, { account: session.actor })}</p>
+    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+    ${issued
+      ? html`<div class="account-token">
+            <code>${issued.url}</code><${CopyButton} text=${issued.url} label=${A.token.address} />
+          </div>
+          <p class="field-hint">${t(A.token.shown_once, { time: stamp(issued.expires_at), label: issued.label })}</p>`
+      : null}
+    <div class="account-dialog-actions">
+      ${issued
+        ? null
+        : html`<button type="button" class="btn primary" disabled=${busy} onClick=${issue}>${A.token.issue}</button>`}
+      <button type="button" class="btn" onClick=${onClose}>${A.token.close}</button>
+    </div>
+  </${AccountDialog}>`;
+}
+
+/** A read the account menu does not need: aborted, or refused (the session lost). */
+function ignore() {
+  return null;
 }
 
 function Navigation({ current }) {

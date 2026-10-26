@@ -80,6 +80,28 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .store-chip.unknown .dot { background: var(--warn); }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .session-chip { color: var(--text-2); font-size: 12px; white-space: nowrap; }
+/* the account of a team session (shell.js AccountMenu) */
+.account { position: relative; flex: none; }
+.account-toggle { max-width: 240px; }
+.account-toggle span { overflow: hidden; text-overflow: ellipsis; }
+.account-toggle[aria-expanded="true"] { box-shadow: 0 0 0 3px #eef2ff; }
+.account-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 300px; max-width: calc(100vw - 24px); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; display: grid; gap: 2px; }
+.account-who { display: grid; gap: 2px; padding: 6px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.account-who .muted { font-size: 12px; }
+.account-item { border: 0; background: transparent; border-radius: 8px; padding: 7px 10px; text-align: left; cursor: pointer; }
+.account-item:hover { background: var(--panel-2); }
+.account-dialog { width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg); background: var(--panel); color: var(--text); }
+.account-dialog::backdrop { background: rgba(16, 24, 40, 0.35); }
+.account-dialog-body { display: grid; gap: 12px; padding: 18px 20px; }
+.account-dialog-body h2 { font-size: 15px; overflow-wrap: anywhere; }
+.account-dialog-body p { margin: 0; line-height: 1.5; }
+.account-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.account-sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.account-session { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; }
+.account-session-facts { color: var(--text-2); overflow-wrap: anywhere; }
+.account-token { display: flex; align-items: center; gap: 6px; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 8px 10px; }
+.account-token code { flex: 1; min-width: 0; color: #e2e8f0; font-size: 12px; overflow-wrap: anywhere; }
+.account-token .copy-btn { color: #cbd5e1; }
 
 .rail {
   grid-row: 2;

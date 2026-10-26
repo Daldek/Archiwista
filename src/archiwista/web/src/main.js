@@ -30,14 +30,14 @@ function start() {
  * @param {import("./types.js").SessionState} session
  */
 function open(session) {
+  const signedOut = () => withoutSession(null);
   if (session.password_change_required) {
     render(
-      html`<${TemporaryPassword} session=${session} onChanged=${open}
-        onSignOut=${() => withoutSession(null)} />`,
+      html`<${TemporaryPassword} session=${session} onChanged=${open} onSignOut=${signedOut} />`,
       root,
     );
   } else {
-    render(html`<${Shell} session=${session} />`, root);
+    render(html`<${Shell} session=${session} onSessionChange=${open} onSignOut=${signedOut} />`, root);
   }
 }
 

@@ -36,6 +36,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").NewSession} NewSession */
 /** @typedef {import("./types.js").SessionMethods} SessionMethods */
 /** @typedef {import("./types.js").OneTimeToken} OneTimeToken */
+/** @typedef {import("./types.js").SessionList} SessionList */
 /** @typedef {import("./types.js").Health} Health */
 /** @typedef {import("./types.js").SourceList} SourceList */
 /** @typedef {import("./types.js").StoreList} StoreList */
@@ -427,6 +428,28 @@ export async function endSession() {
  */
 export function issueToken() {
   return request("POST", "/session/tokens");
+}
+
+/**
+ * The live sessions of the session's person, their agents' too, oldest
+ * first (`list_sessions`).
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<SessionList>}
+ */
+export function listSessions({ signal } = {}) {
+  return request("GET", "/sessions", { signal });
+}
+
+/**
+ * End one of the person's sessions at once (`end_session_label`).
+ *
+ * @param {string} label
+ * @returns {Promise<null>}
+ * @throws {ApiError} `404 not_found`: no live session of the person has it.
+ */
+export function endSessionLabel(label) {
+  return request("DELETE", `/sessions/${one(label)}`);
 }
 
 // Read API (9a) ---------------------------------------------------------------
@@ -1210,6 +1233,8 @@ function apiUrl(address) {
 /**
  * Send a request with the session's CSRF token; answer the response, or
  * throw the server's problem (a lost session told to the listeners first).
+ * A refusal of a token that a new session has replaced meanwhile (a password
+ * change, a sign-in in another tab) tells nobody: the new session goes on.
  */
 async function send(method, address, { headers, body, signal }) {
   const token = storedToken();
@@ -1224,7 +1249,8 @@ async function send(method, address, { headers, body, signal }) {
   }
   if (response.ok) return response;
   const problem = await readProblem(response);
-  if ((problem.status === 401 || problem.details?.reason === "csrf_rejected") && current !== null) {
+  const refused = problem.status === 401 || problem.details?.reason === "csrf_rejected";
+  if (refused && current !== null && storedToken() === token) {
     current = null;
     sessionStorage.removeItem(TOKEN_KEY);
     for (const listener of [...sessionLost]) listener(problem);
