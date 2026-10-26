@@ -37,7 +37,7 @@ from archiwista.api.models import (
 )
 from archiwista.api.projects import project_card, read_projects
 from archiwista.api.slots import search_slots, slot_card, version_card
-from archiwista.auth import LOCAL_OWNER, ProjectVisibility
+from archiwista.auth import LOCAL_OWNER, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
     AppPaths,
@@ -70,12 +70,13 @@ type _Commands = argparse._SubParsersAction[argparse.ArgumentParser]
 
 @dataclass(frozen=True, slots=True)
 class _Reader:
-    """What a command reads with: settings, plugins, the index, visibility."""
+    """What a command reads with: settings, plugins, the index, project access."""
 
     settings: AppSettings
     registry: PluginRegistry
     queries: IndexQueries
     visible: ProjectVisibility
+    writable: WritableProjects
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,9 +172,9 @@ def read_main(
     """
     try:
         settings = ConfigStore(paths.config_file).load()
-        visible = Authorizer(
-            StateStore(paths.state_file), lambda: settings
-        ).visible_projects(LOCAL_OWNER)
+        decisions = Authorizer(StateStore(paths.state_file), lambda: settings)
+        visible = decisions.visible_projects(LOCAL_OWNER)
+        writable = decisions.writable_projects(LOCAL_OWNER)
         queries = IndexQueries(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
@@ -183,7 +184,7 @@ def read_main(
             err,
         )
     with queries:
-        reader = _Reader(settings, registry, queries, visible)
+        reader = _Reader(settings, registry, queries, visible, writable)
         try:
             output = _COMMANDS[args.command](args, reader)
         except _InvalidQuery as error:
@@ -273,7 +274,11 @@ def _version(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
     projects = read_projects(
-        reader.queries, reader.settings, args.store, visible=reader.visible
+        reader.queries,
+        reader.settings,
+        args.store,
+        visible=reader.visible,
+        writable=reader.writable,
     )
     lines: list[str] = [
         message(
@@ -293,7 +298,9 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 
 def _project(args: argparse.Namespace, reader: _Reader) -> _Output:
-    card = project_card(reader.queries, args.project, visible=reader.visible)
+    card = project_card(
+        reader.queries, args.project, visible=reader.visible, writable=reader.writable
+    )
     return _Output(card, project_text(card))
 
 

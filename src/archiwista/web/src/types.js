@@ -726,6 +726,9 @@
  * @property {number} tasks
  * @property {number} pins
  * @property {number} missing_pins - Pins missing from the store or other.
+ * @property {boolean} project_write - Whether the session's principal may change the
+ *   project now (its owner or an administrator): add and remove its tasks, and download
+ *   and repin it with `store_write` of the session.
  */
 
 /**
@@ -777,6 +780,7 @@
  * @property {string|null} problem - Producer's message for an invalid manifest.
  * @property {string} scanned_at
  * @property {number} missing_pins - Pins missing from the store or other.
+ * @property {boolean} project_write - As in `ProjectItem`.
  * @property {ProjectTask[]} tasks - Tasks in manifest order.
  * @property {ProjectPin[]} pins - Pinned versions, older ones too.
  * @property {Issue[]} problems - Invalid manifest, unknown store, missing or other

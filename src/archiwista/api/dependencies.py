@@ -5,14 +5,16 @@
 (``app.state.settings``) and the producer plugins (``app.state.registry``).
 A route takes the projects the current principal sees with
 ``visible_projects`` and passes them to the index queries and services,
-which filter; routes never filter themselves (A-ADR-029).
+which filter; routes never filter themselves (A-ADR-029). A route that
+lists projects takes ``writable_projects`` too, to say of each whether the
+principal may change it (``project_write``).
 """
 
 from typing import Annotated
 
 from fastapi import Depends, Request
 
-from archiwista.auth import Principal, ProjectVisibility
+from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.index import IndexQueries
@@ -50,3 +52,11 @@ def visible_projects(
 ) -> ProjectVisibility:
     """Return the projects the request's principal sees (``401`` without one)."""
     return decisions.visible_projects(principal)
+
+
+def writable_projects(
+    principal: Annotated[Principal, Depends(current_principal)],
+    decisions: Annotated[Authorizer, Depends(authorizer)],
+) -> WritableProjects:
+    """Return whether the request's principal may change each project."""
+    return decisions.writable_projects(principal)

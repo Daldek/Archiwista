@@ -31,7 +31,7 @@ from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import ProjectRequest, ProjectStatus, TaskRequest
 from archiwista.api.projects import check_project, project_card
-from archiwista.auth import LOCAL_OWNER, ProjectVisibility
+from archiwista.auth import LOCAL_OWNER, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser
 from archiwista.commands.producer_commands import json_object
@@ -75,6 +75,7 @@ class _Place:
     index: Path
     decisions: Authorizer
     visible: ProjectVisibility
+    writable: WritableProjects
 
 
 type _Action = Callable[[argparse.Namespace, _Place], _Output]
@@ -178,6 +179,7 @@ def main(
                 index=paths.index_file,
                 decisions=decisions,
                 visible=decisions.visible_projects(LOCAL_OWNER),
+                writable=decisions.writable_projects(LOCAL_OWNER),
             )
         except _UNUSABLE as error:
             detail = with_detail(message("cli.project_failed"), str(error))
@@ -211,7 +213,9 @@ def _init(args: argparse.Namespace, place: _Place) -> _Output:
         store=body.store,
         actor=LOCAL_OWNER,
     )
-    card = project_card(place.queries, key, visible=place.visible)
+    card = project_card(
+        place.queries, key, visible=place.visible, writable=place.writable
+    )
     done = message("cli.project_created", project=key, path=body.path)
     return card, f"{done}\n{project_text(card)}"
 
@@ -240,7 +244,9 @@ def _add(args: argparse.Namespace, place: _Place) -> _Output:
         actor=LOCAL_OWNER,
         visible=place.visible,
     )
-    card = project_card(place.queries, key, visible=place.visible)
+    card = project_card(
+        place.queries, key, visible=place.visible, writable=place.writable
+    )
     done = message("cli.project_task_added", project=key, task=body.name)
     return card, f"{done}\n{project_text(card)}"
 
@@ -258,7 +264,9 @@ def _remove(args: argparse.Namespace, place: _Place) -> _Output:
         actor=LOCAL_OWNER,
         visible=place.visible,
     )
-    card = project_card(place.queries, key, visible=place.visible)
+    card = project_card(
+        place.queries, key, visible=place.visible, writable=place.writable
+    )
     done = message("cli.project_task_removed", project=key, task=args.task)
     return card, f"{done}\n{project_text(card)}"
 

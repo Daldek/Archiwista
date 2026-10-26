@@ -1,9 +1,10 @@
-"""Who acts and which projects they see.
+"""Who acts and which projects they see and change.
 
-``Principal`` and ``ProjectVisibility`` are plain values that every layer
-passes along; the decisions themselves (``Authorizer``: ``can``,
-``require``, ``visible_projects``) live in ``archiwista.auth.authorize``,
-which reads the state database.
+``Principal``, ``ProjectVisibility`` and ``WritableProjects`` are plain
+values that every layer passes along; the decisions themselves
+(``Authorizer``: ``can``, ``require``, ``visible_projects``,
+``writable_projects``) live in ``archiwista.auth.authorize``, which reads
+the state database.
 """
 
 from archiwista.auth.principal import (
@@ -14,7 +15,12 @@ from archiwista.auth.principal import (
     Principal,
     PrincipalKind,
 )
-from archiwista.auth.visibility import ALL_PROJECTS, ProjectVisibility, access_key
+from archiwista.auth.visibility import (
+    ALL_PROJECTS,
+    ProjectVisibility,
+    WritableProjects,
+    access_key,
+)
 
 __all__ = [
     "ALL_PROJECTS",
@@ -25,5 +31,6 @@ __all__ = [
     "Principal",
     "PrincipalKind",
     "ProjectVisibility",
+    "WritableProjects",
     "access_key",
 ]

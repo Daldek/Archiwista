@@ -249,9 +249,11 @@ cursor is safe in a URL).
   example both sides of the PL/CZ border).
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
-  answers like a missing one (`404`). `archiwista project-status PROJEKT` /
-  `GET /projects/{project}/status` asks the producer for the state now (no
-  network).
+  answers like a missing one (`404`). Each project says whether the actor may
+  change it now (`project_write`: its owner or an administrator; read at each
+  request), as the project's changes and jobs below decide it. `archiwista
+  project-status PROJEKT` / `GET /projects/{project}/status` asks the producer
+  for the state now (no network).
 - `archiwista project-init PRODUCENT KATALOG --store MAGAZYN` / `POST /projects`
   (`{"producer", "path", "store"}`), `archiwista project-add PROJEKT NAZWA
   POLECENIE [--options JSON]` / `POST /projects/{project}/tasks` (`{"name",

@@ -1,11 +1,12 @@
 """The one place deciding what a principal may do (A-ADR-029, SPEC 10.2).
 
 ``Authorizer.can(principal, action, resource)`` answers, ``require`` raises
-``PermissionDeniedError`` (``403 permission_denied``), and
+``PermissionDeniedError`` (``403 permission_denied``),
 ``visible_projects(principal)`` returns the ``ProjectVisibility`` that index
-queries and services filter projects and pins with. Routers and the command
-line never decide on their own: they pass the principal to the services,
-which ask here.
+queries and services filter projects and pins with, and
+``writable_projects(principal)`` answers ``project.write`` for each project
+of a listing at once. Routers and the command line never decide on their
+own: they pass the principal to the services, which ask here.
 
 Rules (v0.1, ``project.write`` since v0.2):
 
@@ -40,7 +41,11 @@ from archiwista.auth.principal import (
     Principal,
     PrincipalKind,
 )
-from archiwista.auth.visibility import ALL_PROJECTS, ProjectVisibility
+from archiwista.auth.visibility import (
+    ALL_PROJECTS,
+    ProjectVisibility,
+    WritableProjects,
+)
 from archiwista.config import AppSettings, DefaultProjectVisibility
 from archiwista.errors import PermissionDeniedError
 from archiwista.messages import message
@@ -239,6 +244,29 @@ class Authorizer:
             denied=frozenset(denied),
             unlisted=self.default_project_visibility == "public",
         )
+
+    def writable_projects(self, principal: Principal) -> WritableProjects:
+        """Return whether ``principal`` may change each project, by access key.
+
+        The answer of ``can(principal, "project.write", key)`` for every
+        project, read from the state database once: every project for an
+        administrator (the local owner too), otherwise the projects whose
+        access entry names ``principal`` as their owner (a project without an
+        entry has no owner).
+        """
+        if ADMIN in principal.roles:
+            return _any_project
+        owned = frozenset(
+            access.project
+            for access in self.state.project_accesses()
+            if _owns(principal, access)
+        )
+        return owned.__contains__
+
+
+def _any_project(key: str) -> bool:
+    """Allow every project: an administrator changes each one."""
+    return True
 
 
 def _owns(principal: Principal, access: ProjectAccessRecord | None) -> bool:

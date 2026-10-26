@@ -1,4 +1,4 @@
-"""Which projects a principal sees: ``ProjectVisibility`` and project access keys.
+"""Which projects a principal sees and changes: ``ProjectVisibility``, access keys.
 
 A project's access entry in the state database (owner, visibility, people
 and groups) is keyed by the project directory after ``realpath``, not by an
@@ -6,10 +6,17 @@ index identifier, so an index rebuild keeps it and every path that reaches
 the directory through symbolic links shares it (A-ADR-029). The index
 records the same key for each project it discovers (``access_key``), which
 lets its queries filter projects and pins with one ``ProjectVisibility``.
+``WritableProjects`` answers, by the same key, whether the principal may
+change a project (``project.write``), so a listing can say it per project.
 """
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
+
+# Whether a principal may change the project of an access key (``project.write``);
+# ``Authorizer.writable_projects`` builds it.
+type WritableProjects = Callable[[str], bool]
 
 
 def access_key(directory: str | os.PathLike[str]) -> str:

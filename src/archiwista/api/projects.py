@@ -37,6 +37,7 @@ from archiwista.api.dependencies import (
     plugin_registry,
     settings_service,
     visible_projects,
+    writable_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.jobs import job_supervisor
@@ -53,7 +54,7 @@ from archiwista.api.models import (
     staleness,
 )
 from archiwista.api.slots import checked_store
-from archiwista.auth import Principal, ProjectVisibility
+from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError, SourceUnavailableError
@@ -71,6 +72,7 @@ job_router = APIRouter(prefix="/projects", tags=["projects"])
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Authorizer = Annotated[Authorizer, Depends(authorizer)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
+_Writable = Annotated[WritableProjects, Depends(writable_projects)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
@@ -116,21 +118,31 @@ def read_projects(
     store: str | None,
     *,
     visible: ProjectVisibility,
+    writable: WritableProjects,
 ) -> ProjectList:
-    """Return the projects the principal sees, of all stores or one."""
+    """Return the projects the principal sees, of all stores or one.
+
+    ``writable`` says of each project whether the principal may change it.
+    """
     freshness = queries.freshness()
     stores = checked_store(store, settings, freshness)
     projects = queries.projects(visible=visible, store=store)
     return ProjectList(
-        items=[ProjectItem.of(project) for project in projects],
+        items=[ProjectItem.of(project, writable=writable) for project in projects],
         **staleness(freshness, stores),
     )
 
 
 def project_card(
-    queries: IndexQueries, key: str, *, visible: ProjectVisibility
+    queries: IndexQueries,
+    key: str,
+    *,
+    visible: ProjectVisibility,
+    writable: WritableProjects,
 ) -> ProjectCard:
     """Return a project's tasks, pins and problems from the index.
+
+    ``writable`` says whether the principal may change the project.
 
     Raises
     ------
@@ -142,7 +154,8 @@ def project_card(
         raise NotFoundError(message("project.not_found", project=key))
     store = detail.project.store
     stores = set() if store is None else {store}
-    return ProjectCard.of(detail, staleness(queries.freshness(), stores))
+    freshness = staleness(queries.freshness(), stores)
+    return ProjectCard.of(detail, freshness, writable=writable)
 
 
 def check_project(
@@ -232,14 +245,20 @@ def _unavailable(
 @router.get("", response_model=ProjectList, responses=problem_responses(400))
 def list_projects(
     visible: _Visible,
+    writable: _Writable,
     settings: _Settings,
     queries: _Queries,
     store: Annotated[
         str | None, Query(description="Only projects of this store.")
     ] = None,
 ) -> ProjectList:
-    """List projects the session's principal sees, with their counts."""
-    return read_projects(queries, settings.get(), store, visible=visible)
+    """List projects the session's principal sees, with their counts.
+
+    `project_write` says of each project whether the principal may change it.
+    """
+    return read_projects(
+        queries, settings.get(), store, visible=visible, writable=writable
+    )
 
 
 @router.post(
@@ -256,6 +275,7 @@ def create_project(
     principal: _Principal,
     decisions: _Authorizer,
     visible: _Visible,
+    writable: _Writable,
     registry: _Registry,
     settings: _Settings,
     queries: _Queries,
@@ -293,17 +313,20 @@ def create_project(
         actor=principal,
     )
     response.headers["Location"] = f"{API_PREFIX}/projects/{key}"
-    return project_card(queries, key, visible=visible)
+    return project_card(queries, key, visible=visible, writable=writable)
 
 
 @router.get("/{project}", response_model=ProjectCard, responses=problem_responses(404))
-def get_project(project: _Project, visible: _Visible, queries: _Queries) -> ProjectCard:
+def get_project(
+    project: _Project, visible: _Visible, writable: _Writable, queries: _Queries
+) -> ProjectCard:
     """Return a project: tasks with commands and options, pins and problems.
 
     Pins carry their state in the index (`ok`, `missing`, `sha256_mismatch`,
-    `unknown`); problems carry fix instructions.
+    `unknown`); problems carry fix instructions. `project_write` says whether
+    the principal may change the project.
     """
-    return project_card(queries, project, visible=visible)
+    return project_card(queries, project, visible=visible, writable=writable)
 
 
 @router.get(
@@ -342,6 +365,7 @@ def add_project_task(
     principal: _Principal,
     decisions: _Authorizer,
     visible: _Visible,
+    writable: _Writable,
     registry: _Registry,
     settings: _Settings,
     queries: _Queries,
@@ -376,7 +400,7 @@ def add_project_task(
         actor=principal,
         visible=visible,
     )
-    return project_card(queries, key, visible=visible)
+    return project_card(queries, key, visible=visible, writable=writable)
 
 
 @router.delete(
@@ -393,6 +417,7 @@ def remove_project_task(
     principal: _Principal,
     decisions: _Authorizer,
     visible: _Visible,
+    writable: _Writable,
     registry: _Registry,
     settings: _Settings,
     queries: _Queries,
@@ -418,7 +443,7 @@ def remove_project_task(
         actor=principal,
         visible=visible,
     )
-    return project_card(queries, key, visible=visible)
+    return project_card(queries, key, visible=visible, writable=writable)
 
 
 @job_router.post(

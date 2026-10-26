@@ -25,7 +25,7 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from archiwista.areas import area_crs
-from archiwista.auth import PrincipalKind
+from archiwista.auth import PrincipalKind, WritableProjects
 from archiwista.config import (
     AppSettings,
     BasemapConfig,
@@ -318,7 +318,14 @@ _PROJECT_EXAMPLE = {
     "tasks": 2,
     "pins": 14,
     "missing_pins": 0,
+    "project_write": True,
 }
+_PROJECT_WRITE = (
+    "Whether the session's principal may change the project now (`project.write`:"
+    " its owner or an administrator), read at each request: add and remove its"
+    " tasks, and download and repin it with `store_write` of `GET /session`."
+    " Without it those requests are `403 permission_denied`."
+)
 _ISSUE_EXAMPLE = {
     "code": "missing_sidecar",
     "message": message(
@@ -2356,10 +2363,11 @@ class ProjectItem(BaseModel):
     tasks: int
     pins: int
     missing_pins: int = Field(description="Pins missing from the store or other.")
+    project_write: bool = Field(description=_PROJECT_WRITE)
 
     @classmethod
-    def of(cls, project: ProjectRef) -> Self:
-        """Return the model of a listed project."""
+    def of(cls, project: ProjectRef, *, writable: WritableProjects) -> Self:
+        """Return the model of a listed project (``writable``: ``project.write``)."""
         return cls(
             project=project.key,
             name=project.name,
@@ -2371,6 +2379,7 @@ class ProjectItem(BaseModel):
             tasks=project.tasks,
             pins=project.pins,
             missing_pins=project.missing_pins,
+            project_write=writable(project.access_key),
         )
 
 
@@ -2404,8 +2413,10 @@ class StoreDetail(BaseModel):
     problems: list[Issue]
 
     @classmethod
-    def of(cls, summary: StoreSummary, store: StoreConfig) -> Self:
-        """Return the model of a store's summary."""
+    def of(
+        cls, summary: StoreSummary, store: StoreConfig, *, writable: WritableProjects
+    ) -> Self:
+        """Return the model of a store's summary (``writable``: ``project.write``)."""
         return cls(
             store=summary.store,
             name=summary.name,
@@ -2414,7 +2425,10 @@ class StoreDetail(BaseModel):
             state=StoreState.of(summary.state),
             usage=Usage.of(summary.usage),
             unused=Unused.of(summary.unused),
-            projects=[ProjectItem.of(project) for project in summary.projects],
+            projects=[
+                ProjectItem.of(project, writable=writable)
+                for project in summary.projects
+            ],
             problems=[Issue.of(problem) for problem in summary.problems],
         )
 
@@ -2638,6 +2652,7 @@ class ProjectCard(IndexAnswer):
     )
     scanned_at: datetime
     missing_pins: int = Field(description="Pins missing from the store or other.")
+    project_write: bool = Field(description=_PROJECT_WRITE)
     tasks: list[ProjectTask] = Field(description="Tasks in manifest order.")
     pins: list[ProjectPin] = Field(description="Pinned versions, older ones too.")
     problems: list[Issue] = Field(
@@ -2645,8 +2660,14 @@ class ProjectCard(IndexAnswer):
     )
 
     @classmethod
-    def of(cls, detail: ProjectDetail, freshness: dict[str, Any]) -> Self:
-        """Return the model of a project's detail."""
+    def of(
+        cls,
+        detail: ProjectDetail,
+        freshness: dict[str, Any],
+        *,
+        writable: WritableProjects,
+    ) -> Self:
+        """Return the model of a project's detail (``writable``: ``project.write``)."""
         project = detail.project
         return cls(
             project=project.key,
@@ -2657,6 +2678,7 @@ class ProjectCard(IndexAnswer):
             problem=project.problem,
             scanned_at=project.scanned_at,
             missing_pins=project.missing_pins,
+            project_write=writable(project.access_key),
             tasks=[ProjectTask.of(task) for task in detail.tasks],
             pins=[ProjectPin.of(pin) for pin in detail.pins],
             problems=[Issue.of(problem) for problem in detail.problems],

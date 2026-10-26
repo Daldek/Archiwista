@@ -346,6 +346,12 @@ command-line interface may change.
   the project. The setting `preview_warm_after_scan` (off by default) has the scheduler
   warm the versions a store's scan has just indexed, once per scan. (SPEC 5.7, 9.2,
   SPEC 13 v0.3 criterion 8; plan A9)
+- Each project of `GET /projects`, of a store's `GET /stores/{store}` and the card of
+  `GET /projects/{project}` say whether the session may change the project now
+  (`project_write`: its owner or an administrator, read at each request like `roles`):
+  the permission adding and removing tasks and a project's download and repin ask, known
+  to a client before it asks; `archiwista projects` and `project` print it with
+  `--json`. (SPEC 9.2, 10.2; plan A11, A13)
 
 ### Changed
 
