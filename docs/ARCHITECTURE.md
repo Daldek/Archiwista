@@ -1225,17 +1225,17 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`; CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
-| `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView` |
+| `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView`; a view marked `admin` is in the navigation of an `admin` session only |
 | `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`, the downloads (`DownloadsProvider`) with the plan windows, the list and the toasts over the views; with no store in the settings it opens the wizard; in team mode the `AccountMenu` (the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Wyloguj") instead of the session chip |
 | `downloads.js` | the session's downloads in the background (ADR-043): a store outside Preact in one context (each reader subscribes), an event stream for each running download and at most two queued ones (the others looked up in `GET /jobs?state=queued` every 2 s), the list kept in `sessionStorage`; `useDownloads`, `useDownloadActions` (`track`, `openPlan`, `cancel`), `useDownloadEnd`, the top bar's `DownloadsIndicator`, `DownloadsPanel`, `DownloadToasts` and `PlanWindows` (the plan windows hosted by the shell) |
 | `context.js` | `AppContext`, `useApp`, `useAppState`: session, settings, `/health` every 2 s during a scan or with a waiting store, otherwise every 15 s |
 | `banner.js` | `IndexBanner`: state of the index and the stores (a download of the session is left to the top bar) |
 | `setup.js` | first-run wizard and the "Ustawienia" (Settings) view (`PUT /settings`) |
-| `ui.js` | Preact and htm in one import (`html`), `Icon`, `Seg`, `CopyButton`, `Tech`, `ProblemView`, `Spinner`, `loadStylesheet` |
+| `ui.js` | Preact and htm in one import (`html`), `Icon`, `Seg`, `CopyButton`, `Tech`, `ProblemView`, `Spinner`, `Modal` (a `<dialog>` opened with `showModal`), `loadStylesheet` |
 | `panels.js`, `hooks.js`, `format.js` | panel layout (`ViewLayout`, `Resizer`, `usePanelWidths`), `useResource`, `useMedia`, Polish formats (`day`, `stamp`, `int`, `size`, `plural`, `count`) |
 | `search.js` | `SearchButton`, shortcuts `Ctrl+K` and `/`, `SLOT_PARAMS` (the `/slots` parameters in the address) |
 | `maplibre.js` | `loadMapLibre`, `GLYPHS`, `GLYPH_FONT` |
-| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down) |
+| `views/` | `map.js` (start), `catalog.js` with `catalog-grid.js` (draws only rows near the viewport) and `catalog-filters.js`, `file.js` (file card — overlay), `projects.js`, `store.js`, `plan.js` (the plan window, opened by `openPlan`), shared `cards.js` (`IssueList`, `useJob` and `JobStatus` for SSE, `downloadSummary` and `projectSummary`, `FileLink`, `CopyAction`), `login.js` (team mode: `SignIn`, `TemporaryPassword`, `PasswordChange`; the wait of a `429` counted down), `accounts.js` ("Konta" of administrators: the list of `GET /users` and an account's card) |
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `labels/` | text dictionary (below) |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |
@@ -1244,7 +1244,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 
 **View registration.** A view is one line in `VIEWS` (`id` = the `view`
 parameter and the name key in `labels/shell.js` `nav`, `icon`, `load` = dynamic
-import of the module, optionally `start`, `bottom`), an overlay is a line in
+import of the module, optionally `start`, `bottom`, `admin`), an overlay is a line in
 `OVERLAYS` (`param`, `load`). The module exports by default a component
 receiving `route` (an overlay also `value` and `onClose`); it keeps its texts
 in `labels/<view>.js` and loads its style through `loadStylesheet`. Nothing else

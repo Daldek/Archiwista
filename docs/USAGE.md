@@ -53,10 +53,11 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 
 - **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
   Projects ("Projekty"), Store ("Magazyn") and, at the bottom, Settings
-  ("Ustawienia"), the same form as the wizard. Saving the settings replaces
-  all of them at once; a new or moved store is scanned from scratch.
+  ("Ustawienia"), the same form as the wizard, and for an administrator
+  Accounts ("Konta", see "Team server"). Saving the settings replaces all of
+  them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
-  in every view) and the current session.
+  in every view) and the current session (on a team server the account menu).
 - **The index status bar** under the top bar reports a scan in progress, a
   failed scan and an unavailable store (for example a disconnected share); the
   views then show the state of the index with its time, which does not prove
@@ -442,8 +443,8 @@ server {
 }
 ```
 
-**The first administrator and passwords.** Accounts are created at the server's
-terminal, never on a page of the network: `archiwista users add anna.nowak --name
+**The first administrator and passwords.** The first administrator is created at the
+server's terminal, never on a page of the network: `archiwista users add anna.nowak --name
 "Anna Nowak" --role admin`, then `archiwista users password anna.nowak` (typed twice
 and not shown; `--stdin` reads one line, for a script). A password has 12 to 1,024
 characters of any kind; it may not be the account's identifier or name, nor one of
@@ -457,6 +458,19 @@ at the first sign-in. Setting a password ends every session of the account.
 (it acts nowhere and its sessions end) and `users enable ID` on again. The last
 enabled administrator cannot be disabled, removed or lose the role (`last_admin`):
 give another account the role `admin` first.
+
+**Accounts in the browser.** An administrator manages the accounts in "Konta"
+(accounts), at the bottom of the navigation, which nobody else sees (its routes answer
+`403`). The list shows each account's roles, groups, password (`brak`, `ustawione`,
+`tymczasowe` with its end, or expired) and state. "Nowe konto" creates an account and
+opens its card, where "Ustaw hasło tymczasowe" shows the generated password once, with
+its end and the copy button; give it to the person, who changes it at the first
+sign-in. The card also saves the roles (they count from the person's next request),
+"Zakończ sesje" ends every session of the account and its agents, "Wyłącz" and "Włącz"
+switch it off and on, and "Usuń…" removes it after a confirmation. A refusal, such as
+that of the last administrator, shows at its control.
+
+![Accounts with a temporary password](reports/v0.4-screenshots/04-konta.webp)
 
 **The sign-in page.** In the browser a team server opens "Logowanie" (sign-in): the
 account ("Konto") and its password ("Hasło"; "Pokaż" shows what was typed), which the

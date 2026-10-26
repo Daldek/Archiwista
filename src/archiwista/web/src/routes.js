@@ -10,8 +10,9 @@
  * with `route` (router.js `Route`); `start: true` — the view opened without
  * `view=`; `bottom: true` — placed at the bottom of the navigation; `nav:
  * false` — not in the navigation, opened from another view (e.g. the
- * comparison by „Porównaj z…”). The order of the lines is the order of the
- * navigation.
+ * comparison by „Porównaj z…”); `admin: true` — in the navigation of a
+ * session with the role `admin` only (its routes refuse anyone else). The
+ * order of the lines is the order of the navigation.
  *
  * An overlay: `param` — the address parameter opening it (`?view=map&file=…`);
  * `load` — imports the module whose default export is rendered with `route`,
@@ -30,6 +31,7 @@
  * @property {boolean} [start]
  * @property {boolean} [bottom]
  * @property {boolean} [nav]
+ * @property {boolean} [admin]
  */
 
 /**
@@ -46,6 +48,7 @@ export const VIEWS = [
   { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
+  { id: "accounts", icon: "user", bottom: true, admin: true, load: () => import("./views/accounts.js") },
 ];
 
 /** @type {OverlayRoute[]} */

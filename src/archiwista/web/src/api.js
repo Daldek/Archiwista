@@ -37,6 +37,9 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").SessionMethods} SessionMethods */
 /** @typedef {import("./types.js").OneTimeToken} OneTimeToken */
 /** @typedef {import("./types.js").SessionList} SessionList */
+/** @typedef {import("./types.js").User} User */
+/** @typedef {import("./types.js").UserList} UserList */
+/** @typedef {import("./types.js").TemporaryPassword} TemporaryPassword */
 /** @typedef {import("./types.js").Health} Health */
 /** @typedef {import("./types.js").SourceList} SourceList */
 /** @typedef {import("./types.js").StoreList} StoreList */
@@ -1201,6 +1204,76 @@ export function startJob(body) {
  */
 export function getJobPlan(job, { signal } = {}) {
   return request("GET", `/jobs/${one(job)}/plan`, { signal });
+}
+
+// Accounts (v0.4, step T6) ------------------------------------------------------
+
+/**
+ * Every account with its roles, groups and the state of its password
+ * (`list_users`; `admin`).
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<UserList>}
+ */
+export function listUsers({ signal } = {}) {
+  return request("GET", "/users", { signal });
+}
+
+/**
+ * Create an account (`add_user`; `admin`).
+ *
+ * @param {{id: string, name?: string, roles: string[]}} account
+ * @returns {Promise<User>}
+ * @throws {ApiError} `409 conflict` (the id is taken), `422 validation_error`.
+ */
+export function addUser(account) {
+  return request("POST", "/users", { json: account });
+}
+
+/**
+ * Change an account's name, roles or whether it is disabled (`update_user`).
+ *
+ * @param {string} id
+ * @param {{name?: string, roles?: string[], disabled?: boolean}} change - The
+ *   complete new roles; omitted fields stay.
+ * @returns {Promise<User>}
+ * @throws {ApiError} `409 conflict` (`last_admin`: the last enabled
+ *   administrator of a team).
+ */
+export function updateUser(id, change) {
+  return request("PATCH", `/users/${one(id)}`, { json: change });
+}
+
+/**
+ * Delete an account (`remove_user`).
+ *
+ * @param {string} id
+ * @returns {Promise<null>}
+ * @throws {ApiError} `409 conflict` (`last_admin`).
+ */
+export function removeUser(id) {
+  return request("DELETE", `/users/${one(id)}`);
+}
+
+/**
+ * Give an account a temporary password the server generates, answered this
+ * once (`set_temporary_password`); the account's sessions end.
+ *
+ * @param {string} id
+ * @returns {Promise<TemporaryPassword>}
+ */
+export function temporaryPassword(id) {
+  return request("POST", `/users/${one(id)}/password`);
+}
+
+/**
+ * End every session of an account and of its agents (`end_user_sessions`).
+ *
+ * @param {string} id
+ * @returns {Promise<null>}
+ */
+export function endUserSessions(id) {
+  return request("DELETE", `/users/${one(id)}/sessions`);
 }
 
 // Helpers ---------------------------------------------------------------------

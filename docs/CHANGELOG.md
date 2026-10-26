@@ -118,6 +118,14 @@ command-line interface may change.
   keeps the session chip. A request refused because a new session replaced its token
   meanwhile (a password change, a sign-in in another tab) no longer ends the page's
   session.
+- "Konta" (accounts) for administrators (v0.4, ADR-046), at the bottom of the
+  navigation of a session with the role `admin` only: every account with its roles,
+  groups, password state and its end, and state; "Nowe konto" (`POST /users`) opens
+  the new account's card, which offers the temporary password first (`POST
+  /users/{user_id}/password`, shown once with its end and a copy button). The card
+  saves the roles, ends the sessions (`DELETE /users/{user_id}/sessions`), disables
+  and enables the account and removes it after a confirmation; `409 last_admin` shows
+  at its control. In local mode the passwords and sessions are left out.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling

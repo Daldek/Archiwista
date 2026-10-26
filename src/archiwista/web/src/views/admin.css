@@ -1,0 +1,30 @@
+/* The administrators' views „Konta” and „Grupy” (views/accounts.js, views/groups.js;
+   SPEC 6.5 p and q). Tables, fields and modal windows come from styles.css. */
+
+.admin-page { max-width: 1120px; display: grid; gap: 12px; align-content: start; }
+.admin-page .hint { margin: 0; }
+.admin-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.admin-head h1 { font-size: 20px; margin-right: auto; }
+.admin-search { height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff; min-width: 220px; }
+.admin-search:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px #eef2ff; outline: none; }
+.admin-table td { overflow-wrap: anywhere; }
+.admin-table tr.admin-off td { color: var(--text-3); }
+.admin-manage { width: 1%; white-space: nowrap; text-align: right; }
+
+.admin-form { display: grid; gap: 12px; }
+.admin-form .field { margin: 0; }
+.admin-section { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.admin-section h3 { font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.admin-section h3 .muted { font-weight: 400; font-size: 12px; }
+.admin-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.admin-roles { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.admin-roles legend { font-weight: 600; font-size: 13px; padding: 0; margin-bottom: 6px; }
+.admin-roles .check-field { font-weight: 400; }
+.admin-note { padding: 7px 9px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; }
+.admin-note.warn { background: var(--bad-bg); color: var(--bad-ink); }
+.admin-secret { display: grid; gap: 6px; padding: 10px; border: 1px solid #c7d2fe; border-radius: 10px; background: var(--accent-soft); }
+.admin-secret-value { display: flex; align-items: center; gap: 6px; background: #0f172a; border-radius: 8px; padding: 8px 10px; }
+.admin-secret-value code { flex: 1; min-width: 0; color: #e2e8f0; font-size: 14px; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.admin-secret-value .copy-btn { color: #cbd5e1; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn.danger:hover:not(:disabled) { background: var(--bad-ink); }

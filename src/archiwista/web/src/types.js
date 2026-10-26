@@ -85,6 +85,39 @@
  * @property {SessionItem[]} items
  */
 
+// Accounts and groups (v0.4) -----------------------------------------------------
+
+/**
+ * An account of a person, with the state of its password (never the hash).
+ *
+ * @typedef {object} User
+ * @property {string} id - Stable id; the actor of the person's changes.
+ * @property {string} name - Display name.
+ * @property {Array<"admin"|"store_writer">} roles
+ * @property {string[]} groups - Groups the person belongs to.
+ * @property {boolean} disabled - A disabled account acts nowhere.
+ * @property {string} created_at
+ * @property {string} updated_at
+ * @property {"none"|"set"|"temporary"|"expired"} password - `temporary`: set
+ *   by an administrator, changed at the next sign-in; `expired`: past its end.
+ * @property {string|null} password_expires_at - The end of a temporary password.
+ */
+
+/**
+ * Every account, ordered by id (`GET /users`).
+ *
+ * @typedef {object} UserList
+ * @property {User[]} items
+ */
+
+/**
+ * A temporary password the server generated, answered this once.
+ *
+ * @typedef {object} TemporaryPassword
+ * @property {string} password - Shown only in this answer.
+ * @property {string} expires_at - Its end, 72 hours after it was set.
+ */
+
 // Problems -------------------------------------------------------------------
 
 /**

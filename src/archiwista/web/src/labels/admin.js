@@ -1,0 +1,79 @@
+/**
+ * Texts of the administrators' views (docs/SPEC.md 6.5 p and q, ADR-046):
+ * „Konta” (views/accounts.js) — the accounts with their roles, groups and
+ * passwords, a new account, a temporary password shown once, ending the
+ * sessions, disabling and removing an account.
+ */
+
+import { account } from "./account.js";
+
+export const admin = {
+  roles: account.menu.roles,
+  accounts: {
+    title: "Konta",
+    intro:
+      "Konta osób tego serwera. Hasło tymczasowe nadaje serwer i pokazuje je tylko raz; nadanie go kończy sesje konta.",
+    add: "Nowe konto",
+    search: "Szukaj konta",
+    columns: {
+      id: "Konto",
+      name: "Nazwa",
+      roles: "Role",
+      groups: "Grupy",
+      password: "Hasło",
+      state: "Stan",
+    },
+    manage: "Zarządzaj",
+    manage_label: "Zarządzaj kontem {id}",
+    none: "—",
+    no_match: "Żadne konto nie pasuje do „{query}”.",
+    loading: "Wczytywanie kont…",
+    password: {
+      none: "brak",
+      set: "ustawione",
+      temporary: "tymczasowe · do {date}",
+      expired: "tymczasowe wygasło {date}",
+    },
+    state: { enabled: "aktywne", disabled: "wyłączone" },
+  },
+  account: {
+    title: "Konto · {id}",
+    roles: "Role",
+    save_roles: "Zapisz role",
+    roles_saved: "Role zapisane: działają od następnego żądania tej osoby.",
+    password: "Hasło",
+    temporary: "Hasło tymczasowe…",
+    temporary_hint:
+      "Serwer wygeneruje hasło ważne 72 godziny; osoba zmieni je przy pierwszym logowaniu, a jej sesje zakończą się teraz.",
+    temporary_set: "Ustaw hasło tymczasowe",
+    temporary_title: "Hasło tymczasowe · {id} (widoczne tylko teraz)",
+    temporary_copy: "hasło tymczasowe konta {id}",
+    temporary_until:
+      "Ważne do {time}; przy pierwszym logowaniu trzeba je zmienić; sesje konta {id} zostały zakończone.",
+    sessions: "Sesje",
+    end_sessions: "Zakończ sesje",
+    sessions_hint: "Kończy każdą sesję konta i jego agentów; osoba zaloguje się ponownie.",
+    sessions_ended: "Sesje konta {id} i jego agentów zakończono.",
+    state: "Stan",
+    disable: "Wyłącz",
+    enable: "Włącz",
+    disable_hint: "Wyłączone konto nigdzie nie działa, a jego sesje kończą się od razu.",
+    remove: "Usuń…",
+    remove_confirm:
+      "Usunąć konto {id}? Znika z grup i z udostępnień projektów; jego projekty zostają bez właściciela.",
+    remove_yes: "Usuń konto",
+    cancel: "Anuluj",
+    close: "Zamknij",
+  },
+  new_account: {
+    title: "Nowe konto",
+    id: "Konto",
+    id_hint: "Małe litery, cyfry, „.”, „_” i „-”, najwyżej 64 znaki, np. kasia.wrona.",
+    name: "Nazwa",
+    name_hint: "Imię i nazwisko; bez niej nazwą jest konto.",
+    roles: "Role",
+    submit: "Utwórz konto",
+    created:
+      "Konto {id} utworzone. Nadaj mu hasło tymczasowe, aby osoba mogła się zalogować.",
+  },
+};

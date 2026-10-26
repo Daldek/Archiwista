@@ -30,6 +30,7 @@ import {
   html,
   Icon,
   Logo,
+  Modal,
   ProblemView,
   Spinner,
   Tech,
@@ -261,28 +262,6 @@ function accountFacts(session) {
   return facts.join(" · ");
 }
 
-/** A modal window of the account menu; `Esc` closes it, not what is under it. */
-function AccountDialog({ label, onClose, children }) {
-  const dialog = useRef(null);
-  useEffect(() => {
-    const element = dialog.current;
-    element.showModal();
-    return () => {
-      if (element.open) element.close();
-    };
-  }, []);
-  return html`<dialog class="account-dialog" ref=${dialog} aria-label=${label}
-    onCancel=${(event) => {
-      event.preventDefault();
-      onClose();
-    }}
-    onKeyDown=${(event) => {
-      if (event.key === "Escape") event.stopPropagation();
-    }}>
-    <div class="account-dialog-body">${children}</div>
-  </dialog>`;
-}
-
 /** „Zmień hasło…”: the change of the session's password, then its outcome. */
 function PasswordDialog({ session, onChanged, onClose }) {
   const [done, setDone] = useState(false);
@@ -290,14 +269,14 @@ function PasswordDialog({ session, onChanged, onClose }) {
     setDone(true);
     onChanged(started);
   };
-  return html`<${AccountDialog} label=${A.change.title} onClose=${onClose}>
+  return html`<${Modal} label=${A.change.title} onClose=${onClose}>
     ${done
       ? html`<p role="status">${A.change.done}</p>
-          <div class="account-dialog-actions">
+          <div class="modal-actions">
             <button type="button" class="btn primary" onClick=${onClose}>${A.sessions.close}</button>
           </div>`
       : html`<${PasswordChange} session=${session} onChanged=${changed} onCancel=${onClose} />`}
-  </${AccountDialog}>`;
+  </${Modal}>`;
 }
 
 /** „Sesje…”: the live sessions of the account and its agents, each one ended at once. */
@@ -330,7 +309,7 @@ function SessionsDialog({ session, onClose }) {
   };
   const others = (items ?? []).filter((item) => !item.current).map((item) => item.label);
   const title = t(A.sessions.title, { account: session.actor });
-  return html`<${AccountDialog} label=${title} onClose=${onClose}>
+  return html`<${Modal} label=${title} onClose=${onClose}>
     <h2>${title}</h2>
     ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
     ${items === null && problem === null ? html`<${Spinner} label=${A.sessions.loading} />` : null}
@@ -342,12 +321,12 @@ function SessionsDialog({ session, onClose }) {
           )}
         </ul>`
       : null}
-    <div class="account-dialog-actions">
+    <div class="modal-actions">
       <button type="button" class="btn" disabled=${busy || others.length === 0} onClick=${() => end(others)}>
         ${A.sessions.end_others}</button>
       <button type="button" class="btn primary" onClick=${onClose}>${A.sessions.close}</button>
     </div>
-  </${AccountDialog}>`;
+  </${Modal}>`;
 }
 
 /**
@@ -396,7 +375,7 @@ function TokenDialog({ session, onClose }) {
     }
     setBusy(false);
   };
-  return html`<${AccountDialog} label=${A.token.title} onClose=${onClose}>
+  return html`<${Modal} label=${A.token.title} onClose=${onClose}>
     <h2>${A.token.title}</h2>
     <p>${t(A.token.intro, { account: session.actor })}</p>
     ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
@@ -406,13 +385,13 @@ function TokenDialog({ session, onClose }) {
           </div>
           <p class="field-hint">${t(A.token.shown_once, { time: stamp(issued.expires_at), label: issued.label })}</p>`
       : null}
-    <div class="account-dialog-actions">
+    <div class="modal-actions">
       ${issued
         ? null
         : html`<button type="button" class="btn primary" disabled=${busy} onClick=${issue}>${A.token.issue}</button>`}
       <button type="button" class="btn" onClick=${onClose}>${A.token.close}</button>
     </div>
-  </${AccountDialog}>`;
+  </${Modal}>`;
 }
 
 /** A read the account menu does not need: aborted, or refused (the session lost). */
@@ -421,8 +400,11 @@ function ignore() {
 }
 
 function Navigation({ current }) {
+  const { session } = useApp();
+  const admin = session.roles.includes("admin");
+  const shown = (view, bottom) => view.nav !== false && Boolean(view.bottom) === bottom && (admin || !view.admin);
   const items = (bottom) =>
-    VIEWS.filter((view) => view.nav !== false && Boolean(view.bottom) === bottom).map(
+    VIEWS.filter((view) => shown(view, bottom)).map(
       (view) => html`<${Link} key=${view.id} view=${view.id}
         class=${view.id === current ? "rail-item active" : "rail-item"}
         aria-current=${view.id === current ? "page" : null}>

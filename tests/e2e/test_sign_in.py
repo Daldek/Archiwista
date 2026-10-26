@@ -11,17 +11,27 @@ ending the other browsers' sessions, „Wyloguj”. With
 (``docs/reports/v0.4-screenshots/``).
 """
 
-import os
 import re
 from collections.abc import Callable
-from pathlib import Path
 
-from playwright.sync_api import Page, Response, expect
+from playwright.sync_api import Page, expect
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.throttle import FREE_FAILURES
 from archiwista.state import StateStore
 from tests.fixtures.browser import Tab
+from tests.fixtures.team_pages import (
+    LOST,
+    answered,
+    come_back,
+    expect_shell,
+    fill_sign_in,
+    open_sign_in,
+    read_session,
+    shot,
+    sign_in,
+)
+from tests.fixtures.team_pages import signed_in as person_signed_in
 from tests.fixtures.team_server import TeamServed, add_person
 
 TeamServe = Callable[..., TeamServed]
@@ -32,73 +42,16 @@ KASIA_PASSWORD = "wiosla-na-Dunajcu-7"
 WRONG_PASSWORD = "zle-haslo-kasi-123"
 NEW_PASSWORD = "szum-Sanu-pod-Lesko"
 PROXY_HEADER = "X-Remote-User"
-SCREENSHOTS = "ARCHIWISTA_SCREENSHOTS"
-LOGIN = "POST /api/v1/session/login"
 PASSWORD = "PUT /api/v1/session/password"
 SIGN_OUT = "DELETE /api/v1/session"
 REFUSED = "Nieprawidłowe konto albo hasło."
-LOST = "Sesja wygasła albo została zakończona. Zaloguj się ponownie."
 WAITING = re.compile(r"^Zbyt wiele nieudanych prób: spróbuj ponownie za \d+ s\.$")
 MENU = "#account-panel"
-# The session of the page as the API tells it, read with the tab's CSRF token.
-READ_SESSION = """async () => {
-  const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
-  return (await fetch("/api/v1/session", { headers })).json();
-}"""
-# A person coming back to the tab: the shell asks the server at once.
-COME_BACK = "document.dispatchEvent(new Event('visibilitychange'))"
-
-
-def shot(page: Page, name: str) -> None:
-    """Keep a Chromium screenshot when ``ARCHIWISTA_SCREENSHOTS`` is set."""
-    directory = os.environ.get(SCREENSHOTS)
-    browser = page.context.browser
-    if directory and browser is not None and browser.browser_type.name == "chromium":
-        Path(directory).mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(Path(directory) / f"{name}.png"))
-
-
-def open_sign_in(page: Page, origin: str) -> None:
-    """Open the team server and wait for its sign-in page."""
-    page.goto(f"{origin}/")
-    expect(page.get_by_role("heading", name="Logowanie")).to_be_visible()
-
-
-def fill_sign_in(page: Page, account: str, password: str) -> None:
-    """Type an account and a password into the sign-in page."""
-    page.get_by_label("Konto").fill(account)
-    page.get_by_label("Hasło", exact=True).fill(password)
-
-
-def answered(page: Page, request: str, press: Callable[[], None]) -> int:
-    """Press something that sends ``request`` (``"PUT /path"``); return its status."""
-    method, path = request.split(" ")
-
-    def matches(response: Response) -> bool:
-        return response.request.method == method and response.url.endswith(path)
-
-    with page.expect_response(matches) as answer:
-        press()
-    return answer.value.status
-
-
-def sign_in(page: Page) -> int:
-    """Press „Zaloguj”; return the status of the sign-in's answer."""
-    button = page.get_by_role("button", name="Zaloguj", exact=True)
-    return answered(page, LOGIN, button.click)
-
-
-def expect_shell(page: Page) -> None:
-    """Wait for the shell of a started session."""
-    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
 
 
 def signed_in(page: Page, origin: str) -> None:
     """Sign in as kasia and wait for the shell."""
-    open_sign_in(page, origin)
-    fill_sign_in(page, KASIA, KASIA_PASSWORD)
-    sign_in(page)
-    expect_shell(page)
+    person_signed_in(page, origin, KASIA, KASIA_PASSWORD)
 
 
 def test_a_person_signs_in_and_every_refusal_has_one_message(
@@ -127,7 +80,7 @@ def test_a_person_signs_in_and_every_refusal_has_one_message(
     signed_in = sign_in(page)
     expect_shell(page)
     cookies = {cookie["name"]: cookie for cookie in page.context.cookies()}
-    state = page.evaluate(READ_SESSION)
+    state = read_session(page)
 
     assert (wrong, unknown, signed_in) == (401, 401, 200)
     expect(page.get_by_role("heading", name="Logowanie")).to_have_count(0)
@@ -211,7 +164,7 @@ def test_a_temporary_password_is_changed_before_the_shell_opens(
     current.fill(KASIA_PASSWORD)
     changed = answered(page, PASSWORD, change.click)
     expect_shell(page)
-    state = page.evaluate(READ_SESSION)
+    state = read_session(page)
 
     assert (signed_in, short, wrong, changed) == (200, 400, 403, 200)
     assert state["password_change_required"] is False
@@ -230,7 +183,7 @@ def test_a_session_ended_elsewhere_leads_back_to_the_sign_in(
     signed_in(page, served.origin)
 
     StateStore(served.paths.state_file).revoke_sessions(KASIA, actor=LOCAL_OWNER)
-    page.evaluate(COME_BACK)
+    come_back(page)
     expect(page.get_by_role("heading", name="Logowanie")).to_be_visible()
     expect(page.get_by_text(LOST)).to_be_visible()
     fill_sign_in(page, KASIA, KASIA_PASSWORD)
@@ -257,7 +210,7 @@ def test_the_company_sign_in_through_a_trusted_proxy(
     expect(plain.page.get_by_role("button", name=company)).to_have_count(0)
     proxied.page.get_by_role("button", name=company).click()
     expect_shell(proxied.page)
-    state = proxied.page.evaluate(READ_SESSION)
+    state = read_session(proxied.page)
     proxied.page.get_by_role("button", name="Konto: kasia").click()
     menu = proxied.page.locator(MENU)
 
@@ -339,7 +292,7 @@ def test_sessions_and_a_password_change_end_another_browsers_session(
     rows.last.get_by_role("button", name=re.compile(r"^Zakończ sesję ")).click()
     expect(rows).to_have_count(1)
     sessions.get_by_role("button", name="Zamknij").click()
-    second.page.evaluate(COME_BACK)
+    come_back(second.page)
     expect(second.page.get_by_text(LOST)).to_be_visible()
     fill_sign_in(second.page, KASIA, KASIA_PASSWORD)
     sign_in(second.page)
@@ -356,10 +309,10 @@ def test_sessions_and_a_password_change_end_another_browsers_session(
         "Hasło zostało zmienione; pozostałe sesje tego konta i jego agentów zakończono."
     )
     change.get_by_role("button", name="Zamknij").click()
-    second.page.evaluate(COME_BACK)
+    come_back(second.page)
     expect(second.page.get_by_text(LOST)).to_be_visible()
-    page.evaluate(COME_BACK)
-    state = page.evaluate(READ_SESSION)
+    come_back(page)
+    state = read_session(page)
 
     assert changed == 200
     assert state["actor"] == KASIA

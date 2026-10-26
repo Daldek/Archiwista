@@ -1,6 +1,7 @@
 /**
  * Shared interface pieces: Preact and htm in one import, icons, the
- * technical-value toggle, problems, progress and stylesheets of views.
+ * technical-value toggle, problems, progress, modal windows and stylesheets
+ * of views.
  *
  * Views import everything from here (`import { html, useState } from
  * "../ui.js"`), not from `vendor/`, so library paths and versions live in one
@@ -10,7 +11,7 @@
 
 import htm from "../vendor/htm/htm.mjs";
 import { h } from "../vendor/preact/preact.mjs";
-import { useState } from "../vendor/preact/hooks.mjs";
+import { useEffect, useRef, useState } from "../vendor/preact/hooks.mjs";
 import { T, t } from "./labels/index.js";
 
 export {
@@ -66,6 +67,8 @@ const ICONS = {
   database: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Zm0 0v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
   fan: "M10 3h9v4h-9zM4 9h13v6H4zM10 17h9v4h-9z",
   chart: "M4 20V4m0 16h16M8 16v-4m4 4V8m4 8v-6",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
+  users: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0m0-16.9a4 4 0 0 1 0 7.8M22 20a7 7 0 0 0-4-6.3",
 };
 
 /**
@@ -226,6 +229,34 @@ export function Spinner({ label = T.common.loading, quiet }) {
     <span class="spinner" aria-hidden="true"></span>
     <span class=${quiet ? "visually-hidden" : ""}>${label}</span>
   </span>`;
+}
+
+/**
+ * A modal window (`<dialog>` opened with `showModal`): `Esc` and the
+ * window's `cancel` call `onClose`, and `Esc` reaches nothing under it.
+ *
+ * @param {{label: string, onClose: () => void, children: *}} props - `label`
+ *   names the window for screen readers.
+ */
+export function Modal({ label, onClose, children }) {
+  const dialog = useRef(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element.showModal();
+    return () => {
+      if (element.open) element.close();
+    };
+  }, []);
+  return html`<dialog class="modal" ref=${dialog} aria-label=${label}
+    onCancel=${(event) => {
+      event.preventDefault();
+      onClose();
+    }}
+    onKeyDown=${(event) => {
+      if (event.key === "Escape") event.stopPropagation();
+    }}>
+    <div class="modal-body">${children}</div>
+  </dialog>`;
 }
 
 const sheets = new Map();
