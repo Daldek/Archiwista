@@ -21,7 +21,9 @@ version itself (``SourceEntry.version_path``); the scanner never confirms
 links, which is an on-demand job. A producer without links (its slots carry
 its own key) names the current version of a slot itself
 (``CurrentVersionAdapter``): the pass asks for the slots it touched when it
-finishes.
+finishes. After a pass over the whole store, the stations of each provider's
+station catalog (``StationCatalogAdapter``) are read again when the current
+version of the catalog changed.
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -64,6 +66,7 @@ from archiwista.index.types import (
     BatchResult,
     CurrentVersionLookup,
     IndexStatus,
+    KeyedSlot,
     PassSummary,
 )
 from archiwista.index.writer import IndexWriter
@@ -80,6 +83,7 @@ from archiwista.sources import (
     SourceAdapter,
     SourceEntry,
     SourcePartition,
+    StationCatalogAdapter,
 )
 
 type ScanMode = Literal["incremental", "full"]
@@ -225,7 +229,9 @@ def scan_store(
     is read whole, and the segments its entries named are described at the
     end of the pass. A producer that names the current version of a slot
     itself (``CurrentVersionAdapter``) is asked for the slots the pass touched
-    when it finishes.
+    when it finishes. A producer with station catalogs
+    (``StationCatalogAdapter``) has the stations of each provider's current
+    catalog read after a pass over the whole store, when that version changed.
 
     Parameters
     ----------
@@ -327,6 +333,10 @@ def scan_store(
             if _reachable_segments(adapter, root) == () and writer.holds_entries():
                 raise _empty_store(root)
             finished = writer.finish_pass(current=_current_lookup(adapter, root))
+            if segment is None and isinstance(adapter, StationCatalogAdapter):
+                _index_stations(
+                    adapter, adapter.producer, writer, store, root, full=full, emit=emit
+                )
         except SourceUnavailableError as error:
             writer.abandon_pass()
             writer.set_store_status(store, "unavailable", detail=str(error))
@@ -1012,6 +1022,68 @@ def _current_lookup(adapter: SourceAdapter, root: Path) -> CurrentVersionLookup 
         return producer.current_version(root, key)
 
     return lookup
+
+
+def _index_stations(
+    catalogs: StationCatalogAdapter,
+    producer: str,
+    writer: IndexWriter,
+    store: str,
+    root: Path,
+    *,
+    full: bool,
+    emit: ScanListener,
+) -> None:
+    """Keep each provider's stations those of the current version of its catalog.
+
+    Run after the pass, outside its transaction: a catalog is read only when
+    the current version of its slot is not the one its stations were read from
+    (a full scan reads every catalog again). A provider whose catalog has no
+    slot or no current version anymore has no stations; one whose current
+    version the producer refuses has none either, and the scan says so.
+
+    Raises
+    ------
+    SourceUnavailableError
+        The system cannot read a catalog.
+    """
+    current: dict[str, tuple[KeyedSlot, str]] = {}
+    for slot in writer.keyed_slots(store, producer):
+        provider = catalogs.station_catalog(slot.key)
+        if provider is not None and slot.current is not None:
+            current[provider] = (slot, slot.current)
+    read = writer.station_catalogs(store, producer)
+    for provider in sorted(read.keys() - current.keys()):
+        writer.drop_stations(store, provider)
+    for provider in sorted(current):
+        slot, version = current[provider]
+        known = read.get(provider)
+        unchanged = known is not None and (known.slot, known.version) == (
+            slot.path,
+            version,
+        )
+        if unchanged and not full:
+            continue
+        try:
+            stations = catalogs.read_stations(root, Path(version))
+        except ProducerError as error:
+            writer.drop_stations(store, provider)
+            text = message(
+                "scan.stations_unreadable",
+                provider=provider,
+                path=version,
+                detail=str(error),
+            )
+            emit(ScanNotice("warning", "stations_unreadable", text))
+            continue
+        writer.replace_stations(
+            store,
+            producer,
+            provider,
+            slot=slot.path,
+            version=version,
+            stations=stations,
+        )
 
 
 def _indexed(queries: IndexQueries, store: str) -> bool:

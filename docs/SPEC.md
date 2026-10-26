@@ -711,6 +711,17 @@ Rules common to all producers and products:
   not take its place) and is "nieczytelny" (unreadable) with the problem from
   `iter_store`; a version directory without a sidecar (`missing_sidecar`) is not a
   version and does not change the current version.
+- **The stations of a station catalog** (v0.5, plan 2026-10-25 I4) come from the
+  current version of each provider's catalog (slots `catalog:pl.imgw.stations`,
+  `catalog:cz.chmi.stations`; the capability `StationCatalogAdapter`): after a
+  pass over the whole store the index reads a catalog with `read_catalog` only
+  when its current version is not the one the stations were read from (a full
+  scan reads every catalog again), and replaces the provider's rows and points in
+  one transaction. A station is the store, the provider and the code as text,
+  so the codes of IMGW-PIB and ČHMÚ never collide; a station without a location
+  keeps the catalog's reason (P13). A provider whose catalog has no current
+  version has no stations; a version IMGWTools refuses leaves it none, with the
+  scan notice `stations_unreadable`, and is read again by the next scan.
 - **Triggers:** application start (incremental, if the last one is older than
   15 min), interval (by default 15 min for a share, 5 min for a local
   disk), the "Odśwież" (Refresh) button (store, segment, view), end of a background

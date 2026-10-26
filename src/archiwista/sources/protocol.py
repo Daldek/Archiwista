@@ -3,10 +3,10 @@
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
-version of a slot, their parts, coordinate operations, link confirmation,
-sheet grids, the default store root, the producer's commands with the
-availability at the source, and the changes and runs of a project are
-optional capabilities: a producer without them still satisfies
+version of a slot, station catalogs, their parts, coordinate operations, link
+confirmation, sheet grids, the default store root, the producer's commands
+with the availability at the source, and the changes and runs of a project
+are optional capabilities: a producer without them still satisfies
 ``SourceAdapter``.
 """
 
@@ -36,6 +36,7 @@ from archiwista.sources.types import (
     SourcePartition,
     SourceSegment,
     SourceState,
+    Station,
 )
 
 if TYPE_CHECKING:
@@ -146,6 +147,36 @@ class CurrentVersionAdapter(Protocol):
             The system cannot read the store.
         ProducerError
             The producer rejected the store or the key.
+        """
+        ...
+
+
+@runtime_checkable
+class StationCatalogAdapter(Protocol):
+    """Optional capability: the producer keeps station catalogs in its store.
+
+    A station catalog is a slot with the producer's key (``SourceEntry.slot_key``)
+    whose versions each list the stations of one provider. The index keeps the
+    stations of the current version of each catalog and reads a catalog again
+    only when its current version changed.
+    """
+
+    def station_catalog(self, slot_key: str) -> str | None:
+        """Return the provider whose station catalog a slot is; ``None``: no catalog."""
+        ...
+
+    def read_stations(self, root: Path, version: Path) -> tuple[Station, ...]:
+        """Read every station of a catalog version (relative to the store).
+
+        Stations without a location are included, with the reason.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the version.
+        ProducerError
+            The producer refused the version: it is broken or unlike its
+            sidecar.
         """
         ...
 

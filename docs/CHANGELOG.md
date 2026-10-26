@@ -102,6 +102,18 @@ command-line interface may change.
   index does not know goes to the sources that scan by segment, as it did before. IMGWTools
   reads only its whole directory (its dataset is a label), so a job that names a segment
   it owns fails as `unsupported` before anything is scanned. (SPEC 4.4, ADR 0032)
+- The index keeps the stations of each provider's current station catalog
+  (`SCHEMA_VERSION` 10: an existing index is rebuilt when it is opened and filled by the
+  next full scan): after a scan of the whole store the catalog of IMGW-PIB and the one of
+  ČHMÚ are read (`read_catalog`; the capability `StationCatalogAdapter`) when their
+  current version is not the one the stations came from, and a full scan reads them
+  again. Every station is kept, one without a location with the catalog's reason
+  (`none`, `zero`, `outside_country`) and no point; a located one is a point of the
+  R*Tree `station_points`. A station is its store, provider and code as text, so the
+  codes of the two providers never collide, and a new catalog version replaces the
+  provider's stations at once. A catalog IMGWTools refuses leaves its provider without
+  stations and the scan says so (notice `stations_unreadable`). (SPEC 4.3, 4.4, 4.8.1,
+  ADR 0032)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps

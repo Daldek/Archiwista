@@ -23,4 +23,15 @@ MESSAGES = {
             " skanie. Komunikat producenta: {detail}"
         ),
     ),
+    "stations_unreadable": Text(
+        (
+            "The station catalog of {provider} ({path}) cannot be read; its stations"
+            " are not in the index until a scan reads it. Producer message: {detail}"
+        ),
+        (
+            "Nie można odczytać katalogu stacji {provider} ({path}); jego stacji nie"
+            " ma w indeksie, dopóki skan go nie odczyta. Komunikat producenta:"
+            " {detail}"
+        ),
+    ),
 }

@@ -1,4 +1,4 @@
-"""Write producer entries, footprints, projects, areas and reports to the index.
+"""Write producer entries, footprints, stations, projects, areas and reports.
 
 One ``IndexWriter`` owns one connection and is used by one thread at a time
 (the scanner's write thread, a background job, or the server's view
@@ -12,7 +12,10 @@ an incremental scan of an unchanged store writes nothing. Each
 readers never wait for a pass to end. Only ``finish_pass`` acts on what the
 pass has *not* seen; abandoning a pass (e.g. the store became unavailable)
 changes nothing else. A producer without links names the current version of
-its slots itself: ``finish_pass`` asks it for the slots the pass touched.
+its slots itself: ``finish_pass`` asks it for the slots the pass touched. The
+stations of a provider's station catalog are replaced together, in one
+transaction, by those of the catalog version the scan read
+(``replace_stations``).
 """
 
 import hashlib
@@ -37,6 +40,7 @@ from archiwista.index.types import (
     AreaRecord,
     BatchResult,
     CurrentVersionLookup,
+    KeyedSlot,
     KnownOwnFile,
     ManifestStamp,
     OwnFilesWritten,
@@ -47,6 +51,7 @@ from archiwista.index.types import (
     PassSummary,
     ScanPass,
     SnapshotWrite,
+    StationCatalogRecord,
     StoredPlan,
     StoreStatus,
     own_file_id,
@@ -60,6 +65,7 @@ from archiwista.sources import (
     SourceEntry,
     SourceObservation,
     SourceSegment,
+    Station,
 )
 
 # Columns of a version's metadata, in the order of ``_meta_row``.
@@ -144,6 +150,15 @@ WHERE id = ?
 _UPSERT_SHAPE = """
 INSERT INTO version_shapes (version_id, wgs84, native) VALUES (?, ?, ?)
 ON CONFLICT (version_id) DO UPDATE SET wgs84 = excluded.wgs84, native = excluded.native
+"""
+# A code met again in one catalog keeps its first row.
+_INSERT_STATION = """
+INSERT INTO stations (
+    store_id, provider, code, kind, meteo_kind, name, river, hydrographic_code,
+    river_order, location, location_reason, location_source, location_uncertainty_m,
+    lon, lat, active, established_year, gauge_zero_m, river_km, elevation_m
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (store_id, provider, code) DO NOTHING
 """
 _IDS = "SELECT value FROM json_each(?)"
 
@@ -1016,6 +1031,150 @@ class IndexWriter:
                 if version is not None:
                     version.location, version.reason = location_kind, reason
         return len(locations)
+
+    # Stations of the producers' station catalogs.
+
+    def keyed_slots(self, store: str, producer: str) -> tuple[KeyedSlot, ...]:
+        """Return the producer's slots with a key in a store, by key.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The adapter's producer.
+
+        Returns
+        -------
+        tuple[KeyedSlot, ...]
+            Each slot with the producer's key and its current version.
+        """
+        store_id = self._store_id(store)
+        return tuple(
+            KeyedSlot(key=str(key), path=str(path), current=current)
+            for key, path, current in self._connection.execute(
+                "SELECT s.slot_key, s.path, s.current_path FROM slots s"
+                " JOIN segments g ON g.id = s.segment_id"
+                " WHERE s.store_id = ? AND g.producer = ? AND s.slot_key IS NOT NULL"
+                " ORDER BY s.slot_key, s.path",
+                (store_id, producer),
+            ).fetchall()
+        )
+
+    def station_catalogs(
+        self, store: str, producer: str
+    ) -> dict[str, StationCatalogRecord]:
+        """Return the catalog version each provider's stations were read from.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose catalogs they are.
+
+        Returns
+        -------
+        dict[str, StationCatalogRecord]
+            By provider.
+        """
+        store_id = self._store_id(store)
+        return {
+            str(provider): StationCatalogRecord(
+                provider=str(provider),
+                producer=producer,
+                slot=str(slot),
+                version=str(version),
+                read_at=datetime.fromisoformat(str(read_at)),
+            )
+            for provider, slot, version, read_at in self._connection.execute(
+                "SELECT provider, slot_path, version_path, read_at"
+                " FROM station_catalogs WHERE store_id = ? AND producer = ?",
+                (store_id, producer),
+            ).fetchall()
+        }
+
+    def replace_stations(
+        self,
+        store: str,
+        producer: str,
+        provider: str,
+        *,
+        slot: str,
+        version: str,
+        stations: Iterable[Station],
+    ) -> int:
+        """Make a provider's stations in a store those of one catalog version.
+
+        One transaction: the provider's rows and their points are replaced, and
+        the version is recorded as the one they were read from. A station
+        without a point keeps the catalog's reason (P13, A-ADR-022); a code met
+        again in the same catalog keeps its first row.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose catalog it is.
+        provider : str
+            The catalog's provider (``StationCatalogAdapter.station_catalog``):
+            the provider of every row, whatever a station says.
+        slot, version : str
+            The catalog's slot and the file of the version read, relative to
+            the store.
+        stations : Iterable[Station]
+            ``StationCatalogAdapter.read_stations`` of the version.
+
+        Returns
+        -------
+        int
+            Stations written.
+        """
+        store_id = self._store_id(store)
+        rows = [_station_row(store_id, provider, station) for station in stations]
+        with self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM stations WHERE store_id = ? AND provider = ?",
+                (store_id, provider),
+            )
+            written = connection.executemany(_INSERT_STATION, rows).rowcount
+            connection.execute(
+                "INSERT INTO station_points (id, min_lon, max_lon, min_lat, max_lat)"
+                " SELECT id, lon, lon, lat, lat FROM stations"
+                " WHERE store_id = ? AND provider = ? AND location = 'point'",
+                (store_id, provider),
+            )
+            connection.execute(
+                "INSERT INTO station_catalogs"
+                " (store_id, provider, producer, slot_path, version_path, read_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (store_id, provider) DO UPDATE SET"
+                " producer = excluded.producer, slot_path = excluded.slot_path,"
+                " version_path = excluded.version_path, read_at = excluded.read_at",
+                (store_id, provider, producer, slot, version, _now()),
+            )
+        return max(written, 0)
+
+    def drop_stations(self, store: str, provider: str) -> int:
+        """Forget a provider's stations in a store and the catalog they came from.
+
+        Returns
+        -------
+        int
+            Stations removed.
+        """
+        store_id = self._store_id(store)
+        with self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM station_catalogs WHERE store_id = ? AND provider = ?",
+                (store_id, provider),
+            )
+            removed = connection.execute(
+                "DELETE FROM stations WHERE store_id = ? AND provider = ?",
+                (store_id, provider),
+            ).rowcount
+        return max(removed, 0)
 
     # Problems found by check jobs.
 
@@ -2224,6 +2383,34 @@ def _observe(
     connection.execute(
         "DELETE FROM own_file_states WHERE own_file_id = ? AND seq <= ?",
         (file_row, seq - MAX_OWN_FILE_STATES),
+    )
+
+
+def _station_row(store_id: int, provider: str, station: Station) -> tuple[object, ...]:
+    """Values of ``_INSERT_STATION``: a point, or none with the catalog's reason."""
+    point = station.point
+    lon, lat = (None, None) if point is None else point
+    return (
+        store_id,
+        provider,
+        station.code,
+        station.kind,
+        station.meteo_kind,
+        station.name,
+        station.river,
+        station.hydrographic_code,
+        station.river_order,
+        "none" if point is None else "point",
+        station.location_reason if point is None else None,
+        station.location_source,
+        station.location_uncertainty_m,
+        lon,
+        lat,
+        None if station.active is None else int(station.active),
+        station.established_year,
+        station.gauge_zero_m,
+        station.river_km,
+        station.elevation_m,
     )
 
 

@@ -18,8 +18,9 @@ producer declares for it as a product (``hydro``, ``meteo``), which only groups
 the datasets. The versions the index knows (``ScanScope.known_versions``) are
 the ``skip_versions`` of ``iter_store``: they come back ``skipped``, with no
 sidecar read. A slot has no link, so ``current_version`` asks IMGWTools which
-version of a slot is the current one. Exceptions of the producer surface as
-``ProducerError`` with the message unchanged.
+version of a slot is the current one, and ``read_stations`` reads a provider's
+station catalog version with ``read_catalog``. Exceptions of the producer
+surface as ``ProducerError`` with the message unchanged.
 """
 
 import os
@@ -34,6 +35,7 @@ from imgwtools import (
     IMGWError,
     Meta,
     Project,
+    StationFeature,
     StoreEntry,
     StoreInfo,
     __version__,
@@ -43,6 +45,7 @@ from imgwtools import (
     iter_store,
     open_project,
     providers,
+    read_catalog,
     store_info,
     store_root,
 )
@@ -67,6 +70,7 @@ from archiwista.sources import (
     SourceSegment,
     SourceState,
     SourceStatus,
+    Station,
 )
 from archiwista.sources.markers import STORE_MARKERS, foreign_markers
 
@@ -119,11 +123,11 @@ class ImgwAdapter:
     Notes
     -----
     Implements the source interface, ``SegmentDescriptionAdapter`` (a
-    dataset is a segment that cannot be read alone) and
-    ``CurrentVersionAdapter`` (a slot has no link) and ``DefaultRootAdapter``
-    (``store_root()``); no other optional capability. All methods may run in
-    several threads at once; one iterator of ``iter_entries`` belongs to one
-    thread.
+    dataset is a segment that cannot be read alone), ``CurrentVersionAdapter``
+    (a slot has no link), ``StationCatalogAdapter`` (each provider's station
+    catalog) and ``DefaultRootAdapter`` (``store_root()``); no other optional
+    capability. All methods may run in several threads at once; one iterator
+    of ``iter_entries`` belongs to one thread.
     """
 
     producer = PRODUCER
@@ -320,6 +324,68 @@ class ImgwAdapter:
         if found is None or found.version is None:
             return None
         return found.version.relative_to(root.expanduser().absolute())
+
+    def station_catalog(self, slot_key: str) -> str | None:
+        """Return the provider whose station catalog a slot is.
+
+        A provider's catalog is the slot ``catalog:<key prefix>.stations`` of
+        the producer's registry (``catalog:pl.imgw.stations`` is IMGW-PIB's,
+        ``catalog:cz.chmi.stations`` ČHMÚ's); no disk access.
+
+        Parameters
+        ----------
+        slot_key : str
+            The producer's key of a slot (``SourceEntry.slot_key``).
+
+        Returns
+        -------
+        str or None
+            The provider's id (``IMGW-PIB``, ``CHMI``); ``None`` for any other
+            slot.
+        """
+        kind, _, dataset = slot_key.partition(":")
+        if kind != "catalog":
+            return None
+        for provider in providers():
+            if dataset == f"{provider.key_prefix}.{_CATALOG}":
+                return str(provider.id)
+        return None
+
+    def read_stations(self, root: Path, version: Path) -> tuple[Station, ...]:
+        """Read every station of a catalog version with ``read_catalog``.
+
+        IMGWTools checks the file against the SHA-256 and size of its sidecar
+        and names the provider from the sidecar. A station without a location
+        keeps the catalog's reason.
+
+        Parameters
+        ----------
+        root : Path
+            The store root.
+        version : Path
+            The version's ``stations.geojson``, relative to ``root``.
+
+        Returns
+        -------
+        tuple of Station
+            In the catalog's order.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the file.
+        ProducerError
+            IMGWTools refused the version: broken, unlike its sidecar, or no
+            station catalog.
+        """
+        path = root / version
+        try:
+            features = read_catalog(path)
+        except OSError as error:
+            raise _unavailable(str(path), str(error)) from error
+        except IMGWError as error:
+            raise _failure(str(path), error) from error
+        return tuple(_station(feature) for feature in features)
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Place a file: its country for an archive or a series, else nowhere.
@@ -694,6 +760,30 @@ def _project_info(project: Project) -> ProjectInfo:
     )
 
 
+def _station(feature: StationFeature) -> Station:
+    """Convert a station of ``stations.geojson`` to the producer-neutral one."""
+    properties = feature.properties
+    return Station(
+        provider=feature.provider,
+        code=feature.station_code,
+        kind=_text(properties.get("kind")),
+        name=_text(properties.get("name")),
+        meteo_kind=_text(properties.get("meteo_kind")),
+        river=_text(properties.get("river")),
+        hydrographic_code=_text(properties.get("hydrographic_code")),
+        river_order=_year(properties.get("river_order")),
+        point=feature.geometry,
+        location_reason=_text(properties.get("location_missing_reason")),
+        location_source=_text(properties.get("location_source")),
+        location_uncertainty_m=_number(properties.get("location_uncertainty_m")),
+        active=_flag(properties.get("active")),
+        established_year=_year(properties.get("established_year")),
+        gauge_zero_m=_number(properties.get("gauge_zero_m")),
+        river_km=_number(properties.get("river_km")),
+        elevation_m=_number(properties.get("elevation_m")),
+    )
+
+
 def _severity(status: str) -> int:
     """Rank of a state; an unexpected one ranks above all known ones."""
     if status in _STATUS_ORDER:
@@ -738,3 +828,13 @@ def _source_files(value: object) -> tuple[str, ...]:
         for item in value
         if isinstance(item, Mapping) and isinstance(item.get("file"), str)
     )
+
+
+def _number(value: object) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _flag(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None

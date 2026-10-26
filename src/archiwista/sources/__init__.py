@@ -15,6 +15,7 @@ from archiwista.sources.protocol import (
     SheetGridAdapter,
     SourceAdapter,
     SourceFactory,
+    StationCatalogAdapter,
 )
 from archiwista.sources.types import (
     FILE_STATUSES,
@@ -71,6 +72,7 @@ from archiwista.sources.types import (
     SourceSegment,
     SourceState,
     SourceStatus,
+    Station,
     TaskOutcome,
 )
 
@@ -143,5 +145,7 @@ __all__ = [
     "SourceSegment",
     "SourceState",
     "SourceStatus",
+    "Station",
+    "StationCatalogAdapter",
     "TaskOutcome",
 ]

@@ -153,6 +153,28 @@ side.
     same labels today, by a rule the SPEC forbids); one product `imgw` (hydrological and
     meteorological files, station lists and PMAXTP cells have only their provider in
     common, and `provider` already says it).
+11. **The stations are those of each provider's current catalog, read when it changes**
+    (plan I4). The optional capability `StationCatalogAdapter` names the provider whose
+    catalog a slot is (`station_catalog(slot_key)`: `catalog:<key prefix>.stations` of the
+    producer's registry, no disk access) and reads a catalog version
+    (`read_stations(root, version)`: IMGWTools' `read_catalog`, which checks the file
+    against its sidecar). After a pass over the whole store, outside its transaction,
+    the index reads the current version of each provider's catalog only when it is not
+    the version its stations came from (`station_catalogs`); a full scan reads every
+    catalog again, so a rebuild needs no other trigger. The provider's rows and points
+    are replaced in one transaction, so a reader sees the old catalog or the new one. A
+    station is its store, provider and code as text (IMGW-PIB codes have nine digits,
+    ČHMÚ ones are WIGOS identifiers; the provider of the catalog decides), and a code met
+    twice in one catalog keeps its first row. A station without a location keeps the
+    catalog's reason (`none`, `zero`, `outside_country`) and has no point (P13,
+    A-ADR-022). A provider whose catalog has no current version (gone, or a damaged
+    version in it: decision 8) has no stations; a version IMGWTools refuses
+    (`ProducerError`) leaves it none as well, with the scan notice `stations_unreadable`,
+    and the next scan reads it again; a file the system cannot read makes the store
+    unavailable, as a listing does, and the rows stay. Rejected: reading the catalogs at
+    every scan (a parse of every station per scan on a share); keeping the rows of a
+    version the producer refuses (stations that are no current catalog's); a station by
+    code alone (the codes of two providers could meet).
 
 **Consequences:** A default installation shows `imgw` as `not_installed` in the sources list
 and as a warning of `doctor`. The tests that assumed Kartograf is the only source change;
@@ -171,6 +193,7 @@ with the current version IMGWTools names (decision 8); a source that is not avai
 entry kept (SPEC 5.8); and a directory that lies in a store of any producer or holds one is
 refused by the marker file names at its own field (DEV-19.14), looking two levels down
 because the producer's writer, which looks at the whole tree, is not run by a settings
-change. The stations and the series coverage come after the index of IMGW slots.
+change. The index keeps the stations of each provider's current catalog (decision 11);
+the series coverage comes after them.
 
 **Errata:** none.

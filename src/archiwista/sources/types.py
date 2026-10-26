@@ -300,6 +300,41 @@ class SourceObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class Station:
+    """A station of a producer's station catalog (SPEC 4.8.1; IMGWTools IMGW-9).
+
+    A station is ``provider`` and ``code``: the codes of two providers never
+    meet (IMGW-PIB has nine digits, ČHMÚ WIGOS identifiers), and a code is
+    text, never a number. ``point`` is ``(lon, lat)`` in WGS84 as the catalog
+    gives it; without one, ``location_reason`` says why (``none``: no source
+    has coordinates, ``zero``: the source said ``0,0``, ``outside_country``),
+    and the station is kept (P13, A-ADR-022): a location is never guessed.
+    ``hydrographic_code`` is the river's code on the provider's list (IMGW:
+    Raba ``2138``; its tributaries' codes begin with it, P19) and
+    ``river_order`` the station's place on that list. ``None`` is what the
+    catalog does not say.
+    """
+
+    provider: str
+    code: str
+    kind: str | None = None
+    name: str | None = None
+    meteo_kind: str | None = None
+    river: str | None = None
+    hydrographic_code: str | None = None
+    river_order: int | None = None
+    point: tuple[float, float] | None = None
+    location_reason: str | None = None
+    location_source: str | None = None
+    location_uncertainty_m: float | None = None
+    active: bool | None = None
+    established_year: int | None = None
+    gauge_zero_m: float | None = None
+    river_km: float | None = None
+    elevation_m: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SourceEntry:
     """Identify an indexed item by producer, store, and relative path.
 

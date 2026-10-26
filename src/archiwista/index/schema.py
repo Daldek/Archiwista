@@ -40,6 +40,13 @@ Version 9 (v0.3, A4): a job may end ``partial``, and ``plans`` keeps the plan
 of each ``check`` job (the producer-neutral ``ActionPlan`` as JSON, with the
 store it is of and the producer's command line of the run it plans); a plan
 goes with its job.
+
+Version 10 (v0.5, plan I4): ``stations``, the stations of the current version
+of each provider's station catalog in a store (identity: store, provider and
+code as text), with the R*Tree ``station_points`` of the located ones (a
+station without a location keeps the catalog's reason), and
+``station_catalogs``, the catalog version each provider's rows were read from:
+a new current version replaces the provider's rows.
 """
 
 import sqlite3
@@ -51,7 +58,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -347,6 +354,54 @@ CREATE TABLE plans (
     plan TEXT NOT NULL
 ) WITHOUT ROWID;
 
+-- The catalog version each provider's stations were read from (SPEC 4.4): the
+-- rows are replaced when the current version of the catalog's slot changes.
+CREATE TABLE station_catalogs (
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    producer TEXT NOT NULL,
+    slot_path TEXT NOT NULL,
+    version_path TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (store_id, provider)
+) WITHOUT ROWID;
+
+-- The stations of the current catalog of each provider (SPEC 4.3, 4.8.1). A
+-- code is text and belongs to its provider; a station without a point keeps
+-- the catalog's reason (P13, A-ADR-022).
+CREATE TABLE stations (
+    id INTEGER PRIMARY KEY,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    code TEXT NOT NULL,
+    kind TEXT,
+    meteo_kind TEXT,
+    name TEXT,
+    river TEXT,
+    hydrographic_code TEXT,
+    river_order INTEGER,
+    location TEXT NOT NULL CHECK (location IN ('point', 'none')),
+    location_reason TEXT,
+    location_source TEXT,
+    location_uncertainty_m REAL,
+    lon REAL,
+    lat REAL,
+    active INTEGER,
+    established_year INTEGER,
+    gauge_zero_m REAL,
+    river_km REAL,
+    elevation_m REAL,
+    UNIQUE (store_id, provider, code)
+);
+CREATE INDEX stations_code ON stations (code);
+-- "The river with its tributaries" (P19) is a prefix of the code: a range scan.
+CREATE INDEX stations_hydrographic ON stations (hydrographic_code);
+CREATE INDEX stations_unlocated ON stations (store_id) WHERE location = 'none';
+
+CREATE VIRTUAL TABLE station_points USING rtree (
+    id, min_lon, max_lon, min_lat, max_lat
+);
+
 -- One-time session tokens (SHA-256 only) with who minted each (JSON: id and
 -- kind; roles and groups are read for every request) and the label of the
 -- session each opens; ``index_info`` holds the agent-session generation.
@@ -458,6 +513,10 @@ END;
 
 CREATE TRIGGER slots_search_delete AFTER DELETE ON slots BEGIN
     DELETE FROM search WHERE rowid = OLD.id;
+END;
+
+CREATE TRIGGER stations_point_delete AFTER DELETE ON stations BEGIN
+    DELETE FROM station_points WHERE id = OLD.id;
 END;
 """
 

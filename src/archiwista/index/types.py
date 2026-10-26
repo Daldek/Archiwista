@@ -812,6 +812,36 @@ class PassSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class KeyedSlot:
+    """A slot with the producer's own key and its current version.
+
+    What a scan needs to find a producer's station catalogs: ``key`` is the
+    producer's name of the slot (``SourceEntry.slot_key``), ``path`` the slot
+    and ``current`` the file of its current version, both relative to the
+    store; ``None`` without a current version.
+    """
+
+    key: str
+    path: str
+    current: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StationCatalogRecord:
+    """The catalog version a provider's stations in the index were read from.
+
+    ``slot`` is the catalog's slot and ``version`` the file of the version
+    read, relative to the store; ``read_at`` is when it was read (UTC).
+    """
+
+    provider: str
+    producer: str
+    slot: str
+    version: str
+    read_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ManifestStamp:
     """Size and modification time of a project manifest when it was read."""
 
