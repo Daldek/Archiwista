@@ -54,6 +54,7 @@
 .job-download { display: grid; gap: 6px; }
 .job-files, .job-failed ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
 .job-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.job-taken { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--local); }
 .job-summary.link-confirmed { color: var(--ok-ink); font-weight: 500; }
 .job-summary.link-mismatch, .job-summary.link-missing { color: var(--bad-ink); font-weight: 500; }
 .job-summary.link-index_outdated { color: var(--warn-ink); font-weight: 500; }

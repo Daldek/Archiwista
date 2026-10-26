@@ -4443,8 +4443,8 @@ thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of 
 and of a pasted command; whether the project card's download and repin need the window
 too is open (ADR-042). Criteria 1, 2 and 6 are the `live` test
 `tests/integration/test_live_actions.py` and criterion 8 on a share the `smb` run, both
-run by the user. Area selection by unit name waits for KB-7, and the interface has no
-list of jobs yet (cancel, retry and the log are in the API and the CLI). Evidence:
+run by the user. Area selection by unit name waits for KB-7; the list of jobs with
+cancel, retry and the log ("Zadania", A12) came with v0.4 (plan T9). Evidence:
 [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
 
 ### v0.4 "Team"

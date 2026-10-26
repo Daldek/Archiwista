@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- The view "Zadania" (v0.4, ADR-047; sketch f of SPEC 6.5): the queue and history of
+  everyone's background jobs, newest first, with the filters "Wszystkie", "Trwa",
+  "Błędy" and "Moje" kept in the address. Each job shows its state, kind and what it
+  works on, who started it ("Ty", a person, "… (agent)", "harmonogram"), its progress
+  ("3 z 7") or when it ended, why it failed and the positions another download
+  fetched for it ("2 pozycje pobiera olga (zadanie …)", also in the list "Pobrania w
+  tle"); "Anuluj" for whoever started it and administrators, "Ponów" for a job that
+  did not succeed, also one "przerwane" by a restart (disabled with the reason for a
+  download without "zapis do magazynu"), "Szczegóły" (its events) and "Dziennik" (the
+  end of its log). A job of a project the session does not see shows its kind, "bez
+  dostępu", who and its progress only. The list is read every 2 s while a job waits
+  or runs, else every 15 s, only while the page is visible, up to the 200 newest
+  jobs; the navigation shows the number of running jobs next to "Zadania".
 - Limits per person in the queue (v0.4, ADR-047): a person, with the jobs of their
   agents, runs at most `network_jobs_per_person` network jobs at once (2 by default;
   the scheduler is no person); further ones wait in the queue and none is refused.

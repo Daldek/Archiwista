@@ -13,10 +13,13 @@ export const shell = {
     map: "Mapa",
     catalog: "Katalog",
     projects: "Projekty",
+    jobs: "Zadania",
     store: "Magazyn",
     setup: "Ustawienia",
     compare: "Porównanie",
   },
+  /** After a view's name in the navigation, for screen readers: the running jobs. */
+  nav_count: "trwa: {count}",
   stores_label: "Magazyny",
   store_title: "Magazyn „{name}” ({id}): {status}",
   session_label: "Sesja: {actor}",

@@ -1023,6 +1023,17 @@
  */
 
 /**
+ * The end of a job's log (`GET /jobs/{job}/log`): its worker's standard error,
+ * in English.
+ *
+ * @typedef {object} JobLog
+ * @property {string} job
+ * @property {number} size_bytes - Size of the whole log.
+ * @property {boolean} truncated - Only its last MiB is given.
+ * @property {string} text
+ */
+
+/**
  * Parameters of `GET /jobs`.
  *
  * @typedef {object} JobFilters

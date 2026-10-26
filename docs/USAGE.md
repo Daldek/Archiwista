@@ -52,7 +52,8 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 ## The window
 
 - **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
-  Projects ("Projekty"), Store ("Magazyn") and, at the bottom, Settings
+  Projects ("Projekty"), Jobs ("Zadania", with the number of running jobs),
+  Store ("Magazyn") and, at the bottom, Settings
   ("Ustawienia"), the same form as the wizard. Saving the settings replaces
   all of them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
@@ -334,6 +335,41 @@ comparison and changes no data.
 - **Store problems** with a repair description (and the file card when they
   concern a file), and the **projects** that use the store.
 
+## Jobs
+
+![Jobs](reports/v0.4-screenshots/08-zadania.webp)
+
+"Zadania" (jobs) lists the background jobs of the server, newest first: scans,
+plans and downloads, the jobs of projects, previews. In a team it lists everyone's
+jobs, and the number next to "Zadania" in the navigation counts the running ones.
+
+- **Filters** "Wszystkie" (all), "Trwa" (waiting or running), "Błędy" (failed,
+  partial or interrupted) and "Moje" (yours, also those of your agents); the
+  address keeps the filter.
+- **A row:** the state, the kind and what the job works on (the producer's
+  command and the store, the project), who started it ("Ty" for you, a person's
+  name, "… (agent)", "harmonogram" for the scheduler), the progress "3 z 7" while
+  it waits or runs, else when it ended, why it failed, and the positions another
+  download fetched for it ("2 pozycje pobiera olga (zadanie …)": none is
+  downloaded twice).
+- **"Anuluj"** (cancel) stops a waiting or running job; whoever started it and
+  administrators have it. What is done stays.
+- **"Ponów"** (retry) runs a job that did not succeed again, as a new job of your
+  session with the same parameters, also one "przerwane" (interrupted) when the
+  server stopped. Retrying a download, or a project's download or repin, needs
+  "zapis do magazynu" (the role `store_writer`); without it the button is
+  disabled with the reason.
+- **"Szczegóły"** (details) follows the job: its progress, the notices of its
+  producer (for example the positions another person's download fetches) and its
+  summary or failure. **"Dziennik"** (log) shows the end of its log, the standard
+  error of its worker (in English).
+- **A job of a project you do not see** shows only its kind with "bez dostępu"
+  (no access), who started it and its progress, and nothing opens.
+- The list is read again every 2 seconds while a job waits or runs, else every 15
+  seconds, and only while the page is visible. "Pokaż starsze" (show older)
+  extends it to at most the 200 newest jobs; older ones are listed by
+  `archiwista jobs list` and `GET /api/v1/jobs`.
+
 ## IMGW stations (command line)
 
 The stations of the station catalogs of IMGW-PIB and ČHMÚ and the coverage of their
@@ -460,10 +496,8 @@ turns the permission log into the action log.
 ## What version 0.3 does not do
 
 - It checks availability at the source and downloads only from the step "U
-  źródła" of the map and from the project card, through Kartograf; the
-  interface has no list of jobs with cancel, retry and log yet (the API and
-  `archiwista jobs` have them), and an area is not chosen by the name of an
-  administrative unit.
+  źródła" of the map and from the project card, through Kartograf, and an area
+  is not chosen by the name of an administrative unit.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station

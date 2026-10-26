@@ -10,8 +10,9 @@
  * with `route` (router.js `Route`); `start: true` — the view opened without
  * `view=`; `bottom: true` — placed at the bottom of the navigation; `nav:
  * false` — not in the navigation, opened from another view (e.g. the
- * comparison by „Porównaj z…”). The order of the lines is the order of the
- * navigation.
+ * comparison by „Porównaj z…”); `count` — a hook giving a number shown next
+ * to the name in the navigation (none at 0), e.g. the running jobs. The
+ * order of the lines is the order of the navigation.
  *
  * An overlay: `param` — the address parameter opening it (`?view=map&file=…`);
  * `load` — imports the module whose default export is rendered with `route`,
@@ -22,6 +23,8 @@
  *   { param: "file", load: () => import("./views/file.js") },
  */
 
+import { useRunningJobs } from "./queue.js";
+
 /**
  * @typedef {object} ViewRoute
  * @property {string} id
@@ -30,6 +33,7 @@
  * @property {boolean} [start]
  * @property {boolean} [bottom]
  * @property {boolean} [nav]
+ * @property {() => number} [count]
  */
 
 /**
@@ -43,6 +47,7 @@ export const VIEWS = [
   { id: "map", icon: "map", start: true, load: () => import("./views/map.js") },
   { id: "catalog", icon: "table", load: () => import("./views/catalog.js") },
   { id: "projects", icon: "folder", load: () => import("./views/projects.js") },
+  { id: "jobs", icon: "tasks", count: useRunningJobs, load: () => import("./views/jobs.js") },
   { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },

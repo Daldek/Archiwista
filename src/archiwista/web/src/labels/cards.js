@@ -71,6 +71,13 @@ export const cards = {
       nothing_to_download: "Polecenie {place} z {count} pominięte, bo nie ma nic do pobrania:",
       taken: "Polecenie {place} z {count} pominięte, bo wszystkie jego pozycje pobierają inne zadania:",
     },
+    /**
+     * Positions to download another active download fetches (`result.taken`,
+     * ADR-047), one line per such job: „2 pozycje pobiera marek (zadanie 3f9c1a7e)”.
+     */
+    download_taken_title: "Pobierane przez inne zadania",
+    download_taken: "{count} {positions} pobiera {actor} (zadanie {job})",
+    positions: ["pozycję", "pozycje", "pozycji"],
     /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
     project_tasks: "Zadania projektu: {tasks} ({counts}).",
     project_tasks_title: "Wynik dla zadań projektu",

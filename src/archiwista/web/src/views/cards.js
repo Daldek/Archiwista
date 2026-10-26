@@ -568,6 +568,7 @@ export function downloadSummary(events) {
     .filter((call) => call.status === "failed" || call.status === "skipped");
   return html`<div class="job-download">
     <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
+    <${TakenList} taken=${result.taken ?? []} />
     ${result.files.length
       ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
           (file) => html`<li key=${`${file.call}/${file.path}`}>
@@ -595,6 +596,33 @@ export function downloadSummary(events) {
         </div>`
       : null}
   </div>`;
+}
+
+/**
+ * The positions of a download that other active downloads of the store
+ * fetch (`result.taken`, ADR-047), one line per such job with its person:
+ * „2 pozycje pobiera marek (zadanie 3f9c1a7e)”; nothing without any.
+ *
+ * @param {{taken: Array<{path: string, unit: string|null, job: string, actor: string}>}} props
+ */
+export function TakenList({ taken }) {
+  if (!taken.length) return null;
+  const jobs = new Map();
+  for (const item of taken) {
+    const holder = jobs.get(item.job) ?? { job: item.job, actor: item.actor, count: 0 };
+    holder.count += 1;
+    jobs.set(item.job, holder);
+  }
+  return html`<ul class="job-taken" aria-label=${L.job.download_taken_title}>${[...jobs.values()].map(
+    (holder) => html`<li key=${holder.job}>
+      <${Tech} value=${[["job", holder.job], ["actor", holder.actor]]}>${t(L.job.download_taken, {
+        count: int(holder.count),
+        positions: plural(holder.count, L.job.positions),
+        actor: actorName(holder.actor),
+        job: holder.job,
+      })}</${Tech}>
+    </li>`,
+  )}</ul>`;
 }
 
 /** A line of a download of a row that failed or was skipped, and why. */

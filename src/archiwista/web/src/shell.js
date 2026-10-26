@@ -171,6 +171,7 @@ function Navigation({ current }) {
         class=${view.id === current ? "rail-item active" : "rail-item"}
         aria-current=${view.id === current ? "page" : null}>
         <${Icon} name=${view.icon} size=${19} /><span>${viewName(view.id)}</span>
+        ${view.count ? html`<${RailCount} use=${view.count} />` : null}
       </${Link}>`,
     );
   return html`<nav class="rail" aria-label=${L.nav_label}>
@@ -178,6 +179,14 @@ function Navigation({ current }) {
     <span class="rail-spacer"></span>
     ${items(true)}
   </nav>`;
+}
+
+/** A view's number next to its name (`ViewRoute.count`), e.g. the running jobs; none at 0. */
+function RailCount({ use }) {
+  const count = use();
+  if (!count) return null;
+  return html`<span class="rail-count" aria-hidden="true">${count}</span>
+    <span class="visually-hidden">${t(L.nav_count, { count })}</span>`;
 }
 
 function ViewHost({ view, route }) {

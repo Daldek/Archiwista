@@ -54,6 +54,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").JobDetail} JobDetail */
 /** @typedef {import("./types.js").JobFilters} JobFilters */
 /** @typedef {import("./types.js").JobList} JobList */
+/** @typedef {import("./types.js").JobLog} JobLog */
 /** @typedef {import("./types.js").JobHandlers} JobHandlers */
 /** @typedef {import("./types.js").AreaInput} AreaInput */
 /** @typedef {import("./types.js").Area} Area */
@@ -711,6 +712,34 @@ export function getJob(job, { signal } = {}) {
  */
 export function cancelJob(job) {
   return request("POST", `/jobs/${one(job)}/cancel`);
+}
+
+/**
+ * Run a job that did not succeed again (`retry_job`): a new job of the
+ * session with the same kind, store and parameters, asking again what its
+ * kind needs (a download: the permission to write the stores).
+ *
+ * @param {string} job - Job id.
+ * @returns {Promise<JobDetail>} The new job (`202`).
+ * @throws {ApiError} `403 permission_denied`, `404`, `409 conflict`
+ *   (`job_succeeded`, `job_active`).
+ */
+export function retryJob(job) {
+  return request("POST", `/jobs/${one(job)}/retry`);
+}
+
+/**
+ * The end of a job's log (`get_job_log`): its worker's standard error, the
+ * last MiB of it.
+ *
+ * @param {string} job - Job id.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<JobLog>}
+ * @throws {ApiError} `404`: no such job, one the session does not see whole,
+ *   or a job without a log.
+ */
+export function getJobLog(job, { signal } = {}) {
+  return request("GET", `/jobs/${one(job)}/log`, { signal });
 }
 
 /**
