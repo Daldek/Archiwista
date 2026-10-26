@@ -378,6 +378,7 @@ archiwista stations list --area-id OBSZAR --boundary false
 archiwista stations list --location none
 archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
+archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
 archiwista stations datasets
 ```
 
@@ -400,8 +401,12 @@ and `--variable` take them). `--meteo-kind` (repeatable: `synoptic`, `climate`,
 (the river's hydrographic code, so a tributary follows its river, then the station's
 place on the provider's list, then the name); `--sort name` orders it by name. `--q`
 finds a station whose name or river contains the text, whatever the case of the
-letters, or whose code begins with it. Without IMGWTools each
-refuses with the repair command `pip install "archiwista[imgw]"`.
+letters, or whose code begins with it. `stations timeline` is the Timeline of a page
+of the stations of one dataset (`--dataset` is required, the other options are those
+of `stations list`): under each station a line per variable with a character for
+each year of the range (`█` a value in every unit, `▒` with gaps, `·` without a
+value, `?` not known) and its label. Without IMGWTools each refuses with the repair
+command `pip install "archiwista[imgw]"`.
 
 ## Session
 

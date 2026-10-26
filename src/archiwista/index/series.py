@@ -27,7 +27,7 @@ percent, and the longest gap the longest run of them.
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from archiwista.config import YearTypes
 from archiwista.sources import DateRange, TimeUnit, VariableCoverage, YearType
@@ -54,12 +54,13 @@ LONG_GAP_DAYS = 30
 _HYDROLOGICAL_START = 11
 
 
-@dataclass(frozen=True, slots=True)
-class SeriesYear:
+class SeriesYear(NamedTuple):
     """A year of a variable: its units, the known ones and those with a value.
 
     A year is known when every unit is (``known == units``); a full year has
-    a value in every unit (``with_value == units``).
+    a value in every unit (``with_value == units``). A named tuple: a page of
+    stations reads tens of thousands of years, and a tuple is the cheapest
+    immutable record to build.
     """
 
     year_type: YearType
@@ -412,12 +413,15 @@ def series_label(
         return SeriesLabel(state="unknown", year_type=year_type, span=None)
     rows = {year.year: year for year in years if year.year_type == year_type}
     first, last = span
-    known_years = [
-        year
-        for year in range(first, last + 1)
-        if (row := rows.get(year)) is not None and 0 < row.units == row.known
-    ]
-    unknown = year_ranges(set(range(first, last + 1)) - set(known_years))
+    known_years: list[int] = []
+    unknown_years: list[int] = []
+    for year in range(first, last + 1):
+        row = rows.get(year)
+        if row is not None and 0 < row.units == row.known:
+            known_years.append(year)
+        else:
+            unknown_years.append(year)
+    unknown = year_ranges(unknown_years)
     if not known_years:
         return SeriesLabel(
             state="unknown", year_type=year_type, span=span, unknown_years=unknown
@@ -433,11 +437,16 @@ def series_label(
             unknown_years=unknown,
         )
     valued = (valued_years[0], valued_years[-1])
-    window = [rows[year] for year in range(valued[0], valued[1] + 1) if year in rows]
-    units = sum(row.known for row in window)
-    with_value = sum(row.with_value for row in window)
+    units = with_value = complete_years = 0
+    for year in range(valued[0], valued[1] + 1):
+        if (row := rows.get(year)) is not None:
+            units += row.known
+            with_value += row.with_value
+            if row.units == row.known == row.with_value:
+                complete_years += 1
     gaps = units - with_value
-    runs = _gap_runs(coverage, known, time_unit, year_type, valued)
+    runs = _gap_intervals(coverage, known, time_unit, year_type, valued)
+    longest = max(runs, key=lambda run: run[1] - run[0], default=None)
     if valued != bounds:
         state: SeriesState = "partial"
     else:
@@ -452,25 +461,21 @@ def series_label(
         with_value=with_value,
         percent=min(99, -(-100 * gaps // units)) if gaps else 0,
         below_one=0 < 100 * gaps < units,
-        longest_gap=max(runs, key=lambda run: run.units, default=None),
+        longest_gap=None if longest is None else _gap_run(longest, time_unit),
         gap_count=len(runs),
-        long_gaps=sum(
-            1 for run in runs if (run.end - run.start).days + 1 > LONG_GAP_DAYS
-        ),
-        complete_years=sum(
-            1 for row in window if row.units == row.known == row.with_value
-        ),
+        long_gaps=sum(1 for run in runs if _days(run, time_unit) > LONG_GAP_DAYS),
+        complete_years=complete_years,
         unknown_years=unknown,
     )
 
 
-def _gap_runs(
+def _gap_intervals(
     coverage: VariableCoverage,
     known: Sequence[DateRange],
     time_unit: TimeUnit,
     year_type: YearType,
     years: YearRange,
-) -> list[GapRun]:
+) -> list[Interval]:
     """Return the runs of known units without a value in a range of years."""
     known_units = intervals(known, time_unit)
     window = [
@@ -479,15 +484,23 @@ def _gap_runs(
             year_span(years[1], year_type, time_unit)[1],
         )
     ]
-    runs = subtract(
+    return subtract(
         intersect(known_units, window),
         value_intervals(coverage, known_units, time_unit),
     )
-    return [
-        GapRun(
-            start=day_of(start, time_unit),
-            end=day_of(end + 1, time_unit) - timedelta(days=1),
-            units=end - start + 1,
-        )
-        for start, end in runs
-    ]
+
+
+def _gap_run(run: Interval, time_unit: TimeUnit) -> GapRun:
+    """Return a run of units as its first and last day and its units."""
+    start, end = run
+    return GapRun(
+        start=day_of(start, time_unit),
+        end=day_of(end + 1, time_unit) - timedelta(days=1),
+        units=end - start + 1,
+    )
+
+
+def _days(run: Interval, time_unit: TimeUnit) -> int:
+    """Return the days a run of units spans."""
+    start, end = run
+    return (day_of(end + 1, time_unit) - day_of(start, time_unit)).days

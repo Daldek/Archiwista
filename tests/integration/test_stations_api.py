@@ -1,12 +1,12 @@
 """The station routes over the producer's fixture store (plan I6, SPEC 9.2, 6.7).
 
-``GET /stations``, ``/stations/{code}``, ``/stations/{code}/coverage`` and
-``GET /map/stations`` answer from the index of a scanned copy of
-``complete_pl_cz`` (``imgwtools.testing``): the stations of both providers, the
-location groups counted apart (SPEC 4.3 point 3), the coverage of each
-variable with its licence and attribution, the boundary of an area by the
-location uncertainty, and ``503`` while the source is not available
-(SPEC 5.8). The OpenAPI document lists the four routes with their
+``GET /stations``, ``/stations/timeline``, ``/stations/{code}``,
+``/stations/{code}/coverage`` and ``GET /map/stations`` answer from the index
+of a scanned copy of ``complete_pl_cz`` (``imgwtools.testing``): the stations
+of both providers, the location groups counted apart (SPEC 4.3 point 3), the
+coverage of each variable with its licence and attribution, the boundary of
+an area by the location uncertainty, and ``503`` while the source is not
+available (SPEC 5.8). The OpenAPI document lists the five routes with their
 parameters, examples and problems.
 """
 
@@ -54,6 +54,7 @@ AREA = AreaRecord(
 EAST_OF_RABA = "20.12,49.6,20.4,49.8"
 ROUTES = (
     "/api/v1/stations",
+    "/api/v1/stations/timeline",
     "/api/v1/stations/{code}",
     "/api/v1/stations/{code}/coverage",
     "/api/v1/map/stations",
@@ -396,6 +397,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
             owner.request("GET", path)
             for path in (
                 "/stations",
+                f"/stations/timeline?dataset={DAILY}",
                 f"/stations/{RABA}",
                 f"/stations/{RABA}/coverage",
                 "/map/stations?bbox=14,48,24,55",
@@ -415,7 +417,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
 
 
 def test_openapi_documents_the_station_routes(served: Served) -> None:
-    """Agents find the four routes, their parameters, examples and problems."""
+    """Agents find the five routes, their parameters, examples and problems."""
     # Act
     document = served.json("/openapi.json")
 
@@ -440,6 +442,12 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
         "meteo_kind", "q", "sort",
         "area_id", "bbox", "bbox_crs", "boundary", "location", "limit", "cursor",
     }  # fmt: skip
+    timeline = document["paths"]["/api/v1/stations/timeline"]["get"]
+    required = {item["name"] for item in timeline["parameters"] if item["required"]}
+    assert ({item["name"] for item in timeline["parameters"]}, required) == (
+        names,
+        {"dataset"},
+    )
     card = document["paths"]["/api/v1/stations/{code}"]["get"]
     assert {item["name"] for item in card["parameters"]} == {
         "code", "store", "provider", "dataset", "years", "year_type",

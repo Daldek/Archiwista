@@ -30,6 +30,8 @@ from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
+from itertools import groupby
+from operator import itemgetter
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -3075,23 +3077,23 @@ def _series_coverage(
         ids.extend(row["id"] for row in group)
         wanted[numbering] = (ids, (min(low, span[0]), max(high, span[1])))
     found: dict[int, list[SeriesYear]] = {}
+    # A page of stations reads tens of thousands of years: plain tuples, read
+    # by position, cost a fraction of named rows.
+    cursor = connection.cursor()
+    cursor.row_factory = None
     for numbering, (ids, (low, high)) in wanted.items():
-        for row in connection.execute(
-            "SELECT series_id, year_type, year, units, known, with_value"
+        rows_of_years = cursor.execute(
+            "SELECT series_id, year, units, known, with_value"
             f" FROM series_years WHERE series_id IN ({_IDS}) AND year_type = ?"
             " AND year BETWEEN ? AND ?"
             " ORDER BY series_id, year",
             (json.dumps(ids), numbering, low, high),
-        ):
-            found.setdefault(row["series_id"], []).append(
-                SeriesYear(
-                    year_type=row["year_type"],
-                    year=row["year"],
-                    units=row["units"],
-                    known=row["known"],
-                    with_value=row["with_value"],
-                )
-            )
+        )
+        for series_id, series in groupby(rows_of_years, key=itemgetter(0)):
+            found[series_id] = [
+                SeriesYear(numbering, year, units, known, with_value)
+                for _, year, units, known, with_value in series
+            ]
     return tuple(
         _station_coverage(group, found, stores, plans[key])
         for key, group in groups.items()
@@ -3150,13 +3152,7 @@ def _station_coverage(
                 first=coverage.first,
                 last=coverage.last,
                 accumulated=coverage.accumulated,
-                years=tuple(
-                    year
-                    for year in rows_of_years
-                    if year.year_type == numbering
-                    and span is not None
-                    and span[0] <= year.year <= span[1]
-                ),
+                years=_years_in(rows_of_years, span),
                 label=label,
             )
         )
@@ -3179,6 +3175,21 @@ def _station_coverage(
         license=first["license"],
         attribution=first["attribution"],
     )
+
+
+def _years_in(
+    years: Sequence[SeriesYear], span: YearRange | None
+) -> tuple[SeriesYear, ...]:
+    """Return the years of a series within R.
+
+    ``years`` are one year type's, in order, read for the widest R of their
+    query: a series whose R is that one keeps them all without a test.
+    """
+    if span is None or not years:
+        return ()
+    if span[0] <= years[0].year and years[-1].year <= span[1]:
+        return tuple(years)
+    return tuple(year for year in years if span[0] <= year.year <= span[1])
 
 
 def _only_with_value(variables: Sequence[CoverageVariable]) -> list[CoverageVariable]:

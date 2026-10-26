@@ -3,13 +3,16 @@
 ``stations list [options]`` pages the stations as ``GET /stations`` does; its
 options are generated from ``StationListFilters``, the route's query model:
 one option per parameter, of the same name, validated by the same model (a
-repeatable parameter is a repeatable option). ``stations show CODE`` is the
-card of ``GET /stations/{code}``, with the options of ``StationLookup``, and
-``stations datasets`` the datasets of ``GET /stations/datasets``. Each calls
-the function behind its route without HTTP: ``--json`` prints the route's
-model, a refusal the route's problem as the ``archiwista-error/1`` document
-(``503`` while IMGWTools is not available becomes its exit code). Nothing
-here uses the network or writes.
+repeatable parameter is a repeatable option). ``stations timeline [options]``
+is a page of the stations of one dataset with each variable year by year, as
+``GET /stations/timeline`` gives it (the options of
+``StationTimelineListFilters``; a person reads a strip of year cells per
+variable). ``stations show CODE`` is the card of ``GET /stations/{code}``,
+with the options of ``StationLookup``, and ``stations datasets`` the datasets
+of ``GET /stations/datasets``. Each calls the function behind its route
+without HTTP: ``--json`` prints the route's model, a refusal the route's
+problem as the ``archiwista-error/1`` document (``503`` while IMGWTools is not
+available becomes its exit code). Nothing here uses the network or writes.
 """
 
 import argparse
@@ -25,12 +28,23 @@ from archiwista.api.models_stations import (
     StationDatasetItem,
     StationDatasetsQuery,
     StationItem,
+    StationList,
     StationListFilters,
     StationLookup,
     StationSeriesItem,
+    StationTimelineItem,
+    StationTimelineListFilters,
+    StationTimelinePage,
+    TimelineSeries,
+    YearCell,
     YearSpan,
 )
-from archiwista.api.stations import station_card, station_datasets, station_list
+from archiwista.api.stations import (
+    station_card,
+    station_datasets,
+    station_list,
+    station_timeline_page,
+)
 from archiwista.commands import Commands, add_parser
 from archiwista.config import (
     AppPaths,
@@ -58,6 +72,14 @@ type _Action = Callable[
     [argparse.Namespace, AppSettings, PluginRegistry, IndexQueries], _Output
 ]
 
+# A year of the Timeline in a line of text, by its cell (SPEC 6.7).
+_CELLS: dict[YearCell, str] = {
+    "full": "█",
+    "fraction": "▒",
+    "none": "·",
+    "unknown": "?",
+}
+
 
 class _InvalidOptions(Exception):
     """Options the query model refuses (``400 validation_error``)."""
@@ -82,6 +104,8 @@ def add_commands(commands: Commands) -> None:
     )
     listing = add_parser(actions, "list", "cli.stations_list_help")
     _options(listing, StationListFilters)
+    timeline = add_parser(actions, "timeline", "cli.stations_timeline_help")
+    _options(timeline, StationTimelineListFilters)
     shown = add_parser(actions, "show", "cli.stations_show_help")
     shown.add_argument(
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
@@ -190,20 +214,28 @@ def _list(
         lines.extend(_series_line(series) for series in item.series)
     if not lines:
         lines.append(message("cli.stations_none"))
-    counts = found.counts
-    lines.append(
-        message(
-            "cli.stations_summary",
-            count=len(found.items),
-            located=counts.located,
-            boundary=counts.boundary,
-            unlocated=counts.unlocated,
-            hidden=counts.hidden,
-        )
+    return found, _with_stale(found, [*lines, *_page_end(found)])
+
+
+def _timeline(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    found = station_timeline_page(
+        queries, settings, registry, query_of(StationTimelineListFilters, args)
     )
-    if found.next_cursor is not None:
-        lines.append(message("cli.search_next", cursor=found.next_cursor))
-    return found, _with_stale(found, lines)
+    lines: list[str] = []
+    for item in found.items:
+        lines.append(_station_line(item))
+        for series in item.series:
+            lines.extend(_timeline_lines(series))
+    if lines:
+        lines.append(message("cli.station_timeline_legend", **_CELLS))
+    else:
+        lines.append(message("cli.stations_none"))
+    return found, _with_stale(found, [*lines, *_page_end(found)])
 
 
 def _show(
@@ -233,13 +265,18 @@ def _datasets(
     return found, _with_stale(found, lines)
 
 
-_ACTIONS: dict[str, _Action] = {"list": _list, "show": _show, "datasets": _datasets}
+_ACTIONS: dict[str, _Action] = {
+    "list": _list,
+    "timeline": _timeline,
+    "show": _show,
+    "datasets": _datasets,
+}
 
 
 # Text.
 
 
-def _station_line(item: StationItem) -> str:
+def _station_line(item: StationItem | StationTimelineItem) -> str:
     river = (
         message(
             "cli.station_river", river=item.river, code=_value(item.hydrographic_code)
@@ -264,6 +301,24 @@ def _station_line(item: StationItem) -> str:
     )
 
 
+def _page_end(found: StationList | StationTimelinePage) -> list[str]:
+    """Write the counts of a page of stations and the cursor of the next one."""
+    counts = found.counts
+    lines: list[str] = [
+        message(
+            "cli.stations_summary",
+            count=len(found.items),
+            located=counts.located,
+            boundary=counts.boundary,
+            unlocated=counts.unlocated,
+            hidden=counts.hidden,
+        )
+    ]
+    if found.next_cursor is not None:
+        lines.append(message("cli.search_next", cursor=found.next_cursor))
+    return lines
+
+
 def _series_line(series: StationSeriesItem) -> str:
     labels = "; ".join(
         message("cli.station_label", key=key, label=variable.label)
@@ -277,6 +332,30 @@ def _series_line(series: StationSeriesItem) -> str:
         years=_years(series.years),
         labels=labels,
     )
+
+
+def _timeline_lines(series: TimelineSeries) -> list[str]:
+    """Write a series' heading, then each variable's strip of years and label."""
+    width = max((len(variable.key) for variable in series.variables), default=0)
+    lines: list[str] = [
+        message(
+            "cli.station_timeline_series",
+            dataset=series.dataset,
+            series=_value(series.series),
+            year_type=label("series.year_type", series.year_type),
+            years=_years(series.years),
+        )
+    ]
+    lines.extend(
+        message(
+            "cli.station_timeline_variable",
+            key=variable.key.ljust(width),
+            years="".join(_CELLS[year["cell"]] for year in variable.years),
+            label=variable.label,
+        )
+        for variable in series.variables
+    )
+    return lines
 
 
 def _card_text(card: StationCard) -> str:

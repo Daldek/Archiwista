@@ -214,13 +214,15 @@ def test_stations_options_are_the_parameters_of_the_routes(doors: Doors) -> None
 
     # Act
     listing = options("list")
+    timeline = options("timeline")
     shown = options("show")
 
     # Assert
     assert set(listing) == parameters("/stations")
+    assert set(timeline) == parameters("/stations/timeline")
     assert set(shown) == parameters("/stations/{code}")
     assert shown.pop("code") == []  # the positional KOD
-    for name, strings in [*listing.items(), *shown.items()]:
+    for name, strings in [*listing.items(), *timeline.items(), *shown.items()]:
         assert strings == [f"--{name.replace('_', '-')}"]
 
 
@@ -272,6 +274,9 @@ def test_stations_cli_without_imgwtools_is_a_missing_dependency(
     """The stations are not shown without their source, as the routes answer 503."""
     # Act
     listed = doors.refused("stations", "list", registry=NoSources())
+    timeline = doors.refused(
+        "stations", "timeline", f"--dataset={DAILY}", registry=NoSources()
+    )
     shown = doors.refused("stations", "show", RABA, registry=NoSources())
     with running_api(local_paths(tmp_path), NoSources()) as api:
         problem = api.session(LOCAL_OWNER).request("GET", "/stations").json()
@@ -279,7 +284,7 @@ def test_stations_cli_without_imgwtools_is_a_missing_dependency(
     # Assert
     assert_same_error(listed, problem)
     assert (listed["code"], listed["exit_code"]) == ("missing_dependency", 6)
-    assert shown == listed
+    assert timeline == shown == listed
 
 
 def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:

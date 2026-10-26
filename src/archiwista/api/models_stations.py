@@ -1,19 +1,19 @@
 """Stations and the coverage of their series for people and agents (SPEC 9.2, 4.8.4).
 
-The query models of ``GET /stations``, ``/stations/{code}``,
-``/stations/{code}/coverage`` and ``/map/stations`` refuse unknown
-parameters, and ``archiwista stations`` builds its options from them. The
-index gives a coverage label as structure (`SeriesLabel`); the answers carry
-that structure beside its text, written here in the language of the context
-for the API and the command line alike.
+The query models of ``GET /stations``, ``/stations/timeline``,
+``/stations/{code}``, ``/stations/{code}/coverage`` and ``/map/stations``
+refuse unknown parameters, and ``archiwista stations`` builds its options
+from them. The index gives a coverage label as structure (`SeriesLabel`);
+the answers carry that structure beside its text, written here in the
+language of the context for the API and the command line alike.
 """
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
-from typing import Any, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, with_config
 
 from archiwista.api.models import WGS84, AreaRef, Cell, IndexAnswer, parse_bbox
 from archiwista.config import YearTypes
@@ -160,6 +160,28 @@ _TIMELINE_VARIABLE_EXAMPLE = {
         {"year": 1982, "units": 365, "known": 365, "with_value": 0, "cell": "none"},
         {"year": 1983, "units": 365, "known": 365, "with_value": 365, "cell": "full"},
     ],
+}
+_TIMELINE_SERIES_EXAMPLE = {
+    "dataset": "pl.imgw.hydro_daily",
+    "kind": "hydro",
+    "time_unit": "day",
+    "year_type": "hydrological",
+    "years": {"from": 1981, "to": 1983},
+    "series": "2026-08-31",
+    "variables": [_TIMELINE_VARIABLE_EXAMPLE],
+}
+_TIMELINE_ITEM_EXAMPLE = {
+    "store": "zespol",
+    "provider": "IMGW-PIB",
+    "code": "149190310",
+    "name": "STROZA",
+    "kind": "hydro",
+    "meteo_kind": None,
+    "river": "Raba",
+    "hydrographic_code": "2138",
+    "active": True,
+    "location": _LOCATION_EXAMPLE,
+    "series": [_TIMELINE_SERIES_EXAMPLE],
 }
 _POINT_EXAMPLE = {
     "store": "zespol",
@@ -563,6 +585,27 @@ class StationTimelineFilters(StationLookup):
     )
 
 
+class StationTimelineListFilters(StationListFilters):
+    """The filters, order and page of ``GET /stations/timeline``: one dataset."""
+
+    dataset: str = Field(
+        description=(
+            "Dataset key (`pl.imgw.hydro_daily`), required: the stations with a"
+            " series of it and its years."
+        ),
+        examples=["pl.imgw.hydro_daily"],
+    )
+    variable: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Repeatable: the stations with a value of each variable (`Q`) or"
+            " variable key (`Q_max@winter`), and only their years; by default"
+            " every variable of each station."
+        ),
+        examples=[["Q"]],
+    )
+
+
 class StationDatasetsQuery(BaseModel):
     """The store of ``GET /stations/datasets``; unknown parameters are refused."""
 
@@ -935,10 +978,8 @@ class StationCard(IndexAnswer):
     station: StationItem
 
 
-class TimelineYear(BaseModel):
-    """A year of a variable on the Timeline: its units, known and with a value."""
-
-    model_config = _examples(
+@with_config(
+    _examples(
         {
             "year": 1981,
             "units": 365,
@@ -947,17 +988,29 @@ class TimelineYear(BaseModel):
             "cell": "fraction",
         }
     )
+)
+class TimelineYear(TypedDict):
+    """A year of a variable on the Timeline: its units, known and with a value.
+
+    A record, not a model: a page of the Timeline holds tens of thousands of
+    years, and a dict costs a fraction of a model to build.
+    """
 
     year: int
-    units: int = Field(description="Units of the year.")
-    known: int = Field(description="Of them, the known ones.")
-    with_value: int = Field(description="Of the known ones, those with a value.")
-    cell: YearCell = Field(
-        description=(
-            "`full` (a value in every unit), `fraction`, `none` (known, no value)"
-            " or `unknown` (not every unit known: not a gap)."
-        )
-    )
+    units: Annotated[int, Field(description="Units of the year.")]
+    known: Annotated[int, Field(description="Of them, the known ones.")]
+    with_value: Annotated[
+        int, Field(description="Of the known ones, those with a value.")
+    ]
+    cell: Annotated[
+        YearCell,
+        Field(
+            description=(
+                "`full` (a value in every unit), `fraction`, `none` (known, no"
+                " value) or `unknown` (not every unit known: not a gap)."
+            )
+        ),
+    ]
 
 
 class TimelineVariable(BaseModel):
@@ -977,8 +1030,12 @@ class TimelineVariable(BaseModel):
 
     @classmethod
     def of(cls, variable: CoverageVariable, found: StationCoverage) -> Self:
-        """Return the Timeline row of a labelled variable."""
-        return cls(
+        """Return the Timeline row of a labelled variable.
+
+        Every field comes typed from the index, and a page holds tens of
+        thousands of years: the row is built without validating them again.
+        """
+        return cls.model_construct(
             key=variable.key,
             variable=variable.variable,
             unit=variable.unit,
@@ -994,17 +1051,7 @@ class TimelineVariable(BaseModel):
 class TimelineSeries(BaseModel):
     """A station's series in one dataset, year by year (the Timeline)."""
 
-    model_config = _examples(
-        {
-            "dataset": "pl.imgw.hydro_daily",
-            "kind": "hydro",
-            "time_unit": "day",
-            "year_type": "hydrological",
-            "years": {"from": 1981, "to": 1983},
-            "series": "2026-08-31",
-            "variables": [_TIMELINE_VARIABLE_EXAMPLE],
-        }
-    )
+    model_config = _examples(_TIMELINE_SERIES_EXAMPLE)
 
     dataset: str
     kind: str | None
@@ -1013,6 +1060,27 @@ class TimelineSeries(BaseModel):
     years: YearSpan | None = Field(description="R; `null` when no period is known.")
     series: str | None = Field(description="Label of the series version.")
     variables: list[TimelineVariable]
+
+    @classmethod
+    def of(cls, found: StationCoverage, variables: Sequence[str]) -> Self:
+        """Return a series year by year, of the variables asked (all: none).
+
+        A variable is asked by its key (``Q_max@winter``) or by its name
+        (``Q``, every period of it).
+        """
+        return cls(
+            dataset=found.dataset,
+            kind=found.kind,
+            time_unit=found.time_unit,
+            year_type=found.year_type,
+            years=YearSpan.of(found.span),
+            series=found.series,
+            variables=[
+                TimelineVariable.of(item, found)
+                for item in found.variables
+                if not variables or item.key in variables or item.variable in variables
+            ],
+        )
 
 
 class StationTimeline(IndexAnswer):
@@ -1024,17 +1092,7 @@ class StationTimeline(IndexAnswer):
             "provider": "IMGW-PIB",
             "code": "149190310",
             "name": "STROZA",
-            "series": [
-                {
-                    "dataset": "pl.imgw.hydro_daily",
-                    "kind": "hydro",
-                    "time_unit": "day",
-                    "year_type": "hydrological",
-                    "years": {"from": 1981, "to": 1983},
-                    "series": "2026-08-31",
-                    "variables": [_TIMELINE_VARIABLE_EXAMPLE],
-                }
-            ],
+            "series": [_TIMELINE_SERIES_EXAMPLE],
             **_FRESH,
         }
     )
@@ -1059,24 +1117,94 @@ class StationTimeline(IndexAnswer):
             provider=row.provider,
             code=row.code,
             name=row.name,
-            series=[
-                TimelineSeries(
-                    dataset=found.dataset,
-                    kind=found.kind,
-                    time_unit=found.time_unit,
-                    year_type=found.year_type,
-                    years=YearSpan.of(found.span),
-                    series=found.series,
-                    variables=[
-                        TimelineVariable.of(item, found)
-                        for item in found.variables
-                        if not variables
-                        or item.key in variables
-                        or item.variable in variables
-                    ],
-                )
-                for found in series
+            series=[TimelineSeries.of(found, variables) for found in series],
+            **freshness,
+        )
+
+
+class StationTimelineItem(BaseModel):
+    """A station of a Timeline page: who and where it is, its series by year."""
+
+    model_config = _examples(_TIMELINE_ITEM_EXAMPLE)
+
+    store: str = Field(description="Store id.")
+    provider: str = Field(description="`IMGW-PIB` or `CHMI`; a code is its provider's.")
+    code: str = Field(description="Station code, as text.")
+    name: str | None
+    kind: str | None = Field(description="`hydro` or `meteo`.")
+    meteo_kind: str | None = Field(
+        description="Of a meteo station: `synoptic`, `climate`, `precipitation`."
+    )
+    river: str | None
+    hydrographic_code: str | None = Field(description="The river's hydrographic code.")
+    active: bool | None
+    location: StationLocationItem
+    series: list[TimelineSeries] = Field(
+        description=(
+            "The station's series of `dataset` year by year, as"
+            " `GET /stations/{code}/coverage` gives it."
+        )
+    )
+
+    @classmethod
+    def of(
+        cls,
+        row: StationRow,
+        series: Iterable[StationCoverage],
+        variables: Sequence[str],
+    ) -> Self:
+        """Return a station with its series year by year, of the variables asked."""
+        return cls(
+            store=row.store,
+            provider=row.provider,
+            code=row.code,
+            name=row.name,
+            kind=row.kind,
+            meteo_kind=row.meteo_kind,
+            river=row.river,
+            hydrographic_code=row.hydrographic_code,
+            active=row.active,
+            location=StationLocationItem.of(row),
+            series=[TimelineSeries.of(found, variables) for found in series],
+        )
+
+
+class StationTimelinePage(IndexAnswer):
+    """A page of the stations of one dataset, each year by year (the Timeline tab)."""
+
+    model_config = _examples(
+        {
+            "area": None,
+            "counts": _COUNTS_EXAMPLE,
+            "items": [_TIMELINE_ITEM_EXAMPLE],
+            "next_cursor": None,
+            **_FRESH,
+        }
+    )
+
+    area: AreaRef | None = Field(description="The area of `area_id`, if given.")
+    counts: StationCountsItem
+    items: list[StationTimelineItem]
+    next_cursor: str | None = Field(description="Cursor of the next page, if any.")
+
+    @classmethod
+    def of(
+        cls,
+        page: StationPage,
+        variables: Sequence[str],
+        area: AreaRef | None,
+        freshness: Mapping[str, Any],
+    ) -> Self:
+        """Return the model of a page of stations with their years."""
+        coverage = _by_station(page.coverage)
+        return cls(
+            area=area,
+            counts=StationCountsItem.of(page.counts),
+            items=[
+                StationTimelineItem.of(row, coverage.get(_key(row), ()), variables)
+                for row in page.items
             ],
+            next_cursor=page.next_cursor,
             **freshness,
         )
 
@@ -1294,7 +1422,10 @@ def _by_station(
 def _timeline_years(
     years: Iterable[SeriesYear], found: StationCoverage
 ) -> list[TimelineYear]:
-    """Return every year of R: one the index knows nothing of is unknown."""
+    """Return every year of R: one the index knows nothing of is unknown.
+
+    The records are dict literals: a page builds tens of thousands of them.
+    """
     if found.span is None:
         return []
     rows = {year.year: year for year in years}
@@ -1303,33 +1434,26 @@ def _timeline_years(
         row = rows.get(year)
         if row is None:
             first, last = year_span(year, found.year_type, found.time_unit)
-            cells.append(
-                TimelineYear(
-                    year=year,
-                    units=last - first + 1,
-                    known=0,
-                    with_value=0,
-                    cell="unknown",
-                )
-            )
-            continue
+            units, known, with_value = last - first + 1, 0, 0
+        else:
+            units, known, with_value = row.units, row.known, row.with_value
         cell: YearCell
-        if row.known < row.units:
+        if known < units:
             cell = "unknown"
-        elif row.with_value == row.units:
+        elif with_value == units:
             cell = "full"
-        elif row.with_value == 0:
+        elif with_value == 0:
             cell = "none"
         else:
             cell = "fraction"
         cells.append(
-            TimelineYear(
-                year=year,
-                units=row.units,
-                known=row.known,
-                with_value=row.with_value,
-                cell=cell,
-            )
+            {
+                "year": year,
+                "units": units,
+                "known": known,
+                "with_value": with_value,
+                "cell": cell,
+            }
         )
     return cells
 

@@ -1963,14 +1963,28 @@ MESSAGES = {
     ),
     "stations_list_help": Text(
         (
-            "Lists stations by name with every variable of their series labelled"
-            " (like GET /api/v1/stations, options with the same names; a repeatable"
-            " parameter is a repeatable option); next page: --cursor."
+            "Lists stations along rivers or by name (--sort) with every variable of"
+            " their series labelled (like GET /api/v1/stations, options with the"
+            " same names; a repeatable parameter is a repeatable option); next"
+            " page: --cursor."
         ),
         (
-            "Wypisuje stacje według nazwy z etykietą każdej zmiennej ich szeregów"
-            " (jak GET /api/v1/stations, opcje o tych samych nazwach; parametr"
-            " powtarzalny to powtarzalna opcja); następna strona: --cursor."
+            "Wypisuje stacje wzdłuż rzek albo według nazwy (--sort) z etykietą"
+            " każdej zmiennej ich szeregów (jak GET /api/v1/stations, opcje o tych"
+            " samych nazwach; parametr powtarzalny to powtarzalna opcja); następna"
+            " strona: --cursor."
+        ),
+    ),
+    "stations_timeline_help": Text(
+        (
+            "Lists the stations of a dataset with each variable year by year, the"
+            " Timeline (like GET /api/v1/stations/timeline: the options of"
+            " 'stations list', --dataset required); next page: --cursor."
+        ),
+        (
+            "Wypisuje stacje zbioru danych z każdą zmienną rok po roku, oś czasu"
+            " (jak GET /api/v1/stations/timeline: opcje 'stations list', --dataset"
+            " wymagane); następna strona: --cursor."
         ),
     ),
     "stations_show_help": Text(
@@ -2152,6 +2166,24 @@ MESSAGES = {
     "station_label": Text(
         "{key}: {label}",
         "{key}: {label}",
+    ),
+    "station_timeline_series": Text(
+        "  {dataset} (series {series}, {year_type} years {years})",
+        "  {dataset} (szeregi {series}, lata {year_type} {years})",
+    ),
+    "station_timeline_variable": Text(
+        "    {key} {years}  {label}",
+        "    {key} {years}  {label}",
+    ),
+    "station_timeline_legend": Text(
+        (
+            "Years: {full} full, {fraction} with gaps, {none} without a value,"
+            " {unknown} not known."
+        ),
+        (
+            "Lata: {full} pełny, {fraction} z lukami, {none} bez wartości,"
+            " {unknown} nieznany."
+        ),
     ),
     "stations_summary": Text(
         (

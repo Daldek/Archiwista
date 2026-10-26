@@ -9,6 +9,14 @@ command-line interface may change.
 
 ### Added
 
+- `GET /api/v1/stations/timeline` and `archiwista stations timeline --dataset …`: a
+  page of the stations of one dataset, each with its series year by year as `GET
+  /stations/{code}/coverage` gives it (every year of the range with its units, the
+  known ones and those with a value, and its cell), with the filters, order and cursor
+  of `GET /stations`; `variable` keeps the stations with a value of each variable and
+  only their rows. For a person the command draws a line of year cells per variable
+  with its label. A page of 200 water gauges with H, Q and T over 75 years is answered
+  within 300 ms (p95). (ADR-045, plan I8.3)
 - The Catalog lists the stations of an IMGWTools product (ADR-045, plan I8.2): a row
   per station with a line per variable of its series (the symbol with the fill of its
   coverage, the label and the full years), the code, the river with its hydrographic
@@ -535,6 +543,12 @@ command-line interface may change.
 
 ### Changed
 
+- A page of stations with the labels of their series is read faster (plan I8.3): the
+  years of the page come from the index as plain rows, and a label goes over a
+  variable's years once. `GET /api/v1/stations?dataset=…&limit=200` over 200 water gauges
+  with H, Q and T of 75 years went from about 255 ms to about 200 ms (median) on the
+  development machine. `archiwista stations list --help` no longer says the list is by
+  name only.
 - Kartograf is pinned at `745e8b18`, and the adapter uses what it asked for (plan, Requests):
   the probe of a store is Kartograf's `store_state(root)`, not a copy of its judgement by file
   name (`adapter/kartograf/marker.py` is gone; ADR-031 erratum 1): the reasons keep their names,

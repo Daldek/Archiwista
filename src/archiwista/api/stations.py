@@ -7,7 +7,9 @@ variable of each series labelled (P16), with the counts of the location
 groups: the stations without a location are counted after the attribute and
 coverage filters and never placed in an area (SPEC 4.3 point 3).
 ``GET /stations/datasets`` names the datasets with station series (the
-dataset chip of the map), ``GET /stations/{code}`` is a station's card,
+dataset chip of the map), ``GET /stations/timeline`` is a page of the
+stations of one dataset with each variable year by year (the Timeline tab of
+the Catalog), ``GET /stations/{code}`` is a station's card,
 ``GET /stations/{code}/coverage`` its variables year by year (the Timeline)
 and ``GET /map/stations`` the located stations of a map view or their grid.
 The fixed paths are declared before ``/stations/{code}``, which would else
@@ -19,7 +21,7 @@ series file, and only while the source of the stations is available: else
 HTTP.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query
 
@@ -38,6 +40,8 @@ from archiwista.api.models_stations import (
     StationMapView,
     StationTimeline,
     StationTimelineFilters,
+    StationTimelineListFilters,
+    StationTimelinePage,
 )
 from archiwista.api.slots import bbox_area, checked_store
 from archiwista.auth import Principal
@@ -48,6 +52,7 @@ from archiwista.index import (
     AreaRecord,
     BBox,
     IndexQueries,
+    StationPage,
     StationQuery,
     StationRow,
 )
@@ -107,29 +112,29 @@ def station_list(
         rectangle, a coverage filter without ``dataset``, a reversed range of
         years, a limit out of range or a cursor of another query.
     """
-    require_station_source(registry)
-    freshness = queries.freshness()
-    stores = checked_store(filters.store, settings, freshness)
-    if filters.area_id is not None and filters.bbox is not None:
-        raise IndexQueryError(message("api.area_and_bbox"))
-    record = _area(queries, filters.area_id)
-    area = None if record is None else record.geometry
-    bbox = filters.bbox_values()
-    if bbox is not None:
-        area = _rectangle(registry, bbox, filters.bbox_crs)
-    query = filters.station_query(
-        year_types=settings.year_types,
-        area=area,
-        boundary=filters.boundary,
-        location=filters.location,
-        limit=filters.limit,
-        cursor=filters.cursor,
-        q=filters.q,
-        sort=filters.sort,
-    )
-    page = queries.stations(query)
-    reference = None if record is None else AreaRef.of(record)
-    return StationList.of(page, reference, staleness(freshness, stores))
+    page, area, freshness = _station_page(queries, settings, registry, filters)
+    return StationList.of(page, area, freshness)
+
+
+def station_timeline_page(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    filters: StationTimelineListFilters,
+) -> StationTimelinePage:
+    """Return a page of the stations of a dataset, each variable year by year.
+
+    Each item's series is what ``station_timeline`` gives for the station
+    with the same dataset, variables, range and year type: the page's
+    stations are labelled together, the years of their series read at once.
+
+    Raises
+    ------
+    SourceStateError, IndexQueryError
+        As ``station_list``.
+    """
+    page, area, freshness = _station_page(queries, settings, registry, filters)
+    return StationTimelinePage.of(page, filters.variable, area, freshness)
 
 
 def station_datasets(
@@ -289,6 +294,44 @@ def find_station(
     return page.items[0]
 
 
+def _station_page(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    filters: StationListFilters,
+) -> tuple[StationPage, AreaRef | None, dict[str, Any]]:
+    """Return a page of stations with their coverage, its area and staleness.
+
+    Raises
+    ------
+    SourceStateError, IndexQueryError
+        As ``station_list``.
+    """
+    require_station_source(registry)
+    freshness = queries.freshness()
+    stores = checked_store(filters.store, settings, freshness)
+    if filters.area_id is not None and filters.bbox is not None:
+        raise IndexQueryError(message("api.area_and_bbox"))
+    record = _area(queries, filters.area_id)
+    area = None if record is None else record.geometry
+    bbox = filters.bbox_values()
+    if bbox is not None:
+        area = _rectangle(registry, bbox, filters.bbox_crs)
+    query = filters.station_query(
+        year_types=settings.year_types,
+        area=area,
+        boundary=filters.boundary,
+        location=filters.location,
+        limit=filters.limit,
+        cursor=filters.cursor,
+        q=filters.q,
+        sort=filters.sort,
+    )
+    page = queries.stations(query)
+    reference = None if record is None else AreaRef.of(record)
+    return page, reference, staleness(freshness, stores)
+
+
 def _area(queries: IndexQueries, area_id: str | None) -> AreaRecord | None:
     """Return the kept area of ``area_id``.
 
@@ -375,6 +418,33 @@ def list_station_datasets(
     available.
     """
     return station_datasets(queries, settings.get(), registry, query)
+
+
+@router.get(
+    "/stations/timeline",
+    response_model=StationTimelinePage,
+    responses=problem_responses(400, 503),
+)
+def list_stations_timeline(
+    filters: Annotated[StationTimelineListFilters, Query()],
+    principal: _Principal,
+    settings: _Settings,
+    registry: _Registry,
+    queries: _Queries,
+) -> StationTimelinePage:
+    """Page the stations of a dataset, each variable year by year (the Timeline).
+
+    The filters, order and cursor of `GET /stations`, with `dataset`
+    required. Each item is a station with its series as `GET
+    /stations/{code}/coverage` gives it for the same `dataset`, `variable`,
+    `years` and `year_type`: every year of R with its units, the known ones
+    and those with a value, and its cell (`full`, `fraction`, `none`,
+    `unknown`). `variable` (repeatable) keeps the stations with a value of
+    each variable, and only their years. The years of the whole page are read
+    from the index at once, never from a series file. `503` while the source
+    of the stations (IMGWTools) is not available.
+    """
+    return station_timeline_page(queries, settings.get(), registry, filters)
 
 
 @router.get(

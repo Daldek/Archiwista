@@ -28,7 +28,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
-| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a station's card, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/{code}`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
@@ -393,7 +393,13 @@ number the years as `year_types` of `GET /settings` remembers for the data's fam
 `dataset`, `kind` or `meteo_kind`, as hydro); a given `year_type` wins and changes
 nothing, and half-year characteristics stay hydrological. `PUT /settings/year-types`
 with `{"hydro": …, "meteo": …}` changes the choice (an administrator until accounts
-exist).
+exist). `GET /stations/timeline` (`archiwista stations timeline`) is the Timeline
+of a page: the filters, order and cursor of `GET /stations` with `dataset`
+required, each item a station with its `series` exactly as `GET
+/stations/{code}/coverage` gives it for the same `variable`, `years` and
+`year_type`; `variable` keeps the stations with a value of each variable and only
+their rows. Read a long list page by page; the years of a page come from the
+index in one read.
 
 ```sh
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
@@ -401,10 +407,13 @@ curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
+curl -sf -b "$JAR" -H "$H" \
+  "$BASE/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries"
 archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
   --coverage=Q:continuous --min-complete-years=Q:30 --json
 archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 archiwista stations datasets --json
+archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
