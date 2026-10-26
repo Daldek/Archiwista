@@ -4066,6 +4066,17 @@ Criteria:
    from an HDD/SMB store is served from the local preview cache within
    the target time for a preview from cache in 4.5 (without changing the thresholds).
 
+Status (2026-10-26): built on the branch `feature/kartograf-data-output` (plan
+`docs/plans/2026-10-25-archiwista-next.md`, Part 3), not released: the release 0.3.0 is
+the user's. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
+thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of the map
+and of a pasted command; whether the project card's download and repin need the window
+too is open (ADR-042). Criteria 1, 2 and 6 are the `live` test
+`tests/integration/test_live_actions.py` and criterion 8 on a share the `smb` run, both
+run by the user. Area selection by unit name waits for KB-7, and the interface has no
+list of jobs yet (cancel, retry and the log are in the API and the CLI). Evidence:
+[`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
+
 ### v0.4 "Team"
 
 Scope: 10.2 and the topology from A-ADR-013 (server on the local network): login,

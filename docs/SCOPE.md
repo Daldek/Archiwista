@@ -151,6 +151,9 @@ Full acceptance criteria: SPEC 13.
      after pre-building, the first thumbnail of a current version from an
      HDD/SMB store is served from the local memory within the target time of a
      preview from memory (SPEC 4.5).
+   - Status (2026-10-26): built, not released; criteria 3, 5, 7 and 8 (local disk)
+     met, the live criteria written for the user to run. Evidence and conditions:
+     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
 5. **v0.4 "Team".** A server on the local network: sign-in, account management
    and project sharing in the interface, optional LDAP/AD groups, TLS, a log, a
    shared queue.

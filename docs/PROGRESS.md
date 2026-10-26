@@ -19,6 +19,7 @@ commit that introduced this file).
 | v0.3 A10 "interface: availability rows" | done | (commit 1 was A11 commit 2, `ce9471e`: the step "U źródła" with its rows; commit 2 with the reduced gate) Offline without a kept report the step says it cannot ask the source and points to "Stan lokalny" (`actions.source.offline_no_report`), which shows the local share of the product ("lokalnie 76% obszaru", SPEC 6.4's badge without a source report); the share is not repeated in the step: the panel gives each piece of information one place (`map/panel.js`), and `tests/e2e/test_map.py` expects one such badge offline. `tests/e2e/test_availability.py` (Chromium): a hand-written report of the stand-in producer over a Kartograf store of three flights (`tests/fixtures/layer_store`) gives six years whose labels need every Polish form of SPEC 6.4 (2, 5, 22 and 25 campaigns; 1, 2 and 5 partial sheets; "<1%"; a partial set of the whole land at 99%), the chips "+1 wariant", "+2 warianty", "+5 wariantów" with the ranking, the badges "pobrane", "pobrane 1/3", "pobrane 1/5", "niepobrane" from the index, formats of one set as one variant with the size of ASC, the chip reached and opened by keyboard with its focus ring, every label and badge as text (the ring `aria-hidden`); "Sprawdź ponownie" starts one `availability` job with `force` on a two-day-old report and the stand-in's rows replace it; offline without a report the banner, the pointer, the disabled check, "Stan lokalny" with the share of `GET /local-coverage` (partial), no job and no request off the machine. Screenshots `07-wiersze-u-zrodla`, `08-offline-lokalnie` in `docs/reports/v0.3-screenshots/` |
 | v0.3 A11 "interface: the plan window and the pasted command" | done | (commits 1 and 2 are in Next: `d257b13`, `ce9471e`; then two commits with the reduced gate; ADR-042) **API:** `project_write` on each project of `GET /projects`, `GET /stores/{store}` and on `GET /projects/{project}` (`Authorizer.writable_projects`, the dependency `writable_projects`; the CLI as the local owner), `tests/integration/test_project_write.py`. **Web:** "Wklej polecenie producenta" in step 4 (with or without an area; producer = the line's first word if installed, else the step's; `POST /commands/parse` then `/commands/validate` with the target store, the producer's text at the field), `DownloadPlan` takes `line` (no format row) and keeps a line's call before its check (an offline refusal leaves it), "Dodaj jako zadanie projektu" (projects of the producer in the store with `project_write`; `POST /projects/{project}/tasks`, a refused name at the name field; with something to download and `store_write` the project's download of the task, `POST /projects/{project}/jobs`), disabled with the reason (several lines, no project, none writable, line not read); `projectSummary` and a failed job's hint in `views/cards.js`; the generic offline refusal no longer names unit footprints. `tests/e2e/test_pasted_command.py` (5 tests: stand-in line → plan → download; two refusals at the field; offline Kartograf line → task through Kartograf, a refused name first; a person who may not change the project). Screenshots `09`, `10`. Not covered end to end: "Dodaj zadanie i pobierz" (needs the network). |
 | v0.3 A13 "interface: project actions" | done | (one commit with the reduced gate: the API was A11's; ADR-042 decision 4 and option I) `views/projects.js`: the list's column "Producent" and "Nowy projekt…" (`POST /projects`; administrators only, others see it disabled with the reason; producer of `health.sources` with a store directory, the store, the directory prefilled with the first project directory; a refused `path` or `store` at its field); the card's "Weryfikuj", "Sprawdź aktualizacje", "Pobierz" and each task's "Przepnij" (`POST /projects/{project}/jobs`, one `useJob`, `projectSummary`, a `409` naming a running job followed; at the end the card, "Stan teraz" and the list are read again), "+ Zadanie" (`POST /commands/parse` with the project's producer, then `POST /projects/{project}/tasks`; the producer's text at the line, a refused name at the name) and "Usuń" with a question (`DELETE …/tasks/{name}`; a `409 project_locked` shows the instruction naming the lock). `blocked()` gives each action its first reason (`write`, `store`, `store_write`, `offline`, `busy`); the card lists the reasons in force once and each disabled button points at its own (`aria-describedby`). `L.card.readonly` removed. `tests/e2e/test_project_actions.py` (4 tests over `kartograf.testing` with workers refusing the network: create → add (refusals at the line and the name) → remove; verify and download of held pins; the listed person with every change disabled and the hidden project unseen; offline reasons and a left lock). Screenshots `11`, `12`. Not run in the browser: a check and a repin (they need the source). |
+| v0.3 A14 "acceptance, documents, report" | done | (both commits with the reduced gate) the offline acceptance `tests/e2e/test_acceptance_v03.py` (criteria 3, 4, 5, 7), the live test `tests/integration/test_live_actions.py` (criteria 1, 2, 6; marker `live`, `ARCHIWISTA_LIVE_ACTIONS=1`, the author's), the report `docs/reports/v0.3-measurements.md` (criterion 8 on the SSD: first thumbnail p95 4.1 ms), USAGE and AGENT_API for 0.3, the status of v0.3 in SPEC 13 and SCOPE; details in Next 4. v0.3 is built, not released: A12 (jobs panel) is open, A15 waits for KB-7 |
 | Nogat standard 2.1, structure and tooling | done | on `chore/nogat-2.1`: uv and `uv.lock`, Kartograf pinned by commit, `src/` layout, `scripts/gate.sh`, `scripts/check-commits.sh`, CI, Dependabot, editor and git files, markers, package-data and README example tests, the ruff rule set of DEV-7.2, `--verbose`, `--quiet` and `ARCHIWISTA_LOG_LEVEL` |
 | Nogat standard 2.1, documentation | done | everything is English (`docs/CLA.md`, the author's legal text, excepted; the Polish interface labels stay in quotes): README in the order of DOC-2.1 (146 lines), the project rules of the former `DEVELOPMENT_STANDARDS.md` in CLAUDE.md, the plans in `docs/plans/`, ADR-030 in `docs/decisions/` with the index in `docs/DECISIONS.md`, ARCHITECTURE, DECISIONS, SPEC, the plans, the reports and the mockup README translated, `docs/IMGWTOOLS_REQUIREMENTS.md` removed (IMGWTools 3.0.0 meets it; SPEC 12.7 keeps IMGW-1 to 20) |
 | Nogat standard 2.1, error registry (ERR-3, ERR-4, DEV-11.1, AGI-6.3) | done | vendored registry and schemas (`schemas/nogat/`), generated `src/archiwista/_errors.py`, contract tests, problem+json with registry codes, the `archiwista-error/1` document and the exit codes of the CLI, the front end, registry codes in job documents (job rows of 0.2.0 are mapped on read, never rewritten), the message catalog `src/archiwista/messages/` and the error texts that follow `Accept-Language` (English by default, Polish with the header, `Content-Language` on every JSON answer; the stored texts stay Polish); deviations in CLAUDE.md: the stored texts (AGI-6.4), outcome statuses and no result envelope for good |
@@ -146,31 +147,37 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    ADR-042). **A13 is done** (Status row "v0.3 A13"; ADR-042 decision 4: a project's
    download and repin start from the card, "Sprawdź aktualizacje" being the project's
    plan; whether criterion 4 wants a window before them too is an open question for the
-   author). **A14 commit 1 is done:** `tests/e2e/test_acceptance_v03.py` (3 tests, no
-   network): UC-01 with the stand-in from the kept area's report to files in the store,
-   the labels of both years and the ranking computed by hand from the report the index
-   keeps (criterion 3), nothing downloaded before the plan window's confirmation
-   (criterion 4), a server stopped during the download leaves it `interrupted` and its
-   retry fetches only the rest (criterion 5, retry by `POST /jobs/{job}/retry`: no jobs
-   panel yet); a person without `store_writer` gets the download disabled and `403`
-   with no job (criterion 7); UC-06 over Kartograf's fixture project: status, verify,
-   download of the held pins, the year 2025 added as a task, and the owner without
-   `store_writer` refused a download and a repin (criterion 7). *Criterion 8 measured*
-   (2026-10-26, reference computer, SSD, `tests/perf/test_warm_perf.py -m perf` over
-   `previews-perf` next to the 50 000-slot store, which needed its marker first:
-   `kartograf store init --root <data-dir>/previews-perf/data`): scan 1.4 s; the
-   scheduler's warm-up 94.9 s for 353 versions (353 warmed, 296 waiting for a local COG,
-   0 failed, not stopped); preview cache 40 MB; first look at 40 warmed versions:
-   description p95 4.2 ms (median 3.7), first thumbnail p95 4.1 ms (median 3.6), target
-   100 ms. The SMB run (`-m smb`) is the author's. *Next (A14 commit 2):*
-   `tests/integration/test_live_actions.py` (marker `live`, opt-in variable; criteria
-   1, 2, 6; Kartograf's line `elevation download --product nmt --sheet
-   N-34-130-D-d-2-4 --resolution 1m --vertical-crs EVRF2007` parses offline),
-   `docs/reports/v0.3-measurements.md` with the figures above and screenshots 01–12,
-   USAGE (0.3), AGENT_API, SPEC 13 status of v0.3, CHANGELOG; then I4 to I7 and A12 (the
-   web client has no cancel, retry or log yet); a variant without a default format and
-   a plan with conflicts are untested in the browser (the stand-in has neither); the
-   Kartograf lines of a real report are checked live.
+   author). **A14 is done** (both commits with the reduced gate). Commit 1:
+   `tests/e2e/test_acceptance_v03.py` (3 tests, no network): UC-01 with the stand-in
+   from the kept area's report to files in the store, the labels of both years and the
+   ranking computed by hand from the report the index keeps (criterion 3), nothing
+   downloaded before the plan window's confirmation (criterion 4), a server stopped
+   during the download leaves it `interrupted` and its retry fetches only the rest
+   (criterion 5, retry by `POST /jobs/{job}/retry`: no jobs panel yet); a person without
+   `store_writer` gets the download disabled and `403` with no job (criterion 7); UC-06
+   over Kartograf's fixture project: status, verify, download of the held pins, the year
+   2025 added as a task, and the owner without `store_writer` refused a download and a
+   repin (criterion 7). Commit 2: `tests/integration/test_live_actions.py` (marker
+   `live`, opted in by `ARCHIWISTA_LIVE_ACTIONS=1`, so the weekly `live.yml` skips it; 3
+   tests for the author, about 400 MB from GUGiK): UC-01 (availability of an area inside
+   `N-34-130-D-d-2-4`, the plan, the download with the plan, the badge) compared with
+   `kartograf elevation download --root` and the same task in a project of each
+   (criterion 1: `iter_store` entries, SHA-256, sidecars but `downloaded_at`, pins); a
+   project's download of `N-34-130-D-d-2` (four sheets) cancelled after its first sheet:
+   no `.incoming`, no problem, no pin, no lock, a clean full scan, and after a run again
+   `kartograf project verify` exit 0 (criterion 2); UC-06: status, verify, check, repin,
+   then `kartograf project verify` (criterion 6). Archiwista runs in the test process
+   (`archiwista.cli.main`), Kartograf's command line as `python -m kartograf` with
+   `KARTOGRAF_CACHE_DIR` in the test directory (the canary stays empty). Not run live (D10);
+   an offline run with every connection refused (a `sitecustomize` outside the
+   repository) failed each test at its first network step only. The report
+   `docs/reports/v0.3-measurements.md` (criterion 8 as measured on 2026-10-26: scan 1.4 s,
+   warm-up 94.9 s for 353 versions, first thumbnail p95 4.1 ms; the evidence of every
+   criterion; screenshots 01–12), USAGE (0.3), AGENT_API (0.3, its limits), SPEC 13 and
+   SCOPE stage 4 (status of v0.3), ARCHITECTURE (the report), the CHANGELOG. Open: A12
+   (the web client has no cancel, retry or log yet); A15 (KB-7); a variant without a
+   default format and a plan with conflicts are untested in the browser (the stand-in has
+   neither); the live run and the SMB run of criterion 8 are the author's.
    Kartograf's example of `project add` (`… soil hsg --sheet N-34-130-D --depth 0-5cm`)
    is not its canonical line, so the contract test compares calls, not text (a request
    to Kartograf).

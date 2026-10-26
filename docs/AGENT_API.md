@@ -1,10 +1,14 @@
 # Archiwista API for agents and scripts
 
 A guide for AI agents (for example Claude Code) and scripts that use Archiwista
-without a browser. It describes release 0.2.0: reading the catalog, previews,
-layers, comparison, own data and project snapshots, areas and jobs. An agent
-uses the HTTP API `/api/v1` or the commands `archiwista … --json`; there is no
-chat tool and no MCP server.
+without a browser. It describes version 0.3 "Actions" (built, not released: the
+release is the author's): reading the catalog, previews, layers, comparison, own
+data and project snapshots, areas and jobs, and the actions of v0.3: the
+producers' commands, availability at the source, plans and downloads into a
+configured store, projects created, changed and downloaded through their
+producer, job controls and the pre-building of previews. An agent uses the HTTP
+API `/api/v1` or the commands `archiwista … --json`; there is no chat tool and
+no MCP server.
 
 Until v1.0 the API may change. The full schema with examples is always at
 `/api/v1/openapi.json` (it needs a session) and the interactive documentation
@@ -728,11 +732,13 @@ full scan in the foreground (for the owner at a terminal, not for an agent next
 to a running server: both go to the same queue and get a conflict, exit `4`,
 when they meet).
 
-## 10. Limits of v0.2
+## 10. Limits of v0.3
 
 - Local mode only: one person on `127.0.0.1`, no login; accounts and groups
   serve the visibility of projects (A-ADR-029).
-- No downloading of data, no availability checks at the source and no producer
-  actions that change a project manifest (plan v0.3).
-- No IMGW data in Archiwista, no chat and no MCP; an external agent uses the
-  API described above.
+- Actions run the commands of Kartograf's catalog; IMGWTools has no actions yet
+  (v0.5). An area is a drawn, sheet or file area as in v0.1, not the name of an
+  administrative unit (plan A15, Kartograf KB-7).
+- The files of an IMGWTools store are indexed (archives, series, station
+  catalogs); stations and the coverage of series are v0.5. No chat and no MCP;
+  an external agent uses the API described above.

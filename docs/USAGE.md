@@ -1,12 +1,17 @@
-# User guide: Archiwista 0.2
+# User guide: Archiwista 0.3
 
-Archiwista 0.2 "Previews" shows a Kartograf store on a map, in a catalog and
-in file cards, and adds previews, the Fan, the Timeline and comparison.
-Projects have a folder of own data and snapshots. The producer's store stays
-read-only; snapshots are made only on the command of an authorised person, in
-the project folder. The interface text is Polish; the Polish label of a control
-is given in quotes where this guide first names it. Running and the command
-line: [`README.md`](../README.md); scripts and agents:
+Archiwista 0.3 "Actions" shows a Kartograf store, and the files of an IMGWTools
+store, on a map, in a catalog and in file cards, with previews, the Fan, the
+Timeline and comparison; projects have a folder of own data and snapshots. It
+acts through the producer: it asks the source what it has for an area, plans and
+runs a download into a configured store, creates and changes projects, and
+downloads, checks, verifies and repins their tasks, all as background jobs, and
+it prepares the first look at current versions ahead. Archiwista writes no file
+of a store itself: the producer writes it, and only for a person with the
+permission "zapis do magazynu"; snapshots are made only on the command of an
+authorised person, in the project folder. The interface text is Polish; the
+Polish label of a control is given in quotes where this guide first names it.
+Running and the command line: [`README.md`](../README.md); scripts and agents:
 [`AGENT_API.md`](AGENT_API.md).
 
 ## Start
@@ -85,7 +90,7 @@ The panel "Wybór" (selection) leads through four steps:
    "Odśwież" (refresh) reads the slots of the area from the store again;
    "Pokaż pliki obszaru w Katalogu" (show the files of the area in the
    Catalog) opens the list.
-4. **At the source** ("U źródła", v0.3 in development): a product whose
+4. **At the source** ("U źródła"): a product whose
    availability a producer checks and the target store ("Magazyn docelowy").
    "Sprawdź u źródła" asks the source (a background job); a report younger
    than seven days is shown with its date, and "Sprawdź ponownie" asks again.
@@ -148,7 +153,7 @@ the preview of a whole year are kept in the local content-addressed memory
 reason, in Polish, why it has none, with an instruction on what to do.
 
 The first look at a file on an HDD or a share is slow; it can be prepared
-ahead (v0.3, in development): `archiwista preview-warm` (filters `--store`,
+ahead: `archiwista preview-warm` (filters `--store`,
 `--product`, `--segment`, `--project`, `--area-id`; `--json`) or `POST
 /api/v1/previews/warm` renders, in the background at the lowest priority,
 the preview pane's thumbnail and the map's tiles at the smallest zoom of the
@@ -218,13 +223,13 @@ versions a scan has just indexed.
 
 - **The list** of projects shows the producer ("Producent"), the store, the
   tasks, the pinned and missing versions and the own data. Hidden projects are
-  not visible. "Nowy projekt…" (v0.3, in development) is an administrator's: a
+  not visible. "Nowy projekt…" is an administrator's: a
   producer, a store with a directory of that producer and the project's
   directory in a project directory of the settings (made when missing); the
   producer writes the manifest, which names that store's directory. Others see
   the button disabled with the reason.
 - **The project card** shows the producer's "Stan teraz" (state now), the
-  tasks and the pins from the manifest, and its actions (v0.3, in development),
+  tasks and the pins from the manifest, and its actions,
   each run by the producer: "Weryfikuj" (verify: checksums of the pinned files
   in the store, no network), "Sprawdź aktualizacje" (check the pins against the
   source), "Pobierz" (download and pin the tasks not downloaded yet, restore
@@ -322,13 +327,16 @@ from an open Archiwista tab.
   the status bar gives the repair command, and `archiwista doctor` prints the
   same.
 
-## What version 0.2 does not do
+## What version 0.3 does not do
 
 - It checks availability at the source and downloads only from the step "U
-  źródła" of the map and from the project card (v0.3 "Actions", in
-  development); the interface has no list of jobs with cancel, retry and log
-  yet (the API and `archiwista jobs` have them).
+  źródła" of the map and from the project card, through Kartograf; the
+  interface has no list of jobs with cancel, retry and log yet (the API and
+  `archiwista jobs` have them), and an area is not chosen by the name of an
+  administrative unit.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
-- It does not show object differences between snapshots, has no sign-in or
-  team work (v0.4) and does not yet index IMGW data (v0.5).
+- It indexes the files of an IMGWTools store (archives, series, station
+  catalogs) but has no station views and no IMGW actions yet (v0.5).
+- It does not show object differences between snapshots and has no sign-in or
+  team work (v0.4).

@@ -4,7 +4,8 @@
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
-Measurements and acceptance: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md);
+Measurements and acceptance: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md),
+[`reports/v0.3-measurements.md`](reports/v0.3-measurements.md);
 standards: [`CLAUDE.md`](../CLAUDE.md) and the Nogat standard 2.1.
 
 Every claim about the behaviour of the system describes the **code** in this repository

@@ -383,6 +383,17 @@ command-line interface may change.
   check, a download and a repin, a job of the project running. A lock of the manifest that
   an interrupted change left shows with the instruction naming it. The card's line that
   Archiwista only shows a project is gone. (SPEC 6.5 g, 10.2, UC-06; plan A13, ADR-042)
+- The acceptance of v0.3 "Actions" (SPEC 13): `tests/e2e/test_acceptance_v03.py` walks
+  UC-01 with the stand-in producer and UC-06 over Kartograf's fixture project without the
+  network and asserts criteria 3, 4, 5 and 7 on the whole path;
+  `tests/integration/test_live_actions.py` (marker `live`, opted in by
+  `ARCHIWISTA_LIVE_ACTIONS=1`, run by the author) downloads one NMT sheet through
+  Archiwista and through Kartograf's command line and compares the versions, SHA-256,
+  sidecars and pins (criterion 1), cancels a project's download after its first sheet
+  (criterion 2) and walks UC-01 and UC-06 against GUGiK (criterion 6). The report
+  `docs/reports/v0.3-measurements.md` gives criterion 8 (the first thumbnail of a warmed
+  version p95 4.1 ms on a local disk) and the evidence of every criterion; USAGE and
+  AGENT_API describe 0.3. (SPEC 13 v0.3; plan A14)
 
 ### Changed
 
