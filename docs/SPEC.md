@@ -3840,7 +3840,8 @@ over TLS.
   answers `404` at its own address. A planned download (`plan_job`) claims the positions it
   fetches when it starts; a position another active download of the store has claimed is not
   fetched again but reported as `taken` with that job and person ("pobierane przez Marka"),
-  and a retry fetches it if that job failed it. A download without a plan of the same call as
+  the download then ending `partial`, and a retry fetches it if that job failed it. A
+  download without a plan of the same call as
   a running download of the store waits in the queue until that one ends. The warning about
   overlapping jobs stays (5.6). Downloads of projects stay one per project; two projects that
   share a unit may both fetch it (the producer writes it once).

@@ -9,10 +9,12 @@ as the Kartograf adapter does with a producer that takes it by name beside
 the options. Its availability takes the area, its countries and ``refresh``
 among the options too, and so do its plan and its run of a call the store
 root. Its store is the files a run fetched, ``<kind>/<station>/<file>``: each
-file a version of its own slot, its station the unit a scan reads it by.
+file a version of its own slot, its station the unit a scan reads it by. A
+plan is narrowed (``narrow``) by the ``file`` of its items.
 """
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
@@ -22,6 +24,7 @@ import standin_producer  # type: ignore[import-not-found]
 from archiwista.errors import ProducerError
 from archiwista.messages import current_language
 from archiwista.sources import (
+    PLAN_TODO,
     ActionFile,
     ActionItem,
     ActionPlan,
@@ -272,6 +275,23 @@ class StandinAdapter:
         if len(parts) != 3:
             raise ValueError(f"{path!r} is no file of a stand-in store")
         return ScanScope(units=(parts[1],))
+
+    def narrow(self, plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+        """Return the plan without the items to download whose ``file`` is not kept."""
+        kept = frozenset(paths)
+
+        def keeps(status: object, path: object) -> bool:
+            return status not in PLAN_TODO or path in kept
+
+        items = cast(list[dict[str, object]], plan.document["items"])
+        return replace(
+            plan,
+            entries=tuple(e for e in plan.entries if keeps(e.status, e.path)),
+            document={
+                **plan.document,
+                "items": [i for i in items if keeps(i["status"], i["file"])],
+            },
+        )
 
 
 def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:

@@ -25,7 +25,15 @@ an active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
 job; a ``preview_warm`` of the filters of a waiting one returns it) or
 overlaps one (a ``download`` of a call an active download of the
-store runs too starts with a warning notice naming that job). At most half
+store runs too starts with a warning notice naming that job). A ``download``
+with a plan claims, when it starts, the positions to download of its kept
+plans (``job_claims`` of the index, in the transaction that starts it, so
+two processes never claim one position); a position another active download
+of the store claimed is left to that job and handed to the worker as
+``taken`` (ADR-047). Claims go when their job ends, and at every start
+those of jobs no longer active. A ``download`` without a plan of a call a
+running download of the store runs waits in the queue until that one ends
+(a notice ``waiting_for_job``). At most half
 the processors' worth of workers run, the rest wait in
 the queue. Cancelling interrupts the worker as Ctrl+C would (SIGINT;
 CTRL_BREAK_EVENT to its process group on Windows) and kills it after 30 s.
@@ -113,6 +121,7 @@ from archiwista.messages import STORED_LANG, label, localize, message
 from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
+from archiwista.sources import PLAN_TODO
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -435,6 +444,22 @@ def _call_keys(store: str | None, params: JsonObject) -> frozenset[object]:
     )
 
 
+def _waiting_keys(
+    kind: JobKind, store: str | None, params: JsonObject
+) -> frozenset[object]:
+    """Return the calls a new job waits for: those of a ``download`` without a plan."""
+    if kind != "download" or params["plan_job"] is not None:
+        return frozenset()
+    return _call_keys(store, params)
+
+
+def _running_keys(
+    kind: JobKind, store: str | None, params: JsonObject
+) -> frozenset[object]:
+    """Return the calls a running job runs: those of a ``download``."""
+    return _call_keys(store, params) if kind == "download" else frozenset()
+
+
 def _project_key(store: str | None, params: JsonObject) -> object:
     """Return the key of a job of a project's manifest: the project."""
     return params["project"]
@@ -548,9 +573,33 @@ _INDEX_KINDS = _domain_kinds(_INDEX_CONFLICT.domain)
 
 @dataclass(slots=True)
 class _Waiting:
+    """A job waiting in this supervisor's queue.
+
+    ``keys`` are the calls of a ``download`` without a plan (``_call_keys``):
+    it waits while a running download shares one; ``noticed`` says whether
+    its notice ``waiting_for_job`` is recorded.
+    """
+
     job_id: str
     kind: JobKind
     store: str | None
+    keys: frozenset[object] = frozenset()
+    noticed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _Claims:
+    """What a starting job claimed (``JobSupervisor._claim``).
+
+    ``claimed`` are the paths of the positions it claimed (``None``: a job
+    that claims nothing), ``taken`` the positions other jobs hold (``path``,
+    ``unit``, ``job``, ``actor``), ``stale`` the state events of holders whose
+    supervisor was gone.
+    """
+
+    claimed: tuple[str, ...] | None = None
+    taken: tuple[JsonObject, ...] = ()
+    stale: tuple[JobEvent, ...] = ()
 
 
 @dataclass(slots=True)
@@ -560,6 +609,7 @@ class _Run:
     job_id: str
     kind: JobKind
     store: str | None
+    keys: frozenset[object]
     process: subprocess.Popen[bytes]
     log: IO[bytes]
     seq: int
@@ -691,7 +741,8 @@ class JobSupervisor:
         newest of each store. Other finished jobs and logs go after 90 days
         (the last finished job of each store and kind stays), and the oldest
         logs beyond 1 GB. The scheduler calls it every hour. Cancel requests
-        of jobs that are not active go too.
+        of jobs that are not active go too, and so do their claims of
+        positions (``job_claims``).
 
         Parameters
         ----------
@@ -711,6 +762,7 @@ class JobSupervisor:
             _prune_logs(self._paths.jobs_dir, now=moment)
             _prune_jobs(db, now=moment)
             _prune_cancel_requests(db, self._paths.jobs_dir)
+            _release_claims(db)
         return routine
 
     def close(self) -> None:
@@ -810,7 +862,9 @@ class JobSupervisor:
             those it started with), and no job is recorded. A job of a kind
             that overlaps (``download``) gets a warning notice
             ``overlapping_job`` naming the oldest active job it repeats a
-            call of, ``job`` its id.
+            call of, ``job`` its id. A ``download`` without a plan waits in
+            the queue while a running download of the store runs one of its
+            calls (a notice ``waiting_for_job`` naming it).
 
         Raises
         ------
@@ -890,7 +944,8 @@ class JobSupervisor:
             if conflict is not None:
                 raise conflict
             if joined is None:
-                self._queue.append(_Waiting(job_id, job_kind, store))
+                keys = _waiting_keys(job_kind, store, values)
+                self._queue.append(_Waiting(job_id, job_kind, store, keys))
                 self._dispatch()
         return self._record(joined or job_id)
 
@@ -1275,7 +1330,7 @@ class JobSupervisor:
         if self._phase != "open":
             return
         for waiting in tuple(self._queue):
-            if not self._room(waiting.kind):
+            if not self._room(waiting):
                 continue
             self._queue.remove(waiting)
             try:
@@ -1288,18 +1343,59 @@ class JobSupervisor:
                 self._end_waiting(
                     waiting, "failed", JobError(CODE_INTERNAL_ERROR, detail)
                 )
+        self._notice_waiting()
 
-    def _room(self, kind: JobKind) -> bool:
+    def _room(self, waiting: _Waiting) -> bool:
         if len(self._running) >= self._max_jobs:
             return False
-        rule = JOB_RULES[kind]
+        rule = JOB_RULES[waiting.kind]
         running = [run.kind for run in self._running.values()]
-        if rule.exclusive and kind in running:
+        if rule.exclusive and waiting.kind in running:
+            return False
+        if self._waits_for(waiting) is not None:
             return False
         if rule.network:
             network = sum(JOB_RULES[other].network for other in running)
             return network < self._max_network_jobs
         return True
+
+    def _waits_for(self, waiting: _Waiting) -> str | None:
+        """Return the oldest running job a waiting one waits for: one of its calls."""
+        return next(
+            (
+                run.job_id
+                for run in self._running.values()
+                if not waiting.keys.isdisjoint(run.keys)
+            ),
+            None,
+        )
+
+    def _notice_waiting(self) -> None:
+        """Record ``waiting_for_job`` once for each job that waits for another."""
+        for waiting in self._queue:
+            other = None if waiting.noticed else self._waits_for(waiting)
+            if other is None:
+                continue
+            waiting.noticed = True
+            text = message("job.waiting_for_job", job=other)
+            data: JsonObject = {
+                "level": "info",
+                "code": "waiting_for_job",
+                "message": localize(text, STORED_LANG),
+                "job": other,
+            }
+            db = self._open_db()
+            now = _now()
+            with _transaction(db):
+                event = _insert_event(
+                    db,
+                    waiting.job_id,
+                    _next_seq(db, waiting.job_id),
+                    "notice",
+                    data,
+                    now,
+                )
+            self._publish(event)
 
     def _start(self, waiting: _Waiting) -> None:
         """Mark a job running and start its worker with the current settings."""
@@ -1325,20 +1421,24 @@ class JobSupervisor:
                 " WHERE id = ?",
                 (waiting.job_id,),
             ).fetchone()
+            params: JsonObject = json.loads(row["params"])
             db.execute(
                 "UPDATE jobs SET state = 'running', started_at = ? WHERE id = ?",
                 (_iso(now), waiting.job_id),
             )
+            claims = self._claim(db, waiting, params, now)
             seq = int(row["seq"] or 0) + 1
             event = _insert_event(
                 db, waiting.job_id, seq, "state", {"state": "running"}, now
             )
+        for stale in claims.stale:
+            self._publish(stale)
         self._publish(event)
         spec = JobSpec(
             job_id=waiting.job_id,
             kind=waiting.kind,
             store=waiting.store,
-            params=json.loads(row["params"]),
+            params=params,
             actor=row["actor"],
             actor_kind=row["actor_kind"],
             session=row["session"],
@@ -1347,6 +1447,8 @@ class JobSupervisor:
             previews_dir=self._paths.previews_dir,
             work_dir=self._paths.work_dir,
             settings=settings,
+            claimed=claims.claimed,
+            taken=claims.taken,
         )
         log = _log_path(self._paths.jobs_dir, waiting.job_id).open("ab")
         try:
@@ -1371,6 +1473,7 @@ class JobSupervisor:
             job_id=waiting.job_id,
             kind=waiting.kind,
             store=waiting.store,
+            keys=_running_keys(waiting.kind, waiting.store, params),
             process=process,
             log=log,
             seq=seq,
@@ -1455,6 +1558,7 @@ class JobSupervisor:
                             run.job_id,
                         ),
                     )
+                    db.execute("DELETE FROM job_claims WHERE job_id = ?", (run.job_id,))
                     event = _insert_event(
                         db, run.job_id, run.seq + 1, "state", data, now
                     )
@@ -1536,6 +1640,71 @@ class JobSupervisor:
             state=busy["state"],
         )
         return error, tuple(events)
+
+    def _claim(
+        self,
+        db: sqlite3.Connection,
+        waiting: _Waiting,
+        params: JsonObject,
+        now: datetime,
+    ) -> _Claims:
+        """Claim the positions to download of a starting planned download.
+
+        A ``download`` with ``plan_job`` claims each position to download of
+        that job's kept plans (``job_claims``) that no live active job of the
+        store holds; a position held is ``taken``, with its holder's id and
+        actor. A holder whose supervisor is gone becomes ``interrupted`` and
+        loses its claims. Runs in the transaction that starts the job.
+        """
+        plan_job = params.get("plan_job")
+        if waiting.kind != "download" or plan_job is None:
+            return _Claims()
+        rows = db.execute(
+            "SELECT json_extract(e.value, '$.path') AS path,"
+            " json_extract(e.value, '$.unit') AS unit"
+            " FROM plans p, json_each(p.plan, '$.entries') e WHERE p.job_id = ?"
+            " AND json_extract(e.value, '$.status')"
+            f" IN ({_placeholders(PLAN_TODO)}) ORDER BY p.call, e.key",
+            (plan_job, *PLAN_TODO),
+        ).fetchall()
+        wanted: dict[str, str] = {}
+        for row in rows:
+            wanted.setdefault(row["path"], row["unit"])
+        holders: dict[str, tuple[str, str]] = {}
+        live: dict[str, bool] = {}
+        stale: list[JobEvent] = []
+        for row in db.execute(
+            "SELECT c.path, c.job_id, j.actor, j.state, j.pid FROM job_claims c"
+            " JOIN jobs j ON j.id = c.job_id WHERE c.store = ?",
+            (waiting.store,),
+        ).fetchall():
+            holder = row["job_id"]
+            if holder not in live:
+                active = row["state"] in ACTIVE_STATES
+                live[holder] = active and self._owner_alive(holder, row["pid"])
+                if active and not live[holder]:
+                    stale.append(self._mark_stale(db, holder, now))
+            if live[holder]:
+                holders[row["path"]] = (holder, row["actor"])
+        taken: list[JsonObject] = []
+        claimed: list[tuple[str, str | None, str, str]] = []
+        for path, unit in wanted.items():
+            if path in holders:
+                job, actor = holders[path]
+                taken.append({"path": path, "unit": unit, "job": job, "actor": actor})
+            else:
+                claimed.append((waiting.job_id, waiting.store, path, unit))
+        db.executemany(
+            "INSERT INTO job_claims (job_id, store, path, unit) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (store, path) DO UPDATE SET job_id = excluded.job_id,"
+            " unit = excluded.unit",
+            claimed,
+        )
+        return _Claims(
+            claimed=tuple(path for _, _, path, _ in claimed),
+            taken=tuple(taken),
+            stale=tuple(stale),
+        )
 
     def _join(
         self,
@@ -1938,18 +2107,41 @@ def _finish_row(
     error: JobError,
     now: datetime,
 ) -> JobEvent:
-    """End a job that has no worker (any more) and record its state event."""
+    """End a job that has no worker (any more) and record its state event.
+
+    Its claims of positions (``job_claims``) go with it.
+    """
     payload = error.to_json()
     db.execute(
         "UPDATE jobs SET state = ?, finished_at = ?, error = ? WHERE id = ?",
         (state, _iso(now), _json(payload), job_id),
     )
+    db.execute("DELETE FROM job_claims WHERE job_id = ?", (job_id,))
+    return _insert_event(
+        db,
+        job_id,
+        _next_seq(db, job_id),
+        "state",
+        {"state": state, "error": payload},
+        now,
+    )
+
+
+def _next_seq(db: sqlite3.Connection, job_id: str) -> int:
+    """Return the number of a job's next event."""
     seq = db.execute(
         "SELECT coalesce(max(seq), 0) FROM job_events WHERE job_id = ?", (job_id,)
     ).fetchone()[0]
-    return _insert_event(
-        db, job_id, int(seq) + 1, "state", {"state": state, "error": payload}, now
-    )
+    return int(seq) + 1
+
+
+def _release_claims(db: sqlite3.Connection) -> None:
+    """Remove the claims of positions of jobs that are not active (any more)."""
+    with _transaction(db):
+        db.execute(
+            "DELETE FROM job_claims WHERE job_id NOT IN"
+            f" (SELECT id FROM jobs WHERE state IN {_ACTIVE_SQL})"
+        )
 
 
 def _insert_event(

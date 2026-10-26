@@ -268,6 +268,26 @@ MESSAGES = {
             " to, co zapisało tamto."
         ),
     ),
+    "taken_by_job": Text(
+        (
+            "Positions to download ({count}) are already being downloaded by"
+            " {actor} in job {job}; this job leaves them out."
+        ),
+        (
+            "Pozycje do pobrania ({count}) pobiera już {actor} w zadaniu {job};"
+            " to zadanie je pomija."
+        ),
+    ),
+    "waiting_for_job": Text(
+        (
+            "Job {job} is downloading the same into this store: this job waits"
+            " until it ends, then finds its files in the store."
+        ),
+        (
+            "Zadanie {job} pobiera to samo do tego magazynu: to zadanie czeka na"
+            " jego koniec, a potem zastanie jego pliki w magazynie."
+        ),
+    ),
     "rescan_failed": Text(
         (
             "The index does not show all files of the run yet: the next scan of the"

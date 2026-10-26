@@ -9,6 +9,18 @@ command-line interface may change.
 
 ### Added
 
+- The shared queue (v0.4, ADR-047): a download with a plan claims the positions it
+  downloads when it starts, and a download of another person (or another job) that
+  planned some of them leaves them to that job: its result lists them as `taken`
+  (`path`, `unit`, `job`, `actor`), a notice `taken_by_job` names the job and the
+  person ("Pozycje do pobrania (2) pobiera już marek w zadaniu …"), a call all of whose
+  positions are taken is skipped (`taken`), and the job ends `partial`, so "Ponów"
+  fetches what the other job failed. Claims end with their job. A download without a
+  plan of a call a running download runs waits in the queue (notice
+  `waiting_for_job`) and then finds the files in the store. The index is rebuilt
+  (`SCHEMA_VERSION` 14: `job_claims`), the job protocol is `PROTOCOL_VERSION` 11, and
+  a plugin that offers its commands (`ActionAdapter`) also narrows a plan
+  (`narrow(plan, paths)`).
 - Team mode, its settings and where the server listens (v0.4, ADR-046): the table
   `[team]` of `config.toml` (`enabled`, `origin`, `tls_cert`, `tls_key`,
   `trusted_proxies`, `proxy_user_header`, `proxy_autocreate`) is read when the server

@@ -681,6 +681,17 @@ A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 with `limit` (1–200) and `cursor`, newest first. Jobs with project data check
 the visibility of the project in a single card and in the SSE stream too.
 
+**The shared queue (v0.4, ADR-047).** A `download` with `plan_job` claims the
+positions to download of its plans when it starts; a position another active
+download of the store claimed first is left to that job: `result.taken` lists it
+(`path`, `unit`, `job`, `actor`), a notice `taken_by_job` names each such job and
+its person, a call all of whose positions are taken is skipped (`reason`
+`taken`), and the job ends `partial`, so `POST /jobs/{id}/retry` fetches what
+the other job failed. A `download` without `plan_job` of a call (store, producer,
+command, options) that a running download runs stays `queued` with a notice
+`waiting_for_job` naming that job, and runs when it ends, finding the files in
+the store.
+
 The plans of a `check` job that succeeded or ended `partial` are `GET
 /jobs/{id}/plan` (`ActionPlanInfo`, from the index, no network): the store, the
 producer, the root, `checked_at` (of the oldest plan), `ok` (every call planned

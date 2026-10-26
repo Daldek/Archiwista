@@ -69,6 +69,7 @@ export const cards = {
       failed: "Polecenie {place} z {count} nie powiodło się:",
       not_planned: "Polecenie {place} z {count} pominięte, bo jego sprawdzenie nie dało planu:",
       nothing_to_download: "Polecenie {place} z {count} pominięte, bo nie ma nic do pobrania:",
+      taken: "Polecenie {place} z {count} pominięte, bo wszystkie jego pozycje pobierają inne zadania:",
     },
     /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
     project_tasks: "Zadania projektu: {tasks} ({counts}).",

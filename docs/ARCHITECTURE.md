@@ -166,8 +166,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs` |
-| `jobs/worker.py` | job worker process: scan, footprints, link, preview, own scan, snapshot, availability at the source, the plan of each call of a job (`check`; calls or positions not checked end `partial` through `PartialResult`), the run of each call (`download`; a call without a kept plan is skipped), the jobs of a project (`project_download`, `project_repin`, `project_check`, `project_verify`; ADR-040) and the warm-up of previews (`preview_warm`, ADR-041) | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_availability`, `run_check`, `run_download`, `run_project_download`, `run_project_repin`, `run_project_check`, `run_project_verify`, `run_preview_warm`, `PartialResult`, `Emitter` |
+| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning; the claims of the positions of planned downloads (`job_claims`) and the waiting of an unplanned download of a running call (ADR-047) | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs` |
+| `jobs/worker.py` | job worker process: scan, footprints, link, preview, own scan, snapshot, availability at the source, the plan of each call of a job (`check`; calls or positions not checked end `partial` through `PartialResult`), the run of each call (`download`; a call without a kept plan is skipped, a kept plan runs narrowed to the claimed positions, those of other jobs are `taken`), the jobs of a project (`project_download`, `project_repin`, `project_check`, `project_verify`; ADR-040) and the warm-up of previews (`preview_warm`, ADR-041) | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_availability`, `run_check`, `run_download`, `run_project_download`, `run_project_repin`, `run_project_check`, `run_project_verify`, `run_preview_warm`, `PartialResult`, `Emitter` |
 | `jobs/protocol.py` | JSON Lines protocol supervisor ↔ worker process | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `WARM_FILTERS`, `INTERRUPTED_EXIT`, `CODE_WORKER_CRASHED` |
 | `jobs/scheduler.py` | periodic scans of the store and own data; with `preview_warm_after_scan`, a `preview_warm` job of the versions a store's newest scan wrote (`since` its start), once per scan | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
 | `jobs/reindex.py` | `archiwista reindex`: full foreground scan | `reindex_main` |
@@ -452,7 +452,7 @@ A cache rebuilt from the producers' files (A-ADR-002),
 
 - **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
   IMGW slots, 8 since the availability reports, 9 since the plans of `check` jobs
-  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
+  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer, 14 since the claims of planned downloads) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
   `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
@@ -477,7 +477,9 @@ A cache rebuilt from the producers' files (A-ADR-002),
   and product as JSON, with `checked_at` and the id of the job that asked; an
   older report never replaces a newer one), `jobs`, `job_events`, `plans` (the
   `ActionPlan` of each call of a `check` job as JSON, keyed by the job and `call`, with its store and the producer's command
-  line of the run; deleted with its job), `station_catalogs` (the catalog version
+  line of the run; deleted with its job), `job_claims` (the positions to download
+  each running planned download claimed, one claimant per store and path; deleted
+  with its job's end), `station_catalogs` (the catalog version
   each provider's stations of a store were read from), `stations` (the stations
   of that version: identity store, provider and code as text; a point, or none
   with the catalog's reason; the hydrographic code indexed for a prefix range),
@@ -831,7 +833,16 @@ in `sessionStorage`. Sessions live in server memory: they end after 24 h without
    the index stores with the settings (`sync_stores`), launches the
    worker process in its own process group, writes `encode_spec(JobSpec)` (with
    `PROTOCOL_VERSION`, the settings from the moment of the start, the path of the index
-   and of the cache) and sets `running`.
+   and of the cache) and sets `running`. A `download` with `plan_job` claims, in
+   the transaction that sets `running` (`BEGIN IMMEDIATE`, so two processes never
+   claim one position), the positions to download of its kept plans that no live
+   active job of the store holds (`job_claims`); the worker gets them as
+   `JobSpec.claimed` and the others as `taken` (holder's job and actor), runs each
+   plan narrowed to them (`ActionAdapter.narrow`) and ends `partial` when some were
+   taken (ADR-047). The claims go when the job ends (`_finish`, `_finish_row`) and,
+   at every start (`prune`), those of jobs no longer active. A `download` without
+   a plan of a call a running download of this supervisor runs stays in the queue
+   until that one ends, with one notice `waiting_for_job`.
 3. **Progress** — the reader thread decodes lines (`decode_message`):
    `progress` (`current`, `total`; a scan also `segment`, `entries`; footprints
    `written`, `failed`) and `notice` (`level`, `code`, `message` in Polish:

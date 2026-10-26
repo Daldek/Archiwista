@@ -1586,6 +1586,16 @@ MESSAGES = {
         "Wywołanie {place} z {count} pominięte, jego plan nie ma nic do pobrania:"
         " {line}",
     ),
+    "jobs_call_taken": Text(
+        (
+            "Call {place} of {count} skipped, other jobs download all its positions"
+            " to download: {line}"
+        ),
+        (
+            "Wywołanie {place} z {count} pominięte, wszystkie jego pozycje do"
+            " pobrania pobierają inne zadania: {line}"
+        ),
+    ),
     "jobs_size": Text(
         "size {size}",
         "rozmiar {size}",

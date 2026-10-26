@@ -24,7 +24,9 @@ report asks GUGiK nothing), its ``kartograf-plan/1`` read as the
 producer-neutral ``ActionPlan``.
 ``run_command`` runs it (A5, ADR-037): ``root=``, Archiwista's cache, the
 kept plan back as ``update="upgrade", plan=…``, and ``kartograf-download/1``
-read as the producer-neutral ``ActionResult``. ``init_project``,
+read as the producer-neutral ``ActionResult``; ``narrow`` leaves out of a kept
+plan the positions another job fetches (ADR-047), which Kartograf then never
+executes. ``init_project``,
 ``add_project_task`` and ``remove_project_task`` change a project's manifest
 (A7, ADR-039): the store root of a new project is the configured store's, and
 the options of a task are checked as a call of its command first.
@@ -37,8 +39,9 @@ named and never removed.
 
 import inspect
 import os
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -80,6 +83,7 @@ from archiwista.errors import (
 from archiwista.messages import current_language, message, with_detail
 from archiwista.sources import (
     FILE_STATUSES,
+    PLAN_TODO,
     ActionFile,
     ActionItem,
     ActionPlan,
@@ -427,6 +431,41 @@ def run(
     finally:
         cache.close()
     return _run_result(result, root)
+
+
+def narrow(plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+    """Return a plan of ``check`` keeping only the positions to download at ``paths``.
+
+    Kartograf's ``UpdatePlan`` is read back from the plan's document and
+    written again without the other positions to download, and the entries
+    lose them alike: Kartograf never executes positions removed from a plan
+    (``kartograf/download/plan.py``). The positions a run does not download
+    stay as they are.
+
+    Raises
+    ------
+    ValueError
+        The document is no ``kartograf-plan/1`` Kartograf reads back.
+    """
+    kept = frozenset(paths)
+    try:
+        document = UpdatePlan.from_dict(dict(plan.document))
+    except KartografError as error:
+        raise ValueError(f"no plan of Kartograf: {error}") from error
+    items = tuple(
+        item
+        for item in document.items
+        if item.status not in PLAN_TODO or item.store_path in kept
+    )
+    return replace(
+        plan,
+        entries=tuple(
+            entry
+            for entry in plan.entries
+            if entry.status not in PLAN_TODO or entry.path in kept
+        ),
+        document=replace(document, items=items).to_dict(),
+    )
 
 
 def scope(path: str) -> ScanScope:

@@ -995,7 +995,8 @@
  *   `size_bytes`, `sha256`, `label`, `call`), `items` (`id`, `status`, `code`,
  *   `reason`, `message`, `call`), `failed`, `calls` (per call: `command`, `line`,
  *   `status` `ok`, `partial`, `failed` or `skipped`, `reason` of a skipped one
- *   `not_planned` or `nothing_to_download`, `files`, `failed`, `error`),
+ *   `not_planned`, `nothing_to_download` or `taken`, `files`, `failed`, `error`),
+ *   `taken` (positions another download fetches: `path`, `unit`, `job`, `actor`),
  *   `rescanned`, `seconds`; of a `project_download` or `project_repin`
  *   `producer`, `project`, `store`, `root`, `upgrade`, `ok`, `counts` of the tasks
  *   (`pinned`, `unchanged`, `restored`, `updated`, `failed`), `tasks` (`name`,

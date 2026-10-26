@@ -68,6 +68,10 @@ of both (SPEC 4.7). ``manifests`` keeps each producer's manifest as it was
 read (the store it names, its status or the producer's problem, its stamp),
 and ``project_tasks`` and ``pins`` carry the producer of the manifest they
 come from; they go with it.
+
+Version 14 (v0.4, ADR-047): ``job_claims``, the positions an active
+``download`` with a plan fetches (one claimant per store and path), so a
+download of another person leaves them out; a claim goes with its job.
 """
 
 import sqlite3
@@ -79,7 +83,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -389,6 +393,18 @@ CREATE TABLE plans (
     plan TEXT NOT NULL,
     PRIMARY KEY (job_id, call)
 ) WITHOUT ROWID;
+
+-- The positions to download a running ``download`` with a plan fetches (ADR-047):
+-- one claimant per store and path, so another download of the store leaves
+-- the position out. Claims end with their job.
+CREATE TABLE job_claims (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    store TEXT NOT NULL,
+    path TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    PRIMARY KEY (store, path)
+) WITHOUT ROWID;
+CREATE INDEX job_claims_job ON job_claims (job_id);
 
 -- The catalog version each provider's stations were read from (SPEC 4.4): the
 -- rows are replaced when the current version of the catalog's slot changes.

@@ -27,6 +27,7 @@ a refusal prints no model and ends standard error with its
 
 import argparse
 import sqlite3
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from typing import Any, TextIO
@@ -487,6 +488,7 @@ def _job_text(detail: JobDetail) -> str:
                 failed=result["failed"],
             )
         )
+        lines += _taken_lines(result.get("taken", ()))
         lines += _call_lines(result["calls"])
     if detail.kind in ("project_download", "project_repin"):
         tasks: Mapping[str, int] = result["counts"]
@@ -576,15 +578,23 @@ def _call_lines(calls: Sequence[Mapping[str, Any]]) -> list[str]:
             detail = call["error"]["detail"]
             lines.append(message("cli.jobs_call_failed", **values, detail=detail))
         elif call["status"] == "skipped":
-            key = (
-                "cli.jobs_call_not_planned"
-                if call["reason"] == "not_planned"
-                else "cli.jobs_call_nothing"
-            )
+            key = {
+                "not_planned": "cli.jobs_call_not_planned",
+                "taken": "cli.jobs_call_taken",
+            }.get(call["reason"], "cli.jobs_call_nothing")
             lines.append(message(key, **values))
         elif "positions" in call:
             lines.append(message("cli.jobs_line", line=call["line"]))
     return lines
+
+
+def _taken_lines(taken: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Return the positions other jobs download, one line per such job."""
+    holders = Counter((str(item["job"]), str(item["actor"])) for item in taken)
+    return [
+        message("job.taken_by_job", count=count, actor=actor, job=job)
+        for (job, actor), count in holders.items()
+    ]
 
 
 def _plan_text(plan: ActionPlanInfo) -> str:
