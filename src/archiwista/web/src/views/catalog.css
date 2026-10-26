@@ -146,6 +146,58 @@
 .st-group.none .st-group-name { color: var(--warn-ink); }
 .cat-hidden-note { color: var(--text-2); }
 
+/* ---------- the stations' Timeline (views/catalog-station-timeline.js): rows of ROW, the
+   header of HEAD px; a year's fill is green, its alpha (--a) the share with a value ---------- */
+.stl { flex: 1; min-height: 0; display: flex; flex-direction: column; --stl-head: 280px; --stl-year: 13px; }
+.stl-bar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 14px 2px; font-size: 12.5px; }
+.stl-dataset { min-width: 0; }
+.stl-colors { gap: 4px; }
+.stl-colors-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.stl-colors .chip { font-family: var(--mono); font-size: 11.5px; }
+.stl-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 14px 8px; font-size: 11.5px; color: var(--text-2); }
+.stl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stl-legend .stl-c { display: inline-block; width: 12px; height: 14px; }
+.stl-grid {
+  --stl-cols: var(--stl-head) repeat(var(--stl-years), minmax(var(--stl-year), 1fr));
+  --stl-width: calc(var(--stl-head) + var(--stl-years) * (var(--stl-year) + 2px) + 8px);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.stl-grid.busy .stl-rows { opacity: 0.55; }
+.stl-scroll { flex: 1; min-height: 0; overflow: auto; position: relative; outline: none; }
+.stl-head { position: sticky; top: 0; z-index: 3; min-width: var(--stl-width); }
+.stl-rows { position: relative; min-width: var(--stl-width); }
+.stl-row { display: grid; grid-template-columns: var(--stl-cols); column-gap: 2px; align-items: center; height: 26px; padding-right: 8px; }
+.stl-header { height: 30px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.stl-rows .stl-row { position: absolute; left: 0; right: 0; top: 0; border-bottom: 1px solid var(--line); background: var(--panel); }
+.stl-rows .stl-row.variable { background: var(--panel-2); }
+.stl-rowhead { position: sticky; left: 0; z-index: 2; align-self: stretch; display: flex; align-items: center; gap: 5px; min-width: 0; padding: 0 8px 0 6px; overflow: hidden; white-space: nowrap; background: inherit; border-right: 1px solid var(--line); font-size: 12px; }
+.stl-header .stl-rowhead { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.stl-row.station .stl-rowhead { cursor: pointer; }
+.stl-row.variable .stl-rowhead { padding-left: 32px; color: var(--text-2); }
+.stl-twisty { flex: none; display: inline-flex; width: 14px; color: var(--text-2); }
+.stl-name { flex: 0 1 auto; font-weight: 600; color: var(--text); }
+.stl-code { flex: none; font-size: 11px; }
+.stl-key { flex: none; font-weight: 600; color: var(--text); }
+.stl-row.station .stl-key, .stl-missing { margin-left: auto; }
+.stl-missing { flex: none; font-size: 11px; }
+.stl-label { min-width: 0; }
+.stl-year { position: relative; align-self: stretch; color: var(--text-2); }
+.stl-year span { position: absolute; left: 0; bottom: 5px; padding-left: 2px; border-left: 1px solid var(--line-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stl-c { height: 16px; border-radius: 2px; }
+.stl-c.full { background: var(--ok); }
+.stl-c.fraction { background: rgb(22 163 74 / var(--a, 0.5)); }
+.stl-c.none { background: var(--panel); box-shadow: inset 0 0 0 1px var(--text-3); }
+.stl-c.unknown { border: 1px dashed #98a2b3; }
+.stl-rows .stl-c:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 0; }
+.stl-rows .stl-rowhead:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.stl-more { position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; justify-content: center; }
+.stl-tip { position: fixed; left: 0; top: 0; z-index: 30; visibility: hidden; pointer-events: none; display: grid; gap: 2px; max-width: 360px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+.stl-tip-year { font-weight: 600; }
+
 /* ---------- phone: two-line rows without the header ---------- */
 .cat-grid.narrow .cat-head { display: none; }
 .cat-grid.narrow .cat-rows { min-width: 0; }
@@ -184,4 +236,6 @@
   .cat-toolbar { padding: 8px 10px; }
   .cat-search { min-width: 0; flex-basis: 100%; order: 2; }
   .cat-search-kbd, .cat-keys, .cat-breakdown, .cat-api { display: none; }
+  .stl { --stl-head: 150px; }
+  .stl-code { display: none; }
 }

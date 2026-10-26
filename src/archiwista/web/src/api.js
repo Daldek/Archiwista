@@ -49,6 +49,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").StationDatasets} StationDatasets */
 /** @typedef {import("./types.js").StationListFilters} StationListFilters */
 /** @typedef {import("./types.js").StationList} StationList */
+/** @typedef {import("./types.js").StationTimelinePage} StationTimelinePage */
 /** @typedef {import("./types.js").StationMapFilters} StationMapFilters */
 /** @typedef {import("./types.js").StationMapView} StationMapView */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
@@ -551,6 +552,21 @@ export function listStationDatasets(query = {}, { signal } = {}) {
  */
 export function listStations(filters, { signal } = {}) {
   return request("GET", "/stations", { query: filters, signal });
+}
+
+/**
+ * A page of the stations of one dataset, each with its years
+ * (`list_stations_timeline`): the Timeline tab of the Catalog. The filters,
+ * order and cursor are those of `listStations`, `dataset` required.
+ *
+ * @param {StationListFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationTimelinePage>}
+ * @throws {ApiError} `400` (no `dataset`, a cursor of another query),
+ *   `503 missing_dependency` without IMGWTools.
+ */
+export function listStationTimeline(filters, { signal } = {}) {
+  return request("GET", "/stations/timeline", { query: filters, signal });
 }
 
 /**

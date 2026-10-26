@@ -229,6 +229,53 @@ export const catalog = {
     order_river_title: "Kod hydrograficzny rzeki (dopływ po swojej rzece), kolejność na liście dostawcy, nazwa",
     order_name_title: "Nazwa stacji, potem kod",
     key_open: "pokaż na mapie albo rozwiń grupę",
+    layouts: {
+      list_title: "Stacje pasujące do filtrów jako lista",
+      timeline_title: "Lata stacji jednego zbioru danych: stacje w wierszach, lata w kolumnach",
+    },
+    /** The Timeline tab (views/catalog-station-timeline.js; SPEC 6.8, sketch 6.5 j). */
+    timeline: {
+      grid: "Oś czasu stacji: stacje w wierszach, lata w kolumnach",
+      station: "Stacja",
+      no_dataset:
+        "Oś czasu pokazuje szeregi jednego zbioru; ten produkt nie ma zbioru z szeregami stacji.",
+      dataset_first: "pierwszy zbiór produktu; inny wybierzesz w filtrach",
+      year_types: {
+        hydrological: "lata hydrologiczne (XI–X)",
+        calendar: "lata kalendarzowe (I–XII)",
+      },
+      year_hydrological: "r.h. {year} ({from}–{to})",
+      year_calendar: "{year} (kalendarzowy)",
+      row_variable: "Wiersz stacji",
+      row_variable_title:
+        "{variable} ({unit}): lata tej zmiennej w wierszu stacji, jak „Kolor punktów” mapy",
+      no_variable: "brak zmiennej {variable}",
+      no_variable_title: "Szereg stacji w tym zbiorze nie ma zmiennej {variable}.",
+      cells: {
+        full: "pełny: wartość w każdej jednostce",
+        fraction: "z wartością w {share} znanych jednostek",
+        none: "brak wartości w znanych jednostkach",
+        unknown: "nieznany: nie każda jednostka roku jest znana (to nie luka)",
+        outside: "poza zakresem lat szeregu",
+      },
+      units: {
+        day: ["dzień", "dni", "dni"],
+        month: ["miesiąc", "miesiące", "miesięcy"],
+        half_year: ["półrocze", "półrocza", "półroczy"],
+      },
+      units_line: "{units} w roku · znane: {known} · z wartością: {with_value}",
+      label: "Etykieta zmiennej: {label}",
+      longest_gap: "Najdłuższa przerwa: {from}–{to} ({units})",
+      legend: "Legenda osi czasu",
+      legend_cells: {
+        full: "rok pełny",
+        fraction: "rok z lukami: im jaśniej, tym mniej jednostek z wartością",
+        none: "brak wartości",
+        unknown: "rok nieznany (nie każda jednostka znana)",
+      },
+      keys:
+        "strzałki: rok i wiersz · Home, End: końce wiersza · Enter, Spacja: rozwiń stację ·",
+    },
     filters: {
       dataset: "Zbiór danych",
       dataset_any: "Wszystkie zbiory",

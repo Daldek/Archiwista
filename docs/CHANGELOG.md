@@ -9,6 +9,15 @@ command-line interface may change.
 
 ### Added
 
+- "Oś czasu" of the stations in the Catalog, beside "Lista" (ADR-045, plan I8.3): the
+  stations of one dataset with the filters of the list, a row per station with the
+  years of one variable ("Wiersz stacji", the map's "Kolor punktów") that expands into
+  a row per variable. A year is green when every unit has a value, lighter the fewer
+  units have one, a grey hollow box without a value and a grey dashed outline when not
+  every unit is known; the headers name the numbering ("r.h. 2024
+  (2023.11.01–2024.10.31)", "2024 (kalendarzowy)") and the tooltip gives the year's
+  units, the label and the longest gap. Arrows, Home and End move by year and row;
+  Enter or Space expands a station.
 - `GET /api/v1/stations/timeline` and `archiwista stations timeline --dataset …`: a
   page of the stations of one dataset, each with its series year by year as `GET
   /stations/{code}/coverage` gives it (every year of the range with its units, the

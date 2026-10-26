@@ -940,6 +940,77 @@
  * @property {string} [cursor]
  */
 
+/**
+ * A year of a variable on the Timeline: its units, the known ones and those
+ * with a value.
+ *
+ * @typedef {object} TimelineYear
+ * @property {number} year - In the series' `year_type`.
+ * @property {number} units - Units of the year.
+ * @property {number} known - Of them, the known ones.
+ * @property {number} with_value - Of the known ones, those with a value.
+ * @property {"full"|"fraction"|"none"|"unknown"} cell - `full` (a value in every
+ *   unit), `fraction`, `none` (known, no value) or `unknown` (not every unit
+ *   known: not a gap).
+ */
+
+/**
+ * A variable's years in R with its label and longest gap.
+ *
+ * @typedef {object} TimelineVariable
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable
+ * @property {string} unit
+ * @property {string|null} period - Half-year period of a characteristic.
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ * @property {GapSpan|null} longest_gap
+ * @property {number} complete_years
+ * @property {TimelineYear[]} years - Every year of R, in order.
+ */
+
+/**
+ * A station's series in one dataset, year by year.
+ *
+ * @typedef {object} TimelineSeries
+ * @property {string} dataset
+ * @property {string|null} kind
+ * @property {"day"|"month"|"half_year"} time_unit
+ * @property {YearType} year_type - Numbering of the years of R.
+ * @property {YearSpan|null} years - R; `null` when no period is known.
+ * @property {string|null} series - Label of the series version.
+ * @property {TimelineVariable[]} variables - In the order of the series index.
+ */
+
+/**
+ * A station of a Timeline page: who and where it is, its series by year.
+ *
+ * @typedef {object} StationTimelineItem
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind
+ * @property {string|null} meteo_kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code
+ * @property {boolean|null} active
+ * @property {StationLocation} location
+ * @property {TimelineSeries[]} series - The series of the dataset asked.
+ */
+
+/**
+ * A page of the stations of one dataset year by year (`GET /stations/timeline`).
+ *
+ * @typedef {object} StationTimelinePage
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {{id: string, name: string|null}|null} area - The area of `area_id`.
+ * @property {StationCounts} counts
+ * @property {StationTimelineItem[]} items
+ * @property {string|null} next_cursor
+ */
+
 // Projects (9a) --------------------------------------------------------------
 
 /**

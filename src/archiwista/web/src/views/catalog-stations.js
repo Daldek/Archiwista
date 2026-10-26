@@ -18,18 +18,36 @@
  * M5). Its rows never lead to the map. Until the station card (I8.5) a row
  * offers „Pokaż na mapie” only: Enter, a click and M show a located station
  * on the map; on a group row they fold it.
+ *
+ * „Oś czasu” (`layout=timeline`, plan I8.3) is the other layout of the same
+ * toolbar and filters: `GET /stations/timeline` of one dataset (the
+ * address's, else the product's first) in one cursor of the address's
+ * location group, drawn as stations × years
+ * (views/catalog-station-timeline.js).
  */
 
-import { listStations } from "../api.js";
+import { listStations, listStationTimeline } from "../api.js";
 import { count, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
 import { STATION_KINDS, StationSymbol, stationShape, stationType } from "../map/stations.js";
 import { Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
-import { html, Icon, ProblemView, Seg, Tech, useEffect, useMemo, useRef, useState } from "../ui.js";
+import {
+  html,
+  Icon,
+  ProblemView,
+  Seg,
+  Spinner,
+  Tech,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "../ui.js";
 import { CatalogGrid } from "./catalog-grid.js";
-import { ViewSwitch } from "./switch.js";
+import { StationTimeline, timelineDataset, timelinePage } from "./catalog-station-timeline.js";
+import { LAYOUT_PARAM, TIMELINE_LAYOUT, ViewSwitch } from "./switch.js";
 
 const S = L.stations;
 /** Rows of a page: the API's maximum. */
@@ -45,6 +63,11 @@ const GROUP_ROW = 34;
 const STATION_ZOOM = 11;
 const SORTS = ["river", "name"];
 const LOCATIONS = ["any", "with", "none"];
+/** The layouts of the stations: the list (the default, M3) and the Timeline. */
+const LAYOUTS = [
+  { value: "list", label: L.layouts.list, icon: "table", title: S.layouts.list_title },
+  { value: "timeline", label: L.layouts.timeline, icon: "chart", title: S.layouts.timeline_title },
+];
 
 /** Parameters the filter panel sets for stations; „Wyczyść filtry” removes them. */
 export const STATION_FILTERS = [
@@ -128,12 +151,14 @@ export function stationFamily(query, datasets) {
 }
 
 /**
- * The station list of the Catalog: its toolbar, groups, rows and footer.
+ * The stations of the Catalog: the toolbar, then the groups and rows of the
+ * list or the Timeline (`layout=timeline`), and the footer.
  *
  * @param {object} props
  * @param {Object<string, string>} props.params - Route parameters.
  * @param {string} props.product - The product of the address (a station product).
  * @param {import("../types.js").StationDataset[]} props.datasets - Of the product.
+ * @param {boolean} props.datasetsRead - `GET /stations/datasets` answered or failed.
  * @param {Map<string, string>|null} props.storeNames - Store names with several stores.
  * @param {*} props.toggle - The filter panel's button.
  * @param {*} props.search - The search field (`q`).
@@ -142,13 +167,24 @@ export function stationFamily(query, datasets) {
  * @param {boolean} props.narrow - Phone layout.
  * @param {{current: *}} props.grid - Receives the grid's `{focusRow(index)}`.
  */
-export function CatalogStations({ params, product, datasets, storeNames, toggle, search, panel, indexStamp, narrow, grid }) {
-  const query = stationQuery(params, product);
+export function CatalogStations(props) {
+  const { params, product, datasets, datasetsRead, storeNames, toggle, search } = props;
+  const { panel, indexStamp, narrow, grid } = props;
+  const timeline = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
+  const listed = stationQuery(params, product);
+  // The Timeline shows one dataset and asks for fewer stations of a dataset of many variables.
+  const datasetKey = timeline ? timelineDataset(params, datasets) : null;
+  const dataset = datasets.find((item) => item.dataset === datasetKey) ?? null;
+  const query = timeline
+    ? { ...listed, dataset: datasetKey, limit: timelinePage(dataset, listed.variable) }
+    : listed;
   const location = LOCATIONS.includes(params.location) ? params.location : "any";
-  const key = JSON.stringify({ ...query, location });
-  const stable = useMemo(() => JSON.parse(key), [key]);
-  const order = location === "none" ? ["none"] : location === "with" ? ["with"] : ["with", "none"];
-  const pages = useStationPages(stable, key, order);
+  const key = JSON.stringify({ ...query, location, timeline });
+  const stable = useMemo(() => query, [key]);
+  const order = timeline ? [location] : groupsOf(location);
+  const pages = useStationPages(stable, key, order, timeline ? listStationTimeline : listStations, {
+    enabled: !timeline || (datasetKey !== null && datasetsRead),
+  });
   const [folded, setFolded] = useState({ key: null, open: true });
   const counts = pages.counts;
   const area = Boolean(query.area_id || query.bbox);
@@ -158,11 +194,14 @@ export function CatalogStations({ params, product, datasets, storeNames, toggle,
       : location === "none" || counts === null || counts.located <= COLLAPSE_ABOVE;
   const foldable = order.length > 1;
   const toggleGroup = () => foldable && setFolded({ key, open: !open });
+  // The Timeline reads its one group to the end; the list „Bez położenia” only while open.
+  const reading = timeline || open;
   useIndexRefresh(indexStamp, pages);
 
   const items = useMemo(() => {
     const rows = [];
     if (counts === null) return rows;
+    if (timeline) return pages.parts[location].items;
     if (order.includes("with") && counts.located) {
       rows.push({ group: "with", count: counts.located, boundary: counts.boundary, area });
       rows.push(...pages.parts.with.items);
@@ -178,12 +217,12 @@ export function CatalogStations({ params, product, datasets, storeNames, toggle,
       ? null
       : (order.includes("with") && counts.located ? 1 + counts.located : 0) +
         (order.includes("none") && counts.unlocated ? 1 + (open ? counts.unlocated : 0) : 0);
-  const located = counts && order.includes("with") ? counts.located : 0;
-  const unlocated = counts && order.includes("none") ? counts.unlocated : 0;
+  const located = counts && location !== "none" ? counts.located : 0;
+  const unlocated = counts && location !== "with" ? counts.unlocated : 0;
   const stations = counts === null ? null : located + unlocated;
   // Rows to load: the stations without a position only while their group is open.
-  const wanted = located + (open ? unlocated : 0);
-  const loaded = pages.parts.with.items.length + pages.parts.none.items.length;
+  const wanted = located + (reading ? unlocated : 0);
+  const loaded = order.reduce((sum, group) => sum + pages.parts[group].items.length, 0);
   const map = findView("map")
     ? (item) =>
         navigate("map", {
@@ -204,11 +243,38 @@ export function CatalogStations({ params, product, datasets, storeNames, toggle,
   const datasetNames = new Map(datasets.map((item) => [item.dataset, item.name ?? item.dataset]));
   const active = activeStationFilters(params);
   const sort = query.sort ?? "river";
+  const api = apiAddress(stable, location, timeline ? "/stations/timeline" : "/stations");
+  const layout = (value) =>
+    setParams({ [LAYOUT_PARAM]: value === "list" ? null : TIMELINE_LAYOUT });
+  const empty = html`<${Empty} counts=${counts} location=${location} />`;
+  let body;
+  if (pages.error) {
+    body = html`<div class="cat-problem"><${ProblemView} problem=${pages.error.problem} /></div>`;
+  } else if (timeline && datasetKey === null) {
+    body = html`<div class="cat-empty">${datasetsRead
+      ? html`<div class="cat-empty-box"><p>${S.timeline.no_dataset}</p></div>`
+      : html`<${Spinner} label=${L.result.loading} />`}</div>`;
+  } else if (timeline) {
+    body = html`<${StationTimeline} items=${items} total=${stations} hasMore=${pages.hasMore(true)}
+      loading=${pages.loading} loadingMore=${pages.loadingMore} moreError=${pages.moreError}
+      onMore=${() => pages.more(true)} resetKey=${key} datasetKey=${datasetKey} dataset=${dataset}
+      chosen=${Boolean(params.dataset)} color=${params.color ?? null}
+      onColor=${(value) => setParams({ color: value })} handle=${grid} empty=${empty} />`;
+  } else {
+    body = html`<${CatalogGrid} rows=${STATION_ROWS} items=${items} total=${total}
+      hasMore=${pages.hasMore(open)} loading=${pages.loading} loadingMore=${pages.loadingMore}
+      moreError=${pages.moreError} onMore=${() => pages.more(open)} resetKey=${key} narrow=${narrow}
+      handle=${grid} isSelected=${() => false} cardOpen=${false} onOpen=${openRow} onMap=${map}
+      onToggle=${toggleGroup} sort=${sort} storeNames=${storeNames} datasetNames=${datasetNames}
+      empty=${empty} />`;
+  }
 
   return html`<section class="cat" aria-label=${L.title}>
     <div class="cat-toolbar">
       <div class="cat-toolbar-row">
         <${ViewSwitch} current="catalog" params=${params} />
+        <${Seg} small label=${L.layouts.label} value=${timeline ? "timeline" : "list"}
+          onChange=${layout} options=${LAYOUTS} />
         <span class="cat-spacer"></span>
         <${Seg} small label=${S.order} value=${sort}
           onChange=${(value) => setParams({ sort: value === "river" ? null : value })}
@@ -233,32 +299,26 @@ export function CatalogStations({ params, product, datasets, storeNames, toggle,
           ? html`<${Link} view="map" params=${mapParams(params)} class="btn sm" title=${S.show_on_map_all_title}>
               <${Icon} name="map" size=${14} />${S.show_on_map_all}</${Link}>`
           : null}
-        <span class="cat-api"><${Tech} value=${[[L.result.api_title, apiAddress(stable, location)]]}>
+        <span class="cat-api"><${Tech} value=${[[L.result.api_title, api]]}>
           <span class="faint">${L.result.api}</span></${Tech}></span>
       </div>
       ${!panel && active.length ? html`<${ActiveFilters} names=${active} params=${params} />` : null}
       <${Notes} counts=${counts} location=${location} pages=${pages} />
     </div>
-    <div class="cat-body">
-      ${pages.error
-        ? html`<div class="cat-problem"><${ProblemView} problem=${pages.error.problem} /></div>`
-        : html`<${CatalogGrid} rows=${STATION_ROWS} items=${items} total=${total}
-            hasMore=${pages.hasMore(open)} loading=${pages.loading} loadingMore=${pages.loadingMore}
-            moreError=${pages.moreError} onMore=${() => pages.more(open)} resetKey=${key} narrow=${narrow}
-            handle=${grid} isSelected=${() => false} cardOpen=${false} onOpen=${openRow} onMap=${map}
-            onToggle=${toggleGroup} sort=${sort} storeNames=${storeNames} datasetNames=${datasetNames}
-            empty=${html`<${Empty} counts=${counts} location=${location} />`} />`}
-    </div>
+    <div class="cat-body">${body}</div>
     <footer class="cat-foot">
       ${pages.moreError
         ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}
-            <button type="button" class="btn sm" onClick=${() => pages.more(open)}>${T.common.actions.retry}</button></span>`
+            <button type="button" class="btn sm" onClick=${() => pages.more(reading)}>
+              ${T.common.actions.retry}</button></span>`
         : null}
       <span class="cat-keys" id="cat-keys">
         ${L.grid.keys}
-        <span class="kbd">↑</span><span class="kbd">↓</span> ${L.grid.key_move} ·
-        <span class="kbd">Enter</span> ${S.key_open} ·
-        ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}
+        ${timeline
+          ? html` ${S.timeline.keys} `
+          : html`<span class="kbd">↑</span><span class="kbd">↓</span> ${L.grid.key_move} ·
+              <span class="kbd">Enter</span> ${S.key_open} ·
+              ${map ? html`<span class="kbd">M</span> ${L.grid.key_map} · ` : null}`}
         <span class="kbd">Ctrl K</span> ${L.grid.key_search}
       </span>
     </footer>
@@ -266,6 +326,12 @@ export function CatalogStations({ params, product, datasets, storeNames, toggle,
       ${pages.loading || stations === null ? "" : t(L.result.announce, { count: count(stations, S.count) })}
     </div>
   </section>`;
+}
+
+/** The location groups of the list in their order: located, then „Bez położenia”. */
+function groupsOf(location) {
+  if (location === "none") return ["none"];
+  return location === "with" ? ["with"] : ["with", "none"];
 }
 
 /** The location groups with their counts: a group is the `location` filter. */
@@ -335,21 +401,25 @@ function Empty({ counts, location }) {
 }
 
 /**
- * Pages of the station list: the groups of `order` one after the other
- * (`location=with`, then `none`), each paged by its cursor. The first page
- * of the first group is read when the query changes; `more(open)` reads the
- * next page of the first group not read to its end, the group „Bez
- * położenia” only while it is open. Until the first page of a new query
- * arrives, the rows of the previous one stay, marked `loading`.
+ * Pages of the stations: the groups of `order` one after the other
+ * (`location=with`, then `none`; the Timeline's one group), each paged by its
+ * cursor. The first page of the first group is read when the query changes;
+ * `more(open)` reads the next page of the first group not read to its end,
+ * the group „Bez położenia” of the list only while it is open. Until the
+ * first page of a new query arrives, the rows of the previous one stay,
+ * marked `loading`. Nothing is asked while `enabled` is false.
  *
  * @param {import("../types.js").StationListFilters} query
  * @param {string} key - Changes with the query and the location group.
- * @param {Array<"with"|"none">} order - The groups, in the order of the list.
+ * @param {Array<"any"|"with"|"none">} order - The groups, in the order of the rows.
+ * @param {(filters: object, options: {signal: AbortSignal}) => Promise<*>} list - Reads a
+ *   page: `listStations` or `listStationTimeline`.
+ * @param {{enabled: boolean}} options
  */
-function useStationPages(query, key, order) {
+function useStationPages(query, key, order, list, { enabled }) {
   const [state, setState] = useState(() => fresh(null));
   const live = useRef({ controller: null, busy: false });
-  Object.assign(live.current, { key, query, order, state });
+  Object.assign(live.current, { key, query, order, list, state });
 
   const read = (group, cursor, { quiet = false } = {}) => {
     const run = live.current;
@@ -368,7 +438,7 @@ function useStationPages(query, key, order) {
       indexChanged: first ? false : previous.indexChanged,
     }));
     const filters = { limit: PAGE, ...run.query, location: group, ...(cursor ? { cursor } : {}) };
-    listStations(filters, { signal: controller.signal }).then(
+    run.list(filters, { signal: controller.signal }).then(
       (page) => {
         if (controller.signal.aborted) return;
         run.busy = false;
@@ -408,9 +478,10 @@ function useStationPages(query, key, order) {
   };
 
   useEffect(() => {
+    if (!enabled) return undefined;
     read(order[0], null);
     return () => live.current.controller?.abort();
-  }, [key]);
+  }, [key, enabled]);
 
   /** The group whose next page comes, or null. */
   const pending = (open) => {
@@ -431,8 +502,8 @@ function useStationPages(query, key, order) {
       const group = pending(open);
       if (group !== null && !live.current.busy) read(group, live.current.state.parts[group].next);
     },
-    reload: () => read(order[0], null),
-    quietReload: () => read(order[0], null, { quiet: true }),
+    reload: () => enabled && read(order[0], null),
+    quietReload: () => enabled && read(order[0], null, { quiet: true }),
     markIndexChanged: () => setState((previous) => ({ ...previous, indexChanged: true })),
   };
 }
@@ -442,7 +513,7 @@ function fresh(key) {
   const part = () => ({ items: [], next: null, done: false });
   return {
     key,
-    parts: { with: part(), none: part() },
+    parts: { any: part(), with: part(), none: part() },
     counts: null,
     error: null,
     moreError: null,
@@ -591,13 +662,24 @@ function stationLocation(item) {
     <span class="st-line cell-sub" title=${reason ? `${text} (${reason})` : text}>${text}</span>`;
 }
 
-/** The map of the list: the same product, store, years, area and station choices. */
+/** The map of the stations: the same product, store, years, area and station choices. */
 function mapParams(params) {
-  const names = ["product", "store", "years", "area_id", "dataset", "meteo_kind", "year_type", "boundary"];
+  const names = [
+    "product",
+    "store",
+    "years",
+    "area_id",
+    "dataset",
+    "color",
+    "meteo_kind",
+    "year_type",
+    "boundary",
+  ];
   return Object.fromEntries(names.filter((name) => params[name]).map((name) => [name, params[name]]));
 }
 
-function apiAddress(query, location) {
+/** The API's address of the rows: `path` (`/stations`, `/stations/timeline`) with the query. */
+function apiAddress(query, location, path) {
   const search = new URLSearchParams();
   for (const [name, value] of Object.entries({ ...query, location: location === "any" ? null : location })) {
     for (const item of Array.isArray(value) ? value : [value]) {
@@ -605,5 +687,5 @@ function apiAddress(query, location) {
     }
   }
   const text = search.toString();
-  return `/api/v1/stations${text ? `?${text}` : ""}`;
+  return `/api/v1${path}${text ? `?${text}` : ""}`;
 }

@@ -13,7 +13,10 @@
  * years, the range of the labels and the switch „Lata: hydrologiczne /
  * kalendarzowe”, which writes `year_type` to the address and, for an
  * administrator, remembers the choice for the family (`PUT
- * /settings/year-types`, P15).
+ * /settings/year-types`, P15). The Timeline (`layout=timeline`) shows one
+ * dataset: its field has no „Wszystkie zbiory” and shows the product's first
+ * when the address names none, and a coverage filter then writes it to the
+ * address, since the filters need a dataset.
  */
 
 import { getArea, putYearTypes } from "../api.js";
@@ -194,23 +197,29 @@ function FileFields({ query, errors, onChange, select, countries, from, to }) {
  * @property {string|null} kind - The product's station kind (`hydro`, `meteo`), else
  *   `null` (both: the kind is a field).
  * @property {"hydro"|"meteo"} family - Whose remembered year type numbers the list.
+ * @property {string|null} dataset - The dataset the Timeline shows when the address
+ *   names none (the product's first), else `null`.
  */
 
 /** The fields of `GET /stations` (see the module). */
 function StationFields({ query, stations, errors, onChange }) {
   const SF = L.stations.filters;
   const { datasets, kind } = stations;
-  const dataset = datasets.find((item) => item.dataset === query.dataset) ?? null;
+  const shown = query.dataset ?? stations.dataset ?? null;
+  const dataset = datasets.find((item) => item.dataset === shown) ?? null;
+  // A coverage filter needs a dataset: one of the Timeline's first dataset names it too.
+  const pinned = (patch) =>
+    onChange(query.dataset || !stations.dataset ? patch : { dataset: shown, ...patch });
   const variables = dataset ? dataset.variables : distinctVariables(datasets);
   const meteoKinds = splitList(query.meteo_kind);
   const coverage = splitList(query.coverage);
   const minYears = splitList(query.min_complete_years);
   const select = (name) => (event) => onChange({ [name]: event.currentTarget.value || null });
-  const toggleIn = (name, values, value) =>
-    onChange({ [name]: joinList(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]) });
+  const toggled = (values, value) =>
+    joinList(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
   const yearsOf = (key) => minYears.find((item) => item.startsWith(`${key}:`))?.slice(key.length + 1) ?? "";
   const setYears = (key, value) =>
-    onChange({
+    pinned({
       min_complete_years: joinList([
         ...minYears.filter((item) => !item.startsWith(`${key}:`)),
         ...(value ? [`${key}:${value}`] : []),
@@ -218,9 +227,9 @@ function StationFields({ query, stations, errors, onChange }) {
     });
 
   return html`<${Field} name="dataset" label=${SF.dataset} errors=${errors}>
-      <select id="cat-f-dataset" value=${query.dataset ?? ""}
+      <select id="cat-f-dataset" value=${shown ?? ""}
         onChange=${(event) => onChange({ dataset: event.currentTarget.value || null, coverage: null, min_complete_years: null })}>
-        <option value="">${SF.dataset_any}</option>
+        ${stations.dataset ? null : html`<option value="">${SF.dataset_any}</option>`}
         ${withCurrent(datasets.map((item) => item.dataset), query.dataset).map((key) => {
           const item = datasets.find((candidate) => candidate.dataset === key);
           const text = item ? t(SF.dataset_option, { name: item.name ?? key, provider: item.provider }) : key;
@@ -244,7 +253,8 @@ function StationFields({ query, stations, errors, onChange }) {
             ${METEO_KINDS.map(
               (value) => html`<button type="button" class=${`chip${meteoKinds.includes(value) ? " on" : ""}`}
                 aria-pressed=${meteoKinds.includes(value) ? "true" : "false"}
-                onClick=${() => toggleIn("meteo_kind", meteoKinds, value)}>${SF.meteo_kinds[value]}</button>`,
+                onClick=${() => onChange({ meteo_kind: toggled(meteoKinds, value) })}>
+                ${SF.meteo_kinds[value]}</button>`,
             )}
           </div>
           <span class="field-hint">${SF.meteo_kind_hint}</span>
@@ -283,7 +293,8 @@ function StationFields({ query, stations, errors, onChange }) {
                 const value = `${variable.key}:${state}`;
                 const on = coverage.includes(value);
                 return html`<button type="button" class=${`chip${on ? " on" : ""}`} aria-pressed=${on ? "true" : "false"}
-                  onClick=${() => toggleIn("coverage", coverage, value)}>${SF.states[state]}</button>`;
+                  onClick=${() => pinned({ coverage: toggled(coverage, value) })}>
+                  ${SF.states[state]}</button>`;
               })}
               <span class="st-cov-years">${SF.min_years}
                 <${TextFilter} id=${`cat-f-min-${variable.key}`} label=${t(SF.min_years_label, { variable: variable.key })}

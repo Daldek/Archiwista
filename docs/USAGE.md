@@ -369,6 +369,21 @@ the arrows, Home and End move through the rows, and Enter on "Bez położenia" f
 
 ![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
 
+"Oś czasu" beside "Lista" shows the same stations, with the same filters, as years:
+the stations of one dataset (the one chosen in the panel, else the product's first),
+a row per station with the years of one variable ("Wiersz stacji", the same choice as
+"Kolor punktów" on the map), which Enter, Space or a click on its name expands into a
+row per variable. A year is green when every unit of it has a value, a lighter green
+the fewer units have one, a grey hollow box when its known units have none and a grey
+dashed outline when not every unit of it is known (not a gap); the legend names each.
+The column headers say the numbering of the years ("r.h. 2024
+(2023.11.01–2024.10.31)" or "2024 (kalendarzowy)", the switch "Lata" in the panel),
+and the tooltip of a year gives its units, the known ones and those with a value, the
+variable's label and its longest gap. The arrows move by year and row, Home and End to
+the ends of a row.
+
+![The Timeline of the stations](reports/v0.5-screenshots/03-os-czasu-stacji.webp)
+
 The command line and the API (`GET /api/v1/stations`) show the stations and the
 coverage of their series from the index while IMGWTools is installed:
 

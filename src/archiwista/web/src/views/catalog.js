@@ -7,8 +7,9 @@
  * (views/catalog-timeline.js), the chosen one in the right panel
  * „Szczegóły zestawu” (views/set-details.js). A product of the station
  * producer (`imgw`, `GET /products`) is listed as its stations instead
- * (views/catalog-stations.js, plan I8.2), with the fields of `GET /stations`
- * in the filter panel.
+ * (views/catalog-stations.js, plan I8.2), or as `layout=timeline` as the
+ * years of one dataset's stations (views/catalog-station-timeline.js, plan
+ * I8.3), with the fields of `GET /stations` in the filter panel.
  *
  * The address is the query: its parameters are those of `GET /slots`
  * (`search.js` `SLOT_PARAMS`), so a shared link, the map's „bez obrysu”
@@ -50,6 +51,7 @@ import {
 import { CatalogFilters, FILTERS } from "./catalog-filters.js";
 import { CatalogGrid, FILE_ROWS, onMapOf } from "./catalog-grid.js";
 import { activeStationFilters, CatalogStations, stationFamily, stationQuery } from "./catalog-stations.js";
+import { timelineDataset } from "./catalog-station-timeline.js";
 import { CatalogTimeline, useTimelineLayers } from "./catalog-timeline.js";
 import { DetailsToggle, SetDetails } from "./set-details.js";
 import { LAYOUT_PARAM, MODE_PARAM, SPLIT_MIN, TIMELINE_LAYOUT, ViewSwitch } from "./switch.js";
@@ -191,13 +193,17 @@ export default function Catalog({ route }) {
       (item) =>
         (item.kind === family || !["hydro", "meteo"].includes(family)) && !seen.has(item.dataset) && seen.add(item.dataset),
     );
-    const station = stationQuery(params, family);
+    // The Timeline shows one dataset: the address's, else the product's first.
+    const timelineShown = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
+    const shown = timelineShown ? timelineDataset(params, productDatasets) : null;
+    const station = { ...stationQuery(params, family), ...(shown ? { dataset: shown } : {}) };
     const filters = html`<${CatalogFilters} query=${params} stores=${stores} products=${products}
       errors=${{}} onChange=${(patch) => setParams(patch)}
       stations=${{
         datasets: productDatasets,
         kind: station.kind === family ? family : null,
         family: stationFamily(station, productDatasets),
+        dataset: shown,
       }} />`;
     const searchField = html`<${SearchField} value=${params.q ?? ""} inputRef=${search}
       label=${L.search.label} placeholder=${L.stations.search_placeholder} hint=${L.stations.search_hint}
@@ -207,6 +213,7 @@ export default function Catalog({ route }) {
       <div class=${`cat-split${split ? " split" : ""}`} ref=${setCentre}>
       ${split && MapView ? html`<div class="cat-beside"><${MapView} route=${route} embedded /></div>` : null}
       <${CatalogStations} params=${params} product=${family} datasets=${productDatasets}
+        datasetsRead=${datasets.data !== undefined || datasets.error !== undefined}
         storeNames=${storeNames} toggle=${toggleButton(activeStationFilters(params).length)}
         search=${searchField} panel=${panel} indexStamp=${indexStamp} narrow=${narrow} grid=${grid} />
       </div>
