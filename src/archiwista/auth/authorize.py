@@ -212,18 +212,37 @@ class Authorizer:
         return _admits(principal, access)
 
     def require(
-        self, principal: Principal, action: Action, resource: str | None = None
+        self,
+        principal: Principal,
+        action: Action,
+        resource: str | None = None,
+        *,
+        target: str | None = None,
     ) -> None:
         """Do nothing when ``can`` allows the action, else refuse it.
+
+        Parameters
+        ----------
+        principal, action, resource
+            As for ``can``.
+        target : str or None, optional
+            What the refusal names in the action log, e.g. a job id or a
+            store: ``resource`` when omitted, else the first part of the
+            action (``settings`` for ``settings.write``).
 
         Raises
         ------
         PermissionDeniedError
-            With a message naming what the action needs.
+            With a message naming what the action needs, the action and the
+            target.
         """
         if not self.can(principal, action, resource):
             name = action.replace(".", "_")
-            raise PermissionDeniedError(message(f"permission.{name}"))
+            raise PermissionDeniedError(
+                message(f"permission.{name}"),
+                action=action,
+                target=target or resource or action.partition(".")[0],
+            )
 
     def visible_projects(self, principal: Principal) -> ProjectVisibility:
         """Return the projects ``principal`` sees.

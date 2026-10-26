@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- The action log records more (v0.4, A-ADR-047): who started, retried or cancelled a
+  job (`job.start`, `job.retry` with `retry_of`, `job.cancel`; the job's kind, store
+  and project; a request that joined an active job has `joined`; never the
+  scheduler's jobs), changed the settings (`settings.update` with the settings that
+  changed, before and after), added or removed a project's task (`project.task_add`,
+  `project.task_remove` with `producer` and `task`) and was refused a request
+  (`permission.denied`, outcome `denied`, with the refused `action` and the `route`;
+  at most one entry per person and action a minute). Jobs started at the command line
+  are logged as the local owner's. Every hour, the first time at the server's start,
+  entries older than `action_log_retention_days` are deleted and the deletion is
+  logged (`log.prune` with `before` and `count`).
 - "Pobierz plik" (v0.4, ADR-047): next to a version's title in the file card it saves
   the version's file, in the card of an own file the working file or the snapshot
   chosen on its timeline, and "Pliki zestawu" in the metadata saves each file of a

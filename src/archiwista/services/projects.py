@@ -12,8 +12,10 @@ them (``None``, ``404``).
 ``create_project``, ``add_project_task`` and ``remove_project_task`` change a
 manifest through its producer (``ProjectActionAdapter``, ADR-039) for whoever
 may change the project (``project.write``), then record the project in the
-index at once, as a scan reads it. A change acts on one manifest: the one of
-the producer it names, or the project's only one (``project_manifest``). A
+index at once, as a scan reads it; a task added or removed is logged
+(``project.task_add``, ``project.task_remove``, A-ADR-047). A change acts on
+one manifest: the one of the producer it names, or the project's only one
+(``project_manifest``). A
 new project lies where a scan finds it, below a configured project
 directory, and names a configured store, never the producer's default root.
 None of them uses the network or writes a store. ``project_directory`` and
@@ -486,6 +488,12 @@ def add_project_task(
     )
     directory = project_directory(project, settings, manifest.producer)
     adapter.add_project_task(directory, name=name, command=command, options=options)
+    authorizer.state.record(
+        actor,
+        "project.task_add",
+        project.access_key,
+        details={"producer": manifest.producer, "task": name},
+    )
     return _record(registry, settings, index_path, manifest.producer, directory)
 
 
@@ -532,6 +540,12 @@ def remove_project_task(
     adapter = project_actions(registry, manifest.producer)
     directory = project_directory(project, settings, manifest.producer)
     adapter.remove_project_task(directory, name=name)
+    authorizer.state.record(
+        actor,
+        "project.task_remove",
+        project.access_key,
+        details={"producer": manifest.producer, "task": name},
+    )
     return _record(registry, settings, index_path, manifest.producer, directory)
 
 

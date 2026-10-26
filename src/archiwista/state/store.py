@@ -10,7 +10,7 @@ without an owner; its password and preferences go); each group or project
 changed that way gets its own entry. A request that changes nothing writes
 nothing. ``record`` writes the entries of actions that change nothing here
 (a sign-in, a refusal); no method changes an entry, and only
-``prune_actions`` deletes old ones.
+``prune_actions`` deletes old ones, logging that it did (``log.prune``).
 
 ``StateStore`` keeps the data rules (ids, names, known people and groups,
 entries that fit the visibility) but decides no permissions: that is
@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from archiwista.auth import LOCAL_PRINCIPAL_ID, Principal, PrincipalKind
 from archiwista.errors import (
@@ -54,6 +54,14 @@ type ActionName = Literal[
     "group.members",
     "group.remove",
     "project.access",
+    "project.task_add",
+    "project.task_remove",
+    "settings.update",
+    "job.start",
+    "job.cancel",
+    "job.retry",
+    "permission.denied",
+    "log.prune",
     "file.download",
 ]
 type ActorKind = PrincipalKind | Literal["anonymous"]
@@ -347,6 +355,21 @@ class ActionPage:
 
     entries: tuple[ActionEntry, ...]
     next_cursor: int | None
+
+
+class ActionRecorder(Protocol):
+    """What appends an ``ok`` entry to the action log: ``StateStore.record``."""
+
+    def __call__(
+        self,
+        actor: Principal | None,
+        action: ActionName,
+        target: str,
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> object:
+        """Append the entry of ``actor`` doing ``action`` to ``target``."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -930,19 +953,44 @@ class StateStore:
             )
             return _actions(connection, "id = ?", (entry_id,))[0]
 
-    def prune_actions(self, before: datetime) -> int:
+    def prune_actions(self, before: datetime, *, actor: Principal) -> int:
         """Delete the entries of the action log older than ``before``.
+
+        Deleting any is logged in the same transaction: ``log.prune`` (target
+        ``log``) with ``before`` and the ``count`` deleted. The entry is
+        written first and never deleted itself, so the log keeps its newest
+        id and no id is ever given twice.
+
+        Parameters
+        ----------
+        before : datetime
+            The entries written before this moment go.
+        actor : Principal
+            Who prunes: the server's scheduler (``SCHEDULER``).
 
         Returns
         -------
         int
             How many entries were deleted.
         """
+        limit = _iso(before)
         with self._write() as connection:
-            deleted = connection.execute(
-                "DELETE FROM action_log WHERE at < ?", (_iso(before),)
-            )
-            return deleted.rowcount
+            (count,) = connection.execute(
+                "SELECT count(*) FROM action_log WHERE at < ?", (limit,)
+            ).fetchone()
+            if count:
+                entry_id = _record(
+                    connection,
+                    actor,
+                    "log.prune",
+                    "log",
+                    _now(),
+                    details={"before": limit, "count": count},
+                )
+                connection.execute(
+                    "DELETE FROM action_log WHERE at < ? AND id < ?", (limit, entry_id)
+                )
+            return int(count)
 
     # Backups.
 

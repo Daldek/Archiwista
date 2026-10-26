@@ -12,7 +12,8 @@ private file (``LaunchFile``), never on its command line, which other
 accounts of the computer can read. Uvicorn's access log is off unless asked
 for; when on, ``token=`` values are redacted; it serves at most
 ``LIMIT_CONCURRENCY`` connections at once. While it serves, background jobs
-run under its ``JobSupervisor``, the ``ScanScheduler`` scans the stores and
+run under its ``JobSupervisor`` (the jobs people start go to the action log),
+the ``ScanScheduler`` scans the stores and prunes the action log, and
 the ``RenderPool`` renders previews into the preview cache (reconciled at the
 start); stopping ends the open job event streams first (they would hold it
 until their jobs end), then interrupts running jobs and ends the render
@@ -439,7 +440,7 @@ def serve_main(
         return fail(err, "conflict", detail, reason="port_unavailable")
     with sock:
         bound_port: int = sock.getsockname()[1]
-        jobs = JobSupervisor(paths, settings)
+        jobs = JobSupervisor(paths, settings, record=state.record)
         try:
             jobs.start()
         except OSError as error:
@@ -464,7 +465,9 @@ def serve_main(
                 current.preview_cache_limit_bytes
             )
         )
-        scheduler = ScanScheduler(jobs, settings, registry, index_path=paths.index_file)
+        scheduler = ScanScheduler(
+            jobs, settings, registry, index_path=paths.index_file, state=state
+        )
         # Team mode issues no startup token: people sign in at its origin.
         team = settings.get().team
         origin = team.origin if team.enabled else None

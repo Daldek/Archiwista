@@ -22,8 +22,8 @@ without background jobs, which leaves out their routes), ``job_streams``
 ``area_refreshes`` (``AreaRefreshes``: the areas' slots rescanned in the
 last minute), ``layer_memo`` (``LayerMemo``: the local layers of the last
 answers, for their images), ``file_streams`` (``FileStreams``: the file
-downloads each person streams) and ``on_redeem`` (told when a one-time token
-starts a session).
+downloads each person streams), ``denials`` (``DenialLog``: refusals in the
+action log) and ``on_redeem`` (told when a one-time token starts a session).
 """
 
 import os
@@ -61,7 +61,7 @@ from archiwista.api import previews as preview_routes
 from archiwista.api import settings as settings_routes
 from archiwista.api import stations as station_routes
 from archiwista.api.docs import install_docs, install_openapi, operation_id
-from archiwista.api.errors import ApiError, install_error_handlers
+from archiwista.api.errors import ApiError, DenialLog, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
 from archiwista.auth.authorize import Authorizer
@@ -200,6 +200,7 @@ def create_app(
     app.state.area_refreshes = area_routes.AreaRefreshes()
     app.state.layer_memo = LayerMemo()
     app.state.file_streams = FileStreams()
+    app.state.denials = DenialLog(state)
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)

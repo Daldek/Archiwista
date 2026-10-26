@@ -3,7 +3,9 @@
 ``JobSupervisor`` lives in the server and in the commands running a job in
 the foreground (``archiwista.jobs.foreground``: ``reindex``, ``preview
 --build``). It records every job in the index (``jobs``, with its
-``actor``: the principal's id, kind and session label), starts one worker
+``actor``: the principal's id, kind and session label), logs each job a
+person (not the scheduler) starts or retries in the action log (``job.start``,
+``job.retry``; A-ADR-047), starts one worker
 process per job (``python -P -m archiwista.jobs.worker``, A-ADR-007),
 reads the worker's JSON Lines (``archiwista.jobs.protocol``) and keeps them as
 numbered job events (``job_events``), which it also hands to subscribers
@@ -128,6 +130,7 @@ from archiwista.owndata.document import MAX_NOTE_CHARS
 from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
 from archiwista.sources import PLAN_TODO
+from archiwista.state import ActionRecorder, StateStore
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -648,6 +651,23 @@ def default_max_jobs() -> int:
     return max(2, (os.cpu_count() or 2) // 2)
 
 
+def action_details(
+    kind: str, store: str | None, params: Mapping[str, object]
+) -> dict[str, object]:
+    """Return what the action log keeps of a job: its kind, store and project.
+
+    The details of the entries ``job.start``, ``job.retry`` and ``job.cancel``
+    (A-ADR-047); a store or a project the job has not is left out.
+    """
+    details: dict[str, object] = {"kind": kind}
+    if store is not None:
+        details["store"] = store
+    project = params.get("project")
+    if project is not None:
+        details["project"] = project
+    return details
+
+
 class JobSupervisor:
     """Start, follow and record background jobs.
 
@@ -671,6 +691,11 @@ class JobSupervisor:
         Network jobs running at once, of all people and the scheduler.
     stop_timeout_s : float, default 30.0
         Seconds an interrupted worker has before it is killed.
+    record : ActionRecorder or None, optional
+        Writes the action log's entries of the jobs people start
+        (``job.start``) or retry (``job.retry``), e.g. the server's
+        ``StateStore.record``; that of the state database of ``paths``,
+        opened by ``start``, when omitted.
 
     Notes
     -----
@@ -690,6 +715,7 @@ class JobSupervisor:
         max_jobs: int | None = None,
         max_network_jobs: int = MAX_NETWORK_JOBS,
         stop_timeout_s: float = STOP_TIMEOUT_S,
+        record: ActionRecorder | None = None,
     ) -> None:
         self._paths = paths
         self._settings = settings
@@ -697,6 +723,7 @@ class JobSupervisor:
         self._max_jobs = default_max_jobs() if max_jobs is None else max_jobs
         self._max_network_jobs = max_network_jobs
         self._stop_timeout_s = stop_timeout_s
+        self._recorder = record
         self._lock = threading.RLock()
         self._changed = threading.Condition(self._lock)
         self._queue: deque[_Waiting] = deque()
@@ -742,6 +769,8 @@ class JobSupervisor:
             if self._phase != "new":
                 raise RuntimeError("a supervisor starts once")
             initialize(self._paths.index_file)
+            if self._recorder is None:
+                self._recorder = StateStore(self._paths.state_file).record
             jobs_dir = private_directory(self._paths.jobs_dir)
             self._owner = _hold_owner_lock(jobs_dir)
             self._db = _connect(self._paths.index_file)
@@ -832,6 +861,7 @@ class JobSupervisor:
         store: str | None = None,
         params: Mapping[str, object] | None = None,
         actor: Principal,
+        retry_of: str | None = None,
     ) -> JobRecord:
         """Record a job and start it when there is room, or join an active one.
 
@@ -872,7 +902,13 @@ class JobSupervisor:
             non-empty text or ``None``, the default; ``since`` an ISO 8601
             time with its offset).
         actor : Principal
-            Who asks; the job keeps its id, kind and session label.
+            Who asks; the job keeps its id, kind and session label. A person
+            (any actor but the ``scheduler``) gets the action log's entry
+            ``job.start`` of the job (``action_details``), with ``joined``
+            when the request joined an active job.
+        retry_of : str or None, optional
+            The job this one runs again (``archiwista.services.jobs.retry``):
+            the entry is ``job.retry`` with ``retry_of``.
 
         Returns
         -------
@@ -976,7 +1012,20 @@ class JobSupervisor:
                 )
                 self._queue.append(waiting)
                 self._dispatch()
-        return self._record(joined or job_id)
+        started = joined or job_id
+        if actor.kind != "scheduler" and self._recorder is not None:
+            details = action_details(job_kind, store, values)
+            if retry_of is not None:
+                details["retry_of"] = retry_of
+            if joined is not None:
+                details["joined"] = True
+            self._recorder(
+                actor,
+                "job.start" if retry_of is None else "job.retry",
+                started,
+                details=details,
+            )
+        return self._record(started)
 
     def cancel(self, job_id: str) -> JobRecord:
         """Cancel a job.

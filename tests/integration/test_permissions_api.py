@@ -11,7 +11,7 @@ job worker (``tests.fixtures.own_data_api``).
 import json
 import zipfile
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -27,7 +27,7 @@ from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
 from archiwista.refs import version_ref
 from archiwista.security import issue_one_time_token
 from archiwista.sources import ProjectInfo
-from archiwista.state import Visibility
+from archiwista.state import ActionEntry, StateSnapshot, Visibility
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import STORE as GENERATED_STORE
 from tests.fixtures.index_data import PRODUCER, ROOT, STORE
@@ -191,7 +191,7 @@ def test_unknown_and_hidden_projects_answer_alike(api: Api) -> None:
 
 
 def test_other_person_cannot_change_access(api: Api) -> None:
-    """Seeing a public project does not allow sharing it; nothing changes."""
+    """Seeing a public project does not allow sharing it; only the refusal is logged."""
     # Arrange
     share(api.state, KEY, "public")
     before = api.state.snapshot()
@@ -202,7 +202,23 @@ def test_other_person_cannot_change_access(api: Api) -> None:
 
     # Assert
     assert_problem(response, 403, "forbidden", "permission_denied")
-    assert api.state.snapshot() == before
+    refused = only_refusals(api, before)
+    assert [(item.actor, item.target) for item in refused] == [(OTHER, KEY)]
+    assert refused[0].details == {
+        "action": "project.share",
+        "route": "PUT /projects/{project}/access",
+    }
+
+
+def only_refusals(api: Api, before: StateSnapshot) -> list[ActionEntry]:
+    """Return the entries a refused request added; nothing else may change."""
+    after = api.state.snapshot()
+    assert replace(after, actions=before.actions) == before
+    added = list(after.actions[len(before.actions) :])
+    assert {(item.action, item.outcome) for item in added} == {
+        ("permission.denied", "denied")
+    }
+    return added
 
 
 def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
@@ -289,7 +305,10 @@ def test_share_rejects_entries_that_do_not_fit(
 def test_admin_routes_refuse_people_without_admin(
     api: Api, method: str, path: str, body: dict[str, object] | None
 ) -> None:
-    """Accounts and groups are an administrator's: others get 403, nothing changes."""
+    """Accounts and groups are an administrator's: others get 403, nothing changes.
+
+    Only the refusal is logged, about the accounts or the groups.
+    """
     # Arrange
     before = api.state.snapshot()
     caller = api.session(principal(api.state, "owner"))
@@ -299,7 +318,10 @@ def test_admin_routes_refuse_people_without_admin(
 
     # Assert
     assert_problem(response, 403, "forbidden", "permission_denied")
-    assert api.state.snapshot() == before
+    refused = only_refusals(api, before)
+    assert [(item.actor, item.target) for item in refused] == [
+        (OWNER, path.split("/")[1])
+    ]
 
 
 @pytest.mark.parametrize(("method", "path", "body"), CHANGES)

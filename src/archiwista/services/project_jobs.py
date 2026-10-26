@@ -174,4 +174,4 @@ def require(
     """
     if kind in _WRITING:
         authorizer.require(actor, "project.write", project.access_key)
-        authorizer.require(actor, "store.write")
+        authorizer.require(actor, "store.write", target=project.access_key)

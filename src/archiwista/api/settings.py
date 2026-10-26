@@ -7,9 +7,10 @@ configuration file (problems per field) and then
 the directories: they exist and can be read, producer directories are not
 nested, the producer accepts each new or moved one. A rejected change keeps
 the file and the settings in effect. A saved change reaches subscribers
-(the scan scheduler) and the CSP of the following responses. The table
-``[team]`` is neither shown nor changed: a change writes back the one the
-server read when it started (ADR-046).
+(the scan scheduler) and the CSP of the following responses, and the action
+log gets the settings it changed, before and after (``settings.update``). The
+table ``[team]`` is neither shown nor changed: a change writes back the one
+the server read when it started (ADR-046).
 """
 
 from typing import Annotated
@@ -23,6 +24,7 @@ from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService, parse_settings
 from archiwista.security import current_principal
+from archiwista.state import StateStore
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -54,6 +56,26 @@ def save_settings(service: SettingsService, body: Settings) -> Settings:
     return Settings.of(service.update(kept))
 
 
+def log_change(
+    state: StateStore, actor: Principal, before: Settings, after: Settings
+) -> None:
+    """Log the settings a change changed, before and after (``settings.update``).
+
+    A change that changed nothing writes nothing.
+    """
+    old = before.model_dump(mode="json")
+    new = after.model_dump(mode="json")
+    changed = sorted(key for key in new if old.get(key) != new[key])
+    if changed:
+        state.record(
+            actor,
+            "settings.update",
+            "settings",
+            before={key: old.get(key) for key in changed},
+            after={key: new[key] for key in changed},
+        )
+
+
 @router.get("", response_model=Settings, responses=problem_responses())
 def get_settings(principal: _Principal, service: _Settings) -> Settings:
     """Return the settings in effect: stores, project directories, basemaps."""
@@ -65,6 +87,7 @@ def put_settings(
     body: Settings,
     principal: Annotated[Principal, Depends(settings_writer)],
     service: _Settings,
+    decisions: Annotated[Authorizer, Depends(authorizer)],
 ) -> Settings:
     """Replace all settings (administrator); answer those now in effect.
 
@@ -72,6 +95,10 @@ def put_settings(
     with `problems` (`code`, `field`, `message`, and `reason` and `hint` of a
     directory the producer refuses, e.g. a store without its marker) and
     change nothing. Changing offline mode or basemaps changes the CSP of later
-    responses.
+    responses. The action log gets the settings that changed, before and
+    after (`settings.update`).
     """
-    return save_settings(service, body)
+    before = Settings.of(service.get())
+    after = save_settings(service, body)
+    log_change(decisions.state, principal, before, after)
+    return after
