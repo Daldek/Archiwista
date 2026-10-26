@@ -31,6 +31,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
 | background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
 | preview and build, optional PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
+| the first look at current versions prepared ahead in the preview cache (pane thumbnail, map tiles at the smallest zoom), optionally of a store, product, segment, project (with its own data) or area (v0.3) | `archiwista preview-warm [--store MAGAZYN] [--product PRODUKT] [--segment SEGMENT] [--project PROJEKT] [--area-id OBSZAR]` (the job in the foreground, printed as it ended) | `POST /previews/warm` |
 | comparison of the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | years/campaigns and thumbnail of a layer | `archiwista layers --store ID --product PRODUKT --area-id ID [--thumbnail KLUCZ --output FILE.png]` | `GET /local-layers`, `GET /local-layers/thumbnail.png` |
 | files of a project and the card of a file | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
@@ -350,6 +351,24 @@ archiwista preview "$REF" --build --json
 archiwista preview "$REF" --output=<data-dir>/podglad.png
 ```
 
+`POST /previews/warm` (v0.3, ADR-041) prepares the first look at current
+versions ahead: the pane's thumbnail (`size=512`, the default style) and the
+map's tiles at the file's smallest zoom go into the preview cache, so the first
+request for them does not read a slow store. The optional body narrows it:
+`{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id":
+"…"}`; no body is every store's current versions. `project` adds the working
+files of that project's own data, and makes the job the project's: only those
+who see the project see it (another session gets `404`, as for an unknown
+project). The job (`preview_warm`) runs at the lowest priority, never evicts a
+preview used in the last week, and ends `partial` with `stopped: cache_full`
+and the number `skipped` when the cache has no more room; `needs_build` counts
+the files whose map waits for a local COG (it builds none). `archiwista
+preview-warm --json` runs the same in the foreground:
+
+```sh
+archiwista preview-warm --store=zespol --product=nmt --json
+```
+
 `GET /local-layers?store=demo&product=nmt&area_id=$AREA&group=year` returns the
 years (or `group=campaign`), their keys, the coverage and the addresses of
 thumbnails and tiles. Without `area_id` it gives counters, not images. Use the
@@ -576,6 +595,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
 | `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) | a job of a project's tasks (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
+| `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
 | `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "command": "…", "options": {…}}`; for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer, command and options) | a job of a command of the producer's catalog that works on a store and has a check (v0.3): `check` plans a run in the store's directory of the producer without its effects, `download` runs it there (with `plan_job` only that plan's positions to download; one whose source changed since is a failed item, `stale_plan`), both over the network; refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), a `plan_job` the session does not see or that kept no plan `404`, one of another store or call `409` (`plan_mismatch`, `details.job`), `plan_job` with `check` `400`, a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them |
 
@@ -586,7 +606,7 @@ job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 `link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`, `download`,
-`project_download`, `project_repin`, `project_check`, `project_verify`), `state` (`queued`, `running`,
+`project_download`, `project_repin`, `project_check`, `project_verify`, `preview_warm`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`
@@ -695,11 +715,12 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `internal_error` | none | a defect of Archiwista: details are in the job log |
 
 Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
-reason). The CLI's job commands are `archiwista jobs start`, `jobs retry` and the
+reason). The CLI's job commands are `archiwista jobs start`, `jobs retry`, the
 project commands `project-download`, `project-repin`, `project-check` and
-`project-verify` (a job in the foreground; they print the job's `JobDetail` as it
-ended and exit `0`, `10` for `partial`, `11` or `130`), and `jobs list`, `jobs show`, `jobs
-cancel`, `jobs plan` and `jobs log`, which exit `0`; `jobs cancel` also stops a
+`project-verify`, and `preview-warm` (a job in the foreground; they print the
+job's `JobDetail` as it ended and exit `0`, `10` for `partial`, `11` or `130`),
+and `jobs list`, `jobs show`, `jobs cancel`, `jobs plan` and `jobs log`, which
+exit `0`; `jobs cancel` also stops a
 job a running server supervises. `archiwista reindex [--store MAGAZYN]` runs a
 full scan in the foreground (for the owner at a terminal, not for an agent next
 to a running server: both go to the same queue and get a conflict, exit `4`,

@@ -6,7 +6,8 @@ description and fix), its styles and legend, and the addresses of its
 images, which the server builds and the client never composes (it only adds
 the documented query parameters). The query models of ``preview.png``,
 ``tiles/…`` and ``features`` refuse unknown parameters (``422``), as do the
-other query models of the API.
+other query models of the API; ``WarmRequest``, the filters of ``POST
+/previews/warm`` (v0.3, ADR-041), refuses unknown fields.
 """
 
 import math
@@ -403,6 +404,51 @@ class BuildRequest(BaseModel):
             "Build also past the auto-build limits (the build button of the interface):"
             " a file over 2 GB, a raster over 1 Gpx or 8 GB unpacked."
         ),
+    )
+
+
+class WarmRequest(BaseModel):
+    """What `POST /previews/warm` prepares; no body: every store's current versions."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"store": "zespol", "product": "nmt"},
+                {"project": "raba"},
+                {"area_id": "5f2b9c0e7d41a3b6", "segment": "pl_1992_1m_evrf2007"},
+            ]
+        },
+    )
+
+    store: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only the current versions of this configured store (its id).",
+    )
+    product: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only the current versions of this product (`nmt`, `orto`…).",
+    )
+    segment: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only the current versions of this segment (variant) of a product.",
+    )
+    project: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Only the current versions this project pins and the working files of"
+            " its own data (`project` of /projects); without it no project's own"
+            " data is prepared. A project the session does not see is `404`."
+        ),
+    )
+    area_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Only the current versions within this area (`POST /areas`).",
     )
 
 

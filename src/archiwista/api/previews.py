@@ -18,8 +18,12 @@ Images and data carry ``Cache-Control: private, max-age=86400, immutable``
 client goes away before its answer gives its render up, so the tiles of a
 map moved on leave the render queue unrendered. The ``preview`` job a build
 starts or joins is shown as the session sees it: a joined job may hold refs
-of projects it does not see. Routes only translate: ``PreviewService`` does
-the work, ``archiwista preview`` calls it too; the own-data routes
+of projects it does not see. ``POST /previews/warm`` (in ``job_router``,
+served with the job supervisor) starts the ``preview_warm`` job that
+prepares the first look at current versions ahead (ADR-041); any session
+may ask, ``archiwista.services.warm`` refuses a filter naming nothing it may
+warm. Routes only translate: ``PreviewService`` does the work, ``archiwista
+preview`` and ``archiwista preview-warm`` call it too; the own-data routes
 (``archiwista.api.owndata``) answer with the helpers here. This router comes
 before the catalog's, whose ``/stores/{store}/versions/{version}`` would
 otherwise take these addresses.
@@ -36,8 +40,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 
 from archiwista.api import API_PREFIX
-from archiwista.api.dependencies import visible_projects
+from archiwista.api.dependencies import (
+    index_queries,
+    settings_service,
+    visible_projects,
+)
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
+from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import JobDetail
 from archiwista.api.models_previews import (
     MAX_ZOOM,
@@ -47,19 +56,23 @@ from archiwista.api.models_previews import (
     PreviewInfo,
     ThumbnailQuery,
     TileQuery,
+    WarmRequest,
 )
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService
 from archiwista.errors import PreviewBusyError
+from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool
 from archiwista.previews.service import Payload, PreviewService
 from archiwista.refs import ObjectResolver, version_ref
 from archiwista.security import current_principal
+from archiwista.services import warm
 
 router = APIRouter(tags=["previews"])
+job_router = APIRouter(tags=["previews"])
 
 PNG = "image/png"
 GEOJSON = "application/geo+json"
@@ -107,6 +120,9 @@ _Principal = Annotated[Principal, Depends(current_principal)]
 _Service = Annotated[PreviewService, Depends(preview_service)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
 _OptionalJobs = Annotated[JobSupervisor | None, Depends(optional_jobs)]
+_Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
+_Settings = Annotated[SettingsService, Depends(settings_service)]
+_Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _Version = Annotated[
     str,
@@ -290,6 +306,54 @@ async def build_preview(
         jobs=jobs,
         force=force,
     )
+
+
+@job_router.post(
+    "/previews/warm",
+    response_model=JobDetail,
+    status_code=202,
+    responses=problem_responses(400, 404),
+)
+def warm_previews(
+    principal: _Principal,
+    visible: _Visible,
+    settings: _Settings,
+    queries: _Queries,
+    jobs: _Jobs,
+    response: Response,
+    body: Annotated[WarmRequest | None, Body()] = None,
+) -> JobDetail:
+    """Prepare the first look at current versions ahead; answer `202` with the job.
+
+    The `preview_warm` job renders, at the lowest priority and without the
+    network, what a person's first look at a current version asks for: the
+    preview pane's thumbnail and the map's tiles at the file's smallest zoom.
+    It keeps within the room the preview cache has without evicting
+    previews used in the last week, and ends `partial` with `stopped:
+    cache_full` and the versions `skipped` when that runs out. The filters
+    narrow what it prepares; no body is every store's current versions.
+    `project` adds that project's own data and makes the job the project's:
+    only those who see the project see it. A request of the filters of a
+    waiting warm-up gets that job. Any session may ask; a store that is not
+    configured, a project the session does not see and an area the index
+    does not keep are `404`. The answer has `Location: /api/v1/jobs/{job}`;
+    follow the job with `GET /jobs/{job}/events`.
+    """
+    given = body or WarmRequest()
+    job = warm.start(
+        settings.get(),
+        jobs,
+        queries,
+        store=given.store,
+        product=given.product,
+        segment=given.segment,
+        project=given.project,
+        area_id=given.area_id,
+        actor=principal,
+        visible=visible,
+    )
+    response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
+    return JobDetail.of(job)
 
 
 @router.get(

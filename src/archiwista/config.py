@@ -420,6 +420,10 @@ class AppSettings(BaseModel):
     preview_cache_limit_gb : int
         Size limit of the preview cache in GB (1024**3 bytes); past it the
         least recently used previews go (SPEC 5.7).
+    preview_warm_after_scan : bool
+        After a scan that indexed new versions of a store, the scheduler
+        prepares the first look at them in a ``preview_warm`` job (SPEC 5.7,
+        ADR-041); off by default.
     own_data_dirs : dict[str, str]
         Data folder of a project by the project directory after ``realpath``
         (its access key): absolute directories, set by an administrator.
@@ -448,6 +452,7 @@ class AppSettings(BaseModel):
     preview_cache_limit_gb: int = Field(
         default=DEFAULT_PREVIEW_CACHE_LIMIT_GB, ge=1, le=10_000
     )
+    preview_warm_after_scan: bool = False
     own_data_dirs: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("default_project_visibility", mode="before")

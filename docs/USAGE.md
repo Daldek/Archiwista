@@ -127,6 +127,18 @@ the preview of a whole year are kept in the local content-addressed memory
 (limit 20 GB, the least recently used go first). Every file has a preview or a
 reason, in Polish, why it has none, with an instruction on what to do.
 
+The first look at a file on an HDD or a share is slow; it can be prepared
+ahead (v0.3, in development): `archiwista preview-warm` (filters `--store`,
+`--product`, `--segment`, `--project`, `--area-id`; `--json`) or `POST
+/api/v1/previews/warm` renders, in the background at the lowest priority,
+the preview pane's thumbnail and the map's tiles at the smallest zoom of the
+current versions, into the same memory. It never evicts a preview used in the
+last week: when the room runs out it stops and says how many versions it
+skipped. A project's own data is prepared only with `--project`, for those who
+see the project. The administrator's setting `preview_warm_after_scan` (`PUT
+/api/v1/settings` or `config.toml`; off by default) starts such a job for the
+versions a scan has just indexed.
+
 ## Catalog
 
 ![Catalog with search and filters](reports/v0.1-screenshots/03-catalog.webp)
@@ -273,7 +285,7 @@ from an open Archiwista tab.
 - It checks availability at the source and downloads only from the step "U
   źródła" of the map (v0.3 "Actions", in development) and does not change
   project manifests through the producer yet.
-- It does not build previews before the first opening; pre-building of
-  thumbnails and overviews of current versions is planned for v0.3.
+- It does not build a local COG ahead: the warm-up prepares the thumbnail of
+  such a file only, and its map preview is built at the first view.
 - It does not show object differences between snapshots, has no sign-in or
   team work (v0.4) and does not yet index IMGW data (v0.5).

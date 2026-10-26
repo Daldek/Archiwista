@@ -21,6 +21,7 @@ from archiwista.commands import (
     jobs,
     layers,
     owndata,
+    preview_warm,
     previews,
     producer_commands,
     project_jobs,
@@ -54,6 +55,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     jobs,
     projects,
     project_jobs,
+    preview_warm,
 )
 
 

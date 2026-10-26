@@ -1534,19 +1534,24 @@ about 1280 px wide, not full-resolution PNG.
 
 **Pre-building (v0.3; user decision 2026-10-19).** The background job
 `preview_warm` (5.6) prepares thumbnails and an overview at low zoom for the
-current versions, not all tiles. After an index refresh it may
-cover newly detected versions if the administrator enables the setting
-(disabled by default). The manual `archiwista preview warm` accepts filters
-for product/segment, project and area, and `--json`; the HTTP API and the agent
-token provide an equivalent action. The job can be cancelled, and the existing
-renderer pool serves it with low priority: pre-building does not
-delay interactive previews. It respects the cache limit and LRU, does not
-evict recently used previews; when the available budget is exhausted
-it stops and reports the cause and the number of skipped versions. It does not use
-the network and reads the store as read-only. The same visibility rules
-apply as for previews (A-ADR-029): own data of private projects
-only for authorised users, without revealing hidden projects in the selection,
-results or in the preview cache.
+current versions, not all tiles: what a person's first look asks for, the
+preview pane's thumbnail and the map's tiles at the file's smallest zoom
+(ADR-041). After an index refresh it covers the newly indexed versions if the
+administrator enables the setting `preview_warm_after_scan` (disabled by
+default). The manual `archiwista preview-warm` (a command of its own: `preview`
+takes an object's ref) accepts the filters `--store`, `--product`,
+`--segment`, `--project` and `--area-id`, and `--json`; `POST /previews/warm`
+(9.2) is the equivalent action for the HTTP API and the agent token, open to
+every session. The job can be cancelled; it renders in processes of its own
+at the lowest CPU priority, so pre-building does not delay interactive
+previews. It respects the cache limit and LRU, does not evict previews used in
+the last week; when the available budget is exhausted it stops and reports the
+cause and the number of skipped versions. It does not use the network, reads
+the store as read-only and builds no local COG (such a file gets its thumbnail
+only). The same visibility rules apply as for previews (A-ADR-029): own data of
+a project only with `--project`, for those who see the project, whose
+warm-up only they see; a hidden project is refused as an unknown one, so
+nothing of it shows in the selection, the results or the preview cache.
 
 A store on an HDD/NAS can stay on slower media, while the local
 preview cache on an SSD serves the first display of a prepared
@@ -3075,6 +3080,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stores/{store}/versions/{version}/tiles/{z}/{x}/{y}.png` | preview tiles (`style`: `hillshade`, `rgb`, `classes`…) |
 | `GET /stores/{store}/versions/{version}/features` | vector features in the view (`layer`, `bbox`, `limit`) |
 | `GET /stores/{store}/versions/{version}/members` | list of ZIP members |
+| `POST /previews/warm` | the first look at current versions prepared in the preview cache → `202` with the `preview_warm` job (5.7, ADR-041): optional filters `store`, `product`, `segment`, `project` (adds its own data; the job is that project's) and `area_id`; any session; a store that is not configured, a hidden or unknown project and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `GET /requests/{parent_request}` | files of one Kartograf job (also PL and CZ); `/groups` belongs to permission groups |
 | `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1) |
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |

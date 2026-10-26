@@ -66,6 +66,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Projects: the list, a card, the producer's status; a new project, a task added or removed (through the producer) | `archiwista projects`, `project PROJECT`, `project-status PROJECT`, `project-init PRODUCER DIR --store STORE`, `project-add PROJECT NAME COMMAND [--options JSON]`, `project-remove PROJECT NAME` | `GET /projects`, `GET /projects/{project}`, `…/status`, `POST /projects`, `POST /projects/{project}/tasks`, `DELETE …/tasks/{name}` |
 | A project's jobs (through the producer): download and pin its tasks, repin one task, check the pins against the source, verify them in the store | `archiwista project-download PROJECT [TASK ...]`, `project-repin PROJECT TASK`, `project-check PROJECT [TASK ...]`, `project-verify PROJECT [TASK ...]` | `POST /projects/{project}/jobs` |
 | Preview of a file or a version, optionally as PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET` and `POST …/preview`, `GET …/preview.png` |
+| Prepare the first look at current versions ahead (thumbnail, map overview) in the preview cache | `archiwista preview-warm [--store STORE] [--product PRODUCT] [--segment SEGMENT] [--project PROJECT] [--area-id AREA]` | `POST /previews/warm` |
 | Compare the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |
 | Own data of a project: files, scan, snapshots | `archiwista files`, `file`, `own-scan`, `snapshot PROJECT FILE [--plan \| --note TEXT]` | `GET /projects/{project}/files`, `POST /projects/{project}/scan`, `POST …/snapshots` |
@@ -75,7 +76,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
 | Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
 
-The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
+The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, preparing previews ahead, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
 
 ## For AI agents
 

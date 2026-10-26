@@ -333,6 +333,17 @@ command-line interface may change.
   stores only; a second warm-up finds the work ready without reading the store. `GET
   /jobs` and `archiwista jobs show` show it; the job protocol is version 9. (SPEC 5.6,
   5.7, SPEC 13 v0.3 criterion 8; plan A9)
+- A warm-up of previews on request (ADR-041): `POST /previews/warm` (optional `store`,
+  `product`, `segment`, `project`, `area_id`; no body: every store's current versions)
+  answers `202` with the `preview_warm` job and `Location`, and `archiwista preview-warm
+  [--store] [--product] [--segment] [--project] [--area-id]` runs it in the foreground
+  and prints the route's `JobDetail` with `--json` (exit `0`, `10` partial, `11`,
+  `130`). Any session may warm; a store that is not configured, a project the session
+  does not see and an area the index does not keep are `404` before a job. A project's
+  own data is warmed only with `project`, and that job is shown only to those who see
+  the project. The setting `preview_warm_after_scan` (off by default) has the scheduler
+  warm the versions a store's scan has just indexed, once per scan. (SPEC 5.7, 9.2,
+  SPEC 13 v0.3 criterion 8; plan A9)
 
 ### Changed
 

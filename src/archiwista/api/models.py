@@ -2910,6 +2910,7 @@ class Settings(BaseModel):
             "store_write_for_all": False,
             "default_project_visibility": "public",
             "preview_cache_limit_gb": 20,
+            "preview_warm_after_scan": False,
         },
         closed=True,
     )
@@ -2958,6 +2959,14 @@ class Settings(BaseModel):
         le=10_000,
         description="Preview cache limit in GB; the least recently used go first.",
     )
+    preview_warm_after_scan: bool = Field(
+        default=False,
+        description=(
+            "After a scan that indexed new versions of a store, prepare the first"
+            " look at them (a `preview_warm` job of the scheduler, `params.since`"
+            " the scan's start); off by default."
+        ),
+    )
     own_data_dirs: dict[str, str] = Field(
         default_factory=dict,
         description=(
@@ -2982,6 +2991,7 @@ class Settings(BaseModel):
             store_write_for_all=settings.store_write_for_all,
             default_project_visibility=settings.default_project_visibility,
             preview_cache_limit_gb=settings.preview_cache_limit_gb,
+            preview_warm_after_scan=settings.preview_warm_after_scan,
             own_data_dirs=dict(settings.own_data_dirs),
         )
 

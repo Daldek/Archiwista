@@ -865,6 +865,8 @@
  *   without its own access entry.
  * @property {number} [preview_cache_limit_gb] - Preview cache limit in GB (1024³ bytes),
  *   1–10 000; the least recently used previews go first.
+ * @property {boolean} [preview_warm_after_scan] - After a scan that indexed new versions
+ *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
  */
 
 // Background jobs (9b) -------------------------------------------------------

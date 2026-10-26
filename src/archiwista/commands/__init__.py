@@ -2,8 +2,9 @@
 
 Each module here (``previews``, and from later steps ``owndata``,
 ``compare``, ``layers``, ``producer_commands``, ``availability``, ``jobs``,
-``projects`` and ``project_jobs``) has ``COMMANDS`` (the names it adds),
-``add_commands`` (adds them to the parser) and ``main`` (runs one of them),
+``projects``, ``project_jobs`` and ``preview_warm``) has ``COMMANDS`` (the
+names it adds), ``add_commands`` (adds them to the parser) and ``main`` (runs
+one of them),
 and is registered with one line in ``archiwista.cli.COMMAND_MODULES``. A
 command calls the functions behind the HTTP routes, without HTTP, as the
 owner of the installation (``LOCAL_OWNER``) and through the same

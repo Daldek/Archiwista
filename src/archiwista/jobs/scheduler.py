@@ -18,7 +18,10 @@ when the last one ended more than 15 minutes ago, then every
 ``scan_interval_local_min``. Scheduled jobs act as the ``scheduler`` for
 the owner; once an hour a tick also prunes old jobs
 (``JobSupervisor.prune``: routine scans and routine ``own_scan`` runs after
-48 hours).
+48 hours). With the setting ``preview_warm_after_scan`` on, a store whose
+newest succeeded scan indexed new versions gets a ``preview_warm`` job of
+those versions (``since`` the scan's start), once per scan and only while
+no job writes the store's index (ADR-041).
 """
 
 import logging
@@ -149,7 +152,7 @@ def plan_own_scan(
 
 
 class ScanScheduler:
-    """Submit the scans ``plan_scans`` decides, in a background thread.
+    """Submit the scans ``plan_scans`` decides, and warm-ups after them, in a thread.
 
     Parameters
     ----------
@@ -190,6 +193,8 @@ class ScanScheduler:
         self._unsubscribe: Callable[[], None] | None = None
         self._probing: set[str] = set()
         self._probing_lock = threading.Lock()
+        # The newest scan of each store a warm-up of previews followed.
+        self._warmed: dict[str, str] = {}
 
     def start(self) -> None:
         """Plan at once, then every ``tick_s``; follow settings changes."""
@@ -212,7 +217,7 @@ class ScanScheduler:
         self._queries.close()
 
     def tick(self, now: datetime | None = None) -> tuple[JobRecord, ...]:
-        """Plan once and submit the scans due; prune old jobs once an hour.
+        """Plan once and submit the scans and warm-ups due; prune old jobs hourly.
 
         Parameters
         ----------
@@ -254,6 +259,9 @@ class ScanScheduler:
             job = self._submit(planned.store, planned.mode)
             if job is not None:
                 submitted.append(job)
+        if settings.preview_warm_after_scan:
+            scanning = {job.store for job in submitted if job.store is not None}
+            submitted += self._warm_after_scans(settings, history, scanning)
         if plan_own_scan(
             settings,
             self._jobs.own_scan_history(),
@@ -263,6 +271,40 @@ class ScanScheduler:
             own = self._jobs.submit("own_scan", actor=SCHEDULER)
             submitted.append(own)
         return tuple(submitted)
+
+    def _warm_after_scans(
+        self,
+        settings: AppSettings,
+        history: Mapping[str, ScanHistory],
+        scanning: Collection[str],
+    ) -> list[JobRecord]:
+        """Warm the previews of the versions each store's newest scan indexed.
+
+        A store with a job of its index waiting or running, or whose scan
+        this tick submitted, waits for a later tick. Each scan is followed
+        once, and only a scan that wrote versions gets a warm-up: of the
+        versions indexed since it started. The scans followed are kept in
+        memory, so a restarted server follows each store's newest scan once
+        more; that warm-up finds its work ready in the cache.
+        """
+        submitted = []
+        for store in settings.stores:
+            if store.id in scanning or history.get(store.id, ScanHistory()).busy:
+                continue
+            scans = self._jobs.list(
+                kind="scan", store=store.id, state="succeeded", limit=1
+            ).items
+            if not scans or self._warmed.get(store.id) == scans[0].id:
+                continue
+            scan = scans[0]
+            self._warmed[store.id] = scan.id
+            written = (scan.result or {}).get("versions_written", 0)
+            if not written or scan.started_at is None:
+                continue
+            params = {"store": store.id, "since": scan.started_at.isoformat()}
+            job = self._jobs.submit("preview_warm", params=params, actor=SCHEDULER)
+            submitted.append(job)
+        return submitted
 
     def _run(self) -> None:
         while not self._stop.is_set():

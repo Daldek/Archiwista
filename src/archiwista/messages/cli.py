@@ -1874,4 +1874,50 @@ MESSAGES = {
         "Name of the task to pin anew.",
         "Nazwa zadania do ponownego przypięcia.",
     ),
+    "preview_warm_help": Text(
+        (
+            "Prepares the first look at current versions ahead (the preview pane's"
+            " thumbnail and the map's tiles at the smallest zoom) in the preview"
+            " cache, at the lowest priority and without evicting previews used in"
+            " the last week, and follows the job to its end (--json: the JobDetail"
+            " model of the job as it ended, as POST /api/v1/previews/warm starts"
+            " it). Without filters: every store's current versions."
+        ),
+        (
+            "Przygotowuje z wyprzedzeniem pierwszy rzut oka na bieżące wersje"
+            " (miniaturę panelu podglądu i kafelki mapy przy najmniejszym"
+            " przybliżeniu) w pamięci podglądów, z najniższym priorytetem i bez"
+            " usuwania podglądów używanych w ostatnim tygodniu, i śledzi zadanie do"
+            " końca (--json: model JobDetail zadania po jego końcu, uruchomionego"
+            " jak przez POST /api/v1/previews/warm). Bez filtrów: bieżące wersje"
+            " wszystkich magazynów."
+        ),
+    ),
+    "preview_warm_store_help": Text(
+        "Only the current versions of this configured store.",
+        "Tylko bieżące wersje tego skonfigurowanego magazynu.",
+    ),
+    "preview_warm_product_help": Text(
+        "Only the current versions of this product (e.g. nmt).",
+        "Tylko bieżące wersje tego produktu (np. nmt).",
+    ),
+    "preview_warm_segment_help": Text(
+        "Only the current versions of this product segment (variant).",
+        "Tylko bieżące wersje tego segmentu (wariantu) produktu.",
+    ),
+    "preview_warm_project_help": Text(
+        (
+            "Only the current versions the project pins, and the working files of"
+            " its own data; without it no project's own data is prepared."
+        ),
+        (
+            "Tylko bieżące wersje przypięte przez projekt i pliki robocze jego"
+            " danych własnych; bez tego dane własne projektów nie są"
+            " przygotowywane."
+        ),
+    ),
+    "preview_warm_area_id_help": Text(
+        "Only the current versions within an area saved via POST /api/v1/areas.",
+        "Tylko bieżące wersje w obszarze zapisanym przez POST /api/v1/areas.",
+    ),
 }
