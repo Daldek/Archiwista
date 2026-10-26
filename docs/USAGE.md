@@ -324,6 +324,33 @@ comparison and changes no data.
 - **Store problems** with a repair description (and the file card when they
   concern a file), and the **projects** that use the store.
 
+## IMGW stations (command line)
+
+The stations of the station catalogs of IMGW-PIB and ČHMÚ and the coverage of their
+series have no view in the interface yet (v0.5); the command line and the API
+(`GET /api/v1/stations`) show them from the index while IMGWTools is installed:
+
+```sh
+archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous --min-complete-years Q:30
+archiwista stations list --area-id OBSZAR --boundary false
+archiwista stations list --location none
+archiwista stations show 149190310 --years 1951-2025
+```
+
+`stations list` prints each station with the label of every variable of its series
+("Q: luki 3% · najdł. 1981.06.02–1982.12.31"; a station has no single label) and the
+counters of the whole result: with a location (and of them on the area's boundary,
+closer to it than the uncertainty of their location), without one (counted after the
+filters, never placed in an area) and hidden by a coverage filter. Its options are
+the parameters of `GET /api/v1/stations` (`archiwista stations list --help`):
+`--coverage` and `--min-complete-years` need `--dataset`, `--years` and `--year-type`
+set the range and the numbering of the labels, and the next page is `--cursor`.
+`stations show` is the card of a station: its facts, its location with the source and
+the uncertainty, each series with its file and every variable labelled, and the
+licence with the formula IMGW requires. A code that two stores or providers share
+needs `--store` and `--provider`. Without IMGWTools both refuse with the repair
+command `pip install "archiwista[imgw]"`.
+
 ## Session
 
 Archiwista works only on this computer (`127.0.0.1`) and shows nothing
@@ -354,6 +381,7 @@ from an open Archiwista tab.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) but has no station views and no IMGW actions yet (v0.5).
+  catalogs) and lists its stations through `archiwista stations` and the API, but
+  has no station views in the interface and no IMGW actions yet (v0.5).
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

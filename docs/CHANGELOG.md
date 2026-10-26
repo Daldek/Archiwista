@@ -171,6 +171,15 @@ command-line interface may change.
   is not available, even when the index holds stations. The archive badge and the
   input archives of the card are not built yet. (SPEC 9.2, 6.7, 6.8, ADR 0032
   decision 13)
+- `archiwista stations list` and `archiwista stations show KOD`: the stations and the
+  card of one from the command line, with every parameter of `GET /stations` and `GET
+  /stations/{code}` as an option of the same name (a repeatable parameter a repeatable
+  option: `--coverage Q:continuous --coverage Q:gaps`). With `--json` they print the
+  routes' answers, a refusal the routes' problem as the `archiwista-error/1` document
+  (exit 6 without IMGWTools); without it, Polish lines for a person: each station with
+  the label of every variable of its series and the counters of the whole result, or
+  the card with its facts, location, series and licence. (AGENT_API, ADR 0032
+  decision 13)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
   `archiwista commands list` list the commands of every producer whose plugin offers
   them (Kartograf's catalog of `list_commands` and `command_schema`; `producer` keeps

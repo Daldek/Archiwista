@@ -1947,4 +1947,223 @@ MESSAGES = {
         "Only the current versions within an area saved via POST /api/v1/areas.",
         "Tylko bieżące wersje w obszarze zapisanym przez POST /api/v1/areas.",
     ),
+    "stations_help": Text(
+        "Stations of the station catalogs with the coverage of their series.",
+        "Stacje z katalogów stacji z pokryciem ich szeregów.",
+    ),
+    "stations_list_help": Text(
+        (
+            "Lists stations by name with every variable of their series labelled"
+            " (like GET /api/v1/stations, options with the same names; a repeatable"
+            " parameter is a repeatable option); next page: --cursor."
+        ),
+        (
+            "Wypisuje stacje według nazwy z etykietą każdej zmiennej ich szeregów"
+            " (jak GET /api/v1/stations, opcje o tych samych nazwach; parametr"
+            " powtarzalny to powtarzalna opcja); następna strona: --cursor."
+        ),
+    ),
+    "stations_show_help": Text(
+        (
+            "Shows the card of a station: its catalog entry and every series"
+            " labelled (like GET /api/v1/stations/CODE)."
+        ),
+        (
+            "Pokazuje kartę stacji: jej wpis w katalogu i etykiety każdego szeregu"
+            " (jak GET /api/v1/stations/KOD)."
+        ),
+    ),
+    "stations_code_help": Text(
+        "station code as its provider gives it",
+        "kod stacji, jak podaje go dostawca",
+    ),
+    "stations_store_help": Text(
+        "store identifier",
+        "identyfikator magazynu",
+    ),
+    "stations_provider_help": Text(
+        "provider of the stations: IMGW-PIB or CHMI",
+        "dostawca stacji: IMGW-PIB albo CHMI",
+    ),
+    "stations_dataset_help": Text(
+        (
+            "dataset key, e.g. pl.imgw.hydro_daily: only stations with a series of"
+            " it, and only its coverage"
+        ),
+        (
+            "klucz zbioru danych, np. pl.imgw.hydro_daily: tylko stacje z jego"
+            " szeregiem i tylko jego pokrycie"
+        ),
+    ),
+    "stations_years_help": Text(
+        "range of years of the labels: 1951-2025 or one year",
+        "zakres lat etykiet: 1951-2025 albo jeden rok",
+    ),
+    "stations_year_type_help": Text(
+        "numbering of the years: hydrological or calendar",
+        "numeracja lat: hydrological (hydrologiczne) albo calendar (kalendarzowe)",
+    ),
+    "stations_kind_help": Text(
+        "station kind: hydro or meteo",
+        "rodzaj stacji: hydro albo meteo",
+    ),
+    "stations_active_help": Text(
+        "true: active stations only, false: historical ones only",
+        "true: tylko czynne stacje, false: tylko historyczne",
+    ),
+    "stations_river_code_help": Text(
+        "hydrographic code of a river, e.g. 2138",
+        "kod hydrograficzny rzeki, np. 2138",
+    ),
+    "stations_river_scope_help": Text(
+        "exact (the river only, default) or tributaries (with its tributaries)",
+        "exact (tylko rzeka, domyślnie) albo tributaries (z dopływami)",
+    ),
+    "stations_variable_help": Text(
+        "stations with a value of the variable, e.g. Q (repeatable)",
+        "stacje z wartością zmiennej, np. Q (powtarzalna)",
+    ),
+    "stations_coverage_help": Text(
+        (
+            "variable:state of its label, e.g. Q:continuous (repeatable; needs"
+            " --dataset)"
+        ),
+        ("zmienna:stan jej etykiety, np. Q:continuous (powtarzalna; wymaga --dataset)"),
+    ),
+    "stations_min_complete_years_help": Text(
+        "variable:least full years, e.g. Q:30 (repeatable; needs --dataset)",
+        "zmienna:najmniej pełnych lat, np. Q:30 (powtarzalna; wymaga --dataset)",
+    ),
+    "stations_area_id_help": Text(
+        "area saved via POST /api/v1/areas",
+        "obszar zapisany przez POST /api/v1/areas",
+    ),
+    "stations_bbox_help": Text(
+        "area as a rectangle min_x,min_y,max_x,max_y in the CRS from --bbox-crs",
+        "obszar jako prostokąt min_x,min_y,max_x,max_y w układzie z --bbox-crs",
+    ),
+    "stations_bbox_crs_help": Text(
+        "CRS of --bbox, e.g. EPSG:2180 (default EPSG:4326)",
+        "układ współrzędnych --bbox, np. EPSG:2180 (domyślnie EPSG:4326)",
+    ),
+    "stations_boundary_help": Text(
+        "false: leave out the stations on the area's boundary (default true)",
+        "false: pomiń stacje na granicy obszaru (domyślnie true)",
+    ),
+    "stations_location_help": Text(
+        "location: any (default), with (a position) or none (no position)",
+        "położenie: any (domyślnie), with (z położeniem) albo none (bez położenia)",
+    ),
+    "stations_limit_help": Text(
+        "number of stations per page: 1–200 (default 50)",
+        "liczba stacji na stronie: 1–200 (domyślnie 50)",
+    ),
+    "stations_cursor_help": Text(
+        "next_cursor of the previous page of the same query",
+        "next_cursor poprzedniej strony tego samego zapytania",
+    ),
+    "stations_failed": Text(
+        "Cannot read the stations",
+        "Nie można odczytać stacji",
+    ),
+    "stations_none": Text(
+        "No stations.",
+        "Brak stacji.",
+    ),
+    "station_line": Text(
+        "{code}  {name} · {kind} · {provider} · store {store}{river}{place}",
+        "{code}  {name} · {kind} · {provider} · magazyn {store}{river}{place}",
+    ),
+    "station_river": Text(
+        " · {river} ({code})",
+        " · {river} ({code})",
+    ),
+    "station_on_boundary": Text(
+        " · on the area's boundary",
+        " · na granicy obszaru",
+    ),
+    "station_unlocated": Text(
+        " · no location ({reason})",
+        " · bez położenia ({reason})",
+    ),
+    "station_series": Text(
+        "  {dataset} (series {series}, {year_type} years {years}): {labels}",
+        "  {dataset} (szeregi {series}, lata {year_type} {years}): {labels}",
+    ),
+    "station_label": Text(
+        "{key}: {label}",
+        "{key}: {label}",
+    ),
+    "stations_summary": Text(
+        (
+            "Stations on the page: {count}. With a location: {located} (on the"
+            " area's boundary: {boundary}), without: {unlocated}, hidden by"
+            " filter: {hidden}."
+        ),
+        (
+            "Stacje na stronie: {count}. Z położeniem: {located} (na granicy"
+            " obszaru: {boundary}), bez położenia: {unlocated}, ukryte filtrem:"
+            " {hidden}."
+        ),
+    ),
+    "station_title": Text(
+        "{code} — {name} ({provider}, store {store})",
+        "{code} — {name} ({provider}, magazyn {store})",
+    ),
+    "station_facts": Text(
+        (
+            "Kind {kind}; river {river} ({river_code}); active: {active}; since"
+            " {established}; gauge zero {gauge_zero} m; river km {river_km}."
+        ),
+        (
+            "Rodzaj {kind}; rzeka {river} ({river_code}); czynna: {active}; od"
+            " {established}; zero wodowskazu {gauge_zero} m; km rzeki {river_km}."
+        ),
+    ),
+    "station_located": Text(
+        (
+            "Location: {lon}, {lat} (source {source}, uncertainty {uncertainty} m,"
+            " catalog {catalog})."
+        ),
+        (
+            "Położenie: {lon}, {lat} (źródło {source}, niepewność {uncertainty} m,"
+            " katalog {catalog})."
+        ),
+    ),
+    "station_no_location": Text(
+        "No location: {reason} (catalog {catalog}).",
+        "Bez położenia: {reason} (katalog {catalog}).",
+    ),
+    "station_series_title": Text(
+        "Series {dataset}, version {series}, {year_type} years {years}: {file}",
+        "Szereg {dataset}, wersja {series}, lata {year_type} {years}: {file}",
+    ),
+    "station_variable": Text(
+        "  {key} ({unit}): {label}; full years: {complete}",
+        "  {key} ({unit}): {label}; pełne lata: {complete}",
+    ),
+    "station_attribution": Text(
+        "  Licence {license}: {attribution}",
+        "  Licencja {license}: {attribution}",
+    ),
+    "station_active_true": Text(
+        "yes",
+        "tak",
+    ),
+    "station_active_false": Text(
+        "no",
+        "nie",
+    ),
+    "station_reason_none": Text(
+        "no source gives coordinates",
+        "żadne źródło nie podaje współrzędnych",
+    ),
+    "station_reason_zero": Text(
+        "the source gave 0,0",
+        "źródło podało 0,0",
+    ),
+    "station_reason_outside_country": Text(
+        "outside the provider's country",
+        "poza krajem dostawcy",
+    ),
 }

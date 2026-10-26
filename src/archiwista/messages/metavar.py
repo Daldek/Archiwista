@@ -5,6 +5,7 @@ from archiwista.messages import Text
 MESSAGES = {
     "action": Text("ACTION", "DZIAŁANIE"),
     "area": Text("AREA", "OBSZAR"),
+    "code": Text("CODE", "KOD"),
     "command": Text("COMMAND", "POLECENIE"),
     "cursor": Text("CURSOR", "KURSOR"),
     "directory": Text("DIRECTORY", "KATALOG"),

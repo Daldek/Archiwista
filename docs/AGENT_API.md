@@ -28,6 +28,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, and a station's card (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]` | `GET /stations`, `GET /stations/{code}`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project, a task added or removed, the producer's status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
@@ -362,6 +363,9 @@ curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
+archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
+  --coverage=Q:continuous --min-complete-years=Q:30 --json
+archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
@@ -782,6 +786,6 @@ when they meet).
   administrative unit (plan A15, Kartograf KB-7).
 - The files of an IMGWTools store are indexed (archives, series, station
   catalogs), and its stations and the coverage of their series are read through
-  `/stations` (section 5); the stations in the interface, the chart data, the
-  comparison of stations and the archive badge are v0.5. No chat and no MCP;
-  an external agent uses the API described above.
+  `/stations` and `archiwista stations` (section 5); the stations in the
+  interface, the chart data, the comparison of stations and the archive badge
+  are v0.5. No chat and no MCP; an external agent uses the API described above.

@@ -247,9 +247,12 @@ side.
     periods passes when each period does, and a station without the variable never
     passes. A code is its provider's in a store: a code that several stations share
     (two stores, two providers) is `400` (reason `ambiguous_station`,
-    `details.stations`) until `store` and `provider` name one. The archive badge of SPEC
-    9.2 and the input archives of the card need the archives of a dataset's years from
-    the producer, a capability the source interface lacks, and are not built. Rejected:
+    `details.stations`) until `store` and `provider` name one. `archiwista stations
+    list` and `stations show` take the parameters of the first two routes as options of
+    the same names, built from the routes' query models, and print the routes' models
+    with `--json` (AGENT_API). The archive badge of SPEC 9.2 and the input archives of
+    the card need the archives of a dataset's years from the producer, a capability the
+    source interface lacks, and are not built. Rejected:
     the filters after paging (pages of any length, and no count of what they hid);
     placing a station without a location by its province or river (a guessed location,
     P13); the first of the stations an ambiguous code means (an answer about another
@@ -274,6 +277,6 @@ refused by the marker file names at its own field (DEV-19.14), looking two level
 because the producer's writer, which looks at the whole tree, is not run by a settings
 change. The index keeps the stations of each provider's current catalog (decision 11)
 and the coverage of each dataset's current series with its years (decision 12), and
-serves them through the station routes (decision 13).
+serves them through the station routes and `archiwista stations` (decision 13).
 
 **Errata:** none.

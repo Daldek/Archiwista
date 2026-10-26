@@ -36,4 +36,6 @@ MESSAGES = {
     "years_one": Text("{count} year", "{count} rok"),
     "years_few": Text("{count} years", "{count} lata"),
     "years_many": Text("{count} years", "{count} lat"),
+    "year_type_hydrological": Text("hydrological", "hydrologiczne"),
+    "year_type_calendar": Text("calendar", "kalendarzowe"),
 }
