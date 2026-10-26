@@ -11,8 +11,10 @@
  * `view=`; `bottom: true` — placed at the bottom of the navigation; `nav:
  * false` — not in the navigation, opened from another view (e.g. the
  * comparison by „Porównaj z…”); `count` — a hook giving a number shown next
- * to the name in the navigation (none at 0), e.g. the running jobs. The
- * order of the lines is the order of the navigation.
+ * to the name in the navigation (none at 0), e.g. the running jobs; `admin:
+ * true` — in the navigation of a session with the role `admin` only (its
+ * routes refuse anyone else). The order of the lines is the order of the
+ * navigation.
  *
  * An overlay: `param` — the address parameter opening it (`?view=map&file=…`);
  * `load` — imports the module whose default export is rendered with `route`,
@@ -34,6 +36,7 @@ import { useRunningJobs } from "./queue.js";
  * @property {boolean} [bottom]
  * @property {boolean} [nav]
  * @property {() => number} [count]
+ * @property {boolean} [admin]
  */
 
 /**
@@ -51,6 +54,7 @@ export const VIEWS = [
   { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
+  { id: "log", icon: "file", bottom: true, admin: true, load: () => import("./views/log.js") },
 ];
 
 /** @type {OverlayRoute[]} */

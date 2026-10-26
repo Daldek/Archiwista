@@ -14,6 +14,7 @@ export const shell = {
     catalog: "Katalog",
     projects: "Projekty",
     jobs: "Zadania",
+    log: "Dziennik",
     store: "Magazyn",
     setup: "Ustawienia",
     compare: "Porównanie",

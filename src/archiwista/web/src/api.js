@@ -56,6 +56,8 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").JobList} JobList */
 /** @typedef {import("./types.js").JobLog} JobLog */
 /** @typedef {import("./types.js").JobHandlers} JobHandlers */
+/** @typedef {import("./types.js").ActionFilters} ActionFilters */
+/** @typedef {import("./types.js").ActionPage} ActionPage */
 /** @typedef {import("./types.js").AreaInput} AreaInput */
 /** @typedef {import("./types.js").Area} Area */
 /** @typedef {import("./types.js").LocalCoverageQuery} LocalCoverageQuery */
@@ -107,6 +109,8 @@ const FINAL_JOB_STATES = new Set([
 ]);
 const JSON_ANSWERS = "application/json, application/problem+json";
 const IMAGE_ANSWERS = "image/png, application/problem+json";
+// Media types of the formats of the log's export (`GET /log/export`).
+const EXPORT_TYPES = { jsonl: "application/jsonl", csv: "text/csv" };
 
 /** @type {SessionState|null} */
 let current = null;
@@ -639,6 +643,43 @@ export function getSettings({ signal } = {}) {
  */
 export function putSettings(settings) {
   return request("PUT", "/settings", { json: settings });
+}
+
+// The action log (v0.4) -------------------------------------------------------
+
+/**
+ * A page of the action log, newest entry first (`get_log`; administrators).
+ *
+ * @param {ActionFilters & {limit?: number, cursor?: number}} [filters] -
+ *   `limit` 1–200 (default 50); `cursor`: `next_cursor` of the page before.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ActionPage>}
+ * @throws {ApiError} `403 permission_denied` without the role `admin` (the log
+ *   records the refusal); `400 validation_error` for an invalid filter.
+ */
+export function getLog(filters = {}, { signal } = {}) {
+  return request("GET", "/log", { query: filters, signal });
+}
+
+/**
+ * Every entry of the action log the filters select, as a file (`export_log`;
+ * administrators): JSON Lines, or CSV for a spreadsheet. The export is itself
+ * an entry of the log (`log.export`) and holds the entries before it.
+ *
+ * @param {ActionFilters} filters
+ * @param {"jsonl"|"csv"} format
+ * @param {RequestOptions} [options]
+ * @returns {Promise<{blob: Blob, name: string}>} The file and the name the
+ *   server gave it (`archiwista-log-<UTC time>.<format>`).
+ * @throws {ApiError} As `getLog`.
+ */
+export async function exportLog(filters, format, { signal } = {}) {
+  const headers = { Accept: `${EXPORT_TYPES[format]}, application/problem+json` };
+  const address = `${API_PREFIX}/log/export${search({ ...filters, format })}`;
+  const response = await send("GET", address, { headers, signal });
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista-log.${format}`;
+  return { blob: await response.blob(), name };
 }
 
 // Background jobs (9b) --------------------------------------------------------

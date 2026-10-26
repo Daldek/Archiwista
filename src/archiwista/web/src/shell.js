@@ -165,8 +165,11 @@ function TopBar() {
 }
 
 function Navigation({ current }) {
+  const { session } = useApp();
+  const admin = session.roles.includes("admin");
+  const shown = (view, bottom) => view.nav !== false && Boolean(view.bottom) === bottom && (admin || !view.admin);
   const items = (bottom) =>
-    VIEWS.filter((view) => view.nav !== false && Boolean(view.bottom) === bottom).map(
+    VIEWS.filter((view) => shown(view, bottom)).map(
       (view) => html`<${Link} key=${view.id} view=${view.id}
         class=${view.id === current ? "rail-item active" : "rail-item"}
         aria-current=${view.id === current ? "page" : null}>

@@ -923,6 +923,8 @@
  *   1–10 000; the least recently used previews go first.
  * @property {boolean} [preview_warm_after_scan] - After a scan that indexed new versions
  *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
+ * @property {number} [action_log_retention_days] - Days the action log keeps an entry;
+ *   the server deletes older ones (v0.4, 365 by default).
  */
 
 // Background jobs (9b) -------------------------------------------------------
@@ -1068,6 +1070,55 @@
  *   => void} [onState] - A new state; the stream ends after a final one.
  * @property {(problem: Problem) => void} [onError] - The stream broke off before a
  *   final state.
+ */
+
+// The action log (v0.4) ------------------------------------------------------
+
+/**
+ * An entry of the action log (`GET /log`; a line of its JSON Lines export).
+ *
+ * @typedef {object} ActionEntry
+ * @property {number} id - Order of the entries: a later one has a greater id.
+ * @property {string} at - When (UTC).
+ * @property {string} actor - Who: an account id; `local`, the owner of a local
+ *   installation, also for the server's scheduler; `-` before a sign-in.
+ * @property {"local_owner"|"user"|"agent"|"scheduler"|"anonymous"|null} actor_kind -
+ *   How; `agent` acts for `actor`; null for an entry written before v0.4.
+ * @property {string|null} session - Label of the session; null at the terminal and
+ *   for the scheduler.
+ * @property {string|null} client - Client address of the request; null at the
+ *   terminal.
+ * @property {string} action - What, e.g. `user.add`, `job.start`,
+ *   `permission.denied`, `log.export`.
+ * @property {string} target - What it was about: an account, a group, a project key,
+ *   a job id, a ref, `settings` or `log`.
+ * @property {"ok"|"denied"|"failed"} outcome
+ * @property {Object<string, *>|null} before - The state before a change.
+ * @property {Object<string, *>|null} after - The state after a change.
+ * @property {Object<string, *>|null} details - What else the action tells, e.g. the
+ *   `action` and `route` of a refusal.
+ */
+
+/**
+ * A page of the action log, newest entry first.
+ *
+ * @typedef {object} ActionPage
+ * @property {ActionEntry[]} items
+ * @property {number} total - How many entries the filters select, all pages together.
+ * @property {number|null} next_cursor - `cursor` of the next page; null on the last.
+ */
+
+/**
+ * Filters of `GET /log` and `GET /log/export`; unknown ones are refused (`400`).
+ *
+ * @typedef {object} ActionFilters
+ * @property {string} [actor] - An account id, `local` or `-`.
+ * @property {string} [action] - An action (`session.login`) or a group by its prefix
+ *   (`session.`).
+ * @property {"ok"|"denied"|"failed"} [outcome]
+ * @property {string} [target]
+ * @property {string} [since] - At or after this time (ISO 8601 with a zone).
+ * @property {string} [until] - Before this time (ISO 8601 with a zone).
  */
 
 // Areas and local coverage (9c) ----------------------------------------------

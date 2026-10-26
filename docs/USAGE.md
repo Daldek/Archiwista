@@ -53,9 +53,10 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 
 - **Views** on the left: Map ("Mapa", the start view), Catalog ("Katalog"),
   Projects ("Projekty"), Jobs ("Zadania", with the number of running jobs),
-  Store ("Magazyn") and, at the bottom, Settings
-  ("Ustawienia"), the same form as the wizard. Saving the settings replaces
-  all of them at once; a new or moved store is scanned from scratch.
+  Store ("Magazyn") and, at the bottom, Settings ("Ustawienia"), the same form
+  as the wizard, and for administrators the action log ("Dziennik"). Saving the
+  settings replaces all of them at once; a new or moved store is scanned from
+  scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
   in every view) and the current session.
 - **The index status bar** under the top bar reports a scan in progress, a
@@ -384,11 +385,30 @@ jobs, and the number next to "Zadania" in the navigation counts the running ones
 
 ## Action log
 
+![Action log](reports/v0.4-screenshots/07-dziennik.webp)
+
 The action log (v0.4) records who did what, when and from where: changes of
 accounts, groups, sharing and settings, the jobs people start, cancel or retry,
 file downloads, refused requests, the deletion of entries older than
 `action_log_retention_days` (365 days by default) and the exports of the log. Only
-administrators read it; at the terminal the owner of the installation does:
+administrators read it, in "Dziennik" (action log) at the bottom of their
+navigation; anyone else who opens it gets the refusal, which the log records.
+
+- **The table** shows 50 entries a page, newest first: when, who (an account,
+  "… (agent)", "harmonogram" for the scheduler, "niezalogowany" before a
+  sign-in), the action, what it was about, the outcome and the client's address
+  ("terminal" for the owner's commands). "Dalej" (next) and "Wstecz" (back) page
+  through it; the line under the table counts the entries the filters select and
+  says after how many days entries are deleted.
+- **Filters** "Kto" (an account; Enter applies it), "Działanie" (a group of
+  actions, such as "Odmowy" for the refusals), "Wynik" (outcome) and the days
+  "Od dnia" and "Do dnia" (both included); the page address keeps them.
+- **A row** opens the state before and after the change, its details, the
+  session, the kind of actor and the address.
+- **"Eksportuj CSV"** and **"Eksportuj JSON Lines"** save every entry the filters
+  select as a file, as `log export` writes it.
+
+At the terminal the owner of the installation reads and exports it:
 
 ```sh
 archiwista log list --action permission. --since 2026-10-01T00:00:00+02:00

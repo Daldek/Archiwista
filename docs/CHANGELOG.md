@@ -9,6 +9,14 @@ command-line interface may change.
 
 ### Added
 
+- The view "Dziennik" (v0.4, A-ADR-047; sketch s of SPEC 6.5), at the bottom of the
+  navigation of administrators only (`ViewRoute.admin`; anyone else who opens it gets
+  the `403` of `GET /log`): the action log 50 entries a page, newest first, with when,
+  who, the action, its target, the outcome and the client's address; the filters
+  "Kto", "Działanie" (a group of actions), "Wynik" and the days "Od dnia" and "Do
+  dnia" kept in the address; "Dalej" and "Wstecz"; a row opens the state before and
+  after, the details, the session and the kind of actor; "Eksportuj CSV" and
+  "Eksportuj JSON Lines" save the entries the filters select as a file.
 - Reading and exporting the action log (v0.4, A-ADR-047), for administrators only
   (`log.read`; a refusal is logged): `GET /log` and `archiwista log list` give a page
   newest first with `total` and `next_cursor`, filtered by `actor`, `action` (a name
