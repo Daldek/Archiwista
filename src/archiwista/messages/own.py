@@ -69,6 +69,10 @@ MESSAGES = {
             " spróbuj ponownie za {seconds} s"
         ),
     ),
+    "folder_reason_outside_project": Text(
+        "does not lie inside the project's directory once symbolic links are resolved",
+        "po rozwinięciu dowiązań symbolicznych nie leży wewnątrz katalogu projektu",
+    ),
     "folder_reason_inside_store": Text(
         "is inside a store",
         "leży w magazynie",

@@ -892,10 +892,14 @@ User decision of 2026-10-18: own data are read from the folder assigned
 to the project, and snapshots are made by Archiwista in that folder.
 
 - **Data folder:** every project has an own-data folder — by default
-  `<project directory>/dane/`; a different folder can be set only by an
-  administrator (`settings.write`, `PUT /projects/{project}/data-dir`;
-  a project owner setting from v0.4). The default folder must also
-  lie outside the store and Archiwista's local directory. Archiwista's
+  `<project directory>/dane/`; another folder is set by the project's owner or an
+  administrator (`project.write`, `PUT /projects/{project}/data-dir`; an owner
+  who is no administrator only inside the project's directory, A-ADR-029
+  erratum 2) and saved as its real path. Every folder lies outside the stores,
+  Archiwista's local directory and the folders of other projects, and a folder
+  inside the project's directory (the default one too) must still lie there after
+  resolving symbolic links: every scan and every snapshot check these rules again,
+  and a folder breaking one is `invalid` and not read (`own_folder_invalid`). Archiwista's
   configuration saves the choice, the producer's manifest remains unchanged.
   The folder is indexed like a read-only store: raster
   and vector files recognized by GDAL/OGR (GeoPackage, Shapefile as a complete set
@@ -3310,7 +3314,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
 | `GET /local-layers`, `GET /local-layers/thumbnail.png`, `GET /local-layers/tiles/{z}/{x}/{y}.png` | local years/campaigns, layer thumbnail and tiles |
 | `GET /projects/{project}/files`, `GET /projects/{project}/files/{file_id}` | the project's own folder and file card, only for those who can see the project |
-| `PUT /projects/{project}/data-dir` | the project's owner or an administrator sets the own data folder (`project.write`; logged as `project.data_dir`); for an owner who is no administrator the folder is a subfolder of the project's directory after resolving links, given as an absolute path, refused like the other folder rules: `400 validation_error`, reason `invalid_settings`, with the problem `own_data_dir_outside_project` (A-ADR-029 erratum 2) |
+| `PUT /projects/{project}/data-dir` | the project's owner or an administrator sets the own data folder (`project.write`; logged as `project.data_dir`), saved as its real path; for an owner who is no administrator the folder is a subfolder of the project's directory after resolving links, given as an absolute path, refused like the other folder rules: `400 validation_error`, reason `invalid_settings`, with the problem `own_data_dir_outside_project` (A-ADR-029 erratum 2) |
 | `POST /projects/{project}/scan` | background scan of own data, for those who can see the project; a waiting scan covering the folder is joined; from v0.4 at most one waiting or running per person (`429 rate_limited`, reason `scan_running`) and one start per project a minute (`scan_too_soon`, `Retry-After`) |
 | `GET /projects/{project}/files/{file_id}/snapshot-plan`, `POST …/snapshots` | plan and snapshot requiring `project.write` |
 | `GET /projects/{project}/files/{file_id}/layers` | working file and snapshots as layers |
@@ -3887,7 +3891,7 @@ over TLS.
 | A stolen or planted session (team mode) | acting as another person | TLS only, `__Host-` cookie with `Secure`, `HttpOnly`, `SameSite=Strict`, a new session id at every sign-in, 8 h idle and 7 days at most, revocation by password change, administrator and command line |
 | A forged header of the reverse proxy | acting as any person | the header read only from `trusted_proxies`, ignored and logged from other addresses; a proxy on the server's own machine lets its other accounts forge it (runbook: a dedicated server, or TLS in Archiwista without the header) |
 | Plain HTTP on the local network | passwords and cookies read on the way | no listening outside `127.0.0.1` without TLS or a trusted proxy, every request over TLS, HSTS |
-| An owner points a project's data folder elsewhere on the server | files read, previewed and served to the project's viewers | a non-administrator's folder lies inside the project's directory; the general folder rules (A-ADR-029 erratum 2) |
+| An owner points a project's data folder elsewhere on the server, or replaces it by a symbolic link out | files read, previewed and served to the project's viewers | a non-administrator's folder lies inside the project's directory; a folder inside it (`dane/` too) is checked again after resolving links at every scan and snapshot; the general folder rules (A-ADR-029 erratum 2) |
 | Mass downloads over HTTP or crowding of the queue | load on the server, the share and the sources | two file downloads and two network jobs per person, fair dispatch, scan limits (10.2) |
 
 ## 11. Testing and verification

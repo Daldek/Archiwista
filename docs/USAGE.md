@@ -276,9 +276,11 @@ versions a scan has just indexed.
 
   ![Project actions after a verification](reports/v0.3-screenshots/11-akcje-projektu.webp)
 
-- **The data folder** is `<project folder>/dane/` by default; an administrator
-  can point to another folder. Its scan only reads files. Own data is on the
-  map and in the project card, outside the `/slots` catalog of the store.
+- **The data folder** is `<project folder>/dane/` by default; the project's owner
+  or an administrator can point to another folder. Its scan only reads files. A
+  folder inside the project folder, `dane/` too, that a symbolic link leads out of
+  the project is not read: the card names the problem. Own data is on the map and
+  in the project card, outside the `/slots` catalog of the store.
 - **Working file and snapshots:** the card gives metadata, a preview and the
   history; "Zmieniony od migawki" (changed since the snapshot) means the
   content differs from the last saved version. First look at the plan of the

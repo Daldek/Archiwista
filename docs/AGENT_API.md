@@ -562,7 +562,9 @@ curl -sf -b "$JAR" -H "$H" -G --data-urlencode "a=$REF_A" \
 The folder of a project (by default `<project directory>/dane/`; its owner or
 an administrator sets another one with `PUT /projects/{project}/data-dir`, an
 owner who is no administrator only inside the project's directory: `400
-validation_error` with the problem `own_data_dir_outside_project`) is
+validation_error` with the problem `own_data_dir_outside_project`; it is saved
+as its real path, and a folder inside the project's directory that a symbolic
+link later leads out of is not read, problem `own_folder_invalid`) is
 indexed apart from the store: `GET /projects/{project}/files?q=…&state=changed`
 with `limit`/`cursor`, `GET …/files/{file_id}` and `GET …/files/{file_id}/layers`
 (the working file and its snapshots in the fan). Images, tiles, features and the

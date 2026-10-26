@@ -68,7 +68,11 @@ HTTPS_PORT = 443
 type StoreKind = Literal["local", "share"]
 type BasemapKind = Literal["xyz", "wms", "vector"]
 type OwnFolderSource = Literal["default", "setting"]
-type OwnFolderReason = Literal["inside_store", "inside_app_data", "overlaps_project"]
+# Why a project's data folder is not read: it leads out of the project's
+# directory (``check_own_folder``) or breaks a rule of ``own_folder_conflict``.
+type OwnFolderReason = Literal[
+    "outside_project", "inside_store", "inside_app_data", "overlaps_project"
+]
 # Why a directory of the settings cannot be used; the suffix of a problem code.
 type DirectoryProblem = Literal["missing", "not_directory", "unreadable"]
 # Visibility of a project without its own access entry (A-ADR-029): everyone
@@ -592,8 +596,9 @@ class AppSettings(BaseModel):
         ADR-041); off by default.
     own_data_dirs : dict[str, str]
         Data folder of a project by the project directory after ``realpath``
-        (its access key): absolute directories, set by an administrator.
-        Without an entry a project's folder is ``<project directory>/dane``.
+        (its access key): absolute directories, set by the project's owner
+        (inside its directory) or an administrator. Without an entry a
+        project's folder is ``<project directory>/dane``.
     network_jobs_per_person : int
         Network jobs one person (with their agents) runs at once; further
         ones wait (ADR-047).

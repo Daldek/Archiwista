@@ -1111,7 +1111,13 @@ the CLI: `tests/integration/test_team_permissions.py`).
   transaction; the local owner's project keeps no entry. `services/owndata.py`
   `set_data_dir` asks `project.write`; a principal without `settings.write` gets a
   folder only as an absolute subfolder of the project's directory after `realpath`
-  (`own_data_dir_outside_project`), and a change is logged as `project.data_dir`.
+  (`own_data_dir_outside_project`); the folder is saved as its real path and a
+  change is logged as `project.data_dir`. `owndata/scan.py` `check_own_folder` is
+  the one check of a folder before it is read or written (every scan, a snapshot;
+  `services/owndata.folder_check` gathers its stores and the other folders): a
+  folder whose path lies inside the project's directory, `dane/` too, must lie
+  there after `realpath` (else `invalid`, reason `outside_project`), then the rules
+  of decision 8 (`own_folder_conflict`).
   `scan_limits` is the `admit` check of `JobSupervisor.submit` for the `own_scan` of
   one project that a person asks for (`start_own_scan` and the retry): called under
   the supervisor's lock only when the request joins no waiting scan, it refuses a

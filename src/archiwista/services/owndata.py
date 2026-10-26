@@ -4,22 +4,25 @@
 (``PUT /projects/{project}/data-dir``, step 9): the project's owner or an
 administrator (``project.write``), for one who is no administrator inside the
 project's directory (A-ADR-029 erratum 2), then the same rules as every scan
-(``check_own_folder``) and the settings' own checks; a change is logged
-(``project.data_dir``). ``scan_limits`` keeps each person to one waiting or
+(``check_own_folder``) and the settings' own checks; the folder is saved as
+its real path and a change is logged (``project.data_dir``).
+``scan_limits`` keeps each person to one waiting or
 running scan of a data folder and each project's folder to one scan started a
 minute (ADR-047 decision 4). ``folder_check`` checks a project's folder now
-against the rules, as the ``snapshot`` job does before it writes.
+against the rules (``check_own_folder``), as every scan and the ``snapshot``
+job do before they read or write.
 ``own_problems``, ``file_problems`` and ``folder_problems`` explain the
 problems a scan recorded (or a folder's state now), without paths of other
 projects.
 """
 
 import math
+import os
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from archiwista.auth import ALL_PROJECTS, LOCAL_PRINCIPAL_ID, Principal, access_key
+from archiwista.auth import ALL_PROJECTS, LOCAL_PRINCIPAL_ID, Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
     AppPaths,
@@ -33,7 +36,12 @@ from archiwista.errors import NotFoundError, RateLimitedError
 from archiwista.index import IndexQueries, OwnFileDetail, OwnFolderRecord, OwnProblem
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import lookup, message
-from archiwista.owndata.scan import OwnFolderCheck, check_own_folder, folder_rules
+from archiwista.owndata.scan import (
+    OwnFolderCheck,
+    check_own_folder,
+    folder_rules,
+    inside_project,
+)
 from archiwista.services.problems import Problem, explain
 
 # Seconds between two scans of one project's data folder that people start
@@ -53,6 +61,11 @@ def set_data_dir(
     path: str | None,
 ) -> OwnFolderCheck:
     """Set a project's data folder, or bring back its default ``dane/``.
+
+    The folder is saved as its real path (``realpath``), so the folder a
+    later scan checks is the one checked here: one inside the project's
+    directory must stay there (``check_own_folder``), even when a symbolic
+    link it was given through is changed.
 
     Parameters
     ----------
@@ -103,7 +116,7 @@ def set_data_dir(
     if path is None:
         folders.pop(key, None)
     else:
-        folders[key] = path
+        folders[key] = os.path.realpath(path) if os.path.isabs(path) else path
     changed = current.model_copy(update={"own_data_dirs": folders})
     known = queries.projects(visible=ALL_PROJECTS)
     stores, others = folder_rules(changed, known)
@@ -111,7 +124,9 @@ def set_data_dir(
     folders_of_others = list(others.values())
     if path is not None:
         field = f"own_data_dirs.{key}"
-        if not authorizer.can(principal, "settings.write") and not _inside(path, key):
+        if not authorizer.can(principal, "settings.write") and not inside_project(
+            path, key
+        ):
             text = message("own.data_dir_outside_project", path=path, project=key)
             problem = SettingsProblem("own_data_dir_outside_project", field, text)
             raise SettingsValidationError([problem])
@@ -197,7 +212,11 @@ def scan_limits(
 def folder_check(
     settings: AppSettings, queries: IndexQueries, paths: AppPaths, project: str
 ) -> OwnFolderCheck:
-    """Check a project's data folder now against the rules of decision 8.
+    """Check a project's data folder now against its rules (``check_own_folder``).
+
+    Inside the project's directory after ``realpath`` unless an
+    administrator set it elsewhere, and outside the stores, Archiwista's
+    data and other projects' folders; only an ``ok`` folder is read.
 
     Parameters
     ----------
@@ -271,14 +290,3 @@ def _explained(
             )
         )
     return tuple(problems)
-
-
-def _inside(path: str, project: str) -> bool:
-    """Whether a folder lies inside a project's directory, both after ``realpath``.
-
-    A relative path lies nowhere: it is refused, as a symbolic link out.
-    """
-    if not Path(path).is_absolute():
-        return False
-    real = Path(access_key(path))
-    return real != Path(project) and real.is_relative_to(project)

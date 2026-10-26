@@ -167,8 +167,9 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
     """Outside, through a link out, relative or the project itself: ``400``.
 
     Each refusal names the problem ``own_data_dir_outside_project`` and
-    changes nothing; a folder inside the project's directory is set and
-    logged with the folder before and after.
+    changes nothing; a folder inside the project's directory, given through
+    a link from elsewhere, is saved as its real path (so the link cannot
+    lead it out later) and logged with the folder before and after.
     """
     project = place.projects / "raba"
     outside = tmp_path / "obce-dane"
@@ -180,6 +181,8 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
         inside.mkdir()
         outside.mkdir()
         (project / "na-zewnatrz").symlink_to(outside, target_is_directory=True)
+        shortcut = tmp_path / "skrot"
+        shortcut.symlink_to(project, target_is_directory=True)
         logged = last_entry(served.state)
 
         # Act
@@ -193,11 +196,14 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
             )
         }
         unchanged = ConfigStore(place.paths.config_file).load()
-        changed = kasia.request("PUT", DATA_DIR, json={"path": str(inside)})
+        changed = kasia.request(
+            "PUT", DATA_DIR, json={"path": str(shortcut / "dane-gis")}
+        )
         entries = log_entries(served.state, after=logged)
 
     # Assert
     key = access_key(project)
+    saved = str(Path(key) / "dane-gis")
     for name, answer in refused.items():
         assert_problem(answer, 400, "validation_error", "invalid_settings")
         problems = answer.json()["details"]["problems"]
@@ -207,7 +213,7 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
     assert unchanged.own_data_dir(key) == (Path(key) / "dane", "default")
     assert changed.status_code == 200, changed.text
     assert (changed.json()["path"]["local"], changed.json()["source"]) == (
-        str(inside),
+        saved,
         "setting",
     )
     assert [
@@ -219,7 +225,7 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
             "project.data_dir",
             key,
             {"path": str(Path(key) / "dane"), "source": "default"},
-            {"path": str(inside), "source": "setting"},
+            {"path": saved, "source": "setting"},
         )
     ]
 

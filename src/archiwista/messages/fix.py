@@ -272,14 +272,17 @@ MESSAGES = {
     ),
     "own_folder_invalid": Text(
         (
-            "The administrator points the project to a different data folder, disjoint"
-            " from the stores, from the folders of other projects, and from the"
-            " Archiwista data directory."
+            "The project's owner or an administrator points the project to another"
+            " data folder, disjoint from the stores, from the folders of other"
+            " projects, and from the Archiwista data directory; a folder inside the"
+            " project's directory is a real folder, not a symbolic link leading out."
         ),
         (
-            "Administrator wskazuje projektowi inny folder danych, rozłączny z"
-            " magazynami, z folderami innych projektów i z katalogiem danych"
-            " Archiwisty."
+            "Właściciel projektu albo administrator wskazuje projektowi inny folder"
+            " danych, rozłączny z magazynami, z folderami innych projektów i z"
+            " katalogiem danych Archiwisty; folder wewnątrz katalogu projektu jest"
+            " prawdziwym folderem, nie dowiązaniem symbolicznym prowadzącym na"
+            " zewnątrz."
         ),
     ),
     "own_folder_too_large": Text(

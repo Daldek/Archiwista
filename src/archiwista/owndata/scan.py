@@ -1,9 +1,13 @@
 """Scan the data folders of projects: files, content, snapshots (decision 8).
 
 ``scan_own_data`` takes each project's data folder (``AppSettings.own_data_dir``)
-and first checks it against the rules of decision 8
-(``own_folder_conflict``): a folder in a store, overlapping Archiwista's data
-or another project's folder is ``invalid`` and never read. A valid folder is
+and first checks it (``check_own_folder``): a folder whose path lies inside
+the project's directory (the default ``dane/`` and every folder an owner who
+is no administrator sets) must still lie there after ``realpath``, so a
+folder replaced by a symbolic link out of the project is ``invalid``; and,
+by the rules of decision 8 (``own_folder_conflict``), a folder in a store,
+overlapping Archiwista's data or another project's folder is ``invalid``.
+An ``invalid`` folder is never read. A valid folder is
 walked in the order of its paths (relative, in NFC), skipping hidden files
 and directories (``.wersje/`` too), SQLite companions (``-wal``, ``-shm``,
 ``-journal``), the members of a file set and symbolic links leading out of
@@ -35,6 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from archiwista.auth import access_key
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -453,7 +458,16 @@ def check_own_folder(
     app_data: Path,
     others: Sequence[Path],
 ) -> OwnFolderCheck:
-    """Check a project's data folder against decision 8, then on the disk.
+    """Check a project's data folder against its rules now, then on the disk.
+
+    The one check of a folder before anything in it is read or written (a
+    scan, a snapshot). A folder whose path lies inside the project's
+    directory must lie there after ``realpath`` too (``outside_project``):
+    the default ``dane/`` and every folder an owner who is no administrator
+    sets (``set_data_dir`` saves it as its real path), so a folder replaced
+    later by a symbolic link out of the project is not read. Only an
+    administrator's folder elsewhere lies outside the project. Then the
+    rules of decision 8 (``own_folder_conflict``).
 
     Parameters
     ----------
@@ -475,12 +489,39 @@ def check_own_folder(
         ``ok`` as the folder is on the disk.
     """
     folder, source = settings.own_data_dir(project)
+    if _written_inside(folder, project) and not inside_project(folder, project):
+        return OwnFolderCheck(folder, source, "invalid", "outside_project")
     conflict = own_folder_conflict(
         folder, stores=stores, app_data=app_data, others=others
     )
     if conflict is not None:
         return OwnFolderCheck(folder, source, "invalid", conflict[0])
     return OwnFolderCheck(folder, source, _folder_state(folder))
+
+
+def inside_project(folder: str | os.PathLike[str], project: str) -> bool:
+    """Whether a folder lies inside a project's directory after ``realpath``.
+
+    The directory itself is not inside it, and a relative path lies nowhere
+    (it is refused, as a symbolic link out).
+
+    Parameters
+    ----------
+    folder : str or os.PathLike[str]
+        The folder.
+    project : str
+        The project directory after ``realpath`` (``access_key``).
+    """
+    if not os.path.isabs(folder):
+        return False
+    real = Path(access_key(folder))
+    return real != Path(project) and real.is_relative_to(project)
+
+
+def _written_inside(folder: Path, project: str) -> bool:
+    """Whether a folder's path, as written, names a place inside the project."""
+    written = Path(os.path.normcase(os.path.normpath(folder)))
+    return written != Path(project) and written.is_relative_to(project)
 
 
 def folder_rules(

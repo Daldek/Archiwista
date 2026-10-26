@@ -1562,9 +1562,12 @@ is done only by the scheduler; the results are filtered by visibility (item 3).
   /projects/{project}/data-dir`), with the rules of erratum 1 (absolute; after `realpath` outside
   the stores, Archiwista's data directory and the folders of other projects; no symbolic link
   out). For an owner who is not an administrator the folder must also lie inside the project's
-  directory (after `realpath`; reason `own_data_dir_outside_project`): Archiwista reads the folder's
-  files, previews them and from v0.4 serves them to everyone who sees the project, so a folder
-  elsewhere would let an owner expose any directory the server can read. A change is logged
+  directory (after `realpath`; otherwise the problem `own_data_dir_outside_project`): Archiwista
+  reads the folder's files, previews them and from v0.4 serves them to everyone who sees the
+  project, so a folder elsewhere would let an owner expose any directory the server can read.
+  The folder is saved as its real path, and a folder inside the project's directory (the default
+  `dane/` too) is checked again at every scan and snapshot (`check_own_folder`, reason
+  `outside_project`): replaced by a symbolic link out, it is not read. A change is logged
   (`project.data_dir`).
 - A scan of one project's data folder: anyone who sees the project, as before, at most one
   waiting or running per person and one start per project a minute (`429 rate_limited`, reasons

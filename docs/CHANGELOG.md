@@ -859,6 +859,17 @@ command-line interface may change.
   and `calculation_error` of the preview routes, `unsupported` of `/commands`): only
   FastAPI's own `422` of invalid request data becomes the `400` the API answers.
 
+### Security
+
+- A project's data folder that lies inside the project's directory (the default
+  `dane/` and every folder its owner sets) is checked again at every scan and before
+  a snapshot: when a symbolic link now leads it out of the project, nothing in it is
+  read and the folder is `invalid` (problem `own_folder_invalid`, its files leave the
+  index). Before, a scan followed such a link anywhere the server could read. `PUT
+  /projects/{project}/data-dir` saves the folder as its real path, so a link it was
+  given through cannot move it later; only an administrator's folder elsewhere lies
+  outside the project. (A-ADR-029 erratum 2)
+
 ## [0.2.0] - 2026-10-20
 
 Release "Previews".
