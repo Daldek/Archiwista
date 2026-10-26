@@ -21,7 +21,8 @@ without background jobs, which leaves out their routes), ``job_streams``
 ``area_files`` (``AreaFiles``: copies of area files and their reader),
 ``area_refreshes`` (``AreaRefreshes``: the areas' slots rescanned in the
 last minute), ``layer_memo`` (``LayerMemo``: the local layers of the last
-answers, for their images) and ``on_redeem`` (told when a one-time token
+answers, for their images), ``file_streams`` (``FileStreams``: the file
+downloads each person streams) and ``on_redeem`` (told when a one-time token
 starts a session).
 """
 
@@ -51,6 +52,7 @@ from archiwista.api import areas as area_routes
 from archiwista.api import availability as availability_routes
 from archiwista.api import commands as command_routes
 from archiwista.api import compare as compare_routes
+from archiwista.api import files as file_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import layers as layer_routes
 from archiwista.api import map as map_routes
@@ -75,6 +77,7 @@ from archiwista.security import (
     Transport,
     session_principals,
 )
+from archiwista.services.files import FileStreams
 from archiwista.services.layers import LayerMemo
 from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
 from archiwista.state import StateStore
@@ -196,12 +199,14 @@ def create_app(
     app.state.on_redeem = on_redeem
     app.state.area_refreshes = area_routes.AreaRefreshes()
     app.state.layer_memo = LayerMemo()
+    app.state.file_streams = FileStreams()
     install_error_handlers(app)
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(stores.router, prefix=API_PREFIX)
     app.include_router(preview_routes.router, prefix=API_PREFIX)
+    app.include_router(file_routes.router, prefix=API_PREFIX)
     app.include_router(slots.router, prefix=API_PREFIX)
     app.include_router(map_routes.router, prefix=API_PREFIX)
     app.include_router(station_routes.router, prefix=API_PREFIX)

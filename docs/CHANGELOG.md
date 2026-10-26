@@ -9,6 +9,20 @@ command-line interface may change.
 
 ### Added
 
+- File download over HTTP (v0.4, ADR-047): `GET /stores/{store}/versions/{version}/file`,
+  `GET /projects/{project}/files/{file_id}/file` and `GET
+  …/files/{file_id}/snapshots/{label}/file` (also `HEAD`) send the file of a version,
+  of an own file and of a snapshot, one file of a set by `?member=` (the new `members`
+  of the file card and of each snapshot). Only a file the index knows and the session
+  sees, inside its root; streamed with `Range` (`206`), as an attachment with its name
+  and the type of its format, `Cache-Control: private, no-store`, never inline (a PDF
+  neither). A person streams at most two files at once (`429 rate_limited`,
+  `too_many_downloads`, `Retry-After: 10`), and a download from its first byte is
+  logged (`file.download` with `size_bytes`). A working file changed since its scan is
+  `409 own_file_changed`, one its scan could not read and a snapshot that is not valid
+  `409 file_unreadable`, a file gone from the disk `404 missing_file`. A link of the
+  interface passes without `X-Archiwista-CSRF` (`Sec-Fetch-Site` `same-origin` or
+  `none`); every other request keeps the header.
 - The view "Zadania" (v0.4, ADR-047; sketch f of SPEC 6.5): the queue and history of
   everyone's background jobs, newest first, with the filters "Wszystkie", "Trwa",
   "Błędy" and "Moje" kept in the address. Each job shows its state, kind and what it

@@ -54,6 +54,7 @@ type ActionName = Literal[
     "group.members",
     "group.remove",
     "project.access",
+    "file.download",
 ]
 type ActorKind = PrincipalKind | Literal["anonymous"]
 type Outcome = Literal["ok", "denied", "failed"]

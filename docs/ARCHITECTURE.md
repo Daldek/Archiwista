@@ -119,6 +119,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/admin.py` | `/users`, `/groups`, `/projects/{project}/access` | models `User`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
+| `api/files.py` | file download (ADR-047 decision 5): `GET` and `HEAD` of a version's file, an own file's (or one file of its set, `member`) and a snapshot's; Starlette's `FileResponse` (`Range`) as an attachment with `Cache-Control: private, no-store`, its stream counted in `app.state.file_streams` until it ends, `file.download` logged for a `GET` from byte 0; mounted before the catalog's router, whose `/stores/{store}/versions/{version}` would take `…/file` | `download_version_file`, `download_own_file`, `download_snapshot_file`, `file_resolver`, `CACHE_CONTROL` |
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
 | `api/compare.py`, `api/models_compare.py` | comparison of two `ref`s | `get_comparison`, `CompareQuery` |
 | `api/commands.py`, `api/models_commands.py` | the producers' commands (ADR-034): their catalog, a pasted line read into a call, a call checked without the network, the line of a call; a `422 unsupported` of a producer without commands | `list_commands`, `parse_command`, `validate_command`, `format_command`, `CommandList`, `CommandCallItem`, `CommandLine`, `ValidateRequest` |
@@ -134,6 +135,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/projects.py` | project card, live producer status and the changes of a manifest through its producer (ADR-039): a new project where a scan finds it, bound to a configured store, and a task added or removed for whoever has `project.write`, recorded in the index at once; the manifest an action acts on (`project_manifest`: the producer named, else the project's only one; `producer_required`, `other_producer`); the problems of each manifest and a task name of both (`duplicate_task`); a project's directory and the configured store a manifest names, for its jobs (ADR-040) | `project_detail`, `ProjectDetail`, `project_problems`, `project_status`, `project_manifest`, `create_project`, `add_project_task`, `remove_project_task`, `project_actions`, `project_directory`, `project_store` |
 | `services/access.py` | accounts, groups and project access — for HTTP and the CLI | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project` |
 | `services/owndata.py` | folder checking and project file problems | `set_data_dir`, `folder_check`, `folder_problems`, `file_problems` |
+| `services/files.py` | the file of a download as `ObjectResolver.resolve` finds it (known to the index, visible, inside its root, a working file unchanged since its scan; a file gone `404 missing_file`, an unreadable one or an invalid snapshot `409 file_unreadable`), one file of a set by `member`, its media type (`FileFormat.media_type`, else Python's own `mimetypes` table, else `application/octet-stream`); the downloads each person streams (`FileStreams`: 2 at once, a third `429 too_many_downloads`) | `version_file`, `own_file`, `snapshot_file`, `media_type`, `FileDownload`, `FileStreams`, `FILE_DOWNLOADS_PER_PERSON` |
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
 | `services/compare.py` | comparison of metadata and schema, not of object data | `compare` |
 | `services/commands.py` | producers' commands for HTTP and the CLI (ADR-034): the catalogs of the producers that offer them, `parse`, `validate` (a command of the catalog, the configured store's root, no file path of a request) and `format` | `list_commands`, `parse_command`, `validate_command`, `checked_call`, `command_info`, `format_command`, `actions`, `store_root` |
@@ -801,6 +803,13 @@ of the code):
     `problem_body` renders `title`, `detail`, `hint`, the texts in `details`
     and `errors[]` in the language of the request, `Problem.localized`).
 
+Step 6 has one exception (ADR-047 decision 5, `file_link`): a `GET` or `HEAD` of a
+file download (`…/versions/{version}/file`, `…/files/{file_id}/file`,
+`…/snapshots/{label}/file`) without `X-Archiwista-CSRF` passes with the session
+cookie when `Sec-Fetch-Site` is `same-origin` (a link of the interface) or `none`
+(an address typed in): a link cannot send the header, and step 3 refuses the other
+sites. A request with the header, or without fetch metadata, keeps step 6.
+
 A session starts with a one-time token: `archiwista serve` issues a
 startup token (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,
 128 bits, valid for 10 min), and only its SHA-256 hash stays in the index
@@ -1037,6 +1046,10 @@ with errata. State of the code in brief:
   symbolic link (`PathOutsideRootError` →
   `403 path_outside_root`); `indexed_path` builds a "copyable" path without
   touching the disk.
+- **File download** (ADR-047 decision 5, `api/files.py`): only a file the index
+  knows and the session sees, resolved as for a preview (`ObjectResolver`), never
+  a listing; an attachment, never inline (a PDF neither), with `Cache-Control:
+  private, no-store`; at most two streams per person at once (`FileStreams`).
 - **Untrusted files:** `sandbox.untrusted_env`, explicit drivers
   (`formats.py`), `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` and
   `GDAL_PAM_ENABLED=NO` protect against the network, implicitly attached files
@@ -1148,6 +1161,7 @@ apart from it, it reads only its own static files from the server.
 | `api/availability.py` (`availability`) | `GET /availability` (the kept report, no network); with `jobs`: `POST /availability` (`200` with a fresh report or `202` with the `availability` job; offline `409`) |
 | `api/actions.py` (`jobs`; only with `jobs`) | `POST /jobs` (a job of `calls` of commands of a producer's catalog on a configured store: kind `check` or `download`, the latter with `store.write` and an optional `plan_job` of the same calls; `202`, refused before a job exists), `GET /jobs/{job}/plan` (the plans a `check` job kept, no network) |
 | `api/owndata.py` (`own_data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; previews, tiles, features and ZIP of a file and of a snapshot |
+| `api/files.py` (`files`) | `GET`/`HEAD /stores/{store}/versions/{version}/file`, `/projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` (`?member=`; a link of the interface without the CSRF header, step 6 of section 5.3) |
 
 Rules in the code: Pydantic models (`api/models.py`, `models_previews.py`,
 `models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`, `models_availability.py`, `models_actions.py`, `models_stations.py`; session

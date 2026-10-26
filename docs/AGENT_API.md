@@ -45,6 +45,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 | a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
+| a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
 
 The CLI reads the local index without a running server and calls the same
 services as the HTTP routes, as the owner of the local installation
@@ -391,7 +392,7 @@ archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
 archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 ```
 
-## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)
+## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)
 
 Take a `ref` from the answer of the card of a version, of an own file or of a
 snapshot: `version:<store>:<version-path>`, `file:<project>:<file-path>` or
@@ -557,6 +558,38 @@ archiwista availability check "$AREA" --product=nmt --json
 archiwista availability show "$AREA" --product=nmt --store=zespol --json
 ```
 
+**File download (v0.4, ADR-047).** `GET /stores/{store}/versions/{version}/file`,
+`GET /projects/{project}/files/{file_id}/file` and `GET
+…/files/{file_id}/snapshots/{label}/file` send the file itself: only a version
+the index knows, or an own file or a snapshot of a project the session sees
+(else `404`), resolved inside its root (a symbolic link out of it is `403
+path_outside_root`). One file of a set (a Shapefile, a MapInfo TAB, or a
+snapshot of one) is `?member=<name>`, a name from `members` of the file card or
+of the snapshot (another name is `404`); without it the main file. A working file
+changed since its scan is `409 own_file_changed`; one its last scan could not
+read and a snapshot that is not valid are `409 file_unreadable`; a file gone
+from the disk is `404 missing_file`. The answer is an attachment
+(`Content-Disposition: attachment` with the file's name, `filename*` for a name
+that is not ASCII), the media type of its format or extension (else
+`application/octet-stream`), `Cache-Control: private, no-store` and
+`X-Content-Type-Options: nosniff`; nothing is shown inline, a PDF neither.
+`Range` answers `206` with `Content-Range` (`curl -C -` resumes), and `HEAD`
+answers the headers only (`Content-Length`). A person, with their agents,
+streams at most two files at once: a third is `429 rate_limited`, reason
+`too_many_downloads`, with `Retry-After: 10`. A `GET` without `Range` or from
+byte 0 is logged (`file.download` with `size_bytes`). These routes need
+`X-Archiwista-CSRF` as every other; only a link of the interface
+(`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes with
+the session cookie alone.
+
+```sh
+# VERSION_PATH is version.path of a row of /slots; FILE_ID is file_id of the file list.
+curl -sf -b "$JAR" -H "$H" --output-dir <data-dir> -OJ \
+  "$BASE/projects/projekt-01/files/$FILE_ID/file?member=dzialki.dbf"
+curl -sf -b "$JAR" -H "$H" -C - -o <data-dir>/N-34-130-D-d-2-4.asc \
+  "$BASE/stores/zespol/versions/$VERSION_PATH/file"
+```
+
 ## 7. Errors
 
 Every HTTP error is `application/problem+json` (RFC 9457) with a code of the
@@ -604,12 +637,12 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
-| 404 | `not_found` | an unknown resource, or a project invisible to the actor |
+| 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
-| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds) |
+| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, or of a snapshot that is not valid |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
-| 429 | `rate_limited` | `preview_busy`: the render pool is full; wait for `Retry-After` |
+| 429 | `rate_limited` | `preview_busy`: the render pool is full; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail` |

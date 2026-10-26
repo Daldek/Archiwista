@@ -100,6 +100,11 @@ _LABEL_BYTES = 4
 _AGENT_GENERATION = "agent_session_generation"
 # ``POST /api/v1/areas`` reads its body itself, up to its own limit.
 _AREAS_PATH = f"{API_PREFIX}/areas"
+# The file downloads (plan v0.4 C11): a version's, an own file's or a snapshot's.
+_FILE_PATH = re.compile(
+    rf"{API_PREFIX}/(?:stores/[^/]+/versions/.+"
+    r"|projects/[^/]+/files/[0-9a-f]{16}(?:/snapshots/[^/]+)?)/file"
+)
 _TOKEN_VALUE = re.compile(r"(?i)(token=)[^&;#\s\"']*")
 # Scheme, host and port only: anything else would break the policy syntax.
 _CSP_SOURCE = re.compile(r"https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?")
@@ -799,6 +804,22 @@ def csrf_rejection(headers: Headers, session: Session) -> str | None:
     return message("api.csrf_mismatch")
 
 
+def file_link(method: str, path: str, headers: Headers) -> bool:
+    """Return whether a request is a link to a file download (A-ADR-047 decision 5).
+
+    A link cannot send ``X-Archiwista-CSRF``: a ``GET`` or ``HEAD`` of a
+    file download (``…/file``) without it passes with the session cookie
+    when ``Sec-Fetch-Site`` is ``same-origin`` (a link of the interface) or
+    ``none`` (an address typed in). A page of another origin or port sends
+    ``same-site`` or ``cross-site`` (``origin_rejection`` refuses it), and a
+    client without fetch metadata keeps the header rule.
+    """
+    if method not in ("GET", "HEAD") or headers.get(CSRF_HEADER):
+        return False
+    site = (headers.get("sec-fetch-site") or "").lower()
+    return site in ("same-origin", "none") and _FILE_PATH.fullmatch(path) is not None
+
+
 def body_limit(method: str, path: str) -> int | None:
     """Return how many bytes a request body may have before a route reads it.
 
@@ -899,7 +920,8 @@ class SecurityMiddleware:
     ``Sec-Fetch-Site`` (``403 forbidden``, reason ``csrf_rejected``); then for
     ``/api/*``, except ``POST /api/v1/session`` and the files of ``/api/docs``,
     the session cookie (``401 unauthorized``, reason ``session_required``), the
-    session's CSRF token in every request (``403 csrf_rejected``) and who the
+    session's CSRF token in every request (``403 csrf_rejected``; a link to
+    a file download goes without it, ``file_link``) and who the
     session acts as now (``401 session_required`` once its account is disabled
     or removed, or its agent session revoked); last the size of the body
     (``400 validation_error``, reason ``request_too_large``).
@@ -1009,7 +1031,7 @@ class SecurityMiddleware:
             detail = message("api.session_required")
             return _Rejection("unauthorized", "session_required", detail, hint)
         reason = csrf_rejection(connection.headers, session)
-        if reason is not None:
+        if reason is not None and not file_link(method, path, connection.headers):
             return _Rejection("forbidden", "csrf_rejected", reason)
         principal = self._principals(session)
         extended = None if principal is None else self._sessions.extend(session_id)

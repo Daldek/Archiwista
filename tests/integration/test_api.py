@@ -47,6 +47,9 @@ ROUTES = {
     ("get", "/api/v1/stores/{store}/slots/{slot}"),
     ("get", "/api/v1/stores/{store}/versions/{version}"),
     ("get", "/api/v1/stores/{store}/versions/{version}/sidecar"),
+    ("get", "/api/v1/stores/{store}/versions/{version}/file"),
+    ("get", "/api/v1/projects/{project}/files/{file_id}/file"),
+    ("get", "/api/v1/projects/{project}/files/{file_id}/snapshots/{label}/file"),
     ("get", "/api/v1/requests/{parent_request}"),
     ("get", "/api/v1/map/footprints"),
     ("get", "/api/v1/map/sheets"),
@@ -433,8 +436,8 @@ def test_api_openapi_documents_routes_examples_and_problems(
         for status, response in responses.items():
             if int(status) >= 400:
                 assert list(response["content"]) == ["application/problem+json"]
-        ok = responses["200"]["content"]["application/json"]
-        reference = ok.get("schema", {}).get("$ref")
+        ok = responses["200"]["content"]
+        reference = ok.get("application/json", {}).get("schema", {}).get("$ref")
         if reference is not None:
             assert schemas[reference.rsplit("/", 1)[1]]["examples"]
     # A 422 a route documents itself stays (a producer without commands).

@@ -64,12 +64,12 @@ from archiwista.errors import (
     OwnFileChangedError,
     PathOutsideRootError,
     PermissionDeniedError,
-    PreviewBusyError,
     PreviewNotReadyError,
     PreviewParameterError,
     PreviewTimeoutError,
     PreviewUnavailableError,
     ProducerError,
+    RateLimitedError,
     SnapshotBlockedError,
     SourceIncompatibleError,
     SourceUnavailableError,
@@ -101,7 +101,7 @@ ANSWERED: tuple[type[ArchiwistaError], ...] = (
     PreviewParameterError,
     PreviewUnavailableError,
     PreviewNotReadyError,
-    PreviewBusyError,
+    RateLimitedError,
     PreviewTimeoutError,
     SourceIncompatibleError,
     SourceUnavailableError,
@@ -348,7 +348,7 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, ArchiwistaError):  # pragma: no cover - by registration
         raise error
     headers = None
-    if isinstance(error, PreviewBusyError):
+    if isinstance(error, RateLimitedError):
         headers = {"Retry-After": str(error.retry_after_s)}
     return problem_response(describe(error), request, headers=headers)
 

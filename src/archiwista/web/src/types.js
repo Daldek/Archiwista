@@ -1564,6 +1564,8 @@
  *   Of the copy: in its CRS and as a WGS84 box (west, south, east, north).
  * @property {"ok"|"invalid"|"modified"} state - `invalid`: no valid `migawka.json`;
  *   `modified`: its files differ from the document.
+ * @property {string[]} members - Names of its files, the main file first: the `member`
+ *   of `GET …/snapshots/{label}/file`.
  * @property {CopyPath} paths - The snapshot directory.
  */
 
@@ -1604,6 +1606,8 @@
  * @property {SnapshotItem[]} snapshots - Newest first.
  * @property {PreviewInfo|null} preview - Null without render processes.
  * @property {CopyPath} paths - The main file.
+ * @property {string[]} members - Names of the files of its set, the main file first
+ *   (its name alone for a single file): the `member` of `GET …/files/{file_id}/file`.
  * @property {Issue[]} problems
  */
 
