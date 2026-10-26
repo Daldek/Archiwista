@@ -9,6 +9,14 @@ command-line interface may change.
 
 ### Added
 
+- Plugins: the optional capability `SeriesValuesAdapter` (`archiwista.sources`) reads a
+  station's values of a series version for a chart (`read_values`, one `SeriesValues` a
+  unit: a missing unit `None`, accumulated sums flagged, the dates of half-year
+  extremes) and names, from the producer's registry, the dataset of the half-year
+  characteristics and the characteristics that hold a variable's extremes
+  (`characteristics_dataset`, `extremes_of`). The IMGW adapter reads with
+  `imgwtools.read_series`. (ADR-045, plan I8.4)
+
 - "Oś czasu" of the stations in the Catalog, beside "Lista" (ADR-045, plan I8.3): the
   stations of one dataset with the filters of the list, a row per station with the
   years of one variable ("Wiersz stacji", the map's "Kolor punktów") that expands into

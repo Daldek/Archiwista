@@ -45,6 +45,8 @@ type YearType = Literal["hydrological", "calendar"]
 # The unit of a series: a day, a month, or a half-year characteristic (one
 # value of each key in a hydrological year).
 type TimeUnit = Literal["day", "month", "half_year"]
+# A statistic of a half-year characteristic that is an extreme of its variable.
+type Extreme = Literal["min", "max"]
 type DateRange = tuple[date, date]
 
 # The statuses of a plan's positions in the order the producers define them.
@@ -401,6 +403,32 @@ class SeriesListing:
     first_year: int | None
     periods: tuple[DateRange, ...]
     stations: tuple[StationSeries, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesValues:
+    """A station's values in one unit of a series version (SPEC 4.8.3; IMGW-10).
+
+    ``start`` is the first day of the unit (the day, the first day of the
+    month or of the half-year period) and ``period`` the half-year period of
+    a characteristic (``winter``, ``summer``, ``annual``; ``None`` for days
+    and months). ``values`` holds each variable read: its value, or ``None``
+    where the producer flags the unit missing, a gap and a unit that is not
+    known alike (the gap lists of the series index tell them apart, SPEC
+    4.8.4); a phenomenon that did not occur is ``0``. ``accumulated`` names
+    the variables whose value is an accumulated sum of the days before it,
+    and ``extremes`` the first and last time of each extreme of a half-year
+    characteristic the producer dates, by variable (``None``: a bound it does
+    not publish).
+    """
+
+    start: date
+    period: str | None
+    values: Mapping[str, float | None]
+    accumulated: frozenset[str] = frozenset()
+    extremes: Mapping[str, tuple[datetime | None, datetime | None]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -19,23 +19,27 @@ the datasets. The versions the index knows (``ScanScope.known_versions``) are
 the ``skip_versions`` of ``iter_store``: they come back ``skipped``, with no
 sidecar read. A slot has no link, so ``current_version`` asks IMGWTools which
 version of a slot is the current one, ``read_stations`` reads a provider's
-station catalog version with ``read_catalog`` and ``read_series_index`` the
-index of a dataset's series version with ``read_series_index``. Exceptions of
-the producer surface as ``ProducerError`` with the message unchanged.
+station catalog version with ``read_catalog``, ``read_series_index`` the
+index of a dataset's series version with ``read_series_index`` and
+``read_values`` a station's values from it with ``read_series`` (IMGWTools
+reads the Parquet file; Archiwista imports no ``pyarrow``). Exceptions of the
+producer surface as ``ProducerError`` with the message unchanged.
 """
 
 import os
 import shlex
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import cast
 
 from imgwtools import (
     DatasetDescriptor,
     IMGWError,
     Meta,
+    NormalizedRecord,
     Project,
     SeriesIndex,
     StationCoverage,
@@ -44,6 +48,7 @@ from imgwtools import (
     StoreEntry,
     StoreInfo,
     __version__,
+    datasets,
     get_dataset,
     get_project_status,
     get_provider,
@@ -51,6 +56,7 @@ from imgwtools import (
     open_project,
     providers,
     read_catalog,
+    read_series,
     read_series_index,
     store_info,
     store_root,
@@ -59,19 +65,21 @@ from imgwtools import current_version as current_of_slot
 from imgwtools import read_meta as read_sidecar
 
 from archiwista.adapter.imgw import PACKAGE, PRODUCER, SCHEMAS
-from archiwista.errors import ProducerError, SourceUnavailableError
+from archiwista.errors import NotFoundError, ProducerError, SourceUnavailableError
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
     DefaultRoot,
     DefaultRootSource,
     EntryKind,
     EntryMeta,
+    Extreme,
     Footprint,
     ProjectInfo,
     ProjectPin,
     ProjectTask,
     ScanScope,
     SeriesListing,
+    SeriesValues,
     SourceEntry,
     SourceObservation,
     SourceSegment,
@@ -108,6 +116,13 @@ _SERIES_UNITS: Mapping[str, TimeUnit] = {
     "month": "month",
     "half_year": "half_year",
 }
+# The unit of a dataset of half-year characteristics, and the statistics of
+# its characteristics that are extremes, in the order of the registry.
+_HALF_YEAR = "half_year"
+_EXTREMES: tuple[Extreme, ...] = ("min", "max")
+# What a unit has when nothing is flagged or dated (shared, never changed).
+_NO_FLAGS: frozenset[str] = frozenset()
+_NO_DATES: Mapping[str, tuple[datetime | None, datetime | None]] = MappingProxyType({})
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
 # The codes of an IMGWTools error that say a slot has no current version, not that
@@ -143,8 +158,9 @@ class ImgwAdapter:
     Implements the source interface, ``SegmentDescriptionAdapter`` (a
     dataset is a segment that cannot be read alone), ``CurrentVersionAdapter``
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
-    catalog), ``SeriesIndexAdapter`` (the index of each dataset's series) and
-    ``DefaultRootAdapter`` (``store_root()``); no other optional capability.
+    catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
+    ``SeriesValuesAdapter`` (a station's values) and ``DefaultRootAdapter``
+    (``store_root()``); no other optional capability.
     All methods may run in several threads at once; one iterator of
     ``iter_entries`` belongs to one thread.
     """
@@ -476,6 +492,134 @@ class ImgwAdapter:
             raise ProducerError(PACKAGE, "IMGWDataError", text)
         directory = PurePosixPath(version.as_posix()).parent
         return _series_listing(index, dataset, directory, unit)
+
+    def read_values(
+        self,
+        root: Path,
+        version: Path,
+        *,
+        station: str,
+        variables: Sequence[str],
+        start: date | None = None,
+        end: date | None = None,
+    ) -> Iterator[SeriesValues]:
+        """Yield a station's values of a series version with ``read_series``.
+
+        IMGWTools checks the index against its sidecar and the station's
+        Parquet file against the index before the first unit. A unit the
+        builder filled in, a gap or a unit that is not known, is ``missing``:
+        its value ``None``.
+
+        Parameters
+        ----------
+        root : Path
+            The store root.
+        version : Path
+            The version's ``series.json``, relative to ``root``.
+        station : str
+            The station's code.
+        variables : Sequence[str]
+            Variables of the dataset (``H``, ``Q_max``), at least one.
+        start, end : date or None
+            The first and last unit to give, by its first day; ``None``: no
+            bound.
+
+        Yields
+        ------
+        SeriesValues
+            The units of the station's file in its order.
+
+        Raises
+        ------
+        NotFoundError
+            The station has no series in the version.
+        SourceUnavailableError
+            The system cannot read a file of the version.
+        ProducerError
+            IMGWTools refused the version, a variable or the range.
+        """
+        path = root / version
+        try:
+            for record in read_series(
+                path, station=station, variables=variables, start=start, end=end
+            ):
+                yield _series_values(record)
+        except OSError as error:
+            raise _unavailable(str(path), str(error)) from error
+        except IMGWError as error:
+            if error.details.get("option") == "station":
+                text = message(
+                    "source.imgw_series_station", station=station, version=version
+                )
+                raise NotFoundError(text) from error
+            raise _failure(str(path), error) from error
+
+    def characteristics_dataset(self, dataset: str) -> str | None:
+        """Return the dataset of the half-year characteristics of a dataset.
+
+        From the registry (``datasets``): the one other dataset of the same
+        provider and family with the unit ``half_year`` that the store keeps
+        (``pl.imgw.hydro_semiannual`` for ``pl.imgw.hydro_daily``); no disk
+        access.
+
+        Parameters
+        ----------
+        dataset : str
+            A dataset key.
+
+        Returns
+        -------
+        str or None
+            Its key; ``None`` when the registry has none or several, and for a
+            dataset IMGWTools does not know or one without a family.
+        """
+        try:
+            descriptor = get_dataset(dataset)
+        except IMGWError:
+            return None
+        if descriptor.kind is None:
+            return None
+        found = [
+            item.key
+            for item in datasets(kind=descriptor.kind, provider=descriptor.provider)
+            if item.time_unit == _HALF_YEAR
+            and item.in_store
+            and item.key != descriptor.key
+        ]
+        return str(found[0]) if len(found) == 1 else None
+
+    def extremes_of(self, dataset: str, variable: str) -> Mapping[Extreme, str]:
+        """Return the characteristics that hold a variable's extremes.
+
+        IMGWTools names the characteristics of a variable after it and their
+        statistic (``Q_min``, ``Q_mean``, ``Q_max``: the variables of its
+        registry); one is an extreme of the variable when the characteristics
+        dataset holds it in the variable's unit. No disk access.
+
+        Parameters
+        ----------
+        dataset : str
+            The dataset key of the variable.
+        variable : str
+            A variable of the dataset (``Q``).
+
+        Returns
+        -------
+        Mapping[str, str]
+            The characteristic of each statistic (``min``, ``max``); empty
+            without a characteristics dataset, for a variable the dataset does
+            not have and for one without characteristics.
+        """
+        characteristics = self.characteristics_dataset(dataset)
+        if characteristics is None:
+            return {}
+        unit = get_dataset(dataset).variables.get(variable)
+        held = get_dataset(characteristics).variables
+        return {
+            extreme: f"{variable}_{extreme}"
+            for extreme in _EXTREMES
+            if unit is not None and held.get(f"{variable}_{extreme}") == unit
+        }
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Place a file: its country for an archive or a series, else nowhere.
@@ -925,6 +1069,28 @@ def _variable_coverage(key: str, coverage: StationCoverage) -> VariableCoverage:
         with_value=coverage.with_value,
         accumulated=coverage.accumulated,
         gaps=tuple(coverage.gaps),
+    )
+
+
+def _series_values(record: NormalizedRecord) -> SeriesValues:
+    """Convert a station's record of one unit; a measurement's value or ``None``."""
+    measurements = record.measurements
+    accumulated = [
+        name
+        for name, measured in measurements.items()
+        if measured.flag == "accumulated"
+    ]
+    dated = {
+        name: dates
+        for name, dates in record.extrema_dates.items()
+        if dates[0] is not None or dates[1] is not None
+    }
+    return SeriesValues(
+        start=record.date,
+        period=record.period,
+        values={name: measured.value for name, measured in measurements.items()},
+        accumulated=frozenset(accumulated) if accumulated else _NO_FLAGS,
+        extremes=dated or _NO_DATES,
     )
 
 

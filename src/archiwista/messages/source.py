@@ -89,6 +89,10 @@ MESSAGES = {
             " zmierzyć (dzień, miesiąc albo półrocze)."
         ),
     ),
+    "imgw_series_station": Text(
+        "The station {station} has no series in the version {version}.",
+        "Stacja {station} nie ma szeregu w wersji {version}.",
+    ),
     "schema_unknown": Text(
         "unknown",
         "nieznany",

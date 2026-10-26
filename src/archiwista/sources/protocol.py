@@ -3,14 +3,16 @@
 A plugin is an entry point of the ``archiwista.sources`` group naming a
 factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
-version of a slot, station catalogs, the series indexes of stations, their
-parts, coordinate operations, link confirmation, sheet grids, the default
-store root, the producer's commands with the availability at the source, and
-the changes and runs of a project are optional capabilities: a producer
-without them still satisfies ``SourceAdapter``.
+version of a slot, station catalogs, the series indexes of stations, the
+values of a station's series, their parts, coordinate operations, link
+confirmation, sheet grids, the default store root, the producer's commands
+with the availability at the source, and the changes and runs of a project
+are optional capabilities: a producer without them still satisfies
+``SourceAdapter``.
 """
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -24,6 +26,7 @@ from archiwista.sources.types import (
     CommandInfo,
     DefaultRoot,
     EntryMeta,
+    Extreme,
     Footprint,
     GeoJSONGeometry,
     ProjectCheck,
@@ -31,6 +34,7 @@ from archiwista.sources.types import (
     ProjectRun,
     ScanScope,
     SeriesListing,
+    SeriesValues,
     SheetGrid,
     SourceContext,
     SourceEntry,
@@ -207,6 +211,67 @@ class SeriesIndexAdapter(Protocol):
         ProducerError
             The producer refused the version: it is broken or unlike its
             sidecar.
+        """
+        ...
+
+
+@runtime_checkable
+class SeriesValuesAdapter(Protocol):
+    """Optional capability: the values of a station's series (SPEC 6.7; IMGW-10).
+
+    A version of a dataset's series (``SeriesIndexAdapter``) holds a file per
+    station; this reads one station's values from it for display (a chart),
+    never for the index. The half-year characteristics of a dataset, whose
+    extremes the producer publishes with their dates, are a dataset of their
+    own, named by the producer's registry.
+    """
+
+    def read_values(
+        self,
+        root: Path,
+        version: Path,
+        *,
+        station: str,
+        variables: Sequence[str],
+        start: date | None = None,
+        end: date | None = None,
+    ) -> Iterator[SeriesValues]:
+        """Yield a station's values of a series version (relative to the store).
+
+        One item per unit of the station's file, in its order, from ``start``
+        to ``end`` (both included, a unit by its first day; ``None``: no
+        bound); ``variables`` are variables of the dataset, at least one.
+
+        Raises
+        ------
+        NotFoundError
+            The station has no series in the version.
+        SourceUnavailableError
+            The system cannot read the version or the station's file.
+        ProducerError
+            The producer refused the version (broken, unlike its sidecar, or
+            no series), a variable or the range.
+        """
+        ...
+
+    def characteristics_dataset(self, dataset: str) -> str | None:
+        """Return the dataset of the half-year characteristics of a dataset.
+
+        The one other dataset of the same provider and family whose unit is
+        the half-year in the producer's registry, never derived from the key's
+        text (SPEC 4.2.1); ``None`` when there is none or the producer does not
+        know ``dataset``. No disk access.
+        """
+        ...
+
+    def extremes_of(self, dataset: str, variable: str) -> Mapping[Extreme, str]:
+        """Return the characteristics that hold a variable's extremes.
+
+        For a variable of ``dataset`` (``Q``), the variables of its
+        characteristics dataset whose values are its least and its greatest
+        value of each half-year period, by statistic: ``{"min": "Q_min",
+        "max": "Q_max"}``. Empty when there is no characteristics dataset or
+        it holds no extreme of the variable. No disk access.
         """
         ...
 

@@ -1337,8 +1337,11 @@ The IMGW adapter also has the "stations and series" capabilities, which the Kart
 adapter does not implement: `StationCatalogAdapter` (`station_catalog(slot_key)`,
 `read_stations(root, version)`: the stations of a provider's catalog version, IMGW-9),
 `SeriesIndexAdapter` (`series_dataset(slot_key)`, `read_series_index(root, version)`:
-the `series.json` listing with the coverage, IMGW-8), and later `read_series(version,
-station, …)` (IMGW-10, the chart) and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
+the `series.json` listing with the coverage, IMGW-8) and `SeriesValuesAdapter`
+(`read_values(root, version, *, station, variables, start, end)`: a station's values
+from `read_series`, IMGW-10, the chart; `characteristics_dataset(dataset)` and
+`extremes_of(dataset, variable)`: the half-year characteristics with the extremes of a
+variable, from the registry), and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
 the Kartograf adapter and a plugin mechanism with a stub of a second adapter, and a test
 ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 
