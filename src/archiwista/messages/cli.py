@@ -2020,6 +2020,50 @@ MESSAGES = {
             " /api/v1/stations/KOD/series)."
         ),
     ),
+    "stations_compare_help": Text(
+        (
+            "Compares one variable of 2 to 5 stations over one range: each"
+            " station's label and facts, and its points, gaps and markers (like"
+            " GET /api/v1/stations/compare)."
+        ),
+        (
+            "Porównuje jedną zmienną 2–5 stacji w jednym zakresie: etykietę i fakty"
+            " każdej stacji oraz jej punkty, luki i znaczniki (jak GET"
+            " /api/v1/stations/compare)."
+        ),
+    ),
+    "stations_station_help": Text(
+        "a station as STORE/PROVIDER/CODE (2 to 5 times)",
+        "stacja jako MAGAZYN/DOSTAWCA/KOD (od 2 do 5 razy)",
+    ),
+    "stations_compare_dataset_help": Text(
+        "dataset key of the series compared, e.g. pl.imgw.hydro_daily",
+        "klucz zbioru danych porównywanych szeregów, np. pl.imgw.hydro_daily",
+    ),
+    "stations_compare_variable_help": Text(
+        "the variable compared, e.g. Q",
+        "porównywana zmienna, np. Q",
+    ),
+    "stations_compare_start_help": Text(
+        (
+            "first day of the range, e.g. 1950-11-01; by default the variable's"
+            " first known day at the stations together"
+        ),
+        (
+            "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy znany dzień"
+            " zmiennej na stacjach łącznie"
+        ),
+    ),
+    "stations_compare_end_help": Text(
+        (
+            "last day of the range, e.g. 2025-10-31; by default the variable's last"
+            " known day at the stations together"
+        ),
+        (
+            "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni znany dzień"
+            " zmiennej na stacjach łącznie"
+        ),
+    ),
     "stations_code_help": Text(
         "station code as its provider gives it",
         "kod stacji, jak podaje go dostawca",
@@ -2332,6 +2376,14 @@ MESSAGES = {
     "station_chart_extreme": Text(
         "    {kind} of the {period} {day}: {value}",
         "    {kind} – {period} {day}: {value}",
+    ),
+    "station_compare_title": Text(
+        "Comparison of {variable} of {dataset}, {year_type} years",
+        "Porównanie {variable} z {dataset}, lata {year_type}",
+    ),
+    "station_compare_missing": Text(
+        "  no data: no variable {variable} in a series of {dataset}",
+        "  brak danych: brak zmiennej {variable} w szeregu {dataset}",
     ),
     "station_marker_min": Text(
         "least value",

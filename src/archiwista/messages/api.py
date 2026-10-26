@@ -235,6 +235,28 @@ MESSAGES = {
         "The source {producer} does not read the values of a series.",
         "Źródło {producer} nie odczytuje wartości szeregu.",
     ),
+    "compare_station_invalid": Text(
+        'A station of a comparison is <store>/<provider>/<code>, not "{station}".',
+        "Stacja porównania to <magazyn>/<dostawca>/<kod>, a nie „{station}”.",
+    ),
+    "compare_station_twice": Text(
+        "A comparison names each station once: {stations} more than once.",
+        "Porównanie wymienia każdą stację raz, a {stations} więcej razy.",
+    ),
+    "compare_series_none": Text(
+        "None of the stations compared has a series of {dataset} in the index.",
+        "Żadna z porównywanych stacji nie ma w indeksie szeregu {dataset}.",
+    ),
+    "compare_variable_unknown": Text(
+        (
+            "No series of {dataset} of the stations compared has the variable"
+            " {variable}; they have: {allowed}."
+        ),
+        (
+            "Żaden szereg {dataset} porównywanych stacji nie ma zmiennej {variable};"
+            " mają: {allowed}."
+        ),
+    ),
     "no_geo_source": Text(
         "No available data source converts the coordinates of the area.",
         "Żadne dostępne źródło danych nie przelicza współrzędnych obszaru.",

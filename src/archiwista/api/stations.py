@@ -9,7 +9,8 @@ coverage filters and never placed in an area (SPEC 4.3 point 3).
 ``GET /stations/datasets`` names the datasets with station series (the
 dataset chip of the map), ``GET /stations/timeline`` is a page of the
 stations of one dataset with each variable year by year (the Timeline tab of
-the Catalog), ``GET /stations/{code}`` is a station's card,
+the Catalog), ``GET /stations/compare`` one variable of 2 to 5 stations over
+one range (the comparison), ``GET /stations/{code}`` is a station's card,
 ``GET /stations/{code}/coverage`` its variables year by year (the Timeline),
 ``GET /stations/{code}/series`` the values of one or two variables of a
 series as a chart and ``GET /map/stations`` the located stations of a map
@@ -18,12 +19,14 @@ which would else read them as a code. Without ``year_type`` the labels
 number the years as the settings remember for the data's family
 (``year_types``, P15), a list of both families as for hydro data. Everything
 is read from the index, never from a series file, except the values of a
-chart, which the producer reads (``SeriesValuesAdapter``); and only while the
-source of the stations is available: else ``503`` (SPEC 5.8).
+chart or a comparison, which the producer reads (``SeriesValuesAdapter``);
+and only while the source of the stations is available: else ``503`` (SPEC
+5.8).
 ``archiwista stations`` calls the same functions without HTTP.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import date
 from pathlib import Path as FilePath
 from typing import Annotated, Any
 
@@ -33,9 +36,13 @@ from archiwista.api.dependencies import index_queries, plugin_registry, settings
 from archiwista.api.errors import problem_responses
 from archiwista.api.models import AreaRef, CopyPath, staleness
 from archiwista.api.models_stations import (
+    ChartVariable,
+    ComparedStation,
     StationCard,
     StationChart,
     StationChartQuery,
+    StationCompareQuery,
+    StationComparison,
     StationDatasets,
     StationDatasetsQuery,
     StationItem,
@@ -289,16 +296,8 @@ def station_chart(
     SourceUnavailableError, ProducerError
         The producer could not read the series.
     """
-    require_station_source(registry)
-    adapter = registry.adapter(STATION_PRODUCER)
-    if not isinstance(adapter, SeriesValuesAdapter):
-        raise UnsupportedError(
-            message("api.chart_unsupported", producer=STATION_PRODUCER)
-        )
-    if query.start is not None and query.end is not None and query.start > query.end:
-        raise IndexQueryError(
-            message("api.chart_range_reversed", start=query.start, end=query.end)
-        )
+    adapter = _values_adapter(registry)
+    _check_range(query.start, query.end)
     freshness = queries.freshness()
     checked_store(query.store, settings, freshness)
     row = find_station(queries, code, store=query.store, provider=query.provider)
@@ -323,32 +322,248 @@ def station_chart(
             details={"current": series.series_version},
             hint=message("api.chart_version_hint"),
         )
-    config = settings.store(row.store)
+    return _read_chart(
+        queries,
+        settings,
+        adapter,
+        series,
+        variables,
+        span=(query.start, query.end),
+        max_points=query.max_points,
+        freshness=staleness(freshness, {row.store}),
+    )
+
+
+def station_comparison(
+    queries: IndexQueries,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    query: StationCompareQuery,
+) -> StationComparison:
+    """Return one variable of 2 to 5 stations' series over one range (SPEC 6.7).
+
+    Each station's series of ``query.dataset`` is labelled in one year type,
+    so its facts are those of its card, and read over one range: ``from``
+    and ``to``, by default the first and last day of the variable's known
+    spans at the stations together (``series_chart.known_span``, a chart's
+    default range: ADR-045 erratum 1), so that every chart has the same
+    interval and its bands are the gaps its label counts. A station without
+    the series or the variable stays, without facts and chart ("brak
+    danych", P14). A bound asked beyond the other one's default leaves an
+    empty comparison, whose series are not read.
+
+    Raises
+    ------
+    SourceStateError
+        The source of the stations is not available.
+    NotFoundError
+        A station the index does not hold, or none of them has a series of
+        ``query.dataset``.
+    IndexQueryError
+        An unknown store, a reversed range, half-year characteristics
+        (``half_year_chart``) or a variable no station's series has
+        (``unknown_variable``).
+    UnsupportedError
+        The producer does not read the values of a series.
+    SourceUnavailableError, ProducerError
+        The producer could not read a series.
+    """
+    adapter = _values_adapter(registry)
+    _check_range(query.start, query.end)
+    freshness = queries.freshness()
+    found: list[tuple[StationRow, StationCoverage | None]] = []
+    for store, provider, code in query.stations():
+        checked_store(store, settings, freshness)
+        row = find_station(queries, code, store=store, provider=provider)
+        held = queries.station_coverage(
+            row.store,
+            row.provider,
+            row.code,
+            dataset=query.dataset,
+            year_type=query.year_type,
+            year_types=settings.year_types,
+        )
+        found.append((row, held[0] if held else None))
+    series = [item for _, item in found if item is not None]
+    if not series:
+        raise NotFoundError(message("api.compare_series_none", dataset=query.dataset))
+    first = series[0]
+    if first.time_unit == "half_year":
+        raise IndexQueryError(
+            message("api.chart_half_year", dataset=first.dataset),
+            reason="half_year_chart",
+            details={"option": "dataset"},
+        )
+    compared = [
+        (
+            row,
+            item,
+            None
+            if item is None
+            else next((v for v in item.variables if v.key == query.variable), None),
+        )
+        for row, item in found
+    ]
+    variables = [variable for _, _, variable in compared if variable is not None]
+    if not variables:
+        allowed = list(
+            dict.fromkeys(
+                variable.key for item in series for variable in item.variables
+            )
+        )
+        raise IndexQueryError(
+            message(
+                "api.compare_variable_unknown",
+                dataset=first.dataset,
+                variable=query.variable,
+                allowed=", ".join(allowed),
+            ),
+            reason="unknown_variable",
+            details={"option": "variable", "allowed": allowed},
+        )
+    span = _compared_range(variables, query)
+    fresh = staleness(freshness, {row.store for row, _ in found})
+    stations: list[ComparedStation] = []
+    for row, item, variable in compared:
+        chart: ChartVariable | None = None
+        if item is not None and variable is not None:
+            chart = (
+                ChartVariable(
+                    key=variable.key,
+                    variable=variable.variable,
+                    unit=variable.unit,
+                    points=[],
+                    gaps=[],
+                    markers=[],
+                )
+                if span is None
+                else _read_chart(
+                    queries,
+                    settings,
+                    adapter,
+                    item,
+                    [variable],
+                    span=span,
+                    max_points=query.max_points,
+                    freshness=fresh,
+                ).variables[0]
+            )
+        stations.append(ComparedStation.of(row, item, variable, chart))
+    whole = (
+        None
+        if span is None
+        else series_chart.chart_range(first.time_unit, *span, query.max_points)
+    )
+    return StationComparison.model_validate(
+        {
+            "dataset": first.dataset,
+            "variable": query.variable,
+            "kind": first.kind,
+            "time_unit": first.time_unit,
+            "year_type": first.year_type,
+            "from": None if whole is None else whole.start,
+            "to": None if whole is None else whole.end,
+            "units": 0 if whole is None else whole.units,
+            "interval": 1 if whole is None else whole.interval,
+            "stations": stations,
+            **fresh,
+        }
+    )
+
+
+def _values_adapter(registry: PluginRegistry) -> SeriesValuesAdapter:
+    """Return the producer that reads the values of the stations' series.
+
+    Raises
+    ------
+    SourceStateError
+        The source of the stations is not available.
+    UnsupportedError
+        It does not read the values of a series.
+    """
+    require_station_source(registry)
+    adapter = registry.adapter(STATION_PRODUCER)
+    if not isinstance(adapter, SeriesValuesAdapter):
+        raise UnsupportedError(
+            message("api.chart_unsupported", producer=STATION_PRODUCER)
+        )
+    return adapter
+
+
+def _check_range(start: date | None, end: date | None) -> None:
+    """Refuse a range that ends before it starts (``IndexQueryError``)."""
+    if start is not None and end is not None and start > end:
+        raise IndexQueryError(message("api.chart_range_reversed", start=start, end=end))
+
+
+def _compared_range(
+    variables: Sequence[CoverageVariable], query: StationCompareQuery
+) -> tuple[date, date] | None:
+    """Return the range of a comparison: ``from`` and ``to``, else the known span.
+
+    A bound left out is the first or last day of the variable's known spans
+    at the stations together (``series_chart.known_span``), as a chart's
+    default range. ``None`` when a bound is neither asked nor known, or one
+    asked lies beyond the other one's default: the comparison is empty.
+    """
+    known = series_chart.known_span(variables)
+    start = query.start if query.start is not None or known is None else known[0]
+    end = query.end if query.end is not None or known is None else known[1]
+    if start is None or end is None or start > end:
+        return None
+    return start, end
+
+
+def _read_chart(
+    queries: IndexQueries,
+    settings: AppSettings,
+    adapter: SeriesValuesAdapter,
+    series: StationCoverage,
+    variables: Sequence[CoverageVariable],
+    *,
+    span: tuple[date | None, date | None],
+    max_points: int,
+    freshness: Mapping[str, Any],
+) -> StationChart:
+    """Read a station's series through the producer and return its chart.
+
+    The extremes come from the station's series of the dataset's half-year
+    characteristics when the index holds one.
+
+    Raises
+    ------
+    NotFoundError
+        The station's store has no IMGWTools directory configured.
+    SourceUnavailableError, ProducerError
+        The producer could not read the series.
+    """
+    config = settings.store(series.store)
     root = None if config is None else config.roots().get(STATION_PRODUCER)
     if root is None:
-        raise NotFoundError(message("api.store_not_configured", store=row.store))
+        raise NotFoundError(message("api.store_not_configured", store=series.store))
     characteristics = adapter.characteristics_dataset(series.dataset)
     held = (
         ()
         if characteristics is None
         else queries.station_coverage(
-            row.store,
-            row.provider,
-            row.code,
+            series.store,
+            series.provider,
+            series.code,
             dataset=characteristics,
             year_types=settings.year_types,
         )
     )
+    start, end = span
     return series_chart.station_chart(
         adapter,
         FilePath(root),
         series,
         variables,
-        start=query.start,
-        end=query.end,
-        max_points=query.max_points,
+        start=start,
+        end=end,
+        max_points=max_points,
         characteristics=held[0] if held else None,
-        freshness=staleness(freshness, {row.store}),
+        freshness=freshness,
     )
 
 
@@ -639,6 +854,35 @@ def list_stations_timeline(
     of the stations (IMGWTools) is not available.
     """
     return station_timeline_page(queries, settings.get(), registry, filters)
+
+
+@router.get(
+    "/stations/compare",
+    response_model=StationComparison,
+    responses=problem_responses(400, 404, 503),
+)
+def compare_stations(
+    query: Annotated[StationCompareQuery, Query()],
+    principal: _Principal,
+    settings: _Settings,
+    registry: _Registry,
+    queries: _Queries,
+) -> StationComparison:
+    """Compare 2 to 5 stations: one variable of one dataset over one range.
+
+    Each `station` is `<store>/<provider>/<code>`. The range is `from`–`to`,
+    by default the first and last known day of the variable at the stations
+    together (as the default range of a chart), the same for every station,
+    and so is the interval of a simplified chart (`max_points`). Each station
+    gives the label and facts of the variable as its card does in the year
+    type (`coverage`) and its points, its label's gaps and markers (`chart`),
+    read from its series file through the producer; a station without the
+    series or the variable has `null` for both ("brak danych"). `400`
+    (reason `unknown_variable`) when no station's series has the variable,
+    `404` when none of them has a series of the dataset; `503` while the
+    source of the stations (IMGWTools) is not available.
+    """
+    return station_comparison(queries, settings.get(), registry, query)
 
 
 @router.get(

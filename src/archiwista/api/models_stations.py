@@ -1,11 +1,12 @@
 """Stations and the coverage of their series for people and agents (SPEC 9.2, 4.8.4).
 
 The query models of ``GET /stations``, ``/stations/timeline``,
-``/stations/{code}``, ``/stations/{code}/coverage``, ``/stations/{code}/series``
-and ``/map/stations`` refuse unknown parameters, and ``archiwista stations``
-builds its options from them. The index gives a coverage label as structure
-(`SeriesLabel`); the answers carry that structure beside its text, written
-here in the language of the context for the API and the command line alike.
+``/stations/compare``, ``/stations/{code}``, ``/stations/{code}/coverage``,
+``/stations/{code}/series`` and ``/map/stations`` refuse unknown parameters,
+and ``archiwista stations`` builds its options from them. The index gives a
+coverage label as structure (`SeriesLabel`); the answers carry that structure
+beside its text, written here in the language of the context for the API and
+the command line alike.
 """
 
 import re
@@ -70,6 +71,11 @@ type YearCell = Literal["full", "fraction", "none", "unknown"]
 type MarkerKind = Literal["accumulated", "min", "max"]
 # The most points of each variable of a chart (SPEC 6.7, 9.2).
 MAX_CHART_POINTS = 2000
+# A station of a comparison: ``<store>/<provider>/<code>``; codes hold no ``/``.
+STATION_ADDRESS_PATTERN = r"[^/]+/[^/]+/[^/]+"
+# How many stations a comparison takes (SPEC 6.7).
+MIN_COMPARED = 2
+MAX_COMPARED = 5
 
 _SHA256 = "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623"
 _SERIES_DIR = "series/versions/hydro_daily/2026-08-31_ab12cd34"
@@ -233,6 +239,41 @@ _DATASET_EXAMPLE = {
         _DATASET_VARIABLE_EXAMPLE,
         {"key": "T", "variable": "T", "unit": "degC", "period": None},
     ],
+}
+_CHART_VARIABLE_EXAMPLE = {
+    "key": "Q",
+    "variable": "Q",
+    "unit": "m3/s",
+    "points": [{"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1}],
+    "gaps": [_GAP_EXAMPLE],
+    "markers": [
+        {
+            "t": "1997-07-09",
+            "kind": "max",
+            "value": 412.0,
+            "period": "annual",
+            "end": "1997-07-10",
+        }
+    ],
+}
+_COMPARED_EXAMPLE = {
+    "store": "zespol",
+    "provider": "IMGW-PIB",
+    "code": "149190310",
+    "name": "STROZA",
+    "kind": "hydro",
+    "river": "Raba",
+    "hydrographic_code": "2138",
+    "location": _LOCATION_EXAMPLE,
+    "years": {"from": 1951, "to": 2025},
+    "series": "2026-08-31",
+    "series_version": f"{_SERIES_DIR}/series.json",
+    "file": f"{_SERIES_DIR}/stations/149190310.parquet",
+    "sha256": _SHA256,
+    "license": "IMGW-PIB",
+    "attribution": _SERIES_EXAMPLE["attribution"],
+    "coverage": _VARIABLE_EXAMPLE,
+    "chart": _CHART_VARIABLE_EXAMPLE,
 }
 
 
@@ -713,6 +754,96 @@ class StationChartQuery(BaseModel):
     @classmethod
     def _once_each(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(value))
+
+
+class StationCompareQuery(BaseModel):
+    """The stations, series, variable and range of ``GET /stations/compare``.
+
+    A station is ``<store>/<provider>/<code>`` (codes of both providers hold
+    no ``/``), so a comparison never needs to resolve a shared code. ``from``
+    and ``to`` are read by these names (the fields ``start`` and ``end``);
+    unknown parameters are refused.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", validate_by_alias=True, validate_by_name=True
+    )
+
+    station: list[str] = Field(
+        min_length=MIN_COMPARED,
+        max_length=MAX_COMPARED,
+        description=(
+            "Repeatable, 2 to 5 times: a station as `<store>/<provider>/<code>`,"
+            " in the order of the panels."
+        ),
+        examples=[["zespol/IMGW-PIB/149190310", "zespol/IMGW-PIB/149200090"]],
+    )
+    dataset: str = Field(
+        description="Dataset key of the series compared (`pl.imgw.hydro_daily`).",
+        examples=["pl.imgw.hydro_daily"],
+    )
+    variable: str = Field(
+        description="The variable compared, one of the series (`Q`).",
+        examples=["Q"],
+    )
+    start: date | None = Field(
+        default=None,
+        alias="from",
+        description=(
+            "First day of the range; by default the variable's first known day (or"
+            " an earlier value) at the stations together, so the range holds every"
+            " gap their labels count."
+        ),
+        examples=["1950-11-01"],
+    )
+    end: date | None = Field(
+        default=None,
+        alias="to",
+        description=(
+            "Last day of the range; by default the variable's last known day (or a"
+            " later value) at the stations together."
+        ),
+        examples=["2025-10-31"],
+    )
+    year_type: YearType | None = Field(
+        default=None,
+        description=(
+            "Numbering of the years of R and of the labels, whose gaps are the"
+            " bands of each chart: `hydrological` (1 XI to 31 X) or `calendar`; by"
+            " default the type remembered for the dataset's family, as on the card."
+        ),
+    )
+    max_points: int = Field(
+        default=MAX_CHART_POINTS,
+        ge=1,
+        le=MAX_CHART_POINTS,
+        description=(
+            "The most points of each station: a range of more units is given as"
+            " the least, mean and greatest value of intervals of one length for"
+            " every station."
+        ),
+    )
+
+    @field_validator("station")
+    @classmethod
+    def _addresses(cls, value: list[str]) -> list[str]:
+        for item in value:
+            if re.fullmatch(STATION_ADDRESS_PATTERN, item) is None:
+                raise ValueError(message("api.compare_station_invalid", station=item))
+        twice = sorted({item for item in value if value.count(item) > 1})
+        if twice:
+            raise ValueError(
+                message("api.compare_station_twice", stations=", ".join(twice))
+            )
+        return value
+
+    def stations(self) -> list[tuple[str, str, str]]:
+        """Return each station as its store, provider and code, in order."""
+        found: list[tuple[str, str, str]] = []
+        for item in self.station:
+            store, provider, code = item.split("/")
+            found.append((store, provider, code))
+        return found
 
 
 # Answers -------------------------------------------------------------------
@@ -1625,26 +1756,7 @@ class StationChart(IndexAnswer):
             "to": "2025-10-31",
             "units": 27394,
             "interval": 14,
-            "variables": [
-                {
-                    "key": "Q",
-                    "variable": "Q",
-                    "unit": "m3/s",
-                    "points": [
-                        {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1}
-                    ],
-                    "gaps": [_GAP_EXAMPLE],
-                    "markers": [
-                        {
-                            "t": "1997-07-09",
-                            "kind": "max",
-                            "value": 412.0,
-                            "period": "annual",
-                            "end": "1997-07-10",
-                        }
-                    ],
-                }
-            ],
+            "variables": [_CHART_VARIABLE_EXAMPLE],
             "license": "IMGW-PIB",
             "attribution": _SERIES_EXAMPLE["attribution"],
             **_FRESH,
@@ -1683,6 +1795,133 @@ class StationChart(IndexAnswer):
     license: str | None = Field(description="Licence of the series version.")
     attribution: str | None = Field(
         description="The formula the source requires with its data (IMGW §5)."
+    )
+
+
+class ComparedStation(BaseModel):
+    """A station of a comparison: who and where it is, its series and the variable.
+
+    ``coverage`` gives the variable's label and facts in R as the station's
+    card does, and ``chart`` its points, gaps and markers in the range of
+    the comparison; both are ``null`` for a station without a series of the
+    dataset or without the variable ("brak danych", P14).
+    """
+
+    model_config = _examples(_COMPARED_EXAMPLE)
+
+    store: str = Field(description="Store id.")
+    provider: str
+    code: str = Field(description="Station code, as text.")
+    name: str | None
+    kind: str | None = Field(description="`hydro` or `meteo`.")
+    river: str | None
+    hydrographic_code: str | None = Field(description="The river's hydrographic code.")
+    location: StationLocationItem
+    years: YearSpan | None = Field(
+        description="R of its series in the comparison's year type."
+    )
+    series: str | None = Field(
+        description="Label of its series version; `null` without a series."
+    )
+    series_version: str | None = Field(
+        description="The version's `series.json`, relative to the store."
+    )
+    file: str | None = Field(
+        description="The station's series file, relative to the store."
+    )
+    sha256: str | None = Field(description="SHA-256 of the station's series file.")
+    license: str | None = Field(description="Licence of the series version.")
+    attribution: str | None = Field(
+        description="The formula the source requires with its data (IMGW §5)."
+    )
+    coverage: VariableCoverageItem | None = Field(
+        description="The variable's label and facts in R, as on the station's card."
+    )
+    chart: ChartVariable | None = Field(
+        description="The variable's points, gaps and markers in the range."
+    )
+
+    @classmethod
+    def of(
+        cls,
+        row: StationRow,
+        series: StationCoverage | None,
+        variable: CoverageVariable | None,
+        chart: ChartVariable | None,
+    ) -> Self:
+        """Return the model of a station, its series and the variable compared."""
+        return cls(
+            store=row.store,
+            provider=row.provider,
+            code=row.code,
+            name=row.name,
+            kind=row.kind,
+            river=row.river,
+            hydrographic_code=row.hydrographic_code,
+            location=StationLocationItem.of(row),
+            years=None if series is None else YearSpan.of(series.span),
+            series=None if series is None else series.series,
+            series_version=None if series is None else series.series_version,
+            file=None if series is None else series.file,
+            sha256=None if series is None else series.sha256,
+            license=None if series is None else series.license,
+            attribution=None if series is None else series.attribution,
+            coverage=(
+                None
+                if series is None or variable is None
+                else VariableCoverageItem.of(variable, series.time_unit)
+            ),
+            chart=chart,
+        )
+
+
+class StationComparison(IndexAnswer):
+    """2 to 5 stations' series of one variable over one range (SPEC 6.7, 9.2)."""
+
+    model_config = _examples(
+        {
+            "dataset": "pl.imgw.hydro_daily",
+            "variable": "Q",
+            "kind": "hydro",
+            "time_unit": "day",
+            "year_type": "hydrological",
+            "from": "1950-11-01",
+            "to": "2025-10-31",
+            "units": 27394,
+            "interval": 14,
+            "stations": [
+                _COMPARED_EXAMPLE,
+                {
+                    **_COMPARED_EXAMPLE,
+                    "code": "149200090",
+                    "name": "PROSZOWKI",
+                    "coverage": None,
+                    "chart": None,
+                },
+            ],
+            **_FRESH,
+        },
+        aliased=True,
+    )
+
+    dataset: str = Field(description="Dataset key of the series compared.")
+    variable: str = Field(description="The variable compared.")
+    kind: str | None = Field(description="The dataset's family: `hydro`, `meteo`.")
+    time_unit: TimeUnit = Field(description="Unit of the series: `day` or `month`.")
+    year_type: YearType = Field(description="Numbering of the years of R and labels.")
+    first: date | None = Field(
+        alias="from", description="First day of the range; `null`: no range known."
+    )
+    last: date | None = Field(alias="to", description="Last day of the range.")
+    units: int = Field(description="Units of the range (days or months).")
+    interval: int = Field(
+        description=(
+            "Units of a point, the same for every station: 1, each unit's value;"
+            " more, the least, mean and greatest value of each interval."
+        )
+    )
+    stations: list[ComparedStation] = Field(
+        description="The stations in the order asked, one panel each."
     )
 
 

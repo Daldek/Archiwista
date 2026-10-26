@@ -855,12 +855,15 @@ reaches the interface.
 6. **I8.6. Comparison** (two commits).
    - *Commit 1, the route.* `GET /stations/compare` (`station` repeatable, 2 to 5, as
      `<store>/<provider>/<code>`; `dataset`, `variable`, `from`, `to`, `year_type`,
-     `max_points`): one range for all (the union of the stations' R, or `from`–`to`),
-     a `StationChart` per station with the same interval, and the facts of each from the
+     `max_points`): one range for all (the union of the stations' R, or `from`–`to`;
+     corrected when built by ADR-045 decision 12, after erratum 1: the union of the
+     variable's known spans at the stations, a chart's default range), a `StationChart`
+     per station with the same interval, and the facts of each from the
      index (y₁–y₂, gap share, longest gap, full years, location source); a station
      without the variable stays with "brak danych" (P14). `archiwista stations compare
      [--json]`. *Acceptance:* (new) `tests/integration/test_station_compare_api.py` over
-     `complete`: the two hydro stations share the interval and the range, the facts equal
+     `complete` (built over `complete_pl_cz`, which holds it and the ČHMÚ gauges): the
+     two hydro stations share the interval and the range, the facts equal
      their cards, `400` for one or six stations, route and CLI agree.
    - *Commit 2, the view.* `views/station-compare.js` (new; `routes.js` `VIEWS` with `nav:
      false`): the stations as panels stacked one above another with one time axis at the

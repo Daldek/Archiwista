@@ -28,7 +28,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
-| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
 | a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
@@ -413,7 +413,15 @@ without a value and its longest gap is one of them. `markers` are the accumulate
 sums and the extremes IMGW published with their dates.
 `version` must be the current one in the index (`409` otherwise; read the card
 again); half-year characteristics are not drawn as a line (`400`, reason
-`half_year_chart`).
+`half_year_chart`). `GET /stations/compare` (`archiwista stations compare`) is one
+variable of 2 to 5 stations' series of one `dataset` over one range: `station`
+repeated, each `<store>/<provider>/<code>` in the order of the panels; `from` and
+`to` by default the variable's known spans at the stations together. Every
+station's `chart` is its own chart (`GET /stations/{code}/series`) over that range,
+with the one `interval` of the answer, and its `coverage` the variable's label and
+facts as on its card in `year_type`; a station without the series or the variable
+keeps its place with `null` for both. No station with the variable is `400`
+(reason `unknown_variable`), none with a series of the dataset `404`.
 
 ```sh
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
@@ -429,6 +437,8 @@ archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
 archiwista stations datasets --json
 archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
 archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
+archiwista stations compare --station=zespol/IMGW-PIB/149190310 \
+  --station=zespol/IMGW-PIB/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3)

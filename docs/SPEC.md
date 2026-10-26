@@ -3152,7 +3152,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet), and `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
 | `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable —, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400`) |
-| `GET /stations/compare` | 2–5 stations of one variable (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) on a common time axis |
+| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
@@ -3516,6 +3516,53 @@ station; one of its variables and three of its 75 years shown)
   ],
   "license": "IMGW-PIB",
   "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+  "stale": false,
+  "stale_stores": []
+}
+```
+
+**Comparison** — `GET /api/v1/stations/compare?station=zespol/IMGW-PIB/149190310&station=zespol/IMGW-PIB/149200090&dataset=pl.imgw.hydro_daily&variable=Q&max_points=2000`
+(one range and interval for both stations; the second has no series of the dataset;
+`coverage` and `chart` as on the card and in the chart data above, shortened;
+illustrative values)
+
+```json
+{
+  "dataset": "pl.imgw.hydro_daily",
+  "variable": "Q",
+  "kind": "hydro",
+  "time_unit": "day",
+  "year_type": "hydrological",
+  "from": "1950-11-01",
+  "to": "2025-10-31",
+  "units": 27394,
+  "interval": 14,
+  "stations": [
+    {
+      "store": "zespol", "provider": "IMGW-PIB", "code": "149190310", "name": "STROZA",
+      "kind": "hydro", "river": "Raba", "hydrographic_code": "2138",
+      "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "years": {"from": 1951, "to": 2025},
+      "series": "2026-08-31",
+      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+      "sha256": "…",
+      "license": "IMGW-PIB",
+      "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+      "coverage": {"key": "Q", "state": "gaps", "label": "luki 3% · najdł. 1981.06.02–1982.12.31", "complete_years": 71, "…": "…"},
+      "chart": {"key": "Q", "variable": "Q", "unit": "m3/s", "points": ["…"],
+                "gaps": [{"from": "1981-06-02", "to": "1982-12-31", "units": 578}], "markers": []}
+    },
+    {
+      "store": "zespol", "provider": "IMGW-PIB", "code": "149200090", "name": "PROSZOWKI",
+      "kind": "hydro", "river": "Szreniawa", "hydrographic_code": "2136",
+      "location": {"kind": "point", "lon": 20.29, "lat": 50.19, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "years": null, "series": null, "series_version": null, "file": null, "sha256": null,
+      "license": null, "attribution": null, "coverage": null, "chart": null
+    }
+  ],
   "stale": false,
   "stale_stores": []
 }

@@ -429,6 +429,7 @@ archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
+archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
 ```
 
@@ -461,7 +462,11 @@ than one series has them): the range with its days, each unit's value up to
 `--max-points` units (2000 by default) or else the least, mean and greatest value
 of intervals ("uproszczony, min./śr./maks. z 14 dni"), each variable's points with a
 value, the gaps its label counts in `--year-type` and its markers (an accumulated
-sum, an extreme IMGW published);
+sum, an extreme IMGW published). `stations compare` compares one variable of 2 to 5
+stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one range
+(by default every known day of the variable at those stations): the range once, then
+each station with the variable's label and full years and its chart as `stations
+series` writes it, or "brak danych" for a station without it;
 `--json` gives the points. Without IMGWTools each refuses with the repair command
 `pip install "archiwista[imgw]"`.
 

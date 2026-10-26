@@ -55,6 +55,7 @@ EAST_OF_RABA = "20.12,49.6,20.4,49.8"
 ROUTES = (
     "/api/v1/stations",
     "/api/v1/stations/timeline",
+    "/api/v1/stations/compare",
     "/api/v1/stations/{code}",
     "/api/v1/stations/{code}/coverage",
     "/api/v1/stations/{code}/series",
@@ -410,6 +411,8 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
                 f"/stations/{RABA}",
                 f"/stations/{RABA}/coverage",
                 f"/stations/{RABA}/series?variable=H",
+                f"/stations/compare?station={STORE}/IMGW-PIB/{RABA}"
+                f"&station={STORE}/IMGW-PIB/149190311&dataset={DAILY}&variable=H",
                 "/map/stations?bbox=14,48,24,55",
             )
         ]
@@ -427,7 +430,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
 
 
 def test_openapi_documents_the_station_routes(served: Served) -> None:
-    """Agents find the six routes, their parameters, examples and problems."""
+    """Agents find the seven routes, their parameters, examples and problems."""
     # Act
     document = served.json("/openapi.json")
 
@@ -471,6 +474,13 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
         {"code", "variable"},
     )  # fmt: skip
     assert {"404", "409"} <= set(chart["responses"])
+    compared = document["paths"]["/api/v1/stations/compare"]["get"]
+    required = {item["name"] for item in compared["parameters"] if item["required"]}
+    assert ({item["name"] for item in compared["parameters"]}, required) == (
+        {"station", "dataset", "variable", "from", "to", "year_type", "max_points"},
+        {"station", "dataset", "variable"},
+    )
+    assert "404" in compared["responses"]
     assert document["paths"]["/api/v1/map/stations"]["get"]["tags"] == [
         "stations",
         "map",

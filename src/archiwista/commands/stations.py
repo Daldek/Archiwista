@@ -10,17 +10,20 @@ is a page of the stations of one dataset with each variable year by year, as
 variable). ``stations show CODE`` is the card of ``GET /stations/{code}``,
 with the options of ``StationLookup``, ``stations series CODE`` the chart of
 ``GET /stations/{code}/series`` (the options of ``StationChartQuery``; a
-person reads the range, the points with a value, the gaps and the markers)
-and ``stations datasets`` the datasets of ``GET /stations/datasets``. Each
-calls the function behind its route without HTTP: ``--json`` prints the
-route's model, a refusal the route's problem as the ``archiwista-error/1``
-document (``503`` while IMGWTools is not available becomes its exit code).
-Nothing here uses the network or writes.
+person reads the range, the points with a value, the gaps and the markers),
+``stations compare`` the comparison of ``GET /stations/compare`` (the
+options of ``StationCompareQuery``; a person reads each station's label and
+facts, then its chart as ``series`` writes it) and ``stations datasets`` the
+datasets of ``GET /stations/datasets``. Each calls the function behind its
+route without HTTP: ``--json`` prints the route's model, a refusal the
+route's problem as the ``archiwista-error/1`` document (``503`` while
+IMGWTools is not available becomes its exit code). Nothing here uses the
+network or writes.
 """
 
 import argparse
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import TextIO, get_origin
 
 from pydantic import BaseModel, ValidationError
@@ -28,9 +31,12 @@ from pydantic import BaseModel, ValidationError
 from archiwista.api.models import IndexAnswer
 from archiwista.api.models_stations import (
     ChartVariable,
+    ComparedStation,
     StationCard,
     StationChart,
     StationChartQuery,
+    StationCompareQuery,
+    StationComparison,
     StationDatasetItem,
     StationDatasetsQuery,
     StationItem,
@@ -48,6 +54,7 @@ from archiwista.api.models_stations import (
 from archiwista.api.stations import (
     station_card,
     station_chart,
+    station_comparison,
     station_datasets,
     station_list,
     station_timeline_page,
@@ -91,6 +98,13 @@ _SERIES_HELP = {
     "dataset": "cli.stations_chart_dataset_help",
     "variable": "cli.stations_chart_variable_help",
 }
+# The help of an option of ``stations compare`` whose meaning differs there.
+_COMPARE_HELP = {
+    "dataset": "cli.stations_compare_dataset_help",
+    "variable": "cli.stations_compare_variable_help",
+    "start": "cli.stations_compare_start_help",
+    "end": "cli.stations_compare_end_help",
+}
 
 
 class _InvalidOptions(Exception):
@@ -128,6 +142,8 @@ def add_commands(commands: Commands) -> None:
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
     _options(series, StationChartQuery, _SERIES_HELP)
+    compare = add_parser(actions, "compare", "cli.stations_compare_help")
+    _options(compare, StationCompareQuery, _COMPARE_HELP)
     datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")
     _options(datasets, StationDatasetsQuery)
 
@@ -287,6 +303,18 @@ def _series(
     return chart, _chart_text(chart)
 
 
+def _compare(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    comparison = station_comparison(
+        queries, settings, registry, query_of(StationCompareQuery, args)
+    )
+    return comparison, _comparison_text(comparison)
+
+
 def _datasets(
     args: argparse.Namespace,
     settings: AppSettings,
@@ -307,6 +335,7 @@ _ACTIONS: dict[str, _Action] = {
     "timeline": _timeline,
     "show": _show,
     "series": _series,
+    "compare": _compare,
     "datasets": _datasets,
 }
 
@@ -314,7 +343,7 @@ _ACTIONS: dict[str, _Action] = {
 # Text.
 
 
-def _station_line(item: StationItem | StationTimelineItem) -> str:
+def _station_line(item: StationItem | StationTimelineItem | ComparedStation) -> str:
     river = (
         message(
             "cli.station_river", river=item.river, code=_value(item.hydrographic_code)
@@ -479,22 +508,11 @@ def _chart_text(chart: StationChart) -> str:
             series=_value(chart.series),
             year_type=label("series.year_type", chart.year_type),
             file=chart.file,
-        )
+        ),
+        _range_line(
+            chart.first, chart.last, chart.units, chart.interval, chart.time_unit
+        ),
     ]
-    if chart.first is None or chart.last is None:
-        lines.append(message("cli.station_chart_empty"))
-    else:
-        lines.append(
-            message(
-                "cli.station_chart_values"
-                if chart.interval == 1
-                else "cli.station_chart_simplified",
-                start=chart.first,
-                end=chart.last,
-                units=_units(chart.units, chart.time_unit),
-                interval=_units(chart.interval, chart.time_unit),
-            )
-        )
     for variable in chart.variables:
         lines.extend(_chart_variable_lines(variable, chart.time_unit))
     if chart.attribution is not None:
@@ -506,6 +524,73 @@ def _chart_text(chart: StationChart) -> str:
             )
         )
     return _with_stale(chart, lines)
+
+
+def _comparison_text(comparison: StationComparison) -> str:
+    """Write the range, then each station with its label and facts and its chart."""
+    lines: list[str] = [
+        message(
+            "cli.station_compare_title",
+            variable=comparison.variable,
+            dataset=comparison.dataset,
+            year_type=label("series.year_type", comparison.year_type),
+        ),
+        _range_line(
+            comparison.first,
+            comparison.last,
+            comparison.units,
+            comparison.interval,
+            comparison.time_unit,
+        ),
+    ]
+    attributions: dict[tuple[str | None, str], None] = {}
+    for item in comparison.stations:
+        lines.append(_station_line(item))
+        if item.coverage is None or item.chart is None:
+            lines.append(
+                message(
+                    "cli.station_compare_missing",
+                    variable=comparison.variable,
+                    dataset=comparison.dataset,
+                )
+            )
+            continue
+        lines.append(
+            message(
+                "cli.station_variable",
+                key=item.coverage.key,
+                unit=item.coverage.unit,
+                label=item.coverage.label,
+                complete=item.coverage.complete_years,
+            )
+        )
+        lines.extend(_chart_variable_lines(item.chart, comparison.time_unit))
+        if item.attribution is not None:
+            attributions[(item.license, item.attribution)] = None
+    lines.extend(
+        message(
+            "cli.station_attribution",
+            license=_value(license_),
+            attribution=attribution,
+        )
+        for license_, attribution in attributions
+    )
+    return _with_stale(comparison, lines)
+
+
+def _range_line(
+    start: date | None, end: date | None, units: int, interval: int, time_unit: str
+) -> str:
+    """Write the range of a chart or a comparison and how it is drawn."""
+    if start is None or end is None:
+        return message("cli.station_chart_empty")
+    return message(
+        "cli.station_chart_values" if interval == 1 else "cli.station_chart_simplified",
+        start=start,
+        end=end,
+        units=_units(units, time_unit),
+        interval=_units(interval, time_unit),
+    )
 
 
 def _chart_variable_lines(variable: ChartVariable, time_unit: str) -> list[str]:

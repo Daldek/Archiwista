@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- `GET /api/v1/stations/compare` and `archiwista stations compare --station … --station …
+  --dataset … --variable …`: one variable of 2 to 5 stations (each
+  `<store>/<provider>/<code>`) of one dataset over one range, for display only. The
+  range is `from`–`to`, by default every known day of the variable at those stations,
+  and every station gets the same interval: its chart is the one `GET
+  /stations/{code}/series` gives over that range, its `coverage` the variable's label
+  and facts as on its card (in `year_type`), with its location, series version and
+  IMGW formula. A station without the series or the variable keeps its place with
+  `null` ("brak danych"); no station with the variable is `400 unknown_variable`.
+  (ADR-045 decision 12, plan I8.6)
+
 - The chart of the station card, its default tab "Wykres": one or two variables of a
   station's series ("Druga zmienna" on the right axis for another unit), over the
   whole period their labels count (the known days) simplified to the least, mean and
