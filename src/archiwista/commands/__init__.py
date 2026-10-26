@@ -1,10 +1,10 @@
 """Commands of ``archiwista`` added per function (plan v0.2, contract "CLI").
 
 Each module here (``previews``, and from later steps ``owndata``,
-``compare``, ``layers``, ``producer_commands``, ``availability``, ``jobs``
-and ``projects``) has ``COMMANDS`` (the names it adds), ``add_commands``
-(adds them to the parser) and ``main`` (runs one of them), and is registered
-with one line in ``archiwista.cli.COMMAND_MODULES``. A
+``compare``, ``layers``, ``producer_commands``, ``availability``, ``jobs``,
+``projects`` and ``project_jobs``) has ``COMMANDS`` (the names it adds),
+``add_commands`` (adds them to the parser) and ``main`` (runs one of them),
+and is registered with one line in ``archiwista.cli.COMMAND_MODULES``. A
 command calls the functions behind the HTTP routes, without HTTP, as the
 owner of the installation (``LOCAL_OWNER``) and through the same
 ``Authorizer``. With ``--json`` it prints exactly the response model of the

@@ -40,7 +40,7 @@ The first start after an update from 0.1 rebuilds the local index (`SCHEMA_VERSI
 
 Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing) is planned for v0.4 (A-ADR-013); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
 
-Archiwista itself writes nothing in a Kartograf store or a project manifest: from v0.3 a download and a change of a project (`project-init`, `project-add`, `project-remove`) go through the producer's API, which writes them, on the command of a person allowed to (`store.write`, `project.write`). The local index and the preview cache live in the user's account; the one other write, on the command of a person with `project.write`, is a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
+Archiwista itself writes nothing in a Kartograf store or a project manifest: from v0.3 a download and a change of a project (`project-init`, `project-add`, `project-remove`, `project-download`, `project-repin`) go through the producer's API, which writes them, on the command of a person allowed to (`store.write`, `project.write`). The local index and the preview cache live in the user's account; the one other write, on the command of a person with `project.write`, is a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
 
 | What | Where | Rebuildable |
 |---|---|---|
@@ -64,6 +64,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Search the catalog | `archiwista search [QUERY] [options]` | `GET /slots` |
 | Card of a file and of one version | `archiwista entry STORE SLOT`, `archiwista version STORE VERSION` | `GET /stores/{store}/slots/{slot}`, `GET /stores/{store}/versions/{version}` |
 | Projects: the list, a card, the producer's status; a new project, a task added or removed (through the producer) | `archiwista projects`, `project PROJECT`, `project-status PROJECT`, `project-init PRODUCER DIR --store STORE`, `project-add PROJECT NAME COMMAND [--options JSON]`, `project-remove PROJECT NAME` | `GET /projects`, `GET /projects/{project}`, `…/status`, `POST /projects`, `POST /projects/{project}/tasks`, `DELETE …/tasks/{name}` |
+| A project's jobs (through the producer): download and pin its tasks, repin one task, check the pins against the source, verify them in the store | `archiwista project-download PROJECT [TASK ...]`, `project-repin PROJECT TASK`, `project-check PROJECT [TASK ...]`, `project-verify PROJECT [TASK ...]` | `POST /projects/{project}/jobs` |
 | Preview of a file or a version, optionally as PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET` and `POST …/preview`, `GET …/preview.png` |
 | Compare the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
 | Years and campaigns of a local layer | `archiwista layers --store ID --product NAME [--area-id ID]` | `GET /local-layers` |

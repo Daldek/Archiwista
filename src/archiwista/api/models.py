@@ -20,9 +20,9 @@ import math
 import re
 from collections.abc import Collection, Iterable, Sequence
 from datetime import date, datetime
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from archiwista.areas import area_crs
 from archiwista.auth import PrincipalKind
@@ -86,6 +86,7 @@ from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
+from archiwista.services.project_jobs import ProjectJobKind
 from archiwista.sources import (
     DefaultRoot,
     DefaultRootSource,
@@ -1840,10 +1841,16 @@ class JobFailure(BaseModel):
             " (`forbidden`); `kartograf_error` (`<package>_error`, a"
             " producer's own error, `data_error` or the producer's code;"
             " `details.kartograf`); `no_commands` (`unsupported`: the producer"
-            " offers no actions); `interrupted` (`cancelled`: the server"
-            " stopped, safe to retry); `worker_crashed` and `protocol_error`"
-            " (`internal_error`). None for `not_found`, `cancelled` and"
-            " `internal_error`."
+            " offers no actions); `run_failed` (no unit of a run, or no task of a"
+            " project's download, succeeded: the code of the first failure,"
+            " `details.task` the first failed task of a project); `check_failed`"
+            " (`source_unavailable`: the source could be asked about nothing);"
+            " `project_locked` (`conflict`: the lock of a project's manifest"
+            " stays, `details.lock`) and `unknown_store` (`conflict`: the"
+            " project's manifest names no configured store); `interrupted`"
+            " (`cancelled`: the server stopped, safe to retry); `worker_crashed`"
+            " and `protocol_error` (`internal_error`). None for `not_found`,"
+            " `cancelled` and `internal_error`."
         )
     )
 
@@ -1868,9 +1875,14 @@ class JobDetail(BaseModel):
             " projects' own data folders), `snapshot` (a snapshot of an"
             " own-data file), `availability` (what the source has for an"
             " area and a product, over the network), `check` (what a run of"
-            " a producer's command would do in the store, over the network) or"
+            " a producer's command would do in the store, over the network),"
             " `download` (a run of a producer's command in the store, over the"
-            " network)."
+            " network), `project_download` (a project's tasks downloaded, pinned"
+            " and restored by its producer, over the network), `project_repin`"
+            " (one task of a project pinned anew to the source's newer"
+            " versions, over the network), `project_check` (a project's pins"
+            " compared with the source, over the network) or `project_verify`"
+            " (a project's pinned files checked in its store)."
         )
     )
     state: JobState = Field(
@@ -1901,7 +1913,9 @@ class JobDetail(BaseModel):
     )
     store: str | None = Field(
         description=(
-            "Store id; `null` for `preview`, `own_scan`, `snapshot` and `availability`."
+            "Store id; `null` for `preview`, `own_scan`, `snapshot`,"
+            " `availability` and the `project_*` kinds (the project's manifest"
+            " names its store)."
         )
     )
     params: dict[str, Any] = Field(
@@ -1912,7 +1926,8 @@ class JobDetail(BaseModel):
             " and `note`; `availability`: `area_id`, `producer`, `product` and"
             " `force`; `check`: `producer`, `command` and `options`; `download`:"
             " those and `plan_job` (the `check` job whose plan it runs, or"
-            " `null`)."
+            " `null`); the `project_*` kinds: `project` (its key) and `tasks`"
+            " (task names, `null` for every task; one for `project_repin`)."
         )
     )
     created_at: datetime
@@ -1925,8 +1940,9 @@ class JobDetail(BaseModel):
             " of `own_scan`, phases of `snapshot`); a scan adds `segment` and"
             " `entries`, `footprints` adds `written` and `failed`, `preview`"
             " adds `built`, `cached` and `failed`, `own_scan` adds `files` and"
-            " `read`, `snapshot` adds `phase`; a `download` counts units and"
-            " adds the producer's `unit` (or `null`), `status` and `message`."
+            " `read`, `snapshot` adds `phase`; a `download`, `project_download`"
+            " and `project_repin` count units and add the producer's `unit` (or"
+            " `null`), `status` and `message`."
         )
     )
     result: dict[str, Any] | None = Field(
@@ -1956,7 +1972,20 @@ class JobDetail(BaseModel):
             " `unit`, `status`, `size_bytes`, `sha256`, `label`), `items` (`id`,"
             " `status`, `code`, `reason`, `message` of each unit; a position the"
             " source changed since the plan: `conflict`, `stale_plan`), `failed`,"
-            " `rescanned` (units read again into the index) and `seconds`."
+            " `rescanned` (units read again into the index) and `seconds`;"
+            " `project_download` and `project_repin`: `producer`, `project`,"
+            " `store`, `root`, `upgrade` (true for a repin), `ok`, `counts`"
+            " (tasks `pinned`, `unchanged`, `restored`, `updated`, `failed`),"
+            " `tasks` (`name`, `outcome`, the `pinned` and `unpinned` versions"
+            " with `path` and `version_path` below the root, `unit`, `label`,"
+            " `sha256`, `size_bytes`; `errors`, `code`, `reason` of a failed"
+            " task), `failed`, `rescanned` and `seconds`; `project_check` and"
+            " `project_verify`: `producer`, `project`, `root`, `ok`, `counts`"
+            " (files of each state), `files` (`task`, `unit`, `path`, `status`:"
+            " `ok`, `missing` or `corrupt` in the store; `current`, `newer`,"
+            " `added`, `removed`, `missing`, `unverifiable`, `check_failed` or"
+            " `conflict` at the source; `pinned_label`, `available_label`,"
+            " `detail`), `not_downloaded` (tasks without pins) and `seconds`."
         )
     )
     error: JobFailure | None = Field(
@@ -2726,6 +2755,46 @@ class TaskRequest(BaseModel):
             " producer is refused (`other_producer`)."
         ),
     )
+
+
+class ProjectJobRequest(BaseModel):
+    """A job of a project's tasks (`POST /projects/{project}/jobs`)."""
+
+    model_config = _examples(
+        {"kind": "download"},
+        {"kind": "repin", "tasks": [_TASK_EXAMPLE["task"]]},
+        closed=True,
+    )
+
+    kind: ProjectJobKind = Field(
+        description=(
+            "`download`: download and pin the tasks not downloaded yet and restore"
+            " missing pinned versions with the same SHA-256 (a task whose pins the"
+            " store holds is left as it is); `repin`: pin one task anew to the"
+            " source's newer versions. Both run over the network and write the"
+            " store and the manifest, so they need the project's owner or an"
+            " administrator and the role `store_writer` or the setting"
+            " `store_write_for_all`. `check`: compare the pins with the source, over"
+            " the network and without effects; `verify`: check the pinned files in"
+            " the store (SHA-256, size, sidecar), without the network. Both need"
+            " only to see the project."
+        )
+    )
+    tasks: list[Annotated[str, Field(min_length=1)]] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The tasks by name (`task` of /projects/{project}); left out or `null`:"
+            " every task of the project. A `repin` names exactly one; a name given"
+            " twice counts once."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _a_repin_names_one_task(self) -> Self:
+        if self.kind == "repin" and len(set(self.tasks or ())) != 1:
+            raise ValueError("a repin names exactly one task")
+        return self
 
 
 # Settings ------------------------------------------------------------------

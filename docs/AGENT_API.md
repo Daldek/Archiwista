@@ -25,6 +25,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | a new project, a task added or removed, the producer's status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}`, `GET /projects/{project}/status` |
+| a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
 | session token for an agent | `archiwista token --json` | `POST /session/tokens` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
 | store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
@@ -68,8 +69,9 @@ services as the HTTP routes, as the owner of the local installation
 Without `--json` the commands print a short Polish text for people; an agent
 should always pass `--json`.
 
-The CLI downloads data and writes a store only through a `download` job
-(`jobs start download`, or `jobs retry` of a download). The commands `users`,
+The CLI downloads data and writes a store only through a job: a `download` (`jobs
+start download`), a project's download or repin (`project-download`,
+`project-repin`), or `jobs retry` of one of them. The commands `users`,
 `groups`, `share` and `state` (permission administration) are described by
 `archiwista --help`.
 
@@ -269,6 +271,15 @@ cursor is safe in a URL).
   `details.option`), and an option that is a file path is `403`. Removing a
   task keeps its files in the store. A producer that changes no projects
   answers `422 unsupported` (`no_project_actions`).
+- `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT
+  ZADANIE`, `project-check PROJEKT [ZADANIE ...]` and `project-verify PROJEKT
+  [ZADANIE ...]` / `POST /projects/{project}/jobs` (`{"kind": "download"}`,
+  `"repin"`, `"check"` or `"verify"`, optionally `"tasks": ["…"]`: every task
+  when left out, exactly one for a repin; v0.3, ADR-040) start a job of the
+  project's tasks (section 9). A download and a repin write the store and the
+  manifest through the producer, so they need the project's owner or an
+  administrator and `store_writer` (or the setting `store_write_for_all`); a
+  check and a verification need only to see the project.
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
@@ -563,6 +574,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link; an unknown slot → `404` |
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
+| `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) | a job of a project's tasks (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
 | `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "command": "…", "options": {…}}`; for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer, command and options) | a job of a command of the producer's catalog that works on a store and has a check (v0.3): `check` plans a run in the store's directory of the producer without its effects, `download` runs it there (with `plan_job` only that plan's positions to download; one whose source changed since is a failed item, `stale_plan`), both over the network; refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), a `plan_job` the session does not see or that kept no plan `404`, one of another store or call `409` (`plan_mismatch`, `details.job`), `plan_job` with `check` `400`, a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them |
@@ -573,7 +585,8 @@ answer is `409 conflict` with `details.job` (`id`, `kind`, `state`): follow that
 job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
-`link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`), `state` (`queued`, `running`,
+`link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`, `download`,
+`project_download`, `project_repin`, `project_check`, `project_verify`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result` and `error`. The list: `GET /jobs?kind=&store=&state=&project=`
@@ -607,8 +620,9 @@ A job is controlled by (v0.3; ADR-038):
   as it ended). A download fetches only what the store still lacks. One that
   succeeded is `409`, reason `job_succeeded`; one that waits or runs
   `job_active`; a download needs `store_writer` again (`403`), a snapshot the
-  project's owner; the new job is refused as any job of its kind (`409` for a
-  store whose index another job writes, offline mode).
+  project's owner, a project's download or repin both; the new job is refused as
+  any job of its kind (`409` for a store whose index another job writes, offline
+  mode).
 - `GET /jobs/{id}/log`: the end of the job's log, its worker's standard error in
   English (`JobLog`: `job`, `size_bytes` of the whole log, `truncated` when only
   its last MiB is given, `text`). A job that never started a worker, or whose
@@ -666,6 +680,9 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `conflict` | `offline_mode` | the job needs the network and offline mode is on |
 | `conflict` | `snapshot_blocked` | the plan refuses the snapshot: `details.blocked_by` is `folder_invalid`, `read_only_folder`, `insufficient_space` or `file_missing` |
 | `conflict` | `inconsistent_copy`, `target_exists` | a snapshot: the file kept changing while it was copied, or another process published the label first; nothing was published, try again |
+| `conflict` | `project_locked` | a job of a project: the lock of its manifest stays (`details.lock`), left by a change that was interrupted while it wrote; remove the directory when no program is changing the project and try again (Archiwista never removes it) |
+| `conflict` | `unknown_store` | a project's download or repin: its manifest names no configured store; nothing was written |
+| the code of the first failure, e.g. `data_error` | `run_failed` | no unit of a run, or no task of a project's download, succeeded; `details.task` names a project's first failed task |
 | `data_error` | `checksum_mismatch`, `integrity_failed` | a snapshot copy differs from its source or fails the SQLite integrity check; nothing was published |
 | `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
 | `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
@@ -678,9 +695,10 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `internal_error` | none | a defect of Archiwista: details are in the job log |
 
 Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
-reason). The CLI's job commands are `archiwista jobs start` and `jobs retry` (a
-job in the foreground; they print the job's `JobDetail` as it ended and exit
-`0`, `10` for `partial`, `11` or `130`), and `jobs list`, `jobs show`, `jobs
+reason). The CLI's job commands are `archiwista jobs start`, `jobs retry` and the
+project commands `project-download`, `project-repin`, `project-check` and
+`project-verify` (a job in the foreground; they print the job's `JobDetail` as it
+ended and exit `0`, `10` for `partial`, `11` or `130`), and `jobs list`, `jobs show`, `jobs
 cancel`, `jobs plan` and `jobs log`, which exit `0`; `jobs cancel` also stops a
 job a running server supervises. `archiwista reindex [--store MAGAZYN]` runs a
 full scan in the foreground (for the owner at a terminal, not for an agent next

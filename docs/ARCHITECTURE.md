@@ -90,6 +90,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
 | `commands/jobs.py` | v0.3 CLI of background jobs over `services/actions.py` and `services/jobs.py` (ADR-036 to ADR-038): `jobs start` (`check` or `download`, `--plan` the plan of a `check` job; the job in the foreground, printed as it ended; as the local owner, with the `Authorizer` over the state database), `jobs retry` (a job that did not succeed, again in the foreground), `jobs list`, `jobs show`, `jobs cancel` (also a job a server supervises), `jobs plan` (the plan a `check` job kept) and `jobs log` (the end of a job's log) | `add_commands`, `main` |
 | `commands/projects.py` | v0.3 CLI of project changes over `services/projects.py` (ADR-039): `project-init` (a new project of a producer in a directory, bound to a configured store), `project-add` and `project-remove` (a task of a project), each printing the project's card as `GET /projects/{project}`, and `project-status` (the producer's status, as `GET /projects/{project}/status`); as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
+| `commands/project_jobs.py` | v0.3 CLI of a project's jobs over `services/project_jobs.py` (ADR-040): `project-download`, `project-repin`, `project-check` and `project-verify` start the job as `POST /projects/{project}/jobs` and follow it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
 
 **HTTP and security**
 
@@ -107,7 +108,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/stores.py` | `/stores`, `/stores/{store}` | `read_stores`, `read_store` |
 | `api/slots.py` | catalog and cards: `/slots`, `/products`, `/stores/{store}/slots/{slot}`, `/stores/{store}/versions/{version}` (with `/sidecar`), `/requests/{parent_request}` | `search_slots`, `read_products`, `slot_card`, `version_card`, `copy_path`, `geo_adapter`, `checked_store` |
 | `api/map.py` | `/map/footprints`, `/map/sheets` | `map_view`, `sheet_list` |
-| `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status`; `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}` (ADR-039: the producer writes the manifest, `project.write`, the answer is the card as the index holds it at once) | `read_projects`, `project_card`, `check_project`, `create_project`, `add_project_task`, `remove_project_task`, `ProjectRequest`, `TaskRequest` |
+| `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status`; `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}` (ADR-039: the producer writes the manifest, `project.write`, the answer is the card as the index holds it at once); `POST /projects/{project}/jobs` in `job_router`, served with the supervisor (ADR-040: a job of the project's tasks, `202`) | `read_projects`, `project_card`, `check_project`, `create_project`, `add_project_task`, `remove_project_task`, `start_project_job`, `ProjectRequest`, `TaskRequest`, `ProjectJobRequest` |
 | `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
 | `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
@@ -133,6 +134,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/compare.py` | comparison of metadata and schema, not of object data | `compare` |
 | `services/commands.py` | producers' commands for HTTP and the CLI (ADR-034): the catalogs of the producers that offer them, `parse`, `validate` (a command of the catalog, the configured store's root, no file path of a request) and `format` | `list_commands`, `parse_command`, `validate_command`, `checked_call`, `command_info`, `format_command`, `actions`, `store_root` |
 | `services/actions.py` | the jobs of producers' commands for HTTP and the CLI (ADR-036, ADR-037): `start` refuses before a job exists what the worker would refuse (a download without `store.write`, asked of the `Authorizer`; a store that is not configured, a command outside the catalog, on no store or without a check, a file path, the producer's refusal of the options, a `plan_job` the principal does not see, without a kept plan or of another store or call, offline mode) and submits the job with the options as the producer read them; `kept_plan` returns the plan a `check` job kept, for a job the principal sees | `start`, `kept_plan`, `ActionKind`, `ACTION_KINDS` |
+| `services/project_jobs.py` | the jobs of a project for HTTP and the CLI (ADR-040): `start` refuses before a job exists what the worker would refuse (a project the principal does not see; a download or a repin without `project.write` of the project or `store.write`, asked of the `Authorizer`; a producer without project jobs; a project directory that left the project directories; a manifest naming no configured store) and submits `project_download`, `project_repin`, `project_check` or `project_verify` with `project` and `tasks`; `require` asks the same of a retry | `start`, `require`, `ProjectJobKind`, `PROJECT_JOB_KINDS`, `JOB_KIND` |
 | `services/availability.py` | the availability at the source for HTTP and the CLI (ADR-035): the area, the products the producer checks, a kept report younger than `REPORT_TTL` (seven days, Kartograf's metadata cache TTL) unless `force`, else the `availability` job; the kept report without the network. Without I/O, a report's rows (SPEC 6.3, 6.4): one per country and year, its variants (the formats of one set grouped, ADR-017; the default format the first of `DEFAULT_FORMATS`, ASC then TIFF, else none and an explicit choice; the size of the default format) ranked complete, full share (equal to a millionth of a percent), fewer campaigns, finer resolution, report order; a year without a variant of the `VariantFilter` is `no_data`; the label as structure (`CoverageLabel`: `full`, `full_campaigns`, `partial`, `no_data`; the campaigns of the sheet records, the percent rounded down and at most 99 when partial, `below_one`). `summary` adds each variant's `StoreBadge` from `IndexQueries.held_units` (present versions of the combination's dataset, sheets, year and campaigns; height systems are not told apart until Kartograf names a combination's segment); `known_store` refuses a store that is not configured (`404`). `api/models_availability.py` renders the labels and badges in the request's language (`coverage_text`, `plural_form` of `messages`) | `check`, `stored`, `rows`, `summary`, `variants`, `coverage_label`, `known_store`, `AreaAvailability`, `AvailabilityRow`, `AvailabilityVariant`, `CoverageLabel`, `StoreBadge`, `VariantFilter`, `NO_DATA`, `DEFAULT_FORMATS`, `REPORT_TTL` |
 | `auth/principal.py` | who acts | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `ACTIONS`, `principal_for`, `session_principal` |
@@ -824,8 +826,10 @@ in `sessionStorage`. Sessions live in server memory: they end after 24 h without
 7. **Retry and log** (`services/jobs.py`, ADR-038) — `retry` submits the kind,
    store and parameters of a job that did not succeed again as a new job of
    the principal (a download asks `store.write` again, a snapshot
-   `project.write`); `log` reads the end of `<jobs>/<id>.log` (`LogTail`, the
-   last MiB) for a principal who sees the whole job (`sees_whole`).
+   `project.write`, a project's download or repin both through
+   `services/project_jobs.require`, ADR-040); `log` reads the end of
+   `<jobs>/<id>.log` (`LogTail`, the last MiB) for a principal who sees the
+   whole job (`sees_whole`).
 
 **SSE through `fetch`.** `GET /api/v1/jobs/{job}/events` (`job_event_stream`)
 sends messages `id: <seq>`, `event: progress|notice|state`, `data:`
@@ -990,9 +994,9 @@ identities (`tests/unit/test_authorize.py`,
   (`PermissionDeniedError` → `403 permission_denied`) and
   `visible_projects(principal)`. Actions (`ACTIONS`): `project.view`,
   `project.share`, `project.write` (since v0.2: snapshots of project files;
-  since v0.3: creating a project and adding or removing its tasks, ADR-039),
-  `users.manage`, `groups.manage`, `settings.write`, `store.write`,
-  `job.cancel`.
+  since v0.3: creating a project and adding or removing its tasks, ADR-039,
+  and a project's download and repin, ADR-040), `users.manage`,
+  `groups.manage`, `settings.write`, `store.write`, `job.cancel`.
   `admin` manages accounts, groups and settings, sees every project,
   manages access to it and changes it; the owner does so for their own (a project without
   an access entry is changed only by the administrator);
@@ -1001,7 +1005,11 @@ identities (`tests/unit/test_authorize.py`,
   `default_project_visibility` (`public` or `private` = administrators
   only). `store.write` = the role `store_writer` or the setting
   `store_write_for_all`; a `download` job needs it (`POST /jobs`, `archiwista jobs
-  start download`, and its retry, v0.3). `job.cancel` (the resource is the job's
+  start download`, and its retry, v0.3), and so do a project's download and
+  repin besides `project.write` (`POST /projects/{project}/jobs`, `archiwista
+  project-download`, `project-repin`, and their retry, ADR-040); a project's
+  check and verification need only that the principal sees the project.
+  `job.cancel` (the resource is the job's
   `actor`) is for whoever started the job and administrators (`POST
   /jobs/{job}/cancel`, `archiwista jobs cancel`, v0.3, ADR-038).
 - **Visibility — a single checkpoint.** `visible_projects` builds
@@ -1049,7 +1057,7 @@ apart from it, it reads only its own static files from the server.
 | `api/stores.py` (`stores`) | `GET /stores`, `GET /stores/{store}` |
 | `api/slots.py` (`catalog`) | `GET /slots` (also the `project` filter), `/products`, slot and version cards, `…/sidecar`, `/requests/{parent_request}` |
 | `api/map.py` (`map`) | `GET /map/footprints`, `GET /map/sheets` |
-| `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status`, `POST /projects` (`201`, `Location`), `POST /projects/{project}/tasks` (`201`), `DELETE /projects/{project}/tasks/{name}` (`project.write`; the answer is the project's card) |
+| `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status`, `POST /projects` (`201`, `Location`), `POST /projects/{project}/tasks` (`201`), `DELETE /projects/{project}/tasks/{name}` (`project.write`; the answer is the project's card); with `jobs`: `POST /projects/{project}/jobs` (`download`, `repin`, `check`, `verify`; `202`; a download and a repin need `project.write` and `store.write`) |
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
 | `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
@@ -1093,6 +1101,7 @@ with the unchanged message (`<producer>_error`).
 | `availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `commands/availability.py` | the kept report and a check at the source through `services/availability.py`, as `/availability`; `check` runs the `availability` job in the foreground and prints the report it kept |
 | `jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan ZADANIE]`, `jobs retry ZADANIE`, `jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs plan ZADANIE`, `jobs log ZADANIE` | `commands/jobs.py` | a job of a producer's command through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plan of a `check` job), and the retry of a job, as `POST /jobs/{job}/retry`, run in the foreground and printed as they ended (exit 0, 10 `partial`, 11, 130); the list, a job, its cancel and the end of its log as `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel` and `GET /jobs/{job}/log`; the plan a `check` job kept, as `GET /jobs/{job}/plan` |
 | `project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA`, `project-status PROJEKT` | `commands/projects.py` | a new project and a task added or removed through `services/projects.py`, as `POST /projects`, `POST /projects/{project}/tasks` and `DELETE /projects/{project}/tasks/{name}`, each printing the project's card; the producer's status as `GET /projects/{project}/status`; a relative `KATALOG` is taken from the current directory; no network |
+| `project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]` | `commands/project_jobs.py` | a job of a project's tasks through `services/project_jobs.py`, as `POST /projects/{project}/jobs`, run in the foreground and printed as it ended (exit 0, 10 `partial`, 11, 130); no task named: every task |
 
 ---
 

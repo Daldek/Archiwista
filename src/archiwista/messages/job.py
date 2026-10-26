@@ -345,6 +345,66 @@ MESSAGES = {
             " najbliższy skan katalogów projektów."
         ),
     ),
+    "task_pinned": Text(
+        "pinned",
+        "przypięte",
+    ),
+    "task_unchanged": Text(
+        "unchanged",
+        "bez zmian",
+    ),
+    "task_restored": Text(
+        "restored",
+        "przywrócone",
+    ),
+    "task_updated": Text(
+        "pinned anew",
+        "przypięte na nowo",
+    ),
+    "task_failed": Text(
+        "failed",
+        "z błędem",
+    ),
+    "project_file_ok": Text(
+        "intact",
+        "nienaruszone",
+    ),
+    "project_file_missing": Text(
+        "missing from the store",
+        "brak w magazynie",
+    ),
+    "project_file_corrupt": Text(
+        "corrupt",
+        "uszkodzone",
+    ),
+    "project_file_current": Text(
+        "current",
+        "aktualne",
+    ),
+    "project_file_newer": Text(
+        "newer at the source",
+        "nowsze u źródła",
+    ),
+    "project_file_added": Text(
+        "new at the source",
+        "nowe u źródła",
+    ),
+    "project_file_removed": Text(
+        "gone from the source",
+        "usunięte u źródła",
+    ),
+    "project_file_unverifiable": Text(
+        "cannot be verified",
+        "nie do sprawdzenia",
+    ),
+    "project_file_check_failed": Text(
+        "not checked",
+        "niesprawdzone",
+    ),
+    "project_file_conflict": Text(
+        "write refused",
+        "zapis odmówiony",
+    ),
     "cancel_finished": Text(
         'Job "{job}" has already ended ({state}); there is nothing to cancel.',
         "Zadanie „{job}” już się zakończyło ({state}); nie ma czego anulować.",

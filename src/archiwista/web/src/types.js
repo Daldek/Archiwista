@@ -886,32 +886,36 @@
 
 /**
  * A background job: `202` of POST …/scan, …/footprints, …/link-check, …/preview,
- * `/projects/{project}/scan` and …/snapshots, `GET /jobs/{job}` and the items of
- * `GET /jobs`.
+ * `/projects/{project}/scan`, …/snapshots and `/projects/{project}/jobs`, `GET
+ * /jobs/{job}` and the items of `GET /jobs`.
  *
  * @typedef {object} JobDetail
  * @property {string} id
- * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"|"availability"|"check"|"download"} kind
+ * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"
+ *   |"availability"|"check"|"download"|"project_download"|"project_repin"
+ *   |"project_check"|"project_verify"} kind
  * @property {"queued"|"running"|"succeeded"|"partial"|"failed"|"interrupted"|"cancelled"} state -
  *   `partial`: part of its units failed, `result` names them.
  * @property {string} actor - Who started it.
  * @property {"local_owner"|"user"|"agent"|"scheduler"} actor_kind - How: the owner, an
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
- * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot` and
- *   `availability`.
+ * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot`,
+ *   `availability` and the `project_*` kinds.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
  *   and `force` of an availability check, `producer`, `command` and `options` of a
- *   plan (`check`), those and `plan_job` of a `download`.
+ *   plan (`check`), those and `plan_job` of a `download`, `project` and `tasks`
+ *   (null: every task) of the `project_*` kinds.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
  * @property {Object<string, *>|null} progress - Data of the last progress event:
  *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
- *   (`copy`, `checksums`, `document`, `rename`, `published`), a `download` the
- *   producer's `unit` (or null), `status` and `message`.
+ *   (`copy`, `checksums`, `document`, `rename`, `published`), a `download`, a
+ *   `project_download` and a `project_repin` the producer's `unit` (or null),
+ *   `status` and `message`.
  * @property {Object<string, *>|null} result - Summary of a job that succeeded or ended
  *   `partial`; of an `own_scan` the counts `projects`, `files`, `new`, `changed`,
  *   `missing`, `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot
@@ -924,7 +928,14 @@
  *   `status` (`ok`, `partial`), `counts` of the files (`new`, `unchanged`,
  *   `relabeled`), `files` (`path`, `version_path`, `unit`, `status`, `size_bytes`,
  *   `sha256`, `label`), `items` (`id`, `status`, `code`, `reason`, `message`),
- *   `failed`, `rescanned`, `seconds`.
+ *   `failed`, `rescanned`, `seconds`; of a `project_download` or `project_repin`
+ *   `producer`, `project`, `store`, `root`, `upgrade`, `ok`, `counts` of the tasks
+ *   (`pinned`, `unchanged`, `restored`, `updated`, `failed`), `tasks` (`name`,
+ *   `outcome`, `pinned`, `unpinned`, `errors`, `code`, `reason`), `failed`,
+ *   `rescanned`, `seconds`; of a `project_check` or `project_verify` `producer`,
+ *   `project`, `root`, `ok`, `counts` of the files, `files` (`task`, `unit`,
+ *   `path`, `status`, `pinned_label`, `available_label`, `detail`),
+ *   `not_downloaded`, `seconds`.
  * @property {JobFailure|null} error
  */
 

@@ -164,9 +164,10 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             " `details.job` names it), `offline_mode` (the job needs the"
             " network), `own_file_changed` (an own-data file changed since its"
             " scan: refresh the project's own data), `snapshot_blocked`"
-            " (`details.blocked_by`) or `project_locked` (the lock of a"
+            " (`details.blocked_by`), `project_locked` (the lock of a"
             " project's manifest stays, `details.lock`: remove it when no program"
-            " is changing the project).",
+            " is changing the project) or `unknown_store` (a project's manifest"
+            " names no configured store).",
         ),
         500: (
             "data_error",

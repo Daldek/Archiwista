@@ -10,10 +10,17 @@ store_unavailable`` when there is none. ``POST /projects`` creates a project
 through its producer, ``POST /projects/{project}/tasks`` adds a task and
 ``DELETE /projects/{project}/tasks/{name}`` removes one (ADR-039): each needs
 ``project.write`` (the owner or an administrator) and answers the project's
-card as the index holds it right after the change. They translate only:
-``archiwista.services.projects`` does the work, and ``archiwista
-project-init``, ``project-add`` and ``project-remove`` call the same
-functions. Nothing here uses the network or writes a store.
+card as the index holds it right after the change. ``POST
+/projects/{project}/jobs`` starts a job of the project's tasks (ADR-040):
+``download`` and ``repin`` need ``project.write`` and ``store.write``,
+``check`` and ``verify`` only to see the project; it answers ``202`` with the
+job and is in ``job_router``, served with the job supervisor. They translate
+only: ``archiwista.services.projects`` and
+``archiwista.services.project_jobs`` do the work, and ``archiwista
+project-init``, ``project-add``, ``project-remove``, ``project-download``,
+``project-repin``, ``project-check`` and ``project-verify`` call the same
+functions. Nothing here uses the network or writes a store: a job's worker
+does.
 """
 
 from datetime import UTC, datetime
@@ -32,9 +39,12 @@ from archiwista.api.dependencies import (
     visible_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
+from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import (
+    JobDetail,
     ProjectCard,
     ProjectItem,
+    ProjectJobRequest,
     ProjectList,
     ProjectRequest,
     ProjectStatus,
@@ -48,13 +58,15 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError, SourceUnavailableError
 from archiwista.index import IndexQueries
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.security import current_principal
-from archiwista.services import project_detail, project_status
+from archiwista.services import project_detail, project_jobs, project_status
 from archiwista.services import projects as project_service
 from archiwista.sources.registry import PluginRegistry
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+job_router = APIRouter(prefix="/projects", tags=["projects"])
 
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Authorizer = Annotated[Authorizer, Depends(authorizer)]
@@ -63,6 +75,7 @@ _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
 _Index = Annotated[FilePath, Depends(index_path)]
+_Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Project = Annotated[
     str, Path(description="Project id (`project` of /projects).", examples=["raba"])
 ]
@@ -406,3 +419,61 @@ def remove_project_task(
         visible=visible,
     )
     return project_card(queries, key, visible=visible)
+
+
+@job_router.post(
+    "/{project}/jobs",
+    response_model=JobDetail,
+    status_code=202,
+    responses={
+        **problem_responses(400, 403, 404, 409, 503),
+        **_unsupported(commands=False),
+    },
+)
+def start_project_job(
+    project: _Project,
+    body: ProjectJobRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    queries: _Queries,
+    jobs: _Jobs,
+    response: Response,
+) -> JobDetail:
+    """Start a job of a project's tasks; answer `202` with the job.
+
+    `download` downloads and pins the tasks not downloaded yet and restores
+    missing pinned versions into the configured store the manifest names;
+    `repin` pins one task anew to the source's newer versions; `check`
+    compares the pins with the source without effects; `verify` checks the
+    pinned files in the store without the network. `tasks` names the tasks,
+    every task when left out. The answer has `Location: /api/v1/jobs/{job}`;
+    follow the job with `GET /jobs/{job}/events`. A project the session does
+    not see is `404`; a download and a repin need the project's owner or an
+    administrator and the role `store_writer` or the setting
+    `store_write_for_all` (`403 permission_denied`). Refused before a job
+    exists: a repin without exactly one task (`400`), a producer that runs
+    no project jobs (`422`, `no_project_actions`), a project directory that
+    left the project directories (`403`, `path_outside_root`), a download or
+    a repin of a project whose manifest names no configured store (`409`,
+    `unknown_store`), a second job of the project (`409 conflict`, that job
+    in `details.job`), offline mode for every kind but `verify` (`409`,
+    `offline_mode`) and a producer whose plugin is missing (`503`). A lock of
+    the manifest that stays fails the job (`project_locked`, `details.lock`).
+    """
+    job = project_jobs.start(
+        registry,
+        settings.get(),
+        jobs,
+        queries,
+        decisions,
+        project,
+        kind=body.kind,
+        tasks=body.tasks,
+        actor=principal,
+        visible=visible,
+    )
+    response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
+    return JobDetail.of(job)

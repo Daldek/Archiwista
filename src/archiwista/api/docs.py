@@ -85,7 +85,7 @@ _TAGS = [
     {"name": "jobs", "description": "Background jobs and their events (SSE)."},
     {
         "name": "projects",
-        "description": "Projects, their pins and status; new projects and tasks.",
+        "description": "Projects, their pins and status; new projects, tasks, jobs.",
     },
     {"name": "settings", "description": "Settings (changes: administrators)."},
     {"name": "session", "description": "One-time tokens and the session."},

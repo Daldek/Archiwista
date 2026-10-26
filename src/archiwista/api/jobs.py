@@ -303,8 +303,8 @@ _CANCEL_CONFLICT = (
 _RETRY_CONFLICT = (
     "The job succeeded (`details.reason` `job_succeeded`) or has not ended"
     " (`job_active`), the job in `details.job`; or the new job is refused as"
-    " any job of its kind: another job writes the store's index (`conflict`)"
-    " or offline mode is on (`offline_mode`)."
+    " any job of its kind: another job writes the store's index or has the"
+    " same project (`conflict`) or offline mode is on (`offline_mode`)."
 )
 
 
@@ -634,12 +634,12 @@ def retry_job(
     only what its store still lacks: units it finished are not fetched
     again. What the kind needs at its start is asked again: a download needs
     the role `store_writer` or the setting `store_write_for_all`, a snapshot
-    the project's owner or an administrator (`403 permission_denied`). A job
-    that succeeded or has not ended is `409` (`job_succeeded`,
-    `job_active`); the new job is refused as any job of its kind (another
-    job writing the store's index, offline mode: `409`; a store no longer
-    configured: `404`). A job only of projects the session does not see is
-    `404`.
+    the project's owner or an administrator, a project's download or repin
+    both (`403 permission_denied`). A job that succeeded or has not ended is
+    `409` (`job_succeeded`, `job_active`); the new job is refused as any job
+    of its kind (another job writing the store's index or of the same
+    project, offline mode: `409`; a store no longer configured: `404`). A job
+    only of projects the session does not see is `404`.
     """
     record = job_controls.retry(
         jobs, decisions, queries, job_id=job, actor=principal, visible=visible

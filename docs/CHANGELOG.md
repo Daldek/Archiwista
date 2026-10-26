@@ -303,6 +303,25 @@ command-line interface may change.
   reason `project_locked`, the lock's path in `details.lock`, the producer's own text and
   the instruction to remove the directory when no program is changing the project.
   Archiwista never removes it. (SPEC 5.6, 14; plan A8, ADR-040)
+- The jobs of a project (ADR-040): `POST /projects/{project}/jobs` (`kind` `download`,
+  `repin`, `check` or `verify`; optionally `tasks`, every task when left out, exactly one
+  for a repin) answers `202` with the job and `Location`. `download` has the producer
+  download and pin the tasks not downloaded yet and restore missing pinned versions in
+  the configured store the manifest names, `repin` pins one task anew to the source's
+  newer versions, `check` compares the pins with the source without effects and
+  `verify` checks the pinned files in the store without the network. A download and a
+  repin need the project's owner or an administrator and the permission to write the
+  stores (`403 permission_denied`, no job); a check and a verification need only to see
+  the project, and a project the session does not see is `404`. Refused before a job
+  exists: a manifest that names no configured store (`409`, `unknown_store`), a producer
+  that runs no project jobs (`422 unsupported`, `no_project_actions`), a second job of
+  the project (`409 conflict` naming it) and offline mode for all but `verify` (`409
+  offline_mode`). A retry of a project's download or repin asks both permissions again.
+  `archiwista project-download PROJECT [TASK ...]`, `project-repin PROJECT TASK`,
+  `project-check PROJECT [TASK ...]` and `project-verify PROJECT [TASK ...]` run the job
+  in the foreground and print the route's `JobDetail` with `--json` (exit `0`, `10`
+  partial, `11` failed, `130`); the interface names the four kinds of jobs. (SPEC 4.7,
+  5.6, 9.2, SPEC 13 v0.3 criterion 7; plan A8)
 
 ### Changed
 

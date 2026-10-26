@@ -1549,6 +1549,14 @@ MESSAGES = {
         "Files: {files} ({counts}); failed units: {failed}.",
         "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
     ),
+    "jobs_project_tasks": Text(
+        "Tasks: {tasks} ({counts}).",
+        "Zadania projektu: {tasks} ({counts}).",
+    ),
+    "jobs_project_files": Text(
+        "Files: {files} ({counts}); tasks without pins: {not_downloaded}.",
+        "Pliki: {files} ({counts}); zadania bez przypięć: {not_downloaded}.",
+    ),
     "availability_help": Text(
         (
             "What the source has for an area: the last report and a check at the"
@@ -1794,5 +1802,64 @@ MESSAGES = {
             "Uwaga: magazyn projektu jest niedostępny; to sprawdzenie z ostatniego"
             " skanu."
         ),
+    ),
+    "project_download_help": Text(
+        (
+            "Downloads and pins the project's tasks not downloaded yet and restores"
+            " missing pinned versions into the configured store its manifest names,"
+            " and follows the job to its end (--json: the JobDetail model of the job"
+            " as it ended, as POST /api/v1/projects/{{project}}/jobs starts it)."
+        ),
+        (
+            "Pobiera i przypina jeszcze niepobrane zadania projektu i przywraca"
+            " brakujące przypięte wersje w skonfigurowanym magazynie, który wskazuje"
+            " manifest, i śledzi zadanie do końca (--json: model JobDetail zadania"
+            " po jego końcu, uruchomionego jak przez POST"
+            " /api/v1/projects/{{project}}/jobs)."
+        ),
+    ),
+    "project_repin_help": Text(
+        (
+            "Pins one task of the project anew to the source's newer versions and"
+            " follows the job to its end (--json: the JobDetail model of the job as"
+            " it ended)."
+        ),
+        (
+            "Przypina jedno zadanie projektu na nowo do nowszych wersji u źródła i"
+            " śledzi zadanie do końca (--json: model JobDetail zadania po jego"
+            " końcu)."
+        ),
+    ),
+    "project_check_help": Text(
+        (
+            "Compares the project's pins with what the source has now, without"
+            " effects, and follows the job to its end (--json: the JobDetail model of"
+            " the job as it ended)."
+        ),
+        (
+            "Porównuje przypięcia projektu z tym, co źródło ma teraz, bez skutków, i"
+            " śledzi zadanie do końca (--json: model JobDetail zadania po jego"
+            " końcu)."
+        ),
+    ),
+    "project_verify_help": Text(
+        (
+            "Verifies the project's pinned files in the store (SHA-256, size,"
+            " sidecar) without the network and follows the job to its end (--json:"
+            " the JobDetail model of the job as it ended)."
+        ),
+        (
+            "Weryfikuje przypięte pliki projektu w magazynie (SHA-256, rozmiar,"
+            " sidecar) bez sieci i śledzi zadanie do końca (--json: model JobDetail"
+            " zadania po jego końcu)."
+        ),
+    ),
+    "project_tasks_help": Text(
+        "Names of the project's tasks; none: every task.",
+        "Nazwy zadań projektu; bez nich: wszystkie zadania.",
+    ),
+    "project_repin_task_help": Text(
+        "Name of the task to pin anew.",
+        "Nazwa zadania do ponownego przypięcia.",
     ),
 }

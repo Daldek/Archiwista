@@ -28,6 +28,7 @@ MESSAGES = {
     "state": Text("STATE", "STAN"),
     "store": Text("STORE", "MAGAZYN"),
     "style": Text("STYLE", "STYL"),
+    "task": Text("TASK", "ZADANIE"),
     "text": Text("TEXT", "TEKST"),
     "vertical_crs": Text("HEIGHT_SYSTEM", "UKŁAD_WYSOKOŚCI"),
     "version": Text("VERSION", "WERSJA"),

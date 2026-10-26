@@ -17,9 +17,11 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   principal sees that job; a job that succeeded is a ``409 conflict``
   (``job_succeeded``), so is one still active (``job_active``). What the
   kind needs at its start is asked again: a ``download`` needs
-  ``store.write``, a ``snapshot`` ``project.write`` of its project; the
-  supervisor checks the rest as for any new job (the store configured,
-  offline mode, a conflict, a job it joins).
+  ``store.write``, a ``snapshot`` ``project.write`` of its project, a
+  ``project_download`` or ``project_repin`` both (``project_jobs.require``),
+  and the project of a ``snapshot`` or a ``project_*`` job must still be one
+  the principal sees; the supervisor checks the rest as for any new job (the
+  store configured, offline mode, a conflict, a job it joins).
 - ``log`` returns the end of the job's log (its worker's standard error) to
   a principal who sees the whole job: a ``preview`` job that also builds
   files of projects the principal does not see is ``403
@@ -32,8 +34,16 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.errors import ConflictError, NotFoundError, PermissionDeniedError
 from archiwista.index import IndexQueries
-from archiwista.jobs import FINISHED_STATES, JobRecord, JobState, JobSupervisor, LogTail
+from archiwista.jobs import (
+    FINISHED_STATES,
+    PROJECT_KINDS,
+    JobRecord,
+    JobState,
+    JobSupervisor,
+    LogTail,
+)
 from archiwista.messages import label, message
+from archiwista.services import project_jobs
 
 # States of a job that a retry runs again: it did not succeed.
 RETRY_STATES: tuple[JobState, ...] = ("partial", "failed", "interrupted", "cancelled")
@@ -128,7 +138,8 @@ def retry(
         Decides what the kind of the job needs (``store.write``,
         ``project.write``).
     queries : IndexQueries
-        The local index: the project of a ``snapshot`` job.
+        The local index: the project of a ``snapshot`` or a ``project_*``
+        job.
     job_id : str
         The job to run again.
     actor : Principal
@@ -148,13 +159,15 @@ def retry(
     ------
     NotFoundError
         No job ``job_id`` that ``actor`` sees; the project of a ``snapshot``
-        is gone or hidden; the store is no longer configured.
+        or a ``project_*`` job is gone or hidden; the store is no longer
+        configured.
     ConflictError
         The job succeeded (reason ``job_succeeded``) or has not ended
         (``job_active``), with ``details.job``.
     PermissionDeniedError
         A ``download`` without ``store.write``, a ``snapshot`` without
-        ``project.write`` of its project.
+        ``project.write`` of its project, a ``project_download`` or
+        ``project_repin`` without either.
     OfflineModeError, JobConflictError
         As for any new job of the kind (``JobSupervisor.submit``).
     """
@@ -174,12 +187,15 @@ def retry(
         )
     if record.kind == "download":
         authorizer.require(actor, "store.write")
-    if record.kind == "snapshot":
+    if record.kind == "snapshot" or record.kind in PROJECT_KINDS:
         project = str(record.params["project"])
         found = queries.project(project, visible=visible)
         if found is None:
             raise NotFoundError(message("project.not_found", project=project))
-        authorizer.require(actor, "project.write", found.project.access_key)
+        if record.kind == "snapshot":
+            authorizer.require(actor, "project.write", found.project.access_key)
+        else:
+            project_jobs.require(authorizer, actor, record.kind, found.project)
     submitted = jobs.submit(
         record.kind, store=record.store, params=record.params, actor=actor
     )

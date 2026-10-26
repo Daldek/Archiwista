@@ -65,7 +65,14 @@ from archiwista.jobs.protocol import STOP_TIMEOUT_S
 from archiwista.messages import label, message, with_detail
 from archiwista.services import jobs as job_controls
 from archiwista.services.actions import kept_plan, start
-from archiwista.sources import FILE_STATUSES, PLAN_STATUSES, PLAN_TODO, PlanStatus
+from archiwista.sources import (
+    FILE_STATUSES,
+    PLAN_STATUSES,
+    PLAN_TODO,
+    PROJECT_FILE_STATUSES,
+    TASK_OUTCOMES,
+    PlanStatus,
+)
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
@@ -246,17 +253,36 @@ def _start(
             plan_job=request.plan_job,
         )
 
-    return _foreground(jobs, submit, args, out, err)
+    return foreground(jobs, submit, args, out, err)
 
 
-def _foreground(
+def foreground(
     jobs: JobSupervisor,
     submit: Callable[[], JobRecord],
     args: argparse.Namespace,
     out: TextIO,
     err: TextIO,
 ) -> int:
-    """Submit a job, follow it to its end and print it as it ended."""
+    """Submit a job, follow it to its end and print it as it ended.
+
+    Parameters
+    ----------
+    jobs : JobSupervisor
+        Started supervisor of the job.
+    submit : Callable[[], JobRecord]
+        Submits the job; a refusal raises before a job exists.
+    args : argparse.Namespace
+        The command's arguments: ``json`` chooses the output.
+    out, err : TextIO
+        The job's ``JobDetail`` (as JSON with ``--json``); its progress, its
+        notices, why it did not succeed and a refusal go to ``err``.
+
+    Returns
+    -------
+    int
+        ``0`` succeeded, ``10`` partial, ``11`` failed, ``130`` cancelled or
+        interrupted; the exit code of the registry code of a refusal.
+    """
 
     def heard(event: JobEvent) -> str | None:
         if event.type != "notice":
@@ -356,7 +382,7 @@ def _control(
                 visible=ALL_PROJECTS,
             )
 
-        return _foreground(jobs, submit, args, out, err)
+        return foreground(jobs, submit, args, out, err)
     model: BaseModel
     try:
         if args.action == "log":
@@ -441,19 +467,22 @@ def _job_text(detail: JobDetail) -> str:
     """Return a job as it ended for a person.
 
     A plan adds its counts and its line, a download the files by status and
-    the units that failed.
+    the units that failed, a project's download or repin its tasks by
+    outcome, a project's check or verification its files by state.
     """
     kind = label("job.kind", detail.kind)
     state = label("job.state", detail.state)
     lines: list[str] = [message("cli.jobs_job", kind=kind, job=detail.id, state=state)]
     result = detail.result
-    if detail.kind == "check" and result is not None:
+    if result is None:
+        return lines[0]
+    if detail.kind == "check":
         counts = result["counts"]
         todo = sum(counts[status] for status in PLAN_TODO)
         size, complete = result["size_bytes"], result["size_complete"]
         lines.append(_counts(counts, todo=todo, size=size, complete=complete))
         lines.append(message("cli.jobs_line", line=result["line"]))
-    if detail.kind == "download" and result is not None:
+    if detail.kind == "download":
         files: Mapping[str, int] = result["counts"]
         named = ", ".join(
             f"{label('job.file', status)} {files[status]}" for status in FILE_STATUSES
@@ -464,6 +493,31 @@ def _job_text(detail: JobDetail) -> str:
                 files=sum(files.values()),
                 counts=named,
                 failed=result["failed"],
+            )
+        )
+    if detail.kind in ("project_download", "project_repin"):
+        tasks: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.task', outcome)} {tasks[outcome]}"
+            for outcome in TASK_OUTCOMES
+            if tasks[outcome]
+        )
+        lines.append(
+            message("cli.jobs_project_tasks", tasks=sum(tasks.values()), counts=named)
+        )
+    if detail.kind in ("project_check", "project_verify"):
+        states: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.project_file', status)} {states[status]}"
+            for status in PROJECT_FILE_STATUSES
+            if states[status]
+        )
+        lines.append(
+            message(
+                "cli.jobs_project_files",
+                files=sum(states.values()),
+                counts=named,
+                not_downloaded=len(result["not_downloaded"]),
             )
         )
     return "\n".join(lines)

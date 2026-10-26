@@ -23,6 +23,7 @@ from archiwista.commands import (
     owndata,
     previews,
     producer_commands,
+    project_jobs,
     projects,
 )
 from archiwista.config import AppPaths
@@ -52,6 +53,7 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     availability,
     jobs,
     projects,
+    project_jobs,
 )
 
 

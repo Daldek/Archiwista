@@ -1415,7 +1415,7 @@ disappeared (5.8).
 | `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; IMGW: `check_store` (IMGW-5) → archive freshness plan and series state | yes | — |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` with `update` and `plan`; IMGW: `sync_store` (IMGW-5) | yes | store (through the producer) |
 | `series` | IMGWTools `build_series` (IMGW-7) — dataset series from the current archives | no | IMGW catalog (through IMGWTools) |
-| `project` | `download_project`, `check_project`, `verify_project` of the job's producer (Kartograf; IMGWTools — IMGW-14) | depending on mode | store, manifest (through the producer) |
+| `project_download`, `project_repin`, `project_check`, `project_verify` | `download_project` (a repin of one task with `update="upgrade"`), `check_project`, `verify_project` of the project's producer (Kartograf; IMGWTools — IMGW-14), started by `POST /projects/{id}/jobs` (ADR-040) | yes; `project_verify` no | store, manifest (through the producer); a check and a verification nothing |
 | `compose` | Kartograf's merge functions (KE, KF, KG) | usually no | store (through Kartograf) |
 | `export` | set for QGIS (Archiwista), series to CSV through `export_series` (IMGW-12) | no | set directory in the project |
 | `preview` | local COG or preview of a large file | no | preview cache |
@@ -3100,16 +3100,17 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/parse` | pasted command → `command`, `options` (KB-2) |
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `imgw …` command (KB-4, IMGW-11) |
-| `POST /jobs` | background job: `check`, `download`, `series`, `project`, `compose`, `export`, `preview`; command with `producer` (9.1) |
+| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; command with `producer` (9.1); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; a hidden project job → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID` |
-| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`) (ADR-038) |
+| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`; a project's download or repin: `project.write` and `store.write`) (ADR-038, ADR-040) |
 | `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
 | `GET /projects`, `POST /projects` | list; a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; an existing project is found by the scan of the project directories; only an administrator creates one before v0.4 (ADR-039) |
 | `GET /projects/{id}` | project jobs of both producers (`producer` field), pins, state from the index |
 | `GET /projects/{id}/status` | producers' `get_project_status` (no network, fast) |
 | `POST /projects/{id}/tasks` | the producer's `add_project_task` (`name`, `command`, `options`, optionally `producer`, the project's by default; validation without the network; the project's owner or an administrator; IMGW: IMGW-14; ADR-039) |
 | `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` of the project's producer (files stay in the store; the project's owner or an administrator; ADR-039) |
+| `POST /projects/{id}/jobs` | a job of the project's tasks (`kind`: `download` — download and pin what is not pinned yet, restore missing pinned versions; `repin` — one task anew to the source's newer versions; `check` — the pins against the source; `verify` — the pinned files in the store, no network; `tasks` optional, exactly one for a repin) → `202` with the job; a download and a repin need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); the manifest's store must be configured (`409 unknown_store`); a retry asks the same (ADR-040) |
 | `POST /projects/{id}/sets`, `GET /projects/{id}/sets` | set for QGIS (`export` job), list of sets |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
