@@ -533,6 +533,12 @@ command-line interface may change.
 
 ### Fixed
 
+- After a server upgrade a browser could keep showing the previous interface (the map
+  panel without its fourth step "U źródła"): the page and the `/static/…` files had only
+  `ETag` and `Last-Modified`, so the browser reused its ES modules by heuristic
+  freshness without asking. They now carry `Cache-Control: no-cache`: the browser
+  revalidates each file before reuse, and an unchanged one is answered `304`. API
+  responses keep their caching.
 - A job refused in offline mode said that unit footprints need the network, whatever
   the job was (a check, a download, a project's job); it says that the job needs the
   network.

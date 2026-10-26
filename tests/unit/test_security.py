@@ -617,6 +617,24 @@ def test_security_interface_files_need_no_session(api: Api) -> None:
         assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_security_interface_files_are_revalidated(api: Api) -> None:
+    """Page and modules say ``no-cache``; a request naming the ``ETag`` gets ``304``.
+
+    A browser reusing them by heuristic freshness kept the interface of the
+    previous version after an upgrade.
+    """
+    for path in ("/", "/static/src/main.js"):
+        first = api.client.get(path)
+        again = api.client.get(path, headers={"if-none-match": first.headers["etag"]})
+
+        assert first.status_code == 200
+        assert first.headers["cache-control"] == "no-cache"
+        assert again.status_code == 304
+        assert again.content == b""
+        assert again.headers["cache-control"] == "no-cache"
+        assert again.headers["content-security-policy"] == csp_header(AppSettings())
+
+
 def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> None:
     """Neither ``..`` nor a symbolic link serves a file outside the interface."""
     secret = tmp_path / "secret.txt"

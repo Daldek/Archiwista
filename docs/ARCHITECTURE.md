@@ -1131,7 +1131,9 @@ with the unchanged message (`<producer>_error`).
 Preact + htm with no build step (A-ADR-028): the browser loads ES modules
 directly from the Python package, without Node.js or a CDN. `app.py` serves
 `web/index.html` at `/` and every `web/` file under `/static/…` — without a session,
-but behind a `Host` and `Origin` check.
+but behind a `Host` and `Origin` check. Each of them carries `Cache-Control: no-cache`
+with its `ETag`: the browser asks again before every reuse (`304` when unchanged), so
+after an upgrade it never keeps the modules of the previous version.
 
 **Files.** `index.html` (no inline scripts: a `<link>` to
 `/static/styles.css` and `<script type="module" src="/static/src/main.js">`),
