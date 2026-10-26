@@ -256,8 +256,10 @@ command-line interface may change.
   pozycji" starts one `download` per plan (`plan_job`), asks to confirm first above 5 GB
   or 500 positions, and shows the progress, the files by status and the failed units; a
   session without `store_write` sees it disabled with the reason, and offline mode keeps
-  the report and disables both actions. A job that ended `partial` shows its summary too.
-  (SPEC 6.3, 6.4, 6.5 h, 10.3; plan A10, A11)
+  the report and disables both actions; without a kept report, offline, the step says it
+  cannot ask the source and points to "Stan lokalny", which shows what of the area the
+  store holds ("lokalnie 76% obszaru"). A job that ended `partial` shows its summary
+  too. (SPEC 6.3, 6.4, 6.5 h, 10.3, UC-02; plan A10, A11)
 - Job controls (ADR-038): `POST /jobs/{job}/cancel` cancels a job that waits (at once,
   without a worker) or runs (it ends `cancelled` when its worker has stopped, within the
   stop timeout of 30 s) and answers `202` with the job as it is then; only whoever started

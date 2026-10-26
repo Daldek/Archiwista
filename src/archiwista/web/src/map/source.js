@@ -13,7 +13,9 @@
  * system, resolution, height system, formats, size) and the store badge;
  * the chip „+N wariantów” shows the others, each with its own label and
  * badge. „Pobierz…” of a variant opens the plan window (views/plan.js).
- * Offline the kept report stays and what needs the network is disabled.
+ * Offline the kept report stays and what needs the network is disabled;
+ * without a kept report the step points to the local share of step 3 (the
+ * badge of SPEC 6.4 without a source report: „lokalnie 83% obszaru”).
  */
 
 import { checkAvailability, getAvailability, listSources } from "../api.js";
@@ -132,7 +134,7 @@ export function SourceStep({ area, areaLabel, filters, stores, names, onRefreshe
     ${query && report.loading && !info ? html`<p class="hint"><${Spinner} label=${L.loading} /></p>` : null}
     ${query && report.error ? html`<${ProblemView} problem=${report.error.problem} compact />` : null}
     ${query && !report.loading && !report.error && !info
-      ? html`<p class="hint">${L.no_report}</p>
+      ? html`<p class="hint">${offline ? L.offline_no_report : L.no_report}</p>
           <button type="button" class="btn sm primary src-check" disabled=${busy || offline}
             title=${offline ? L.offline_title : L.check_title} onClick=${() => check(false)}>
             <${Icon} name="search" size=${14} />${L.check}</button>`

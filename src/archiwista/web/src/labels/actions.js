@@ -26,6 +26,8 @@ export const actions = {
     loading: "Wczytywanie raportu…",
     offline: "Brak sieci — pokazuję tylko magazyn.",
     offline_title: "Tryb offline: Archiwista nie łączy się ze źródłem",
+    offline_no_report:
+      "Archiwista nie ma raportu źródła dla tego obszaru i produktu, a bez sieci go nie sprawdzi. Co z obszaru jest już w magazynie, pokazuje krok „Stan lokalny”.",
     failed_part: "Nie sprawdzono części „{part}”: {detail}",
     rows: "Lata u źródła",
     no_rows: "Źródło nie ma tego produktu dla obszaru.",

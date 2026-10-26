@@ -101,7 +101,9 @@ The panel "Wybór" (selection) leads through four steps:
    it asks for a confirmation. The window then shows the progress, the files
    by status and the units that failed. Without the permission "zapis do
    magazynu" the plan is shown and the download is disabled with the reason;
-   offline mode keeps the last report and disables both actions.
+   offline mode keeps the last report and disables both actions; without a
+   report it points to step 3, which shows how much of the area the store
+   already covers.
 
    ![Plan window of a download](reports/v0.3-screenshots/02-okno-planu.webp)
 
