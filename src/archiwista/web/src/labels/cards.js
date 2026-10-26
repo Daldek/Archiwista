@@ -41,6 +41,8 @@ export const cards = {
       published: "opublikowana",
     },
     download_progress: "{current} z {total} · {status}",
+    /** Before the progress of a download of a row's several lines (ADR-044). */
+    call_progress: "polecenie {call} z {calls}",
     /** The producers' words of a run's progress (`status`); another shows as it is. */
     unit_status: {
       downloading: "pobieranie",
@@ -61,6 +63,13 @@ export const cards = {
     },
     download_files_title: "Pliki w magazynie",
     download_failed: "Jednostki z błędem",
+    /** The lines of a download of a row it failed or skipped (`result.calls`, ADR-044). */
+    download_calls: "Polecenia nieudane albo pominięte",
+    download_call: {
+      failed: "Polecenie {place} z {count} nie powiodło się:",
+      not_planned: "Polecenie {place} z {count} pominięte, bo jego sprawdzenie nie dało planu:",
+      nothing_to_download: "Polecenie {place} z {count} pominięte, bo nie ma nic do pobrania:",
+    },
     /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
     project_tasks: "Zadania projektu: {tasks} ({counts}).",
     project_tasks_title: "Wynik dla zadań projektu",

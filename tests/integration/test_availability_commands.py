@@ -1,11 +1,12 @@
 """The producer's commands of an availability set and its products (ADR-035).
 
 A row of ``GET /availability`` is planned from the producer's own command
-lines (Kartograf's ``download_hint``): each variant names them by format, and
-``POST /commands/parse`` reads a line into a call that ``POST /jobs`` checks.
-``GET /sources`` names the products whose availability a producer checks. The
-stand-in producer (``tests/fixtures/action_source``) reports three sets, each
-with the line that fetches one station's files.
+lines (Kartograf's ``download_hint``): each variant names them by format,
+``POST /commands/parse`` reads each line into a call, and ``POST /jobs`` checks
+all the calls of the row in one job (ADR-044). ``GET /sources`` names the
+products whose availability a producer checks. The stand-in producer
+(``tests/fixtures/action_source``) reports three sets: two of 2023 with the
+line that fetches one station's files, and 2022 with three such lines.
 """
 
 from pathlib import Path
@@ -50,8 +51,10 @@ def paths(tmp_path: Path, standin: ModuleType) -> AppPaths:
     return created
 
 
-def test_a_rows_command_line_reads_into_a_check_of_the_store(paths: AppPaths) -> None:
-    """Each variant names its lines by format; one starts a check as it stands."""
+def test_a_rows_command_lines_read_into_one_check_of_the_store(
+    paths: AppPaths,
+) -> None:
+    """Each variant names its lines by format; a row's lines start one check."""
     with action_supervisor(paths) as jobs:
         registry = load_registry(cache_dir=paths.cache_dir)
         with running_api(paths, registry, jobs=jobs) as api:
@@ -63,36 +66,46 @@ def test_a_rows_command_line_reads_into_a_check_of_the_store(paths: AppPaths) ->
             variants = [row["variants"] for row in kept.json()["rows"]]
 
             # Act
-            line = variants[0][0]["commands"]["ASC"][0]
-            call = owner.request(
-                "POST", "/commands/parse", json={"producer": "standin", "line": line}
-            ).json()
+            lines = variants[1][0]["commands"]["ASC"]
+            calls = [
+                owner.request(
+                    "POST",
+                    "/commands/parse",
+                    json={"producer": "standin", "line": line},
+                ).json()
+                for line in lines
+            ]
             started = owner.request(
                 "POST",
                 "/jobs",
                 json={
                     "kind": "check",
-                    "producer": call["producer"],
+                    "producer": "standin",
                     "store": STORE,
-                    "command": call["command"],
-                    "options": call["options"],
+                    "calls": [
+                        {"command": call["command"], "options": call["options"]}
+                        for call in calls
+                    ],
                 },
             )
+            listed = [job.kind for job in jobs.list().items]
 
     # Assert: 2023 shows PL-2000 (one campaign) first, PL-1992 is "+1 variant".
+    stations = ("150160200", "150160210", "150160220")
     assert [[variant["commands"] for variant in row] for row in variants] == [
         [
             {"ASC": ["series fetch --station 150160190 --kind hydro"]},
             {"ASC": ["series fetch --station 150160180 --kind hydro"]},
         ],
-        [{"ASC": ["series fetch --station 150160200 --kind hydro"]}],
+        [{"ASC": [f"series fetch --station {code} --kind hydro" for code in stations]}],
     ]
-    assert kept.json()["report"]["combinations"][1]["commands"] == [line]
+    assert kept.json()["report"]["combinations"][2]["commands"] == lines
     assert started.status_code == 202, started.text
-    assert started.json()["params"]["options"] == {
-        "station": "150160190",
-        "kind": "hydro",
-    }
+    assert started.json()["params"]["calls"] == [
+        {"command": "series fetch", "options": {"station": code, "kind": "hydro"}}
+        for code in stations
+    ]
+    assert listed == ["check", "availability"]
 
 
 def test_a_report_kept_before_commands_reads_with_none(paths: AppPaths) -> None:

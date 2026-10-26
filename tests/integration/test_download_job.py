@@ -6,7 +6,8 @@ file the store holds, runs only the positions to download of a plan and
 fails a position whose source changed since the plan as stale. While the
 store holds ``HOLD`` a run waits after its first new file, so a test can
 stop it there. It records the options its ``run_command`` receives. The
-index learns the files of a run without a scan of the store.
+index learns the files of a run without a scan of the store. A job of
+several calls is ``tests/integration/test_row_jobs.py``.
 """
 
 import io
@@ -30,6 +31,7 @@ from tests.fixtures.actions import (
     action_paths,
     action_spec,
     action_supervisor,
+    station_calls,
     store_root,
 )
 from tests.fixtures.availability import register_standin
@@ -128,8 +130,7 @@ def test_a_kept_plan_runs_with_the_store_root_and_no_plain_target(
     params = {**CHECK, "plan_job": plan_job}
     job = held.submit("download", store=STORE, params=params, actor=LOCAL_OWNER)
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(plan_job)
-    assert stored is not None
+        (stored,) = queries.plans(plan_job)
 
     summary = worker.run_download(
         action_spec(paths, root, job.id, "download", job.params),
@@ -158,12 +159,13 @@ def test_a_position_changed_since_the_plan_is_stale_and_the_job_ends_partial(
     root = store_root(tmp_path)
     plan_job = _checked(paths, root, held)
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(plan_job)
-    assert stored is not None
+        (stored,) = queries.plans(plan_job)
     document = json.loads(json.dumps(stored.plan.document))
     document["items"][1]["source"] = "2024-11-30"
     with IndexWriter(paths.index_file) as writer:
-        writer.write_plan(replace(stored, plan=replace(stored.plan, document=document)))
+        writer.write_plans(
+            [replace(stored, plan=replace(stored.plan, document=document))]
+        )
     params = {**CHECK, "plan_job": plan_job}
     job = held.submit("download", store=STORE, params=params, actor=LOCAL_OWNER)
 
@@ -181,6 +183,7 @@ def test_a_position_changed_since_the_plan_is_stale_and_the_job_ends_partial(
             "code": "conflict",
             "reason": "stale_plan",
             "message": "The source changed since the plan was made: make a new plan.",
+            "call": 0,
         },
         {
             "id": f"{FOLDER}/2025.csv",
@@ -188,8 +191,10 @@ def test_a_position_changed_since_the_plan_is_stale_and_the_job_ends_partial(
             "code": None,
             "reason": None,
             "message": None,
+            "call": 0,
         },
     ]
+    assert outcome.summary["calls"][0]["status"] == "partial"
     assert [f["path"] for f in outcome.summary["files"]] == [f"{FOLDER}/2025.csv"]
 
 
@@ -249,7 +254,7 @@ def test_a_download_of_the_call_an_active_download_runs_starts_with_a_warning(
     """The same store and call: a notice naming the job; another call: none."""
     first = held.submit("download", store=STORE, params=DOWNLOAD, actor=LOCAL_OWNER)
     second = held.submit("download", store=STORE, params=DOWNLOAD, actor=LOCAL_OWNER)
-    other = {**DOWNLOAD, "options": {**STATION, "station": "150160190"}}
+    other = {**DOWNLOAD, "calls": station_calls("150160190")}
     third = held.submit("download", store=STORE, params=other, actor=LOCAL_OWNER)
 
     notices = {
@@ -274,7 +279,7 @@ def test_a_download_of_the_call_an_active_download_runs_starts_with_a_warning(
         {**DOWNLOAD, "plan_job": ""},
         {**DOWNLOAD, "plan_job": 7},
         {**DOWNLOAD, "output_dir": "/srv/plain"},
-        {key: value for key, value in DOWNLOAD.items() if key != "command"},
+        {key: value for key, value in DOWNLOAD.items() if key != "calls"},
     ],
 )
 def test_invalid_download_parameters_are_refused_before_a_job_exists(

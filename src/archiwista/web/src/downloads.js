@@ -14,9 +14,11 @@
  * downloads never take the browser's few connections from the map. One that
  * ended meanwhile is read once. The top bar's indicator sums the downloads
  * started together, „Pobieranie 2/6 · 45%” (ended of all, and the mean share
- * of their units), and opens their list: the progress, the notices, the
- * files or why it failed, „Anuluj pobieranie” (the one way to stop a
- * download), „Pokaż okno planu” while its window is kept, and the ended ones
+ * of their work: a download of a row's several lines, ADR-044, counts the
+ * lines it ran and the units of the one it runs), and opens their list: the
+ * progress, the notices, the files, the lines failed or skipped, or why it
+ * failed, „Anuluj pobieranie” (the one way to stop a download), „Pokaż okno
+ * planu” while its window is kept, and the ended ones
  * until removed. An end shows a toast and tells the `useDownloadEnd`
  * listeners (the map and the step „U źródła” read the store again). This
  * tab's list (ids, names, states) stays in `sessionStorage`, so a reload
@@ -25,7 +27,7 @@
 
 import { cancelJob, getJob, listJobs, watchJob } from "./api.js";
 import { useApp } from "./context.js";
-import { int } from "./format.js";
+import { int, plural } from "./format.js";
 import { downloads as L } from "./labels/downloads.js";
 import { t } from "./labels/index.js";
 import {
@@ -153,8 +155,8 @@ export function downloadActive(item) {
 }
 
 /**
- * The name of a download no plan window named: the producer's command, or
- * the project and its task.
+ * The name of a download no plan window named: the producer's command (with
+ * the number of its lines when it has several), or the project and its task.
  *
  * @param {import("./types.js").JobDetail} job
  * @param {string|null} [project] - The project's name, else its key.
@@ -162,7 +164,13 @@ export function downloadActive(item) {
  */
 export function downloadName(job, project = null) {
   const params = job.params ?? {};
-  if (job.kind === "download") return t(L.name.download, { producer: params.producer, command: params.command });
+  if (job.kind === "download") {
+    const calls = params.calls ?? [];
+    const values = { producer: params.producer, command: calls[0]?.command ?? "" };
+    if (calls.length < 2) return t(L.name.download, values);
+    const lines = plural(calls.length, L.name.lines);
+    return t(L.name.download_calls, { ...values, count: int(calls.length), lines });
+  }
   const name = project ?? params.project;
   const task = job.kind === "project_repin" && params.tasks?.length === 1 ? params.tasks[0] : null;
   return task ? t(L.name.task, { project: name, task }) : t(L.name.project, { project: name });
@@ -508,10 +516,17 @@ function batchSummary(entries) {
   };
 }
 
+/**
+ * The share of a download done: of a download of several lines (`call` of
+ * `calls`), the lines before the one it runs and that one's share of units.
+ */
 function part(item) {
   if (!downloadActive(item)) return 1;
   const progress = item.progress;
-  return progress && progress.total > 0 ? Math.min(1, progress.current / progress.total) : 0;
+  if (!progress) return 0;
+  const share = progress.total > 0 ? Math.min(1, progress.current / progress.total) : 0;
+  if (!(progress.calls > 1)) return share;
+  return Math.min(1, ((progress.call ?? 0) + share) / progress.calls);
 }
 
 /** Load the styles of the downloads and of the job cards they show. */

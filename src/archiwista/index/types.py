@@ -7,7 +7,7 @@ or absolute paths. Times are timezone-aware UTC ``datetime`` values.
 
 import hashlib
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -17,11 +17,13 @@ from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.index.series import SeriesLabel, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
+    PLAN_STATUSES,
     ActionPlan,
     AvailabilityReport,
     CoordinateTransformer,
     GeoJSONGeometry,
     LocationKind,
+    PlanStatus,
     SourceEntry,
     TimeUnit,
     YearType,
@@ -705,16 +707,58 @@ class StoredAvailability:
 
 @dataclass(frozen=True, slots=True)
 class StoredPlan:
-    """The plan a ``check`` job made, kept as long as the job (plan of 2026-10-25, A4).
+    """The plan of one call of a ``check`` job, kept as long as the job (ADR-044).
 
-    ``store`` is the configured store the plan is of and ``line`` the
-    producer's command line of the run it plans, with the store's root.
+    ``call`` is the call's place in the job's ``calls`` (from 0), ``store``
+    the configured store the plan is of and ``line`` the producer's command
+    line of the run it plans, with the store's root.
     """
 
     job_id: str
+    call: int
     store: str
     line: str
     plan: ActionPlan
+
+
+@dataclass(frozen=True, slots=True)
+class PlanTotals:
+    """The plans of a ``check`` job's calls together (ADR-044), as one plan reads.
+
+    ``counts`` holds the positions of each status (every status named),
+    ``positions`` all of them and ``todo`` those the runs download;
+    ``size_bytes`` sums the sizes the producer tells of those, ``None`` when
+    it tells none (never 0 for an unknown size), and ``size_complete`` says
+    whether it told every one; ``ok`` is whether every position was checked
+    and ``checked_at`` the time of the oldest plan.
+    """
+
+    counts: dict[PlanStatus, int]
+    positions: int
+    todo: int
+    size_bytes: int | None
+    size_complete: bool
+    ok: bool
+    checked_at: datetime
+
+    @classmethod
+    def of(cls, plans: Sequence[ActionPlan]) -> "PlanTotals":
+        """Return the totals of one or more plans."""
+        counts = dict.fromkeys(PLAN_STATUSES, 0)
+        for plan in plans:
+            for status, count in plan.counts().items():
+                counts[status] += count
+        sized = [plan for plan in plans if plan.todo]
+        told = [plan.size_bytes for plan in sized if plan.size_bytes is not None]
+        return cls(
+            counts=counts,
+            positions=sum(len(plan.entries) for plan in plans),
+            todo=sum(len(plan.todo) for plan in plans),
+            size_bytes=None if sized and not told else sum(told),
+            size_complete=all(plan.size_complete for plan in plans),
+            ok=all(plan.ok for plan in plans),
+            checked_at=min(plan.checked_at for plan in plans),
+        )
 
 
 @dataclass(frozen=True, slots=True)

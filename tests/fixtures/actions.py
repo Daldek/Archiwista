@@ -29,10 +29,10 @@ from archiwista.sources.registry import load_registry
 
 STORE = "pomiary"
 STATION = {"station": "150160180", "kind": "hydro"}
+COMMAND = "series fetch"
 CHECK: JsonObject = {
     "producer": "standin",
-    "command": "series fetch",
-    "options": STATION,
+    "calls": [{"command": COMMAND, "options": STATION}],
 }
 ACTION_WORKER: tuple[str, ...] = (sys.executable, "-m", "tests.fixtures.action_worker")
 
@@ -67,6 +67,14 @@ def standin_in_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 def store_root(tmp_path: Path) -> Path:
     """Return the directory of the store ``STORE`` of a test."""
     return tmp_path / STORE
+
+
+def station_calls(*stations: str) -> list[JsonObject]:
+    """Return the calls of a fetch of each station's files, in their order."""
+    return [
+        {"command": COMMAND, "options": {**STATION, "station": station}}
+        for station in stations
+    ]
 
 
 def action_paths(tmp_path: Path, *, offline: bool = False) -> AppPaths:

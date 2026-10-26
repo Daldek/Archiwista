@@ -3130,7 +3130,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/parse` | pasted command → `command`, `options` (KB-2) |
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `imgw …` command (KB-4, IMGW-11) |
-| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; command with `producer` (9.1); a project's jobs start at `POST /projects/{id}/jobs` |
+| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; a hidden project job → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`; a project's download or repin: `project.write` and `store.write`) (ADR-038, ADR-040) |
@@ -3216,11 +3216,11 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   "kind": "download",
   "producer": "kartograf",
   "store": "zespol",
-  "command": "elevation download",
-  "options": {"product": "nmt", "country": "pl",
-              "bbox": [561000, 239000, 573000, 249000], "bbox_crs": "EPSG:2180",
-              "sheet_system": "1992", "resolution": "1m",
-              "vertical_crs": "EVRF2007", "year": 2023},
+  "calls": [{"command": "elevation download",
+             "options": {"product": "nmt", "country": "pl",
+                         "bbox": [561000, 239000, 573000, 249000], "bbox_crs": "EPSG:2180",
+                         "sheet_system": "1992", "resolution": "1m",
+                         "vertical_crs": "EVRF2007", "year": 2023}}],
   "update": null,
   "project_task": {"project": "raba", "name": "teren-2023"}
 }

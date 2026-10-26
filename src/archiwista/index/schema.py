@@ -56,6 +56,10 @@ accumulated sums, the station's own periods, its file), and ``series_years``,
 each year of a variable in both year types (units, known units, units with a
 value), computed when the index is written: a new current version replaces
 the dataset's rows.
+
+Version 12 (v0.3, ADR-044): a ``check`` job plans every call of its
+``calls``, so ``plans`` keeps one plan per call (``call``, its place in the
+job's ``calls``); a call whose check failed has none.
 """
 
 import sqlite3
@@ -67,7 +71,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -355,12 +359,15 @@ CREATE TABLE job_events (
     PRIMARY KEY (job_id, seq)
 ) WITHOUT ROWID;
 
--- The plan of a ``check`` job: what a run of its command would do in a store.
+-- The plan of each call of a ``check`` job: what a run of the call would do in a
+-- store (``call`` is its place in the job's ``calls``).
 CREATE TABLE plans (
-    job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    call INTEGER NOT NULL,
     store TEXT NOT NULL,
     line TEXT NOT NULL,
-    plan TEXT NOT NULL
+    plan TEXT NOT NULL,
+    PRIMARY KEY (job_id, call)
 ) WITHOUT ROWID;
 
 -- The catalog version each provider's stations were read from (SPEC 4.4): the

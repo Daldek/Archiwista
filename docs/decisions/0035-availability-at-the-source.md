@@ -25,3 +25,5 @@
 - `POST /availability` and `GET /availability` (A2 commit 2) answer from the table: a report younger than the seven days of Kartograf's cache needs no job.
 - Kartograf has no progress for `check_availability` (KC-2) and no cancel (KC-1): the job reports no progress and is stopped by SIGINT.
 - The IMGW adapter (v0.5) can answer the published years of a dataset through the same capability, as combinations without sheets.
+
+**Erratum 1 (2026-10-26, ADR-044):** point 6: all the lines of a row are planned by one `check` job with `calls[]`, not one job per line.

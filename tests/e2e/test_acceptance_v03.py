@@ -349,8 +349,7 @@ def test_uc01_without_the_permission_to_write_the_stores_nothing_is_written(
             "kind": "download",
             "producer": "standin",
             "store": STORE,
-            "command": plan["params"]["command"],
-            "options": plan["params"]["options"],
+            "calls": plan["params"]["calls"],
             "plan_job": plan["id"],
         },
     )

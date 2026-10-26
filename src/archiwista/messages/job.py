@@ -53,12 +53,12 @@ MESSAGES = {
     ),
     "no_plan": Text(
         (
-            'Job "{job}" kept no plan: only a check of a command that ended'
-            " with its plan keeps one."
+            'Job "{job}" kept no plan: only a check of commands that ended with'
+            " a plan of one of them keeps one."
         ),
         (
             "Zadanie „{job}” nie zachowało planu: zachowuje go tylko sprawdzenie"
-            " polecenia zakończone planem."
+            " poleceń zakończone planem choć jednego z nich."
         ),
     ),
     "conflict": Text(
@@ -258,14 +258,14 @@ MESSAGES = {
     ),
     "overlapping": Text(
         (
-            "Job {job} ({state}) downloads the same into this store. The source"
-            " writes each version once, so this job mostly finds what that one"
-            " wrote."
+            "Job {job} ({state}) downloads some of the same into this store. The"
+            " source writes each version once, so this job mostly finds what that"
+            " one wrote."
         ),
         (
-            "Zadanie {job} ({state}) pobiera to samo do tego magazynu. Źródło"
-            " zapisuje każdą wersję raz, więc to zadanie głównie zastanie to, co"
-            " zapisało tamto."
+            "Zadanie {job} ({state}) pobiera część tego samego do tego magazynu."
+            " Źródło zapisuje każdą wersję raz, więc to zadanie głównie zastanie"
+            " to, co zapisało tamto."
         ),
     ),
     "rescan_failed": Text(
@@ -280,12 +280,14 @@ MESSAGES = {
     ),
     "mismatched_plan": Text(
         (
-            'Job "{job}" planned another store, command or options: download what'
-            " it planned, or check this command first."
+            'Job "{job}" planned another store, producer or commands: download'
+            " what it planned, with its commands in their order, or check these"
+            " commands first."
         ),
         (
-            "Zadanie „{job}” zaplanowało inny magazyn, polecenie albo opcje: pobierz"
-            " to, co zaplanowało, albo najpierw sprawdź to polecenie."
+            "Zadanie „{job}” zaplanowało inny magazyn, producenta albo polecenia:"
+            " pobierz to, co zaplanowało, z jego poleceniami w ich kolejności,"
+            " albo najpierw sprawdź te polecenia."
         ),
     ),
     "conflict_snapshot": Text(

@@ -68,8 +68,7 @@ DOWNLOAD: dict[str, Any] = {
     "kind": "download",
     "producer": "standin",
     "store": STANDIN_STORE,
-    "command": "series fetch",
-    "options": STATION,
+    "calls": [{"command": "series fetch", "options": STATION}],
 }
 
 type Unsuccessful = Literal["cancelled", "failed", "interrupted"]

@@ -7,17 +7,19 @@ data: its end tells the worker that the supervisor is gone. The worker
 answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
 
 - ``progress``: how far the job is, with integers ``current`` and ``total``
-  and counts of the job's kind (a scan adds ``segment`` and ``entries``, a
-  download and a project's download the ``unit``, ``status`` and ``message``
-  of the producer's event);
+  and counts of the job's kind (a scan adds ``segment`` and ``entries``; a
+  check counts its calls planned; a download counts the units of the call it
+  runs and adds that ``call``, the job's number of ``calls``, and the
+  ``unit``, ``status`` and ``message`` of the producer's event, as a
+  project's download does without the calls);
 - ``notice``: something the person should know: ``level`` (``info`` or
   ``warning``), a stable ``code`` and a ``message`` in Polish, the language of
   the texts a worker stores;
 - ``result``: the job's summary, a JSON object; the last line of a job
   that succeeded;
 - ``partial``: the summary of a job that did only part of its work (a plan
-  some of whose positions could not be checked), the units that failed named
-  in it; its last line, in place of ``result``;
+  some of whose calls or positions could not be checked), the calls and
+  units that failed named in it; its last line, in place of ``result``;
 - ``error``: why the job failed: a registry ``code`` (ERR §2), a
   ``detail``, the ``exception`` class behind it, and when there are any a
   ``hint`` and the JSON ``details`` (``reason``, the project's own cause,
@@ -43,7 +45,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 9
+PROTOCOL_VERSION = 10
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -147,10 +149,10 @@ class JobSpec:
         ``refs``, their ``contents`` and ``force``; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id`` and ``note``;
         ``availability``: ``area_id``, ``producer``, ``product`` and
-        ``force``; ``check``: ``producer``, ``command`` and ``options``;
-        ``download``: those of ``check`` and ``plan_job``; the ``project_*``
-        kinds: ``project`` and ``tasks``, one task for ``project_repin``;
-        ``preview_warm``: the ``WARM_FILTERS``).
+        ``force``; ``check``: ``producer`` and ``calls``, each a ``command``
+        and its ``options``; ``download``: those of ``check`` and
+        ``plan_job``; the ``project_*`` kinds: ``project`` and ``tasks``, one
+        task for ``project_repin``; ``preview_warm``: the ``WARM_FILTERS``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

@@ -449,7 +449,11 @@ function progressText(progress) {
       total: int(progress.total),
       status: L.job.unit_status[progress.status] ?? progress.status,
     });
-    return progress.unit ? `${text} · ${progress.unit}` : text;
+    // A download of a row's several lines (ADR-044) says which line it runs.
+    const line = progress.calls > 1
+      ? `${t(L.job.call_progress, { call: int(progress.call + 1), calls: int(progress.calls) })} · `
+      : "";
+    return progress.unit ? `${line}${text} · ${progress.unit}` : `${line}${text}`;
   }
   return t(L.job.progress, { current: int(progress.current), total: int(progress.total) });
 }
@@ -546,7 +550,8 @@ export function projectSummary(events) {
 
 /**
  * The summary of a download (`download`): its files by status, each with its
- * size, and its failed units, as `archiwista jobs show` says them.
+ * size, its failed units and the lines of a row it failed or skipped
+ * (`result.calls`, ADR-044), as `archiwista jobs show` says them.
  *
  * @param {JobEvents} events
  */
@@ -557,11 +562,15 @@ export function downloadSummary(events) {
   const counts = Object.entries(statuses).map(([status, word]) => `${word} ${int(result.counts[status] ?? 0)}`);
   const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
   const failed = result.items.filter((item) => item.status === "failed");
+  const calls = result.calls ?? [];
+  const named = calls
+    .map((call, place) => ({ ...call, place }))
+    .filter((call) => call.status === "failed" || call.status === "skipped");
   return html`<div class="job-download">
     <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
     ${result.files.length
       ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
-          (file) => html`<li key=${file.path}>
+          (file) => html`<li key=${`${file.call}/${file.path}`}>
             <${Tech} value=${[["version_path", file.version_path ?? "–"], ["sha256", file.sha256]]}><span class="mono">${file.path}</span></${Tech}>
             <${Badge} level=${DOWNLOAD_FILE_LEVELS[file.status] ?? "plain"}>${statuses[file.status] ?? file.status}</${Badge}>
             <span class="faint tabular">${bytes(file.size_bytes)}</span>
@@ -572,12 +581,33 @@ export function downloadSummary(events) {
       ? html`<div class="job-failed">
           <span class="section-title">${L.job.download_failed}</span>
           <ul>${failed.map(
-            (item) => html`<li key=${item.id}><${Tech} value=${[["code", item.code ?? "–"], ["reason", item.reason ?? "–"]]}>
+            (item) => html`<li key=${`${item.call}/${item.id}`}><${Tech} value=${[["code", item.code ?? "–"], ["reason", item.reason ?? "–"]]}>
               <span class="mono">${item.id}</span></${Tech}>${item.message ? ` ${item.message}` : ""}</li>`,
           )}</ul>
         </div>`
       : null}
+    ${named.length
+      ? html`<div class="job-failed">
+          <span class="section-title">${L.job.download_calls}</span>
+          <ul aria-label=${L.job.download_calls}>${named.map(
+            (call) => html`<${CallOutcome} key=${call.place} call=${call} count=${calls.length} />`,
+          )}</ul>
+        </div>`
+      : null}
   </div>`;
+}
+
+/** A line of a download of a row that failed or was skipped, and why. */
+function CallOutcome({ call, count }) {
+  const why = call.status === "failed" ? "failed" : call.reason;
+  const values = { place: int(call.place + 1), count: int(count) };
+  const text = t(L.job.download_call[why] ?? L.job.download_call.failed, values);
+  const technical = [["status", call.status], ["reason", call.error?.reason ?? call.reason ?? "–"]];
+  if (call.error) technical.unshift(["code", call.error.code]);
+  const detail = call.error ? ` ${call.error.detail}` : "";
+  return html`<li>
+    <${Tech} value=${technical}>${text}</${Tech}> <span class="mono">${call.line}</span>${detail}
+  </li>`;
 }
 
 /**

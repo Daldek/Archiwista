@@ -212,7 +212,10 @@ def _call(parser: argparse.ArgumentParser) -> None:
 
 
 def json_object(text: str) -> dict[str, Any]:
-    """Read the value of ``--options`` or ``--run``: a JSON object (a usage error)."""
+    """Read the value of ``--options``, ``--run`` or ``--call``: a JSON object.
+
+    Anything else is a usage error.
+    """
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:

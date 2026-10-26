@@ -102,6 +102,8 @@ export const actions = {
     copy_line: "polecenie producenta",
     notices: "Komunikaty producenta",
     failed_line: "Polecenie „{line}” nie dało planu.",
+    /** A check of several lines that planned none: „Żadne z 3 poleceń…” (`commands`). */
+    failed_lines: "Żadne z {count} {commands} nie dało planu.",
     large: "Rozumiem: pobranie obejmie {positions}, {size}.",
     nothing: "Magazyn ma już wszystko, co podało źródło: nie ma czego pobrać.",
     no_write:
@@ -115,8 +117,6 @@ export const actions = {
     minimise_title: "Schowaj okno; wraca przyciskiem „Pokaż okno planu” na liście pod „Pobieranie” na górnym pasku",
     background:
       "Pobieranie trwa w tle: zwinięcie ani zamknięcie okna go nie przerywa, a mapa i inne widoki działają dalej. Postęp i wynik pokazuje „Pobieranie” na górnym pasku.",
-    /** A download of one of a variant's several lines, in the list of downloads. */
-    run_title: "{title} — polecenie {place} z {count}",
     task: "Dodaj jako zadanie projektu",
     task_project: "Projekt",
     task_project_choose: "Wybierz projekt…",

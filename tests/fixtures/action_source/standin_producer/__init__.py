@@ -8,7 +8,9 @@ as the library reads them (texts trimmed, a value of a choice in lower case),
 ``format_command`` writes the canonical line of a call and ``parse_command``
 reads a line back. ``check_availability`` reports what a fake source has for an
 area: one sheet system of 2023 complete from one campaign, another complete
-from two, and 2022 partial, checked now. ``check_command`` plans a fetch of a
+from two, and 2022 partial, checked now; each 2023 set has the line that
+fetches one station's files, 2022 three lines of three stations (a row a job
+plans and downloads as one, ADR-044). ``check_command`` plans a fetch of a
 station's files into the store of ``options["root"]``: one current, one newer,
 one missing of unknown size and one unverifiable; a station whose code starts
 with ``9`` cannot be asked about its missing file, station ``999`` about none.
@@ -113,7 +115,10 @@ _COMBINATIONS: list[dict[str, object]] = [
         campaign_coverage=[
             {"campaign": "D", "complete": False, "full_m2": 69_600_000.0}
         ],
-        commands=["series fetch --station 150160200 --kind hydro"],
+        commands=[
+            f"series fetch --station {station} --kind hydro"
+            for station in ("150160200", "150160210", "150160220")
+        ],
     ),
 ]
 

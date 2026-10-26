@@ -1,14 +1,16 @@
 """Models of the producers' commands run as jobs (plan of 2026-10-25, A4, A5; SPEC 9.2).
 
 ``JobRequest`` is the body of ``POST /jobs`` and of ``archiwista jobs start``:
-the kind of the job, the producer, the configured store, the call of a command
-of the producer's catalog and, for a download, the ``check`` job whose plan it
-runs; the answer is the ``JobDetail`` of the job. ``ActionPlanInfo`` answers
-``GET /jobs/{job}/plan`` and ``archiwista jobs plan``: the plan a ``check``
-job kept (ADR-036), its positions as ``PlanEntryItem``. The store root is
-never an option: the store's id names it (ADR-034, decision 2). The request
-model refuses unknown members and a plan of another kind than ``download``
-(``400 validation_error``).
+the kind of the job, the producer, the configured store, the calls of commands
+of the producer's catalog (``CallRequest``; all the lines of a report's row in
+one job, ADR-044) and, for a download, the ``check`` job whose plans it runs;
+the answer is the ``JobDetail`` of the job. ``ActionPlanInfo`` answers ``GET
+/jobs/{job}/plan`` and ``archiwista jobs plan``: the plans a ``check`` job
+kept (ADR-036), their totals and one ``CallPlanItem`` per call planned, its
+positions as ``PlanEntryItem``. The store root is never an option: the
+store's id names it (ADR-034, decision 2). The request model refuses unknown
+members and a plan of another kind than ``download`` (``400
+validation_error``).
 """
 
 from datetime import datetime
@@ -17,24 +19,28 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from archiwista.api.models_availability import AvailabilityNoticeItem
-from archiwista.index import StoredPlan
-from archiwista.services.actions import ActionKind
+from archiwista.index import PlanTotals, StoredPlan
+from archiwista.jobs import MAX_JOB_CALLS
+from archiwista.services.actions import ActionKind, KeptPlans
 from archiwista.sources import CommandCall, PlanEntry, PlanStatus
 
 _JOB_ID = "3f9c1a7e5b2d4c60"
+_COMMAND = "elevation download"
 _OPTIONS: dict[str, Any] = {
     "product": "nmt",
     "sheet": "N-34-130-D-d-2",
     "resolution": "1m",
     "vertical_crs": "EVRF2007",
 }
+_NEXT_OPTIONS: dict[str, Any] = {**_OPTIONS, "sheet": "N-34-130-D-d-4"}
+_CALL_EXAMPLE: dict[str, Any] = {"command": _COMMAND, "options": _OPTIONS}
 _REQUEST_EXAMPLE: dict[str, Any] = {
     "kind": "check",
     "producer": "kartograf",
     "store": "zespol",
-    "command": "elevation download",
-    "options": _OPTIONS,
+    "calls": [_CALL_EXAMPLE, {"command": _COMMAND, "options": _NEXT_OPTIONS}],
 }
+_ROOT = "/mnt/nas/kartograf"
 _SEGMENT = "nmt/pl_1992_1m_evrf2007"
 _ENTRY_EXAMPLE: dict[str, Any] = {
     "path": f"{_SEGMENT}/N-34-130-D-d-2-2.asc",
@@ -46,16 +52,13 @@ _ENTRY_EXAMPLE: dict[str, Any] = {
     "error": None,
     "conflict": None,
 }
-_PLAN_EXAMPLE: dict[str, Any] = {
-    "job_id": _JOB_ID,
-    "store": "zespol",
-    "producer": "kartograf",
-    "command": "elevation download",
+_FIRST_CALL: dict[str, Any] = {
+    "call": 0,
+    **_CALL_EXAMPLE,
     "line": (
         "kartograf elevation download --product nmt --sheet N-34-130-D-d-2"
-        " --resolution 1m --vertical-crs EVRF2007 --root /mnt/nas/kartograf"
+        f" --resolution 1m --vertical-crs EVRF2007 --root {_ROOT}"
     ),
-    "root": "/mnt/nas/kartograf",
     "schema": "kartograf-plan/1",
     "checked_at": "2026-10-25T08:15:02Z",
     "ok": True,
@@ -96,39 +99,52 @@ _PLAN_EXAMPLE: dict[str, Any] = {
     ],
     "notices": [],
 }
+_NEXT_CALL: dict[str, Any] = {
+    **_FIRST_CALL,
+    "call": 1,
+    "options": _NEXT_OPTIONS,
+    "line": _FIRST_CALL["line"].replace("D-d-2", "D-d-4"),
+    "counts": {**_FIRST_CALL["counts"], "current": 0, "newer": 0, "unverifiable": 0},
+    "todo": 1,
+    "entries": [
+        {
+            **_ENTRY_EXAMPLE,
+            "path": f"{_SEGMENT}/N-34-130-D-d-4-1.asc",
+            "unit": "N-34-130-D-d-4-1",
+            "status": "missing",
+            "local_label": None,
+        }
+    ],
+}
+_PLAN_EXAMPLE: dict[str, Any] = {
+    "job_id": _JOB_ID,
+    "store": "zespol",
+    "producer": "kartograf",
+    "root": _ROOT,
+    "checked_at": "2026-10-25T08:15:02Z",
+    "ok": True,
+    "counts": {
+        "current": 1,
+        "newer": 1,
+        "missing": 2,
+        "unverifiable": 1,
+        "check_failed": 0,
+    },
+    "positions": 5,
+    "todo": 3,
+    "size_bytes": None,
+    "size_complete": False,
+    "calls": [_FIRST_CALL, _NEXT_CALL],
+}
 
 
-class JobRequest(BaseModel):
-    """A job of a producer's command on a configured store (`POST /jobs`)."""
+class CallRequest(BaseModel):
+    """One call of a job: a command of the producer's catalog and its options."""
 
     model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                _REQUEST_EXAMPLE,
-                {**_REQUEST_EXAMPLE, "kind": "download", "plan_job": _JOB_ID},
-            ]
-        },
+        extra="forbid", json_schema_extra={"examples": [_CALL_EXAMPLE]}
     )
 
-    kind: ActionKind = Field(
-        description=(
-            "`check`: plan a run of the command in the store without its effects"
-            " (what it would download, the labels, the size when the producer"
-            " tells it), over the network; read the plan with `GET"
-            " /jobs/{job}/plan`. `download`: run the command in the store, over"
-            " the network; it writes the store, so it needs the role"
-            " `store_writer` or the setting `store_write_for_all`."
-        )
-    )
-    producer: str = Field(min_length=1, description="Producer id.")
-    store: str = Field(
-        min_length=1,
-        description=(
-            "Id of the configured store whose directory of the producer the"
-            " command works on, never the producer's default root."
-        ),
-    )
     command: str = Field(
         min_length=1,
         description=(
@@ -143,15 +159,60 @@ class JobRequest(BaseModel):
             " path (`path_role`)."
         ),
     )
+
+
+class JobRequest(BaseModel):
+    """A job of a producer's calls on a configured store (`POST /jobs`)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                _REQUEST_EXAMPLE,
+                {**_REQUEST_EXAMPLE, "kind": "download", "plan_job": _JOB_ID},
+            ]
+        },
+    )
+
+    kind: ActionKind = Field(
+        description=(
+            "`check`: plan a run of each call in the store without its effects"
+            " (what it would download, the labels, the size when the producer"
+            " tells it), over the network; read the plans with `GET"
+            " /jobs/{job}/plan`. `download`: run the calls in the store, over"
+            " the network; it writes the store, so it needs the role"
+            " `store_writer` or the setting `store_write_for_all`."
+        )
+    )
+    producer: str = Field(min_length=1, description="Producer id.")
+    store: str = Field(
+        min_length=1,
+        description=(
+            "Id of the configured store whose directory of the producer the"
+            " calls work on, never the producer's default root."
+        ),
+    )
+    calls: list[CallRequest] = Field(
+        min_length=1,
+        max_length=MAX_JOB_CALLS,
+        description=(
+            "The calls, run one after the other in one job: all the lines of a"
+            " report's row, or of a pasted list, in their order (one call for"
+            " one line). A refusal of one call names its place as"
+            " `details.call`, from 0."
+        ),
+    )
     plan_job: str | None = Field(
         default=None,
         min_length=1,
         description=(
-            "`download` only: the `check` job whose kept plan the run runs, a"
-            " plan of the same store, producer, command and options. The run"
-            " fetches only its positions to download; one whose source changed"
-            " since is a failed item (`conflict`, `stale_plan`). Without it the"
-            " run fetches what the source has that the store does not hold."
+            "`download` only: the `check` job whose kept plans the run runs, a"
+            " job of the same store, producer and calls (in the same order)."
+            " Each call fetches only its plan's positions to download; one"
+            " whose source changed since is a failed item (`conflict`,"
+            " `stale_plan`), and a call whose check failed or whose plan has"
+            " nothing to download is skipped. Without it each call fetches"
+            " what the source has that the store does not hold."
         ),
         examples=[_JOB_ID],
     )
@@ -162,12 +223,15 @@ class JobRequest(BaseModel):
         cls, value: str | None, info: ValidationInfo
     ) -> str | None:
         if value is not None and info.data.get("kind") != "download":
-            raise ValueError("only a download runs the plan of a check job")
+            raise ValueError("only a download runs the plans of a check job")
         return value
 
-    def call(self) -> CommandCall:
-        """Return the call of the job's command."""
-        return CommandCall(self.producer, self.command, self.options)
+    def command_calls(self) -> tuple[CommandCall, ...]:
+        """Return the calls of the job, in their order."""
+        return tuple(
+            CommandCall(self.producer, call.command, call.options)
+            for call in self.calls
+        )
 
 
 class PlanEntryItem(BaseModel):
@@ -225,27 +289,27 @@ class PlanEntryItem(BaseModel):
         )
 
 
-class ActionPlanInfo(BaseModel):
-    """The plan a `check` job kept: what a run of its command would do in the store."""
+class CallPlanItem(BaseModel):
+    """The plan of one call: what a run of it would do in the store."""
 
     model_config = ConfigDict(
         serialize_by_alias=True,
         validate_by_alias=True,
         validate_by_name=True,
-        json_schema_extra={"examples": [_PLAN_EXAMPLE]},
+        json_schema_extra={"examples": [_FIRST_CALL]},
     )
 
-    job_id: str = Field(description="The `check` job that made the plan.")
-    store: str = Field(description="The configured store the plan is of.")
-    producer: str = Field(description="Producer id.")
+    call: int = Field(description="Its place in the job's `calls`, from 0.", ge=0)
     command: str = Field(description="The command planned, of the producer's catalog.")
+    options: dict[str, Any] = Field(
+        description="Its options as the producer read them."
+    )
     line: str = Field(
         description=(
             "The producer's command line of the run, with the store's root: the"
             " same run from a terminal."
         )
     )
-    root: str = Field(description="The store root the producer planned for.")
     plan_schema: str = Field(
         alias="schema",
         description="Schema of the producer's own plan (`kartograf-plan/1`).",
@@ -270,20 +334,18 @@ class ActionPlanInfo(BaseModel):
         description="The positions, in the producer's order."
     )
     notices: list[AvailabilityNoticeItem] = Field(
-        description="What the producer said while it checked."
+        description="What the producer said while it checked the call."
     )
 
     @classmethod
-    def of(cls, stored: StoredPlan) -> Self:
-        """Return the model of a kept plan."""
+    def of(cls, stored: StoredPlan, options: dict[str, Any]) -> Self:
+        """Return the model of the kept plan of a call with the call's options."""
         plan = stored.plan
         return cls(
-            job_id=stored.job_id,
-            store=stored.store,
-            producer=plan.producer,
+            call=stored.call,
             command=plan.command,
+            options=options,
             line=stored.line,
-            root=plan.root,
             schema=plan.schema,
             checked_at=plan.checked_at,
             ok=plan.ok,
@@ -293,4 +355,70 @@ class ActionPlanInfo(BaseModel):
             size_complete=plan.size_complete,
             entries=[PlanEntryItem.of(entry) for entry in plan.entries],
             notices=[AvailabilityNoticeItem.of(notice) for notice in plan.notices],
+        )
+
+
+class ActionPlanInfo(BaseModel):
+    """The plans a `check` job kept: what a run of its calls would do in the store."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_PLAN_EXAMPLE]})
+
+    job_id: str = Field(description="The `check` job that made the plans.")
+    store: str = Field(description="The configured store the plans are of.")
+    producer: str = Field(description="Producer id.")
+    root: str = Field(description="The store root the producer planned for.")
+    checked_at: datetime = Field(
+        description="When the source was asked for the oldest of the plans (UTC)."
+    )
+    ok: bool = Field(
+        description=(
+            "Every call was planned and every position checked: no call failed"
+            " (the job's `result.calls` says why one did) and no position is"
+            " `check_failed`."
+        )
+    )
+    counts: dict[PlanStatus, int] = Field(
+        description="Positions of each status in all the plans, every status named."
+    )
+    positions: int = Field(description="Positions of all the plans.")
+    todo: int = Field(description="Positions the runs of the plans download.")
+    size_bytes: int | None = Field(
+        description=(
+            "Bytes the runs download as far as the producer tells the sizes of"
+            " the positions to download; `null` when it tells none of them,"
+            " never 0 for an unknown size."
+        )
+    )
+    size_complete: bool = Field(
+        description="Every position to download has its size: `size_bytes` is whole."
+    )
+    calls: list[CallPlanItem] = Field(
+        description=(
+            "The plan of each call planned, in the order of the job's `calls`;"
+            " a call whose check failed has none."
+        )
+    )
+
+    @classmethod
+    def of(cls, kept: KeptPlans) -> Self:
+        """Return the model of the plans a job kept."""
+        calls: list[dict[str, Any]] = kept.job.params["calls"]
+        plans = [stored.plan for stored in kept.plans]
+        totals = PlanTotals.of(plans)
+        return cls(
+            job_id=kept.job.id,
+            store=kept.plans[0].store,
+            producer=plans[0].producer,
+            root=plans[0].root,
+            checked_at=totals.checked_at,
+            ok=totals.ok and len(plans) == len(calls),
+            counts=totals.counts,
+            positions=totals.positions,
+            todo=totals.todo,
+            size_bytes=totals.size_bytes,
+            size_complete=totals.size_complete,
+            calls=[
+                CallPlanItem.of(stored, calls[stored.call]["options"])
+                for stored in kept.plans
+            ],
         )

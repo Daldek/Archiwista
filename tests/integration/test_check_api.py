@@ -6,7 +6,8 @@ receives (``standin_producer.CALLS``, this process only). A supervisor that
 runs no network job keeps a check a request started queued, so what each
 request started stays to be seen; the tests of a plan let the check run to its
 end in a worker of ``ACTION_WORKER``. The job itself is
-``tests/integration/test_check_job.py``.
+``tests/integration/test_check_job.py``; a job of several calls (a report's
+row) is ``tests/integration/test_row_jobs.py``.
 """
 
 import json
@@ -23,11 +24,12 @@ from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.index import IndexWriter, StoredPlan
-from archiwista.jobs import JobSupervisor
+from archiwista.jobs import MAX_JOB_CALLS, JobSupervisor
 from archiwista.sources import ActionPlan, PlanEntry
 from archiwista.sources.registry import load_registry
 from tests.fixtures.actions import (
     ACTION_WORKER,
+    COMMAND,
     STATION,
     STORE,
     action_paths,
@@ -43,12 +45,12 @@ from tests.fixtures.network import no_network
 from tests.fixtures.permissions import add_people, principal
 
 JOB_TIMEOUT_S = 90.0
+CALL: dict[str, Any] = {"command": COMMAND, "options": STATION}
 BODY: dict[str, Any] = {
     "kind": "check",
     "producer": "standin",
     "store": STORE,
-    "command": "series fetch",
-    "options": STATION,
+    "calls": [CALL],
 }
 UNKNOWN_JOB = "0000000000000000"
 # A command of the stand-in on a store that has no plan without effects.
@@ -118,9 +120,15 @@ def _cli(capsys: pytest.CaptureFixture[str], paths: AppPaths, *argv: str) -> Any
 
 def _start_argv(body: dict[str, Any]) -> list[str]:
     """Return the arguments of ``jobs start`` that ask what ``body`` asks."""
-    argv = ["start", body["kind"], body["producer"], body["command"]]
-    argv += ["--options", json.dumps(body["options"])]
+    argv = ["start", body["kind"], body["producer"]]
+    for call in body["calls"]:
+        argv += ["--call", json.dumps(call)]
     return [*argv, "--store", body["store"]] if "store" in body else argv
+
+
+def _with_call(**call: Any) -> dict[str, Any]:
+    """Return ``BODY`` with its one call changed by ``call``."""
+    return {**BODY, "calls": [{**CALL, **call}]}
 
 
 def test_a_check_starts_with_the_options_as_the_producer_reads_them(
@@ -132,7 +140,7 @@ def test_a_check_starts_with_the_options_as_the_producer_reads_them(
 
     with _api(paths) as (owner, jobs), no_network() as attempts:
         # Act
-        started = owner.request("POST", "/jobs", json={**BODY, "options": given})
+        started = owner.request("POST", "/jobs", json=_with_call(options=given))
         listed = [job.id for job in jobs.list().items]
     received = standin.CALLS
 
@@ -148,8 +156,12 @@ def test_a_check_starts_with_the_options_as_the_producer_reads_them(
     )
     assert job["params"] == {
         "producer": "standin",
-        "command": "series fetch",
-        "options": {"station": "150160180", "kind": "hydro"},
+        "calls": [
+            {
+                "command": "series fetch",
+                "options": {"station": "150160180", "kind": "hydro"},
+            }
+        ],
     }
     assert listed == [job["id"]]
     root = str(store_root(tmp_path))
@@ -162,34 +174,34 @@ def test_a_check_starts_with_the_options_as_the_producer_reads_them(
     [
         ({**BODY, "store": "brak"}, 404, "not_found", {}),
         (
-            {**BODY, "command": "series_fetch"},
+            _with_call(command="series_fetch"),
             400,
             "validation_error",
-            {"reason": "unknown_command", "option": "command"},
+            {"reason": "unknown_command", "option": "command", "call": 0},
         ),
         (
-            {**BODY, "command": "stations list", "options": {"kind": "meteo"}},
+            _with_call(command="stations list", options={"kind": "meteo"}),
             422,
             "unsupported",
-            {"reason": "no_store"},
+            {"reason": "no_store", "call": 0},
         ),
         (
-            {**BODY, "command": "series show", "options": {"station": "150160180"}},
+            _with_call(command="series show", options={"station": "150160180"}),
             422,
             "unsupported",
-            {"reason": "no_check"},
+            {"reason": "no_check", "call": 0},
         ),
         (
-            {**BODY, "options": {**STATION, "area": "/etc/passwd"}},
+            _with_call(options={**STATION, "area": "/etc/passwd"}),
             403,
             "forbidden",
-            {"reason": "path_outside_root", "option": "area"},
+            {"reason": "path_outside_root", "option": "area", "call": 0},
         ),
         (
-            {**BODY, "options": {**STATION, "kind": "both"}},
+            {**BODY, "calls": [CALL, {**CALL, "options": {**STATION, "kind": "both"}}]},
             400,
             "validation_error",
-            {"option": "kind"},
+            {"option": "kind", "call": 1},
         ),
         (
             {**BODY, "producer": "brak"},
@@ -199,9 +211,21 @@ def test_a_check_starts_with_the_options_as_the_producer_reads_them(
         ),
         ({**BODY, "kind": "scan"}, 400, "validation_error", {}),
         ({**BODY, "force": True}, 400, "validation_error", {}),
-        ({**BODY, "command": ""}, 400, "validation_error", {}),
+        (_with_call(command=""), 400, "validation_error", {}),
+        (_with_call(store=STORE), 400, "validation_error", {}),
+        ({**BODY, "calls": []}, 400, "validation_error", {}),
+        ({**BODY, "calls": [CALL] * (MAX_JOB_CALLS + 1)}, 400, "validation_error", {}),
         (
             {key: value for key, value in BODY.items() if key != "store"},
+            400,
+            "validation_error",
+            {},
+        ),
+        (
+            {
+                **{key: value for key, value in BODY.items() if key != "calls"},
+                **CALL,
+            },
             400,
             "validation_error",
             {},
@@ -219,11 +243,12 @@ def test_a_request_the_worker_would_refuse_is_refused_before_a_job(
 ) -> None:
     """Nothing is recorded and the producer plans nothing; the command agrees.
 
-    The command line has no way to give a member the body does not know.
+    A refused call is named by its place. The command line has no way to give
+    a member the body does not know, nor an empty list of calls.
     """
     with _api(paths) as (owner, jobs):
         refused = owner.request("POST", "/jobs", json=body)
-        if set(body) <= set(BODY):
+        if set(body) <= set(BODY) and body["calls"]:
             assert_same_error(_cli(capsys, paths, *_start_argv(body)), refused.json())
         listed = jobs.list().items
 
@@ -273,51 +298,66 @@ def test_the_plan_of_a_finished_check_is_read_back(
     root = str(store_root(tmp_path))
     line = f"standin series fetch --station 150160180 --kind hydro --root {root}"
     planned = standin.plan_items("150160180", "hydro")
-    assert {key: value for key, value in body.items() if key != "checked_at"} == {
+    counts = {
+        "current": 1,
+        "newer": 1,
+        "missing": 1,
+        "unverifiable": 1,
+        "check_failed": 0,
+    }
+    assert {key: value for key, value in body.items() if key != "calls"} == {
         "job_id": record.id,
         "store": STORE,
         "producer": "standin",
-        "command": "series fetch",
-        "line": line,
         "root": root,
-        "schema": "standin-plan/1",
+        "checked_at": body["checked_at"],
         "ok": True,
-        "counts": {
-            "current": 1,
-            "newer": 1,
-            "missing": 1,
-            "unverifiable": 1,
-            "check_failed": 0,
-        },
+        "counts": counts,
+        "positions": 4,
         "todo": 2,
         "size_bytes": 5400,
         "size_complete": False,
-        "entries": [
-            {
-                "path": item["file"],
-                "unit": item["station"],
-                "status": item["status"],
-                "local_label": item["local"],
-                "available_label": item["source"],
-                "size_bytes": item["bytes"],
-                "error": None,
-                "conflict": None,
-            }
-            for item in planned
-        ],
-        "notices": [
-            {
-                "level": "info",
-                "code": "plan_cached",
-                "message": "The station index answered from the cache.",
-            }
-        ],
     }
-    assert body["entries"][2]["size_bytes"] is None
+    assert body["calls"] == [
+        {
+            "call": 0,
+            "command": "series fetch",
+            "options": STATION,
+            "line": line,
+            "schema": "standin-plan/1",
+            "checked_at": body["checked_at"],
+            "ok": True,
+            "counts": counts,
+            "todo": 2,
+            "size_bytes": 5400,
+            "size_complete": False,
+            "entries": [
+                {
+                    "path": item["file"],
+                    "unit": item["station"],
+                    "status": item["status"],
+                    "local_label": item["local"],
+                    "available_label": item["source"],
+                    "size_bytes": item["bytes"],
+                    "error": None,
+                    "conflict": None,
+                }
+                for item in planned
+            ],
+            "notices": [
+                {
+                    "level": "info",
+                    "code": "plan_cached",
+                    "message": "The station index answered from the cache.",
+                }
+            ],
+        }
+    ]
+    assert body["calls"][0]["entries"][2]["size_bytes"] is None
     assert datetime.fromisoformat(body["checked_at"]) == datetime.fromisoformat(
         detail["result"]["checked_at"]
     )
-    assert (detail["result"]["counts"], detail["result"]["line"]) == (
+    assert (detail["result"]["counts"], detail["result"]["calls"][0]["line"]) == (
         body["counts"],
         line,
     )
@@ -349,7 +389,11 @@ def test_a_job_without_a_plan_is_not_found(
 def test_the_plan_of_a_job_the_session_does_not_see_is_not_found(
     paths: AppPaths, tmp_path: Path, standin: ModuleType
 ) -> None:
-    """A job of a project hidden from the person is `404`, its plan kept or not."""
+    """A job of a project hidden from the person is `404` as an unknown one.
+
+    Its plan kept or not: whoever sees the job learns that it kept none, a
+    job that is no check.
+    """
     # Arrange: a job of a project no index knows, which only administrators see.
     registry = load_registry(cache_dir=paths.cache_dir)
     settings = SettingsService(ConfigStore(paths.config_file), registry)
@@ -365,7 +409,9 @@ def test_the_plan_of_a_job_the_session_does_not_see_is_not_found(
     with JobSupervisor(paths, settings, max_jobs=0) as jobs:
         job = jobs.submit("own_scan", params={"project": "raba"}, actor=LOCAL_OWNER)
         with IndexWriter(paths.index_file) as writer:
-            writer.write_plan(StoredPlan(job.id, STORE, "standin series fetch", plan))
+            writer.write_plans(
+                [StoredPlan(job.id, 0, STORE, "standin series fetch", plan)]
+            )
         with running_api(paths, registry, jobs=jobs) as api:
             add_people(api.state)
             person = api.session(principal(api.state, "other"))
@@ -381,8 +427,9 @@ def test_the_plan_of_a_job_the_session_does_not_see_is_not_found(
     assert hidden.json()["detail"] == unknown.json()["detail"].replace(
         UNKNOWN_JOB, job.id
     )
-    assert shown.status_code == 200, shown.text
-    assert shown.json()["entries"][0]["status"] == "missing"
+    assert_problem(shown, 404, "not_found")
+    assert job.id in shown.json()["detail"]
+    assert shown.json()["detail"] != hidden.json()["detail"]
 
 
 def test_jobs_start_runs_the_check_in_the_foreground(
@@ -396,7 +443,7 @@ def test_jobs_start_runs_the_check_in_the_foreground(
     defaults = JobSupervisor.__init__.__kwdefaults__
     assert defaults is not None
     monkeypatch.setitem(defaults, "worker_command", ACTION_WORKER)
-    partial = {**BODY, "options": {**STATION, "station": "901"}}
+    partial = _with_call(options={**STATION, "station": "901"})
 
     # Act
     outcomes = []
@@ -421,10 +468,12 @@ def test_jobs_start_runs_the_check_in_the_foreground(
     assert [detail["state"] for detail in details] == ["succeeded", "partial"]
     assert details[1]["result"]["failed"] == [
         {
+            "call": 0,
             "path": "hydro/901/2025.csv",
             "error": "The source did not answer for hydro/901/2025.csv.",
         }
     ]
+    assert [call["status"] for call in details[1]["result"]["calls"]] == ["partial"]
     job = details[0]["id"]
     assert outcomes[0][1].err.splitlines() == [
         f"Job {job} started: plan of a download.",

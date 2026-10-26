@@ -141,6 +141,9 @@ SUMMARY_STATES: tuple[JobState, ...] = ("succeeded", "partial")
 MAX_NETWORK_JOBS = 2
 # Refs of one ``preview`` job, also once others joined it.
 MAX_PREVIEW_REFS = 500
+# Calls of one ``check`` or ``download`` job: the lines of a report's row or of
+# a pasted list (ADR-044).
+MAX_JOB_CALLS = 1000
 # ``file_id`` of a ``snapshot`` job (``archiwista.index.own_file_id``).
 _FILE_ID = re.compile(r"[0-9a-f]{16}")
 # Refs of a project's own data (``file:<project>:…``, ``snapshot:<project>:…``)
@@ -224,8 +227,8 @@ class JobRecord:
         with the refs of the requests that joined it; ``own_scan``: optional
         ``project``; ``snapshot``: ``project``, ``file_id``, ``note``;
         ``availability``: ``area_id``, ``producer``, ``product``, ``force``;
-        ``check``: ``producer``, ``command``, ``options``; ``download``: those
-        and ``plan_job``).
+        ``check``: ``producer``, ``calls`` (each ``command``, ``options``);
+        ``download``: those and ``plan_job``).
     created_at, started_at, finished_at : datetime or None
         When it was submitted, started and finished (UTC).
     progress : dict or None
@@ -363,16 +366,17 @@ class JobOverlap:
 
     Attributes
     ----------
-    key : Callable[[str or None, dict], object]
-        ``key(store, params)``: the jobs of the kind with the new job's key
-        do the same work; the producer writes each version once, so the
-        later one mostly finds what the earlier wrote.
+    keys : Callable[[str or None, dict], frozenset]
+        ``keys(store, params)``: the parts of a job's work; a job of the kind
+        sharing one with the new job does some of the same work, and the
+        producer writes each version once, so the later one mostly finds
+        what the earlier wrote.
     message : str
         Catalog key of the notice, with ``job`` and ``state`` of the oldest
         such job.
     """
 
-    key: Callable[[str | None, JsonObject], object]
+    keys: Callable[[str | None, JsonObject], frozenset[object]]
     message: str
 
 
@@ -418,10 +422,17 @@ def _snapshot_key(store: str | None, params: JsonObject) -> object:
     return (params["project"], params["file_id"])
 
 
-def _call_key(store: str | None, params: JsonObject) -> object:
-    """Return the key of a job of a producer's command: its store and its call."""
-    options = json.dumps(params["options"], sort_keys=True, ensure_ascii=False)
-    return (store, params["producer"], params["command"], options)
+def _call_keys(store: str | None, params: JsonObject) -> frozenset[object]:
+    """Return the keys of a job of a producer's calls: its store with each call."""
+    return frozenset(
+        (
+            store,
+            params["producer"],
+            call["command"],
+            json.dumps(call["options"], sort_keys=True, ensure_ascii=False),
+        )
+        for call in params["calls"]
+    )
 
 
 def _project_key(store: str | None, params: JsonObject) -> object:
@@ -501,8 +512,8 @@ _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapsh
 # One job of a project at a time (SPEC 5.6): its producer writes the manifest
 # under a lock that a second one would wait for.
 _PROJECT_CONFLICT = JobConflict("project", _project_key, "job.conflict_project")
-# A download of the call an active download of the store runs (SPEC 5.6).
-_DOWNLOAD_OVERLAP = JobOverlap(_call_key, "job.overlapping")
+# A download of a call an active download of the store runs (SPEC 5.6).
+_DOWNLOAD_OVERLAP = JobOverlap(_call_keys, "job.overlapping")
 # The rule of each kind, one line per kind of ``JobKind``.
 JOB_RULES: Mapping[JobKind, JobRule] = {
     "scan": JobRule(store=True, conflict=_INDEX_CONFLICT),
@@ -772,11 +783,12 @@ class JobSupervisor:
             hex characters) and ``note`` (at most 2000 characters, ``""`` by
             default); ``availability``: ``area_id``, ``producer`` and
             ``product`` (non-empty texts) and ``force`` (ask the source
-            again, ``False`` by default); ``check``: ``producer`` and
-            ``command`` (non-empty texts) and ``options`` (a JSON object, the
-            call's options; ``{}`` by default); ``download``: those of
-            ``check`` and ``plan_job`` (the ``check`` job whose kept plan the
-            run runs, ``None`` by default); ``project_download``,
+            again, ``False`` by default); ``check``: ``producer`` (a
+            non-empty text) and ``calls`` (1 to ``MAX_JOB_CALLS`` calls, each
+            a JSON object of ``command``, a non-empty text, and ``options``,
+            a JSON object, ``{}`` by default); ``download``: those of
+            ``check`` and ``plan_job`` (the ``check`` job whose kept plans
+            the run runs, ``None`` by default); ``project_download``,
             ``project_check``, ``project_verify``: ``project`` (its key) and
             ``tasks`` (a list of task names, ``None`` for every task, the
             default); ``project_repin``: ``project`` and ``tasks`` with one
@@ -796,8 +808,8 @@ class JobSupervisor:
             that job's ``params`` gain the request's (a running worker keeps
             those it started with), and no job is recorded. A job of a kind
             that overlaps (``download``) gets a warning notice
-            ``overlapping_job`` naming the oldest active job it repeats,
-            ``job`` its id.
+            ``overlapping_job`` naming the oldest active job it repeats a
+            call of, ``job`` its id.
 
         Raises
         ------
@@ -1579,14 +1591,14 @@ class JobSupervisor:
     ) -> JsonObject | None:
         """Return the notice of a new job about the oldest live job it repeats.
 
-        Looks at the other active jobs of the kind with the new job's overlap
-        key (``JobOverlap.key``); a job whose supervisor is gone is no one's
-        work any more. ``None`` without such a job.
+        Looks at the other active jobs of the kind that share an overlap key
+        with the new job (``JobOverlap.keys``); a job whose supervisor is
+        gone is no one's work any more. ``None`` without such a job.
         """
         rule = JOB_RULES[kind].overlap
         if rule is None:
             return None
-        key = rule.key(store, params)
+        keys = rule.keys(store, params)
         rows = db.execute(
             "SELECT id, state, pid, store, params FROM jobs"
             f" WHERE kind = ? AND id != ? AND state IN {_ACTIVE_SQL}"
@@ -1594,7 +1606,7 @@ class JobSupervisor:
             (kind, job_id),
         ).fetchall()
         for row in rows:
-            if rule.key(row["store"], json.loads(row["params"])) != key:
+            if keys.isdisjoint(rule.keys(row["store"], json.loads(row["params"]))):
                 continue
             if self._owner_alive(row["id"], row["pid"]):
                 text = message(
@@ -1801,25 +1813,42 @@ def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
 
 
 def _check_params(params: Mapping[str, object]) -> JsonObject:
-    """Check a ``check`` job's producer, command and the call's options."""
-    names = ("producer", "command")
-    options = params.get("options", {})
+    """Check a ``check`` job's producer and its calls, in their order.
+
+    Each call is a ``command`` and the call's ``options`` (``{}`` when not
+    given); a job has 1 to ``MAX_JOB_CALLS`` of them.
+    """
+    producer = params.get("producer")
+    calls = params.get("calls")
     if (
-        set(params) - {*names, "options"}
-        or not all(isinstance(params.get(name), str) and params[name] for name in names)
-        or not isinstance(options, Mapping)
+        set(params) - {"producer", "calls"}
+        or not (isinstance(producer, str) and producer)
+        or not (isinstance(calls, list | tuple) and 0 < len(calls) <= MAX_JOB_CALLS)
     ):
         raise ValueError(f"invalid check parameters {dict(params)!r}"[:300])
-    return {**{name: params[name] for name in names}, "options": dict(options)}
+    checked: list[JsonObject] = []
+    for call in calls:
+        if not isinstance(call, Mapping):
+            raise ValueError(f"invalid call {call!r}"[:300])
+        command = call.get("command")
+        options = call.get("options", {})
+        if (
+            set(call) - {"command", "options"}
+            or not (isinstance(command, str) and command)
+            or not isinstance(options, Mapping)
+        ):
+            raise ValueError(f"invalid call {dict(call)!r}"[:300])
+        checked.append({"command": command, "options": dict(options)})
+    return {"producer": producer, "calls": checked}
 
 
 def _download_params(params: Mapping[str, object]) -> JsonObject:
-    """Check a ``download`` job's call (as of ``check``) and its ``plan_job``."""
+    """Check a ``download`` job's calls (as of ``check``) and its ``plan_job``."""
     plan_job = params.get("plan_job")
     if not (plan_job is None or (isinstance(plan_job, str) and plan_job)):
         raise ValueError(f"invalid download plan job {plan_job!r}"[:300])
-    call = {name: value for name, value in params.items() if name != "plan_job"}
-    return {**_check_params(call), "plan_job": plan_job}
+    calls = {name: value for name, value in params.items() if name != "plan_job"}
+    return {**_check_params(calls), "plan_job": plan_job}
 
 
 def _snapshot_params(params: Mapping[str, object]) -> JsonObject:

@@ -444,6 +444,19 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** a `check` or `download` job takes `calls` (1 to 1000 `{"command",
+  "options"}` of one producer) instead of `command` and `options`, so all the lines of a
+  report's row, or of a pasted list, are one check and one download (ADR-044): `POST /jobs`,
+  `archiwista jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …]`.
+  `GET /jobs/{job}/plan` returns the totals and the plan of each call; a refused call is
+  named by `details.call`; `plan_job` must have the same calls in the same order (`409
+  plan_mismatch`); a call whose check failed is skipped by the download (`not_planned`).
+  The plan window starts one check and one download per row, and the top bar shows one
+  entry per row. `SCHEMA_VERSION` 12 (the index is rebuilt), `PROTOCOL_VERSION` 10. A row
+  of 32 stand-in lines plans in 0.66 s instead of 11.55 s.
+- A job worker starts lighter: `archiwista.jobs` loads its names on first use and the
+  preview runners import their modules when they run, so a worker imports 51 Archiwista
+  modules instead of 83 (0.365 s instead of 0.530 s) (ADR-044, option C).
 - The plan of a row of an availability report ("Pobierz…") right after the report asks GUGiK
   nothing: the adapter's `check` opens Archiwista's metadata cache with
   `refresh_ttl_seconds=PLAN_REFRESH_TTL_S` (one hour), and Kartograf `70ef08ef` (ADR-056)

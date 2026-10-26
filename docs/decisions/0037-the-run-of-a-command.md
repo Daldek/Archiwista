@@ -26,3 +26,5 @@
 - A plan's positions have paths below the root too, so their scopes are known before a run.
 - A large run makes a large job result (`files[]`, `items[]`), which `GET /jobs` lists with the job.
 - Cancelling runs the rescan inside the stop timeout; a worker killed before it ends leaves the rest to the next scan.
+
+**Erratum 1 (2026-10-26, ADR-044):** a `download` job takes `calls[]` and runs them in turn (`plan_job` of the same calls, else `409 plan_mismatch`; a call without a kept plan or with nothing to download is skipped); its progress names the `call` (`PROTOCOL_VERSION` 10).

@@ -1,17 +1,17 @@
 """Producers' commands run as jobs over HTTP (plan of 2026-10-25, A4, A5; SPEC 9.2).
 
-``POST /jobs`` starts a job of a command of a producer's catalog on a
-configured store, kind ``check`` (the plan of a run without its effects,
-ADR-036) or ``download`` (the run, the plan of a ``check`` job if named,
-ADR-037): it answers ``202`` with the job and ``Location:
-/api/v1/jobs/{job}``, and refuses before a job exists what the job's worker
-would refuse; a download needs the permission to write the stores
-(``store.write``). ``GET /jobs/{job}/plan`` returns the plan the ``check`` job
-kept, from the index, without the network; a job the session does not see,
-or one without a plan, is ``404``. The routes translate only:
-``archiwista.services.actions`` does the work and asks the ``Authorizer``, and
-``archiwista jobs`` calls the same functions. The router is served with the
-job supervisor.
+``POST /jobs`` starts a job of calls of commands of a producer's catalog on a
+configured store, all the lines of a report's row in one job (ADR-044), kind
+``check`` (the plan of a run of each call without its effects, ADR-036) or
+``download`` (the runs, the plans of a ``check`` job if named, ADR-037): it
+answers ``202`` with the job and ``Location: /api/v1/jobs/{job}``, and refuses
+before a job exists what the job's worker would refuse; a download needs the
+permission to write the stores (``store.write``). ``GET /jobs/{job}/plan``
+returns the plans the ``check`` job kept, from the index, without the
+network; a job the session does not see, or one without a plan, is ``404``.
+The routes translate only: ``archiwista.services.actions`` does the work and
+asks the ``Authorizer``, and ``archiwista jobs`` calls the same functions.
+The router is served with the job supervisor.
 """
 
 from typing import Annotated, Any
@@ -94,24 +94,28 @@ def start_job(
     queries: _Queries,
     response: Response,
 ) -> JobDetail:
-    """Start a job of a command of a producer's catalog on a configured store.
+    """Start a job of calls of a producer's catalog on a configured store.
 
-    `check` plans a run of the command in the store's directory of the
-    producer without its effects, over the network; its plan is read with
-    `GET /jobs/{job}/plan` once the job succeeded or ended `partial`.
-    `download` runs the command there and writes the store; with `plan_job`
-    it runs the plan that `check` job kept. The answer is `202` with the job
-    and `Location: /api/v1/jobs/{job}`; follow it with `GET
-    /jobs/{job}/events`. Refused before a job exists: a download by a session
-    that may not write the stores (`403`, `permission_denied`: neither the
-    role `store_writer` nor the setting `store_write_for_all`), a store that is
-    not configured (`404`), a command outside the catalog (`400`,
-    `unknown_command`), a store without a directory of the producer (`400`,
+    One job runs all its `calls`, one after the other: all the lines of a
+    report's row, or of a pasted list. `check` plans a run of each call in
+    the store's directory of the producer without its effects, over the
+    network; its plans are read with `GET /jobs/{job}/plan` once the job
+    succeeded or ended `partial` (some calls or positions could not be
+    checked: `result.calls` says which). `download` runs the calls there and
+    writes the store; with `plan_job` each runs the plan that `check` job
+    kept of it. The answer is `202` with the job and `Location:
+    /api/v1/jobs/{job}`; follow it with `GET /jobs/{job}/events`. Refused
+    before a job exists: a download by a session that may not write the
+    stores (`403`, `permission_denied`: neither the role `store_writer` nor
+    the setting `store_write_for_all`), a store that is not configured
+    (`404`), a command outside the catalog (`400`, `unknown_command`), a
+    store without a directory of the producer (`400`,
     `store_without_producer`), a command on no store or without a check
     (`422`, `no_store`, `no_check`), an option that is a file path (`403`,
     `path_outside_root`), the producer's refusal of the options (`400` with
-    its text and `details.option`), a `plan_job` the session does not see or
-    without a kept plan (`404`) or of another store or call (`409`,
+    its text and `details.option`), each refusal of a call naming its place
+    (`details.call`), a `plan_job` the session does not see or without a
+    kept plan (`404`) or of another store, producer or calls (`409`,
     `plan_mismatch`), a producer whose plugin is missing (`503`) and offline
     mode (`409 offline_mode`).
     """
@@ -123,7 +127,7 @@ def start_job(
         decisions,
         kind=body.kind,
         store=body.store,
-        call=body.call(),
+        calls=body.command_calls(),
         actor=principal,
         visible=visible,
         plan_job=body.plan_job,
@@ -144,13 +148,14 @@ def get_job_plan(
     jobs: _Jobs,
     queries: _Queries,
 ) -> ActionPlanInfo:
-    """Return the plan a `check` job kept: what a run of its command would do.
+    """Return the plans a `check` job kept: what a run of its calls would do.
 
     Read from the index, never from the network: `checked_at` says when the
-    source was asked. The plan is kept from the end of a job that succeeded
-    or ended `partial` for as long as the job. A job the session does not
-    see, one that is no `check`, one still running and one that failed are
-    `404`.
+    source was asked. The plans are kept from the end of a job that
+    succeeded or ended `partial` for as long as the job, one per call
+    planned; a call whose check failed has none (the job's `result.calls`
+    says why). A job the session does not see, one that is no `check`, one
+    still running and one that failed are `404`.
     """
-    stored = action_service.kept_plan(queries, jobs, job, visible=visible)
-    return ActionPlanInfo.of(stored)
+    kept = action_service.kept_plans(queries, jobs, job, visible=visible)
+    return ActionPlanInfo.of(kept)

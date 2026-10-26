@@ -8,7 +8,8 @@ so it needs ``store.write``: the role ``store_writer`` or the setting
 owner of the installation, who holds the role. A supervisor that runs no
 network job keeps what a request started queued; the tests of a run let it end
 in a worker of ``ACTION_WORKER``. The job itself is
-``tests/integration/test_download_job.py``.
+``tests/integration/test_download_job.py``; a job of several calls (a report's
+row) is ``tests/integration/test_row_jobs.py``.
 """
 
 import json
@@ -37,6 +38,7 @@ from tests.fixtures.actions import (
     action_paths,
     action_supervisor,
     standin_in_settings,
+    station_calls,
     store_root,
 )
 from tests.fixtures.api_session import Api, assert_problem, running_api
@@ -46,15 +48,8 @@ from tests.fixtures.jobs import worker_path
 from tests.fixtures.permissions import OTHER, WRITER, add_people, principal
 
 JOB_TIMEOUT_S = 90.0
-CHECK_BODY: dict[str, Any] = {
-    "kind": "check",
-    "producer": "standin",
-    "store": STORE,
-    "command": "series fetch",
-    "options": STATION,
-}
+CHECK_BODY: dict[str, Any] = {"kind": "check", "store": STORE, **CHECK}
 DOWNLOAD_BODY: dict[str, Any] = {**CHECK_BODY, "kind": "download"}
-OTHER_STATION = {**STATION, "station": "150160190"}
 UNKNOWN_JOB = "0000000000000000"
 FOLDER = "hydro/150160180"
 
@@ -101,8 +96,9 @@ def _cli(capsys: pytest.CaptureFixture[str], paths: AppPaths, *argv: str) -> Any
 
 def _start_argv(body: dict[str, Any]) -> list[str]:
     """Return the arguments of ``jobs start`` that ask what ``body`` asks."""
-    argv = ["start", body["kind"], body["producer"], body["command"]]
-    argv += ["--options", json.dumps(body["options"]), "--store", body["store"]]
+    argv = ["start", body["kind"], body["producer"], "--store", body["store"]]
+    for call in body["calls"]:
+        argv += ["--call", json.dumps(call)]
     return [*argv, "--plan", body["plan_job"]] if "plan_job" in body else argv
 
 
@@ -125,7 +121,7 @@ def _kept_plan(paths: AppPaths, jobs: JobSupervisor, *, project: str | None) -> 
         entries=(PlanEntry(f"{FOLDER}/2025.csv", "150160180", "missing"),),
     )
     with IndexWriter(paths.index_file) as writer:
-        writer.write_plan(StoredPlan(job.id, STORE, "standin series fetch", plan))
+        writer.write_plans([StoredPlan(job.id, 0, STORE, "standin series fetch", plan)])
     return job.id
 
 
@@ -148,8 +144,7 @@ def test_a_download_runs_the_plan_a_check_kept(paths: AppPaths, tmp_path: Path) 
     assert started.headers["location"] == f"/api/v1/jobs/{detail['id']}"
     assert started.json()["params"] == {
         "producer": "standin",
-        "command": "series fetch",
-        "options": STATION,
+        "calls": [{"command": "series fetch", "options": STATION}],
         "plan_job": checked,
     }
     assert (detail["state"], detail["result"]["plan_job"]) == ("succeeded", checked)
@@ -244,7 +239,7 @@ def test_a_plan_the_download_cannot_run_is_refused_before_a_job(
             "without_plan": {**DOWNLOAD_BODY, "plan_job": queued},
             "another_call": {
                 **DOWNLOAD_BODY,
-                "options": OTHER_STATION,
+                "calls": station_calls("150160190"),
                 "plan_job": kept,
             },
             "check": {**CHECK_BODY, "plan_job": kept},
@@ -305,7 +300,7 @@ def test_jobs_start_downloads_in_the_foreground(
     monkeypatch.setitem(defaults, "worker_command", ACTION_WORKER)
     checked = _cli(capsys, paths, *_start_argv(CHECK_BODY))["id"]
     planned = {**DOWNLOAD_BODY, "plan_job": checked}
-    failing = {**DOWNLOAD_BODY, "options": {**STATION, "station": "901"}}
+    failing = {**DOWNLOAD_BODY, "calls": station_calls("901")}
 
     # Act
     outcomes = []

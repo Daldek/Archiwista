@@ -5,11 +5,12 @@ The stand-in producer (``tests/fixtures/action_source``) serves the store
 ``ACTION_WORKER``; the index keeps the area ``AREA``. The step „U źródła” of
 the map's panel asks the source for the stand-in's product, shows a row per
 year with its label, variant, badge and the chip of the other variants, and
-„Pobierz…” opens the plan window: the line of the variant is checked by a
-``check`` job, the plan's counts, size and positions are shown, and the
-download runs that plan with its progress and files. A session without the
-permission to write the stores sees the plan with the action disabled and the
-reason; offline mode keeps the report and disables what needs the network.
+„Pobierz…” opens the plan window: the lines of the variant (one in 2023, three
+in 2022) are checked by one ``check`` job, the plans' counts, size, positions
+and lines are shown, and one download runs those plans with its progress and
+files (ADR-044). A session without the permission to write the stores sees
+the plan with the action disabled and the reason; offline mode keeps the
+report and disables what needs the network.
 Downloads go on in the background (ADR-043): while the store holds the
 stand-in's ``HOLD`` a run waits after its first file, its window is closed or
 minimised, the map pans and zooms, the Catalog opens and the page reloads,
@@ -69,6 +70,8 @@ API = """async ([method, path, body]) => {
 # A call of the stand-in no plan window starts: a download of the session as
 # another tab would start it.
 OTHER_LINE = "series fetch --station 150160180 --kind hydro"
+# The stations of the three lines of 2022's variant.
+ROW_STATIONS = ("150160200", "150160210", "150160220")
 # The address follows the map: its centre moved and it zoomed in.
 MOVED = """([center, zoom]) => {
   const query = new URLSearchParams(location.search);
@@ -117,11 +120,11 @@ def check_at_source(step: Locator) -> Locator:
     return rows
 
 
-def open_plan(page: Page, row: Locator) -> Locator:
+def open_plan(page: Page, row: Locator, positions: str = "4 pozycje") -> Locator:
     """Open the plan window of a row's best variant and wait for its plan."""
     row.get_by_role("button", name="Pobierz…").first.click()
     dialog = page.get_by_role("dialog")
-    expect(dialog).to_contain_text("4 pozycje")
+    expect(dialog).to_contain_text(positions)
     return dialog
 
 
@@ -255,6 +258,66 @@ def test_a_variant_of_a_row_is_planned_and_downloaded(
     tab.assert_clean()
 
 
+def test_a_row_of_several_lines_is_one_check_and_one_download(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """The three lines of 2022: one check, one download, one in the top bar."""
+    # Arrange: the run waits after its first file while the store holds HOLD.
+    served = serve_store(serve, tmp_path)
+    page = tab.page
+    rows = check_at_source(open_area(page, served, served.token_url()))
+    hold = tmp_path / STORE / standin.HOLD
+    hold.touch()
+
+    # Act: the plan window of the row.
+    dialog = open_plan(page, rows.nth(1), "12 pozycji")
+
+    # Assert: one check of the three lines; their plans together, each line.
+    (check,) = call(page, "GET", "/jobs?kind=check")["items"]
+    planned = [item["options"]["station"] for item in check["params"]["calls"]]
+    assert planned == list(ROW_STATIONS)
+    expect(dialog).to_contain_text(
+        "12 pozycji: aktualne 3, nowsze u źródła 3, brak w magazynie 3,"
+        " nie do sprawdzenia 3"
+    )
+    expect(dialog).to_contain_text("Do pobrania: 6")
+    expect(dialog).to_contain_text("rozmiar co najmniej 16,2 kB")
+    positions = dialog.get_by_role("table", name="Pozycje planu").locator("tbody tr")
+    expect(positions).to_have_count(12)
+    lines = dialog.locator(".cmd code")
+    expect(lines).to_have_count(3)
+    for place, station in enumerate(ROW_STATIONS):
+        expect(lines.nth(place)).to_contain_text(f"--station {station} --kind hydro")
+
+    # Act: one download of the three plans.
+    dialog.get_by_role("button", name="Pobierz 6 pozycji").click()
+    expect(dialog.locator(".job-progress")).to_contain_text("polecenie 1 z 3 · 1 z 2")
+
+    # Assert: one job in the top bar, a sixth of the row done.
+    expect(indicator(page)).to_have_text("Pobieranie 0/1 · 16%")
+    (download,) = call(page, "GET", "/jobs?kind=download")["items"]
+    assert download["params"] == {**check["params"], "plan_job": check["id"]}
+
+    # Act
+    hold.unlink()
+
+    # Assert: the six files of the three lines, one download ended.
+    expect(dialog).to_contain_text(
+        "Pliki: 6 (nowe 6, bez zmian 0, z nową etykietą 0); jednostki z błędem: 0."
+    )
+    expect(indicator(page)).to_have_text("Pobrano 1/1")
+    indicator(page).click()
+    expect(downloads(page)).to_have_count(1)
+    for station in ROW_STATIONS:
+        folder = tmp_path / STORE / "hydro" / station
+        assert sorted(path.name for path in folder.iterdir()) == [
+            "2024.csv",
+            "2025.csv",
+        ]
+    assert len(call(page, "GET", "/jobs?kind=check")["items"]) == 1
+    tab.assert_clean()
+
+
 def test_a_session_that_may_not_write_sees_the_download_disabled_with_its_reason(
     serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
 ) -> None:
@@ -342,23 +405,24 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     expect(page.get_by_role("dialog")).to_have_count(0)
     expect(indicator(page)).to_have_text("Pobieranie 0/1 · 50%")
 
-    # Act: a second one from the other row; its window is minimised, shown
-    # again from the list and minimised again.
-    open_plan(page, rows.nth(1))
+    # Act: a second one from the other row, its three lines in one download;
+    # its window is minimised, shown again from the list and minimised again.
+    open_plan(page, rows.nth(1), "12 pozycji")
     second = plan_window(page, 2022)
-    second.get_by_role("button", name="Pobierz 2 pozycje").click()
-    expect(second.locator(".job-progress")).to_contain_text("1 z 2")
+    second.get_by_role("button", name="Pobierz 6 pozycji").click()
+    expect(second.locator(".job-progress")).to_contain_text("polecenie 1 z 3 · 1 z 2")
     second.get_by_role("button", name="Zwiń").click()
     expect(second).to_be_hidden()
     expect(indicator(page)).to_be_focused()
-    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 50%")
+    # The share of the row: half the units of the first of its three lines.
+    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 33%")
     indicator(page).click()
     listed = downloads(page)
     expect(listed).to_have_count(2)
     expect(listed.nth(0)).to_contain_text("dem · 2022")
     expect(listed.nth(1)).to_contain_text("dem · 2023")
     listed.nth(0).get_by_role("button", name="Pokaż okno planu").click()
-    expect(second.locator(".job-progress")).to_contain_text("1 z 2")
+    expect(second.locator(".job-progress")).to_contain_text("polecenie 1 z 3 · 1 z 2")
     second.get_by_role("button", name="Zwiń").click()
     expect(second).to_be_hidden()
 
@@ -367,7 +431,7 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     nav = page.get_by_role("navigation", name="Widoki")
     nav.get_by_role("link", name="Katalog").click()
     expect(page).to_have_url(re.compile(r"view=catalog"))
-    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 50%")
+    expect(indicator(page)).to_have_text("Pobieranie 0/2 · 33%")
     page.go_back()
     expect(page).to_have_url(re.compile(r"view=map&area_id="))
     expect(page.get_by_role("region", name="U źródła")).to_be_visible()
@@ -376,19 +440,19 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     # another tab would) and waits behind the two; then the page reloads.
     line = {"producer": "standin", "line": OTHER_LINE}
     other = call(page, "POST", "/commands/parse", line)
-    body = {"kind": "download", "producer": "standin", "store": STORE}
-    body |= {"command": other["command"], "options": other["options"]}
+    calls = [{"command": other["command"], "options": other["options"]}]
+    body = {"kind": "download", "producer": "standin", "store": STORE, "calls": calls}
     third = call(page, "POST", "/jobs", body)
     page.reload()
 
     # Assert: the session's three downloads are back, named as before.
-    expect(indicator(page)).to_have_text("Pobieranie 0/3 · 33%")
+    expect(indicator(page)).to_have_text("Pobieranie 0/3 · 22%")
     indicator(page).click()
     expect(listed).to_have_count(3)
     expect(listed.nth(0)).to_contain_text("standin · series fetch")
     expect(listed.nth(0)).to_contain_text("Pobranie: w kolejce")
     expect(listed.nth(1)).to_contain_text("dem · 2022")
-    expect(listed.nth(1).locator(".job-progress")).to_contain_text("1 z 2")
+    expect(listed.nth(1).locator(".job-progress")).to_contain_text("polecenie 1 z 3")
     expect(listed.nth(2)).to_contain_text("dem · 2023")
     expect(listed.nth(2).locator(".job-progress")).to_contain_text("1 z 2")
     assert call(page, "GET", f"/jobs/{third['id']}")["state"] == "queued"
@@ -413,8 +477,11 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     expect(files).to_have_count(2)
     expect(files.nth(0)).to_contain_text("hydro/150160190/2024.csv")
     expect(files.nth(1)).to_contain_text("hydro/150160190/2025.csv")
+    expect(listed.nth(1)).to_contain_text(
+        "Pliki: 6 (nowe 6, bez zmian 0, z nową etykietą 0); jednostki z błędem: 0."
+    )
     expect(listed.nth(0)).to_contain_text("Pliki: 4 (nowe 4")
-    for station in ("150160190", "150160200"):
+    for station in ("150160190", *ROW_STATIONS):
         folder = tmp_path / STORE / "hydro" / station
         names = sorted(path.name for path in folder.iterdir())
         assert names == ["2024.csv", "2025.csv"], station

@@ -325,7 +325,8 @@ def test_uc01_a_download_through_archiwista_equals_the_command_line(
     # Act: UC-01 in Archiwista: the source's years, the plan, the download.
     asked = ["availability", "check", AREA.id, "--product", "nmt", "--store", STORE]
     report = _archiwista(capsys, place, *asked, *VARIANT, "--force")
-    call = ["kartograf", COMMAND, "--store", STORE, "--options", options]
+    given = json.dumps({"command": COMMAND, "options": json.loads(options)})
+    call = ["kartograf", "--store", STORE, "--call", given]
     plan = _archiwista(capsys, place, "jobs", "start", "check", *call)
     after_plan = _entries(place.root)
     download = _archiwista(

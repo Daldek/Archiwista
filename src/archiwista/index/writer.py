@@ -1609,25 +1609,30 @@ class IndexWriter:
                 > 0
             )
 
-    def write_plan(self, stored: StoredPlan) -> None:
-        """Keep the plan of a ``check`` job; it goes when the job is forgotten.
+    def write_plans(self, plans: Iterable[StoredPlan]) -> None:
+        """Keep the plans of a ``check`` job's calls; they go when the job is forgotten.
 
         Raises
         ------
         sqlite3.IntegrityError
-            The index keeps no job ``stored.job_id``.
+            The index keeps no job of a plan's ``job_id``.
         """
         with self._transaction() as connection:
-            connection.execute(
-                "INSERT INTO plans (job_id, store, line, plan) VALUES (?, ?, ?, ?)"
-                " ON CONFLICT (job_id) DO UPDATE SET store = excluded.store,"
+            connection.executemany(
+                "INSERT INTO plans (job_id, call, store, line, plan)"
+                " VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT (job_id, call) DO UPDATE SET store = excluded.store,"
                 " line = excluded.line, plan = excluded.plan",
-                (
-                    stored.job_id,
-                    stored.store,
-                    stored.line,
-                    json.dumps(stored.plan.to_json(), separators=(",", ":")),
-                ),
+                [
+                    (
+                        stored.job_id,
+                        stored.call,
+                        stored.store,
+                        stored.line,
+                        json.dumps(stored.plan.to_json(), separators=(",", ":")),
+                    )
+                    for stored in plans
+                ],
             )
 
     # Own data of projects (decision 8).

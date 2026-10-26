@@ -946,8 +946,9 @@
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
- *   and `force` of an availability check, `producer`, `command` and `options` of a
- *   plan (`check`), those and `plan_job` of a `download`, `project` and `tasks`
+ *   and `force` of an availability check, `producer` and `calls` (each `command` and
+ *   `options`, in their order; all the lines of a row, ADR-044) of a plan (`check`),
+ *   those and `plan_job` of a `download`, `project` and `tasks`
  *   (null: every task) of the `project_*` kinds, `store`, `product`, `segment`,
  *   `project`, `area_id` and `since` (null: not given) of a `preview_warm`.
  * @property {string} created_at
@@ -955,23 +956,30 @@
  * @property {string|null} finished_at
  * @property {Object<string, *>|null} progress - Data of the last progress event:
  *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
- *   (`copy`, `checksums`, `document`, `rename`, `published`), a `download`, a
- *   `project_download` and a `project_repin` the producer's `unit` (or null),
- *   `status` and `message`, a `preview_warm` `warmed`, `cached`, `failed` and
- *   `skipped`.
+ *   (`copy`, `checksums`, `document`, `rename`, `published`), a `check` counts the
+ *   calls it planned, a `download` counts the units of the call it runs and adds
+ *   `call` (its place, from 0) and `calls` (their number), the three of a
+ *   `download`, a `project_download` and a `project_repin` add the producer's
+ *   `unit` (or null), `status` and `message`, a `preview_warm` `warmed`, `cached`,
+ *   `failed` and `skipped`.
  * @property {Object<string, *>|null} result - Summary of a job that succeeded or ended
  *   `partial`; of an `own_scan` the counts `projects`, `files`, `new`, `changed`,
  *   `missing`, `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot
  *   `status` (`created` or `unchanged`), `label`, `content_sha256`, `size_bytes`,
  *   `seconds`; of an availability check `area_id`, `producer`, `product`,
  *   `checked_at`, `ok`, `combinations`, `kept`, `seconds`; of a plan (`check`)
- *   `producer`, `command`, `store`, `root`, `line`, `checked_at`, `ok`, `positions`,
- *   `counts`, `size_bytes` (null: no size known), `size_complete`, `failed`,
- *   `seconds`; of a `download` `producer`, `command`, `store`, `root`, `plan_job`,
- *   `status` (`ok`, `partial`), `counts` of the files (`new`, `unchanged`,
- *   `relabeled`), `files` (`path`, `version_path`, `unit`, `status`, `size_bytes`,
- *   `sha256`, `label`), `items` (`id`, `status`, `code`, `reason`, `message`),
- *   `failed`, `rescanned`, `seconds`; of a `project_download` or `project_repin`
+ *   `producer`, `store`, `root`, `checked_at` (of the oldest plan), `ok`, `positions`,
+ *   `counts`, `size_bytes` (null: no size known), `size_complete`, `failed` (`call`,
+ *   `path`, `error`), `calls` (per call in its order: `command`, `line`, `status`
+ *   `ok`, `partial` or `failed`, `positions`, `todo`, `error` `{code, reason,
+ *   detail}` or null), `seconds`; of a `download` `producer`, `store`, `root`,
+ *   `plan_job`, `status` (`ok`, `partial`), `counts` of the files (`new`,
+ *   `unchanged`, `relabeled`), `files` (`path`, `version_path`, `unit`, `status`,
+ *   `size_bytes`, `sha256`, `label`, `call`), `items` (`id`, `status`, `code`,
+ *   `reason`, `message`, `call`), `failed`, `calls` (per call: `command`, `line`,
+ *   `status` `ok`, `partial`, `failed` or `skipped`, `reason` of a skipped one
+ *   `not_planned` or `nothing_to_download`, `files`, `failed`, `error`),
+ *   `rescanned`, `seconds`; of a `project_download` or `project_repin`
  *   `producer`, `project`, `store`, `root`, `upgrade`, `ok`, `counts` of the tasks
  *   (`pinned`, `unchanged`, `restored`, `updated`, `failed`), `tasks` (`name`,
  *   `outcome`, `pinned`, `unpinned`, `errors`, `code`, `reason`), `failed`,
@@ -1703,15 +1711,25 @@
  */
 
 /**
- * Body of `POST /jobs`: a job of a producer's command on a configured store.
+ * One call of a job: a command of the producer's catalog and its options.
+ *
+ * @typedef {object} CallRequest
+ * @property {string} command
+ * @property {Object<string, *>} options
+ */
+
+/**
+ * Body of `POST /jobs`: a job of a producer's calls on a configured store, all
+ * the lines of a row in one job (ADR-044).
  *
  * @typedef {object} JobRequest
  * @property {"check"|"download"} kind
  * @property {string} producer
  * @property {string} store - Its directory of the producer is the store root.
- * @property {string} command
- * @property {Object<string, *>} options
- * @property {string} [plan_job] - `download` only: the `check` job whose plan it runs.
+ * @property {CallRequest[]} calls - 1 to 1000, run one after the other; a refusal of
+ *   one names its place as `details.call`.
+ * @property {string} [plan_job] - `download` only: the `check` job of the same calls
+ *   whose plans it runs.
  */
 
 /**
@@ -1731,15 +1749,13 @@
  */
 
 /**
- * The plan a `check` job kept (`GET /jobs/{job}/plan`).
+ * The plan of one call of a `check` job.
  *
- * @typedef {object} ActionPlanInfo
- * @property {string} job_id
- * @property {string} store
- * @property {string} producer
+ * @typedef {object} CallPlan
+ * @property {number} call - Its place in the job's `calls`, from 0.
  * @property {string} command
+ * @property {Object<string, *>} options - As the producer read them.
  * @property {string} line - The producer's command line of the run, with the root.
- * @property {string} root - The store root the producer planned for.
  * @property {string} schema
  * @property {string} checked_at
  * @property {boolean} ok - No position is `check_failed`.
@@ -1750,6 +1766,26 @@
  * @property {boolean} size_complete - Every position to download has its size.
  * @property {PlanEntry[]} entries
  * @property {Array<{level: string, code: string, message: string}>} notices
+ */
+
+/**
+ * The plans a `check` job kept (`GET /jobs/{job}/plan`): their totals and the
+ * plan of each call planned (a call whose check failed has none).
+ *
+ * @typedef {object} ActionPlanInfo
+ * @property {string} job_id
+ * @property {string} store
+ * @property {string} producer
+ * @property {string} root - The store root the producer planned for.
+ * @property {string} checked_at - Of the oldest plan.
+ * @property {boolean} ok - Every call planned and no position `check_failed`.
+ * @property {Object<string, number>} counts - Positions of each status in all plans.
+ * @property {number} positions
+ * @property {number} todo - Positions the runs download.
+ * @property {number|null} size_bytes - Of the positions to download as far as the
+ *   producer tells; null when it tells none of them, never 0 for unknown.
+ * @property {boolean} size_complete - Every position to download has its size.
+ * @property {CallPlan[]} calls - In the order of the job's calls.
  */
 
 export {};

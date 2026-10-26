@@ -1,23 +1,26 @@
 /**
  * The „Okno planu” of a download (docs/SPEC.md 6.1 „Plan przed akcją”, 6.5 h,
- * UC-15; plan 2026-10-25 A11; ADR-043): what a run of the producer's command
- * would do in a configured store, and then the run.
+ * UC-15; plan 2026-10-25 A11; ADR-043, ADR-044): what a run of the producer's
+ * commands would do in a configured store, and then the run.
  *
  * The variant's lines in the chosen format (`commands`; nothing is chosen
  * when the variant has no default format), or one pasted line, are read into
- * calls (`POST /commands/parse`), and each call is planned by a `check` job
- * (`POST /jobs`, then `GET /jobs/{job}/plan` once it ends): nothing is
- * written. The window sums the plans: the positions by status, what a run
- * downloads and its size („co najmniej …” when the producer tells only some
- * sizes, „rozmiar nieznany” when it tells none, never 0), the store with the
- * producer's directory, each position with the ones the producer would
- * refuse to write, and each command line to copy. „Pobierz” starts one
- * `download` per plan with something to download (`plan_job`: the run
- * fetches what was shown) and hands each to the downloads of the shell
- * (downloads.js), which follow it to its files and failed units; above 5 GB
- * or 500 positions it asks to be confirmed first (SPEC 10.3). A session that
- * may not write the stores (`store_write`) sees the plan with the action
- * disabled and the reason.
+ * calls (`POST /commands/parse`), and one `check` job plans them all (`POST
+ * /jobs` with every call read, then `GET /jobs/{job}/plan` once it ends):
+ * nothing is written. A line refused before the job (a line not read, an
+ * option the producer refuses: the refusal names its `details.call`) is left
+ * out of it and named with its problem, and so is a line whose check failed
+ * (`result.calls` of the job). The window shows the plans together: the
+ * positions by status, what a run downloads and its size („co najmniej …”
+ * when the producer tells only some sizes, „rozmiar nieznany” when it tells
+ * none, never 0), the store with the producer's directory, each position with
+ * the ones the producer would refuse to write, and each command line to copy.
+ * „Pobierz” starts one `download` of all the lines (`plan_job`: each line
+ * fetches what was shown) and hands it to the downloads of the shell
+ * (downloads.js), which follow it to its files, its failed units and the
+ * lines it failed or skipped; above 5 GB or 500 positions it asks to be
+ * confirmed first (SPEC 10.3). A session that may not write the stores
+ * (`store_write`) sees the plan with the action disabled and the reason.
  *
  * The shell opens the window (`openPlan` of downloads.js), so it outlives the
  * view. Planning and the confirmation are modal; once something started the
@@ -113,14 +116,15 @@ export function DownloadPlan({
   const seen = useRef(new Map());
   const [format, setFormat] = useState(variant?.default_format ?? null);
   const lines = line !== null ? [line] : format === null ? null : (variant.commands[format] ?? []);
-  const items = usePlans(producer, store.id, lines);
+  const check = usePlans(producer, store.id, lines);
+  const items = check.items;
   const [confirmed, setConfirmed] = useState(false);
   const [runs, setRuns] = useState(null);
   const projects = useResource((signal) => listProjects({ store: store.id }, { signal }), [store.id]);
   const [task, setTask] = useState({ on: false, project: "", name: "" });
   const [added, setAdded] = useState(null);
-  const sum = sumPlans(items);
-  const planned = items.length > 0 && items.every(settledLine);
+  const sum = planSum(check.info);
+  const planned = check.ended;
   const large = sum.todo > LARGE_POSITIONS || sum.known > LARGE_BYTES;
   const allowed = Boolean(session?.store_write);
   const offer = taskOffer(projects, producer, store, lines, items);
@@ -170,28 +174,21 @@ export function DownloadPlan({
   const record = (index, patch) =>
     setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
   const download = async () => {
-    const todo = items.filter((item) => item.plan?.todo > 0);
-    setRuns(todo.map((item) => ({ key: item.plan.job_id, kind: "download", job: null, problem: null })));
-    await Promise.all(
-      todo.map(async (item, index) => {
-        try {
-          const job = await startJob({
-            kind: "download",
-            producer,
-            store: store.id,
-            command: item.call.command,
-            options: item.call.options,
-            plan_job: item.plan.job_id,
-          });
-          const name = todo.length > 1 ? t(L.run_title, { title, place: int(index + 1), count: int(todo.length) }) : title;
-          downloads.track(job, { title: name, window: windowKey });
-          record(index, { job });
-        } catch (error) {
-          if (!error.problem) throw error;
-          record(index, { problem: error.problem });
-        }
-      }),
-    );
+    setRuns([{ key: "download", kind: "download", job: null, problem: null }]);
+    try {
+      const job = await startJob({
+        kind: "download",
+        producer,
+        store: store.id,
+        calls: check.calls,
+        plan_job: check.job.id,
+      });
+      downloads.track(job, { title, window: windowKey });
+      record(0, { job });
+    } catch (error) {
+      if (!error.problem) throw error;
+      record(0, { problem: error.problem });
+    }
   };
   const addTask = async () => {
     const name = task.name.trim();
@@ -267,12 +264,13 @@ export function DownloadPlan({
         : null}
       ${lines !== null && !planned
         ? html`<p class="hint"><${Spinner} label=${t(L.checking, {
-            done: int(items.filter(settledLine).length),
+            done: int(items.filter(settledLine).length + check.progress),
             total: int(items.length),
             commands: plural(items.length, L.commands),
           })} /></p>`
         : null}
       ${items.map((item) => html`<${LineProblem} key=${item.line} item=${item} />`)}
+      ${check.failure ? html`<${CheckFailure} failure=${check.failure} count=${check.calls.length} />` : null}
       ${sum.plans.length ? html`<${PlanSummary} sum=${sum} />` : null}
       <${TaskChoice} offer=${offer} task=${task} added=${added} disabled=${started}
         onChange=${(patch) => setTask((now) => ({ ...now, ...patch }))} />
@@ -381,57 +379,139 @@ function TaskChoice({ offer, task, added, disabled, onChange }) {
   </fieldset>`;
 }
 
+/** What a window knows of its check before a format is chosen. */
+const NO_CHECK = Object.freeze({
+  items: [],
+  calls: [],
+  job: null,
+  progress: 0,
+  info: null,
+  failure: null,
+  ended: false,
+});
+
 /**
- * Plan each line: read it into a call, start its `check` job, wait for its
- * end and read the plan it kept. The lines are planned together; the server
- * runs two network jobs at a time and queues the others. A line read is
- * known as its call also when its check is refused (offline mode).
+ * Plan the lines in one `check` job (ADR-044): read each line into a call,
+ * start the job with every call read, follow it to its end and read the
+ * plans it kept. A refusal of one call (`details.call`, e.g. an option the
+ * producer refuses) names that line and the job is asked again without it;
+ * a refusal of the whole request (offline mode) names every line. A line
+ * whose check failed gets the job's reason for it (`result.calls`); a job
+ * that planned none of several lines failed as a whole (`failure`). A line
+ * read is known as its call also when its check is refused.
  *
  * @param {string} producer
  * @param {string} store
  * @param {string[]|null} lines - None until a format is chosen.
- * @returns {PlanLine[]}
+ * @returns {PlanCheck}
  */
 function usePlans(producer, store, lines) {
-  const [items, setItems] = useState([]);
+  const [check, setCheck] = useState(NO_CHECK);
   const key = lines === null ? "" : JSON.stringify([producer, store, lines]);
   useEffect(() => {
     if (lines === null) {
-      setItems([]);
+      setCheck(NO_CHECK);
       return undefined;
     }
     let live = true;
     const stops = [];
-    setItems(lines.map((line) => ({ line, call: null, plan: null, problem: null, failure: null })));
+    let items = lines.map((line) => ({ line, call: null, plan: null, problem: null, failure: null }));
     const update = (index, patch) => {
-      if (live) setItems((current) => current.map((item, place) => (place === index ? { ...item, ...patch } : item)));
+      items = items.map((item, place) => (place === index ? { ...item, ...patch } : item));
     };
-    lines.forEach(async (line, index) => {
-      try {
-        const call = await parseCommand(producer, line);
-        if (!live) return;
-        update(index, { call });
-        const job = await startJob({ kind: "check", producer, store, command: call.command, options: call.options });
-        if (!live) return;
-        const end = await finalState(job.id, stops);
-        if (!live) return;
-        if (!SUMMARY_STATES.has(end.state)) {
-          update(index, { failure: end.error ?? { code: end.state, detail: end.state } });
-          return;
+    const show = (patch = {}) => {
+      if (live) setCheck((current) => ({ ...current, ...patch, items }));
+    };
+    setCheck({ ...NO_CHECK, items });
+    const plan = async () => {
+      const read = await Promise.all(lines.map((line) => readLine(producer, line)));
+      if (!live) return;
+      read.forEach((answer, index) => update(index, answer));
+      // The places in `lines` of the job's calls, in the job's order.
+      let places = items.flatMap((item, index) => (item.call ? [index] : []));
+      const calls = () =>
+        places.map((index) => ({ command: items[index].call.command, options: items[index].call.options }));
+      let job = null;
+      while (job === null && places.length) {
+        try {
+          job = await startJob({ kind: "check", producer, store, calls: calls() });
+        } catch (error) {
+          if (!error.problem) throw error;
+          const refused = error.problem.details?.call;
+          if (Number.isInteger(refused) && refused >= 0 && refused < places.length) {
+            update(places[refused], { problem: error.problem });
+            places = places.filter((_, place) => place !== refused);
+          } else {
+            for (const index of places) update(index, { problem: error.problem });
+            places = [];
+          }
         }
-        update(index, { plan: await getJobPlan(job.id) });
+        if (!live) return;
+        show();
+      }
+      if (job === null) {
+        show({ ended: true });
+        return;
+      }
+      show({ job, calls: calls() });
+      const fail = (failure) => {
+        if (places.length === 1) update(places[0], { failure });
+        show({ ended: true, failure: places.length === 1 ? null : failure });
+      };
+      const end = await finalState(job.id, stops, (data) => show({ progress: data.current }));
+      if (!live) return;
+      if (!SUMMARY_STATES.has(end.state)) {
+        fail(end.error ?? { code: end.state, detail: end.state });
+        return;
+      }
+      let info;
+      try {
+        info = await getJobPlan(job.id);
       } catch (error) {
         if (!error.problem) throw error;
-        update(index, { problem: error.problem });
+        if (live) fail({ code: error.problem.code, detail: error.problem.detail });
+        return;
       }
-    });
+      if (!live) return;
+      (end.result?.calls ?? []).forEach((section, place) => {
+        if (section.status === "failed") update(places[place], { failure: section.error });
+      });
+      for (const kept of info.calls) update(places[kept.call], { plan: kept });
+      show({ ended: true, info });
+    };
+    plan();
     return () => {
       live = false;
       for (const stop of stops) stop();
     };
   }, [key]);
-  return items;
+  return check;
 }
+
+/** A line read into a call, or the problem of reading it. */
+async function readLine(producer, line) {
+  try {
+    return { call: await parseCommand(producer, line) };
+  } catch (error) {
+    if (!error.problem) throw error;
+    return { problem: error.problem };
+  }
+}
+
+/**
+ * The check of a window's lines (`usePlans`).
+ *
+ * @typedef {object} PlanCheck
+ * @property {PlanLine[]} items - Each line on its way to a plan.
+ * @property {Array<{command: string, options: Object<string, *>}>} calls - The
+ *   calls of the `check` job, in its order: its download asks the same.
+ * @property {import("../types.js").JobDetail|null} job - The `check` job.
+ * @property {number} progress - Calls the job has planned so far.
+ * @property {import("../types.js").ActionPlanInfo|null} info - The plans it kept.
+ * @property {import("../types.js").JobFailure|null} failure - Why a job of
+ *   several lines planned none of them.
+ * @property {boolean} ended - Every line has its plan or is named with its problem.
+ */
 
 /**
  * A line of the variant on its way to a plan.
@@ -439,9 +519,9 @@ function usePlans(producer, store, lines) {
  * @typedef {object} PlanLine
  * @property {string} line
  * @property {import("../types.js").CommandCall|null} call
- * @property {import("../types.js").ActionPlanInfo|null} plan
- * @property {import("../types.js").Problem|null} problem - Refused before a job.
- * @property {import("../types.js").JobFailure|null} failure - Its check failed.
+ * @property {import("../types.js").CallPlan|null} plan - Its plan among the job's plans.
+ * @property {import("../types.js").Problem|null} problem - Refused before the job.
+ * @property {{code: string, detail: string}|null} failure - Its check failed.
  */
 
 function settledLine(item) {
@@ -449,10 +529,11 @@ function settledLine(item) {
 }
 
 /** The final state event of a job (a broken stream counts as its failure). */
-function finalState(job, stops) {
+function finalState(job, stops, onProgress) {
   return new Promise((resolve) => {
     stops.push(
       watchJob(job, {
+        onProgress,
         onState: (data) => {
           if (FINAL_STATES.has(data.state)) resolve(data);
         },
@@ -462,24 +543,35 @@ function finalState(job, stops) {
   });
 }
 
-/** The plans of the lines together: counts, what a run downloads and its size. */
-function sumPlans(items) {
-  const plans = items.map((item) => item.plan).filter(Boolean);
-  const counts = Object.fromEntries(
-    STATUSES.map((status) => [status, plans.reduce((total, plan) => total + (plan.counts[status] ?? 0), 0)]),
-  );
-  const sized = plans.filter((plan) => plan.todo > 0);
-  const told = sized.filter((plan) => plan.size_bytes !== null);
+/** The sum of a window before its plans are read. */
+const NO_SUM = Object.freeze({
+  plans: [],
+  counts: {},
+  positions: 0,
+  todo: 0,
+  known: 0,
+  unknown: false,
+  complete: true,
+  root: null,
+  entries: [],
+});
+
+/**
+ * The plans of the lines together, as the job's totals say: counts, what a
+ * run downloads and its size; each position with the place of its call.
+ */
+function planSum(info) {
+  if (info === null) return NO_SUM;
   return {
-    plans,
-    counts,
-    positions: plans.reduce((total, plan) => total + plan.entries.length, 0),
-    todo: plans.reduce((total, plan) => total + plan.todo, 0),
-    known: told.reduce((total, plan) => total + plan.size_bytes, 0),
-    unknown: sized.length > 0 && told.length === 0,
-    complete: sized.every((plan) => plan.size_complete),
-    root: plans[0]?.root ?? null,
-    entries: plans.flatMap((plan) => plan.entries),
+    plans: info.calls,
+    counts: info.counts,
+    positions: info.positions,
+    todo: info.todo,
+    known: info.size_bytes ?? 0,
+    unknown: info.size_bytes === null,
+    complete: info.size_complete,
+    root: info.root,
+    entries: info.calls.flatMap((plan) => plan.entries.map((entry) => ({ ...entry, call: plan.call }))),
   };
 }
 
@@ -510,7 +602,7 @@ function PlanSummary({ sum }) {
       ? html`<div class="plan-line bad" role="note"><${Icon} name="alert" size=${15} />
           <div>${t(L.conflicts, { count: int(conflicts.length), positions: plural(conflicts.length, L.positions) })}
             <ul>${conflicts.map(
-              (entry) => html`<li key=${entry.path}><span class="mono">${entry.path}</span>: <${Tech} value=${[["conflict", entry.conflict]]}>
+              (entry) => html`<li key=${`${entry.call}/${entry.path}`}><span class="mono">${entry.path}</span>: <${Tech} value=${[["conflict", entry.conflict]]}>
                 ${L.conflict[entry.conflict] ?? entry.conflict}</${Tech}>${entry.error ? ` — ${entry.error}` : ""}</li>`,
             )}</ul></div></div>`
       : null}
@@ -529,7 +621,7 @@ function PlanSummary({ sum }) {
           <th scope="col" class="num">${L.columns.size}</th>
         </tr></thead>
         <tbody>${sum.entries.map(
-          (entry) => html`<tr key=${entry.path}>
+          (entry) => html`<tr key=${`${entry.call}/${entry.path}`}>
             <td><${Tech} value=${[["unit", entry.unit]]}><span class="mono plan-path">${entry.path}</span></${Tech}>
               ${entry.error ? html`<p class="row-problem"><${Icon} name="alert" size=${13} /><span>${entry.error}</span></p>` : null}</td>
             <td><${Badge} level=${LEVELS[entry.status] ?? "plain"}>${L.status[entry.status] ?? entry.status}</${Badge}></td>
@@ -541,7 +633,7 @@ function PlanSummary({ sum }) {
       </table>
     </div>
     ${sum.plans.map(
-      (plan) => html`<div key=${plan.job_id} class="plan-command">
+      (plan) => html`<div key=${plan.call} class="plan-command">
         <span class="section-title">${L.line}</span>
         <div class="cmd"><code class="path">${plan.line}</code><${CopyButton} text=${plan.line} label=${L.copy_line} /></div>
       </div>`,
@@ -563,6 +655,13 @@ function LineProblem({ item }) {
   if (!item.failure) return null;
   return html`<p class="plan-line bad" role="alert"><${Icon} name="alert" size=${15} />
     <span><${Tech} value=${[["code", item.failure.code]]}>${t(L.failed_line, { line: item.line })}</${Tech}> ${item.failure.detail}</span></p>`;
+}
+
+/** The check of several lines that planned none of them: why (the first line's reason). */
+function CheckFailure({ failure, count: lines }) {
+  const text = t(L.failed_lines, { count: int(lines), commands: plural(lines, L.commands) });
+  return html`<p class="plan-line bad" role="alert"><${Icon} name="alert" size=${15} />
+    <span><${Tech} value=${[["code", failure.code]]}>${text}</${Tech}> ${failure.detail}</span></p>`;
 }
 
 /**

@@ -8,7 +8,7 @@
 
 export const downloads = {
   indicator: {
-    /** `done` of `total` ended, `percent`: the mean share of their units. */
+    /** `done` of `total` ended, `percent`: the mean share of their lines and units. */
     running: "Pobieranie {done}/{total} · {percent}%",
     ended: "Pobrano {succeeded}/{total}",
     running_title: "Pobieranie w tle: zakończone {done} z {total}, postęp {percent}%. Pokaż listę pobrań.",
@@ -30,6 +30,9 @@ export const downloads = {
   },
   name: {
     download: "{producer} · {command}",
+    /** A download of a row's several lines (ADR-044): „standin · series fetch · 3 polecenia”. */
+    download_calls: "{producer} · {command} · {count} {lines}",
+    lines: ["polecenie", "polecenia", "poleceń"],
     project: "Projekt „{project}”",
     task: "Projekt „{project}”, zadanie „{task}”",
   },

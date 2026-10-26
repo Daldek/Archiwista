@@ -1346,14 +1346,15 @@ MESSAGES = {
     ),
     "jobs_start_help": Text(
         (
-            "Starts a job of a command of the producer's catalog on a store and"
-            " follows it to its end; check plans a run without its effects, download"
-            " runs it in the store (--json: the JobDetail model of the job as it"
-            " ended)."
+            "Starts a job of calls of commands of the producer's catalog on a store"
+            " (all the lines of a row in one job) and follows it to its end; check"
+            " plans a run of each call without its effects, download runs them in"
+            " the store (--json: the JobDetail model of the job as it ended)."
         ),
         (
-            "Uruchamia zadanie polecenia z katalogu producenta na magazynie i śledzi"
-            " je do końca; check planuje uruchomienie bez jego skutków, download"
+            "Uruchamia zadanie wywołań poleceń z katalogu producenta na magazynie"
+            " (wszystkie linie wiersza w jednym zadaniu) i śledzi je do końca; check"
+            " planuje uruchomienie każdego wywołania bez jego skutków, download"
             " uruchamia je w magazynie (--json: model JobDetail zadania po jego"
             " końcu)."
         ),
@@ -1370,30 +1371,42 @@ MESSAGES = {
     ),
     "jobs_plan_job_help": Text(
         (
-            "download only: the check job whose kept plan the run runs; only its"
-            " positions to download are fetched."
+            "download only: the check job whose kept plans the run runs, a job of"
+            " the same calls in the same order; each call fetches only its plan's"
+            " positions to download."
         ),
         (
-            "tylko download: zadanie check, którego zachowany plan uruchomić;"
-            " pobierane są tylko jego pozycje do pobrania."
+            "tylko download: zadanie check, którego zachowane plany uruchomić,"
+            " zadanie tych samych wywołań w tej samej kolejności; każde wywołanie"
+            " pobiera tylko pozycje do pobrania ze swojego planu."
         ),
     ),
-    "jobs_command_help": Text(
-        'Command of the producer\'s catalog on a store, e.g. "elevation download".',
-        "Polecenie z katalogu producenta na magazynie, np. „elevation download”.",
+    "jobs_call_help": Text(
+        (
+            "One call as a JSON object, a command of the producer's catalog on a"
+            ' store with its options, e.g. \'{{"command": "elevation download",'
+            ' "options": {{"sheet": "N-34-130-D-d-2-4"}}}}\'; --call once for each'
+            " line, in their order."
+        ),
+        (
+            "Jedno wywołanie jako obiekt JSON, polecenie z katalogu producenta na"
+            ' magazynie z opcjami, np. \'{{"command": "elevation download",'
+            ' "options": {{"sheet": "N-34-130-D-d-2-4"}}}}\'; --call raz dla każdej'
+            " linii, w ich kolejności."
+        ),
     ),
     "jobs_store_help": Text(
-        "Store identifier from the settings: the command works on its directory.",
-        "Identyfikator magazynu z ustawień: polecenie działa na jego katalogu.",
+        "Store identifier from the settings: the calls work on its directory.",
+        "Identyfikator magazynu z ustawień: wywołania działają na jego katalogu.",
     ),
     "jobs_plan_help": Text(
         (
-            "Prints the plan a check job kept, without the network (--json:"
-            " ActionPlanInfo model)."
+            "Prints the plans a check job kept, a line of each call and its"
+            " positions, without the network (--json: ActionPlanInfo model)."
         ),
         (
-            "Wypisuje plan, który zachowało zadanie check, bez sieci (--json: model"
-            " ActionPlanInfo)."
+            "Wypisuje plany, które zachowało zadanie check, linię każdego wywołania"
+            " i jego pozycje, bez sieci (--json: model ActionPlanInfo)."
         ),
     ),
     "jobs_job_help": Text(
@@ -1520,6 +1533,20 @@ MESSAGES = {
     "jobs_line": Text(
         "Command line of the run: {line}",
         "Linia polecenia uruchomienia: {line}",
+    ),
+    "jobs_call_failed": Text(
+        "Call {place} of {count} failed: {line}: {detail}",
+        "Wywołanie {place} z {count} nie powiodło się: {line}: {detail}",
+    ),
+    "jobs_call_not_planned": Text(
+        "Call {place} of {count} skipped, its check failed: {line}",
+        "Wywołanie {place} z {count} pominięte, jego sprawdzenie się nie powiodło:"
+        " {line}",
+    ),
+    "jobs_call_nothing": Text(
+        "Call {place} of {count} skipped, its plan has nothing to download: {line}",
+        "Wywołanie {place} z {count} pominięte, jego plan nie ma nic do pobrania:"
+        " {line}",
     ),
     "jobs_size": Text(
         "size {size}",

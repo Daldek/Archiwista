@@ -1,11 +1,12 @@
-"""The check job: the producer's plan of a run in a store (plan 2026-10-25, A4).
+"""The check job: the producer's plans of runs in a store (plan 2026-10-25, A4).
 
 The stand-in producer (``tests/fixtures/actions.py``) plans a fetch of a
 station's files into the store it is given: one current, one newer, one
 missing of unknown size and one unverifiable; a station whose code starts
 with ``9`` cannot be asked about its missing file, station ``999`` about none.
-It records the options its ``check_command`` receives. Kartograf's side of
-the call is ``tests/contract/test_kartograf_check.py``.
+It records the options its ``check_command`` receives. A job of several calls
+is ``tests/integration/test_row_jobs.py``; Kartograf's side of the call is
+``tests/contract/test_kartograf_check.py``.
 """
 
 import io
@@ -21,7 +22,7 @@ from archiwista.config import AppPaths
 from archiwista.error_document import describe
 from archiwista.errors import CheckFailedError, OfflineModeError
 from archiwista.index import IndexQueries
-from archiwista.jobs import JobSupervisor, worker
+from archiwista.jobs import MAX_JOB_CALLS, JobSupervisor, worker
 from tests.fixtures.actions import (
     CHECK,
     STATION,
@@ -29,6 +30,7 @@ from tests.fixtures.actions import (
     action_paths,
     action_spec,
     action_supervisor,
+    station_calls,
     store_root,
 )
 from tests.fixtures.availability import register_standin
@@ -59,7 +61,7 @@ def held(paths: AppPaths) -> Iterator[JobSupervisor]:
 
 def _station(station: str) -> dict[str, object]:
     """Return the parameters of a check of one station's files."""
-    return {**CHECK, "options": {**STATION, "station": station}}
+    return {"producer": "standin", "calls": station_calls(station)}
 
 
 def test_the_plan_is_the_producers_plan_of_the_configured_store(
@@ -78,15 +80,13 @@ def test_the_plan_is_the_producers_plan_of_the_configured_store(
         action_spec(paths, root, job.id, "check", job.params), worker.Emitter(stream)
     )
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(job.id)
+        (stored,) = queries.plans(job.id)
 
     planned = standin.plan_items("150160180", "hydro")
-    assert standin.CALLS[0] == (
-        "check_command",
-        "series fetch",
-        {**STATION, "root": str(root)},
-    )
-    assert stored is not None
+    assert [call for call in standin.CALLS if call[0] == "check_command"] == [
+        ("check_command", "series fetch", {**STATION, "root": str(root)})
+    ]
+    assert stored.call == 0
     assert [
         (e.path, e.unit, e.status, e.local_label, e.available_label, e.size_bytes)
         for e in stored.plan.entries
@@ -100,10 +100,8 @@ def test_the_plan_is_the_producers_plan_of_the_configured_store(
     assert isinstance(summary, dict)
     assert summary == {
         "producer": "standin",
-        "command": "series fetch",
         "store": STORE,
         "root": str(root),
-        "line": line,
         "checked_at": stored.plan.checked_at.isoformat(),
         "ok": True,
         "positions": 4,
@@ -117,6 +115,16 @@ def test_the_plan_is_the_producers_plan_of_the_configured_store(
         "size_bytes": 5400,
         "size_complete": False,
         "failed": [],
+        "calls": [
+            {
+                "command": "series fetch",
+                "line": line,
+                "status": "ok",
+                "positions": 4,
+                "todo": 2,
+                "error": None,
+            }
+        ],
         "seconds": summary["seconds"],
     }
     assert [json.loads(line)["data"] for line in stream.getvalue().splitlines()] == [
@@ -124,7 +132,8 @@ def test_the_plan_is_the_producers_plan_of_the_configured_store(
             "level": "info",
             "code": "plan_cached",
             "message": "The station index answered from the cache.",
-        }
+        },
+        {"current": 1, "total": 1},
     ]
 
 
@@ -139,18 +148,20 @@ def test_a_position_the_source_could_not_tell_about_ends_the_job_partial(
         worker.Emitter(io.StringIO()),
     )
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(job.id)
+        (stored,) = queries.plans(job.id)
 
     assert isinstance(outcome, worker.PartialResult)
     error = "The source did not answer for hydro/901/2025.csv."
-    assert outcome.summary["failed"] == [{"path": "hydro/901/2025.csv", "error": error}]
+    assert outcome.summary["failed"] == [
+        {"call": 0, "path": "hydro/901/2025.csv", "error": error}
+    ]
+    assert outcome.summary["calls"][0]["status"] == "partial"
     assert outcome.summary["ok"] is False
     assert outcome.summary["counts"]["check_failed"] == 1
     assert (outcome.summary["size_bytes"], outcome.summary["size_complete"]) == (
         5400,
         True,
     )
-    assert stored is not None
     assert (stored.plan.entries[2].status, stored.plan.entries[2].error) == (
         "check_failed",
         error,
@@ -169,7 +180,7 @@ def test_a_plan_with_no_position_checked_fails_and_is_not_kept(
             worker.Emitter(io.StringIO()),
         )
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(job.id)
+        stored = queries.plans(job.id)
 
     problem = describe(failed.value)
     assert (problem.code, problem.details["reason"]) == (
@@ -177,7 +188,7 @@ def test_a_plan_with_no_position_checked_fails_and_is_not_kept(
         "check_failed",
     )
     assert "hydro/999/2023.csv" in problem.detail
-    assert stored is None
+    assert stored == ()
 
 
 @pytest.mark.parametrize(
@@ -195,13 +206,12 @@ def test_a_worker_process_ends_the_job_with_the_plan_in_its_result(
         record = jobs.wait(job.id, timeout=JOB_TIMEOUT_S)
         final = jobs.events(job.id)[-1]
     with IndexQueries(paths.index_file) as queries:
-        stored = queries.plan(job.id)
+        (stored,) = queries.plans(job.id)
 
     assert (record.state, record.store, record.error) == (state, STORE, None)
     assert record.result is not None
     assert record.result["counts"]["check_failed"] == failed
     assert final.data == {"state": state, "result": record.result}
-    assert stored is not None
     assert len(stored.plan.entries) == record.result["positions"] == 4
 
 
@@ -224,16 +234,20 @@ def test_offline_mode_refuses_the_check_before_a_job_exists(
     ("store", "params"),
     [
         (None, CHECK),
-        (STORE, {**CHECK, "command": ""}),
+        (STORE, {**CHECK, "calls": [{"command": "", "options": STATION}]}),
         (STORE, {"producer": "standin", "options": STATION}),
-        (STORE, {**CHECK, "options": ["station", "150160180"]}),
+        (STORE, {**CHECK, "calls": []}),
+        (STORE, {**CHECK, "calls": station_calls("1") * (MAX_JOB_CALLS + 1)}),
+        (STORE, {**CHECK, "calls": [{"command": "series fetch", "station": "1"}]}),
+        (STORE, {**CHECK, "calls": [{"command": "series fetch", "options": []}]}),
+        (STORE, {**CHECK, "calls": ["series fetch --station 1"]}),
         (STORE, {**CHECK, "force": True}),
     ],
 )
 def test_invalid_check_parameters_are_refused_before_a_job_exists(
     held: JobSupervisor, store: str | None, params: dict[str, object]
 ) -> None:
-    """A store, a producer and a command are required; the options are an object."""
+    """A store, a producer and 1 to 1000 calls; each a command and options."""
     with pytest.raises(ValueError):
         held.submit("check", store=store, params=params, actor=LOCAL_OWNER)
 

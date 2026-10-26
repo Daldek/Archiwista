@@ -23,11 +23,13 @@ input, runs it and reports in JSON Lines on standard output
 - ``availability``: what the source has for an area and a product (the
   producer's ``ActionAdapter.availability``, plan of 2026-10-25 A2), kept in
   the index as the area's last report;
-- ``check``: what a run of a producer's command would do in the store (the
-  producer's ``ActionAdapter.check``, A4), its plan kept in the index with the
-  job; a plan some of whose positions could not be checked ends ``partial``;
-- ``download``: a run of a producer's command in the store (the producer's
-  ``ActionAdapter.run``, A5), of the plan a ``check`` job kept when one is
+- ``check``: what a run of each of a job's calls of a producer's commands
+  would do in the store (the producer's ``ActionAdapter.check``, A4; all the
+  lines of a report's row in one job, ADR-044), the plan of each call kept in
+  the index with the job; a job some of whose calls or positions could not be
+  checked ends ``partial``;
+- ``download``: a run of each of a job's calls in the store (the producer's
+  ``ActionAdapter.run``, A5), of the plans a ``check`` job kept when one is
   named; the slots of the files it reports are read again into the index
   when it ends, those of the units it named also when it is interrupted;
 - ``project_download`` and ``project_repin``: a download of a project's tasks
@@ -43,6 +45,11 @@ input, runs it and reports in JSON Lines on standard output
   cache ahead, at the lowest priority and within the room the cache has
   without evicting what people used lately
   (``archiwista.previews.warm.warm_previews``, ADR-041).
+
+A worker imports what every job needs; the previews' modules, which bring the
+models of the API and the supervisor, are imported by the runners of
+``preview`` and ``preview_warm`` only, so the worker of a producer's job
+starts without them (ADR-044, decision C).
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -63,7 +70,7 @@ import threading
 import time
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from types import FrameType
 from typing import IO, cast
@@ -87,6 +94,7 @@ from archiwista.errors import (
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
+    PlanTotals,
     ProjectRef,
     SnapshotWrite,
     StoredPlan,
@@ -145,8 +153,6 @@ from archiwista.owndata.snapshots import (
     make_snapshot,
 )
 from archiwista.paths import resolve_indexed_path
-from archiwista.previews.build import run_preview
-from archiwista.previews.warm import warm_previews
 from archiwista.sandbox import process_work_dir
 from archiwista.services.commands import actions, store_root
 from archiwista.services.problems import explain
@@ -166,6 +172,7 @@ from archiwista.sources import (
     LinkCheckAdapter,
     ProjectCheck,
     ProjectRun,
+    RunStatus,
     SegmentDescriptionAdapter,
     SegmentedAdapter,
     SourceAdapter,
@@ -658,117 +665,125 @@ def run_availability(spec: JobSpec, emit: Emitter) -> JsonObject:
 
 
 def run_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
-    """Plan a run of a producer's command in the store and keep the plan.
+    """Plan a run of each of a job's calls in the store and keep the plans.
 
     The producer compares the store's root (the configured directory of the
-    producer, never its default root) with the source; its notices become the
-    job's. The plan is kept with the job, with the producer's command line of
-    the run it plans. A plan some of whose positions could not be checked ends
-    the job ``partial``; one with none of them checked fails it
-    (``check_failed``) and is not kept.
+    producer, never its default root) with the source, one call after the
+    other in this one process (ADR-044); its notices become the job's, and
+    each call planned is a progress event. The plan of each call is kept with
+    the job, with the producer's command line of the run it plans. A call the
+    producer refuses, or one with none of its positions checked
+    (``check_failed``), keeps no plan, and its section of the summary says
+    why. A job some of whose calls or positions could not be checked ends
+    ``partial``; one with no call planned fails with the error of its first
+    call.
     """
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
     config = _store(spec)
-    call = CommandCall(
-        str(spec.params["producer"]),
-        str(spec.params["command"]),
-        dict(spec.params["options"]),
-    )
-    root = store_root(spec.settings, config.id, call)
+    calls = _calls(spec)
+    root = store_root(spec.settings, config.id, calls[0])
     started = time.perf_counter()
-    adapter = actions(load_registry(cache_dir=spec.cache_dir), call.producer)
-    plan = adapter.check(
-        call.command,
-        call.options,
-        root=root,
-        on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
-    )
-    failed = [entry for entry in plan.entries if entry.status == "check_failed"]
-    if failed and len(failed) == len(plan.entries):
-        text = message("job.check_failed", count=len(failed))
-        raise CheckFailedError(with_detail(text, failed[0].error))
-    line = adapter.format(replace(call, run={"root": str(root)}))
+    adapter = actions(load_registry(cache_dir=spec.cache_dir), calls[0].producer)
+    kept: list[StoredPlan] = []
+    sections: list[JsonObject] = []
+    errors: list[ArchiwistaError] = []
+    for place, call in enumerate(calls):
+        line = adapter.format(replace(call, run={"root": str(root)}))
+        try:
+            plan = _checked_plan(adapter, call, root, emit)
+        except ArchiwistaError as error:
+            errors.append(error)
+            sections.append(_plan_section(call, line, error=error))
+        else:
+            kept.append(StoredPlan(spec.job_id, place, config.id, line, plan))
+            sections.append(_plan_section(call, line, plan=plan))
+        emit.progress(place + 1, len(calls))
+    if not kept:
+        raise errors[0]
     with IndexWriter(spec.index_path) as writer:
-        writer.write_plan(StoredPlan(spec.job_id, config.id, line, plan))
+        writer.write_plans(kept)
+    plans = [stored.plan for stored in kept]
+    totals = PlanTotals.of(plans)
+    ok = not errors and totals.ok
     summary: JsonObject = {
-        "producer": call.producer,
-        "command": plan.command,
+        "producer": calls[0].producer,
         "store": config.id,
-        "root": plan.root,
-        "line": line,
-        "checked_at": plan.checked_at.isoformat(),
-        "ok": plan.ok,
-        "positions": len(plan.entries),
-        "counts": plan.counts(),
-        "size_bytes": plan.size_bytes,
-        "size_complete": plan.size_complete,
-        "failed": [{"path": entry.path, "error": entry.error} for entry in failed],
+        "root": plans[0].root,
+        "checked_at": totals.checked_at.isoformat(),
+        "ok": ok,
+        "positions": totals.positions,
+        "counts": totals.counts,
+        "size_bytes": totals.size_bytes,
+        "size_complete": totals.size_complete,
+        "failed": [
+            {"call": stored.call, "path": entry.path, "error": entry.error}
+            for stored in kept
+            for entry in stored.plan.entries
+            if entry.status == "check_failed"
+        ],
+        "calls": sections,
         "seconds": round(time.perf_counter() - started, 3),
     }
-    return summary if plan.ok else PartialResult(summary)
+    return summary if ok else PartialResult(summary)
 
 
 def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
-    """Run a producer's command in the store, then read its files' slots again.
+    """Run each of a job's calls in the store, then read their files' slots again.
 
     The producer writes the store's root (the configured directory of the
-    producer, never its default root) itself; with ``plan_job`` it runs the
-    plan that ``check`` job kept, so a position whose source changed since
-    comes back as a failed item (``conflict``, ``stale_plan``). Its progress
-    and notices become the job's. When the run ends the index learns its
-    files: the slot of each file of ``files[]`` is read again (``scope``,
-    ``refresh_view``). When it is interrupted or fails, the slots of the units
-    its progress named are read again within ``RESCAN_STOP_S``: those of the
-    plan's positions with a plan, else in every segment of the store. A run
-    some of whose units failed ends the job ``partial``; one with none done
-    fails it (``RunFailedError``, the code of its first failed unit).
+    producer, never its default root) itself, one call after the other in
+    this one process (ADR-044). With ``plan_job`` each call runs the plan
+    that ``check`` job kept of it, so a position whose source changed since
+    comes back as a failed item (``conflict``, ``stale_plan``); a call
+    without a kept plan (its check failed) or whose plan has nothing to
+    download is skipped. The progress (with the ``call`` and the number of
+    ``calls``) and the notices become the job's. When the calls end the index
+    learns their files: the slot of each file of ``files[]`` is read again
+    (``scope``, ``refresh_view``), and those of the units a call that failed
+    named. When the job is interrupted, the slots of what its calls wrote or
+    named are read again within ``RESCAN_STOP_S``: those of the plan's
+    positions with a plan, else in every segment of the store. A call the
+    producer refuses, or none of whose units succeeded, failed; a job some of
+    whose calls or units failed ends ``partial``, one none of whose calls run
+    succeeded fails with the error of its first (``RunFailedError``, the code
+    of the first failed unit, when the producer reported the units).
     """
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
     config = _store(spec)
-    call = CommandCall(
-        str(spec.params["producer"]),
-        str(spec.params["command"]),
-        dict(spec.params["options"]),
-    )
-    root = store_root(spec.settings, config.id, call)
+    calls = _calls(spec)
+    root = store_root(spec.settings, config.id, calls[0])
     plan_job = spec.params.get("plan_job")
-    plan = None if plan_job is None else _kept_plan(spec, str(plan_job))
+    plans = None if plan_job is None else _kept_plans(spec, str(plan_job))
     started = time.perf_counter()
     registry = load_registry(cache_dir=spec.cache_dir)
-    adapter = actions(registry, call.producer)
-    reader = registry.adapter(call.producer)
-    units: set[str] = set()
-
-    def progressed(event: ActionProgress) -> None:
-        if event.unit is not None:
-            units.add(event.unit)
-        emit.progress(
-            event.current,
-            event.total,
-            unit=event.unit,
-            status=event.status,
-            message=event.message,
-        )
-
+    adapter = actions(registry, calls[0].producer)
+    reader = registry.adapter(calls[0].producer)
+    runs: list[_CallRun] = []
+    sections: list[JsonObject] = []
     try:
-        result = adapter.run(
-            call.command,
-            call.options,
-            root=root,
-            plan=plan,
-            on_progress=progressed,
-            on_notice=lambda notice: emit.notice(
-                notice.level, notice.code, notice.message
-            ),
-        )
+        for place, call in enumerate(calls):
+            plan = None if plans is None else plans.get(place)
+            line = adapter.format(replace(call, run={"root": str(root)}))
+            if plans is not None and (plan is None or not plan.todo):
+                reason = "not_planned" if plan is None else "nothing_to_download"
+                sections.append(_run_section(call, line, "skipped", reason=reason))
+                continue
+            run = _CallRun(place, plan)
+            runs.append(run)
+            _run_call(adapter, call, root, run, calls=len(calls), emit=emit)
+            sections.append(
+                _run_section(
+                    call, line, run.status(), error=run.error, result=run.result
+                )
+            )
     except BaseException:
         _rescan(
             spec,
             reader,
             config.id,
-            lambda: _unit_scopes(adapter, reader, root, plan, units),
+            lambda: _run_scopes(adapter, reader, root, runs),
             emit,
             timeout_s=RESCAN_STOP_S,
         )
@@ -777,30 +792,42 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
         spec,
         reader,
         config.id,
-        lambda: _scopes(adapter, (file.path for file in result.files)),
+        lambda: _run_scopes(adapter, reader, root, runs),
         emit,
         timeout_s=None,
     )
-    if result.status == "failed":
-        raise _run_failed(result)
+    errors = [run.error for run in runs if run.error is not None]
+    if runs and len(errors) == len(runs):
+        raise errors[0]
+    results = [(run.place, run.result) for run in runs if run.result is not None]
     counts = dict.fromkeys(FILE_STATUSES, 0)
-    for file in result.files:
-        counts[file.status] += 1
+    for _, result in results:
+        for file in result.files:
+            counts[file.status] += 1
+    ok = all(run.status() == "ok" for run in runs)
     summary: JsonObject = {
-        "producer": call.producer,
-        "command": result.command,
+        "producer": calls[0].producer,
         "store": config.id,
-        "root": result.root,
+        "root": results[0][1].root if results else str(root),
         "plan_job": plan_job,
-        "status": result.status,
+        "status": "ok" if ok else "partial",
         "counts": counts,
-        "files": [asdict(file) for file in result.files],
-        "items": [asdict(item) for item in result.items],
-        "failed": len(result.failed),
+        "files": [
+            {**asdict(file), "call": place}
+            for place, result in results
+            for file in result.files
+        ],
+        "items": [
+            {**asdict(item), "call": place}
+            for place, result in results
+            for item in result.items
+        ],
+        "failed": sum(len(result.failed) for _, result in results),
+        "calls": sections,
         "rescanned": rescanned,
         "seconds": round(time.perf_counter() - started, 3),
     }
-    return summary if result.status == "ok" else PartialResult(summary)
+    return summary if ok else PartialResult(summary)
 
 
 def run_project_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
@@ -863,12 +890,25 @@ def run_project_verify(spec: JobSpec, emit: Emitter) -> JsonObject:
     return _check_summary(project, checked, started)
 
 
+def run_preview(spec: JobSpec, emit: Emitter) -> JsonObject:
+    """Build the previews of the job's refs (``previews.build.run_preview``).
+
+    The previews' modules are imported here, by the jobs that build them.
+    """
+    from archiwista.previews.build import run_preview as build_previews
+
+    return build_previews(spec, emit)
+
+
 def run_preview_warm(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     """Prepare the first look at current versions ahead (``warm_previews``).
 
     A warm-up some of whose files failed, or that stopped when the preview
-    cache had no more room, ends ``partial``.
+    cache had no more room, ends ``partial``. The previews' modules are
+    imported here, by the jobs that warm them.
     """
+    from archiwista.previews.warm import warm_previews
+
     summary = warm_previews(spec, emit)
     if summary["failed"] or summary["skipped"]:
         return PartialResult(summary)
@@ -1066,8 +1106,43 @@ def _check_summary(
     }
 
 
-def _kept_plan(spec: JobSpec, job_id: str) -> ActionPlan:
-    """Return the plan the ``check`` job ``job_id`` kept.
+def _checked_plan(
+    adapter: ActionAdapter, call: CommandCall, root: Path, emit: Emitter
+) -> ActionPlan:
+    """Return the producer's plan of one call; its notices become the job's.
+
+    Raises
+    ------
+    CheckFailedError
+        None of the plan's positions could be checked (``check_failed``, the
+        producer's text of the first).
+    ArchiwistaError
+        The producer refused the call (``ProducerError``).
+    """
+    plan = adapter.check(
+        call.command,
+        call.options,
+        root=root,
+        on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
+    )
+    failed = [entry for entry in plan.entries if entry.status == "check_failed"]
+    if failed and len(failed) == len(plan.entries):
+        text = message("job.check_failed", count=len(failed))
+        raise CheckFailedError(with_detail(text, failed[0].error))
+    return plan
+
+
+def _calls(spec: JobSpec) -> tuple[CommandCall, ...]:
+    """Return the calls of a ``check`` or ``download`` job, in their order."""
+    producer = str(spec.params["producer"])
+    return tuple(
+        CommandCall(producer, str(call["command"]), dict(call["options"]))
+        for call in spec.params["calls"]
+    )
+
+
+def _kept_plans(spec: JobSpec, job_id: str) -> dict[int, ActionPlan]:
+    """Return the plans the ``check`` job ``job_id`` kept, by the place of their call.
 
     Raises
     ------
@@ -1076,10 +1151,131 @@ def _kept_plan(spec: JobSpec, job_id: str) -> ActionPlan:
         forgotten since.
     """
     with IndexQueries(spec.index_path) as queries:
-        stored = queries.plan(job_id)
-    if stored is None:
+        stored = queries.plans(job_id)
+    if not stored:
         raise NotFoundError(message("job.no_plan", job=job_id))
-    return stored.plan
+    return {item.call: item.plan for item in stored}
+
+
+@dataclass(slots=True)
+class _CallRun:
+    """One call of a ``download`` job as it ran (``_run_call``).
+
+    ``place`` is the call's place in the job's ``calls``, ``plan`` the kept
+    plan it runs, ``units`` the units its progress named; ``result`` is what
+    the producer reported, ``error`` why the call failed.
+    """
+
+    place: int
+    plan: ActionPlan | None
+    units: set[str] = field(default_factory=set)
+    result: ActionResult | None = None
+    error: ArchiwistaError | None = None
+
+    def status(self) -> RunStatus:
+        """Return ``ok``, ``partial`` (some units failed) or ``failed``."""
+        if self.error is not None or self.result is None:
+            return "failed"
+        return self.result.status
+
+
+def _run_call(
+    adapter: ActionAdapter,
+    call: CommandCall,
+    root: Path,
+    run: _CallRun,
+    *,
+    calls: int,
+    emit: Emitter,
+) -> None:
+    """Run one call of a ``download`` job; keep its result, or why it failed.
+
+    Its progress events name the call (``call`` of ``calls``) besides the
+    producer's ``unit``, ``status`` and ``message``. A call the producer
+    refuses, or none of whose units succeeded, keeps its error and the job
+    goes on with the next call; any other exception ends the job.
+    """
+
+    def progressed(event: ActionProgress) -> None:
+        if event.unit is not None:
+            run.units.add(event.unit)
+        emit.progress(
+            event.current,
+            event.total,
+            call=run.place,
+            calls=calls,
+            unit=event.unit,
+            status=event.status,
+            message=event.message,
+        )
+
+    try:
+        run.result = adapter.run(
+            call.command,
+            call.options,
+            root=root,
+            plan=run.plan,
+            on_progress=progressed,
+            on_notice=lambda notice: emit.notice(
+                notice.level, notice.code, notice.message
+            ),
+        )
+    except ArchiwistaError as error:
+        run.error = error
+        return
+    if run.result.status == "failed":
+        run.error = _run_failed(run.result)
+
+
+def _plan_section(
+    call: CommandCall,
+    line: str,
+    *,
+    plan: ActionPlan | None = None,
+    error: ArchiwistaError | None = None,
+) -> JsonObject:
+    """Return what the check of one call came to: its plan's size, or why none."""
+    return {
+        "command": call.command,
+        "line": line,
+        "status": "failed" if plan is None else "ok" if plan.ok else "partial",
+        "positions": 0 if plan is None else len(plan.entries),
+        "todo": 0 if plan is None else len(plan.todo),
+        "error": _call_error(error),
+    }
+
+
+def _run_section(
+    call: CommandCall,
+    line: str,
+    status: str,
+    *,
+    reason: str | None = None,
+    result: ActionResult | None = None,
+    error: ArchiwistaError | None = None,
+) -> JsonObject:
+    """Return what the run of one call came to: its files, failed units, error."""
+    return {
+        "command": call.command,
+        "line": line,
+        "status": status,
+        "reason": reason,
+        "files": 0 if result is None else len(result.files),
+        "failed": 0 if result is None else len(result.failed),
+        "error": _call_error(error),
+    }
+
+
+def _call_error(error: ArchiwistaError | None) -> JsonObject | None:
+    """Return why a call of a job failed: its problem's code, reason and text."""
+    if error is None:
+        return None
+    problem = describe(error)
+    return {
+        "code": problem.code,
+        "reason": problem.details.get("reason"),
+        "detail": problem.detail,
+    }
 
 
 def _scopes(
@@ -1114,6 +1310,29 @@ def _unit_scopes(
     if isinstance(reader, SegmentedAdapter):
         return dict.fromkeys(reader.segments(root), named)
     return {None: named}
+
+
+def _run_scopes(
+    adapter: ActionAdapter,
+    reader: SourceAdapter,
+    root: Path,
+    runs: Iterable[_CallRun],
+) -> dict[str | None, tuple[str, ...]]:
+    """Return the scopes that read again what a download's calls wrote or named.
+
+    The files of each call the producer reported; of a call that failed or
+    was stopped, the units its progress named (``_unit_scopes``).
+    """
+    found: dict[str | None, dict[str, None]] = {}
+    for run in runs:
+        scopes = (
+            _unit_scopes(adapter, reader, root, run.plan, run.units)
+            if run.result is None
+            else _scopes(adapter, (file.path for file in run.result.files))
+        )
+        for segment, units in scopes.items():
+            found.setdefault(segment, {}).update(dict.fromkeys(units))
+    return {segment: tuple(units) for segment, units in found.items()}
 
 
 def _rescan(

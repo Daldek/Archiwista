@@ -216,7 +216,9 @@ def test_a_pasted_line_is_planned_in_the_target_store_and_downloaded(
     by_kind = {job["kind"]: job for job in action_jobs(page)}
     assert sorted(by_kind) == ["check", "download"]
     options = {"station": "150160190", "kind": "hydro"}
-    assert by_kind["check"]["params"]["options"] == options
+    calls = [{"command": "series fetch", "options": options}]
+    assert by_kind["check"]["params"]["calls"] == calls
+    assert by_kind["download"]["params"]["calls"] == calls
     assert by_kind["download"]["params"]["plan_job"] == by_kind["check"]["id"]
     folder = tmp_path / STORE / "hydro" / "150160190"
     assert sorted(path.name for path in folder.iterdir()) == ["2024.csv", "2025.csv"]

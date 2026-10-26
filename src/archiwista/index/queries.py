@@ -1678,19 +1678,26 @@ class IndexQueries:
             report=AvailabilityReport.from_json(json.loads(row["report"])),
         )
 
-    def plan(self, job_id: str) -> StoredPlan | None:
-        """Return the plan of a ``check`` job, ``None`` without one."""
+    def plans(self, job_id: str) -> tuple[StoredPlan, ...]:
+        """Return the plans of a ``check`` job's calls, in their order; none without.
+
+        A call whose check failed has no plan: the job's result says why.
+        """
         with self._read() as connection:
-            row = connection.execute(
-                "SELECT store, line, plan FROM plans WHERE job_id = ?", (job_id,)
-            ).fetchone()
-        if row is None:
-            return None
-        return StoredPlan(
-            job_id=job_id,
-            store=row["store"],
-            line=row["line"],
-            plan=ActionPlan.from_json(json.loads(row["plan"])),
+            rows = connection.execute(
+                "SELECT call, store, line, plan FROM plans WHERE job_id = ?"
+                " ORDER BY call",
+                (job_id,),
+            ).fetchall()
+        return tuple(
+            StoredPlan(
+                job_id=job_id,
+                call=row["call"],
+                store=row["store"],
+                line=row["line"],
+                plan=ActionPlan.from_json(json.loads(row["plan"])),
+            )
+            for row in rows
         )
 
     def held_units(

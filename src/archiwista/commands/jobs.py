@@ -1,16 +1,17 @@
 """``archiwista jobs``: background jobs (plan of 2026-10-25, A4 to A6).
 
-``jobs start RODZAJ PRODUCENT POLECENIE --store ID [--options JSON] [--plan
-ZADANIE]`` starts a job of a command of the producer's catalog on a configured
-store (``POST /jobs``) and follows it to its end in the foreground
-(``archiwista.jobs.foreground``): kind ``check`` plans a run without its
-effects, ``download`` runs it in the store, with ``--plan`` the plan a
-``check`` job kept. It prints the job as it ended (``GET /jobs/{job}``,
+``jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …] [--plan
+ZADANIE]`` starts a job of calls of commands of the producer's catalog on a
+configured store (``POST /jobs``; all the lines of a row in one job, ADR-044)
+and follows it to its end in the foreground (``archiwista.jobs.foreground``):
+kind ``check`` plans a run of each call without its effects, ``download``
+runs them in the store, with ``--plan`` the plans a ``check`` job of the same
+calls kept. It prints the job as it ended (``GET /jobs/{job}``,
 ``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
 ``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs retry
 ZADANIE`` starts a job that did not succeed again (``POST
 /jobs/{job}/retry``) and follows the new job the same way. ``jobs plan
-ZADANIE`` prints the plan a ``check`` job kept (``GET /jobs/{job}/plan``,
+ZADANIE`` prints the plans a ``check`` job kept (``GET /jobs/{job}/plan``,
 ``ActionPlanInfo``) without the network; ``jobs list`` the jobs (``GET
 /jobs``, ``JobList``, with its filters), ``jobs show ZADANIE`` one job
 (``JobDetail``), ``jobs cancel ZADANIE`` cancels a job that waits or runs,
@@ -26,7 +27,7 @@ a refusal prints no model and ends standard error with its
 
 import argparse
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from typing import Any, TextIO
 
@@ -64,7 +65,7 @@ from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.jobs.protocol import STOP_TIMEOUT_S
 from archiwista.messages import label, message, with_detail
 from archiwista.services import jobs as job_controls
-from archiwista.services.actions import kept_plan, start
+from archiwista.services.actions import kept_plans, start
 from archiwista.sources import (
     FILE_STATUSES,
     PLAN_STATUSES,
@@ -101,21 +102,16 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.producer"),
         help=message("cli.commands_producer_help"),
     )
-    # Not ``command``: the namespace's ``command`` names ``jobs`` itself.
-    started.add_argument(
-        "name",
-        metavar=message("metavar.command"),
-        help=message("cli.jobs_command_help"),
-    )
     started.add_argument(
         "--store", metavar=message("metavar.store"), help=message("cli.jobs_store_help")
     )
     started.add_argument(
-        "--options",
+        "--call",
+        dest="calls",
         type=json_object,
-        default={},
+        action="append",
         metavar="JSON",
-        help=message("cli.commands_options_help"),
+        help=message("cli.jobs_call_help"),
     )
     started.add_argument(
         "--plan",
@@ -214,16 +210,10 @@ def _start(
     err: TextIO,
 ) -> int:
     """Start a job as ``POST /jobs`` does, follow it and print it as it ended."""
-    given: dict[str, Any] = {
-        "kind": args.kind,
-        "producer": args.producer,
-        "command": args.name,
-        "options": args.options,
-    }
-    if args.store is not None:
-        given["store"] = args.store
-    if args.plan_job is not None:
-        given["plan_job"] = args.plan_job
+    given: dict[str, Any] = {"kind": args.kind, "producer": args.producer}
+    for name in ("store", "calls", "plan_job"):
+        if getattr(args, name) is not None:
+            given[name] = getattr(args, name)
     try:
         request = JobRequest.model_validate(given)
     except ValidationError as error:
@@ -247,7 +237,7 @@ def _start(
             decisions,
             kind=request.kind,
             store=request.store,
-            call=request.call(),
+            calls=request.command_calls(),
             actor=LOCAL_OWNER,
             visible=ALL_PROJECTS,
             plan_job=request.plan_job,
@@ -439,10 +429,10 @@ def _plan(
     except _UNUSABLE as error:
         return _unusable(error, err)
     try:
-        stored = kept_plan(queries, jobs, args.job, visible=ALL_PROJECTS)
+        kept = kept_plans(queries, jobs, args.job, visible=ALL_PROJECTS)
     except ArchiwistaError as error:
         return refuse(describe(error), err)
-    plan = ActionPlanInfo.of(stored)
+    plan = ActionPlanInfo.of(kept)
     out.write((plan.model_dump_json() if args.json else _plan_text(plan)) + "\n")
     return 0
 
@@ -466,10 +456,11 @@ def _unusable(error: Exception, err: TextIO) -> int:
 def _job_text(detail: JobDetail) -> str:
     """Return a job as it ended for a person.
 
-    A plan adds its counts and its line, a download the files by status and
-    the units that failed, a project's download or repin its tasks by
-    outcome, a project's check or verification its files by state, a
-    warm-up of previews what it selected and how each file went.
+    A plan adds its counts and the line of each call (or why it has no
+    plan), a download the files by status, the units that failed and the
+    calls that failed or were skipped, a project's download or repin its
+    tasks by outcome, a project's check or verification its files by state,
+    a warm-up of previews what it selected and how each file went.
     """
     kind = label("job.kind", detail.kind)
     state = label("job.state", detail.state)
@@ -482,7 +473,7 @@ def _job_text(detail: JobDetail) -> str:
         todo = sum(counts[status] for status in PLAN_TODO)
         size, complete = result["size_bytes"], result["size_complete"]
         lines.append(_counts(counts, todo=todo, size=size, complete=complete))
-        lines.append(message("cli.jobs_line", line=result["line"]))
+        lines += _call_lines(result["calls"])
     if detail.kind == "download":
         files: Mapping[str, int] = result["counts"]
         named = ", ".join(
@@ -496,6 +487,7 @@ def _job_text(detail: JobDetail) -> str:
                 failed=result["failed"],
             )
         )
+        lines += _call_lines(result["calls"])
     if detail.kind in ("project_download", "project_repin"):
         tasks: Mapping[str, int] = result["counts"]
         named = ", ".join(
@@ -569,8 +561,34 @@ def _list_text(listed: JobList) -> str:
     return "\n".join(lines)
 
 
+def _call_lines(calls: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Return what became of each call of a job of calls, for a person.
+
+    A planned call is its command line; one that failed says why, one a
+    download skipped says why. A call a download ran is not named: its
+    files and failed units are counted with the others.
+    """
+    count = len(calls)
+    lines: list[str] = []
+    for place, call in enumerate(calls, start=1):
+        values = {"place": place, "count": count, "line": call["line"]}
+        if call["status"] == "failed":
+            detail = call["error"]["detail"]
+            lines.append(message("cli.jobs_call_failed", **values, detail=detail))
+        elif call["status"] == "skipped":
+            key = (
+                "cli.jobs_call_not_planned"
+                if call["reason"] == "not_planned"
+                else "cli.jobs_call_nothing"
+            )
+            lines.append(message(key, **values))
+        elif "positions" in call:
+            lines.append(message("cli.jobs_line", line=call["line"]))
+    return lines
+
+
 def _plan_text(plan: ActionPlanInfo) -> str:
-    """Return a kept plan for a person: a line per position, then the counts."""
+    """Return kept plans for a person: each call's line and positions, the counts."""
     checked_at = plan.checked_at.isoformat(timespec="seconds")
     lines: list[str] = [
         message(
@@ -578,19 +596,20 @@ def _plan_text(plan: ActionPlanInfo) -> str:
         )
     ]
     none = message("cli.jobs_no_label")
-    lines += [
-        message(
-            "cli.jobs_plan_entry",
-            status=label("job.plan", entry.status),
-            path=entry.path,
-            local=entry.local_label or none,
-            available=entry.available_label or none,
-        )
-        for entry in plan.entries
-    ]
+    for call in plan.calls:
+        lines.append(message("cli.jobs_line", line=call.line))
+        lines += [
+            message(
+                "cli.jobs_plan_entry",
+                status=label("job.plan", entry.status),
+                path=entry.path,
+                local=entry.local_label or none,
+                available=entry.available_label or none,
+            )
+            for entry in call.entries
+        ]
     size, complete = plan.size_bytes, plan.size_complete
     lines.append(_counts(plan.counts, todo=plan.todo, size=size, complete=complete))
-    lines.append(message("cli.jobs_line", line=plan.line))
     return "\n".join(lines)
 
 

@@ -1097,23 +1097,25 @@ export function validateCommand(body) {
 }
 
 /**
- * Start a job of a producer's command on a configured store (`start_job`):
- * `check` plans a run without its effects, `download` runs it (with
- * `plan_job`, the plan that check kept).
+ * Start a job of a producer's calls on a configured store (`start_job`), all
+ * the lines of a row in one job (ADR-044): `check` plans a run of each call
+ * without its effects, `download` runs them (with `plan_job`, the plans that
+ * check kept of the same calls).
  *
  * @param {JobRequest} body
  * @returns {Promise<JobDetail>} The queued job (`202`).
  * @throws {ApiError} `403 permission_denied` (a download without
  *   `store_write`), `400` (`store_without_producer`, the producer's refusal
- *   of an option), `404`, `409 conflict` (`offline_mode`, `plan_mismatch`).
+ *   of an option), `404`, `409 conflict` (`offline_mode`, `plan_mismatch`);
+ *   a refusal of one call names its place in `calls` as `details.call`.
  */
 export function startJob(body) {
   return request("POST", "/jobs", { json: body });
 }
 
 /**
- * The plan a `check` job kept (`get_job_plan`): its counts, size and
- * positions, from the index.
+ * The plans a `check` job kept (`get_job_plan`): their counts and size
+ * together and the positions of each call planned, from the index.
  *
  * @param {string} job - Job id of a `check` that succeeded or ended `partial`.
  * @param {RequestOptions} [options]
