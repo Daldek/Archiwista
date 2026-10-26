@@ -575,11 +575,14 @@ The **state database** (A-ADR-029) is a separate SQLite file
 (`users`), groups and memberships (`groups`, `memberships`), roles (`admin`,
 `store_writer`), project visibility (`project_acl`: project key —
 the directory after `realpath`, independent of the index; owner; `public` /
-`users` / `group` / `private`; entries for people and groups) and the log of permission
-changes. This state cannot be rebuilt from disk, so "Przebuduj
+`users` / `group` / `private`; entries for people and groups), from v0.4 the passwords
+(Argon2id hashes in a table of their own, 10.2), each person's preferences and the action
+log, which the log of permission changes of v0.1 became (10.2, A-ADR-047). This state cannot
+be rebuilt from disk, so "Przebuduj
 indeks" (Rebuild index) does not touch it, the schema changes through migrations (not by rebuilding),
 and a backup is provided by `archiwista state export` (JSON
-`archiwista-state/1`), restored by `archiwista state import` into an empty
+`archiwista-state/2` from v0.4, with the password hashes: a secret, written with mode `0600`;
+`archiwista-state/1` still imports), restored by `archiwista state import` into an empty
 database.
 
 In a production deployment the store may remain on an HDD/NAS, but the Archiwista
@@ -1296,8 +1299,8 @@ Proposed split (the final one will be set by the implementation plan):
 |---|---|
 | `src/archiwista/app.py` | FastAPI application, route registration, static files of the interface |
 | `src/archiwista/config.py` | configuration (TOML): stores (producer directories), path aliases, project directories, limits, basemaps, assistant provider |
-| `src/archiwista/security.py` | `Host` check, startup token, CSRF, CSP headers, `current_principal` (request identity); authentication from v0.4 |
-| `src/archiwista/state/` | state database (4.3): accounts, groups, memberships, roles, project visibility, permission change log; migrations, export |
+| `src/archiwista/security.py` | `Host` check, startup token, CSRF, CSP headers, `current_principal` (request identity); from v0.4 team mode: TLS and proxy rules, sign-in sessions (10.2) |
+| `src/archiwista/state/` | state database (4.3): accounts, groups, memberships, roles, project visibility, the permission change log (from v0.4 the action log), from v0.4 passwords and preferences; migrations, export |
 | `src/archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — a single place for permission decisions for the API, CLI and index queries (A-ADR-029) |
 | `src/archiwista/sources/` | source interface: adapter protocol, shared types (store entry, metadata, plan, job events), registry of adapters loaded from entry points (group `archiwista.sources`), source states, check of producer versions and schemas (5.8) |
 | `src/archiwista/adapter/kartograf/` | the only place that imports Kartograf: KA-KH calls and type conversions |
@@ -1404,7 +1407,8 @@ ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 
 `archiwista serve` starts the server on `127.0.0.1` (port from the configuration),
 opens the browser with a one-time token in the address (section 10.1)
-and prints the address in the terminal. On first run the wizard asks
+and prints the address in the terminal; in team mode (10.2) it listens on the address of
+`--host`, issues no token and prints the configured `origin`. On first run the wizard asks
 for the store — Kartograf's store root (the directory with `kartograf-store.json`) and/or
 (only when the IMGW source is available, 5.8) the IMGW directory (an IMGWTools store,
 A-ADR-019), at least one of them — and for the project
@@ -1436,6 +1440,24 @@ a source: a new or moved `imgw` directory requires the source `imgw` in the stat
 `available`, and an entry saved earlier stays even when the IMGWTools package has
 disappeared (5.8).
 
+Team mode (from v0.4, 10.2, A-ADR-046) is the table `[team]` of the same file. The server
+reads it when it starts; the API neither shows nor changes it, so it is edited in the file
+while the server is stopped, and `archiwista doctor` checks it (the address, the certificate
+and key loaded as a pair, the key not readable by other accounts, an administrator who can
+sign in). Two settings of the team are ordinary ones that an administrator changes in
+"Ustawienia": `network_jobs_per_person` (2) and `action_log_retention_days` (365).
+
+```toml
+[team]
+enabled = true
+origin = "https://archiwista.firma.local"     # the address people open (https, host, port)
+tls_cert = "/etc/archiwista/tls/fullchain.pem"  # TLS in the server: both files or neither
+tls_key = "/etc/archiwista/tls/privkey.pem"
+trusted_proxies = ["127.0.0.1"]                 # a reverse proxy with TLS; addresses or small networks
+proxy_user_header = "X-Remote-User"             # optional: the proxy names the person
+proxy_autocreate = false                        # create a missing account on its first visit
+```
+
 ### 5.6 Background jobs
 
 | Kind | What it calls | Network | What it writes |
@@ -1459,12 +1481,17 @@ disappeared (5.8).
   Each job records its executor (`actor`: `local` locally, the
   account in a team). An assistant's proposal is not a job until a human
   approves it.
-- **Concurrency (default):** 2 network jobs at a time, 1 job per
+- **Concurrency (default):** 2 network jobs at a time, of them at most
+  `network_jobs_per_person` (2) of one person, a free place going to the oldest waiting job
+  of the person with the fewest running ones (v0.4, 10.2); 1 job per
   project (manifest lock), compute jobs up to half of the cores,
   1 index-writing job per store (`scan`, `footprints`; the next one
   gets `409 conflict`). Overlapping jobs (the same segment and the same
   units) are marked with a warning — Kartograf will still write the version
-  once (exclusive write), but the second person would waste time.
+  once (exclusive write), but the second person would waste time. From v0.4 a planned
+  download leaves out the positions another active download of the store has claimed
+  (`taken`, "pobierane przez <osoba>"), and a download without a plan of the same call as a
+  running one waits for it (10.2, A-ADR-047).
 - **Worker process → job supervisor protocol:** JSON Lines on standard
   output: `progress` (from `DownloadProgress`: `current`, `total`, unit,
   status, message; from KC-2 also phase and bytes), `notice` (`Notice`:
@@ -1745,10 +1772,12 @@ and the mockup.
 | "Mapa" (Map) | main flow (6.3): area → product → availability; modes "Mapa", "Wachlarz", "Katalog"; the "Zestawienie" panel |
 | "Katalog" (Catalog) | view without a map (6.8): all objects of a product or dataset with search and filters — with or without an area, including objects without a position; the same state as the "Katalog" mode in the "Mapa" |
 | "Projekty" (Projects) | list of known projects, project view (6.5 g) |
-| "Zadania" (Jobs) | queue and history of background jobs (6.5 f); a counter of running ones next to the name |
+| "Zadania" (Jobs) | queue and history of background jobs (6.5 f): in a team every person's jobs with who runs them; a counter of running ones next to the name |
 | "Łączenie" (Combining) | wizards: "Mozaika" (Mosaic), "PL + CZ", "Zestaw QGIS" (QGIS set), "Porównanie" (Comparison) (section 8) |
 | "Magazyn" (Store) | stores, usage by product, state and problems (UC-13) |
 | "Ustawienia" (Settings) | stores and path aliases, project directories, base maps and offline mode, limits, preview cache, assistant |
+| "Konta", "Grupy", "Dziennik" (Accounts, Groups, Action log) | for administrators only, at the bottom of the navigation (from v0.4): accounts with roles, temporary passwords, sessions; groups and members; the action log with filters and export (6.5 p, q, s; 10.2) |
+| Account menu | in team mode at the right of the top bar (from v0.4): the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Moje ścieżki…", "Wyloguj" (6.5 o) |
 | "Asystent" (Assistant) | chat available from every view: on a computer a pinned side panel (the map narrows), on a phone a drawer (section 7.5, A-ADR-018) |
 | "Karta pliku" (File card) | opened over the current view (with its own URL) from the list, map, the Fan, the Catalog and search |
 | "Karta stacji" (Station card) | an IMGW station: metadata, position or the reason for its absence, coverage, chart, versions (6.5 k, 6.7); opened like the "Karta pliku" from the map, the "Zestawienie", the "Katalog", search and comparison |
@@ -2014,16 +2043,22 @@ Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
 [Porównaj wersje] [Dodaj do projektu]
 ```
 
-**f) "Zadania" (Jobs)**
+**f) "Zadania" (Jobs)** (from v0.4 the team's queue: every person's jobs with who runs them;
+"Anuluj" for whoever started a job and administrators; a job of a project the person does
+not see shows its kind, who and progress only; a planned download leaves out what another
+job fetches; 10.2, A-ADR-047)
 
 ```text
-ZADANIA W TLE                                  [Wszystkie] [Trwa] [Błędy]
-TRWA     Pobieranie: NMT 1 m 2023 (Kraków)    4/7 ark. [######----] [Anuluj]
-         Info: (tekst Kartografa bez zmian)
-GOTOWE   Sprawdzenie aktualności: projekt Raba        2 min temu
-         3 aktualne, 1 nowsza                        [Pokaż plan]
-BŁĄD     Pobieranie: BDOT10k 1261                    wczoraj 14:02
-         (tekst błędu Kartografa)                    [Ponów] [Dziennik]
+ZADANIA W TLE                          [Wszystkie] [Trwa] [Błędy] [Moje]
+TRWA    Pobieranie: NMT 1 m 2023 (Kraków)  Marek  4/7 ark. [####--] [Anuluj]
+        Info: (tekst Kartografa bez zmian)
+        3 ark. pobiera Anna (zadanie 3f9c1a7e): nie będą pobrane drugi raz
+CZEKA   Sprawdzenie: NMT 2025 (Raba)       Marek  trwają 2 zadania sieciowe osoby
+TRWA    Zadanie projektu (bez dostępu)     Anna   40%
+GOTOWE  Sprawdzenie aktualności: projekt Raba  Kasia   2 min temu
+        3 aktualne, 1 nowsza                             [Pokaż plan]
+BŁĄD    Pobieranie: BDOT10k 1261           Ty     wczoraj 14:02
+        (tekst błędu Kartografa)                         [Ponów] [Dziennik]
 ```
 
 **g) Project**
@@ -2192,6 +2227,122 @@ without a location replaced by a description — the sketch shows the layout; 6.
 +-----------------------------------------------------------------------------+
 | [Dodaj do projektu...]  [Dodaj do zestawu]  [Plik współrzędnych...]         |
 +-----------------------------------------------------------------------------+
+```
+
+**n) "Logowanie" (Sign-in)** (team mode, 10.2; the two messages are examples, one shows at
+a time; the second button only when a trusted proxy names the person; a temporary password
+leads to the change form before anything else)
+
+```text
++-------------------------------------------------+
+|  ARCHIWISTA · archiwista.firma.local            |
+|                                                 |
+|  Konto  [ marek.lis                          ]  |
+|  Hasło  [ ••••••••••••••••          ] [Pokaż]   |
+|                                    [Zaloguj]    |
+|  Nieprawidłowa nazwa konta lub hasło.           |
+|  Zbyt wiele prób: spróbuj ponownie za 2 min.    |
+|  ---------------------------------------------  |
+|  [Zaloguj kontem firmowym]                      |
+|  Nie pamiętasz hasła? Administrator ustawi      |
+|  hasło tymczasowe.                              |
++-------------------------------------------------+
+
+ZMIEŃ HASŁO TYMCZASOWE · marek.lis
+  Obecne hasło   [ ••••••••••••••••    ]
+  Nowe hasło     [ ••••••••••••••••••• ]  co najmniej 12 znaków, dowolnych
+  Powtórz        [ ••••••••••••••••••• ]
+  [Wyloguj]                                              [Zmień hasło]
+```
+
+**o) Account menu, "Sesje" and "Moje ścieżki"** (team mode; a session is ended at once;
+the path aliases only change the paths shown and copied, 10.2)
+
+```text
+ … Magazyn  [Ctrl+K]   Pobieranie 1/2 · 45%   [Marek Lis v]
+                                  +-----------------------------------+
+                                  | Marek Lis · marek.lis             |
+                                  | zapis do magazynu · grupy: gis    |
+                                  |-----------------------------------|
+                                  | Zmień hasło…                      |
+                                  | Sesje (3)…                        |
+                                  | Token dla agenta…                 |
+                                  | Moje ścieżki…                     |
+                                  | Wyloguj                           |
+                                  +-----------------------------------+
+SESJE · marek.lis
+  ta sesja  przeglądarka · Firefox, Linux · 10.0.0.31 · od 08:02     teraz
+  5b2d4c60  przeglądarka · Chrome, Windows · 10.0.0.47 · od wczoraj [Zakończ]
+  9e01a2c3  agent (token) · 10.0.0.31 · do 20:02                    [Zakończ]
+                                             [Zakończ pozostałe sesje]
+MOJE ŚCIEŻKI · tylko do pokazywania i kopiowania ścieżek
+  Na serwerze             U mnie
+  [ /mnt/nas/        ]    [ Y:\          ]                         [Usuń]
+  [+ Dodaj]                                                       [Zapisz]
+```
+
+**p) "Konta" (Accounts; administrators)** (the temporary password is generated by the server
+and shown once; giving one ends the person's sessions; the last administrator cannot be
+disabled, removed or lose the role)
+
+```text
+KONTA                                        [+ Nowe konto]  [Szukaj      ]
+Konto        Nazwa        Role                  Hasło                  Stan
+anna.nowak   Anna Nowak   administrator, zapis  ustawione              aktywne
+marek.lis    Marek Lis    zapis do magazynu     tymczasowe · do 29.10  aktywne
+kasia.wrona  Kasia Wrona  —                     brak                   wyłączone
+  […] przy każdym: Role… · Hasło tymczasowe… · Zakończ sesje ·
+      Wyłącz / Włącz · Usuń…
+
+HASŁO TYMCZASOWE · marek.lis (widoczne tylko teraz)
+  hT4q-9xWm-P2kd-Lr7v   [Kopiuj]
+  ważne do 29.10.2026 14:02; przy pierwszym logowaniu trzeba je zmienić;
+  sesje marek.lis zostały zakończone
+```
+
+**q) "Grupy" (Groups; administrators)**
+
+```text
+GRUPY                                                     [+ Nowa grupa]
+hydro  Dział hydrologii  3: Anna Nowak, Kasia Wrona, …  [Członkowie…] [Usuń]
+gis    Dział GIS         1: Marek Lis                   [Członkowie…] [Usuń]
+
+CZŁONKOWIE · hydro
+  [x] Anna Nowak (anna.nowak)     [ ] Marek Lis (marek.lis)
+  [x] Kasia Wrona (kasia.wrona)
+  [Anuluj]                                                       [Zapisz]
+```
+
+**r) "Udostępnianie" of a project (its owner and administrators)** (opened with
+"Udostępnij…" on the project card; people and groups come from `GET /directory`; the folder
+rule follows A-ADR-029 erratum 2)
+
+```text
+UDOSTĘPNIANIE · projekt Raba            właściciel: Kasia Wrona [Przekaż…]
+Kto widzi projekt (administratorzy widzą każdy):
+  ( ) wszyscy
+  ( ) wybrane osoby    [Marek Lis ×] [+ osoba]
+  (o) wybrane grupy    [hydro ×] [+ grupa]
+  ( ) tylko właściciel
+Folder danych własnych:
+  [ /mnt/nas/projekty/raba/dane                                    ]
+  domyślnie <katalog projektu>/dane; leży w katalogu projektu (administrator
+  może wskazać inny, poza magazynami i folderami innych projektów)
+                                                      [Anuluj] [Zapisz]
+```
+
+**s) "Dziennik działań" (Action log; administrators)** (newest first; a row opens the state
+before and after; the export holds the filtered entries; 10.2)
+
+```text
+DZIENNIK  [Kto v] [Działanie v] [Wynik v] [od 2026-10-01] [do —] [Eksportuj v]
+Kiedy        Kto         Działanie             Obiekt         Wynik   Adres
+26.10 14:02  Marek Lis   uruchomił pobieranie  NMT 2025 Raba  ok      10.0.0.31
+26.10 14:01  Marek Lis   zalogował się: hasło  —              ok      10.0.0.31
+26.10 13:58  —           nieudane logowanie    m.lis          błąd    10.0.0.31
+26.10 13:40  Anna Nowak  zmieniła widoczność   projekt Raba   ok      10.0.0.15
+26.10 13:39  Kasia Wrona odmowa: pobieranie    zespol         odmowa  10.0.0.22
+wpisy 1–50 z 1204 · starsze niż 365 dni są usuwane           [Dalej]
 ```
 
 ### 6.6 Search and filters
@@ -3116,23 +3267,28 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 
 | Method and path | What it does |
 |---|---|
-| `POST /session` | exchange of a one-time token for a session (`HttpOnly` cookie) and a CSRF token sent with every request (10.1); only here does the response contain the token |
-| `GET /session` | session state: actor (`actor`), kind (`kind`), the actor's roles read on every request (`roles`; the interface uses them to show administrator actions), whether the session may write the stores (`store_write`: the role `store_writer` or the setting `store_write_for_all`, read on every request; the interface shows a download disabled with its reason without it), label (`label`), expiry — without the CSRF token |
+| `POST /session` | exchange of a one-time token for a session (`HttpOnly` cookie) and a CSRF token sent with every request (10.1); only here and in a sign-in does the response contain the token; a new session id every time, the session of the cookie the request carried ends (10.2) |
+| `GET /session/methods` | without a session (from v0.4): the mode (`local`, `team`) and the ways to sign in (`password`; `proxy`: this request came from a trusted proxy with the header naming a person), nothing else (10.2) |
+| `POST /session/login` | team mode, without a session (from v0.4): `account` and `password` → a new session (cookie `__Host-archiwista_session`) and its CSRF token, as `POST /session`, with `password_change_required` after a temporary password; one answer `401 login_failed` for an unknown account, a wrong password, a disabled account and one without a password; `401 password_expired` for a correct temporary password past its end; `429 rate_limited` with `Retry-After` while the back-off lasts; `409 local_mode` in local mode (10.2) |
+| `POST /session/proxy` | team mode, without a session, only from a trusted proxy whose header names an enabled account (or, with `proxy_autocreate`, a new one): a new session as that person (10.2) |
+| `GET /session` | session state: actor (`actor`) and the account's display name (`name`), kind (`kind`), how it signed in (`method`: `startup`, `token`, `password`, `proxy`), the actor's roles read on every request (`roles`; the interface uses them to show administrator actions), whether the session may write the stores (`store_write`: the role `store_writer` or the setting `store_write_for_all`, read on every request; the interface shows a download disabled with its reason without it), whether its temporary password must be changed first (`password_change_required`), the mode (`team`), label (`label`), expiry — without the CSRF token |
 | `DELETE /session` | logout: ends the session and removes the cookie |
-| `POST /session/tokens` | one-time agent session token, valid for 5 min (10.1); an agent session gets `403 permission_denied` |
+| `PUT /session/password` | from v0.4, a session signed in with a password: `current_password` and `new_password` (12 to 1,024 characters, not the account's id or name, not a common password: `400 password_policy` with `details.rule`); a wrong current password is `403 wrong_password` and counts as a failed sign-in; ends every other session and agent token of the account and answers the session anew (new id, new CSRF token) |
+| `GET /sessions`, `DELETE /sessions/{label}` | from v0.4: the person's live sessions (label, browser or agent, sign-in method, client address and browser, start, last request, end, the current one) and ending one; an administrator lists and ends any person's (`?user=`) |
+| `POST /session/tokens` | one-time agent session token, valid for 5 min (10.1), acting as the session's account with its roles; in team mode its address is the configured `origin`; an agent session gets `403 permission_denied` |
 | `GET /stores` | stores, availability, statistics |
 | `GET /sources` | data sources (plugins): producer, state (`available`, `not_installed`, `incompatible`, `error`), library version, supported scope, schemas, message in Polish (5.8), and `default_root` (the directory the producer uses when a call names no store: path, layer of the settings, existence, marker; `null` without one; not in `/health`, A-ADR-033) |
 | `GET /stores/{store}` | store state: occupancy by product, problems, last scan |
-| `POST /stores/{store}/scan` | scan (`mode`: `incremental` or `full`, optionally `segment`) → background job; `409 conflict` when a job writing the store index is running |
-| `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); in offline mode `409 offline_mode` |
-| `POST /stores/{store}/link-check` | confirmation of the slot link target by content (`slot`; KA-5) → background job |
+| `POST /stores/{store}/scan` | scan (`mode`: `incremental` or `full`, optionally `segment`) → background job; from v0.4 administrators only (`store.scan`; the scheduler scans by itself); `409 conflict` when a job writing the store index is running |
+| `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); administrators only (`store.scan`); in offline mode `409 offline_mode` |
+| `POST /stores/{store}/link-check` | confirmation of the slot link target by content (`slot`; KA-5) → background job; administrators only (`store.scan`) |
 | `GET /products` | products with descriptions, countries and counters in stores (KB-1, IMGW-11 + index) |
 | `GET /slots` | search and filters: slots with the current version; `location` (`any`, `with`, `none`), `unit` and `project` (only pins in the visible project) |
 | `GET /stores/{store}/slots/{slot}` | file card: versions, current and full, pins |
 | `GET /stores/{store}/versions/{version}` | version: metadata in human-readable form and sidecar |
 | `GET /stores/{store}/versions/{version}/sidecar` | raw sidecar |
 | `GET`/`POST /stores/{store}/versions/{version}/preview` | preview state or build in a `preview` job |
-| `GET /stores/{store}/versions/{version}/file` | data file (stream; needed in team mode) |
+| `GET /stores/{store}/versions/{version}/file` | the version's file (from v0.4, 10.2): streamed with `Range`, `Content-Disposition: attachment` with the file's name, the type of its format, `nosniff`, `Cache-Control: private, no-store`; never inline (a PDF too); a version the index knows, resolved inside the store; at most two downloads at once per person (`429 rate_limited`); logged from its first byte; a link of the interface needs no CSRF header (`Sec-Fetch-Site: same-origin` or `none`, A-ADR-047) |
 | `GET /stores/{store}/versions/{version}/preview.png` | thumbnail |
 | `GET /stores/{store}/versions/{version}/tiles/{z}/{x}/{y}.png` | preview tiles (`style`: `hillshade`, `rgb`, `classes`…) |
 | `GET /stores/{store}/versions/{version}/features` | vector features in the view (`layer`, `bbox`, `limit`) |
@@ -3153,11 +3309,12 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
 | `GET /local-layers`, `GET /local-layers/thumbnail.png`, `GET /local-layers/tiles/{z}/{x}/{y}.png` | local years/campaigns, layer thumbnail and tiles |
 | `GET /projects/{project}/files`, `GET /projects/{project}/files/{file_id}` | the project's own folder and file card, only for those who can see the project |
-| `PUT /projects/{project}/data-dir` | the administrator sets the own data folder |
-| `POST /projects/{project}/scan` | background scan of own data, for those who can see the project |
+| `PUT /projects/{project}/data-dir` | the project's owner or an administrator sets the own data folder (`project.write`); for an owner who is no administrator the folder lies inside the project's directory (`400`, reason `own_data_dir_outside_project`; A-ADR-029 erratum 2) |
+| `POST /projects/{project}/scan` | background scan of own data, for those who can see the project; a waiting scan covering the folder is joined; from v0.4 at most one waiting or running per person (`429 rate_limited`, reason `scan_running`) and one start per project a minute (`scan_too_soon`, `Retry-After`) |
 | `GET /projects/{project}/files/{file_id}/snapshot-plan`, `POST …/snapshots` | plan and snapshot requiring `project.write` |
 | `GET /projects/{project}/files/{file_id}/layers` | working file and snapshots as layers |
 | `GET`/`POST /projects/{project}/files/{file_id}/preview` and `…/snapshots/{label}/preview` | previews of own data and snapshots; analogous `preview.png`, `tiles`, `features`, `members` |
+| `GET /projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` | an own file or a file of a snapshot, as `GET …/versions/{version}/file` (`member`: one file of a set; a working file changed since its scan is `409 own_file_changed`), for those who can see the project (v0.4) |
 | `POST /availability` | availability of an area for a product → background job; result: local state, source report, rows with labels; for IMGW datasets — published years with publication dates and the area's stations with coverage labels |
 | `GET /availability` | last report for an area and product (no network) |
 | `GET /commands` | catalog of producers' data commands (KB-1, IMGW-11) |
@@ -3165,11 +3322,11 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `imgw …` command (KB-4, IMGW-11) |
 | `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a project's jobs start at `POST /projects/{id}/jobs` |
-| `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; a hidden project job → `404` |
+| `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; from v0.4 the list holds every job of the queue, and a job only of projects the session does not see shows its kind, store, actor, state and progress counts only (`hidden: true`); such a job at its own address → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID` |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`; a project's download or repin: `project.write` and `store.write`) (ADR-038, ADR-040) |
 | `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
-| `GET /projects`, `POST /projects` | list (each project, one per directory, with `manifests`: each producer's manifest with its `store`, `status`, `problem` and `scanned_at`, Kartograf's first; `store` lists the projects with a manifest naming the store); a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; a directory with the other producer's manifest stays one project with its key; an existing project is found by the scan of the project directories; only an administrator creates one before v0.4 (ADR-039) |
+| `GET /projects`, `POST /projects` | list (each project, one per directory, with `manifests`: each producer's manifest with its `store`, `status`, `problem` and `scanned_at`, Kartograf's first; `store` lists the projects with a manifest naming the store); a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; a directory with the other producer's manifest stays one project with its key; an existing project is found by the scan of the project directories; from v0.4 any signed-in person creates a project where none is yet and becomes its owner (visibility `default_project_visibility`), and adding a manifest to an existing project needs `project.write` (A-ADR-039 erratum 3) |
 | `GET /projects/{id}` | the manifests, project jobs of both producers (`producer` field), pins (`producer` field), state from the index, problems (a job name in both manifests: `duplicate_task`); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
 | `GET /projects/{id}/status` | each manifest's producer's `get_project_status` (no network, fast): `manifests` with the state of each task; while a manifest's store is unavailable, its last scan's state (`stale`) |
 | `POST /projects/{id}/tasks` | the producer's `add_project_task` (`name`, `command`, `options`, optionally `producer`: the manifest's producer, the project's only manifest by default, required for a project of both manifests (`producer_required`); validation without the network; the project's owner or an administrator; IMGW: IMGW-14; ADR-039) |
@@ -3180,11 +3337,15 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
 | `GET /assistant/proposals/{id}` | proposal |
 | `POST /assistant/proposals/{id}/execute`, `…/reject` | execution or rejection — only from the interface, with a CSRF token |
-| `GET /settings`, `PUT /settings` | settings (in team mode: administrator) |
-| `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | accounts and their roles (`admin`, `store_writer`) — administrator only; from v0.4 also passwords and login (10.2) |
+| `GET /settings`, `PUT /settings` | settings (in team mode: administrator); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2) |
+| `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | accounts and their roles (`admin`, `store_writer`) — administrator only; from v0.4 each with the state of its password (`password`: `none`, `set`, `temporary`, `expired`; `password_expires_at`), never a hash; the last enabled administrator cannot be removed, disabled or lose the role (`409 last_admin`) |
+| `POST /users/{id}/password` | administrator, from v0.4: a temporary password generated by the server, answered once (`password`, `expires_at`: 72 h), to be changed at the first sign-in; ends the account's sessions |
+| `DELETE /users/{id}/sessions` | administrator, from v0.4: ends every session and agent token of the account (its revocation time) |
 | `GET /groups`, `POST /groups`, `PUT /groups/{id}/members`, `DELETE /groups/{id}` | groups (e.g. departments) and memberships — administrator only |
-| `GET /projects/{id}/access`, `PUT /projects/{id}/access` | owner and visibility of a project (`public`, `users`, `group`, `private`) with a list of people and groups — owner or administrator; every change goes to the permissions log |
-| `GET /preferences`, `PUT /preferences` | a person's view preferences: remembered kind of years for hydro and meteo data (6.7); in team mode — tied to the account, without administrator permissions |
+| `GET /directory` | any session, from v0.4: the enabled accounts (`id`, `name`) and the groups (`id`, `name`) to share a project with |
+| `GET /projects/{id}/access`, `PUT /projects/{id}/access` | owner and visibility of a project (`public`, `users`, `group`, `private`) with a list of people and groups — owner or administrator; every change goes to the action log |
+| `GET /log`, `GET /log/export` | administrator, from v0.4: the action log newest first (filters `actor`, `action`, `outcome`, `target`, `since`, `until`; a cursor); the export streams the same entries as `format=jsonl` or `csv` (cells that could start a formula are escaped) and is itself an entry (10.2) |
+| `GET /preferences`, `PUT /preferences` | the person's own preferences (the owner's in local mode; an agent's are its account's): the kind of years for hydro and meteo data (6.7), the basemap, and path aliases of the person's computer applied only to paths shown and copied (`CopyPath.personal`), never to the server's access to files (10.2) |
 | `GET /health` | versions of Archiwista, Kartograf and IMGWTools, state of stores (producers' directories), index and jobs |
 
 ### 9.3 Examples
@@ -3409,10 +3570,13 @@ numbers)
 
 ### 10.1 Local mode (default)
 
-Decision: A-ADR-012.
+Decision: A-ADR-012. Team mode (10.2, A-ADR-046) keeps every rule of this section except
+four: the address rules compare with its configured `origin`, the cookie is
+`__Host-archiwista_session` with `Secure`, there is no startup token, and every request comes
+over TLS.
 
 - **Only `127.0.0.1`.** Running on any other address requires team mode
-  with login configured — otherwise the server refuses to start.
+  with sign-in and TLS (10.2) — otherwise the server refuses to start.
 - **The `Host` header** only `127.0.0.1:<port>` or `localhost:<port>`
   (protection against DNS rebinding).
 - **Startup token:** random (128 bits) at every launch,
@@ -3428,9 +3592,13 @@ Decision: A-ADR-012.
   (`actor` = `local`). Browsers send cookies to every port of a
   host, so the cookie alone is never enough (A-ADR-012 errata 2).
 - **Session CSRF token:** a separate 128-bit session secret, returned only
-  in the response to `POST /api/v1/session` (not in a cookie and not in a `GET`).
+  in the response to `POST /api/v1/session` and to a sign-in (not in a cookie and not in a
+  `GET`).
   **Every** `/api` request — reads too — requires the `X-Archiwista-CSRF`
-  header equal to this token (otherwise `403 csrf_rejected`).
+  header equal to this token (otherwise `403 csrf_rejected`). The one exception (from v0.4,
+  A-ADR-047): a `GET` or `HEAD` of a file download (`…/file`) with the session cookie and
+  `Sec-Fetch-Site: same-origin` or `none` passes without it, since a link cannot send a header
+  and a page on another port of the host sends `same-site`.
   The UI keeps it in the `sessionStorage` of its own origin (scheme, host
   and port), so a page on another port of this computer does not know it; a new tab
   gets it from an open Archiwista tab (`BroadcastChannel`). It reads job
@@ -3447,7 +3615,8 @@ Decision: A-ADR-012.
   and `same-origin` pass. A client without `Origin` and `Sec-Fetch-*` (curl,
   an agent script) passes only with a session and the CSRF header — also
   for reads. UI files do not require a session, `/api/*` (except the
-  token exchange) does.
+  token exchange, and from v0.4 `GET /session/methods` and the two sign-in routes of 10.2)
+  does.
 - **Further sessions (external agent):** a single-use token valid for 5 min
   is issued by the owner's browser session (`POST /api/v1/session/tokens`)
   or by the owner in the terminal (`archiwista token`); an agent session does not
@@ -3458,7 +3627,7 @@ Decision: A-ADR-012.
   An agent session ends at the latest 12 h after start; `archiwista token
   --revoke-all` immediately ends all agent sessions and invalidates
   unused agent tokens. Each session has a label (`label`), which
-  jobs (`actor_kind`, `session`) and the permissions log record next to the
+  jobs (`actor_kind`, `session`) and the action log (the permissions log before v0.4) record next to the
   actor. The server access log is disabled by default, and when enabled
   it redacts `token=`.
 - **Opening the browser:** `archiwista serve` does not put the address with the token
@@ -3467,7 +3636,8 @@ Decision: A-ADR-012.
   data directory, which redirects to the address; the file disappears after the token
   is used, after it expires and when the server stops. The address is also
   printed in the terminal.
-- **Request limits:** request body ≤ 4 KiB for the token exchange and ≤ 1 MiB for
+- **Request limits:** request body ≤ 4 KiB for the token exchange, ≤ 16 KiB for a sign-in
+  (v0.4) and ≤ 1 MiB for
   the remaining routes (checked before reading the body, also with
   `Transfer-Encoding: chunked`; `413 request_too_large`); area files
   have their own limit of 50 MB. The server handles at most 100 connections at a time.
@@ -3554,20 +3724,85 @@ Decision: A-ADR-012.
   and `store_writer`, so it sees and can do everything; accounts, groups and project
   visibility can already be created in v0.1 (administrator API and CLI, state database
   4.3), and login of other people works from v0.4.
-- **Login (v0.4):** local server accounts (Argon2id passwords in the state database,
-  sessions with expiry) or authentication through a reverse proxy
-  (header trusted only from the configured proxy address — the path to SSO
-  and Active Directory); optionally groups from LDAP/AD; account management
-  and a project sharing screen in the interface.
+- **Team mode (v0.4, A-ADR-046):** an explicit setting, the table `[team]` of `config.toml`
+  (5.5): `enabled`, `origin` (the `https` address people open), `tls_cert` and `tls_key` (TLS
+  in the server: both or neither), `trusted_proxies` (addresses or networks of at most 256
+  addresses), `proxy_user_header`, `proxy_autocreate`. The server reads it when it starts;
+  the API neither shows nor changes it, so no session can widen the server's exposure.
+  `archiwista serve --host ADDRESS` listens outside `127.0.0.1` only in team mode and only
+  (a) with TLS in the server, the files loaded before anything binds, or (b) with
+  `trusted_proxies` and a specific address (not `0.0.0.0` or `::`), a loopback one when every
+  trusted proxy is a loopback address; and only when an enabled administrator can sign in (a
+  usable password, or the proxy header configured). Otherwise it refuses to start: exit 2,
+  `validation_error`, reason `host_refused`, `tls_required`, `tls_unusable`,
+  `proxy_bind_wildcard`, `proxy_bind_not_loopback` or `team_no_admin`, with a hint.
+- **Transport in team mode:** every request comes over TLS: directly, or from a trusted proxy
+  whose last `X-Forwarded-Proto` is `https`; any other answers `403 forbidden` (reason
+  `tls_required`), and without TLS in the server a peer that is not a trusted proxy answers
+  `403` (reason `proxy_required`). `Host` must be the host of `origin` and a present `Origin`
+  must be `origin` (the rules of 10.1); `X-Forwarded-Host` is not read, so the proxy keeps
+  `Host`. The client address of the action log, the limits and the session list is the peer,
+  or behind a trusted proxy the right-most `X-Forwarded-For` address that is no trusted proxy.
+  Every response carries `Strict-Transport-Security: max-age=31536000`. `/api/docs` is not
+  served, and there is no startup token.
+- **Accounts and passwords (v0.4):** local accounts of the state database (4.3). A password is
+  kept as an Argon2id hash (argon2-cffi defaults: 64 MiB, 3 passes, 4 lanes; rehashed at the
+  next sign-in when the defaults grow) in a table of its own; no answer, log or export of the
+  API shows it. A password is normalised to NFKC and has 12 to 1,024 characters of any
+  composition, is not the account's id or name (ignoring case) and not one of the 3,000 most
+  common passwords of at least 12 characters (a list in the package); nothing forces a
+  periodic change. The first administrator is created on the server: `archiwista users add ID
+  --role admin` and `archiwista users password ID` (no setup page on the network). An
+  administrator gives a person a temporary password generated by the server (`POST
+  /users/{id}/password`; shown once, valid 72 h), which must be changed at the first sign-in:
+  until then the session may only read itself, change the password and sign out (`403`,
+  reason `password_change_required`). The last enabled administrator cannot be removed,
+  disabled or lose the role (`409 conflict`, reason `last_admin`).
+- **Sign-in and sessions (v0.4):** `POST /session/login` with the account and the password.
+  An unknown account, a wrong password, a disabled account and an account without a password
+  give the same `401` (reason `login_failed`) after the same work (a stand-in Argon2id hash is
+  verified when there is none); a correct temporary password past its end is `401
+  password_expired`. At most two password hashes are computed at once (64 MiB each). A
+  sign-in, a token exchange and a password change start a new session (a random 256-bit id,
+  kept as its SHA-256 hash) and end the session of the cookie the request carried. The cookie
+  is `__Host-archiwista_session` (`Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`), and every
+  `/api` request carries the session's CSRF token as in 10.1. A session ends after 8 h without
+  a request and 7 days after its start (an agent's after 12 h), at sign-out, when its account
+  is disabled or removed, when its password changes (every other session and agent token of
+  the account ends: `PUT /session/password`, with the current password) and when an
+  administrator ends the account's sessions (`DELETE /users/{id}/sessions`, `archiwista users
+  end-sessions ID`); a restart of the server ends every session. A person sees their live
+  sessions and ends any of them (`GET /sessions`, `DELETE /sessions/{label}`). Sessions live in
+  the server's memory; the command line ends them through the account's revocation time in
+  the state database.
+- **Guessing (v0.4):** after 5 failed sign-ins of one account name, or from one client
+  address, every further attempt is refused without checking the password for 1 s, 2 s, 4 s…
+  up to 15 min (`429 rate_limited` with `Retry-After`); a success clears both counts, which the
+  server keeps in memory. Every failure is in the action log.
+- **Reverse proxy (optional, v0.4):** with `proxy_user_header`, a request from a trusted proxy
+  carrying the header with an account id starts a session as that person (`POST
+  /session/proxy`); the account must exist and be enabled (with `proxy_autocreate` a missing
+  one is created without roles). Every later request of that session must come from a trusted
+  proxy with the same value, else the session ends. The header from any other address is
+  ignored and logged. The proxy authenticates as it likes (SSO, Active Directory through
+  Kerberos or LDAP) and replaces any such header a client sent.
+- **Groups** are managed in Archiwista (administrator API, CLI and the screen "Grupy"). Groups
+  from LDAP/AD are deferred (A-ADR-046): they need a directory client, the directory's
+  credentials stored on the server and rules for groups in both places, while the proxy
+  already brings sign-in against AD.
+- **Agents:** an agent's token belongs to the account that issued it and acts with its roles
+  (10.1); in team mode `POST /session/tokens` gives an address of `origin`, and `archiwista
+  token --user ID` issues one at the server's terminal.
 - **Roles:** a regular "user" (without roles: browsing the store, previews, projects
-  visible to them, changes to and sharing of their own projects, snapshots in them;
+  visible to them, creating projects (from v0.4: the creator owns the project), changes to and
+  sharing of their own projects with their data folder, snapshots in them;
   from v1.1 sets, from v1.2 conversations with the assistant; executing a proposal requires
   the permissions of the given action), "write to the store" (`store_writer`: actions
   that write to the central store through the producers' API — download, project
   download, synchronization and IMGW series, from v0.6 merging; checked from v0.3),
   "administrator" (`admin`; administrator of the Archiwista system, not of the server:
-  settings, stores, accounts, groups, permissions, all projects; from v1.2
-  the assistant provider). The `store_write_for_all` setting grants write access to the
+  settings, stores and their scans, accounts, groups, permissions, all projects, the action
+  log; from v1.2 the assistant provider). The `store_write_for_all` setting grants write access to the
   store to everyone.
 - **Project visibility:** `public` (everyone), `users` (selected people),
   `group` (a selected group, e.g. a department), `private` (owner only);
@@ -3578,13 +3813,55 @@ Decision: A-ADR-012.
   data). An invisible project → `404 not_found`; visible but without
   permission for the action → `403 permission_denied`. Aggregate reports count
   all projects and give names only of the visible ones.
-- **TLS** is mandatory outside `127.0.0.1` (reverse proxy with a certificate or
-  server TLS); HSTS.
-- **Action log:** who ordered and cancelled a job, approved a
-  proposal (from v1.2), changed settings — in the server's local database, with export;
-  changes to accounts, roles, groups and project visibility — from v0.1 in the permissions
-  log of the state database.
-- **Per-person limits:** number of background jobs at once; assistant budget from v1.2.
+- **Projects in a team (v0.4):** every signed-in person creates a project in a project
+  directory where none is yet and becomes its owner (the user's decision of 2026-10-26,
+  A-ADR-039 erratum 3); its visibility is `default_project_visibility` until the owner changes
+  it on the sharing screen. The owner or an administrator sets the data folder; for an owner
+  who is no administrator it lies inside the project's directory (A-ADR-029 erratum 2). A
+  scan of a project's data folder: anyone who sees the project, at most one waiting or running
+  per person and one start per project a minute (`429`); scans of a store (`scan`,
+  `footprints`, `link_check`) and of every project's folder: administrators and the
+  scheduler.
+- **Action log (A-ADR-047):** who signed in (and how), signed out or failed to sign in,
+  changed a password, ended sessions, issued or revoked agent tokens; who changed accounts,
+  roles, temporary passwords, groups, a project's access, owner or data folder, created a
+  project or changed its tasks, changed settings; who started, cancelled or retried a job (not
+  the scheduler), downloaded a file, was refused an action (`403`), exported the log; from
+  v1.2 who approved a proposal. Each entry: when (UTC), who (`actor`, `actor_kind`, the
+  session's label), from where (the client address), what (`action`, `target`), the outcome
+  (`ok`, `denied`, `failed`), the state before and after. It lives in the state database (the
+  permissions log of v0.1 became it) and is append-only for Archiwista: no route or command
+  changes or deletes an entry; entries older than `action_log_retention_days` (365) are
+  deleted by the server, which logs it. Administrators read it (`GET /log`, "Dziennik",
+  `archiwista log list`) and export it (`GET /log/export`, `archiwista log export`: JSON Lines
+  or CSV with formula-safe cells).
+- **Shared queue (v0.4, A-ADR-047):** everyone sees every job of the queue (kind, store, who,
+  state, progress); a job of projects the person does not see shows no more (`hidden`) and
+  answers `404` at its own address. A planned download (`plan_job`) claims the positions it
+  fetches when it starts; a position another active download of the store has claimed is not
+  fetched again but reported as `taken` with that job and person ("pobierane przez Marka"),
+  and a retry fetches it if that job failed it. A download without a plan of the same call as
+  a running download of the store waits in the queue until that one ends. The warning about
+  overlapping jobs stays (5.6). Downloads of projects stay one per project; two projects that
+  share a unit may both fetch it (the producer writes it once).
+- **Per-person limits:** a person runs at most `network_jobs_per_person` (2) network jobs at
+  once, further ones wait (5.6); at most two file downloads at once (`429`); the scan limits
+  above; assistant budget from v1.2.
+- **File download over HTTP (v0.4, A-ADR-047):** a version of a store, an own file or a file
+  of a snapshot (`…/file`, a member of a set by `member`): only what the index knows and the
+  session sees, resolved inside its root (10.1, "Paths"); streamed with `Range`, as an
+  attachment with its name, the type of its format, `nosniff` and no caching; never shown
+  inline (a PDF too: a browser shows one only without a sandboxing CSP); no listing of
+  directories; each download from its first byte is logged. A link of the interface carries no
+  CSRF header: these `GET` routes accept the session cookie without it when `Sec-Fetch-Site`
+  is `same-origin` or `none` (10.1).
+- **Preferences per person (v0.4, A-ADR-047):** `GET`/`PUT /preferences` (the owner's in local
+  mode): the kind of years for hydro and meteo data (6.7) and the basemap, which leave the
+  settings and the browser, and the path aliases of the person's computer (a prefix on the
+  server and the same share on that computer, e.g. `/mnt/nas/` → `Y:\`), applied only to paths
+  shown and copied ("Kopiuj ścieżkę", `CopyPath.personal`), never to the server's access to
+  files; the store's path aliases of the settings stay for matching manifests (4.6), and the
+  widths of panels stay in the browser.
 - Writes to the shared store still only through the producers (Kartograf,
   IMGWTools) in the server's worker processes; parallel use of the CLI by
   team members is safe thanks to the producers' guarantees (exclusive write
@@ -3604,6 +3881,12 @@ Decision: A-ADR-012.
 | Interruption during a write | corrupted store or manifest | atomic writes by the producers (Kartograf; IMGWTools — IMGW-2); recognition of a leftover manifest lock (5.6) |
 | Disclosure of the area of interest (basemaps, model provider) | project confidentiality | offline mode, local model, notice on first use |
 | Unusual or corrupted IMGW archive (encoding, ZIP) | crash or hang of the parser | parsing only in IMGWTools in a worker process, size and time limits, job error with IMGWTools text |
+| Guessing or reused passwords (team mode) | another person's account | Argon2id hashes, 12 characters and a list of common passwords, a growing wait per account name and per address, one answer and the same work for every failure, every failure in the action log (10.2) |
+| A stolen or planted session (team mode) | acting as another person | TLS only, `__Host-` cookie with `Secure`, `HttpOnly`, `SameSite=Strict`, a new session id at every sign-in, 8 h idle and 7 days at most, revocation by password change, administrator and command line |
+| A forged header of the reverse proxy | acting as any person | the header read only from `trusted_proxies`, ignored and logged from other addresses; a proxy on the server's own machine lets its other accounts forge it (runbook: a dedicated server, or TLS in Archiwista without the header) |
+| Plain HTTP on the local network | passwords and cookies read on the way | no listening outside `127.0.0.1` without TLS or a trusted proxy, every request over TLS, HSTS |
+| An owner points a project's data folder elsewhere on the server | files read, previewed and served to the project's viewers | a non-administrator's folder lies inside the project's directory; the general folder rules (A-ADR-029 erratum 2) |
+| Mass downloads over HTTP or crowding of the queue | load on the server, the share and the sources | two file downloads and two network jobs per person, fair dispatch, scan limits (10.2) |
 
 ## 11. Testing and verification
 
@@ -3666,6 +3949,12 @@ Decision: A-ADR-012.
   permission_denied` for an action without permission; from v0.3 actions
   writing to the store with `store_writer`, without it and with `store_write_for_all`;
   rebuilding the index does not change the state database, export → import restores it.
+  From v0.4 the matrix covers the team: administrator, store writer, user, an agent of each
+  and a person signed in through the proxy × every action of the `Authorizer` and every route
+  of 10.2 (sign-in, sessions, accounts, groups, sharing, data folder, scans, the queue, the
+  log, files, preferences), with real sessions over TLS; a test performs every action of the
+  action log and finds its entry; the refusals of `archiwista serve` outside `127.0.0.1` are
+  tested one by one.
 - **Compliance with producers:** an import test — Kartograf only
   in `src/archiwista/adapter/kartograf/`, IMGWTools only
   in `src/archiwista/adapter/imgw/`, the rest knows only `src/archiwista/sources/`
@@ -4042,7 +4331,7 @@ MVP = v1.0 (user decision 2026-10-17, A-ADR-025; v0.6 "PL + CZ" is in the MVP �
 | v0.1 "Browser" | local, read-only: index, "Mapa" (Map), "Katalog" (Catalog), File card, Projects (preview), Store (state), local state of an area; source plugin mechanism with a dummy second adapter; permissions model (state database, `Principal`, project visibility, administrator API and CLI) | KA-1..KA-6, KA-8 |
 | v0.2 "Previews" | previews, the Fan and the Timeline for local data, metadata comparison and the curtain; project own data and snapshots | — |
 | v0.3 "Actions" | availability at the source with labels (PL and CZ heights, PL images, releases of single-unit products), Plan window, downloading, background jobs, freshness, project actions; preliminary preview building; the "write to store" permission checked during actions | KA-4 for plan items, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
-| v0.4 "Team" | server on the local network: login, account management and the project sharing screen in the interface, optional LDAP/AD groups, TLS, action log, shared queue | — |
+| v0.4 "Team" | server on the local network: sign-in (local accounts, optionally a reverse proxy), sessions, account and group management and the project sharing screen in the interface, TLS, action log, shared queue without double downloads, limits per person, file download, preferences and path aliases per person; groups from LDAP/AD deferred (A-ADR-046) | — |
 | v0.5 "IMGW stations" | extra `archiwista[imgw]` (IMGW adapter as a plugin); IMGW catalog: stations on the map and in the "Katalog" (Catalog) (also without a location), Summary and Station card with a chart, station comparison, series coverage labels separately for each variable, in both year types, freshness and archive synchronization, series, IMGW project jobs | IMGWTools: IMGW-1..IMGW-14 |
 | v0.6 "PL + CZ" | border area: PL + CZ summary without merging (the `parent_request` group, consistency check) and a merged border surface via Kartograf (mode 2, 8.3); ČHMÚ stations via IMGWTools in the v0.5 views (4.8.6) | Kartograf: KF; IMGWTools: IMGW-15..IMGW-19 |
 | v1.0 "Release (MVP)" | stable API, Linux and Windows installation, user documentation, audits; MVP scenarios | Kartograf and IMGWTools releases required for v0.6 |
@@ -4159,15 +4448,34 @@ list of jobs yet (cancel, retry and the log are in the API and the CLI). Evidenc
 
 ### v0.4 "Team"
 
-Scope: 10.2 and the topology from A-ADR-013 (server on the local network): login,
-account management and the project sharing screen in the interface on the permissions
-model from v0.1, optionally groups from LDAP/AD, TLS, action log,
-shared queue, job limits per person, per-client path aliases,
-file download over HTTP.
+Scope: 10.2 and the topology from A-ADR-013 (server on the local network) on the permissions
+model from v0.1, as A-ADR-046 and A-ADR-047 decide it: team mode with sign-in (local accounts
+with Argon2id passwords, optionally a trusted reverse proxy that names the person) and
+sessions, TLS in the server or in the proxy, account and group management in the interface,
+project creation by every signed-in person (A-ADR-039 erratum 3), the project sharing screen
+with the data folder set by the owner (A-ADR-029 erratum 2), the action log with its view and
+export, the shared queue without double downloads, job limits per person, file download over
+HTTP, preferences and path aliases per person. Groups from LDAP/AD are deferred (A-ADR-046).
 
-Criteria: a live scenario with three people — the shared queue does not download
-the same unit twice; role permissions verified by tests; the action
-log complete; the server does not start outside `127.0.0.1` without login and TLS.
+Criteria:
+
+1. Three people share one server: the shared queue does not download the same unit twice.
+   Automated: three accounts in three browser contexts on one machine, overlapping planned
+   downloads at once; live: three computers on a real local network with the store on an SMB
+   share, run by the user from the runbook `reports/v0.4-lan-runbook.md`.
+2. Role permissions are verified by tests: the matrix of 11 (administrator, store writer,
+   user, an agent of each, a person signed in through the proxy × every action and route of
+   10.2).
+3. The action log is complete: a test performs every action that 10.2 logs and finds its
+   entry with who, when, from where and the outcome.
+4. The server does not start outside `127.0.0.1` without team mode, an administrator who can
+   sign in, and TLS (in the server, or a trusted reverse proxy): a test of each refusal.
+5. A security review checklist (OWASP ASVS 5.0: the level 1 requirements of authentication,
+   sessions, access control and transport, and the logging requirements of level 2) with the
+   evidence of each: `reports/v0.4-security-checklist.md`.
+
+Status (2026-10-26): planned (plan `plans/2026-10-26-plan-v0.4.md`, branch
+`feature/v0.4-team`).
 
 ### v0.5 "IMGW stations"
 

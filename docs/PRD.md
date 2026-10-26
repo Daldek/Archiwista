@@ -160,7 +160,7 @@ each requirement: the SPEC section named.
 
 **F10. Team mode** (SPEC 10.2, UC-14)
 
-- F10.1 One server on the local network, sign-in (local accounts or a reverse proxy), account management and a project sharing screen in the interface, optional groups from LDAP/AD, on the permissions model F16. (v0.4)
+- F10.1 One server on the local network, sign-in (local accounts or a reverse proxy), account management and a project sharing screen in the interface, groups managed in Archiwista (groups from LDAP/AD deferred, A-ADR-046), on the permissions model F16. (v0.4)
 - F10.2 A shared job queue without double downloads, a history and action log, limits per person, file download over HTTP, path aliases per client. (v0.4)
 
 **F11. IMGW data** (SPEC 4.8, 6.7, UC-16, UC-17, UC-19)
@@ -185,7 +185,7 @@ each requirement: the SPEC section named.
 - F16.3 Project visibility: public, chosen people, a chosen group (for example a department), private; the project owner; an administrator sees all. The list of projects, "Pinned in:", search and previews of own data respect visibility; permission changes go to the log. (v0.1)
 - F16.4 Accounts, groups, memberships, roles and project visibility in a separate local state database with a backup (`archiwista state export`, restore with `archiwista state import`); an index rebuild does not touch it. Administration through the API and the CLI. (v0.1)
 - F16.5 A write to the central store only through the producers' APIs and only with the "store write" permission. (v0.3)
-- F16.6 Sign-in, account management and the sharing screen in the interface, optional groups from LDAP/AD (F10.1). (v0.4)
+- F16.6 Sign-in, account management and the sharing screen in the interface; every signed-in person creates projects and owns them (A-ADR-039 erratum 3); groups from LDAP/AD deferred (F10.1). (v0.4)
 
 **F17. The PL + CZ border** (SPEC 4.8.6, 8.3, UC-09, UC-20; A-ADR-025 erratum 3)
 

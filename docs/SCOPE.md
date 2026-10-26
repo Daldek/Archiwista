@@ -67,9 +67,10 @@ difference model come **after the MVP** (v1.1 to v1.3).
 - Projects: preview, status, verification, actions (project tasks, download,
   re-pinning, update check).
 - Local mode with protection (`127.0.0.1` only, CSRF, DNS rebinding, paths).
-- Team mode: sign-in, account management and the project sharing screen in the
-  interface, optional groups from LDAP/AD, TLS, an action log, a shared queue,
-  per-person limits, file download over HTTP, path aliases.
+- Team mode: sign-in (local accounts or a reverse proxy), account and group management and
+  the project sharing screen in the interface, TLS, an action log, a shared queue,
+  per-person limits, file download over HTTP, path aliases (groups from LDAP/AD deferred,
+  A-ADR-046).
 - IMGW data: stations on the map and in the "Catalog", the "summary" with the
   coverage of series for each variable and both year types, the "station card"
   with a chart, station comparison, freshness and synchronisation of archives,
@@ -94,7 +95,7 @@ difference model come **after the MVP** (v1.1 to v1.3).
 | Deleting versions from the store | out of scope | only a report of candidates; deleting, if ever, belongs to Kartograf (SPEC 15 P4) |
 | Pinning any older version chosen in the browser | not in v1.0 | the project task model picks the version with options (SPEC 15 P9) |
 | 3D preview of LAZ point clouds | after v1.0 | the header and a 2D image are enough to recognise a file (SPEC 15 P5) |
-| Direct sign-in through LDAP | later | the MVP has local accounts or a reverse proxy (a path to SSO and AD); groups from LDAP/AD are optional in v0.4 |
+| Direct sign-in through LDAP, groups from LDAP/AD | later | the MVP has local accounts or a reverse proxy (a path to SSO and AD); groups from LDAP/AD are deferred from v0.4 (A-ADR-046): they need a directory client and its credentials on the server, while a team keeps a few groups by hand |
 | macOS | no guarantee | priority is Linux and Windows (SPEC 15 P10) |
 | GIS analyses | out of scope | analyses belong to QGIS |
 | Hydrological calculations and statistics of series | out of scope | Hydrolog and Retman |
@@ -155,10 +156,13 @@ Full acceptance criteria: SPEC 13.
      met, the live criteria written for the user to run. Evidence and conditions:
      [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
 5. **v0.4 "Team".** A server on the local network: sign-in, account management
-   and project sharing in the interface, optional LDAP/AD groups, TLS, a log, a
-   shared queue.
-   - Gate: a live scenario with three people without double downloads; the
-     permissions of the roles checked by tests.
+   and project sharing in the interface, TLS, an action log, a shared queue, limits per
+   person, file download, preferences (A-ADR-046, A-ADR-047; LDAP/AD groups deferred).
+   - Gate: a scenario with three people without double downloads (automated, and live by
+     the user from a runbook); the permissions of the roles checked by tests; the action log
+     complete; no start outside `127.0.0.1` without sign-in and TLS; a security checklist
+     (OWASP ASVS 5.0 level 1 subset).
+   - Status (2026-10-26): planned, `plans/2026-10-26-plan-v0.4.md`.
 6. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, IMGW project tasks.
    - Gate: the IMGW catalog index agrees with the IMGWTools API; parity with
