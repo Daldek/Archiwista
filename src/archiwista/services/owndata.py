@@ -1,19 +1,25 @@
-"""Projects' own data for people: the data folder and its problems (decision 8).
+"""Projects' own data for people: the data folder, its scans and its problems.
 
 ``set_data_dir`` is the one way to give a project another data folder
-(``PUT /projects/{project}/data-dir``, step 9): an administrator's
-``settings.write``, the same rules as every scan (``check_own_folder``) and
-then the settings' own checks. ``folder_check`` checks a project's folder
-now against the rules, as the ``snapshot`` job does before it writes.
+(``PUT /projects/{project}/data-dir``, step 9): the project's owner or an
+administrator (``project.write``), for one who is no administrator inside the
+project's directory (A-ADR-029 erratum 2), then the same rules as every scan
+(``check_own_folder``) and the settings' own checks; a change is logged
+(``project.data_dir``). ``scan_limits`` keeps each person to one waiting or
+running scan of a data folder and each project's folder to one scan started a
+minute (ADR-047 decision 4). ``folder_check`` checks a project's folder now
+against the rules, as the ``snapshot`` job does before it writes.
 ``own_problems``, ``file_problems`` and ``folder_problems`` explain the
-problems a scan recorded (or a folder's state now), without paths
-of other projects.
+problems a scan recorded (or a folder's state now), without paths of other
+projects.
 """
 
-from collections.abc import Iterable
+import math
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
-from archiwista.auth import ALL_PROJECTS, Principal
+from archiwista.auth import ALL_PROJECTS, LOCAL_PRINCIPAL_ID, Principal, access_key
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
     AppPaths,
@@ -23,11 +29,18 @@ from archiwista.config import (
     SettingsValidationError,
     own_folder_conflict,
 )
-from archiwista.errors import NotFoundError
+from archiwista.errors import NotFoundError, RateLimitedError
 from archiwista.index import IndexQueries, OwnFileDetail, OwnFolderRecord, OwnProblem
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import lookup, message
 from archiwista.owndata.scan import OwnFolderCheck, check_own_folder, folder_rules
 from archiwista.services.problems import Problem, explain
+
+# Seconds between two scans of one project's data folder that people start
+# (ADR-047 decision 4); the local owner and the scheduler are not limited.
+SCAN_INTERVAL_S = 60
+# Seconds after which a person whose scan waits or runs may ask again.
+SCAN_RUNNING_RETRY_S = 10
 
 
 def set_data_dir(
@@ -44,8 +57,11 @@ def set_data_dir(
     Parameters
     ----------
     authorizer : Authorizer
-        Decides ``settings.write`` (administrators; the folder is where
-        snapshots are written) and which projects the principal sees.
+        Decides ``project.write`` (the project's owner and administrators;
+        the folder is where snapshots are written), whether the folder may
+        lie outside the project's directory (``settings.write``: an
+        administrator), which projects the principal sees, and logs the
+        change.
     principal : Principal
         Who asks.
     settings : SettingsService
@@ -67,19 +83,21 @@ def set_data_dir(
 
     Raises
     ------
-    PermissionDeniedError
-        Not an administrator.
     NotFoundError
         Unknown project, or one the principal does not see.
+    PermissionDeniedError
+        Neither the project's owner nor an administrator.
     SettingsValidationError
-        The folder breaks a rule of decision 8 or is not a readable
-        directory; nothing changes.
+        The folder lies outside the project's directory after ``realpath``
+        and the principal is no administrator (``own_data_dir_outside_project``),
+        breaks a rule of decision 8 or is not a readable directory; nothing
+        changes.
     """
-    authorizer.require(principal, "settings.write")
     record = queries.project(project, visible=authorizer.visible_projects(principal))
     if record is None:
         raise NotFoundError(message("project.not_found", project=project))
     key = record.project.access_key
+    authorizer.require(principal, "project.write", key)
     current = settings.get()
     folders = dict(current.own_data_dirs)
     if path is None:
@@ -92,6 +110,11 @@ def set_data_dir(
     others.pop(key, None)
     folders_of_others = list(others.values())
     if path is not None:
+        field = f"own_data_dirs.{key}"
+        if not authorizer.can(principal, "settings.write") and not _inside(path, key):
+            text = message("own.data_dir_outside_project", path=path, project=key)
+            problem = SettingsProblem("own_data_dir_outside_project", field, text)
+            raise SettingsValidationError([problem])
         conflict = own_folder_conflict(
             Path(path), stores=stores, app_data=paths.data_dir, others=folders_of_others
         )
@@ -101,12 +124,74 @@ def set_data_dir(
             text = message(
                 f"own.data_dir_{reason}", path=path, project=key, other=directory
             )
-            field = f"own_data_dirs.{key}"
             raise SettingsValidationError([SettingsProblem(code, field, text)])
     settings.update(changed)
+    before, after = current.own_data_dir(key), changed.own_data_dir(key)
+    if before != after:
+        authorizer.state.record(
+            principal,
+            "project.data_dir",
+            key,
+            before={"path": str(before[0]), "source": before[1]},
+            after={"path": str(after[0]), "source": after[1]},
+        )
     return check_own_folder(
         changed, key, stores=stores, app_data=paths.data_dir, others=folders_of_others
     )
+
+
+def scan_limits(
+    jobs: JobSupervisor, principal: Principal, project: str
+) -> Callable[[], None] | None:
+    """Return the limits of a person's new scan of a project's data folder.
+
+    The check is for ``JobSupervisor.submit(admit=…)``, so a request that
+    joins a waiting scan is never refused. A person (with the agents of the
+    account) has at most one ``own_scan`` waiting or running
+    (``scan_running``), and a project's folder is scanned at most once per
+    ``SCAN_INTERVAL_S`` (``scan_too_soon``): both ``429 rate_limited`` with
+    ``Retry-After``.
+
+    Parameters
+    ----------
+    jobs : JobSupervisor
+        The supervisor of the scan: its jobs tell what waits, runs and ran.
+    principal : Principal
+        Who asks.
+    project : str
+        The project's key (``params.project`` of its ``own_scan``).
+
+    Returns
+    -------
+    Callable[[], None] or None
+        The check, which raises ``RateLimitedError``; ``None`` for the local
+        owner and the scheduler (the principal ``local``), who are not
+        limited.
+    """
+    if principal.id == LOCAL_PRINCIPAL_ID:
+        return None
+
+    def admit() -> None:
+        running = jobs.active_of(principal.id, "own_scan")
+        if running is not None:
+            raise RateLimitedError(
+                message("own.scan_running", job=running.id),
+                retry_after_s=SCAN_RUNNING_RETRY_S,
+                reason="scan_running",
+            )
+        started = jobs.last_started("own_scan", project)
+        if started is None:
+            return
+        wait = SCAN_INTERVAL_S - (datetime.now(UTC) - started).total_seconds()
+        if wait > 0:
+            seconds = math.ceil(wait)
+            raise RateLimitedError(
+                message("own.scan_too_soon", project=project, seconds=seconds),
+                retry_after_s=seconds,
+                reason="scan_too_soon",
+            )
+
+    return admit
 
 
 def folder_check(
@@ -186,3 +271,14 @@ def _explained(
             )
         )
     return tuple(problems)
+
+
+def _inside(path: str, project: str) -> bool:
+    """Whether a folder lies inside a project's directory, both after ``realpath``.
+
+    A relative path lies nowhere: it is refused, as a symbolic link out.
+    """
+    if not Path(path).is_absolute():
+        return False
+    real = Path(access_key(path))
+    return real != Path(project) and real.is_relative_to(project)

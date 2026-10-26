@@ -41,7 +41,7 @@ from tests.fixtures.jobs import (
 )
 from tests.fixtures.jobs_api import JobsApi, jobs_api
 from tests.fixtures.local_server import NoSources
-from tests.fixtures.permissions import OTHER, add_people, principal
+from tests.fixtures.permissions import ADMIN, add_people, principal
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -256,11 +256,14 @@ def test_error_of_a_job_is_in_the_language_of_the_request(served: JobsApi) -> No
 
 
 def test_job_detail_has_actor(served: JobsApi) -> None:
-    """A job keeps who started it: an account, also behind its agent's token."""
+    """A job keeps who started it: an account, also behind its agent's token.
+
+    A link check is an administrator's (``store.scan``), so the account is one.
+    """
     # Arrange
     served.env.scan("full")
     add_people(served.api.state)
-    person = principal(served.api.state, "other")
+    person = principal(served.api.state, "admin")
     link = served.env.store.by_kind("link")[0].path
     callers = {
         "person": served.api.session(person),
@@ -285,8 +288,8 @@ def test_job_detail_has_actor(served: JobsApi) -> None:
 
     # Assert
     assert {who: detail["actor"] for who, detail in details.items()} == {
-        "person": OTHER,
-        "agent": OTHER,
+        "person": ADMIN,
+        "agent": ADMIN,
         "owner": "local",
     }
     for detail in details.values():

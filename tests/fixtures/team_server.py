@@ -57,14 +57,20 @@ def cheap_hasher() -> argon2.PasswordHasher:
     return argon2.PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 
 
-def save_team(paths: AppPaths, **team: object) -> AppSettings:
+def save_team(
+    paths: AppPaths, base: AppSettings | None = None, /, **team: object
+) -> AppSettings:
     """Write settings of team mode at ``TEAM_ORIGIN`` with TLS in the server.
 
-    ``team`` adds or replaces values of the table ``[team]``. ``running_api``
-    over these paths then serves team mode to a client at ``PERSON_PEER``.
+    ``base`` holds the other settings (stores, project directories), the
+    defaults without it; ``team`` adds or replaces values of the table
+    ``[team]``. ``running_api`` over these paths then serves team mode to a
+    client at ``PERSON_PEER``.
     """
     table = {"enabled": True, "origin": TEAM_ORIGIN, **NAMED_TLS, **team}
-    settings = AppSettings(team=TeamSettings.model_validate(table))
+    settings = (base or AppSettings()).model_copy(
+        update={"team": TeamSettings.model_validate(table)}
+    )
     ConfigStore(paths.config_file).save(settings)
     return settings
 

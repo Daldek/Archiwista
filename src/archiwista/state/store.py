@@ -62,6 +62,8 @@ type ActionName = Literal[
     "group.members",
     "group.remove",
     "project.access",
+    "project.create",
+    "project.data_dir",
 ]
 type ActorKind = PrincipalKind | Literal["anonymous"]
 type Outcome = Literal["ok", "denied", "failed"]
@@ -926,6 +928,71 @@ class StateStore:
                 now,
                 before=None if before is None else _access_state(before),
                 after=_access_state(after),
+            )
+        return after
+
+    def add_project(
+        self,
+        project: str,
+        *,
+        owner: str | None,
+        visibility: Visibility,
+        producer: str,
+        actor: Principal,
+    ) -> ProjectAccessRecord | None:
+        """Record a project a principal created: its owner and ``project.create``.
+
+        With ``owner`` the project gets its access entry (that owner and
+        ``visibility``, nobody listed) unless one exists by now, which stays;
+        without one it keeps none (a project of the local owner). Either way
+        the log gets ``project.create`` with the producer and the owner.
+
+        Parameters
+        ----------
+        project : str
+            Project key (``access_key`` of its directory).
+        owner : str or None
+            The account that created it, or ``None``.
+        visibility : Visibility
+            ``public`` or ``private`` (``default_project_visibility``).
+        producer : str
+            The producer whose manifest made the project.
+        actor : Principal
+            Who created it.
+
+        Returns
+        -------
+        ProjectAccessRecord or None
+            The project's access entry now; ``None`` without one.
+
+        Raises
+        ------
+        InvalidChangeError
+            An unknown owner, or a visibility that lists people or groups.
+        """
+        _require_entries(visibility, (), (), allow_empty=False)
+        with self._write() as connection:
+            if owner is not None:
+                _require_users(connection, (owner,))
+            now = _now()
+            if owner is not None and _access(connection, project) is None:
+                connection.execute(
+                    "INSERT INTO project_acl (project, owner, visibility, updated_at)"
+                    " VALUES (?, ?, ?, ?)",
+                    (project, owner, visibility, now),
+                )
+            after = _access(connection, project)
+            _record(
+                connection,
+                actor,
+                "project.create",
+                project,
+                now,
+                after=None if after is None else _access_state(after),
+                details={
+                    "producer": producer,
+                    "owner": None if after is None else after.owner,
+                },
             )
         return after
 

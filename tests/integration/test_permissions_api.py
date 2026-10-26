@@ -26,6 +26,7 @@ from archiwista.auth import LOCAL_OWNER, access_key
 from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
 from archiwista.refs import version_ref
 from archiwista.security import issue_one_time_token
+from archiwista.services import owndata as own_service
 from archiwista.sources import ProjectInfo
 from archiwista.state import Visibility
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
@@ -508,7 +509,9 @@ def test_action_log_records_how_and_in_which_session(api: Api) -> None:
 # Headers of the generated store's JPEG sheets carry no geotransform (their
 # outline comes from the world file); rasterio says so while reading them.
 @pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
-def test_own_data_visibility_matrix(tmp_path: Path) -> None:
+def test_own_data_visibility_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Own data, its snapshots and its jobs follow the visibility of the project.
 
     Under each visibility, for each person and for the computer's owner:
@@ -517,10 +520,12 @@ def test_own_data_visibility_matrix(tmp_path: Path) -> None:
     a note, the preview of a file, the scan of its folder) are ``404`` or left
     out for one who does not see the project; a ``preview`` job of a store
     version and a file of the project shows such a person only the version,
-    with whole counts. A snapshot needs ``project.write`` (``403``), another
-    data folder an administrator, every change the session's CSRF token;
-    local mode may do everything.
+    with whole counts. A snapshot and another data folder need
+    ``project.write`` (``403``), every change the session's CSRF token;
+    local mode may do everything. The minute between two scans of the
+    folder is not waited for here (``test_team_projects.py`` tests it).
     """
+    monkeypatch.setattr(own_service, "SCAN_INTERVAL_S", 0)
     with own_data_api(tmp_path, first=("gpkg_layers", "tif_2180"), second=()) as served:
         # Arrange
         routes = _own_routes(served)
@@ -533,22 +538,16 @@ def test_own_data_visibility_matrix(tmp_path: Path) -> None:
             for who in WHO:
                 observed[visibility, who] = _own_answers(served, callers[who], routes)
         observed["private", "local"] = _own_answers(served, served.owner, routes)
-        _settle(served)
 
     # Assert
     expected: dict[tuple[str, str], dict[str, object]] = {
         (visibility, who): _own_expected(
-            routes,
-            sees=who in SEES[visibility],
-            manages=who in MANAGES,
-            admin=who == "admin",
+            routes, sees=who in SEES[visibility], manages=who in MANAGES
         )
         for visibility in VISIBILITY_VALUES
         for who in WHO
     }
-    expected["private", "local"] = _own_expected(
-        routes, sees=True, manages=True, admin=True
-    )
+    expected["private", "local"] = _own_expected(routes, sees=True, manages=True)
     assert [
         (visibility, who, route, observed[visibility, who].get(route), answer)
         for (visibility, who), answers in expected.items()
@@ -711,7 +710,11 @@ def _own_routes(served: OwnDataApi) -> _OwnRoutes:
 def _own_answers(
     served: OwnDataApi, caller: Caller, routes: _OwnRoutes
 ) -> dict[str, object]:
-    """Ask every route of the project's own data and its jobs as ``caller``."""
+    """Ask every route of the project's own data and its jobs as ``caller``.
+
+    The scans asked for end before the answers return, so the person's next
+    round finds no scan of theirs waiting or running (``scan_running``).
+    """
     answers: dict[str, object] = {
         route: _answer(served.get(caller, url)) for route, url in routes.reads.items()
     }
@@ -741,13 +744,14 @@ def _own_answers(
     answers["jobs of project"] = (
         _probes(filtered, routes) if filtered.status_code == 200 else _answer(filtered)
     )
+    _settle(served)
     return answers
 
 
 def _own_expected(
-    routes: _OwnRoutes, *, sees: bool, manages: bool, admin: bool
+    routes: _OwnRoutes, *, sees: bool, manages: bool
 ) -> dict[str, object]:
-    """Return what one seeing the project, managing it or administering gets."""
+    """Return what one seeing the project or managing it gets."""
 
     def shown(answer: object) -> object:
         return answer if sees else HIDDEN
@@ -763,7 +767,7 @@ def _own_expected(
             "POST snapshot preview": shown("200"),
             "POST scan": shown("202"),
             "POST snapshots": shown("202" if manages else "403 permission_denied"),
-            "PUT data-dir": "200" if admin else "403 permission_denied",
+            "PUT data-dir": shown("200" if manages else "403 permission_denied"),
         }
     )
     for name in PROBE_JOBS:

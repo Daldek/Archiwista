@@ -4,7 +4,8 @@ Plan v0.2, step 9 (criterion 6 over HTTP): a project's data folder is listed
 with extents, every indexed file answers its preview or the reason it has
 none, a snapshot is planned without writing, made by a ``snapshot`` job and
 shown on the file's card, a file changed since its scan is refused until the
-next scan, and only an administrator gives a project another data folder.
+next scan, and an administrator gives a project another data folder (its
+owner too, inside the project's directory: ``test_team_projects.py``).
 Every test serves a generated store whose project ``projekt-01`` has a data
 folder of the families it needs (``tests.fixtures.own_data_api``).
 """
@@ -313,13 +314,12 @@ def test_changed_file_is_own_file_changed_until_rescanned(tmp_path: Path) -> Non
     ) == ["hydrant", "zdroj"]
 
 
-def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
-    """Non-admin ``403``; admin sets a folder and scans it; bad folders ``400``."""
+def test_data_dir_set_by_admin_and_checked(tmp_path: Path) -> None:
+    """An administrator sets a folder elsewhere and scans it; bad folders ``400``."""
     with own_data_api(tmp_path, first=("txt",), second=()) as served:
         # Arrange
         project = served.first
         share(served.api.state, project.access_key, "public")
-        owner = served.caller("owner")
         admin = served.caller("admin")
         folder = tmp_path / "dane-projektu"
         folder.mkdir()
@@ -327,7 +327,6 @@ def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
         address = f"/projects/{project.key}/data-dir"
 
         # Act
-        refused = owner.request("PUT", address, json={"path": str(folder)})
         changed = admin.request("PUT", address, json={"path": str(folder)})
         jobs = admin.request("GET", f"/jobs?project={project.key}").json()["items"]
         scans = [job for job in jobs if job["kind"] == "own_scan"]
@@ -341,7 +340,6 @@ def test_data_dir_set_by_admin_only_and_checked(tmp_path: Path) -> None:
         listed = admin.request("GET", f"/projects/{project.key}/files").json()
 
     # Assert
-    assert_problem(refused, 403, "forbidden", "permission_denied")
     assert changed.status_code == 200, changed.text
     assert (changed.json()["path"]["local"], changed.json()["source"]) == (
         str(folder),

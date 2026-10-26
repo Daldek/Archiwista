@@ -482,6 +482,19 @@ group on its sharing screen.
 
 ![Groups with the members of hydro](reports/v0.4-screenshots/05-grupy.webp)
 
+**Projects in a team.** Every person, or their agent, creates projects in the project
+directories of the settings where no project is yet, and owns them; a new project
+starts at the visibility of the setting `default_project_visibility`. A directory
+that already holds a project — shared before, scanned or only just made by a
+producer's program — is changed by its owner or an administrator only, so nobody takes
+over a colleague's project. The owner may give the project another data folder only
+inside the project's directory (a link pointing out of it counts as outside); an
+administrator may choose one elsewhere, away from the stores and the folders of other
+projects. Anyone who sees a project may scan its data folder ("Odśwież"), one scan of
+theirs at a time and each folder once a minute, otherwise the answer says when to ask
+again; scanning a store, outlining its units and checking its links are an
+administrator's, and the server scans by itself on its schedule.
+
 **The sign-in page.** In the browser a team server opens "Logowanie" (sign-in): the
 account ("Konto") and its password ("Hasło"; "Pokaż" shows what was typed), which the
 browser's password manager can fill. Every refused account gets the same message,

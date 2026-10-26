@@ -1,14 +1,15 @@
 """Background jobs over HTTP: start them, list them, follow their events.
 
 ``POST /stores/{store}/scan``, ``/footprints`` and ``/link-check`` (SPEC 9.2,
-5.6) record a job of the session's principal (its ``actor``, with the kind
-and the session label) and answer
-``202`` with it at once, with ``Location: /api/v1/jobs/{job}``; a worker
-process runs it (``archiwista.jobs``). While another job writes the store's
-index (``scan``, ``footprints``) a second one answers ``409 conflict`` naming
-that job in ``job``; unit outlines in offline mode answer ``409
-offline_mode``. ``GET /jobs`` and ``GET /jobs/{job}`` read the jobs of every
-process, ``archiwista reindex`` too. ``GET /jobs/{job}/events`` streams a
+5.6) are administrators' (``store.scan``, ``403 permission_denied`` for
+anyone else; the scheduler scans by itself): they record a job of the
+session's principal (its ``actor``, with the kind and the session label) and
+answer ``202`` with it at once, with ``Location: /api/v1/jobs/{job}``; a
+worker process runs it (``archiwista.jobs``). While another job writes the
+store's index (``scan``, ``footprints``) a second one answers ``409
+conflict`` naming that job in ``job``; unit outlines in offline mode answer
+``409 offline_mode``. ``GET /jobs`` and ``GET /jobs/{job}`` read the jobs of
+every process, ``archiwista reindex`` too. ``GET /jobs/{job}/events`` streams a
 job's ``progress``, ``notice`` and ``state`` events as Server-Sent Events:
 the ``id`` of each is its number, a client resumes after ``Last-Event-ID``
 from the events kept in the index, and the stream ends after the final state
@@ -74,6 +75,7 @@ from archiwista.jobs import (
 from archiwista.messages import current_language, label, message
 from archiwista.security import current_principal
 from archiwista.services import jobs as job_controls
+from archiwista.services.owndata import SCAN_RUNNING_RETRY_S
 
 router = APIRouter(tags=["jobs"])
 
@@ -307,6 +309,46 @@ _RETRY_CONFLICT = (
     " same project (`conflict`) or offline mode is on (`offline_mode`)."
 )
 
+# A person's scan of a project's data folder beyond its limits
+# (``archiwista.services.owndata.scan_limits``).
+SCAN_LIMITED: dict[int | str, dict[str, Any]] = {
+    429: {
+        "description": (
+            "`rate_limited` (`details.reason`): a scan of a data folder that the"
+            " person (or their agent) asked for waits or runs (`scan_running`),"
+            " or the project's folder was asked to be scanned less than a minute"
+            " ago (`scan_too_soon`); `Retry-After` (also `details.retry_after_s`)"
+            " says when to ask again. A waiting scan covering the folder is"
+            " joined instead, never refused."
+        ),
+        "content": {
+            PROBLEM_MEDIA_TYPE: {
+                "schema": {"$ref": "#/components/schemas/ProblemDetails"},
+                "examples": {
+                    "scan_running": {
+                        "value": problem_example(
+                            "rate_limited",
+                            message("own.scan_running", "en", job="3f9c1a7e5b2d4c60"),
+                            reason="scan_running",
+                            details={"retry_after_s": SCAN_RUNNING_RETRY_S},
+                        )
+                    },
+                    "scan_too_soon": {
+                        "value": problem_example(
+                            "rate_limited",
+                            message(
+                                "own.scan_too_soon", "en", project="raba", seconds=42
+                            ),
+                            reason="scan_too_soon",
+                            details={"retry_after_s": 42},
+                        )
+                    },
+                },
+            }
+        },
+    }
+}
+
 
 def _state_conflicts(
     description: str, *reasons: str
@@ -392,6 +434,15 @@ _Streams = Annotated[JobStreams, Depends(job_streams)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Authorizer = Annotated[Authorizer, Depends(authorizer)]
+
+
+def store_scanner(principal: _Principal, decisions: _Authorizer) -> Principal:
+    """Return the principal allowed to scan a store, or refuse with ``403``."""
+    decisions.require(principal, "store.scan")
+    return principal
+
+
+_Scanner = Annotated[Principal, Depends(store_scanner)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"])]
 
@@ -400,19 +451,20 @@ _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"
     "/stores/{store}/scan",
     response_model=JobDetail,
     status_code=202,
-    responses={**problem_responses(404, 400), **_conflicts("conflict")},
+    responses={**problem_responses(403, 404, 400), **_conflicts("conflict")},
 )
 def start_scan(
     store: _Store,
-    principal: _Principal,
+    principal: _Scanner,
     jobs: _Jobs,
     response: Response,
     body: Annotated[ScanRequest | None, Body()] = None,
 ) -> JobDetail:
     """Scan a store into the index in the background; answer `202` with the job.
 
-    Without a body the scan is incremental over the whole store. Follow it
-    with `GET /jobs/{job}/events`.
+    Administrators only (`403 permission_denied`). Without a body the scan
+    is incremental over the whole store. Follow it with
+    `GET /jobs/{job}/events`.
     """
     params = (body or ScanRequest()).model_dump()
     job = jobs.submit("scan", store=store, params=params, actor=principal)
@@ -423,15 +475,18 @@ def start_scan(
     "/stores/{store}/footprints",
     response_model=JobDetail,
     status_code=202,
-    responses={**problem_responses(404), **_conflicts("conflict", "offline_mode")},
+    responses={
+        **problem_responses(403, 404),
+        **_conflicts("conflict", "offline_mode"),
+    },
 )
 def start_footprints(
-    store: _Store, principal: _Principal, jobs: _Jobs, response: Response
+    store: _Store, principal: _Scanner, jobs: _Jobs, response: Response
 ) -> JobDetail:
     """Outline the units of versions still without one, over the network.
 
-    Takes no body. In offline mode it answers `409 offline_mode` and records
-    nothing.
+    Administrators only (`403 permission_denied`). Takes no body. In offline
+    mode it answers `409 offline_mode` and records nothing.
     """
     job = jobs.submit("footprints", store=store, actor=principal)
     return _accepted(job, response)
@@ -441,12 +496,12 @@ def start_footprints(
     "/stores/{store}/link-check",
     response_model=JobDetail,
     status_code=202,
-    responses=problem_responses(404, 400),
+    responses=problem_responses(403, 404, 400),
 )
 def start_link_check(
     store: _Store,
     body: LinkCheckRequest,
-    principal: _Principal,
+    principal: _Scanner,
     visible: _Visible,
     jobs: _Jobs,
     settings: Annotated[SettingsService, Depends(settings_service)],
@@ -455,9 +510,10 @@ def start_link_check(
 ) -> JobDetail:
     """Confirm by its content which version a slot's link holds (KA-5).
 
-    Only a slot the index knows is checked (`404` otherwise). The job's
-    `result.status` is `confirmed`, `index_outdated`, `mismatch` (recorded as
-    the problem `link_mismatch`), `missing` or `not_a_link`.
+    Administrators only (`403 permission_denied`). Only a slot the index
+    knows is checked (`404` otherwise). The job's `result.status` is
+    `confirmed`, `index_outdated`, `mismatch` (recorded as the problem
+    `link_mismatch`), `missing` or `not_a_link`.
     """
     configured = settings.get().store(store) is not None
     if configured and queries.slot(store, body.slot, visible=visible) is None:
@@ -614,6 +670,7 @@ def cancel_job(
     responses={
         **problem_responses(403, 404),
         **_state_conflicts(_RETRY_CONFLICT, "job_succeeded", "job_active"),
+        **SCAN_LIMITED,
     },
 )
 def retry_job(
@@ -635,11 +692,14 @@ def retry_job(
     again. What the kind needs at its start is asked again: a download needs
     the role `store_writer` or the setting `store_write_for_all`, a snapshot
     the project's owner or an administrator, a project's download or repin
-    both (`403 permission_denied`). A job that succeeded or has not ended is
-    `409` (`job_succeeded`, `job_active`); the new job is refused as any job
-    of its kind (another job writing the store's index or of the same
-    project, offline mode: `409`; a store no longer configured: `404`). A job
-    only of projects the session does not see is `404`.
+    both, a store's scan, unit outlines, a link check or a scan of every
+    project's data folder an administrator (`403 permission_denied`); a scan
+    of one project's data folder keeps to a person's limits (`429
+    rate_limited`). A job that succeeded or has not ended is `409`
+    (`job_succeeded`, `job_active`); the new job is refused as any job of its
+    kind (another job writing the store's index or of the same project,
+    offline mode: `409`; a store no longer configured: `404`). A job only of
+    projects the session does not see is `404`.
     """
     record = job_controls.retry(
         jobs, decisions, queries, job_id=job, actor=principal, visible=visible

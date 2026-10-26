@@ -192,31 +192,6 @@ def _unclocked(status: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("token", ["startup", "agent"])
-@pytest.mark.parametrize("who", ["owner", "listed", "other", "admin"])
-def test_only_an_administrator_creates_a_project(
-    paths: AppPaths, tmp_path: Path, who: Who, token: Literal["startup", "agent"]
-) -> None:
-    """A new project has no owner yet: anyone else is `403` and nothing is made.
-
-    An agent acts with the roles of the person who minted its token.
-    """
-    directory = _projects(tmp_path) / "raba"
-    with _api(paths) as api:
-        person = api.session(principal(api.state, who), token=token)
-
-        # Act
-        answer = person.request("POST", "/projects", json=_project_body(directory))
-
-    # Assert
-    if who == "admin":
-        assert answer.status_code == 201, answer.text
-        assert (directory / MANIFEST).is_file()
-    else:
-        assert_problem(answer, 403, "forbidden", "permission_denied")
-        assert not directory.exists()
-
-
-@pytest.mark.parametrize("token", ["startup", "agent"])
 @pytest.mark.parametrize(
     ("who", "status"),
     [("owner", None), ("listed", 403), ("other", 404), ("admin", None)],

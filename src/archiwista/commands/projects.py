@@ -213,6 +213,7 @@ def _init(args: argparse.Namespace, place: _Place) -> _Output:
     key = project_service.create_project(
         place.registry,
         place.settings,
+        place.queries,
         place.index,
         place.decisions,
         producer=body.producer,

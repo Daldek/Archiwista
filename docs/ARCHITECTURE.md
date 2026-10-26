@@ -116,8 +116,9 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/projects.py` | `/projects`, `/projects/{project}`, `/projects/{project}/status` (each manifest's producer asked now, `ManifestStatus`); `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}` (ADR-039: the producer writes its manifest, `project.write`, the answer is the card as the index holds it at once); `POST /projects/{project}/jobs` in `job_router`, served with the supervisor (ADR-040: a job of the tasks of a manifest, `202`); a change and a job name the manifest's `producer` in a project of two (ADR 0032 decision 14) | `read_projects`, `project_card`, `check_project`, `create_project`, `add_project_task`, `remove_project_task`, `start_project_job`, `ProjectRequest`, `TaskRequest`, `ProjectJobRequest` |
 | `api/settings.py` | `GET` and `PUT /settings` | `save_settings`, `settings_writer` |
 | `api/areas.py` | `POST /areas`, `/areas/{area_id}`, `/local-coverage` | `save_area`, `save_area_file`, `read_area`, `read_local_coverage`, `REFRESH_TIMEOUT_S` |
-| `api/jobs.py` | background jobs over HTTP and the SSE stream | `start_scan`, `start_footprints`, `start_link_check`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
+| `api/jobs.py` | background jobs over HTTP and the SSE stream; the store jobs take the principal from `store_scanner` (`store.scan`, v0.4) | `start_scan`, `start_footprints`, `start_link_check`, `store_scanner`, `SCAN_LIMITED`, `list_jobs`, `get_job`, `get_job_events`, `job_event_stream`, `sse_message`, `JobStreams`, `EventStreamResponse` |
 | `api/admin.py` | `/users`, `/users/{user_id}/password`, `/users/{user_id}/sessions`, `/groups`, `/projects/{project}/access` | models `User` (with the state of its password), `TemporaryPassword`, `Group`, `ProjectAccess`, `AccessChange` and routes named after the functions of `services/access.py` |
+| `api/directory.py` | `GET /directory` (v0.4, any session): the enabled accounts and the groups, ids and names only, to share a project with | `get_directory`, models `Directory`, `DirectoryEntry` |
 | `api/previews.py`, `api/models_previews.py` | description, building, PNG, tiles, objects and ZIP members of a store version; `POST /previews/warm` in `job_router`, served with the supervisor (ADR-041: the `preview_warm` job, `202`) | `get_preview`, `build_preview`, `warm_previews`, `PreviewInfo`, `WarmRequest` |
 | `api/owndata.py`, `api/models_owndata.py` | project files, folder, snapshots, scan, previews of own files | `read_own_files`, `snapshot_plan`, `start_snapshot`, `start_own_scan`, `OwnFilesQuery` |
 | `api/layers.py`, `api/models_layers.py` | local years and campaigns, thumbnails and tiles of layers | `get_local_layers`, `get_layer_thumbnail`, `get_layer_tile`, `LayersQuery` |
@@ -133,8 +134,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/problems.py` | a problem with a Polish description and a repair instruction | `Problem`, `explain`, `KNOWN_PROBLEMS` |
 | `services/stores.py` | store state for the "Magazyn" (Store) view | `store_summary`, `StoreSummary`, `issue_problem` |
 | `services/projects.py` | project card, live producer status and the changes of a manifest through its producer (ADR-039): a new project where a scan finds it, bound to a configured store, and a task added or removed for whoever has `project.write`, recorded in the index at once; the manifest an action acts on (`project_manifest`: the producer named, else the project's only one; `producer_required`, `other_producer`); the problems of each manifest and a task name of both (`duplicate_task`); a project's directory and the configured store a manifest names, for its jobs (ADR-040) | `project_detail`, `ProjectDetail`, `project_problems`, `project_status`, `project_manifest`, `create_project`, `add_project_task`, `remove_project_task`, `project_actions`, `project_directory`, `project_store` |
-| `services/access.py` | accounts, groups and project access — for HTTP and the CLI | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project` |
-| `services/owndata.py` | folder checking and project file problems | `set_data_dir`, `folder_check`, `folder_problems`, `file_problems` |
+| `services/access.py` | accounts, groups and project access — for HTTP and the CLI; the directory of enabled accounts and groups for everyone | `list_users`, `add_user`, `update_user`, `remove_user`, `list_groups`, `add_group`, `set_group_members`, `remove_group`, `project_access`, `share_project`, `directory` |
+| `services/owndata.py` | the data folder (its owner or an administrator; for an owner inside the project's directory), the limits of a person's scans of a data folder, folder checking and project file problems | `set_data_dir`, `scan_limits`, `SCAN_INTERVAL_S`, `folder_check`, `folder_problems`, `file_problems` |
 | `services/layers.py` | local layers of a product and layers of an own file | `read_local_layers`, `read_own_file_layers`, `LayerMemo` |
 | `services/compare.py` | comparison of metadata and schema, not of object data | `compare` |
 | `services/commands.py` | producers' commands for HTTP and the CLI (ADR-034): the catalogs of the producers that offer them, `parse`, `validate` (a command of the catalog, the configured store's root, no file path of a request) and `format` | `list_commands`, `parse_command`, `validate_command`, `checked_call`, `command_info`, `format_command`, `actions`, `store_root` |
@@ -1064,7 +1065,8 @@ own surface — the interface, API, CLI, agent sessions and previews.
 Locally one person works, but the model and the state database are tested with several
 identities (`tests/unit/test_authorize.py`,
 `tests/integration/test_permissions_api.py`,
-`tests/unit/test_project_visibility.py`).
+`tests/unit/test_project_visibility.py`; the actions of v0.4 over the services, HTTP and
+the CLI: `tests/integration/test_team_permissions.py`).
 
 - **`Principal`** (`auth/principal.py`): `id` (stored as the `actor`
   of jobs), `kind` (`local_owner`, `user`, `agent`, `scheduler`), `roles`,
@@ -1078,14 +1080,16 @@ identities (`tests/unit/test_authorize.py`,
   (`PermissionDeniedError` → `403 permission_denied`) and
   `visible_projects(principal)`. Actions (`ACTIONS`): `project.view`,
   `project.share`, `project.write` (since v0.2: snapshots of project files;
-  since v0.3: creating a project and adding or removing its tasks, ADR-039,
-  and a project's download and repin, ADR-040), `users.manage`,
-  `groups.manage`, `settings.write`, `store.write`, `job.cancel`.
-  `admin` manages accounts, groups and settings, sees every project,
-  manages access to it and changes it; the owner does so for their own (a project without
-  an access entry is changed only by the administrator); in team mode the last
-  enabled administrator can be neither disabled, removed nor deprived of the role
-  (`keep_admin` of `StateStore`, `409 last_admin`);
+  since v0.3: adding a manifest or a task to a project and removing a task,
+  ADR-039, and a project's download and repin, ADR-040; since v0.4: its data
+  folder), `project.create` (v0.4: every principal acting for a person, not the
+  scheduler), `users.manage`, `groups.manage`, `settings.write`, `store.write`,
+  `store.scan` (v0.4: `admin`), `job.cancel`.
+  `admin` manages accounts, groups and settings, scans the stores, sees every
+  project, manages access to it and changes it; the owner does so for their own (a
+  project without an access entry is changed only by the administrator); in team mode
+  the last enabled administrator can be neither disabled, removed nor deprived of the
+  role (`keep_admin` of `StateStore`, `409 last_admin`);
   visibility `public` (everyone), `users` (people from the entry), `group` (members of
   the groups from the entry), `private` (owner only); a project without an entry follows
   `default_project_visibility` (`public` or `private` = administrators
@@ -1098,6 +1102,24 @@ identities (`tests/unit/test_authorize.py`,
   `job.cancel` (the resource is the job's
   `actor`) is for whoever started the job and administrators (`POST
   /jobs/{job}/cancel`, `archiwista jobs cancel`, v0.3, ADR-038).
+- **Projects of every person (v0.4).** `services/projects.py` `create_project`
+  asks `project.create` where no project is yet, else `project.write`: a directory
+  with an access entry, an indexed project or any producer's manifest on the disk is
+  one already. After the producer wrote the manifest, `StateStore.add_project` gives
+  an account that created it (a `user`, or an `agent` of one) the access entry
+  (owner, `default_project_visibility`) and logs `project.create` in the same
+  transaction; the local owner's project keeps no entry. `services/owndata.py`
+  `set_data_dir` asks `project.write`; a principal without `settings.write` gets a
+  folder only as an absolute subfolder of the project's directory after `realpath`
+  (`own_data_dir_outside_project`), and a change is logged as `project.data_dir`.
+  `scan_limits` is the `admit` check of `JobSupervisor.submit` for the `own_scan` of
+  one project that a person asks for (`start_own_scan` and the retry): called under
+  the supervisor's lock only when the request joins no waiting scan, it refuses a
+  second waiting or running scan of the person (`JobSupervisor.active_of`,
+  `scan_running`) and a scan of the folder asked for less than `SCAN_INTERVAL_S` ago
+  (`last_started`, `scan_too_soon`); the local owner and the scheduler are not
+  limited. The store jobs take the principal from the dependency `store_scanner`
+  (`store.scan`).
 - **Visibility — a single checkpoint.** `visible_projects` builds
   `ProjectVisibility` (`everything`, `granted`, `denied`, `unlisted`;
   `sees(key)`; the administrator gets `ALL_PROJECTS`). Routes take it as the dependency
@@ -1148,8 +1170,9 @@ apart from it, it reads only its own static files from the server.
 | `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status`, `POST /projects` (`201`, `Location`), `POST /projects/{project}/tasks` (`201`), `DELETE /projects/{project}/tasks/{name}` (`project.write`; the answer is the project's card); with `jobs`: `POST /projects/{project}/jobs` (`download`, `repin`, `check`, `verify`; `202`; a download and a repin need `project.write` and `store.write`) |
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
-| `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check`, `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
+| `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check` (`store.scan`), `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
 | `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `DELETE /users/{user_id}/sessions`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
+| `api/directory.py` (`permissions`) | `GET /directory` (any session) |
 | `api/previews.py` (`previews`) | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png`, `…/tiles/{z}/{x}/{y}.png`, `…/features`, `…/members`; with `jobs`: `POST /previews/warm` (`202` with the `preview_warm` job; any session) |
 | `api/layers.py` (`layers`) | `GET /local-layers`, `/local-layers/thumbnail.png`, `/local-layers/tiles/{z}/{x}/{y}.png` |
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |

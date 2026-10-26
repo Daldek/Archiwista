@@ -34,7 +34,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
-| store scan, SSE | — (HTTP only) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
+| store scan, SSE | — (HTTP only; an administrator's from v0.4) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
 | background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
 | preview and build, optional PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
 | the first look at current versions prepared ahead in the preview cache (pane thumbnail, map tiles at the smallest zoom), optionally of a store, product, segment, project (with its own data) or area (v0.3) | `archiwista preview-warm [--store MAGAZYN] [--product PRODUKT] [--segment SEGMENT] [--project PROJEKT] [--area-id OBSZAR]` (the job in the foreground, printed as it ended) | `POST /previews/warm` |
@@ -246,6 +246,14 @@ session ends (`401 session_required`). A name that is no enabled account is `401
 login_failed` (with `proxy_autocreate` a missing account is created without roles),
 and so is a request that did not come through a trusted proxy.
 
+**Sharing a project.** `GET /directory` (any session) lists the enabled
+accounts and the groups, each with its `id` and `name`, to choose from for
+`PUT /projects/{project}/access`; `GET /users` and `GET /groups` stay an
+administrator's. A person or their agent creates projects and owns them,
+gives one a data folder inside its directory, and scans the folders of the
+projects they see within their limits (section 9); scans of a store, unit
+outlines and link checks are an administrator's (`403 permission_denied`).
+
 ## 3. Search and filters (`GET /slots`, `archiwista search`)
 
 Every parameter of `/slots` has an option of the same name in `archiwista
@@ -375,9 +383,15 @@ cursor is safe in a URL).
   below one, outside hidden directories and stores (`400
   project_not_discoverable`; elsewhere `403 path_outside_root`), and names a
   configured store (`404`) with a directory of the producer (`400
-  store_without_producer`) that can be read now (`503 store_unavailable`); it
-  has no owner yet, so only an administrator creates one. In a directory that
-  holds the other producer's manifest it is the second manifest of the same
+  store_without_producer`) that can be read now (`503 store_unavailable`).
+  Where no project is yet, any person or their agent creates one (v0.4) and
+  the account owns it, at the visibility of the setting
+  `default_project_visibility` (`project.create` in the action log); the
+  computer's owner (`project-init`, local mode) leaves it without an owner. A
+  directory that is a project already (an access entry, an indexed project,
+  or a manifest of any producer on the disk) is changed by its owner or an
+  administrator only (`403 permission_denied`): in a directory that holds the
+  other producer's manifest the new one is the second manifest of the same
   project, with its key. A task is changed by the project's owner or an
   administrator (`404` for a hidden project, `403 permission_denied` for one
   seen but not owned) in one manifest: the one of `producer`, else the
@@ -545,8 +559,10 @@ curl -sf -b "$JAR" -H "$H" -G --data-urlencode "a=$REF_A" \
   --data-urlencode "b=$REF_B" "$BASE/compare"
 ```
 
-The folder of a project (by default `<project directory>/dane/`; an
-administrator sets another one with `PUT /projects/{project}/data-dir`) is
+The folder of a project (by default `<project directory>/dane/`; its owner or
+an administrator sets another one with `PUT /projects/{project}/data-dir`, an
+owner who is no administrator only inside the project's directory: `400
+validation_error` with the problem `own_data_dir_outside_project`) is
 indexed apart from the store: `GET /projects/{project}/files?q=…&state=changed`
 with `limit`/`cursor`, `GET …/files/{file_id}` and `GET …/files/{file_id}/layers`
 (the working file and its snapshots in the fan). Images, tiles, features and the
@@ -697,7 +713,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
-| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; wait for `Retry-After` (also `details.retry_after_s`) |
+| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail` |
@@ -731,13 +747,15 @@ schema is `schemas/nogat/error-1.schema.json`.
 4. **Freshness:** check `stale`; when it is `true`, give the user `indexed_at`
    from `stale_stores` instead of claiming that the file is on the disk.
 5. **Refresh (on request only):** `POST /stores/{store}/scan` with CSRF → `202`
-   with a job; follow the progress over SSE or `GET /health` (`running_job`).
+   with a job (an administrator's from v0.4: `403 permission_denied`
+   otherwise); follow the progress over SSE or `GET /health` (`running_job`).
    On `409 conflict` wait for the running job instead of retrying.
 6. **Errors:** pass `503 missing_dependency` (`source_unavailable` or
    `source_incompatible`) to the user with the fix from `hint`, and do not
    retry in a loop; `401` → a new token from the user (`archiwista token`; on a
    team server `archiwista token --user ID` or the person's `POST
-   /session/tokens`); `429 login_blocked` → wait for `Retry-After`.
+   /session/tokens`); `429 login_blocked`, `scan_running` or `scan_too_soon`
+   → wait for `Retry-After`.
 7. **Paths:** to work with a file use `paths.local` from the card; do not build
    paths yourself.
 
@@ -748,10 +766,10 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 
 | Request | Body | Notes |
 |---|---|---|
-| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index; a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (IMGWTools: a segment is a dataset) ends the job as `unsupported` |
-| `POST /stores/{store}/footprints` | none | unit outlines (TERYT, KU) from the network; offline → `409 conflict` (`offline_mode`) |
-| `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link; an unknown slot → `404` |
-| `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project |
+| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index, an administrator's (v0.4, `store.scan`); a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (IMGWTools: a segment is a dataset) ends the job as `unsupported` |
+| `POST /stores/{store}/footprints` | none | unit outlines (TERYT, KU) from the network, an administrator's (v0.4); offline → `409 conflict` (`offline_mode`) |
+| `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link, an administrator's (v0.4); an unknown slot → `404` |
+| `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project; a waiting scan of the folder is joined; otherwise (v0.4) a person, with their agents, has one such scan waiting or running (`429 rate_limited`, `scan_running`) and a folder is asked for once a minute (`scan_too_soon`), with `Retry-After`; the computer's owner is not limited |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
 | `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) and `"producer"` (the manifest whose tasks run, needed for a project with the manifests of both producers) | a job of the tasks of a project's manifest (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`, with `producer` when the request named it. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: no `producer` for a project of both manifests (`400`, `producer_required`) or one without a manifest in it (`400`, `other_producer`), a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |

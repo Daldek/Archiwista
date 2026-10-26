@@ -758,6 +758,7 @@ class JobSupervisor:
         store: str | None = None,
         params: Mapping[str, object] | None = None,
         actor: Principal,
+        admit: Callable[[], None] | None = None,
     ) -> JobRecord:
         """Record a job and start it when there is room, or join an active one.
 
@@ -799,6 +800,11 @@ class JobSupervisor:
             time with its offset).
         actor : Principal
             Who asks; the job keeps its id, kind and session label.
+        admit : Callable[[], None] or None, optional
+            Called under the supervisor's lock when the request would become
+            a new job (nothing in its way and no active job taking it): it
+            refuses the job by raising, and nothing is recorded then (the
+            limits of a person's scans, ``archiwista.services.owndata``).
 
         Returns
         -------
@@ -825,6 +831,8 @@ class JobSupervisor:
         ValueError
             An unknown kind, a store missing or given against the kind's
             rule, or invalid parameters.
+        Exception
+            Whatever ``admit`` raises.
         """
         job_kind = _job_kind(kind)
         rule = JOB_RULES[job_kind]
@@ -854,6 +862,8 @@ class JobSupervisor:
                         joined, stale = self._join(db, job_kind, store, values, now)
                         events.extend(stale)
                     if conflict is None and joined is None:
+                        if admit is not None:
+                            admit()
                         db.execute(
                             "INSERT INTO jobs (id, kind, actor, actor_kind, session,"
                             " store, params, state, created_at, pid)"
@@ -1156,6 +1166,34 @@ class JobSupervisor:
                 " AND json_extract(params, '$.project') IS NULL LIMIT 1"
             ).fetchone()
         return ScanHistory(finished_at=_datetime(finished), busy=busy is not None)
+
+    def active_of(self, actor: str, kind: str) -> JobRecord | None:
+        """Return the oldest job of ``kind`` that ``actor`` asked for, still active.
+
+        ``actor`` is a principal's id, so a person's agents count as the
+        person; ``None`` when no such job is active.
+        """
+        with self._reading() as connection:
+            row = connection.execute(
+                f"SELECT {_JOB_COLUMNS} FROM jobs WHERE kind = ? AND actor = ?"
+                f" AND state IN {_ACTIVE_SQL} ORDER BY created_at, id LIMIT 1",
+                (kind, actor),
+            ).fetchone()
+            return None if row is None else _job_record(connection, row)
+
+    def last_started(self, kind: str, project: str) -> datetime | None:
+        """Return when the newest job of ``kind`` of one project was asked for.
+
+        A job of the project names it in ``params.project`` (an ``own_scan``
+        of every project names none); ``None`` without such a job.
+        """
+        with self._reading() as connection:
+            started = connection.execute(
+                "SELECT max(created_at) FROM jobs WHERE kind = ?"
+                " AND json_extract(params, '$.project') = ?",
+                (kind, project),
+            ).fetchone()[0]
+        return _datetime(started)
 
     def list(
         self,

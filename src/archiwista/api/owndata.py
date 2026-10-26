@@ -6,10 +6,13 @@ Under ``/projects/{project}`` (decisions 8–10):
   its state and problems and its files by path, each with its change since
   its last snapshot; a folder not scanned yet has ``scanned_at: null``;
 - ``POST …/scan``: ``202 JobDetail`` of the ``own_scan`` of the project's
-  folder (a waiting run covering it is joined), as „Odśwież” does;
+  folder (a waiting run covering it is joined), as „Odśwież” does; a person
+  has one scan waiting or running and a folder one start a minute (``429
+  rate_limited``, ``scan_running``, ``scan_too_soon``);
 - ``PUT …/data-dir`` (``{"path": … | null}``): ``OwnFolder``, another data
-  folder or the default ``dane/`` again, for an administrator
-  (``settings.write``); its scan starts at once;
+  folder or the default ``dane/`` again, for the project's owner or an
+  administrator (``project.write``; an owner who is no administrator only
+  inside the project's directory); its scan starts at once;
 - ``GET …/files/{file_id}``: ``OwnFileCard``, with snapshots, history and
   preview;
 - ``GET|POST …/files/{file_id}/preview``, ``…/preview.png``,
@@ -54,7 +57,7 @@ from archiwista.api.dependencies import (
     visible_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
-from archiwista.api.jobs import job_supervisor
+from archiwista.api.jobs import SCAN_LIMITED, job_supervisor
 from archiwista.api.models import JobDetail
 from archiwista.api.models_layers import LayerSet
 from archiwista.api.models_owndata import (
@@ -114,6 +117,7 @@ from archiwista.services.owndata import (
     folder_check,
     folder_problems,
     own_problems,
+    scan_limits,
     set_data_dir,
 )
 from archiwista.sources.registry import PluginRegistry
@@ -368,15 +372,28 @@ def start_own_scan(
 ) -> JobRecord:
     """Submit the ``own_scan`` of a project's folder, or of every project's.
 
+    The scan of one project keeps to the limits of a person's scans
+    (``scan_limits``); the one of every project is the command line's and
+    the scheduler's.
+
     Raises
     ------
     NotFoundError
         An unknown or invisible project.
+    RateLimitedError
+        The person's scan waits or runs already (``scan_running``) or the
+        project's folder was asked to be scanned less than a minute ago
+        (``scan_too_soon``).
     """
     if project is None:
         return jobs.submit("own_scan", params={}, actor=principal)
     visible_project(queries, project, visible=visible)
-    return jobs.submit("own_scan", params={"project": project}, actor=principal)
+    return jobs.submit(
+        "own_scan",
+        params={"project": project},
+        actor=principal,
+        admit=scan_limits(jobs, principal, project),
+    )
 
 
 def change_data_dir(
@@ -391,14 +408,18 @@ def change_data_dir(
 ) -> OwnFolder:
     """Give a project another data folder (or its default) and scan it.
 
+    The scan after the change is not limited: the change is the owner's or
+    an administrator's.
+
     Raises
     ------
-    PermissionDeniedError
-        Not an administrator (``settings.write``).
     NotFoundError
         An unknown or invisible project.
+    PermissionDeniedError
+        Neither the project's owner nor an administrator (``project.write``).
     SettingsValidationError
-        The folder breaks a rule of decision 8; nothing changes.
+        The folder lies outside the project's directory for one who is no
+        administrator, or breaks a rule of decision 8; nothing changes.
     """
     check = set_data_dir(decisions, principal, settings, queries, paths, project, path)
     if jobs is not None:
@@ -547,10 +568,14 @@ def put_data_dir(
 ) -> OwnFolder:
     """Give a project another data folder, or its default `dane/` again (`null`).
 
-    Administrators only (the folder is where snapshots are written). The
-    folder must be an existing, readable directory outside every store,
-    Archiwista's data and other projects' folders (`422 validation_error`
-    with `problems` otherwise). Its scan starts at once (`own_scan`).
+    The project's owner or an administrator (`403 permission_denied`
+    otherwise; the folder is where snapshots are written). The folder must
+    be an existing, readable directory outside every store, Archiwista's
+    data and other projects' folders, and for an owner who is no
+    administrator inside the project's directory after resolving links (`400
+    validation_error` with `problems` otherwise, e.g. the code
+    `own_data_dir_outside_project`). A change is in the action log
+    (`project.data_dir`). Its scan starts at once (`own_scan`).
     """
     return change_data_dir(
         decisions, principal, settings, queries, paths, jobs, project, body.path
@@ -652,7 +677,7 @@ async def get_own_file_layers(
     "/scan",
     response_model=JobDetail,
     status_code=202,
-    responses=problem_responses(404),
+    responses={**problem_responses(404), **SCAN_LIMITED},
 )
 def start_project_scan(
     project: _Project,
@@ -665,7 +690,10 @@ def start_project_scan(
     """Scan the project's data folder in the background (`own_scan`, „Odśwież”).
 
     A waiting scan covering the folder is joined (`202` with that job).
-    Follow it with `GET /jobs/{job}/events`.
+    Otherwise a person (with their agents) has one such scan waiting or
+    running (`429 rate_limited`, reason `scan_running`) and a project's
+    folder is scanned at most once a minute (`scan_too_soon`), both with
+    `Retry-After`. Follow it with `GET /jobs/{job}/events`.
     """
     job = start_own_scan(jobs, queries, project, principal=principal, visible=visible)
     return _accepted(job, response, jobs, visible)

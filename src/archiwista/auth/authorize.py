@@ -8,16 +8,21 @@ queries and services filter projects and pins with, and
 of a listing at once. Routers and the command line never decide on their
 own: they pass the principal to the services, which ask here.
 
-Rules (v0.1, ``project.write`` since v0.2):
+Rules (v0.1, ``project.write`` since v0.2, ``project.create`` and
+``store.scan`` since v0.4):
 
-- ``admin`` manages accounts, groups and settings, sees every project and
-  manages the access and the content of each (``users.manage``,
-  ``groups.manage``, ``settings.write``, ``project.view``, ``project.share``,
-  ``project.write``);
+- ``admin`` manages accounts, groups and settings, scans the stores, sees
+  every project and manages the access and the content of each
+  (``users.manage``, ``groups.manage``, ``settings.write``, ``store.scan``,
+  ``project.view``, ``project.share``, ``project.write``);
+- every principal acting for a person (the local owner, a ``user``, an
+  ``agent``; not the scheduler) creates a project where none is yet
+  (``project.create``); the service makes an account that creates one (a
+  ``user``, or an ``agent`` of one) its owner (ADR-039 erratum 3);
 - a project's owner sees it, manages its access and changes it
-  (``project.write``: snapshots of own files, ``POST …/snapshots``, later
-  manifest changes); a project without an access entry has no owner, so
-  only administrators share or change it;
+  (``project.write``: snapshots of own files, ``POST …/snapshots``, manifest
+  changes, the data folder); a project without an access entry has no
+  owner, so only administrators share or change it;
 - ``public`` projects are seen by everyone, ``users`` by the listed people,
   ``group`` by members of the listed groups, ``private`` by the owner only;
   a project without an access entry follows ``default_project_visibility``
@@ -56,10 +61,12 @@ type Action = Literal[
     "project.view",
     "project.share",
     "project.write",
+    "project.create",
     "users.manage",
     "groups.manage",
     "settings.write",
     "store.write",
+    "store.scan",
     "job.cancel",
 ]
 
@@ -67,17 +74,19 @@ ACTIONS: tuple[Action, ...] = (
     "project.view",
     "project.share",
     "project.write",
+    "project.create",
     "users.manage",
     "groups.manage",
     "settings.write",
     "store.write",
+    "store.scan",
     "job.cancel",
 )
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
 
 _ADMIN_ACTIONS: frozenset[Action] = frozenset(
-    {"users.manage", "groups.manage", "settings.write"}
+    {"users.manage", "groups.manage", "settings.write", "store.scan"}
 )
 
 
@@ -198,12 +207,14 @@ class Authorizer:
             Who acts.
         action : Action
             ``project.view``, ``project.share``, ``project.write``,
-            ``users.manage``, ``groups.manage``, ``settings.write``,
-            ``store.write`` or ``job.cancel``.
+            ``project.create``, ``users.manage``, ``groups.manage``,
+            ``settings.write``, ``store.write``, ``store.scan`` or
+            ``job.cancel``.
         resource : str or None, optional
-            For ``project.*``: the project's access key (``access_key`` of
-            its directory, ``ProjectRef.access_key``); for ``job.cancel``:
-            the job's ``actor``; unused otherwise.
+            For ``project.view``, ``project.share`` and ``project.write``: the
+            project's access key (``access_key`` of its directory,
+            ``ProjectRef.access_key``); for ``job.cancel``: the job's
+            ``actor``; unused otherwise.
 
         Raises
         ------
@@ -213,6 +224,8 @@ class Authorizer:
         """
         if action in _ADMIN_ACTIONS:
             return ADMIN in principal.roles
+        if action == "project.create":
+            return principal.kind != "scheduler"
         if action == "store.write":
             return (
                 STORE_WRITER in principal.roles or self._settings().store_write_for_all

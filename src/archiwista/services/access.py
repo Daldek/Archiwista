@@ -8,6 +8,8 @@ needs its owner or ``admin``. A project the principal does not see is
 ``NotFoundError`` (``404``), a visible one they may not manage is
 ``PermissionDeniedError`` (``403``). Every change lands in the action log
 with the principal as the actor: its id, kind, session label and client.
+``directory`` is the one read for everyone: the enabled accounts and the
+groups a project can be shared with (``GET /directory``, ADR-047).
 """
 
 from collections.abc import Collection
@@ -46,6 +48,32 @@ class ProjectAccess:
     users: tuple[str, ...]
     groups: tuple[str, ...]
     explicit: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Directory:
+    """Whom a project can be shared with.
+
+    Attributes
+    ----------
+    users : tuple[UserRecord, ...]
+        The enabled accounts, ordered by id.
+    groups : tuple[GroupRecord, ...]
+        Every group, ordered by id.
+    """
+
+    users: tuple[UserRecord, ...]
+    groups: tuple[GroupRecord, ...]
+
+
+def directory(authorizer: Authorizer) -> Directory:
+    """Return the enabled accounts and the groups, for any principal.
+
+    A project's owner picks the people and groups to share it with here,
+    without ``users.manage``; HTTP shows each one's id and name only.
+    """
+    users = tuple(user for user in authorizer.state.users() if not user.disabled)
+    return Directory(users=users, groups=authorizer.state.groups())
 
 
 def list_users(authorizer: Authorizer, principal: Principal) -> tuple[UserRecord, ...]:

@@ -41,6 +41,7 @@ from archiwista.api import (
     API_PREFIX,
     OPENAPI_PATH,
     admin,
+    directory,
     health,
     projects,
     session,
@@ -208,6 +209,7 @@ def create_app(
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(session_list_routes.router, prefix=API_PREFIX)
     app.include_router(admin.router, prefix=API_PREFIX)
+    app.include_router(directory.router, prefix=API_PREFIX)
     app.include_router(health.router, prefix=API_PREFIX)
     app.include_router(stores.router, prefix=API_PREFIX)
     app.include_router(preview_routes.router, prefix=API_PREFIX)

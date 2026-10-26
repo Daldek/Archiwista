@@ -57,6 +57,20 @@ MESSAGES = {
         ),
         "Migawkę i zmiany projektu robi tylko jego właściciel albo administrator.",
     ),
+    "project_create": Text(
+        "A project is created by a person or their agent, not by the scheduler.",
+        "Projekt zakłada osoba albo jej agent, nie harmonogram.",
+    ),
+    "store_scan": Text(
+        (
+            "Scanning a store, outlining its units and checking its links require"
+            " the administrator role; the server also scans on its own schedule."
+        ),
+        (
+            "Skan magazynu, obrysy jednostek i sprawdzenie dowiązań wymagają roli"
+            " administratora; serwer skanuje też sam, według harmonogramu."
+        ),
+    ),
     "job_cancel": Text(
         "Only whoever started a job or an administrator can cancel it.",
         "Zadanie anuluje tylko ten, kto je uruchomił, albo administrator.",

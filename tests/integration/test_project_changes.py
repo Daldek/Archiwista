@@ -79,16 +79,18 @@ class Place:
 
     def create(self, name: str, *, actor: Principal = LOCAL_OWNER) -> str:
         """Create the project ``projects/<name>`` of Kartograf; return its key."""
-        return changes.create_project(
-            self.registry,
-            self.settings,
-            self.index,
-            self.authorizer,
-            producer="kartograf",
-            path=str(self.projects / name),
-            store=STORE,
-            actor=actor,
-        )
+        with IndexQueries(self.index) as queries:
+            return changes.create_project(
+                self.registry,
+                self.settings,
+                queries,
+                self.index,
+                self.authorizer,
+                producer="kartograf",
+                path=str(self.projects / name),
+                store=STORE,
+                actor=actor,
+            )
 
     def add(
         self,
@@ -357,10 +359,14 @@ def test_a_project_outside_the_project_directories_is_refused(
     """A relative path and a path outside every project directory are refused."""
     path = asked(place)
 
-    with pytest.raises(PathOutsideRootError) as refused:
+    with (
+        IndexQueries(place.index) as queries,
+        pytest.raises(PathOutsideRootError) as refused,
+    ):
         changes.create_project(
             place.registry,
             place.settings,
+            queries,
             place.index,
             place.authorizer,
             producer="kartograf",
@@ -415,10 +421,14 @@ def test_the_store_is_a_configured_store_of_the_producer(
         update={"stores": (*place.settings.stores, other)}
     )
 
-    with pytest.raises(error) as refused:
+    with (
+        IndexQueries(place.index) as queries,
+        pytest.raises(error) as refused,
+    ):
         changes.create_project(
             place.registry,
             settings,
+            queries,
             place.index,
             place.authorizer,
             producer="kartograf",
@@ -440,10 +450,14 @@ def test_a_producer_that_changes_no_projects_is_unsupported(
     register_standin(monkeypatch)
     registry = load_registry(cache_dir=tmp_path / "standin-cache")
 
-    with pytest.raises(UnsupportedError) as refused:
+    with (
+        IndexQueries(place.index) as queries,
+        pytest.raises(UnsupportedError) as refused,
+    ):
         changes.create_project(
             registry,
             place.settings,
+            queries,
             place.index,
             place.authorizer,
             producer="standin",
@@ -454,16 +468,6 @@ def test_a_producer_that_changes_no_projects_is_unsupported(
 
     assert refused.value.details["reason"] == "no_project_actions"
     assert not (place.projects / "raba").exists()
-
-
-def test_only_an_administrator_creates_a_project(place: Place) -> None:
-    """A new project has no owner yet: ``project.write`` is an administrator's."""
-    with pytest.raises(PermissionDeniedError):
-        place.create("raba", actor=principal(place.state, "owner"))
-    assert not (place.projects / "raba").exists()
-
-    place.create("raba", actor=principal(place.state, "admin"))
-    assert (place.projects / "raba" / MANIFEST).is_file()
 
 
 @pytest.fixture(params=VISIBILITY_VALUES)

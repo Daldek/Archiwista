@@ -10,15 +10,18 @@ invalid manifest of one producer hides nothing of the other's.
 them (``None``, ``404``).
 
 ``create_project``, ``add_project_task`` and ``remove_project_task`` change a
-manifest through its producer (``ProjectActionAdapter``, ADR-039) for whoever
-may change the project (``project.write``), then record the project in the
-index at once, as a scan reads it. A change acts on one manifest: the one of
-the producer it names, or the project's only one (``project_manifest``). A
-new project lies where a scan finds it, below a configured project
-directory, and names a configured store, never the producer's default root.
-None of them uses the network or writes a store. ``project_directory`` and
-``project_store`` give the jobs of a project (ADR-040) its directory and the
-configured store a manifest names.
+manifest through its producer (``ProjectActionAdapter``, ADR-039), then
+record the project in the index at once, as a scan reads it. A change of a
+project needs ``project.write`` (its owner or an administrator); a new
+project, in a directory where no project is yet, ``project.create`` (any
+person or their agent), and an account that creates one (a ``user``, or an
+``agent`` of one) owns it (ADR-039 erratum 3). A change acts on one
+manifest: the one of the producer it names, or the project's only one
+(``project_manifest``). A new project lies where a scan finds it, below a
+configured project directory, and names a configured store, never the
+producer's default root. None of them uses the network or writes a store.
+``project_directory`` and ``project_store`` give the jobs of a project
+(ADR-040) its directory and the configured store a manifest names.
 """
 
 import os
@@ -26,7 +29,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
-from archiwista.auth import Principal, ProjectVisibility, access_key
+from archiwista.auth import (
+    ALL_PROJECTS,
+    LOCAL_PRINCIPAL_ID,
+    Principal,
+    ProjectVisibility,
+    access_key,
+)
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import (
@@ -321,6 +330,7 @@ def _require_inside(
 def create_project(
     registry: PluginRegistry,
     settings: AppSettings,
+    queries: IndexQueries,
     index_path: Path,
     authorizer: Authorizer,
     *,
@@ -332,7 +342,13 @@ def create_project(
     """Create a manifest of ``producer`` bound to a configured store; return its key.
 
     A directory that is a project already, through another producer's
-    manifest, gets the second manifest and stays one project with its key.
+    manifest, gets the second manifest and stays one project with its key:
+    that needs ``project.write``, as does a directory with an access entry.
+    Anywhere else the project is new (``project.create``): an account that
+    creates it (a ``user``, or an ``agent`` of one) becomes its owner, with
+    the visibility of ``default_project_visibility``; the local owner and
+    their agents, who have no account, leave it without an entry. Either way
+    ``project.create`` is logged.
 
     Parameters
     ----------
@@ -340,10 +356,13 @@ def create_project(
         Producer plugins: the producer writes its own manifest.
     settings : AppSettings
         The configured stores and project directories.
+    queries : IndexQueries
+        Reader of the local index: the projects it holds.
     index_path : Path
         The local index, which holds the new project at once.
     authorizer : Authorizer
-        Decides whether ``actor`` may change a project in that directory.
+        Decides whether ``actor`` may create or change a project there, and
+        records a new project's owner.
     producer : str
         The producer of the manifest, e.g. ``kartograf``.
     path : str
@@ -375,8 +394,8 @@ def create_project(
         ``path`` is not absolute, lies below no configured project directory,
         or leaves it through a symbolic link.
     PermissionDeniedError
-        ``actor`` may not change a project in that directory
-        (``project.write``).
+        ``actor`` may not change the project there (``project.write``), or is
+        the scheduler (``project.create``).
     NotFoundError
         ``store`` is not configured.
     CommandRequestError
@@ -389,7 +408,12 @@ def create_project(
     """
     adapter = project_actions(registry, producer)
     base, directory = _project_place(path, settings.project_dirs)
-    authorizer.require(actor, "project.write", access_key(directory))
+    key = access_key(directory)
+    new = not _is_project(queries, authorizer, directory, key)
+    if new:
+        authorizer.require(actor, "project.create")
+    else:
+        authorizer.require(actor, "project.write", key)
     config = settings.store(store)
     if config is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
@@ -405,7 +429,16 @@ def create_project(
     if refused is not None:
         raise refused
     adapter.create_project(directory, root=root, relative=bool(config.path_aliases))
-    return _record(registry, settings, index_path, producer, directory)
+    project = _record(registry, settings, index_path, producer, directory)
+    if new:
+        authorizer.state.add_project(
+            access_key(directory),
+            owner=None if actor.id == LOCAL_PRINCIPAL_ID else actor.id,
+            visibility=authorizer.default_project_visibility,
+            producer=producer,
+            actor=actor,
+        )
+    return project
 
 
 def add_project_task(
@@ -633,6 +666,23 @@ def _record(
         return record_project(
             registry.adapter(producer), writer, directory, stores=settings.stores
         )
+
+
+def _is_project(
+    queries: IndexQueries, authorizer: Authorizer, directory: Path, key: str
+) -> bool:
+    """Whether ``directory`` is a project already, which a new one would take over.
+
+    It is with an access entry, a project the index holds there, or a
+    manifest of any producer that the index has not read yet.
+    """
+    if authorizer.state.project_access(key) is not None:
+        return True
+    if any(
+        project.access_key == key for project in queries.projects(visible=ALL_PROJECTS)
+    ):
+        return True
+    return any(os.path.lexists(directory / name) for name in PROJECT_MANIFESTS.values())
 
 
 def _project_place(path: str, project_dirs: Sequence[Path]) -> tuple[Path, Path]:

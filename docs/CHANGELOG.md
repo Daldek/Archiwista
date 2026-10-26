@@ -132,6 +132,23 @@ command-line interface may change.
   /groups/{group_id}/members`, a checkbox for every account) and "Usuń…" (`DELETE
   /groups/{group_id}` after a confirmation that its members stop seeing the projects
   shared only with it); a refusal shows in the window that asked.
+- Projects of every person (v0.4, ADR-039 erratum 3, A-ADR-029 erratum 2): any
+  signed-in person or their agent creates a project where none is yet (`POST
+  /projects`, `archiwista project-init`) and the account owns it, at the visibility of
+  `default_project_visibility`; the action log records `project.create` with the
+  producer and the owner (the computer's owner leaves a project without one). A
+  directory with an access entry, an indexed project or a manifest of any producer,
+  scanned or not, is a project already: adding a manifest to it needs its owner or an
+  administrator. The owner sets the project's data folder too (`PUT
+  /projects/{project}/data-dir`), as an absolute subfolder of the project's directory
+  after resolving links (`400 validation_error` with the problem
+  `own_data_dir_outside_project` otherwise), an administrator anywhere the folder
+  rules allow; a change is logged as `project.data_dir`. A person, with their agents,
+  has one scan of a data folder waiting or running (`429 rate_limited`,
+  `scan_running`) and a folder is asked for once a minute (`scan_too_soon`), both with
+  `Retry-After`, a retry too; a waiting scan of the folder is joined, and the
+  computer's owner is not limited. `GET /directory` (any session) lists the enabled
+  accounts and the groups, with their ids and names, to share a project with.
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
@@ -499,8 +516,8 @@ command-line interface may change.
   path_outside_root` outside), naming the store's directory of the producer (relative to
   the project directory when the store has path aliases, never the producer's default
   root); the store is configured (`404`), has a directory of the producer (`400
-  store_without_producer`) and can be read now (`503 store_unavailable`). A new project
-  has no owner yet, so only an administrator creates one. `POST
+  store_without_producer`) and can be read now (`503 store_unavailable`). Any person
+  or their agent creates a new project and owns it (v0.4, above). `POST
   /projects/{project}/tasks` adds a task (a command of the producer's catalog with its
   options, checked without the network: the producer's refusal keeps its text and
   `details.option`, an option that is a file path is `403`) and `DELETE
@@ -611,6 +628,11 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** scans of a store, unit outlines and link checks (`POST
+  /stores/{store}/scan`, `/footprints`, `/link-check`, and their retry) and a retry of
+  the scan of every project's data folder need the role `admin` (the new action
+  `store.scan`; `403 permission_denied` otherwise); the scheduler scans on its own.
+  (v0.4, A-ADR-029 erratum 2)
 - **Breaking:** `archiwista state export` writes `archiwista-state/2`: the password
   hashes (`passwords`), the preferences (`preferences`) and the action log (`actions`,
   instead of `permission_log`), and each account's `sessions_revoked_at`. The copy is

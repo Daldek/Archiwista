@@ -19,15 +19,19 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   kind needs at its start is asked again: a ``download`` needs
   ``store.write``, a ``snapshot`` ``project.write`` of its project, a
   ``project_download`` or ``project_repin`` both (``project_jobs.require``),
-  and the project of a ``snapshot`` or a ``project_*`` job must still be one
-  the principal sees; the supervisor checks the rest as for any new job (the
-  store configured, offline mode, a conflict, a job it joins).
+  a ``scan``, ``footprints``, ``link_check`` or an ``own_scan`` of every
+  project ``store.scan``, and an ``own_scan`` of one project keeps to the
+  limits of a person's scans (``scan_limits``); the project of a
+  ``snapshot`` or a ``project_*`` job must still be one the principal sees;
+  the supervisor checks the rest as for any new job (the store configured,
+  offline mode, a conflict, a job it joins).
 - ``log`` returns the end of the job's log (its worker's standard error) to
   a principal who sees the whole job: a ``preview`` job that also builds
   files of projects the principal does not see is ``403
   permission_denied``; a job without a log is ``404`` (``job.no_log``).
 """
 
+from collections.abc import Callable
 from typing import Any
 
 from archiwista.auth import Principal, ProjectVisibility
@@ -44,9 +48,12 @@ from archiwista.jobs import (
 )
 from archiwista.messages import label, message
 from archiwista.services import project_jobs
+from archiwista.services.owndata import scan_limits
 
 # States of a job that a retry runs again: it did not succeed.
 RETRY_STATES: tuple[JobState, ...] = ("partial", "failed", "interrupted", "cancelled")
+# Kinds of the jobs of a store that only administrators start (``store.scan``).
+STORE_SCAN_KINDS = frozenset({"scan", "footprints", "link_check"})
 
 
 def visible_job(
@@ -136,7 +143,7 @@ def retry(
         Started supervisor of the new job.
     authorizer : Authorizer
         Decides what the kind of the job needs (``store.write``,
-        ``project.write``).
+        ``project.write``, ``store.scan``).
     queries : IndexQueries
         The local index: the project of a ``snapshot`` or a ``project_*``
         job.
@@ -167,7 +174,12 @@ def retry(
     PermissionDeniedError
         A ``download`` without ``store.write``, a ``snapshot`` without
         ``project.write`` of its project, a ``project_download`` or
-        ``project_repin`` without either.
+        ``project_repin`` without either, a ``scan``, ``footprints``,
+        ``link_check`` or an ``own_scan`` of every project without
+        ``store.scan``.
+    RateLimitedError
+        An ``own_scan`` of one project beyond the limits of a person's scans
+        (``scan_running``, ``scan_too_soon``).
     OfflineModeError, JobConflictError
         As for any new job of the kind (``JobSupervisor.submit``).
     """
@@ -187,6 +199,15 @@ def retry(
         )
     if record.kind == "download":
         authorizer.require(actor, "store.write")
+    if record.kind in STORE_SCAN_KINDS:
+        authorizer.require(actor, "store.scan")
+    admit: Callable[[], None] | None = None
+    if record.kind == "own_scan":
+        scanned = record.params.get("project")
+        if scanned is None:
+            authorizer.require(actor, "store.scan")
+        else:
+            admit = scan_limits(jobs, actor, str(scanned))
     if record.kind == "snapshot" or record.kind in PROJECT_KINDS:
         project = str(record.params["project"])
         found = queries.project(project, visible=visible)
@@ -197,7 +218,11 @@ def retry(
         else:
             project_jobs.require(authorizer, actor, record.kind, found.project)
     submitted = jobs.submit(
-        record.kind, store=record.store, params=record.params, actor=actor
+        record.kind,
+        store=record.store,
+        params=record.params,
+        actor=actor,
+        admit=admit,
     )
     return jobs.get(submitted.id, visible=visible) or submitted
 

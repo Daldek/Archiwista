@@ -8,7 +8,9 @@ the projects the session's principal sees (A-ADR-029): another project is
 asks each manifest's producer now (no network, no hashing); while a
 manifest's store is unavailable it answers that manifest's check of the last
 scan as ``stale``, and ``503 store_unavailable`` when there is none. ``POST
-/projects`` creates a manifest through its producer, ``POST
+/projects`` creates a manifest through its producer: a new project for any
+person or their agent, who owns it (``project.create``), and another
+producer's manifest of a project for whoever may change it. ``POST
 /projects/{project}/tasks`` adds a task and ``DELETE
 /projects/{project}/tasks/{name}`` removes one (ADR-039): each needs
 ``project.write`` (the owner or an administrator) and answers the project's
@@ -321,8 +323,6 @@ def create_project(
     body: ProjectRequest,
     principal: _Principal,
     decisions: _Authorizer,
-    visible: _Visible,
-    writable: _Writable,
     registry: _Registry,
     settings: _Settings,
     queries: _Queries,
@@ -334,26 +334,31 @@ def create_project(
     The producer writes its manifest in `path`, made when missing, naming the
     store's directory of the producer: relative to the project directory
     when the store has path aliases, else absolute, never the producer's
-    default root. A directory that holds another producer's manifest stays
-    one project with both. The index holds the project at once: the answer
-    is `201` with its card and `Location: /api/v1/projects/{project}`. A new
-    project has no owner yet, so only an administrator creates one (`403
-    permission_denied`). Refused: a path that is not absolute or leaves the
-    project directories of the settings (`403`, `path_outside_root`), a place
-    a scan would not find (`400`, `project_not_discoverable`: more than four
-    levels down, in a hidden directory or in a store), a project directory of
-    the settings that is missing (`400`, `project_dir_missing`), a store that
-    is not configured (`404`), has no directory of the producer (`400`,
+    default root. The index holds the project at once: the answer is `201`
+    with its card and `Location: /api/v1/projects/{project}`. Where no
+    project is yet, any person or their agent creates one and owns it, with
+    the visibility of the setting `default_project_visibility` (the owner
+    changes it with `PUT /projects/{project}/access`); the creation is in the
+    action log (`project.create`). A directory that holds another producer's
+    manifest stays one project with both, which only its owner or an
+    administrator adds to (`403 permission_denied`), as a directory with an
+    access entry. Refused: a path that is not absolute or leaves the project
+    directories of the settings (`403`, `path_outside_root`), a place a scan
+    would not find (`400`, `project_not_discoverable`: more than four levels
+    down, in a hidden directory or in a store), a project directory of the
+    settings that is missing (`400`, `project_dir_missing`), a store that is
+    not configured (`404`), has no directory of the producer (`400`,
     `store_without_producer`) or cannot be read now (`503
     store_unavailable`), a producer that creates no projects (`422`,
-    `no_project_actions`), the producer's refusal (`400` with its text,
-    e.g. a manifest of its own that is there already) and a lock of the
-    manifest that stays (`409`, `project_locked`, `details.lock`). Nothing
-    uses the network.
+    `no_project_actions`), the producer's refusal (`400` with its text, e.g.
+    a manifest of its own that is there already) and a lock of the manifest
+    that stays (`409`, `project_locked`, `details.lock`). Nothing uses the
+    network.
     """
     key = project_service.create_project(
         registry,
         settings.get(),
+        queries,
         index,
         decisions,
         producer=body.producer,
@@ -362,6 +367,9 @@ def create_project(
         actor=principal,
     )
     response.headers["Location"] = f"{API_PREFIX}/projects/{key}"
+    # Read after the creation: a new project is the creator's now.
+    visible = decisions.visible_projects(principal)
+    writable = decisions.writable_projects(principal)
     return project_card(queries, key, visible=visible, writable=writable)
 
 

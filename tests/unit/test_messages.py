@@ -82,6 +82,7 @@ _NAME_TABLES = frozenset(
 _DATA = frozenset(
     {
         ("api/admin.py", "Dział hydrologii"),
+        ("api/directory.py", "Dział hydrologii"),
         ("api/jobs.py", "/mnt/nas/projekty/archiwum"),
         ("api/models.py", "/mnt/nas/projekty"),
         ("api/models.py", "Główny Urząd Geodezji i Kartografii"),

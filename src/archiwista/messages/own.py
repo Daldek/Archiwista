@@ -39,6 +39,36 @@ MESSAGES = {
             " ({other}) — plik należy do jednego projektu"
         ),
     ),
+    "data_dir_outside_project": Text(
+        (
+            "Data directory {path} does not lie inside the directory of project"
+            " {project}; only an administrator sets a folder elsewhere"
+        ),
+        (
+            "Folder danych {path} nie leży wewnątrz katalogu projektu {project};"
+            " folder gdzie indziej wskazuje tylko administrator"
+        ),
+    ),
+    "scan_running": Text(
+        (
+            "Your scan of a project's data folder waits or runs already (job {job});"
+            " ask for the next one when it ends"
+        ),
+        (
+            "Twój skan folderu danych projektu już czeka albo trwa (zadanie {job});"
+            " o następny poproś, gdy się skończy"
+        ),
+    ),
+    "scan_too_soon": Text(
+        (
+            "A scan of the data folder of project {project} was asked for less than"
+            " a minute ago; ask again in {seconds} s"
+        ),
+        (
+            "Skan folderu danych projektu {project} zlecono niecałą minutę temu;"
+            " spróbuj ponownie za {seconds} s"
+        ),
+    ),
     "folder_reason_inside_store": Text(
         "is inside a store",
         "leży w magazynie",
