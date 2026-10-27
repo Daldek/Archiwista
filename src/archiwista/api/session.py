@@ -639,10 +639,12 @@ def change_password(
     """Change the password of the session's account (team mode).
 
     The new password must have 12 to 1,024 characters and be neither the
-    account's id or name nor a common password (`400 validation_error`,
-    reason `password_policy`, `details.rule`); a wrong current password is
-    `403 forbidden`, reason `wrong_password`, and counts as a failed sign-in
-    (`429 login_blocked` after five). Every session of the account and its
+    account's id or name nor a common password, nor the current one ignoring
+    case, so a temporary password never stays (`400 validation_error`,
+    reason `password_policy`, `details.rule`, `same_as_current` for the
+    last); a wrong current password is `403 forbidden`, reason
+    `wrong_password`, and counts as a failed sign-in (`429 login_blocked`
+    after five). Every session of the account and its
     agents' ends; the answer is a new session with a new cookie and CSRF
     token. An agent's session may not change it (`403 permission_denied`),
     nor a session of the reverse proxy (`409 proxy_session`); local mode has

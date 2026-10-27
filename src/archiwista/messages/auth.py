@@ -19,6 +19,10 @@ MESSAGES = {
         "This password is among the most common ones; choose another one.",
         "To hasło należy do najczęściej używanych; wybierz inne.",
     ),
+    "password_same_as_current": Text(
+        "The new password must differ from the current one.",
+        "Nowe hasło musi się różnić od obecnego.",
+    ),
     "login_failed": Text(
         "The account or the password is wrong.",
         "Nieprawidłowe konto albo hasło.",

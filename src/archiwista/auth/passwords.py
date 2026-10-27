@@ -40,7 +40,9 @@ from archiwista.errors import InvalidChangeError, NotFoundError
 from archiwista.messages import Message, message
 from archiwista.state import PasswordRecord, StateStore, UserRecord
 
-type PolicyRule = Literal["too_short", "too_long", "account_name", "common"]
+type PolicyRule = Literal[
+    "too_short", "too_long", "account_name", "common", "same_as_current"
+]
 
 MIN_LENGTH = 12
 MAX_LENGTH = 1024
@@ -152,6 +154,8 @@ def policy_text(rule: PolicyRule) -> Message:
         return message("auth.password_too_long", maximum=MAX_LENGTH)
     if rule == "account_name":
         return message("auth.password_account_name")
+    if rule == "same_as_current":
+        return message("auth.password_same_as_current")
     return message("auth.password_common")
 
 
@@ -367,10 +371,12 @@ def change_password(
 ) -> UserRecord | None:
     """Change a person's own password, given the current one.
 
-    The new password must pass the policy (checked first, before any hash);
-    then the current one is verified. On success every session of the
-    account ends (its revocation time) and the action log gets
-    ``session.password``, in one transaction.
+    The new password must pass the policy and differ from the current one,
+    ignoring case (both checked first, before any hash), so a temporary
+    password an administrator handed over never stays (ASVS 6.4.1); then
+    the current one is verified. On success every session of the account
+    ends (its revocation time) and the action log gets ``session.password``,
+    in one transaction.
 
     Returns
     -------
@@ -383,11 +389,18 @@ def change_password(
     NotFoundError
         Unknown account.
     InvalidChangeError
-        The new password breaks the policy: reason ``password_policy``,
-        ``details.rule`` names the rule.
+        The new password breaks the policy or is the current one: reason
+        ``password_policy``, ``details.rule`` names the rule
+        (``same_as_current`` for the latter).
     """
     user = _existing(state, user_id)
     _require_policy(new, user)
+    if fold(new) == fold(current):
+        raise InvalidChangeError(
+            policy_text("same_as_current"),
+            reason="password_policy",
+            details={"rule": "same_as_current"},
+        )
     if not verify(state.password_record(user_id), current).matches:
         return None
     return state.set_password(

@@ -324,6 +324,33 @@ def test_a_temporary_password_lets_the_session_only_change_it(team: Team) -> Non
     assert after.status_code == 200, after.text
 
 
+def test_a_temporary_password_cannot_become_the_password_that_stays(
+    team: Team,
+) -> None:
+    """A change to the same temporary password is refused; it must still be changed.
+
+    The administrator who issued it still knows it (ASVS 6.4.1); the change
+    used to accept it as the long-term password (review of v0.4, D3).
+    """
+    # Arrange
+    admin = signed_in(team.client, ADMIN, ADMIN_PASSWORD)
+    issued = admin.request("POST", f"/users/{PERSON}/password")
+    temporary = issued.json()["password"]
+    session = signed_in(team.client, PERSON, temporary)
+
+    # Act
+    kept = change(session, temporary, temporary)
+    case_changed = change(session, temporary, temporary.swapcase())
+    again = sign_in(team.client, PERSON, temporary)
+
+    # Assert
+    for refused in (kept, case_changed):
+        assert_problem(refused, 400, "validation_error", "password_policy")
+        assert refused.json()["details"]["rule"] == "same_as_current"
+    assert again.status_code == 200, again.text
+    assert again.json()["password_change_required"] is True
+
+
 def test_a_password_change_ends_the_other_sessions_and_answers_a_new_one(
     team: Team,
 ) -> None:

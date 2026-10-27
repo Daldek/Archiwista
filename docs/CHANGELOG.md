@@ -1166,6 +1166,12 @@ command-line interface may change.
   after it, so 20 or 40 wrong passwords sent together were all verified (review of
   v0.4, D1); now at most five are before the first wait, then one at a time. The
   same holds for the current password of `PUT /session/password`.
+- A temporary password cannot become the password that stays: `PUT
+  /session/password` refuses a new password equal to the current one, ignoring case
+  (`400 password_policy`, `details.rule` `same_as_current`, shown at the new password's
+  field), before any hash. Before, a person signed in with a temporary password could
+  "change" it to the same value and keep it, though the administrator who issued it
+  still knew it (review of v0.4, D3; ASVS 6.4.1).
 
 ## [0.2.0] - 2026-10-20
 

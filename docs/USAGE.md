@@ -676,7 +676,8 @@ the 3,000 most common passwords, and nothing forces a periodic change. An
 administrator gives a person a temporary password: the server generates one, shows
 it once and keeps only its hash (`POST /api/v1/users/{id}/password`), or `archiwista
 users password ID --temporary` takes a typed one. It is valid 72 hours and is changed
-at the first sign-in. Setting a password ends every session of the account.
+at the first sign-in, to another password: a change never keeps the current one.
+Setting a password ends every session of the account.
 `archiwista users list` shows each account's password as `none`, `set`, `temporary`
 (with its end) or `expired`. `archiwista users disable ID` switches an account off
 (it acts nowhere and its sessions end) and `users enable ID` on again. The last
