@@ -1434,8 +1434,13 @@ def csp_header(settings: AppSettings) -> str:
 
 # TLS -----------------------------------------------------------------------
 
+# TLS in the server (ADR-046 decision 3, ASVS 12.1.1): TLS 1.2 or newer, and
+# in TLS 1.2 key exchange with ECDHE (forward secrecy) and AEAD ciphers only.
+TLS_MINIMUM_VERSION = ssl.TLSVersion.TLSv1_2
+TLS_CIPHERS = "ECDHE+AESGCM:ECDHE+CHACHA20"
 
-class _EncryptedKeyError(Exception):
+
+class _EncryptedKeyError(OSError):
     """The private key asks for a passphrase, which the server never has."""
 
 
@@ -1443,13 +1448,40 @@ def _no_passphrase() -> bytes:
     raise _EncryptedKeyError(message("serve.tls_key_encrypted"))
 
 
+def tls_context(cert: Path, key: Path) -> ssl.SSLContext:
+    """Return the context of TLS in the server, its certificate chain loaded.
+
+    TLS 1.2 or newer, and in TLS 1.2 only the AEAD ciphers with ECDHE
+    (``TLS_CIPHERS``; TLS 1.3 has no others), set here rather than left to
+    the defaults of Python and Uvicorn (an older Uvicorn widened them to
+    every TLS 1.0 cipher). The key must need no passphrase: the server never
+    asks for one at the terminal.
+
+    Parameters
+    ----------
+    cert, key : Path
+        ``tls_cert`` and ``tls_key`` of the table ``[team]``.
+
+    Raises
+    ------
+    OSError
+        A file cannot be read, or the two do not load as a pair
+        (``ssl.SSLError``), or the key is encrypted.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = TLS_MINIMUM_VERSION
+    context.set_ciphers(TLS_CIPHERS)
+    context.load_cert_chain(cert, key, password=_no_passphrase)
+    return context
+
+
 def tls_problem(cert: Path, key: Path) -> str | None:
     """Return why a certificate chain and its key cannot serve TLS, or ``None``.
 
-    The files are loaded as the server loads them
-    (``ssl.SSLContext.load_cert_chain``): readable PEM files, a key that
-    matches the certificate and needs no passphrase (an encrypted key would
-    make the server ask for one at the terminal).
+    The files are loaded as the server loads them (``tls_context``):
+    readable PEM files, a key that matches the certificate and needs no
+    passphrase (an encrypted key would make the server ask for one at the
+    terminal).
 
     Parameters
     ----------
@@ -1461,12 +1493,9 @@ def tls_problem(cert: Path, key: Path) -> str | None:
     str or None
         What loading them said, or ``None`` when they load as a pair.
     """
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     try:
-        context.load_cert_chain(cert, key, password=_no_passphrase)
-    except _EncryptedKeyError as error:
-        return str(error)
-    except OSError as error:  # ssl.SSLError too
+        tls_context(cert, key)
+    except OSError as error:  # ssl.SSLError and an encrypted key too
         return error.strerror or str(error)
     return None
 

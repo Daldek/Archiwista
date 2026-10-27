@@ -1040,7 +1040,9 @@ with errata. State of the code in brief:
   `trusted_proxies` (`tls_required` without them) on a specific address
   (`proxy_bind_wildcard`), a loopback one when every proxy is one
   (`proxy_bind_not_loopback`). The socket is created by `bind_address` (IPv4 or
-  IPv6); Uvicorn runs without `proxy_headers` and without the `Server` header.
+  IPv6); Uvicorn runs without `proxy_headers` and without the `Server` header, and
+  TLS in the server is the context of `tls_context` (TLS 1.2 or newer; in TLS 1.2
+  ECDHE with AEAD ciphers only, `TLS_CIPHERS`), which `tls_problem` loads too.
   Once the state database is open, team mode also needs an enabled administrator
   who can sign in, with a password that has not expired or through the proxy of
   `proxy_user_header` (`admin_refusal`, `team_no_admin`), before the port is bound.

@@ -30,6 +30,7 @@ import os
 import secrets
 import socket
 import sqlite3
+import ssl
 import threading
 import webbrowser
 from collections.abc import Callable, Iterable
@@ -72,6 +73,7 @@ from archiwista.security import (
     fragment_url,
     issue_one_time_token,
     revoke_agent_sessions,
+    tls_context,
     tls_problem,
 )
 from archiwista.sources.registry import PluginRegistry
@@ -332,8 +334,9 @@ class AppServer:
         Level of Uvicorn's own messages (``archiwista.logs.LOG_LEVELS``).
     tls : tuple[Path, Path] or None, optional
         The certificate chain and the private key of TLS in the server (team
-        mode); Python's defaults of a TLS server apply (TLS 1.2 or newer).
-        ``None`` serves plain HTTP: local mode, or behind a proxy.
+        mode), served with ``security.tls_context``: TLS 1.2 or newer, and
+        in TLS 1.2 ECDHE with AEAD ciphers only. ``None`` serves plain HTTP:
+        local mode, or behind a proxy.
     """
 
     def __init__(
@@ -363,8 +366,7 @@ class AppServer:
             proxy_headers=False,
             server_header=False,
             limit_concurrency=LIMIT_CONCURRENCY,
-            ssl_certfile=None if tls is None else tls[0],
-            ssl_keyfile=None if tls is None else tls[1],
+            ssl_context_factory=None if tls is None else _tls_factory(*tls),
         )
         self._server = _Uvicorn(config, on_stop)
 
@@ -377,6 +379,19 @@ class AppServer:
     def stop(self) -> None:
         """Ask the server to finish; ``run`` returns shortly. Thread-safe."""
         self._server.should_exit = True
+
+
+def _tls_factory(
+    cert: Path, key: Path
+) -> Callable[[uvicorn.Config, Callable[[], ssl.SSLContext]], ssl.SSLContext]:
+    """Return Uvicorn's factory of the server's TLS: ``tls_context``, not its own."""
+
+    def factory(
+        config: uvicorn.Config, default: Callable[[], ssl.SSLContext]
+    ) -> ssl.SSLContext:
+        return tls_context(cert, key)
+
+    return factory
 
 
 def open_in_browser(server: AppServer) -> None:

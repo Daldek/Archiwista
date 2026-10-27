@@ -1195,6 +1195,13 @@ command-line interface may change.
   administrator counted, one without a password too, so the only one who could sign
   in could be disabled and nobody could administer the team from the network until
   the next start refused with `team_no_admin` (review of v0.4, D9; ADR-046 erratum 2).
+- TLS in the server sets its own floor: TLS 1.2 or newer, and in TLS 1.2 only ciphers
+  with ECDHE and AEAD (`security.tls_context`, given to Uvicorn through
+  `ssl_context_factory`; the start's check of the files loads the same context).
+  Before, the versions and ciphers were the defaults of Python and Uvicorn: TLS 1.2
+  accepted CBC ciphers, and an older Uvicorn within the allowed range widened them to
+  every TLS 1.0 cipher (review of v0.4, D11; ASVS 12.1.1). Uvicorn's lower bound is
+  now 0.54.
 
 ## [0.2.0] - 2026-10-20
 

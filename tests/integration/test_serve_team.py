@@ -20,10 +20,17 @@ from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.team_server import (
     ADMIN_ACCOUNT,
     ADMIN_PASSWORD,
+    TeamSite,
     cheap_hasher,
     free_port,
     team_serving,
     team_site,
+)
+
+# TLS 1.2 ciphers without AEAD (CBC with HMAC), with and without forward secrecy.
+CBC_CIPHERS = (
+    "ECDHE-ECDSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:"
+    "ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA:AES128-SHA256:AES128-SHA"
 )
 
 
@@ -76,6 +83,59 @@ def test_serve_team_answers_its_origin_over_tls_only(tmp_path: Path) -> None:
     assert server.url == site.origin
     assert server.launch is None
     assert launch_files == []
+
+
+def handshake(site: TeamSite, client: ssl.SSLContext) -> tuple[str, str] | None:
+    """Return the TLS version and cipher the site agrees on, ``None`` if refused."""
+    client.load_verify_locations(cafile=site.tls.ca_file)
+    with socket.create_connection(("127.0.0.1", site.port), timeout=10) as raw:
+        try:
+            with client.wrap_socket(raw, server_hostname="localhost") as tls:
+                version = tls.version()
+                cipher = tls.cipher()
+        except ssl.SSLError:
+            return None
+    assert version is not None and cipher is not None
+    return version, cipher[0]
+
+
+def test_serve_team_speaks_tls_12_or_newer_with_aead_ciphers_only(
+    tmp_path: Path,
+) -> None:
+    """TLS 1.1, and TLS 1.2 without an AEAD cipher, are refused; 1.2 and 1.3 pass.
+
+    The versions and ciphers were the libraries' defaults: Python's let TLS 1.2
+    use CBC ciphers, and older Uvicorn widened them to every TLS 1.0 cipher
+    (review of v0.4, D11).
+    """
+    paths = local_paths(tmp_path)
+    site = team_site(tmp_path / "tls")
+    old = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    with pytest.deprecated_call():
+        old.minimum_version = ssl.TLSVersion.TLSv1
+        old.maximum_version = ssl.TLSVersion.TLSv1_1
+    old.set_ciphers("ALL:@SECLEVEL=0")
+    cbc = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    cbc.maximum_version = ssl.TLSVersion.TLSv1_2
+    cbc.set_ciphers(CBC_CIPHERS)
+    tls12 = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    tls12.maximum_version = ssl.TLSVersion.TLSv1_2
+
+    with team_serving(paths, site):
+        agreed = {
+            "TLS 1.1": handshake(site, old),
+            "TLS 1.2 CBC": handshake(site, cbc),
+            "TLS 1.2": handshake(site, tls12),
+            "TLS 1.3": handshake(site, ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)),
+        }
+
+    assert agreed["TLS 1.1"] is None
+    assert agreed["TLS 1.2 CBC"] is None
+    assert agreed["TLS 1.2"] is not None and agreed["TLS 1.3"] is not None
+    version, cipher = agreed["TLS 1.2"]
+    assert version == "TLSv1.2" and cipher.startswith("ECDHE-")
+    assert "-GCM-" in cipher or "CHACHA20" in cipher
+    assert agreed["TLS 1.3"][0] == "TLSv1.3"
 
 
 def test_serve_team_without_tls_or_proxy_exits_before_listening(

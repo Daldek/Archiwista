@@ -630,7 +630,9 @@ who can sign in.
 authority, or a public one for a name the computers resolve) and its private key
 without a passphrase, readable by the server's account only (`chmod 600`), then
 for example `archiwista serve --host 0.0.0.0 --port 8443` with `origin =
-"https://archiwista.firma.local:8443"`.
+"https://archiwista.firma.local:8443"`. The server speaks TLS 1.2 or newer, and in
+TLS 1.2 only ciphers with ECDHE and AEAD (AES-GCM, ChaCha20-Poly1305), which
+every current browser offers.
 
 **Behind a reverse proxy.** Caddy or nginx ends TLS and passes the requests to
 Archiwista over plain HTTP. `trusted_proxies` names the proxy's addresses

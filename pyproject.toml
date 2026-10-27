@@ -24,7 +24,9 @@ dependencies = [
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
     "kartograf @ git+https://github.com/Daldek/Kartograf@745e8b18b586243ae4899fa483db74588cc13dac",
     "fastapi>=0.115,<1",
-    "uvicorn>=0.34,<1",
+    # The server's TLS is Archiwista's own context (`security.tls_context`), given
+    # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
+    "uvicorn>=0.54,<1",
     "pydantic>=2,<3",
     "platformdirs>=4,<5",
     # 2.1: shapely.transform(..., interleaved=False) for pinned operations.
