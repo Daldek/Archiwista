@@ -248,6 +248,16 @@ command-line interface may change.
   dnia" kept in the address; "Dalej" and "Wstecz"; a row opens the state before and
   after, the details, the session and the kind of actor; "Eksportuj CSV" and
   "Eksportuj JSON Lines" save the entries the filters select as a file.
+- Preferences and path aliases of each person (v0.4, ADR-047 decision 6 and erratum 1):
+  `GET /api/v1/preferences` and `PUT /api/v1/preferences` (any session, its own; an
+  agent's are its account's, the computer owner's in local mode) hold `year_types`,
+  `basemap` (a configured name, `""` for none, `null` for the first configured one;
+  another name is `400 unknown_basemap`) and `path_aliases` (at most 20 pairs of an
+  absolute prefix on the server and the same place on the person's computer, each
+  at most 400 characters). Every copy path (`CopyPath`: file and version cards,
+  station cards, own files, folders and snapshots) gains `personal`, the path through
+  the person's first alias that holds it (`null` without one); an alias only changes
+  the paths shown and copied, never the paths the routes take. A change is not logged.
 - The comparison of stations: "Porównaj z…" in the toolbar of the station card's chart,
   or up to five rows of the Catalog's station list chosen with their button or `P` and
   then "Porównaj", opens one variable of 2 to 5 stations as panels stacked over one
@@ -356,10 +366,9 @@ command-line interface may change.
   place on the provider's list, then by name); `sort=name` keeps the order by name, the
   only one until now. A cursor belongs to its search and order.
 - The year type is remembered for hydro and for meteo data (P15, ADR-045, plan I8.2):
-  `year_types` in `config.toml` and `GET /api/v1/settings` (hydro hydrological, meteo
-  calendar by default), changed by `PUT /api/v1/settings/year-types` (an administrator
-  until each person's preferences hold them; the action log keeps a change as
-  `settings.update`). The station routes and `archiwista stations` number the years
+  `year_types` of each person's preferences (`GET /api/v1/preferences`; hydro
+  hydrological, meteo calendar by default), changed by `PUT /api/v1/preferences`. The
+  station routes and `archiwista stations` (as the computer's owner) number the years
   of a view without `year_type` as remembered for its family; a list of both families,
   without a dataset or a station type, takes the type remembered for hydro data (until
   now each family kept its own default there). A `year_type` in the request wins and
@@ -862,6 +871,11 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
+  `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT
+  /api/v1/settings/year-types` is removed; use `PUT /api/v1/preferences`. A
+  `year_types` table in `config.toml` is ignored, left out of the file at the next
+  change of the settings, and `archiwista doctor` names it as a warning until then.
 - **Breaking:** scans of a store, unit outlines and link checks (`POST
   /stores/{store}/scan`, `/footprints`, `/link-check`, and their retry) and a retry of
   the scan of every project's data folder need the role `admin` (the new action

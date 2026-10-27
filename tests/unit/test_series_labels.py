@@ -14,10 +14,10 @@ from datetime import date
 import pytest
 
 from archiwista.api.models_stations import series_label_text
-from archiwista.config import YearTypes
 from archiwista.index.series import (
     SeriesLabel,
     YearRange,
+    YearTypes,
     default_span,
     label_year_type,
     series_label,

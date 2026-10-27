@@ -29,7 +29,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal, NamedTuple
 
-from archiwista.config import YearTypes
+from pydantic import BaseModel, ConfigDict, Field
+
 from archiwista.sources import DateRange, TimeUnit, VariableCoverage, YearType
 
 type Interval = tuple[int, int]
@@ -52,6 +53,35 @@ MAX_UNKNOWN_RANGES = 2
 LONG_GAP_DAYS = 30
 # The first month of the hydrological year (1 XI of the year before).
 _HYDROLOGICAL_START = 11
+
+
+class YearTypes(BaseModel):
+    """The year type a person remembers for hydro and for meteo data (P15, SPEC 6.7).
+
+    The numbering of the years of each family in the station views without
+    ``year_type``: hydrological and calendar years by default, as the archives
+    number them. A ``year_type`` asked for wins and changes neither; half-year
+    characteristics stay hydrological (SPEC 4.8.2).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    hydro: YearType = Field(
+        default="hydrological",
+        description="Numbering of the years of hydro data: hydrological by default.",
+    )
+    meteo: YearType = Field(
+        default="calendar",
+        description="Numbering of the years of meteo data: calendar by default.",
+    )
+
+    def of_kind(self, kind: str | None) -> YearType:
+        """Return the type of a family: hydro's for ``hydro``, else meteo's."""
+        return self.hydro if kind == "hydro" else self.meteo
+
+
+# What a person who chose nothing gets: the numbering of the IMGW archives.
+DEFAULT_YEAR_TYPES = YearTypes()
 
 
 class SeriesYear(NamedTuple):

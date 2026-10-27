@@ -4,7 +4,8 @@ A file of a data folder is named by its project and ``file_id`` (16
 characters of the SHA-256 of its path in the folder); ``ref`` is
 ``file:<project>:<path>`` and of a snapshot
 ``snapshot:<project>:<label>:<path>`` (decision 10). Absolute paths appear
-only as copy paths (``CopyPath``), on this computer and as aliased elsewhere.
+only as copy paths (``CopyPath``), on this computer, as aliased elsewhere and
+through the person's own path aliases.
 The request models refuse unknown parameters and members (``422``).
 """
 
@@ -16,7 +17,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from archiwista.api.models import CopyPath, Issue, Location
+from archiwista.api.models import CopyPath, Issue, Location, Preferences
 from archiwista.api.models_previews import PreviewInfo
 from archiwista.config import AppSettings
 from archiwista.index import (
@@ -37,14 +38,16 @@ from archiwista.refs import FileRef, SnapshotRef, format_ref, snapshot_files
 from archiwista.services.problems import Problem
 
 
-def copy_path(settings: AppSettings, path: Path) -> CopyPath:
-    """Return a path on this computer and as every store's aliases write it."""
+def copy_path(settings: AppSettings, preferences: Preferences, path: Path) -> CopyPath:
+    """Return a path here, as each store's aliases and the person's own write it."""
     aliases: list[str] = []
     for store in settings.stores:
         aliases += [
             alias for alias in store.foreign_paths(path) if alias not in aliases
         ]
-    return CopyPath(local=str(path), aliases=aliases)
+    return CopyPath(
+        local=str(path), aliases=aliases, personal=preferences.personal_path(str(path))
+    )
 
 
 class OwnFilesQuery(BaseModel):
@@ -133,11 +136,12 @@ class OwnFolder(BaseModel):
         record: OwnFolderRecord,
         *,
         settings: AppSettings,
+        preferences: Preferences,
         problems: Sequence[Problem],
     ) -> Self:
         """Return the model of an indexed folder."""
         return cls(
-            path=copy_path(settings, Path(record.path)),
+            path=copy_path(settings, preferences, Path(record.path)),
             source=record.source,
             state=record.state,
             files=record.files,
@@ -153,11 +157,12 @@ class OwnFolder(BaseModel):
         check: OwnFolderCheck,
         *,
         settings: AppSettings,
+        preferences: Preferences,
         problems: Sequence[Problem],
     ) -> Self:
         """Return the model of a folder checked now, not scanned yet."""
         return cls(
-            path=copy_path(settings, check.path),
+            path=copy_path(settings, preferences, check.path),
             source=check.source,
             state=check.state,
             files=0,
@@ -247,12 +252,18 @@ class OwnFileList(BaseModel):
         page: OwnFilePage,
         *,
         settings: AppSettings,
+        preferences: Preferences,
         problems: Sequence[Problem],
     ) -> Self:
         """Return the model of a page of files."""
         project = page.folder.project
         return cls(
-            folder=OwnFolder.of(page.folder, settings=settings, problems=problems),
+            folder=OwnFolder.of(
+                page.folder,
+                settings=settings,
+                preferences=preferences,
+                problems=problems,
+            ),
             items=[OwnFileItem.of(project, row) for row in page.items],
             next_cursor=page.next_cursor,
         )
@@ -309,7 +320,13 @@ class SnapshotItem(BaseModel):
 
     @classmethod
     def of(
-        cls, project: str, item: SnapshotRecord, *, folder: Path, settings: AppSettings
+        cls,
+        project: str,
+        item: SnapshotRecord,
+        *,
+        folder: Path,
+        settings: AppSettings,
+        preferences: Preferences,
     ) -> Self:
         """Return the model of an indexed snapshot."""
         document = item.document or {}
@@ -331,7 +348,7 @@ class SnapshotItem(BaseModel):
             extent=_object(document.get("extent")),
             state=item.state,
             members=[name for name, _ in snapshot_files(item)],
-            paths=copy_path(settings, directory),
+            paths=copy_path(settings, preferences, directory),
         )
 
 
@@ -371,6 +388,7 @@ class OwnFileCard(_OwnFileFields):
         detail: OwnFileDetail,
         *,
         settings: AppSettings,
+        preferences: Preferences,
         problems: Sequence[Problem],
         preview: PreviewInfo | None,
     ) -> Self:
@@ -393,11 +411,17 @@ class OwnFileCard(_OwnFileFields):
             content=content,
             history=[Observation.of(item) for item in detail.history],
             snapshots=[
-                SnapshotItem.of(project, item, folder=folder, settings=settings)
+                SnapshotItem.of(
+                    project,
+                    item,
+                    folder=folder,
+                    settings=settings,
+                    preferences=preferences,
+                )
                 for item in detail.snapshots
             ],
             preview=preview,
-            paths=copy_path(settings, folder / detail.disk_path),
+            paths=copy_path(settings, preferences, folder / detail.disk_path),
             members=[PurePosixPath(member).name for member in detail.members],
             problems=[Issue.of(problem) for problem in problems],
         )
@@ -439,6 +463,7 @@ class SnapshotPlan(BaseModel):
                     "destination": {
                         "local": "/mnt/nas/raba/dane/.wersje/sieci/kanalizacja.gpkg",
                         "aliases": [],
+                        "personal": "Y:\\raba\\dane\\.wersje\\sieci\\kanalizacja.gpkg",
                     },
                     "copy_method": "sqlite_backup",
                     "content_method": "sqlite",
@@ -475,13 +500,19 @@ class SnapshotPlan(BaseModel):
     warnings: list[PlanWarning]
 
     @classmethod
-    def of(cls, plan: PlannedSnapshot, *, settings: AppSettings) -> Self:
+    def of(
+        cls,
+        plan: PlannedSnapshot,
+        *,
+        settings: AppSettings,
+        preferences: Preferences,
+    ) -> Self:
         """Return the model of a planned snapshot."""
         since: OwnSnapshotRef | None = plan.unchanged_since
         return cls(
             file=plan.path,
             size_bytes=plan.size_bytes,
-            destination=copy_path(settings, plan.destination),
+            destination=copy_path(settings, preferences, plan.destination),
             copy_method=plan.copy_method,
             content_method=plan.content_method,
             unchanged_since=None

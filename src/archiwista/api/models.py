@@ -41,12 +41,14 @@ from archiwista.config import (
     DefaultProjectVisibility,
     StoreConfig,
     StoreKind,
-    YearTypes,
+    aliased_path,
+    is_absolute_path,
 )
 from archiwista.error_document import REGISTRY_PAGE
 from archiwista.index import (
     DEFAULT_GRID_COLUMNS,
     DEFAULT_PAGE_LIMIT,
+    DEFAULT_YEAR_TYPES,
     MAP_FOOTPRINT_LIMIT,
     MAX_GRID_COLUMNS,
     MAX_PAGE_LIMIT,
@@ -89,6 +91,7 @@ from archiwista.index import (
     VersionsMode,
     VersionState,
     VersionSummary,
+    YearTypes,
 )
 from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, LogTail, ScanHistory
@@ -104,7 +107,6 @@ from archiwista.sources import (
     LocationKind,
     SourceState,
     SourceStatus,
-    YearType,
 )
 from archiwista.state import ActionEntry, ActionQuery, ActorKind, Outcome
 
@@ -388,6 +390,10 @@ _COPY_PATH_EXAMPLE = {
         "Z:\\kartograf\\data\\nmt\\pl_1992_1m_evrf2007\\versions\\N-34\\130"
         "\\D\\d\\2\\4\\2025-04-26_82710_fdd30535\\N-34-130-D-d-2-4.asc"
     ],
+    "personal": (
+        "Y:\\kartograf\\data\\nmt\\pl_1992_1m_evrf2007\\versions\\N-34\\130"
+        "\\D\\d\\2\\4\\2025-04-26_82710_fdd30535\\N-34-130-D-d-2-4.asc"
+    ),
 }
 _REQUEST_FILE_EXAMPLE = {
     "store": _STORE,
@@ -1166,13 +1172,25 @@ class CatalogPage(IndexAnswer):
 
 
 class CopyPath(BaseModel):
-    """Where the file is on this computer and on aliased ones (SPEC 4.6)."""
+    """Where the file is on this computer and on aliased ones (SPEC 4.6).
+
+    `personal` is the person's own: their path aliases (`GET /preferences`)
+    change only the paths shown and copied, never how the server reaches a
+    file (SPEC 10.2).
+    """
 
     model_config = _examples(_COPY_PATH_EXAMPLE)
 
     local: str = Field(description="Absolute path on this computer.")
     aliases: list[str] = Field(
         description="The same file as mounted on other computers (path aliases)."
+    )
+    personal: str | None = Field(
+        description=(
+            "The path through the first of the person's own path aliases whose"
+            " prefix on the server holds it (`path_aliases` of `GET"
+            " /preferences`); `null` without one."
+        )
     )
 
 
@@ -1238,6 +1256,7 @@ class SlotCard(IndexAnswer):
                     "Z:\\kartograf\\data\\nmt\\pl_1992_1m_evrf2007\\N-34\\130\\D\\d"
                     "\\2\\4\\N-34-130-D-d-2-4.asc"
                 ],
+                "personal": None,
             },
             "versions": [
                 {
@@ -3049,32 +3068,6 @@ class BasemapSettings(BaseModel):
         )
 
 
-class YearTypeSettings(BaseModel):
-    """The year type remembered for hydro and for meteo data (P15, SPEC 6.7)."""
-
-    model_config = _examples(
-        {"hydro": "hydrological", "meteo": "calendar"}, closed=True
-    )
-
-    hydro: YearType = Field(
-        default="hydrological",
-        description="Numbering of the years of hydro data: hydrological by default.",
-    )
-    meteo: YearType = Field(
-        default="calendar",
-        description="Numbering of the years of meteo data: calendar by default.",
-    )
-
-    @classmethod
-    def of(cls, year_types: YearTypes) -> Self:
-        """Return the model of the remembered year types."""
-        return cls(hydro=year_types.hydro, meteo=year_types.meteo)
-
-    def year_types(self) -> YearTypes:
-        """Return the settings' value of these year types."""
-        return YearTypes(hydro=self.hydro, meteo=self.meteo)
-
-
 class Settings(BaseModel):
     """All settings; PUT replaces all of them (omitted fields take defaults).
 
@@ -3099,7 +3092,6 @@ class Settings(BaseModel):
             "preview_warm_after_scan": False,
             "network_jobs_per_person": 2,
             "action_log_retention_days": 365,
-            "year_types": {"hydro": "hydrological", "meteo": "calendar"},
         },
         closed=True,
     )
@@ -3183,14 +3175,6 @@ class Settings(BaseModel):
         le=3650,
         description="Days the action log keeps an entry (v0.4).",
     )
-    year_types: YearTypeSettings = Field(
-        default_factory=YearTypeSettings,
-        description=(
-            "The year type remembered for hydro and for meteo data: the numbering"
-            " of the station views without `year_type`; set with"
-            " `PUT /settings/year-types`."
-        ),
-    )
 
     @classmethod
     def of(cls, settings: AppSettings) -> Self:
@@ -3212,8 +3196,102 @@ class Settings(BaseModel):
             own_data_dirs=dict(settings.own_data_dirs),
             network_jobs_per_person=settings.network_jobs_per_person,
             action_log_retention_days=settings.action_log_retention_days,
-            year_types=YearTypeSettings.of(settings.year_types),
         )
+
+
+# Preferences ----------------------------------------------------------------
+
+# The path aliases a person keeps, and the length of each of their prefixes
+# (plan v0.4 C12).
+MAX_PATH_ALIASES = 20
+MAX_ALIAS_PREFIX_CHARS = 400
+
+
+class PathAlias(BaseModel):
+    """A prefix on the server and the same place on the person's computer.
+
+    It changes only the paths the person is shown and copies
+    (`CopyPath.personal`), never how the server reaches a file.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    server: str = Field(
+        min_length=1,
+        max_length=MAX_ALIAS_PREFIX_CHARS,
+        description="Absolute path prefix on the server, e.g. `/mnt/nas/`.",
+    )
+    personal: str = Field(
+        min_length=1,
+        max_length=MAX_ALIAS_PREFIX_CHARS,
+        description="The same place as the person's computer has it, e.g. `Y:\\`.",
+    )
+
+    @field_validator("server")
+    @classmethod
+    def _absolute_on_the_server(cls, value: str) -> str:
+        stripped = value.strip()
+        if not is_absolute_path(stripped):
+            raise ValueError(message("preferences.server_not_absolute"))
+        return stripped
+
+    @field_validator("personal")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(message("preferences.personal_blank"))
+        return stripped
+
+
+class Preferences(BaseModel):
+    """A person's own preferences (ADR-047 decision 6); PUT replaces them all.
+
+    The local owner's in local mode; an agent has its account's. A field the
+    body omits takes its default.
+    """
+
+    model_config = _examples(
+        {
+            "year_types": {"hydro": "hydrological", "meteo": "hydrological"},
+            "basemap": _BASEMAP_EXAMPLE["name"],
+            "path_aliases": [{"server": "/mnt/nas/", "personal": "Y:\\"}],
+        },
+        closed=True,
+    )
+
+    year_types: YearTypes = Field(
+        default=DEFAULT_YEAR_TYPES,
+        description=(
+            "The year type remembered for hydro and for meteo data: the numbering"
+            " of the station views without `year_type`."
+        ),
+    )
+    basemap: str | None = Field(
+        default=None,
+        description=(
+            "The basemap of the map: the name of a configured one (`basemaps` of"
+            ' `GET /settings`), `""` for none, `null` for the first configured one.'
+        ),
+    )
+    path_aliases: list[PathAlias] = Field(
+        default_factory=list,
+        max_length=MAX_PATH_ALIASES,
+        description=(
+            "Prefixes on the server with the same places on the person's computer"
+            " (at most 20): the first one whose prefix holds a path gives"
+            " `personal` of its copy path. Only shown and copied, never used to"
+            " reach a file."
+        ),
+    )
+
+    def personal_path(self, path: str) -> str | None:
+        """Return a path on the server through the first alias that holds it."""
+        for alias in self.path_aliases:
+            found = aliased_path(path, alias.server, alias.personal)
+            if found is not None:
+                return found
+        return None
 
 
 # The action log --------------------------------------------------------------

@@ -30,6 +30,7 @@ from archiwista.api.models import (
     Health,
     IndexAnswer,
     Issue,
+    Preferences,
     ProjectCard,
     ProjectManifest,
     SlotCard,
@@ -56,6 +57,7 @@ from archiwista.error_document import (
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.messages import label, language, message, with_detail
+from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
@@ -71,9 +73,14 @@ type _Commands = argparse._SubParsersAction[argparse.ArgumentParser]
 
 @dataclass(frozen=True, slots=True)
 class _Reader:
-    """What a command reads with: settings, plugins, the index, project access."""
+    """What a command reads with: settings, plugins, the index, project access.
+
+    ``preferences`` are the local owner's: their path aliases give
+    ``personal`` of a copy path.
+    """
 
     settings: AppSettings
+    preferences: Preferences
     registry: PluginRegistry
     queries: IndexQueries
     visible: ProjectVisibility
@@ -176,6 +183,7 @@ def read_main(
         decisions = Authorizer(StateStore(paths.state_file), lambda: settings)
         visible = decisions.visible_projects(LOCAL_OWNER)
         writable = decisions.writable_projects(LOCAL_OWNER)
+        preferences = read_preferences(decisions.state, LOCAL_OWNER)
         queries = IndexQueries(paths.index_file)
     except (SettingsValidationError, IndexUnsupportedError, StateError) as error:
         return refuse(
@@ -185,7 +193,7 @@ def read_main(
             err,
         )
     with queries:
-        reader = _Reader(settings, registry, queries, visible, writable)
+        reader = _Reader(settings, preferences, registry, queries, visible, writable)
         try:
             output = _COMMANDS[args.command](args, reader)
         except _InvalidQuery as error:
@@ -257,7 +265,12 @@ def _search(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 def _entry(args: argparse.Namespace, reader: _Reader) -> _Output:
     card = slot_card(
-        reader.queries, reader.settings, args.store, args.slot, visible=reader.visible
+        reader.queries,
+        reader.settings,
+        reader.preferences,
+        args.store,
+        args.slot,
+        visible=reader.visible,
     )
     return _Output(card, _slot_text(card))
 
@@ -266,6 +279,7 @@ def _version(args: argparse.Namespace, reader: _Reader) -> _Output:
     card = version_card(
         reader.queries,
         reader.settings,
+        reader.preferences,
         args.store,
         args.version,
         visible=reader.visible,

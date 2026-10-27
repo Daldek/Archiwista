@@ -29,12 +29,14 @@ from archiwista.index.schema import (
     initialize,
 )
 from archiwista.index.series import (
+    DEFAULT_YEAR_TYPES,
     SERIES_STATES,
     GapRun,
     SeriesLabel,
     SeriesState,
     SeriesYear,
     YearRange,
+    YearTypes,
 )
 from archiwista.index.types import (
     DEFAULT_GRID_COLUMNS,
@@ -153,6 +155,7 @@ from archiwista.index.writer import IndexWriter
 __all__ = [
     "DEFAULT_GRID_COLUMNS",
     "DEFAULT_PAGE_LIMIT",
+    "DEFAULT_YEAR_TYPES",
     "LOCATION_FILTERS",
     "MAP_FOOTPRINT_LIMIT",
     "MAX_GRID_COLUMNS",
@@ -282,6 +285,7 @@ __all__ = [
     "WarmQuery",
     "WarmSelection",
     "YearRange",
+    "YearTypes",
     "connect",
     "initialize",
     "planar_crs",

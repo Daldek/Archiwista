@@ -40,7 +40,6 @@ import shapely
 from shapely.geometry import shape
 
 from archiwista.auth import ProjectVisibility
-from archiwista.config import DEFAULT_YEAR_TYPES, YearTypes
 from archiwista.errors import IndexQueryError
 from archiwista.index.coverage import CoverageShape, measure_coverage, planar_crs
 from archiwista.index.geometry import (
@@ -55,9 +54,11 @@ from archiwista.index.geometry import (
 from archiwista.index.projects import PROJECT_MANIFESTS
 from archiwista.index.schema import SCHEMA_VERSION, connect, initialize
 from archiwista.index.series import (
+    DEFAULT_YEAR_TYPES,
     VALUED_STATES,
     SeriesYear,
     YearRange,
+    YearTypes,
     default_span,
     label_year_type,
     series_label,

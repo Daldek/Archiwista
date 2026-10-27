@@ -35,6 +35,16 @@ MESSAGES = {
         "Configuration file {path} is missing — Archiwista runs with default settings",
         "Brak pliku konfiguracji {path} — Archiwista działa na ustawieniach domyślnych",
     ),
+    "setting_retired": Text(
+        (
+            "Configuration {path} holds {key}, which Archiwista no longer reads:"
+            " it is ignored"
+        ),
+        (
+            "Konfiguracja {path} zawiera {key}, którego Archiwista już nie czyta:"
+            " jest pomijane"
+        ),
+    ),
     "no_stores": Text(
         "No store is configured",
         "Nie skonfigurowano żadnego magazynu",

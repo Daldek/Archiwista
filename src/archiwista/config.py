@@ -28,7 +28,7 @@ from pydantic import (
 
 from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
-from archiwista.sources import SourceState, YearType
+from archiwista.sources import SourceState
 from archiwista.sources.markers import store_around, store_below
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,11 @@ OWN_DATA_DIR_NAME = "dane"
 # Network jobs one person runs at once, their agents' included (ADR-047).
 DEFAULT_NETWORK_JOBS_PER_PERSON = 2
 DEFAULT_ACTION_LOG_RETENTION_DAYS = 365
+# Settings an earlier build wrote that are no longer read: ignored when the file
+# is read, left out of its next save and named by ``archiwista doctor``. The
+# year types of the station views became each person's preference (v0.4,
+# ADR-047 erratum 1).
+RETIRED_SETTINGS = frozenset({"year_types"})
 # A trusted proxy of team mode is an address or a network of at most this many
 # addresses (IPv4 /24, IPv6 /120), so a mistyped prefix cannot trust a whole
 # network (ADR-046).
@@ -173,8 +178,13 @@ class AppPaths:
         return self.cache_dir / producer
 
 
+def is_absolute_path(path: str) -> bool:
+    """Return whether ``path`` is absolute on this computer, or a UNC path."""
+    return Path(path).is_absolute() or _is_unc(path)
+
+
 def _require_absolute(path: Path) -> Path:
-    if not (path.is_absolute() or _is_unc(str(path))):
+    if not is_absolute_path(str(path)):
         raise ValueError(message("settings.path_not_absolute"))
     return path
 
@@ -308,14 +318,31 @@ class StoreConfig(BaseModel):
         tuple[str, ...]
             One path per alias whose local prefix contains ``path``.
         """
-        result: list[str] = []
-        for local, foreign in self.path_aliases.items():
-            rest = _strip_prefix(str(path), local)
-            if rest is None:
-                continue
-            flavour = PureWindowsPath if _is_windows_path(foreign) else PurePosixPath
-            result.append(str(flavour(foreign).joinpath(*rest)))
-        return tuple(result)
+        return tuple(
+            aliased
+            for local, foreign in self.path_aliases.items()
+            if (aliased := aliased_path(str(path), local, foreign)) is not None
+        )
+
+
+def aliased_path(path: str, prefix: str, alias: str) -> str | None:
+    r"""Return ``path`` as written under ``alias`` when ``prefix`` holds it.
+
+    The prefix is compared by path components (ignoring case for a Windows
+    prefix), and what lies below it is joined to ``alias`` in the alias's own
+    flavour: ``/mnt/nas/raba/a.tif`` under ``/mnt/nas/`` aliased as ``Y:\`` is
+    ``Y:\raba\a.tif``. Only text: nothing is read from the disk.
+
+    Returns
+    -------
+    str or None
+        The aliased path; ``None`` when ``prefix`` does not hold ``path``.
+    """
+    rest = _strip_prefix(path, prefix)
+    if rest is None:
+        return None
+    flavour = PureWindowsPath if _is_windows_path(alias) else PurePosixPath
+    return str(flavour(alias).joinpath(*rest))
 
 
 def _strip_prefix(path: str, prefix: str) -> tuple[str, ...] | None:
@@ -556,32 +583,6 @@ class TeamSettings(BaseModel):
         )
 
 
-class YearTypes(BaseModel):
-    """The year type remembered for each family of station data (P15, SPEC 6.7).
-
-    Parameters
-    ----------
-    hydro, meteo : {"hydrological", "calendar"}
-        The numbering of the years of hydro and of meteo data in every view
-        until the next change: hydrological and calendar years by default, as
-        the archives number them. A ``year_type`` asked for wins and changes
-        neither; half-year characteristics stay hydrological (SPEC 4.8.2).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    hydro: YearType = "hydrological"
-    meteo: YearType = "calendar"
-
-    def of_kind(self, kind: str | None) -> YearType:
-        """Return the type of a family: hydro's for ``hydro``, else meteo's."""
-        return self.hydro if kind == "hydro" else self.meteo
-
-
-# What a new configuration remembers: the numbering of the IMGW archives.
-DEFAULT_YEAR_TYPES = YearTypes()
-
-
 class AppSettings(BaseModel):
     """All user settings stored in the TOML configuration file.
 
@@ -630,10 +631,6 @@ class AppSettings(BaseModel):
         ones wait (ADR-047).
     action_log_retention_days : int
         Days the action log keeps an entry (ADR-047).
-    year_types : YearTypes
-        The year type remembered for hydro and for meteo data (P15): the
-        numbering of the station views without ``year_type``, set with
-        ``PUT /settings/year-types``.
     team : TeamSettings
         Team mode, the table ``[team]``: read when the server starts, never
         shown or changed by the API (ADR-046).
@@ -669,7 +666,6 @@ class AppSettings(BaseModel):
     action_log_retention_days: int = Field(
         default=DEFAULT_ACTION_LOG_RETENTION_DAYS, ge=30, le=3650
     )
-    year_types: YearTypes = DEFAULT_YEAR_TYPES
     team: TeamSettings = Field(default_factory=TeamSettings)
 
     @field_validator("default_project_visibility", mode="before")
@@ -1261,26 +1257,48 @@ class ConfigStore:
     def load(self) -> AppSettings:
         """Read the settings file, or defaults when it does not exist.
 
+        A retired setting (``RETIRED_SETTINGS``) is ignored; the next save
+        leaves it out and ``archiwista doctor`` names it until then.
+
         Raises
         ------
         SettingsValidationError
             If the file is not valid TOML or contains invalid settings.
         """
+        data = self._read()
+        if data is None:
+            return AppSettings()
+        return parse_settings(
+            {key: value for key, value in data.items() if key not in RETIRED_SETTINGS}
+        )
+
+    def retired(self) -> tuple[str, ...]:
+        """Return the retired settings the file still holds, sorted.
+
+        Raises
+        ------
+        SettingsValidationError
+            If the file is not valid TOML.
+        """
+        data = self._read()
+        return () if data is None else tuple(sorted(RETIRED_SETTINGS & data.keys()))
+
+    def save(self, settings: AppSettings) -> None:
+        """Write settings atomically: a reader sees the old or the new file."""
+        write_text_atomic(self.path, dump_settings(settings))
+
+    def _read(self) -> dict[str, object] | None:
+        """Return the file's TOML, ``None`` when the file does not exist."""
         try:
             with self.path.open("rb") as file:
-                data = tomllib.load(file)
+                return tomllib.load(file)
         except FileNotFoundError:
-            return AppSettings()
+            return None
         except tomllib.TOMLDecodeError as error:
             text = message("settings.invalid_toml", path=self.path, detail=error)
             raise SettingsValidationError(
                 [SettingsProblem("invalid_toml", "", text)]
             ) from error
-        return parse_settings(data)
-
-    def save(self, settings: AppSettings) -> None:
-        """Write settings atomically: a reader sees the old or the new file."""
-        write_text_atomic(self.path, dump_settings(settings))
 
 
 def write_text_atomic(path: Path, text: str) -> None:

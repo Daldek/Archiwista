@@ -179,6 +179,9 @@ def _load_settings(paths: AppPaths, checks: list[DoctorCheck]) -> AppSettings:
     else:
         text = message("doctor.config_absent", path=paths.config_file)
         checks.append(DoctorCheck("warning", text))
+    for key in config.retired():
+        text = message("doctor.setting_retired", path=paths.config_file, key=key)
+        checks.append(DoctorCheck("warning", text, message("fix.setting_retired")))
     return settings
 
 

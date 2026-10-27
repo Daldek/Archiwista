@@ -270,6 +270,28 @@ def test_doctor_without_config_warns_but_passes(paths: AppPaths) -> None:
 
 
 @pytest.mark.usefixtures("polish")
+def test_doctor_names_a_retired_setting_as_a_warning_with_its_fix(
+    paths: AppPaths, store_root: Path
+) -> None:
+    """An earlier build's ``year_types`` is ignored: a warning and its fix, no error."""
+    configure(paths, store_root)
+    with paths.config_file.open("a", encoding="utf-8") as file:
+        file.write('\n[year_types]\nhydro = "calendar"\n')
+
+    report = run_doctor(paths, FakeRegistry(), port_available=lambda port: True)
+
+    assert report.errors == 0
+    (retired,) = [check for check in report.checks if "year_types" in check.message]
+    assert (retired.level, retired.message) == (
+        "warning",
+        f"Konfiguracja {paths.config_file} zawiera year_types, którego Archiwista"
+        " już nie czyta: jest pomijane",
+    )
+    assert retired.fix is not None and "PUT /api/v1/preferences" in retired.fix
+    assert "year_types" in paths.config_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.usefixtures("polish")
 def test_doctor_busy_port_is_a_warning(paths: AppPaths, store_root: Path) -> None:
     """A port in use (possibly by a running server) is reported, not fatal."""
     configure(paths, store_root, port=8123)

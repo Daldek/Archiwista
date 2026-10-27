@@ -1126,6 +1126,52 @@ class StateStore:
                 )
             return int(count)
 
+    # Preferences.
+
+    def preferences(self, principal: str) -> PreferenceRecord | None:
+        """Return a principal's preferences, or ``None`` before the first change.
+
+        Parameters
+        ----------
+        principal : str
+            An account id, or ``local`` for the owner of a local installation.
+        """
+        with self._read() as connection:
+            found = _preferences(connection, "principal = ?", (principal,))
+        return found[0] if found else None
+
+    def set_preferences(
+        self, principal: str, document: Mapping[str, object]
+    ) -> PreferenceRecord:
+        """Replace a principal's preferences (plan v0.4 C12).
+
+        The document is kept as given (``archiwista.services.preferences``
+        validates it); nothing is logged: preferences change what one person
+        sees, not what anyone may do.
+
+        Parameters
+        ----------
+        principal : str
+            An account id, or ``local`` for the owner of a local installation.
+        document : Mapping[str, object]
+            The preferences as JSON values.
+
+        Raises
+        ------
+        NotFoundError
+            ``principal`` is neither ``local`` nor an account.
+        """
+        with self._write() as connection:
+            if principal != LOCAL_PRINCIPAL_ID:
+                _existing_user(connection, principal)
+            connection.execute(
+                "INSERT INTO preferences (principal, document, updated_at)"
+                " VALUES (?, ?, ?) ON CONFLICT (principal) DO UPDATE SET"
+                " document = excluded.document, updated_at = excluded.updated_at",
+                (principal, json.dumps(document, ensure_ascii=False), _now()),
+            )
+            return _preferences(connection, "principal = ?", (principal,))[0]
+
     # Backups.
 
     def restore(self, snapshot: StateSnapshot) -> None:
@@ -1475,9 +1521,15 @@ def _passwords(
     )
 
 
-def _preferences(connection: sqlite3.Connection) -> tuple[PreferenceRecord, ...]:
+def _preferences(
+    connection: sqlite3.Connection,
+    condition: str = "1",
+    params: tuple[object, ...] = (),
+) -> tuple[PreferenceRecord, ...]:
     rows = connection.execute(
-        "SELECT principal, document, updated_at FROM preferences ORDER BY principal"
+        "SELECT principal, document, updated_at FROM preferences"
+        f" WHERE {condition} ORDER BY principal",
+        params,
     ).fetchall()
     return tuple(
         PreferenceRecord(

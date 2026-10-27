@@ -39,7 +39,7 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from archiwista.api.models import Issue, JobDetail
+from archiwista.api.models import Issue, JobDetail, Preferences
 from archiwista.api.models_owndata import (
     OwnFileCard,
     OwnFileList,
@@ -76,6 +76,7 @@ from archiwista.jobs import FINISHED_STATES, JobEvent, JobRecord, JobSupervisor
 from archiwista.jobs.foreground import exit_status, run_foreground
 from archiwista.messages import label, message, with_detail
 from archiwista.previews.service import PreviewService
+from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
@@ -231,6 +232,10 @@ class _Local:
         """Print the route's model with ``--json``, else the Polish text."""
         self.out.write((model.model_dump_json() if self.args.json else text) + "\n")
 
+    def preferences(self) -> Preferences:
+        """Return the local owner's preferences: ``personal`` of a copy path."""
+        return read_preferences(self.decisions.state, LOCAL_OWNER)
+
 
 def _requests(
     args: argparse.Namespace,
@@ -285,6 +290,7 @@ def _files(
     listing = read_own_files(
         local.queries,
         local.settings.get(),
+        local.preferences(),
         local.paths,
         local.args.project,
         query,
@@ -302,6 +308,7 @@ def _card(
         own_file_card(
             local.queries,
             local.settings.get(),
+            local.preferences(),
             local.previews,
             local.args.project,
             _file_id(local.args.file),
@@ -322,6 +329,7 @@ def _snapshot(
         plan = snapshot_plan(
             local.queries,
             local.settings.get(),
+            local.preferences(),
             local.paths,
             args.project,
             file_id,

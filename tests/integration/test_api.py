@@ -58,6 +58,8 @@ ROUTES = {
     ("get", "/api/v1/projects/{project}/status"),
     ("get", "/api/v1/settings"),
     ("put", "/api/v1/settings"),
+    ("get", "/api/v1/preferences"),
+    ("put", "/api/v1/preferences"),
     ("get", "/api/v1/log"),
     ("get", "/api/v1/log/export"),
     ("get", "/api/v1/commands"),

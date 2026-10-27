@@ -7,8 +7,9 @@ card (``/stores/{store}/slots/{slot}``), a version with its raw sidecar and
 copy path (``/stores/{store}/versions/{version}``, ``…/sidecar``) and the
 files of one producer request (``/requests/{parent_request}``) answer from the
 index too. Routes only translate: ``IndexQueries`` reads and filters, also by
-the projects the principal sees. ``archiwista search`` and ``archiwista
-entry`` (step 12) call ``search_slots`` and ``slot_card``.
+the projects the principal sees; copy paths also go through the principal's
+own path aliases (``CopyPath.personal``). ``archiwista search`` and
+``archiwista entry`` (step 12) call ``search_slots`` and ``slot_card``.
 """
 
 from collections.abc import Collection
@@ -20,6 +21,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from archiwista.api.dependencies import (
     index_queries,
     plugin_registry,
+    principal_preferences,
     settings_service,
     visible_projects,
 )
@@ -29,6 +31,7 @@ from archiwista.api.models import (
     CatalogFilters,
     CatalogPage,
     CopyPath,
+    Preferences,
     Product,
     ProductList,
     RequestFile,
@@ -62,6 +65,7 @@ _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
+_Preferences = Annotated[Preferences, Depends(principal_preferences)]
 _Store = Annotated[str, Path(description="Store id.", examples=["zespol"])]
 # Points per edge when a projected rectangle is turned into WGS84.
 _EDGE_POINTS = 16
@@ -138,6 +142,7 @@ def read_products(
 def slot_card(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     store: str,
     slot: str,
     *,
@@ -156,7 +161,7 @@ def slot_card(
         raise NotFoundError(text)
     producer = detail.segment.producer
     problems = [issue_problem(issue) for issue in detail.issues]
-    paths = copy_path(settings, store, producer, detail.slot)
+    paths = copy_path(settings, preferences, store, producer, detail.slot)
     freshness = staleness(queries.freshness(), {store})
     return SlotCard.of(detail, problems, paths, freshness)
 
@@ -164,6 +169,7 @@ def slot_card(
 def version_card(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     store: str,
     version: str,
     *,
@@ -180,7 +186,7 @@ def version_card(
     if detail is None:
         text = message("api.version_unknown", version=version, store=store)
         raise NotFoundError(text)
-    paths = copy_path(settings, store, detail.segment.producer, version)
+    paths = copy_path(settings, preferences, store, detail.segment.producer, version)
     return VersionCard.of(
         detail,
         queries.sidecar(store, version),
@@ -190,12 +196,17 @@ def version_card(
 
 
 def copy_path(
-    settings: AppSettings, store: str, producer: str, relative: str
+    settings: AppSettings,
+    preferences: Preferences,
+    store: str,
+    producer: str,
+    relative: str,
 ) -> CopyPath | None:
     """Return a file's path on this computer and as aliased elsewhere (SPEC 4.6).
 
-    ``None`` when the store or its producer directory is no longer
-    configured. Nothing is read from the disk.
+    The store's path aliases give ``aliases``, the person's own the path on
+    their computer (``personal``). ``None`` when the store or its producer
+    directory is no longer configured. Nothing is read from the disk.
 
     Raises
     ------
@@ -207,7 +218,11 @@ def copy_path(
     if config is None or root is None:
         return None
     local = indexed_path(root, relative)
-    return CopyPath(local=str(local), aliases=list(config.foreign_paths(local)))
+    return CopyPath(
+        local=str(local),
+        aliases=list(config.foreign_paths(local)),
+        personal=preferences.personal_path(str(local)),
+    )
 
 
 def geo_adapter(registry: PluginRegistry) -> GeoAdapter:
@@ -381,14 +396,16 @@ def get_slot(
     ],
     visible: _Visible,
     settings: _Settings,
+    preferences: _Preferences,
     queries: _Queries,
 ) -> SlotCard:
     """Return the file card: all versions, current, `full_sheet`, pins, problems.
 
-    `paths` is the copy path of the standard path on this computer and on
-    aliased ones; pins name only projects the session's principal sees.
+    `paths` is the copy path of the standard path on this computer, on
+    aliased ones and on the person's own (`personal`); pins name only
+    projects the session's principal sees.
     """
-    return slot_card(queries, settings.get(), store, slot, visible=visible)
+    return slot_card(queries, settings.get(), preferences, store, slot, visible=visible)
 
 
 @router.get(
@@ -449,10 +466,13 @@ def get_version(
     ],
     visible: _Visible,
     settings: _Settings,
+    preferences: _Preferences,
     queries: _Queries,
 ) -> VersionCard:
     """Return a version: every indexed value, outline, raw sidecar, copy path."""
-    return version_card(queries, settings.get(), store, version, visible=visible)
+    return version_card(
+        queries, settings.get(), preferences, store, version, visible=visible
+    )
 
 
 @router.get(

@@ -191,7 +191,11 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     assert series["coverage"]["Q"]["state"] == "gaps"
     assert series["coverage"]["Q"]["unknown_years"] == [{"from": 1951, "to": 2023}]
     assert answer["paths"] == {
-        DAILY: {"local": str(config.imgw / series["file"]), "aliases": []}
+        DAILY: {
+            "local": str(config.imgw / series["file"]),
+            "aliases": [],
+            "personal": None,
+        }
     }
     assert czech["provider"] == "CHMI"
     assert {item["license"] for item in czech["series"]} == {"CC-BY-4.0"}

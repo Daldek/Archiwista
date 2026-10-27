@@ -15,10 +15,12 @@ person reads the range, the points with a value, the gaps and the markers),
 options of ``StationCompareQuery``; a person reads each station's label and
 facts, then its chart as ``series`` writes it) and ``stations datasets`` the
 datasets of ``GET /stations/datasets``. Each calls the function behind its
-route without HTTP: ``--json`` prints the route's model, a refusal the
-route's problem as the ``archiwista-error/1`` document (``503`` while
-IMGWTools is not available becomes its exit code). Nothing here uses the
-network or writes.
+route without HTTP, as the local owner (whose preferences number the years
+without ``year_type`` and give ``personal`` of a copy path): ``--json``
+prints the route's model, a refusal the route's problem as the
+``archiwista-error/1`` document (``503`` while IMGWTools is not available
+becomes its exit code). Nothing here uses the network or writes but the
+state database, which is created when missing.
 """
 
 import argparse
@@ -28,7 +30,7 @@ from typing import TextIO, get_origin
 
 from pydantic import BaseModel, ValidationError
 
-from archiwista.api.models import IndexAnswer
+from archiwista.api.models import IndexAnswer, Preferences
 from archiwista.api.models_stations import (
     ChartVariable,
     ComparedStation,
@@ -59,6 +61,7 @@ from archiwista.api.stations import (
     station_list,
     station_timeline_page,
 )
+from archiwista.auth import LOCAL_OWNER
 from archiwista.commands import Commands, add_parser
 from archiwista.config import (
     AppPaths,
@@ -73,17 +76,20 @@ from archiwista.error_document import (
     refuse,
     validation_problem,
 )
-from archiwista.errors import ArchiwistaError
+from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.messages import label, language, message, plural_form, with_detail
+from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
+from archiwista.state import StateStore
 
 COMMANDS = frozenset({"stations"})
 
 # What an action prints: the route's model with ``--json``, else text for people.
 type _Output = tuple[BaseModel, str]
 type _Action = Callable[
-    [argparse.Namespace, AppSettings, PluginRegistry, IndexQueries], _Output
+    [argparse.Namespace, AppSettings, Preferences, PluginRegistry, IndexQueries],
+    _Output,
 ]
 
 # A year of the Timeline in a line of text, by its cell (SPEC 6.7).
@@ -162,7 +168,7 @@ def main(
     args : argparse.Namespace
         Parsed arguments of ``stations`` (``action`` names the action).
     paths : AppPaths
-        Configuration file and local index.
+        Configuration file, local index and state database.
     registry : PluginRegistry
         Producer plugins: the source of the stations, a ``bbox`` in another CRS.
     out, err : TextIO
@@ -177,8 +183,9 @@ def main(
     """
     try:
         settings = ConfigStore(paths.config_file).load()
+        preferences = read_preferences(StateStore(paths.state_file), LOCAL_OWNER)
         queries = IndexQueries(paths.index_file)
-    except (SettingsValidationError, IndexUnsupportedError) as error:
+    except (SettingsValidationError, StateError, IndexUnsupportedError) as error:
         return refuse(
             exception_problem(
                 error, with_detail(message("cli.stations_failed"), str(error))
@@ -187,7 +194,9 @@ def main(
         )
     with queries:
         try:
-            model, text = _ACTIONS[args.action](args, settings, registry, queries)
+            model, text = _ACTIONS[args.action](
+                args, settings, preferences, registry, queries
+            )
         except _InvalidOptions as error:
             return refuse(error.problem, err)
         except ArchiwistaError as error:
@@ -243,11 +252,12 @@ def _options(
 def _list(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     found = station_list(
-        queries, settings, registry, query_of(StationListFilters, args)
+        queries, settings, preferences, registry, query_of(StationListFilters, args)
     )
     lines: list[str] = []
     for item in found.items:
@@ -261,11 +271,16 @@ def _list(
 def _timeline(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     found = station_timeline_page(
-        queries, settings, registry, query_of(StationTimelineListFilters, args)
+        queries,
+        settings,
+        preferences,
+        registry,
+        query_of(StationTimelineListFilters, args),
     )
     lines: list[str] = []
     for item in found.items:
@@ -282,11 +297,17 @@ def _timeline(
 def _show(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     card = station_card(
-        queries, settings, registry, args.code, query_of(StationLookup, args)
+        queries,
+        settings,
+        preferences,
+        registry,
+        args.code,
+        query_of(StationLookup, args),
     )
     return card, _card_text(card)
 
@@ -294,11 +315,17 @@ def _show(
 def _series(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     chart = station_chart(
-        queries, settings, registry, args.code, query_of(StationChartQuery, args)
+        queries,
+        settings,
+        preferences,
+        registry,
+        args.code,
+        query_of(StationChartQuery, args),
     )
     return chart, _chart_text(chart)
 
@@ -306,11 +333,12 @@ def _series(
 def _compare(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     comparison = station_comparison(
-        queries, settings, registry, query_of(StationCompareQuery, args)
+        queries, settings, preferences, registry, query_of(StationCompareQuery, args)
     )
     return comparison, _comparison_text(comparison)
 
@@ -318,11 +346,12 @@ def _compare(
 def _datasets(
     args: argparse.Namespace,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
     found = station_datasets(
-        queries, settings, registry, query_of(StationDatasetsQuery, args)
+        queries, settings, preferences, registry, query_of(StationDatasetsQuery, args)
     )
     lines = [_dataset_line(item) for item in found.items]
     if not lines:

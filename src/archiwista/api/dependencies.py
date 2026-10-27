@@ -8,7 +8,9 @@ A route takes the projects the current principal sees with
 ``visible_projects`` and passes them to the index queries and services,
 which filter; routes never filter themselves (A-ADR-029). A route that
 lists projects takes ``writable_projects`` too, to say of each whether the
-principal may change it (``project_write``).
+principal may change it (``project_write``). A route that numbers the years
+of station data or gives copy paths takes the principal's own preferences
+(``principal_preferences``): their year types and path aliases.
 """
 
 import os
@@ -17,11 +19,13 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from archiwista.api.models import Preferences
 from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppPaths, SettingsService
 from archiwista.index import IndexQueries
 from archiwista.security import current_principal
+from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
 
 
@@ -73,3 +77,14 @@ def writable_projects(
 ) -> WritableProjects:
     """Return whether the request's principal may change each project."""
     return decisions.writable_projects(principal)
+
+
+def principal_preferences(
+    principal: Annotated[Principal, Depends(current_principal)],
+    decisions: Annotated[Authorizer, Depends(authorizer)],
+) -> Preferences:
+    """Return the request's principal's own preferences (``401`` without one).
+
+    A person's, an agent's account's, the local owner's in local mode.
+    """
+    return read_preferences(decisions.state, principal)

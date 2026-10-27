@@ -1,13 +1,14 @@
-"""The year type remembered for hydro and meteo data (plan I8.2, P15, SPEC 6.7).
+"""The year type each person remembers for hydro and meteo data (P15, SPEC 6.7).
 
-``PUT /settings/year-types`` changes only the two remembered types, logged as
-``settings.update`` like a change of ``PUT /settings``; the
-station routes and ``archiwista stations`` number the years by the type
-remembered for the data's family when ``year_type`` is absent, a list of both
-families by hydro's, and a given ``year_type`` wins without changing the
-settings. Half-year characteristics stay hydrological. The index is a
-scanned copy of ``complete`` (``imgwtools.testing``) with a synthetic
-half-year series of Raba Górna, which the fixture stores lack.
+Plan I8.2 and v0.4 T11: ``PUT /preferences`` keeps the two types among the
+session's own preferences; the station routes and ``archiwista stations``
+(as the local owner) number the years by the type the person remembers for
+the data's family when ``year_type`` is absent, a list of both families by
+hydro's, and a given ``year_type`` wins without changing the preference.
+Half-year characteristics stay hydrological, and one person's choice is not
+another's. The index is a scanned copy of ``complete``
+(``imgwtools.testing``) with a synthetic half-year series of Raba Górna,
+which the fixture stores lack.
 """
 
 import json
@@ -21,16 +22,16 @@ from typing import Any
 import httpx
 import pytest
 
-from archiwista.auth import LOCAL_OWNER
+from archiwista.auth import LOCAL_OWNER, LOCAL_PRINCIPAL_ID
 from archiwista.cli import main
-from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig, YearTypes
+from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.sources import SeriesListing, StationSeries, VariableCoverage
 from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.local_server import local_paths
-from tests.fixtures.permissions import add_people, last_entry, log_entries, principal
+from tests.fixtures.permissions import add_people, principal
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
@@ -50,18 +51,18 @@ class Served:
     other: Caller
     paths: AppPaths
 
-    def json(self, path: str) -> Any:
-        """Return the body of the owner's ``200`` answer of ``GET path``."""
-        response = self.owner.request("GET", path)
+    def json(self, path: str, *, caller: Caller | None = None) -> Any:
+        """Return the body of the ``200`` answer of ``GET path`` (the owner's)."""
+        response = (caller or self.owner).request("GET", path)
         assert response.status_code == 200, response.text
         return response.json()
 
     def remember(
         self, *, caller: Caller | None = None, **year_types: str
     ) -> httpx.Response:
-        """Send ``PUT /settings/year-types`` as ``caller`` (the owner by default)."""
+        """Send the year types in ``PUT /preferences`` as ``caller`` (the owner)."""
         return (caller or self.owner).request(
-            "PUT", "/settings/year-types", json=year_types
+            "PUT", "/preferences", json={"year_types": year_types}
         )
 
 
@@ -133,9 +134,11 @@ def served(
 
 @pytest.fixture
 def api(served: Served) -> Iterator[Served]:
-    """Return the served API; the defaults are remembered again after the test."""
+    """Return the served API; both people choose the defaults again afterwards."""
     yield served
-    assert served.remember(hydro="hydrological", meteo="calendar").status_code == 200
+    for caller in (served.owner, served.other):
+        reset = caller.request("PUT", "/preferences", json={})
+        assert reset.status_code == 200, reset.text
 
 
 def _year_types(body: dict[str, Any]) -> set[str]:
@@ -165,7 +168,7 @@ def test_the_remembered_meteo_type_numbers_a_meteo_dataset(api: Served) -> None:
     assert remembered["items"] and remembered["items"] == hydrological["items"]
     assert _year_types(remembered) == {"hydrological"}
     assert asked["items"] == calendar["items"]
-    assert api.json("/settings")["year_types"] == {
+    assert api.json("/preferences")["year_types"] == {
         "hydro": "hydrological",
         "meteo": "hydrological",
     }
@@ -215,62 +218,48 @@ def test_a_list_of_both_families_takes_the_type_remembered_for_hydro(
     assert _year_types(meteo) == {"hydrological"}
 
 
-def test_the_choice_is_kept_in_the_file_and_read_by_the_command_line(
+def test_the_owner_s_choice_is_kept_and_read_by_the_command_line(
     api: Served, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The file holds the choice; ``archiwista stations`` reads it like the route."""
+    """The state database keeps the owner's choice; ``stations`` reads it as GET."""
     # Act
     api.remember(meteo="hydrological")
-    stored = ConfigStore(api.paths.config_file).load()
+    stored = StateStore(api.paths.state_file).preferences(LOCAL_PRINCIPAL_ID)
     capsys.readouterr()
     status = main(
         ["stations", "list", f"--dataset={PRECIPITATION}", "--json"], paths=api.paths
     )
     printed = json.loads(capsys.readouterr().out)
-    replaced = api.owner.request("PUT", "/settings", json=api.json("/settings"))
 
     # Assert
-    assert stored.year_types == YearTypes(meteo="hydrological")
-    assert status == 0
-    assert printed == api.json(f"/stations?dataset={PRECIPITATION}")
-    assert _year_types(printed) == {"hydrological"}
-    assert replaced.status_code == 200, replaced.text
-    assert replaced.json()["year_types"] == {
+    assert stored is not None
+    assert stored.document["year_types"] == {
         "hydro": "hydrological",
         "meteo": "hydrological",
     }
+    assert status == 0
+    assert printed == api.json(f"/stations?dataset={PRECIPITATION}")
+    assert _year_types(printed) == {"hydrological"}
 
 
-def test_only_a_settings_writer_changes_the_choice(api: Served) -> None:
-    """A person without ``settings.write`` gets ``403``; a wrong value ``400``."""
-    # Act
-    refused = api.remember(caller=api.other, meteo="hydrological")
-    wrong = api.remember(meteo="lunar")
-
-    # Assert
-    assert_problem(refused, 403, "forbidden", "permission_denied")
-    assert_problem(wrong, 400, "validation_error")
-    assert api.json("/settings")["year_types"] == DEFAULTS
-
-
-def test_a_change_of_the_choice_is_in_the_action_log(api: Served) -> None:
-    """``settings.update`` with the types before and after; no change, no entry."""
+def test_each_person_numbers_the_years_as_they_chose(api: Served) -> None:
+    """A person without any role keeps a choice of their own; a wrong one is 400."""
     # Arrange
-    state = StateStore(api.paths.state_file)
-    after = last_entry(state)
+    listed = f"/stations?dataset={PRECIPITATION}"
 
     # Act
-    changed = api.remember(hydro="calendar", meteo="calendar")
-    again = api.remember(hydro="calendar", meteo="calendar")
+    chosen = api.remember(caller=api.other, meteo="hydrological")
+    theirs = api.json(listed, caller=api.other)
+    owners = api.json(listed)
+    wrong = api.remember(caller=api.other, meteo="lunar")
 
     # Assert
-    assert changed.status_code == again.status_code == 200
-    (entry,) = log_entries(state, after=after)
-    assert (entry.action, entry.actor, entry.target, entry.outcome) == (
-        "settings.update",
-        LOCAL_OWNER.id,
-        "settings",
-        "ok",
-    )
-    assert entry.before == {"year_types": DEFAULTS}
-    assert entry.after == {"year_types": {"hydro": "calendar", "meteo": "calendar"}}
+    assert chosen.status_code == 200, chosen.text
+    assert _year_types(theirs) == {"hydrological"}
+    assert _year_types(owners) == {"calendar"}
+    assert api.json("/preferences")["year_types"] == DEFAULTS
+    assert_problem(wrong, 400, "validation_error")
+    assert api.json("/preferences", caller=api.other)["year_types"] == {
+        "hydro": "hydrological",
+        "meteo": "hydrological",
+    }

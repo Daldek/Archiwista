@@ -583,6 +583,31 @@ def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
     assert parse_settings(tomllib.loads(dump_settings(again))) == again
 
 
+def test_config_store_ignores_a_retired_setting_until_the_next_save(
+    tmp_path: Path,
+) -> None:
+    """An earlier build's ``year_types`` loads as absent and the next save drops it."""
+    # Arrange
+    config = ConfigStore(tmp_path / "config.toml")
+    config.path.write_text(
+        'port = 8123\n\n[year_types]\nhydro = "calendar"\nmeteo = "lunar"\n',
+        encoding="utf-8",
+    )
+
+    # Act
+    loaded = config.load()
+    named = config.retired()
+    config.save(loaded)
+    saved = tomllib.loads(config.path.read_text(encoding="utf-8"))
+
+    # Assert
+    assert loaded == AppSettings(port=8123)
+    assert named == ("year_types",)
+    assert "year_types" not in saved and saved["port"] == 8123
+    assert config.retired() == ()
+    assert config.load() == loaded
+
+
 @pytest.mark.parametrize("store", [{}, {"kartograf": None, "imgw": None}])
 def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
     store: dict[str, None],

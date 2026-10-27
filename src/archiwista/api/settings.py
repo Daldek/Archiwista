@@ -10,9 +10,8 @@ the file and the settings in effect. A saved change reaches subscribers
 (the scan scheduler) and the CSP of the following responses, and the action
 log gets the settings it changed, before and after (``settings.update``). The
 table ``[team]`` is neither shown nor changed: a change writes back the one
-the server read when it started (ADR-046). ``PUT /settings/year-types``
-changes only the year type remembered for hydro and for meteo data (P15),
-with the same permission and the same entry in the action log.
+the server read when it started (ADR-046). The year types of the station
+views are each person's own (``GET``/``PUT /preferences``), not a setting.
 """
 
 from typing import Annotated
@@ -21,7 +20,7 @@ from fastapi import APIRouter, Depends
 
 from archiwista.api.dependencies import authorizer, settings_service
 from archiwista.api.errors import problem_responses
-from archiwista.api.models import Settings, YearTypeSettings
+from archiwista.api.models import Settings
 from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import SettingsService, parse_settings
@@ -102,32 +101,5 @@ def put_settings(
     """
     before = Settings.of(service.get())
     after = save_settings(service, body)
-    log_change(decisions.state, principal, before, after)
-    return after
-
-
-@router.put(
-    "/year-types", response_model=Settings, responses=problem_responses(403, 400)
-)
-def put_year_types(
-    body: YearTypeSettings,
-    principal: Annotated[Principal, Depends(settings_writer)],
-    service: _Settings,
-    decisions: Annotated[Authorizer, Depends(authorizer)],
-) -> Settings:
-    """Remember the year type of hydro and of meteo data; answer the settings.
-
-    The station routes number the years of a view without `year_type` by the
-    type remembered for its family, a list of both families by hydro's (P15);
-    a given `year_type` wins and changes nothing. Only these two settings
-    change; an omitted one takes its default (hydro hydrological, meteo
-    calendar). Needs the permission of `PUT /settings`; the action log gets
-    the change, before and after (`settings.update`).
-    """
-    current = service.get()
-    before = Settings.of(current)
-    after = Settings.of(
-        service.update(current.model_copy(update={"year_types": body.year_types()}))
-    )
     log_change(decisions.state, principal, before, after)
     return after

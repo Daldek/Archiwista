@@ -24,7 +24,6 @@ from archiwista.api.models import (
     IndexAnswer,
     parse_bbox,
 )
-from archiwista.config import YearTypes
 from archiwista.index import (
     DEFAULT_GRID_COLUMNS,
     DEFAULT_PAGE_LIMIT,
@@ -52,6 +51,7 @@ from archiwista.index import (
     StationRow,
     StationSort,
     YearRange,
+    YearTypes,
 )
 from archiwista.index.series import MAX_UNKNOWN_RANGES, year_span
 from archiwista.messages import message, plural_form
@@ -333,9 +333,10 @@ class StationLookup(BaseModel):
         default=None,
         description=(
             "Numbering of the years: `hydrological` (1 XI to 31 X) or `calendar`;"
-            " by default the type remembered for the data's family (`year_types`"
-            " of `GET /settings`: hydrological for hydro data and calendar for"
-            " meteo data until changed), for a list of both families hydro's."
+            " by default the type the session remembers for the data's family"
+            " (`year_types` of `GET /preferences`: hydrological for hydro data"
+            " and calendar for meteo data until changed), for a list of both"
+            " families hydro's."
             " Half-year characteristics stay hydrological."
         ),
     )
@@ -476,7 +477,7 @@ class StationFilters(StationLookup):
     ) -> StationQuery:
         """Return the index query of these filters with an area, view and page.
 
-        ``year_types`` are the year types the settings remember; ``q`` and
+        ``year_types`` are the year types the person remembers; ``q`` and
         ``sort`` the search and order of a list (``GET /stations``).
         """
         return StationQuery(
@@ -1213,6 +1214,7 @@ class StationCard(IndexAnswer):
                         "Z:\\imgw\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
                         "\\stations\\149190310.parquet"
                     ],
+                    "personal": None,
                 }
             },
             **_FRESH,
@@ -1223,8 +1225,9 @@ class StationCard(IndexAnswer):
     paths: dict[str, CopyPath] = Field(
         description=(
             "The station's series file of each dataset (`series[].file`) on this"
-            " computer and as mounted on others (path aliases, SPEC 4.6), by dataset"
-            " key; none for a store whose IMGW directory is no longer configured."
+            " computer, as mounted on others (path aliases, SPEC 4.6) and through"
+            " the person's own (`personal`), by dataset key; none for a store whose"
+            " IMGW directory is no longer configured."
         )
     )
 
@@ -1601,8 +1604,9 @@ class StationDatasetItem(BaseModel):
     year_type: YearType = Field(
         description=(
             "Numbering of the years of its labels and of `years` without"
-            " `year_type`: the type remembered for its family (`year_types` of"
-            " `GET /settings`); hydrological for half-year characteristics."
+            " `year_type`: the type the session remembers for its family"
+            " (`year_types` of `GET /preferences`); hydrological for half-year"
+            " characteristics."
         )
     )
     years: YearSpan | None = Field(

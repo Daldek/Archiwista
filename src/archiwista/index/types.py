@@ -13,13 +13,15 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from archiwista.config import (
+from archiwista.config import OwnFolderReason, OwnFolderSource
+from archiwista.index.series import (
     DEFAULT_YEAR_TYPES,
-    OwnFolderReason,
-    OwnFolderSource,
+    SeriesLabel,
+    SeriesState,
+    SeriesYear,
+    YearRange,
     YearTypes,
 )
-from archiwista.index.series import SeriesLabel, SeriesState, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
     PLAN_STATUSES,
@@ -996,8 +998,9 @@ class StationQuery:
         filters); ``None``: the type of ``year_types`` and the dataset's R by
         default (SPEC 4.8.4).
     year_types : YearTypes
-        The year type remembered for each family: the numbering of a
-        dataset's labels when ``year_type`` is ``None`` (P15).
+        The year type the person remembers for each family (their
+        preferences): the numbering of a dataset's labels when ``year_type``
+        is ``None`` (P15).
     labels : bool
         Whether the result holds the coverage of its stations' series
         (``StationPage.coverage``), labelled in ``years`` and ``year_type``.

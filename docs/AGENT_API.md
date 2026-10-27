@@ -348,7 +348,8 @@ cursor is safe in a URL).
   of a file (`SlotCard`): all versions, `current` and `full_sheet`, the pins of
   visible projects (`pinned_by`), problems with a repair instruction and
   `paths` (`local` is the path on this computer, `aliases` the same path under
-  other drive letters).
+  other drive letters, `personal` the path through the session's own path
+  aliases, `null` without one).
 - `archiwista version MAGAZYN WERSJA` /
   `GET /stores/{store}/versions/{version}`: all values of the version from the
   index, the outline in WGS84 and the raw sidecar; the sidecar alone:
@@ -421,6 +422,15 @@ cursor is safe in a URL).
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
   `stale`.
+- `GET /preferences` / `PUT /preferences` (v0.4, any session): the session's
+  own preferences, an agent's being its account's and the computer owner's in
+  local mode: `year_types` (`hydro`, `meteo`), `basemap` (a configured name,
+  `""` for none, `null` for the first) and `path_aliases` (at most 20
+  `{"server": "/mnt/nas/", "personal": "Y:\\"}`, the server prefix absolute,
+  each at most 400 characters). `PUT` replaces them all (an omitted field
+  takes its default) and answers them; a basemap that is not configured is
+  `400 unknown_basemap`. An alias only changes `personal` of the copy paths:
+  every route still takes paths on the server.
 
 Address a slot and a version by the relative path from the results (`slot`,
 `version.path`, `current`), never by a file system path. There is no need to
@@ -497,12 +507,12 @@ series version and its `variables` (the distinct keys of its stations' series); 
 key as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
 (repeatable: `synoptic`, `climate`, `precipitation`) keeps the meteo stations of
 those kinds, the counts too. Without `year_type` the routes and `archiwista stations`
-number the years as `year_types` of `GET /settings` remembers for the data's family
+number the years as `year_types` of `GET /preferences` says for the data's family
 (hydro hydrological and meteo calendar by default; a list of both families, without
 `dataset`, `kind` or `meteo_kind`, as hydro); a given `year_type` wins and changes
-nothing, and half-year characteristics stay hydrological. `PUT /settings/year-types`
-with `{"hydro": …, "meteo": …}` changes the choice (an administrator until each
-person's preferences hold it; the action log keeps a change as `settings.update`).
+nothing, and half-year characteristics stay hydrological. `PUT /preferences` with
+`{"year_types": {"hydro": …, "meteo": …}}` changes the choice of the session's
+person only (`archiwista stations` reads the computer owner's).
 `GET /stations/timeline` (`archiwista stations timeline`) is the Timeline
 of a page: the filters, order and cursor of `GET /stations` with `dataset`
 required, each item a station with its `series` exactly as `GET

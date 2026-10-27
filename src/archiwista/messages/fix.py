@@ -7,6 +7,18 @@ MESSAGES = {
         "correct the configuration file {path} or delete it and configure again.",
         "popraw plik konfiguracji {path} albo usuń go i skonfiguruj ponownie.",
     ),
+    "setting_retired": Text(
+        (
+            "nothing to do: the next change of the settings leaves it out of the"
+            " file. The year types of the station views are each person's own"
+            " since v0.4: choose them again with „Lata” (PUT /api/v1/preferences)."
+        ),
+        (
+            "nic nie trzeba robić: następna zmiana ustawień usunie je z pliku."
+            " Od v0.4 rodzaj lat w widokach stacji wybiera każda osoba dla siebie:"
+            " wybierz go ponownie przełącznikiem „Lata” (PUT /api/v1/preferences)."
+        ),
+    ),
     "wizard": Text(
         'add a store in the wizard after starting "archiwista serve".',
         "dodaj magazyn w kreatorze po uruchomieniu „archiwista serve”.",

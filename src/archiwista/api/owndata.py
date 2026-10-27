@@ -55,12 +55,13 @@ from archiwista.api.dependencies import (
     authorizer,
     index_queries,
     plugin_registry,
+    principal_preferences,
     settings_service,
     visible_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.jobs import SCAN_LIMITED, job_supervisor
-from archiwista.api.models import JobDetail
+from archiwista.api.models import JobDetail, Preferences
 from archiwista.api.models_layers import LayerSet
 from archiwista.api.models_owndata import (
     DataDirRequest,
@@ -146,6 +147,7 @@ _Principal = Annotated[Principal, Depends(current_principal)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
+_Preferences = Annotated[Preferences, Depends(principal_preferences)]
 _Authorizer = Annotated[Authorizer, Depends(authorizer)]
 _Paths = Annotated[AppPaths, Depends(app_paths)]
 _OptionalJobs = Annotated[JobSupervisor | None, Depends(optional_jobs)]
@@ -217,6 +219,7 @@ def own_file(
 def read_own_files(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     paths: AppPaths,
     project: str,
     query: OwnFilesQuery,
@@ -246,11 +249,17 @@ def read_own_files(
     )
     if page is not None:
         return OwnFileList.of(
-            page, settings=settings, problems=own_problems(page.folder)
+            page,
+            settings=settings,
+            preferences=preferences,
+            problems=own_problems(page.folder),
         )
     check = folder_check(settings, queries, paths, record.project.access_key)
     folder = OwnFolder.checked(
-        check, settings=settings, problems=folder_problems(check, project)
+        check,
+        settings=settings,
+        preferences=preferences,
+        problems=folder_problems(check, project),
     )
     return OwnFileList(folder=folder, items=[], next_cursor=None)
 
@@ -258,6 +267,7 @@ def read_own_files(
 async def own_file_card(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     previews: PreviewService | None,
     project: str,
     file_id: str,
@@ -290,6 +300,7 @@ async def own_file_card(
         project,
         detail,
         settings=settings,
+        preferences=preferences,
         problems=file_problems(detail),
         preview=preview,
     )
@@ -298,6 +309,7 @@ async def own_file_card(
 def snapshot_plan(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     paths: AppPaths,
     project: str,
     file_id: str,
@@ -317,7 +329,7 @@ def snapshot_plan(
     detail = own_file(queries, project, file_id, visible=visible)
     check = folder_check(settings, queries, paths, record.project.access_key)
     plan = check_snapshot(check, detail, work_dir=process_work_dir(paths))
-    return SnapshotPlan.of(plan, settings=settings)
+    return SnapshotPlan.of(plan, settings=settings, preferences=preferences)
 
 
 def start_snapshot(
@@ -394,6 +406,7 @@ def change_data_dir(
     decisions: Authorizer,
     principal: Principal,
     settings: SettingsService,
+    preferences: Preferences,
     queries: IndexQueries,
     paths: AppPaths,
     jobs: JobSupervisor | None,
@@ -422,9 +435,16 @@ def change_data_dir(
     record = queries.own_folder(project, visible=ALL_PROJECTS)
     if record is not None and record.path == str(check.path):
         found = replace(record, state=check.state, reason=check.reason)
-        return OwnFolder.of(found, settings=current, problems=own_problems(found))
+        return OwnFolder.of(
+            found,
+            settings=current,
+            preferences=preferences,
+            problems=own_problems(found),
+        )
     problems = folder_problems(check, project)
-    return OwnFolder.checked(check, settings=current, problems=problems)
+    return OwnFolder.checked(
+        check, settings=current, preferences=preferences, problems=problems
+    )
 
 
 async def own_ref(
@@ -531,6 +551,7 @@ def list_own_files(
     visible: _Visible,
     queries: _Queries,
     settings: _Settings,
+    preferences: _Preferences,
     paths: _Paths,
 ) -> OwnFileList:
     """List a project's own files by path, with their data folder.
@@ -541,7 +562,7 @@ def list_own_files(
     and no files: `POST /projects/{project}/scan` reads it.
     """
     return read_own_files(
-        queries, settings.get(), paths, project, query, visible=visible
+        queries, settings.get(), preferences, paths, project, query, visible=visible
     )
 
 
@@ -556,6 +577,7 @@ def put_data_dir(
     principal: _Principal,
     decisions: _Authorizer,
     settings: _Settings,
+    preferences: _Preferences,
     queries: _Queries,
     paths: _Paths,
     jobs: _OptionalJobs,
@@ -572,7 +594,15 @@ def put_data_dir(
     (`project.data_dir`). Its scan starts at once (`own_scan`).
     """
     return change_data_dir(
-        decisions, principal, settings, queries, paths, jobs, project, body.path
+        decisions,
+        principal,
+        settings,
+        preferences,
+        queries,
+        paths,
+        jobs,
+        project,
+        body.path,
     )
 
 
@@ -589,6 +619,7 @@ async def get_own_file(
     visible: _Visible,
     queries: _Queries,
     settings: _Settings,
+    preferences: _Preferences,
 ) -> OwnFileCard:
     """Return everything known of an own file: layers, extent, snapshots, preview.
 
@@ -599,6 +630,7 @@ async def get_own_file(
     return await own_file_card(
         queries,
         settings.get(),
+        preferences,
         own_previews(request),
         project,
         file_id,
@@ -618,6 +650,7 @@ def get_snapshot_plan(
     visible: _Visible,
     queries: _Queries,
     settings: _Settings,
+    preferences: _Preferences,
     paths: _Paths,
 ) -> SnapshotPlan:
     """Plan a snapshot of a file without writing anything.
@@ -628,7 +661,7 @@ def get_snapshot_plan(
     (`editing_detected`).
     """
     return snapshot_plan(
-        queries, settings.get(), paths, project, file_id, visible=visible
+        queries, settings.get(), preferences, paths, project, file_id, visible=visible
     )
 
 

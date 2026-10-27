@@ -16,13 +16,15 @@ one range (the comparison), ``GET /stations/{code}`` is a station's card,
 series as a chart and ``GET /map/stations`` the located stations of a map
 view or their grid. The fixed paths are declared before ``/stations/{code}``,
 which would else read them as a code. Without ``year_type`` the labels
-number the years as the settings remember for the data's family
-(``year_types``, P15), a list of both families as for hydro data. Everything
-is read from the index, never from a series file, except the values of a
-chart or a comparison, which the producer reads (``SeriesValuesAdapter``);
-and only while the source of the stations is available: else ``503`` (SPEC
-5.8).
-``archiwista stations`` calls the same functions without HTTP.
+number the years as the person remembers for the data's family (``year_types``
+of their preferences, P15), a list of both families as for hydro data; a
+series file's copy path also goes through the person's own path aliases.
+Everything is read from the index, never from a series file, except the
+values of a chart or a comparison, which the producer reads
+(``SeriesValuesAdapter``); and only while the source of the stations is
+available: else ``503`` (SPEC 5.8).
+``archiwista stations`` calls the same functions without HTTP, with the
+local owner's preferences.
 """
 
 from collections.abc import Mapping, Sequence
@@ -32,9 +34,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from archiwista.api.dependencies import index_queries, plugin_registry, settings_service
+from archiwista.api.dependencies import (
+    index_queries,
+    plugin_registry,
+    principal_preferences,
+    settings_service,
+)
 from archiwista.api.errors import problem_responses
-from archiwista.api.models import AreaRef, CopyPath, staleness
+from archiwista.api.models import AreaRef, CopyPath, Preferences, staleness
 from archiwista.api.models_stations import (
     ChartVariable,
     ComparedStation,
@@ -57,7 +64,6 @@ from archiwista.api.models_stations import (
     StationTimelinePage,
 )
 from archiwista.api.slots import bbox_area, checked_store, copy_path
-from archiwista.auth import Principal
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import (
     ConflictError,
@@ -78,7 +84,6 @@ from archiwista.index import (
 )
 from archiwista.index.geometry import box_geometry, is_wgs84, require_wgs84_bbox
 from archiwista.messages import message
-from archiwista.security import current_principal
 from archiwista.services import series_chart
 from archiwista.sources import GeoJSONGeometry, SeriesValuesAdapter
 from archiwista.sources.registry import PluginRegistry
@@ -89,7 +94,7 @@ STATION_PRODUCER = "imgw"
 
 router = APIRouter(tags=["stations"])
 
-_Principal = Annotated[Principal, Depends(current_principal)]
+_Preferences = Annotated[Preferences, Depends(principal_preferences)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
@@ -119,6 +124,7 @@ def require_station_source(registry: PluginRegistry) -> None:
 def station_list(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     filters: StationListFilters,
 ) -> StationList:
@@ -133,13 +139,16 @@ def station_list(
         rectangle, a coverage filter without ``dataset``, a reversed range of
         years, a limit out of range or a cursor of another query.
     """
-    page, area, freshness = _station_page(queries, settings, registry, filters)
+    page, area, freshness = _station_page(
+        queries, settings, preferences, registry, filters
+    )
     return StationList.of(page, area, freshness)
 
 
 def station_timeline_page(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     filters: StationTimelineListFilters,
 ) -> StationTimelinePage:
@@ -154,13 +163,16 @@ def station_timeline_page(
     SourceStateError, IndexQueryError
         As ``station_list``.
     """
-    page, area, freshness = _station_page(queries, settings, registry, filters)
+    page, area, freshness = _station_page(
+        queries, settings, preferences, registry, filters
+    )
     return StationTimelinePage.of(page, filters.variable, area, freshness)
 
 
 def station_datasets(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     query: StationDatasetsQuery,
 ) -> StationDatasets:
@@ -176,21 +188,23 @@ def station_datasets(
     require_station_source(registry)
     freshness = queries.freshness()
     stores = checked_store(query.store, settings, freshness)
-    found = queries.station_datasets(query.store, year_types=settings.year_types)
+    found = queries.station_datasets(query.store, year_types=preferences.year_types)
     return StationDatasets.of(found, staleness(freshness, stores))
 
 
 def station_card(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     code: str,
     lookup: StationLookup,
 ) -> StationCard:
     """Return a station's card: its catalog entry, its series labelled, their files.
 
-    Each series file is also given on this computer and as mounted on others
-    (``paths``), as the file card gives a version's (SPEC 4.6).
+    Each series file is also given on this computer, as mounted on others
+    and on the person's own (``paths``), as the file card gives a version's
+    (SPEC 4.6).
 
     Raises
     ------
@@ -214,11 +228,13 @@ def station_card(
         dataset=lookup.dataset,
         year_type=lookup.year_type,
         years=lookup.year_range(),
-        year_types=settings.year_types,
+        year_types=preferences.year_types,
     )
     paths: dict[str, CopyPath] = {}
     for series in found:
-        copied = copy_path(settings, row.store, STATION_PRODUCER, series.file)
+        copied = copy_path(
+            settings, preferences, row.store, STATION_PRODUCER, series.file
+        )
         if copied is not None:
             paths[series.dataset] = copied
     return StationCard(
@@ -231,6 +247,7 @@ def station_card(
 def station_timeline(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     code: str,
     filters: StationTimelineFilters,
@@ -253,7 +270,7 @@ def station_timeline(
         dataset=filters.dataset,
         year_type=filters.year_type,
         years=filters.year_range(),
-        year_types=settings.year_types,
+        year_types=preferences.year_types,
     )
     return StationTimeline.of(
         row, found, filters.variable, staleness(freshness, {row.store})
@@ -263,6 +280,7 @@ def station_timeline(
 def station_chart(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     code: str,
     query: StationChartQuery,
@@ -307,7 +325,7 @@ def station_chart(
         row.code,
         dataset=query.dataset,
         year_type=query.year_type,
-        year_types=settings.year_types,
+        year_types=preferences.year_types,
     )
     series, variables = _chart_series(row, found, query)
     if query.version is not None and query.version != series.series_version:
@@ -325,6 +343,7 @@ def station_chart(
     return _read_chart(
         queries,
         settings,
+        preferences,
         adapter,
         series,
         variables,
@@ -337,6 +356,7 @@ def station_chart(
 def station_comparison(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     query: StationCompareQuery,
 ) -> StationComparison:
@@ -381,7 +401,7 @@ def station_comparison(
             row.code,
             dataset=query.dataset,
             year_type=query.year_type,
-            year_types=settings.year_types,
+            year_types=preferences.year_types,
         )
         found.append((row, held[0] if held else None))
     series = [item for _, item in found if item is not None]
@@ -440,6 +460,7 @@ def station_comparison(
                 else _read_chart(
                     queries,
                     settings,
+                    preferences,
                     adapter,
                     item,
                     [variable],
@@ -517,6 +538,7 @@ def _compared_range(
 def _read_chart(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     adapter: SeriesValuesAdapter,
     series: StationCoverage,
     variables: Sequence[CoverageVariable],
@@ -550,7 +572,7 @@ def _read_chart(
             series.provider,
             series.code,
             dataset=characteristics,
-            year_types=settings.year_types,
+            year_types=preferences.year_types,
         )
     )
     start, end = span
@@ -570,6 +592,7 @@ def _read_chart(
 def station_map(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     filters: StationMapFilters,
 ) -> StationMapView:
@@ -591,7 +614,7 @@ def station_map(
     stores = checked_store(filters.store, settings, freshness)
     record = _area(queries, filters.area_id)
     query = filters.station_query(
-        year_types=settings.year_types,
+        year_types=preferences.year_types,
         area=None if record is None else record.geometry,
         bbox=filters.bbox_values(),
         boundary=filters.boundary,
@@ -706,6 +729,7 @@ def _chart_series(
 def _station_page(
     queries: IndexQueries,
     settings: AppSettings,
+    preferences: Preferences,
     registry: PluginRegistry,
     filters: StationListFilters,
 ) -> tuple[StationPage, AreaRef | None, dict[str, Any]]:
@@ -727,7 +751,7 @@ def _station_page(
     if bbox is not None:
         area = _rectangle(registry, bbox, filters.bbox_crs)
     query = filters.station_query(
-        year_types=settings.year_types,
+        year_types=preferences.year_types,
         area=area,
         boundary=filters.boundary,
         location=filters.location,
@@ -779,7 +803,7 @@ def _rectangle(registry: PluginRegistry, bbox: BBox, crs: str) -> GeoJSONGeometr
 )
 def list_stations(
     filters: Annotated[StationListFilters, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -802,7 +826,7 @@ def list_stations(
     `counts.hidden` says how many stations they hide. `503` while the source
     of the stations (IMGWTools) is not available.
     """
-    return station_list(queries, settings.get(), registry, filters)
+    return station_list(queries, settings.get(), preferences, registry, filters)
 
 
 @router.get(
@@ -812,7 +836,7 @@ def list_stations(
 )
 def list_station_datasets(
     query: Annotated[StationDatasetsQuery, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -820,13 +844,13 @@ def list_station_datasets(
     """List the datasets with station series: their variables and default range.
 
     Each dataset of each store with the producer's name of its segment, its
-    family, time unit and default year type, R by default, the label of its
-    current series version and the distinct variables of its stations'
-    series (`variables`, the first being the default colour of the map's
-    points). `503` while the source of the stations (IMGWTools) is not
-    available.
+    family, time unit and year type (the session's own for its family), R by
+    default, the label of its current series version and the distinct
+    variables of its stations' series (`variables`, the first being the
+    default colour of the map's points). `503` while the source of the
+    stations (IMGWTools) is not available.
     """
-    return station_datasets(queries, settings.get(), registry, query)
+    return station_datasets(queries, settings.get(), preferences, registry, query)
 
 
 @router.get(
@@ -836,7 +860,7 @@ def list_station_datasets(
 )
 def list_stations_timeline(
     filters: Annotated[StationTimelineListFilters, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -853,7 +877,9 @@ def list_stations_timeline(
     from the index at once, never from a series file. `503` while the source
     of the stations (IMGWTools) is not available.
     """
-    return station_timeline_page(queries, settings.get(), registry, filters)
+    return station_timeline_page(
+        queries, settings.get(), preferences, registry, filters
+    )
 
 
 @router.get(
@@ -863,7 +889,7 @@ def list_stations_timeline(
 )
 def compare_stations(
     query: Annotated[StationCompareQuery, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -882,7 +908,7 @@ def compare_stations(
     `404` when none of them has a series of the dataset; `503` while the
     source of the stations (IMGWTools) is not available.
     """
-    return station_comparison(queries, settings.get(), registry, query)
+    return station_comparison(queries, settings.get(), preferences, registry, query)
 
 
 @router.get(
@@ -893,19 +919,19 @@ def compare_stations(
 def get_station(
     code: _Code,
     lookup: Annotated[StationLookup, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
 ) -> StationCard:
     """Return a station's card: metadata, location and each series labelled.
 
-    `paths` gives each series file on this computer and as mounted on others
-    (path aliases). A code that several stations share (two stores, two
-    providers) is `400` (reason `ambiguous_station`) until `store` and
-    `provider` name one.
+    `paths` gives each series file on this computer, as mounted on others
+    (path aliases) and on the person's own computer (`personal`). A code
+    that several stations share (two stores, two providers) is `400`
+    (reason `ambiguous_station`) until `store` and `provider` name one.
     """
-    return station_card(queries, settings.get(), registry, code, lookup)
+    return station_card(queries, settings.get(), preferences, registry, code, lookup)
 
 
 @router.get(
@@ -916,7 +942,7 @@ def get_station(
 def get_station_coverage(
     code: _Code,
     filters: Annotated[StationTimelineFilters, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -926,7 +952,9 @@ def get_station_coverage(
     A year that is not wholly known is `unknown`, never a gap. Changing the
     range or the year type reads no series.
     """
-    return station_timeline(queries, settings.get(), registry, code, filters)
+    return station_timeline(
+        queries, settings.get(), preferences, registry, code, filters
+    )
 
 
 @router.get(
@@ -937,7 +965,7 @@ def get_station_coverage(
 def get_station_series(
     code: _Code,
     query: Annotated[StationChartQuery, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -954,7 +982,7 @@ def get_station_series(
     series file through the producer; `version`, when given, must be the
     current one in the index (`409` otherwise).
     """
-    return station_chart(queries, settings.get(), registry, code, query)
+    return station_chart(queries, settings.get(), preferences, registry, code, query)
 
 
 @router.get(
@@ -965,7 +993,7 @@ def get_station_series(
 )
 def list_map_stations(
     filters: Annotated[StationMapFilters, Query()],
-    principal: _Principal,
+    preferences: _Preferences,
     settings: _Settings,
     registry: _Registry,
     queries: _Queries,
@@ -976,4 +1004,4 @@ def list_map_stations(
     Stations without a location are never drawn: `counts.unlocated` counts
     them. With `dataset` each point has the state and label of each variable.
     """
-    return station_map(queries, settings.get(), registry, filters)
+    return station_map(queries, settings.get(), preferences, registry, filters)
