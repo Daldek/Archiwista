@@ -187,7 +187,9 @@ command-line interface may change.
   fetched for it ("2 pozycje pobiera olga (zadanie …)", also in the list "Pobrania w
   tle"); "Anuluj" for whoever started it and administrators, "Ponów" for a job that
   did not succeed, also one "przerwane" by a restart (disabled with the reason for a
-  download without "zapis do magazynu"), "Szczegóły" (its events) and "Dziennik" (the
+  download without "zapis do magazynu", and for a store's scan, unit outlines or link
+  check and the scan of every project's data folder without the role `admin`, as the
+  server refuses their retry), "Szczegóły" (its events) and "Dziennik" (the
   end of its log). A job of a project the session does not see shows its kind, "bez
   dostępu", who and its progress only. The list is read every 2 s while a job waits
   or runs, else every 15 s, only while the page is visible, up to the 200 newest

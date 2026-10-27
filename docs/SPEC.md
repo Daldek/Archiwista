@@ -2051,9 +2051,11 @@ Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
 ```
 
 **f) "Zadania" (Jobs)** (from v0.4 the team's queue: every person's jobs with who runs them;
-"Anuluj" for whoever started a job and administrators; a job of a project the person does
-not see shows its kind, who and progress only; a planned download leaves out what another
-job fetches; 10.2, A-ADR-047)
+"Anuluj" for whoever started a job and administrators; "Ponów" disabled with the reason
+for a job the person may not retry: a store's scan, unit outlines or link check and the
+scan of every project's data folder without `admin`, a download without "zapis do
+magazynu"; a job of a project the person does not see shows its kind, who and progress
+only; a planned download leaves out what another job fetches; 10.2, A-ADR-047)
 
 ```text
 ZADANIA W TLE                          [Wszystkie] [Trwa] [Błędy] [Moje]

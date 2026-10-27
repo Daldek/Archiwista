@@ -71,6 +71,8 @@ export const jobs = {
     retry_title: "Uruchom to zadanie jeszcze raz jako twoje, z tymi samymi parametrami.",
     retry_no_store_write:
       "Ponowienie zapisuje magazyn, a ta sesja nie ma uprawnienia „zapis do magazynu” (rola store_writer).",
+    retry_admin_only:
+      "Skan magazynu, obrysy jednostek, potwierdzenie dowiązania i skan danych wszystkich projektów zleca i ponawia administrator (rola admin).",
     retried: "Ponowiono jako zadanie {job}.",
     details: "Szczegóły",
     details_hide: "Ukryj szczegóły",

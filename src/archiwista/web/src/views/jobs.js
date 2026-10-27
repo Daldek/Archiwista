@@ -10,7 +10,11 @@
  * (progress, notices, its summary or why it failed), „Dziennik” shows the end
  * of its log, „Anuluj” stops one that waits or runs (for whoever started it
  * and administrators), „Ponów” runs one that did not succeed again as a job
- * of the session, also one „przerwane” by a restart of the server. A job of a
+ * of the session, also one „przerwane” by a restart of the server, and is
+ * disabled with its reason for a job the session may not retry (a store's
+ * scan, outlines or link check and the scan of every project's data folder
+ * without the role `admin`, a job that writes a store without „zapis do
+ * magazynu”). A job of a
  * project the session does not see shows its kind, who and its progress only
  * (`hidden`), with nothing to open. The filters „Wszystkie”, „Trwa”, „Błędy”
  * and „Moje” keep the address (`filter`).
@@ -61,6 +65,8 @@ const ERRORS = new Set(["failed", "partial", "interrupted"]);
 const RETRY = new Set(["partial", "failed", "interrupted", "cancelled"]);
 /** Kinds whose retry writes a store: they need the permission to write the stores. */
 const WRITES = new Set(["download", "project_download", "project_repin"]);
+/** Kinds of a store's jobs, whose retry is an administrator's (`store.scan`), as the server's `STORE_SCAN_KINDS`. */
+const STORE_SCANS = new Set(["scan", "footprints", "link_check"]);
 const PROJECT_KINDS = new Set(["project_download", "project_repin", "project_check", "project_verify"]);
 const FILTERS = ["all", "active", "errors", "mine"];
 const LEVELS = {
@@ -254,18 +260,31 @@ function JobRow({ job, refresh }) {
 }
 
 /**
- * „Ponów”, disabled with its reason when the job writes a store and the
- * session may not (the server would refuse it too).
+ * „Ponów”, disabled with its reason when the session may not retry the job
+ * (the server would refuse it too).
  */
 function RetryButton({ job, reasonId, busy, onRetry }) {
   const { session } = useApp();
-  const refused = WRITES.has(job.kind) && !session.store_write;
-  return html`<button type="button" class="btn sm" disabled=${busy || refused}
-      title=${refused ? L.actions.retry_no_store_write : L.actions.retry_title}
-      aria-describedby=${refused ? reasonId : null} onClick=${onRetry}>
+  const reason = retryRefusal(job, session);
+  return html`<button type="button" class="btn sm" disabled=${busy || reason !== null}
+      title=${reason ?? L.actions.retry_title}
+      aria-describedby=${reason ? reasonId : null} onClick=${onRetry}>
       <${Icon} name="rotate" size=${13} />${L.actions.retry}
     </button>
-    ${refused ? html`<span class="visually-hidden" id=${reasonId}>${L.actions.retry_no_store_write}</span>` : null}`;
+    ${reason ? html`<span class="visually-hidden" id=${reasonId}>${reason}</span>` : null}`;
+}
+
+/**
+ * Why the session may not retry a job, as `services.jobs.retry` decides; `null`: it may.
+ * A store's scan, outlines or link check and the scan of every project's data folder
+ * are an administrator's (`store.scan`); a job that writes a store needs „zapis do
+ * magazynu”.
+ */
+function retryRefusal(job, session) {
+  const scansStores = STORE_SCANS.has(job.kind) || (job.kind === "own_scan" && !job.params?.project);
+  if (scansStores && !session.roles.includes("admin")) return L.actions.retry_admin_only;
+  if (WRITES.has(job.kind) && !session.store_write) return L.actions.retry_no_store_write;
+  return null;
 }
 
 /** The progress of a job that waits or runs: a bar and „3 z 7”. */

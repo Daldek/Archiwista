@@ -8,7 +8,9 @@ directory ``tajny`` is Olga's private project. Igor (``store_writer``) opens
 held download and her scan of her project's data folder show her name, the
 second without any detail; his planned download of a station her download
 claimed lists those positions as hers. A download stopped by a restart of the
-server is „przerwane” and „Ponów” runs it again. With
+server is „przerwane” and „Ponów” runs it again. „Ponów” of a job only an
+administrator retries (a store's scan, outlines and link check, the scan of
+every project's data folder) is disabled for Igor with its reason. With
 ``ARCHIWISTA_SCREENSHOTS=<directory>`` the queue is kept as ``08-zadania.png``
 (``docs/reports/v0.4-screenshots/``).
 """
@@ -28,14 +30,20 @@ import pytest
 from kartograf import init_project
 from playwright.sync_api import Locator, Page, expect
 
-from archiwista.auth import LOCAL_OWNER, Principal, access_key
-from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
+from archiwista.auth import LOCAL_OWNER, SCHEDULER, Principal, access_key
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    SettingsService,
+    StoreConfig,
+)
 from archiwista.index import IndexWriter, initialize
 from archiwista.index.projects import record_project
 from archiwista.jobs import JobSupervisor
 from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
 from archiwista.sources.registry import load_registry
-from archiwista.state import StateStore
+from archiwista.state import StateStore, Visibility
 from tests.fixtures.actions import ACTION_WORKER, standin_in_settings, station_calls
 from tests.fixtures.availability import register_standin
 from tests.fixtures.browser import Served, Tab
@@ -57,6 +65,10 @@ FINISHED = ("succeeded", "partial", "failed", "interrupted", "cancelled")
 # only Igor's plan; the third his download without a plan.
 SHARED, OWN, UNPLANNED = "150160180", "150160200", "150160210"
 SCREENSHOTS = "ARCHIWISTA_SCREENSHOTS"
+ADMIN_ONLY = (
+    "Skan magazynu, obrysy jednostek, potwierdzenie dowiązania i skan danych"
+    " wszystkich projektów zleca i ponawia administrator (rola admin)."
+)
 API = """async ([method, path, body]) => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
   if (body !== null) headers["Content-Type"] = "application/json";
@@ -77,10 +89,13 @@ def standin(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     return module
 
 
-def team_paths(tmp_path: Path) -> tuple[AppPaths, Path, str]:
-    """Save the store ``pomiary`` and the people; index Olga's private project.
+def team_paths(
+    tmp_path: Path, visibility: Visibility = "private"
+) -> tuple[AppPaths, Path, str]:
+    """Save the store ``pomiary`` and the people; index Olga's project ``tajny``.
 
-    Returns the installation, the store's directory and the project's key.
+    The project has ``visibility``, private by default. Returns the
+    installation, the store's directory and the project's key.
     """
     paths = local_paths(tmp_path)
     root = tmp_path / STORE
@@ -102,7 +117,7 @@ def team_paths(tmp_path: Path) -> tuple[AppPaths, Path, str]:
     add_people(state)
     for person in (OWNER, OTHER):
         state.update_user(person, roles=WRITER, actor=LOCAL_OWNER)
-    share(state, access_key(directory), "private")
+    share(state, access_key(directory), visibility)
     return paths, root, key
 
 
@@ -348,4 +363,65 @@ def test_a_download_stopped_by_a_restart_is_interrupted_and_runs_again(
             "zakończone"
         )
         expect(interrupted.locator(".state-badge").first).to_have_text("przerwane")
+    engine_tab.assert_clean()
+
+
+def test_retry_of_a_job_only_an_administrator_retries_is_disabled_with_its_reason(
+    engine_tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """Igor's „Ponów” of the store's jobs and of every folder's scan says why not.
+
+    The store's scan, unit outlines and link check and the scan of every
+    project's data folder are an administrator's (``store.scan``): Igor
+    (``store_writer``) sees their „Ponów” disabled with the reason, the one of
+    his scan of a public project's folder enabled; the computer's owner, an
+    administrator, retries the store's scan.
+    """
+    # Arrange: each job cancelled while it waits, before the server starts.
+    paths, _, key = team_paths(tmp_path, "public")
+    igor = principal(StateStore(paths.state_file), "other")
+    registry = load_registry(cache_dir=paths.cache_dir)
+    settings = SettingsService(ConfigStore(paths.config_file), registry)
+    submitted: dict[str, tuple[str, str | None, dict[str, Any], Principal]] = {
+        "scan": ("scan", STORE, {"mode": "full"}, LOCAL_OWNER),
+        "footprints": ("footprints", STORE, {}, LOCAL_OWNER),
+        "link_check": ("link_check", STORE, {"slot": SHARED}, LOCAL_OWNER),
+        "every_folder": ("own_scan", None, {}, SCHEDULER),
+        "his_folder": ("own_scan", None, {"project": key}, igor),
+    }
+    jobs: dict[str, str] = {}
+    with JobSupervisor(paths, settings, max_jobs=0) as supervisor:
+        for name, (kind, store, params, actor) in submitted.items():
+            job = supervisor.submit(kind, store=store, params=params, actor=actor)
+            assert supervisor.cancel(job.id).state == "cancelled"
+            jobs[name] = job.id
+    page = engine_tab.page
+    with serving(paths, registry=registry) as (server, _):
+        served = Served(server, paths)
+
+        # Act
+        open_jobs(page, served, session_url(served, igor))
+
+        # Assert: the four of an administrator disabled with the reason.
+        for name in ("scan", "footprints", "link_check", "every_folder"):
+            refused = row(page, jobs[name]).get_by_role("button", name="Ponów")
+            expect(refused).to_be_disabled()
+            expect(refused).to_have_accessible_description(ADMIN_ONLY)
+        folder = row(page, jobs["his_folder"]).get_by_role("button", name="Ponów")
+        expect(folder).to_be_enabled()
+
+        # Act: the computer's owner retries the store's scan.
+        page.goto("about:blank")
+        open_jobs(page, served, served.token_url())
+        for name in ("scan", "footprints", "link_check", "every_folder"):
+            expect(
+                row(page, jobs[name]).get_by_role("button", name="Ponów")
+            ).to_be_enabled()
+        row(page, jobs["scan"]).get_by_role("button", name="Ponów").click()
+
+        # Assert: a new scan of the store, the owner's.
+        expect(row(page, jobs["scan"])).to_contain_text("Ponowiono jako zadanie")
+        retried = call(page, "GET", "/jobs?kind=scan")["items"][0]
+        assert retried["id"] != jobs["scan"]
+        assert (retried["actor"], retried["params"]["mode"]) == ("local", "full")
     engine_tab.assert_clean()

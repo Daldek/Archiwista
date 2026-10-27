@@ -376,8 +376,11 @@ jobs, and the number next to "Zadania" in the navigation counts the running ones
 - **"Ponów"** (retry) runs a job that did not succeed again, as a new job of your
   session with the same parameters, also one "przerwane" (interrupted) when the
   server stopped. Retrying a download, or a project's download or repin, needs
-  "zapis do magazynu" (the role `store_writer`); without it the button is
-  disabled with the reason.
+  "zapis do magazynu" (the role `store_writer`), and retrying a store's scan, its
+  unit outlines, a link check or the scan of every project's data folder needs an
+  administrator; without it the button is disabled with the reason. The scan of
+  one project's data folder anyone who sees the project retries, within the
+  limits of a person's scans.
 - **"Szczegóły"** (details) follows the job: its progress, the notices of its
   producer (for example the positions another person's download fetches) and its
   summary or failure. **"Dziennik"** (log) shows the end of its log, the standard
