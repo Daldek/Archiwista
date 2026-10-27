@@ -761,8 +761,10 @@ that is not ASCII), the media type of its format or extension (else
 `Range` answers `206` with `Content-Range` (`curl -C -` resumes), and `HEAD`
 answers the headers only (`Content-Length`). A person, with their agents,
 streams at most two files at once: a third is `429 rate_limited`, reason
-`too_many_downloads`, with `Retry-After: 10`. A `GET` without `Range` or from
-byte 0 is logged (`file.download` with `size_bytes`). These routes need
+`too_many_downloads`, with `Retry-After: 10`. A `GET` whose answer holds the
+file's first byte (no `Range`, a range from byte 0 however written, or an
+`If-Range` that no longer matches) is logged (`file.download` with
+`size_bytes`). These routes need
 `X-Archiwista-CSRF` as every other; only a link of the interface
 (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes with
 the session cookie alone.

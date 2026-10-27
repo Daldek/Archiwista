@@ -21,14 +21,13 @@ a file (``Range`` answered ``206`` with ``Content-Range``, ``Accept-Ranges``,
 the CSRF header (``Sec-Fetch-Site`` ``same-origin`` or ``none``,
 ``security.file_link``). Nothing is shown inline, a PDF neither. A ``GET``
 streams within the person's limit (``app.state.file_streams``, ``429
-too_many_downloads``) and, without ``Range`` or from byte 0, is logged
-(``file.download`` with ``size_bytes``); a ``HEAD`` answers the headers
+too_many_downloads``) and, when its answer sends the file's first byte, is
+logged (``file.download`` with ``size_bytes``); a ``HEAD`` answers the headers
 only. This router comes before the catalog's, whose
 ``/stores/{store}/versions/{version}`` would otherwise take ``…/file``.
 """
 
 import os
-import re
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -36,6 +35,8 @@ from typing import Annotated, Any
 import anyio
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import FileResponse, Response
+from starlette.datastructures import Headers
+from starlette.responses import MalformedRangeHeader, RangeNotSatisfiable
 from starlette.types import Receive, Scope, Send
 
 from archiwista.api.dependencies import (
@@ -72,8 +73,6 @@ CACHE_CONTROL = "private, no-store"
 _VERSION_FILE = "/stores/{store}/versions/{version:path}/file"
 _OWN_FILE = "/projects/{project}/files/{file_id}/file"
 _SNAPSHOT_FILE = "/projects/{project}/files/{file_id}/snapshots/{label}/file"
-# A request for the file from its first byte: no ``Range``, or one from 0.
-_FROM_START = re.compile(r"\s*bytes\s*=\s*0\s*-", re.IGNORECASE)
 
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
@@ -291,6 +290,26 @@ class _Opened(FileResponse):
         finally:
             self.close()
 
+    def sends_first_byte(self, headers: Headers) -> bool:
+        """Whether the answer to a request with ``headers`` sends byte 0.
+
+        Decided as ``FileResponse`` decides what it sends: the whole file
+        without ``Range``, with an ``If-Range`` that no longer matches, or
+        with more ranges than it serves; nothing for a ``Range`` it cannot
+        parse or satisfy; else the ranges it parsed, each one counted.
+        """
+        part = headers.get("range")
+        condition = headers.get("if-range")
+        if part is None or (
+            condition is not None and not self._should_use_range(condition)
+        ):
+            return True
+        try:
+            ranges = self._parse_range_header(part, self.size)
+        except (MalformedRangeHeader, RangeNotSatisfiable):
+            return False
+        return not ranges or any(start == 0 for start, _ in ranges)
+
     @asynccontextmanager
     async def _open_file(self) -> AsyncIterator[anyio.AsyncFile[bytes]]:
         yield anyio.AsyncFile(self._file)
@@ -315,8 +334,7 @@ def _answer(
         end()
         raise
     try:
-        part = request.headers.get("range")
-        if part is None or _FROM_START.match(part):
+        if answer.sends_first_byte(request.headers):
             decisions.state.record(
                 principal,
                 "file.download",

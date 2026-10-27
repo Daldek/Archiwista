@@ -108,6 +108,59 @@ def test_a_version_streams_whole_and_in_parts_and_is_logged_once(
     assert_problem(refused, 403, "forbidden", "path_outside_root")
 
 
+def test_every_answer_that_sends_the_first_byte_is_logged(tmp_path: Path) -> None:
+    """A ``Range`` that sends byte 0, however written, adds one entry; a part none.
+
+    Only a ``Range`` written ``bytes=0-…`` used to count as a download from the
+    first byte, so ``bytes=00-`` or ``bytes=1-,0-0`` streamed the whole file and
+    wrote nothing (review of v0.4, D5). An ``If-Range`` that no longer matches
+    and more than 100 ranges send the whole file; an unsatisfiable ``Range``
+    sends none of it.
+    """
+    with served_store(tmp_path) as served:
+        # Arrange
+        entry = entry_of(served.store, "tif_sheet", "regular")
+        size = (served.store.root / entry.path).stat().st_size
+        url = f"/stores/{STORE}/versions/{entry.path}/file"
+        etag = fetch(served.owner, url, method="HEAD").headers["etag"]
+        many = "bytes=" + ",".join(["10-19"] * 101)
+        sent = {
+            "bytes=00-": {"range": "bytes=00-"},
+            "bytes=1-,0-0": {"range": "bytes=1-,0-0"},
+            "bytes=0-0": {"range": "bytes=0-0"},
+            "bytes=-size": {"range": f"bytes=-{size}"},
+            "another If-Range": {"range": "bytes=10-19", "if-range": '"inna"'},
+            "101 ranges": {"range": many},
+            "bytes=10-19": {"range": "bytes=10-19"},
+            "bytes=-5": {"range": "bytes=-5"},
+            "the same If-Range": {"range": "bytes=10-19", "if-range": etag},
+            "bytes=size-": {"range": f"bytes={size}-"},
+        }
+
+        # Act
+        answered = {}
+        for case, headers in sent.items():
+            before = last_entry(served.api.state)
+            answer = fetch(served.owner, url, headers=headers)
+            logged = log_entries(served.api.state, after=before)
+            answered[case] = (answer.status_code, [item.action for item in logged])
+
+    # Assert
+    download = ["file.download"]
+    assert answered == {
+        "bytes=00-": (206, download),
+        "bytes=1-,0-0": (206, download),
+        "bytes=0-0": (206, download),
+        "bytes=-size": (206, download),
+        "another If-Range": (200, download),
+        "101 ranges": (200, download),
+        "bytes=10-19": (206, []),
+        "bytes=-5": (206, []),
+        "the same If-Range": (206, []),
+        "bytes=size-": (416, []),
+    }
+
+
 def test_a_file_swapped_for_a_link_after_its_check_is_never_sent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1177,6 +1177,12 @@ command-line interface may change.
   `archiwista token` issued without `--user`, is `401 session_required`. Before, such
   a token opened a session with the owner's roles, administrator included, though a
   team has no local owner (review of v0.4, D4; ADR-046 decision 3).
+- Every file download that sends the file's first byte is logged (`file.download`):
+  the answer decides it as it decides what to send, so a `Range` from byte 0 however
+  written (`bytes=00-`, `bytes=1-,0-0`, `bytes=-SIZE`), an `If-Range` that no longer
+  matches and more than 100 ranges, which send the whole file, are logged too.
+  Before, only a `Range` written `bytes=0-…` counted, so the others streamed the whole
+  file unlogged (review of v0.4, D5; ADR-047 decision 5).
 
 ## [0.2.0] - 2026-10-20
 
