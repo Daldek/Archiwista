@@ -169,7 +169,8 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
     Each refusal names the problem ``own_data_dir_outside_project`` and
     changes nothing; a folder inside the project's directory, given through
     a link from elsewhere, is saved as its real path (so the link cannot
-    lead it out later) and logged with the folder before and after.
+    lead it out later) and logged with the folder before and after, then the
+    scan of the new folder she starts with it (``job.start``).
     """
     project = place.projects / "raba"
     outside = tmp_path / "obce-dane"
@@ -200,6 +201,7 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
             "PUT", DATA_DIR, json={"path": str(shortcut / "dane-gis")}
         )
         entries = log_entries(served.state, after=logged)
+        scan = served.jobs.active_of(OWNER, "own_scan")
 
     # Assert
     key = access_key(project)
@@ -216,8 +218,16 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
         saved,
         "setting",
     )
+    assert scan is not None
     assert [
-        (entry.actor, entry.action, entry.target, entry.before, entry.after)
+        (
+            entry.actor,
+            entry.action,
+            entry.target,
+            entry.before,
+            entry.after,
+            entry.details,
+        )
         for entry in entries
     ] == [
         (
@@ -226,7 +236,16 @@ def test_the_owner_sets_a_data_folder_inside_her_project_only(
             key,
             {"path": str(Path(key) / "dane"), "source": "default"},
             {"path": saved, "source": "setting"},
-        )
+            None,
+        ),
+        (
+            OWNER,
+            "job.start",
+            scan.id,
+            None,
+            None,
+            {"kind": "own_scan", "project": "raba"},
+        ),
     ]
 
 
