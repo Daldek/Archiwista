@@ -6,7 +6,8 @@ kasia changes at her first sign-in in a second browser; the role „zapis do
 magazynu” counts from kasia's next request, and disabling kasia ends her
 session. Anna makes the group hydro with kasia, adds herself and removes it;
 kasia's groups follow at her next request. A person without ``admin`` has
-neither „Konta” nor „Grupy”, and their routes answer ``403``; the last
+neither „Konta”, „Grupy” nor „Dziennik”, and their routes answer ``403``,
+while „Zadania” is there for everyone; the last
 administrator can neither be disabled nor lose the role, said at the
 control. With ``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium keeps
 screenshots there (``docs/reports/v0.4-screenshots/``).
@@ -161,10 +162,10 @@ def test_an_administrator_makes_a_group_and_changes_its_members(
     person.assert_clean()
 
 
-def test_without_admin_no_accounts_nor_groups_and_the_last_administrator_stays(
+def test_without_admin_no_admin_views_and_the_last_administrator_stays(
     team_serve: TeamServe, team_tab: TeamTab
 ) -> None:
-    """No „Konta”, „Grupy” nor their routes without admin; the last admin stays."""
+    """No „Konta”, „Grupy”, „Dziennik” nor their routes without admin; last stays."""
     served = team_serve()
     add_person(served.paths, KASIA, KASIA_PASSWORD)
     admin = team_tab()
@@ -174,10 +175,15 @@ def test_without_admin_no_accounts_nor_groups_and_the_last_administrator_stays(
     signed_in(person.page, served.origin, KASIA, KASIA_PASSWORD)
     signed_in(page, served.origin, ADMIN_ACCOUNT, ADMIN_PASSWORD)
 
-    links = [person.page.get_by_role("link", name=name) for name in ("Konta", "Grupy")]
+    names = ("Konta", "Grupy", "Dziennik")
+    links = [person.page.get_by_role("link", name=name) for name in names]
     expect(person.page.get_by_role("link", name="Ustawienia")).to_be_visible()
+    expect(person.page.get_by_role("link", name="Zadania")).to_be_visible()
+    for name in ("Zadania", *names):
+        expect(page.get_by_role("link", name=name)).to_be_visible()
     statuses = [
-        person.page.evaluate(STATUS, f"/api/v1/{path}") for path in ("users", "groups")
+        person.page.evaluate(STATUS, f"/api/v1/{path}")
+        for path in ("users", "groups", "log")
     ]
     person.page.goto(f"{served.origin}/?view=accounts")
     expect(
@@ -190,7 +196,7 @@ def test_without_admin_no_accounts_nor_groups_and_the_last_administrator_stays(
     card.get_by_label("administrator").uncheck()
     card.get_by_role("button", name="Zapisz role").click()
 
-    assert statuses == [403, 403]
+    assert statuses == [403, 403, 403]
     for link in links:
         expect(link).to_have_count(0)
     expect(card.get_by_text(LAST_ADMIN)).to_have_count(2)
