@@ -8,11 +8,9 @@ project's directory (A-ADR-029 erratum 2), then the same rules as every scan
 its real path and a change is logged (``project.data_dir``).
 ``scan_limits`` keeps each person to one waiting or
 running scan of a data folder and each project's folder to one scan started a
-minute (ADR-047 decision 4). ``folder_check`` checks a project's folder now
-against the rules (``check_own_folder``), as every scan and the ``snapshot``
-job do before they read or write.
-``own_problems``, ``file_problems`` and ``folder_problems`` explain the
-problems a scan recorded (or a folder's state now), without paths of other
+minute (ADR-047 decision 4). ``own_problems``, ``file_problems`` and
+``folder_problems`` explain the problems a scan recorded (or a folder's state
+now, ``archiwista.owndata.scan.folder_check``), without paths of other
 projects.
 """
 
@@ -26,7 +24,6 @@ from archiwista.auth import ALL_PROJECTS, LOCAL_PRINCIPAL_ID, Principal
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import (
     AppPaths,
-    AppSettings,
     SettingsProblem,
     SettingsService,
     SettingsValidationError,
@@ -207,34 +204,6 @@ def scan_limits(
             )
 
     return admit
-
-
-def folder_check(
-    settings: AppSettings, queries: IndexQueries, paths: AppPaths, project: str
-) -> OwnFolderCheck:
-    """Check a project's data folder now against its rules (``check_own_folder``).
-
-    Inside the project's directory after ``realpath`` unless an
-    administrator set it elsewhere, and outside the stores, Archiwista's
-    data and other projects' folders; only an ``ok`` folder is read.
-
-    Parameters
-    ----------
-    settings : AppSettings
-        Settings in effect (``own_data_dirs``, the stores).
-    queries : IndexQueries
-        The indexed projects: their folders and stores take part in the rules.
-    paths : AppPaths
-        Archiwista's data directory, which no folder may overlap.
-    project : str
-        The project's access key (``ProjectRef.access_key``).
-    """
-    known = queries.projects(visible=ALL_PROJECTS)
-    stores, folders = folder_rules(settings, known)
-    others = [path for key, path in folders.items() if key != project]
-    return check_own_folder(
-        settings, project, stores=stores, app_data=paths.data_dir, others=others
-    )
 
 
 def folder_problems(check: OwnFolderCheck, project: str) -> tuple[Problem, ...]:

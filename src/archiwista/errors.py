@@ -643,6 +643,19 @@ class OwnFileChangedError(ArchiwistaError):
     default_reason = "own_file_changed"
 
 
+class OwnFolderInvalidError(ConflictError):
+    """A project's data folder breaks the rules of its scan now (``409 conflict``).
+
+    The folder leads out of its project's directory (a symbolic link put in
+    its place), lies in a store or in Archiwista's data, or overlaps another
+    project's folder (plan v0.2 decision 8, ``check_own_folder``): none of
+    its files and snapshots is read, previewed or downloaded until it is
+    fixed. The message names the folder and the rule.
+    """
+
+    default_reason = "own_folder_invalid"
+
+
 class PreviewParameterError(ArchiwistaError):
     """A parameter does not fit the file (``400 validation_error``).
 

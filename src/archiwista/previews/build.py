@@ -22,7 +22,8 @@ A file whose build fails (time limit, memory, unreadable, too large without
 ``force``) fails alone: the job goes on, and its summary names it in
 ``failed`` with ``ref``, ``code`` and a Polish ``detail`` without paths; a
 ref that does not resolve fails with a detail of its own, naming no other
-ref of the same content.
+ref of the same content (an own file of a data folder that breaks the rules
+of a scan now: ``own_folder_invalid``).
 Progress: ``current`` of ``total`` contents with ``built``, ``cached`` and
 ``failed``; the summary: ``built``, ``cached``, ``failed`` and ``seconds``.
 An interrupt kills the build processes before the job ends.
@@ -45,6 +46,7 @@ from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
     OwnFileChangedError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewUnavailableError,
     SourceUnavailableError,
@@ -224,6 +226,8 @@ class _Builder:
             return "path_outside_root", _unresolved(ref, str(error))
         except OwnFileChangedError as error:
             return "changed_since_scan", str(error)
+        except OwnFolderInvalidError as error:
+            return "own_folder_invalid", _unresolved(ref, str(error))
         except SourceUnavailableError as error:
             return "store_unavailable", str(error)
         except PreviewUnavailableError as error:

@@ -33,16 +33,17 @@ as an unknown one (A-ADR-029). Images and data of own data carry
 ``Cache-Control: private, no-cache`` with an ``ETag``: every reuse in the
 browser asks again, so visibility is checked again (``304`` after that). A
 working file changed since its scan is ``409 own_file_changed`` for images
-and data (``POST …/scan`` refreshes it). Routes only translate: the
+and data (``POST …/scan`` refreshes it); a working file or a snapshot of a
+data folder that breaks the rules of its scan now (a symbolic link out of
+the project put in its place) is ``409 own_folder_invalid``, its card has
+no preview. Routes only translate: the
 functions here are what ``archiwista files``, ``file`` and ``snapshot``
 call too. The routes starting jobs (``…/scan``, ``…/snapshots``) are in
 ``job_router``, served with the job supervisor.
 """
 
 import asyncio
-import os
 from dataclasses import replace
-from pathlib import Path as FilePath
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
@@ -50,6 +51,7 @@ from fastapi.responses import Response
 
 from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import (
+    app_paths,
     authorizer,
     index_queries,
     plugin_registry,
@@ -99,6 +101,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppPaths, AppSettings, SettingsService
 from archiwista.errors import (
     NotFoundError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewBusyError,
     SnapshotBlockedError,
@@ -106,6 +109,7 @@ from archiwista.errors import (
 from archiwista.index import IndexQueries, OwnFileDetail, ProjectRecord
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import message
+from archiwista.owndata.scan import folder_check
 from archiwista.owndata.snapshots import check_snapshot
 from archiwista.previews.service import PreviewService
 from archiwista.refs import FileRef, ObjectRef, SnapshotRef, format_ref
@@ -114,7 +118,6 @@ from archiwista.security import current_principal
 from archiwista.services.layers import read_own_file_layers
 from archiwista.services.owndata import (
     file_problems,
-    folder_check,
     folder_problems,
     own_problems,
     scan_limits,
@@ -129,16 +132,6 @@ job_router = APIRouter(prefix="/projects/{project}", tags=["own data"])
 OWN_CACHE_CONTROL = "private, no-cache"
 _FILE = "/files/{file_id}"
 _SNAPSHOT = "/files/{file_id}/snapshots/{label}"
-
-
-def app_paths(request: Request) -> AppPaths:
-    """Return the server's data directory: the index's (``AppPaths.data_dir``).
-
-    Only the data directory counts here (the folder rules, the process's
-    work directory); the settings come from the settings service.
-    """
-    index_path: FilePath = request.app.state.index_path
-    return AppPaths(config_file=FilePath(os.devnull), data_dir=index_path.parent)
 
 
 def own_previews(request: Request) -> PreviewService | None:
@@ -275,7 +268,8 @@ async def own_file_card(
     """Return the card of an own file with its preview, as the route answers it.
 
     ``preview`` is ``null`` when it cannot be told now: no render processes,
-    a full render queue, or a file linked out of its folder.
+    a full render queue, a file linked out of its folder, or a data folder
+    that breaks the rules of its scan (``OwnFolderInvalidError``).
 
     Raises
     ------
@@ -290,7 +284,7 @@ async def own_file_card(
         ref = format_ref(FileRef(project, detail.file.path))
         try:
             preview = await previews.info(ref, principal=principal)
-        except (PreviewBusyError, PathOutsideRootError):
+        except (PreviewBusyError, PathOutsideRootError, OwnFolderInvalidError):
             preview = None
     return OwnFileCard.of(
         project,

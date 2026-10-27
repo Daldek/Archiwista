@@ -159,25 +159,11 @@ MESSAGES = {
     "file_unreadable": Text(
         (
             'The file of "{ref}" cannot be downloaded: its last scan could not read'
-            " it, or the snapshot is not valid."
+            " it, the snapshot is not valid, or its data folder cannot be read."
         ),
         (
-            "Nie można pobrać pliku „{ref}”: ostatni skan nie mógł go odczytać albo"
-            " migawka jest nieważna."
-        ),
-    ),
-    "file_folder_invalid": Text(
-        'The file of "{ref}" cannot be downloaded: its data folder {path} {reason}.',
-        "Nie można pobrać pliku „{ref}”: jego folder danych {path} {reason}.",
-    ),
-    "file_folder_unreadable": Text(
-        (
-            'The file of "{ref}" cannot be downloaded: its data folder {path} cannot'
-            " be read."
-        ),
-        (
-            "Nie można pobrać pliku „{ref}”: nie można odczytać jego folderu danych"
-            " {path}."
+            "Nie można pobrać pliku „{ref}”: ostatni skan nie mógł go odczytać,"
+            " migawka jest nieważna albo nie można odczytać jego folderu danych."
         ),
     ),
     "too_many_downloads": Text(

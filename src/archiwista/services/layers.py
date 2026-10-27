@@ -94,6 +94,7 @@ from archiwista.config import AppSettings
 from archiwista.errors import (
     IndexQueryError,
     NotFoundError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewParameterError,
     PreviewUnavailableError,
@@ -1022,10 +1023,14 @@ def _framed(bounds: BBox) -> BBox:
 async def _own_info(
     previews: PreviewService, ref: FileRef | SnapshotRef, principal: Principal
 ) -> PreviewInfo | None:
-    """Return an object's preview as its route does; ``None``: linked out of root."""
+    """Return an object's preview as its route does; ``None``: not to be read.
+
+    A file linked out of its root, or of a data folder that breaks the rules
+    of a scan now: its own routes refuse it (``403``, ``409``).
+    """
     try:
         return await previews.info(format_ref(ref), principal=principal)
-    except PathOutsideRootError:  # its own routes answer ``403``
+    except (PathOutsideRootError, OwnFolderInvalidError):
         return None
 
 

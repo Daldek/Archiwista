@@ -971,6 +971,17 @@ command-line interface may change.
   /projects/{project}/data-dir` saves the folder as its real path, so a link it was
   given through cannot move it later; only an administrator's folder elsewhere lies
   outside the project. (A-ADR-029 erratum 2)
+- The previews of an own file and of its snapshots are read only from a data folder
+  that the rules of its scan let be read now, as its download is: before, a data folder
+  replaced by a symbolic link out of its project after its scan was read through the
+  link until the next scan, by its description, thumbnail, tiles, features, members
+  and build (`ObjectResolver` checks the folder for every use, the preview cache's
+  answers too). Such a file is `409 own_folder_invalid` on every preview route, its
+  card has no preview and its layers are `unavailable`; the `preview` and
+  `preview_warm` jobs, which check the folder again when they reach the file, fail it
+  alone with the code `own_folder_invalid`. A missing folder is `missing_file`, an
+  unreadable one `unreadable`, and a project whose data folder is another one than its
+  scan read `own_file_changed`.
 
 ## [0.2.0] - 2026-10-20
 

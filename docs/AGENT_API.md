@@ -573,10 +573,15 @@ with `limit`/`cursor`, `GET …/files/{file_id}` and `GET …/files/{file_id}/la
 listing of an archive have counterparts of the version routes under
 `…/files/{file_id}/preview`, `…/files/{file_id}/snapshots/{label}/preview` and
 so on. A file changed since the last scan has to be scanned again instead of
-using the old preview. The snapshot plan checks feasibility and size without
-making it; `POST …/snapshots` needs `project.write` (the project owner or an
-admin) and returns a `snapshot` job; identical content gives the result
-`unchanged`.
+using the old preview. A working file or a snapshot of a data folder that
+breaks the rules of its scan now (a symbolic link out of the project put in
+its place, a folder in a store) is `409 own_folder_invalid` on every preview
+route, even for a thumbnail the cache holds, its card has `preview: null` and
+its layers are `unavailable`; the `preview` and `preview_warm` jobs fail such
+a file with the code `own_folder_invalid`. The snapshot plan checks
+feasibility and size without making it; `POST …/snapshots` needs
+`project.write` (the project owner or an admin) and returns a `snapshot` job;
+identical content gives the result `unchanged`.
 
 ```sh
 archiwista files projekt-01 --state=changed --json
@@ -753,7 +758,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
-| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, or of a snapshot that is not valid; `own_folder_invalid`: a download of an own file or a snapshot whose data folder breaks the rules of its scan now (it leads out of the project's directory, lies in a store), an administrator or the project's owner fixes the folder; `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
+| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, of a snapshot that is not valid, or from a data folder that cannot be read; `own_folder_invalid`: a download or a preview (its description, images, tiles, features, members or build) of an own file or a snapshot whose data folder breaks the rules of its scan now (it leads out of the project's directory, lies in a store), an administrator or the project's owner fixes the folder; `last_admin` (team mode): the change would leave no enabled account with the role `admin`, give another account the role first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |

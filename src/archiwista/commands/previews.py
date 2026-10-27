@@ -92,7 +92,8 @@ def local_previews(
     ----------
     paths : AppPaths
         The local index and the preview cache (``previews_dir``): what the
-        command renders, the server finds, and the other way round.
+        command renders, the server finds, and the other way round; its data
+        directory takes part in the rules of a data folder.
     settings : AppSettings
         The stores' directories and the preview cache limit.
     jobs : JobSupervisor or None, optional
@@ -119,7 +120,9 @@ def local_previews(
         pool = stack.enter_context(
             RenderPool(workers=1, cache=cache, work_dir=paths.work_dir)
         )
-        resolver = ObjectResolver(queries, lambda: settings, visible=visible)
+        resolver = ObjectResolver(
+            queries, lambda: settings, visible=visible, paths=paths
+        )
         yield LocalPreviews(queries, pool, PreviewService(pool, resolver, jobs))
 
 

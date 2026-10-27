@@ -41,6 +41,7 @@ from fastapi.responses import JSONResponse, Response
 
 from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import (
+    app_paths,
     index_queries,
     settings_service,
     visible_projects,
@@ -91,7 +92,8 @@ def preview_service(request: Request) -> PreviewService:
     """Return the previews of the application's render pool and index.
 
     Own data and snapshots are resolved for whoever sees their project
-    (``Authorizer.visible_projects``).
+    (``Authorizer.visible_projects``), from a data folder that may be read
+    now (the server's data directory: ``app_paths``).
 
     Raises
     ------
@@ -105,7 +107,10 @@ def preview_service(request: Request) -> PreviewService:
     settings: SettingsService = state.settings
     decisions: Authorizer = state.authorizer
     resolver = ObjectResolver(
-        state.queries, settings.get, visible=decisions.visible_projects
+        state.queries,
+        settings.get,
+        visible=decisions.visible_projects,
+        paths=app_paths(request),
     )
     return PreviewService(pool, resolver, state.jobs)
 

@@ -29,8 +29,10 @@ at a person's first view or "Zbuduj podgląd". A file whose map tiles wait for
 one gets its thumbnail only and counts in ``needs_build``. The job uses no
 network, writes only the preview cache, and its render processes only read
 the stores. A file that fails (unreadable, out of time, its store out of
-reach) fails alone. Progress: ``current`` of ``total`` with ``warmed``,
-``cached``, ``failed`` and ``skipped``, at most once a second. The summary:
+reach, its data folder breaking the rules of a scan now:
+``own_folder_invalid``) fails alone. Progress: ``current`` of ``total``
+with ``warmed``, ``cached``, ``failed`` and ``skipped``, at most once a
+second. The summary:
 ``versions`` and ``files`` selected, ``warmed`` (something rendered now),
 ``cached``, ``needs_build``, ``failed`` and its first ``MAX_LISTED_FAILURES``
 ``failures`` (``ref``, ``code``, Polish ``detail``), ``skipped``,
@@ -43,13 +45,16 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
+from archiwista.config import AppPaths
 from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
     OwnFileChangedError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewTimeoutError,
     PreviewUnavailableError,
@@ -88,6 +93,7 @@ _FAILURES = (
     InvalidRefError,
     NotFoundError,
     OwnFileChangedError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewTimeoutError,
     PreviewUnavailableError,
@@ -277,8 +283,12 @@ def warm_previews(spec: JobSpec, emit: "Emitter") -> JsonObject:
             PreviewCache(spec.previews_dir, limit_bytes=limit) as cache,
             RenderPool(workers=1, cache=cache, work_dir=spec.work_dir) as pool,
         ):
+            data_dir = spec.index_path.parent
             resolver = ObjectResolver(
-                queries, lambda: settings, visible=lambda _: ALL_PROJECTS
+                queries,
+                lambda: settings,
+                visible=lambda _: ALL_PROJECTS,
+                paths=AppPaths(config_file=Path(os.devnull), data_dir=data_dir),
             )
             warmer = Warmer(cache, pool, resolver)
             tally = warmer.run(refs, _reporter(emit))
@@ -369,6 +379,8 @@ def _failure(error: Exception) -> tuple[str, str]:
             return "store_unavailable", str(error)
         case OwnFileChangedError():
             return "changed_since_scan", str(error)
+        case OwnFolderInvalidError():
+            return "own_folder_invalid", str(error)
         case NotFoundError():
             return "not_found", str(error)
         case PathOutsideRootError():

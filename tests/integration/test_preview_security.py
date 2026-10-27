@@ -19,6 +19,7 @@ import sys
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -38,8 +39,8 @@ from archiwista.previews.cache import cache_key
 from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
-from tests.fixtures.own_data import ALL_OWN_FAMILIES, GpkgEditor
-from tests.fixtures.own_data_api import OwnDataApi, OwnProject, own_data_api
+from tests.fixtures.own_data import ALL_OWN_FAMILIES, GpkgEditor, write_snapshot_fixture
+from tests.fixtures.own_data_api import FIRST, OwnDataApi, OwnProject, own_data_api
 from tests.fixtures.permissions import principal, share
 from tests.fixtures.preview_api import (
     PreviewApi,
@@ -421,3 +422,108 @@ def test_hidden_preview_job_only_reports_generic_building(
     assert refused.json()["details"]["building"] is True
     assert "job" not in refused.json()["details"]
     assert hidden.id not in described.text + refused.text
+
+
+def _lead_out(served: OwnDataApi, outside: Path) -> None:
+    """Put a symbolic link out of the project in place of its data folder.
+
+    The folder's files move to ``outside`` unchanged, so the index still
+    describes what the link leads to; only the rules of a scan tell.
+    """
+    folder = served.first.root
+    folder.rename(outside)
+    folder.symlink_to(outside, target_is_directory=True)
+
+
+def test_a_data_folder_led_out_of_its_project_is_not_previewed(tmp_path: Path) -> None:
+    """The previews of a data folder replaced by a link out of the project are refused.
+
+    The working file and its snapshot were described and their thumbnails
+    rendered after the scan; once the folder leads out of the project, both
+    are ``409 own_folder_invalid`` though the cache holds the thumbnails, and
+    the file's card and its layers show no preview of them.
+    """
+    with own_data_api(tmp_path, first=("tif_2180",), second=(), workers=1) as served:
+        # Arrange
+        project, owner = served.first, served.owner
+        raster = project.folder.file("tif_2180").path
+        snapshot = write_snapshot_fixture(
+            project.root, raster, created_at=datetime(2026, 10, 20, 12, tzinfo=UTC)
+        )
+        served.scan()
+        described = [
+            project.url(raster, "preview"),
+            project.snapshot_url(raster, snapshot.label),
+        ]
+        thumbnails = [
+            owner.request("GET", address).json()["thumbnail_url"]
+            for address in described
+        ]
+        before = [served.get(owner, address) for address in thumbnails]
+        _lead_out(served, tmp_path / "poza-projektu")
+
+        # Act
+        refused = [owner.request("GET", address) for address in described]
+        refused += [served.get(owner, address) for address in thumbnails]
+        card = owner.request("GET", project.url(raster))
+        layers = owner.request("GET", project.url(raster, "layers"))
+
+    # Assert
+    assert [answer.status_code for answer in before] == [200, 200]
+    for answer in refused:
+        assert_problem(answer, 409, "conflict", "own_folder_invalid")
+    assert card.status_code == 200
+    assert card.json()["preview"] is None
+    assert layers.status_code == 200
+    assert [item["preview"]["state"] for item in layers.json()["layers"]] == [
+        "unavailable",
+        "unavailable",
+    ]
+
+
+def test_jobs_read_no_file_of_a_data_folder_led_out_of_its_project(
+    tmp_path: Path,
+) -> None:
+    """A ``preview`` build and a project's warm-up fail such a file alone.
+
+    The build was asked for before the folder was led out of the project (a
+    job waiting in the queue); both jobs check the folder when they reach
+    the file and read nothing of it, while the warm-up prepares the store
+    versions the project pins.
+    """
+    with own_data_api(tmp_path, first=("tif_2180",), second=(), workers=1) as served:
+        # Arrange
+        project = served.first
+        raster = project.folder.file("tif_2180").path
+        with IndexQueries(served.paths.index_file) as queries:
+            detail = queries.own_file(
+                project.key, own_file_id(raster), visible=ALL_PROJECTS
+            )
+        assert detail is not None and detail.content_sha256 is not None
+        _lead_out(served, tmp_path / "poza-projektu")
+
+        # Act
+        build = served.jobs.submit(
+            "preview",
+            params={
+                "refs": [project.ref(raster)],
+                "contents": [detail.content_sha256.lower()],
+                "force": True,
+            },
+            actor=LOCAL_OWNER,
+        )
+        built = served.wait(build.id)
+        warm = served.owner.request("POST", "/previews/warm", json={"project": FIRST})
+        warmed = served.wait(warm.json()["id"])
+
+    # Assert
+    ref = project.ref(raster)
+    assert built.result is not None and warmed.result is not None
+    assert [(item["ref"], item["code"]) for item in built.result["failed"]] == [
+        (ref, "own_folder_invalid")
+    ]
+    assert built.result["built"] == 0
+    assert [(item["ref"], item["code"]) for item in warmed.result["failures"]] == [
+        (ref, "own_folder_invalid")
+    ]
+    assert warmed.result["failed"] == 1

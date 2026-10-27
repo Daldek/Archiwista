@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from archiwista.auth import access_key
+from archiwista.auth import ALL_PROJECTS, access_key
 from archiwista.config import (
     AppPaths,
     AppSettings,
@@ -52,6 +52,7 @@ from archiwista.formats import file_format
 from archiwista.index import (
     MAX_OWN_FILES,
     BBox,
+    IndexQueries,
     IndexWriter,
     KnownOwnFile,
     OwnFileWrite,
@@ -544,6 +545,37 @@ def folder_rules(
         if os.path.isabs(manifest.store_dir)
     ]
     return stores, folders
+
+
+def folder_check(
+    settings: AppSettings, queries: IndexQueries, paths: AppPaths, project: str
+) -> OwnFolderCheck:
+    """Check a project's data folder now against the rules of every scan.
+
+    ``check_own_folder`` with the stores and the folders of every indexed
+    project (``folder_rules``): inside the project's directory after
+    ``realpath`` unless an administrator set it elsewhere, and outside the
+    stores, Archiwista's data and other projects' folders. What reads or
+    writes a folder outside a scan checks it so first (a preview, a
+    download, a snapshot's plan); only an ``ok`` folder is read.
+
+    Parameters
+    ----------
+    settings : AppSettings
+        Settings in effect (``own_data_dirs``, the stores).
+    queries : IndexQueries
+        The indexed projects: their folders and stores take part in the rules.
+    paths : AppPaths
+        Archiwista's data directory, which no folder may overlap.
+    project : str
+        The project's access key (``ProjectRef.access_key``).
+    """
+    known = queries.projects(visible=ALL_PROJECTS)
+    stores, folders = folder_rules(settings, known)
+    others = [path for key, path in folders.items() if key != project]
+    return check_own_folder(
+        settings, project, stores=stores, app_data=paths.data_dir, others=others
+    )
 
 
 @dataclass(slots=True)

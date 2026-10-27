@@ -2,7 +2,8 @@
 
 ``create_app`` keeps one ``Authorizer`` (``app.state.authorizer``), one
 ``IndexQueries`` (``app.state.queries``), the settings
-(``app.state.settings``) and the producer plugins (``app.state.registry``).
+(``app.state.settings``) and the producer plugins (``app.state.registry``);
+the server's data directory is the index's (``app_paths``).
 A route takes the projects the current principal sees with
 ``visible_projects`` and passes them to the index queries and services,
 which filter; routes never filter themselves (A-ADR-029). A route that
@@ -10,13 +11,15 @@ lists projects takes ``writable_projects`` too, to say of each whether the
 principal may change it (``project_write``).
 """
 
+import os
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Request
 
 from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
-from archiwista.config import SettingsService
+from archiwista.config import AppPaths, SettingsService
 from archiwista.index import IndexQueries
 from archiwista.security import current_principal
 from archiwista.sources.registry import PluginRegistry
@@ -38,6 +41,16 @@ def settings_service(request: Request) -> SettingsService:
     """Return the application's settings service."""
     value: SettingsService = request.app.state.settings
     return value
+
+
+def app_paths(request: Request) -> AppPaths:
+    """Return the server's data directory: the index's (``AppPaths.data_dir``).
+
+    Only the data directory counts here (the folder rules, the process's
+    work directory); the settings come from the settings service.
+    """
+    index_path: Path = request.app.state.index_path
+    return AppPaths(config_file=Path(os.devnull), data_dir=index_path.parent)
 
 
 def plugin_registry(request: Request) -> PluginRegistry:

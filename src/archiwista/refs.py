@@ -19,13 +19,22 @@ unknown object), finds it in the index and returns its ``PreviewSource``:
 ``resolve`` resolves the file inside its root (``resolve_indexed_path``: a
 symbolic link leaving it is ``PathOutsideRootError``), ``locate`` answers
 from the index alone, so that the preview cache answers for a version with
-a ``sha256`` (or a snapshot) while its store (folder) is disconnected. A
-version without a ``sha256`` is keyed by its path, size and modification
-time (``path_key``), so it needs its file either way.
+a ``sha256`` while its store is disconnected. A version without a
+``sha256`` is keyed by its path, size and modification time
+(``path_key``), so it needs its file either way.
 
-An own-data working file (``file``) changes while people work: it is keyed
-by the content identity of its last scan (decision 8), so every use first
-checks that its files are still as the scan stamped them
+An own-data file and its snapshots come only from a data folder that may be
+read now, for ``resolve`` and ``locate`` alike: the rules of every scan
+(``archiwista.owndata.scan.folder_check``) find it ``ok`` and it is the
+folder the last scan read. A folder breaking them (a symbolic link out of
+the project put in its place, a folder in a store) is
+``OwnFolderInvalidError`` (``409 own_folder_invalid``), a missing one
+``missing_file`` and an unreadable one ``unreadable``
+(``PreviewUnavailableError``), another folder than the scan's
+``OwnFileChangedError``; neither its files nor the preview cache answer
+then. An own-data working file (``file``) changes while people work: it is
+keyed by the content identity of its last scan (decision 8), so every use
+also checks that its files are still as the scan stamped them
 (``stamp_holds``), else ``OwnFileChangedError`` (``409 own_file_changed``:
 refresh the project's own data), and its source is ``mutable`` with the
 state a render process checks again before and after rendering. A snapshot
@@ -45,11 +54,12 @@ from pathlib import Path
 from typing import cast
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, Principal, ProjectVisibility
-from archiwista.config import AppSettings
+from archiwista.config import AppPaths, AppSettings
 from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
     OwnFileChangedError,
+    OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewUnavailableError,
     SourceUnavailableError,
@@ -62,11 +72,11 @@ from archiwista.index import (
     own_file_id,
 )
 from archiwista.jobs.protocol import JobSpec
-from archiwista.messages import message
+from archiwista.messages import lookup, message
 from archiwista.owndata.content import CONTENT_METHODS, ContentMethod
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.formats import fileset_members
-from archiwista.owndata.scan import stamp_holds
+from archiwista.owndata.scan import folder_check, stamp_holds
 from archiwista.paths import indexed_path, resolve_indexed_path
 from archiwista.previews.cache import path_key
 from archiwista.previews.types import (
@@ -186,6 +196,10 @@ class ObjectResolver:
         The projects a principal sees (``Authorizer.visible_projects``):
         their own data and snapshots. Without it no project's are visible,
         only store versions.
+    paths : AppPaths or None, optional
+        The server's data directory, which no data folder may overlap: own
+        data is read only from a folder ``folder_check`` lets be read now.
+        Without it no project's are visible either.
     """
 
     def __init__(
@@ -194,14 +208,18 @@ class ObjectResolver:
         settings: Callable[[], AppSettings],
         *,
         visible: VisibleProjects | None = None,
+        paths: AppPaths | None = None,
     ) -> None:
         self._queries = queries
         self._settings = settings
         self._visible = visible
+        self._paths = paths
 
     def visible_projects(self, principal: Principal) -> ProjectVisibility:
         """Use the same project visibility for preview jobs as for own files."""
-        return _NO_PROJECTS if self._visible is None else self._visible(principal)
+        if self._visible is None or self._paths is None:
+            return _NO_PROJECTS
+        return self._visible(principal)
 
     def resolve(self, ref: str | ObjectRef, *, principal: Principal) -> PreviewSource:
         """Return the object's source with its file resolved inside its root.
@@ -233,12 +251,17 @@ class ObjectResolver:
         SourceUnavailableError
             Its store cannot be reached (``503 store_unavailable``).
         OwnFileChangedError
-            A working file differs from its last scan (``409``).
+            A working file differs from its last scan, or its project's data
+            folder is another one than the last scan read (``409``).
+        OwnFolderInvalidError
+            Its project's data folder breaks the rules of a scan now
+            (``409 own_folder_invalid``).
         PreviewUnavailableError
             ``missing_file``: its store or folder is there, its file is not
             (or a working file the last scan found gone, or a folder out of
-            reach); ``unreadable``: a working file without a content
-            identity, or a snapshot that is not valid.
+            reach or gone); ``unreadable``: a working file without a content
+            identity, a snapshot that is not valid, or a data folder that
+            cannot be read.
         """
         return self._source(_parsed(ref), principal, on_disk=True)
 
@@ -246,20 +269,23 @@ class ObjectResolver:
         """Return the object's source from the index, for the preview cache.
 
         A version with a ``sha256`` and a snapshot are located without
-        touching their store or folder: their paths are the indexed ones,
-        not resolved, and must not be rendered (``resolve`` gives the source
-        to render). A version without a ``sha256`` is resolved as by
-        ``resolve``, and a working file too: whether it changed since its
-        scan decides its content.
+        reading their store or folder (a snapshot's folder is only checked,
+        see the module): their paths are the indexed ones, not resolved, and
+        must not be rendered (``resolve`` gives the source to render). A
+        version without a ``sha256`` is resolved as by ``resolve``, and a
+        working file too: whether it changed since its scan decides its
+        content.
 
         Raises
         ------
         InvalidRefError, NotFoundError, PathOutsideRootError
             As ``resolve``.
+        OwnFolderInvalidError
+            As ``resolve``, for a working file and a snapshot.
         SourceUnavailableError, OwnFileChangedError, PreviewUnavailableError
             As ``resolve``, only for a version without a ``sha256`` or one of
-            a store no longer configured, a working file, or a snapshot that
-            is not valid.
+            a store no longer configured, a working file, a snapshot that is
+            not valid, or a data folder that may not be read now.
         """
         return self._source(_parsed(ref), principal, on_disk=False)
 
@@ -347,19 +373,55 @@ class ObjectResolver:
     ) -> OwnFileDetail:
         """Return the indexed working file of a reference its principal sees.
 
+        Its data folder is checked first (``_require_folder``), so nothing of
+        a folder that may not be read now is resolved or located.
+
         Raises
         ------
         NotFoundError
             An unknown project, file or folder never scanned, or a project
             the principal does not see.
+        OwnFolderInvalidError, OwnFileChangedError, PreviewUnavailableError
+            Its data folder may not be read now (``_require_folder``).
         """
         visible = self.visible_projects(principal)
         path = unicodedata.normalize("NFC", ref.path)
         detail = self._queries.own_file(ref.project, own_file_id(path), visible=visible)
-        if detail is None or detail.file.path != path:
+        paths = self._paths
+        if detail is None or paths is None or detail.file.path != path:
             text = message("own.file_not_found", project=ref.project, file_id=path)
             raise NotFoundError(text)
+        self._require_folder(detail, visible, paths)
         return detail
+
+    def _require_folder(
+        self, detail: OwnFileDetail, visible: ProjectVisibility, paths: AppPaths
+    ) -> None:
+        """Refuse a file of a data folder that may not be read now (see the module).
+
+        The folder is checked as a scan checks it (``folder_check``), so a
+        folder replaced by a symbolic link out of its project is refused
+        before any of its files is opened; only the folder the last scan read
+        is read.
+        """
+        key = detail.folder.project
+        record = self._queries.project(key, visible=visible)
+        if record is None:  # it left the index meanwhile
+            raise NotFoundError(message("project.not_found", project=key))
+        access = record.project.access_key
+        folder = folder_check(self._settings(), self._queries, paths, access)
+        if folder.state == "invalid":
+            reason = lookup(f"own.folder_reason_{folder.reason}", str(folder.reason))
+            text = message(
+                "ref.folder_invalid", path=folder.path, project=key, reason=reason
+            )
+            raise OwnFolderInvalidError(text)
+        if folder.state == "missing":
+            raise PreviewUnavailableError("missing_file")
+        if folder.state != "ok":
+            raise PreviewUnavailableError("unreadable")
+        if str(folder.path) != detail.folder.path:
+            raise own_file_changed(FileRef(key, detail.file.path))
 
     def _working(self, ref: FileRef, detail: OwnFileDetail) -> PreviewSource:
         """Return a working file's source once it is known unchanged since its scan.
@@ -417,13 +479,16 @@ def job_resolver(spec: JobSpec) -> Callable[[str], PreviewSource]:
     The index is opened for each ref and closed again; the refs were checked
     against the principal who asked when the job was submitted, so the job
     resolves them as the owner of the installation, who sees every project.
+    A data folder is checked again when its file is resolved, against the
+    data directory of the job's index.
     """
     settings = spec.settings
+    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
 
     def resolve(ref: str) -> PreviewSource:
         with IndexQueries(spec.index_path) as queries:
             resolver = ObjectResolver(
-                queries, lambda: settings, visible=lambda _: ALL_PROJECTS
+                queries, lambda: settings, visible=lambda _: ALL_PROJECTS, paths=paths
             )
             return resolver.resolve(ref, principal=LOCAL_OWNER)
 

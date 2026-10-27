@@ -8,8 +8,8 @@
 
 ``archiwista.services.files`` finds the file: only what the index knows and
 the session sees (a hidden project is ``404``), inside its root, and an own
-file or a snapshot only from a data folder that may be read now
-(``services.owndata.folder_check``). The answer
+file or a snapshot only from a data folder that may be read now (the
+resolver's ``archiwista.owndata.scan.folder_check``). The answer
 streams it (Starlette's ``FileResponse``: ``Range`` answered ``206`` with
 ``Content-Range``, ``Accept-Ranges``, ``Content-Length``) as an attachment
 with its name (``filename*`` of RFC 6266 for a name that is not plain ASCII),
@@ -34,13 +34,13 @@ from fastapi.responses import FileResponse, Response
 from starlette.types import Receive, Scope, Send
 
 from archiwista.api.dependencies import (
+    app_paths,
     authorizer,
     index_queries,
     settings_service,
     visible_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
-from archiwista.api.owndata import app_paths, visible_project
 from archiwista.api.owndata import own_file as indexed_own_file
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
@@ -156,10 +156,12 @@ def _responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
 
 
 def file_resolver(
-    queries: _Queries, settings: _Settings, decisions: _Authorizer
+    queries: _Queries, settings: _Settings, decisions: _Authorizer, paths: _Paths
 ) -> ObjectResolver:
     """Return the resolver of refs, own data seen by whoever sees its project."""
-    return ObjectResolver(queries, settings.get, visible=decisions.visible_projects)
+    return ObjectResolver(
+        queries, settings.get, visible=decisions.visible_projects, paths=paths
+    )
 
 
 _Resolver = Annotated[ObjectResolver, Depends(file_resolver)]
@@ -193,8 +195,6 @@ def download_own_file(
     principal: _Principal,
     visible: _Visible,
     queries: _Queries,
-    settings: _Settings,
-    paths: _Paths,
     resolver: _Resolver,
     decisions: _Authorizer,
     member: _Member = None,
@@ -206,18 +206,8 @@ def download_own_file(
     scan is `409 own_file_changed` (`POST /projects/{project}/scan` refreshes
     it).
     """
-    record = visible_project(queries, project, visible=visible)
     detail = indexed_own_file(queries, project, file_id, visible=visible)
-    found = own_file(
-        resolver,
-        queries,
-        settings.get(),
-        paths,
-        record.project,
-        detail,
-        principal=principal,
-        member=member,
-    )
+    found = own_file(resolver, project, detail, principal=principal, member=member)
     return _answer(request, found, principal, decisions)
 
 
@@ -231,8 +221,6 @@ def download_snapshot_file(
     principal: _Principal,
     visible: _Visible,
     queries: _Queries,
-    settings: _Settings,
-    paths: _Paths,
     resolver: _Resolver,
     decisions: _Authorizer,
     member: _Member = None,
@@ -242,18 +230,9 @@ def download_snapshot_file(
     A snapshot that is not valid (`modified`, `invalid`) is `409`, so is one
     of a data folder the rules of its scan do not let be read now.
     """
-    record = visible_project(queries, project, visible=visible)
     detail = indexed_own_file(queries, project, file_id, visible=visible)
     found = snapshot_file(
-        resolver,
-        queries,
-        settings.get(),
-        paths,
-        record.project,
-        detail,
-        label,
-        principal=principal,
-        member=member,
+        resolver, project, detail, label, principal=principal, member=member
     )
     return _answer(request, found, principal, decisions)
 
