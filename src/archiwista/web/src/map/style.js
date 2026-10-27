@@ -19,11 +19,10 @@ import { GLYPH_FONT, GLYPHS } from "../maplibre.js";
 export const BACKGROUND = "#eef0f3";
 /** The layer under which a basemap goes: the first data layer. */
 export const FIRST_DATA_LAYER = "cells-fill";
-/** Value kept for the choice "no basemap". */
+/** The preference's choice "no basemap" (`Preferences.basemap`). */
 export const NO_BASEMAP = "";
 
 const SOURCE = "basemap";
-const STORAGE = "archiwista:map-basemap";
 const TILE_PX = 256;
 const WMS_DEFAULTS = {
   SERVICE: "WMS",
@@ -132,43 +131,18 @@ export function availableBasemaps(settings) {
 }
 
 /**
- * The basemap shown: the one chosen in this browser, else the first one.
+ * The basemap shown: the one the person chose (`Preferences.basemap`), else
+ * the first one.
  *
  * @param {import("../types.js").BasemapSettings[]} basemaps
- * @param {string|null} chosen - Name kept by `keepBasemap`; `NO_BASEMAP` for none.
+ * @param {string|null} chosen - A basemap's name, `NO_BASEMAP` for none, `null`
+ *   for the first.
  * @returns {import("../types.js").BasemapSettings|null}
  */
 export function pickBasemap(basemaps, chosen) {
   if (chosen === NO_BASEMAP) return null;
   return basemaps.find((basemap) => basemap.name === chosen) ?? basemaps[0] ?? null;
 }
-
-/**
- * The basemap name chosen in this browser, `NO_BASEMAP`, or `null` (none chosen).
- *
- * @returns {string|null}
- */
-export function chosenBasemap() {
-  try {
-    return localStorage.getItem(STORAGE);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Keep the choice of basemap in this browser.
- *
- * @param {string} name - A basemap name or `NO_BASEMAP`.
- */
-export function keepBasemap(name) {
-  try {
-    localStorage.setItem(STORAGE, name);
-  } catch {
-    // Private mode: the choice lasts for this page only.
-  }
-}
-
 
 function basemapLayers(basemap) {
   if (basemap.kind === "vector") return vectorLayers();

@@ -11,9 +11,9 @@
  * historical, a variable, the coverage chips of each variable of the dataset
  * (several states of one variable are alternatives) with its least full
  * years, the range of the labels and the switch „Lata: hydrologiczne /
- * kalendarzowe”, which writes `year_type` to the address and, for an
- * administrator, remembers the choice for the family (`PUT
- * /settings/year-types`, P15). The Timeline (`layout=timeline`) shows one
+ * kalendarzowe”, which writes `year_type` to the address and remembers the
+ * choice for the family in the person's preferences (`PUT /preferences`,
+ * P15). The Timeline (`layout=timeline`) shows one
  * dataset: its field has no „Wszystkie zbiory” and shows the product's first
  * when the address names none, and a coverage filter then writes it to the
  * address, since the filters need a dataset.
@@ -317,17 +317,17 @@ function StationFields({ query, stations, errors, onChange }) {
 
 /**
  * „Lata: hydrologiczne / kalendarzowe” (M11 point 5): the address's
- * `year_type`, else the type remembered for the list's family (year-type.js).
+ * `year_type`, else the type the person remembers for the list's family
+ * (year-type.js).
  */
 function YearTypeSwitch({ query, family, onChange }) {
   const SF = L.stations.filters;
-  const { value, choose, admin, failed } = useYearType(query.year_type, family, onChange);
+  const { value, choose, failed } = useYearType(query.year_type, family, onChange);
   return html`<div class="field" role="group" aria-labelledby="cat-f-year_type-label">
     <span class="field-label" id="cat-f-year_type-label">${SF.year_type}</span>
     <${Seg} small label=${SF.year_type} value=${value} onChange=${choose}
       options=${YEAR_TYPES.map((type) => ({ value: type, label: SF.year_types[type] }))} />
-    <span class="field-hint st-year-type-note">
-      ${admin ? t(SF.year_type_hint, { family: SF.families[family] }) : SF.year_type_local}</span>
+    <span class="field-hint st-year-type-note">${t(SF.year_type_hint, { family: SF.families[family] })}</span>
     ${failed ? html`<span class="field-error" role="alert">${SF.year_type_failed}</span>` : null}
   </div>`;
 }

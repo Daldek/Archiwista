@@ -258,6 +258,13 @@ command-line interface may change.
   station cards, own files, folders and snapshots) gains `personal`, the path through
   the person's first alias that holds it (`null` without one); an alias only changes
   the paths shown and copied, never the paths the routes take. A change is not logged.
+- "Moje ścieżki…" in the account menu of a team server (v0.4, ADR-047 decision 6;
+  sketch o of SPEC 6.5): the person's path aliases, a prefix on the server ("Na
+  serwerze") with the same place on their computer ("U mnie"), at most 20, saved with
+  "Zapisz" (`PUT /api/v1/preferences`; the server's refusal is shown). The file card,
+  the station card, an own file with its snapshot plan and a project's data folder
+  then show the person's path first and copy it; the server's path follows under "Na
+  serwerze", the store's aliases as before.
 - The comparison of stations: "Porównaj z…" in the toolbar of the station card's chart,
   or up to five rows of the Catalog's station list chosen with their button or `P` and
   then "Porównaj", opens one variable of 2 to 5 stations as panels stacked over one
@@ -355,9 +362,9 @@ command-line interface may change.
   the fields of `GET /stations` (dataset, kind or meteo types, river code with "z
   dopływami", active, variable, coverage chips with the least full years, range of the
   labels) and "Lata: hydrologiczne / kalendarzowe", which writes `year_type` to the
-  address and, for an administrator, remembers the choice for the family. "Ukryte przez
-  filtry pokrycia: N" counts what the coverage chips hide. Enter or a click shows a
-  located station on the map.
+  address and remembers the choice for the family in the person's preferences.
+  "Ukryte przez filtry pokrycia: N" counts what the coverage chips hide. Enter or a
+  click shows a located station on the map.
 - `GET /api/v1/stations` and `archiwista stations list` take `q` and `sort` (ADR-045, plan
   I8.2). `q` finds a station whose name or river contains the text, whatever the case
   of the letters (`łódź` finds `Łódź`), or whose code begins with it; no character is a
@@ -876,6 +883,10 @@ command-line interface may change.
   /api/v1/settings/year-types` is removed; use `PUT /api/v1/preferences`. A
   `year_types` table in `config.toml` is ignored, left out of the file at the next
   change of the settings, and `archiwista doctor` names it as a warning until then.
+- The basemap chosen in the map's legend is the person's preference (v0.4, ADR-047
+  decision 6): it comes back in every browser the person signs in from, and the
+  browser's `localStorage` no longer keeps it. The map asks for no basemap before the
+  choice is read.
 - **Breaking:** scans of a store, unit outlines and link checks (`POST
   /stores/{store}/scan`, `/footprints`, `/link-check`, and their retry) and a retry of
   the scan of every project's data folder need the role `admin` (the new action

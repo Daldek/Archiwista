@@ -77,8 +77,10 @@ import {
   IssueList,
   JobStatus,
   loadCardStyles,
+  pathToCopy,
   pinStateName,
   projectSummary,
+  ServerPath,
   StaleNote,
   statusLevel,
   statusName,
@@ -897,13 +899,16 @@ function OwnData({ project, round }) {
   </section>`;
 }
 
+/** The project's data folder: the person's own path first (`pathToCopy`), its state and counts. */
 function OwnFolder({ folder }) {
+  const { first, server } = pathToCopy(folder.path);
   return html`<dl class="kv own-folder">
     <dt>${L.own.folder}</dt>
     <dd class="own-folder-path">
-      <code class="path">${folder.path.local}</code>
-      <${CopyButton} text=${folder.path.local} label=${L.own.copy_folder} />
+      <code class="path">${first}</code>
+      <${CopyButton} text=${first} label=${L.own.copy_folder} />
       <span class="faint">${L.own.source[folder.source] ?? folder.source}</span>
+      <${ServerPath} path=${server} />
     </dd>
     <dt>${L.own.state}</dt>
     <dd><${Badge} level=${FOLDER_LEVEL[folder.state] ?? "plain"}>

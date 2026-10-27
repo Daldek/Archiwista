@@ -132,6 +132,13 @@ export const cards = {
       snapshot_invalid: "Migawka jest nieważna, więc nie można jej pobrać.",
     },
   },
+  /**
+   * The server's path beside the person's own, which a copy button gives
+   * first (views/cards.js `ServerPath`; the path aliases of „Moje ścieżki”).
+   */
+  paths: {
+    server: "Na serwerze",
+  },
   /** Human names of coordinate systems of Polish and Czech data (Kartograf's names). */
   crs: {
     "EPSG:2180": "PL-1992",

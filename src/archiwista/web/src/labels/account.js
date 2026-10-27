@@ -1,9 +1,9 @@
 /**
  * Texts of signing in to a team server and of the person's account
  * (views/login.js, the account menu of shell.js; docs/SPEC.md 6.5 n and o,
- * ADR-046): the sign-in, the wait after failed attempts, the company's
- * sign-in through its proxy, the change of a password, the sessions and an
- * agent's token.
+ * ADR-046, ADR-047): the sign-in, the wait after failed attempts, the
+ * company's sign-in through its proxy, the change of a password, the
+ * sessions, an agent's token and the person's own path aliases.
  */
 
 export const account = {
@@ -44,6 +44,7 @@ export const account = {
     sessions: "Sesje…",
     sessions_count: "Sesje ({count})…",
     token: "Token dla agenta…",
+    paths: "Moje ścieżki…",
     sign_out: "Wyloguj",
   },
   sessions: {
@@ -66,6 +67,26 @@ export const account = {
     issue: "Wystaw adres",
     address: "adres sesji agenta",
     shown_once: "Adres jest widoczny tylko teraz; ważny do {time}. Sesja agenta: {label}.",
+    close: "Zamknij",
+  },
+  paths: {
+    title: "Moje ścieżki",
+    intro:
+      "Tylko do pokazywania i kopiowania ścieżek: „Kopiuj ścieżkę” poda ścieżkę tak, jak widzi ją ten komputer. Serwer zawsze czyta pliki swoimi ścieżkami.",
+    server: "Na serwerze",
+    server_hint: "Ścieżka bezwzględna, np. /mnt/nas/",
+    server_label: "Na serwerze, ścieżka {number}",
+    personal: "U mnie",
+    personal_hint: "Ta sama ścieżka na tym komputerze, np. Y:\\",
+    personal_label: "U mnie, ścieżka {number}",
+    none: "Brak ścieżek: ścieżki są pokazywane tak, jak widzi je serwer.",
+    remove: "Usuń",
+    remove_label: "Usuń ścieżkę {number}",
+    add: "Dodaj",
+    limit: "Najwyżej {count} ścieżek.",
+    save: "Zapisz",
+    saved: "Zapisano.",
+    loading: "Wczytywanie ścieżek…",
     close: "Zamknij",
   },
   show: "Pokaż",

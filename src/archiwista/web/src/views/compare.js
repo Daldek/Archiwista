@@ -41,7 +41,7 @@ import {
   ZoomHint,
 } from "../map/previews.js";
 import { OwnCardLink, useOwnFile } from "../map/own.js";
-import { availableBasemaps, chosenBasemap, pickBasemap } from "../map/style.js";
+import { availableBasemaps, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { BuildSection, PreviewLegend, PreviewReason, styleName, useBuild } from "../previews.js";
 import { Link, setParams } from "../router.js";
@@ -282,7 +282,7 @@ function CompareEmpty({ params }) {
  * mode, the panel, the basemap and the index's state.
  */
 function useStage(params) {
-  const { settings, settingsError, health } = useApp();
+  const { settings, settingsError, preferences, preferencesError, health } = useApp();
   const [start] = useState(() => readPosition(params));
   const [panel, setPanel] = useState(() => !window.matchMedia(NARROW).matches);
   const [move, setMove] = useState(null);
@@ -296,9 +296,11 @@ function useStage(params) {
     mapApi,
     setMapApi,
     userMoved,
-    // The maps start with the basemap: they wait for the settings.
-    settled: settings !== undefined || settingsError !== undefined,
-    basemap: settings ? pickBasemap(availableBasemaps(settings), chosenBasemap()) : null,
+    // The maps start with the basemap: they wait for the settings and the preferences.
+    settled:
+      (settings !== undefined || settingsError !== undefined) &&
+      (preferences !== undefined || preferencesError !== undefined),
+    basemap: settings ? pickBasemap(availableBasemaps(settings), preferences?.basemap ?? null) : null,
     indexKey: (health?.stores ?? []).map((item) => `${item.store}:${item.state.indexed_at ?? ""}`).join(","),
     mode: MODES.includes(params[MODE_PARAM]) ? params[MODE_PARAM] : MODES[0],
     onMove: (next) => {

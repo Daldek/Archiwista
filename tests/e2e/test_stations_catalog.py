@@ -9,9 +9,9 @@ expanded, and it starts folded above 50 located stations. The river code
 with its tributaries and the coverage chips are parameters of the address,
 and the stations the coverage hides are counted. The year-type switch
 numbers the labels as the API does with ``year_type``, stays in the address
-and is remembered for the family. The rows move with the keys of the file
-list. Everything stands beside the map, so each test runs in Chromium and
-Firefox.
+and is remembered for the family in the person's preferences. The rows move
+with the keys of the file list. Everything stands beside the map, so each
+test runs in Chromium and Firefox.
 """
 
 import json
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from playwright.sync_api import Locator, Page, Route, expect
+from playwright.sync_api import Locator, Page, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.station_browser import (
@@ -359,19 +359,24 @@ def test_the_year_type_switch_numbers_the_labels_and_is_remembered(
     open_list(page, served, product="hydro")
     calendar_button = page.get_by_role("button", name="kalendarzowe", exact=True)
     hydrological_button = page.get_by_role("button", name="hydrologiczne", exact=True)
-    settings_put = re.compile(r"/api/v1/settings/year-types$")
+    preferences_put = re.compile(r"/api/v1/preferences$")
+
+    def saved(response: Response) -> bool:
+        return response.request.method == "PUT" and bool(
+            preferences_put.search(response.url)
+        )
 
     # Act
     expect(hydrological_button).to_have_attribute("aria-pressed", "true")
     before = settled(page, hydrological, total)
-    with page.expect_response(settings_put) as put:
+    with page.expect_response(saved) as put:
         calendar_button.click()
     expect(page).to_have_url(re.compile(r"[?&]year_type=calendar(&|$)"))
     switched = settled(page, calendar, total)
     page.reload()
     reloaded = settled(page, calendar, total)
     reloaded_pressed = calendar_button.get_attribute("aria-pressed")
-    settings = api(page, "/settings")
+    preferences = api(page, "/preferences")
     open_list(page, served, product="hydro")
     remembered = settled(page, calendar, total)
 
@@ -381,7 +386,7 @@ def test_the_year_type_switch_numbers_the_labels_and_is_remembered(
     assert calendar != hydrological
     assert stations_of(switched) == calendar
     assert (stations_of(reloaded), reloaded_pressed) == (calendar, "true")
-    assert settings["year_types"] == {"hydro": "calendar", "meteo": "calendar"}
+    assert preferences["year_types"] == {"hydro": "calendar", "meteo": "calendar"}
     assert "year_type" not in query_of(page)
     assert stations_of(remembered) == calendar
     expect(calendar_button).to_have_attribute("aria-pressed", "true")

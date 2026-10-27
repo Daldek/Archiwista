@@ -159,10 +159,11 @@ comes first). Files without a footprint do not reach the map: the counter
 changes the basemap: by default the grey "OpenFreeMap szary" (vector tiles
 from OpenStreetMap data, names in Polish also abroad: Praga, Drezno, Lwów), as
 options "OSM GUGiK szary (tylko Polska)" (Poland only; outside Poland it is
-empty) or "bez podkładu" (no basemap). Settings saved before v0.2 keep their
-list of basemaps; removing the `[[basemaps]]` tables from `config.toml` gives
-the new built-in ones. Without a mouse the arrow keys pan the map, plus and
-minus zoom.
+empty) or "bez podkładu" (no basemap); the choice is the person's own and comes back
+on every computer they sign in from (v0.4, their preferences). Settings saved before
+v0.2 keep their list of basemaps; removing the `[[basemaps]]` tables from
+`config.toml` gives the new built-in ones. Without a mouse the arrow keys pan the map,
+plus and minus zoom.
 
 ![File card with the reason a preview is missing](reports/v0.2-screenshots/02-karta-pliku-powod.webp)
 
@@ -226,7 +227,9 @@ versions a scan has just indexed.
   one to use in projects and analyses; the standard path is a link to the
   current version and points to other content once a newer one is downloaded.
   "Na innym komputerze" (on another computer) gives the same path under another
-  drive letter or mount (the store setting `path_aliases`).
+  drive letter or mount (the store setting `path_aliases`). With the person's own
+  paths ("Moje ścieżki…", v0.4) the path as their computer has it comes first and
+  the copy button gives it; the server's path follows under "Na serwerze".
 - **"Pobierz plik"** (download the file, v0.4) next to the version's title
   saves the version's file on this computer under its name; nothing opens in
   the browser, a PDF neither. It is disabled, with the reason, while the store
@@ -462,11 +465,11 @@ field finds a part of a name or river or the start of a code. The filter panel a
 the dataset, the station kind or meteo types, the river code with "z dopływami", active
 or historical stations, a variable, the coverage chips of each variable with its least
 full years, the range of the labels and "Lata: hydrologiczne / kalendarzowe": the
-choice goes into the address and, for an administrator, is remembered for hydro or
-meteo data. "Ukryte przez filtry pokrycia: N" above the list counts the stations the
-coverage chips hide. Enter or a click opens a station's card; M or the row's map
-button shows a station with a position on the map; the arrows, Home and End move
-through the rows, and Enter on "Bez położenia" folds it.
+choice goes into the address and is remembered for hydro or meteo data in the
+person's preferences. "Ukryte przez filtry pokrycia: N" above the list counts the
+stations the coverage chips hide. Enter or a click opens a station's card; M or the
+row's map button shows a station with a position on the map; the arrows, Home and End
+move through the rows, and Enter on "Bez położenia" folds it.
 
 ![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
 
@@ -492,11 +495,12 @@ renumbers the labels and goes into the address), the location with its source, t
 catalog's date and the uncertainty, or why it has none, and for a water gauge of
 IMGW-PIB "Strona stacji IMGW", a link to its page on hydro.imgw.pl. "Pokaż na mapie"
 opens the map on a station with a position and "Kopiuj ścieżkę pliku" copies the path
-of its series file. "Pokrycie" gives each variable of each series with its label, full
-years and longest gap; the tabs "Wykres" (the default), "Metadane" (the catalog's
-facts), "Pochodzenie" (each series version with the station's file, its SHA-256 and the
-series index, and the catalog version) and "Szczegóły techniczne" (the API's answer)
-follow, and last the licence with the formula IMGW requires and "Kopiuj atrybucję".
+of its series file (the person's own first, as on the file card). "Pokrycie" gives
+each variable of each series with its label, full years and longest gap; the tabs
+"Wykres" (the default), "Metadane" (the catalog's facts), "Pochodzenie" (each series
+version with the station's file, its SHA-256 and the series index, and the catalog
+version) and "Szczegóły techniczne" (the API's answer) follow, and last the licence
+with the formula IMGW requires and "Kopiuj atrybucję".
 
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
 
@@ -741,9 +745,24 @@ hasło…" (not for a sign-in through the company's proxy, whose password is cha
 there), "Sesje…" (every session of the account and its agents, with the browser, the
 address and the start; "Zakończ" ends one at once, "Zakończ pozostałe sesje" all but
 this one), "Token dla agenta…" ("Wystaw adres" shows the one-time address of an
-agent's session once, with "Kopiuj"; it acts with the person's roles) and "Wyloguj".
+agent's session once, with "Kopiuj"; it acts with the person's roles), "Moje
+ścieżki…" and "Wyloguj".
 
 ![Account menu](reports/v0.4-screenshots/03-menu-konta.webp)
+
+**Own paths and preferences.** "Moje ścieżki…" keeps the person's path aliases, at
+most 20: a prefix on the server ("Na serwerze", absolute, e.g. `/mnt/nas/`) and the
+same place on their computer ("U mnie", e.g. `Y:\`). They change only the paths shown
+and copied: the file card, the station card, an own file with its snapshot plan and
+a project's data folder show the path through the first alias that holds it, the copy
+button gives it, and the server's path follows under "Na serwerze". The server reads
+files by its own paths, and no field takes a path through an alias. The aliases, the
+basemap and the remembered year types are each person's preferences (`GET` and `PUT
+/api/v1/preferences`), the same in every browser the person signs in from; in local
+mode they are the computer owner's. A card already open shows the new paths when it
+is opened again.
+
+![Own paths](reports/v0.4-screenshots/09-moje-sciezki.webp)
 
 **Signing in and sessions.** A person signs in with the account's identifier and
 password (`POST /api/v1/session/login`; for a script see AGENT_API). A temporary

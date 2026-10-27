@@ -87,7 +87,9 @@ import {
   IssueList,
   JobStatus,
   loadCardStyles,
+  pathToCopy,
   seconds,
+  ServerPath,
   useJob,
 } from "./cards.js";
 
@@ -558,12 +560,18 @@ function Raster({ raster }) {
   </div>`;
 }
 
+/**
+ * A path of the card to copy: the person's own first (`pathToCopy`), the
+ * server's beside it, then the stores' path aliases of other computers.
+ */
 function Paths({ title, paths, copy }) {
+  const { first, server } = pathToCopy(paths);
   return html`<div class="fc-block">
     <h4 class="section-title">${title}</h4>
     <div class="fc-path">
-      <p class="fc-path-row"><code class="path">${paths.local}</code></p>
-      <${CopyAction} text=${paths.local} label=${copy} />
+      <p class="fc-path-row"><code class="path">${first}</code></p>
+      <${CopyAction} text=${first} label=${copy} />
+      <${ServerPath} path=${server} className="fc-path-row" />
       ${paths.aliases.map(
         (alias) => html`<p key=${alias} class="fc-path-row">
           <span class="faint">${L.meta.alias}:</span> <code class="path">${alias}</code>
@@ -714,6 +722,7 @@ function PlanWindow({ project, fileId, card, onClose, onDone }) {
 }
 
 function PlanFacts({ plan }) {
+  const destination = pathToCopy(plan.destination);
   return html`
     <dl class="kv own-plan-facts">
       <dt>${L.plan.file}</dt><dd class="mono own-path">${plan.file}</dd>
@@ -721,8 +730,9 @@ function PlanFacts({ plan }) {
       <dd><${Tech} value=${[["size_bytes", String(plan.size_bytes)]]}>${size(plan.size_bytes)}</${Tech}></dd>
       <dt>${L.plan.destination}</dt>
       <dd class="own-plan-destination">
-        <code class="path">${plan.destination.local}</code>
-        <${CopyButton} text=${plan.destination.local} label=${L.plan.copy_destination} />
+        <code class="path">${destination.first}</code>
+        <${CopyButton} text=${destination.first} label=${L.plan.copy_destination} />
+        <${ServerPath} path=${destination.server} />
         <span class="field-hint">${L.plan.destination_hint}</span>
       </dd>
       <dt>${L.plan.copy_method}</dt>

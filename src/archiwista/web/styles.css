@@ -96,6 +96,15 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .account-token { display: flex; align-items: center; gap: 6px; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 8px 10px; }
 .account-token code { flex: 1; min-width: 0; color: #e2e8f0; font-size: 12px; overflow-wrap: anywhere; }
 .account-token .copy-btn { color: #cbd5e1; }
+.account-paths-form { display: grid; gap: 12px; }
+.account-paths { display: grid; gap: 6px; }
+.account-path { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.account-path.head { align-items: end; font-weight: 600; font-size: 12.5px; }
+.account-path.head > span { display: grid; gap: 2px; }
+.account-path.head .field-hint { font-weight: 400; }
+.account-path input { height: 32px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff; min-width: 0; width: 100%; font-family: var(--mono); font-size: 12.5px; }
+.account-path input:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px #eef2ff; outline: none; }
+.account-paths-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 .rail {
   grid-row: 2;

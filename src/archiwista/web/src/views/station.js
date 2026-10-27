@@ -59,7 +59,7 @@ import {
   useId,
   useRef,
 } from "../ui.js";
-import { CopyAction, loadCardStyles, StaleNote, storeName } from "./cards.js";
+import { CopyAction, loadCardStyles, pathToCopy, ServerPath, StaleNote, storeName } from "./cards.js";
 import { CHART_PARAMS, StationChartTab } from "./station-chart.js";
 import { useYearType, YEAR_TYPES } from "./year-type.js";
 
@@ -247,8 +247,8 @@ function capitalized(text) {
 /** „Lata: hydrologiczne / kalendarzowe” in the header (M11 point 5). */
 function YearSwitch({ asked, family }) {
   const id = useId();
-  const { value, choose, admin, failed } = useYearType(asked, family, (patch) => setParams(patch));
-  const hint = admin ? t(L.year_type_hint, { family: L.families[family] }) : L.year_type_local;
+  const { value, choose, failed } = useYearType(asked, family, (patch) => setParams(patch));
+  const hint = t(L.year_type_hint, { family: L.families[family] });
   return html`<span class="sc-years" role="group" aria-labelledby=${id} title=${hint}>
     <span class="sc-years-label" id=${id}>${L.year_type}:</span>
     <${Seg} small label=${L.year_type} value=${value} onChange=${choose}
@@ -325,7 +325,7 @@ function Actions({ card, params }) {
       ? html`<button type="button" class="btn sm" title=${L.actions.show_on_map_title}
           onClick=${showOnMap}><${Icon} name="map" size=${14} />${L.actions.show_on_map}</button>`
       : null}
-    ${path ? html`<${CopyAction} text=${path.local} label=${L.actions.copy_path} />` : null}
+    ${path ? html`<${CopyAction} text=${pathToCopy(path).first} label=${L.actions.copy_path} />` : null}
   </div>`;
 }
 
@@ -460,10 +460,13 @@ function Origin({ card, names }) {
     <${CatalogOrigin} station=${station} />`;
 }
 
-/** A series version: its label, the station's file (here and aliased), digest, index, licence. */
+/**
+ * A series version: its label, the station's file (the person's own path
+ * first, the server's and the aliased ones beside it), digest, index, licence.
+ */
 function SeriesOrigin({ series, name, paths }) {
   const O = L.origin;
-  const file = paths ? paths.local : series.file;
+  const { first: file, server } = paths ? pathToCopy(paths) : { first: series.file, server: null };
   const digest = series.sha256
     ? html`<${Tech} value=${[["sha256", series.sha256]]}>
         <span class="mono">${series.sha256.slice(0, 12)}…</span></${Tech}>`
@@ -477,6 +480,7 @@ function SeriesOrigin({ series, name, paths }) {
       <dt>${O.file}</dt>
       <dd class="sc-file">
         <code class="path">${file}</code><${CopyButton} text=${file} label=${series.file} />
+        <${ServerPath} path=${server} className="sc-alias" />
         ${(paths?.aliases ?? []).map(
           (alias) => html`<span class="sc-alias" key=${alias}>
             <code class="path">${alias}</code><${CopyButton} text=${alias} label=${alias} />

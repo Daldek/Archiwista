@@ -177,6 +177,7 @@ export const map = {
     sheets: "Siatka godeł {system} · {scale}",
     basemap: "Podkład",
     no_basemap: "bez podkładu",
+    basemap_unsaved: "Nie udało się zapamiętać wyboru podkładu.",
     offline: "Tryb offline: bez podkładu i bez zapytań poza Archiwistę.",
   },
   local: {

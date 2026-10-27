@@ -15,6 +15,7 @@ import { cards as L } from "../labels/cards.js";
 import { T, t } from "../labels/index.js";
 import { Link, useRoute } from "../router.js";
 import {
+  CopyButton,
   html,
   Icon,
   loadStylesheet,
@@ -186,6 +187,34 @@ export function CopyAction({ text, label, primary }) {
       <${Icon} name=${copied ? "check" : "copy"} size=${13} />${label}
     </button>
     <span class="copy-state" role="status">${copied ? T.common.actions.copied : ""}</span>
+  </span>`;
+}
+
+/**
+ * The path a „Kopiuj ścieżkę…” gives (SPEC 10.2): the person's own
+ * (`CopyPath.personal`, through the path aliases of „Moje ścieżki”) when one
+ * of their aliases holds it, else the server's. `server` is the server's
+ * path to show beside the person's, `null` when the server's comes first.
+ *
+ * @param {import("../types.js").CopyPath} paths
+ * @returns {{first: string, server: string|null}}
+ */
+export function pathToCopy(paths) {
+  return paths.personal ? { first: paths.personal, server: paths.local } : { first: paths.local, server: null };
+}
+
+/**
+ * „Na serwerze: /mnt/nas/…” with its copy button: the server's path of a
+ * file whose person's path comes first (`pathToCopy`); nothing without one.
+ *
+ * @param {{path: string|null, className?: string}} props - `className`: the
+ *   row's class in the view (`path-other` by default).
+ */
+export function ServerPath({ path, className = "path-other" }) {
+  if (!path) return null;
+  return html`<span class=${className}>
+    <span class="faint">${L.paths.server}:</span> <code class="path">${path}</code>
+    <${CopyButton} text=${path} label=${path} />
   </span>`;
 }
 

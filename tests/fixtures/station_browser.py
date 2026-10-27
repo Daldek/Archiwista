@@ -64,11 +64,16 @@ def open_session(tab: Tab, served: Served) -> Page:
     page = tab.page
     page.goto(served.token_url())
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+    wait_indexed(page)
+    return page
+
+
+def wait_indexed(page: Page) -> None:
+    """Wait until every store of the page's server is indexed and no job runs."""
     deadline = time.monotonic() + INDEX_TIMEOUT_S
     while not page.evaluate(INDEXED):
         assert time.monotonic() < deadline, "the store was not indexed in time"
         page.wait_for_timeout(200)
-    return page
 
 
 def api(page: Page, path: str) -> Any:

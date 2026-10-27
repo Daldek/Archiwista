@@ -6,11 +6,12 @@ Chromium), a row of the Catalog's list and the address alone open it. It
 names the station with its type, river and code and gives the label of each
 variable as ``GET /stations/{code}`` does; its header switch numbers the
 labels in calendar years, writes ``year_type`` to the address and remembers
-it. A station without a position shows the catalog's reason and no map
-action, a located one opens the map centred on it. The IMGW formula is the
-series' attribution and is copied as it is, as is the series file's path
-(read back in Chromium, whose clipboard Playwright can grant), and the IMGW
-station page is a plain link the page never requests.
+it in the person's preferences (``PUT /preferences``). A station without a
+position shows the catalog's reason and no map action, a located one opens
+the map centred on it. The IMGW formula is the series' attribution and is
+copied as it is, as is the series file's path (read back in Chromium, whose
+clipboard Playwright can grant), and the IMGW station page is a plain link
+the page never requests.
 """
 
 import re
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Response, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.station_browser import (
@@ -151,7 +152,7 @@ def test_a_row_of_the_list_opens_the_card_and_so_does_its_address(
 def test_the_header_switch_numbers_the_labels_in_calendar_years(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:
-    """Switched to calendar years: the API's labels, the address, remembered."""
+    """Switched to calendar years: the API's labels, the address, the preference."""
     # Arrange
     served = serve(station_settings(imgw_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -162,15 +163,20 @@ def test_the_header_switch_numbers_the_labels_in_calendar_years(
     )
     card = dialog(page, "Raba Górna")
     switch = card.get_by_role("group", name="Lata", exact=True)
-    settings_put = re.compile(r"/api/v1/settings/year-types$")
+    preferences_put = re.compile(r"/api/v1/preferences$")
+
+    def saved(response: Response) -> bool:
+        return response.request.method == "PUT" and bool(
+            preferences_put.search(response.url)
+        )
 
     # Act
     expect(card.locator(".sc-label")).to_have_text(hydrological)
-    with page.expect_response(settings_put) as put:
+    with page.expect_response(saved) as put:
         switch.get_by_role("button", name="kalendarzowe", exact=True).click()
     expect(page).to_have_url(re.compile(r"[?&]year_type=calendar(&|$)"))
     expect(card.locator(".sc-label")).to_have_text(calendar)
-    settings = api(page, "/settings")
+    preferences = api(page, "/preferences")
 
     # Assert
     assert calendar != hydrological
@@ -179,7 +185,7 @@ def test_the_header_switch_numbers_the_labels_in_calendar_years(
         switch.get_by_role("button", name="kalendarzowe", exact=True)
     ).to_have_attribute("aria-pressed", "true")
     assert put.value.ok
-    assert settings["year_types"]["hydro"] == "calendar"
+    assert preferences["year_types"] == {"hydro": "calendar", "meteo": "calendar"}
     engine_tab.assert_clean()
 
 

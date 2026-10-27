@@ -20,7 +20,6 @@ export const station = {
   year_type_hint:
     "Rok hydrologiczny trwa od 1 XI do 31 X. Wybór trafia do adresu i jest zapamiętywany " +
     "dla danych {family}.",
-  year_type_local: "Wybór trafia do adresu; zapamiętać go może tylko administrator.",
   year_type_failed: "Nie udało się zapamiętać wyboru lat.",
   families: { hydro: "hydrologicznych", meteo: "meteorologicznych" },
   location: {

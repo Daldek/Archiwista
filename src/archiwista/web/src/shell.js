@@ -36,6 +36,7 @@ import {
   Tech,
   useEffect,
   useErrorBoundary,
+  useId,
   useRef,
   useState,
 } from "./ui.js";
@@ -44,6 +45,10 @@ import { PasswordChange } from "./views/login.js";
 const L = T.shell;
 const loaded = new Map();
 const ACCOUNT_PANEL = "account-panel";
+/** Most path aliases a person keeps (the server's `MAX_PATH_ALIASES`). */
+const MAX_PATH_ALIASES = 20;
+// The key of the last row of „Moje ścieżki”.
+let lastAlias = 0;
 // The browser and the system a `User-Agent` names, the first mark found.
 const BROWSERS = [["Edg/", "Edge"], ["OPR/", "Opera"], ["Firefox/", "Firefox"], ["Chrome/", "Chrome"], ["Safari/", "Safari"]];
 const SYSTEMS = [["Windows", "Windows"], ["Android", "Android"], ["iPhone", "iOS"], ["iPad", "iOS"], ["Mac OS X", "macOS"], ["Linux", "Linux"]];
@@ -184,9 +189,10 @@ function TopBar({ onSessionChange, onSignOut }) {
 /**
  * The account of a team session (SPEC 6.5 o): its name, roles and groups —
  * the session is read again whenever the menu opens — with „Zmień hasło…”,
- * „Sesje…”, „Token dla agenta…” and „Wyloguj”. The server refuses a password
- * change to a session of the company's proxy and to an agent, and tokens to
- * an agent: those items are left out. `Esc` and a click outside close it.
+ * „Sesje…”, „Token dla agenta…”, „Moje ścieżki…” and „Wyloguj”. The server
+ * refuses a password change to a session of the company's proxy and to an
+ * agent, and tokens to an agent: those items are left out. `Esc` and a click
+ * outside close it.
  */
 function AccountMenu({ session, onSessionChange, onSignOut }) {
   const [open, setOpen] = useState(false);
@@ -242,6 +248,7 @@ function AccountMenu({ session, onSessionChange, onSignOut }) {
           ${person && session.method !== "proxy" ? item(A.menu.change_password, () => choose("password")) : null}
           ${item(count === null ? A.menu.sessions : t(A.menu.sessions_count, { count }), () => choose("sessions"))}
           ${person ? item(A.menu.token, () => choose("token")) : null}
+          ${item(A.menu.paths, () => choose("paths"))}
           ${item(A.menu.sign_out, signOut)}
         </div>`
       : null}
@@ -250,6 +257,7 @@ function AccountMenu({ session, onSessionChange, onSignOut }) {
       : null}
     ${dialog === "sessions" ? html`<${SessionsDialog} session=${session} onClose=${closeDialog} />` : null}
     ${dialog === "token" ? html`<${TokenDialog} session=${session} onClose=${closeDialog} />` : null}
+    ${dialog === "paths" ? html`<${PathsDialog} onClose=${closeDialog} />` : null}
   </div>`;
 }
 
@@ -392,6 +400,111 @@ function TokenDialog({ session, onClose }) {
       <button type="button" class="btn" onClick=${onClose}>${A.token.close}</button>
     </div>
   </${Modal}>`;
+}
+
+/**
+ * „Moje ścieżki…” (SPEC 6.5 o, 10.2): the person's own path aliases, a prefix
+ * on the server with the same place on their computer, at most
+ * `MAX_PATH_ALIASES`. They change only the paths shown and copied
+ * (`CopyPath.personal`); the server reads files by its own paths. „Zapisz”
+ * replaces them all through the preferences (`PUT /preferences`), a row left
+ * blank dropped; the server's refusal is shown as it gives it.
+ */
+function PathsDialog({ onClose }) {
+  const { preferences, preferencesError, savePreferences } = useApp();
+  const [rows, setRows] = useState(() => (preferences ? aliasRows(preferences.path_aliases) : null));
+  const [problem, setProblem] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  // The row „Dodaj” added: its first field takes the focus once.
+  const added = useRef(null);
+  useEffect(() => {
+    if (rows === null && preferences) setRows(aliasRows(preferences.path_aliases));
+  }, [preferences]);
+  const edit = (next) => {
+    setRows(next);
+    setSaved(false);
+  };
+  const change = (key, field, value) => edit(rows.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
+  const add = () => {
+    added.current = ++lastAlias;
+    edit([...rows, { key: added.current, server: "", personal: "" }]);
+  };
+  const focusAdded = (element) => {
+    if (!element) return;
+    element.focus();
+    added.current = null;
+  };
+  const save = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    setSaved(false);
+    const aliases = rows
+      .filter((row) => row.server.trim() || row.personal.trim())
+      .map(({ server, personal }) => ({ server, personal }));
+    try {
+      const answer = await savePreferences({ path_aliases: aliases });
+      setRows(aliasRows(answer.path_aliases));
+      setSaved(true);
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+    }
+    setBusy(false);
+  };
+  const id = useId();
+  const unread = rows === null && preferencesError?.problem;
+  return html`<${Modal} label=${A.paths.title} onClose=${onClose}>
+    <form class="account-paths-form" onSubmit=${save}>
+      <h2>${A.paths.title}</h2>
+      <p class="field-hint">${A.paths.intro}</p>
+      ${unread ? html`<${ProblemView} problem=${preferencesError.problem} compact />` : null}
+      ${rows === null && !unread ? html`<${Spinner} label=${A.paths.loading} />` : null}
+      ${rows?.length
+        ? html`<div class="account-paths">
+            <div class="account-path head">
+              <span>${A.paths.server}<span class="field-hint" id=${`${id}-server`}>${A.paths.server_hint}</span></span>
+              <span>${A.paths.personal}<span class="field-hint" id=${`${id}-personal`}>${A.paths.personal_hint}</span></span>
+            </div>
+            ${rows.map(
+              (row, index) => html`<div class="account-path" key=${row.key}>
+                <input class="mono" value=${row.server} autocomplete="off" spellcheck="false"
+                  aria-label=${t(A.paths.server_label, { number: index + 1 })} aria-describedby=${`${id}-server`}
+                  ref=${row.key === added.current ? focusAdded : undefined}
+                  onInput=${(event) => change(row.key, "server", event.currentTarget.value)} />
+                <input value=${row.personal} autocomplete="off" spellcheck="false"
+                  aria-label=${t(A.paths.personal_label, { number: index + 1 })} aria-describedby=${`${id}-personal`}
+                  onInput=${(event) => change(row.key, "personal", event.currentTarget.value)} />
+                <button type="button" class="btn sm" aria-label=${t(A.paths.remove_label, { number: index + 1 })}
+                  onClick=${() => edit(rows.filter((item) => item.key !== row.key))}>${A.paths.remove}</button>
+              </div>`,
+            )}
+          </div>`
+        : null}
+      ${rows?.length === 0 ? html`<p class="muted">${A.paths.none}</p>` : null}
+      ${rows
+        ? html`<div class="account-paths-add">
+            <button type="button" class="btn sm" disabled=${rows.length >= MAX_PATH_ALIASES} onClick=${add}>
+              <${Icon} name="plus" size=${14} />${A.paths.add}</button>
+            ${rows.length >= MAX_PATH_ALIASES
+              ? html`<span class="field-hint">${t(A.paths.limit, { count: MAX_PATH_ALIASES })}</span>`
+              : null}
+          </div>`
+        : null}
+      ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+      ${saved ? html`<p role="status">${A.paths.saved}</p>` : null}
+      <div class="modal-actions">
+        <button type="button" class="btn" onClick=${onClose}>${A.paths.close}</button>
+        <button type="submit" class="btn primary" disabled=${rows === null || busy}>${A.paths.save}</button>
+      </div>
+    </form>
+  </${Modal}>`;
+}
+
+/** The rows of the dialog „Moje ścieżki” for the saved aliases, each with its key. */
+function aliasRows(aliases) {
+  return aliases.map((alias) => ({ key: ++lastAlias, server: alias.server, personal: alias.personal }));
 }
 
 /** A read the account menu does not need: aborted, or refused (the session lost). */

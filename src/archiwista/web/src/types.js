@@ -652,6 +652,8 @@
  * @property {string} local - Absolute path on this computer.
  * @property {string[]} aliases - The same file as mounted on other computers (path
  *   aliases).
+ * @property {string|null} personal - The path through the person's own path aliases
+ *   (`Preferences.path_aliases`); `null` without one.
  */
 
 /**
@@ -1526,16 +1528,33 @@
  *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
  * @property {number} [action_log_retention_days] - Days the action log keeps an entry;
  *   the server deletes older ones (v0.4, 365 by default).
- * @property {YearTypes} [year_types] - The year type remembered for hydro and for meteo
- *   data (`PUT /settings/year-types`).
  */
 
 /**
- * The year type remembered for each family (P15).
+ * The year type a person remembers for each family (P15).
  *
  * @typedef {object} YearTypes
  * @property {YearType} hydro - Hydrological by default.
  * @property {YearType} meteo - Calendar by default.
+ */
+
+/**
+ * A prefix on the server and the same place on the person's computer (v0.4).
+ *
+ * @typedef {object} PathAlias
+ * @property {string} server - Absolute prefix on the server, e.g. `/mnt/nas/`.
+ * @property {string} personal - The same place on the person's computer, e.g. `Y:\`.
+ */
+
+/**
+ * A person's own preferences (`GET`/`PUT /preferences`, v0.4); PUT replaces them all.
+ *
+ * @typedef {object} Preferences
+ * @property {YearTypes} year_types - The numbering of the station views without
+ *   `year_type`.
+ * @property {string|null} basemap - A configured basemap's name, `""` for none, `null`
+ *   for the first configured one.
+ * @property {PathAlias[]} path_aliases - At most 20; they give `CopyPath.personal`.
  */
 
 // Background jobs (9b) -------------------------------------------------------

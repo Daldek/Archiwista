@@ -63,7 +63,9 @@ import {
   IssueList,
   JobStatus,
   loadCardStyles,
+  pathToCopy,
   pinStateName,
+  ServerPath,
   StaleNote,
   storeName,
   useJob,
@@ -552,11 +554,17 @@ function License({ details }) {
   </div>`;
 }
 
+/**
+ * A path of the card to copy: the person's own first (`pathToCopy`), the
+ * server's beside it, then the store's path aliases of other computers.
+ */
 function PathRows({ title, hint, paths, copyLabel, primary }) {
+  const { first, server } = pathToCopy(paths);
   return html`<div class="fc-path">
     <p class="fc-path-head"><b>${title}</b> <span class="faint">${hint}</span></p>
-    <p class="fc-path-row"><code class="path">${paths.local}</code></p>
-    <${CopyAction} text=${paths.local} label=${copyLabel} primary=${primary} />
+    <p class="fc-path-row"><code class="path">${first}</code></p>
+    <${CopyAction} text=${first} label=${copyLabel} primary=${primary} />
+    <${ServerPath} path=${server} className="fc-path-row" />
     ${paths.aliases.map(
       (alias) => html`<p key=${alias} class="fc-path-row">
         <span class="faint">${L.paths.alias}:</span> <code class="path">${alias}</code>

@@ -72,7 +72,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
 /** @typedef {import("./types.js").Settings} Settings */
-/** @typedef {import("./types.js").YearTypes} YearTypes */
+/** @typedef {import("./types.js").Preferences} Preferences */
 /** @typedef {import("./types.js").ScanRequest} ScanRequest */
 /** @typedef {import("./types.js").JobDetail} JobDetail */
 /** @typedef {import("./types.js").JobFilters} JobFilters */
@@ -840,15 +840,30 @@ export function putSettings(settings) {
 }
 
 /**
- * Remember the year type of hydro and of meteo data (`put_year_types`); an
- * omitted one takes its default, so send both.
+ * The session's own preferences (`get_preferences`, v0.4): its person's, an
+ * agent's account's, the owner's in local mode; the defaults before the first
+ * change.
  *
- * @param {YearTypes} yearTypes
- * @returns {Promise<Settings>} The settings now in effect.
- * @throws {ApiError} `403 permission_denied` without the administrator role.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<Preferences>}
  */
-export function putYearTypes(yearTypes) {
-  return request("PUT", "/settings/year-types", { json: yearTypes });
+export function getPreferences({ signal } = {}) {
+  return request("GET", "/preferences", { signal });
+}
+
+/**
+ * Replace the session's own preferences (`put_preferences`): send the whole
+ * object of `getPreferences` with the changes, since omitted fields take
+ * defaults.
+ *
+ * @param {Preferences} preferences
+ * @returns {Promise<Preferences>} The preferences as saved.
+ * @throws {ApiError} `400 validation_error`: an alias whose server prefix is not
+ *   absolute or over 400 characters, more than 20 aliases (`errors` name each
+ *   value), or a basemap that is not configured (reason `unknown_basemap`).
+ */
+export function putPreferences(preferences) {
+  return request("PUT", "/preferences", { json: preferences });
 }
 
 // The action log (v0.4) -------------------------------------------------------

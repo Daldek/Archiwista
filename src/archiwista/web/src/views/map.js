@@ -96,7 +96,7 @@ import {
   stationAddress,
   stationChoice,
 } from "../map/stations.js";
-import { availableBasemaps, chosenBasemap, keepBasemap, pickBasemap } from "../map/style.js";
+import { availableBasemaps, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { Link, setParams } from "../router.js";
 import {
@@ -142,7 +142,7 @@ const areas = new Map();
  *   switch), beside the catalog on a wide screen.
  */
 export default function MapScreen({ route, embedded = false }) {
-  const { settings, health } = useApp();
+  const { settings, health, preferences, preferencesError, savePreferences } = useApp();
   const narrow = useMedia(NARROW);
   const params = route.params;
   const filtersKey = FILTERS.map((name) => params[name] ?? "").join("\n");
@@ -160,7 +160,9 @@ export default function MapScreen({ route, embedded = false }) {
   const [areaProblem, setAreaProblem] = useState(null);
   const [areaNote, setAreaNote] = useState(null);
   const [fileLayers, setFileLayers] = useState(null);
-  const [basemapName, setBasemapName] = useState(chosenBasemap);
+  // The basemap chosen in this view until the preferences say it too.
+  const [basemapName, setBasemapName] = useState(undefined);
+  const [basemapUnsaved, setBasemapUnsaved] = useState(false);
   const areaStep = useRef(null);
   const userMoved = useRef(false);
   const [centre, setCentre] = useState(null);
@@ -178,7 +180,9 @@ export default function MapScreen({ route, embedded = false }) {
   const stores = settings?.stores ?? [];
   const indexKey = (health?.stores ?? []).map((item) => `${item.store}:${item.state.indexed_at ?? ""}`).join(",");
   const basemaps = availableBasemaps(settings);
-  const basemap = settings ? pickBasemap(basemaps, basemapName) : null;
+  // No basemap is asked for before the person's choice is known (the preferences).
+  const choiceKnown = basemapName !== undefined || preferences !== undefined || preferencesError !== undefined;
+  const basemap = settings && choiceKnown ? pickBasemap(basemaps, basemapName ?? preferences?.basemap ?? null) : null;
 
   const products = useResource(
     (signal) => listProducts(filters.store ? { store: filters.store } : {}, { signal }),
@@ -412,6 +416,7 @@ export default function MapScreen({ route, embedded = false }) {
   const viewError = stationMode ? stationView.error : view.error;
   if (!tool && viewError) notes.push(html`<div key="error" class="float-card map-problem"><${ProblemView} problem=${viewError.problem} compact /></div>`);
   if (!tool && layers.error) notes.push(html`<div key="layers" class="float-card map-problem"><${ProblemView} problem=${layers.error.problem} compact /></div>`);
+  if (basemapUnsaved) notes.push(html`<div key="basemap" class="float-card map-problem" role="alert">${L.legend.basemap_unsaved}</div>`);
   // Below the zoom of a preview's tiles: its outlines only, and a way closer.
   const hidden = move ? [layerSource, versionSource].filter((source) => source && !tilesShown(source, move.zoom)) : [];
   if (!tool && hidden.length) {
@@ -504,8 +509,9 @@ export default function MapScreen({ route, embedded = false }) {
                 }
               : null}
             onBasemap=${(name) => {
-              keepBasemap(name);
               setBasemapName(name);
+              setBasemapUnsaved(false);
+              savePreferences({ basemap: name }).catch(() => setBasemapUnsaved(true));
             }}>${sections}</${Legend}>
         </${MapCanvas}>
       </div>
