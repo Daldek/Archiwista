@@ -3950,7 +3950,9 @@ over TLS.
 - **Guessing (v0.4):** after 5 failed sign-ins of one account name, or from one client
   address, every further attempt is refused without checking the password for 1 s, 2 s, 4 s…
   up to 15 min (`429 rate_limited` with `Retry-After`); a success clears both counts, which the
-  server keeps in memory. Every failure is in the action log.
+  server keeps in memory. Attempts at once count as the failures they may become: an attempt
+  that could not start if those under way all failed waits 1 s, so attempts sent together
+  pass no more than one after another. Every failure is in the action log.
 - **Reverse proxy (optional, v0.4):** with `proxy_user_header`, a request from a trusted proxy
   carrying the header with an account id starts a session as that person (`POST
   /session/proxy`); the account must exist and be enabled (with `proxy_autocreate` a missing

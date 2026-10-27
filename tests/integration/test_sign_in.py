@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.auth.passwords import HASH_SLOTS, TEMPORARY_TTL
-from archiwista.auth.throttle import LoginThrottle
+from archiwista.auth.throttle import FREE_FAILURES, LoginThrottle
 from archiwista.cli import main
 from archiwista.config import AppPaths
 from archiwista.security import TEAM_SESSION_COOKIE
@@ -540,25 +540,55 @@ def test_failures_from_an_address_make_it_wait_for_every_account(
     assert elsewhere.status_code == 200, elsewhere.text
 
 
+def test_wrong_passwords_sent_at_once_wait_like_one_after_another(team: Team) -> None:
+    """Twenty failures at once verify at most five passwords; the rest wait.
+
+    The wait used to be checked before a verification and counted after it,
+    so attempts arriving together all passed the check (review of v0.4, D1).
+    """
+    # Arrange
+    team.hasher.pause_s = 0.2
+    together = threading.Barrier(20)
+
+    def attempt(_: int) -> httpx.Response:
+        together.wait()
+        response: httpx.Response = team.client.post(
+            LOGIN, json={"account": PERSON, "password": WRONG}
+        )
+        return response
+
+    # Act
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        answers = list(pool.map(attempt, range(20)))
+
+    # Assert
+    refused = [answer for answer in answers if answer.status_code == 401]
+    waiting = [answer for answer in answers if answer.status_code != 401]
+    assert team.hasher.verified == len(refused) <= FREE_FAILURES
+    for answer in waiting:
+        assert_problem(answer, 429, "rate_limited", "login_blocked")
+        assert int(answer.headers["retry-after"]) >= 1
+
+
 def test_at_most_two_passwords_are_verified_at_once(team: Team) -> None:
-    """Ten sign-ins at once verify all ten passwords, never more than two together."""
+    """Five sign-ins at once verify all five passwords, never more than two together."""
     # Arrange
     team.hasher.pause_s = 0.05
 
     # Act
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=FREE_FAILURES) as pool:
         answers = list(
             pool.map(
                 lambda _: team.client.post(
                     LOGIN, json={"account": PERSON, "password": PERSON_PASSWORD}
                 ),
-                range(10),
+                range(FREE_FAILURES),
             )
         )
 
     # Assert
-    assert [answer.status_code for answer in answers] == [200] * 10
-    assert team.hasher.verified == 10
+    assert [answer.status_code for answer in answers] == [200] * FREE_FAILURES
+    assert team.hasher.verified == FREE_FAILURES
     assert team.hasher.most_at_once == HASH_SLOTS
 
 

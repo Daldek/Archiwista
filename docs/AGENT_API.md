@@ -217,7 +217,9 @@ curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" "$BASE/session"
   any account), each attempt waits 1 s, then 2 s, 4 s… up to 15 minutes: `429
   rate_limited`, `login_blocked`, with `Retry-After` and `details.retry_after_s`.
   No password is checked during the wait, so retrying earlier gains nothing; a
-  success clears both counts.
+  success clears both counts. Attempts sent at once pass no more than one after
+  another: one that could not start if those under way all failed is `429
+  login_blocked` with `Retry-After: 1`.
 - `password_change_required: true` (a temporary password): until `PUT
   /session/password` with `{"current_password": "…", "new_password": "…"}` the
   session may only call `GET /session`, `GET /session/methods`, that route and

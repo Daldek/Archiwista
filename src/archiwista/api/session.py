@@ -9,11 +9,13 @@ every refusal of an account answers the same ``401 login_failed`` after one
 password verification, a correct temporary password past its end ``401
 password_expired``, and after five failures of the account or the address
 the attempts wait (``archiwista.auth.throttle``: ``429 login_blocked`` with
-``Retry-After``, no verification). ``POST /api/v1/session/proxy`` (public,
-team mode) signs in as the enabled account a trusted proxy names in
-``proxy_user_header`` (with ``proxy_autocreate`` a missing one is created
-without roles); each later request of that session must come from a
-trusted proxy naming the same person (``SecurityMiddleware``). ``POST
+``Retry-After``, no verification; attempts sent at once are admitted under
+one lock, so they pass no more failures than one after another). ``POST
+/api/v1/session/proxy`` (public, team mode) signs in as the enabled account a
+trusted proxy names in ``proxy_user_header`` (with ``proxy_autocreate`` a
+missing one is created without roles); each later request of that session
+must come from a trusted proxy naming the same person
+(``SecurityMiddleware``). ``POST
 /api/v1/session`` (public) exchanges a one-time token. All three pass the
 ``Host`` and ``Origin`` rules, end the session whose cookie the request
 carried (no fixation) and answer the new session's CSRF token, which every
@@ -41,7 +43,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from archiwista.api.dependencies import authorizer
 from archiwista.api.errors import ApiError, problem_responses
 from archiwista.auth import LOCAL_PRINCIPAL_ID, Principal, PrincipalKind, passwords
-from archiwista.auth.throttle import LoginThrottle, throttle_keys
+from archiwista.auth.throttle import (
+    LoginAttempt,
+    LoginThrottle,
+    LoginWaitError,
+    throttle_keys,
+)
 from archiwista.errors import (
     ConflictError,
     InvalidChangeError,
@@ -357,13 +364,19 @@ def _new_session(
     return _Started(answer, replace(principal, client=_client(request)))
 
 
-def _require_no_wait(throttle: LoginThrottle, keys: tuple[str, str]) -> None:
-    """Refuse an attempt while its account or address waits (no verification)."""
-    wait = throttle.wait(keys)
-    if wait is not None:
+def _admitted(throttle: LoginThrottle, keys: tuple[str, str]) -> LoginAttempt:
+    """Admit an attempt, or refuse it while its account or address waits.
+
+    A refused attempt verifies no password and counts nothing.
+    """
+    try:
+        return throttle.admit(keys)
+    except LoginWaitError as wait:
         raise RateLimitedError(
-            message("auth.login_blocked"), retry_after_s=wait, reason="login_blocked"
-        )
+            message("auth.login_blocked"),
+            retry_after_s=wait.seconds,
+            reason="login_blocked",
+        ) from None
 
 
 def _failure(reason: str, until: datetime | None) -> dict[str, object]:
@@ -507,29 +520,29 @@ def sign_in(body: SignIn, request: Request, response: Response) -> NewSession:
     client = _client(request)
     account = body.account.strip().lower()
     keys = throttle_keys(account, client)
-    _require_no_wait(throttle, keys)
-    checked = passwords.check_sign_in(state, account, body.password)
-    if checked.user is None:
-        reason = checked.failure or "login_failed"
-        until = throttle.failed(keys)
-        state.record(
-            None,
-            "session.login_failed",
-            _typed(body.account),
-            outcome="failed",
-            details=_failure(reason, until),
-            client=client,
-        )
-        if reason == "password_expired":
-            raise ApiError(
-                "unauthorized",
-                message("auth.password_expired"),
-                reason="password_expired",
+    with _admitted(throttle, keys) as attempt:
+        checked = passwords.check_sign_in(state, account, body.password)
+        if checked.user is None:
+            reason = checked.failure or "login_failed"
+            until = attempt.failed()
+            state.record(
+                None,
+                "session.login_failed",
+                _typed(body.account),
+                outcome="failed",
+                details=_failure(reason, until),
+                client=client,
             )
-        raise ApiError(
-            "unauthorized", message("auth.login_failed"), reason="login_failed"
-        )
-    throttle.succeeded(keys)
+            if reason == "password_expired":
+                raise ApiError(
+                    "unauthorized",
+                    message("auth.password_expired"),
+                    reason="password_expired",
+                )
+            raise ApiError(
+                "unauthorized", message("auth.login_failed"), reason="login_failed"
+            )
+        attempt.succeeded()
     started = _new_session(
         request,
         response,
@@ -647,27 +660,27 @@ def change_password(
     state = _state_store(request)
     throttle: LoginThrottle = request.app.state.login_throttle
     keys = throttle_keys(principal.id, principal.client)
-    _require_no_wait(throttle, keys)
-    changed = passwords.change_password(
-        state,
-        principal.id,
-        body.current_password,
-        body.new_password,
-        actor=principal,
-    )
-    if changed is None:
-        until = throttle.failed(keys)
-        state.record(
-            principal,
-            "session.password",
+    with _admitted(throttle, keys) as attempt:
+        changed = passwords.change_password(
+            state,
             principal.id,
-            outcome="failed",
-            details=_failure("wrong_password", until),
+            body.current_password,
+            body.new_password,
+            actor=principal,
         )
-        raise ApiError(
-            "forbidden", message("auth.wrong_password"), reason="wrong_password"
-        )
-    throttle.succeeded(keys)
+        if changed is None:
+            until = attempt.failed()
+            state.record(
+                principal,
+                "session.password",
+                principal.id,
+                outcome="failed",
+                details=_failure("wrong_password", until),
+            )
+            raise ApiError(
+                "forbidden", message("auth.wrong_password"), reason="wrong_password"
+            )
+        attempt.succeeded()
     started = _new_session(
         request, response, principal.id, principal.kind, method=session.method
     )

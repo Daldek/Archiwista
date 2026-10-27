@@ -1159,6 +1159,13 @@ command-line interface may change.
   path_outside_root`. The render processes of previews check every file of a
   preview the same way before and after each operation: a link put in place since
   is `missing_file`, and nothing is rendered from where it leads.
+- Sign-ins sent at once wait like sign-ins one after another: an attempt is admitted
+  under the lock of the counts before its password is verified, and one that could
+  not start if the attempts under way all failed is `429 login_blocked` with
+  `Retry-After: 1`. Before, the wait was checked before the verification and counted
+  after it, so 20 or 40 wrong passwords sent together were all verified (review of
+  v0.4, D1); now at most five are before the first wait, then one at a time. The
+  same holds for the current password of `PUT /session/password`.
 
 ## [0.2.0] - 2026-10-20
 
