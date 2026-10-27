@@ -20,10 +20,10 @@ from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.cli import main
 from archiwista.config import ConfigStore
 from archiwista.jobs.reindex import reindex_main
-from archiwista.security import CSRF_HEADER
+from archiwista.security import CSRF_HEADER, TokenKind, issue_one_time_token
 from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
-from tests.fixtures.api_session import assert_problem
+from tests.fixtures.api_session import assert_problem, running_api
 from tests.fixtures.api_store import STORE, store_settings
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
@@ -34,6 +34,7 @@ from tests.fixtures.team_server import (
     ADMIN_ACCOUNT,
     ADMIN_PASSWORD,
     cheap_hasher,
+    save_team,
     team_serving,
     team_site,
 )
@@ -218,6 +219,36 @@ def test_agent_of_a_team_account_acts_with_its_roles(
     assert_problem(further, 403, "forbidden", "permission_denied")
     assert minted.status_code == 201, minted.text
     assert minted.json()["url"] == f"{site.origin}/#token={minted.json()['token']}"
+
+
+def test_tokens_of_the_computers_owner_open_no_session_in_team_mode(
+    tmp_path: Path,
+) -> None:
+    """A startup or an agent's token the local owner minted is 401 on a team server.
+
+    A team has no local owner (ADR-046 decision 3); such a token, left from a
+    run in local mode or handed to an agent, used to open a session with the
+    owner's roles, administrator included (review of v0.4, D4).
+    """
+    # Arrange
+    paths = local_paths(tmp_path)
+    save_team(paths)
+    kinds: tuple[TokenKind, ...] = ("startup", "agent")
+    with running_api(paths) as api:
+        issued = [
+            issue_one_time_token(paths.index_file, kind, minted_by=LOCAL_OWNER)
+            for kind in kinds
+        ]
+
+        # Act
+        answers = [
+            api.client.post("/api/v1/session", json={"token": token.token})
+            for token in issued
+        ]
+
+    # Assert
+    for answer in answers:
+        assert_problem(answer, 401, "unauthorized", "session_required")
 
 
 def test_token_for_an_account_needs_an_enabled_one(

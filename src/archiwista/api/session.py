@@ -574,12 +574,16 @@ def exchange_token(
     `__Host-archiwista_session` with `Secure`); every later request also
     sends `csrf_token` as `X-Archiwista-CSRF`, since the cookie alone never
     acts. An unknown, used, expired or revoked token, or one of an account
-    disabled since, answers `401 session_required`. A session cookie the
-    request carried ends: no session id lives on across a new session.
+    disabled since, answers `401 session_required`; so does, in team mode, a
+    token of the computer's owner (`local`: a startup token, or an agent's
+    token minted in local mode), since a team has no local owner (ADR-046
+    decision 3). A session cookie the request carried ends: no session id
+    lives on across a new session.
     """
     index_path: Path = request.app.state.index_path
+    transport: Transport = request.app.state.transport
     grant = redeem_one_time_token(index_path, body.token)
-    if grant is None:
+    if grant is None or (transport.team and grant.principal_id == LOCAL_PRINCIPAL_ID):
         raise ApiError(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )

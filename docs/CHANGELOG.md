@@ -1172,6 +1172,11 @@ command-line interface may change.
   field), before any hash. Before, a person signed in with a temporary password could
   "change" it to the same value and keep it, though the administrator who issued it
   still knew it (review of v0.4, D3; ASVS 6.4.1).
+- A team server opens no session from a one-time token of the computer's owner
+  (`local`): a startup token left from a run in local mode, or an agent's token
+  `archiwista token` issued without `--user`, is `401 session_required`. Before, such
+  a token opened a session with the owner's roles, administrator included, though a
+  team has no local owner (review of v0.4, D4; ADR-046 decision 3).
 
 ## [0.2.0] - 2026-10-20
 
