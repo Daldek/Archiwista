@@ -225,38 +225,19 @@ def generate_temporary() -> str:
     )
 
 
-def can_sign_in(user: UserRecord, *, proxy: bool) -> bool:
-    """Return whether an account can sign in now.
-
-    Parameters
-    ----------
-    user : UserRecord
-        The account.
-    proxy : bool
-        Whether the reverse proxy names people (``proxy_user_header``): an
-        enabled account then signs in through it without a password.
-
-    Returns
-    -------
-    bool
-        Enabled, and with a password that has not expired (``set`` or
-        ``temporary``) or through the proxy.
-    """
-    return not user.disabled and (proxy or user.password in ("set", "temporary"))
-
-
 def sign_in_administrators(
     users: Iterable[UserRecord], *, proxy: bool
 ) -> tuple[str, ...]:
     """Return the ids of the accounts with the role ``admin`` that can sign in.
 
-    Team mode does not start without one (ADR-046 decision 2); see
-    ``can_sign_in`` for ``proxy``.
+    Team mode does not start without one (ADR-046 decision 2), and the last
+    one stays (``StateStore.update_user``); see ``UserRecord.can_sign_in``
+    for ``proxy``.
     """
     return tuple(
         user.id
         for user in users
-        if ADMIN in user.roles and can_sign_in(user, proxy=proxy)
+        if ADMIN in user.roles and user.can_sign_in(proxy=proxy)
     )
 
 

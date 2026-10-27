@@ -53,12 +53,12 @@ command-line interface may change.
   and `archiwista users list` show each account's password as `none`, `set`,
   `temporary` (with its end) or `expired`, never a hash. `archiwista users disable
   ID` and `users enable ID` switch an account off and on. In team mode the last
-  enabled administrator cannot be disabled, removed or deprived of the role (`409
-  conflict`, `last_admin`), and `archiwista serve` does not start team mode without
-  an enabled administrator who can sign in, with a password that has not expired or
-  through the proxy of `proxy_user_header` (exit 2, `team_no_admin`, the hint names
-  `archiwista users add ID --role admin` and `archiwista users password ID`);
-  `archiwista doctor` names those administrators, reading the state database
+  administrator who can sign in cannot be disabled, removed or deprived of the role
+  (`409 conflict`, `last_admin`), and `archiwista serve` does not start team mode
+  without an enabled administrator who can sign in, with a password that has not
+  expired or through the proxy of `proxy_user_header` (exit 2, `team_no_admin`, the
+  hint names `archiwista users add ID --role admin` and `archiwista users password
+  ID`); `archiwista doctor` names those administrators, reading the state database
   without creating or upgrading it.
 - Sessions of team mode (v0.4, ADR-046): a session ends after 8 hours without
   requests and 7 days after its start at the latest (local mode keeps a day without
@@ -1189,6 +1189,12 @@ command-line interface may change.
   session ends, and a password set meanwhile is not overwritten. Before, the hash was
   kept, though ADR-046 decision 4 and SPEC 10.2 promise the replacement (review of
   v0.4, D8).
+- In team mode the last administrator who can sign in (enabled, with a password that
+  has not expired, or any enabled one when the proxy names people) cannot be
+  disabled, removed or lose the role (`409 last_admin`). Before, any other enabled
+  administrator counted, one without a password too, so the only one who could sign
+  in could be disabled and nobody could administer the team from the network until
+  the next start refused with `team_no_admin` (review of v0.4, D9; ADR-046 erratum 2).
 
 ## [0.2.0] - 2026-10-20
 

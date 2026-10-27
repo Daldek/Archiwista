@@ -352,8 +352,8 @@ def update_user(
 ) -> User:
     """Change an account's name, roles or whether it is disabled (``admin``).
 
-    In team mode the last enabled administrator can be neither disabled nor
-    deprived of the role: ``409 conflict``, reason ``last_admin``.
+    In team mode the last administrator who can sign in can be neither
+    disabled nor deprived of the role: ``409 conflict``, reason ``last_admin``.
     """
     user = access_service.update_user(
         decisions,
@@ -375,8 +375,8 @@ def remove_user(
     """Remove an account from groups and project entries, then delete it.
 
     Projects it owned keep their visibility without an owner (``admin``). In
-    team mode the last enabled administrator stays: ``409 conflict``, reason
-    ``last_admin``.
+    team mode the last administrator who can sign in stays: ``409 conflict``,
+    reason ``last_admin``.
     """
     access_service.remove_user(decisions, principal, user_id)
 

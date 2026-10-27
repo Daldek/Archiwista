@@ -2,9 +2,9 @@
 
 Team mode (ADR-046 decision 4): an administrator gives a temporary password the
 server generates (``POST /users/{user_id}/password``), the server's terminal
-sets a typed one (``archiwista users password``), and the last enabled
-administrator cannot be disabled, removed or lose the role. The hashes are real
-Argon2id at the lowest cost (``cheap_hasher``).
+sets a typed one (``archiwista users password``), and the last administrator
+who can sign in cannot be disabled, removed or lose the role. The hashes are
+real Argon2id at the lowest cost (``cheap_hasher``).
 """
 
 import io
@@ -29,8 +29,8 @@ from tests.fixtures.team_server import cheap_hasher, save_team
 ADMIN = "anna"
 PERSON = "kasia"
 TYPED = "kajak-po-Rabie-o-swicie"
-# Each change that would leave the team without an enabled administrator, at
-# the terminal and over HTTP.
+# Each change that would leave the team without an administrator who can sign
+# in, at the terminal and over HTTP.
 LAST_ADMIN_CHANGES = [
     (("users", "disable", ADMIN), "PATCH", f"/users/{ADMIN}", {"disabled": True}),
     (("users", "roles", ADMIN), "PATCH", f"/users/{ADMIN}", {"roles": []}),
@@ -40,13 +40,16 @@ LAST_ADMIN_CHANGES = [
 
 @pytest.fixture
 def team(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Api]:
-    """Serve team mode with the administrator anna and kasia, who has no role."""
+    """Serve team mode: anna, an administrator with a password, and kasia."""
     monkeypatch.setattr(passwords, "HASHER", cheap_hasher())
     paths = local_paths(tmp_path)
     save_team(paths)
     with running_api(paths) as api:
         api.state.add_user(ADMIN, name="Anna Admin", roles=["admin"], actor=LOCAL_OWNER)
         api.state.add_user(PERSON, name="Kasia Kowalska", actor=LOCAL_OWNER)
+        passwords.set_password(
+            api.state, ADMIN, TYPED, temporary=False, actor=LOCAL_OWNER
+        )
         yield api
 
 
@@ -235,7 +238,7 @@ def test_unknown_account_is_refused_alike_at_the_terminal_and_over_http(
 
 
 @pytest.mark.parametrize(("argv", "method", "path", "body"), LAST_ADMIN_CHANGES)
-def test_last_enabled_administrator_stays(
+def test_the_last_administrator_who_can_sign_in_stays(
     team: Api,
     capsys: pytest.CaptureFixture[str],
     argv: tuple[str, ...],
@@ -243,11 +246,17 @@ def test_last_enabled_administrator_stays(
     path: str,
     body: dict[str, object] | None,
 ) -> None:
-    """Disabling, demoting or removing the last one is 409 on both doors."""
-    # Arrange: a disabled administrator does not count.
+    """Disabling, demoting or removing the last one is 409 on both doors.
+
+    An enabled administrator without a password used to count, so anna could
+    go and nobody could administer the team from the network (review of v0.4,
+    D9).
+    """
+    # Arrange: a disabled administrator and one without a password do not count.
     admin = administrator(team)
     team.state.add_user("ada", roles=["admin"], actor=LOCAL_OWNER)
     team.state.update_user("ada", disabled=True, actor=LOCAL_OWNER)
+    team.state.add_user("bob", roles=["admin"], actor=LOCAL_OWNER)
     before = team.state.snapshot()
 
     # Act
@@ -260,12 +269,23 @@ def test_last_enabled_administrator_stays(
     assert team.state.snapshot() == before
 
 
-def test_another_enabled_administrator_lets_the_first_go(
-    team: Api, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("way", ["password", "proxy"])
+def test_another_administrator_who_can_sign_in_lets_the_first_go(
+    team: Api, capsys: pytest.CaptureFixture[str], way: str
 ) -> None:
-    """With ada enabled, anna can be disabled; then ada is the last one."""
+    """With ada able to sign in, anna can be disabled; then ada is the last one.
+
+    Ada signs in with a password, or without one through the reverse proxy
+    that names people (``proxy_user_header``).
+    """
     # Arrange
     team.state.add_user("ada", roles=["admin"], actor=LOCAL_OWNER)
+    if way == "password":
+        passwords.set_password(
+            team.state, "ada", TYPED, temporary=False, actor=LOCAL_OWNER
+        )
+    else:
+        save_team(team.paths, trusted_proxies=["10.0.0.1"], proxy_user_header="X-User")
 
     # Act
     disabled = command(team, capsys, "users", "disable", ADMIN)

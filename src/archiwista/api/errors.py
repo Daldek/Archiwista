@@ -183,8 +183,8 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             " project's manifest stays, `details.lock`: remove it when no program"
             " is changing the project), `unknown_store` (a project's manifest"
             " names no configured store), `last_admin` (team mode: the last"
-            " enabled administrator cannot be removed, disabled or lose the"
-            " role), `local_mode` (no sign-in and no password in local mode) or"
+            " administrator who can sign in cannot be removed, disabled or lose"
+            " the role), `local_mode` (no sign-in and no password in local mode) or"
             " `proxy_session` (a session of the reverse proxy changes no"
             " password).",
         ),

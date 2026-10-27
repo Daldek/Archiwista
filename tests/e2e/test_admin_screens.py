@@ -43,8 +43,9 @@ TeamTab = Callable[..., Tab]
 KASIA = "kasia"
 KASIA_PASSWORD = "wiosla-na-Dunajcu-7"
 LAST_ADMIN = (
-    "Konto „anna” jest ostatnim włączonym administratorem zespołu: najpierw nadaj"
-    " rolę admin innemu kontu."
+    "Konto „anna” jest ostatnim administratorem zespołu, który może się zalogować:"
+    " najpierw nadaj rolę admin innemu włączonemu kontu, które może się zalogować"
+    " (hasłem albo przez serwer pośredniczący)."
 )
 # The status of an API request (``/api/v1/…``) sent with the page's session.
 STATUS = """async (path) => {

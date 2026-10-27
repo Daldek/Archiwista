@@ -96,12 +96,14 @@ MESSAGES = {
     ),
     "last_admin": Text(
         (
-            'The account "{id}" is the last enabled administrator of the team: give'
-            " another account the role admin first."
+            'The account "{id}" is the last administrator of the team who can sign'
+            " in: first give the role admin to another enabled account that can"
+            " sign in (with a password, or through the reverse proxy)."
         ),
         (
-            "Konto „{id}” jest ostatnim włączonym administratorem zespołu: najpierw"
-            " nadaj rolę admin innemu kontu."
+            "Konto „{id}” jest ostatnim administratorem zespołu, który może się"
+            " zalogować: najpierw nadaj rolę admin innemu włączonemu kontu, które"
+            " może się zalogować (hasłem albo przez serwer pośredniczący)."
         ),
     ),
     "users_unknown": Text(

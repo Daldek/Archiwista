@@ -106,8 +106,8 @@ def update_user(
 ) -> UserRecord:
     """Change an account (``users.manage``); see ``StateStore.update_user``.
 
-    In team mode the last enabled administrator can be neither disabled nor
-    deprived of the role (``409 last_admin``).
+    In team mode the last administrator who can sign in can be neither
+    disabled nor deprived of the role (``409 last_admin``).
     """
     authorizer.require(principal, "users.manage")
     return authorizer.state.update_user(
@@ -117,16 +117,23 @@ def update_user(
         disabled=disabled,
         actor=principal,
         keep_admin=authorizer.team,
+        proxy=authorizer.proxy_sign_in,
     )
 
 
 def remove_user(authorizer: Authorizer, principal: Principal, user_id: str) -> None:
     """Remove an account (``users.manage``); see ``StateStore.remove_user``.
 
-    In team mode the last enabled administrator stays (``409 last_admin``).
+    In team mode the last administrator who can sign in stays (``409
+    last_admin``).
     """
     authorizer.require(principal, "users.manage")
-    authorizer.state.remove_user(user_id, actor=principal, keep_admin=authorizer.team)
+    authorizer.state.remove_user(
+        user_id,
+        actor=principal,
+        keep_admin=authorizer.team,
+        proxy=authorizer.proxy_sign_in,
+    )
 
 
 def set_temporary_password(

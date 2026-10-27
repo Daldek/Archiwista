@@ -166,6 +166,23 @@ class UserRecord:
     password_expires_at: datetime | None
     sessions_revoked_at: datetime | None
 
+    def can_sign_in(self, *, proxy: bool) -> bool:
+        """Return whether the account can sign in now.
+
+        Parameters
+        ----------
+        proxy : bool
+            Whether the reverse proxy names people (``proxy_user_header``):
+            an enabled account then signs in through it without a password.
+
+        Returns
+        -------
+        bool
+            Enabled, and with a password that has not expired (``set`` or
+            ``temporary``) or through the proxy.
+        """
+        return not self.disabled and (proxy or self.password in ("set", "temporary"))
+
 
 @dataclass(frozen=True, slots=True)
 class GroupRecord:
@@ -584,6 +601,7 @@ class StateStore:
         disabled: bool | None = None,
         actor: Principal,
         keep_admin: bool = False,
+        proxy: bool = False,
     ) -> UserRecord:
         """Change an account's name, roles or whether it is disabled.
 
@@ -600,8 +618,12 @@ class StateStore:
         actor : Principal
             Who makes the change.
         keep_admin : bool, optional
-            Refuse a change that leaves no enabled account with the role
-            ``admin`` (team mode, where no local owner administers).
+            Refuse a change that takes away the last administrator who can
+            sign in (``UserRecord.can_sign_in``; team mode, where no local
+            owner administers).
+        proxy : bool, optional
+            With ``keep_admin``: the reverse proxy names people, so every
+            enabled account can sign in.
 
         Raises
         ------
@@ -610,8 +632,8 @@ class StateStore:
         InvalidChangeError
             An empty name or an unknown role.
         ConflictError
-            With ``keep_admin``: the account is the last enabled
-            administrator and would be disabled or lose the role (reason
+            With ``keep_admin``: the account is the last administrator who
+            can sign in and would be disabled or lose the role (reason
             ``last_admin``).
         """
         display = None if name is None else _require_name(name)
@@ -628,8 +650,8 @@ class StateStore:
             stays_admin = "admin" in (
                 before.roles if granted is None else granted
             ) and (not (before.disabled if disabled is None else disabled))
-            if keep_admin and _enabled_admin(before) and not stays_admin:
-                _require_another_admin(connection, user_id)
+            if keep_admin and _signs_in_as_admin(before, proxy) and not stays_admin:
+                _require_another_admin(connection, user_id, proxy=proxy)
             now = _now()
             connection.execute(
                 "UPDATE users SET name = ?, disabled = ?, updated_at = ? WHERE id = ?",
@@ -656,7 +678,12 @@ class StateStore:
         return after
 
     def remove_user(
-        self, user_id: str, *, actor: Principal, keep_admin: bool = False
+        self,
+        user_id: str,
+        *,
+        actor: Principal,
+        keep_admin: bool = False,
+        proxy: bool = False,
     ) -> None:
         """Remove an account, its roles, memberships, access entries and password.
 
@@ -671,20 +698,23 @@ class StateStore:
         actor : Principal
             Who makes the change.
         keep_admin : bool, optional
-            Refuse to remove the last enabled administrator (team mode).
+            Refuse to remove the last administrator who can sign in (team
+            mode); see ``update_user``.
+        proxy : bool, optional
+            With ``keep_admin``: the reverse proxy names people.
 
         Raises
         ------
         NotFoundError
             Unknown account.
         ConflictError
-            With ``keep_admin``: the account is the last enabled
-            administrator (reason ``last_admin``).
+            With ``keep_admin``: the account is the last administrator who
+            can sign in (reason ``last_admin``).
         """
         with self._write() as connection:
             before = _existing_user(connection, user_id)
-            if keep_admin and _enabled_admin(before):
-                _require_another_admin(connection, user_id)
+            if keep_admin and _signs_in_as_admin(before, proxy):
+                _require_another_admin(connection, user_id, proxy=proxy)
             groups = _groups(
                 connection, f"g.id IN ({_IDS})", (json.dumps(list(before.groups)),)
             )
@@ -1381,18 +1411,21 @@ def _distinct(ids: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(set(ids)))
 
 
-def _enabled_admin(user: UserRecord) -> bool:
-    return "admin" in user.roles and not user.disabled
+def _signs_in_as_admin(user: UserRecord, proxy: bool) -> bool:
+    return "admin" in user.roles and user.can_sign_in(proxy=proxy)
 
 
-def _require_another_admin(connection: sqlite3.Connection, user_id: str) -> None:
-    """Refuse a change that would leave no enabled administrator (``last_admin``)."""
-    (others,) = connection.execute(
-        "SELECT COUNT(*) FROM users u JOIN roles r ON r.user_id = u.id"
-        " WHERE r.role = 'admin' AND u.disabled = 0 AND u.id <> ?",
-        (user_id,),
-    ).fetchone()
-    if not others:
+def _require_another_admin(
+    connection: sqlite3.Connection, user_id: str, *, proxy: bool
+) -> None:
+    """Refuse a change that leaves no administrator who can sign in (``last_admin``).
+
+    The rule the start of team mode asks too (ADR-046 decision 2): an enabled
+    one with a password that has not expired, or any enabled one when the
+    reverse proxy names people.
+    """
+    others = _users(connection, "u.id <> ?", (user_id,))
+    if not any(_signs_in_as_admin(user, proxy) for user in others):
         raise ConflictError(
             message("state.last_admin", id=user_id), reason="last_admin"
         )

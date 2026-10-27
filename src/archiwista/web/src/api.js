@@ -1478,8 +1478,8 @@ export function addUser(account) {
  * @param {{name?: string, roles?: string[], disabled?: boolean}} change - The
  *   complete new roles; omitted fields stay.
  * @returns {Promise<User>}
- * @throws {ApiError} `409 conflict` (`last_admin`: the last enabled
- *   administrator of a team).
+ * @throws {ApiError} `409 conflict` (`last_admin`: the last administrator of a
+ *   team who can sign in).
  */
 export function updateUser(id, change) {
   return request("PATCH", `/users/${one(id)}`, { json: change });

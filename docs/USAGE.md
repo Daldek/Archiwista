@@ -681,8 +681,9 @@ Setting a password ends every session of the account.
 `archiwista users list` shows each account's password as `none`, `set`, `temporary`
 (with its end) or `expired`. `archiwista users disable ID` switches an account off
 (it acts nowhere and its sessions end) and `users enable ID` on again. The last
-enabled administrator cannot be disabled, removed or lose the role (`last_admin`):
-give another account the role `admin` first.
+administrator who can sign in (enabled, with a password that has not expired, or
+through the proxy of `proxy_user_header`) cannot be disabled, removed or lose the
+role (`last_admin`): give another such account the role `admin` first.
 
 **Accounts in the browser.** An administrator manages the accounts in "Konta"
 (accounts), at the bottom of the navigation, which nobody else sees (its routes answer

@@ -199,6 +199,15 @@ class Authorizer:
         """Whether team mode is on: then no local owner administers the team."""
         return self._settings().team.enabled
 
+    @property
+    def proxy_sign_in(self) -> bool:
+        """Whether a reverse proxy names people (``proxy_user_header``).
+
+        Every enabled account then signs in through it, with or without a
+        password.
+        """
+        return self._settings().team.proxy_user_header is not None
+
     def can(
         self, principal: Principal, action: Action, resource: str | None = None
     ) -> bool:
