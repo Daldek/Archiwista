@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -349,6 +349,44 @@ def test_a_temporary_password_cannot_become_the_password_that_stays(
         assert refused.json()["details"]["rule"] == "same_as_current"
     assert again.status_code == 200, again.text
     assert again.json()["password_change_required"] is True
+
+
+def test_a_hash_of_other_parameters_is_replaced_at_the_sign_in(team: Team) -> None:
+    """Only the hash changes: the password stays temporary and no session ends.
+
+    ADR-046 decision 4 replaces a hash of weaker parameters at the next
+    sign-in; the sign-in used to keep it (review of v0.4, D8). A replacement
+    of a hash changed since, by a sign-in that verified the old one, keeps
+    the new hash.
+    """
+    # Arrange
+    state = team.api.state
+    older = argon2.PasswordHasher(time_cost=2, memory_cost=8, parallelism=1)
+    temporary = passwords.generate_temporary()
+    ends = datetime.now(UTC).replace(microsecond=0) + TEMPORARY_TTL
+    state.set_password(
+        PERSON, older.hash(temporary), expires_at=ends, actor=LOCAL_OWNER
+    )
+    before = state.password_record(PERSON)
+    assert before is not None
+    account = state.user(PERSON)
+
+    # Act
+    first = sign_in(team.client, PERSON, temporary)
+    after = state.password_record(PERSON)
+    again = sign_in(team.client, PERSON, temporary)
+    state.replace_password_hash(PERSON, before.hash, older.hash(temporary))
+
+    # Assert
+    assert after is not None
+    assert team.hasher.check_needs_rehash(before.hash)
+    assert not team.hasher.check_needs_rehash(after.hash)
+    assert replace(after, hash=before.hash) == before
+    assert state.password_record(PERSON) == after
+    assert state.user(PERSON) == account
+    for answer in (first, again):
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["password_change_required"] is True
 
 
 def test_a_password_change_ends_the_other_sessions_and_answers_a_new_one(

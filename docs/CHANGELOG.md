@@ -1183,6 +1183,12 @@ command-line interface may change.
   matches and more than 100 ranges, which send the whole file, are logged too.
   Before, only a `Range` written `bytes=0-…` counted, so the others streamed the whole
   file unlogged (review of v0.4, D5; ADR-047 decision 5).
+- A sign-in with a password whose hash has other parameters than the server's (e.g.
+  weaker ones from an earlier argon2-cffi) replaces that hash by one of the current
+  parameters; only the hash changes: the password stays temporary with its end, no
+  session ends, and a password set meanwhile is not overwritten. Before, the hash was
+  kept, though ADR-046 decision 4 and SPEC 10.2 promise the replacement (review of
+  v0.4, D8).
 
 ## [0.2.0] - 2026-10-20
 

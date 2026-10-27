@@ -771,6 +771,22 @@ class StateStore:
             )
             return _existing_user(connection, user_id)
 
+    def replace_password_hash(self, user_id: str, old_hash: str, new_hash: str) -> None:
+        """Replace an account's hash by another hash of the same password.
+
+        Only ``archiwista.auth.passwords`` calls this, at a sign-in whose
+        password matched ``old_hash``, of other parameters than its hasher's
+        (ADR-046 decision 4). Only the hash changes: when and by whom the
+        password was set, whether it is temporary and its end stay, no
+        session ends and nothing is logged. A password set since (another
+        hash than ``old_hash``) is kept.
+        """
+        with self._write() as connection:
+            connection.execute(
+                "UPDATE passwords SET hash = ? WHERE user_id = ? AND hash = ?",
+                (new_hash, user_id, old_hash),
+            )
+
     def revoke_sessions(self, user_id: str, *, actor: Principal) -> UserRecord:
         """End every session the account started until now.
 

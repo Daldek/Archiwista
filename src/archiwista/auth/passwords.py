@@ -16,9 +16,10 @@ generates (``generate_temporary``: about 93 bits), valid ``TEMPORARY_TTL``
 and changed at the next sign-in (ASVS 6.4.1).
 
 This module alone reads and writes the password table of the state database
-(``StateStore.password_record``, ``StateStore.set_password``); the hash never
-leaves it but into a backup. A test may lower the cost by replacing
-``HASHER``, never the defaults of the code.
+(``StateStore.password_record``, ``StateStore.set_password``,
+``StateStore.replace_password_hash``); the hash never leaves it but into a
+backup. A test may lower the cost by replacing ``HASHER``, never the
+defaults of the code.
 """
 
 import functools
@@ -338,7 +339,10 @@ def check_sign_in(
 
     An unknown account, a disabled one and one without a password verify a
     hash too (theirs, or the stand-in of ``verify``), so neither the answer
-    nor its work tells which accounts exist (ASVS 6.3.8).
+    nor its work tells which accounts exist (ASVS 6.3.8). A sign-in that
+    succeeds with a hash of other parameters than ``HASHER``'s replaces it
+    by one of ``HASHER`` (ADR-046 decision 4): only the hash, the password
+    stays as it was set (``StateStore.replace_password_hash``).
 
     Parameters
     ----------
@@ -363,6 +367,8 @@ def check_sign_in(
         return SignInCheck(None, "login_failed")
     if verified.expired:
         return SignInCheck(None, "password_expired")
+    if verified.needs_rehash and record is not None:
+        state.replace_password_hash(user.id, record.hash, hash_password(password))
     return SignInCheck(user, temporary=verified.temporary)
 
 
