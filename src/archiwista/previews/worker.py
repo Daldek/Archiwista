@@ -13,9 +13,12 @@ handler (run here, by the renderer of the source's kind from
 ``archiwista.previews.renderers.RENDERERS``) and where the pool keeps its
 result in the preview cache; one line per operation. Before an answer leaves
 the process, every path of the source, its real path and their directories
-in an error's detail become file names (``scrub_paths``). An own-data
-working file (``PreviewSource.mutable``) is checked against its scan before
-and after rendering (``changed_since_scan``). After running out of memory
+in an error's detail become file names (``scrub_paths``). Before and after
+rendering, every file of the source must open at its real path without
+following a symbolic link (``require_unchanged``: a link swapped in since
+the resolver's check is ``missing_file``), and an own-data working file
+(``PreviewSource.mutable``) is checked against its scan
+(``changed_since_scan``). After running out of memory
 the process answers ``memory_limit`` and ends, so the next request gets a
 fresh one. A renderer reads a large file the cache keeps for its source (the
 local COG, a consistent copy of an own-data SQLite file) through
@@ -41,11 +44,13 @@ from typing import IO, Any, cast
 from archiwista.errors import (
     FormatRefusedError,
     InconsistentReadError,
+    PathOutsideRootError,
     PreviewUnavailableError,
 )
 from archiwista.logs import process_log_level
 from archiwista.owndata.content import content_identity
 from archiwista.owndata.formats import fileset_members
+from archiwista.paths import open_real_file
 from archiwista.previews.cache import (
     INFO_NAME,
     OBJECTS_DIR,
@@ -545,15 +550,30 @@ def _require_indexed_content(source: PreviewSource) -> None:
 
 
 def require_unchanged(source: PreviewSource) -> None:
-    """Refuse an own-data file whose metadata differs from its resolution.
+    """Refuse a source whose files are no longer those it was resolved to.
+
+    Each of its files must still open at its real path without following a
+    symbolic link (``archiwista.paths.open_real_file``): a link put in its
+    place after the resolver checked it inside its root is ``missing_file``,
+    so nothing is rendered from where the link leads, and the next
+    resolution of the object answers ``path_outside_root``. An own-data file
+    must also keep the metadata of its resolution. The render libraries open
+    the files by their paths in between: ``answer_line`` checks before and
+    after each operation.
 
     Raises
     ------
     FileNotFoundError
-        The file is gone.
+        A file is gone.
     PreviewUnavailableError
+        ``missing_file`` (a part of a file's path is a link now) or
         ``changed_since_scan``.
     """
+    for path in source.paths:
+        try:
+            os.close(open_real_file(path))
+        except PathOutsideRootError:
+            raise PreviewUnavailableError("missing_file") from None
     if not source.mutable or source.stat is None:
         return
     main = source.paths[0]

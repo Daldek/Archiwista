@@ -17,7 +17,11 @@ an unreadable one ``409 file_unreadable``, and a project whose data folder
 is another one than its scan read ``409 own_file_changed``. The media type
 is the registered type of the file's format (``archiwista.formats``), else
 that of Python's own table (the system's tables call an ASCII grid a PGP
-key), else ``application/octet-stream``.
+key), else ``application/octet-stream``. ``open_download`` opens the found
+file once, at its real path without following a link
+(``archiwista.paths.open_real_file``): the answer reads that descriptor
+only, so a symbolic link put in the file's place after the check is ``403
+path_outside_root``, never followed out of the root.
 
 ``FileStreams`` counts the downloads each person streams: at most
 ``FILE_DOWNLOADS_PER_PERSON`` at once (an agent counts as its account), a
@@ -43,6 +47,7 @@ from archiwista.errors import (
 from archiwista.formats import file_format
 from archiwista.index import OwnFileDetail
 from archiwista.messages import message
+from archiwista.paths import open_real_file
 from archiwista.previews.types import PreviewSource
 from archiwista.refs import (
     FileRef,
@@ -195,6 +200,33 @@ def snapshot_file(
     names = [name for name, _ in snapshot_files(record)]
     place = 0 if member is None else _place(names, member, format_ref(ref))
     return _download(source.paths[place], names[place], ref)
+
+
+def open_download(found: FileDownload) -> int:
+    """Open a found file to send it: the descriptor its answer reads.
+
+    Returns
+    -------
+    int
+        A descriptor open for reading; the caller closes it.
+
+    Raises
+    ------
+    PathOutsideRootError
+        A part of its path is a symbolic link now, or it is no regular file.
+    NotFoundError
+        It is gone since it was found (reason ``missing_file``).
+    ConflictError
+        It cannot be read (reason ``file_unreadable``).
+    """
+    try:
+        return open_real_file(found.path)
+    except FileNotFoundError:
+        text = message("api.file_missing", ref=found.ref)
+        raise NotFoundError(text, reason="missing_file") from None
+    except OSError:
+        text = message("api.file_unreadable", ref=found.ref)
+        raise ConflictError(text, reason="file_unreadable") from None
 
 
 class FileStreams:

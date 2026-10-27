@@ -1150,6 +1150,15 @@ command-line interface may change.
   alone with the code `own_folder_invalid`. A missing folder is `missing_file`, an
   unreadable one `unreadable`, and a project whose data folder is another one than its
   scan read `own_file_changed`.
+- A downloaded file is the file that was checked: the answer opens it once, at its
+  real path inside its store or data folder and without following a symbolic link
+  anywhere on that path, and sends that open file (`HEAD` its size). Before, the
+  answer opened the file again by its path after the check, so a file replaced by a
+  link right after the check was sent from wherever the link led, e.g. the server's
+  state database (review of v0.4, D2). A link put in place since is `403
+  path_outside_root`. The render processes of previews check every file of a
+  preview the same way before and after each operation: a link put in place since
+  is `missing_file`, and nothing is rendered from where it leads.
 
 ## [0.2.0] - 2026-10-20
 

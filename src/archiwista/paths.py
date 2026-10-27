@@ -2,13 +2,16 @@
 
 The API accepts only paths the index knows; a file is opened only through
 ``resolve_indexed_path``, which resolves symbolic links and refuses a path
-whose real location leaves its store or project root. Local data (the
-index, the state database, job logs, copies of area files) belongs to its
-user alone: ``private_directory`` keeps its directories closed to other
+whose real location leaves its store or project root, and then by
+``open_real_file``, which opens that real path without following any link,
+so a link put in its place after the check cannot lead outside. Local data
+(the index, the state database, job logs, copies of area files) belongs to
+its user alone: ``private_directory`` keeps its directories closed to other
 accounts. Without web dependencies, so background job workers use it too.
 """
 
 import contextlib
+import errno
 import os
 import stat
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -114,3 +117,60 @@ def resolve_indexed_path(root: Path, relative: str) -> Path:
         text = message("ref.path_outside_root", path=relative)
         raise PathOutsideRootError(text)
     return real
+
+
+def open_real_file(real: Path) -> int:
+    """Open a regular file at its real path without following any link.
+
+    The path is what ``resolve_indexed_path`` returned, checked to lie in its
+    root. Each directory from the file system's root down is opened relative
+    to its parent, then the file, none through a symbolic link
+    (``O_NOFOLLOW``): the descriptor is the file at that very path now, so a
+    link swapped into any part of it since the check (a time-of-check race)
+    is refused instead of followed out of the root. Read the file through
+    the descriptor only, never again by its path.
+
+    Parameters
+    ----------
+    real : Path
+        An absolute path with every link resolved.
+
+    Returns
+    -------
+    int
+        A descriptor open for reading (non-blocking); the caller closes it.
+
+    Raises
+    ------
+    PathOutsideRootError
+        A part of the path is a symbolic link now, or the file is not a
+        regular file (e.g. a FIFO); the error names the file only.
+    OSError
+        The file cannot be opened, e.g. ``FileNotFoundError`` when it is gone.
+    """
+    outside = PathOutsideRootError(message("ref.path_outside_root", path=real.name))
+    # A directory is only passed through (``O_PATH`` where the system has it
+    # needs no right to list it); a FIFO in the file's place does not block.
+    passing = getattr(os, "O_PATH", os.O_RDONLY) | os.O_DIRECTORY | os.O_NOFOLLOW
+    reading = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    parts = real.parts
+    current = os.open(parts[0], passing | os.O_CLOEXEC)
+    try:
+        for part in parts[1:-1]:
+            following = os.open(part, passing | os.O_CLOEXEC, dir_fd=current)
+            os.close(current)
+            current = following
+        descriptor = os.open(parts[-1], reading | os.O_CLOEXEC, dir_fd=current)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOTDIR):
+            raise outside from None
+        raise
+    finally:
+        os.close(current)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise outside
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor

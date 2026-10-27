@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -23,6 +24,7 @@ import uvicorn
 from starlette.types import ASGIApp
 
 from archiwista.index import own_file_id
+from archiwista.services.files import FileDownload, open_download, version_file
 from tests.fixtures.api_session import PORT, Caller, assert_problem
 from tests.fixtures.api_store import STORE, served_store
 from tests.fixtures.own_data import write_snapshot_fixture
@@ -36,6 +38,8 @@ WAIT_S = 30.0
 GEOTIFF = "image/tiff; application=geotiff"
 # A file larger than what the sockets of one connection buffer.
 LARGE_BYTES = 64 * 1024**2
+# The module of the download routes, whose names a test replaces.
+ROUTES = "archiwista.api.files"
 
 
 def fetch(
@@ -102,6 +106,57 @@ def test_a_version_streams_whole_and_in_parts_and_is_logged_once(
     ]
     assert_problem(unknown, 404, "not_found")
     assert_problem(refused, 403, "forbidden", "path_outside_root")
+
+
+def test_a_file_swapped_for_a_link_after_its_check_is_never_sent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A link put in a found file's place is refused, or not read once it is open.
+
+    The answer used to open the file again by its path, so a link swapped in
+    after the check inside the store was followed out of it (review of v0.4,
+    D2). A link put in place once the file is found is ``403
+    path_outside_root``; one put in place once it is open changes nothing.
+    """
+    with served_store(tmp_path) as served:
+        # Arrange
+        entry = entry_of(served.store, "tif_sheet", "regular")
+        on_disk = served.store.root / entry.path
+        data = on_disk.read_bytes()
+        url = f"/stores/{STORE}/versions/{entry.path}/file"
+        outside = tmp_path / "poza.tif"
+        outside.write_bytes(b"not in the store")
+        kept = tmp_path / "zabrany.tif"
+        on_disk.parent.chmod(0o755)
+
+        def swap() -> None:
+            on_disk.rename(kept)
+            on_disk.symlink_to(outside)
+
+        def found_then_swapped(*args: Any, **kwargs: Any) -> FileDownload:
+            download = version_file(*args, **kwargs)
+            swap()
+            return download
+
+        def opened_then_swapped(download: FileDownload) -> int:
+            descriptor = open_download(download)
+            swap()
+            return descriptor
+
+        # Act
+        with monkeypatch.context() as patched:
+            patched.setattr(f"{ROUTES}.version_file", found_then_swapped)
+            refused = fetch(served.owner, url)
+        on_disk.unlink()
+        kept.rename(on_disk)
+        with monkeypatch.context() as patched:
+            patched.setattr(f"{ROUTES}.open_download", opened_then_swapped)
+            sent = fetch(served.owner, url)
+
+    # Assert
+    assert_problem(refused, 403, "forbidden", "path_outside_root")
+    assert sent.status_code == 200
+    assert sent.content == data
 
 
 def test_own_files_their_sets_and_snapshots_for_those_who_see_the_project(

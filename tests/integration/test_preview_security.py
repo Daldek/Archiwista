@@ -12,6 +12,7 @@ family and GeoPackages in the three states of decision 8; two projects
 holding the same damaged bytes share its failure, never a path.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -36,6 +37,9 @@ from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.config import ConfigStore
 from archiwista.index import IndexQueries, own_file_id
 from archiwista.previews.cache import cache_key
+from archiwista.previews.protocol import RenderRequest, encode_request
+from archiwista.previews.types import PreviewSource
+from archiwista.previews.worker import answer_line
 from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
@@ -49,6 +53,7 @@ from tests.fixtures.preview_api import (
     preview_api,
     version_url,
 )
+from tests.fixtures.render_worker import TestRenderer
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -275,6 +280,33 @@ def test_link_leaving_root_is_path_outside_root(tmp_path: Path) -> None:
     # Assert
     assert_problem(described, 403, "forbidden", "path_outside_root")
     assert_problem(thumbnail, 403, "forbidden", "path_outside_root")
+
+
+def test_a_render_reads_no_file_swapped_for_a_link_after_its_check(
+    tmp_path: Path,
+) -> None:
+    """A source's file replaced by a link after the resolver's check is not read.
+
+    The render process opens the file by its path; it checks the path again
+    first (review of v0.4, D2), so the probe is ``missing_file`` and never
+    describes the file the link leads to.
+    """
+    # Arrange
+    checked = tmp_path / "magazyn" / "arkusz.tif"
+    checked.parent.mkdir()
+    checked.write_text(json.dumps({"pixels": 7}), "utf-8")
+    outside = tmp_path / "poza.tif"
+    outside.write_text(json.dumps({"pixels": 99}), "utf-8")
+    source = PreviewSource("version:s:arkusz.tif", "0" * 64, (checked.resolve(),))
+    request = encode_request(RenderRequest("1", "probe", source))
+    checked.unlink()
+    checked.symlink_to(outside)
+
+    # Act
+    answer = answer_line(request, (TestRenderer(),))
+
+    # Assert
+    assert (answer.code, dict(answer.files)) == ("missing_file", {})
 
 
 def test_store_and_own_folder_unchanged_after_previews(tmp_path: Path) -> None:
