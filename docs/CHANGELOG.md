@@ -246,6 +246,141 @@ command-line interface may change.
   dnia" kept in the address; "Dalej" and "Wstecz"; a row opens the state before and
   after, the details, the session and the kind of actor; "Eksportuj CSV" and
   "Eksportuj JSON Lines" save the entries the filters select as a file.
+- The comparison of stations: "Porównaj z…" in the toolbar of the station card's chart,
+  or up to five rows of the Catalog's station list chosen with their button or `P` and
+  then "Porównaj", opens one variable of 2 to 5 stations as panels stacked over one
+  time axis (`view=station-compare` with `stations`, `dataset`, `variable`, `from`,
+  `to`). Every panel has the same range and interval, so a selection, the wheel or the
+  keys in one panel zoom all of them (`Home` or "Cały okres" gives the whole period
+  back); a station without the series or the variable keeps its panel with "brak
+  danych". Below the panels: the facts of each station as on its card (years with a
+  value, label, longest gap, full years, location) and each provider's formula.
+  "Zmienna" switches the variable and "Dodaj stację" finds another station of the
+  dataset by name, river or code; a sixth station cannot be added. The card keeps the
+  chart's range when it opens the comparison. (ADR-045 decision 13, plan I8.6)
+
+- `GET /api/v1/stations/compare` and `archiwista stations compare --station … --station …
+  --dataset … --variable …`: one variable of 2 to 5 stations (each
+  `<store>/<provider>/<code>`) of one dataset over one range, for display only. The
+  range is `from`–`to`, by default every known day of the variable at those stations,
+  and every station gets the same interval: its chart is the one `GET
+  /stations/{code}/series` gives over that range, its `coverage` the variable's label
+  and facts as on its card (in `year_type`), with its location, series version and
+  IMGW formula. A station without the series or the variable keeps its place with
+  `null` ("brak danych"); no station with the variable is `400 unknown_variable`.
+  (ADR-045 decision 12, plan I8.6)
+
+- The chart of the station card, its default tab "Wykres": one or two variables of a
+  station's series ("Druga zmienna" on the right axis for another unit), over the
+  whole period their labels count (the known days) simplified to the least, mean and
+  greatest value of intervals when it has more days than the plot has pixels (with
+  the note "wykres uproszczony: … z N dni"), each day's value once a drag selection,
+  the wheel or the keys `+`, `-` and the arrows narrow the range (`from`, `to` in the
+  address; `Home` or "Cały okres" gives the whole period back). A gap breaks the line
+  and is a grey band, never interpolated: the bands are the gaps the coverage label
+  counts in the card's year type, so "luki 92%" shows its band. Published extremes
+  are dots and an accumulated sum a diamond, each with its date. (ADR-045 and its
+  erratum 1, plan I8.5)
+
+- The station card: a click on a station's point on the map, a row of the Catalog's
+  list (Enter) or a station's name on its Timeline (`K`) opens it over the view
+  (`station=<store>/<provider>/<code>` in the address). It names the station's type,
+  river with its hydrographic code, code, provider and state, has the switch "Lata"
+  of the Catalog (it renumbers the labels and goes into the address), the location
+  with its source, catalog date and uncertainty or why there is none, "Strona stacji
+  IMGW" for a water gauge, "Pokaż na mapie", "Kopiuj ścieżkę pliku", the coverage of
+  each variable with its full years and longest gap, the tabs "Metadane",
+  "Pochodzenie" and "Szczegóły techniczne", and the IMGW formula with "Kopiuj
+  atrybucję". `GET /api/v1/stations/{code}` gains `paths`: each series file on this
+  computer and as mounted on others. Enter on a row of the station list opens the
+  card; `M` shows the station on the map. (ADR-045, plan I8.5)
+
+- `GET /api/v1/stations/{code}/series` and `archiwista stations series CODE --variable …`:
+  one or two variables of a station's series as a chart, for display only. Up to
+  `max_points` units (2,000 at most) each unit's value; a longer range gives the least,
+  mean and greatest value of each interval of `interval` units, `null` without a value
+  (never interpolated). `gaps` are the gaps each variable's label counts in
+  `year_type` (as on the card; named in the answer) cut at the range's ends and
+  `markers` the accumulated sums and the extremes IMGW published with their dates; the
+  answer names the series version, the station's file with its SHA-256 and the IMGW
+  formula. `dataset` chooses the series (by default the one with every variable),
+  `from` and `to` the range (by default the variables' known span, so a label's
+  longest gap lies in it), `version` must be the current one (`409` otherwise).
+  (ADR-045 and its erratum 1, plan I8.4)
+
+- Plugins: the optional capability `SeriesValuesAdapter` (`archiwista.sources`) reads a
+  station's values of a series version for a chart (`read_values`, one `SeriesValues` a
+  unit: a missing unit `None`, accumulated sums flagged, the dates of half-year
+  extremes) and names, from the producer's registry, the dataset of the half-year
+  characteristics and the characteristics that hold a variable's extremes
+  (`characteristics_dataset`, `extremes_of`). The IMGW adapter reads with
+  `imgwtools.read_series`. (ADR-045, plan I8.4)
+
+- "Oś czasu" of the stations in the Catalog, beside "Lista" (ADR-045, plan I8.3): the
+  stations of one dataset with the filters of the list, a row per station with the
+  years of one variable ("Wiersz stacji", the map's "Kolor punktów") that expands into
+  a row per variable. A year is green when every unit has a value, lighter the fewer
+  units have one, a grey hollow box without a value and a grey dashed outline when not
+  every unit is known; the headers name the numbering ("r.h. 2024
+  (2023.11.01–2024.10.31)", "2024 (kalendarzowy)") and the tooltip gives the year's
+  units, the label and the longest gap. Arrows, Home and End move by year and row;
+  Enter or Space expands a station.
+- `GET /api/v1/stations/timeline` and `archiwista stations timeline --dataset …`: a
+  page of the stations of one dataset, each with its series year by year as `GET
+  /stations/{code}/coverage` gives it (every year of the range with its units, the
+  known ones and those with a value, and its cell), with the filters, order and cursor
+  of `GET /stations`; `variable` keeps the stations with a value of each variable and
+  only their rows. For a person the command draws a line of year cells per variable
+  with its label. A page of 200 water gauges with H, Q and T over 75 years is answered
+  within 300 ms (p95). (ADR-045, plan I8.3)
+- The Catalog lists the stations of an IMGWTools product (ADR-045, plan I8.2): a row
+  per station with a line per variable of its series (the symbol with the fill of its
+  coverage, the label and the full years), the code, the river with its hydrographic
+  code and the location's source, along rivers or by name ("Wzdłuż rzek", "Nazwa") and
+  page by page as the list scrolls. "Bez położenia" is the last group with the reason
+  of each station and no way to the map; it starts folded when more than 50 stations
+  have a position and open when the map's counter leads to it. The filter panel has
+  the fields of `GET /stations` (dataset, kind or meteo types, river code with "z
+  dopływami", active, variable, coverage chips with the least full years, range of the
+  labels) and "Lata: hydrologiczne / kalendarzowe", which writes `year_type` to the
+  address and, for an administrator, remembers the choice for the family. "Ukryte przez
+  filtry pokrycia: N" counts what the coverage chips hide. Enter or a click shows a
+  located station on the map.
+- `GET /api/v1/stations` and `archiwista stations list` take `q` and `sort` (ADR-045, plan
+  I8.2). `q` finds a station whose name or river contains the text, whatever the case
+  of the letters (`łódź` finds `Łódź`), or whose code begins with it; no character is a
+  wildcard. `sort=river`, now the default, lists the stations along rivers (by the
+  river's hydrographic code, so a tributary follows its river, then by the station's
+  place on the provider's list, then by name); `sort=name` keeps the order by name, the
+  only one until now. A cursor belongs to its search and order.
+- The year type is remembered for hydro and for meteo data (P15, ADR-045, plan I8.2):
+  `year_types` in `config.toml` and `GET /api/v1/settings` (hydro hydrological, meteo
+  calendar by default), changed by `PUT /api/v1/settings/year-types` (an administrator
+  until each person's preferences hold them; the action log keeps a change as
+  `settings.update`). The station routes and `archiwista stations` number the years
+  of a view without `year_type` as remembered for its family; a list of both families,
+  without a dataset or a station type, takes the type remembered for hydro data (until
+  now each family kept its own default there). A `year_type` in the request wins and
+  changes nothing; half-year characteristics stay in hydrological years.
+- Stations on the map (ADR-045, plan I8.1). A product of IMGWTools shows its stations in
+  place of outlines: the shape says the station type (a triangle for a water gauge, a
+  square for a climatological or synoptic station, a circle for a precipitation post),
+  the colour and fill the coverage of the "Kolor punktów" variable (green solid, orange
+  solid, orange half, grey hollow, grey dashed), and the legend names each. Stations far
+  apart at a low zoom form a neutral cluster with its count that zooms in on a click;
+  stations at one position spread around it until the next click or `Esc`; above 5,000
+  stations the view is a grid. The tooltip gives the name, type, river and the label of
+  every variable. The panel has the dataset and station type chips and "Uwzględnij
+  stacje na granicy obszaru"; the counter "N bez położenia" opens the Catalog with the
+  stations without a position. A browser that cannot draw the map (no WebGL2) still
+  shows the counters of the view.
+- `GET /api/v1/stations/datasets` and `archiwista stations datasets [--store …]`: the
+  datasets with station series in the index, each with the producer's name of its
+  segment, provider, family, time unit, default year type, the years of its labels by
+  default, the label of its current series version and its variables (key, unit,
+  half-year period). `GET /stations`, `GET /map/stations` and `archiwista stations list`
+  take the repeatable `meteo_kind` (`synoptic`, `climate`, `precipitation`), and the
+  counts follow it. (ADR-045, plan I8.1)
 - Downloads run in the background (ADR-043). The plan window is modal only while it
   plans and asks to confirm; once a download starts it floats in a corner and "Zwiń"
   (minimise), "Zamknij" (close) and `Esc` hide or close it without cancelling
@@ -740,6 +875,12 @@ command-line interface may change.
   instead of `permission_log`), and each account's `sessions_revoked_at`. The copy is
   a secret: the file gets mode `0600`. `archiwista state import` reads `/2` and still
   `/1`, whose log entries become `ok` entries of the action log. (ADR-047)
+- A page of stations with the labels of their series is read faster (plan I8.3): the
+  years of the page come from the index as plain rows, and a label goes over a
+  variable's years once. `GET /api/v1/stations?dataset=…&limit=200` over 200 water gauges
+  with H, Q and T of 75 years went from about 255 ms to about 200 ms (median) on the
+  development machine. `archiwista stations list --help` no longer says the list is by
+  name only.
 - Kartograf is pinned at `745e8b18`, and the adapter uses what it asked for (plan, Requests):
   the probe of a store is Kartograf's `store_state(root)`, not a copy of its judgement by file
   name (`adapter/kartograf/marker.py` is gone; ADR-031 erratum 1): the reasons keep their names,

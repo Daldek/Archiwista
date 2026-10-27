@@ -1,12 +1,12 @@
 """The station routes over the producer's fixture store (plan I6, SPEC 9.2, 6.7).
 
-``GET /stations``, ``/stations/{code}``, ``/stations/{code}/coverage`` and
-``GET /map/stations`` answer from the index of a scanned copy of
-``complete_pl_cz`` (``imgwtools.testing``): the stations of both providers, the
-location groups counted apart (SPEC 4.3 point 3), the coverage of each
-variable with its licence and attribution, the boundary of an area by the
-location uncertainty, and ``503`` while the source is not available
-(SPEC 5.8). The OpenAPI document lists the four routes with their
+``GET /stations``, ``/stations/timeline``, ``/stations/{code}``,
+``/stations/{code}/coverage`` and ``GET /map/stations`` answer from the index
+of a scanned copy of ``complete_pl_cz`` (``imgwtools.testing``): the stations
+of both providers, the location groups counted apart (SPEC 4.3 point 3), the
+coverage of each variable with its licence and attribution, the boundary of
+an area by the location uncertainty, and ``503`` while the source is not
+available (SPEC 5.8). The OpenAPI document lists the five routes with their
 parameters, examples and problems.
 """
 
@@ -54,8 +54,11 @@ AREA = AreaRecord(
 EAST_OF_RABA = "20.12,49.6,20.4,49.8"
 ROUTES = (
     "/api/v1/stations",
+    "/api/v1/stations/timeline",
+    "/api/v1/stations/compare",
     "/api/v1/stations/{code}",
     "/api/v1/stations/{code}/coverage",
+    "/api/v1/stations/{code}/series",
     "/api/v1/map/stations",
 )
 
@@ -114,7 +117,7 @@ def _codes(body: dict[str, Any]) -> list[str]:
     return [item["code"] for item in body["items"]]
 
 
-def test_stations_lists_both_providers_by_name_with_the_location_groups(
+def test_stations_lists_both_providers_page_by_page_with_the_location_groups(
     served: Served,
 ) -> None:
     """Every station once, page after page; the unlocated keep their reason."""
@@ -145,9 +148,14 @@ def test_stations_lists_both_providers_by_name_with_the_location_groups(
 def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     served: Served,
 ) -> None:
-    """The card names the series version, the file with its digest, the terms."""
+    """The card names the series version, the file with its digest and paths."""
+    # Arrange
+    config = ConfigStore(served.paths.config_file).load().store(STORE)
+    assert config is not None and config.imgw is not None
+
     # Act
-    card = served.json(f"/stations/{RABA}")["station"]
+    answer = served.json(f"/stations/{RABA}")
+    card = answer["station"]
     czech = served.json("/stations/0-203-1-900001")["station"]
     polish = served.get(f"/stations/{RABA}?dataset={DAILY}", lang="pl").json()
 
@@ -182,6 +190,9 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     assert list(series["coverage"]) == ["H", "Q", "T"]
     assert series["coverage"]["Q"]["state"] == "gaps"
     assert series["coverage"]["Q"]["unknown_years"] == [{"from": 1951, "to": 2023}]
+    assert answer["paths"] == {
+        DAILY: {"local": str(config.imgw / series["file"]), "aliases": []}
+    }
     assert czech["provider"] == "CHMI"
     assert {item["license"] for item in czech["series"]} == {"CC-BY-4.0"}
     label = polish["station"]["series"][0]["coverage"]["H"]["label"]
@@ -396,8 +407,12 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
             owner.request("GET", path)
             for path in (
                 "/stations",
+                f"/stations/timeline?dataset={DAILY}",
                 f"/stations/{RABA}",
                 f"/stations/{RABA}/coverage",
+                f"/stations/{RABA}/series?variable=H",
+                f"/stations/compare?station={STORE}/IMGW-PIB/{RABA}"
+                f"&station={STORE}/IMGW-PIB/149190311&dataset={DAILY}&variable=H",
                 "/map/stations?bbox=14,48,24,55",
             )
         ]
@@ -415,7 +430,7 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
 
 
 def test_openapi_documents_the_station_routes(served: Served) -> None:
-    """Agents find the four routes, their parameters, examples and problems."""
+    """Agents find the seven routes, their parameters, examples and problems."""
     # Act
     document = served.json("/openapi.json")
 
@@ -437,13 +452,35 @@ def test_openapi_documents_the_station_routes(served: Served) -> None:
     assert names == {
         "store", "provider", "dataset", "years", "year_type", "kind", "active",
         "river_code", "river_scope", "variable", "coverage", "min_complete_years",
+        "meteo_kind", "q", "sort",
         "area_id", "bbox", "bbox_crs", "boundary", "location", "limit", "cursor",
     }  # fmt: skip
+    timeline = document["paths"]["/api/v1/stations/timeline"]["get"]
+    required = {item["name"] for item in timeline["parameters"] if item["required"]}
+    assert ({item["name"] for item in timeline["parameters"]}, required) == (
+        names,
+        {"dataset"},
+    )
     card = document["paths"]["/api/v1/stations/{code}"]["get"]
     assert {item["name"] for item in card["parameters"]} == {
         "code", "store", "provider", "dataset", "years", "year_type",
     }  # fmt: skip
     assert "404" in card["responses"]
+    chart = document["paths"]["/api/v1/stations/{code}/series"]["get"]
+    required = {item["name"] for item in chart["parameters"] if item["required"]}
+    assert ({item["name"] for item in chart["parameters"]}, required) == (
+        {"code", "store", "provider", "dataset", "variable", "from", "to",
+         "year_type", "max_points", "version"},
+        {"code", "variable"},
+    )  # fmt: skip
+    assert {"404", "409"} <= set(chart["responses"])
+    compared = document["paths"]["/api/v1/stations/compare"]["get"]
+    required = {item["name"] for item in compared["parameters"] if item["required"]}
+    assert ({item["name"] for item in compared["parameters"]}, required) == (
+        {"station", "dataset", "variable", "from", "to", "year_type", "max_points"},
+        {"station", "dataset", "variable"},
+    )
+    assert "404" in compared["responses"]
     assert document["paths"]["/api/v1/map/stations"]["get"]["tags"] == [
         "stations",
         "map",

@@ -135,6 +135,7 @@ def _options(params: Params) -> list[str]:
         ({"variable": ["Q", "T"], "year_type": "calendar"}, 2),
         ({"provider": "CHMI", "river_code": "1-05", "river_scope": "tributaries"}, 1),
         ({"kind": "meteo", "active": "true", "location": "with"}, 3),
+        ({"q": "RABA", "sort": "name", "limit": "2"}, 3),
     ],
 )
 def test_stations_list_json_equals_the_route_page_after_page(
@@ -213,14 +214,27 @@ def test_stations_options_are_the_parameters_of_the_routes(doors: Doors) -> None
 
     # Act
     listing = options("list")
+    timeline = options("timeline")
     shown = options("show")
+    series = options("series")
+    compare = options("compare")
 
     # Assert
     assert set(listing) == parameters("/stations")
+    assert set(timeline) == parameters("/stations/timeline")
     assert set(shown) == parameters("/stations/{code}")
     assert shown.pop("code") == []  # the positional KOD
-    for name, strings in [*listing.items(), *shown.items()]:
+    for name, strings in [*listing.items(), *timeline.items(), *shown.items()]:
         assert strings == [f"--{name.replace('_', '-')}"]
+    assert series.pop("code") == []
+    assert {
+        strings[0].removeprefix("--").replace("-", "_") for strings in series.values()
+    } | {"code"} == parameters("/stations/{code}/series")
+    assert (series["start"], series["end"]) == (["--from"], ["--to"])
+    assert {
+        strings[0].removeprefix("--").replace("-", "_") for strings in compare.values()
+    } == parameters("/stations/compare")
+    assert (compare["start"], compare["end"]) == (["--from"], ["--to"])
 
 
 @pytest.mark.parametrize(
@@ -271,14 +285,29 @@ def test_stations_cli_without_imgwtools_is_a_missing_dependency(
     """The stations are not shown without their source, as the routes answer 503."""
     # Act
     listed = doors.refused("stations", "list", registry=NoSources())
+    timeline = doors.refused(
+        "stations", "timeline", f"--dataset={DAILY}", registry=NoSources()
+    )
     shown = doors.refused("stations", "show", RABA, registry=NoSources())
+    charted = doors.refused(
+        "stations", "series", RABA, "--variable=H", registry=NoSources()
+    )
+    compared = doors.refused(
+        "stations",
+        "compare",
+        f"--station={STORE}/IMGW-PIB/{RABA}",
+        f"--station={STORE}/IMGW-PIB/149190311",
+        f"--dataset={DAILY}",
+        "--variable=H",
+        registry=NoSources(),
+    )
     with running_api(local_paths(tmp_path), NoSources()) as api:
         problem = api.session(LOCAL_OWNER).request("GET", "/stations").json()
 
     # Assert
     assert_same_error(listed, problem)
     assert (listed["code"], listed["exit_code"]) == ("missing_dependency", 6)
-    assert shown == listed
+    assert timeline == shown == charted == compared == listed
 
 
 def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:

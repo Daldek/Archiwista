@@ -27,13 +27,20 @@ collect_ignore = (
         "contract/test_imgw_default_root.py",
         "contract/test_imgw_series.py",
         "contract/test_imgw_stations.py",
+        "contract/test_imgw_values.py",
+        "e2e/test_stations_map.py",
         "integration/test_imgw_index.py",
         "integration/test_imgw_projects.py",
         "integration/test_imgw_series.py",
         "integration/test_imgw_stations.py",
         "integration/test_series_labels.py",
+        "integration/test_station_compare_api.py",
+        "integration/test_station_datasets_api.py",
+        "integration/test_station_series_api.py",
+        "integration/test_station_timeline_api.py",
         "integration/test_stations_api.py",
         "integration/test_stations_cli.py",
+        "integration/test_year_types.py",
     ]
 )
 

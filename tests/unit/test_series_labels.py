@@ -14,6 +14,7 @@ from datetime import date
 import pytest
 
 from archiwista.api.models_stations import series_label_text
+from archiwista.config import YearTypes
 from archiwista.index.series import (
     SeriesLabel,
     YearRange,
@@ -300,20 +301,26 @@ def test_no_data_names_the_variables_that_have_a_value() -> None:
 
 
 @pytest.mark.parametrize(
-    ("kind", "time_unit", "asked", "expected"),
+    ("kind", "time_unit", "asked", "remembered", "expected"),
     [
-        ("hydro", "day", None, "hydrological"),
-        ("meteo", "day", None, "calendar"),
-        ("hydro", "day", "calendar", "calendar"),
-        ("meteo", "month", "hydrological", "hydrological"),
-        ("hydro", "half_year", "calendar", "hydrological"),
+        ("hydro", "day", None, YearTypes(), "hydrological"),
+        ("meteo", "day", None, YearTypes(), "calendar"),
+        ("meteo", "day", None, YearTypes(meteo="hydrological"), "hydrological"),
+        ("hydro", "month", None, YearTypes(hydro="calendar"), "calendar"),
+        ("hydro", "day", "calendar", YearTypes(), "calendar"),
+        ("meteo", "month", "calendar", YearTypes(meteo="hydrological"), "calendar"),
+        ("hydro", "half_year", "calendar", YearTypes(hydro="calendar"), "hydrological"),
     ],
 )
 def test_the_year_type_of_a_label(
-    kind: str, time_unit: TimeUnit, asked: YearType | None, expected: YearType
+    kind: str,
+    time_unit: TimeUnit,
+    asked: YearType | None,
+    remembered: YearTypes,
+    expected: YearType,
 ) -> None:
-    """Hydro by hydrological years, meteo by calendar ones; half-years stay (P15)."""
-    assert label_year_type(kind, time_unit, asked) == expected
+    """The one asked, else the family's remembered one; half-years stay (P15)."""
+    assert label_year_type(kind, time_unit, asked, remembered) == expected
 
 
 def test_the_range_runs_from_the_first_year_to_the_last_published_one() -> None:

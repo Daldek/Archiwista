@@ -20,6 +20,7 @@ export const shell = {
     compare: "Porównanie",
     accounts: "Konta",
     groups: "Grupy",
+    "station-compare": "Porównanie stacji",
   },
   /** After a view's name in the navigation, for screen readers: the running jobs. */
   nav_count: "trwa: {count}",

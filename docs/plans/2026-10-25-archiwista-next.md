@@ -617,6 +617,10 @@ those of SPEC 12; Kartograf's PROGRESS files the plan item size under "KH"):
 Planned 2026-10-26, after the author answered the mockup questions M5 and M11 (SPEC 16,
 user decisions 2026-10-26; SPEC 4.8.4, 6.5 i to k and m, 6.7, 6.8; A-ADR-021 erratum 4).
 Approval: open (DEV-17.4, the author's; D12 lists the choices M11 left to this part).
+**Status (2026-10-27): done.** I8.1 to I8.6 are built on `feature/kartograf-data-output`,
+each commit with the reduced gate and the scoped tests of its step; the last are I8.6
+commit 1 `474544f` (the route) and commit 2 `e6849a1` (the view, ADR-045 decision 13).
+PROGRESS Status lists every commit.
 It builds the read side of the station views of SPEC 13 "v0.5" on the routes of I6, on
 `feature/kartograf-data-output` as I6 and I7. Each commit passes the reduced gate of the
 author's decision of 2026-10-25 (ruff format, ruff check, mypy, `scripts/check-commits.sh`)
@@ -798,7 +802,9 @@ reaches the interface.
      `ceil(units / max_points)` units with min, avg and max of the values in each (`null`
      for an interval without a value, never interpolated), with the note's interval
      length; `gaps[]` from the gap list of `station_series` clipped to the range, so a gap
-     shorter than an interval still has its band; accumulated sums as markers; extremes
+     shorter than an interval still has its band (corrected by ADR-045 erratum 1: the runs
+     of gaps the variable's label counts in `year_type`, and by default the variables'
+     known span as the range); accumulated sums as markers; extremes
      from the characteristics dataset's current series of the station when the store has
      it (the values published by IMGW with their dates, SPEC 6.7), else none.
      `GET /stations/{code}/series` (`store`, `provider`, `dataset`, `variable` one or two,
@@ -841,19 +847,27 @@ reaches the interface.
      unit gets the right axis; keys `+`, `-`, arrows and `Home` (reset); a text line
      sums the range, the points and the gaps. *Acceptance:* (new)
      `tests/e2e/test_station_chart.py` (both engines): `149190310` H has two grey bands
-     at 2023.12.02–12.31 and 2024.02.01–28 and its path three subpaths, no vertex inside a
-     band; a request rewritten to `max_points=30` shows the note, and a selection of one
-     month shows 31 daily vertices and writes `from` and `to`; extremes are covered by
-     the unit test of I8.4 until `imgwtools.testing` has a half-year series (Requests).
+     at 2023.12.02–12.31 and 2024.02.01–28 and its path two subpaths of one vertex
+     (corrected when built: H has a value on 2023.12.01 and 2024.02.29 only; and by
+     ADR-045 erratum 1: four bands, the label's gaps over its known span 2023.11.01–
+     2024.10.31), no vertex
+     inside a band; a request rewritten to `max_points=30` shows the note, and a
+     selection of one month shows 31 daily vertices (H of the ČHMÚ gauge of
+     `complete_pl_cz`, a value every day) and writes `from` and `to`; extremes are
+     covered by the unit test of I8.4 until `imgwtools.testing` has a half-year series
+     (Requests).
 6. **I8.6. Comparison** (two commits).
    - *Commit 1, the route.* `GET /stations/compare` (`station` repeatable, 2 to 5, as
      `<store>/<provider>/<code>`; `dataset`, `variable`, `from`, `to`, `year_type`,
-     `max_points`): one range for all (the union of the stations' R, or `from`–`to`),
-     a `StationChart` per station with the same interval, and the facts of each from the
+     `max_points`): one range for all (the union of the stations' R, or `from`–`to`;
+     corrected when built by ADR-045 decision 12, after erratum 1: the union of the
+     variable's known spans at the stations, a chart's default range), a `StationChart`
+     per station with the same interval, and the facts of each from the
      index (y₁–y₂, gap share, longest gap, full years, location source); a station
      without the variable stays with "brak danych" (P14). `archiwista stations compare
      [--json]`. *Acceptance:* (new) `tests/integration/test_station_compare_api.py` over
-     `complete`: the two hydro stations share the interval and the range, the facts equal
+     `complete` (built over `complete_pl_cz`, which holds it and the ČHMÚ gauges): the
+     two hydro stations share the interval and the range, the facts equal
      their cards, `400` for one or six stations, route and CLI agree.
    - *Commit 2, the view.* `views/station-compare.js` (new; `routes.js` `VIEWS` with `nav:
      false`): the stations as panels stacked one above another with one time axis at the
@@ -863,7 +877,8 @@ reaches the interface.
      rows in the Catalog list open it. *Acceptance:* (new)
      `tests/e2e/test_stations_compare.py` (both engines): two stations from the list give
      two panels with the same axis ticks; a selection zooms both and writes the address;
-     the facts equal the cards; a sixth station cannot be added.
+     the facts equal the cards; a sixth station cannot be added. (Built as planned; the
+     card also keeps the chart's range for the comparison, ADR-045 decision 13.)
 
 **Not in I8.** The archive badge of SPEC 4.8.4 and 9.2, the archives bar under the
 Timeline and the input archives of the card: they need the archives of a dataset's years

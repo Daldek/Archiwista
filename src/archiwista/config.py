@@ -28,7 +28,7 @@ from pydantic import (
 
 from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
-from archiwista.sources import SourceState
+from archiwista.sources import SourceState, YearType
 from archiwista.sources.markers import store_around, store_below
 
 logger = logging.getLogger(__name__)
@@ -556,6 +556,32 @@ class TeamSettings(BaseModel):
         )
 
 
+class YearTypes(BaseModel):
+    """The year type remembered for each family of station data (P15, SPEC 6.7).
+
+    Parameters
+    ----------
+    hydro, meteo : {"hydrological", "calendar"}
+        The numbering of the years of hydro and of meteo data in every view
+        until the next change: hydrological and calendar years by default, as
+        the archives number them. A ``year_type`` asked for wins and changes
+        neither; half-year characteristics stay hydrological (SPEC 4.8.2).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    hydro: YearType = "hydrological"
+    meteo: YearType = "calendar"
+
+    def of_kind(self, kind: str | None) -> YearType:
+        """Return the type of a family: hydro's for ``hydro``, else meteo's."""
+        return self.hydro if kind == "hydro" else self.meteo
+
+
+# What a new configuration remembers: the numbering of the IMGW archives.
+DEFAULT_YEAR_TYPES = YearTypes()
+
+
 class AppSettings(BaseModel):
     """All user settings stored in the TOML configuration file.
 
@@ -604,6 +630,10 @@ class AppSettings(BaseModel):
         ones wait (ADR-047).
     action_log_retention_days : int
         Days the action log keeps an entry (ADR-047).
+    year_types : YearTypes
+        The year type remembered for hydro and for meteo data (P15): the
+        numbering of the station views without ``year_type``, set with
+        ``PUT /settings/year-types``.
     team : TeamSettings
         Team mode, the table ``[team]``: read when the server starts, never
         shown or changed by the API (ADR-046).
@@ -639,6 +669,7 @@ class AppSettings(BaseModel):
     action_log_retention_days: int = Field(
         default=DEFAULT_ACTION_LOG_RETENTION_DAYS, ge=30, le=3650
     )
+    year_types: YearTypes = DEFAULT_YEAR_TYPES
     team: TeamSettings = Field(default_factory=TeamSettings)
 
     @field_validator("default_project_visibility", mode="before")

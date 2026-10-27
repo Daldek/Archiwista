@@ -1344,8 +1344,11 @@ The IMGW adapter also has the "stations and series" capabilities, which the Kart
 adapter does not implement: `StationCatalogAdapter` (`station_catalog(slot_key)`,
 `read_stations(root, version)`: the stations of a provider's catalog version, IMGW-9),
 `SeriesIndexAdapter` (`series_dataset(slot_key)`, `read_series_index(root, version)`:
-the `series.json` listing with the coverage, IMGW-8), and later `read_series(version,
-station, …)` (IMGW-10, the chart) and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
+the `series.json` listing with the coverage, IMGW-8) and `SeriesValuesAdapter`
+(`read_values(root, version, *, station, variables, start, end)`: a station's values
+from `read_series`, IMGW-10, the chart; `characteristics_dataset(dataset)` and
+`extremes_of(dataset, variable)`: the half-year characteristics with the extremes of a
+variable, from the registry), and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
 the Kartograf adapter and a plugin mechanism with a stub of a second adapter, and a test
 ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 
@@ -2465,7 +2468,7 @@ confirmed by the user on 2026-10-26, M11):
   simplified (M11). The server returns at most 2,000 points per series:
   for a longer range min/avg/max in intervals with the note
   "wykres uproszczony: … z 14 dni" (simplified chart: … from 14 days), after zooming in daily values. A gap
-  = a break in the line plus a grey band over its time, never interpolation; the aggregate precipitation sum has a separate
+  (as the variable's label counts it, 4.8.4) = a break in the line plus a grey band over its time, never interpolation; the aggregate precipitation sum has a separate
   marker; extremes from half-year and annual characteristics (`polr_*`)
   are points with a date — values published by IMGW, not calculated by
   Archiwista. Aggregation serves only display (like previews, 5.7)
@@ -3305,11 +3308,13 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
 | `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
 | `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn) |
-| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `years`, `year_type`, `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while IMGWTools is not available |
-| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
+| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /settings`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while IMGWTools is not available |
+| `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, the year type of its labels (the one remembered for its family; hydrological for half-year characteristics), R by default in it (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `503` without IMGWTools (ADR 0045 decision 1) |
+| `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `503` without IMGWTools (ADR 0045 decision 6) |
+| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet), and `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
-| `GET /stations/{code}/series` | chart data (`variable`, `from`, `to`, `max_points` ≤ 2,000, `version`): values or min./avg./max. in intervals, gaps as `null`, markers of IMGW aggregate sums and extremes; for display only |
-| `GET /stations/compare` | 2–5 stations of one variable (`codes`, `variable`, `from`, `to`, `year_type`, `max_points`) on a common time axis |
+| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable —, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400`) |
+| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
@@ -3343,7 +3348,8 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
 | `GET /assistant/proposals/{id}` | proposal |
 | `POST /assistant/proposals/{id}/execute`, `…/reject` | execution or rejection — only from the interface, with a CSRF token |
-| `GET /settings`, `PUT /settings` | settings (in team mode: administrator); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2) |
+| `GET /settings`, `PUT /settings` | settings (in team mode: administrator), with `year_types`: the year type remembered for hydro and for meteo data (6.7); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2) |
+| `PUT /settings/year-types` | the year type remembered for hydro and for meteo data (`hydro`, `meteo`: `hydrological` or `calendar`; an omitted one takes its default), nothing else; the permission of `PUT /settings` until the preferences hold the year types (v0.4); logged as `PUT /settings` (`settings.update`); answers the settings (ADR 0045 decision 3) |
 | `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | accounts and their roles (`admin`, `store_writer`) — administrator only; from v0.4 each with the state of its password (`password`: `none`, `set`, `temporary`, `expired`; `password_expires_at`), never a hash; the last enabled administrator cannot be removed, disabled or lose the role (`409 last_admin`) |
 | `POST /users/{id}/password` | administrator, from v0.4: a temporary password generated by the server, answered once (`password`, `expires_at`: 72 h), to be changed at the first sign-in; ends the account's sessions |
 | `DELETE /users/{id}/sessions` | administrator, from v0.4: ends every session and agent token of the account (its revocation time) |
@@ -3351,7 +3357,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /directory` | any session, from v0.4: the enabled accounts (`id`, `name`) and the groups (`id`, `name`) to share a project with |
 | `GET /projects/{id}/access`, `PUT /projects/{id}/access` | owner and visibility of a project (`public`, `users`, `group`, `private`) with a list of people and groups — owner or administrator; every change goes to the action log |
 | `GET /log`, `GET /log/export` | administrator, from v0.4: the action log newest first (filters `actor`, `action`, `outcome`, `target`, `since`, `until`; a cursor); the export streams the same entries as `format=jsonl` or `csv` (cells that could start a formula are escaped) and is itself an entry (10.2) |
-| `GET /preferences`, `PUT /preferences` | the person's own preferences (the owner's in local mode; an agent's are its account's): the kind of years for hydro and meteo data (6.7), the basemap, and path aliases of the person's computer applied only to paths shown and copied (`CopyPath.personal`), never to the server's access to files (10.2) |
+| `GET /preferences`, `PUT /preferences` | the person's own preferences (the owner's in local mode; an agent's are its account's): the kind of years for hydro and meteo data (6.7), the basemap, and path aliases of the person's computer applied only to paths shown and copied (`CopyPath.personal`), never to the server's access to files (10.2); until they exist the kind of years is a setting (`PUT /settings/year-types`) |
 | `GET /health` | versions of Archiwista, Kartograf and IMGWTools, state of stores (producers' directories), index and jobs |
 
 ### 9.3 Examples
@@ -3551,24 +3557,181 @@ numbers)
 }
 ```
 
+**Datasets of the stations** — `GET /api/v1/stations/datasets?store=zespol` (the dataset
+chip of the map; `variables` are the distinct keys of the stations' series, the first is
+the default "Kolor punktów"; `name` is the producer's name of the segment)
+
+```json
+{
+  "items": [
+    {
+      "store": "zespol",
+      "dataset": "pl.imgw.hydro_daily",
+      "name": "Dane hydrologiczne dobowe",
+      "provider": "IMGW-PIB",
+      "kind": "hydro",
+      "time_unit": "day",
+      "year_type": "hydrological",
+      "years": {"from": 1951, "to": 2025},
+      "series": "2026-08-31",
+      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "variables": [
+        {"key": "H", "variable": "H", "unit": "cm", "period": null},
+        {"key": "Q", "variable": "Q", "unit": "m3/s", "period": null},
+        {"key": "T", "variable": "T", "unit": "degC", "period": null}
+      ]
+    }
+  ],
+  "stale": false,
+  "stale_stores": []
+}
+```
+
+**Remembered year type** — `PUT /api/v1/settings/year-types` with
+`{"hydro": "hydrological", "meteo": "hydrological"}` (an administrator until accounts
+exist) answers the settings, among them
+`"year_types": {"hydro": "hydrological", "meteo": "hydrological"}`. After it
+`GET /api/v1/stations?dataset=pl.imgw.meteo_precip_daily` labels in hydrological
+years (`"year_type": "hydrological"` in each `series`), the same request with
+`year_type=calendar` in calendar years without changing the settings, and a
+half-year characteristic stays in hydrological years.
+
+**Timeline of a page of stations** — `GET /api/v1/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries&limit=200`
+(the "Oś czasu" tab; each item's `series` is what
+`GET /api/v1/stations/{code}/coverage?dataset=pl.imgw.hydro_daily` gives for the
+station; one of its variables and three of its 75 years shown)
+
+```json
+{
+  "area": null,
+  "counts": {"located": 14, "boundary": 0, "unlocated": 3, "hidden": 0},
+  "items": [
+    {
+      "store": "zespol",
+      "provider": "IMGW-PIB",
+      "code": "149190310",
+      "name": "STRÓŻA",
+      "kind": "hydro",
+      "meteo_kind": null,
+      "river": "Raba",
+      "hydrographic_code": "2138",
+      "active": true,
+      "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "series": [
+        {
+          "dataset": "pl.imgw.hydro_daily",
+          "kind": "hydro",
+          "time_unit": "day",
+          "year_type": "hydrological",
+          "years": {"from": 1951, "to": 2025},
+          "series": "2026-08-31",
+          "variables": [
+            {
+              "key": "Q", "variable": "Q", "unit": "m3/s", "period": null,
+              "state": "gaps", "label": "luki 3% · najdł. 1981.06.02–1982.12.31",
+              "longest_gap": {"from": "1981-06-02", "to": "1982-12-31", "units": 578},
+              "complete_years": 71,
+              "years": [
+                {"year": 1981, "units": 365, "known": 365, "with_value": 152, "cell": "fraction"},
+                {"year": 1982, "units": 365, "known": 365, "with_value": 0, "cell": "none"},
+                {"year": 1983, "units": 365, "known": 365, "with_value": 365, "cell": "full"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "next_cursor": "…",
+  "stale": false,
+  "stale_stores": []
+}
+```
+
 **Chart data** — `GET /api/v1/stations/149190310/series?variable=Q&from=1950-11-01&to=2025-10-31&max_points=2000`
 (27,394 days → 14-day intervals; illustrative values)
 
 ```json
 {
-  "station": "149190310",
-  "variable": {"code": "Q", "unit": "m3/s"},
-  "file": {"path": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
-           "sha256": "…"},
-  "aggregation": {"kind": "min_mean_max", "bucket_days": 14},
-  "points": [
-    {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1},
-    {"t": "1981-06-02", "min": null, "mean": null, "max": null}
+  "store": "zespol",
+  "provider": "IMGW-PIB",
+  "code": "149190310",
+  "dataset": "pl.imgw.hydro_daily",
+  "kind": "hydro",
+  "time_unit": "day",
+  "series": "2026-08-31",
+  "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+  "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+  "sha256": "…",
+  "from": "1950-11-01",
+  "to": "2025-10-31",
+  "units": 27394,
+  "interval": 14,
+  "variables": [
+    {
+      "key": "Q", "variable": "Q", "unit": "m3/s",
+      "points": [
+        {"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1},
+        {"t": "1981-06-03", "min": null, "mean": null, "max": null}
+      ],
+      "gaps": [{"from": "1981-06-02", "to": "1982-12-31", "units": 578}],
+      "markers": [
+        {"t": "1997-07-09", "kind": "max", "value": 412.0, "period": "annual", "end": "1997-07-10"}
+      ]
+    }
   ],
-  "markers": [
-    {"t": "1997-07-09", "kind": "annual_max", "value": 412.0, "source": "polr_Q_1997"}
+  "license": "IMGW-PIB",
+  "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+  "stale": false,
+  "stale_stores": []
+}
+```
+
+**Comparison** — `GET /api/v1/stations/compare?station=zespol/IMGW-PIB/149190310&station=zespol/IMGW-PIB/149200090&dataset=pl.imgw.hydro_daily&variable=Q&max_points=2000`
+(one range and interval for both stations; the second has no series of the dataset;
+`coverage` and `chart` as on the card and in the chart data above, shortened;
+illustrative values)
+
+```json
+{
+  "dataset": "pl.imgw.hydro_daily",
+  "variable": "Q",
+  "kind": "hydro",
+  "time_unit": "day",
+  "year_type": "hydrological",
+  "from": "1950-11-01",
+  "to": "2025-10-31",
+  "units": 27394,
+  "interval": 14,
+  "stations": [
+    {
+      "store": "zespol", "provider": "IMGW-PIB", "code": "149190310", "name": "STROZA",
+      "kind": "hydro", "river": "Raba", "hydrographic_code": "2138",
+      "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "years": {"from": 1951, "to": 2025},
+      "series": "2026-08-31",
+      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+      "sha256": "…",
+      "license": "IMGW-PIB",
+      "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+      "coverage": {"key": "Q", "state": "gaps", "label": "luki 3% · najdł. 1981.06.02–1982.12.31", "complete_years": 71, "…": "…"},
+      "chart": {"key": "Q", "variable": "Q", "unit": "m3/s", "points": ["…"],
+                "gaps": [{"from": "1981-06-02", "to": "1982-12-31", "units": 578}], "markers": []}
+    },
+    {
+      "store": "zespol", "provider": "IMGW-PIB", "code": "149200090", "name": "PROSZOWKI",
+      "kind": "hydro", "river": "Szreniawa", "hydrographic_code": "2136",
+      "location": {"kind": "point", "lon": 20.29, "lat": 50.19, "reason": null,
+                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+      "years": null, "series": null, "series_version": null, "file": null, "sha256": null,
+      "license": null, "attribution": null, "coverage": null, "chart": null
+    }
   ],
-  "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone."
+  "stale": false,
+  "stale_stores": []
 }
 ```
 

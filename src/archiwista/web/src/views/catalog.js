@@ -5,7 +5,11 @@
  * drawn only near the view, so the 50 000-slot store stays fast; or, as
  * `layout=timeline`, the product's layers as variants × years
  * (views/catalog-timeline.js), the chosen one in the right panel
- * „Szczegóły zestawu” (views/set-details.js).
+ * „Szczegóły zestawu” (views/set-details.js). A product of the station
+ * producer (`imgw`, `GET /products`) is listed as its stations instead
+ * (views/catalog-stations.js, plan I8.2), or as `layout=timeline` as the
+ * years of one dataset's stations (views/catalog-station-timeline.js, plan
+ * I8.3), with the fields of `GET /stations` in the filter panel.
  *
  * The address is the query: its parameters are those of `GET /slots`
  * (`search.js` `SLOT_PARAMS`), so a shared link, the map's „bez obrysu”
@@ -17,15 +21,16 @@
  * stands beside the catalog (views/map.js `embedded`).
  */
 
-import { listSlots } from "../api.js";
+import { listProducts, listSlots, listStationDatasets } from "../api.js";
 import { useApp } from "../context.js";
 import { count, int } from "../format.js";
-import { NARROW, useMedia, useSize } from "../hooks.js";
+import { NARROW, useMedia, useResource, useSize } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
 import { setDetails as D } from "../labels/set-details.js";
 import { timeline as TL } from "../labels/timeline.js";
 import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
+import { isStationProduct } from "../map/stations.js";
 import { ViewLayout } from "../panels.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
@@ -44,7 +49,9 @@ import {
   useState,
 } from "../ui.js";
 import { CatalogFilters, FILTERS } from "./catalog-filters.js";
-import { CatalogGrid, onMapOf } from "./catalog-grid.js";
+import { CatalogGrid, FILE_ROWS, onMapOf } from "./catalog-grid.js";
+import { activeStationFilters, CatalogStations, stationFamily, stationQuery } from "./catalog-stations.js";
+import { timelineDataset } from "./catalog-station-timeline.js";
 import { CatalogTimeline, useTimelineLayers } from "./catalog-timeline.js";
 import { DetailsToggle, SetDetails } from "./set-details.js";
 import { LAYOUT_PARAM, MODE_PARAM, SPLIT_MIN, TIMELINE_LAYOUT, ViewSwitch } from "./switch.js";
@@ -100,10 +107,27 @@ export default function Catalog({ route }) {
   const [styled, setStyled] = useState(false);
   const [panel, setPanel] = useState(() => !window.matchMedia(NARROW).matches);
   const [details, setDetails] = useState(() => !window.matchMedia(NARROW).matches);
-  const timeline = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
+  const indexStamp = (app.health?.stores ?? [])
+    .map((item) => `${item.store}:${item.state.indexed_at}`)
+    .join("|");
+  const products = useResource(
+    (signal) => listProducts(params.store ? { store: params.store } : {}, { signal }),
+    [params.store ?? "", indexStamp],
+  );
+  // A product of the station producer lists its stations; until the products
+  // are known nothing is asked for a product (a failed read lists its files).
+  const product = products.data?.items.find((item) => item.product === params.product) ?? null;
+  const known = !params.product || products.data !== undefined || products.error !== undefined;
+  const stationMode = isStationProduct(product);
+  const datasets = useResource(
+    (signal) =>
+      stationMode ? listStationDatasets(params.store ? { store: params.store } : {}, { signal }) : Promise.resolve(null),
+    [stationMode, params.store ?? "", indexStamp],
+  );
+  const timeline = !stationMode && params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
   const key = JSON.stringify(slotQuery(params));
   const query = useMemo(() => JSON.parse(key), [key]);
-  const pages = usePages(query, key, !timeline);
+  const pages = usePages(query, key, known && !stationMode && !timeline);
   const shared = useTimelineLayers(params, timeline);
   const [centre, setCentre] = useState(null);
   const centreWidth = useSize(centre).width;
@@ -112,9 +136,6 @@ export default function Catalog({ route }) {
   const search = useRef(null);
   const searchWanted = useRef(false);
   const grid = useRef(null);
-  const indexStamp = (app.health?.stores ?? [])
-    .map((item) => `${item.store}:${item.state.indexed_at}`)
-    .join("|");
 
   useEffect(() => {
     loadStylesheet(STYLES).then(
@@ -152,11 +173,56 @@ export default function Catalog({ route }) {
 
   if (!styled) return html`<div class="page"><${Spinner} /></div>`;
 
+  const stores = storeList(app);
+  const storeNames = stores.length > 1 ? new Map(stores.map((item) => [item.store, item.name])) : null;
+  const togglePanel = () => {
+    setPanel(!panel);
+    if (!panel && narrow) setDetails(false);
+  };
+  const toggleButton = (active) => html`<button type="button" class=${`btn sm${panel ? " active" : ""}`}
+    aria-expanded=${panel ? "true" : "false"} aria-controls="catalog-left" title=${L.filters.toggle_title}
+    onClick=${togglePanel}>
+    <${Icon} name="sidebar" size=${15} />${L.filters.toggle}
+    ${active ? html`<span class="badge-count">${active}</span>` : null}
+  </button>`;
+
+  if (stationMode) {
+    const family = product.product;
+    const seen = new Set();
+    const productDatasets = (datasets.data?.items ?? []).filter(
+      (item) =>
+        (item.kind === family || !["hydro", "meteo"].includes(family)) && !seen.has(item.dataset) && seen.add(item.dataset),
+    );
+    // The Timeline shows one dataset: the address's, else the product's first.
+    const timelineShown = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;
+    const shown = timelineShown ? timelineDataset(params, productDatasets) : null;
+    const station = { ...stationQuery(params, family), ...(shown ? { dataset: shown } : {}) };
+    const filters = html`<${CatalogFilters} query=${params} stores=${stores} products=${products}
+      errors=${{}} onChange=${(patch) => setParams(patch)}
+      stations=${{
+        datasets: productDatasets,
+        kind: station.kind === family ? family : null,
+        family: stationFamily(station, productDatasets),
+        dataset: shown,
+      }} />`;
+    const searchField = html`<${SearchField} value=${params.q ?? ""} inputRef=${search}
+      label=${L.search.label} placeholder=${L.stations.search_placeholder} hint=${L.stations.search_hint}
+      onLeave=${() => grid.current?.focusRow(0)} />`;
+    return html`<${ViewLayout} id="catalog"
+      left=${{ label: L.filters.label, open: panel, onClose: () => setPanel(false), content: filters }}>
+      <div class=${`cat-split${split ? " split" : ""}`} ref=${setCentre}>
+      ${split && MapView ? html`<div class="cat-beside"><${MapView} route=${route} embedded /></div>` : null}
+      <${CatalogStations} params=${params} product=${family} datasets=${productDatasets}
+        datasetsRead=${datasets.data !== undefined || datasets.error !== undefined}
+        storeNames=${storeNames} toggle=${toggleButton(activeStationFilters(params).length)}
+        search=${searchField} panel=${panel} indexStamp=${indexStamp} narrow=${narrow} grid=${grid} />
+      </div>
+    </${ViewLayout}>`;
+  }
+
   const location = GROUPS.includes(query.location) ? query.location : "any";
   const total = groupTotal(pages.groups, location);
   const errors = fieldErrors(pages.error);
-  const stores = storeList(app);
-  const storeNames = stores.length > 1 ? new Map(stores.map((item) => [item.store, item.name])) : null;
   const map = findView("map") ? (item) => navigate("map", rowMapParams(item, query)) : null;
   const selected = params.file ?? null;
   const cardHref = (item) => href(CATALOG, { ...params, ...cardParams(item, query) });
@@ -166,18 +232,13 @@ export default function Catalog({ route }) {
     (item) => item.state.status === "unknown" || item.state.running_job?.kind === "scan",
   );
   const layer = timeline ? layers.layer : null;
-  const togglePanel = () => {
-    setPanel(!panel);
-    if (!panel && narrow) setDetails(false);
-  };
   const toggleDetails = () => {
     setDetails(!details);
     if (!details && narrow) setPanel(false);
   };
 
-  const filters = html`<${CatalogFilters} query=${query} stores=${stores} errors=${errors}
-    indexStamp=${indexStamp} onChange=${(patch) => setParams(patch)}
-    onClear=${() => setParams(Object.fromEntries(FILTERS.map((name) => [name, null])))} />`;
+  const filters = html`<${CatalogFilters} query=${query} stores=${stores} products=${products} stations=${null}
+    errors=${errors} onChange=${(patch) => setParams(patch)} />`;
   // The map of the chosen layer: framed on the area, so no position of before.
   const showOnMap = () => navigate("map", { ...params, [MODE_PARAM]: null, center: null, zoom: null });
   const right = layer
@@ -208,11 +269,7 @@ export default function Catalog({ route }) {
           ${layer ? html`<${DetailsToggle} open=${details} controls="catalog-right" onToggle=${toggleDetails} />` : null}
         </div>
         <div class="cat-toolbar-row">
-          <button type="button" class=${`btn sm${panel ? " active" : ""}`} aria-expanded=${panel ? "true" : "false"}
-            aria-controls="catalog-left" title=${L.filters.toggle_title} onClick=${togglePanel}>
-            <${Icon} name="sidebar" size=${15} />${L.filters.toggle}
-            ${activeFilters.length ? html`<span class="badge-count">${activeFilters.length}</span>` : null}
-          </button>
+          ${toggleButton(activeFilters.length)}
           ${timeline
             ? null
             : html`<${SearchField} value=${query.q ?? ""} inputRef=${search}
@@ -242,7 +299,7 @@ export default function Catalog({ route }) {
               onGroup=${(value) => setParams({ [GROUP_PARAM]: value, [LAYER_PARAM]: null })} />`
           : pages.error
             ? html`<div class="cat-problem"><${ProblemView} problem=${pages.error.problem} /></div>`
-            : html`<${CatalogGrid} items=${pages.items} total=${total} hasMore=${Boolean(pages.next)}
+          : html`<${CatalogGrid} rows=${FILE_ROWS} items=${pages.items} total=${total} hasMore=${Boolean(pages.next)}
                 loading=${pages.loading} loadingMore=${pages.loadingMore} moreError=${pages.moreError}
                 onMore=${pages.more} resetKey=${key} narrow=${narrow} handle=${grid}
                 isSelected=${(item) => isSelected(item, params)} cardOpen=${Boolean(selected)}
@@ -297,7 +354,7 @@ function useMapView(wanted) {
  * The search field (`q`): sent after a pause in typing; the first change of
  * a typing round adds a history entry, the next ones replace it.
  */
-function SearchField({ value, inputRef, onLeave }) {
+function SearchField({ value, inputRef, onLeave, label = L.search.label, placeholder = L.search.placeholder, hint = L.search.hint }) {
   const [text, setText] = useState(value);
   const timer = useRef(null);
   const pushed = useRef(false);
@@ -332,15 +389,15 @@ function SearchField({ value, inputRef, onLeave }) {
   return html`<div class="cat-search" role="search">
     <${Icon} name="search" size=${16} className="cat-search-icon" />
     <input ref=${inputRef} type="search" class="cat-search-input" value=${text}
-      aria-label=${L.search.label} aria-describedby="cat-search-hint" aria-keyshortcuts="Control+K /"
-      placeholder=${L.search.placeholder} spellcheck="false" autocomplete="off"
+      aria-label=${label} aria-describedby="cat-search-hint" aria-keyshortcuts="Control+K /"
+      placeholder=${placeholder} spellcheck="false" autocomplete="off"
       onInput=${input} onKeyDown=${keys}
       onBlur=${() => {
         if (text.trim() !== (value || "")) commit(text);
         pushed.current = false;
       }} />
     <span class="kbd cat-search-kbd" aria-hidden="true">${L.search.shortcut}</span>
-    <span id="cat-search-hint" class="visually-hidden">${L.search.hint}</span>
+    <span id="cat-search-hint" class="visually-hidden">${hint}</span>
   </div>`;
 }
 

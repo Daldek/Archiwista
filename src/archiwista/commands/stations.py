@@ -1,32 +1,64 @@
-"""``archiwista stations``: the stations of the station catalogs (plan I6).
+"""``archiwista stations``: the stations of the station catalogs (plan I6, I8).
 
 ``stations list [options]`` pages the stations as ``GET /stations`` does; its
 options are generated from ``StationListFilters``, the route's query model:
 one option per parameter, of the same name, validated by the same model (a
-repeatable parameter is a repeatable option). ``stations show CODE`` is the
-card of ``GET /stations/{code}``, with the options of ``StationLookup``. Both
-call the functions behind the routes without HTTP: ``--json`` prints the
-route's model, a refusal the route's problem as the ``archiwista-error/1``
-document (``503`` while IMGWTools is not available becomes its exit code).
-Nothing here uses the network or writes.
+repeatable parameter is a repeatable option). ``stations timeline [options]``
+is a page of the stations of one dataset with each variable year by year, as
+``GET /stations/timeline`` gives it (the options of
+``StationTimelineListFilters``; a person reads a strip of year cells per
+variable). ``stations show CODE`` is the card of ``GET /stations/{code}``,
+with the options of ``StationLookup``, ``stations series CODE`` the chart of
+``GET /stations/{code}/series`` (the options of ``StationChartQuery``; a
+person reads the range, the points with a value, the gaps and the markers),
+``stations compare`` the comparison of ``GET /stations/compare`` (the
+options of ``StationCompareQuery``; a person reads each station's label and
+facts, then its chart as ``series`` writes it) and ``stations datasets`` the
+datasets of ``GET /stations/datasets``. Each calls the function behind its
+route without HTTP: ``--json`` prints the route's model, a refusal the
+route's problem as the ``archiwista-error/1`` document (``503`` while
+IMGWTools is not available becomes its exit code). Nothing here uses the
+network or writes.
 """
 
 import argparse
-from collections.abc import Callable
-from datetime import datetime
+from collections.abc import Callable, Mapping
+from datetime import date, datetime
 from typing import TextIO, get_origin
 
 from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import IndexAnswer
 from archiwista.api.models_stations import (
+    ChartVariable,
+    ComparedStation,
     StationCard,
+    StationChart,
+    StationChartQuery,
+    StationCompareQuery,
+    StationComparison,
+    StationDatasetItem,
+    StationDatasetsQuery,
     StationItem,
+    StationList,
     StationListFilters,
     StationLookup,
     StationSeriesItem,
+    StationTimelineItem,
+    StationTimelineListFilters,
+    StationTimelinePage,
+    TimelineSeries,
+    YearCell,
+    YearSpan,
 )
-from archiwista.api.stations import station_card, station_list
+from archiwista.api.stations import (
+    station_card,
+    station_chart,
+    station_comparison,
+    station_datasets,
+    station_list,
+    station_timeline_page,
+)
 from archiwista.commands import Commands, add_parser
 from archiwista.config import (
     AppPaths,
@@ -43,7 +75,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import label, language, message, with_detail
+from archiwista.messages import label, language, message, plural_form, with_detail
 from archiwista.sources.registry import PluginRegistry
 
 COMMANDS = frozenset({"stations"})
@@ -53,6 +85,26 @@ type _Output = tuple[BaseModel, str]
 type _Action = Callable[
     [argparse.Namespace, AppSettings, PluginRegistry, IndexQueries], _Output
 ]
+
+# A year of the Timeline in a line of text, by its cell (SPEC 6.7).
+_CELLS: dict[YearCell, str] = {
+    "full": "█",
+    "fraction": "▒",
+    "none": "·",
+    "unknown": "?",
+}
+# The help of an option of ``stations series`` whose meaning differs there.
+_SERIES_HELP = {
+    "dataset": "cli.stations_chart_dataset_help",
+    "variable": "cli.stations_chart_variable_help",
+}
+# The help of an option of ``stations compare`` whose meaning differs there.
+_COMPARE_HELP = {
+    "dataset": "cli.stations_compare_dataset_help",
+    "variable": "cli.stations_compare_variable_help",
+    "start": "cli.stations_compare_start_help",
+    "end": "cli.stations_compare_end_help",
+}
 
 
 class _InvalidOptions(Exception):
@@ -64,7 +116,7 @@ class _InvalidOptions(Exception):
 
 
 def add_commands(commands: Commands) -> None:
-    """Add ``archiwista stations`` with ``list`` and ``show`` (see the module).
+    """Add ``archiwista stations`` with its actions (see the module).
 
     Parameters
     ----------
@@ -78,11 +130,22 @@ def add_commands(commands: Commands) -> None:
     )
     listing = add_parser(actions, "list", "cli.stations_list_help")
     _options(listing, StationListFilters)
+    timeline = add_parser(actions, "timeline", "cli.stations_timeline_help")
+    _options(timeline, StationTimelineListFilters)
     shown = add_parser(actions, "show", "cli.stations_show_help")
     shown.add_argument(
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
     _options(shown, StationLookup)
+    series = add_parser(actions, "series", "cli.stations_series_help")
+    series.add_argument(
+        "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
+    )
+    _options(series, StationChartQuery, _SERIES_HELP)
+    compare = add_parser(actions, "compare", "cli.stations_compare_help")
+    _options(compare, StationCompareQuery, _COMPARE_HELP)
+    datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")
+    _options(datasets, StationDatasetsQuery)
 
 
 def main(
@@ -158,11 +221,19 @@ def query_of[Model: BaseModel](model: type[Model], args: argparse.Namespace) -> 
         raise _InvalidOptions(validation_problem(located)) from None
 
 
-def _options(parser: argparse.ArgumentParser, model: type[BaseModel]) -> None:
-    """Add an option for each parameter of a query model, of the same name."""
+def _options(
+    parser: argparse.ArgumentParser,
+    model: type[BaseModel],
+    helps: Mapping[str, str] | None = None,
+) -> None:
+    """Add an option for each parameter of a query model, of the same name.
+
+    A parameter read by an alias (``from``) is the option of the alias; its
+    help is ``cli.stations_<field>_help`` unless ``helps`` names another.
+    """
     for name, field in model.model_fields.items():
-        option = "--" + name.replace("_", "-")
-        help_text = message(f"cli.stations_{name}_help")
+        option = "--" + (field.alias or name).replace("_", "-")
+        help_text = message((helps or {}).get(name, f"cli.stations_{name}_help"))
         if get_origin(field.annotation) is list:
             parser.add_argument(option, dest=name, action="append", help=help_text)
         else:
@@ -184,20 +255,28 @@ def _list(
         lines.extend(_series_line(series) for series in item.series)
     if not lines:
         lines.append(message("cli.stations_none"))
-    counts = found.counts
-    lines.append(
-        message(
-            "cli.stations_summary",
-            count=len(found.items),
-            located=counts.located,
-            boundary=counts.boundary,
-            unlocated=counts.unlocated,
-            hidden=counts.hidden,
-        )
+    return found, _with_stale(found, [*lines, *_page_end(found)])
+
+
+def _timeline(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    found = station_timeline_page(
+        queries, settings, registry, query_of(StationTimelineListFilters, args)
     )
-    if found.next_cursor is not None:
-        lines.append(message("cli.search_next", cursor=found.next_cursor))
-    return found, _with_stale(found, lines)
+    lines: list[str] = []
+    for item in found.items:
+        lines.append(_station_line(item))
+        for series in item.series:
+            lines.extend(_timeline_lines(series))
+    if lines:
+        lines.append(message("cli.station_timeline_legend", **_CELLS))
+    else:
+        lines.append(message("cli.stations_none"))
+    return found, _with_stale(found, [*lines, *_page_end(found)])
 
 
 def _show(
@@ -212,13 +291,59 @@ def _show(
     return card, _card_text(card)
 
 
-_ACTIONS: dict[str, _Action] = {"list": _list, "show": _show}
+def _series(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    chart = station_chart(
+        queries, settings, registry, args.code, query_of(StationChartQuery, args)
+    )
+    return chart, _chart_text(chart)
+
+
+def _compare(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    comparison = station_comparison(
+        queries, settings, registry, query_of(StationCompareQuery, args)
+    )
+    return comparison, _comparison_text(comparison)
+
+
+def _datasets(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    found = station_datasets(
+        queries, settings, registry, query_of(StationDatasetsQuery, args)
+    )
+    lines = [_dataset_line(item) for item in found.items]
+    if not lines:
+        lines.append(message("cli.station_datasets_none"))
+    return found, _with_stale(found, lines)
+
+
+_ACTIONS: dict[str, _Action] = {
+    "list": _list,
+    "timeline": _timeline,
+    "show": _show,
+    "series": _series,
+    "compare": _compare,
+    "datasets": _datasets,
+}
 
 
 # Text.
 
 
-def _station_line(item: StationItem) -> str:
+def _station_line(item: StationItem | StationTimelineItem | ComparedStation) -> str:
     river = (
         message(
             "cli.station_river", river=item.river, code=_value(item.hydrographic_code)
@@ -243,6 +368,24 @@ def _station_line(item: StationItem) -> str:
     )
 
 
+def _page_end(found: StationList | StationTimelinePage) -> list[str]:
+    """Write the counts of a page of stations and the cursor of the next one."""
+    counts = found.counts
+    lines: list[str] = [
+        message(
+            "cli.stations_summary",
+            count=len(found.items),
+            located=counts.located,
+            boundary=counts.boundary,
+            unlocated=counts.unlocated,
+            hidden=counts.hidden,
+        )
+    ]
+    if found.next_cursor is not None:
+        lines.append(message("cli.search_next", cursor=found.next_cursor))
+    return lines
+
+
 def _series_line(series: StationSeriesItem) -> str:
     labels = "; ".join(
         message("cli.station_label", key=key, label=variable.label)
@@ -253,9 +396,33 @@ def _series_line(series: StationSeriesItem) -> str:
         dataset=series.dataset,
         series=_value(series.series),
         year_type=label("series.year_type", series.year_type),
-        years=_years(series),
+        years=_years(series.years),
         labels=labels,
     )
+
+
+def _timeline_lines(series: TimelineSeries) -> list[str]:
+    """Write a series' heading, then each variable's strip of years and label."""
+    width = max((len(variable.key) for variable in series.variables), default=0)
+    lines: list[str] = [
+        message(
+            "cli.station_timeline_series",
+            dataset=series.dataset,
+            series=_value(series.series),
+            year_type=label("series.year_type", series.year_type),
+            years=_years(series.years),
+        )
+    ]
+    lines.extend(
+        message(
+            "cli.station_timeline_variable",
+            key=variable.key.ljust(width),
+            years="".join(_CELLS[year["cell"]] for year in variable.years),
+            label=variable.label,
+        )
+        for variable in series.variables
+    )
+    return lines
 
 
 def _card_text(card: StationCard) -> str:
@@ -306,7 +473,7 @@ def _card_text(card: StationCard) -> str:
                 dataset=series.dataset,
                 series=_value(series.series),
                 year_type=label("series.year_type", series.year_type),
-                years=_years(series),
+                years=_years(series.years),
                 file=series.file,
             )
         )
@@ -331,10 +498,173 @@ def _card_text(card: StationCard) -> str:
     return _with_stale(card, lines)
 
 
-def _years(series: StationSeriesItem) -> str:
-    if series.years is None:
+def _chart_text(chart: StationChart) -> str:
+    """Write a chart's series, range, and each variable's points, gaps, markers."""
+    lines: list[str] = [
+        message(
+            "cli.station_chart_title",
+            code=chart.code,
+            dataset=chart.dataset,
+            series=_value(chart.series),
+            year_type=label("series.year_type", chart.year_type),
+            file=chart.file,
+        ),
+        _range_line(
+            chart.first, chart.last, chart.units, chart.interval, chart.time_unit
+        ),
+    ]
+    for variable in chart.variables:
+        lines.extend(_chart_variable_lines(variable, chart.time_unit))
+    if chart.attribution is not None:
+        lines.append(
+            message(
+                "cli.station_attribution",
+                license=_value(chart.license),
+                attribution=chart.attribution,
+            )
+        )
+    return _with_stale(chart, lines)
+
+
+def _comparison_text(comparison: StationComparison) -> str:
+    """Write the range, then each station with its label and facts and its chart."""
+    lines: list[str] = [
+        message(
+            "cli.station_compare_title",
+            variable=comparison.variable,
+            dataset=comparison.dataset,
+            year_type=label("series.year_type", comparison.year_type),
+        ),
+        _range_line(
+            comparison.first,
+            comparison.last,
+            comparison.units,
+            comparison.interval,
+            comparison.time_unit,
+        ),
+    ]
+    attributions: dict[tuple[str | None, str], None] = {}
+    for item in comparison.stations:
+        lines.append(_station_line(item))
+        if item.coverage is None or item.chart is None:
+            lines.append(
+                message(
+                    "cli.station_compare_missing",
+                    variable=comparison.variable,
+                    dataset=comparison.dataset,
+                )
+            )
+            continue
+        lines.append(
+            message(
+                "cli.station_variable",
+                key=item.coverage.key,
+                unit=item.coverage.unit,
+                label=item.coverage.label,
+                complete=item.coverage.complete_years,
+            )
+        )
+        lines.extend(_chart_variable_lines(item.chart, comparison.time_unit))
+        if item.attribution is not None:
+            attributions[(item.license, item.attribution)] = None
+    lines.extend(
+        message(
+            "cli.station_attribution",
+            license=_value(license_),
+            attribution=attribution,
+        )
+        for license_, attribution in attributions
+    )
+    return _with_stale(comparison, lines)
+
+
+def _range_line(
+    start: date | None, end: date | None, units: int, interval: int, time_unit: str
+) -> str:
+    """Write the range of a chart or a comparison and how it is drawn."""
+    if start is None or end is None:
+        return message("cli.station_chart_empty")
+    return message(
+        "cli.station_chart_values" if interval == 1 else "cli.station_chart_simplified",
+        start=start,
+        end=end,
+        units=_units(units, time_unit),
+        interval=_units(interval, time_unit),
+    )
+
+
+def _chart_variable_lines(variable: ChartVariable, time_unit: str) -> list[str]:
+    """Write a variable's count of points with a value, its gaps and markers."""
+    lines: list[str] = [
+        message(
+            "cli.station_chart_variable",
+            key=variable.key,
+            unit=variable.unit,
+            valued=sum(point["mean"] is not None for point in variable.points),
+            points=len(variable.points),
+            gaps=len(variable.gaps),
+            markers=len(variable.markers),
+        )
+    ]
+    lines.extend(
+        message(
+            "cli.station_chart_gap",
+            start=gap.first,
+            end=gap.last,
+            units=_units(gap.units, time_unit),
+        )
+        for gap in variable.gaps
+    )
+    for marker in variable.markers:
+        if marker["kind"] == "accumulated":
+            lines.append(
+                message(
+                    "cli.station_chart_accumulated",
+                    day=marker["t"],
+                    value=marker["value"],
+                )
+            )
+        else:
+            lines.append(
+                message(
+                    "cli.station_chart_extreme",
+                    kind=label("cli.station_marker", marker["kind"]),
+                    period=label("cli.station_period", marker["period"] or "annual"),
+                    day=marker["t"],
+                    value=marker["value"],
+                )
+            )
+    return lines
+
+
+def _units(count: int, time_unit: str) -> str:
+    """Return a count of days or months for a person ("14 dni")."""
+    return message(f"series.unit_{time_unit}_{plural_form(count)}", count=count)
+
+
+def _dataset_line(item: StationDatasetItem) -> str:
+    variables = ", ".join(
+        message("cli.station_dataset_variable", key=variable.key, unit=variable.unit)
+        for variable in item.variables
+    )
+    return message(
+        "cli.station_dataset_line",
+        dataset=item.dataset,
+        name=_value(item.name),
+        provider=item.provider,
+        kind=_value(item.kind),
+        store=item.store,
+        series=_value(item.series),
+        year_type=label("series.year_type", item.year_type),
+        years=_years(item.years),
+        variables=variables or message("cli.none"),
+    )
+
+
+def _years(years: YearSpan | None) -> str:
+    if years is None:
         return message("cli.none")
-    first, last = series.years.first, series.years.last
+    first, last = years.first, years.last
     return str(first) if first == last else f"{first}–{last}"
 
 

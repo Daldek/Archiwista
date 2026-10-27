@@ -36,6 +36,12 @@ MESSAGES = {
     "years_one": Text("{count} year", "{count} rok"),
     "years_few": Text("{count} years", "{count} lata"),
     "years_many": Text("{count} years", "{count} lat"),
+    "unit_day_one": Text("{count} day", "{count} dzień"),
+    "unit_day_few": Text("{count} days", "{count} dni"),
+    "unit_day_many": Text("{count} days", "{count} dni"),
+    "unit_month_one": Text("{count} month", "{count} miesiąc"),
+    "unit_month_few": Text("{count} months", "{count} miesiące"),
+    "unit_month_many": Text("{count} months", "{count} miesięcy"),
     "year_type_hydrological": Text("hydrological", "hydrologiczne"),
     "year_type_calendar": Text("calendar", "kalendarzowe"),
 }

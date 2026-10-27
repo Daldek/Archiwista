@@ -664,7 +664,9 @@ def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
     sqlite3.Connection
         In autocommit mode (``isolation_level=None``): callers open their
         transactions explicitly. It may be passed between threads but must
-        be used by one thread at a time.
+        be used by one thread at a time. The SQL function ``casefold(text)``
+        folds the case of a text as Python does (SQLite's ``lower`` folds
+        ASCII letters only); station searches compare names with it.
     """
     connection = sqlite3.connect(
         path,
@@ -679,9 +681,15 @@ def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
     cache_kib = _READER_CACHE_KIB if readonly else _CACHE_KIB
     connection.execute(f"PRAGMA cache_size = -{cache_kib}")
     connection.execute(f"PRAGMA mmap_size = {0 if readonly else _MMAP_BYTES}")
+    connection.create_function("casefold", 1, _casefold, deterministic=True)
     if readonly:
         connection.execute("PRAGMA query_only = ON")
     return connection
+
+
+def _casefold(text: str | None) -> str | None:
+    """Return the case-folded text (``NULL`` stays ``NULL``): ``casefold`` of SQL."""
+    return None if text is None else text.casefold()
 
 
 def initialize(path: Path) -> SchemaState:

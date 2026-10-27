@@ -56,10 +56,23 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").MapView} MapView */
 /** @typedef {import("./types.js").SheetQuery} SheetQuery */
 /** @typedef {import("./types.js").SheetList} SheetList */
+/** @typedef {import("./types.js").StationDatasets} StationDatasets */
+/** @typedef {import("./types.js").StationListFilters} StationListFilters */
+/** @typedef {import("./types.js").StationList} StationList */
+/** @typedef {import("./types.js").StationTimelinePage} StationTimelinePage */
+/** @typedef {import("./types.js").StationMapFilters} StationMapFilters */
+/** @typedef {import("./types.js").StationMapView} StationMapView */
+/** @typedef {import("./types.js").StationLookup} StationLookup */
+/** @typedef {import("./types.js").StationCard} StationCard */
+/** @typedef {import("./types.js").StationChartQuery} StationChartQuery */
+/** @typedef {import("./types.js").StationChart} StationChart */
+/** @typedef {import("./types.js").StationCompareQuery} StationCompareQuery */
+/** @typedef {import("./types.js").StationComparison} StationComparison */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
 /** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
 /** @typedef {import("./types.js").Settings} Settings */
+/** @typedef {import("./types.js").YearTypes} YearTypes */
 /** @typedef {import("./types.js").ScanRequest} ScanRequest */
 /** @typedef {import("./types.js").JobDetail} JobDetail */
 /** @typedef {import("./types.js").JobFilters} JobFilters */
@@ -603,6 +616,108 @@ export function listSheets(query, { signal } = {}) {
 }
 
 /**
+ * The datasets with station series in the index (`list_station_datasets`):
+ * the dataset chips and the „Kolor punktów” variables of the map.
+ *
+ * @param {{store?: string}} [query]
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationDatasets>}
+ * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ */
+export function listStationDatasets(query = {}, { signal } = {}) {
+  return request("GET", "/stations/datasets", { query, signal });
+}
+
+/**
+ * A page of stations with the coverage of their series (`list_stations`):
+ * along rivers by default (`sort`), the counts of the whole result by location.
+ *
+ * @param {StationListFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationList>}
+ * @throws {ApiError} `400` (a coverage filter without `dataset`, a cursor of
+ *   another query), `503 missing_dependency` without IMGWTools.
+ */
+export function listStations(filters, { signal } = {}) {
+  return request("GET", "/stations", { query: filters, signal });
+}
+
+/**
+ * A page of the stations of one dataset, each with its years
+ * (`list_stations_timeline`): the Timeline tab of the Catalog. The filters,
+ * order and cursor are those of `listStations`, `dataset` required.
+ *
+ * @param {StationListFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationTimelinePage>}
+ * @throws {ApiError} `400` (no `dataset`, a cursor of another query),
+ *   `503 missing_dependency` without IMGWTools.
+ */
+export function listStationTimeline(filters, { signal } = {}) {
+  return request("GET", "/stations/timeline", { query: filters, signal });
+}
+
+/**
+ * The located stations of a map view, or their grid above `limit`
+ * (`list_map_stations`).
+ *
+ * @param {StationMapFilters} filters
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationMapView>}
+ * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ */
+export function listMapStations(filters, { signal } = {}) {
+  return request("GET", "/map/stations", { query: filters, signal });
+}
+
+/**
+ * A station's card (`get_station`): its catalog entry, each series labelled
+ * and the paths of its series files.
+ *
+ * @param {string} code - The station's code as its provider gives it.
+ * @param {StationLookup} lookup - `store` and `provider` name the station.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationCard>}
+ * @throws {ApiError} `404` (no such station), `400 ambiguous_station`,
+ *   `503 missing_dependency` without IMGWTools.
+ */
+export function getStation(code, lookup, { signal } = {}) {
+  return request("GET", `/stations/${one(code)}`, { query: lookup, signal });
+}
+
+/**
+ * One or two variables of a station's series as a chart (`get_station_series`):
+ * each unit's value up to `max_points` units, else the least, mean and greatest
+ * value of each interval, with the gaps of each variable's label and the markers.
+ *
+ * @param {string} code - The station's code as its provider gives it.
+ * @param {StationChartQuery} query - `store` and `provider` name the station.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationChart>}
+ * @throws {ApiError} `404` (no such station or series), `400` (a variable the
+ *   series lacks, a reversed range), `503 missing_dependency` without IMGWTools.
+ */
+export function getStationSeries(code, query, { signal } = {}) {
+  return request("GET", `/stations/${one(code)}/series`, { query, signal });
+}
+
+/**
+ * One variable of 2 to 5 stations over one range (`compare_stations`): each
+ * station's chart with the same interval, the variable's label and facts as on
+ * its card; `null` for a station without the series or the variable.
+ *
+ * @param {StationCompareQuery} query - `station` repeated, `<store>/<provider>/<code>`.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<StationComparison>}
+ * @throws {ApiError} `400` (one or more than five stations, a variable no
+ *   station has, a reversed range), `404` (no such station, none with a series
+ *   of the dataset), `503 missing_dependency` without IMGWTools.
+ */
+export function compareStations(query, { signal } = {}) {
+  return request("GET", "/stations/compare", { query, signal });
+}
+
+/**
  * Projects the session sees (`list_projects`).
  *
  * @param {{store?: string}} [filters]
@@ -722,6 +837,18 @@ export function getSettings({ signal } = {}) {
  */
 export function putSettings(settings) {
   return request("PUT", "/settings", { json: settings });
+}
+
+/**
+ * Remember the year type of hydro and of meteo data (`put_year_types`); an
+ * omitted one takes its default, so send both.
+ *
+ * @param {YearTypes} yearTypes
+ * @returns {Promise<Settings>} The settings now in effect.
+ * @throws {ApiError} `403 permission_denied` without the administrator role.
+ */
+export function putYearTypes(yearTypes) {
+  return request("PUT", "/settings/year-types", { json: yearTypes });
 }
 
 // The action log (v0.4) -------------------------------------------------------

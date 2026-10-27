@@ -2,7 +2,8 @@
  * The „Wybór” panel of the map view (docs/SPEC.md 6.1, 6.3): the area and
  * its tools, the product from the index with the filters, the local state
  * of the area and what the source has for it (map/source.js). Each piece of
- * information has this one place; the map shows the same choice.
+ * information has this one place; the map shows the same choice. A station
+ * product has the dataset and type chips in place of the files' filters.
  */
 
 import { count } from "../format.js";
@@ -23,6 +24,7 @@ import { LocalState } from "./coverage.js";
 import { bboxText } from "./geo.js";
 import { productTitle } from "./products.js";
 import { scaleLabel, SHEET_GRIDS } from "./sheets.js";
+import { BOUNDARY_PARAM, METEO_KINDS } from "./stations.js";
 import { SourceStep } from "./source.js";
 
 const KM2 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
@@ -239,8 +241,10 @@ function AreaCard({ area }) {
  * @param {MapFilters} props.filters
  * @param {(patch: Object<string, string|null>) => void} props.onFilters
  * @param {import("../types.js").StoreSettings[]} props.stores
+ * @param {StationPanel|null} [props.station] - A station product: its
+ *   choices in place of the variants and the filters of files.
  */
-function ProductStep({ products, productsError, filters, onFilters, stores }) {
+function ProductStep({ products, productsError, filters, onFilters, stores, station = null }) {
   const [search, setSearch] = useState("");
   const [listOpen, setListOpen] = useState(!filters.product);
   const items = products?.items ?? [];
@@ -304,9 +308,83 @@ function ProductStep({ products, productsError, filters, onFilters, stores }) {
             : null}
         </div>`
       : null}
-    ${chosen ? html`<${Variants} product=${chosen} stores=${stores} />` : null}
-    <${FilterFields} filters=${filters} onFilters=${onFilters} stores=${stores} products=${known} />
+    ${station
+      ? html`<${StationFields} station=${station} />`
+      : html`${chosen ? html`<${Variants} product=${chosen} stores=${stores} />` : null}
+          <${FilterFields} filters=${filters} onFilters=${onFilters} stores=${stores} products=${known} />`}
   <//>`;
+}
+
+/**
+ * The choices of a station product (map/stations.js `stationChoice`).
+ *
+ * @typedef {object} StationPanel
+ * @property {import("./stations.js").StationChoice} choice
+ * @property {boolean} loading - The datasets are being read.
+ * @property {import("../api.js").ApiError|undefined} error - Of the datasets.
+ * @property {(patch: Object<string, string|null>) => void} onChange - Changes
+ *   the station parameters of the address.
+ */
+
+/**
+ * The dataset chips, the type chips of a meteo or mixed product and the
+ * stations on an area's boundary (SPEC 6.7, ADR-045).
+ *
+ * @param {{station: StationPanel}} props
+ */
+function StationFields({ station }) {
+  const id = useId();
+  const { choice, loading, error, onChange } = station;
+  const S = L.stations;
+  const toggleKind = (kind) => {
+    const next = choice.meteoKinds.includes(kind)
+      ? choice.meteoKinds.filter((item) => item !== kind)
+      : [...choice.meteoKinds, kind];
+    onChange({ meteo_kind: METEO_KINDS.filter((item) => next.includes(item)).join(",") || null });
+  };
+  const chip = (key, text, on, title, onClick) => html`<button type="button" key=${key}
+    class=${`chip${on ? " on" : ""}`} aria-pressed=${on ? "true" : "false"} title=${title} onClick=${onClick}>${text}</button>`;
+  return html`<div class="station-fields">
+    <div class="station-field" role="group" aria-labelledby=${`${id}-dataset`}>
+      <span class="station-field-label" id=${`${id}-dataset`}>${S.dataset}</span>
+      ${error ? html`<${ProblemView} problem=${error.problem} compact />` : null}
+      ${loading && !choice.datasets.length ? html`<${Spinner} label=${S.datasets_loading} />` : null}
+      ${!loading && !error && !choice.datasets.length ? html`<p class="hint">${S.no_datasets}</p>` : null}
+      ${choice.datasets.length
+        ? html`<div class="chip-row">${choice.datasets.map((item) =>
+            chip(item.dataset, item.name ?? item.dataset, item.dataset === choice.dataset?.dataset, datasetTitle(item), () =>
+              onChange({ dataset: item.dataset, color: null }),
+            ),
+          )}</div>`
+        : null}
+    </div>
+    ${choice.kind === "hydro"
+      ? null
+      : html`<div class="station-field" role="group" aria-labelledby=${`${id}-types`}>
+          <span class="station-field-label" id=${`${id}-types`}>${S.types}</span>
+          <div class="chip-row">${METEO_KINDS.map((kind) =>
+            chip(kind, S.type_chips[kind], choice.meteoKinds.includes(kind), S.kind[kind], () => toggleKind(kind)),
+          )}</div>
+          <span class="field-hint">${S.types_hint}</span>
+        </div>`}
+    <div class="check-field station-boundary">
+      <input type="checkbox" id=${`${id}-boundary`} checked=${choice.boundary}
+        aria-describedby=${`${id}-boundary-hint`}
+        onChange=${(event) => onChange({ [BOUNDARY_PARAM]: event.currentTarget.checked ? null : "false" })} />
+      <label for=${`${id}-boundary`}>${S.boundary}</label>
+    </div>
+    <span class="field-hint" id=${`${id}-boundary-hint`}>${S.boundary_hint}</span>
+  </div>`;
+}
+
+/** A dataset's key, provider and default years, for its chip's title. */
+function datasetTitle(item) {
+  return t(L.stations.dataset_title, {
+    dataset: item.dataset,
+    provider: item.provider,
+    year_type: L.stations.year_types[item.year_type] ?? item.year_type,
+    years: item.years ? `${item.years.from}–${item.years.to}` : T.common.empty,
+  });
 }
 
 function Variants({ product, stores }) {

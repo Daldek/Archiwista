@@ -591,7 +591,10 @@ def test_wheel_over_the_panel_brings_its_last_step_into_view(
     The map opens in one page load: Firefox fails the stylesheets of a page
     left while they load, an uncaught rejection of the shell. Headless Firefox
     has no WebGL2, so there the map only says it cannot be drawn; the panel
-    beside it is the same.
+    beside it is the same. The panel is measured once the shell's index
+    banner is gone: the shell polls the health every 2 s during a scan, so its
+    scan line can stand above the panel after ``wait_indexed`` and leave later,
+    which moves the panel up.
     """
     store = make_store(tmp_path / "store", slots=24, seed=7)
     sheet = nmt_sheets(store)[0].unit
@@ -602,6 +605,7 @@ def test_wheel_over_the_panel_brings_its_last_step_into_view(
     fragment = urlsplit(served.token_url()).fragment
     page.goto(f"{served.base}/?view=map&product=nmt#{fragment}")
     wait_indexed(page)
+    expect(page.get_by_role("region", name="Stan indeksu")).to_have_count(0)
     panel = page.get_by_role("complementary", name="Wybór")
     panel.get_by_label("Godło arkusza").fill(sheet)
     panel.get_by_role("button", name="Wybierz", exact=True).click()

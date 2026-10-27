@@ -840,6 +840,475 @@
  * @property {Sheet[]} items
  */
 
+// Stations (plan I8) ---------------------------------------------------------
+
+/**
+ * @typedef {"hydrological"|"calendar"} YearType
+ */
+
+/**
+ * The coverage state of a variable's label in R (SPEC 4.8.4).
+ *
+ * @typedef {"continuous"|"gaps"|"partial"|"no_data"|"unknown"} SeriesState
+ */
+
+/**
+ * A range of years, both included.
+ *
+ * @typedef {{from: number, to: number}} YearSpan
+ */
+
+/**
+ * A variable of a dataset's station series: a „Kolor punktów” choice.
+ *
+ * @typedef {object} DatasetVariable
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable - `H`, `Q`, `T`, `P`, `Tmax`…
+ * @property {string} unit - Unit of its values, e.g. `m3/s`.
+ * @property {string|null} period - Half-year period of a characteristic.
+ */
+
+/**
+ * A dataset with station series in a store (the dataset chip of the map).
+ *
+ * @typedef {object} StationDataset
+ * @property {string} store
+ * @property {string} dataset - Dataset key, the `dataset` of the station routes.
+ * @property {string|null} name - The producer's name of its segment.
+ * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string|null} kind - Its family (`hydro`, `meteo`): the product.
+ * @property {string} time_unit - `day`, `month`, `half_year`.
+ * @property {YearType} year_type - Default numbering of the years of its labels.
+ * @property {YearSpan|null} years - R by default; null when no period is known.
+ * @property {string|null} series - Label of the current series version.
+ * @property {string} series_version - Its `series.json`, relative to the store.
+ * @property {DatasetVariable[]} variables - In the order of the series index; the
+ *   first is the default colour of the points.
+ */
+
+/**
+ * The datasets with station series in the index (`GET /stations/datasets`).
+ *
+ * @typedef {object} StationDatasets
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {StationDataset[]} items - By store and key.
+ */
+
+/**
+ * The state and label of a variable, for a point's colour and tooltip.
+ *
+ * @typedef {object} PointCoverage
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ */
+
+/**
+ * A located station drawn on the map.
+ *
+ * @typedef {object} StationPoint
+ * @property {string} store
+ * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {string|null} meteo_kind - `synoptic`, `climate` or `precipitation`.
+ * @property {string|null} river
+ * @property {number} lon - WGS84.
+ * @property {number} lat
+ * @property {number|null} uncertainty_m - Uncertainty of the position, m.
+ * @property {boolean} on_boundary - On the area's boundary (with `area_id`).
+ * @property {Object<string, PointCoverage>} coverage - With `dataset`: each variable
+ *   of its series by key; empty without it.
+ */
+
+/**
+ * Stations of the whole result by location group.
+ *
+ * @typedef {object} StationCounts
+ * @property {number} located - With a position, matching every filter.
+ * @property {number} boundary - On the area's boundary.
+ * @property {number} unlocated - Without a position: the counter leading to the
+ *   Catalog with `location=none`.
+ * @property {number} hidden - Hidden by the coverage filters.
+ */
+
+/**
+ * The located stations of a map view or, above `limit`, their grid.
+ *
+ * @typedef {object} StationMapView
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {number} total - Stations of the view that match the filters.
+ * @property {boolean} aggregated - True: `cells` instead of `items`.
+ * @property {StationPoint[]} items
+ * @property {Cell[]} cells
+ * @property {StationCounts} counts
+ */
+
+/**
+ * Parameters of `GET /map/stations` (unknown ones answer 400).
+ *
+ * @typedef {object} StationMapFilters
+ * @property {string} bbox - The view `min_lon,min_lat,max_lon,max_lat` (WGS84).
+ * @property {string} [store]
+ * @property {string} [dataset] - Dataset key: its stations and their coverage.
+ * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {string[]} [meteo_kind] - Repeated: these station types only.
+ * @property {YearType} [year_type]
+ * @property {string} [years] - R: `1951-2025` or one year.
+ * @property {string} [area_id]
+ * @property {boolean} [boundary] - `false` leaves out the stations on the area's
+ *   boundary.
+ * @property {number} [limit] - ≤ 5000 stations; above it a grid of `grid_columns`.
+ * @property {number} [grid_columns]
+ */
+
+/**
+ * A run of known units without a value.
+ *
+ * @typedef {{from: string, to: string, units: number}} GapSpan
+ */
+
+/**
+ * A variable of a station's series with its coverage label in R (SPEC 4.8.4).
+ *
+ * @typedef {object} VariableCoverage
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable
+ * @property {string} unit
+ * @property {string|null} period - Half-year period of a characteristic.
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ * @property {GapSpan|null} longest_gap
+ * @property {number} complete_years - Full years of y1–y2: a value in every unit.
+ */
+
+/**
+ * A station's series in one dataset: its version and each variable's label.
+ *
+ * @typedef {object} StationSeries
+ * @property {string} dataset - Dataset key.
+ * @property {string|null} kind
+ * @property {string} time_unit
+ * @property {YearType} year_type - Numbering of the years of R.
+ * @property {YearSpan|null} years - R.
+ * @property {string|null} series - Label of the series version.
+ * @property {string} series_version - The version's `series.json`, relative to the
+ *   store.
+ * @property {string} file - The station's series file, relative to the store.
+ * @property {string|null} sha256 - SHA-256 of the station's series file.
+ * @property {string|null} license - Licence of the series version.
+ * @property {string|null} attribution - The formula the source requires (IMGW §5).
+ * @property {Object<string, VariableCoverage>} coverage - Each variable by key, in
+ *   the order of the series index.
+ */
+
+/**
+ * Where a station is: a point, or nowhere with the catalog's reason.
+ *
+ * @typedef {object} StationLocation
+ * @property {"point"|"none"} kind
+ * @property {number|null} lon - WGS84.
+ * @property {number|null} lat
+ * @property {string|null} reason - Without a position: `none`, `zero`,
+ *   `outside_country`.
+ * @property {string|null} source - Source of the position in the catalog.
+ * @property {number|null} uncertainty_m
+ * @property {boolean} on_boundary - On the area's boundary (with an area).
+ */
+
+/**
+ * A station of its provider's current catalog, with its series' coverage.
+ *
+ * @typedef {object} StationItem
+ * @property {string} store
+ * @property {string} provider - `IMGW-PIB` or `CHMI`; a code is its provider's.
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {string|null} meteo_kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code - The river's hydrographic code.
+ * @property {number|null} river_order - Place of the station on its river.
+ * @property {boolean|null} active
+ * @property {number|null} established_year
+ * @property {number|null} gauge_zero_m - Gauge zero elevation, m.
+ * @property {number|null} river_km - River kilometre.
+ * @property {number|null} elevation_m - Elevation, m.
+ * @property {string|null} catalog - Label of the catalog version (its date).
+ * @property {string|null} catalog_version - The catalog version's file, relative to
+ *   the store.
+ * @property {StationLocation} location
+ * @property {StationSeries[]} series - By dataset, each variable labelled (P16).
+ */
+
+/**
+ * Which station a code means (`store`, `provider`) and how its labels are
+ * numbered (`GET /stations/{code}`).
+ *
+ * @typedef {object} StationLookup
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Its coverage only.
+ * @property {string} [years] - R of the labels.
+ * @property {YearType} [year_type] - Default: the type remembered for the family.
+ */
+
+/**
+ * A station's card (`GET /stations/{code}`).
+ *
+ * @typedef {object} StationCard
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {StationItem} station
+ * @property {Object<string, CopyPath>} paths - Each series file by dataset key, on
+ *   this computer and as aliased elsewhere; none for an unconfigured directory.
+ */
+
+/**
+ * The station, series, variables and range of a chart
+ * (`GET /stations/{code}/series`).
+ *
+ * @typedef {object} StationChartQuery
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Default: the one series with every variable.
+ * @property {string[]} variable - One or two variables of the series.
+ * @property {string} [from] - First day; default the variables' first known day.
+ * @property {string} [to] - Last day; default the variables' last known day.
+ * @property {string} [year_type] - `hydrological` or `calendar`: the labels whose
+ *   gaps the chart gives; default the remembered type, as on the card.
+ * @property {number} [max_points] - The most points of a variable (≤ 2,000).
+ */
+
+/**
+ * A point of a chart: a unit, or an interval of units, and its values; `null`
+ * without a value (the line breaks).
+ *
+ * @typedef {{t: string, min: number|null, mean: number|null, max: number|null}} ChartPoint
+ */
+
+/**
+ * A value shown on its own: an accumulated sum, or an extreme the provider
+ * published (`min`, `max`) with the day of its first and last occurrence.
+ *
+ * @typedef {object} ChartMarker
+ * @property {string} t - Its day.
+ * @property {"accumulated"|"min"|"max"} kind
+ * @property {number} value
+ * @property {string|null} period - Of an extreme: `winter`, `summer`, `annual`.
+ * @property {string|null} end - Of an extreme: the day of its last occurrence.
+ */
+
+/**
+ * A variable of a chart: its points, the gaps its label counts in the range
+ * and its markers.
+ *
+ * @typedef {object} ChartVariable
+ * @property {string} key
+ * @property {string} variable
+ * @property {string} unit
+ * @property {ChartPoint[]} points - One a unit, or one an interval.
+ * @property {GapSpan[]} gaps - A grey band each, also one shorter than an interval.
+ * @property {ChartMarker[]} markers
+ */
+
+/**
+ * A station's series as a chart (`GET /stations/{code}/series`).
+ *
+ * @typedef {object} StationChart
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string} dataset
+ * @property {string} time_unit - `day` or `month`.
+ * @property {string} year_type - `hydrological` or `calendar`: of the labels whose
+ *   gaps it gives.
+ * @property {string|null} series - Label of the series version.
+ * @property {string} series_version
+ * @property {string} file
+ * @property {string|null} from - First day of the range; `null`: an empty series.
+ * @property {string|null} to - Last day of the range.
+ * @property {number} units - Units of the range.
+ * @property {number} interval - Units of a point: more than 1, a simplified chart.
+ * @property {ChartVariable[]} variables
+ * @property {string|null} license
+ * @property {string|null} attribution
+ */
+
+/**
+ * The query of a comparison of stations (`GET /stations/compare`).
+ *
+ * @typedef {object} StationCompareQuery
+ * @property {string[]} station - 2 to 5 stations, each `<store>/<provider>/<code>`.
+ * @property {string} dataset - The dataset of the series compared.
+ * @property {string} variable - The variable compared.
+ * @property {string} [from] - First day; default the variable's first known day
+ *   at the stations together.
+ * @property {string} [to] - Last day; default its last known day.
+ * @property {string} [year_type] - `hydrological` or `calendar`, as on the card.
+ * @property {number} [max_points] - The most points of each station (≤ 2,000).
+ */
+
+/**
+ * A station of a comparison: who and where it is, its series, the variable's
+ * label and facts as on its card, its chart in the comparison's range; the
+ * series fields, `coverage` and `chart` are `null` without the series or the
+ * variable („brak danych”).
+ *
+ * @typedef {object} ComparedStation
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code
+ * @property {StationLocation} location
+ * @property {YearSpan|null} years
+ * @property {string|null} series
+ * @property {string|null} series_version
+ * @property {string|null} file
+ * @property {string|null} sha256
+ * @property {string|null} license
+ * @property {string|null} attribution
+ * @property {VariableCoverage|null} coverage
+ * @property {ChartVariable|null} chart
+ */
+
+/**
+ * 2 to 5 stations' series of one variable over one range (`GET /stations/compare`).
+ *
+ * @typedef {object} StationComparison
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {string} dataset
+ * @property {string} variable
+ * @property {string|null} kind
+ * @property {string} time_unit - `day` or `month`.
+ * @property {string} year_type
+ * @property {string|null} from - First day of the range; `null`: an empty comparison.
+ * @property {string|null} to - Last day of the range.
+ * @property {number} units - Units of the range.
+ * @property {number} interval - Units of a point, the same for every station.
+ * @property {ComparedStation[]} stations - In the order asked.
+ */
+
+/**
+ * A page of stations with the counts of the whole result (`GET /stations`).
+ *
+ * @typedef {object} StationList
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {{id: string, name: string|null}|null} area - The area of `area_id`.
+ * @property {StationCounts} counts
+ * @property {StationItem[]} items
+ * @property {string|null} next_cursor
+ */
+
+/**
+ * Parameters of `GET /stations` (unknown ones answer 400; repeatable ones are
+ * arrays).
+ *
+ * @typedef {object} StationListFilters
+ * @property {string} [store]
+ * @property {string} [provider]
+ * @property {string} [dataset] - Only stations with a series of it, its coverage only.
+ * @property {string} [years] - R of the labels.
+ * @property {YearType} [year_type] - Default: the type remembered for the family.
+ * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {string[]} [meteo_kind]
+ * @property {boolean} [active]
+ * @property {string} [river_code]
+ * @property {"exact"|"tributaries"} [river_scope]
+ * @property {string[]} [variable]
+ * @property {string[]} [coverage] - `<variable>:<state>`; needs `dataset`.
+ * @property {string[]} [min_complete_years] - `<variable>:<years>`; needs `dataset`.
+ * @property {string} [q] - A part of the name or river, or the beginning of the code.
+ * @property {"river"|"name"} [sort] - Along rivers (default) or by name.
+ * @property {string} [area_id]
+ * @property {string} [bbox]
+ * @property {string} [bbox_crs]
+ * @property {boolean} [boundary]
+ * @property {"any"|"with"|"none"} [location]
+ * @property {number} [limit] - ≤ 200.
+ * @property {string} [cursor]
+ */
+
+/**
+ * A year of a variable on the Timeline: its units, the known ones and those
+ * with a value.
+ *
+ * @typedef {object} TimelineYear
+ * @property {number} year - In the series' `year_type`.
+ * @property {number} units - Units of the year.
+ * @property {number} known - Of them, the known ones.
+ * @property {number} with_value - Of the known ones, those with a value.
+ * @property {"full"|"fraction"|"none"|"unknown"} cell - `full` (a value in every
+ *   unit), `fraction`, `none` (known, no value) or `unknown` (not every unit
+ *   known: not a gap).
+ */
+
+/**
+ * A variable's years in R with its label and longest gap.
+ *
+ * @typedef {object} TimelineVariable
+ * @property {string} key - Key in the series index: `Q`, `Q_max@winter`.
+ * @property {string} variable
+ * @property {string} unit
+ * @property {string|null} period - Half-year period of a characteristic.
+ * @property {SeriesState} state
+ * @property {string} label - In the request's language.
+ * @property {GapSpan|null} longest_gap
+ * @property {number} complete_years
+ * @property {TimelineYear[]} years - Every year of R, in order.
+ */
+
+/**
+ * A station's series in one dataset, year by year.
+ *
+ * @typedef {object} TimelineSeries
+ * @property {string} dataset
+ * @property {string|null} kind
+ * @property {"day"|"month"|"half_year"} time_unit
+ * @property {YearType} year_type - Numbering of the years of R.
+ * @property {YearSpan|null} years - R; `null` when no period is known.
+ * @property {string|null} series - Label of the series version.
+ * @property {TimelineVariable[]} variables - In the order of the series index.
+ */
+
+/**
+ * A station of a Timeline page: who and where it is, its series by year.
+ *
+ * @typedef {object} StationTimelineItem
+ * @property {string} store
+ * @property {string} provider
+ * @property {string} code
+ * @property {string|null} name
+ * @property {string|null} kind
+ * @property {string|null} meteo_kind
+ * @property {string|null} river
+ * @property {string|null} hydrographic_code
+ * @property {boolean|null} active
+ * @property {StationLocation} location
+ * @property {TimelineSeries[]} series - The series of the dataset asked.
+ */
+
+/**
+ * A page of the stations of one dataset year by year (`GET /stations/timeline`).
+ *
+ * @typedef {object} StationTimelinePage
+ * @property {boolean} stale
+ * @property {StaleStore[]} stale_stores
+ * @property {{id: string, name: string|null}|null} area - The area of `area_id`.
+ * @property {StationCounts} counts
+ * @property {StationTimelineItem[]} items
+ * @property {string|null} next_cursor
+ */
+
 // Projects (9a) --------------------------------------------------------------
 
 /**
@@ -1057,6 +1526,16 @@
  *   of a store, prepare the first look at them (a `preview_warm` job); off by default.
  * @property {number} [action_log_retention_days] - Days the action log keeps an entry;
  *   the server deletes older ones (v0.4, 365 by default).
+ * @property {YearTypes} [year_types] - The year type remembered for hydro and for meteo
+ *   data (`PUT /settings/year-types`).
+ */
+
+/**
+ * The year type remembered for each family (P15).
+ *
+ * @typedef {object} YearTypes
+ * @property {YearType} hydro - Hydrological by default.
+ * @property {YearType} meteo - Calendar by default.
  */
 
 // Background jobs (9b) -------------------------------------------------------

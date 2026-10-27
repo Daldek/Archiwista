@@ -30,6 +30,8 @@ from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
+from itertools import groupby
+from operator import itemgetter
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -38,6 +40,7 @@ import shapely
 from shapely.geometry import shape
 
 from archiwista.auth import ProjectVisibility
+from archiwista.config import DEFAULT_YEAR_TYPES, YearTypes
 from archiwista.errors import IndexQueryError
 from archiwista.index.coverage import CoverageShape, measure_coverage, planar_crs
 from archiwista.index.geometry import (
@@ -70,6 +73,7 @@ from archiwista.index.types import (
     AreaRecord,
     BBox,
     CoverageVariable,
+    DatasetVariable,
     FootprintPage,
     GridCell,
     GroupMember,
@@ -113,10 +117,12 @@ from archiwista.index.types import (
     SnapshotRecord,
     StationCounts,
     StationCoverage,
+    StationDataset,
     StationMap,
     StationPage,
     StationQuery,
     StationRow,
+    StationSort,
     StoredAvailability,
     StoredPlan,
     StoreFreshness,
@@ -267,8 +273,7 @@ _STATION_COLUMNS = """
     s.location_reason AS location_reason, s.location_source AS location_source,
     s.location_uncertainty_m AS location_uncertainty_m, s.active AS active,
     s.established_year AS established_year, s.gauge_zero_m AS gauge_zero_m,
-    s.river_km AS river_km, s.elevation_m AS elevation_m,
-    coalesce(s.name, '') AS sort_name, cv.label AS catalog,
+    s.river_km AS river_km, s.elevation_m AS elevation_m, cv.label AS catalog,
     c.version_path AS catalog_version
 """
 _STATION_SOURCE = (
@@ -276,7 +281,27 @@ _STATION_SOURCE = (
     " ON c.store_id = s.store_id AND c.provider = s.provider"
     " LEFT JOIN versions cv ON cv.store_id = c.store_id AND cv.path = c.version_path"
 )
-_STATION_ORDER = "coalesce(s.name, ''), s.code, s.provider, s.store_id"
+# The keys of each order of a list of stations (SPEC 6.8), selected as
+# ``order_<i>`` and kept in its cursor: along rivers, the hydrographic code as
+# text (a tributary's code begins with its river's, so it follows the river),
+# then the provider's order on the river, then the name, stations without a
+# code or an order after those with one; or by name. Code, provider and store
+# make each key unique.
+_STATION_ORDERS: dict[StationSort, tuple[str, ...]] = {
+    "river": (
+        "s.hydrographic_code IS NULL",
+        "coalesce(s.hydrographic_code, '')",
+        "s.river_order IS NULL",
+        "coalesce(s.river_order, 0)",
+        "coalesce(s.name, '')",
+        "s.code",
+        "s.provider",
+        "s.store_id",
+    ),
+    "name": ("coalesce(s.name, '')", "s.code", "s.provider", "s.store_id"),
+}
+# A map draws its stations by name.
+_NAME_ORDER = ", ".join(_STATION_ORDERS["name"])
 # A variable of a station's series with what its labels need of the dataset's
 # version, and the label, licence and attribution of that version.
 _SERIES_COLUMNS = """
@@ -1257,23 +1282,24 @@ class IndexQueries:
     # Stations of the station catalogs.
 
     def stations(self, query: StationQuery) -> StationPage:
-        """Return a page of stations by name, with the counts by location.
+        """Return a page of stations in order, with the counts by location.
 
         Parameters
         ----------
         query : StationQuery
-            Attribute and coverage filters, the box or the area, the location
-            group, the labels, page size and cursor.
+            Attribute, search and coverage filters, the box or the area, the
+            location group, the labels, the order, page size and cursor.
 
         Returns
         -------
         StationPage
-            Rows by name (then code, provider and store); ``counts`` count
-            the whole result by location, whatever ``query.location``
-            selects: the stations without a location after the attribute
-            and coverage filters only, never narrowed or joined by the box or
-            the area. With ``query.labels``, ``coverage`` holds the coverage
-            of the page's stations.
+            Rows along rivers or by name (``query.sort``), then by code,
+            provider and store; ``counts`` count the whole result by
+            location, whatever ``query.location`` selects: the stations
+            without a location after the attribute and coverage filters only,
+            never narrowed or joined by the box or the area. With
+            ``query.labels``, ``coverage`` holds the coverage of the page's
+            stations.
 
         Raises
         ------
@@ -1294,13 +1320,16 @@ class IndexQueries:
                 page = found.located.copy()
             else:
                 page = found.every.copy()
+            order = _STATION_ORDERS[query.sort]
+            keys = ", ".join(order)
             fingerprint = _station_fingerprint(query)
-            after = _decode_station_cursor(query.cursor, fingerprint)
+            after = _decode_station_cursor(query.cursor, fingerprint, len(order))
             if after is not None:
-                page.add(f"({_STATION_ORDER}) > (?, ?, ?, ?)", *after)
+                page.add(f"({keys}) > ({', '.join('?' * len(order))})", *after)
             rows = connection.execute(
-                f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
-                f" WHERE {page.sql()} ORDER BY {_STATION_ORDER} LIMIT ?",
+                f"SELECT {_STATION_COLUMNS}, {_order_columns(order)}"
+                f" FROM {_STATION_SOURCE}"
+                f" WHERE {page.sql()} ORDER BY {keys} LIMIT ?",
                 [*page.params, query.limit + 1],
             ).fetchall()
             more = len(rows) > query.limit
@@ -1314,8 +1343,7 @@ class IndexQueries:
         if more and rows:
             last = rows[-1]
             next_cursor = _encode_cursor(
-                fingerprint,
-                [last["sort_name"], last["code"], last["provider"], last["store_id"]],
+                fingerprint, [last[f"order_{index}"] for index in range(len(order))]
             )
         return StationPage(
             items=tuple(_station(row, stores, found.boundary) for row in rows),
@@ -1366,7 +1394,7 @@ class IndexQueries:
             found = _select_stations(connection, stores, query, box)
             rows = connection.execute(
                 f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
-                f" WHERE {found.located.sql()} ORDER BY {_STATION_ORDER}",
+                f" WHERE {found.located.sql()} ORDER BY {_NAME_ORDER}",
                 found.located.params,
             ).fetchall()
             if len(rows) > limit:
@@ -1408,6 +1436,91 @@ class IndexQueries:
             ).fetchone()
         return None if row is None else _station(row, stores)
 
+    def station_datasets(
+        self, store: str | None = None, *, year_types: YearTypes = DEFAULT_YEAR_TYPES
+    ) -> tuple[StationDataset, ...]:
+        """Return the datasets with station series in the index (the dataset chip).
+
+        Parameters
+        ----------
+        store : str or None
+            One configured store id; ``None``: every store.
+        year_types : YearTypes
+            The year type remembered for each family: the numbering of each
+            dataset's labels and of its R (P15).
+
+        Returns
+        -------
+        tuple[StationDataset, ...]
+            One per store and dataset of the series catalogs (the current
+            series version of each), by store and dataset key: the
+            producer's name of its segment, R by default in the year type of
+            its labels and the distinct variable keys of its stations'
+            series, in the order of the series index.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            where = _Where()
+            if store is not None:
+                where.add("c.store_id = ?", _store_id(stores, store))
+            rows = connection.execute(
+                "SELECT c.store_id, c.dataset, c.provider, c.kind, c.time_unit,"
+                " c.first_year, c.periods, c.version_path, sv.label AS series,"
+                " g.name AS segment_name FROM series_catalogs c"
+                " LEFT JOIN versions sv"
+                " ON sv.store_id = c.store_id AND sv.path = c.version_path"
+                " LEFT JOIN slots sl"
+                " ON sl.store_id = c.store_id AND sl.path = c.slot_path"
+                " LEFT JOIN segments g ON g.id = sl.segment_id"
+                f" WHERE {where.sql()} ORDER BY c.store_id, c.dataset",
+                where.params,
+            ).fetchall()
+            # SQLite takes the bare columns of a ``min`` group from its row:
+            # each key with its first row, so the keys keep the index's order.
+            keys: dict[tuple[int, str], list[DatasetVariable]] = {}
+            for row in connection.execute(
+                "SELECT x.store_id, x.dataset, x.variable_key, x.variable, x.unit,"
+                " x.period, min(x.id) AS first FROM station_series x"
+                " JOIN series_catalogs c"
+                " ON c.store_id = x.store_id AND c.dataset = x.dataset"
+                f" WHERE {where.sql()} GROUP BY x.store_id, x.dataset, x.variable_key"
+                " ORDER BY x.store_id, x.dataset, first",
+                where.params,
+            ):
+                keys.setdefault((row["store_id"], row["dataset"]), []).append(
+                    DatasetVariable(
+                        key=row["variable_key"],
+                        variable=row["variable"],
+                        unit=row["unit"],
+                        period=row["period"],
+                    )
+                )
+        found: list[StationDataset] = []
+        for row in rows:
+            unit = row["time_unit"]
+            numbering = label_year_type(row["kind"], unit, None, year_types)
+            found.append(
+                StationDataset(
+                    store=stores[row["store_id"]],
+                    dataset=row["dataset"],
+                    name=row["segment_name"],
+                    provider=row["provider"],
+                    kind=row["kind"],
+                    time_unit=unit,
+                    year_type=numbering,
+                    span=default_span(
+                        row["first_year"],
+                        _date_ranges(row["periods"]),
+                        time_unit=unit,
+                        year_type=numbering,
+                    ),
+                    series=row["series"],
+                    series_version=row["version_path"],
+                    variables=tuple(keys.get((row["store_id"], row["dataset"]), ())),
+                )
+            )
+        return tuple(found)
+
     # Coverage of the series of stations.
 
     def station_coverage(
@@ -1419,6 +1532,7 @@ class IndexQueries:
         dataset: str | None = None,
         year_type: YearType | None = None,
         years: YearRange | None = None,
+        year_types: YearTypes = DEFAULT_YEAR_TYPES,
     ) -> tuple[StationCoverage, ...]:
         """Return the coverage of a station's series with its labels (SPEC 4.8.4).
 
@@ -1433,13 +1547,15 @@ class IndexQueries:
         dataset : str or None
             One dataset only; ``None``: every dataset with a series of it.
         year_type : {"hydrological", "calendar"} or None
-            The numbering of the years; ``None``: hydrological years for hydro
-            data and calendar years for the others. Half-year characteristics
+            The numbering of the years; ``None``: the one ``year_types``
+            remembers for each dataset's family. Half-year characteristics
             stay in hydrological years whatever is asked (SPEC 4.8.2).
         years : tuple[int, int] or None
             R, the first and last year; ``None``: from the dataset's first
             year (else the first known one) to the last year of the known
             periods of its version.
+        year_types : YearTypes
+            The year type remembered for each family (P15).
 
         Returns
         -------
@@ -1464,7 +1580,12 @@ class IndexQueries:
             if dataset is not None:
                 where.add("s.dataset = ?", dataset)
             return _series_coverage(
-                connection, stores, where, year_type=year_type, years=years
+                connection,
+                stores,
+                where,
+                year_type=year_type,
+                year_types=year_types,
+                years=years,
             )
 
     def unused_versions(self, store: str) -> UnusedVersions | None:
@@ -2483,10 +2604,15 @@ def _station_where(query: StationQuery, stores: Mapping[int, str]) -> _Where:
         where.add("s.code = ?", query.code)
     if query.kind is not None:
         where.add("s.kind = ?", query.kind)
+    if query.meteo_kinds:
+        where.add(f"s.meteo_kind IN ({_IDS})", json.dumps(sorted(query.meteo_kinds)))
     if query.active is not None:
         where.add("s.active = ?", int(query.active))
     if query.river_code is not None:
         _river(where, query.river_code, query.river_scope)
+    text = (query.q or "").strip()
+    if text:
+        _station_search(where, text)
     dataset = () if query.dataset is None else (query.dataset,)
     in_dataset = "" if query.dataset is None else " AND x.dataset = ?"
     if query.dataset is not None:
@@ -2500,6 +2626,25 @@ def _station_where(query: StationQuery, stores: Mapping[int, str]) -> _Where:
             name,
         )
     return where
+
+
+def _station_search(where: _Where, text: str) -> None:
+    """Stations whose name or river contains ``text``, or whose code begins with it.
+
+    The name and the river are compared case-folded (``casefold``, the SQL
+    function of ``schema.connect``), the code as given; ``instr`` and
+    ``substr`` read every character literally, so none is a wildcard (ADR
+    0032 decision 11).
+    """
+    folded = text.casefold()
+    where.add(
+        "(instr(casefold(s.name), ?) > 0 OR instr(casefold(s.river), ?) > 0"
+        " OR substr(s.code, 1, ?) = ?)",
+        folded,
+        folded,
+        len(text),
+        text,
+    )
 
 
 def _river(where: _Where, code: str, scope: RiverScope) -> None:
@@ -2571,9 +2716,12 @@ def _station_fingerprint(query: StationQuery) -> str:
         query.provider,
         query.code,
         query.kind,
+        sorted(query.meteo_kinds),
         query.active,
         query.river_code,
         query.river_scope,
+        query.q,
+        query.sort,
         None if query.bbox is None else list(query.bbox),
         query.location,
         area,
@@ -2583,24 +2731,38 @@ def _station_fingerprint(query: StationQuery) -> str:
         sorted([name, state] for name, state in query.coverage),
         sorted([name, years] for name, years in query.min_complete_years),
         query.year_type,
+        [query.year_types.hydro, query.year_types.meteo],
         None if query.years is None else list(query.years),
     ]
     data = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()
     return hashlib.blake2b(data, digest_size=8).hexdigest()
 
 
-def _decode_station_cursor(cursor: str | None, fingerprint: str) -> list[object] | None:
-    """Return the name, code, provider and store id after which a page goes on."""
+def _order_columns(order: tuple[str, ...]) -> str:
+    """Select the keys of a station order as ``order_<i>``, for the next cursor."""
+    return ", ".join(f"{key} AS order_{index}" for index, key in enumerate(order))
+
+
+def _decode_station_cursor(
+    cursor: str | None, fingerprint: str, width: int
+) -> list[object] | None:
+    """Return the keys of the row after which a page goes on.
+
+    ``width`` is the number of keys of the query's order (``_STATION_ORDERS``);
+    each is a text or an integer.
+    """
     if cursor is None:
         return None
     data = _parse_cursor(cursor)
     valid = (
         isinstance(data, list)
-        and len(data) == 6
+        and len(data) == width + 2
         and data[0] == _CURSOR_VERSION
         and data[1] == fingerprint
-        and all(isinstance(value, str) for value in data[2:5])
-        and isinstance(data[5], int)
+        and all(
+            isinstance(value, str | int) and not isinstance(value, bool)
+            for value in data[2:]
+        )
     )
     if not valid:
         raise IndexQueryError(message("index.invalid_cursor"))
@@ -2826,7 +2988,12 @@ def _covered(
         minimum[name] = max(years, minimum.get(name, 0))
     passing: set[int] = set()
     for found in _series_coverage(
-        connection, stores, where, year_type=query.year_type, years=query.years
+        connection,
+        stores,
+        where,
+        year_type=query.year_type,
+        year_types=query.year_types,
+        years=query.years,
     ):
         entries = {
             name: [
@@ -2860,7 +3027,12 @@ def _stations_coverage(
     if query.dataset is not None:
         where.add("s.dataset = ?", query.dataset)
     return _series_coverage(
-        connection, stores, where, year_type=query.year_type, years=query.years
+        connection,
+        stores,
+        where,
+        year_type=query.year_type,
+        year_types=query.year_types,
+        years=query.years,
     )
 
 
@@ -2870,11 +3042,13 @@ def _series_coverage(
     where: _Where,
     *,
     year_type: YearType | None,
+    year_types: YearTypes,
     years: YearRange | None,
 ) -> tuple[StationCoverage, ...]:
     """Read the coverage of the series ``where`` selects on ``s`` (station_series).
 
-    Each dataset's year type and range R are known before its years are
+    Each dataset's year type (the one asked, else the one ``year_types``
+    remembers for its family) and range R are known before its years are
     read, so only the years of R in that numbering are read.
     """
     rows = connection.execute(
@@ -2891,7 +3065,7 @@ def _series_coverage(
     for key, group in groups.items():
         first = group[0]
         unit = first["time_unit"]
-        numbering = label_year_type(first["kind"], unit, year_type)
+        numbering = label_year_type(first["kind"], unit, year_type, year_types)
         periods = _date_ranges(first["version_periods"])
         span = years or default_span(
             first["first_year"], periods, time_unit=unit, year_type=numbering
@@ -2903,23 +3077,23 @@ def _series_coverage(
         ids.extend(row["id"] for row in group)
         wanted[numbering] = (ids, (min(low, span[0]), max(high, span[1])))
     found: dict[int, list[SeriesYear]] = {}
+    # A page of stations reads tens of thousands of years: plain tuples, read
+    # by position, cost a fraction of named rows.
+    cursor = connection.cursor()
+    cursor.row_factory = None
     for numbering, (ids, (low, high)) in wanted.items():
-        for row in connection.execute(
-            "SELECT series_id, year_type, year, units, known, with_value"
+        rows_of_years = cursor.execute(
+            "SELECT series_id, year, units, known, with_value"
             f" FROM series_years WHERE series_id IN ({_IDS}) AND year_type = ?"
             " AND year BETWEEN ? AND ?"
             " ORDER BY series_id, year",
             (json.dumps(ids), numbering, low, high),
-        ):
-            found.setdefault(row["series_id"], []).append(
-                SeriesYear(
-                    year_type=row["year_type"],
-                    year=row["year"],
-                    units=row["units"],
-                    known=row["known"],
-                    with_value=row["with_value"],
-                )
-            )
+        )
+        for series_id, series in groupby(rows_of_years, key=itemgetter(0)):
+            found[series_id] = [
+                SeriesYear(numbering, year, units, known, with_value)
+                for _, year, units, known, with_value in series
+            ]
     return tuple(
         _station_coverage(group, found, stores, plans[key])
         for key, group in groups.items()
@@ -2978,14 +3152,9 @@ def _station_coverage(
                 first=coverage.first,
                 last=coverage.last,
                 accumulated=coverage.accumulated,
-                years=tuple(
-                    year
-                    for year in rows_of_years
-                    if year.year_type == numbering
-                    and span is not None
-                    and span[0] <= year.year <= span[1]
-                ),
+                years=_years_in(rows_of_years, span),
                 label=label,
+                known=known,
             )
         )
     if first["kind"] == "hydro":
@@ -3007,6 +3176,21 @@ def _station_coverage(
         license=first["license"],
         attribution=first["attribution"],
     )
+
+
+def _years_in(
+    years: Sequence[SeriesYear], span: YearRange | None
+) -> tuple[SeriesYear, ...]:
+    """Return the years of a series within R.
+
+    ``years`` are one year type's, in order, read for the widest R of their
+    query: a series whose R is that one keeps them all without a test.
+    """
+    if span is None or not years:
+        return ()
+    if span[0] <= years[0].year and years[-1].year <= span[1]:
+        return tuple(years)
+    return tuple(year for year in years if span[0] <= year.year <= span[1])
 
 
 def _only_with_value(variables: Sequence[CoverageVariable]) -> list[CoverageVariable]:

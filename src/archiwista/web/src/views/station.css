@@ -1,0 +1,88 @@
+/* The station card (views/station.js; plan I8.5). The drawer, tabs, key-value lists and
+   copy actions come from styles.css and cards.css. */
+
+.station-card { width: clamp(440px, 44vw, 760px); }
+.station-card .drawer-head { align-items: flex-start; }
+.station-card .drawer-body { flex: 1; min-height: 0; gap: 10px; padding-bottom: 32px; }
+.station-card .section-title { margin-bottom: 6px; }
+
+.sc-heading { display: grid; gap: 8px; }
+.sc-subline { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--text-2); line-height: 1.45; }
+.sc-subline .station-symbol { flex: none; margin-right: 2px; }
+.sc-years { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sc-years-label { font-size: 12px; color: var(--text-3); }
+.sc-location { display: grid; gap: 4px; justify-items: start; font-size: 12.5px; }
+.sc-location p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.sc-location.none > p:first-child { color: var(--warn-ink); font-weight: 500; }
+.sc-page { font-size: 12.5px; }
+
+.sc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.sc-coverage { display: grid; gap: 8px; margin-top: 4px; }
+.sc-coverage .section-title { margin: 0; }
+.sc-series { display: grid; gap: 4px; }
+.sc-series-title { margin: 0; font-size: 12.5px; font-weight: 500; }
+.sc-vars { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.sc-var { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; line-height: 1.45; }
+.sc-var .station-symbol { flex: none; display: block; }
+.sc-key { min-width: 1.6em; }
+.sc-label { color: var(--text); }
+
+.sc-details { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }
+.sc-origin .kv { margin: 0; }
+.sc-file { display: grid; gap: 4px; justify-items: start; }
+.sc-alias { display: inline-flex; align-items: center; gap: 4px; }
+.sc-json { margin: 0; max-height: 320px; overflow: auto; justify-self: stretch; min-width: 0; }
+
+.sc-attribution { border-top: 1px solid var(--line); padding-top: 10px; }
+
+/* The chart of the tab „Wykres” (views/station-chart.js; plan I8.5). */
+.sch { display: grid; gap: 8px; min-width: 0; }
+.sch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sch-spacer { flex: 1; }
+.sch-second { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+.sch-second select {
+  height: 28px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff;
+  font-size: 12.5px; color: var(--text);
+}
+.sch-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 26px; font-size: 12.5px; }
+.sch-frame { position: relative; min-height: 220px; min-width: 0; }
+.sch-wait { display: grid; place-items: center; height: 220px; }
+.sch-figure { margin: 0; position: relative; display: grid; gap: 6px; }
+.sch-figure.busy .sch-svg { opacity: 0.55; }
+.sch-loading { position: absolute; top: 2px; right: 6px; }
+.sch-plot { position: relative; border-radius: 8px; outline: none; }
+.sch-plot:focus-visible { box-shadow: 0 0 0 2px var(--accent-2); }
+.sch-svg { display: block; overflow: visible; font-size: 11px; user-select: none; }
+.sch-v0 { --series: var(--accent-2); }
+.sch-v1 { --series: #0e7490; }
+.sch-grid { stroke: var(--line); stroke-width: 1; }
+.sch-base, .sch-tick-mark { stroke: var(--line-2); stroke-width: 1; }
+.sch-tick { fill: var(--text-3); font-variant-numeric: tabular-nums; }
+.sch-unit { fill: var(--series); font-weight: 600; }
+.sch-gap { fill: #98a2b3; fill-opacity: 0.3; }
+.sch-gap-mark { fill: var(--series); opacity: 0.75; }
+.sch-band { fill: var(--series); fill-opacity: 0.2; stroke: none; }
+.sch-line { fill: none; stroke: var(--series); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.sch-dot { fill: var(--series); }
+.sch-marker { stroke: var(--series); stroke-width: 1.6; fill: #fff; }
+.sch-marker.max { fill: var(--series); }
+.sch-cursor { stroke: var(--text-3); stroke-dasharray: 3 3; }
+.sch-selection { fill: var(--accent-2); fill-opacity: 0.14; stroke: var(--accent-2); stroke-width: 1; }
+.sch-hit { fill: transparent; pointer-events: all; cursor: crosshair; touch-action: none; }
+.sch-title { font-size: 12px; font-weight: 600; fill: var(--text); paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.sch-tip {
+  position: absolute; top: 18px; z-index: 2; display: grid; gap: 2px; padding: 6px 8px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--shadow);
+  font-size: 12px; pointer-events: none; white-space: nowrap;
+}
+.sch-tip-row { color: var(--series); }
+.sch-caption { display: grid; gap: 4px; font-size: 12px; }
+.sch-caption p { margin: 0; line-height: 1.45; }
+.sch-note { font-weight: 500; }
+.sch-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.sch-api { margin: 0; font-size: 12px; }
+
+@media (max-width: 860px) {
+  .station-card { width: 100%; }
+}

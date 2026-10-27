@@ -1,5 +1,6 @@
 /* „Katalog” (views/catalog.js): toolbar, location groups, the virtualized grid
-   (row heights match ROW / ROW_NARROW / HEAD of catalog-grid.js) and the filter panel. */
+   (row heights match FILE_ROW / FILE_ROW_NARROW / HEAD of catalog-grid.js and LINE /
+   PAD / GROUP_ROW of catalog-stations.js) and the filter panel. */
 
 .cat { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel); }
 /* the map beside the catalog on a wide centre (views/switch.js SPLIT_MIN) */
@@ -114,6 +115,94 @@
 .cat-area-head b { overflow-wrap: anywhere; }
 .cat-area .field { margin: 8px 0 0; }
 .cat-limit { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 10px; }
+.cat-stations-fields .st-check { margin-top: 6px; font-weight: 500; font-size: 12.5px; }
+.st-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-cov { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+.st-cov-key { min-width: 2.2em; font-weight: 700; font-size: 12px; }
+.st-cov .chip { height: 24px; font-size: 11.5px; }
+.st-cov-years { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-2); }
+.st-cov-years input { width: 58px; height: 26px; }
+.st-year-type-note { margin-top: 4px; }
+
+/* ---------- stations (views/catalog-stations.js): a line per variable ---------- */
+.cat-grid.stations {
+  --cat-cols: minmax(150px, 1.2fr) minmax(110px, 0.8fr) minmax(120px, 0.9fr) minmax(280px, 2.6fr) minmax(140px, 1fr) 64px;
+  --cat-min: 1030px;
+}
+.cat-grid.stations .cat-rows .cat-row { align-items: start; padding-top: 5px; padding-bottom: 5px; }
+.cat-grid.stations .cat-rows .cell { justify-content: flex-start; gap: 0; }
+.cat-grid.stations .cat-rows .c-act { align-self: center; flex-direction: row; gap: 2px; }
+.cat-pick { width: 28px; height: 28px; color: var(--text-3); }
+.cat-pick.on { color: var(--accent-2); background: var(--accent-soft, rgba(37, 99, 235, 0.1)); }
+.cat-pick:disabled { opacity: 0.35; cursor: not-allowed; }
+.cat-pick-bar { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.st-line { display: flex; align-items: center; gap: 5px; height: 18px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.st-line .station-symbol { flex: none; }
+.st-name { display: block; font-weight: 600; font-size: 12.5px; line-height: 18px; color: var(--text); text-overflow: ellipsis; }
+.cat-rows .cat-row.unlocated .st-name { color: var(--text-2); }
+.st-var { font-size: 12px; color: var(--text-2); }
+.st-key { flex: none; min-width: 1.6em; font-weight: 600; color: var(--text); }
+.st-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-full { flex: none; }
+.cat-grid.stations .cat-rows .cat-row.st-group-row { display: flex; align-items: center; padding: 0 10px; background: var(--panel-2); cursor: default; }
+.st-group { flex: 1; flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; font-size: 11.5px; }
+.st-group-name { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.st-group.none .st-group-name { color: var(--warn-ink); }
+.cat-hidden-note { color: var(--text-2); }
+
+/* ---------- the stations' Timeline (views/catalog-station-timeline.js): rows of ROW, the
+   header of HEAD px; a year's fill is green, its alpha (--a) the share with a value ---------- */
+.stl { flex: 1; min-height: 0; display: flex; flex-direction: column; --stl-head: 280px; --stl-year: 13px; }
+.stl-bar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 14px 2px; font-size: 12.5px; }
+.stl-dataset { min-width: 0; }
+.stl-colors { gap: 4px; }
+.stl-colors-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.stl-colors .chip { font-family: var(--mono); font-size: 11.5px; }
+.stl-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 14px 8px; font-size: 11.5px; color: var(--text-2); }
+.stl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stl-legend .stl-c { display: inline-block; width: 12px; height: 14px; }
+.stl-grid {
+  --stl-cols: var(--stl-head) repeat(var(--stl-years), minmax(var(--stl-year), 1fr));
+  --stl-width: calc(var(--stl-head) + var(--stl-years) * (var(--stl-year) + 2px) + 8px);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.stl-grid.busy .stl-rows { opacity: 0.55; }
+.stl-scroll { flex: 1; min-height: 0; overflow: auto; position: relative; outline: none; }
+.stl-head { position: sticky; top: 0; z-index: 3; min-width: var(--stl-width); }
+.stl-rows { position: relative; min-width: var(--stl-width); }
+.stl-row { display: grid; grid-template-columns: var(--stl-cols); column-gap: 2px; align-items: center; height: 26px; padding-right: 8px; }
+.stl-header { height: 30px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.stl-rows .stl-row { position: absolute; left: 0; right: 0; top: 0; border-bottom: 1px solid var(--line); background: var(--panel); }
+.stl-rows .stl-row.variable { background: var(--panel-2); }
+.stl-rowhead { position: sticky; left: 0; z-index: 2; align-self: stretch; display: flex; align-items: center; gap: 5px; min-width: 0; padding: 0 8px 0 6px; overflow: hidden; white-space: nowrap; background: inherit; border-right: 1px solid var(--line); font-size: 12px; }
+.stl-header .stl-rowhead { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.stl-row.station .stl-rowhead { cursor: pointer; }
+.stl-row.variable .stl-rowhead { padding-left: 32px; color: var(--text-2); }
+.stl-twisty { flex: none; display: inline-flex; width: 14px; color: var(--text-2); }
+.stl-name { flex: 0 1 auto; font-weight: 600; color: var(--text); }
+.stl-open { text-decoration: none; }
+.stl-open:hover { text-decoration: underline; color: var(--accent); }
+.stl-code { flex: none; font-size: 11px; }
+.stl-key { flex: none; font-weight: 600; color: var(--text); }
+.stl-row.station .stl-key, .stl-missing { margin-left: auto; }
+.stl-missing { flex: none; font-size: 11px; }
+.stl-label { min-width: 0; }
+.stl-year { position: relative; align-self: stretch; color: var(--text-2); }
+.stl-year span { position: absolute; left: 0; bottom: 5px; padding-left: 2px; border-left: 1px solid var(--line-2); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stl-c { height: 16px; border-radius: 2px; }
+.stl-c.full { background: var(--ok); }
+.stl-c.fraction { background: rgb(22 163 74 / var(--a, 0.5)); }
+.stl-c.none { background: var(--panel); box-shadow: inset 0 0 0 1px var(--text-3); }
+.stl-c.unknown { border: 1px dashed #98a2b3; }
+.stl-rows .stl-c:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 0; }
+.stl-rows .stl-rowhead:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.stl-more { position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; justify-content: center; }
+.stl-tip { position: fixed; left: 0; top: 0; z-index: 30; visibility: hidden; pointer-events: none; display: grid; gap: 2px; max-width: 360px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+.stl-tip-year { font-weight: 600; }
 
 /* ---------- phone: two-line rows without the header ---------- */
 .cat-grid.narrow .cat-head { display: none; }
@@ -136,9 +225,23 @@
 .cat-grid.narrow .c-ver, .cat-grid.narrow .c-size, .cat-grid.narrow .c-store { display: none; }
 .cat-grid.narrow .cell-sub { display: none; }
 .cat-grid.narrow .cat-map { width: 24px; height: 24px; }
+.cat-grid.stations.narrow .cat-rows .cat-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "st code act" "river loc loc" "cov cov cov";
+  grid-template-rows: 18px 18px auto;
+  row-gap: 0;
+  padding: 5px 12px;
+  align-content: start;
+}
+.cat-grid.stations.narrow .c-st { grid-area: st; }
+.cat-grid.stations.narrow .c-code { grid-area: code; }
+.cat-grid.stations.narrow .c-river { grid-area: river; }
+.cat-grid.stations.narrow .c-cov { grid-area: cov; }
 
 @media (max-width: 860px) {
   .cat-toolbar { padding: 8px 10px; }
   .cat-search { min-width: 0; flex-basis: 100%; order: 2; }
   .cat-search-kbd, .cat-keys, .cat-breakdown, .cat-api { display: none; }
+  .stl { --stl-head: 150px; }
+  .stl-code { display: none; }
 }

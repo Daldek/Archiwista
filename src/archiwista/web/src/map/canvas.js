@@ -5,7 +5,9 @@
  * (plan v0.2 step 12b): one raster source of the chosen year layer's tiles,
  * a version's tiles or its features, and its outline. In a project's
  * context (step 15) the extents of the project's own files lie over the
- * outlines in a colour of their own; a click opens a file's card.
+ * outlines in a colour of their own; a click opens a file's card. The
+ * stations of a station product (plan I8.1) are points, clusters or grid
+ * cells of their own layers (map/stations.js) over the area.
  *
  * The view owns the data and passes it in; the map reports moves, drawn
  * shapes and choices. Layers change through `setData` and hover through
@@ -23,8 +25,17 @@ import { own as O } from "../labels/own.js";
 import { GLYPH_FONT, loadMapLibre } from "../maplibre.js";
 import { html, Icon, useEffect, useLayoutEffect, useRef, useState } from "../ui.js";
 import { startDrawing } from "./draw.js";
-import { HOME_BOUNDS, positionParams, viewBounds } from "./geo.js";
+import { centerBounds, HOME_BOUNDS, positionParams, viewBounds } from "./geo.js";
 import { changeText } from "./own.js";
+import {
+  addStationLayers,
+  cellFeatures,
+  closeSpread,
+  openCluster,
+  STATION_LAYERS,
+  stationFeatures,
+  StationTip,
+} from "./stations.js";
 import { loadBasemapSource, mapStyle, setBasemap } from "./style.js";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
@@ -52,6 +63,8 @@ const POINTS = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]];
 const HOVER = ["boolean", ["feature-state", "hover"], false];
 const FIT_MAX_ZOOM = 15;
 const PICK_LIMIT = 12;
+// The tooltip of a feature of these sources: a station (map/stations.js `StationTip`).
+const TIP_KINDS = { stations: "station", "station-spread": "station" };
 
 /**
  * Footprints, grid cells and sheets as GeoJSON for the map.
@@ -249,7 +262,8 @@ function addDataLayers(map) {
  * @property {number[]} bbox - The visible box (WGS84).
  * @property {number} width - Width of the map in px.
  * @property {number} zoom - MapLibre's zoom (512 px tiles).
- * @property {{center: string, zoom: string}} position - For the address.
+ * @property {{center?: string, zoom?: string}} position - For the address; none
+ *   for a map that cannot be drawn.
  * @property {boolean} byUser - Moved by a person, not by framing.
  */
 
@@ -286,6 +300,12 @@ function addDataLayers(map) {
  *   project in context, with their `outline` (map/own.js `useOwnLayer`).
  * @param {(item: import("../types.js").OwnFileItem) => void} [props.onOwn] - An
  *   own file's extent chosen: open its card.
+ * @param {import("../types.js").StationMapView|undefined} [props.stations] - The
+ *   stations of the view (a station product), or their grid.
+ * @param {string|null} [props.stationColor] - Key of the "Kolor punktów"
+ *   variable: the state of a point's image (none: unknown).
+ * @param {(item: import("../types.js").StationPoint) => void} [props.onStation] -
+ *   A station's point chosen: open its card.
  * @param {*} [props.children] - Overlays of the view over the map.
  */
 export function MapCanvas({
@@ -308,6 +328,9 @@ export function MapCanvas({
   previewFeatures = null,
   own = NO_OWN,
   onOwn = null,
+  stations = undefined,
+  stationColor = null,
+  onStation = null,
   children,
 }) {
   const box = useRef(null);
@@ -319,12 +342,24 @@ export function MapCanvas({
   const [pick, setPick] = useState(null);
   const [vertices, setVertices] = useState(0);
   const drawing = useRef(null);
-  const data = useRef({ items: [], cells: [], sheets: [], own: [] });
+  const data = useRef({ items: [], cells: [], sheets: [], own: [], stations: [], stationCells: [], spread: [] });
   const pointer = useRef(null);
   const tipBox = useRef(null);
   const tipAt = useRef({ x: 0, y: 0 });
   const props = useRef({});
-  props.current = { onMove, onDrawn, onCancel, onSheet, onOpen, onOwn, describe, tool, gridOn: sheets.length > 0 };
+  props.current = {
+    onMove,
+    onDrawn,
+    onCancel,
+    onSheet,
+    onOpen,
+    onOwn,
+    describe,
+    tool,
+    stationColor,
+    onStation,
+    gridOn: sheets.length > 0,
+  };
   const basemapKey = basemap ? JSON.stringify(basemap) : "";
   const shownBasemap = useRef(basemapKey);
   const layerKey = layerTiles ? JSON.stringify(layerTiles) : "";
@@ -383,6 +418,7 @@ export function MapCanvas({
         created.once("load", () => {
           if (!live) return;
           addDataLayers(created);
+          addStationLayers(created, "draw-fill");
           pointer.current = bindPointer(created, props, data, {
             setTip,
             setPick,
@@ -402,8 +438,13 @@ export function MapCanvas({
           props.current.onMove?.(move(created, false));
         });
       })
-      // A browser that cannot draw the map (no WebGL2) throws while it is created.
-      .catch((error) => live && setFailure(error));
+      // A browser that cannot draw the map (no WebGL2) throws while it is
+      // created; the view still counts what the map would show.
+      .catch((error) => {
+        if (!live) return;
+        setFailure(error);
+        props.current.onMove?.(stillMove(box.current, start));
+      });
     return () => {
       live = false;
       created?.remove();
@@ -496,6 +537,27 @@ export function MapCanvas({
     pointer.current?.reset();
   }, [map, own]);
 
+  useEffect(() => {
+    if (!map) return;
+    const aggregated = Boolean(stations?.aggregated);
+    data.current.stations = stations && !aggregated ? stations.items : [];
+    data.current.stationCells = stations && aggregated ? stations.cells : [];
+    map.getSource("stations").setData(stationFeatures(data.current.stations, stationColor));
+    map.getSource("station-cells").setData(cellFeatures(data.current.stationCells));
+    pointer.current?.closeSpread();
+    pointer.current?.reset();
+  }, [map, stations, stationColor]);
+
+  // `Esc` folds the stations spread around a cluster.
+  useEffect(() => {
+    if (!map) return undefined;
+    const key = (event) => {
+      if (event.key === "Escape") pointer.current?.closeSpread();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [map]);
+
   // Before paint: the drawing hint is never shown without its keys working.
   useLayoutEffect(() => {
     if (!map || !tool) return undefined;
@@ -520,7 +582,9 @@ export function MapCanvas({
       : null}
     ${tool ? html`<${DrawHint} tool=${tool} vertices=${vertices} drawing=${drawing}
       onCancel=${onCancel} />` : null}
-    ${tip && !tool ? html`<${Tooltip} tip=${tip} describe=${describe} box=${tipBox} at=${tipAt} />` : null}
+    ${tip && !tool
+      ? html`<${Tooltip} tip=${tip} describe=${describe} variable=${stationColor} box=${tipBox} at=${tipAt} />`
+      : null}
     ${pick && !tool
       ? html`<${PickList} pick=${pick} describe=${describe} onClose=${() => setPick(null)}
           onOpen=${(item) => {
@@ -546,6 +610,17 @@ function move(map, byUser) {
     position: positionParams(map),
     byUser,
   };
+}
+
+/**
+ * The move of a map that cannot be drawn: the address's position, else the
+ * home view, at the size of its box (no position for the address).
+ */
+function stillMove(container, start) {
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  const bbox = start && width && height ? centerBounds(start.center, start.zoom, width, height) : HOME_BOUNDS;
+  return { bbox, width, zoom: start?.zoom ?? 0, position: {}, byUser: false };
 }
 
 /**
@@ -598,10 +673,12 @@ function fit(map, bbox, animate) {
 }
 
 /**
- * Hover and clicks on outlines, grid cells and sheets. The tooltip follows
- * the pointer without a render; content changes only with the feature.
+ * Hover and clicks on outlines, grid cells, sheets and stations. The tooltip
+ * follows the pointer without a render; content changes only with the
+ * feature.
  *
- * @returns {{reset: () => void}} Forget the hovered feature (new data).
+ * @returns {{reset: () => void, closeSpread: () => void}} Forget the hovered
+ *   feature (new data); fold the stations spread around a cluster.
  */
 function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
   const container = map.getCanvasContainer();
@@ -622,8 +699,30 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       setTip(null);
     }
   };
-  const layers = () => (props.current.gridOn ? ["sheets-fill"] : ["own-fill", "footprints-fill", "cells-fill"]);
-  const lists = { footprints: "items", cells: "cells", own: "own", sheets: "sheets" };
+  const layers = () =>
+    props.current.gridOn ? ["sheets-fill"] : [...STATION_LAYERS, "own-fill", "footprints-fill", "cells-fill"];
+  const lists = {
+    footprints: "items",
+    cells: "cells",
+    own: "own",
+    sheets: "sheets",
+    stations: "stations",
+    "station-spread": "spread",
+    "station-cells": "stationCells",
+  };
+  const tipOf = (feature) => {
+    if (feature.properties.cluster) {
+      return { kind: "station-cluster", item: { count: feature.properties.point_count } };
+    }
+    const item = (data.current[lists[feature.source]] ?? [])[feature.properties.i];
+    return item ? { kind: TIP_KINDS[feature.source] ?? feature.source, item } : null;
+  };
+  const fold = () => {
+    if (!data.current.spread.length) return;
+    data.current.spread = [];
+    closeSpread(map);
+    if (hovered?.source === "station-spread") clear();
+  };
   map.on("mousemove", (event) => {
     // Dragging the map or drawing: no hover work on every frame of the move.
     if (props.current.tool || event.originalEvent.buttons || map.isMoving()) {
@@ -637,17 +736,14 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
         clear();
         return;
       }
-      if (hover({ source: feature.source, id: feature.id })) {
-        const kind = feature.source;
-        const list = data.current[lists[kind]] ?? [];
-        const item = list[feature.properties.i];
-        setTip(item ? { kind, item } : null);
-      }
+      if (hover({ source: feature.source, id: feature.id })) setTip(tipOf(feature));
       moveTip(event.point.x, event.point.y);
     });
   });
   map.on("mouseout", clear);
   map.on("movestart", clear);
+  // The spread is laid out in pixels of its zoom.
+  map.on("zoomstart", fold);
   map.on("click", (event) => {
     const { tool, gridOn } = props.current;
     if (tool) return;
@@ -655,6 +751,36 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
       const [sheet] = map.queryRenderedFeatures(event.point, { layers: ["sheets-fill"] });
       const item = sheet && data.current.sheets[sheet.properties.i];
       if (item) props.current.onSheet(item);
+      return;
+    }
+    // A station's point opens its card; the next click folds a spread.
+    const [station] = map.queryRenderedFeatures(event.point, { layers: STATION_LAYERS });
+    const point =
+      station && !station.properties.cluster && station.source !== "station-cells"
+        ? (data.current[lists[station.source]] ?? [])[station.properties.i]
+        : null;
+    fold();
+    if (station?.source === "station-cells") {
+      const cell = data.current.stationCells[station.properties.i];
+      if (cell) fit(map, [cell.min_lon, cell.min_lat, cell.max_lon, cell.max_lat], true);
+      return;
+    }
+    if (station?.properties.cluster) {
+      const items = data.current.stations;
+      openCluster(map, station, items, props.current.stationColor).then(
+        (spread) => {
+          if (!spread) return;
+          if (data.current.stations === items) data.current.spread = spread;
+          else closeSpread(map);
+        },
+        () => {
+          // New stations came while the worker looked the cluster up: it is gone.
+        },
+      );
+      return;
+    }
+    if (station) {
+      if (point) props.current.onStation?.(point);
       return;
     }
     const [cell] = map.queryRenderedFeatures(event.point, { layers: ["cells-fill"] });
@@ -675,7 +801,7 @@ function bindPointer(map, props, data, { setTip, moveTip, setPick }) {
     else if (items.length > 1) setPick({ x: event.point.x, y: event.point.y, items });
     else setPick(null);
   });
-  return { reset: clear };
+  return { reset: clear, closeSpread: fold };
 }
 
 /** Open what a click chose: an own file's card, else a file's card. */
@@ -708,11 +834,13 @@ export function slotName(slot) {
   return slot.slice(slot.lastIndexOf("/") + 1);
 }
 
-function Tooltip({ tip, describe, box, at }) {
+function Tooltip({ tip, describe, variable, box, at }) {
   useLayoutEffect(() => place(box.current, at.current), [tip]);
   const { kind, item } = tip;
   let content;
-  if (kind === "cells") {
+  if (kind.startsWith("station")) {
+    content = html`<${StationTip} tip=${tip} variable=${variable} />`;
+  } else if (kind === "cells") {
     content = html`<b>${t(L.tooltip.cell, { count: count(item.count, L.units.outlines) })}</b>
       <div class="muted">${L.tooltip.cell_zoom}</div>`;
   } else if (kind === "sheets") {

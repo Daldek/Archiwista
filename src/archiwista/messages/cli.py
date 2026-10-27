@@ -2097,14 +2097,28 @@ MESSAGES = {
     ),
     "stations_list_help": Text(
         (
-            "Lists stations by name with every variable of their series labelled"
-            " (like GET /api/v1/stations, options with the same names; a repeatable"
-            " parameter is a repeatable option); next page: --cursor."
+            "Lists stations along rivers or by name (--sort) with every variable of"
+            " their series labelled (like GET /api/v1/stations, options with the"
+            " same names; a repeatable parameter is a repeatable option); next"
+            " page: --cursor."
         ),
         (
-            "Wypisuje stacje według nazwy z etykietą każdej zmiennej ich szeregów"
-            " (jak GET /api/v1/stations, opcje o tych samych nazwach; parametr"
-            " powtarzalny to powtarzalna opcja); następna strona: --cursor."
+            "Wypisuje stacje wzdłuż rzek albo według nazwy (--sort) z etykietą"
+            " każdej zmiennej ich szeregów (jak GET /api/v1/stations, opcje o tych"
+            " samych nazwach; parametr powtarzalny to powtarzalna opcja); następna"
+            " strona: --cursor."
+        ),
+    ),
+    "stations_timeline_help": Text(
+        (
+            "Lists the stations of a dataset with each variable year by year, the"
+            " Timeline (like GET /api/v1/stations/timeline: the options of"
+            " 'stations list', --dataset required); next page: --cursor."
+        ),
+        (
+            "Wypisuje stacje zbioru danych z każdą zmienną rok po roku, oś czasu"
+            " (jak GET /api/v1/stations/timeline: opcje 'stations list', --dataset"
+            " wymagane); następna strona: --cursor."
         ),
     ),
     "stations_show_help": Text(
@@ -2115,6 +2129,73 @@ MESSAGES = {
         (
             "Pokazuje kartę stacji: jej wpis w katalogu i etykiety każdego szeregu"
             " (jak GET /api/v1/stations/KOD)."
+        ),
+    ),
+    "stations_datasets_help": Text(
+        (
+            "Lists the datasets with station series: their variables and the"
+            " default range of their labels (like GET /api/v1/stations/datasets)."
+        ),
+        (
+            "Wypisuje zbiory z szeregami stacji: ich zmienne i domyślny zakres"
+            " etykiet (jak GET /api/v1/stations/datasets)."
+        ),
+    ),
+    "stations_series_help": Text(
+        (
+            "Shows one or two variables of a station's series as a chart: each"
+            " unit's value, or the least, mean and greatest value of intervals, with"
+            " the gaps and markers (like GET /api/v1/stations/CODE/series)."
+        ),
+        (
+            "Pokazuje jedną lub dwie zmienne szeregu stacji jako wykres: wartość"
+            " każdej jednostki albo najmniejszą, średnią i największą wartość"
+            " przedziałów, z lukami i znacznikami (jak GET"
+            " /api/v1/stations/KOD/series)."
+        ),
+    ),
+    "stations_compare_help": Text(
+        (
+            "Compares one variable of 2 to 5 stations over one range: each"
+            " station's label and facts, and its points, gaps and markers (like"
+            " GET /api/v1/stations/compare)."
+        ),
+        (
+            "Porównuje jedną zmienną 2–5 stacji w jednym zakresie: etykietę i fakty"
+            " każdej stacji oraz jej punkty, luki i znaczniki (jak GET"
+            " /api/v1/stations/compare)."
+        ),
+    ),
+    "stations_station_help": Text(
+        "a station as STORE/PROVIDER/CODE (2 to 5 times)",
+        "stacja jako MAGAZYN/DOSTAWCA/KOD (od 2 do 5 razy)",
+    ),
+    "stations_compare_dataset_help": Text(
+        "dataset key of the series compared, e.g. pl.imgw.hydro_daily",
+        "klucz zbioru danych porównywanych szeregów, np. pl.imgw.hydro_daily",
+    ),
+    "stations_compare_variable_help": Text(
+        "the variable compared, e.g. Q",
+        "porównywana zmienna, np. Q",
+    ),
+    "stations_compare_start_help": Text(
+        (
+            "first day of the range, e.g. 1950-11-01; by default the variable's"
+            " first known day at the stations together"
+        ),
+        (
+            "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy znany dzień"
+            " zmiennej na stacjach łącznie"
+        ),
+    ),
+    "stations_compare_end_help": Text(
+        (
+            "last day of the range, e.g. 2025-10-31; by default the variable's last"
+            " known day at the stations together"
+        ),
+        (
+            "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni znany dzień"
+            " zmiennej na stacjach łącznie"
         ),
     ),
     "stations_code_help": Text(
@@ -2151,6 +2232,13 @@ MESSAGES = {
         "station kind: hydro or meteo",
         "rodzaj stacji: hydro albo meteo",
     ),
+    "stations_meteo_kind_help": Text(
+        "meteo station kind: synoptic, climate or precipitation (repeatable)",
+        (
+            "rodzaj stacji meteorologicznej: synoptic (synoptyczna), climate"
+            " (klimatologiczna) albo precipitation (opadowa) (powtarzalna)"
+        ),
+    ),
     "stations_active_help": Text(
         "true: active stations only, false: historical ones only",
         "true: tylko czynne stacje, false: tylko historyczne",
@@ -2167,6 +2255,51 @@ MESSAGES = {
         "stations with a value of the variable, e.g. Q (repeatable)",
         "stacje z wartością zmiennej, np. Q (powtarzalna)",
     ),
+    "stations_chart_variable_help": Text(
+        "variable of the series to draw, e.g. Q (once or twice)",
+        "zmienna szeregu do narysowania, np. Q (raz albo dwa razy)",
+    ),
+    "stations_chart_dataset_help": Text(
+        (
+            "dataset key of the series, e.g. pl.imgw.hydro_daily; by default the one"
+            " whose series has every variable"
+        ),
+        (
+            "klucz zbioru danych szeregu, np. pl.imgw.hydro_daily; domyślnie ten,"
+            " którego szereg ma każdą zmienną"
+        ),
+    ),
+    "stations_start_help": Text(
+        (
+            "first day of the range, e.g. 1950-11-01; by default the variables'"
+            " first known day"
+        ),
+        (
+            "pierwszy dzień zakresu, np. 1950-11-01; domyślnie pierwszy znany dzień"
+            " zmiennych"
+        ),
+    ),
+    "stations_end_help": Text(
+        (
+            "last day of the range, e.g. 2025-10-31; by default the variables' last"
+            " known day"
+        ),
+        (
+            "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatni znany dzień"
+            " zmiennych"
+        ),
+    ),
+    "stations_max_points_help": Text(
+        "the most points of a variable, at most 2000 (the default)",
+        "najwięcej punktów zmiennej, najwyżej 2000 (domyślnie)",
+    ),
+    "stations_version_help": Text(
+        (
+            "the series version the chart must come from (its series.json); by"
+            " default the current one"
+        ),
+        ("wersja szeregu, z której ma być wykres (jej series.json); domyślnie bieżąca"),
+    ),
     "stations_coverage_help": Text(
         (
             "variable:state of its label, e.g. Q:continuous (repeatable; needs"
@@ -2177,6 +2310,20 @@ MESSAGES = {
     "stations_min_complete_years_help": Text(
         "variable:least full years, e.g. Q:30 (repeatable; needs --dataset)",
         "zmienna:najmniej pełnych lat, np. Q:30 (powtarzalna; wymaga --dataset)",
+    ),
+    "stations_q_help": Text(
+        (
+            "search: stations whose name or river contains the text (case"
+            " ignored) or whose code begins with it"
+        ),
+        (
+            "wyszukiwanie: stacje, których nazwa albo rzeka zawiera tekst (bez"
+            " względu na wielkość liter), albo których kod się nim zaczyna"
+        ),
+    ),
+    "stations_sort_help": Text(
+        "order: river (along rivers, default) or name",
+        "kolejność: river (wzdłuż rzek, domyślnie) albo name (według nazwy)",
     ),
     "stations_area_id_help": Text(
         "area saved via POST /api/v1/areas",
@@ -2214,6 +2361,24 @@ MESSAGES = {
         "No stations.",
         "Brak stacji.",
     ),
+    "station_datasets_none": Text(
+        "No datasets with station series.",
+        "Brak zbiorów z szeregami stacji.",
+    ),
+    "station_dataset_line": Text(
+        (
+            "{dataset} · {name} · {provider} · {kind} · store {store}: series"
+            " {series}, {year_type} years {years}; variables: {variables}"
+        ),
+        (
+            "{dataset} · {name} · {provider} · {kind} · magazyn {store}: szeregi"
+            " {series}, lata {year_type} {years}; zmienne: {variables}"
+        ),
+    ),
+    "station_dataset_variable": Text(
+        "{key} ({unit})",
+        "{key} ({unit})",
+    ),
     "station_line": Text(
         "{code}  {name} · {kind} · {provider} · store {store}{river}{place}",
         "{code}  {name} · {kind} · {provider} · magazyn {store}{river}{place}",
@@ -2237,6 +2402,24 @@ MESSAGES = {
     "station_label": Text(
         "{key}: {label}",
         "{key}: {label}",
+    ),
+    "station_timeline_series": Text(
+        "  {dataset} (series {series}, {year_type} years {years})",
+        "  {dataset} (szeregi {series}, lata {year_type} {years})",
+    ),
+    "station_timeline_variable": Text(
+        "    {key} {years}  {label}",
+        "    {key} {years}  {label}",
+    ),
+    "station_timeline_legend": Text(
+        (
+            "Years: {full} full, {fraction} with gaps, {none} without a value,"
+            " {unknown} not known."
+        ),
+        (
+            "Lata: {full} pełny, {fraction} z lukami, {none} bez wartości,"
+            " {unknown} nieznany."
+        ),
     ),
     "stations_summary": Text(
         (
@@ -2289,6 +2472,72 @@ MESSAGES = {
     "station_attribution": Text(
         "  Licence {license}: {attribution}",
         "  Licencja {license}: {attribution}",
+    ),
+    "station_chart_title": Text(
+        "{code}: series {dataset}, version {series}, {year_type} years: {file}",
+        "{code}: szereg {dataset}, wersja {series}, lata {year_type}: {file}",
+    ),
+    "station_chart_values": Text(
+        "Range {start} to {end} ({units}): each unit's value",
+        "Zakres {start} – {end} ({units}): wartość każdej jednostki",
+    ),
+    "station_chart_simplified": Text(
+        "Range {start} to {end} ({units}): simplified, min./mean/max. of {interval}",
+        "Zakres {start} – {end} ({units}): uproszczony, min./śr./maks. z {interval}",
+    ),
+    "station_chart_empty": Text(
+        "No unit of the series lies in the range.",
+        "Żadna jednostka szeregu nie leży w zakresie.",
+    ),
+    "station_chart_variable": Text(
+        (
+            "  {key} ({unit}): {valued} of {points} points with a value, {gaps} gaps,"
+            " {markers} markers"
+        ),
+        (
+            "  {key} ({unit}): {valued} z {points} punktów z wartością, luki: {gaps},"
+            " znaczniki: {markers}"
+        ),
+    ),
+    "station_chart_gap": Text(
+        "    gap {start} to {end} ({units})",
+        "    luka {start} – {end} ({units})",
+    ),
+    "station_chart_accumulated": Text(
+        "    accumulated sum {day}: {value}",
+        "    suma zbiorcza {day}: {value}",
+    ),
+    "station_chart_extreme": Text(
+        "    {kind} of the {period} {day}: {value}",
+        "    {kind} – {period} {day}: {value}",
+    ),
+    "station_compare_title": Text(
+        "Comparison of {variable} of {dataset}, {year_type} years",
+        "Porównanie {variable} z {dataset}, lata {year_type}",
+    ),
+    "station_compare_missing": Text(
+        "  no data: no variable {variable} in a series of {dataset}",
+        "  brak danych: brak zmiennej {variable} w szeregu {dataset}",
+    ),
+    "station_marker_min": Text(
+        "least value",
+        "najmniejsza wartość",
+    ),
+    "station_marker_max": Text(
+        "greatest value",
+        "największa wartość",
+    ),
+    "station_period_winter": Text(
+        "winter half-year",
+        "półrocze zimowe",
+    ),
+    "station_period_summer": Text(
+        "summer half-year",
+        "półrocze letnie",
+    ),
+    "station_period_annual": Text(
+        "year",
+        "rok",
     ),
     "station_active_true": Text(
         "yes",

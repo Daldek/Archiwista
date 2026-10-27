@@ -430,17 +430,116 @@ formula begins with `'`. The filters: `--actor` (an account, `local` for the own
 `session.`), `--outcome` (`ok`, `denied`, `failed`), `--target`, and `--since`
 and `--until` with a time zone. An export is itself an entry of the log.
 
-## IMGW stations (command line)
+## IMGW stations
 
-The stations of the station catalogs of IMGW-PIB and ČHMÚ and the coverage of their
-series have no view in the interface yet (v0.5); the command line and the API
-(`GET /api/v1/stations`) show them from the index while IMGWTools is installed:
+A product of IMGWTools chosen on the map (hydro, meteo, or the station catalogs
+themselves) shows its stations in place of outlines. The shape of a point is the
+station type: a triangle for a water gauge, a square for a climatological or synoptic
+station, a circle for a precipitation post. Its colour and fill are the coverage of
+the variable chosen in "Kolor punktów" in the bar (green solid "ciągły", orange solid
+"luki", orange half "częściowy", grey hollow "brak danych", grey dashed "nieznane");
+the legend names each, and the tooltip of a point gives the label of every variable.
+The panel chooses the dataset ("Zbiór danych"), the types of meteo stations and
+whether the stations on an area's boundary count. Stations far apart at a low zoom
+form a neutral cluster with their count, which zooms in on a click; stations at one
+position spread around it until the next click or `Esc`. "N bez położenia" in the bar
+opens the Catalog with the stations that have no position; a click on a point opens
+the station card (below).
+
+![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
+
+In the Catalog such a product lists its stations instead of files: a row per station
+with a line per variable of its series (the symbol with the fill of its coverage, the
+label and the full years), the code and provider, the river with its hydrographic code,
+and the location: its source, or why the station has none. The stations with a
+position come first; "Bez położenia" is the last group, folded when more than 50
+stations have a position, open when the map's counter leads there, and its rows never
+lead to the map. "Wzdłuż rzek" (the default) and "Nazwa" order the list, and the search
+field finds a part of a name or river or the start of a code. The filter panel adds
+the dataset, the station kind or meteo types, the river code with "z dopływami", active
+or historical stations, a variable, the coverage chips of each variable with its least
+full years, the range of the labels and "Lata: hydrologiczne / kalendarzowe": the
+choice goes into the address and, for an administrator, is remembered for hydro or
+meteo data. "Ukryte przez filtry pokrycia: N" above the list counts the stations the
+coverage chips hide. Enter or a click opens a station's card; M or the row's map
+button shows a station with a position on the map; the arrows, Home and End move
+through the rows, and Enter on "Bez położenia" folds it.
+
+![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
+
+"Oś czasu" beside "Lista" shows the same stations, with the same filters, as years:
+the stations of one dataset (the one chosen in the panel, else the product's first),
+a row per station with the years of one variable ("Wiersz stacji", the same choice as
+"Kolor punktów" on the map), which Enter, Space or a click beside its name expands into
+a row per variable; a click on the name, or K, opens the station's card. A year is
+green when every unit of it has a value, a lighter green the fewer units have one, a
+grey hollow box when its known units have none and a grey dashed outline when not
+every unit of it is known (not a gap); the legend names each. The column headers say
+the numbering of the years ("r.h. 2024 (2023.11.01–2024.10.31)" or "2024
+(kalendarzowy)", the switch "Lata" in the panel), and the tooltip of a year gives its
+units, the known ones and those with a value, the variable's label and its longest
+gap. The arrows move by year and row, Home and End to the ends of a row.
+
+![The Timeline of the stations](reports/v0.5-screenshots/03-os-czasu-stacji.webp)
+
+The station card opens over the view (`station=<store>/<provider>/<code>` in the
+address; `Esc` closes it): the station's type, river with its hydrographic code and
+code, its provider and state, the switch "Lata" (as in the Catalog's panel: it
+renumbers the labels and goes into the address), the location with its source, the
+catalog's date and the uncertainty, or why it has none, and for a water gauge of
+IMGW-PIB "Strona stacji IMGW", a link to its page on hydro.imgw.pl. "Pokaż na mapie"
+opens the map on a station with a position and "Kopiuj ścieżkę pliku" copies the path
+of its series file. "Pokrycie" gives each variable of each series with its label, full
+years and longest gap; the tabs "Wykres" (the default), "Metadane" (the catalog's
+facts), "Pochodzenie" (each series version with the station's file, its SHA-256 and the
+series index, and the catalog version) and "Szczegóły techniczne" (the API's answer)
+follow, and last the licence with the formula IMGW requires and "Kopiuj atrybucję".
+
+![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
+
+"Wykres" draws one variable of the station's series, or two with "Druga zmienna" (a
+second unit gets the right axis). It opens on the whole period the variable's label
+counts (its known days): one longer than the plot has pixels is simplified to the
+least, mean and greatest value of each interval (a band under the mean line; the
+note says "wykres uproszczony: min./śr./maks. z N dni"). Drag over the plot to
+select days, turn the wheel over it, or focus it and
+press `+` and `-` to zoom and the arrows to move: a range of no more days than the
+plot has pixels shows each day's value, and the range goes into the address (`from`,
+`to`); `Home` or "Cały okres" shows the whole period again. A gap breaks the line and
+is a grey band: the bands are the gaps the label counts in the card's year type, so
+"luki 92%" shows its 92%; a day without a value outside them (not known, or outside
+the label's years) has no band.
+Dots are the extremes the provider published and a diamond an accumulated sum, each
+with its date in its tooltip; the pointer gives the values of its day.
+
+![The chart of a station](reports/v0.5-screenshots/05-wykres-stacji.webp)
+
+"Porównaj z…" in the chart's toolbar opens the comparison of stations with this station
+and the chart's variable and range. In the Catalog's list of stations the button at the
+end of a row, or `P` on a row, chooses up to five stations; "Porównaj" compares them.
+Each station is a panel, one above another over one time axis, all with the same range
+and interval: a selection, the wheel or the keys in any panel zoom them all, and `Home`
+or "Cały okres" shows the whole period again. A station without the series or the
+variable keeps its panel with "brak danych". "Zmienna" switches the variable, "Dodaj
+stację" finds another station with a series of the dataset by name, river or code (five
+at most), and the table below gives each station's facts as on its card, followed by
+each provider's formula.
+
+![The comparison of stations](reports/v0.5-screenshots/06-porownanie-stacji.webp)
+
+The command line and the API (`GET /api/v1/stations`) show the stations and the
+coverage of their series from the index while IMGWTools is installed:
 
 ```sh
 archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous --min-complete-years Q:30
 archiwista stations list --area-id OBSZAR --boundary false
 archiwista stations list --location none
+archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
+archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
+archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
+archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
+archiwista stations datasets
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -454,8 +553,31 @@ set the range and the numbering of the labels, and the next page is `--cursor`.
 `stations show` is the card of a station: its facts, its location with the source and
 the uncertainty, each series with its file and every variable labelled, and the
 licence with the formula IMGW requires. A code that two stores or providers share
-needs `--store` and `--provider`. Without IMGWTools both refuse with the repair
-command `pip install "archiwista[imgw]"`.
+needs `--store` and `--provider`. `stations datasets` names the datasets with station
+series: each with the producer's name, provider and family, the version of its series,
+the years of its labels by default and its variables with their units (`--dataset`
+and `--variable` take them). `--meteo-kind` (repeatable: `synoptic`, `climate`,
+`precipitation`) keeps the meteo stations of those kinds. The list goes along rivers
+(the river's hydrographic code, so a tributary follows its river, then the station's
+place on the provider's list, then the name); `--sort name` orders it by name. `--q`
+finds a station whose name or river contains the text, whatever the case of the
+letters, or whose code begins with it. `stations timeline` is the Timeline of a page
+of the stations of one dataset (`--dataset` is required, the other options are those
+of `stations list`): under each station a line per variable with a character for
+each year of the range (`█` a value in every unit, `▒` with gaps, `·` without a
+value, `?` not known) and its label. `stations series` is the chart of one or two
+variables of a station's series (`--variable`, once or twice; `--dataset` when more
+than one series has them): the range with its days, each unit's value up to
+`--max-points` units (2000 by default) or else the least, mean and greatest value
+of intervals ("uproszczony, min./śr./maks. z 14 dni"), each variable's points with a
+value, the gaps its label counts in `--year-type` and its markers (an accumulated
+sum, an extreme IMGW published). `stations compare` compares one variable of 2 to 5
+stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one range
+(by default every known day of the variable at those stations): the range once, then
+each station with the variable's label and full years and its chart as `stations
+series` writes it, or "brak danych" for a station without it;
+`--json` gives the points. Without IMGWTools each refuses with the repair command
+`pip install "archiwista[imgw]"`.
 
 ## Session
 
@@ -713,9 +835,9 @@ turns the permission log into the action log.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) and its projects, and lists its stations through `archiwista
-  stations` and the API, but has no station views in the interface and no IMGW
-  actions yet (v0.5): an action on an IMGWTools manifest is refused as not
-  supported.
+  catalogs) and its projects, and shows its stations on the map, in the Catalog and
+  in the station card and through `archiwista stations` and the API, but has no
+  chart or comparison of stations in the interface and no IMGW actions yet (v0.5):
+  an action on an IMGWTools manifest is refused as not supported.
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

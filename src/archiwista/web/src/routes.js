@@ -53,6 +53,12 @@ export const VIEWS = [
   { id: "jobs", icon: "tasks", count: useRunningJobs, load: () => import("./views/jobs.js") },
   { id: "store", icon: "database", load: () => import("./views/store.js") },
   { id: "compare", icon: "layers", nav: false, load: () => import("./views/compare.js") },
+  {
+    id: "station-compare",
+    icon: "chart",
+    nav: false,
+    load: () => import("./views/station-compare.js"),
+  },
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
   { id: "accounts", icon: "user", bottom: true, admin: true, load: () => import("./views/accounts.js") },
   { id: "groups", icon: "users", bottom: true, admin: true, load: () => import("./views/groups.js") },
@@ -63,6 +69,7 @@ export const VIEWS = [
 export const OVERLAYS = [
   { param: "file", load: () => import("./views/file.js") },
   { param: "own", load: () => import("./views/own.js") },
+  { param: "station", load: () => import("./views/station.js") },
 ];
 
 /** The view opened without `view=`: the one marked `start`, else the first. */

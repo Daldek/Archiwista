@@ -13,7 +13,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from archiwista.config import OwnFolderReason, OwnFolderSource
+from archiwista.config import (
+    DEFAULT_YEAR_TYPES,
+    OwnFolderReason,
+    OwnFolderSource,
+    YearTypes,
+)
 from archiwista.index.series import SeriesLabel, SeriesState, SeriesYear, YearRange
 from archiwista.owndata.reader import LayerInfo, RasterInfo
 from archiwista.sources import (
@@ -21,6 +26,7 @@ from archiwista.sources import (
     ActionPlan,
     AvailabilityReport,
     CoordinateTransformer,
+    DateRange,
     GeoJSONGeometry,
     LocationKind,
     PlanStatus,
@@ -43,6 +49,10 @@ type BBox = tuple[float, float, float, float]
 # code equal to the river's, or beginning with it.
 type RiverScope = Literal["exact", "tributaries"]
 type StationLocation = Literal["point", "none"]
+# The kind of a meteo station in its catalog (a station type of the map, 6.7).
+type MeteoKind = Literal["synoptic", "climate", "precipitation"]
+# The order of a list of stations (SPEC 6.8): along rivers, or by name.
+type StationSort = Literal["river", "name"]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
 # A producer's current version of a slot, asked by the slot's key at the end of
 # a pass: a path relative to the store, ``None`` without one
@@ -75,6 +85,8 @@ VERSIONS_MODES: tuple[VersionsMode, ...] = (
 )
 LOCATION_FILTERS: tuple[LocationFilter, ...] = ("any", "with", "none")
 RIVER_SCOPES: tuple[RiverScope, ...] = ("exact", "tributaries")
+METEO_KINDS: tuple[MeteoKind, ...] = ("synoptic", "climate", "precipitation")
+STATION_SORTS: tuple[StationSort, ...] = ("river", "name")
 ROW_STATUSES: tuple[RowStatus, ...] = (
     "ok",
     "missing",
@@ -922,6 +934,9 @@ class StationQuery:
         Exact station code.
     kind : str or None
         Exact kind (``hydro``, ``meteo``).
+    meteo_kinds : tuple[MeteoKind, ...]
+        Meteo stations of any of these kinds only (``synoptic``, ``climate``,
+        ``precipitation``; the type chips of the map); empty: no such filter.
     active : bool or None
         Active (``True``) or historical (``False``) stations only.
     river_code, river_scope : str or None, {"exact", "tributaries"}
@@ -930,6 +945,10 @@ class StationQuery:
         ``2138`` takes ``21382``, never ``2139``); a code with ``-`` between
         its parts (ČHMÚ ``1-05-03-0110``) begins with whole parts only
         (``1-05`` takes it, ``1-0`` does not).
+    q : str or None
+        Search text: stations whose name or river contains it, case-folded,
+        or whose code begins with it; no character is a wildcard. Blank: no
+        search.
     bbox : BBox or None
         ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84: located stations
         inside it, edges included (a map view). A station without a location
@@ -942,6 +961,13 @@ class StationQuery:
         Page size, 1 to ``MAX_PAGE_LIMIT``.
     cursor : str or None
         ``next_cursor`` of the previous page of the same query.
+    sort : {"river", "name"}
+        The order of the rows of a page (SPEC 6.8): along rivers (the
+        hydrographic code as text, so a tributary follows its river, then
+        the order of the provider's list on the river, then the name;
+        stations without a code or an order after those with one), or by
+        name; then the code, provider and store. A map draws its stations by
+        name.
     area : GeoJSONGeometry or None
         A ``Polygon`` or ``MultiPolygon`` in WGS84: the located stations in
         it, edges included, and those on its boundary (SPEC 6.7): closer to
@@ -967,7 +993,11 @@ class StationQuery:
         station without the variable never passes a filter of it.
     year_type, years : YearType or None, YearRange or None
         The numbering and the range R of the labels (and of the coverage
-        filters); ``None``: the dataset's defaults (SPEC 4.8.4).
+        filters); ``None``: the type of ``year_types`` and the dataset's R by
+        default (SPEC 4.8.4).
+    year_types : YearTypes
+        The year type remembered for each family: the numbering of a
+        dataset's labels when ``year_type`` is ``None`` (P15).
     labels : bool
         Whether the result holds the coverage of its stations' series
         (``StationPage.coverage``), labelled in ``years`` and ``year_type``.
@@ -977,13 +1007,16 @@ class StationQuery:
     provider: str | None = None
     code: str | None = None
     kind: str | None = None
+    meteo_kinds: tuple[MeteoKind, ...] = ()
     active: bool | None = None
     river_code: str | None = None
     river_scope: RiverScope = "exact"
+    q: str | None = None
     bbox: BBox | None = None
     location: LocationFilter = "any"
     limit: int = DEFAULT_PAGE_LIMIT
     cursor: str | None = None
+    sort: StationSort = "river"
     area: GeoJSONGeometry | None = None
     boundary: bool = True
     dataset: str | None = None
@@ -992,6 +1025,7 @@ class StationQuery:
     min_complete_years: tuple[tuple[str, int], ...] = ()
     year_type: YearType | None = None
     years: YearRange | None = None
+    year_types: YearTypes = DEFAULT_YEAR_TYPES
     labels: bool = False
 
 
@@ -1061,7 +1095,9 @@ class CoverageVariable:
     are its first and last date with a value and ``accumulated`` its
     accumulated sums. ``years`` are its years of the range in the label's
     year type (a year the index knows nothing of is left out) and ``label``
-    its label (SPEC 4.8.4).
+    its label (SPEC 4.8.4); ``known`` are the periods whose units the label
+    counts as known (the station's own, else the version's: A-ADR-021
+    erratum 3), each the dates of its first and last day.
     """
 
     key: str
@@ -1073,6 +1109,7 @@ class CoverageVariable:
     accumulated: int
     years: tuple[SeriesYear, ...]
     label: SeriesLabel
+    known: tuple[DateRange, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1108,11 +1145,11 @@ class StationCoverage:
 
 @dataclass(frozen=True, slots=True)
 class StationPage:
-    """A page of stations by name; ``next_cursor`` is ``None`` on the last page.
+    """A page of stations in the order of the query's ``sort``.
 
-    ``coverage`` holds the coverage of the series of the page's stations when
-    the query asked for labels (``StationQuery.labels``), by station and
-    dataset; empty otherwise.
+    ``next_cursor`` is ``None`` on the last page. ``coverage`` holds the
+    coverage of the series of the page's stations when the query asked for
+    labels (``StationQuery.labels``), by station and dataset; empty otherwise.
     """
 
     items: tuple[StationRow, ...]
@@ -1137,6 +1174,48 @@ class StationMap:
     cells: tuple[GridCell, ...]
     counts: StationCounts
     coverage: tuple[StationCoverage, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetVariable:
+    """A variable of a dataset's station series, as the series index names it.
+
+    ``key`` names it in the series index (``Q``, ``Q_max@winter``), with its
+    ``variable``, ``unit`` and half-year ``period`` (``None`` for daily and
+    monthly data).
+    """
+
+    key: str
+    variable: str
+    unit: str
+    period: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StationDataset:
+    """A dataset with station series in a store's index (the dataset chip, 6.7).
+
+    ``name`` is the producer's name of the dataset's segment; ``kind`` its
+    family (``hydro``, ``meteo``) and ``time_unit`` its unit. ``span`` is R
+    by default (SPEC 4.8.4; ``None`` when the version knows no period) in
+    ``year_type``, the default year type of its labels.
+    ``series`` is the label of the current series version and
+    ``series_version`` its ``series.json``, relative to the store.
+    ``variables`` are the distinct keys of its stations' series, in the order
+    of the series index.
+    """
+
+    store: str
+    dataset: str
+    name: str | None
+    provider: str
+    kind: str | None
+    time_unit: TimeUnit
+    year_type: YearType
+    span: YearRange | None
+    series: str | None
+    series_version: str
+    variables: tuple[DatasetVariable, ...]
 
 
 @dataclass(frozen=True, slots=True)
