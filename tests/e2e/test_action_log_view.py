@@ -3,7 +3,8 @@
 The state database holds a dated log, restored so that its entries keep their
 times: fifty scans Olga started ten days ago, then her change of a project's
 sharing, Ada's change of the settings, Igor's refusal, the scheduler's pruning
-and an agent's file download in the last days, and the accounts made today.
+and an agent's file download in the last days, and the accounts made today;
+Ada's sign-in with a one-time token is the newest entry (``session.login``).
 Ada (an administrator) pages through it, filters it by the group of actions,
 the outcome, the person and the days, which the address keeps, opens a row
 with the state before and after, and exports the entries the filters select
@@ -271,11 +272,15 @@ def test_an_administrator_pages_filters_opens_and_exports_the_log(
         foot = page.locator(".log-foot .hint")
         navigation = page.get_by_role("navigation", name="Widoki")
 
-        # Assert: the newest 50 of 60, who and how for people, „Dziennik” for her.
+        # Assert: the newest 50 of 61, her sign-in first, who and how for people,
+        # and the administrator's views in the navigation, with „Zadania” for
+        # everyone.
         expect(entries).to_have_count(50)
-        expect(entries.first).to_have_attribute("data-entry", "60")
-        expect(foot).to_have_text("wpisy 1–50 z 60 · starsze niż 365 dni są usuwane")
-        expect(navigation.get_by_role("link", name="Dziennik")).to_be_visible()
+        expect(entries.first).to_have_attribute("data-entry", "61")
+        expect(entries.first).to_contain_text("logowanie")
+        expect(foot).to_have_text("wpisy 1–50 z 61 · starsze niż 365 dni są usuwane")
+        for name in ("Zadania", "Dziennik", "Konta", "Grupy"):
+            expect(navigation.get_by_role("link", name=name)).to_be_visible()
         expect(page.locator('tr[data-entry="55"]')).to_contain_text("lena (agent)")
         pruning = page.locator('tr[data-entry="54"]')
         expect(pruning).to_contain_text("harmonogram")
@@ -298,12 +303,12 @@ def test_an_administrator_pages_filters_opens_and_exports_the_log(
 
         # Act: the older page, then back.
         page.get_by_role("button", name="Dalej", exact=True).click()
-        expect(entries).to_have_count(10)
-        expect(entries.first).to_have_attribute("data-entry", "10")
-        expect(foot).to_have_text("wpisy 51–60 z 60 · starsze niż 365 dni są usuwane")
+        expect(entries).to_have_count(11)
+        expect(entries.first).to_have_attribute("data-entry", "11")
+        expect(foot).to_have_text("wpisy 51–61 z 61 · starsze niż 365 dni są usuwane")
         page.get_by_role("button", name="Wstecz", exact=True).click()
         expect(entries).to_have_count(50)
-        expect(foot).to_contain_text("wpisy 1–50 z 60")
+        expect(foot).to_contain_text("wpisy 1–50 z 61")
 
         # Act and assert: each filter changes the rows and the address.
         filters = page.get_by_role("group", name="Filtry dziennika")
@@ -318,7 +323,7 @@ def test_an_administrator_pages_filters_opens_and_exports_the_log(
         assert "action" not in query(page)
 
         filters.get_by_label("Wynik").select_option(label="udane")
-        expect(foot).to_contain_text("wpisy 1–50 z 59")
+        expect(foot).to_contain_text("wpisy 1–50 z 60")
         assert query(page)["outcome"] == ["ok"]
         filters.get_by_label("Wynik").select_option(label="odmowa")
         expect(entries).to_have_count(1)
@@ -337,7 +342,7 @@ def test_an_administrator_pages_filters_opens_and_exports_the_log(
         since = (today - timedelta(days=3)).isoformat()
         until = (today - timedelta(days=2)).isoformat()
         filters.get_by_label("Od dnia").fill(since)
-        expect(entries).to_have_count(9)
+        expect(entries).to_have_count(10)
         filters.get_by_label("Do dnia").fill(until)
         expect(entries).to_have_count(2)
         expect(entries.first).to_have_attribute("data-entry", "53")
@@ -360,20 +365,22 @@ def test_an_administrator_pages_filters_opens_and_exports_the_log(
 
         # Assert: each export is an entry of the log.
         clear.click()
-        expect(entries.first).to_have_attribute("data-entry", "62")
+        expect(entries.first).to_have_attribute("data-entry", "63")
         expect(entries.first).to_contain_text("eksport dziennika")
 
         # Act: Igor, who is no administrator.
         open_log(page, served, principal(state, "other"))
 
-        # Assert: the server's refusal; no „Dziennik”, no filters, no export.
+        # Assert: the server's refusal; „Zadania” but none of the administrator's
+        # views, no filters, no export.
         refusal = page.get_by_role("main").get_by_role("alert")
         expect(refusal).to_contain_text(
             "Odczyt dziennika działań wymaga roli administratora."
         )
         expect(refusal).to_contain_text("HTTP 403")
         expect(navigation.get_by_role("link", name="Zadania")).to_be_visible()
-        expect(navigation.get_by_role("link", name="Dziennik")).to_have_count(0)
+        for name in ("Dziennik", "Konta", "Grupy"):
+            expect(navigation.get_by_role("link", name=name)).to_have_count(0)
         expect(page.get_by_role("group", name="Filtry dziennika")).to_have_count(0)
         expect(page.get_by_role("button", name="Eksportuj CSV")).to_have_count(0)
     engine_tab.assert_clean()
