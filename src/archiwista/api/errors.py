@@ -82,10 +82,10 @@ from archiwista.errors import (
     UnsupportedError,
 )
 from archiwista.messages import message
-from archiwista.state import StateStore
+from archiwista.state import ActionName, StateStore
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
-# One ``permission.denied`` entry per person and action within this time.
+# One refusal per actor/client, action and reason within this time.
 DENIAL_LOG_INTERVAL = timedelta(minutes=1)
 # Service errors answered with a problem, each by its own code (the other
 # errors of ``archiwista.errors`` are not part of the API: 500).
@@ -384,7 +384,7 @@ class DenialLog:
     ) -> None:
         self._state = state
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._logged: dict[tuple[str, str | None], datetime] = {}
+        self._logged: dict[tuple[str, str, str | None], datetime] = {}
         self._lock = threading.Lock()
 
     def denied(
@@ -418,8 +418,27 @@ class DenialLog:
         bool
             Whether an entry was written.
         """
-        who = principal.id if principal is not None else client or "-"
-        key = (who, error.action)
+        if not self._admit(principal, client, "permission.denied", error.action):
+            return False
+        self._state.record(
+            principal,
+            "permission.denied",
+            error.target or path,
+            outcome="denied",
+            details={"action": error.action, "route": route},
+            client=client,
+        )
+        return True
+
+    def _admit(
+        self,
+        principal: Principal | None,
+        client: str | None,
+        action: ActionName,
+        reason: str | None,
+    ) -> bool:
+        who = f"user:{principal.id}" if principal is not None else f"client:{client}"
+        key = (who, action, reason)
         now = self._clock()
         with self._lock:
             last = self._logged.get(key)
@@ -430,13 +449,46 @@ class DenialLog:
                 for other, at in self._logged.items()
                 if now - at < DENIAL_LOG_INTERVAL
             }
+            # Do not let arbitrary unauthenticated clients grow memory forever.
+            # Keep live keys rather than evicting them and bypassing their limit.
+            if len(self._logged) >= 4096:
+                return False
             self._logged[key] = now
+        return True
+
+    def refused(
+        self,
+        principal: Principal | None,
+        reason: str,
+        *,
+        route: str,
+        client: str | None,
+    ) -> bool:
+        """Log a request-rule refusal once per actor/client and reason per minute."""
+        if not self._admit(principal, client, "request.refused", reason):
+            return False
         self._state.record(
             principal,
-            "permission.denied",
-            error.target or path,
+            "request.refused",
+            reason,
             outcome="denied",
-            details={"action": error.action, "route": route},
+            details={"reason": reason, "route": route},
+            client=client,
+        )
+        return True
+
+    def login_failed(
+        self, *, method: str, reason: str, client: str | None, target: str = "-"
+    ) -> bool:
+        """Log a token/proxy failure without credentials, throttled by client."""
+        if not self._admit(None, client, "session.login_failed", reason):
+            return False
+        self._state.record(
+            None,
+            "session.login_failed",
+            target,
+            outcome="failed",
+            details={"method": method, "reason": reason},
             client=client,
         )
         return True
@@ -460,6 +512,16 @@ async def _service_error(request: Request, error: Exception) -> JSONResponse:
         headers = {"Retry-After": str(error.retry_after_s)}
     if isinstance(error, PermissionDeniedError):
         await run_in_threadpool(_log_denial, request, error)
+    if isinstance(error, PathOutsideRootError):
+        denials: DenialLog = request.app.state.denials
+        template = getattr(request.scope.get("route"), "path", "/api/*")
+        await run_in_threadpool(
+            denials.refused,
+            getattr(request.state, "principal", None),
+            "path_outside_root",
+            route=f"{request.method} {template.removeprefix(API_PREFIX)}",
+            client=getattr(request.state, "client", None),
+        )
     return problem_response(describe(error), request, headers=headers)
 
 

@@ -600,6 +600,26 @@ def permission_denied(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
+def request_refused(tmp_path: Path) -> Performed:
+    """Refuse a cross-origin request before routing, without storing the origin."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        response = made.api.client.get(
+            "/api/v1/settings", headers={"Origin": "https://outside.invalid"}
+        )
+        assert_problem(response, 403, "forbidden", "csrf_rejected")
+        expected = Logged(
+            actor="-",
+            actor_kind="anonymous",
+            session=None,
+            client=CLIENT,
+            target="csrf_rejected",
+            outcome="denied",
+            details={"reason": "csrf_rejected", "route": "GET /api/*"},
+        )
+        return Performed(made.api.state, since, expected)
+
+
 def log_prune(tmp_path: Path) -> Performed:
     """Prune what the scheduler's first tick finds older than the retention."""
     with world(tmp_path) as made:
@@ -681,6 +701,7 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "job.cancel": job_cancel,
     "job.retry": job_retry,
     "permission.denied": permission_denied,
+    "request.refused": request_refused,
     "log.export": log_export,
     "log.prune": log_prune,
     "file.download": file_download,

@@ -41,7 +41,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from archiwista.api.dependencies import authorizer
-from archiwista.api.errors import ApiError, problem_responses
+from archiwista.api.errors import ApiError, DenialLog, problem_responses
 from archiwista.auth import LOCAL_PRINCIPAL_ID, Principal, PrincipalKind, passwords
 from archiwista.auth.throttle import (
     LoginAttempt,
@@ -467,21 +467,20 @@ def proxy_sign_in(request: Request, response: Response) -> NewSession:
     if not transport.team:
         raise ApiError("conflict", message("auth.local_mode"), reason="local_mode")
     named = named_by_proxy(request.scope, transport)
+    denials: DenialLog = request.app.state.denials
     if named is None:
+        denials.login_failed(
+            method="proxy", reason="no_proxy_user", client=_client(request)
+        )
         raise _proxy_refused()
     state = _state_store(request)
     client = _client(request)
     user = _proxy_account(state, named, transport, client)
     if user is None or user.disabled:
-        state.record(
-            None,
-            "session.login_failed",
-            _typed(named[:ACCOUNT_MAX_LENGTH]),
-            outcome="failed",
-            details={
-                "reason": "unknown_proxy_user" if user is None else "disabled",
-                "method": "proxy",
-            },
+        denials.login_failed(
+            method="proxy",
+            reason="unknown_proxy_user" if user is None else "disabled",
+            target=_typed(named[:ACCOUNT_MAX_LENGTH]),
             client=client,
         )
         raise _proxy_refused()
@@ -489,6 +488,7 @@ def proxy_sign_in(request: Request, response: Response) -> NewSession:
         request, response, user.id, "user", method="proxy", proxy_user=named
     )
     if started is None:  # disabled between the check and the session
+        denials.login_failed(method="proxy", reason="disabled", client=client)
         raise _proxy_refused()
     state.record(
         started.principal, "session.login", user.id, details={"method": "proxy"}
@@ -583,7 +583,11 @@ def exchange_token(
     index_path: Path = request.app.state.index_path
     transport: Transport = request.app.state.transport
     grant = redeem_one_time_token(index_path, body.token)
+    denials: DenialLog = request.app.state.denials
     if grant is None or (transport.team and grant.principal_id == LOCAL_PRINCIPAL_ID):
+        denials.login_failed(
+            method="token", reason="token_rejected", client=_client(request)
+        )
         raise ApiError(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )
@@ -599,6 +603,12 @@ def exchange_token(
         generation=grant.generation,
     )
     if started is None:
+        denials.login_failed(
+            method="token",
+            reason="token_rejected",
+            target=grant.principal_id,
+            client=_client(request),
+        )
         raise ApiError(
             "unauthorized", message("api.token_rejected"), reason="session_required"
         )

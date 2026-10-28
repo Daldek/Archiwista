@@ -29,6 +29,7 @@ export const log = {
     "job.": "Zadania",
     "file.": "Pobrania plików",
     "permission.": "Odmowy",
+    "request.": "Reguły żądań",
     "log.": "Dziennik",
   },
   outcomes: {
@@ -114,6 +115,7 @@ export const log = {
     "job.cancel": "anulowanie zadania",
     "job.retry": "ponowienie zadania",
     "permission.denied": "odmowa dostępu",
+    "request.refused": "odmowa żądania",
     "log.export": "eksport dziennika",
     "log.prune": "usunięcie starych wpisów",
     "file.download": "pobranie pliku",

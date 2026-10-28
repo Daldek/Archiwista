@@ -175,6 +175,7 @@ MESSAGES = {
     "action_job_cancel": Text("job cancelled", "anulowanie zadania"),
     "action_job_retry": Text("job retried", "ponowienie zadania"),
     "action_permission_denied": Text("permission denied", "odmowa dostępu"),
+    "action_request_refused": Text("request refused", "odmowa żądania"),
     "action_log_export": Text("log exported", "eksport dziennika"),
     "action_log_prune": Text("old entries deleted", "usunięcie starych wpisów"),
     "action_file_download": Text("file downloaded", "pobranie pliku"),

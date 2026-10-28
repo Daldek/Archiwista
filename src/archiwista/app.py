@@ -264,6 +264,7 @@ def create_app(
         settings=settings.get,
         principals=app.state.principals,
         proxy_log=ProxyHeaderLog(state),
+        denials=app.state.denials,
     )
     app.add_middleware(LanguageMiddleware)
     return app

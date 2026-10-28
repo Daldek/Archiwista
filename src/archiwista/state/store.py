@@ -71,6 +71,7 @@ type ActionName = Literal[
     "job.cancel",
     "job.retry",
     "permission.denied",
+    "request.refused",
     "log.export",
     "log.prune",
     "file.download",

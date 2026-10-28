@@ -406,6 +406,13 @@ file downloads, refused requests, the deletion of entries older than
 administrators read it, in "Dziennik" (action log) at the bottom of their
 navigation; anyone else who opens it gets the refusal, which the log records.
 
+Request-rule refusals appear as "odmowa żądania" (`request.refused`, filter
+"Reguły żądań"); their details name the reason. Rejected tokens and proxy
+sign-ins appear as failed sign-ins. Repeated refusals of the same reason
+are recorded at most once per person (or unauthenticated client address) and
+action per minute. A request with no session cookie is not itself an audit
+event. Passwords, tokens, cookies and raw request addresses are not recorded.
+
 - **The table** shows 50 entries a page, newest first: when, who (an account,
   "… (agent)", "harmonogram" for the scheduler, "niezalogowany" before a
   sign-in), the action, what it was about, the outcome and the client's address

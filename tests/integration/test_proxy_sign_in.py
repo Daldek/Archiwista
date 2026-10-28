@@ -137,7 +137,8 @@ def test_the_header_from_another_computer_is_ignored_and_logged(
         (entry.action, entry.actor_kind, entry.target, entry.outcome, entry.client)
         for entry in entries
     ] == [
-        ("session.proxy_header_ignored", "anonymous", OTHER_PEER, "denied", OTHER_PEER)
+        ("session.proxy_header_ignored", "anonymous", OTHER_PEER, "denied", OTHER_PEER),
+        ("session.login_failed", "anonymous", "-", "failed", OTHER_PEER),
     ]
 
 

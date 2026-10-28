@@ -1052,6 +1052,19 @@ itself (on a team server also sign-ins and sessions). Only an administrator read
 (`log.read`); anyone else gets `403 permission_denied`, which is logged too. The CLI
 acts as the owner of the installation, who is one.
 
+`request.refused` (`denied`) records `invalid_host`, `csrf_rejected`,
+`tls_required`, `proxy_required`, `session_required` when a cookie was supplied,
+`password_change_required` and `path_outside_root`. Its target is the reason;
+details hold `reason` and `route`. Before routing, `route` is only the method
+and `/api/*` (or `/`); after routing it is the route template. Raw paths, query
+strings, headers, passwords and tokens are never copied into these entries.
+Token and proxy refusals use `session.login_failed` (`failed`) with `method`
+and `reason`. Each refusal is logged at most once per actor/client, action and
+reason per minute (permission refusals keep their existing per-action rule).
+The in-memory limiter keeps at most 4,096 live keys; at capacity new keys are
+not logged until a key expires, while requests remain refused. It resets on
+server restart. This is a sampled audit, not a count of all failed requests.
+
 - **Filters** of `GET /log`, `GET /log/export` and both commands (`--actor` …):
   `actor` (an account id, `local`, or `-` before a sign-in), `action` (a name such
   as `job.start`, or a group by its prefix ending with a dot: `session.`),

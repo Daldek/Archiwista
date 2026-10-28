@@ -29,3 +29,16 @@
 - PDFs are downloaded, not shown; a view of their pages (pdf.js without scripting, in the preview pane) is a later option.
 
 **Erratum 1 (2026-10-27, plan v0.4 step T11, decided by the coordinating session on the author's behalf, delegated approval; a clean cut-over):** decision 6 is built as `GET`/`PUT /preferences` over the table `preferences` of the state database (`StateStore.preferences`, `set_preferences`; not logged: a preference changes what one person sees, not what anyone may do). `year_types` left `AppSettings`, `GET`/`PUT /settings` and the route `PUT /settings/year-types` of ADR-045 decision 3 without an alias; a `year_types` an earlier build wrote into `config.toml` is ignored when the file is read (`RETIRED_SETTINGS`), left out of its next save and named by `archiwista doctor` as a warning with its fix, rather than refusing the file or moving the choice into the local owner's preferences (one installation's own choice, made again with one click). `basemap` is a configured basemap's name, `""` for none or `null` for the first configured one (another name is `400 unknown_basemap`). The station cases (each person numbers the years as they chose, a given `year_type` wins, `archiwista stations` reads the local owner's) stay in `tests/integration/test_year_types.py`, which needs IMGWTools; the rest is `tests/integration/test_preferences.py`.
+
+**Erratum 2 (2026-10-28, D7, delegated approval):** request-rule refusals use
+`request.refused` with outcome `denied`, a reason and a safe route description.
+Before routing, only the method and `/api/*` (or `/`) are retained; after
+routing, the route template is used. Token and proxy authentication failures
+use `session.login_failed`, without the token or raw headers. The existing
+thread-safe denial limiter is shared: at most one entry per actor/client,
+action and reason per minute, with at most 4,096 live keys and no eviction of
+live keys. At capacity new keys are omitted until expiry; restart resets the
+limiter. This bounds memory and repeated audit writes, not request admission.
+Refusals due only to a missing session cookie and the first refusal of a known
+revoked or disabled principal add no duplicate session event. Unknown cookies
+and proxy identity mismatches are recorded. D6/D10 are outside this erratum.

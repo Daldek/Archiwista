@@ -1131,6 +1131,12 @@ command-line interface may change.
 
 ### Security
 
+- Security refusals now reach the action log (D7): `request.refused` records
+  Host, CSRF, TLS, proxy, session and temporary-password request-rule refusals,
+  and paths outside their allowed root. Rejected tokens and missing or refused
+  proxy identities record `session.login_failed`. Entries are limited to one
+  per actor/client, action and reason per minute; credentials and raw request
+  paths, query strings and headers are not stored.
 - A project's data folder that lies inside the project's directory (the default
   `dane/` and every folder its owner sets) is checked again at every scan and before
   a snapshot: when a symbolic link now leads it out of the project, nothing in it is

@@ -59,13 +59,14 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, Request, Security
 from fastapi.security import APIKeyCookie, APIKeyHeader
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import HTTPConnection
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from archiwista.api import API_PREFIX, DOCS_PATH
-from archiwista.api.errors import ApiError, problem_response
+from archiwista.api.errors import ApiError, DenialLog, problem_response
 from archiwista.auth import Principal, PrincipalKind
 from archiwista.auth.authorize import session_principal
 from archiwista.config import HTTPS_PORT, AppSettings, IPNetwork
@@ -1155,6 +1156,7 @@ class _Rejection:
     reason: str
     detail: str
     hint: str | None = None
+    audit: bool = True
 
     def problem(self) -> Problem:
         return Problem(
@@ -1225,6 +1227,7 @@ class SecurityMiddleware:
         settings: Callable[[], AppSettings],
         principals: Callable[[Session], Principal | None],
         proxy_log: ProxyHeaderLog,
+        denials: DenialLog,
     ) -> None:
         self.app = app
         self._transport = transport
@@ -1233,6 +1236,7 @@ class SecurityMiddleware:
         self._settings = settings
         self._principals = principals
         self._proxy_log = proxy_log
+        self._denials = denials
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Check an HTTP request; other scopes (lifespan) pass unchanged."""
@@ -1273,6 +1277,9 @@ class SecurityMiddleware:
             else:
                 receive = _replay(body, receive)
         if isinstance(outcome, _Rejection):
+            await run_in_threadpool(
+                self._log_refusal, connection, outcome, method, path
+            )
             response = problem_response(outcome.problem(), Request(scope))
             await response(scope, receive, send_secured)
             return
@@ -1282,6 +1289,26 @@ class SecurityMiddleware:
             state["session"] = outcome.session
             state["principal"] = replace(outcome.principal, client=state["client"])
         await self.app(scope, receive, send_secured)
+
+    def _log_refusal(
+        self, connection: HTTPConnection, refusal: _Rejection, method: str, path: str
+    ) -> None:
+        if not refusal.audit or refusal.reason == "request_too_large":
+            return
+        cookie = connection.cookies.get(self._cookie)
+        if refusal.reason == "session_required" and cookie is None:
+            return
+        session = self._sessions.get(cookie)
+        principal = None if session is None else self._principals(session)
+        if session is not None and principal is None:
+            return  # Revocation/disablement already has its own audit entry.
+        self._denials.refused(
+            principal,
+            refusal.reason,
+            # Routing has not run; never persist raw paths, query or headers.
+            route=f"{method} {'/api/*' if _is_api(path) else '/'}",
+            client=client_address(connection.scope, self._transport),
+        )
 
     def _check(
         self, connection: HTTPConnection, method: str, path: str
@@ -1322,7 +1349,10 @@ class SecurityMiddleware:
         if principal is None or extended is None:
             self._sessions.end(session_id)
             ended = message("api.session_ended")
-            return _Rejection("unauthorized", "session_required", ended, hint)
+            # Account/session revocation already has its own audit event.
+            return _Rejection(
+                "unauthorized", "session_required", ended, hint, audit=False
+            )
         return _Authorized(extended, principal)
 
     def _invalid_host(self) -> str:
