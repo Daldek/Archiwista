@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 from archiwista.auth import LOCAL_OWNER, SCHEDULER, Principal, access_key
-from archiwista.auth.authorize import Action, Authorizer
+from archiwista.auth.authorize import ACTIONS, Action, Authorizer, principal_for
 from archiwista.cli import main
 from archiwista.config import ConfigStore
 from archiwista.errors import PermissionDeniedError
@@ -28,6 +28,7 @@ from archiwista.state import ActionQuery, StateStore
 from tests.fixtures.permissions import as_agent
 from tests.fixtures.team_projects import (
     ADMIN,
+    OTHER,
     OWNER,
     STORE,
     TeamPlace,
@@ -273,3 +274,103 @@ def test_the_jobs_of_a_store_are_an_administrators(place: TeamPlace) -> None:
         (every_folder.id, OWNER): refused,
         (every_folder.id, ADMIN): "202",
     }
+
+
+def test_all_team_actions_follow_the_role_and_resource_matrix(place: TeamPlace) -> None:
+    """A project owner, a writer, an admin, agents and a proxy user differ."""
+    state = StateStore(place.paths.state_file)
+    add_team(state)
+    state.update_user(OTHER, roles=["store_writer"], actor=LOCAL_OWNER)
+    state.update_user(ADMIN, roles=("admin", "store_writer"), actor=LOCAL_OWNER)
+    project = access_key(place.projects / "raba")
+    state.set_project_access(
+        project, owner=OWNER, visibility="group", groups=("hydro",), actor=LOCAL_OWNER
+    )
+    kasia = principal_for(state, OWNER)
+    marek = principal_for(state, OTHER)
+    anna = principal_for(state, ADMIN)
+    assert kasia and marek and anna
+    principals = {
+        "owner": LOCAL_OWNER,
+        "owner agent": as_agent(place.paths.index_file, state, LOCAL_OWNER),
+        "scheduler": SCHEDULER,
+        "admin": anna,
+        "admin agent": as_agent(place.paths.index_file, state, anna),
+        "writer": marek,
+        "writer agent": as_agent(place.paths.index_file, state, marek),
+        "user": kasia,
+        "user agent": as_agent(place.paths.index_file, state, kasia),
+        "proxy writer": Principal(
+            id=OTHER,
+            kind="user",
+            roles=marek.roles,
+            groups=marek.groups,
+            client="10.0.0.5",
+        ),
+    }
+    privileged = {"owner", "owner agent", "scheduler", "admin", "admin agent"}
+    writer = {"writer", "writer agent", "proxy writer"}
+    member = {"user", "user agent"}
+    expected: dict[Action, set[str]] = {
+        "project.view": privileged | member,
+        "project.share": privileged | member,
+        "project.write": privileged | member,
+        "project.create": (privileged - {"scheduler"}) | writer | member,
+        "users.manage": privileged,
+        "groups.manage": privileged,
+        "settings.write": privileged,
+        "store.write": privileged | writer,
+        "store.scan": privileged,
+        "job.cancel": privileged | member,
+        "log.read": privileged,
+    }
+    assert set(expected) == set(ACTIONS)
+    authorizer = Authorizer(state, ConfigStore(place.paths.config_file).load)
+    for action in ACTIONS:
+        resource = OWNER if action == "job.cancel" else project
+        allowed = {
+            label
+            for label, principal in principals.items()
+            if authorizer.can(principal, action, resource)
+        }
+        assert allowed == expected[action], action
+
+
+def test_team_routes_in_the_plan_are_published_in_openapi(place: TeamPlace) -> None:
+    """A planned route missing from the public contract blocks T12 acceptance."""
+    expected = {
+        ("/session/methods", "get"),
+        ("/session/login", "post"),
+        ("/session/password", "put"),
+        ("/session/proxy", "post"),
+        ("/sessions", "get"),
+        ("/sessions/{label}", "delete"),
+        ("/users/{user_id}/sessions", "delete"),
+        ("/users/{user_id}/password", "post"),
+        ("/projects", "post"),
+        ("/projects/{project}/data-dir", "put"),
+        ("/projects/{project}/scan", "post"),
+        ("/stores/{store}/scan", "post"),
+        ("/stores/{store}/footprints", "post"),
+        ("/stores/{store}/link-check", "post"),
+        ("/directory", "get"),
+        ("/log", "get"),
+        ("/log/export", "get"),
+        ("/jobs", "get"),
+        ("/preferences", "get"),
+        ("/preferences", "put"),
+        ("/stores/{store}/versions/{version}/file", "get"),
+        ("/projects/{project}/files/{file_id}/snapshots/{label}/file", "get"),
+        ("/projects/{project}/files/{file_id}/file", "get"),
+    }
+    with team_api(place) as served:
+        response = served.caller(ADMIN).request("GET", "/openapi.json")
+        assert response.status_code == 200
+        paths = response.json()["paths"]
+    actual = {
+        (path.removeprefix("/api/v1"), method)
+        for path, methods in paths.items()
+        for method in methods
+    }
+    assert expected <= actual, sorted(expected - actual)
+    assert ("/settings/year-types", "put") not in actual
