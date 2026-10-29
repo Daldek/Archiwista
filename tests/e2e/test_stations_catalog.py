@@ -208,6 +208,7 @@ def test_stations_without_a_position_show_the_reason_and_no_map_link(
     opened = query_of(page)
     page.keyboard.press("Escape")
     expect(page.locator(".station-card")).to_have_count(0)
+    expect(page).not_to_have_url(re.compile(r"[?&]station="))
     page.keyboard.press("m")
     after = query_of(page)
 
