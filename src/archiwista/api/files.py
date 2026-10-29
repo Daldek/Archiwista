@@ -23,14 +23,18 @@ the CSRF header (``Sec-Fetch-Site`` ``same-origin`` or ``none``,
 streams within the person's limit (``app.state.file_streams``, ``429
 too_many_downloads``) and, when its answer sends the file's first byte, is
 logged (``file.download`` with ``size_bytes``); a ``HEAD`` answers the headers
-only. This router comes before the catalog's, whose
+only. A stream stops about a second after its session ends or acts as nobody
+(``security.session_watch``; ASVS 7.4.1, 7.4.2): the connection closes before
+the file's end. This router comes before the catalog's, whose
 ``/stores/{store}/versions/{version}`` would otherwise take ``…/file``.
 """
 
+import logging
 import os
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import IO, Annotated, Any
 
 import anyio
 from fastapi import APIRouter, Depends, Path, Query, Request
@@ -54,7 +58,7 @@ from archiwista.config import AppPaths, SettingsService
 from archiwista.index import IndexQueries
 from archiwista.messages import message
 from archiwista.refs import ObjectResolver
-from archiwista.security import current_principal
+from archiwista.security import current_principal, session_watch
 from archiwista.services.files import (
     FILE_DOWNLOADS_PER_PERSON,
     RETRY_AFTER_S,
@@ -68,8 +72,13 @@ from archiwista.services.files import (
 
 router = APIRouter(tags=["files"])
 
+logger = logging.getLogger(__name__)
+
 # A file is fetched again each time: who sees it is checked each time.
 CACHE_CONTROL = "private, no-store"
+# Seconds between two checks of a streaming download's session: a stream
+# outlives the end of its session by about this.
+SESSION_CHECK_S = 1.0
 _VERSION_FILE = "/stores/{store}/versions/{version:path}/file"
 _OWN_FILE = "/projects/{project}/files/{file_id}/file"
 _SNAPSHOT_FILE = "/projects/{project}/files/{file_id}/snapshots/{label}/file"
@@ -242,15 +251,42 @@ def download_snapshot_file(
     return _answer(request, found, principal, decisions)
 
 
+class _SessionEnded(Exception):
+    """The session of a download ended while its file was being sent."""
+
+
+class _WhileActing(anyio.AsyncFile[bytes]):
+    """A file read only while the session of its download acts.
+
+    A read asks ``acting`` again (in a thread) once ``SESSION_CHECK_S`` has
+    passed since it last did, and raises ``_SessionEnded`` when the session
+    has ended or acts as nobody (``security.session_watch``).
+    """
+
+    def __init__(self, file: IO[bytes], acting: Callable[[], Principal | None]) -> None:
+        super().__init__(file)
+        self._acting = acting
+        self._asked = time.monotonic()
+
+    async def read(self, size: int = -1) -> bytes:
+        """Read the next part of the file, unless its session has ended."""
+        if time.monotonic() - self._asked >= SESSION_CHECK_S:
+            if await anyio.to_thread.run_sync(self._acting) is None:
+                raise _SessionEnded
+            self._asked = time.monotonic()
+        return await super().read(size)
+
+
 class _Opened(FileResponse):
     """A file answered from the descriptor ``open_download`` checked.
 
     Starlette's ``FileResponse`` reads the file it opens by its path; this one
     reads the descriptor it is given (``_open_file``) and never sends the
     path to the server (``http.response.pathsend``), so the answer is the
-    file that was checked inside its root. The descriptor closes when the
-    answer ends, however it ends (the client leaving too), and so does the
-    person's count in ``FileStreams`` (``end``).
+    file that was checked inside its root. With ``acting`` it reads only
+    while the request's session acts (``_WhileActing``). The descriptor
+    closes when the answer ends, however it ends (the client leaving too),
+    and so does the person's count in ``FileStreams`` (``end``).
     """
 
     def __init__(
@@ -259,9 +295,12 @@ class _Opened(FileResponse):
         descriptor: int,
         *,
         end: Callable[[], None] | None = None,
+        acting: Callable[[], Principal | None] | None = None,
     ) -> None:
         self._file = os.fdopen(descriptor, "rb")
         self._end = end
+        self._acting = acting
+        self._ref = found.ref
         try:
             status = os.fstat(descriptor)
         except BaseException:
@@ -284,9 +323,16 @@ class _Opened(FileResponse):
             end()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Send the file; the client leaving closes it too."""
+        """Send the file; the client leaving or its session ending closes it too.
+
+        A stream whose session ended stops where it is, without the rest of
+        the file: the server closes the connection (and logs that the
+        answer was not completed), as for a client that left.
+        """
         try:
             await super().__call__(scope, receive, send)
+        except _SessionEnded:
+            logger.info("The download of %s stopped: its session ended", self._ref)
         finally:
             self.close()
 
@@ -312,7 +358,10 @@ class _Opened(FileResponse):
 
     @asynccontextmanager
     async def _open_file(self) -> AsyncIterator[anyio.AsyncFile[bytes]]:
-        yield anyio.AsyncFile(self._file)
+        if self._acting is None:
+            yield anyio.AsyncFile(self._file)
+        else:
+            yield _WhileActing(self._file, self._acting)
 
     async def _handle_simple(
         self, send: Send, send_header_only: bool, send_pathsend: bool
@@ -329,7 +378,9 @@ def _answer(
     streams: FileStreams = request.app.state.file_streams
     end = streams.start(principal.id)
     try:
-        answer = _Opened(found, open_download(found), end=end)
+        answer = _Opened(
+            found, open_download(found), end=end, acting=session_watch(request)
+        )
     except BaseException:
         end()
         raise

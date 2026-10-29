@@ -4,13 +4,16 @@ The application serves a generated Kartograf store with a real job
 supervisor whose workers carry test hooks (``tests.fixtures.job_worker``):
 jobs are started, listed and followed over HTTP as the interface and agents
 do, offline. The test client buffers a response, so it reads a stream whole
-once the job has ended; one test follows a stream on a real server.
+once the job has ended; the tests of a stream's own end follow it on a real
+server.
 """
 
 import json
 import queue
 import threading
+import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +29,9 @@ from archiwista.security import (
     CSRF_HEADER,
     LOOPBACK_HOST,
     SESSION_COOKIE,
+    TokenKind,
     issue_one_time_token,
+    revoke_agent_sessions,
 )
 from archiwista.server import AppServer, LaunchFile, bind_address
 from archiwista.state import StateStore
@@ -37,6 +42,7 @@ from tests.fixtures.jobs import (
     SLOW_ENTRY_S,
     STORE,
     TEST_WORKER,
+    JobsEnv,
     jobs_env,
 )
 from tests.fixtures.jobs_api import JobsApi, jobs_api
@@ -462,6 +468,60 @@ def test_job_list_filters_and_pages(served: JobsApi) -> None:
         assert_problem(refused, 400, "validation_error")
 
 
+@contextmanager
+def _serving(env: JobsEnv) -> Iterator[tuple[AppServer, threading.Thread, str]]:
+    """Serve the application over ``env`` on a loopback port in a thread.
+
+    Yields the server, its thread and the address of the API; the server
+    stops when the block ends, unless the test stopped it first.
+    """
+    sock = bind_address(LOOPBACK_HOST, 0)
+    port = sock.getsockname()[1]
+    app = create_app(
+        port=port,
+        settings=env.settings,
+        index_path=env.paths.index_file,
+        state=StateStore(env.paths.state_file),
+        registry=NoSources(),
+        areas_dir=env.paths.areas_dir,
+        jobs=env.jobs,
+    )
+    server = AppServer(
+        sock,
+        app,
+        url="",
+        launch=LaunchFile(env.paths.data_dir),
+        access_log=False,
+        on_stop=app.state.job_streams.close,
+    )
+    serving = threading.Thread(target=server.run, daemon=True)
+    serving.start()
+    try:
+        yield server, serving, f"http://127.0.0.1:{port}{API_PREFIX}"
+    finally:
+        server.stop()
+        serving.join(timeout=WAIT_S / 3)
+
+
+def _signed_in(env: JobsEnv, api: str, kind: TokenKind) -> httpx.Client:
+    """Return a client of a session the owner's one-time token of ``kind`` opened."""
+    token = issue_one_time_token(env.paths.index_file, kind, minted_by=LOCAL_OWNER)
+    client = httpx.Client(base_url=api, timeout=None)
+    exchanged = client.post("/session", json={"token": token.token})
+    assert exchanged.status_code == 200, exchanged.text
+    client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
+    return client
+
+
+def _follow(client: httpx.Client, job: str, lines: queue.Queue[str | None]) -> None:
+    """Put the status and lines of a job's event stream into ``lines``, then None."""
+    with client.stream("GET", f"/jobs/{job}/events") as response:
+        lines.put(str(response.status_code))
+        for line in response.iter_lines():
+            lines.put(line)
+    lines.put(None)
+
+
 def test_event_stream_ends_when_server_stops(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -469,47 +529,15 @@ def test_event_stream_ends_when_server_stops(
     # Arrange: a scan of about 16 s followed over a real connection.
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S * 4))
     lines: queue.Queue[str | None] = queue.Queue()
-    with jobs_env(tmp_path, monkeypatch) as env:
-        sock = bind_address(LOOPBACK_HOST, 0)
-        port = sock.getsockname()[1]
-        app = create_app(
-            port=port,
-            settings=env.settings,
-            index_path=env.paths.index_file,
-            state=StateStore(env.paths.state_file),
-            registry=NoSources(),
-            areas_dir=env.paths.areas_dir,
-            jobs=env.jobs,
-        )
-        server = AppServer(
-            sock,
-            app,
-            url="",
-            launch=LaunchFile(env.paths.data_dir),
-            access_log=False,
-            on_stop=app.state.job_streams.close,
-        )
-        serving = threading.Thread(target=server.run, daemon=True)
-        serving.start()
+    with (
+        jobs_env(tmp_path, monkeypatch) as env,
+        _serving(env) as (server, serving, api),
+    ):
         job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
-        token = issue_one_time_token(
-            env.paths.index_file, "startup", minted_by=LOCAL_OWNER
+        client = _signed_in(env, api, "startup")
+        follower = threading.Thread(
+            target=_follow, args=(client, job.id, lines), daemon=True
         )
-        client = httpx.Client(
-            base_url=f"http://127.0.0.1:{port}{API_PREFIX}", timeout=None
-        )
-        exchanged = client.post("/session", json={"token": token.token})
-        assert exchanged.status_code == 200
-        client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
-
-        def follow() -> None:
-            with client.stream("GET", f"/jobs/{job.id}/events") as response:
-                lines.put(str(response.status_code))
-                for line in response.iter_lines():
-                    lines.put(line)
-            lines.put(None)
-
-        follower = threading.Thread(target=follow, daemon=True)
         follower.start()
         opened = [lines.get(timeout=WAIT_S) for _ in range(4)]
 
@@ -525,4 +553,49 @@ def test_event_stream_ends_when_server_stops(
     # Assert
     assert opened == ["200", "id: 1", "event: state", 'data: {"state":"queued"}']
     assert not serving.is_alive() and not follower.is_alive()
+    assert record is not None and record.state == "running"
+
+
+@pytest.mark.parametrize("ending", ["sign-out", "agents revoked"])
+def test_event_stream_ends_with_its_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    """An open stream ends about a second after its session ends; the job goes on.
+
+    After a sign-out, or the revocation of agent sessions under an agent's
+    stream, the stream used to follow the job to its end (review of v0.4,
+    D6; ASVS 7.4.1, 7.4.2).
+    """
+    # Arrange: a scan of about 16 s followed over a real connection.
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S * 4))
+    lines: queue.Queue[str | None] = queue.Queue()
+    kind: TokenKind = "startup" if ending == "sign-out" else "agent"
+    with jobs_env(tmp_path, monkeypatch) as env, _serving(env) as (_, _, api):
+        job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
+        client = _signed_in(env, api, kind)
+        threading.Thread(
+            target=_follow, args=(client, job.id, lines), daemon=True
+        ).start()
+        opened = [lines.get(timeout=WAIT_S) for _ in range(4)]
+
+        # Act
+        if ending == "sign-out":
+            with httpx.Client(
+                base_url=api, headers=client.headers, cookies=client.cookies
+            ) as other:
+                assert other.delete("/session").status_code == 204
+        else:
+            revoke_agent_sessions(env.paths.index_file)
+        ended = time.monotonic()
+        while lines.get(timeout=WAIT_S) is not None:
+            pass
+        took_s = time.monotonic() - ended
+        record = env.jobs.get(job.id)
+        env.jobs.cancel(job.id)
+        env.wait(job.id)
+        client.close()
+
+    # Assert
+    assert opened == ["200", "id: 1", "event: state", 'data: {"state":"queued"}']
+    assert took_s < 3, took_s
     assert record is not None and record.state == "running"

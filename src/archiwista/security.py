@@ -24,7 +24,9 @@ Every request of a session signed in through the proxy must come from a
 trusted proxy naming the same person, and the proxy's header from any other
 peer is ignored and logged (``ProxyHeaderLog``). The session acts as a
 ``Principal`` whose roles and groups are read for every request
-(``current_principal`` for routers), and a session of a
+(``current_principal`` for routers); an answer that goes on after its
+request (a job's event stream, a file) ends with its session
+(``session_watch``), and a session of a
 temporary password may only change it. An agent's session ends 12 hours
 after its start at the latest, and at once when the owner revokes agent
 sessions (``revoke_agent_sessions``); every session ends when its account's
@@ -1417,6 +1419,29 @@ async def current_principal(
     """
     principal: Principal = request.state.principal
     return principal
+
+
+def session_watch(request: Request) -> Callable[[], Principal | None]:
+    """Return a check of who the request's session acts as now.
+
+    The request rules admit a request once; an answer that goes on after it
+    (a job's event stream, a file) asks this check between its parts and
+    ends when it answers ``None``: the session has ended (a sign-out, its
+    expiry, the person or an administrator ending it, a password change) or
+    acts as nobody now (a disabled or removed account, a revocation; ASVS
+    7.4.1, 7.4.2). It reads the session as ``SecurityMiddleware`` does and
+    never extends it: an open answer keeps no session alive.
+    """
+    sessions: SessionStore = request.app.state.sessions
+    principals: Callable[[Session], Principal | None] = request.app.state.principals
+    transport: Transport = request.app.state.transport
+    session_id = request.cookies.get(session_cookie_name(transport))
+
+    def acting() -> Principal | None:
+        session = sessions.get(session_id)
+        return None if session is None else principals(session)
+
+    return acting
 
 
 # Response headers ----------------------------------------------------------

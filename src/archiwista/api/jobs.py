@@ -13,7 +13,8 @@ every process, ``archiwista reindex`` too. ``GET /jobs/{job}/events`` streams a
 job's ``progress``, ``notice`` and ``state`` events as Server-Sent Events:
 the ``id`` of each is its number, a client resumes after ``Last-Event-ID``
 from the events kept in the index, and the stream ends after the final state
-(or when the server stops). ``POST /jobs/{job}/cancel`` stops a job that
+(or when the server stops, or about a second after its session ends).
+``POST /jobs/{job}/cancel`` stops a job that
 waits or runs (whoever started it or an administrator; ``409`` once it has
 ended), ``POST /jobs/{job}/retry`` starts one that did not succeed again as a
 new job of the session (``409`` for one that succeeded or is active), and
@@ -73,7 +74,7 @@ from archiwista.jobs import (
     JobSupervisor,
 )
 from archiwista.messages import current_language, label, message
-from archiwista.security import current_principal
+from archiwista.security import current_principal, session_watch
 from archiwista.services import jobs as job_controls
 from archiwista.services.owndata import SCAN_RUNNING_RETRY_S
 
@@ -186,6 +187,7 @@ async def job_event_stream(
     job: str,
     *,
     visible: ProjectVisibility,
+    viewer: Callable[[], ProjectVisibility | None],
     after: int = 0,
 ) -> AsyncIterator[str]:
     """Yield a job's events after ``after`` as SSE messages until it ends.
@@ -194,7 +196,8 @@ async def job_event_stream(
     events, and a quiet second reads the index anyway, so jobs of other
     processes stream too; the events of each read go out in one write. It
     ends after the final ``state`` event, when the job has ended past
-    ``after`` or disappears (or is no longer seen), or when ``streams`` close.
+    ``after`` or disappears (or is no longer seen), when ``streams`` close,
+    or when the session has ended (``viewer``).
 
     Parameters
     ----------
@@ -205,9 +208,15 @@ async def job_event_stream(
     job : str
         Job id.
     visible : ProjectVisibility
-        Projects the session sees: a job it does not see has no events, and a
-        ``preview`` job's final state lists the failures of visible refs only
-        (``JobSupervisor.events``).
+        Projects the session sees as the stream starts: a job it does not see
+        has no events, and a ``preview`` job's final state lists the failures
+        of visible refs only (``JobSupervisor.events``).
+    viewer : Callable[[], ProjectVisibility | None]
+        The projects the session sees now, ``None`` once the session has
+        ended or acts as nobody (``security.session_watch``). The stream asks
+        it once every ``POLL_INTERVAL_S`` and ends at ``None``, so it outlives
+        a sign-out, an ended session or a disabled account by about a second
+        (ASVS 7.4.1, 7.4.2); a job the session no longer sees ends it too.
     after : int, optional
         Number of the last event the client has (``Last-Event-ID``).
     """
@@ -224,7 +233,13 @@ async def job_event_stream(
     try:
         last = after
         quiet_s = 0.0
+        asked = loop.time()
         while not streams.closed:
+            if loop.time() - asked >= POLL_INTERVAL_S:
+                seen = await asyncio.to_thread(viewer)
+                if seen is None:
+                    return
+                visible, asked = seen, loop.time()
             wake.clear()
             events = await asyncio.to_thread(
                 jobs.events, job, after=last, visible=visible
@@ -589,9 +604,11 @@ def get_job(
     },
 )
 def get_job_events(
+    request: Request,
     job: _JobId,
     principal: _Principal,
     visible: _Visible,
+    decisions: _Authorizer,
     jobs: _Jobs,
     streams: _Streams,
     last_event_id: Annotated[
@@ -616,16 +633,25 @@ def get_job_events(
     final state; stop reconnecting then. A `: keepalive` comment comes after
     15 s of silence. A job only of projects the session does not see answers
     `404`; a `preview` job's final state lists the failures of visible refs.
+    The stream also ends about a second after its session does (a sign-out,
+    its expiry, an ended session, a disabled account), or once the session
+    no longer sees the job.
     """
     after = last_event_id or 0
     record = job_controls.visible_job(jobs, job, visible)
     finished = record.state in FINISHED_STATES
     if finished and not jobs.events(job, after=after, visible=visible):
         return Response(status_code=204)
-    return EventStreamResponse(
-        job_event_stream(jobs, streams, job, visible=visible, after=after),
-        headers={"Cache-Control": "no-store"},
+    acting = session_watch(request)
+
+    def viewer() -> ProjectVisibility | None:
+        now = acting()
+        return None if now is None else decisions.visible_projects(now)
+
+    stream = job_event_stream(
+        jobs, streams, job, visible=visible, viewer=viewer, after=after
     )
+    return EventStreamResponse(stream, headers={"Cache-Control": "no-store"})
 
 
 @router.post(

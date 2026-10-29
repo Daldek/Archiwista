@@ -403,3 +403,44 @@ def test_a_person_streams_two_downloads_at_once_until_one_ends(
     assert_problem(third, 429, "rate_limited", "too_many_downloads")
     assert third.headers["retry-after"] == "10"
     assert again.status_code == 206 and again.content == b"\0"
+
+
+def test_a_download_stops_soon_after_its_session_ends(tmp_path: Path) -> None:
+    """A stream stops about a second after a sign-out, before the file's end.
+
+    It used to send the whole file to a session that had ended (review of
+    v0.4, D6; ASVS 7.4.1).
+    """
+    with own_data_api(tmp_path, first=("tif_2180",), workers=1) as served:
+        # Arrange
+        with (served.first.root / "duzy.bin").open("wb") as large:
+            large.truncate(LARGE_BYTES)
+        served.scan()
+        olga = served.caller("owner")
+        url = (
+            f"/api/v1/projects/{served.first.key}/files/{own_file_id('duzy.bin')}/file"
+        )
+        headers = {
+            "host": f"127.0.0.1:{PORT}",
+            "cookie": f"archiwista_session={olga.session_id}",
+            "x-archiwista-csrf": olga.csrf,
+        }
+        with (
+            listening(served.api.client.app) as base,
+            httpx.Client(base_url=base, headers=headers, timeout=WAIT_S) as client,
+            client.stream("GET", url) as answer,
+        ):
+            parts = answer.iter_raw()
+            received = len(next(parts))
+
+            # Act: sign out while the rest waits in the sockets.
+            ended = client.delete("/api/v1/session")
+            time.sleep(1.5)
+            with pytest.raises(httpx.RemoteProtocolError):
+                for part in parts:
+                    received += len(part)
+
+    # Assert
+    assert answer.status_code == 200
+    assert ended.status_code == 204
+    assert received < LARGE_BYTES

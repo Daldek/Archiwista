@@ -1213,6 +1213,13 @@ command-line interface may change.
   accepted CBC ciphers, and an older Uvicorn within the allowed range widened them to
   every TLS 1.0 cipher (review of v0.4, D11; ASVS 12.1.1). Uvicorn's lower bound is
   now 0.54.
+- An answer that goes on after its request ends with its session: a job's event
+  stream (`GET /jobs/{job}/events`) about a second after the session ended (a
+  sign-out, its expiry, the person, an administrator or a password change ending it,
+  a revocation of agent sessions) or its account was disabled or removed, and a file
+  download (`…/file`) by closing the connection before the file's end. Before, both
+  went on to their end (review of v0.4, D6; ASVS 7.4.1, 7.4.2). An event stream also
+  ends once its session no longer sees the job.
 
 ## [0.2.0] - 2026-10-20
 
