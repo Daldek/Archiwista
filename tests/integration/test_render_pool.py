@@ -323,20 +323,15 @@ def test_vrt_refused_after_warpedvrt_in_same_worker(
 def test_failure_detail_has_no_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A library's message reaches the pool with file names, never with paths."""
+    """A library's message reaches the pool with file names, never with paths.
+
+    A source's paths are real (``PreviewSource``): a render process refuses a
+    file reached through a symbolic link (review of v0.4, D2), so the message
+    names real paths of a project's data folder only.
+    """
     # Arrange
     real = tmp_path / "projekty" / "ola" / "dane"
-    shown = tmp_path / "widok"
-    sources = []
-    for name in ("plik.tif", "drugi.tif"):
-        target = _source(real, name, fail=True).paths[0]
-        shown.mkdir(exist_ok=True)
-        link = shown / f"skrot-{name}"
-        link.symlink_to(target)
-        content = hashlib.sha256(target.read_bytes() + name.encode()).hexdigest()
-        sources.append(
-            PreviewSource(ref=f"test:{name}", content_key=content, paths=(link,))
-        )
+    sources = [_source(real, name, fail=True) for name in ("plik.tif", "drugi.tif")]
 
     with _pool(tmp_path, monkeypatch) as pool:
         # Act
@@ -350,7 +345,7 @@ def test_failure_detail_has_no_paths(
         (caught.value.detail, "drugi.tif"),
     ):
         assert detail is not None
-        assert f"skrot-{name}" in detail and name in detail
+        assert name in detail and "dane" in detail
         assert "/" not in detail and str(tmp_path) not in detail
     assert probed.probe().reason == caught.value.reason == "unreadable"
 
