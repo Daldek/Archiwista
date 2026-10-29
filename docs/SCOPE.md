@@ -162,7 +162,11 @@ Full acceptance criteria: SPEC 13.
      the user from a runbook); the permissions of the roles checked by tests; the action log
      complete; no start outside `127.0.0.1` without sign-in and TLS; a security checklist
      (OWASP ASVS 5.0 level 1 subset).
-   - Status (2026-10-26): planned, `plans/2026-10-26-plan-v0.4.md`.
+   - Status (2026-10-29): implementation, the review's fixes and T12's automated
+     acceptance on `feature/v0.4-team`; a call of every C9 route by each role is
+     missing (PROGRESS handoff). The LAN runbook (`reports/v0.4-lan-runbook.md`) has
+     not been executed on three computers; release approval remains the author's
+     decision.
 6. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, IMGW project tasks.
    - Gate: the IMGW catalog index agrees with the IMGWTools API; parity with

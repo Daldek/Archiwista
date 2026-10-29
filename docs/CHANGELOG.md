@@ -9,6 +9,11 @@ command-line interface may change.
 
 ### Added
 
+- The v0.4 acceptance materials: a three-person browser scenario, role/route
+  permission matrix, OWASP ASVS evidence checklist and the LAN runbook for
+  separate computers and an SMB store. The live LAN run has not yet occurred;
+  these materials do not constitute release approval.
+
 - Team mode, its settings and where the server listens (v0.4, ADR-046): the table
   `[team]` of `config.toml` (`enabled`, `origin`, `tls_cert`, `tls_key`,
   `trusted_proxies`, `proxy_user_header`, `proxy_autocreate`) is read when the server

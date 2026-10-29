@@ -1,18 +1,18 @@
 # Archiwista API for agents and scripts
 
-A guide for AI agents (for example Claude Code) and scripts that use Archiwista
-without a browser. It describes version 0.3 "Actions" (built, not released: the
-release is the author's): reading the catalog, previews, layers, comparison, own
-data and project snapshots, areas and jobs, and the actions of v0.3: the
-producers' commands, availability at the source, plans and downloads into a
-configured store, projects created, changed and downloaded through their
-producer, job controls and the pre-building of previews. An agent uses the HTTP
-API `/api/v1` or the commands `archiwista … --json`; there is no chat tool and
-no MCP server.
+For AI agents (for example Claude Code) and scripts using Archiwista without
+a browser: version 0.3 "Actions" is built, not released; v0.4 "Team" is under
+work on `feature/v0.4-team` (also not released). It covers reading the catalog,
+previews, layers, comparison, own data and project snapshots, areas, producer
+commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
+sessions, per-person permissions and preferences, a shared queue, file downloads
+and the action log. The agent uses `/api/v1` or `archiwista … --json`; there is
+no chat tool and no MCP server. The v0.4 live LAN scenario remains unverified
+(`reports/v0.4-lan-runbook.md`).
 
-Until v1.0 the API may change. The full schema with examples is always at
-`/api/v1/openapi.json` (it needs a session) and the interactive documentation
-at `/api/docs` (it uses the session of an open Archiwista tab). Field names,
+Until v1.0 the API may change. The full schema with examples is at
+`/api/v1/openapi.json` (requires a session). `/api/docs` is available in local
+mode only; team mode disables it. Field names,
 parameter names and codes are English; texts for people (`title`, `detail`,
 `hint`, `message`) are English, and Polish for the request header
 `Accept-Language: pl` (section 7), except the few that are stored in Polish.

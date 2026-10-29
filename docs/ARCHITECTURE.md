@@ -1393,9 +1393,11 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   scan limits, the action log with its reading, export and screen (section 7), the
   shared queue with the limits per person and the jobs view, the file download
   (`api/files.py`), and each person's preferences and path aliases
-  (`api/preferences.py`, "Moje ścieżki…"). Missing is the acceptance (plan
-  `2026-10-26-plan-v0.4.md`, T12); sessions live in the memory of a single server
-  (`SessionStore`).
+  (`api/preferences.py`, "Moje ścieżki…"). T12 has selected automated
+  acceptance and action-matrix checks; the full planned route-permission
+  coverage and live three-computer SMB/TLS check remain pending
+  (`PROGRESS.md`, `reports/v0.4-lan-runbook.md`). Sessions live in the
+  memory of a single server (`SessionStore`).
 - **Second producer: IMGWTools and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
   ADR 0032).** The `imgw` plugin is registered in the `archiwista.sources`
   entry points group (extra `archiwista[imgw]`, `install_requirement`):

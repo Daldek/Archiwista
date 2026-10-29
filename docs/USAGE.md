@@ -609,6 +609,11 @@ It is an explicit setting, the table `[team]` of `config.toml`, which the server
 reads when it starts: edit it while the server is stopped ("Ustawienia" neither
 shows nor changes it) and check it with `archiwista doctor`.
 
+The three-computer SMB/TLS deployment and shared-queue acceptance procedure is
+in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It has not
+been performed on the deployment network; this section describes the built
+interface, not a released or live-certified installation.
+
 ```toml
 [team]
 enabled = true
