@@ -435,6 +435,19 @@ def set_temporary_password(
     return TemporaryPassword(password, user.password_expires_at, user)
 
 
+def prepare_stand_in() -> None:
+    """Make the stand-in hash of ``HASHER`` now, before the first sign-in.
+
+    A sign-in without an account's hash verifies the stand-in, made once.
+    Made at the first unknown account, it cost that sign-in a hash besides
+    the verification, so after each start the first name tried without a
+    password could be told apart by its time (review of v0.4, D10; ADR-046
+    decision 5: the same work for every failure). A team server makes it as
+    it starts.
+    """
+    _stand_in_hash(HASHER)
+
+
 def _stand_in_hash(hasher: argon2.PasswordHasher) -> str:
     """Return a hash of a random password made by ``hasher``, computed once."""
     global _stand_in

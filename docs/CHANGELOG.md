@@ -1220,6 +1220,11 @@ command-line interface may change.
   download (`…/file`) by closing the connection before the file's end. Before, both
   went on to their end (review of v0.4, D6; ASVS 7.4.1, 7.4.2). An event stream also
   ends once its session no longer sees the job.
+- A team server makes the stand-in hash of an unknown account as it starts, so the
+  first sign-in with a name that has no password costs one verification, as every
+  other failed sign-in does. Before, that first sign-in after each start also made
+  the hash, so its time told that the name had no password (review of v0.4, D10;
+  ADR-046 decision 5).
 
 ## [0.2.0] - 2026-10-20
 

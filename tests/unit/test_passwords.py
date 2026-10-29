@@ -39,7 +39,7 @@ NOW = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
 
 
 class CountingHasher(argon2.PasswordHasher):
-    """``cheap_hasher`` that remembers each hash it verified."""
+    """``cheap_hasher`` that remembers each hash it verified and counts hashes."""
 
     def __init__(self) -> None:
         cheap = cheap_hasher()
@@ -49,11 +49,17 @@ class CountingHasher(argon2.PasswordHasher):
             parallelism=cheap.parallelism,
         )
         self.verified: list[str] = []
+        self.hashed = 0
 
     def verify(self, hash: str | bytes, password: str | bytes) -> Literal[True]:
         """Verify as argon2-cffi does, and count it."""
         self.verified.append(hash if isinstance(hash, str) else hash.decode())
         return super().verify(hash, password)
+
+    def hash(self, password: str | bytes, *, salt: bytes | None = None) -> str:
+        """Hash as argon2-cffi does, and count it."""
+        self.hashed += 1
+        return super().hash(password, salt=salt)
 
 
 @pytest.fixture
@@ -161,6 +167,24 @@ def test_verify_verifies_exactly_one_hash_on_every_path(
         assert hasher.verified[0].startswith("$argon2id$")
     else:
         assert hasher.verified == [kept.hash]
+
+
+def test_prepare_stand_in_leaves_an_unknown_account_one_verification(
+    hasher: CountingHasher,
+) -> None:
+    """After the start's preparation an unknown account costs no hash besides.
+
+    The stand-in hash used to be made at the first unknown account, which
+    then cost a hash and a verification while every other failure costs one
+    verification (review of v0.4, D10; ADR-046 decision 5).
+    """
+    passwords.prepare_stand_in()
+    prepared = hasher.hashed
+
+    result = verify(None, "kajak-po-Wisle", now=NOW)
+
+    assert prepared == 1
+    assert (result.matches, hasher.hashed, len(hasher.verified)) == (False, 1, 1)
 
 
 def test_verify_asks_to_rehash_a_hash_of_other_parameters(

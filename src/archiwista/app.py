@@ -27,6 +27,7 @@ downloads each person streams), ``denials`` (``DenialLog``: refusals in the
 action log) and ``on_redeem`` (told when a one-time token starts a session).
 """
 
+import asyncio
 import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -69,6 +70,7 @@ from archiwista.api.docs import install_docs, install_openapi, operation_id
 from archiwista.api.errors import ApiError, DenialLog, install_error_handlers
 from archiwista.api.language import LanguageMiddleware
 from archiwista.areas import AreaFiles, prune_area_copies
+from archiwista.auth import passwords
 from archiwista.auth.authorize import Authorizer
 from archiwista.auth.throttle import LoginThrottle
 from archiwista.config import SettingsService
@@ -181,6 +183,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         prune_area_copies(areas_dir)
+        if transport.team:
+            # An unknown account's first sign-in costs no hash besides its
+            # verification (ADR-046 decision 5; review of v0.4, D10).
+            await asyncio.to_thread(passwords.prepare_stand_in)
         yield
         queries.close()
 
