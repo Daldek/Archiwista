@@ -1128,6 +1128,11 @@ command-line interface may change.
 - The OpenAPI document keeps the `422` problems a route documents itself (`unsupported`
   and `calculation_error` of the preview routes, `unsupported` of `/commands`): only
   FastAPI's own `422` of invalid request data becomes the `400` the API answers.
+- At 390 px the bottom navigation of an administrator (nine views since "Zadania" and
+  "Dziennik" joined it) was 11 px wider than the screen, so the whole page scrolled
+  sideways. The views now share the width equally, with 10 px labels, and a label that
+  does not fit is shortened with "…" (in Chromium "Magazyn", "Ustawienia" and
+  "Dziennik"); its link keeps the whole name for screen readers.
 
 ### Security
 
