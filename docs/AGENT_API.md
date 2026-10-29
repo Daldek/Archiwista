@@ -764,10 +764,13 @@ streams at most two files at once: a third is `429 rate_limited`, reason
 `too_many_downloads`, with `Retry-After: 10`. A `GET` whose answer holds the
 file's first byte (no `Range`, a range from byte 0 however written, or an
 `If-Range` that no longer matches) is logged (`file.download` with
-`size_bytes`). These routes need
-`X-Archiwista-CSRF` as every other; only a link of the interface
-(`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes with
-the session cookie alone.
+`size_bytes`). A download stops about a second after its session ends (a
+sign-out, its expiry, the person, an administrator or a password change ending
+it, a revocation of agent sessions) or its account is disabled or removed: the
+connection closes before the file's end; `Range` resumes it in a new session.
+These routes need `X-Archiwista-CSRF` as every other; only a link of the
+interface (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in)
+passes with the session cookie alone.
 
 ```sh
 # VERSION_PATH is version.path of a row of /slots; FILE_ID is file_id of the file list.
@@ -979,11 +982,15 @@ frame has `id: <sequence number>`, `event: progress|notice|state` and
   Polish) or `error` (in the language of the request, below).
 
 The stream ends after the final state; for a finished job without new events
-the answer is `204`. After 15 s of silence the server sends the comment
-`: keepalive`, and a queued job may wait longer, so the client should have no
-read timeout (for example `httpx` with `timeout=None`). After a broken
-connection resume with the header `Last-Event-ID` equal to the last received
-`id`.
+the answer is `204`. It also ends about a second after its session ends (a
+sign-out, its expiry, the person, an administrator or a password change ending
+it, a revocation of agent sessions) or its account is disabled or removed, and
+once the session no longer sees the job (v0.4). After 15 s of silence the
+server sends the comment `: keepalive`, and a queued job may wait longer, so
+the client should have no read timeout (for example `httpx` with
+`timeout=None`). After a broken connection resume with the header
+`Last-Event-ID` equal to the last received `id`, in a new session after one
+that ended.
 
 The stream, like every `/api` request, needs the header `X-Archiwista-CSRF`.
 The browser's `EventSource` sends no headers of its own, so it does not fit
