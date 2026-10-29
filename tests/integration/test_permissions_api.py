@@ -331,7 +331,10 @@ def test_admin_routes_refuse_people_without_admin(
 def test_changes_need_csrf_token(
     api: Api, method: str, path: str, body: dict[str, object] | None
 ) -> None:
-    """Every change of accounts, groups or access needs the session's CSRF token."""
+    """Every change of accounts, groups or access needs the session's CSRF token.
+
+    The refusal is audited (D7) and changes nothing else.
+    """
     # Arrange
     caller = api.session(principal(api.state, "admin"))
     before = api.state.snapshot()
@@ -341,7 +344,12 @@ def test_changes_need_csrf_token(
 
     # Assert
     assert_problem(response, 403, "forbidden", "csrf_rejected")
-    assert api.state.snapshot() == before
+    after = api.state.snapshot()
+    assert replace(after, actions=before.actions) == before
+    added = after.actions[len(before.actions) :]
+    assert [(item.action, item.target, item.outcome) for item in added] == [
+        ("request.refused", "csrf_rejected", "denied")
+    ]
 
 
 def test_admin_manages_accounts_and_groups(api: Api) -> None:
