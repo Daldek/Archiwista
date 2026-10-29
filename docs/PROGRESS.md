@@ -62,9 +62,15 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
   the documents); SPEC 9.2 and AGENT_API on streams ending with their session.
   Every step of the plan is committed.
 - Next: run `scripts/gate.sh` (about 25 to 33 minutes) and fix what it finds.
-- The author: run and record the runbook's three-computer SMB/TLS scenario,
-  accept or change the checklist's five deviations, then decide the release
-  (merge into `develop`, tag `v0.4.0`, CHANGELOG version, Nogat registry).
+- Decided by delegated approval (2026-10-29; plan v0.4 decisions 17 to 19): the
+  checklist's five deviations are accepted for the LAN deployment (the session cap and
+  a tamper-evident or remote log are later items in SCOPE "Out of the MVP"); the
+  390 px navigation keeps its ellipsis; v0.3 and v0.4 are released separately, v0.3
+  first, their tags following Nogat's plan of the first release set (only after a
+  release candidate passes, the producers' tags first).
+- The author, after the work is finished: run and record the runbook's
+  three-computer SMB/TLS scenario, then the releases (v0.3 first; merge into
+  `develop`, tag, CHANGELOG version, Nogat registry).
 
 ## Next
 

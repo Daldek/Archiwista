@@ -103,6 +103,8 @@ difference model come **after the MVP** (v1.1 to v1.3).
 | Own downloading or processing of data | out of scope | only the producers' APIs; a missing function is a requirement for the producer |
 | QGIS plugin | out of scope | subproject 4 of the Kartograf roadmap |
 | Object differences between snapshots of own data (added, removed, changed) | later | a separate decision; the MVP has metadata comparison and the curtain |
+| A cap on a person's parallel sessions (ASVS 7.1.2) | later | v0.4 accepts unlimited parallel sessions for a small LAN team: a person and an administrator list and end them (`docs/reports/v0.4-security-checklist.md`, delegated approval 2026-10-29) |
+| A tamper-evident or remote copy of the action log (ASVS 16.4.2) | later | v0.4 keeps the log in the local state database (private directory, read by administrators through the API); an account with access to the server's files can still change it (`docs/reports/v0.4-security-checklist.md`, delegated approval 2026-10-29) |
 | Editing data and the history of single objects | out of scope | Archiwista is not an editor; snapshots are of whole files |
 | Own data in the project manifest (pins, restoring at a colleague's, "Verify") | out of scope | only the producer writes the manifest; snapshots lie in the project directory and move with it |
 | Deleting snapshots by Archiwista | out of scope | only growth; delete by hand outside Archiwista |
@@ -163,10 +165,11 @@ Full acceptance criteria: SPEC 13.
      complete; no start outside `127.0.0.1` without sign-in and TLS; a security checklist
      (OWASP ASVS 5.0 level 1 subset).
    - Status (2026-10-29): implementation, the review's fixes and T12's automated
-     acceptance on `feature/v0.4-team`; a call of every C9 route by each role is
-     missing (PROGRESS handoff). The LAN runbook (`reports/v0.4-lan-runbook.md`) has
-     not been executed on three computers; release approval remains the author's
-     decision.
+     acceptance on `feature/v0.4-team`, every C9 route called by each role as the
+     matrix says; the checklist's five deviations accepted for the LAN deployment
+     (delegated approval). The full gate remains; the LAN runbook
+     (`reports/v0.4-lan-runbook.md`) is run on three computers by the author after
+     the work is finished; release approval remains the author's decision.
 6. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, IMGW project tasks.
    - Gate: the IMGW catalog index agrees with the IMGWTools API; parity with

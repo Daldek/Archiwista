@@ -4653,10 +4653,11 @@ Criteria:
 
 Status (2026-10-29): implementation, the review's fixes (D1 to D11) and T12's
 automated acceptance on `feature/v0.4-team` (plan `plans/2026-10-26-plan-v0.4.md`):
-the three-person browser scenario (criteria 1 and 3), the action matrix and the
-security checklist (criteria 2 and 5). Missing: a call of every C9 route by each
-role, and the live three-computer SMB/TLS scenario of
-`reports/v0.4-lan-runbook.md`. No release has been made.
+the three-person browser scenario (criteria 1 and 3), the action matrix with a call
+of every C9 route by each role, and the security checklist with its five deviations
+accepted for the LAN deployment (criteria 2 and 5). Missing: the live three-computer
+SMB/TLS scenario of `reports/v0.4-lan-runbook.md`, run by the author after the work
+is finished. No release has been made; v0.3 is released first.
 
 ### v0.5 "IMGW stations"
 
