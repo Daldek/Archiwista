@@ -149,6 +149,37 @@ def test_a_row_of_the_list_opens_the_card_and_so_does_its_address(
     engine_tab.assert_clean()
 
 
+def test_esc_at_once_after_a_row_opens_the_card_closes_it(
+    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+) -> None:
+    """``Esc`` before the opened card has rendered still takes it off the address."""
+    # Arrange
+    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    page = open_session(engine_tab, served)
+    page.goto(address(served, view="catalog", product="hydro"))
+    grid = page.get_by_role("grid", name="Lista stacji katalogu")
+    expect(grid).to_have_attribute("aria-busy", "false")
+    row = grid.get_by_role("row").filter(has_text="Raba Górna")
+
+    # Act: the click and the key in one task, as a busy host delivers them.
+    searches = row.evaluate(
+        """(row) => {
+          row.click();
+          const opened = location.search;
+          const key = { key: "Escape", bubbles: true };
+          document.activeElement.dispatchEvent(new KeyboardEvent("keydown", key));
+          return [opened, location.search];
+        }"""
+    )
+
+    # Assert
+    assert STATION.search(searches[0])
+    assert "station=" not in searches[1]
+    expect(page).not_to_have_url(re.compile(r"[?&]station="))
+    expect(dialog(page, "Raba Górna")).to_have_count(0)
+    engine_tab.assert_clean()
+
+
 def test_the_header_switch_numbers_the_labels_in_calendar_years(
     serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
 ) -> None:

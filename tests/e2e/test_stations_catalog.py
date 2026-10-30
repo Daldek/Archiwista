@@ -205,6 +205,7 @@ def test_stations_without_a_position_show_the_reason_and_no_map_link(
     found = settled(page, rows, row_count(counts))
     unlocated.first.click()
     expect(page).to_have_url(re.compile(r"[?&]station="))
+    expect(page.locator(".station-card")).to_be_visible()
     opened = query_of(page)
     page.keyboard.press("Escape")
     expect(page.locator(".station-card")).to_have_count(0)

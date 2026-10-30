@@ -22,7 +22,7 @@ import {
 import { stamp } from "./format.js";
 import { account as A } from "./labels/account.js";
 import { T, t } from "./labels/index.js";
-import { Link, navigate, setParams, useRoute } from "./router.js";
+import { Link, navigate, readRoute, setParams, useRoute } from "./router.js";
 import { findView, OVERLAYS, startView, VIEWS } from "./routes.js";
 import { SearchButton } from "./search.js";
 import {
@@ -73,15 +73,19 @@ export function Shell({ session, onSessionChange, onSignOut }) {
   }, [name]);
 
   const overlays = OVERLAYS.filter((overlay) => route.params[overlay.param]);
+  // Esc closes the top overlay of the address as it is when the key comes: one
+  // listener from the start, so an Esc right after a card's address is set
+  // (before the overlay renders and an effect could listen) is not lost.
   useEffect(() => {
-    if (!overlays.length) return undefined;
-    const top = overlays[overlays.length - 1];
     const key = (event) => {
-      if (event.key === "Escape") setParams({ [top.param]: null });
+      if (event.key !== "Escape") return;
+      const { params } = readRoute();
+      const open = OVERLAYS.filter((overlay) => params[overlay.param]);
+      if (open.length) setParams({ [open[open.length - 1].param]: null });
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [overlays.map((overlay) => overlay.param).join()]);
+  }, []);
 
   let content;
   if (view === null) content = html`<div class="page"><${Spinner} /></div>`;

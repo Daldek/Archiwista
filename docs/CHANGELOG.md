@@ -1138,6 +1138,10 @@ command-line interface may change.
   sideways. The views now share the width equally, with 10 px labels, and a label that
   does not fit is shortened with "…" (in Chromium "Magazyn", "Ustawienia" and
   "Dziennik"); its link keeps the whole name for screen readers.
+- `Esc` pressed right after opening a station card, file card or own-data card (before
+  the card had appeared, e.g. on a busy computer) was lost: the card then opened and its
+  address stayed. `Esc` now closes the top card of the address as it is when the key
+  comes.
 
 ### Security
 
