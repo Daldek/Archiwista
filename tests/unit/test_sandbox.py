@@ -107,13 +107,21 @@ def test_sandbox_child_env_has_no_proxy_credentials_or_network(
 
 
 def test_sandbox_child_memory_limited_and_files_private() -> None:
-    """``memory_bytes`` caps the child's address space; its umask is 077."""
+    """``memory_bytes`` caps the address space on Linux; the umask is 077 everywhere.
+
+    macOS refuses every ``RLIMIT_AS``, so ``child_limits`` sets the cap on
+    Linux only and a child there keeps the inherited limit.
+    """
+    # Arrange
+    capped = sys.platform == "linux"
+
     # Act
-    limited = _report(memory_bytes=GIB, allocate=2 * GIB)
+    limited = _report(memory_bytes=GIB, allocate=2 * GIB if capped else 0)
 
     # Assert
-    assert limited["address_space"] == GIB
-    assert limited["allocated"] is False
+    if capped:
+        assert limited["address_space"] == GIB
+        assert limited["allocated"] is False
     assert limited["umask"] == 0o077
 
 
