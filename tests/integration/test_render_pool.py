@@ -10,6 +10,7 @@ import contextlib
 import functools
 import hashlib
 import json
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -171,6 +172,10 @@ def test_timeout_kills_and_respawns_worker(
     assert [op for _, op in _log(log)] == ["probe", "probe", "probe"]
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="child_limits caps the address space on Linux only (DEV-7.7)",
+)
 def test_memory_limit_kills_worker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

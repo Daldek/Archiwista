@@ -1,21 +1,21 @@
 """Children that cannot start, as every limited child on macOS did.
 
 ``refuse_starts`` replaces the ``child_limits`` a module starts its children
-with: while ``RefusedStarts.on``, each child fails between fork and exec as
-``setrlimit(RLIMIT_AS)`` failed on macOS (``EINVAL``), so ``subprocess.Popen``
-raises ``SubprocessError``. With ``on`` false the next child starts as usual.
+with: while ``RefusedStarts.on``, each child is pointed at a program that does
+not exist, so its ``exec`` fails and ``subprocess.Popen`` raises ``OSError``
+in the parent. No Python code runs in the forked child: a ``preexec_fn`` that
+raises (the macOS failure itself) makes the child unwind Python and, on macOS,
+crash in PROJ's destructor. With ``on`` false the next child starts as usual.
 """
 
-import errno
 from collections.abc import Callable
 from types import ModuleType
 from typing import Any
 
 import pytest
 
-
-def _refuse_limit() -> None:
-    raise OSError(errno.EINVAL, "Invalid argument")
+# A program no test machine has; its ``exec`` fails with ``ENOENT``.
+MISSING_PROGRAM = "/nonexistent/archiwista-refused-start"
 
 
 class RefusedStarts:
@@ -29,7 +29,7 @@ class RefusedStarts:
         """Return the ``Popen`` arguments of a child, refused while ``on``."""
         found = self._limits(memory_bytes)
         if self.on:
-            found["preexec_fn"] = _refuse_limit
+            found["executable"] = MISSING_PROGRAM
         return found
 
 
