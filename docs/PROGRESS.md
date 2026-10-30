@@ -77,7 +77,14 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
   Linux only (macOS port: v1.0, DEV-7.7); `2d37415` answers a renderer that cannot start
   with `503 missing_dependency` / `renderer_not_started` instead of `500` and caches
   nothing for the file. Tests on `2d37415` (run in two parts in the gate's order): 2562
-  passed, combined coverage 94%; not yet confirmed on a Mac.
+  passed, combined coverage 94%. Confirmed on a Mac: NMT tiles render (200, hillshade).
+- Done (2026-10-30, findings of the Mac check): `251f7e1` the sandbox test asserts the
+  memory cap on Linux only (the gate failed on macOS); `a06f896` a renderer that dies
+  without an answer (any signal but SIGKILL, which stays `memory_limit`) is no longer
+  kept as the file's `unreadable` verdict, and `POST …/preview` (the card's "Sprawdź
+  ponownie", `archiwista preview REF --build`) reads a file kept as `unreadable` or
+  `unsupported_format` again, which also clears verdicts written before the fix. Tests
+  on `a06f896` in two parts: 2566 passed, combined coverage 94%.
 - Decided by delegated approval (2026-10-29; plan v0.4 decisions 17 to 19): the
   checklist's five deviations are accepted for the LAN deployment (the session cap and
   a tamper-evident or remote log are later items in SCOPE "Out of the MVP"); the
