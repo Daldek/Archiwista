@@ -71,6 +71,13 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
   server's limit of two network jobs makes Anna's job wait), preparation 1 asks for a
   Linux server (a macOS SMB client gives `ENOTSUP` for the store's hard links), the log
   field is `client`, and the English `store_write` refusal no longer quotes Polish.
+- Done (2026-10-30): macOS could start no render process, preview build or own-data
+  reader, because `child_limits` set `RLIMIT_AS` in `preexec_fn` and Darwin refuses it
+  (EINVAL; sometimes a segfault of the forked child). `0f07d0f` sets the memory cap on
+  Linux only (macOS port: v1.0, DEV-7.7); `2d37415` answers a renderer that cannot start
+  with `503 missing_dependency` / `renderer_not_started` instead of `500` and caches
+  nothing for the file. Tests on `2d37415` (run in two parts in the gate's order): 2562
+  passed, combined coverage 94%; not yet confirmed on a Mac.
 - Decided by delegated approval (2026-10-29; plan v0.4 decisions 17 to 19): the
   checklist's five deviations are accepted for the LAN deployment (the session cap and
   a tamper-evident or remote log are later items in SCOPE "Out of the MVP"); the
