@@ -64,6 +64,13 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 - Done (2026-10-30): `scripts/gate.sh` is green on `54cded3` (2556 passed, coverage
   93.53%), pushed to `origin/feature/v0.4-team`; the gate's findings are fixed in
   `c8d4b5e`, `bbe223d`, `96ddda8` and `54cded3` (Status row "v0.4 T12").
+- Done (2026-10-30): the runbook ran once on a single machine with real components
+  (Kartograf store, TLS listener, three accounts over HTTPS, 723 MB from GUGiK); every
+  step passed, including the proof of no duplicate fetch (`reports/v0.4-lan-runbook.md`,
+  Result). Its findings are fixed: runbook step 4 now checks the fair start (the
+  server's limit of two network jobs makes Anna's job wait), preparation 1 asks for a
+  Linux server (a macOS SMB client gives `ENOTSUP` for the store's hard links), the log
+  field is `client`, and the English `store_write` refusal no longer quotes Polish.
 - Decided by delegated approval (2026-10-29; plan v0.4 decisions 17 to 19): the
   checklist's five deviations are accepted for the LAN deployment (the session cap and
   a tamper-evident or remote log are later items in SCOPE "Out of the MVP"); the
@@ -71,8 +78,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
   first, their tags following Nogat's plan of the first release set (only after a
   release candidate passes, the producers' tags first).
 - The author, after the work is finished: run and record the runbook's
-  three-computer SMB/TLS scenario, then the releases (v0.3 first; merge into
-  `develop`, tag, CHANGELOG version, Nogat registry).
+  three-computer SMB/TLS scenario on a Linux server (CA trust in three browsers, the
+  store on the share), then the releases (v0.3 first; merge into `develop`, tag,
+  CHANGELOG version, Nogat registry).
 
 ## Next
 
