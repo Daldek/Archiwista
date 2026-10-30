@@ -85,6 +85,17 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
   ponownie", `archiwista preview REF --build`) reads a file kept as `unreadable` or
   `unsupported_format` again, which also clears verdicts written before the fix. Tests
   on `a06f896` in two parts: 2566 passed, combined coverage 94%.
+- Done (2026-10-30, the first full gate on the author's Mac, macOS 26.6, Python 3.14):
+  `316af48` the refused-start fixture no longer raises in the fork (that crashed the
+  child in PROJ's destructor on macOS) and the render pool's memory test runs on Linux
+  only; `48fc614` sets `TCP_NODELAY` on every accepted connection (on macOS an accepted
+  socket reports `proto=0`, so asyncio never set it: about 40 ms per kept-alive
+  request), with tests on the real server over HTTP and TLS; `21c53bf` the snapshot
+  chmod stub reads a descriptor's path with `F_GETPATH` on macOS; `391c443` closes an
+  `HTTPError` in a tile test; `f467816` and `c3fed6a` fix two Firefox test races (a
+  page left while still loading; a plot read while the card slid in; the Mac's one-day
+  shift was not reproduced). Tests on `c3fed6a` on Linux in two parts: 2567 passed,
+  combined coverage 94%. Open: a full `scripts/gate.sh` on the Mac to confirm.
 - Decided by delegated approval (2026-10-29; plan v0.4 decisions 17 to 19): the
   checklist's five deviations are accepted for the LAN deployment (the session cap and
   a tamper-evident or remote log are later items in SCOPE "Out of the MVP"); the
