@@ -1142,6 +1142,9 @@ command-line interface may change.
   the card had appeared, e.g. on a busy computer) was lost: the card then opened and its
   address stayed. `Esc` now closes the top card of the address as it is when the key
   comes.
+- The English refusal for a missing "write to store" permission quoted the Polish name
+  of the permission ("zapis do magazynu"); it now names it in English like the other
+  refusals.
 
 ### Security
 

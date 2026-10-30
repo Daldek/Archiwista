@@ -45,8 +45,8 @@ MESSAGES = {
     ),
     "store_write": Text(
         (
-            'Writing to the store requires the "zapis do magazynu" (write to store)'
-            " permission (role store_writer)."
+            'Writing to the store requires the "write to store" permission'
+            " (role store_writer)."
         ),
         "Zapis do magazynu wymaga uprawnienia „zapis do magazynu” (rola store_writer).",
     ),
