@@ -6,8 +6,8 @@
 ``workers`` render processes
 (``RENDER_WORKER_COMMAND``; ``min(4, cpu)`` in ``archiwista serve``), each
 started with the sandbox: the environment of ``untrusted_env``, a session
-of its own and ``RLIMIT_AS`` of 2 GiB. The server itself never opens a
-data file.
+of its own and, on Linux, ``RLIMIT_AS`` of 2 GiB. The server itself never
+opens a data file.
 
 - The preview cache first: an operation kept there (``Operation.target``)
   answers from it without rendering, and what is rendered is put there. A
@@ -224,7 +224,7 @@ class RenderPool:
     idle_s : float, default 300
         Seconds a process without work lives on.
     memory_bytes : int or None, default 2 GiB
-        Address space of a process (``RLIMIT_AS``, POSIX); ``None`` keeps
+        Address space of a process (``RLIMIT_AS``, Linux); ``None`` keeps
         the inherited limit.
     failure_s : float, default 600
         Seconds a timeout or memory limit of a request is remembered.

@@ -13,7 +13,7 @@ is started through this module:
   .id``), ``GDAL_SKIP`` of the drivers that refer to other files or to the
   network (``SKIPPED_GDAL_DRIVERS``) and a bounded GDAL block cache;
 - ``child_limits()``: the child in its own session (killed as a whole),
-  ``umask 077`` and, on POSIX, ``RLIMIT_AS``;
+  ``umask 077`` and, on Linux, ``RLIMIT_AS``;
 - ``run_untrusted()``: one such process run to its end, its group killed
   after a time limit;
 - ``process_dir()``: the calling process's own scratch directory
@@ -167,10 +167,15 @@ def child_limits(memory_bytes: int | None = None) -> dict[str, Any]:
     its descendants) and ``umask 077``. On Windows only its own process
     group (limits there come with v1.0).
 
+    The memory cap is Linux-only: macOS has no settable ``RLIMIT_AS``
+    (it is ``RLIMIT_RSS`` there and ``setrlimit`` refuses every value),
+    so a child there keeps the inherited limit; the macOS port comes
+    with v1.0 (DEV-7.7).
+
     Parameters
     ----------
     memory_bytes : int or None, optional
-        Address space of the child (``RLIMIT_AS``, POSIX), set before it
+        Address space of the child (``RLIMIT_AS``, Linux), set before it
         starts; ``None`` keeps the inherited limit.
 
     Returns
@@ -181,7 +186,7 @@ def child_limits(memory_bytes: int | None = None) -> dict[str, Any]:
     if sys.platform == "win32":  # pragma: no cover - Windows (v1.0)
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
     limits: dict[str, Any] = {"start_new_session": True, "umask": UNTRUSTED_UMASK}
-    if memory_bytes is not None:
+    if memory_bytes is not None and sys.platform != "darwin":
         # Runs between fork and exec: one system call, no lock taken.
         limits["preexec_fn"] = functools.partial(_limit_memory, memory_bytes)
     return limits

@@ -1145,6 +1145,11 @@ command-line interface may change.
 - The English refusal for a missing "write to store" permission quoted the Polish name
   of the permission ("zapis do magazynu"); it now names it in English like the other
   refusals.
+- On macOS no file preview, preview build or own-data reading worked: every process
+  reading untrusted files was started with an address-space limit (`RLIMIT_AS`), which
+  macOS refuses for any value, so the process failed before it ran. The memory limit
+  is now set on Linux only; on macOS such a process keeps the inherited limit until the
+  macOS port (v1.0, DEV-7.7).
 
 ### Security
 

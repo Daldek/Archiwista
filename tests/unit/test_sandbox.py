@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.config import AppPaths
-from archiwista.sandbox import process_work_dir, run_untrusted
+from archiwista.sandbox import child_limits, process_work_dir, run_untrusted
 
 GIB = 1024**3
 CHILD_TIMEOUT_S = 60.0
@@ -115,6 +115,23 @@ def test_sandbox_child_memory_limited_and_files_private() -> None:
     assert limited["address_space"] == GIB
     assert limited["allocated"] is False
     assert limited["umask"] == 0o077
+
+
+@pytest.mark.parametrize(("platform", "limited"), [("linux", True), ("darwin", False)])
+def test_child_limits_memory_cap_on_linux_only(
+    monkeypatch: pytest.MonkeyPatch, platform: str, limited: bool
+) -> None:
+    """The memory cap is Linux-only: macOS refuses every ``RLIMIT_AS``."""
+    # Arrange
+    monkeypatch.setattr(sys, "platform", platform)
+
+    # Act
+    limits = child_limits(GIB)
+
+    # Assert
+    assert ("preexec_fn" in limits) is limited
+    assert limits["start_new_session"] is True
+    assert limits["umask"] == 0o077
 
 
 def test_sandbox_child_killed_with_its_group_at_time_limit(tmp_path: Path) -> None:

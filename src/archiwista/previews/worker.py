@@ -3,7 +3,7 @@
 The render pool keeps a few of these processes alive (decision 3); the
 ``preview`` job starts one per file it builds (operation ``build``). Each is
 started with the sandbox (``archiwista.sandbox``: no network, no sibling
-files, explicit drivers, ``RLIMIT_AS``), reads requests of
+files, explicit drivers, ``RLIMIT_AS`` on Linux), reads requests of
 ``archiwista.previews.protocol`` on standard input until it ends and
 answers each in order on standard output; whatever libraries print goes to
 standard error, which the pool discards (it may name paths).
