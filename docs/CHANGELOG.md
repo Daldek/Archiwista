@@ -1143,6 +1143,12 @@ command-line interface may change.
   sideways. The views now share the width equally, with 10 px labels, and a label that
   does not fit is shortened with "…" (in Chromium "Magazyn", "Ustawienia" and
   "Dziennik"); its link keeps the whole name for screen readers.
+- On a computer's window shorter than the navigation rail (an administrator's nine
+  views need about 490 px below the top bar), the lower views ("Ustawienia", "Konta",
+  "Grupy", "Dziennik") lay below the window: the rail had no scrolling of its own, so
+  only the whole page could scroll, top bar and view included. The rail now scrolls
+  by itself (wheel, touch, `Tab`), without a scrollbar that would narrow its items;
+  the page stays in place.
 - `Esc` pressed right after opening a station card, file card or own-data card (before
   the card had appeared, e.g. on a busy computer) was lost: the card then opened and its
   address stayed. `Esc` now closes the top card of the address as it is when the key

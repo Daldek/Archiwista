@@ -9,14 +9,16 @@ kasia's groups follow at her next request. A person without ``admin`` has
 neither „Konta”, „Grupy” nor „Dziennik”, and their routes answer ``403``,
 while „Zadania” is there for everyone; the last
 administrator can neither be disabled nor lose the role, said at the
-control. With ``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium keeps
-screenshots there (``docs/reports/v0.4-screenshots/``).
+control. On a short window the navigation scrolls on its own, so „Dziennik”
+at its bottom opens with the view in place. With
+``ARCHIWISTA_SCREENSHOTS=<directory>`` Chromium keeps screenshots there
+(``docs/reports/v0.4-screenshots/``).
 """
 
 import re
 from collections.abc import Callable
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, ViewportSize, expect
 
 from tests.fixtures.browser import Tab
 from tests.fixtures.team_pages import (
@@ -52,6 +54,8 @@ STATUS = """async (path) => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
   return (await fetch(path, { headers })).status;
 }"""
+# A computer's window too short for the administrator's rail (about 490 px tall).
+SHORT: ViewportSize = {"width": 1280, "height": 420}
 
 
 def open_accounts(page: Page) -> None:
@@ -204,3 +208,25 @@ def test_without_admin_no_admin_views_and_the_last_administrator_stays(
     expect(card.get_by_role("button", name="Wyłącz")).to_be_visible()
     admin.assert_clean()
     person.assert_clean()
+
+
+def test_on_a_short_window_the_rail_reaches_the_log(
+    team_serve: TeamServe, team_tab: TeamTab
+) -> None:
+    """A computer's window too short for the rail: „Dziennik” opens, view in place."""
+    served = team_serve()
+    admin = team_tab()
+    page = admin.page
+    log = page.get_by_role("navigation", name="Widoki").get_by_role(
+        "link", name="Dziennik"
+    )
+    signed_in(page, served.origin, ADMIN_ACCOUNT, ADMIN_PASSWORD)
+    page.set_viewport_size(SHORT)
+
+    log.click()
+
+    expect(log).to_have_attribute("aria-current", "page")
+    expect(log).to_be_in_viewport(ratio=1)
+    heading = page.get_by_role("heading", name="Dziennik działań")
+    expect(heading).to_be_in_viewport(ratio=1)
+    admin.assert_clean()

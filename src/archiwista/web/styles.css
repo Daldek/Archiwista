@@ -116,7 +116,12 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
   padding: 10px 0;
   gap: 4px;
   min-height: 0;
+  /* a short window scrolls the rail itself, not the page; no scrollbar to narrow
+     the 54 px items in the 64 px rail (a wheel, a finger and Tab still scroll it) */
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+.rail::-webkit-scrollbar { display: none; } /* Chromium before 121 */
 .rail-item {
   width: 54px;
   border-radius: 10px;
