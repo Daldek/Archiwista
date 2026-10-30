@@ -1584,6 +1584,12 @@ Release v0.2: `GET /…/preview` returns `ready`, `needs_build`, `building`
 or `unavailable` and an understandable `reason` (`code`, description, recommendation).
 Renderers run in isolated processes (`python -P -m
 archiwista.previews.worker`), and the local COG is created in the `preview` job.
+A lasting reason a renderer answers (`unreadable`, `unsupported_format`) is kept in
+the preview cache; `timeout` and `memory_limit` are remembered for 10 minutes only,
+and a renderer that crashed (ended by a signal or an exit status without an answer)
+is not the file's verdict: that request answers `unreadable` and nothing is kept.
+`POST /…/preview` (the "Sprawdź ponownie" (Check again) button of an unreadable
+file) reads such a file anew and replaces what was kept or remembered.
 All images/tiles go through the API with a CSRF header; vector `features`
 are simplified to the zoom (≤ 5000 features and 500,000 vertices).
 Layer tiles are composed from version tiles. The supported own data families

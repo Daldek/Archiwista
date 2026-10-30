@@ -14,8 +14,14 @@ from typing import Any
 import pytest
 
 from archiwista.api.previews import VERSION_CACHE_CONTROL
+from archiwista.auth import LOCAL_OWNER
+from archiwista.config import ConfigStore
+from archiwista.index import IndexQueries
 from archiwista.messages import message
 from archiwista.previews import pool as pool_module
+from archiwista.previews.cache import INFO_NAME, cache_key
+from archiwista.previews.types import PreviewProbe
+from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
 from tests.fixtures.preview_api import (
@@ -293,6 +299,38 @@ def test_render_process_that_cannot_start_is_503_not_remembered(
     assert failed.json()["detail"] == message("preview.renderer_not_started")
     assert failed.json()["hint"] == message("preview.renderer_not_started_hint")
     assert (after["state"], after["reason"]) == ("ready", None)
+
+
+def test_build_request_reads_again_a_cached_unreadable_verdict(
+    tmp_path: Path,
+) -> None:
+    """``POST …/preview`` probes again a file the cache says cannot be read.
+
+    Such a verdict was once left by a render process that crashed; the
+    explicit request replaces it with the file's real description.
+    """
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "tif_sheet", "regular").path
+        known = _info(served, path)
+        with IndexQueries(served.api.paths.index_file) as queries:
+            settings = ConfigStore(served.api.paths.config_file).load()
+            source = ObjectResolver(queries, lambda: settings).locate(
+                VersionRef(STORE, path), principal=LOCAL_OWNER
+            )
+        verdict = PreviewProbe(kind=source.kind, reason="unreadable")
+        served.pool.cache.put(cache_key(source), INFO_NAME, verdict.to_bytes())
+        stale = _info(served, path)
+
+        # Act
+        retried = served.post(version_url(path), {"force": False})
+        after = _info(served, path)
+
+    # Assert
+    assert (stale["state"], stale["reason"]["code"]) == ("unavailable", "unreadable")
+    assert retried.status_code == 200, retried.text
+    assert retried.json() == after == known
+    assert known["state"] == "ready"
 
 
 def test_preview_routes_need_csrf(served: PreviewApi) -> None:

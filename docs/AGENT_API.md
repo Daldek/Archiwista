@@ -578,6 +578,12 @@ a `message` and a `fix` in the language of the request), `styles`,
 `default_style` and the addresses
 `thumbnail_url`, `tiles_url`, `features_url`, `members_url`. For `needs_build`
 call `POST …/preview`: `202` returns a job, `200` means the preview is ready.
+`POST …/preview` also asks again: a file whose `reason` is `unreadable` or
+`unsupported_format` (kept in the preview cache), or whose probe failed
+(`timeout`, `memory_limit`) in the last 10 minutes, is read anew first, and a
+`200` answer is its new `PreviewInfo`. A render process that crashed answers
+`unreadable` with its signal or exit status in `detail`; that is not kept, so a
+later request reads the file again.
 Fetch the image with `GET …/preview.png?size=512` (`--style` in the CLI, the
 parameter `style` over HTTP). The tiles `…/tiles/{z}/{x}/{y}.png`, the vectors
 `…/features?bbox=…&zoom=…` and the ZIP listing `…/members` have the same

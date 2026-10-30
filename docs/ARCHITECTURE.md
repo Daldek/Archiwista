@@ -998,10 +998,13 @@ into a source after checking the root, the current file identity and the visibil
 of the project (`404` when not visible). `PreviewService` asks
 `PreviewCache` for the object by content identity, rendering metadata
 and renderer version. On a miss `RenderPool` hands the request over to the
-`previews.worker` process, with limits on queue, time and memory.
+`previews.worker` process, with limits on queue, time and memory; a
+process that crashed without an answer leaves nothing in the cache.
 Renderers recognise the file kind; without a preview `PreviewInfo.reason`
 gives a code, a Polish description and a recommendation. Build (`POST …/preview`) creates a `preview`
-job and a local COG when the source needs one. `GET /local-layers`
+job and a local COG when the source needs one; it first probes again
+(`RenderPool` `retry`) a file kept as `unreadable` or `unsupported_format`.
+`GET /local-layers`
 (`read_local_layers`) collects versions for a year or a campaign, and
 `layer_thumbnail` and `layer_tile` compose their images in the rendering
 process. Images from `/api/v1` require CSRF also on read.

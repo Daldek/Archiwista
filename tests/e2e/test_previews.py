@@ -20,8 +20,13 @@ from urllib.parse import urlencode
 
 from playwright.sync_api import Locator, Page, expect
 
+from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppSettings, StoreConfig
+from archiwista.index import IndexQueries
 from archiwista.messages import message
+from archiwista.previews.cache import INFO_NAME, PreviewCache, cache_key
+from archiwista.previews.types import PreviewProbe
+from archiwista.refs import ObjectResolver, VersionRef
 from archiwista.security import CSRF_HEADER
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.make_store import Family, StoreManifest, make_store
@@ -293,6 +298,43 @@ def test_card_builds_asc_preview_with_progress(
         "gotowy"
     )
     expect(page.locator(".pv-build")).to_have_count(0)
+    tab.assert_clean()
+
+
+def test_card_reads_again_a_file_kept_as_unreadable(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """„Sprawdź ponownie” of a file kept as unreadable reads it again (``POST``).
+
+    A render process that crashed once left such a verdict in the cache; the
+    person's retry replaces it with the file's preview.
+    """
+    store, served = served_store(serve, tab, tmp_path)
+    page = tab.page
+    _, version = slot_of(store, "tif_bbox")
+    assert preview_info(page, served, version)["state"] == "ready"
+    settings = served.settings()
+    with IndexQueries(served.paths.index_file) as queries:
+        source = ObjectResolver(queries, lambda: settings).locate(
+            VersionRef(STORE, version), principal=LOCAL_OWNER
+        )
+    verdict = PreviewProbe(kind=source.kind, reason="unreadable")
+    limit = settings.preview_cache_limit_bytes
+    with PreviewCache(served.paths.previews_dir, limit_bytes=limit) as cache:
+        cache.put(cache_key(source), INFO_NAME, verdict.to_bytes())
+    pane = open_preview(page, served, store, "tif_bbox")
+    expect(fact(pane, "Stan podglądu")).to_contain_text("niedostępny")
+    expect(pane.locator(".pv-reason")).to_contain_text(
+        message("preview.reason_unreadable", "pl")
+    )
+
+    with page.expect_request(
+        lambda request: request.method == "POST" and request.url.endswith("/preview")
+    ):
+        pane.get_by_role("button", name="Sprawdź ponownie").click()
+    expect(fact(pane, "Stan podglądu")).to_contain_text("gotowy")
+    assert_blob_image(thumbnail(pane))
+    assert preview_info(page, served, version)["state"] == "ready"
     tab.assert_clean()
 
 

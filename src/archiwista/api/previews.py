@@ -300,7 +300,9 @@ async def build_preview(
     with the `PreviewInfo` when nothing needs building. A file past the
     auto-build limits needs `force: true` (`409 preview_unavailable`,
     `too_large`, otherwise). A joined job lists only the refs of projects
-    the session sees.
+    the session sees. The request also asks again: a file whose cached
+    answer is that it cannot be shown (`unreadable`, `unsupported_format`)
+    or whose probe failed in the last 10 minutes is read anew first.
     """
     force = body is not None and body.force
     return await build_answer(

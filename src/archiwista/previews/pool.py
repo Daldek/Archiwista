@@ -30,6 +30,13 @@ opens a data file.
   A probe ending in a lasting reason (``unreadable``, ``unsupported_format``
   …) is cached as ``info.json`` with the code only; the library's message
   reaches only the request that caused it.
+- A process that ends without an answer was killed by the system (``SIGKILL``:
+  ``memory_limit``, as above) or crashed (another signal or exit status). A
+  crash says nothing lasting about the file (the computer, a library, a
+  signal), so it answers ``unreadable`` to that request only: neither
+  cached nor remembered, the next request renders again.
+- ``retry=True`` (an explicit request: ``POST …/preview``) passes over the
+  request's cached answer and its remembered failure, and renders it again.
 - A process without work for 5 minutes ends; the next request starts one.
 """
 
@@ -157,6 +164,7 @@ class _Prepared:
     operation: Operation
     timeout_s: float
     target: tuple[CacheKey, str] | None
+    retry: bool = False
 
 
 @dataclass(eq=False, slots=True)
@@ -349,6 +357,7 @@ class RenderPool:
         params: JsonObject | None = None,
         *,
         timeout_s: float | None = None,
+        retry: bool = False,
     ) -> RenderResult:
         """Run an operation, from the cache when it is there; wait for it.
 
@@ -362,6 +371,9 @@ class RenderPool:
             Parameters of the operation (JSON).
         timeout_s : float or None, optional
             Time limit of the rendering instead of the operation's.
+        retry : bool, default False
+            Render again: pass over the cached answer of this request and
+            its remembered failure (an explicit request of a person).
 
         Returns
         -------
@@ -381,7 +393,7 @@ class RenderPool:
         ValueError
             An unknown operation or parameters that are not JSON.
         """
-        prepared = self._prepare(op, source, params, timeout_s)
+        prepared = self._prepare(op, source, params, timeout_s, retry)
         found = self._lookup(prepared)
         if isinstance(found, RenderResult):
             return found
@@ -398,6 +410,7 @@ class RenderPool:
         params: JsonObject | None = None,
         *,
         timeout_s: float | None = None,
+        retry: bool = False,
     ) -> RenderResult:
         """Run an operation like ``request``, awaiting it.
 
@@ -405,7 +418,7 @@ class RenderPool:
         caller waits for it and no process took it yet, it leaves the queue
         unrendered.
         """
-        prepared = self._prepare(op, source, params, timeout_s)
+        prepared = self._prepare(op, source, params, timeout_s, retry)
         found = await asyncio.to_thread(self._lookup, prepared)
         if isinstance(found, RenderResult):
             return found
@@ -447,6 +460,7 @@ class RenderPool:
         source: PreviewSource | None,
         params: JsonObject | None,
         timeout_s: float | None,
+        retry: bool,
     ) -> _Prepared:
         operation = OPERATIONS.get(op)
         if operation is None:
@@ -470,10 +484,12 @@ class RenderPool:
             key = f"{op}:{hashlib.sha256(text.encode()).hexdigest()}"
         request = RenderRequest(secrets.token_hex(8), op, source, values)
         limit = self._timeouts[op] if timeout_s is None else timeout_s
-        return _Prepared(key, request, operation, limit, target)
+        return _Prepared(key, request, operation, limit, target, retry)
 
     def _lookup(self, prepared: _Prepared) -> RenderResult | _Prepared:
         """Answer from the cache, or add the cached probe to the request.
+
+        A retried request passes over its own cached answer.
 
         Raises
         ------
@@ -483,7 +499,7 @@ class RenderPool:
         """
         request = prepared.request
         try:
-            if prepared.target is not None:
+            if prepared.target is not None and not prepared.retry:
                 data = self._cache.get(*prepared.target)
                 if data is not None:
                     return RenderResult(data, cached=True)
@@ -516,7 +532,7 @@ class RenderPool:
             now = time.monotonic()
             failure = self._failures.get(prepared.key)
             if failure is not None:
-                if failure.until > now:
+                if failure.until > now and not prepared.retry:
                     raise _remembered(failure, now)
                 del self._failures[prepared.key]
             call = self._calls.get(prepared.key)
@@ -674,7 +690,11 @@ class RenderPool:
         return PreviewUnavailableError(code, detail)
 
     def _ended(self, call: _Call, status: int | None) -> _Outcome:
-        """Return the outcome of a process that ended without answering."""
+        """Return the outcome of a process that ended without answering.
+
+        A crash is not the file's verdict: ``unreadable`` for this request
+        only, neither cached nor remembered.
+        """
         with self._lock:
             closing = self._phase != "open"
         if closing:
@@ -684,7 +704,8 @@ class RenderPool:
         if status == -signal.SIGKILL:  # killed by the system, out of memory
             return self._failed(call, "memory_limit")
         detail = f"render process ended without an answer ({_status(status)})"
-        return self._unavailable(call.prepared, "unreadable", detail)
+        logger.warning("Rendering %s: %s", call.prepared.request.op, detail)
+        return PreviewUnavailableError("unreadable", detail)
 
     def _failed(
         self, call: _Call, code: Literal["timeout", "memory_limit"]

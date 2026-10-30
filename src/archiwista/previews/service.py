@@ -21,12 +21,14 @@ rendered. Parameters are checked against the file: a style of its
 ``styles`` (``422``), a tile within its zoom range and extent (``404``), map
 tiles only after their local COG is built (``409 preview_not_ready``).
 ``build`` submits the ``preview`` job of what files need built, joining a
-job that builds them already. An own-data working file that changed since
-its scan, before or while it is rendered, is ``OwnFileChangedError`` (``409
-own_file_changed``) for images and data, and ``changed_since_scan`` in its
-``PreviewInfo``. ``first_look`` names what a person's first look at a file
-asks for (the pane's thumbnail, the map's tiles at the file's smallest zoom),
-which the ``preview_warm`` job prepares (``archiwista.previews.warm``).
+job that builds them already; it first probes again a file whose cached
+probe says it cannot be shown, the retry a person asks for. An own-data
+working file that changed since its scan, before or while it is rendered,
+is ``OwnFileChangedError`` (``409 own_file_changed``) for images and data,
+and ``changed_since_scan`` in its ``PreviewInfo``. ``first_look`` names
+what a person's first look at a file asks for (the pane's thumbnail, the
+map's tiles at the file's smallest zoom), which the ``preview_warm`` job
+prepares (``archiwista.previews.warm``).
 """
 
 import asyncio
@@ -68,6 +70,7 @@ from archiwista.previews.legends import legend
 from archiwista.previews.pool import RETRY_AFTER_S, RenderPool, RenderResult
 from archiwista.previews.types import (
     PREVIEW_REASONS,
+    UNRENDERABLE_REASONS,
     JsonObject,
     PreviewKind,
     PreviewProbe,
@@ -382,7 +385,10 @@ class PreviewService:
 
         A file needing nothing (no local COG, built already, nothing to
         show) is left out, and so is one past the auto-build limits without
-        ``force``.
+        ``force``. An explicit request asks again: a file whose cached
+        probe says it cannot be shown (``unreadable``,
+        ``unsupported_format``), or whose probe failed recently, is probed
+        anew, so a person can retry a verdict a crash left behind.
 
         Returns
         -------
@@ -403,7 +409,7 @@ class PreviewService:
         too_large = False
         for ref in refs:
             located = await self._locate(parse_ref(ref), principal)
-            probe, _ = await self._probe(located, principal)
+            probe, _ = await self._probe(located, principal, retry=True)
             if probe.reason in NOTHING_SHOWN or await self._built(
                 located.source, probe
             ):
@@ -461,21 +467,28 @@ class PreviewService:
         )
 
     async def _probe(
-        self, located: _Located, principal: Principal
+        self, located: _Located, principal: Principal, *, retry: bool = False
     ) -> tuple[PreviewProbe, str | None]:
         """Return the file's probe from the cache, else from a render process.
 
         The second value is the library's message of a probe that found a
-        lasting reason now, else ``None``.
+        lasting reason now, else ``None``. ``retry`` probes again a file
+        whose cached probe says it cannot be shown, past a failure the pool
+        remembers.
         """
         data = await asyncio.to_thread(
             self._cached, cache_key(located.source), INFO_NAME
         )
         if data is not None:
             with contextlib.suppress(ValueError):  # a damaged object: probe again
-                return PreviewProbe.from_bytes(data), None
+                probe = PreviewProbe.from_bytes(data)
+                failed = (
+                    probe.reason is not None and probe.reason in UNRENDERABLE_REASONS
+                )
+                if not (retry and failed):
+                    return probe, None
         source = await self._resolve(located, principal)
-        result = await self._render("probe", located, source)
+        result = await self._render("probe", located, source, retry=retry)
         return result.probe(), result.detail
 
     async def _image(
@@ -523,6 +536,8 @@ class PreviewService:
         located: _Located,
         source: PreviewSource,
         params: JsonObject | None = None,
+        *,
+        retry: bool = False,
     ) -> RenderResult:
         """Render an operation of a file in a render process.
 
@@ -530,7 +545,7 @@ class PreviewService:
         from its scan: ``OwnFileChangedError``, as before the render.
         """
         try:
-            return await self._pool.arequest(op, source, params)
+            return await self._pool.arequest(op, source, params, retry=retry)
         except PreviewUnavailableError as error:
             ref = located.ref
             if isinstance(ref, FileRef) and error.reason in _CHANGED_REASONS:

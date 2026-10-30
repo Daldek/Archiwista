@@ -130,7 +130,10 @@ export function PreviewPane({ preview, name, style = null, onStyle, children }) 
   const chosen = info.styles.includes(wanted) ? wanted : (info.default_style ?? info.styles[0] ?? null);
   const legend = chosen ? info.legends[chosen] : null;
   const state = build.busy ? "building" : info.state;
-  const retry = info.state === "failed" || TRANSIENT.has(info.reason?.code);
+  // A file that cannot be read is read again by „Sprawdź ponownie” through
+  // `POST …/preview`: the server keeps that answer, and a reload repeats it.
+  const unreadable = info.reason?.code === "unreadable";
+  const retry = unreadable || info.state === "failed" || TRANSIENT.has(info.reason?.code);
   const actions = typeof children === "function" ? children(info, chosen) : children;
   // Past the auto-build limits the thumbnail too waits for the local copy.
   const awaited = info.state === "needs_build" && !info.auto_build;
@@ -151,7 +154,8 @@ export function PreviewPane({ preview, name, style = null, onStyle, children }) 
     <${BuildSection} info=${info} build=${build} loading=${loading} />
     ${error ? html`<${ProblemView} problem=${error.problem} compact />` : null}
     ${retry
-      ? html`<button type="button" class="btn sm pv-retry" disabled=${loading} onClick=${reload}>
+      ? html`<button type="button" class="btn sm pv-retry" disabled=${loading || build.busy}
+          onClick=${unreadable ? () => build.start(false) : reload}>
           <${Icon} name="rotate" size=${14} />${L.retry}</button>`
       : null}
     ${info.layers.length ? html`<${Layers} layers=${info.layers} name=${name} />` : null}

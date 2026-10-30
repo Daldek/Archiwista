@@ -1157,6 +1157,16 @@ command-line interface may change.
   the server's log; nothing is remembered about the file, so it previews once a process
   starts. The own-data reader that could not be started for that reason ends with
   `own_reader_failed`, like one that cannot be run at all.
+- A render process that crashed without answering (killed by a signal other than the
+  system's out-of-memory kill, or ended with an exit status) left its file kept in the
+  preview cache as `unreadable` ("The file cannot be read"), so the file never showed
+  again, even after the cause was gone, until `previews/` was deleted. A crash is no
+  longer the file's verdict: that request answers `unreadable` with the process's
+  signal or exit status in `detail`, nothing is kept or remembered, and the next request
+  renders the file again. `POST …/preview` (and `archiwista preview REF --build`) now
+  reads again a file whose cached answer is `unreadable` or `unsupported_format`, or
+  whose probe failed in the last 10 minutes, and replaces the verdict; in the preview
+  pane "Sprawdź ponownie" (check again) of a file that cannot be read does that.
 
 ### Security
 

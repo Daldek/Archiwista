@@ -172,7 +172,9 @@ a file appears on the map after its tiles are prepared; larger rasters may
 need the button "Zbuduj podgląd" (build the preview). Tiles, thumbnails and
 the preview of a whole year are kept in the local content-addressed memory
 (limit 20 GB, the least recently used go first). Every file has a preview or a
-reason, in Polish, why it has none, with an instruction on what to do.
+reason, in Polish, why it has none, with an instruction on what to do. A file
+that "cannot be read" is remembered as such; "Sprawdź ponownie" (check again) in
+its preview reads it again.
 
 The first look at a file on an HDD or a share is slow; it can be prepared
 ahead: `archiwista preview-warm` (filters `--store`,

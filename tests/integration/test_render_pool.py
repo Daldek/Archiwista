@@ -390,6 +390,66 @@ def test_unreadable_cached_as_code_and_timeout_not_cached(
     assert slow_kept is None
 
 
+def test_crashed_process_not_kept_and_next_request_renders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A process killed by a signal answers ``unreadable`` once; nothing is kept.
+
+    The crash is not the file's verdict: once the cause is gone (here the
+    instruction to crash), the next request renders the file.
+    """
+    # Arrange
+    source = _source(tmp_path / "data", "a.tif", signal="SIGSEGV")
+
+    with _pool(tmp_path, monkeypatch) as pool:
+        # Act
+        with pytest.raises(PreviewUnavailableError) as caught:
+            pool.request("probe", source)
+        kept = pool.cache.get(cache_key(source), INFO_NAME)
+        source.paths[0].write_text(json.dumps({"name": "a.tif"}), encoding="utf-8")
+        result = pool.request("probe", source)
+
+    # Assert
+    assert caught.value.reason == "unreadable"
+    assert "SIGSEGV" in str(caught.value.detail)
+    assert kept is None
+    assert not result.cached and result.probe().driver == "test"
+
+
+def test_retry_passes_over_cached_verdict_and_remembered_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``retry`` renders again what the cache or the memory of failures answers.
+
+    The retried probe replaces the verdict, so later requests get the new one.
+    """
+    # Arrange
+    data = tmp_path / "data"
+    stale = _source(data, "stale.tif")
+    slow = _source(data, "slow.tif", sleep_s={"probe": 60})
+    verdict = PreviewProbe(kind="raster", reason="unreadable").to_bytes()
+
+    with _pool(tmp_path, monkeypatch, timeouts={"probe": 1.0}) as pool:
+        pool.cache.put(cache_key(stale), INFO_NAME, verdict)
+        with pytest.raises(PreviewTimeoutError):
+            pool.request("probe", slow)
+        slow.paths[0].write_text(json.dumps({"name": "slow.tif"}), encoding="utf-8")
+
+        # Act
+        cached = pool.request("probe", stale)
+        retried = pool.request("probe", stale, retry=True)
+        after = pool.request("probe", stale)
+        with pytest.raises(PreviewTimeoutError):
+            pool.request("probe", slow)
+        recovered = pool.request("probe", slow, retry=True)
+
+    # Assert
+    assert cached.cached and cached.data == verdict
+    assert not retried.cached and retried.probe().driver == "test"
+    assert after.cached and after.data == retried.data
+    assert not recovered.cached and recovered.probe().driver == "test"
+
+
 def test_process_that_cannot_start_is_coded_and_not_remembered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
