@@ -83,7 +83,7 @@ class Team:
         while not page.evaluate(INDEXED):
             assert time.monotonic() < deadline, "the store was not scanned in time"
             page.wait_for_timeout(200)
-        open_projects(page, self.served.origin)
+        open_projects(tab, self.served.origin)
         return page
 
 
@@ -111,11 +111,16 @@ def serve_team(team_serve: TeamServe, tmp_path: Path) -> Team:
     return Team(served, projects)
 
 
-def open_projects(page: Page, origin: str, project: str | None = None) -> None:
-    """Open the Projects view, with a project's card when one is named."""
+def open_projects(tab: Tab, origin: str, project: str | None = None) -> None:
+    """Open the Projects view, with a project's card when one is named.
+
+    The page left is settled first: Firefox reports the loads it cuts off as
+    the page's errors (``Tab.settle``).
+    """
     chosen = f"&project={project}" if project else ""
-    page.goto(f"{origin}/?view=projects{chosen}")
-    expect(page.get_by_role("heading", name="Projekty")).to_be_visible()
+    tab.settle()
+    tab.page.goto(f"{origin}/?view=projects{chosen}")
+    expect(tab.page.get_by_role("heading", name="Projekty")).to_be_visible()
 
 
 def rows(page: Page) -> Locator:
@@ -174,8 +179,8 @@ def test_a_person_shares_her_project_with_a_group_then_keeps_it_private(
     window.get_by_label("tylko właściciel").check()
     window.get_by_role("button", name="Zapisz").click()
     expect(window).to_be_hidden()
-    open_projects(inside, team.served.origin)
-    open_projects(page, team.served.origin)
+    open_projects(ola, team.served.origin)
+    open_projects(kasia, team.served.origin)
     administrator = team.person(anna, ADMIN_ACCOUNT)
 
     assert shared == (404, 200)
@@ -201,7 +206,7 @@ def test_a_data_folder_outside_the_project_is_refused_at_its_field(
     outside = tmp_path / "obce-dane"
     outside.mkdir()
     (directory / "dane-gis").mkdir()
-    open_projects(page, team.served.origin, PROJECT)
+    open_projects(kasia, team.served.origin, PROJECT)
     window = sharing(page)
     folder = window.get_by_label("Folder danych własnych")
 
@@ -229,6 +234,7 @@ def test_without_admin_the_store_scans_are_disabled_with_the_reason(
     kasia = team_tab()
     page = team.person(kasia, "kasia")
 
+    kasia.settle()
     page.goto(f"{team.served.origin}/?view=store")
 
     for name in ("Odśwież", "Pełny skan", "Uzupełnij obrysy jednostek"):

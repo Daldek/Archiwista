@@ -4,7 +4,8 @@
 job supervisor and scan scheduler; ``Tab`` a Playwright page recording CSP
 violations (``securitypolicyviolation``), page errors, console errors,
 requests and workers, so interface tests can assert the page stayed within
-its policy and made no request outside the server.
+its policy and made no request outside the server; ``Tab.settle`` waits for
+the page's requests to end before a test navigates away from it.
 
 For frame rates (plan v0.2, decision 1) ``gpu_browser`` gives a Chromium
 drawing WebGL on the GPU when it can: Chrome of a graphical session over CDP
@@ -86,6 +87,10 @@ document.addEventListener("securitypolicyviolation", (event) => {
 # Chromium logs every 4xx/5xx answer like this; expected API problems are
 # asserted by the tests themselves.
 FAILED_RESOURCE = "Failed to load resource"
+# How long a page has had no request in flight when it counts as settled, and
+# the bound of the wait for it.
+QUIET_S = 0.5
+SETTLE_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,7 @@ class Tab:
     console_errors: list[str] = field(default_factory=list)
     requests: list[str] = field(default_factory=list)
     workers: list[str] = field(default_factory=list)
+    in_flight: set[Request] = field(default_factory=set)
 
     def watch(self) -> None:
         """Start recording; call once, before the first navigation."""
@@ -128,7 +134,27 @@ class Tab:
         self.page.on("pageerror", lambda error: self.page_errors.append(str(error)))
         self.page.on("console", self._console)
         self.page.on("request", self._request)
+        self.page.on("requestfinished", self._ended)
+        self.page.on("requestfailed", self._ended)
         self.page.on("worker", self._worker)
+
+    def settle(self) -> None:
+        """Wait until the page has had no request in flight for ``QUIET_S``.
+
+        Call it before navigating away from a page that may still be loading.
+        Firefox fails the loads of the page it leaves (module scripts,
+        stylesheets, ``fetch``) and runs the page's handlers of those
+        failures, which then report errors of a page nobody sees any more;
+        Chromium drops the page without running them.
+        """
+        deadline = time.monotonic() + SETTLE_TIMEOUT_S
+        quiet_since = time.monotonic()
+        while time.monotonic() - quiet_since < QUIET_S:
+            pending = sorted(request.url for request in self.in_flight)
+            assert time.monotonic() < deadline, f"the page did not settle: {pending}"
+            self.page.wait_for_timeout(50)
+            if self.in_flight:
+                quiet_since = time.monotonic()
 
     def csp_violations(self) -> list[dict[str, str]]:
         """Return the CSP violations of the current document."""
@@ -157,6 +183,10 @@ class Tab:
 
     def _request(self, request: Request) -> None:
         self.requests.append(request.url)
+        self.in_flight.add(request)
+
+    def _ended(self, request: Request) -> None:
+        self.in_flight.discard(request)
 
     def _worker(self, worker: Worker) -> None:
         self.workers.append(worker.url)
