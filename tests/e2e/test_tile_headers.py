@@ -176,7 +176,9 @@ def _status(url: str) -> int:
         with urllib.request.urlopen(url, timeout=10) as answer:
             return int(answer.status)
     except urllib.error.HTTPError as error:
-        return int(error.code)
+        # The error holds the answer's body open; unclosed it warns (ResourceWarning).
+        with error:
+            return int(error.code)
 
 
 def _loaded(page: Page) -> None:
