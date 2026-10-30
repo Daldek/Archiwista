@@ -1086,6 +1086,11 @@ command-line interface may change.
 
 ### Fixed
 
+- On macOS every request on a kept-alive connection waited about 40 ms for the client's
+  delayed acknowledgement: the server relied on asyncio to turn Nagle's algorithm off,
+  which it does only on an accepted socket that reports `IPPROTO_TCP`, and one accepted
+  on macOS reports `0`. Each connection now sets `TCP_NODELAY` itself, also under TLS in
+  the server (team mode).
 - After a server upgrade a browser could keep showing the previous interface (the map
   panel without its fourth step "U źródła", so the panel seemed not to scroll down to
   it): the page and the `/static/…` files had only `ETag` and `Last-Modified`, so the

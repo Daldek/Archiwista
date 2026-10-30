@@ -1476,9 +1476,10 @@ the test account has no access to hardware WebGL; SwiftShader reached
   built as a record (`TimelineYear`) without validation (`GET /stations/timeline`,
   200 stations of H, Q and T over 75 years: p95 263–271 ms on the development
   machine, SPEC 4.5 300 ms);
-- server: an `IPPROTO_TCP` socket in `bind_address` (without the Nagle delay
-  of about 40 ms per request), the interface draws only the catalog rows close to the
-  view.
+- server: `TCP_NODELAY` set by each accepted connection, over TLS too (without the
+  Nagle delay of about 40 ms per request; asyncio sets it only on sockets that report
+  `IPPROTO_TCP`, which an accepted one on macOS does not), the interface draws only the
+  catalog rows close to the view.
 
 Performance tests (skipped by default, markers `perf` and `smb`):
 `tests/perf/test_store_50k.py`, `test_previews_perf.py` and

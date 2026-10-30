@@ -1,6 +1,5 @@
 """``archiwista serve`` and ``archiwista token`` with a real server in a thread."""
 
-import asyncio
 import json
 import os
 import re
@@ -9,7 +8,6 @@ import stat
 import threading
 import time
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
@@ -19,10 +17,10 @@ import pytest
 from archiwista import server as server_module
 from archiwista.cli import main
 from archiwista.security import CSRF_HEADER, LOOPBACK_HOST, SESSION_COOKIE, TOKEN_TTL
-from archiwista.server import AppServer, LaunchFile, bind_address, open_in_browser
+from archiwista.server import AppServer, LaunchFile, open_in_browser
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.cli_errors import refusal
-from tests.fixtures.local_server import NoSources, local_paths, serving
+from tests.fixtures.local_server import NoSources, local_paths, server_nodelay, serving
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
 
@@ -104,40 +102,24 @@ def test_serve_reports_busy_port(
     assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in captured.err
 
 
-def test_serve_connections_send_without_nagle_delay() -> None:
-    """Connections of the server's socket send at once (``TCP_NODELAY``).
+def test_serve_connections_send_without_nagle_delay(tmp_path: Path) -> None:
+    """The server's end of a connection sends at once (``TCP_NODELAY``).
 
-    asyncio disables Nagle's algorithm only on connections accepted by an
-    ``IPPROTO_TCP`` socket. Without it every response written in parts on a
-    kept-alive connection waited for the client's delayed acknowledgement:
-    about 40 ms added to each request of the browser.
+    Without it every response written in parts on a kept-alive connection
+    waited for the client's delayed acknowledgement: about 40 ms added to each
+    request of the browser. asyncio sets it only on an accepted socket that
+    reports ``IPPROTO_TCP``: never on macOS, and nowhere for the server's
+    listening socket, so this fails wherever the server relies on asyncio.
     """
+    with (
+        serving(local_paths(tmp_path)) as (server, _),
+        socket.create_connection((LOOPBACK_HOST, server.port), timeout=10) as client,
+    ):
+        client.sendall(b"GET /api/v1/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        answered = client.recv(64)
+        nodelay = server_nodelay(client)
 
-    async def accepted_nodelay() -> int:
-        listening = bind_address(LOOPBACK_HOST, 0)
-        loop = asyncio.get_running_loop()
-        accepted: asyncio.Future[int] = loop.create_future()
-
-        class Probe(asyncio.Protocol):
-            def connection_made(self, transport: asyncio.BaseTransport) -> None:
-                raw = transport.get_extra_info("socket")
-                accepted.set_result(
-                    raw.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
-                )
-                transport.close()
-
-        async with await loop.create_server(Probe, sock=listening):
-            _, writer = await asyncio.open_connection(*listening.getsockname())
-            try:
-                return await asyncio.wait_for(accepted, timeout=10)
-            finally:
-                writer.close()
-                await writer.wait_closed()
-
-    # Its own thread: the session's Playwright may run an event loop here.
-    with ThreadPoolExecutor(1) as pool:
-        nodelay = pool.submit(asyncio.run, accepted_nodelay()).result()
-
+    assert answered.startswith(b"HTTP/1.1 ")
     assert nodelay != 0
 
 

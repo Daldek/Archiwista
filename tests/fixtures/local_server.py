@@ -1,7 +1,10 @@
 """Run ``archiwista serve`` in a background thread, on a free or a given port."""
 
 import io
+import os
 import queue
+import socket
+import stat
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -42,6 +45,28 @@ class NoSources:
     def probe(self, producer: str, root: Path) -> SourceState:
         """Report every producer as not installed."""
         return self.state(producer)
+
+
+def server_nodelay(client: socket.socket) -> int:
+    """Return ``TCP_NODELAY`` of the server's end of ``client``'s connection.
+
+    The server of a test runs in this process, so its end is one of the
+    process's descriptors (listed in ``/dev/fd`` on Linux and macOS): the
+    socket whose peer is ``client``. ``client`` must have had an answer, so
+    that the server has taken the connection.
+    """
+    local, peer = client.getsockname(), client.getpeername()
+    for name in os.listdir("/dev/fd"):
+        descriptor = int(name)
+        try:
+            if not stat.S_ISSOCK(os.fstat(descriptor).st_mode):
+                continue
+            with socket.socket(fileno=os.dup(descriptor)) as end:
+                if end.getsockname() == peer and end.getpeername() == local:
+                    return end.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+        except OSError:  # closed meanwhile, or a socket without a peer
+            continue
+    raise AssertionError(f"no socket of this process is connected to {local}")
 
 
 def local_paths(tmp_path: Path) -> AppPaths:

@@ -22,6 +22,7 @@ processes. ``token`` prints the one-time address of an agent's session, or
 ends every agent session (``--revoke-all``).
 """
 
+import asyncio
 import contextlib
 import copy
 import html
@@ -217,10 +218,7 @@ def bind_address(host: str, port: int) -> socket.socket:
     """
     version = ipaddress.ip_address(host).version
     family = socket.AF_INET6 if version == 6 else socket.AF_INET
-    # asyncio disables Nagle's algorithm only on connections accepted by an
-    # IPPROTO_TCP socket; with it on, a response written in parts waits for
-    # the client's delayed acknowledgement (about 40 ms per kept-alive request).
-    sock = socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+    sock = socket.socket(family, socket.SOCK_STREAM)
     try:
         if os.name == "posix":
             # Restart at once even with connections of a stopped server in
@@ -240,16 +238,49 @@ def _listening(host: str, port: int) -> str:
 
 
 class _Uvicorn(uvicorn.Server):
-    """Uvicorn calling ``on_stop`` before it waits for open connections."""
+    """Uvicorn calling ``on_stop`` before it waits for open connections.
+
+    Its connections send at once: each turns Nagle's algorithm off
+    (``_sending_at_once``).
+    """
 
     def __init__(self, config: uvicorn.Config, on_stop: Callable[[], None]) -> None:
         super().__init__(config)
         self._on_stop = on_stop
 
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        """Start as Uvicorn does, on connections that send at once."""
+        protocol = self.config.http_protocol_class
+        self.config.http_protocol_class = _sending_at_once(protocol)
+        await super().startup(sockets=sockets)
+
     async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
         """Call ``on_stop``, then shut down as Uvicorn does."""
         self._on_stop()
         await super().shutdown(sockets=sockets)
+
+
+def _sending_at_once(protocol: type[asyncio.Protocol]) -> type[asyncio.Protocol]:
+    """Return Uvicorn's HTTP ``protocol`` turning Nagle's algorithm off.
+
+    With Nagle's algorithm on, a response written in parts on a kept-alive
+    connection waits for the client's delayed acknowledgement: about 40 ms
+    added to each request. ``TCP_NODELAY`` is not inherited from the listening
+    socket, and asyncio sets it only on an accepted socket that reports
+    ``IPPROTO_TCP``, which one accepted on macOS does not (it reports ``0``);
+    so each connection sets it itself, over TLS on the socket beneath.
+    """
+
+    class SendingAtOnce(protocol):  # type: ignore[misc,valid-type]
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            raw = transport.get_extra_info("socket")
+            if raw is not None and raw.family in (socket.AF_INET, socket.AF_INET6):
+                # A connection the client already reset fails here; it ends anyway.
+                with contextlib.suppress(OSError):
+                    raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            super().connection_made(transport)
+
+    return SendingAtOnce
 
 
 class LaunchFile:

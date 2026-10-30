@@ -16,7 +16,7 @@ from archiwista.config import AppPaths, AppSettings, ConfigStore, TeamSettings
 from archiwista.security import HSTS
 from archiwista.state import StateStore
 from tests.fixtures.cli_errors import refusal
-from tests.fixtures.local_server import NoSources, local_paths
+from tests.fixtures.local_server import NoSources, local_paths, server_nodelay
 from tests.fixtures.team_server import (
     ADMIN_ACCOUNT,
     ADMIN_PASSWORD,
@@ -83,6 +83,28 @@ def test_serve_team_answers_its_origin_over_tls_only(tmp_path: Path) -> None:
     assert server.url == site.origin
     assert server.launch is None
     assert launch_files == []
+
+
+def test_serve_team_tls_connections_send_without_nagle_delay(tmp_path: Path) -> None:
+    """Over TLS the server's end of a connection also sends at once (``TCP_NODELAY``).
+
+    The option belongs to the TCP socket beneath TLS; without it each response
+    written in parts waited for the client's delayed acknowledgement.
+    """
+    paths = local_paths(tmp_path)
+    site = team_site(tmp_path / "tls")
+    trust = ssl.create_default_context(cafile=site.tls.ca_file)
+    with (
+        team_serving(paths, site),
+        socket.create_connection(("127.0.0.1", site.port), timeout=10) as raw,
+        trust.wrap_socket(raw, server_hostname="localhost") as client,
+    ):
+        client.sendall(b"GET /api/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        answered = client.recv(64)
+        nodelay = server_nodelay(client)
+
+    assert answered.startswith(b"HTTP/1.1 ")
+    assert nodelay != 0
 
 
 def handshake(site: TeamSite, client: ssl.SSLContext) -> tuple[str, str] | None:
