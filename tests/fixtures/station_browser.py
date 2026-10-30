@@ -173,8 +173,16 @@ class Frame:
 
 
 def frame_of(plot: Locator) -> Frame:
-    """Return the range and place of a chart's plot (``.sch-plot``)."""
-    box = plot.locator("svg").bounding_box()
+    """Return the range and place of a chart's plot (``.sch-plot``).
+
+    The place is read once the plot stopped moving: the card slides in when it
+    opens (``.drawer``, 0.22 s), often still while its chart is drawn, and a
+    drag over a plot read mid-slide lands days off its target.
+    """
+    svg = plot.locator("svg").element_handle()
+    svg.wait_for_element_state("stable")
+    box = svg.bounding_box()
+    svg.dispose()
     assert box is not None
     return Frame(
         first=date.fromisoformat(plot.get_attribute("data-from") or ""),
