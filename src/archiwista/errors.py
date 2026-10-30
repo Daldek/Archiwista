@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from archiwista._errors import BY_CODE
+from archiwista.messages import message
 from archiwista.sources.types import SourceState
 
 # Producer packages whose own errors have a reason of their own.
@@ -591,6 +592,27 @@ class PreviewTimeoutError(ArchiwistaError):
 
     default_code = "calculation_error"
     default_reason = "preview_timeout"
+
+
+class RendererStartError(ArchiwistaError):
+    """A render or build process could not be started (``503 missing_dependency``).
+
+    Starting it failed on this computer, before it read any file (the
+    system refused the process or a limit of it); the server's log has the
+    cause. No preview can be made until that is fixed, and nothing is
+    remembered about the file asked for. Reason ``renderer_not_started``;
+    the message and the hint are ``preview.renderer_not_started`` and
+    ``preview.renderer_not_started_hint``.
+    """
+
+    default_code = "missing_dependency"
+    default_reason = "renderer_not_started"
+
+    def __init__(self) -> None:
+        super().__init__(
+            message("preview.renderer_not_started"),
+            hint=message("preview.renderer_not_started_hint"),
+        )
 
 
 class PreviewUnavailableError(ArchiwistaError):

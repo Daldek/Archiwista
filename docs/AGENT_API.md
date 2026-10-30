@@ -835,7 +835,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
-| 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail` |
+| 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail`; `renderer_not_started`: a preview route could not start a render process on the server (the cause is in the server's log; nothing is remembered about the file, ask again once it is fixed) |
 | 503 | `store_unavailable` | `store_unreadable`: the store cannot be read and the index has no answer |
 
 The command line gives the same information as the error document
@@ -1021,6 +1021,7 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an IMGW store, the parent of a store); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
 | `missing_dependency` | `source_unavailable`, `source_incompatible` | the producer plugin is missing or has an unsupported version: `details.source` and `hint` give the fix |
 | `missing_dependency` | `own_reader_failed` | the process that reads own data did not start (for example without the GDAL bindings) |
+| `missing_dependency` | `renderer_not_started` | a `preview` or `preview_warm` job could not start a build or render process on the server (the cause is in the server's log); nothing is kept about the files, try again once it is fixed |
 | `conflict` | `offline_mode` | the job needs the network and offline mode is on |
 | `conflict` | `snapshot_blocked` | the plan refuses the snapshot: `details.blocked_by` is `folder_invalid`, `read_only_folder`, `insufficient_space` or `file_missing` |
 | `conflict` | `inconsistent_copy`, `target_exists` | a snapshot: the file kept changing while it was copied, or another process published the label first; nothing was published, try again |

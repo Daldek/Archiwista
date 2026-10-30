@@ -18,11 +18,14 @@ import pytest
 import shapely
 
 from archiwista.config import AppPaths
+from archiwista.errors import OwnReaderError
+from archiwista.owndata import reader as reader_module
 from archiwista.owndata.content import content_identity, content_method
 from archiwista.owndata.formats import fileset_members
 from archiwista.owndata.reader import OwnFileInfo, OwnReader
 from tests.fixtures.hostile_files import SECRET_TEXT, hostile_files
 from tests.fixtures.own_data import GpkgEditor, OwnFolderManifest, make_own_folder
+from tests.fixtures.refused_start import refuse_starts
 
 # make_own_folder writes a TIFF without georeference on purpose.
 pytestmark = pytest.mark.filterwarnings(
@@ -187,6 +190,29 @@ def test_hanging_file_killed_and_next_files_read(
         (None, 2),
         (None, 3),
     ]
+
+
+def test_reader_that_cannot_start_is_own_reader_failed(
+    tmp_path: Path, paths: AppPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused start is ``own_reader_failed``; the next start reads the file."""
+    # Arrange
+    folder = make_own_folder(tmp_path / "dane", families=("geojson_wgs84",))
+    refused = refuse_starts(monkeypatch, reader_module)
+
+    with OwnReader(paths) as reader:
+        # Act
+        with pytest.raises(OwnReaderError) as caught:
+            reader.read(folder.path("geojson_wgs84"))
+        refused.on = False
+        info = reader.read(folder.path("geojson_wgs84"))
+
+    # Assert
+    assert (caught.value.code, caught.value.details["reason"]) == (
+        "missing_dependency",
+        "own_reader_failed",
+    )
+    assert (info.error, info.feature_count) == (None, 2)
 
 
 def _listing(root: Path) -> dict[str, tuple[int, int] | None]:

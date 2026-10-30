@@ -1150,6 +1150,13 @@ command-line interface may change.
   macOS refuses for any value, so the process failed before it ran. The memory limit
   is now set on Linux only; on macOS such a process keeps the inherited limit until the
   macOS port (v1.0, DEV-7.7).
+- A render or build process that could not be started (as on macOS before the fix
+  above) made a preview request answer `500 internal_error` and a `preview` or
+  `preview_warm` job end as `internal_error`. Both now end with `503
+  missing_dependency`, reason `renderer_not_started`, with a hint that the cause is in
+  the server's log; nothing is remembered about the file, so it previews once a process
+  starts. The own-data reader that could not be started for that reason ends with
+  `own_reader_failed`, like one that cannot be run at all.
 
 ### Security
 

@@ -209,6 +209,20 @@ MESSAGES = {
         "Archiwista is shutting down; previews are temporarily unavailable.",
         "Archiwista kończy pracę; podglądy są chwilowo niedostępne.",
     ),
+    "renderer_not_started": Text(
+        (
+            "The preview process could not be started on this computer, so no"
+            " preview can be prepared now."
+        ),
+        (
+            "Nie udało się uruchomić procesu podglądu na tym komputerze, więc teraz"
+            " nie można przygotować żadnego podglądu."
+        ),
+    ),
+    "renderer_not_started_hint": Text(
+        "The cause is in the server's log; try again once it is fixed.",
+        "Przyczyna jest w dzienniku serwera; spróbuj ponownie po jej usunięciu.",
+    ),
     "timeout": Text(
         "Preparing the preview exceeded the time limit ({seconds} s).",
         "Przygotowanie podglądu przekroczyło limit czasu ({seconds} s).",

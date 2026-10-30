@@ -19,6 +19,9 @@ environment the test sets, which the worker inherits:
     Build processes at once of the ``preview`` job. The time limit of a build
     is the file's own instruction ``timeout_s`` (``tests.fixtures.render_worker``),
     so that only the file meant to be too slow can run out of time.
+``ARCHIWISTA_TEST_BUILD_START_REFUSED``
+    Every build process of the ``preview`` job fails between fork and exec,
+    as ``setrlimit(RLIMIT_AS)`` does on macOS, so none can start.
 ``ARCHIWISTA_TEST_SNAPSHOT_FAULT``
     ``<phase>:<signal>``, e.g. ``rename:SIGKILL``: the worker sends itself
     the signal when a snapshot reaches the phase (``SNAPSHOT_PHASES``).
@@ -49,6 +52,7 @@ from archiwista.previews import build
 from archiwista.previews.types import PreviewSource
 from archiwista.sources import ScanScope, SourceEntry
 from tests.fixtures.missing_package import MISSING_PACKAGES_ENV, hiding
+from tests.fixtures.refused_start import RefusedStarts
 from tests.fixtures.render_worker import TEST_RENDER_WORKER
 
 DELAY_ENV = "ARCHIWISTA_TEST_ENTRY_DELAY_S"
@@ -56,6 +60,7 @@ CRASH_ENV = "ARCHIWISTA_TEST_CRASH_AFTER"
 NO_NETWORK_ENV = "ARCHIWISTA_TEST_NO_NETWORK"
 PREVIEW_SOURCES_ENV = "ARCHIWISTA_TEST_PREVIEW_SOURCES"
 BUILD_PROCESSES_ENV = "ARCHIWISTA_TEST_BUILD_PROCESSES"
+BUILD_START_REFUSED_ENV = "ARCHIWISTA_TEST_BUILD_START_REFUSED"
 SNAPSHOT_FAULT_ENV = "ARCHIWISTA_TEST_SNAPSHOT_FAULT"
 
 
@@ -155,6 +160,8 @@ def main() -> int:
     sources = os.environ.get(PREVIEW_SOURCES_ENV)
     if sources:
         _hook_previews(Path(sources))
+    if os.environ.get(BUILD_START_REFUSED_ENV):
+        build.child_limits = RefusedStarts(build.child_limits)  # type: ignore[attr-defined]
     fault = os.environ.get(SNAPSHOT_FAULT_ENV)
     if fault:
         _hook_snapshots(fault)

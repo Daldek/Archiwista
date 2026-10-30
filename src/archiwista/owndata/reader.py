@@ -390,7 +390,8 @@ class OwnReader:
                 env=untrusted_env(),
                 **child_limits(self._memory_bytes),
             )
-        except OSError as error:
+        except (OSError, subprocess.SubprocessError) as error:
+            logger.exception("The own-data reader could not be started")
             raise OwnReaderError("the own-data reader could not be run") from error
         self._process = process
         self._lines = queue.Queue()

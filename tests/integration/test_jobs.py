@@ -36,11 +36,15 @@ from archiwista.jobs.foreground import run_foreground
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
 from archiwista.messages import label, message
-from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
+from archiwista.previews.cache import COG_NAME, INFO_NAME, PreviewCache, cache_key
 from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
 from tests.fixtures.cli_errors import refusal
-from tests.fixtures.job_worker import BUILD_PROCESSES_ENV, PREVIEW_SOURCES_ENV
+from tests.fixtures.job_worker import (
+    BUILD_PROCESSES_ENV,
+    BUILD_START_REFUSED_ENV,
+    PREVIEW_SOURCES_ENV,
+)
 from tests.fixtures.jobs import (
     CRASH_ENV,
     DELAY_ENV,
@@ -1116,6 +1120,30 @@ def test_preview_build_item_timeout_fails_item_only(
     with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
         assert not cache.has(cache_key(sources["slow"]), COG_NAME)
         assert cache.has(cache_key(sources["ok1"]), COG_NAME)
+
+
+def test_preview_build_process_that_cannot_start_fails_job_coded(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No build process starts: ``renderer_not_started``, nothing kept of the file."""
+    # Arrange
+    monkeypatch.setenv(BUILD_START_REFUSED_ENV, "1")
+    sources = _preview_sources(tmp_path, monkeypatch, {"a": {"needs_cog": True}})
+
+    # Act
+    job = env.jobs.submit(
+        "preview", params=_preview_params(sources, "a"), actor=LOCAL_OWNER
+    )
+    record = env.wait(job.id)
+
+    # Assert
+    assert record.state == "failed" and record.error is not None, record
+    assert (record.error.code, record.error.reason) == (
+        "missing_dependency",
+        "renderer_not_started",
+    )
+    with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
+        assert not cache.has(cache_key(sources["a"]), INFO_NAME)
 
 
 def test_preview_builds_at_most_n_children(

@@ -15,6 +15,7 @@ import pytest
 
 from archiwista.api.previews import VERSION_CACHE_CONTROL
 from archiwista.messages import message
+from archiwista.previews import pool as pool_module
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
 from tests.fixtures.preview_api import (
@@ -25,6 +26,7 @@ from tests.fixtures.preview_api import (
     preview_api,
     version_url,
 )
+from tests.fixtures.refused_start import refuse_starts
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -270,6 +272,27 @@ def test_disconnected_store_answers_from_cache_or_503(
     assert unknown["state"] == "unavailable"
     assert unknown["reason"]["code"] == "store_unavailable"
     assert_problem(refused, 503, "store_unavailable", "store_unreadable")
+
+
+def test_render_process_that_cannot_start_is_503_not_remembered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No render process starts: ``503 renderer_not_started``, then the file shows."""
+    refused = refuse_starts(monkeypatch, pool_module)
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "tif_sheet", "regular").path
+
+        # Act
+        failed = served.get(version_url(path))
+        refused.on = False
+        after = _info(served, path)
+
+    # Assert
+    assert_problem(failed, 503, "missing_dependency", "renderer_not_started")
+    assert failed.json()["detail"] == message("preview.renderer_not_started")
+    assert failed.json()["hint"] == message("preview.renderer_not_started_hint")
+    assert (after["state"], after["reason"]) == ("ready", None)
 
 
 def test_preview_routes_need_csrf(served: PreviewApi) -> None:

@@ -23,7 +23,9 @@ A file whose build fails (time limit, memory, unreadable, too large without
 ``failed`` with ``ref``, ``code`` and a Polish ``detail`` without paths; a
 ref that does not resolve fails with a detail of its own, naming no other
 ref of the same content (an own file of a data folder that breaks the rules
-of a scan now: ``own_folder_invalid``).
+of a scan now: ``own_folder_invalid``). A build process that cannot be
+started fails the whole job (``RendererStartError``, ``missing_dependency``):
+no file could be built, and nothing is kept about the files.
 Progress: ``current`` of ``total`` contents with ``built``, ``cached`` and
 ``failed``; the summary: ``built``, ``cached``, ``failed`` and ``seconds``.
 An interrupt kills the build processes before the job ends.
@@ -31,6 +33,7 @@ An interrupt kills the build processes before the job ends.
 
 import concurrent.futures
 import contextlib
+import logging
 import os
 import secrets
 import signal
@@ -49,6 +52,7 @@ from archiwista.errors import (
     OwnFolderInvalidError,
     PathOutsideRootError,
     PreviewUnavailableError,
+    RendererStartError,
     SourceUnavailableError,
 )
 from archiwista.jobs.protocol import JobSpec, JsonObject
@@ -98,6 +102,8 @@ RESOLVERS: Mapping[str, ResolverFactory] = {
 BUILD_COMMAND: tuple[str, ...] = RENDER_WORKER_COMMAND
 BUILD_TIMEOUT_S = BUILD.timeout_s
 BUILD_MEMORY_BYTES = 4 * 1024**3
+
+logger = logging.getLogger(__name__)
 
 
 def build_processes() -> int:
@@ -321,20 +327,28 @@ class _Builder:
         return _Outcome("built", refs)
 
     def _run(self, request: RenderRequest, limit_s: float) -> RenderAnswer:
-        """Run one build process to its end, or ``limit_s``, and return its answer."""
+        """Run one build process to its end, or ``limit_s``, and return its answer.
+
+        A process that cannot be started fails the job with
+        ``RendererStartError``: no file could be built.
+        """
         argv = [*BUILD_COMMAND, "--work-dir", str(self._spec.work_dir)]
         with self._lock:
             if self._stopped:
                 raise _Interrupted
-            process = subprocess.Popen(
-                argv,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                cwd=self._cache.root,
-                env=untrusted_env(),
-                **child_limits(BUILD_MEMORY_BYTES),
-            )
+            try:
+                process = subprocess.Popen(
+                    argv,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    cwd=self._cache.root,
+                    env=untrusted_env(),
+                    **child_limits(BUILD_MEMORY_BYTES),
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                logger.exception("A build process could not be started")
+                raise RendererStartError from error
             self._children.add(process)
         try:
             data = (encode_request(request) + "\n").encode("utf-8")

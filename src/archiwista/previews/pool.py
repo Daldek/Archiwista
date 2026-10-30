@@ -59,6 +59,7 @@ from archiwista.errors import (
     PreviewBusyError,
     PreviewTimeoutError,
     PreviewUnavailableError,
+    RendererStartError,
 )
 from archiwista.messages import message
 from archiwista.previews.cache import INFO_NAME, CacheKey, PreviewCache, cache_key
@@ -375,6 +376,8 @@ class RenderPool:
             The rendering ran past its limit, now or within 10 minutes.
         PreviewUnavailableError
             The file has no such preview (``reason``).
+        RendererStartError
+            No render process could be started (nothing is remembered).
         ValueError
             An unknown operation or parameters that are not JSON.
         """
@@ -727,7 +730,11 @@ class RenderPool:
                 logger.exception("Keeping a preview in the cache failed")
 
     def _ensure(self, slot: _Slot) -> subprocess.Popen[bytes]:
-        """Return the slot's live process, started when needed."""
+        """Return the slot's live process, started when needed.
+
+        A process that cannot be started is a ``RendererStartError``: a
+        fault of this computer, never remembered as the file's.
+        """
         process = slot.process
         if process is not None and process.poll() is None:
             return process
@@ -738,15 +745,18 @@ class RenderPool:
             argv = [*self._command, "--previews-dir", str(self._cache.root)]
             if self._work_dir is not None:
                 argv += ["--work-dir", str(self._work_dir)]
-            process = subprocess.Popen(
-                argv,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                cwd=self._cache.root,
-                env=untrusted_env(),
-                **child_limits(self._memory_bytes),
-            )
+            try:
+                process = subprocess.Popen(
+                    argv,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    cwd=self._cache.root,
+                    env=untrusted_env(),
+                    **child_limits(self._memory_bytes),
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                raise RendererStartError from error
             lines: queue.Queue[bytes | None] = queue.Queue()
             reader = threading.Thread(
                 target=_pump,

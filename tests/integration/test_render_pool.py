@@ -22,13 +22,16 @@ from archiwista.errors import (
     PreviewBusyError,
     PreviewTimeoutError,
     PreviewUnavailableError,
+    RendererStartError,
 )
+from archiwista.previews import pool as pool_module
 from archiwista.previews.cache import INFO_NAME, PreviewCache, cache_key
 from archiwista.previews.pool import RenderPool, RenderResult
 from archiwista.previews.types import PreviewProbe, PreviewSource
 from tests.fixtures.hostile_files import SECRET_TEXT, SECRET_VALUE, hostile_files
 from tests.fixtures.http_listener import listening
 from tests.fixtures.jobs import worker_path
+from tests.fixtures.refused_start import refuse_starts
 from tests.fixtures.render_worker import TEST_RENDER_WORKER
 
 THUMBNAIL = {"style": "gray", "size": 256}
@@ -385,3 +388,28 @@ def test_unreadable_cached_as_code_and_timeout_not_cached(
     assert pool.stats().rendered == rendered + 1 == timed_out == final
     assert repeated_s < 0.5
     assert slow_kept is None
+
+
+def test_process_that_cannot_start_is_coded_and_not_remembered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused start is ``renderer_not_started``; the file renders once it starts."""
+    # Arrange
+    source = _source(tmp_path / "data", "a.tif")
+    refused = refuse_starts(monkeypatch, pool_module)
+
+    with _pool(tmp_path, monkeypatch) as pool:
+        # Act
+        with pytest.raises(RendererStartError) as caught:
+            pool.request("probe", source)
+        kept = pool.cache.get(cache_key(source), INFO_NAME)
+        refused.on = False
+        result = pool.request("probe", source)
+
+    # Assert
+    assert (caught.value.code, caught.value.details["reason"]) == (
+        "missing_dependency",
+        "renderer_not_started",
+    )
+    assert kept is None
+    assert not result.cached and result.probe().driver == "test"

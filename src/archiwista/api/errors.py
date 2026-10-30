@@ -76,6 +76,7 @@ from archiwista.errors import (
     PreviewUnavailableError,
     ProducerError,
     RateLimitedError,
+    RendererStartError,
     SnapshotBlockedError,
     SourceIncompatibleError,
     SourceUnavailableError,
@@ -112,6 +113,7 @@ ANSWERED: tuple[type[ArchiwistaError], ...] = (
     PreviewNotReadyError,
     RateLimitedError,
     PreviewTimeoutError,
+    RendererStartError,
     SourceIncompatibleError,
     SourceUnavailableError,
 )
