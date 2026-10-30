@@ -12,6 +12,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -265,6 +266,21 @@ def _leftovers(folder: Path) -> list[str]:
 
 def _mode(path: Path) -> int:
     return stat.S_IMODE(path.lstat().st_mode)
+
+
+# Where a test finds the path of an open file: procfs (Linux) or F_GETPATH (macOS).
+DESCRIPTOR_PATHS = sys.platform == "darwin" or Path("/proc/self/fd").is_dir()
+
+
+def _descriptor_path(descriptor: int) -> Path:
+    """Return the real path of the file open as ``descriptor``."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        # F_GETPATH fills a buffer of MAXPATHLEN (1024) bytes, ended by NUL.
+        found = fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024))
+        return Path(os.path.realpath(os.fsdecode(found.split(b"\0", 1)[0])))
+    return Path(os.path.realpath(f"/proc/self/fd/{descriptor}"))
 
 
 def _diameters(copy: Path) -> list[int]:
@@ -823,6 +839,7 @@ def test_published_files_read_only(env: SnapshotEnv) -> None:
     assert _leftovers(root) == []
 
 
+@pytest.mark.skipif(not DESCRIPTOR_PATHS, reason="no procfs and no F_GETPATH")
 def test_chmod_and_directory_fsync_errors_are_notices(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -835,7 +852,7 @@ def test_chmod_and_directory_fsync_errors_are_notices(
     real_chmod, real_fsync = os.fchmod, os.fsync
 
     def chmod(descriptor: int, mode: int) -> None:
-        path = Path(os.path.realpath(f"/proc/self/fd/{descriptor}"))
+        path = _descriptor_path(descriptor)
         if path.is_relative_to(real_root):
             raise PermissionError(errno.EPERM, os.strerror(errno.EPERM), str(path))
         real_chmod(descriptor, mode)
