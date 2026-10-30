@@ -786,7 +786,9 @@ of the code):
    rebinding). `X-Forwarded-Host` is never read.
 3. **`Origin` and `Sec-Fetch-Site`** (`origin_rejection`): a present `Origin`
    must be `http://<host>`; with `Sec-Fetch-Site` a read passes only
-   from `same-origin` or `none`, a state change only from `same-origin`
+   from `same-origin` or `none`, or as a top-level navigation from another site
+   (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document` or none) outside `/api`;
+   a state change only from `same-origin`
    and with `Origin` → otherwise `403 csrf_rejected`. A client without these headers
    (curl, an agent script) passes on.
 4. Paths outside `/api` (`/`, `/static/…`) and public requests

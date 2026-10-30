@@ -1086,6 +1086,16 @@ command-line interface may change.
 
 ### Fixed
 
+- Opening Archiwista from another site showed only "Żądanie wysłane z innej strony
+  zostało odrzucone." (`403 csrf_rejected`): behind Cloudflare Access the redirect back
+  after signing in at `<team>.cloudflareaccess.com`, and every link to Archiwista
+  clicked in an e-mail web client or a chat, since a read was accepted only with
+  `Sec-Fetch-Site` `same-origin` or `none`. A `GET` or `HEAD` from another site now
+  passes when it is a top-level navigation (`Sec-Fetch-Mode: navigate` and
+  `Sec-Fetch-Dest: document` or none) to a path outside `/api/` (the Fetch Metadata
+  resource isolation policy); the interface it opens then reads `same-origin`. A frame,
+  a subresource, every `/api/*` read (a file link included) and every state change from
+  another site are still refused.
 - On macOS every request on a kept-alive connection waited about 40 ms for the client's
   delayed acknowledgement: the server relied on asyncio to turn Nagle's algorithm off,
   which it does only on an accepted socket that reports `IPPROTO_TCP`, and one accepted

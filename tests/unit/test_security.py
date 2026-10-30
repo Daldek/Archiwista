@@ -652,7 +652,7 @@ def test_security_foreign_origin_rejected(api: Api, origin: str) -> None:
 
 @pytest.mark.parametrize("site", ["cross-site", "same-site"])
 def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
-    """A browser read started by another site is refused, page or API."""
+    """A browser read started by another site, not opening a tab, is refused."""
     session_id, _ = api.login()
 
     page = api.client.get("/", headers={"sec-fetch-site": site})
@@ -662,6 +662,103 @@ def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
 
     assert_problem(page, 403, "forbidden", "csrf_rejected")
     assert_problem(data, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+@pytest.mark.parametrize("dest", ["document", None])
+def test_security_top_level_navigation_from_another_site_opens_the_page(
+    api: Api, site: str, dest: str | None
+) -> None:
+    """A link elsewhere or a sign-in proxy's redirect opens the interface."""
+    navigation = {"sec-fetch-site": site, "sec-fetch-mode": "navigate"}
+    if dest is not None:
+        navigation["sec-fetch-dest"] = dest
+
+    page = api.client.get("/?view=catalog", headers=navigation)
+    # The page then loads its modules itself: same-origin.
+    module = api.client.get(
+        "/static/src/main.js",
+        headers={
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "script",
+        },
+    )
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert module.status_code == 200
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+def test_security_navigation_from_another_site_never_reads_the_api(
+    api: Api, site: str
+) -> None:
+    """``/api/*`` stays refused to another site, even opened in a tab."""
+    session_id, csrf = api.login()
+    navigation = {
+        "sec-fetch-site": site,
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+    }
+
+    data = api.client.get(
+        "/api/v1/session", headers={**navigation, **cookies(session_id, csrf)}
+    )
+    docs = api.client.get("/api/docs", headers=navigation)
+
+    assert_problem(data, 403, "forbidden", "csrf_rejected")
+    assert_problem(docs, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize(
+    ("mode", "dest"),
+    [
+        ("cors", "empty"),
+        ("no-cors", "script"),
+        ("no-cors", "image"),
+        ("navigate", "iframe"),
+        ("navigate", "frame"),
+        ("navigate", "embed"),
+        ("navigate", "object"),
+        (None, "document"),
+    ],
+)
+def test_security_other_site_subresource_or_frame_refused(
+    api: Api, mode: str | None, dest: str
+) -> None:
+    """Only a top-level navigation passes; a frame or subresource does not."""
+    headers = {"sec-fetch-site": "cross-site", "sec-fetch-dest": dest}
+    if mode is not None:
+        headers["sec-fetch-mode"] = mode
+
+    page = api.client.get("/", headers=headers)
+
+    assert_problem(page, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize("path", ["/", "/api/v1/session/tokens"])
+def test_security_navigation_from_another_site_changes_no_state(
+    api: Api, path: str
+) -> None:
+    """A form of another site posting in a tab is still refused."""
+    session_id, csrf = api.login()
+    headers = {
+        **cookies(session_id, csrf),
+        "origin": "https://evil.example",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+    }
+    without_origin = {key: headers[key] for key in headers if key != "origin"}
+
+    posted = api.client.post(path, headers=headers)
+    bare = api.client.post(path, headers=without_origin)
+    options = api.client.options(path, headers=without_origin)
+
+    assert_problem(posted, 403, "forbidden", "csrf_rejected")
+    assert_problem(bare, 403, "forbidden", "csrf_rejected")
+    assert_problem(options, 403, "forbidden", "csrf_rejected")
 
 
 @pytest.mark.parametrize(
@@ -1003,7 +1100,7 @@ def test_security_team_host_and_origin_compare_with_the_origin() -> None:
 
     def refused(origin: str) -> bool:
         headers = Headers({"origin": origin, "sec-fetch-site": "same-origin"})
-        return origin_rejection("POST", headers, transport.origin) is not None
+        return origin_rejection("POST", "/", headers, transport.origin) is not None
 
     assert transport.hosts == {"archiwista.firma.local", "archiwista.firma.local:443"}
     assert other_port.hosts == {"archiwista.firma.local:8443"}

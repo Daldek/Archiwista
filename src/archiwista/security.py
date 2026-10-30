@@ -31,10 +31,12 @@ temporary password may only change it. An agent's session ends 12 hours
 after its start at the latest, and at once when the owner revokes agent
 sessions (``revoke_agent_sessions``); every session ends when its account's
 sessions are revoked after it started. A browser (``Sec-Fetch-Site``) may
-change state only from the same origin and read only from the same origin
-or by a direct navigation (``none``). Request bodies are capped before a
-route reads them: 4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB
-otherwise (area files keep their own 50 MB limit). Every response carries a
+change state only from the same origin and read only from the same origin,
+by a direct navigation (``none``) or, outside ``/api/``, by a top-level
+navigation from another site (a link, a sign-in proxy's redirect). Request
+bodies are capped before a route reads them: 4 KiB for the token exchange,
+16 KiB for a sign-in, 1 MiB otherwise (area files keep their own 50 MB
+limit). Every response carries a
 CSP computed from the current settings,
 ``Referrer-Policy: no-referrer`` and ``X-Content-Type-Options: nosniff``;
 there is no CORS. Files are opened only through ``archiwista.paths``.
@@ -995,13 +997,23 @@ def allowed_hosts(port: int) -> frozenset[str]:
     return frozenset({f"{LOOPBACK_HOST}:{port}", f"localhost:{port}"})
 
 
-def origin_rejection(method: str, headers: Headers, origin: str) -> str | None:
+def origin_rejection(
+    method: str, path: str, headers: Headers, origin: str
+) -> str | None:
     """Return why the ``Origin`` and ``Sec-Fetch-Site`` rule refuses a request.
+
+    A read from another site (``same-site`` or ``cross-site``) passes only
+    as a top-level navigation (``_top_level_navigation``) to a page outside
+    ``/api/``: a link on another site or the redirect back from a sign-in
+    proxy (Cloudflare Access) opens the interface, whose own requests are
+    then ``same-origin``. The Fetch Metadata resource isolation policy.
 
     Parameters
     ----------
     method : str
         HTTP method; anything but GET, HEAD and OPTIONS changes state.
+    path : str
+        Request path; ``/api/*`` is never read from another site.
     headers : Headers
         Request headers.
     origin : str
@@ -1025,12 +1037,31 @@ def origin_rejection(method: str, headers: Headers, origin: str) -> str | None:
     if method in SAFE_METHODS:
         if fetch_site in ("same-origin", "none"):
             return None
+        if (
+            method in ("GET", "HEAD")
+            and not _is_api(path)
+            and _top_level_navigation(headers)
+        ):
+            return None
         return message("api.cross_site")
     if fetch_site != "same-origin":
         return message("api.cross_site")
     if sent is None:
         return message("api.origin_missing")
     return None
+
+
+def _top_level_navigation(headers: Headers) -> bool:
+    """Return whether a browser request opens a page in a tab or window.
+
+    ``Sec-Fetch-Mode: navigate`` with ``Sec-Fetch-Dest: document`` (or no
+    ``Sec-Fetch-Dest``); a navigation of a frame (``iframe``, ``frame``,
+    ``embed``, ``object``) or any subresource is not one.
+    """
+    if (headers.get("sec-fetch-mode") or "").lower() != "navigate":
+        return False
+    dest = headers.get("sec-fetch-dest")
+    return dest is None or dest.lower() == "document"
 
 
 def csrf_rejection(headers: Headers, session: Session) -> str | None:
@@ -1319,7 +1350,7 @@ class SecurityMiddleware:
         if host not in self._transport.hosts:
             return _Rejection("forbidden", "invalid_host", self._invalid_host())
         origin = self._transport.origin if self._transport.team else f"http://{host}"
-        reason = origin_rejection(method, connection.headers, origin)
+        reason = origin_rejection(method, path, connection.headers, origin)
         if reason is not None:
             return _Rejection("forbidden", "csrf_rejected", reason)
         if not _is_api(path) or _is_public(method, path):

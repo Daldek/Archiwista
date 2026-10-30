@@ -316,6 +316,17 @@ def test_only_a_link_of_the_same_origin_goes_without_the_csrf_header(
             for site in ("same-origin", "none", "same-site", "cross-site")
         }
         bare = fetch(served.owner, url, csrf=False)
+        # A link on another site opened in a tab: still another site.
+        navigated = fetch(
+            served.owner,
+            url,
+            csrf=False,
+            headers={
+                "sec-fetch-site": "cross-site",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-dest": "document",
+            },
+        )
         head = fetch(
             served.owner,
             url,
@@ -340,6 +351,7 @@ def test_only_a_link_of_the_same_origin_goes_without_the_csrf_header(
     assert_problem(sites["same-site"], 403, "forbidden", "csrf_rejected")
     assert_problem(sites["cross-site"], 403, "forbidden", "csrf_rejected")
     assert_problem(bare, 403, "forbidden", "csrf_rejected")
+    assert_problem(navigated, 403, "forbidden", "csrf_rejected")
     assert_problem(wrong, 403, "forbidden", "csrf_rejected")
     assert_problem(other_route, 403, "forbidden", "csrf_rejected")
 

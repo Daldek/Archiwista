@@ -3788,9 +3788,15 @@ over TLS.
   loopback address.
 - **`Origin` and `Sec-Fetch-Site`:** a present `Origin` must be the address of the
   server. A state-changing request with `Sec-Fetch-Site` (a browser) must
-  have `Sec-Fetch-Site: same-origin` and `Origin`; a read with `cross-site` is
-  rejected, while `none` (an address typed in or opened from the terminal)
-  and `same-origin` pass. A client without `Origin` and `Sec-Fetch-*` (curl,
+  have `Sec-Fetch-Site: same-origin` and `Origin`; a read with `cross-site` or
+  `same-site` is rejected, while `none` (an address typed in or opened from the terminal)
+  and `same-origin` pass. From v0.4 a `GET` or `HEAD` from another site passes when it
+  is a top-level navigation (`Sec-Fetch-Mode: navigate` and `Sec-Fetch-Dest: document`
+  or no `Sec-Fetch-Dest`) to a path outside `/api/` — a link on another site, or the
+  redirect back from a sign-in proxy (Cloudflare Access) — and the interface it opens
+  then reads `same-origin`; a frame (`iframe`), a subresource and every `/api/*` read,
+  a file link included, from another site stay rejected (Fetch Metadata resource
+  isolation policy). A client without `Origin` and `Sec-Fetch-*` (curl,
   an agent script) passes only with a session and the CSRF header — also
   for reads. UI files do not require a session, `/api/*` (except the
   token exchange, and from v0.4 `GET /session/methods` and the two sign-in routes of 10.2)
