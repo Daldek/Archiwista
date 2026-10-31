@@ -371,15 +371,14 @@ cursor is safe in a URL).
   for the installed producer version, so a second request does not ask it.
 - `GET /requests/{parent_request}`: the files of one producer request (for
   example both sides of the PL/CZ border).
-- **Changing (A-ADR-049):** projects are kept in Archiwista's own
-  `archiwista-project.json`; the producers' manifests are no longer read, and
-  the routes and commands of their tasks, status and jobs are gone. Pinning
-  (`project-pin`, `project-unpin`), the jobs over a project's groups
-  (`POST /projects/{project}/jobs`, `project-verify`, `project-check`,
-  `project-repin`, `project-restore`; section 9) and the activity
-  (`project-activity`) are here; the project card's actions are added as
-  [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
-  lands.
+- Projects are Archiwista's own `archiwista-project.json` (A-ADR-049); the
+  producers' manifests are not read. Pinning (`project-pin`, `project-unpin`),
+  the jobs over a project's groups (`POST /projects/{project}/jobs`,
+  `project-verify`, `project-check`, `project-repin`, `project-restore`;
+  section 9), the exports and the activity (`project-activity`) are below; the
+  project card of the web interface uses the same routes, and a pin's
+  `command` (`not_rebuildable` with `command_refusal`) tells beforehand which
+  pins a check, a restore or a re-pin cannot reach (D5).
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
   answers like a missing one (`404`). A project is its directory, which holds

@@ -149,22 +149,22 @@
 
 <section class="g-slide" aria-label="Slajd 9 z 12: projekty">
   <p class="g-kicker">08 · Projekty</p>
-  <h2>Projekt: zadania, przypięte wersje, dane własne</h2>
+  <h2>Projekt: grupy przypiętych wersji, ich stan i działania</h2>
   <div class="g-grid g-tall">
     <a class="g-zoom" href="/static/guide/08-projekt.webp" target="_blank" rel="noopener">
-      <img class="g-shot" src="/static/guide/08-projekt.webp" width="380" height="848" alt="Karta projektu raba: producent, magazyn, stan przy skanie i stan teraz, przyciski Weryfikuj, Sprawdź aktualizacje, Pobierz, Zadanie i Udostępnij…, wynik weryfikacji, zadania z poleceniami producenta i przypiętymi wersjami, przyciski Przepnij i Usuń oraz sekcja Dane własne.">
+      <img class="g-shot" src="/static/guide/08-projekt.webp" width="380" height="1188" alt="Karta projektu raba: katalog, magazyn, przyciski Zmień…, Udostępnij…, Weryfikuj i Sprawdź aktualizacje, powody wyłączonych działań, wynik sprawdzenia aktualizacji, grupa Wodowskaz z wersjami oznaczonymi jako aktualna i jest nowsza oraz grupa Pochodne z wersją bez polecenia i powodem producenta.">
     </a>
     <div class="g-column">
       <div class="g-grid g-cols-2 g-cards">
-        <div class="g-card"><span class="g-label">Lista projektów</span><p>Projekty z katalogów projektów z ustawień, z producentem i magazynem. „Nowy projekt…” zakłada nowy projekt producenta.</p></div>
-        <div class="g-card"><span class="g-label">Działania</span><p>„Weryfikuj” (sumy SHA-256, bez sieci), „Sprawdź aktualizacje”, „Pobierz” i przy zadaniu „Przepnij” wykonuje producent jako zadanie w tle.</p></div>
-        <div class="g-card"><span class="g-label">Zadania projektu</span><p>„Zadanie” dodaje polecenie producenta (także „Dodaj jako zadanie projektu” w oknie planu), a „Usuń” zdejmuje je z manifestu — pliki zostają w magazynie.</p></div>
-        <div class="g-card"><span class="g-label">Dane własne</span><p>„Odśwież” czyta folder danych projektu, a „Zrób migawkę…” na karcie pliku zapisuje wersję pliku roboczego.</p></div>
+        <div class="g-card"><span class="g-label">Projekt</span><p>„Nowy projekt…” zakłada katalog z plikiem archiwista-project.json: nazwa, opis, obszar. Obszar z mapy ustawia „Ustaw jako obszar projektu…”, a „Pokaż na mapie” go otwiera.</p></div>
+        <div class="g-card"><span class="g-label">Grupy</span><p>„Dodaj do projektu…” w stanie lokalnym, katalogu, na karcie pliku i w oknie planu przypina wersje do grupy. Przy wersji jej stan w magazynie; „Odepnij” i „Usuń grupę” pytają najpierw.</p></div>
+        <div class="g-card"><span class="g-label">Działania</span><p>„Weryfikuj” sprawdza sumy SHA-256 bez sieci. „Sprawdź aktualizacje”, „Przepnij” i „Przywróć brakujące” pytają źródło w tle; wynik zostaje przy każdej wersji.</p></div>
+        <div class="g-card"><span class="g-label">Bez polecenia</span><p>Wersji, której polecenia producent nie odtworzy (np. dane pochodne), nie da się sprawdzić ani przywrócić: karta mówi dlaczego, przy wersji i przy grupie.</p></div>
       </div>
-      <p class="g-note">Projekt zmienia jego właściciel albo administrator. Przycisk, którego nie możesz użyć, jest wyłączony, a karta mówi dlaczego.</p>
+      <p class="g-note">Przepina i przywraca właściciel projektu albo administrator z uprawnieniem zapisu do magazynu. Przycisk, którego nie możesz użyć, jest wyłączony, a karta mówi dlaczego.</p>
     </div>
   </div>
-  <div class="g-footer"><span>DZIAŁANIA WYKONUJE PRODUCENT</span><span>09 / 12</span></div>
+  <div class="g-footer"><span>PROJEKT TO PLIK W JEGO KATALOGU</span><span>09 / 12</span></div>
 </section>
 
 <section class="g-slide" aria-label="Slajd 10 z 12: praca w zespole">

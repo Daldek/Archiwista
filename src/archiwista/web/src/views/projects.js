@@ -13,15 +13,20 @@
  * its directory to copy, the store of each producer with its match or that
  * it matches no configured one, its area with the state of the area file,
  * when and by whom it was created, its problems, and its groups in the file's
- * order — each with where its versions came from (a plan's commands to copy,
- * or the requests that chose them from the store) and its pins with their
- * state, leading to their file cards; „Odepnij” at a pin and „Usuń grupę”
- * (each after a question) for a session that may change the project.
- * „Zmień…” changes the name, the
+ * order — each with where its versions came from (a plan's command lines,
+ * the first three and „i N więcej”, or the requests that chose them from the
+ * store, in words), its jobs and its pins with their state, the state of
+ * their command (D5) and what the last job found, leading to their file
+ * cards; „Odepnij” at a pin and „Usuń grupę” (each after a question) for a
+ * session that may change the project. „Zmień…” changes the name, the
  * description, the area and the store of a producer; „Udostępnij…” opens the
  * sharing screen (views/sharing.js): who sees the project, its owner and its
  * data folder. Both are the owner's or an administrator's
- * (`project_write`); otherwise they are disabled with the reason. Beside the
+ * (`project_write`); otherwise they are disabled with the reason. The
+ * project's „Weryfikuj” and „Sprawdź aktualizacje” and each group's „Sprawdź
+ * aktualizacje”, „Przepnij” and „Przywróć brakujące” are its jobs
+ * (views/project-jobs.js), each disabled with its reason; the card lists the
+ * reasons in force once. Beside the
  * groups, „Dane własne” (SPEC 4.7.1): the project's data folder with its
  * state, files, sizes and problems, each file with its change since its last
  * snapshot leading to its card (views/own.js), „Odśwież” (an `own_scan` of
@@ -35,6 +40,7 @@
 
 import {
   createProject,
+  formatCommand,
   getProject,
   listJobs,
   listOwnFiles,
@@ -53,6 +59,7 @@ import { useAction, useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { pins as PIN } from "../labels/pins.js";
 import { previews as P } from "../labels/previews.js";
+import { projectJobs as JL } from "../labels/project-jobs.js";
 import { projects as L } from "../labels/projects.js";
 import { ChangeBadge, OwnCardLink, ownName, PROJECT_PARAM, StateBadge } from "../map/own.js";
 import { ViewLayout } from "../panels.js";
@@ -85,6 +92,18 @@ import {
 } from "./cards.js";
 import { ProjectActivity } from "./project-activity.js";
 import { ProjectExports } from "./project-exports.js";
+import {
+  groupJobReason,
+  JobButton,
+  PinCommand,
+  PinMark,
+  projectJob,
+  projectJobSummary,
+  ReasonList,
+  reason,
+  reasonId,
+  useProjectJobs,
+} from "./project-jobs.js";
 import { SharingDialog } from "./sharing.js";
 
 await loadCardStyles();
@@ -94,6 +113,8 @@ const ALL = "";
 const OWN_PAGE = 200;
 const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
 const AREA_LEVEL = { ok: "ok", missing: "bad", changed: "warn", invalid: "bad" };
+// The command lines of a plan group shown before „i N więcej”.
+const SHOWN_CALLS = 3;
 
 /**
  * The Projects view (route `projects`).
@@ -521,6 +542,7 @@ function ProjectCard({ id, onChanged }) {
     resource.reload();
     onChanged();
   };
+  const jobs = useProjectJobs(id, changed);
   const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;
@@ -528,8 +550,14 @@ function ProjectCard({ id, onChanged }) {
       ? html`<p class="hint warn">${t(L.not_found, { project: id })}</p>`
       : html`<${ProblemView} problem=${error.problem} />`;
   }
-  const why = card.project_write ? null : L.why.write;
+  const why = card.project_write ? null : reason("write");
   const whyId = `${cardId}-why`;
+  const context = jobs.contextOf(card);
+  const verify = projectJob("verify", context);
+  const check = projectJob("check", context);
+  const groupReasons = card.groups.flatMap((group) =>
+    ["check", "repin", "restore"].map((kind) => groupJobReason(kind, group, context)),
+  );
   return html`<article class="project-card" aria-labelledby="project-card-title">
     <h2 class="pc-title" id="project-card-title">
       <${Tech} value=${[["project", card.project], ["path", card.path.local]]}>${card.name}</${Tech}>
@@ -539,15 +567,23 @@ function ProjectCard({ id, onChanged }) {
     <${ProjectFacts} card=${card} />
     <div class="pc-actions" role="group" aria-label=${L.actions.label}>
       <${ActionButton} icon="settings" label=${L.edit.open} title=${L.edit.open_title}
-        why=${editing ? "" : why} whyId=${whyId}
+        why=${why} off=${editing} base=${whyId}
         onClick=${() => {
           setDone(null);
           setEditing(true);
         }} />
       <${ActionButton} icon="users" label=${L.actions.share} title=${L.actions.share_title}
-        why=${why} whyId=${whyId} onClick=${() => setSharing(true)} />
+        why=${why} base=${whyId} onClick=${() => setSharing(true)} />
+      <${JobButton} icon="check" label=${JL.verify} title=${JL.verify_title} why=${verify.why}
+        base=${whyId} onClick=${() => jobs.start("verify")} />
+      <${JobButton} icon="search" label=${JL.check}
+        title=${check.groups
+          ? t(JL.check_some_title, { groups: check.groups.join(", ") })
+          : JL.check_title}
+        why=${check.why} base=${whyId} onClick=${() => jobs.start("check", check.groups)} />
     </div>
-    ${why ? html`<p class="pc-why" id=${whyId}>${why}</p>` : null}
+    <${ReasonList} base=${whyId} reasons=${[why, verify.why, check.why, ...groupReasons]} />
+    <${JobStatus} job=${jobs.job} summary=${(events) => projectJobSummary(events, jobs.job.kind)} />
     ${editing
       ? html`<${EditProject} card=${card} onClose=${() => setEditing(false)}
           onChanged=${changed}
@@ -566,7 +602,7 @@ function ProjectCard({ id, onChanged }) {
           <${IssueList} issues=${card.problems} currentProject=${card.project} />
         </section>`
       : null}
-    <${Groups} card=${card} onChanged=${changed} />
+    <${Groups} card=${card} jobs=${jobs} context=${context} base=${whyId} onChanged=${changed} />
     <${ProjectExports} card=${card} />
     <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
     <${ProjectActivity} card=${card} />
@@ -629,22 +665,24 @@ function AreaValue({ area }) {
 }
 
 /**
- * A button of a project's action: disabled with its reason (`why`, told in
- * the card's note; `""`: disabled while its form is open) or `null` when it
- * may be used.
+ * „Zmień…” or „Udostępnij…”: disabled with its reason (`why`, an entry of the
+ * card's list) or while its form is open (`off`).
  */
-function ActionButton({ icon, label, title, why, whyId, onClick }) {
-  return html`<button type="button" class="btn sm" disabled=${why !== null}
-    title=${why || title} aria-describedby=${why ? whyId : null} onClick=${onClick}>
+function ActionButton({ icon, label, title, why, off = false, base, onClick }) {
+  return html`<button type="button" class="btn sm" disabled=${why !== null || off}
+    title=${why ? why.text : title} aria-describedby=${why ? reasonId(base, why) : null}
+    onClick=${onClick}>
     <${Icon} name=${icon} size=${14} />${label}</button>`;
 }
 
 /**
- * The groups of pinned versions in the file's order, each with its origin and
- * pins; for a session that may change the project „Odepnij” at each pin and
- * „Usuń grupę”, each after a question.
+ * The groups of pinned versions in the file's order, each with its origin,
+ * its jobs („Sprawdź aktualizacje”, „Przepnij”, „Przywróć brakujące”,
+ * disabled with their reason in the card's list `base`) and pins with what
+ * the last job found at each; for a session that may change the project
+ * „Odepnij” at each pin and „Usuń grupę”, each after a question.
  */
-function Groups({ card, onChanged }) {
+function Groups({ card, jobs, context, base, onChanged }) {
   const [asking, setAsking] = useState(null);
   const [done, setDone] = useState(null);
   const write = card.project_write;
@@ -665,20 +703,14 @@ function Groups({ card, onChanged }) {
                 <b>${group.name}</b>
                 <${Origin} origin=${group.origin} />
                 <span class="faint">${count(group.pins.length, L.card.pin_count)}</span>
-                ${write
-                  ? html`<button type="button" class="btn ghost sm pc-group-remove"
-                      aria-label=${t(PIN.remove_group_label, { group: group.name })}
-                      onClick=${() => ask(group, null)}>
-                      <${Icon} name="trash" size=${13} />${PIN.remove_group}</button>`
-                  : null}
               </div>
+              <${GroupActions} group=${group} jobs=${jobs} context=${context} base=${base}
+                onRemove=${write ? () => ask(group, null) : null} />
               ${group.origin.kind === "plan"
-                ? (group.origin.calls ?? []).map(
-                    (call, index) => html`<${Command} key=${index} producer=${group.origin.producer}
-                      call=${call} />`,
-                  )
-                : null}
-              <${PinList} pins=${group.pins} group=${group.name}
+                ? html`<${PlanCalls} producer=${group.origin.producer}
+                    calls=${group.origin.calls ?? []} />`
+                : html`<${Selections} selections=${group.origin.selections ?? []} />`}
+              <${PinList} pins=${group.pins} group=${group.name} marks=${jobs.marks}
                 onUnpin=${write ? (pin) => ask(group, pin) : null} />
             </li>`,
           )}
@@ -739,27 +771,97 @@ function Origin({ origin }) {
     ${named ? t(L.card.origin_local_from, { sources: named }) : L.card.origin_local}</${Badge}>`;
 }
 
-function Command({ producer, call }) {
-  const options = Object.entries(call.options);
-  const text = JSON.stringify({ command: call.command, options: call.options });
-  return html`<div class="cmd pc-cmd">
-    <code>
-      <span class="pc-cmd-name">${producer} ${call.command}</span>
-      ${options.map(
-        ([name, value]) => html`<span key=${name} class="pc-opt">
-          <span class="pc-opt-name">${name}</span>=${typeof value === "string" ? value : JSON.stringify(value)}
-        </span>`,
-      )}
-    </code>
-    <${CopyButton} text=${text} label=${L.card.copy_command} />
+/** A group's jobs and „Usuń grupę” (`onRemove`, null: not offered). */
+function GroupActions({ group, jobs, context, base, onRemove }) {
+  const why = (kind) => groupJobReason(kind, group, context);
+  const name = { group: group.name };
+  return html`<div class="pc-actions pc-group-actions" role="group"
+    aria-label=${t(JL.group_actions, name)}>
+    <${JobButton} icon="search" label=${JL.check} ariaLabel=${t(JL.group_check_label, name)}
+      title=${JL.group_check_title} why=${why("check")} base=${base}
+      onClick=${() => jobs.start("check", [group.name])} />
+    <${JobButton} icon="pin" label=${JL.repin} ariaLabel=${t(JL.repin_label, name)}
+      title=${JL.repin_title} why=${why("repin")} base=${base}
+      onClick=${() => jobs.start("repin", [group.name])} />
+    <${JobButton} icon="download" label=${JL.restore} ariaLabel=${t(JL.restore_label, name)}
+      title=${JL.restore_title} why=${why("restore")} base=${base}
+      onClick=${() => jobs.start("restore", [group.name])} />
+    ${onRemove
+      ? html`<button type="button" class="btn ghost sm pc-group-remove"
+          aria-label=${t(PIN.remove_group_label, { group: group.name })} onClick=${onRemove}>
+          <${Icon} name="trash" size=${13} />${PIN.remove_group}</button>`
+      : null}
   </div>`;
 }
 
-function PinList({ pins, group, onUnpin }) {
+/** A plan group's command lines: the first three, the others on „i N więcej”. */
+function PlanCalls({ producer, calls }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? calls : calls.slice(0, SHOWN_CALLS);
+  const more = calls.length - shown.length;
+  return html`<div class="pc-calls">
+    ${shown.map(
+      (call, index) => html`<${Command} key=${index} producer=${producer} call=${call} />`,
+    )}
+    ${more > 0
+      ? html`<button type="button" class="btn ghost sm" onClick=${() => setAll(true)}>
+          ${t(L.card.more_calls, { count: int(more) })}</button>`
+      : null}
+  </div>`;
+}
+
+/**
+ * A call of a plan group as the producer's command line (`POST
+ * /commands/format`), its command and options while the line is not known.
+ */
+function Command({ producer, call }) {
+  const formatted = useResource(
+    (signal) =>
+      formatCommand({ producer, command: call.command, options: call.options }, { signal }),
+    [producer, JSON.stringify(call)],
+  );
+  const line = formatted.data?.line ?? null;
+  const options = Object.entries(call.options);
+  return html`<div class="cmd pc-cmd">
+    ${line
+      ? html`<code>${line}</code>`
+      : html`<code>
+          <span class="pc-cmd-name">${producer} ${call.command}</span>
+          ${options.map(
+            ([name, value]) => html`<span key=${name} class="pc-opt">
+              <span class="pc-opt-name">${name}</span>=${typeof value === "string" ? value : JSON.stringify(value)}
+            </span>`,
+          )}
+        </code>`}
+    <${CopyButton} text=${line ?? JSON.stringify({ command: call.command, options: call.options })}
+      label=${L.card.copy_command} />
+  </div>`;
+}
+
+/** A local group's requests that chose its versions, in words. */
+function Selections({ selections }) {
+  if (!selections.length) return null;
+  return html`<ul class="pc-selections" aria-label=${L.card.selections}>
+    ${selections.map((selection, index) => {
+      const source = L.card.sources[selection.source] ?? selection.source;
+      const query = Object.entries(selection.query ?? {})
+        .filter(([, value]) => value !== null && value !== "")
+        .map(([name, value]) => {
+          const shown = Array.isArray(value) ? value.join(", ") : value;
+          return `${L.card.query[name] ?? name}: ${shown}`;
+        });
+      const text = query.length ? `${source} · ${query.join(" · ")}` : source;
+      return html`<li key=${index}>${text}</li>`;
+    })}
+  </ul>`;
+}
+
+function PinList({ pins, group, marks, onUnpin }) {
   if (!pins.length) return html`<p class="faint pc-no-pins">${L.card.no_pins}</p>`;
   return html`<ul class="pc-pins" aria-label=${L.card.pins}>
     ${pins.map(
-      (pin) => html`<li key=${`${pin.producer}/${pin.version}`} class="pc-pin">
+      (pin) => html`<li key=${`${pin.producer}/${pin.version}`} class="pc-pin"
+        data-version=${pin.version}>
         ${pin.slot && pin.store
           ? html`<${FileLink} store=${pin.store} slot=${pin.slot} version=${pin.version}
               title=${L.card.pin_open}>
@@ -778,11 +880,14 @@ function PinList({ pins, group, onUnpin }) {
             ["sha256", pin.sha256],
             ["pinned_at", pin.pinned_at],
             ["pinned_by", pin.pinned_by],
+            ["command", pin.command],
           ]}>
             ${pinStateName(pin.state)}
           </${Tech}>
         </${Badge}>
         <span class="faint tabular">${size(pin.size_bytes)}</span>
+        <${PinMark} marks=${marks} group=${group} pin=${pin} />
+        <${PinCommand} pin=${pin} />
         ${onUnpin
           ? html`<button type="button" class="btn ghost sm pc-unpin"
               aria-label=${t(PIN.unpin_label, { version: pin.label ?? pin.version, group })}

@@ -91,6 +91,15 @@ export const map = {
     id: "id obszaru",
     bbox: "bbox (WGS84)",
     crs: "układ pola",
+    /** „Ustaw jako obszar projektu…” (A-ADR-049 decision 4): the area written into a project. */
+    to_project: "Ustaw jako obszar projektu…",
+    to_project_title: "Zapisz ten obszar w katalogu obszary/ projektu i ustaw go jako obszar projektu",
+    to_project_form: "Obszar projektu",
+    to_project_choice: "Projekt",
+    to_project_none: "Nie ma projektu, który możesz zmienić.",
+    to_project_submit: "Ustaw",
+    to_project_cancel: "Anuluj",
+    to_project_done: "Ustawiono obszar projektu „{project}”.",
   },
   product: {
     all: "Wszystkie produkty",

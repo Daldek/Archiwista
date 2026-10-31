@@ -246,15 +246,37 @@ versions a scan has just indexed.
 
 ## Projects and own data
 
-> **Changing (A-ADR-049, the author's decision of 2026-10-31):** projects are
-> Archiwista's own file `archiwista-project.json`, with an area, the stores of its
-> producers and groups of pinned versions; the producers' manifests are no longer read,
-> and a directory holding only one of them is no project (nothing is migrated). The
-> file, its discovery, its commands and routes, its exports and the views below are in
-> this build, as are pinning versions into a project and the project's jobs; the card's
-> activity and its job buttons follow (the next step of
-> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)).
-> Own data and snapshots stay as described below.
+A project is a directory holding Archiwista's own file `archiwista-project.json`
+(A-ADR-049): its name and description, an area, the store of each producer whose
+versions it pins and its groups of pinned versions. Archiwista finds projects in the
+project directories of the settings by that file only; the producers' manifests
+(`kartograf-project.json`, `imgw-project.json`) are not read, and a directory holding
+only one of them is no project.
+
+- **The project's card** ("Projekty", a project chosen in the list): its directory to
+  copy, the store of each producer, its area ("Pokaż na mapie" opens it on the map; on
+  the map, "Ustaw jako obszar projektu…" under the chosen area writes it into a project
+  the session may change), who created it and its problems. "Zmień…" changes the name,
+  the description, the area and a producer's store, "Udostępnij…" who sees it (both the
+  owner's or an administrator's). "Weryfikuj" and "Sprawdź aktualizacje" run the
+  project's jobs (below). Each group shows where its versions came from — a plan
+  group's command lines (the first three, the others on "i N więcej"), a local group's
+  selections in words — with "Sprawdź aktualizacje", "Przepnij", "Przywróć brakujące"
+  and "Usuń grupę", and each pin its state in the store ("w magazynie", "brak w
+  magazynie", another content), whether it is the slot's current version, "bez
+  polecenia" with the producer's reason when the producer cannot rebuild the command
+  that selects it (for example a derived `soil hsg` file: its check and restore, and
+  its group's re-pin, are not possible), and "Odepnij". An action that cannot be used
+  now is disabled, and the card lists each reason once: changing the project (the
+  owner or an administrator), a producer's store that matches no configured one, the
+  right to write the stores, a producer without commands (IMGWTools until v0.5), a
+  version without a command, offline mode, a job of the project already running, and
+  a group with nothing missing. One job of a project runs at a time; the card follows
+  it and, when it ends, reads the project again and marks each pin with what the job
+  found ("nienaruszona", "jest nowsza: <label>", "przywrócona", …) until the next job.
+  Below come the exports, the own data and the activity.
+
+![The project's card after a check and a re-pin](../src/archiwista/web/guide/08-projekt.webp)
 
 - **Creating and editing a project** (any person creates one where none is; the owner
   or an administrator changes it): `archiwista project-init KATALOG [--name NAZWA]
@@ -310,8 +332,8 @@ versions a scan has just indexed.
   grupę" a group, each asked first. The plan window's option "Dodaj do projektu" names
   the project and the new group; the download's result in the top bar then says what
   was pinned and what was not.
-- **The jobs of a project** (from the command line; the card's buttons come in the next
-  step): `archiwista project-verify PROJEKT [GRUPA …]` hashes each pinned file in its
+- **The jobs of a project** (the card's buttons; at the terminal):
+  `archiwista project-verify PROJEKT [GRUPA …]` hashes each pinned file in its
   store without the network (`ok`, `corrupt`, `missing`, `content_match` when another
   version of the slot holds the same content, `no_store`); `project-check PROJEKT
   [GRUPA …]` asks the source and compares each pin by its slot (`current`, `newer`,

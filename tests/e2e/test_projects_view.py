@@ -34,7 +34,10 @@ Serve = Callable[..., Served]
 STORE = "zespol"
 STORE_NAME = "Zespół"
 INDEX_TIMEOUT_S = 60.0
-NO_WRITE = "Zmienia i udostępnia projekt jego właściciel albo administrator."
+NO_WRITE = (
+    "Zmienia, udostępnia, przepina i przywraca projekt jego właściciel albo"
+    " administrator."
+)
 # A square of about 1.4 km by 2.2 km in Kraków.
 AREA = {
     "type": "Polygon",
@@ -259,6 +262,6 @@ def test_a_person_who_may_change_nothing_sees_new_project_only(
         button = actions.get_by_role("button", name=name)
         expect(button).to_be_disabled()
         expect(button).to_have_accessible_description(NO_WRITE)
-    expect(card(page).locator(".pc-why")).to_have_text(NO_WRITE)
+    expect(card(page).locator(".pc-why li").first).to_have_text(NO_WRITE)
     expect(page.get_by_role("button", name="Nowy projekt…")).to_be_enabled()
     tab.assert_clean()

@@ -103,6 +103,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").ValidateRequest} ValidateRequest */
 /** @typedef {import("./types.js").ProjectRequest} ProjectRequest */
 /** @typedef {import("./types.js").ExportRequest} ExportRequest */
+/** @typedef {import("./types.js").ProjectJobRequest} ProjectJobRequest */
 /** @typedef {import("./types.js").ProjectExport} ProjectExport */
 /** @typedef {import("./types.js").ProjectExports} ProjectExports */
 /** @typedef {import("./types.js").PinsRequest} PinsRequest */
@@ -899,6 +900,26 @@ export function getProjectActivity(project, query = {}, { signal } = {}) {
 }
 
 /**
+ * Start a job over a project's groups (`start_project_job`, A-ADR-049
+ * decision 11): `verify` hashes the pinned files, `check` compares the pins
+ * with the source, `repin` pins one group anew, `restore` downloads the
+ * missing pinned versions again.
+ *
+ * @param {string} project - Project id.
+ * @param {ProjectJobRequest} body - The kind; `groups` left out: every group
+ *   (a re-pin names exactly one).
+ * @returns {Promise<JobDetail>} The queued job (`202`).
+ * @throws {ApiError} `403 permission_denied` (a re-pin or restore without
+ *   `project_write` or `store_write`), `404` (an unknown group), `409
+ *   conflict` (`offline_mode`, `unknown_store`, a job of the project already
+ *   running in `details.job`), `422 unsupported` (`no_commands`,
+ *   `command_not_rebuildable`).
+ */
+export function startProjectJob(project, body) {
+  return request("POST", `/projects/${one(project)}/jobs`, { json: body });
+}
+
+/**
  * The settings in effect (`get_settings`).
  *
  * @param {RequestOptions} [options]
@@ -1468,6 +1489,31 @@ export function getAvailability(query, { signal } = {}) {
  */
 export function checkAvailability(body) {
   return request("POST", "/availability", { json: body });
+}
+
+/**
+ * The commands of the producers' catalogs (`list_commands`), every producer
+ * whose plugin is available and offers commands; the others are left out.
+ *
+ * @param {RequestOptions} [options]
+ * @returns {Promise<{items: Array<{producer: string, command: string}>}>}
+ */
+export function listCommands({ signal } = {}) {
+  return request("GET", "/commands", { signal });
+}
+
+/**
+ * The producer's command line of a call (`format_command`), the line `POST
+ * /commands/parse` reads back into the same call.
+ *
+ * @param {CommandCall} call - `producer`, `command`, `options`; `run` may be left out.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<{producer: string, command: string, line: string}>}
+ * @throws {ApiError} `400 validation_error` with the producer's text, `503`
+ *   (its plugin is not available).
+ */
+export function formatCommand(call, { signal } = {}) {
+  return request("POST", "/commands/format", { json: call, signal });
 }
 
 /**

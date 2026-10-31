@@ -1388,6 +1388,12 @@
  * @property {PinState} state
  * @property {string|null} slot
  * @property {boolean} is_current
+ * @property {"rebuildable"|"not_rebuildable"|"unknown"} command - Whether the producer
+ *   rebuilds the call that selects the version again, as the index keeps its answer
+ *   (A-ADR-049 decision 12): `not_rebuildable` (its check, restore and re-pin are not
+ *   attempted), `unknown` (not asked yet).
+ * @property {string|null} command_refusal - The producer's text of a `not_rebuildable`
+ *   call; null otherwise.
  */
 
 /**
@@ -1496,6 +1502,15 @@
  * @property {string} name - 1 to 64 letters, digits, '.', '_' and '-', not starting
  *   with '.'.
  * @property {string[]} [groups] - Only these groups' pins; left out: every group's.
+ */
+
+/**
+ * Body of `POST /projects/{project}/jobs`: a job over a project's groups.
+ *
+ * @typedef {object} ProjectJobRequest
+ * @property {"verify"|"check"|"repin"|"restore"} kind
+ * @property {string[]} [groups] - Only these groups; left out: every group (a re-pin
+ *   names exactly one).
  */
 
 /**

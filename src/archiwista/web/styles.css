@@ -311,6 +311,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .hint.warn { color: var(--warn-ink); background: var(--warn-bg); border-radius: 8px; padding: 7px 9px; }
 .area-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
 .area-card .big { font-weight: 600; font-size: 13.5px; }
+.area-project { display: grid; gap: 6px; justify-items: start; margin-top: 6px; }
+.area-project .field { margin: 0; }
 .section-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); font-weight: 600; margin: 0 0 6px; }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; font-size: 12.5px; margin: 8px 0 0; }
 .kv dt { color: var(--text-3); }

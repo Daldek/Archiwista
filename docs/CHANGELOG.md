@@ -75,6 +75,23 @@ command-line interface may change.
   target and by a job's project), migrated on start. The log's action names in the
   web gain "przypięcie wersji" and "odpięcie wersji".
 
+- The project card's jobs (SPEC 6.5 g, A-ADR-049 decisions 11 and 12, plan P5):
+  "Weryfikuj" and "Sprawdź aktualizacje" of the project and "Sprawdź aktualizacje",
+  "Przepnij" and "Przywróć brakujące" of each group start the project's jobs and
+  follow them on the card; when one ends the card is read again and each pin is
+  marked with what the job found until the next job, its summary under the actions.
+  The project's check names the groups that can be checked. Each action that cannot
+  be used now is disabled, and the card lists each reason once (changing the project,
+  a producer's store that matches no configured one, writing the stores, a producer
+  without commands, a version whose command the producer cannot rebuild, offline mode,
+  a running job of the project, nothing missing in a group); a pin whose command
+  cannot be rebuilt shows "bez polecenia" with the producer's text. A plan group's
+  calls are the producer's command lines (`POST /commands/format`), the first three
+  and "i N więcej"; a local group lists its selections in words. On the map,
+  "Ustaw jako obszar projektu…" under the chosen area writes it into a project the
+  session may change. The guide's slide on projects and its picture describe the
+  new card.
+
 - The user guide (A-ADR-048): "Instrukcja" in the top bar, its icon alone on a phone,
   opens `/instrukcja` in a new tab, a short guide in Polish of twelve slides with
   pictures of this interface: the window and its views, an area and what the store

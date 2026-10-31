@@ -586,5 +586,5 @@ file in the project directory (D7 b); migrating producer manifests (D4).
 | P2 | | |
 | P3 | | |
 | P4 | | |
-| P5 | | |
+| P5 | `937080d` (the activity, moved from commit 2 to be tested at once); the card's jobs | The card's jobs, reasons, pin marks, D5, the plan group's lines and the local group's selections, "Ustaw jako obszar projektu…" on the map, the guide's slide; UC-06 back in `test_acceptance_v03.py`. Deviations: a job's marks stay at the pins until the next job (not the next read, which every job's end makes); "Przywróć brakujące" is also disabled for a group with nothing missing; the project's "Sprawdź aktualizacje" names only the groups that can be checked |
 | P6 | | |

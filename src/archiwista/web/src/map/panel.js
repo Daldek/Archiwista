@@ -6,7 +6,9 @@
  * product has the dataset and type chips in place of the files' filters.
  */
 
+import { listProjects, setProjectArea } from "../api.js";
 import { count } from "../format.js";
+import { useAction, useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
 import {
@@ -229,7 +231,73 @@ function AreaCard({ area }) {
         <span class="faint">${L.area.source[area.source] ?? area.source}</span>
       <//>
     </div>
+    <${AreaToProject} key=${area.id} area=${area} />
   </div>`;
+}
+
+/**
+ * „Ustaw jako obszar projektu…”: the area written into a project the session
+ * may change (`PUT /projects/{project}/area`, A-ADR-049 decision 4).
+ */
+function AreaToProject({ area }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState("");
+  const [done, setDone] = useState(null);
+  const action = useAction();
+  const list = useResource(
+    (signal) => (open ? listProjects({}, { signal }) : Promise.resolve(null)),
+    [open],
+  );
+  const writable = (list.data?.items ?? []).filter(
+    (item) => item.project_write && item.state === "ok",
+  );
+  const project = chosen || writable[0]?.project || "";
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!project) return;
+    const answer = await action.run(() => setProjectArea(project, area.id));
+    if (answer) {
+      const name = writable.find((item) => item.project === project)?.name ?? project;
+      setOpen(false);
+      setDone(t(L.area.to_project_done, { project: name }));
+    }
+  };
+  if (!open) {
+    return html`<div class="area-project">
+      <button type="button" class="btn ghost sm" title=${L.area.to_project_title}
+        onClick=${() => {
+          setDone(null);
+          setOpen(true);
+        }}>
+        <${Icon} name="folder" size=${13} />${L.area.to_project}</button>
+      ${done ? html`<p class="hint" role="status">${done}</p>` : null}
+    </div>`;
+  }
+  return html`<form class="area-project" aria-label=${L.area.to_project_form} onSubmit=${submit}>
+    ${list.data === undefined && !list.error ? html`<${Spinner} />` : null}
+    ${list.error ? html`<${ProblemView} problem=${list.error.problem} compact />` : null}
+    ${list.data && !writable.length ? html`<p class="hint">${L.area.to_project_none}</p>` : null}
+    ${writable.length
+      ? html`<label class="field" for=${`${id}-project`}>
+          <span>${L.area.to_project_choice}</span>
+          <select id=${`${id}-project`} value=${project}
+            onChange=${(event) => setChosen(event.currentTarget.value)}>
+            ${writable.map(
+              (item) => html`<option key=${item.project} value=${item.project}>
+                ${item.name}</option>`,
+            )}
+          </select>
+        </label>`
+      : null}
+    ${action.problem ? html`<${ProblemView} problem=${action.problem} compact />` : null}
+    <div class="tool-row">
+      <button type="submit" class="btn sm primary" disabled=${!project || action.busy}>
+        ${L.area.to_project_submit}</button>
+      <button type="button" class="btn sm ghost" onClick=${() => setOpen(false)}>
+        ${L.area.to_project_cancel}</button>
+    </div>
+  </form>`;
 }
 
 /**

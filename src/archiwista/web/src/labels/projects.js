@@ -72,9 +72,6 @@ export const projects = {
     share: "Udostępnij…",
     share_title: "Kto widzi projekt, jego właściciel i folder danych własnych",
   },
-  why: {
-    write: "Zmienia i udostępnia projekt jego właściciel albo administrator.",
-  },
   card: {
     path: "Katalog",
     copy_path: "ścieżka katalogu projektu",
@@ -106,6 +103,20 @@ export const projects = {
       file: "karta pliku",
     },
     copy_command: "polecenie grupy",
+    more_calls: "i {count} więcej",
+    selections: "Jak wybrano wersje grupy",
+    /** The parameters of a selection (`GET /slots`), in words. */
+    query: {
+      store: "magazyn",
+      product: "produkt",
+      segment: "segment",
+      year: "rok",
+      years: "lata",
+      area_id: "obszar",
+      variant: "wariant",
+      versions: "wersje",
+      q: "szukane",
+    },
     pin_count: ["wersja", "wersje", "wersji"],
     pins: "Przypięte wersje",
     no_pins: "grupa jest pusta",
