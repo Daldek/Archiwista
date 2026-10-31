@@ -1324,6 +1324,17 @@ command-line interface may change.
 
 ### Fixed
 
+- The plan window of a set with a line per sheet (Kartograf gives one when the grid of
+  the area holds sheets without data, as at sea around the island of Wolin: about 116) sent
+  every line's `POST /commands/parse` at once: over HTTP/2 (a team server behind a
+  proxy) the server's limit of 100 requests at once (`LIMIT_CONCURRENCY`) answered most
+  of them with a bare `503`, and the window said "Błąd żądania — Serwer odpowiedział
+  kodem 503 bez opisu problemu." once per line and planned only the others. The window
+  now reads four lines at a time whatever their number (`requestEach` of
+  `web/src/api.js`; 130 lines: 131 requests in flight before, 5 now), a bare `503` says
+  "Serwer chwilowo niedostępny" with "Spróbuj ponownie za chwilę" (reason
+  `server_busy`), and a problem of several lines shows once with their number
+  ("Dotyczy 65 z 130 poleceń.").
 - A polygon area reached Kartograf as its bounding box, so the report's command lines carried
   `--bbox` and a plan or download selected sheets outside the polygon. Archiwista now writes the
   area as GeoJSON in WGS84 (RFC 7946, `<data-dir>/areas/<id>.geojson`, the same bytes as a

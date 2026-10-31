@@ -361,8 +361,12 @@ job does not bring down the interface.
 and SSE streams (index reads through `asyncio.to_thread`); ordinary (`def`)
 routes and `run_in_threadpool` run in the Starlette thread pool. Uvicorn
 accepts at most `LIMIT_CONCURRENCY` (100) connections at a time, the following ones get
-`503`. The server's own threads: `archiwista-scheduler` (the `ScanScheduler` loop,
-every `TICK_S` = 60 s), `archiwista-probe-<store>` (a probe of an unavailable
+a bare `503`; the interface sends the requests of the many items of one answer (the
+lines of a plan window, one per sheet of an area) at most four at a time (`requestEach`
+in `web/src/api.js`), so a browser over HTTP/2 behind a proxy, which sends every request
+at once, stays below it whatever the number of sheets. The server's own threads:
+`archiwista-scheduler` (the `ScanScheduler` loop, every `TICK_S` = 60 s),
+`archiwista-probe-<store>` (a probe of an unavailable
 store, at most `PROBE_TIMEOUT_S` = 10 s), `archiwista-job-<id>` (the reader of
 stdout of one worker process in `JobSupervisor`), a `threading.Timer`
 killing an interrupted process after `STOP_TIMEOUT_S` (30 s), a timer removing the
@@ -1323,7 +1327,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | Module | Role |
 |---|---|
 | `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session (or when it ends) `SessionScreen` in local mode, the sign-in of `views/login.js` in team mode (`GET /session/methods`); a session with a temporary password gets `TemporaryPassword` before the shell |
-| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`, `fileAddress` (the address of a file download for a link, `<a href download>`, which passes without the CSRF header by `Sec-Fetch-Site`); CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
+| `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `requestEach` (a request per item, at most four in flight), `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`, `fileAddress` (the address of a file download for a link, `<a href download>`, which passes without the CSRF header by `Sec-Fetch-Site`); CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
 | `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView`; a view's `count` (the number next to its name in the navigation) and `admin` (in the navigation of an administrator only) |

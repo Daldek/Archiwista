@@ -128,6 +128,13 @@ const CHANNEL = "archiwista-session";
 const HANDOFF_MS = 300;
 // Pause before an event stream that broke off resumes.
 const RESUME_MS = 1000;
+// Requests of `requestEach` in flight at once, however many items it has.
+// Over HTTP/2 (a team server behind a proxy) a browser sends all of a page's
+// requests at once, and the server answers those above its limit with a bare
+// `503` (`LIMIT_CONCURRENCY` of server.py: 100, for everyone together); over
+// HTTP/1.1 it opens six connections to a server, and four leave two for the
+// page's other requests.
+const REQUESTS_AT_ONCE = 4;
 const FINAL_JOB_STATES = new Set([
   "succeeded",
   "partial",
@@ -248,6 +255,37 @@ export async function request(method, path, { query, json, body, type, signal } 
   }
   const response = await send(method, API_PREFIX + path + search(query), { headers, body, signal });
   return response.status === 204 ? null : response.json();
+}
+
+/**
+ * One request for each item, at most `REQUESTS_AT_ONCE` of them in flight
+ * however many items there are (the command lines of a variant, one per
+ * sheet of an area): the answers in the items' order, as
+ * `Promise.all(items.map(send))` gives them; a rejection rejects and sends
+ * no more.
+ *
+ * @template T, R
+ * @param {T[]} items
+ * @param {(item: T) => Promise<R>} send - The request of one item.
+ * @returns {Promise<R[]>}
+ */
+export async function requestEach(items, send) {
+  const answers = [];
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      try {
+        answers[index] = await send(items[index]);
+      } catch (error) {
+        next = items.length;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(REQUESTS_AT_ONCE, items.length) }, lane));
+  return answers;
 }
 
 /**
@@ -1956,6 +1994,15 @@ async function readProblem(response) {
     } catch {
       // Not JSON after all: described below by its status.
     }
+  }
+  // A bare `503` is the server's limit of requests at once (`LIMIT_CONCURRENCY`
+  // of server.py) or a proxy's before it: the server is busy, not broken.
+  if (response.status === 503) {
+    return pageProblem("source_unavailable", "server_busy", {
+      title: T.common.problem.busy_title,
+      status: response.status,
+      detail: T.common.problem.busy,
+    });
   }
   return pageProblem("source_unavailable", "http_error", {
     title: T.common.problem.http_title,

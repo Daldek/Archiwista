@@ -5,7 +5,8 @@ job supervisor and scan scheduler; ``Tab`` a Playwright page recording CSP
 violations (``securitypolicyviolation``), page errors, console errors,
 requests and workers, so interface tests can assert the page stayed within
 its policy and made no request outside the server; ``Tab.settle`` waits for
-the page's requests to end before a test navigates away from it.
+the page's requests to end before a test navigates away from it, and
+``Tab.most_in_flight`` is the most of them in flight at once.
 
 For frame rates (plan v0.2, decision 1) ``gpu_browser`` gives a Chromium
 drawing WebGL on the GPU when it can: Chrome of a graphical session over CDP
@@ -127,6 +128,7 @@ class Tab:
     requests: list[str] = field(default_factory=list)
     workers: list[str] = field(default_factory=list)
     in_flight: set[Request] = field(default_factory=set)
+    most_in_flight: int = 0
 
     def watch(self) -> None:
         """Start recording; call once, before the first navigation."""
@@ -156,6 +158,10 @@ class Tab:
             if self.in_flight:
                 quiet_since = time.monotonic()
 
+    def reset_most_in_flight(self) -> None:
+        """Count ``most_in_flight`` again from the requests in flight now."""
+        self.most_in_flight = len(self.in_flight)
+
     def csp_violations(self) -> list[dict[str, str]]:
         """Return the CSP violations of the current document."""
         violations: list[dict[str, str]] = self.page.evaluate("window.__cspViolations")
@@ -184,6 +190,7 @@ class Tab:
     def _request(self, request: Request) -> None:
         self.requests.append(request.url)
         self.in_flight.add(request)
+        self.most_in_flight = max(self.most_in_flight, len(self.in_flight))
 
     def _ended(self, request: Request) -> None:
         self.in_flight.discard(request)

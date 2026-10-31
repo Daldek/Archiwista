@@ -115,6 +115,11 @@ The panel "Wybór" (selection) leads through four steps:
    ("aktualne", "nowsze u źródła", "brak w magazynie", "nie do sprawdzenia"),
    what will be downloaded and its size ("co najmniej …" when the producer
    tells only some sizes), the store and the producer's command line to copy.
+   A set can have a line per sheet (sheets of the grid without data, as at sea);
+   the window reads them a few at a time, and a problem of several lines shows
+   once with their number ("Dotyczy 65 z 130 poleceń."). "Serwer chwilowo
+   niedostępny" (a `503` without a description) means the server had too many
+   requests at once: try again in a moment.
    The line names the area's GeoJSON that Archiwista keeps
    (`--geometry <data-dir>/areas/<area id>.geojson`): the producer reads the
    polygon itself and selects the sheets it meets, not its bounding box.

@@ -213,7 +213,7 @@
  *   preview_unavailable, invalid_ref, invalid_settings, area_too_large,
  *   area_too_complex, area_unreadable, request_too_large, source_unavailable,
  *   source_incompatible, kartograf_error, store_unreadable…; the page adds
- *   network_error, http_error and stream_closed.
+ *   network_error, http_error, server_busy (a bare `503`) and stream_closed.
  * @property {Array<{code: string, field: string, message: string, reason?: string,
  *   hint?: string}>} [problems] - Invalid settings, field by field (`field` like
  *   `stores[0].kartograf`); `reason` and `hint` when a producer refuses a directory.

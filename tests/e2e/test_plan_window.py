@@ -16,7 +16,10 @@ stand-in's ``HOLD`` a run waits after its first file, its window is closed
 and opened again from the top bar, the map pans and zooms, the Catalog opens
 and the page reloads, and the top bar's „Pobieranie” follows the session's
 downloads all along, lists them with their files at the end and toasts each
-end; a download stops only by its „Anuluj pobieranie”.
+end; a download stops only by its „Anuluj pobieranie”. A set whose download
+is one line per sheet (``SHEET_LINES``, more than the server takes at once)
+is checked and planned without the page ever having more than
+``MOST_IN_FLIGHT`` requests in flight.
 With ``ARCHIWISTA_SCREENSHOTS=<directory>`` the steps keep screenshots there,
 the local paths covered (``docs/reports/v0.3-screenshots/``).
 """
@@ -26,6 +29,7 @@ import os
 import re
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -38,6 +42,13 @@ from archiwista.config import AppSettings, StoreConfig
 from archiwista.index import IndexWriter
 from archiwista.jobs import JobSupervisor
 from archiwista.security import fragment_url, issue_one_time_token
+from archiwista.sources import (
+    AvailabilityArea,
+    AvailabilityCampaign,
+    AvailabilityCombination,
+    AvailabilityReport,
+    AvailabilitySheet,
+)
 from archiwista.state import StateStore
 from tests.fixtures.actions import ACTION_WORKER, standin_in_settings
 from tests.fixtures.availability import AREA, register_standin
@@ -77,6 +88,14 @@ MOVED = """([center, zoom]) => {
   const query = new URLSearchParams(location.search);
   return query.get("center") !== center && Number(query.get("zoom")) > zoom;
 }"""
+# A set whose download is one line per sheet, as Kartograf gives it when the
+# grid of the area holds sheets without data (the sea around an island): more
+# lines than the server takes requests at once (`LIMIT_CONCURRENCY`, 100).
+SHEET_LINES = 130
+# The most requests the page has in flight while it checks and plans them,
+# whatever the number of lines: far below the server's limit for everyone.
+MOST_IN_FLIGHT = 10
+LAND_M2 = 120_000_000.0
 
 
 @pytest.fixture
@@ -184,6 +203,50 @@ def pan_and_zoom(page: Page) -> None:
     page.mouse.up()
     page.mouse.wheel(0, -600)
     page.wait_for_function(MOVED, arg=[before["center"][0], float(before["zoom"][0])])
+
+
+def sheet_report(checked_at: datetime) -> AvailabilityReport:
+    """Return a report of one complete set of ``SHEET_LINES`` lines, one per sheet."""
+    sheets = tuple(f"S{n}" for n in range(SHEET_LINES))
+    combination = AvailabilityCombination(
+        country="PL",
+        product="dem",
+        source="standin_dem",
+        year=2023,
+        horizontal="PL-1992",
+        resolution="1m",
+        vertical_crs="EVRF2007",
+        format="ASC",
+        campaigns=("A",),
+        complete=True,
+        sheets_full=sheets,
+        sheets_partial=(),
+        sheets_missing=(),
+        uncovered_m2=0.0,
+        full_m2=LAND_M2,
+        sheet_records=tuple(AvailabilitySheet(sheet, "A", True) for sheet in sheets),
+        campaign_coverage=(AvailabilityCampaign("A", True, LAND_M2),),
+        commands=tuple(
+            f"series fetch --station {150161000 + n} --kind hydro"
+            for n in range(SHEET_LINES)
+        ),
+    )
+    return AvailabilityReport(
+        producer="standin",
+        schema="standin-availability/1",
+        checked_at=checked_at,
+        request={"product": "dem", "countries": ["PL"]},
+        areas=(
+            AvailabilityArea(
+                country="PL",
+                crs="EPSG:2180",
+                bounds=(566000.0, 240000.0, 578000.0, 250000.0),
+                area_m2=LAND_M2,
+                land_m2=LAND_M2,
+            ),
+        ),
+        combinations=(combination,),
+    )
 
 
 def test_a_variant_of_a_row_is_planned_and_downloaded(
@@ -321,6 +384,38 @@ def test_a_row_of_several_lines_is_one_check_and_one_download(
             "2025.csv",
         ]
     assert len(call(page, "GET", "/jobs?kind=check")["items"]) == 1
+    tab.assert_clean()
+
+
+def test_a_set_of_a_line_per_sheet_is_planned_a_few_requests_at_a_time(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """130 lines: the check, its row, each line's plan; never 100 requests at once."""
+    # Arrange: the step offers the check, then the index keeps a fresh report.
+    served = serve_store(serve, tmp_path)
+    page = tab.page
+    step = open_area(page, served, served.token_url())
+    check = step.get_by_role("button", name="Sprawdź u źródła")
+    expect(check).to_be_enabled()
+    with IndexWriter(served.paths.index_file) as writer:
+        report = sheet_report(datetime.now(UTC))
+        writer.write_availability(AREA.id, report, product="dem", job_id=None)
+    tab.settle()
+    tab.reset_most_in_flight()
+
+    # Act: the check answers with the kept report; the plan of its row.
+    check.click()
+    rows = step.get_by_role("list", name="Lata u źródła").locator("> li")
+    expect(rows).to_have_count(1)
+    dialog = open_plan(page, rows.nth(0), f"{4 * SHEET_LINES} pozycji")
+
+    # Assert: one check planned every line, none refused, and the page kept
+    # its requests in flight within the bound all along.
+    expect(dialog).to_contain_text(f"Do pobrania: {2 * SHEET_LINES}")
+    expect(dialog.get_by_role("alert")).to_have_count(0)
+    (job,) = call(page, "GET", "/jobs?kind=check")["items"]
+    assert len(job["params"]["calls"]) == SHEET_LINES
+    assert tab.most_in_flight <= MOST_IN_FLIGHT
     tab.assert_clean()
 
 

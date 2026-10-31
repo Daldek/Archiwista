@@ -5,11 +5,14 @@
  *
  * The variant's lines in the chosen format (`commands`; nothing is chosen
  * when the variant has no default format), or one pasted line, are read into
- * calls (`POST /commands/parse`), and one `check` job plans them all (`POST
- * /jobs` with every call read, then `GET /jobs/{job}/plan` once it ends):
- * nothing is written. A line refused before the job (a line not read, an
- * option the producer refuses: the refusal names its `details.call`) is left
- * out of it and named with its problem, and so is a line whose check failed
+ * calls (`POST /commands/parse`, a few at a time however many there are: a
+ * variant has a line per sheet of the area when its grid holds sheets
+ * without data; `requestEach` of api.js), and one `check` job plans them all
+ * (`POST /jobs` with every call read, then `GET /jobs/{job}/plan` once it
+ * ends): nothing is written. A line refused before the job (a line not read,
+ * an option the producer refuses: the refusal names its `details.call`) is
+ * left out of it and named with its problem (a problem of several lines
+ * once, with their number), and so is a line whose check failed
  * (`result.calls` of the job). The window shows the plans together: the
  * positions by status, what a run downloads and its size („co najmniej …”
  * when the producer tells only some sizes, „rozmiar nieznany” when it tells
@@ -38,7 +41,7 @@
  * pobieranie”.
  */
 
-import { getJobPlan, parseCommand, startJob, watchJob } from "../api.js";
+import { getJobPlan, parseCommand, requestEach, startJob, watchJob } from "../api.js";
 import { useApp } from "../context.js";
 import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "../downloads.js";
 import { bytes, count, int, plural } from "../format.js";
@@ -265,7 +268,11 @@ export function DownloadPlan({
             commands: plural(items.length, L.commands),
           })} /></p>`
         : null}
-      ${items.map((item) => html`<${LineProblem} key=${item.line} item=${item} />`)}
+      ${lineRefusals(items).map(
+        (refusal) =>
+          html`<${LineRefusal} key=${refusal.key} refusal=${refusal} total=${items.length} />`,
+      )}
+      ${items.map((item) => html`<${LineFailure} key=${item.line} item=${item} />`)}
       ${check.failure ? html`<${CheckFailure} failure=${check.failure} count=${check.calls.length} />` : null}
       ${sum.plans.length ? html`<${PlanSummary} sum=${sum} />` : null}
       ${large && planned && sum.todo > 0
@@ -375,14 +382,15 @@ const NO_CHECK = Object.freeze({
 });
 
 /**
- * Plan the lines in one `check` job (ADR-044): read each line into a call,
- * start the job with every call read, follow it to its end and read the
- * plans it kept. A refusal of one call (`details.call`, e.g. an option the
- * producer refuses) names that line and the job is asked again without it;
- * a refusal of the whole request (offline mode) names every line. A line
- * whose check failed gets the job's reason for it (`result.calls`); a job
- * that planned none of several lines failed as a whole (`failure`). A line
- * read is known as its call also when its check is refused.
+ * Plan the lines in one `check` job (ADR-044): read each line into a call (a
+ * few requests at a time, `requestEach`), start the job with every call read,
+ * follow it to its end and read the plans it kept. A refusal of one call
+ * (`details.call`, e.g. an option the producer refuses) names that line and
+ * the job is asked again without it; a refusal of the whole request (offline
+ * mode) names every line. A line whose check failed gets the job's reason for
+ * it (`result.calls`); a job that planned none of several lines failed as a
+ * whole (`failure`). A line read is known as its call also when its check is
+ * refused.
  *
  * @param {string} producer
  * @param {string} store
@@ -408,7 +416,9 @@ function usePlans(producer, store, lines) {
     };
     setCheck({ ...NO_CHECK, items });
     const plan = async () => {
-      const read = await Promise.all(lines.map((line) => readLine(producer, line)));
+      // A line per sheet can be hundreds: a few requests at a time, none once closed.
+      const send = async (line) => (live ? readLine(producer, line) : null);
+      const read = await requestEach(lines, send);
       if (!live) return;
       read.forEach((answer, index) => update(index, answer));
       // The places in `lines` of the job's calls, in the job's order.
@@ -633,9 +643,38 @@ function PlanSummary({ sum }) {
   </div>`;
 }
 
-/** A line refused before its check, or whose check failed. */
-function LineProblem({ item }) {
-  if (item.problem) return html`<${ProblemView} problem=${item.problem} compact />`;
+/**
+ * The problems that refused lines before their check, each once with its
+ * lines counted: a busy server refuses every line with the same problem.
+ */
+function lineRefusals(items) {
+  const refusals = new Map();
+  for (const item of items) {
+    if (!item.problem) continue;
+    const key = JSON.stringify(item.problem);
+    const refusal = refusals.get(key) ?? { key, problem: item.problem, lines: 0 };
+    refusal.lines += 1;
+    refusals.set(key, refusal);
+  }
+  return [...refusals.values()];
+}
+
+/** A problem that refused lines before their check, and how many when several. */
+function LineRefusal({ refusal, total }) {
+  return html`<div class="plan-refusal">
+    <${ProblemView} problem=${refusal.problem} compact />
+    ${refusal.lines > 1
+      ? html`<p class="hint">${t(L.refused_lines, {
+          count: int(refusal.lines),
+          total: int(total),
+          commands: plural(total, L.commands),
+        })}</p>`
+      : null}
+  </div>`;
+}
+
+/** A line whose check failed. */
+function LineFailure({ item }) {
   if (!item.failure) return null;
   return html`<p class="plan-line bad" role="alert"><${Icon} name="alert" size=${15} />
     <span><${Tech} value=${[["code", item.failure.code]]}>${t(L.failed_line, { line: item.line })}</${Tech}> ${item.failure.detail}</span></p>`;

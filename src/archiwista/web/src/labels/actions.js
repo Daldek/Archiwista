@@ -104,6 +104,8 @@ export const actions = {
     failed_line: "Polecenie „{line}” nie dało planu.",
     /** A check of several lines that planned none: „Żadne z 3 poleceń…” (`commands`). */
     failed_lines: "Żadne z {count} {commands} nie dało planu.",
+    /** One problem of several lines refused before the check: „Dotyczy 109 z 130 poleceń.” */
+    refused_lines: "Dotyczy {count} z {total} {commands}.",
     large: "Rozumiem: pobranie obejmie {positions}, {size}.",
     nothing: "Magazyn ma już wszystko, co podało źródło: nie ma czego pobrać.",
     no_write:

@@ -80,6 +80,10 @@ export const common = {
       "Nie można połączyć się z serwerem Archiwisty. Sprawdź, czy w terminalu działa „archiwista serve”.",
     http_title: "Błąd żądania",
     http: "Serwer odpowiedział kodem {status} bez opisu problemu.",
+    busy_title: "Serwer chwilowo niedostępny",
+    busy:
+      "Serwer odpowiedział kodem 503 bez opisu problemu: obsługuje teraz zbyt wiele " +
+      "żądań naraz. Spróbuj ponownie za chwilę.",
     fields: "Do poprawy:",
     producer: "Komunikat {package}:",
     running_job: "Trwa zadanie: {kind} ({state}).",
