@@ -192,7 +192,7 @@ keep their meaning.
 | **Full / partial sheet** | The index record `TAK`/`NIE` (`czy_ark_wypelniony`, in the sidecar `extra.source.full_sheet`): whether the sheet is completely filled with content | ARCH 3.2 |
 | **Kartograf job (area)** | One call for an area; its files, also on both sides of the PL/CZ border, are linked by a common `extra.parent_request` | ARCH 3.4 |
 | **Project** | (Archiwista) A directory with `archiwista-project.json` (`archiwista-project/1`), written only by Archiwista: name, description, area (a geometry file in `obszary/`), the store of each of its producers and groups of pins; its access is in the state database (A-ADR-029), its own data in `dane/` (4.7.1), its exports in `eksport/` (8.4). Kartograf and IMGWTools keep no projects (ECO-054) | section 4.7, A-ADR-049 |
-| **Pin group** | (Archiwista) a named list of pins of a project ("grupa") with its origin: `plan` (the producer's calls that the plan window downloaded them with) or `local` (the selection in the store that chose them: "Stan lokalny", the "Katalog" (Catalog), a "Karta pliku" (File card)) | section 4.7, A-ADR-049 |
+| **Pin group** | (Archiwista) a named list of pins of a project, shown to people as a "zestaw" (set): the complete input data for one purpose, named by it (e.g. "2024"), with its origin: `plan` (the producer's calls that the plan window downloaded them with) or `local` (the selection in the store that chose them: "Stan lokalny", the "Katalog" (Catalog), a "Karta pliku" (File card)) | section 4.7, A-ADR-049 |
 | **Project job** | (Archiwista) a background job over the groups of a project: `project_verify` (the pinned files hashed, no network), `project_check` (the pins against the source), `project_repin` (one group anew, to the source's newer versions), `project_restore` (missing pinned versions downloaded again) | sections 4.7, 5.6, A-ADR-049 |
 | **Pin** | (Archiwista) an entry of a pin group: the version a project uses — producer, the version's path relative to the store (never a standard path), `sha256` (and `content_sha256` when the sidecar has one), size, unit, label, who pinned it and when; any number of projects pin the same version | section 4.7, A-ADR-049 |
 | **Availability** | What the source has for an area: years, variants, sheet completeness; the `check_availability` report (`kartograf-availability/1`) | ADR-041 |
@@ -313,7 +313,7 @@ succeeded); "Przywróć brakujące" (Restore missing) downloads missing pinned v
 a colleague's computer (`project_restore`: kept when the same `sha256`, or for ČHMÚ the same
 content, returns). A version whose command the producer cannot rebuild (e.g. `soil hsg`) is
 pinned and verified, and its check and restore are disabled with the producer's reason. The
-card lists the project's activity from the action log ("Kasia: przypięcie grupy „NMT 2023”,
+card lists the project's activity from the action log ("Kasia: przypięcie zestawu „NMT 2023”,
 wczoraj 14:02").
 
 ### UC-07. Which projects use this file?
@@ -2144,15 +2144,15 @@ PROJEKT Raba                        katalog: ~/projekty/raba · właściciel: Ka
 Zlewnia Raby do Dobczyc             obszar: zlewnia Raby · 1470 km² [Pokaż na mapie]
 [Weryfikuj] [Sprawdź aktualizacje] [Eksportuj…] [Udostępnij…]
 -----------------------------------------------------------------------------
-Grupa            Pochodzenie                                Pliki  Stan
+Zestaw           Pochodzenie                                Pliki  Stan
 NMT 2023         okno planu: kartograf elevation download…  12     w magazynie
-  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń grupę]
+  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń zestaw]
 Stan lokalny     Stan lokalny: NMT · 2019 · Raba            9      1 brak w magazynie
-  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń grupę]
+  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń zestaw]
 Gleby HSG        Karta pliku                                 4      w magazynie
   sprawdzanie i przywracanie niedostępne: producent nie odtworzy polecenia
 -----------------------------------------------------------------------------
-Aktywność   Kasia  przypięcie grupy „NMT 2023” · 12 plików        wczoraj 14:02
+Aktywność   Kasia  przypięcie zestawu „NMT 2023” · 12 plików      wczoraj 14:02
             Marek  weryfikacja projektu · zakończone               dziś 09:15
 Eksport     raba-model  NMT · BDOT · ORTO · ZIP                   2026.10.31
 Dane własne kanalizacja.gpkg · zmieniony od migawki                 [Odśwież]
@@ -2164,7 +2164,7 @@ Dane własne kanalizacja.gpkg · zmieniony od migawki                 [Odśwież
 POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
   12 arkuszy: 5 w magazynie, 7 do pobrania (ok. 265 MB)
   Magazyn: Zespół
-  [x] Dodaj do projektu [Raba v]  grupa [NMT 2023]
+  [x] Dodaj do projektu [Raba v]  zestaw [NMT 2023]
   Polecenie: kartograf elevation download --product nmt --country pl
     --bbox 561000,239000,573000,249000 --sheet-system 1992 --resolution 1m
     --vertical-crs EVRF2007 --year 2023 -o <store>              [Kopiuj]

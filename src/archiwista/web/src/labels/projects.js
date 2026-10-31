@@ -22,7 +22,7 @@ export const projects = {
   columns: {
     name: "Projekt",
     stores: "Magazyny",
-    groups: "Grupy",
+    groups: "Zestawy",
     pins: "Przypięte",
     missing_pins: "Brakujące",
     scanned_at: "Odczytano",
@@ -31,7 +31,7 @@ export const projects = {
   /** A project file that is not used; the card's problems say where and how to fix it. */
   file_problem: {
     invalid_project_file: "Błędny plik projektu: Archiwista nie używa żadnej jego części.",
-    unsupported_project_schema: "Plik projektu w nowszym formacie: Archiwista nie czyta jego grup.",
+    unsupported_project_schema: "Plik projektu w nowszym formacie: Archiwista nie czyta jego zestawów.",
   },
   panel: "Projekt",
   not_found: "Nie ma projektu „{project}” albo nie masz do niego dostępu.",
@@ -91,9 +91,9 @@ export const projects = {
     created_value: "{at} · {by}",
     scanned_at: "Plik projektu odczytano",
     missing_pins: "Brakujące przypięcia",
-    groups: "Grupy przypiętych wersji",
+    groups: "Zestawy przypiętych danych",
     no_groups: "Projekt nie ma jeszcze przypiętych wersji.",
-    groups_unread: "Archiwista nie czyta grup tego pliku projektu.",
+    groups_unread: "Archiwista nie czyta zestawów tego pliku projektu.",
     origin_plan: "z planu pobrania · {producer}",
     origin_local: "z magazynu",
     origin_local_from: "z magazynu · {sources}",
@@ -102,9 +102,9 @@ export const projects = {
       catalog: "katalog",
       file: "karta pliku",
     },
-    copy_command: "polecenie grupy",
+    copy_command: "polecenie zestawu",
     more_calls: "i {count} więcej",
-    selections: "Jak wybrano wersje grupy",
+    selections: "Jak wybrano wersje zestawu",
     /** The parameters of a selection (`GET /slots`), in words. */
     query: {
       store: "magazyn",
@@ -119,7 +119,7 @@ export const projects = {
     },
     pin_count: ["wersja", "wersje", "wersji"],
     pins: "Przypięte wersje",
-    no_pins: "grupa jest pusta",
+    no_pins: "zestaw jest pusty",
     pin_current: "bieżąca",
     pin_older: "starsza wersja",
     pin_open: "Karta pliku",

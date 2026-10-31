@@ -95,7 +95,7 @@ MESSAGES = {
         ),
         (
             "Wersja zostaje przypięta taka, jaka jest; nie da się jej sprawdzić,"
-            " przywrócić ani przepiąć. Grupa z okna planu zachowuje swoje wywołania."
+            " przywrócić ani przepiąć. Zestaw z okna planu zachowuje swoje wywołania."
         ),
     ),
     "unsupported_project_schema": Text(

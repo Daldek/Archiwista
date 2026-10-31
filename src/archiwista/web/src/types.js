@@ -1496,12 +1496,13 @@
  */
 
 /**
- * Body of `POST /projects/{project}/exports`: the export `zestawy/<name>/`.
+ * Body of `POST /projects/{project}/exports`: the export `eksport/<name>/`.
  *
  * @typedef {object} ExportRequest
  * @property {string} name - 1 to 64 letters, digits, '.', '_' and '-', not starting
  *   with '.'.
  * @property {string[]} [groups] - Only these groups' pins; left out: every group's.
+ * @property {boolean} [zip] - Also write `eksport/<name>.zip`; left out: no ZIP.
  */
 
 /**
@@ -1519,20 +1520,23 @@
  * @typedef {object} ProjectExport
  * @property {string} name
  * @property {CopyPath} path - The export's directory.
- * @property {string[]} files - `pliki.txt` and `ATRYBUCJE.txt`.
- * @property {number} pins - Versions listed in `pliki.txt`, each once.
+ * @property {string[]} files - Every file written, relative with `/`
+ *   (`NMT/M-33-44-A-d-2-2.asc`), `README.txt` last.
+ * @property {number} pins - Versions exported, each once.
+ * @property {boolean} zip - `eksport/<name>.zip` was written too.
  * @property {{no_store: number, missing: number}} skipped - Pins left out: their store
  *   is not configured, or their version is not present.
  * @property {string} written_at
  */
 
 /**
- * An export in a project's `zestawy/`.
+ * An export in a project's `eksport/`.
  *
  * @typedef {object} ProjectExportItem
  * @property {string} name
  * @property {CopyPath} path
  * @property {string[]} files
+ * @property {boolean} zip - `eksport/<name>.zip` exists: `GET …/exports/{name}/zip`.
  * @property {string} written_at - Of its newest file.
  * @property {boolean} changed_since - The project file changed after it: write it again.
  */

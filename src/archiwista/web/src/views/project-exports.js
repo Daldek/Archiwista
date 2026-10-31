@@ -1,17 +1,19 @@
 /**
- * A project's exports on its card (A-ADR-049 decision 13, docs/SPEC.md 8.4):
- * „Eksportuj…” asks the export's name and groups and writes
- * `zestawy/<name>/` with `pliki.txt` (each pinned version's file once) and
- * `ATRYBUCJE.txt` (each attribution once); the answer tells the versions
- * listed and the pins left out. The list shows each export of the project's
- * `zestawy/` with its directory to copy, when it was written and, when the
+ * A project's exports on its card (A-ADR-049, docs/SPEC.md 8.4), the
+ * section „Eksport”: „Eksportuj…” asks the export's name, its sets (the
+ * project's groups) and „Utwórz też plik ZIP”, and writes `eksport/<name>/`:
+ * the pinned versions' data copied into one folder per category (`NMT`,
+ * `BDOT`, `ORTO`…) and `README.txt`, with `eksport/<name>.zip` when asked;
+ * the answer tells the versions exported and the pins left out. The list
+ * shows each export of the project's `eksport/` with its directory to copy,
+ * „Pobierz ZIP” when it has a ZIP file, when it was written and, when the
  * project file changed after it, „projekt zmieniony po eksporcie — wygeneruj
  * ponownie” with the form opened on its name. Writing is the owner's or an
  * administrator's (`project_write`); otherwise „Eksportuj…” is disabled with
  * the reason.
  */
 
-import { exportProject, listProjectExports } from "../api.js";
+import { exportProject, exportZipAddress, listProjectExports } from "../api.js";
 import { stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { exports as L } from "../labels/exports.js";
@@ -47,6 +49,7 @@ export function ProjectExports({ card }) {
         onClick=${() => open()}>
         <${Icon} name="download" size=${14} />${L.open}</button>
     </div>
+    <p class="hint">${L.intro}</p>
     ${why ? html`<p class="hint" id=${`${id}-why`}>${why}</p>` : null}
     ${form
       ? html`<${ExportForm} key=${form.name} card=${card} name=${form.name}
@@ -64,7 +67,7 @@ export function ProjectExports({ card }) {
     ${items.length
       ? html`<ul class="pc-exports" aria-label=${L.list}>
           ${items.map(
-            (item) => html`<${ExportRow} key=${item.name} item=${item}
+            (item) => html`<${ExportRow} key=${item.name} project=${card.project} item=${item}
               onAgain=${why === null ? () => open(item.name) : null} />`,
           )}
         </ul>`
@@ -73,8 +76,9 @@ export function ProjectExports({ card }) {
 }
 
 /**
- * The form of „Eksportuj…”: the export's name and the groups whose pins it
- * lists (all of them at first; all checked sends none, so every group).
+ * The form of „Eksportuj…”: the export's name, the sets (groups) whose pins
+ * it copies (all of them at first; all checked sends none, so every group)
+ * and „Utwórz też plik ZIP”.
  */
 function ExportForm({ card, name, onClose, onWritten }) {
   const id = useId();
@@ -82,6 +86,7 @@ function ExportForm({ card, name, onClose, onWritten }) {
   const [value, setValue] = useState(name);
   const [chosen, setChosen] = useState(groups);
   const [writing, setWriting] = useState(false);
+  const [zip, setZip] = useState(false);
   const [refusal, setRefusal] = useState(null);
   const trimmed = value.trim();
   const ready = trimmed !== "" && (!groups.length || chosen.length > 0) && !writing;
@@ -97,6 +102,7 @@ function ExportForm({ card, name, onClose, onWritten }) {
     setRefusal(null);
     try {
       const body = chosen.length === groups.length ? { name: trimmed } : { name: trimmed, groups: chosen };
+      if (zip) body.zip = true;
       onWritten(await exportProject(card.project, body));
     } catch (error) {
       if (!error.problem) throw error;
@@ -129,6 +135,14 @@ function ExportForm({ card, name, onClose, onWritten }) {
       <span class="field-hint" id=${`${id}-groups-note`}>
         ${groups.length ? L.groups_hint : L.no_groups}</span>
     </fieldset>
+    <div class="field">
+      <label class="check-field">
+        <input type="checkbox" checked=${zip} aria-describedby=${`${id}-zip-note`}
+          onChange=${(event) => setZip(event.currentTarget.checked)} />
+        <span>${L.zip}</span>
+      </label>
+      <span class="field-hint" id=${`${id}-zip-note`}>${L.zip_hint}</span>
+    </div>
     ${refusal ? html`<${ProblemView} problem=${refusal} compact />` : null}
     <div class="pc-form-actions">
       <button type="submit" class="btn sm primary" disabled=${!ready}>
@@ -142,7 +156,7 @@ function ExportForm({ card, name, onClose, onWritten }) {
   </form>`;
 }
 
-/** The export just written: the versions listed and the pins left out. */
+/** The export just written: the versions exported and the pins left out. */
 function Written({ answer }) {
   const { no_store: noStore, missing } = answer.skipped;
   return html`<p class="pc-done" role="status">
@@ -155,19 +169,29 @@ function Written({ answer }) {
   </p>`;
 }
 
-/** An export of the list: its directory, when it was written, and whether to redo it. */
-function ExportRow({ item, onAgain }) {
+/**
+ * An export of the list: its folders and files at the top (`NMT`, `BDOT`,
+ * `README.txt`), its directory, „Pobierz ZIP” when it has a ZIP file, when
+ * it was written, and whether to redo it.
+ */
+function ExportRow({ project, item, onAgain }) {
   const { first, server } = pathToCopy(item.path);
+  const top = [...new Set(item.files.map((file) => file.split("/")[0]))];
   return html`<li class="pc-export">
     <div>
       <b>${item.name}</b>
       <span class="faint">${t(L.written_at, { at: stamp(item.written_at) })}</span>
-      <span class="faint">${item.files.join(", ")}</span>
+      <span class="faint">${top.join(", ")}</span>
     </div>
     <div class="pc-path">
       <code class="path">${first}</code>
       <${CopyButton} text=${first} label=${L.copy_path} />
       <${ServerPath} path=${server} />
+      ${item.zip
+        ? html`<a class="btn sm" href=${exportZipAddress(project, item.name)} download
+            title=${t(L.download_zip_title, { name: item.name })}>
+            <${Icon} name="download" size=${13} />${L.download_zip}</a>`
+        : null}
     </div>
     ${item.changed_since
       ? html`<p class="hint warn">

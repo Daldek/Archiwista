@@ -372,7 +372,7 @@ MESSAGES = {
     ),
     "kind_project_verify": Text("project verification", "weryfikacja projektu"),
     "kind_project_check": Text("project check", "sprawdzenie projektu"),
-    "kind_project_repin": Text("project re-pin", "przepięcie grupy projektu"),
+    "kind_project_repin": Text("project re-pin", "przepięcie zestawu projektu"),
     "kind_project_restore": Text("project restore", "przywrócenie projektu"),
     "project_check_failed": Text(
         "None of the {count} pins could be checked at the source.",

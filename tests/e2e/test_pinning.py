@@ -155,12 +155,12 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     expect(window).to_contain_text("Bieżące wersje plików")
     expect(window).to_contain_text(f"{in_area} wiersz")
     choose_project(window)
-    window.get_by_label("Nazwa nowej grupy").fill("NMT obszaru")
+    window.get_by_label("Nazwa nowego zestawu").fill("NMT obszaru")
     window.get_by_role("button", name="Przypnij").click()
 
     # Assert
     expect(window.get_by_role("status")).to_contain_text(
-        f"Grupa „NMT obszaru” projektu „{PROJECT}”: przypięte {len(current)},"
+        f"Zestaw „NMT obszaru” projektu „{PROJECT}”: przypięte {len(current)},"
         " już były 0,"
     )
     group = group_of(store, "NMT obszaru")
@@ -180,20 +180,20 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     expect(window).to_contain_text("Wiersze Katalogu z obecnymi filtrami")
     expect(window).to_contain_text(f"{every} wiersz")
     choose_project(window)
-    name = window.get_by_label("Nazwa nowej grupy")
+    name = window.get_by_label("Nazwa nowego zestawu")
     name.fill("nmt OBSZARU")
     window.get_by_role("button", name="Przypnij").click()
 
     # Assert: refused at the group's field; nothing written.
     expect(name).to_have_attribute("aria-invalid", "true")
     expect(window.locator(".pin-group .field-error")).to_contain_text(
-        "ma już grupę „NMT obszaru”"
+        "ma już zestaw „NMT obszaru”"
     )
     assert len(group_of(store, "NMT obszaru")["pins"]) == len(current)
 
     # Act: into the local group instead.
-    window.get_by_label("Grupa lokalna projektu", exact=True).check()
-    window.get_by_role("combobox", name="Grupa lokalna projektu").select_option(
+    window.get_by_label("Istniejący zestaw projektu", exact=True).check()
+    window.get_by_role("combobox", name="Istniejący zestaw projektu").select_option(
         "NMT obszaru"
     )
     window.get_by_role("button", name="Przypnij").click()
@@ -222,7 +222,7 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
 def test_an_older_version_pinned_from_the_file_card_is_unpinned_on_the_card(
     serve: Serve, engine_tab: Tab, tmp_path: Path
 ) -> None:
-    """File card's older version → new group; „Odepnij” and „Usuń grupę” asked first."""
+    """File card's older version → new set; „Odepnij” and „Usuń zestaw” asked first."""
     # Arrange
     store, served = served_store(serve, tmp_path)
     page = engine_tab.page
@@ -244,7 +244,7 @@ def test_an_older_version_pinned_from_the_file_card_is_unpinned_on_the_card(
     expect(window).to_contain_text(f"Wersja {older.label}")
     expect(window).to_contain_text("1 wersja")
     choose_project(window)
-    window.get_by_label("Nazwa nowej grupy").fill("Starsza")
+    window.get_by_label("Nazwa nowego zestawu").fill("Starsza")
     window.get_by_role("button", name="Przypnij").click()
 
     # Assert
@@ -260,23 +260,23 @@ def test_an_older_version_pinned_from_the_file_card_is_unpinned_on_the_card(
     head = page.locator(".pc-group-head b").get_by_text("Starsza", exact=True)
     shown = panel.locator(".pc-group").filter(has=head)
     expect(shown.locator(".pc-pin")).to_contain_text("starsza wersja")
-    shown.get_by_role("button", name=f"Odepnij {older.label} z grupy Starsza").click()
+    shown.get_by_role("button", name=f"Odepnij {older.label} z zestawu Starsza").click()
     question = page.get_by_role("dialog", name="Odepnij")
-    expect(question).to_contain_text(f"Odpiąć {older.label} z grupy „Starsza”?")
+    expect(question).to_contain_text(f"Odpiąć {older.label} z zestawu „Starsza”?")
     question.get_by_role("button", name="Odepnij").click()
 
     # Assert
     expect(question).to_be_hidden()
-    expect(shown).to_contain_text("grupa jest pusta")
+    expect(shown).to_contain_text("zestaw jest pusty")
     assert group_of(store, "Starsza")["pins"] == []
 
     # Act: the group removed after the question.
-    shown.get_by_role("button", name="Usuń grupę Starsza").click()
-    question = page.get_by_role("dialog", name="Usuń grupę")
-    question.get_by_role("button", name="Usuń grupę").click()
+    shown.get_by_role("button", name="Usuń zestaw Starsza").click()
+    question = page.get_by_role("dialog", name="Usuń zestaw")
+    question.get_by_role("button", name="Usuń zestaw").click()
 
     # Assert
-    expect(panel.get_by_role("status")).to_contain_text("Usunięto grupę „Starsza”.")
+    expect(panel.get_by_role("status")).to_contain_text("Usunięto zestaw „Starsza”.")
     expect(shown).to_have_count(0)
     names = [item["name"] for item in project_file(store)["groups"]]
     assert "Starsza" not in names
@@ -316,5 +316,5 @@ def test_a_person_who_may_change_no_project_finds_the_action_disabled(
     panel = page.get_by_role("complementary", name="Projekt")
     expect(panel.locator(".pc-pin").first).to_be_visible()
     expect(panel.get_by_role("button", name="Odepnij")).to_have_count(0)
-    expect(panel.get_by_role("button", name="Usuń grupę")).to_have_count(0)
+    expect(panel.get_by_role("button", name="Usuń zestaw")).to_have_count(0)
     tab.assert_clean()

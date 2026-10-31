@@ -387,14 +387,14 @@ def test_a_download_pins_its_files_into_a_new_group_of_a_project(
     created = call(page, "POST", "/projects", {"path": str(projects / "raba")})
     dialog = open_plan(page, first)
     dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
-    group = dialog.get_by_label("Nowa grupa")
+    group = dialog.get_by_label("Nowy zestaw")
     expect(group).to_have_value("dem · 2023 · PL-2000 · 1m · EVRF2007 · obszar Kraków")
     group.fill("Wodowskaz 2023")
     dialog.get_by_role("button", name="Pobierz 2 pozycje i przypnij").click()
 
     # Assert: the run's two files pinned; the group on the project's card.
     expect(dialog).to_contain_text(
-        "Przypięto w projekcie raba, grupa „Wodowskaz 2023”: 2 wersje.",
+        "Przypięto w projekcie raba, zestaw „Wodowskaz 2023”: 2 wersje.",
         timeout=WAIT_S * 1000,
     )
     card = call(page, "GET", f"/projects/{created['project']}")
@@ -410,14 +410,14 @@ def test_a_download_pins_its_files_into_a_new_group_of_a_project(
     # Act: the same name again (case aside) is refused before a job.
     dialog = open_plan(page, first)
     dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
-    dialog.get_by_label("Nowa grupa").fill("wodowskaz 2023")
+    dialog.get_by_label("Nowy zestaw").fill("wodowskaz 2023")
     dialog.get_by_role("button", name=re.compile(r"(i przypnij|^Przypnij .*)$")).click()
 
     # Assert
     expect(dialog.locator(".plan-pin .field-error")).to_contain_text(
-        "ma już grupę „Wodowskaz 2023”"
+        "ma już zestaw „Wodowskaz 2023”"
     )
-    expect(dialog.get_by_label("Nowa grupa")).to_have_attribute("aria-invalid", "true")
+    expect(dialog.get_by_label("Nowy zestaw")).to_have_attribute("aria-invalid", "true")
     assert len(call(page, "GET", "/jobs?kind=download")["items"]) == 1
 
     # Act: the project's card.

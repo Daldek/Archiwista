@@ -248,10 +248,13 @@ versions a scan has just indexed.
 
 A project is a directory holding Archiwista's own file `archiwista-project.json`
 (A-ADR-049): its name and description, an area, the store of each producer whose
-versions it pins and its groups of pinned versions. Archiwista finds projects in the
-project directories of the settings by that file only; the producers' manifests
-(`kartograf-project.json`, `imgw-project.json`) are not read, and a directory holding
-only one of them is no project.
+versions it pins and its sets of pinned data ("zestawy"; *groups* in the API and the
+project file). A set is the complete input data for one purpose, best named by it: "2024"
+with the NMT, BDOT10k and orthophotos of 2024, and "2014" in the same project with those
+of 2014; the comparison itself is done outside, for example in QGIS, from an export.
+Archiwista finds projects in the project directories of the settings by that file only;
+the producers' manifests (`kartograf-project.json`, `imgw-project.json`) are not read,
+and a directory holding only one of them is no project.
 
 - **The project's card** ("Projekty", a project chosen in the list): its directory to
   copy, the store of each producer, its area ("Pokaż na mapie" opens it on the map; on
@@ -259,19 +262,19 @@ only one of them is no project.
   the session may change), who created it and its problems. "Zmień…" changes the name,
   the description, the area and a producer's store, "Udostępnij…" who sees it (both the
   owner's or an administrator's). "Weryfikuj" and "Sprawdź aktualizacje" run the
-  project's jobs (below). Each group shows where its versions came from — a plan
-  group's command lines (the first three, the others on "i N więcej"), a local group's
-  selections in words — with "Sprawdź aktualizacje", "Przepnij", "Przywróć brakujące"
-  and "Usuń grupę", and each pin its state in the store ("w magazynie", "brak w
-  magazynie", another content), whether it is the slot's current version, "bez
-  polecenia" with the producer's reason when the producer cannot rebuild the command
-  that selects it (for example a derived `soil hsg` file: its check and restore, and
-  its group's re-pin, are not possible), and "Odepnij". An action that cannot be used
+  project's jobs (below). Each set shows where its versions came from — a plan
+  set's command lines (the first three, the others on "i N więcej"), a set chosen in
+  the store, its selections in words — with "Sprawdź aktualizacje", "Przepnij",
+  "Przywróć brakujące" and "Usuń zestaw", and each pin its state in the store ("w
+  magazynie", "brak w magazynie", another content), whether it is the slot's current
+  version, "bez polecenia" with the producer's reason when the producer cannot rebuild
+  the command that selects it (for example a derived `soil hsg` file: its check and
+  restore, and its set's re-pin, are not possible), and "Odepnij". An action that cannot be used
   now is disabled, and the card lists each reason once: changing the project (the
   owner or an administrator), a producer's store that matches no configured one, the
   right to write the stores, a producer without commands (IMGWTools until v0.5), a
   version without a command, offline mode, a job of the project already running, and
-  a group with nothing missing. One job of a project runs at a time; the card follows
+  a set with nothing missing. One job of a project runs at a time; the card follows
   it and, when it ends, reads the project again and marks each pin with what the job
   found ("nienaruszona", "jest nowsza: <label>", "przywrócona", …) until the next job.
   Below come the exports, the own data and the activity.
@@ -291,19 +294,26 @@ only one of them is no project.
   5 s for another one (the lock `.archiwista-project.lock`) and is then refused naming
   the lock and its owner; a file broken by hand or of a newer Archiwista is listed with
   its problem and not changed.
-- **Exports** ("Zestawy" on the project's card; the owner or an administrator writes
-  one): "Eksportuj…" asks a name (letters, digits, `.`, `_` and `-`) and the groups, and
-  writes `zestawy/<name>/` in the project directory: `pliki.txt`, each pinned version's
-  file once, one per line in the order of the groups and their pins (for Hydrograf and
-  other scripts; relative to the export when the store and the project lie on one
-  share, else absolute), and `ATRYBUCJE.txt`, each attribution text the sources require
-  once. A pin whose store is not configured or whose version is not in the store is
-  left out and counted. The list of the project's exports says "projekt zmieniony po
-  eksporcie — wygeneruj ponownie" once the project file changes after an export;
-  "Wygeneruj ponownie…" opens the form on its name, and writing it again replaces each
-  file whole. Archiwista never removes an export. At the terminal: `archiwista
-  project-export PROJEKT NAZWA [--group GRUPA …]` and `project-exports PROJEKT`. The
-  QGIS project and the other files of SPEC 8.4 come with v1.1.
+- **Exports** ("Eksport" on the project's card; the owner or an administrator writes
+  one): "Eksportuj…" asks a name (letters, digits, `.`, `_` and `-`), the sets and
+  "Utwórz też plik ZIP", and writes `eksport/<name>/` in the project directory, a flat
+  folder to hand over: one folder per kind of data (`NMT`, `NMPT`, `LAZ`, `ORTO`,
+  `BDOT`, `HSG`, `CORINE`, `SOILGRIDS`, `WARSTWICE`, `IMGW`, …) holding a copy of each
+  pinned version's data in its original format and under its original name, with the
+  files its format needs beside it (every part of a Shapefile, `.prj`, `.tfw`, …), and
+  `README.txt`, which describes each file — its folder and name, product, year or label,
+  coordinate systems, size, SHA-256 and the set it came from — and the sources'
+  attributions. The files are copies, never links into the store, so opening them in
+  QGIS changes no version. The same file name from two sets gets the version's label
+  before its extension (`M-33-44-A-d-2-2_2025-06-13.asc`). With the ZIP,
+  `eksport/<name>.zip` holds the same content, and "Pobierz ZIP" at the export
+  downloads it. A pin whose store is not configured or whose version is not in the
+  store is left out and counted. The list of the project's exports says "projekt
+  zmieniony po eksporcie — wygeneruj ponownie" once the project file changes after an
+  export; "Wygeneruj ponownie…" opens the form on its name, and writing it again
+  replaces the folder and the ZIP whole. Archiwista never removes an export. At the
+  terminal: `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]` and
+  `project-exports PROJEKT`. The QGIS project of SPEC 8.4 comes with v1.1.
 - **Activity** ("Aktywność" at the end of the project's card; whoever sees the project):
   what was done to the project and its jobs, from the action log, newest first — who
   created, changed, shared, pinned, unpinned and exported it, and which jobs were
@@ -313,37 +323,38 @@ only one of them is no project.
   session stay in "Dziennik" for administrators. At the terminal: `archiwista
   project-activity PROJEKT [--limit N] [--cursor ID]`.
 - **Pinning what the store holds** (the owner or an administrator): `archiwista
-  project-pin PROJEKT GRUPA --version MAGAZYN:WERSJA` pins a version, an older one
-  too, into a new group of the project, and `--query '{"store": "zespol", "product":
-  "nmt"}'` the versions of a catalog query (every page; at most 10,000); `--add`
-  pins into a group the project has. Nothing is downloaded: the SHA-256, the size,
-  the unit and the label come from the index, a version not in the store or without
-  a SHA-256 is skipped with the reason, and the first pin of a producer names the
-  project's store. `project-unpin PROJEKT GRUPA --pin PRODUCENT:WERSJA` removes a pin,
-  and without `--pin` the whole group; the files stay in the store. A download pins
+  project-pin PROJEKT ZESTAW --version MAGAZYN:WERSJA` pins a version, an older one
+  too, into a new set of the project, and `--query '{"store": "zespol", "product":
+  "nmt"}'` the versions of a catalog query (every page; at most 10,000); `--add` pins
+  into a set the project has that was chosen in the store. Nothing is downloaded: the
+  SHA-256, the size, the unit and the label come from the index, a version not in the
+  store or without a SHA-256 is skipped with the reason, and the first pin of a
+  producer names the project's store. `project-unpin PROJEKT ZESTAW --pin PRODUCENT:WERSJA` removes a pin,
+  and without `--pin` the whole set; the files stay in the store. A download pins
   what it leaves too: `archiwista jobs start download … --plan ZADANIE --pin PROJEKT
-  --pin-group GRUPA` writes, when the job succeeds, a new group of the plan window
+  --pin-group ZESTAW` writes, when the job succeeds, a new set of the plan window
   with the files it fetched and the versions the store holds at the plan's other
   positions; a job that ends `partial` pins nothing, and a taken name or another
   store is refused before the download starts. In the web: "Dodaj do projektu…" on the
   catalog's result, a coverage row of the map and a version on the file card pins the
-  chosen versions into a new group of a project the session may change (or adds them
-  to a group the project has); on the project's card "Odepnij" removes a pin and "Usuń
-  grupę" a group, each asked first. The plan window's option "Dodaj do projektu" names
-  the project and the new group; the download's result in the top bar then says what
-  was pinned and what was not.
+  chosen versions into a new set of a project the session may change ("Nowy zestaw",
+  for example "2024") or adds them to one the project has ("Istniejący zestaw
+  projektu"); on the project's card "Odepnij" removes a pin and "Usuń zestaw" a set,
+  each asked first. The plan window's option "Dodaj do projektu" names the project and
+  the new set; the download's result in the top bar then says what was pinned and what
+  was not.
 - **The jobs of a project** (the card's buttons; at the terminal):
-  `archiwista project-verify PROJEKT [GRUPA …]` hashes each pinned file in its
+  `archiwista project-verify PROJEKT [ZESTAW …]` hashes each pinned file in its
   store without the network (`ok`, `corrupt`, `missing`, `content_match` when another
   version of the slot holds the same content, `no_store`); `project-check PROJEKT
-  [GRUPA …]` asks the source and compares each pin by its slot (`current`, `newer`,
+  [ZESTAW …]` asks the source and compares each pin by its slot (`current`, `newer`,
   `missing`, `removed`, `unverifiable`, `check_failed`, `not_checkable` for a version
   whose command the producer cannot rebuild), listing positions without a pin;
-  `project-repin PROJEKT GRUPA` downloads the source's newer versions of one group and
+  `project-repin PROJEKT ZESTAW` downloads the source's newer versions of one set and
   pins them only when every call succeeded (an unchanged pin keeps its time and
-  author); `project-restore PROJEKT [GRUPA …]` downloads the missing pinned versions
+  author); `project-restore PROJEKT [ZESTAW …]` downloads the missing pinned versions
   again (`restored`, `content_match`, `not_restored`, `not_restorable`) and never
-  changes the file. No group named is every group. Anyone who sees the project verifies
+  changes the file. No set named is every set. Anyone who sees the project verifies
   and checks it; a re-pin and a restore need the owner or an administrator and the
   right to write the stores. One job of a project runs at a time; each follows the job
   in the foreground and exits `0`, `10` (partial), `11` or `130`.

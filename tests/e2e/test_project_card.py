@@ -6,13 +6,15 @@ A generated Kartograf store served offline with its projects
 runs offline and marks each pin with what it found, while the check, the
 re-pin and the restore are disabled with the offline reason; „Pokaż na
 mapie” opens the project's area. On the stand-in's store a project without
-groups cannot be verified, a derived file's pin shows the producer's reason
-(D5) and disables its group's jobs, a group with nothing missing cannot be
-restored, and the check and the re-pin of a group mark its pins. The
+sets (groups) cannot be verified, a derived file's pin shows the producer's reason
+(D5) and disables its set's jobs, a set with nothing missing cannot be
+restored, and the check and the re-pin of a set mark its pins. The
 computer's owner writes an export of a fixture project with „Eksportuj…” and
 finds its category folders and ``README.txt`` on the disk; once the project file
 changes, the list says „projekt zmieniony po eksporcie — wygeneruj ponownie”
-and the export is written again from the form opened on its name. A person
+and the export is written again from the form opened on its name. With
+„Utwórz też plik ZIP” the export's category folders and ``README.txt`` come
+as one ZIP file from „Pobierz ZIP”. A person
 the project is shared with sees the exports and „Eksportuj…” disabled with
 the reason. „Aktywność” shows the 20 newest entries of the project's
 activity, older ones on „Więcej”, never another project's, and a change made
@@ -21,8 +23,10 @@ on the card at once; the person it is shared with sees it too. With
 (the guide's picture).
 """
 
+import hashlib
 import os
 import re
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -56,22 +60,22 @@ Serve = Callable[..., Served]
 PROJECT = "projekt-01"
 ATTRIBUTION = "Archiwista synthetic test store\n"
 CHANGED = "projekt zmieniony po eksporcie — wygeneruj ponownie"
-NO_WRITE = "Zestaw zapisuje tylko właściciel projektu albo administrator."
+NO_WRITE = "Eksport zapisuje tylko właściciel projektu albo administrator."
 SCREENSHOTS = "ARCHIWISTA_SCREENSHOTS"
 LOCAL = "Wodowskaz"
 OFFLINE = "Tryb offline: sprawdzanie, przepinanie i przywracanie potrzebują sieci."
-NO_GROUPS = "Projekt nie ma grup przypiętych wersji."
-NO_MISSING = "Grupa nie ma brakujących wersji."
+NO_GROUPS = "Projekt nie ma zestawów przypiętych wersji."
+NO_MISSING = "Zestaw nie ma brakujących wersji."
 NOT_REBUILDABLE = (
     "Producent nie odtworzy polecenia niektórych wersji (powód przy wersji): ich"
-    " sprawdzanie i przywracanie, a ich grupy przepięcie, są niedostępne."
+    " sprawdzanie i przywracanie, a ich zestawów przepięcie, są niedostępne."
 )
 
 
 def exports(page: Page) -> Locator:
-    """Return the section „Zestawy” of the chosen project's card."""
+    """Return the section „Eksport” of the chosen project's card."""
     panel = page.get_by_role("complementary", name="Projekt")
-    return panel.get_by_role("region", name="Zestawy")
+    return panel.get_by_role("region", name="Eksport")
 
 
 def activity(page: Page) -> Locator:
@@ -91,20 +95,20 @@ def test_an_export_is_written_and_written_again_after_a_change(
     page = tab.page
     open_projects(page, served, served.token_url(), PROJECT)
     section = exports(page)
-    expect(section).to_contain_text("Projekt nie ma zestawów.")
+    expect(section).to_contain_text("Projekt nie ma eksportów.")
 
     # Act: every group but the archive.
     section.get_by_role("button", name="Eksportuj…").click()
-    form = section.get_by_role("form", name="Nowy zestaw")
+    form = section.get_by_role("form", name="Nowy eksport")
     form.get_by_label("Nazwa").fill("hydrograf")
     form.get_by_role("checkbox", name="archiwum").uncheck()
-    form.get_by_role("button", name="Zapisz zestaw").click()
+    form.get_by_role("button", name="Zapisz eksport").click()
 
     # Assert: what was written, the list, the files on the disk.
     done = section.get_by_role("status")
-    expect(done).to_have_text("Zapisano zestaw „hydrograf”: wersje 2.")
+    expect(done).to_have_text("Zapisano eksport „hydrograf”: wersje 2.")
     expect(form).to_have_count(0)
-    listed = section.get_by_role("list", name="Zestawy projektu").get_by_role(
+    listed = section.get_by_role("list", name="Eksporty projektu").get_by_role(
         "listitem"
     )
     expect(listed).to_have_count(1)
@@ -133,16 +137,78 @@ def test_an_export_is_written_and_written_again_after_a_change(
 
     # Act: written again from the form opened on its name, every group.
     item.get_by_role("button", name="Wygeneruj ponownie…").click()
-    form = exports(page).get_by_role("form", name="Nowy zestaw")
+    form = exports(page).get_by_role("form", name="Nowy eksport")
     expect(form.get_by_label("Nazwa")).to_have_value("hydrograf")
-    form.get_by_role("button", name="Zapisz zestaw").click()
+    form.get_by_role("button", name="Zapisz eksport").click()
 
     # Assert
     expect(exports(page).get_by_role("status")).to_have_text(
-        "Zapisano zestaw „hydrograf”: wersje 3."
+        "Zapisano eksport „hydrograf”: wersje 3."
     )
     expect(item).not_to_contain_text(CHANGED)
     assert len(list((target / "NMT").iterdir())) == 2
+    tab.assert_clean()
+
+
+def test_an_export_with_a_zip_is_downloaded_from_the_card(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """„Utwórz też plik ZIP” → category folders and README.txt → „Pobierz ZIP”."""
+    # Arrange
+    store, served = served_store(serve, tmp_path)
+    project = store.project(PROJECT)
+    directory = store.base / project.path
+    pins = {pin.sha256 for group in project.groups for pin in group.pins}
+    page = tab.page
+    open_projects(page, served, served.token_url(), PROJECT)
+    section = exports(page)
+    expect(section).to_contain_text("NMT, BDOT, ORTO")
+
+    # Act: every set, with the ZIP file.
+    section.get_by_role("button", name="Eksportuj…").click()
+    form = section.get_by_role("form", name="Nowy eksport")
+    form.get_by_label("Nazwa").fill("hydro")
+    form.get_by_role("checkbox", name="Utwórz też plik ZIP").check()
+    form.get_by_role("button", name="Zapisz eksport").click()
+
+    # Assert: the data copied into category folders, README.txt naming the sets.
+    expect(section.get_by_role("status")).to_have_text(
+        f"Zapisano eksport „hydro”: wersje {len(pins)}."
+    )
+    target = directory / "eksport" / "hydro"
+    item = section.get_by_role("listitem").filter(has_text="hydro")
+    expect(item).to_contain_text(str(target))
+    expect(item).to_contain_text("README.txt")
+    folders = sorted(path.name for path in target.iterdir() if path.is_dir())
+    assert folders == ["BDOT", "NMT"]
+    data = [path for path in target.rglob("*") if path.is_file()]
+    copied = {
+        hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in data
+        if path.parent != target
+    }
+    assert copied == pins
+    assert not any(path.stat().st_nlink > 1 for path in data)
+    readme = (target / "README.txt").read_text(encoding="utf-8")
+    for name in ("teren", "archiwum", "pokrycie"):
+        assert name in readme
+    assert (directory / "eksport" / "hydro.zip").is_file()
+
+    # Act
+    with page.expect_download() as started:
+        item.get_by_role("link", name="Pobierz ZIP").click()
+    download = started.value
+    saved = tmp_path / "hydro.zip"
+    download.save_as(saved)
+
+    # Assert: the folder's content, file by file.
+    assert download.suggested_filename == "hydro.zip"
+    with zipfile.ZipFile(saved) as archive:
+        names = sorted(name for name in archive.namelist() if not name.endswith("/"))
+        assert names == sorted(path.relative_to(target).as_posix() for path in data)
+        for path in data:
+            member = path.relative_to(target).as_posix()
+            assert archive.read(member) == path.read_bytes()
     tab.assert_clean()
 
 
@@ -184,7 +250,7 @@ def test_a_person_who_may_not_change_the_project_sees_its_exports_only(
 def test_the_activity_shows_the_newest_entries_and_a_change_made_on_the_card(
     serve: Serve, tab: Tab, tmp_path: Path
 ) -> None:
-    """20 newest, „Więcej” for the rest, no other project; a group removed shows."""
+    """20 newest, „Więcej” for the rest, no other project; a set removed shows."""
     # Arrange: 22 job starts of the project (the newest failed), one of another.
     store, served = served_store(serve, tmp_path)
     state = StateStore(served.paths.state_file)
@@ -222,15 +288,15 @@ def test_the_activity_shows_the_newest_entries_and_a_change_made_on_the_card(
     expect(entries).to_have_count(22)
     expect(section.get_by_role("button", name="Więcej")).to_have_count(0)
 
-    # Act: a group removed on the card, after the question.
+    # Act: a set removed on the card, after the question.
     panel = page.get_by_role("complementary", name="Projekt")
-    panel.get_by_role("button", name="Usuń grupę archiwum").click()
-    question = page.get_by_role("dialog", name="Usuń grupę")
-    question.get_by_role("button", name="Usuń grupę").click()
+    panel.get_by_role("button", name="Usuń zestaw archiwum").click()
+    question = page.get_by_role("dialog", name="Usuń zestaw")
+    question.get_by_role("button", name="Usuń zestaw").click()
 
     # Assert: the activity read again, the change first.
     expect(entries.first).to_contain_text(
-        "właściciel lokalny odpięcie wersji, grupa „archiwum”"
+        "właściciel lokalny odpięcie wersji, zestaw „archiwum”"
     )
     expect(entries).to_have_count(20)
     tab.assert_clean()
@@ -304,9 +370,9 @@ def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(
     teren = group(page, "teren")
     buttons = [
         actions.get_by_role("button", name="Sprawdź aktualizacje"),
-        teren.get_by_role("button", name="Sprawdź aktualizacje grupy teren"),
-        teren.get_by_role("button", name="Przepnij grupę teren"),
-        teren.get_by_role("button", name="Przywróć brakujące wersje grupy teren"),
+        teren.get_by_role("button", name="Sprawdź aktualizacje zestawu teren"),
+        teren.get_by_role("button", name="Przepnij zestaw teren"),
+        teren.get_by_role("button", name="Przywróć brakujące wersje zestawu teren"),
     ]
     for button in buttons:
         expect(button).to_be_disabled()
@@ -324,7 +390,7 @@ def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(
 def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
 ) -> None:
-    """No groups; D5 at a derived pin; nothing missing; check; re-pin."""
+    """No sets; D5 at a derived pin; nothing missing; check; re-pin."""
     # Arrange: a station's two years and a derived file in the store.
     page = tab.page
     served, _, project = standin_project(
@@ -347,25 +413,25 @@ def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     pin_files(page, project, "Pochodne", DERIVED)
     panel = project_card(page, served, project)
 
-    # Assert: D5 at the derived pin and its group; no missing version to restore.
+    # Assert: D5 at the derived pin and its set; no missing version to restore.
     derived = card_group(panel, "Pochodne")
     expect(pin_of(derived, "zlewnia.csv")).to_contain_text("bez polecenia")
     expect(pin_of(derived, "zlewnia.csv")).to_contain_text("derived")
     for name in (
-        "Sprawdź aktualizacje grupy Pochodne",
-        "Przepnij grupę Pochodne",
-        "Przywróć brakujące wersje grupy Pochodne",
+        "Sprawdź aktualizacje zestawu Pochodne",
+        "Przepnij zestaw Pochodne",
+        "Przywróć brakujące wersje zestawu Pochodne",
     ):
         button = derived.get_by_role("button", name=name)
         expect(button).to_be_disabled()
         expect(button).to_have_accessible_description(NOT_REBUILDABLE)
     local = card_group(panel, LOCAL)
     restore = local.get_by_role(
-        "button", name=f"Przywróć brakujące wersje grupy {LOCAL}"
+        "button", name=f"Przywróć brakujące wersje zestawu {LOCAL}"
     )
     expect(restore).to_have_accessible_description(NO_MISSING)
 
-    # Act: the project's check (the local group only).
+    # Act: the project's check (the local set only).
     panel.get_by_role("group", name="Działania projektu").get_by_role(
         "button", name="Sprawdź aktualizacje"
     ).click()
@@ -378,11 +444,11 @@ def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     shot(page, panel)
 
     # Act
-    local.get_by_role("button", name=f"Przepnij grupę {LOCAL}").click()
+    local.get_by_role("button", name=f"Przepnij zestaw {LOCAL}").click()
 
     # Assert: the newer year pinned, the other kept.
     expect(status).to_contain_text(
-        f"Grupa „{LOCAL}” przepięta: bez zmian 1, nowe 1, odpięte 0."
+        f"Zestaw „{LOCAL}” przepięty: bez zmian 1, nowe 1, odpięte 0."
     )
     expect(pin_of(local, "2024.csv")).to_contain_text("2024-12-31")
     tab.assert_clean()

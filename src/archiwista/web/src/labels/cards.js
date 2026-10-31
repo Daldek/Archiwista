@@ -17,7 +17,7 @@ export const cards = {
     },
     open_file: "Karta pliku",
     open_project: "Projekt „{project}”",
-    group: "grupa „{group}”",
+    group: "zestaw „{group}”",
     path: "ścieżka",
     details: "Szczegóły techniczne",
   },

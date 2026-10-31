@@ -1,10 +1,10 @@
 """The commands of the jobs over a project's groups (A-ADR-049 decision 11).
 
-``archiwista project-verify PROJEKT [GRUPA ...]`` hashes the pinned files in
-their store without the network, ``project-check PROJEKT [GRUPA ...]``
-compares the pins with the source, ``project-repin PROJEKT GRUPA`` pins one
+``archiwista project-verify PROJEKT [ZESTAW ...]`` hashes the pinned files in
+their store without the network, ``project-check PROJEKT [ZESTAW ...]``
+compares the pins with the source, ``project-repin PROJEKT ZESTAW`` pins one
 group anew to the source's newer versions and ``project-restore PROJEKT
-[GRUPA ...]`` downloads the missing pinned versions again; no group named is
+[ZESTAW ...]`` downloads the missing pinned versions again; no group named is
 every group. Each starts its job as ``POST /projects/{project}/jobs`` does,
 follows it to its end in the foreground (``archiwista.jobs.foreground``),
 prints the job as it ended (``GET /jobs/{job}``, ``JobDetail``) and exits

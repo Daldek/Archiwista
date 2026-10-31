@@ -2,7 +2,7 @@
  * Texts of a project's jobs on its card (views/project-jobs.js, docs/SPEC.md
  * 6.5 g; A-ADR-049 decisions 11 and 12): „Weryfikuj” and „Sprawdź
  * aktualizacje” of the project, „Sprawdź aktualizacje”, „Przepnij” and
- * „Przywróć brakujące” of each group, the reasons that disable them, the
+ * „Przywróć brakujące” of each set (a group), the reasons that disable them, the
  * state of a pin's command and what the last job found at each pin.
  */
 
@@ -13,19 +13,19 @@ export const projectJobs = {
   check: "Sprawdź aktualizacje",
   check_title: "Porównaj przypięte wersje ze źródłem (sieć); nic nie zmienia",
   check_some_title:
-    "Porównaj ze źródłem przypięte wersje grup, które można sprawdzić: {groups}",
+    "Porównaj ze źródłem przypięte wersje zestawów, które można sprawdzić: {groups}",
   repin: "Przepnij",
   restore: "Przywróć brakujące",
-  group_actions: "Działania grupy {group}",
-  group_check_label: "Sprawdź aktualizacje grupy {group}",
-  group_check_title: "Porównaj przypięte wersje grupy ze źródłem (sieć); nic nie zmienia",
-  repin_label: "Przepnij grupę {group}",
+  group_actions: "Działania zestawu {group}",
+  group_check_label: "Sprawdź aktualizacje zestawu {group}",
+  group_check_title: "Porównaj przypięte wersje zestawu ze źródłem (sieć); nic nie zmienia",
+  repin_label: "Przepnij zestaw {group}",
   repin_title:
-    "Pobierz nowsze wersje grupy i przypnij je, gdy całe pobranie się uda; " +
+    "Pobierz nowsze wersje zestawu i przypnij je, gdy całe pobranie się uda; " +
     "inaczej przypięcia zostają",
-  restore_label: "Przywróć brakujące wersje grupy {group}",
+  restore_label: "Przywróć brakujące wersje zestawu {group}",
   restore_title:
-    "Pobierz ponownie wersje grupy, których nie ma w magazynie; plik projektu się nie zmienia",
+    "Pobierz ponownie wersje zestawu, których nie ma w magazynie; plik projektu się nie zmienia",
   /** Why a job cannot start now, in the order the card checks them (ADR-042 decision 4). */
   why: {
     write:
@@ -41,11 +41,11 @@ export const projectJobs = {
       "sprawdzić, przepiąć ani przywrócić.",
     command_not_rebuildable:
       "Producent nie odtworzy polecenia niektórych wersji (powód przy wersji): ich " +
-      "sprawdzanie i przywracanie, a ich grupy przepięcie, są niedostępne.",
+      "sprawdzanie i przywracanie, a ich zestawów przepięcie, są niedostępne.",
     offline: "Tryb offline: sprawdzanie, przepinanie i przywracanie potrzebują sieci.",
     running: "Trwa zadanie projektu; następne można zacząć po jego końcu.",
-    no_groups: "Projekt nie ma grup przypiętych wersji.",
-    no_missing: "Grupa nie ma brakujących wersji.",
+    no_groups: "Projekt nie ma zestawów przypiętych wersji.",
+    no_missing: "Zestaw nie ma brakujących wersji.",
   },
   reasons: "Dlaczego część działań jest wyłączona",
   /** The state of a pin's command (A-ADR-049 decision 12). */
@@ -88,12 +88,12 @@ export const projectJobs = {
   /** The summary of a project's job (the job status under the actions). */
   done: {
     pins: "Wersje: {total} — {counts}.",
-    added: "Nowe pozycje u źródła, których grupy nie przypinają: {count}.",
-    nothing_missing: "Żadna wybrana grupa nie ma brakujących wersji.",
-    repin_replaced: "Grupa „{group}” przepięta: bez zmian {kept}, nowe {new}, odpięte {dropped}.",
-    repin_unchanged: "Grupa „{group}”: przypięte wersje są najnowsze, nic się nie zmieniło.",
+    added: "Nowe pozycje u źródła, których zestawy nie przypinają: {count}.",
+    nothing_missing: "Żaden wybrany zestaw nie ma brakujących wersji.",
+    repin_replaced: "Zestaw „{group}” przepięty: bez zmian {kept}, nowe {new}, odpięte {dropped}.",
+    repin_unchanged: "Zestaw „{group}”: przypięte wersje są najnowsze, nic się nie zmieniło.",
     repin_not_written:
-      "Nie całe pobranie się udało, więc przypięcia grupy „{group}” zostały bez zmian " +
+      "Nie całe pobranie się udało, więc przypięcia zestawu „{group}” zostały bez zmian " +
       "(pobrane pliki są w magazynie).",
     seconds: "Czas: {seconds} s.",
   },

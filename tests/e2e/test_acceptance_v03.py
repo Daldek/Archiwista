@@ -476,7 +476,7 @@ def test_uc06_a_project_is_filled_verified_checked_and_restored_by_its_owner(
     plan = card_group(card, PLAN_GROUP)
     expect(pin_of(plan, "2023.csv")).to_contain_text("brak w magazynie")
     plan.get_by_role(
-        "button", name=f"Przywróć brakujące wersje grupy {PLAN_GROUP}"
+        "button", name=f"Przywróć brakujące wersje zestawu {PLAN_GROUP}"
     ).click()
 
     # Assert: back with the same bytes; the project file did not change.
@@ -512,8 +512,8 @@ def test_uc06_a_project_is_filled_verified_checked_and_restored_by_its_owner(
     ).to_be_enabled()
     plan = card_group(card, PLAN_GROUP)
     for name in (
-        f"Przepnij grupę {PLAN_GROUP}",
-        f"Przywróć brakujące wersje grupy {PLAN_GROUP}",
+        f"Przepnij zestaw {PLAN_GROUP}",
+        f"Przywróć brakujące wersje zestawu {PLAN_GROUP}",
     ):
         button = plan.get_by_role("button", name=name)
         expect(button).to_be_disabled()

@@ -156,7 +156,7 @@ MESSAGES = {
     ),
     "rule_group_unique": Text(
         "a group name used once in the project, whatever its case",
-        "nazwa grupy użyta w projekcie raz, bez względu na wielkość liter",
+        "nazwa zestawu użyta w projekcie raz, bez względu na wielkość liter",
     ),
     "rule_origin": Text(
         "an origin of the kind plan or local", "pochodzenie rodzaju plan albo local"
@@ -178,10 +178,10 @@ MESSAGES = {
         "ścieżka względem magazynu, z / i bez ..",
     ),
     "rule_pin_unique": Text(
-        "a version pinned once in a group", "wersja przypięta w grupie raz"
+        "a version pinned once in a group", "wersja przypięta w zestawie raz"
     ),
     "rule_plan_producer": Text(
-        "the producer of the group's plan", "producent planu grupy"
+        "the producer of the group's plan", "producent planu zestawu"
     ),
     "rule_size": Text(
         "a whole number of bytes, 0 or more", "całkowita liczba bajtów, 0 lub więcej"
@@ -196,17 +196,17 @@ MESSAGES = {
             ' "{group}" is not.'
         ),
         (
-            "Nazwa grupy ma od 1 do 80 znaków, bez znaków sterujących i „/”:"
+            "Nazwa zestawu ma od 1 do 80 znaków, bez znaków sterujących i „/”:"
             " „{group}” jej nie spełnia."
         ),
     ),
     "group_exists": Text(
         'The project "{project}" has a group "{group}" already.',
-        "Projekt „{project}” ma już grupę „{group}”.",
+        "Projekt „{project}” ma już zestaw „{group}”.",
     ),
     "group_not_found": Text(
         'The project "{project}" has no group "{group}".',
-        "Projekt „{project}” nie ma grupy „{group}”.",
+        "Projekt „{project}” nie ma zestawu „{group}”.",
     ),
     "group_origin_plan": Text(
         (
@@ -214,8 +214,8 @@ MESSAGES = {
             " the store holds are pinned into a new group or a local one."
         ),
         (
-            "Grupa „{group}” zawiera dane pobrane w oknie planu: wersje z magazynu"
-            " przypina się do nowej grupy albo do grupy lokalnej."
+            "Zestaw „{group}” zawiera dane pobrane w oknie planu: wersje z magazynu"
+            " przypina się do nowego zestawu albo do zestawu z magazynu."
         ),
     ),
     "unknown_store": Text(
@@ -240,6 +240,6 @@ MESSAGES = {
     ),
     "too_many_pins": Text(
         "A group holds at most {limit} pins; this would make {count}.",
-        "Grupa mieści najwyżej {limit} przypięć; byłoby ich {count}.",
+        "Zestaw mieści najwyżej {limit} przypięć; byłoby ich {count}.",
     ),
 }

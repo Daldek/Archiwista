@@ -700,7 +700,7 @@ MESSAGES = {
             " missing {missing}."
         ),
         (
-            "{project} — {name}; magazyny: {stores}; grupy {groups}, przypięcia"
+            "{project} — {name}; magazyny: {stores}; zestawy {groups}, przypięcia"
             " {pins}, brakujące {missing}."
         ),
     ),
@@ -722,7 +722,7 @@ MESSAGES = {
     ),
     "project_group_line": Text(
         "  group {group} ({origin}): {pins} pins",
-        "  grupa {group} ({origin}): przypięcia {pins}",
+        "  zestaw {group} ({origin}): przypięcia {pins}",
     ),
     "pin_line": Text(
         "    pin {version} ({producer}): {state}",
@@ -1546,14 +1546,14 @@ MESSAGES = {
             " succeeds."
         ),
         (
-            "tylko download: projekt, do którego nowej grupy (--pin-group) zostaną"
+            "tylko download: projekt, do którego nowego zestawu (--pin-group) zostaną"
             " przypięte pliki uruchomienia i pozostałe pozycje jego planów, gdy"
             " zadanie się powiedzie."
         ),
     ),
     "jobs_pin_group_help": Text(
         "The new group's name in the project of --pin.",
-        "Nazwa nowej grupy w projekcie z --pin.",
+        "Nazwa nowego zestawu w projekcie z --pin, najlepiej cel albo rok (np. 2024).",
     ),
     "jobs_call_help": Text(
         (
@@ -2065,7 +2065,7 @@ MESSAGES = {
         ),
         (
             "Wypisuje, co zrobiono z projektem i jego zadaniami, od najnowszych:"
-            " zmiany, przypięcia i zestawy oraz zadania uruchomione, ponowione albo"
+            " zmiany, przypięcia i eksporty oraz zadania uruchomione, ponowione albo"
             " anulowane dla niego (--json: model ProjectActivity z GET"
             " /api/v1/projects/{{project}}/activity)."
         ),
@@ -2089,8 +2089,8 @@ MESSAGES = {
             " what was pinned, already pinned and skipped, and the project's card."
         ),
         (
-            "Przypina wersje z magazynu do nowej grupy lokalnej projektu albo, z"
-            " --add, do jego istniejącej grupy lokalnej (POST"
+            "Przypina wersje z magazynu do nowego zestawu projektu albo, z"
+            " --add, do jego istniejącego zestawu z magazynu (POST"
             " /api/v1/projects/{{project}}/groups, …/groups/{{group}}/pins): wskazane"
             " przez --version albo wersje wierszy zapytania katalogu (--query,"
             " parametry GET /slots jako obiekt JSON, wszystkie strony). Ich"
@@ -2099,7 +2099,10 @@ MESSAGES = {
             " kartę projektu."
         ),
     ),
-    "project_group_help": Text("The group's name.", "Nazwa grupy."),
+    "project_group_help": Text(
+        "The group's name.",
+        "Nazwa zestawu, najlepiej cel albo rok (np. 2024).",
+    ),
     "project_version_help": Text(
         (
             "A version as STORE:PATH (the path relative to the producer's"
@@ -2128,13 +2131,13 @@ MESSAGES = {
             " local_state."
         ),
         (
-            "Skąd pochodzą wersje, zapisywane w grupie: file (domyślnie z"
+            "Skąd pochodzą wersje, zapisywane w zestawie: file (domyślnie z"
             " --version), catalog (domyślnie z --query) albo local_state."
         ),
     ),
     "project_add_help": Text(
         "Pin into a local group the project has, not a new one.",
-        "Przypnij do istniejącej grupy lokalnej projektu, nie do nowej.",
+        "Przypnij do istniejącego zestawu z magazynu, nie do nowego.",
     ),
     "project_unpin_help": Text(
         (
@@ -2144,9 +2147,9 @@ MESSAGES = {
             " the versions stay in the store. Prints the project's card."
         ),
         (
-            "Usuwa przypięcia z grupy projektu (--pin, POST"
+            "Usuwa przypięcia z zestawu projektu (--pin, POST"
             " /api/v1/projects/{{project}}/groups/{{group}}/unpin) albo, bez --pin,"
-            " całą grupę (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
+            " cały zestaw (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
             " wersje zostają w magazynie. Wypisuje kartę projektu."
         ),
     ),
@@ -2160,7 +2163,7 @@ MESSAGES = {
             " already pinned, {skipped} skipped."
         ),
         (
-            "Grupa {group} projektu {project}: przypięto {pinned}, już przypiętych"
+            "Zestaw {group} projektu {project}: przypięto {pinned}, już przypiętych"
             " {already}, pominięto {skipped}."
         ),
     ),
@@ -2711,7 +2714,7 @@ MESSAGES = {
             " JobDetail model of the job as it ended)."
         ),
         (
-            "Pobiera nowsze wersje ze źródła dla jednej grupy i przypina ją na nowo,"
+            "Pobiera nowsze wersje ze źródła dla jednego zestawu i przypina go na nowo,"
             " gdy każde wywołanie się udało; śledzi zadanie do końca (--json: model"
             " JobDetail zadania po jego końcu)."
         ),
@@ -2728,11 +2731,11 @@ MESSAGES = {
     ),
     "project_job_groups_help": Text(
         "names of the project's groups; none: every group",
-        "nazwy grup projektu; bez nich: wszystkie grupy",
+        "nazwy zestawów projektu; bez nich: wszystkie zestawy",
     ),
     "project_repin_group_help": Text(
         "name of the group to pin anew",
-        "nazwa grupy do przypięcia na nowo",
+        "nazwa zestawu do przypięcia na nowo",
     ),
     "jobs_project_pins": Text(
         "Pins: {pins} ({counts}).",
@@ -2744,7 +2747,7 @@ MESSAGES = {
     ),
     "jobs_project_repin": Text(
         "Group {group}: {status}; pins kept {kept}, new {new}, dropped {dropped}.",
-        "Grupa {group}: {status}; przypięcia zachowane {kept}, nowe {new},"
+        "Zestaw {group}: {status}; przypięcia zachowane {kept}, nowe {new},"
         " usunięte {dropped}.",
     ),
 }

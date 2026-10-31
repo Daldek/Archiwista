@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- A project's groups are called "zestawy" (sets) in the Polish interface, the CLI's
+  Polish texts (`ZESTAW` in the usage of `project-pin`, `project-unpin`,
+  `project-verify`, `project-check`, `project-repin`, `project-restore` and `jobs start
+  download --pin-group`) and the problems: a set is the complete input data of a project
+  for one purpose, best named by it ("2024", "2014"), as the pin dialog's and the plan
+  window's hints suggest; "Usuń zestaw", "Przepnij zestaw …", "Nowy zestaw". The API,
+  the JSON members (`groups`) and `archiwista-project/1` keep their names. The card's
+  section of exports is "Eksport": "Eksportuj…" says in one line that the export copies
+  the sets' data into the folders `NMT`, `BDOT`, `ORTO`… of `eksport/<nazwa>/` with
+  `README.txt`, offers "Utwórz też plik ZIP", and an export with a ZIP file has "Pobierz
+  ZIP" in the list (`GET /projects/{project}/exports/{name}/zip`).
 - The command of a stored version (A-ADR-049 decision 10, plan P4):
   `archiwista version-command MAGAZYN WERSJA` and `GET
   /stores/{store}/versions/{version}/command` answer the producer's call that selects

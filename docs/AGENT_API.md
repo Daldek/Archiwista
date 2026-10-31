@@ -32,8 +32,8 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
-| pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT GRUPA [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
-| jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [GRUPA …]`, `project-check PROJEKT [GRUPA …]`, `project-repin PROJEKT GRUPA`, `project-restore PROJEKT [GRUPA …]` | `POST /projects/{project}/jobs` |
+| pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
+| jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [ZESTAW …]`, `project-check PROJEKT [ZESTAW …]`, `project-repin PROJEKT ZESTAW`, `project-restore PROJEKT [ZESTAW …]` | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
@@ -484,7 +484,7 @@ cursor is safe in a URL).
   and `details`, without the client address and the session (`GET /log` keeps
   them for administrators). For whoever sees the project (`404` for a hidden
   one).
-- `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … | --query
+- `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … | --query
   JSON) [--from local_state|catalog|file] [--add]` / `POST
   /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",
   "version"}], "query"?: {…the filters of GET /slots}}`, exactly one of
@@ -503,7 +503,7 @@ cursor is safe in a URL).
   case-folded), a group of the plan window (`409 group_origin_plan`), an unknown
   group (`404`), a version of another store than the project's (`409
   other_store`, `details.store`) and a project store matching no configured one
-  (`409 unknown_store`). `archiwista project-unpin PROJEKT GRUPA --pin
+  (`409 unknown_store`). `archiwista project-unpin PROJEKT ZESTAW --pin
   PRODUCENT:WERSJA …` / `POST /projects/{project}/groups/{group}/unpin`
   (`{"pins": [{"producer", "version"}]}`) removes pins, and without `--pin` /
   `DELETE /projects/{project}/groups/{group}` the whole group; both answer the
@@ -512,7 +512,7 @@ cursor is safe in a URL).
   `skipped`; `project.unpin` with `group`, the `pins` removed and
   `group_removed`).
 - `archiwista jobs start download … [--plan ZADANIE] --pin PROJEKT --pin-group
-  GRUPA` / `POST /jobs` with `"pin": {"project", "group"}` (a `download` only;
+  ZESTAW` / `POST /jobs` with `"pin": {"project", "group"}` (a `download` only;
   section 9) pins what the download leaves into a new group of the plan window
   (A-ADR-049 decision 9). The request needs `project.write` of the project
   besides `store_writer`, and is refused before a job exists as `project-pin`

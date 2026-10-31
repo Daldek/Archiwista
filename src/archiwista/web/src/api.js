@@ -859,8 +859,9 @@ export function removeProjectGroup(project, group) {
 }
 
 /**
- * Write a project's export `zestawy/<name>/` from its pins (`export_project`):
- * `pliki.txt` and `ATRYBUCJE.txt`.
+ * Write a project's export `eksport/<name>/` from its pins (`export_project`):
+ * the pinned versions' data copied into one folder per category (`NMT`,
+ * `BDOT`, `ORTO`…) and `README.txt`; with `zip` also `eksport/<name>.zip`.
  *
  * @param {string} project - Project id.
  * @param {ExportRequest} body - The export's name; `groups` left out: every group.
@@ -883,6 +884,19 @@ export function exportProject(project, body) {
  */
 export function listProjectExports(project, { signal } = {}) {
   return request("GET", `/projects/${one(project)}/exports`, { signal });
+}
+
+/**
+ * The address of an export's ZIP file (`GET /projects/{project}/exports/{name}/zip`) for a
+ * link of the page (`<a href download>`), as `fileAddress`: the answer is an
+ * attachment.
+ *
+ * @param {string} project - Project id.
+ * @param {string} name - The export's name; its item says `zip: true`.
+ * @returns {string} Path, e.g. `/api/v1/projects/…/exports/…/zip`.
+ */
+export function exportZipAddress(project, name) {
+  return `${API_PREFIX}/projects/${one(project)}/exports/${one(name)}/zip`;
 }
 
 /**

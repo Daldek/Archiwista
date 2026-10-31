@@ -171,7 +171,7 @@ MESSAGES = {
     ),
     "action_project_area": Text("project area changed", "zmiana obszaru projektu"),
     "action_project_store": Text("project store changed", "zmiana magazynu projektu"),
-    "action_project_export": Text("project exported", "eksport zestawu projektu"),
+    "action_project_export": Text("project exported", "eksport projektu"),
     "action_project_pin": Text("versions pinned", "przypięcie wersji"),
     "action_project_unpin": Text("versions unpinned", "odpięcie wersji"),
     "action_settings_update": Text("settings changed", "zmiana ustawień"),

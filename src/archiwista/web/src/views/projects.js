@@ -12,12 +12,12 @@
  * The chosen project (`?view=projects&project=<id>`) is in the side panel:
  * its directory to copy, the store of each producer with its match or that
  * it matches no configured one, its area with the state of the area file,
- * when and by whom it was created, its problems, and its groups in the file's
+ * when and by whom it was created, its problems, and its groups („Zestawy”) in the file's
  * order — each with where its versions came from (a plan's command lines,
  * the first three and „i N więcej”, or the requests that chose them from the
  * store, in words), its jobs and its pins with their state, the state of
  * their command (D5) and what the last job found, leading to their file
- * cards; „Odepnij” at a pin and „Usuń grupę” (each after a question) for a
+ * cards; „Odepnij” at a pin and „Usuń zestaw” (each after a question) for a
  * session that may change the project. „Zmień…” changes the name, the
  * description, the area and the store of a producer; „Udostępnij…” opens the
  * sharing screen (views/sharing.js): who sees the project, its owner and its
@@ -32,7 +32,7 @@
  * snapshot leading to its card (views/own.js), „Odśwież” (an `own_scan` of
  * the folder, followed to its end; after the sharing screen changed the
  * folder, the scan the server started) and „Pokaż na mapie” (the project's
- * map: its own data and pinned versions). Between them „Zestawy”, the
+ * map: its own data and pinned versions). Between them „Eksport”, the
  * project's exports with „Eksportuj…” (views/project-exports.js). Last
  * „Aktywność”: what was done to the project and its jobs, from the action log
  * (views/project-activity.js).
@@ -680,7 +680,7 @@ function ActionButton({ icon, label, title, why, off = false, base, onClick }) {
  * its jobs („Sprawdź aktualizacje”, „Przepnij”, „Przywróć brakujące”,
  * disabled with their reason in the card's list `base`) and pins with what
  * the last job found at each; for a session that may change the project
- * „Odepnij” at each pin and „Usuń grupę”, each after a question.
+ * „Odepnij” at each pin and „Usuń zestaw”, each after a question.
  */
 function Groups({ card, jobs, context, base, onChanged }) {
   const [asking, setAsking] = useState(null);
@@ -728,7 +728,7 @@ function Groups({ card, jobs, context, base, onChanged }) {
   </section>`;
 }
 
-/** „Odepnij” of a pin or „Usuń grupę”, asked first; a refusal shows in the question. */
+/** „Odepnij” of a pin or „Usuń zestaw”, asked first; a refusal shows in the question. */
 function PinQuestion({ project, asking, onClose, onDone }) {
   const action = useAction();
   const { group, pin } = asking;
@@ -771,7 +771,7 @@ function Origin({ origin }) {
     ${named ? t(L.card.origin_local_from, { sources: named }) : L.card.origin_local}</${Badge}>`;
 }
 
-/** A group's jobs and „Usuń grupę” (`onRemove`, null: not offered). */
+/** A group's jobs and „Usuń zestaw” (`onRemove`, null: not offered). */
 function GroupActions({ group, jobs, context, base, onRemove }) {
   const why = (kind) => groupJobReason(kind, group, context);
   const name = { group: group.name };

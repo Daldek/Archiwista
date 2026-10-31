@@ -298,7 +298,7 @@ def test_invalid_project_file_visible(serve: Serve, tab: Tab, tmp_path: Path) ->
     expect(issue).to_contain_text("Niepoprawny plik projektu")
     expect(issue).to_contain_text("/groups/0/name")
     expect(issue).to_contain_text("Jak naprawić: Popraw archiwista-project.json")
-    expect(panel).to_contain_text("Archiwista nie czyta grup tego pliku projektu.")
+    expect(panel).to_contain_text("Archiwista nie czyta zestawów tego pliku projektu.")
     assert query(page) == {"view": "projects", "project": broken.name}
     tab.assert_clean()
 

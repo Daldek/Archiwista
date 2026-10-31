@@ -11,6 +11,6 @@ export const activity = {
   empty: "Projekt nie ma jeszcze wpisów w dzienniku.",
   more: "Więcej",
   more_title: "Starsze wpisy aktywności",
-  group: "grupa „{group}”",
-  export: "zestaw „{name}”",
+  group: "zestaw „{group}”",
+  export: "eksport „{name}”",
 };

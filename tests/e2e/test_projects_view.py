@@ -210,7 +210,7 @@ def test_a_fixture_project_shows_its_groups_and_pin_states(
         "kartograf elevation download"
     )
     expect(group(page, "archiwum")).to_contain_text("z magazynu · karta pliku")
-    expect(group(page, "plan")).to_contain_text("grupa jest pusta")
+    expect(group(page, "plan")).to_contain_text("zestaw jest pusty")
 
     # Act: a project pinning a version no longer in the store.
     missing = next(p for p in store.projects if p.case == "missing_version")

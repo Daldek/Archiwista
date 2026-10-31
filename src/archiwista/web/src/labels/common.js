@@ -44,7 +44,7 @@ export const common = {
     preview_warm: "przygotowanie podglądów",
     project_verify: "weryfikacja projektu",
     project_check: "sprawdzenie projektu",
-    project_repin: "przepięcie grupy projektu",
+    project_repin: "przepięcie zestawu projektu",
     project_restore: "przywrócenie projektu",
   },
   job_state: {

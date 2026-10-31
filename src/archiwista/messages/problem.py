@@ -58,7 +58,7 @@ MESSAGES = {
         ),
         (
             "Przypięty plik nie istnieje w magazynie: {version} (projekt „{project}”,"
-            " grupa {group})"
+            " zestaw {group})"
         ),
     ),
     "pin_sha256_mismatch": Text(
@@ -68,7 +68,7 @@ MESSAGES = {
         ),
         (
             "Przypięta wersja ma w magazynie inną treść (SHA-256): {version} (projekt"
-            " „{project}”, grupa {group})"
+            " „{project}”, zestaw {group})"
         ),
     ),
     "invalid_project_file": Text(
