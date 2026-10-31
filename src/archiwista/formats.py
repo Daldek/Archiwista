@@ -25,8 +25,9 @@ imported here; rasterio is imported when a raster is opened, so the server
 can use the table without loading GDAL.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path, PurePath
+from pathlib import Path, PurePath, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
 
 from archiwista.errors import FormatRefusedError
@@ -166,6 +167,36 @@ def packed_name(inner: FileFormat, outer: FileFormat) -> str:
     return f"{inner.name} ({outer.name})"
 
 
+def raster_member(names: Iterable[str]) -> str | None:
+    """Return the one file of an archive when it is a raster GDAL reads.
+
+    The rule of previews and exports: a ZIP holding exactly one file (its
+    directories aside, ``/`` at the end of their names) of kind ``raster``
+    (an XYZ, ASC or GeoTIFF) under a plain name (``_plain_member``) is read
+    as that raster; any other archive stays an archive.
+
+    Parameters
+    ----------
+    names : Iterable[str]
+        The archive's member names, in order; read only until a second file.
+
+    Returns
+    -------
+    str or None
+        The member's name, or ``None``.
+    """
+    found = None
+    for name in names:
+        if name.endswith("/"):
+            continue
+        if found is not None:
+            return None
+        found = name
+    if found is None or not _plain_member(found):
+        return None
+    return found if file_format(PurePosixPath(found).name).kind == "raster" else None
+
+
 def vector_source(path: Path, fmt: FileFormat) -> str:
     """Return the name under which OGR opens a vector file with its driver only.
 
@@ -222,10 +253,15 @@ def _require_member(path: Path, member: str) -> None:
     """Refuse a member of no ZIP archive, or a name that is no plain one."""
     if file_format(path).kind != "archive":
         raise FormatRefusedError("a member of no ZIP archive")
-    if any(char in member for char in "\x00\\{}") or any(
-        part in ("", ".", "..") for part in member.split("/")
-    ):
+    if not _plain_member(member):
         raise FormatRefusedError("not a plain name of a member")
+
+
+def _plain_member(member: str) -> bool:
+    """Whether a member's name is relative, without ``..``, backslash or braces."""
+    return not any(char in member for char in "\x00\\{}") and not any(
+        part in ("", ".", "..") for part in member.split("/")
+    )
 
 
 def _require_signature(path: Path, signature: bytes, fmt: FileFormat) -> None:

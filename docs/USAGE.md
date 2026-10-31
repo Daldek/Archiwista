@@ -337,9 +337,17 @@ and a directory holding only one of them is no project.
   `README.txt`, which describes each file — its folder and name, product, year or label,
   coordinate systems, size, SHA-256 and the set it came from — and the sources'
   attributions. The files are copies, never links into the store, so opening them in
-  QGIS changes no version. The same file name from two sets gets the version's label
-  before its extension (`M-33-44-A-d-2-2_2025-06-13.asc`). With the ZIP,
-  `eksport/<name>.zip` holds the same content, and "Pobierz ZIP" at the export
+  QGIS changes no version. A version stored as a ZIP that holds exactly one raster
+  file (GUGiK's NMT of 2020: one XYZ grid per sheet; also one ASC or GeoTIFF) is
+  unpacked: the raster lands in the folder under its own name, its bytes unchanged,
+  and `README.txt` names the ZIP it came from with the SHA-256 of both. A ZIP of
+  several files or of no raster is copied as it is, and `README.txt` says so. An XYZ
+  file holds no coordinate system: `README.txt` says what to set in QGIS (EPSG:2180,
+  heights in the version's system, PL-EVRF2007-NH for the NMT) and that points
+  missing from the grid are nodata. The same file name from two sets gets the
+  version's label before its extension (`M-33-44-A-d-2-2_2025-06-13.asc`). With the
+  ZIP, `eksport/<name>.zip` holds the same content (the unpacked rasters too), and
+  "Pobierz ZIP" at the export
   downloads it. A pin whose store is not configured or whose version is not in the
   store is left out and counted. The list of the project's exports says "projekt
   zmieniony po eksporcie — wygeneruj ponownie" once the project file changes after an

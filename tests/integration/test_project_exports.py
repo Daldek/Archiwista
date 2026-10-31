@@ -10,6 +10,7 @@ models. Writing needs ``project.write``; reading, seeing the project.
 Offline.
 """
 
+import hashlib
 import json
 import os
 import zipfile
@@ -361,6 +362,57 @@ def test_an_export_is_older_than_a_pin_written_after_it(tmp_path: Path) -> None:
     # Assert
     assert [item["changed_since"] for item in before["items"]] == [False]
     assert [item["changed_since"] for item in after["items"]] == [True]
+
+
+def _packed(store: StoreManifest) -> ExpectedEntry:
+    """Return the ASCII-NMT archive of the store: a ZIP of one XYZ grid."""
+    return next(
+        entry
+        for entry in store.by_case("two_formats")
+        if entry.kind == "version" and entry.path.endswith(".zip")
+    )
+
+
+def _prepare_packed(store: StoreManifest) -> None:
+    """Prepare the store as ``_prepare``; the two-year project pins the archive."""
+    _prepare(store)
+    file = store.projects_dir / YEARS / PROJECT_FILE
+    data = json.loads(file.read_text(encoding="utf-8"))
+    origin = {"kind": "local", "selections": [{"from": "file"}]}
+    group = {"name": "2020", "origin": origin, "pins": [_pin(_packed(store))]}
+    data["groups"].append(group)
+    file.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_an_export_unpacks_a_zip_of_one_xyz(tmp_path: Path) -> None:
+    """The ASCII-NMT archive: its XYZ under its own name, in the folder and ZIP."""
+    with served_store(tmp_path, before_scan=_prepare_packed) as served:
+        packed = _packed(served.store)
+
+        # Act
+        written = served.owner.request(
+            "POST",
+            f"/projects/{YEARS}/exports",
+            json={"name": "xyz", "groups": ["2020"], "zip": True},
+        )
+
+    # Assert
+    assert written.status_code == 201, written.text
+    source = served.store.root / packed.path
+    inner = f"NMT/{packed.unit}.xyz"
+    assert written.json()["files"] == [inner, README]
+    grid = zipfile.ZipFile(source).read(f"{packed.unit}.xyz")
+    target = _directory(served, YEARS) / "eksport" / "xyz"
+    assert (target / inner).read_bytes() == grid
+    assert zipfile.ZipFile(target.parent / "xyz.zip").read(inner) == grid
+    readme = (target / README).read_text(encoding="utf-8")
+    assert f"  suma SHA-256: {hashlib.sha256(grid).hexdigest()}\n" in readme
+    assert (
+        f"  rozpakowany z {source.name}, suma SHA-256 pliku ZIP: {packed.sha256}\n"
+    ) in readme
+    assert "  plik XYZ nie zawiera układu współrzędnych: w QGIS ustaw EPSG:2180" in (
+        readme
+    )
 
 
 @pytest.mark.parametrize(

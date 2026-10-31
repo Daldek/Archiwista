@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- A project's export unpacks a version stored as a ZIP that holds exactly one raster
+  (A-ADR-049 erratum 4; GUGiK's NMT of 2020, `pl.gugik.nmt_xyz_5m`: one XYZ grid per
+  sheet; also one ASC or GeoTIFF; the rule of previews, `formats.raster_member`): the
+  raster lands in its category folder under the member's own name, its bytes
+  unchanged, and `README.txt` gives its size and SHA-256 and "rozpakowany z <ZIP>, suma
+  SHA-256 pliku ZIP: …"; two such names in a folder get their labels as any other, and
+  `eksport/<name>.zip` holds the unpacked file. A ZIP of several files or of no raster
+  is copied as it is ("ZIP skopiowany bez zmian"). An XYZ file's block of `README.txt`
+  says it holds no coordinate system and what to set in QGIS (the version's CRS,
+  EPSG:2180, and its height system, PL-EVRF2007-NH for the NMT) and that points
+  missing from the grid are nodata.
 - "Usuń projekt…" on a project's card, `DELETE /projects/{project}` and `archiwista
   project-delete PROJEKT --yes` remove a project from Archiwista, never data
   (A-ADR-049 erratum 2): under the project's lock only `archiwista-project.json`, the

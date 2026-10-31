@@ -28,7 +28,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
 from archiwista.errors import PreviewUnavailableError
-from archiwista.formats import file_format
+from archiwista.formats import file_format, raster_member
 from archiwista.previews.renderers.raster import RasterRenderer, probe_raster
 from archiwista.previews.types import (
     Extent,
@@ -99,7 +99,7 @@ class ArchiveRenderer(RasterRenderer):
             ``archive_members_only``: the archive holds no single raster.
         """
         path = source.paths[0]
-        member = raster_member(path)
+        member = _archive_raster(path)
         if member is None:
             raise PreviewUnavailableError("archive_members_only", "no single raster")
         return RasterFile(path, file_format(member), member)
@@ -200,7 +200,7 @@ class ArchiveRenderer(RasterRenderer):
         return super().tile(source, probe, style, z, x, y, params)
 
 
-def raster_member(path: Path) -> str | None:
+def _archive_raster(path: Path) -> str | None:
     """Return the name of the one raster a ZIP archive holds, if it holds one.
 
     ``None`` for an archive of more files, of no raster, or past the limits.
@@ -217,15 +217,8 @@ def raster_member(path: Path) -> str | None:
 
 def _raster(stream: BinaryIO, directory: CentralDirectory) -> str | None:
     """Return the archive's only file when it is a raster GDAL reads."""
-    files: list[JsonObject] = []
-    for entry in _entries(stream, directory, directory.entries):
-        if not entry["directory"]:
-            files.append(entry)
-            if len(files) > 1:
-                return None
-    if len(files) != 1 or files[0]["kind"] != "raster":
-        return None
-    return str(files[0]["name"])
+    entries = _entries(stream, directory, directory.entries)
+    return raster_member(str(entry["name"]) for entry in entries)
 
 
 def read_central_directory(stream: BinaryIO) -> CentralDirectory:

@@ -18,6 +18,7 @@ from rasterio.errors import NotGeoreferencedWarning
 from rasterio.io import MemoryFile
 
 from archiwista.errors import FormatRefusedError, PreviewUnavailableError
+from archiwista.formats import file_format, open_raster
 from archiwista.messages import message
 from archiwista.previews.renderers import archive
 from archiwista.previews.renderers.archive import ArchiveRenderer
@@ -300,10 +301,14 @@ def test_zip_of_no_single_raster_lists_members(
 
 
 def test_zip_raster_member_outside_is_never_opened(tmp_path: Path) -> None:
-    """A single raster named ``../x.xyz`` is refused before GDAL reads it."""
+    """A single raster named ``../x.xyz`` is only listed; GDAL never opens it."""
     # Arrange
     path = _write_zip(tmp_path / "zly.zip", [("../x.xyz", b"0 0 1\n")])
 
-    # Act / Assert
+    # Act
+    probe = ArchiveRenderer().probe(_nmt_source(path))
+
+    # Assert
+    assert (probe.kind, probe.reason) == ("archive", "archive_members_only")
     with pytest.raises(FormatRefusedError):
-        ArchiveRenderer().probe(_nmt_source(path))
+        open_raster(path, file_format("x.xyz"), member="../x.xyz")

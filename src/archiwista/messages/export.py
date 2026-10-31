@@ -40,6 +40,35 @@ MESSAGES = {
     "readme_companions": Text(
         "companion files: {files}", "pliki towarzyszące: {files}"
     ),
+    "readme_unpacked": Text(
+        "unpacked from {archive}, SHA-256 checksum of the ZIP: {sha256}",
+        "rozpakowany z {archive}, suma SHA-256 pliku ZIP: {sha256}",
+    ),
+    "readme_zip_kept": Text(
+        "ZIP copied as it is: it does not hold exactly one raster file",
+        "ZIP skopiowany bez zmian: nie zawiera dokładnie jednego pliku rastrowego",
+    ),
+    "readme_xyz": Text(
+        (
+            "the XYZ file holds no coordinate system: in QGIS set {crs}{heights};"
+            " points missing from the grid are nodata"
+        ),
+        (
+            "plik XYZ nie zawiera układu współrzędnych: w QGIS ustaw {crs}{heights};"
+            " punkty brakujące w siatce to nodata"
+        ),
+    ),
+    "readme_xyz_heights": Text(" (height system {crs})", " (układ wysokości {crs})"),
+    "readme_xyz_unknown": Text(
+        (
+            "the XYZ file holds no coordinate system and the store names none:"
+            " set it in QGIS; points missing from the grid are nodata"
+        ),
+        (
+            "plik XYZ nie zawiera układu współrzędnych, a magazyn go nie podaje:"
+            " ustaw go w QGIS; punkty brakujące w siatce to nodata"
+        ),
+    ),
     "readme_sources": Text("Data sources", "Źródła danych"),
     "readme_no_sources": Text(
         "The store names no attribution for these files.",

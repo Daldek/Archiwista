@@ -8,9 +8,14 @@ recipient may write to a GeoPackage, which must not change the store), with
 the companion files the store holds beside it (``.prj``, ``.tfw``,
 ``.aux.xml``, the parts of a Shapefile; never a ``*.meta.json`` sidecar), and
 ``README.txt`` (Polish) describing every file and listing each data source's
-attribution once. Two files of one name in one folder (the same sheet of two
-years) both get their version's label before the extension. With ``zip``
-the folder's content is also ``eksport/<name>.zip``.
+attribution once. A version stored as a ZIP that holds exactly one raster
+(``archiwista.formats.raster_member``: GUGiK's NMT of 2020, one XYZ grid per
+sheet) is unpacked: its raster under the member's own name, its bytes
+unchanged, and ``README.txt`` names the archive with both checksums; any
+other ZIP is copied as it is. An XYZ file is described with the coordinate
+system to set in QGIS, as it holds none. Two files of one name in one folder
+(the same sheet of two years) both get their version's label before the
+extension. With ``zip`` the folder's content is also ``eksport/<name>.zip``.
 
 An export is written in a hidden sibling directory and then swapped with
 the one of the same name, so a failed export leaves the old one whole; the
@@ -25,13 +30,14 @@ import secrets
 import shutil
 import stat
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from archiwista.errors import PathOutsideRootError
+from archiwista.formats import file_format, raster_member
 from archiwista.messages import message
 from archiwista.projects.document import EXPORTS_DIR
 from archiwista.projects.files import _write_failed
@@ -49,6 +55,8 @@ _SIDECAR_SUFFIX = ".meta.json"
 # Characters of a folder name or a label put into a file name.
 _UNSAFE = re.compile(r"[^\w.-]+")
 _CHUNK = 1024**2
+# The GDAL driver of an XYZ grid, a file without a coordinate system.
+_XYZ_DRIVER = "XYZ"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,12 +110,16 @@ class ExportListing:
 
 @dataclass(frozen=True, slots=True)
 class _Placed:
-    """An item with the names of its file and companions in its folder."""
+    """An item with the names of its file and companions in its folder.
+
+    ``member``: the one raster of the item's ZIP, written unpacked as ``name``.
+    """
 
     item: ExportItem
     companions: tuple[Path, ...]
     name: str
     companion_names: tuple[str, ...]
+    member: str | None = None
 
 
 def is_export_name(name: str) -> bool:
@@ -287,17 +299,22 @@ def export_zip(directory: Path, name: str) -> Path | None:
 def _place(items: Sequence[ExportItem]) -> list[_Placed]:
     """Name each item's file in its folder, the colliding ones with their label.
 
-    A name met twice in a folder (case-folded, as Windows compares names)
-    gets ``_<label>`` before its extension in every file of the collision;
-    when that still collides, ``_<label>_<sha8>``, then the item's position.
-    Its companions follow the file's new stem.
+    The file of a ZIP holding one raster is that raster, named as in the
+    archive, without the ZIP's companions. A name met twice in a folder
+    (case-folded, as Windows compares names) gets ``_<label>`` before its
+    extension in every file of the collision; when that still collides,
+    ``_<label>_<sha8>``, then the item's position. Its companions follow the
+    file's new stem.
     """
-    found = [(item, companions(item.file)) for item in items]
+    found = []
+    for item in items:
+        member = _packed_raster(item.file)
+        found.append((item, () if member else companions(item.file), member))
     levels = [0] * len(found)
     while True:
         placed = [
-            _named(item, extra, level, position)
-            for position, ((item, extra), level) in enumerate(
+            _named(item, extra, member, level, position)
+            for position, ((item, extra, member), level) in enumerate(
                 zip(found, levels, strict=True)
             )
         ]
@@ -319,10 +336,15 @@ def _place(items: Sequence[ExportItem]) -> list[_Placed]:
 
 
 def _named(
-    item: ExportItem, extra: tuple[Path, ...], level: int, position: int
+    item: ExportItem,
+    extra: tuple[Path, ...],
+    member: str | None,
+    level: int,
+    position: int,
 ) -> _Placed:
     """Return an item's names at a level of ``_place``."""
-    stem = item.file.stem
+    base = item.file.name if member is None else PurePosixPath(member).name
+    stem = PurePosixPath(base).stem
     parts = [stem]
     if level >= 1:
         parts.append(_UNSAFE.sub("_", item.label or "").strip("._") or item.sha256[:8])
@@ -334,9 +356,24 @@ def _named(
     return _Placed(
         item=item,
         companions=extra,
-        name=new_stem + item.file.name[len(stem) :],
+        name=new_stem + base[len(stem) :],
         companion_names=tuple(new_stem + path.name[len(stem) :] for path in extra),
+        member=member,
     )
+
+
+def _packed_raster(file: Path) -> str | None:
+    """Return the one raster of a version's ZIP, ``None`` for any other file.
+
+    A file that is no readable ZIP is copied as it is.
+    """
+    if file_format(file).kind != "archive":
+        return None
+    try:
+        with zipfile.ZipFile(file) as archive:
+            return raster_member(archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return None
 
 
 def _write_tree(
@@ -348,7 +385,11 @@ def _write_tree(
     for place in placed:
         folder = target / place.item.folder
         folder.mkdir(exist_ok=True)
-        sizes.append(_copy(place.item.file, folder / place.name))
+        written = folder / place.name
+        if place.member is None:
+            sizes.append(_copy(place.item.file, written))
+        else:
+            sizes.append(_unpack(place.item.file, place.member, written))
         files.append(f"{place.item.folder}/{place.name}")
         for source, copied in zip(place.companions, place.companion_names, strict=True):
             shutil.copyfile(source, folder / copied)
@@ -365,6 +406,22 @@ def _copy(source: Path, target: Path) -> tuple[int, str]:
     digest = hashlib.sha256()
     size = 0
     with source.open("rb") as reader, target.open("xb") as writer:
+        while chunk := reader.read(_CHUNK):
+            digest.update(chunk)
+            writer.write(chunk)
+            size += len(chunk)
+    return size, digest.hexdigest()
+
+
+def _unpack(archive: Path, member: str, target: Path) -> tuple[int, str]:
+    """Write a ZIP's member as a file, its bytes unchanged; return size, SHA-256."""
+    digest = hashlib.sha256()
+    size = 0
+    with (
+        zipfile.ZipFile(archive) as packed,
+        packed.open(member) as reader,
+        target.open("xb") as writer,
+    ):
         while chunk := reader.read(_CHUNK):
             digest.update(chunk)
             writer.write(chunk)
@@ -406,6 +463,15 @@ def _readme(
         if place.companion_names:
             files = ", ".join(place.companion_names)
             lines.append(f"  {text('readme_companions', files=files)}")
+        if place.member is not None:
+            unpacked = text(
+                "readme_unpacked", archive=item.file.name, sha256=item.sha256
+            )
+            lines.append(f"  {unpacked}")
+        elif file_format(item.file).kind == "archive":
+            lines.append(f"  {text('readme_zip_kept')}")
+        if file_format(place.name).driver == _XYZ_DRIVER:
+            lines.append(f"  {_xyz_note(text, item)}")
         attribution = (item.attribution or "").strip()
         if attribution:
             attributions.setdefault(attribution)
@@ -415,6 +481,18 @@ def _readme(
     else:
         lines.append(text("readme_no_sources"))
     return _text(lines)
+
+
+def _xyz_note(text: Callable[..., str], item: ExportItem) -> str:
+    """Return what to set in QGIS for an XYZ file, which holds no CRS."""
+    if item.crs is None:
+        return text("readme_xyz_unknown")
+    heights = (
+        ""
+        if item.vertical_crs is None
+        else text("readme_xyz_heights", crs=item.vertical_crs)
+    )
+    return text("readme_xyz", crs=item.crs, heights=heights)
 
 
 def _write_zip(source: Path, files: Iterable[str], target: Path) -> None:
