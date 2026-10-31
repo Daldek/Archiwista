@@ -75,6 +75,7 @@ from archiwista.projects.exports import (
     write_export,
 )
 from archiwista.services.problems import Problem, explain
+from archiwista.services.project_jobs import chosen_groups
 from archiwista.sources import GeoAdapter
 from archiwista.sources.registry import PluginRegistry
 
@@ -560,15 +561,7 @@ def export_project(
     authorizer.require(actor, "project.write", project.access_key)
     directory = project_directory(project, settings)
     read_project_file(directory)
-    chosen = record.groups
-    if groups is not None:
-        names = {group.name for group in record.groups}
-        for group in groups:
-            if group not in names:
-                raise NotFoundError(
-                    message("project.group_not_found", project=key, group=group)
-                )
-        chosen = tuple(group for group in record.groups if group.name in groups)
+    chosen = chosen_groups(record, groups)
     rows, no_store, missing = _export_rows(settings, queries, chosen)
     export = write_export(directory, name, rows)
     authorizer.state.record(

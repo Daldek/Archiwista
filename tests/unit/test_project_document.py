@@ -216,6 +216,16 @@ BROKEN: list[tuple[Change, str, str]] = [
         "version",
     ),
     (
+        lambda d: _pin(d).update(version="C:/nmt/x.asc"),
+        "/groups/0/pins/0/version",
+        "version",
+    ),
+    (
+        lambda d: _pin(d).update(version="c:x.asc"),
+        "/groups/0/pins/0/version",
+        "version",
+    ),
+    (
         lambda d: _plan(d)["pins"].append(dict(PIN)),
         "/groups/0/pins/1/version",
         "pin_unique",

@@ -143,7 +143,7 @@ def test_an_export_lists_the_pinned_files_and_attributions(tmp_path: Path) -> No
 
 
 def test_an_export_of_some_groups_is_written_again_in_place(tmp_path: Path) -> None:
-    """Regenerating replaces the files; an unknown group is `404` and writes nothing."""
+    """Regenerating replaces the files; names match case-folded; unknown is `404`."""
     with _served(tmp_path) as served:
         served.owner.request(
             "POST", f"/projects/{PROJECT}/exports", json={"name": "zestaw"}
@@ -153,7 +153,7 @@ def test_an_export_of_some_groups_is_written_again_in_place(tmp_path: Path) -> N
         again = served.owner.request(
             "POST",
             f"/projects/{PROJECT}/exports",
-            json={"name": "zestaw", "groups": ["pokrycie", "archiwum"]},
+            json={"name": "zestaw", "groups": ["POKRYCIE", "archiwum"]},
         )
         unknown = served.owner.request(
             "POST",

@@ -222,14 +222,14 @@ def pin_local(
         raise ValueError("versions or query is required")
     _require_few(len(chosen))
     candidates, skipped = _resolve(queries, chosen)
-    roots: dict[str, str] = {}
+    roots: dict[tuple[str, str], str] = {}
     for fact in candidates:
         config = settings.store(fact.store)
         root = None if config is None else config.roots().get(fact.producer)
         if config is None or root is None:
             raise NotFoundError(message("api.store_not_configured", store=fact.store))
         roots.setdefault(
-            fact.store,
+            (fact.store, fact.producer),
             written_root(root, directory, relative=bool(config.path_aliases)),
         )
     selection: dict[str, Any] = {"from": source}
@@ -262,7 +262,7 @@ def pin_local(
         held = {(item["producer"], item["version"]) for item in pins}
         added: list[dict[str, Any]] = []
         for fact in candidates:
-            _require_store(data, stores, fact, roots[fact.store])
+            _require_store(data, stores, fact, roots[fact.store, fact.producer])
             if (fact.producer, fact.path) in held:
                 counts["already"] += 1
                 continue

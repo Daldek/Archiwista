@@ -11,7 +11,7 @@ Archiwista's project file from the index alone, ``…/unpin`` and ``DELETE
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.index import IndexWriter, initialize
 from archiwista.projects import PROJECT_FILE, change_project_file
 from archiwista.projects import document as project_document
-from archiwista.sources import SourceEntry
+from archiwista.sources import SourceEntry, SourceSegment
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
@@ -257,6 +257,65 @@ def test_pins_named_versions_counts_the_pinned_and_skips_with_a_reason(
     group = _group(place, "Starsze")
     assert _versions(group) == sorted([_path(A_OLDER), _path(B_CURRENT)])
     assert group["origin"]["selections"] == [{"from": "file"}, {"from": "file"}]
+
+
+def test_one_request_pins_two_producers_of_a_store_each_at_its_own_root(
+    tmp_path: Path,
+) -> None:
+    """The store ``zespol`` holds both producers; each ``stores[]`` names its own."""
+    # Arrange
+    kartograf, imgw = tmp_path / "nas" / "kartograf", tmp_path / "nas" / "imgw"
+    projects = tmp_path / "nas" / "projekty"
+    for directory in (kartograf, imgw, projects):
+        directory.mkdir(parents=True)
+    paths = local_paths(tmp_path)
+    store = StoreConfig(
+        id=STORE, name="Zespół", kartograf=kartograf, imgw=imgw, kind="local"
+    )
+    ConfigStore(paths.config_file).save(
+        AppSettings(stores=(store,), project_dirs=(projects,))
+    )
+    hydro = "hydro/imgw_daily"
+    station = version(slot_path(hydro, "150160180", ".csv"), "2024-12-31_1", 9)
+    assert station.meta is not None
+    station = replace(
+        station, producer="imgw", meta=replace(station.meta, producer="imgw")
+    )
+    segment = SourceSegment(hydro, "hydro", "PL", "pl.imgw.daily", "Dobowe", True)
+    initialize(paths.index_file)
+    with IndexWriter(paths.index_file) as writer:
+        writer.sync_stores({STORE: store.roots()})
+        write_pass(writer, [A_CURRENT])
+        writer.write_segments(STORE, "imgw", [segment])
+        writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+        writer.write_entries([station])
+        writer.finish_pass()
+    versions = [
+        {"store": STORE, "version": _path(A_CURRENT)},
+        {"store": STORE, "version": _path(station)},
+    ]
+    with running_api(paths, load_registry(cache_dir=paths.cache_dir)) as api:
+        owner = api.session(LOCAL_OWNER)
+        made = owner.request("POST", "/projects", json={"path": str(projects / "r")})
+        assert made.status_code == 201, made.text
+        url = f"/projects/{made.json()['project']}/groups"
+
+        # Act
+        both = owner.request(
+            "POST", url, json={"name": "Oba", "from": "file", "versions": versions}
+        )
+        again = owner.request(
+            "POST", url, json={"name": "Znowu", "from": "file", "versions": versions}
+        )
+
+    # Assert
+    assert both.status_code == 201, both.text
+    assert again.status_code == 201, again.text
+    written = json.loads((projects / "r" / PROJECT_FILE).read_text(encoding="utf-8"))
+    assert written["stores"] == [
+        {"producer": PRODUCER, "root": str(kartograf)},
+        {"producer": "imgw", "root": str(imgw)},
+    ]
 
 
 def test_too_many_versions_are_refused_before_anything_is_written(

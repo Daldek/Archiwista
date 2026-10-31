@@ -1270,6 +1270,21 @@ command-line interface may change.
 
 ### Fixed
 
+- Pinning versions of two producers of one store in one request (a local group, A-ADR-049
+  decision 1) wrote the first producer's directory as the second one's `stores[]` root,
+  so the project's IMGW pins showed `unknown` and a later IMGW pin was refused with
+  `409 unknown_store`. Each producer's entry now names its own directory of the store.
+- A re-pin of a plan group dropped each pin whose file the run reported without a
+  `version_path` (counted as `dropped`). Such a file is now pinned as its slot's current
+  version after the rescan, as the pins of a download are; when the index has none the
+  pin of that slot stays.
+- `POST /projects/{project}/exports` (and `archiwista project-export --group`) answered
+  `404 not_found` for a group named in another case; its group names are now compared
+  case-folded, as everywhere else.
+- A project file whose pin version or area path begins with a Windows drive (`C:/x`,
+  `C:x`) was read as valid, so on Windows a job could read a file outside the store; such
+  a file is now invalid (`invalid_project_file`, rule `version` or `area_path`), as an
+  indexed path is.
 - The store badge of an availability row ("pobrane", "pobrane 5/12") said "niepobrane"
   for sheets the store held: the report names a combination's campaigns by their survey
   work numbers (Kartograf's `nr_zglosz`), while the index compared them with the

@@ -23,7 +23,9 @@ files to download is transferred, also one the store came to hold meanwhile
 fetches again each file whose content the source changed. Each transfer
 appends the file's path to ``FETCHES`` in the store, so a test can tell what
 was fetched twice. While the store holds ``HOLD`` a run waits after its first
-new file until the file is gone. ``command_for_version`` gives the call of a
+new file until the file is gone; while it holds ``UNVERSIONED`` a run reports
+its files without a ``version_path``, as Kartograf reports a file whose
+version it does not know. ``command_for_version`` gives the call of a
 stored file from its path (``series fetch`` of its station and kind), and
 refuses a file of ``DERIVED`` (``unsupported``, ``command_not_rebuildable``).
 Each of these seven appends its call to ``CALLS`` with the options it
@@ -46,6 +48,8 @@ AVAILABILITY_PRODUCTS = ("dem",)
 HOLD = ".standin-hold"
 # A file in the store with one line per transfer: the path of the file fetched.
 FETCHES = ".standin-fetches"
+# A file in the store that makes a run report its files without a version path.
+UNVERSIONED = ".standin-unversioned"
 # The kind of files (``derived/<station>/<file>``) no command fetches: their
 # call cannot be rebuilt (A-ADR-049 D5, as Kartograf's ``soil hsg``).
 DERIVED = "derived"
@@ -489,15 +493,17 @@ def _fetch(
         part.write_bytes(content)
         os.replace(part, target)
     content = target.read_bytes()
-    return {
+    file: dict[str, object] = {
         "path": name,
         "unit": station,
         "status": status,
         "size_bytes": len(content),
         "sha256": hashlib.sha256(content).hexdigest(),
         "label": content.decode().strip().rpartition(",")[2],
-        "version_path": name,
     }
+    if not (root / UNVERSIONED).exists():
+        file["version_path"] = name
+    return file
 
 
 def _hold(root: Path) -> bool:

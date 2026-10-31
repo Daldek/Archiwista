@@ -21,6 +21,7 @@ import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import PureWindowsPath
 from typing import Any, Literal
 
 from archiwista.errors import ProjectFileError
@@ -498,11 +499,16 @@ def _text(parent: Mapping[str, object], pointer: str) -> str | None:
 
 
 def _relative(path: str) -> bool:
-    """Whether ``path`` is relative, ``/``-separated and without ``..``."""
+    """Whether ``path`` is relative, ``/``-separated and without ``..``.
+
+    A Windows drive or UNC anchor (``C:/x``, ``C:x``) is refused as
+    :func:`archiwista.paths.indexed_path` refuses it.
+    """
     parts = path.split("/")
     return (
         _plain(path)
         and "\\" not in path
+        and not PureWindowsPath(path).anchor
         and all(part not in ("", ".", "..") for part in parts)
     )
 

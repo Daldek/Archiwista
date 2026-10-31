@@ -11,6 +11,7 @@ scans the store and pins them through the API, then runs a job through
 ``POST /projects/{project}/jobs`` (or ``archiwista project-…``).
 """
 
+import hashlib
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -347,6 +348,45 @@ def test_project_repin_of_a_partial_run_changes_no_pin(place: Place) -> None:
     )
     assert (place.directory / PROJECT_FILE).read_bytes() == before
     assert "2024-12-31" in (place.root / folder / "2024.csv").read_text()
+
+
+def test_project_repin_of_a_plan_group_pins_files_without_a_version_path(
+    place: Place, standin: ModuleType
+) -> None:
+    """A run naming no version of a file: its pin is the slot's current version.
+
+    The download kept the store's older ``2024.csv``; the run in update mode
+    fetches it again from the source and its pin follows.
+    """
+    # Arrange
+    _write(place, f"{FOLDER}/2024.csv", _line("2024.csv", "2024-06-30"))
+    started = place.owner.request(
+        "POST",
+        "/jobs",
+        json={
+            "kind": "download",
+            "store": STORE,
+            **CHECK,
+            "pin": {"project": place.project, "group": PLAN},
+        },
+    )
+    assert _wait(place, place.owner, started.json()["id"])["state"] == "succeeded"
+    (before,) = _file(place)["groups"]
+    (place.root / standin.UNVERSIONED).touch()
+
+    # Act
+    detail = _job(place, {"kind": "repin", "groups": [PLAN]})
+
+    # Assert
+    assert detail["state"] == "succeeded", detail
+    assert detail["result"]["pins"] == {"kept": 3, "new": 1, "dropped": 0}
+    (after,) = _file(place)["groups"]
+    pinned = {pin["version"]: pin["sha256"] for pin in after["pins"]}
+    assert sorted(pinned) == sorted(pin["version"] for pin in before["pins"])
+    assert pinned == {
+        path: hashlib.sha256((place.root / path).read_bytes()).hexdigest()
+        for path in pinned
+    }
 
 
 def test_project_restore_gives_restored_content_match_not_restored_and_d5(

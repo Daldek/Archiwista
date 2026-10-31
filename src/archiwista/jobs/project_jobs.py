@@ -23,7 +23,9 @@ names for each producer of a group (``services.project_jobs.group_store``):
   the producer's update mode (``upgrade``); only when every call and every
   unit succeeded are the group's pins replaced under the file's lock: a plan
   group's by the files of the runs, a local group's each by the file of the
-  run at its slot (a pin whose slot no run returned stays); a pin whose
+  run at its slot (a pin whose slot no run returned stays); a file the run
+  names no version of counts as its slot's current version after the
+  rescan, without one the pin of its slot stays; a pin whose
   version and SHA-256 did not change keeps its ``pinned_at`` and
   ``pinned_by``, the others get the job's actor and time;
 - ``restore`` runs, for the groups with pins missing from the store, their
@@ -737,20 +739,27 @@ def _replace_pins(
     """Write the group's pins of a re-pin that wholly succeeded; return the counts.
 
     Under the file's lock: a plan group's pins become the runs' files, a
-    local group's each the file at its slot (one without stays). A pin of
-    the same version and SHA-256 is kept as the file holds it.
+    local group's each the file at its slot (one without stays). A file the
+    run names no version of is its slot's current version after the rescan,
+    as for a download's pins; without one the pin of its slot stays. A pin
+    of the same version and SHA-256 is kept as the file holds it.
     """
     moment = format_time(datetime.now(UTC).replace(microsecond=0))
-    by_producer: dict[str, dict[str, ActionFile]] = {}
+    by_producer: dict[str, dict[str, ActionFile | None]] = {}
     for call, file in files:
-        if file.version_path is not None:
-            by_producer.setdefault(call.producer, {}).setdefault(file.path, file)
+        by_producer.setdefault(call.producer, {}).setdefault(file.path, file)
     contents: dict[tuple[str, str], str | None] = {}
     with IndexQueries(spec.index_path) as queries:
         for producer, found in by_producer.items():
             store, _ = stores.of(producer)
-            paths = [file.version_path for file in found.values() if file.version_path]
-            for path, fact in queries.version_facts(store, paths).items():
+            found.update(
+                (path, _current_file(queries, store, file))
+                for path, file in list(found.items())
+                if file is not None and file.version_path is None
+            )
+            paths = [file.version_path for file in found.values() if file is not None]
+            versions = [path for path in paths if path is not None]
+            for path, fact in queries.version_facts(store, versions).items():
                 contents[(producer, path)] = fact.content_sha256
     slots = {(pin.producer, pin.version): _slot(pin) for pin in group.pins}
 
@@ -785,16 +794,19 @@ def _replace_pins(
             )
         old: list[dict[str, Any]] = target["pins"]
         held = {(item["producer"], item["version"]): item for item in old}
+        chosen: list[dict[str, Any]] = []
         if group.origin == "plan" and group.producer is not None:
-            wanted = [
-                (group.producer, file)
-                for file in by_producer.get(group.producer, {}).values()
-            ]
-            chosen = [
-                _kept_or_new(held, producer, file, pin_of) for producer, file in wanted
-            ]
+            for path, file in by_producer.get(group.producer, {}).items():
+                if file is not None:
+                    chosen.append(_kept_or_new(held, group.producer, file, pin_of))
+                    continue
+                chosen.extend(
+                    item
+                    for item in old
+                    if item["producer"] == group.producer
+                    and slots.get((item["producer"], item["version"])) == path
+                )
         else:
-            chosen = []
             for item in old:
                 key = (item["producer"], item["version"])
                 file = by_producer.get(key[0], {}).get(slots.get(key, key[1]))
@@ -838,3 +850,24 @@ def _kept_or_new(
     if item is not None and item.get("sha256") == file.sha256:
         return item
     return pin_of(producer, file)
+
+
+def _current_file(
+    queries: IndexQueries, store: str, file: ActionFile
+) -> ActionFile | None:
+    """Return a run's file without a version path as its slot's current version.
+
+    ``None`` when the index holds no current version of the slot with a
+    SHA-256.
+    """
+    current = queries.current_version_at(store, file.path)
+    if current is None or current.sha256 is None:
+        return None
+    size = file.size_bytes if current.size_bytes is None else current.size_bytes
+    return replace(
+        file,
+        sha256=current.sha256,
+        size_bytes=size,
+        label=current.label,
+        version_path=current.path,
+    )
